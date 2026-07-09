@@ -138,6 +138,31 @@ async function bumpAttempt(env: Env, uid: string): Promise<void> {
   } catch { /* best-effort */ }
 }
 
+// ── [LIVE-NO-REVIEW-1] (owner decision 2026-07-09) Binary verdicts + monthly cap ─
+// There is NO human-review queue: any doubt (degraded provider, extraction
+// failure, defense suspicion) is a FAIL — the clip is deleted and the user is
+// simply asked to record another take. A user gets MAX_FAILS_MONTH failed
+// attempts per CALENDAR MONTH (UTC); after that, liveness is locked until the
+// 1st of the next month.
+const MAX_FAILS_MONTH = 5;
+const monthKey = (uid: string, ts: number): string => {
+  const d = new Date(ts);
+  return `livenessv3:failm:${uid}:${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+};
+async function failsThisMonth(env: Env, uid: string): Promise<number> {
+  try { return Number(await env.TOKENS.get(monthKey(uid, Date.now()))) || 0; } catch { return 0; }
+}
+async function bumpMonthlyFail(env: Env, uid: string): Promise<void> {
+  try {
+    const key = monthKey(uid, Date.now());
+    const cur = Number(await env.TOKENS.get(key)) || 0;
+    await env.TOKENS.put(key, String(cur + 1), { expirationTtl: 32 * 86_400 });
+  } catch { /* best-effort */ }
+}
+/// Collapse REVIEW → FAIL (no-review policy). Reason codes are preserved so
+/// analytics still show WHY (e.g. PROVIDER_DEGRADED vs FACE_NOT_FOUND).
+function noReview(v: Verdict): Verdict { return v === "REVIEW" ? "FAIL" : v; }
+
 // ── R2 keys ──────────────────────────────────────────────────────────────────
 // Transient upload prefix (mirrors V2's u/<uid>/liveness/<sid>/). The clip lands
 // at <prefix>video.mp4. Retained pass evidence goes to the shared audit prefix
@@ -225,6 +250,18 @@ export async function livenessV3Session(req: Request, env: Env): Promise<Respons
     void telemetry(env, ctx.uid, "liveness_v3_session_blocked", { reason: "rate_limited", status: 429 });
     metric(env, "liveness_v3_session_blocked", [1], ["rate_limited"]);
     return json({ error: "too many attempts", reason: "rate_limited", retry_after_hours: 24 }, 429);
+  }
+  // [LIVE-NO-REVIEW-1] Monthly cap: 5 FAILED attempts per calendar month, then
+  // liveness is locked until the 1st of the next month (owner decision 2026-07-09).
+  const monthFails = await failsThisMonth(env, ctx.uid);
+  if (monthFails >= MAX_FAILS_MONTH) {
+    void telemetry(env, ctx.uid, "liveness_v3_session_blocked", { reason: "monthly_limit", status: 429, fails: monthFails });
+    metric(env, "liveness_v3_session_blocked", [1], ["monthly_limit"]);
+    return json({
+      error: "You've used all 5 tries for this month. Please try again next month.",
+      reason: "monthly_limit",
+      attempts_remaining: 0,
+    }, 429);
   }
 
   const body = (await req.json().catch(() => ({}))) as { policy_id?: string; requester?: string };
@@ -519,7 +556,9 @@ export async function runLivenessV3Checks(env: Env, uid: string, sid: string, re
   ): Promise<V3Result> => {
     const result: V3Result = {
       verdict, reason_codes: reasonCodes, ruleset_version: RULESET,
-      attempts_remaining: Math.max(0, MAX_ATTEMPTS_24H - (await attemptsLast24h(env, uid))),
+      // [LIVE-NO-REVIEW-1] attempts_remaining now means "failed tries left this
+      // month" (5/month policy), which is what the user actually needs to know.
+      attempts_remaining: Math.max(0, MAX_FAILS_MONTH - (await failsThisMonth(env, uid))),
       ...(level != null ? { level } : {}),
     };
     await env.TOKENS.put(resultKvKey(uid, sid), JSON.stringify(result), { expirationTtl: RESULT_TTL_S }).catch(() => {});
@@ -597,6 +636,7 @@ export async function runLivenessV3Checks(env: Env, uid: string, sid: string, re
     // [LIVE-RETAIN-1] FAIL (replay attack) → delete the clip immediately.
     await discardEvidence(env, uid, sid);
     await bumpAttempt(env, uid);
+    await bumpMonthlyFail(env, uid); // [LIVE-NO-REVIEW-1] counts toward the 5/month
     return finalize(v.verdict, v.reason_codes);
   }
 
@@ -676,11 +716,15 @@ export async function runLivenessV3Checks(env: Env, uid: string, sid: string, re
       frames: [], replayHashSeen: false, extractionFailed: true, attestationOk: null,
       sequenceMatched: null, sameFaceOk: null, motionMonotonicOk: null, anyProviderDegraded: false,
     });
-    void verdictTelemetry(env, uid, sid, sess, v.verdict, v.reason_codes, "none", 0, queueWaitMs, startedAt, false, edgeCorr, null, "none");
-    await writeVerdictRow(env, uid, sess, v.verdict, v.reason_codes, v.rule_pass_map, "none", 0, undefined, undefined, undefined, undefined, "none");
-    await tagAndDiscard(env, uid, sid, "review");
+    // [LIVE-NO-REVIEW-1] Extraction failure used to be REVIEW; it's now a FAIL
+    // (delete + ask for another take) under the binary-verdict policy.
+    const verdict = noReview(v.verdict);
+    void verdictTelemetry(env, uid, sid, sess, verdict, v.reason_codes, "none", 0, queueWaitMs, startedAt, false, edgeCorr, null, "none");
+    await writeVerdictRow(env, uid, sess, verdict, v.reason_codes, v.rule_pass_map, "none", 0, undefined, undefined, undefined, undefined, "none");
+    await discardEvidence(env, uid, sid);
     await bumpAttempt(env, uid);
-    return finalize(v.verdict, v.reason_codes);
+    if (verdict === "FAIL") await bumpMonthlyFail(env, uid);
+    return finalize(verdict, v.reason_codes);
   }
 
   // ── 4. Provider normalization per frame (breaker: Rekognition → Workers AI). ─
@@ -798,11 +842,15 @@ export async function runLivenessV3Checks(env: Env, uid: string, sid: string, re
   const reviewClass = defense.review_codes.filter((c) => c !== "DEVICE_CONTEXT_CHANGED");
   let finalVerdict: Verdict = v.verdict;
   if (finalVerdict !== "FAIL" && reviewClass.length > 0) finalVerdict = "REVIEW";
+  // [LIVE-NO-REVIEW-1] Binary policy: any REVIEW collapses to FAIL. The reason
+  // codes still record what raised the doubt; the user just records another take.
+  finalVerdict = noReview(finalVerdict);
   const mergedCodes = uniqCodes([...v.reason_codes, ...(defense.review_codes as ReasonCode[])]);
 
   const costUsd = Number((rekCalls * REK_COST_PER_IMAGE).toFixed(4));
   await writeVerdictRow(env, uid, sess, finalVerdict, mergedCodes, v.rule_pass_map, providerName, costUsd, defense, capMeta, deviceCtx.changed, edgeCorr, frameSource);
   await bumpAttempt(env, uid);
+  if (finalVerdict === "FAIL") await bumpMonthlyFail(env, uid);
   void verdictTelemetry(env, uid, sid, sess, finalVerdict, mergedCodes, providerName, costUsd, queueWaitMs, startedAt, false, edgeCorr, defense, frameSource);
   // Surface any spoof signal codes as their own telemetry event (plan §4).
   for (const c of v.reason_codes) {
@@ -822,15 +870,11 @@ export async function runLivenessV3Checks(env: Env, uid: string, sid: string, re
     return finalize("PASS", mergedCodes, 2);
   }
 
-  // [LIVE-RETAIN-1] FAIL → delete the clip IMMEDIATELY (no 7d grace, nothing
-  // rejected is ever stored — a no-face/black/abusive clip must not sit in R2).
-  // REVIEW → keep 7d with the review tag; a human decision NEEDS the evidence.
-  await recordLivenessAudit(env, { uid, provider: "workersai", status: finalVerdict === "FAIL" ? "fail" : "abandoned", req, device: deviceCtxFromBody({}), r2Prefix: null });
-  if (finalVerdict === "FAIL") {
-    await discardEvidence(env, uid, sid);
-  } else {
-    await tagAndDiscard(env, uid, sid, "review");
-  }
+  // [LIVE-RETAIN-1][LIVE-NO-REVIEW-1] FAIL (the only non-PASS outcome now) →
+  // delete the clip IMMEDIATELY. Nothing rejected is ever stored — a no-face/
+  // black/abusive clip must not sit in R2. The user simply records another take.
+  await recordLivenessAudit(env, { uid, provider: "workersai", status: "fail", req, device: deviceCtxFromBody({}), r2Prefix: null });
+  await discardEvidence(env, uid, sid);
   return finalize(finalVerdict, mergedCodes);
 }
 
@@ -1136,28 +1180,9 @@ async function discardEvidence(env: Env, uid: string, sid: string): Promise<void
   try { await env.TOKENS.delete(captureMetaKvKey(uid, sid)); } catch { /* */ }
   try { await env.TOKENS.delete(clientFramesKvKey(uid, sid)); } catch { /* */ }
 }
-// Fail/review: tag the video with the verdict retention window, THEN discard the
-// transient copy. (For fail we could keep 7d for appeal; here we tag then rely on
-// the R2 lifecycle rule to expire — see Specs/WRANGLER-ADDITIONS.md. We discard
-// the transient upload prefix regardless to avoid unbounded growth at 1M/day.)
-async function tagAndDiscard(env: Env, uid: string, sid: string, state: "fail" | "review"): Promise<void> {
-  try {
-    const key = videoKey(uid, sid);
-    const obj = await env.VERIFICATION.get(key).catch(() => null);
-    if (obj) {
-      // Re-put with the retention tag so lifecycle expires it (fail 7d).
-      await env.VERIFICATION.put(key, await obj.arrayBuffer(), {
-        customMetadata: { liveness_verdict: state, retain: "7d", ruleset: RULESET },
-      }).catch(() => {});
-    }
-  } catch { /* best-effort */ }
-  // Clear session KV; leave the tagged video for the lifecycle rule to reap.
-  try { await env.TOKENS.delete(sessionKvKey(uid, sid)); } catch { /* */ }
-  try { await env.TOKENS.delete(deviceRepKvKey(uid, sid)); } catch { /* */ }
-  try { await env.TOKENS.delete(edgeCtxKvKey(uid, sid)); } catch { /* */ }
-  try { await env.TOKENS.delete(captureMetaKvKey(uid, sid)); } catch { /* */ }
-  try { await env.TOKENS.delete(clientFramesKvKey(uid, sid)); } catch { /* */ }
-}
+// [LIVE-NO-REVIEW-1] tagAndDiscard removed — verdicts are binary now: PASS
+// retains the clip under the audit prefix, FAIL deletes everything at once via
+// discardEvidence. No 7d/review retention state exists any more.
 
 function arraysEqual(a: string[], b: string[]): boolean {
   if (a.length !== b.length) return false;
