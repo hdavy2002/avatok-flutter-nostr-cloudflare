@@ -1584,6 +1584,9 @@ class CallSession {
   }
 
   Future<void> _onNoAnswer() async {
+    // [AVA-RING-BLEED-1] A stale no-answer timer firing while Ava is live must
+    // not end the call under her ("no-answer"/timeout-ringing mid-voicemail).
+    if (_receptionistActive || _receptionist != null || _avaCountingDown) return;
     _ringback.stop();
     if (!config.video && !_ended) {
       // UNREACHABLE-AVA-1 (owner decision 2026-07-07): when the callee's phone is
@@ -1822,6 +1825,9 @@ class CallSession {
   }
 
   void _startRingWindow(Duration window) {
+    // [AVA-RING-BLEED-1] Never (re)arm a no-answer window once Ava owns the call —
+    // its _onNoAnswer would tear down the live receptionist session.
+    if (_receptionistActive || _receptionist != null || _avaCountingDown) return;
     _ringTimeout?.cancel();
     _ringTimeout = Timer(window, () { if (!_ended && !_connected) _onNoAnswer(); });
   }
@@ -1869,6 +1875,17 @@ class CallSession {
   void _onDeviceRinging() {
     if (_connected || _ended) return;
     if (_deviceRinging) return;
+    // [AVA-RING-BLEED-1] (2026-07-08): the device-ringing receipt can straggle in
+    // over FCM 10-30s late — AFTER the Ava handoff. Without this guard it
+    // restarted ringback OVER Ava's voice ("I could hear the ring in the
+    // background while Ava took my message"), reset phase to 'ringing', and
+    // re-armed a ring window whose _onNoAnswer would then kill the live Ava
+    // session. Once Ava owns the call, late ring signals are noise.
+    if (_receptionistActive || _receptionist != null || _avaCountingDown) {
+      Analytics.capture('ava_recept_signal_suppressed',
+          {'channel': 'device_ringing', 'call_id': config.room});
+      return;
+    }
     _deviceRinging = true;
     _deviceRingingTimer?.cancel();
     _ringAckFallback?.cancel();
