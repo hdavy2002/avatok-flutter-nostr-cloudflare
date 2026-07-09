@@ -220,6 +220,15 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   String _myAvatarUrl = ''; // my own photo, for the avatar beside my bubbles
   int _seq = 0;
   bool _hasText = false;
+  // ── Compose-time link preview (WhatsApp parity) ────────────────────────────
+  // Paste/type a URL → after a short debounce we unfurl it and show a small card
+  // above the keyboard with an ✕ to dismiss. Sending reuses the ALREADY-fetched
+  // preview, so the send is instant instead of waiting on the network.
+  Timer? _composeUnfurlDebounce;
+  String? _composePreviewUrl;      // url the current card belongs to
+  Map<String, dynamic>? _composePreview; // resolved preview json (null = none)
+  bool _composePreviewLoading = false;
+  final Set<String> _composePreviewDismissed = {}; // urls the user ✕'d
   // Premium = topped-up wallet / active subscription. Gates the @ava·#ava
   // composer hint (paid users only) — loaded in initState via MoneyApi.
   bool _premium = false;
@@ -1651,6 +1660,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _persistTimer?.cancel();
     _markReadTimer?.cancel();
     _smartReplyDebounce?.cancel(); // STREAM G smart replies
+    _composeUnfurlDebounce?.cancel(); // compose-time link preview
     _persistNow(); // flush any pending message-cache write on exit
     // NOTE: do NOT dispose _nostr — it's the shared SyncHub client owned by the
     // whole app. _dm.stop()/_gdm.stop() above already cancel this screen's
@@ -1954,29 +1964,39 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     required int? expire,
     required bool isGroup,
   }) async {
+    // WhatsApp parity: the composer already unfurled this URL while the user was
+    // typing, so grab that result and send with ZERO extra latency. Snapshot the
+    // compose state before we clear it below.
+    final url = RemoteConfig.linkPreviewsEnabled ? _firstUrl(t) : null;
+    final composeHit =
+        (url != null && url == _composePreviewUrl) ? _composePreview : null;
+    final composeDismissed = url != null && _composePreviewDismissed.contains(url);
+
     // Optimistic local bubble first — instant feel, independent of the unfurl.
     final localMsg = _Msg(_seq++, true, t, _fmtTime(now),
-        ts: now, sent: true, replyTo: replyMeta, expireAt: expire);
+        ts: now, sent: true, replyTo: replyMeta, expireAt: expire,
+        extra: composeHit == null ? null : {'preview': composeHit});
     setState(() {
       _msgs.add(localMsg);
       _ctrl.clear();
       _hasText = false;
       _replyTo = null;
     });
+    _clearComposePreview();
+    _composePreviewDismissed.clear();
     _jump();
     if (_convKey != null) DraftStore().set(_convKey!, '');
 
-    // Unfurl the first URL (best-effort, fast). Skipped entirely when the flag is
-    // off or there's no link — no behavioural change for plain messages.
-    Map<String, dynamic>? preview;
-    if (RemoteConfig.linkPreviewsEnabled) {
-      final url = _firstUrl(t);
-      if (url != null) {
-        preview = await _unfurl(url);
-        if (preview != null && mounted) {
-          // Show the card on the sender's own bubble too.
-          setState(() => localMsg.extra = {...?localMsg.extra, 'preview': preview});
-        }
+    // Preview resolution order:
+    //   1. the compose-time card the user just saw (instant, already fetched)
+    //   2. the user explicitly ✕'d it → send with no preview
+    //   3. no compose card (e.g. sent before the debounce fired) → unfurl now
+    Map<String, dynamic>? preview = composeHit;
+    if (preview == null && url != null && !composeDismissed) {
+      preview = await _unfurl(url);
+      if (preview != null && mounted) {
+        // Show the card on the sender's own bubble too.
+        setState(() => localMsg.extra = {...?localMsg.extra, 'preview': preview});
       }
     }
 
@@ -6403,6 +6423,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         topSlot: Column(mainAxisSize: MainAxisSize.min, children: [
           if (_replyTo != null || _editing != null) _replyBanner(),
           if (_sttActive) _listeningBanner(),
+          if (_showComposePreview) _composePreviewBar(),
           _composerTools(),
         ]),
       );
@@ -6412,6 +6433,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         if (_replyTo != null || _editing != null) _replyBanner(),
         if (_sttActive) _listeningBanner(),
+        if (_showComposePreview) _composePreviewBar(),
         _composerTools(),
         Padding(
           padding: const EdgeInsets.fromLTRB(8, 8, 12, 10),
@@ -6865,6 +6887,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       selection: TextSelection.collapsed(offset: out.length),
     );
     setState(() => _hasText = out.trim().isNotEmpty);
+    _refreshComposePreview(out);
     _composerFocus.requestFocus();
   }
 
@@ -7470,6 +7493,82 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     setState(() => _hasText = v.trim().isNotEmpty);
     _onTyping();
     if (_isGroup) _updateMentions(v);
+    _refreshComposePreview(v);
+  }
+
+  // ── Compose-time link preview ───────────────────────────────────────────────
+
+  /// Called on every keystroke/paste. Debounced 450ms so we unfurl once the user
+  /// stops typing, not per character. Cheap no-op when the text has no URL, the
+  /// URL hasn't changed, previews are off, or the thread is a pending stranger
+  /// thread (same gate the bubbles use).
+  void _refreshComposePreview(String v) {
+    if (!RemoteConfig.linkPreviewsEnabled || _threadAcceptState == 'pending') return;
+    final url = _firstUrl(v);
+
+    // URL gone (or replaced) → drop the stale card immediately.
+    if (url == null) {
+      _composeUnfurlDebounce?.cancel();
+      if (_composePreviewUrl != null || _composePreviewLoading) {
+        setState(() {
+          _composePreviewUrl = null;
+          _composePreview = null;
+          _composePreviewLoading = false;
+        });
+      }
+      return;
+    }
+    if (url == _composePreviewUrl) return;          // already showing/fetching it
+    if (_composePreviewDismissed.contains(url)) return; // user ✕'d this one
+
+    _composeUnfurlDebounce?.cancel();
+    setState(() {
+      _composePreviewUrl = url;
+      _composePreview = null;
+      _composePreviewLoading = true;
+    });
+    _composeUnfurlDebounce = Timer(const Duration(milliseconds: 450), () async {
+      final fetched = await _unfurl(url);
+      if (!mounted || _composePreviewUrl != url) return; // user moved on
+      setState(() {
+        _composePreview = fetched;
+        _composePreviewLoading = false;
+        // Nothing unfurlable → hide the bar entirely (raw link only).
+        if (fetched == null) _composePreviewUrl = null;
+      });
+    });
+  }
+
+  void _clearComposePreview({bool remember = false}) {
+    _composeUnfurlDebounce?.cancel();
+    final u = _composePreviewUrl;
+    setState(() {
+      if (remember && u != null) _composePreviewDismissed.add(u);
+      _composePreviewUrl = null;
+      _composePreview = null;
+      _composePreviewLoading = false;
+    });
+  }
+
+  /// True when there's a compose-time card to show above the input bar.
+  bool get _showComposePreview =>
+      _composePreviewUrl != null &&
+      (_composePreviewLoading || _composePreview != null);
+
+  /// The card that rides above the composer while a link is in the input box.
+  Widget _composePreviewBar() {
+    return ComposeLinkPreview(
+      loading: _composePreviewLoading,
+      preview: _composePreview == null
+          ? null
+          : LinkPreview.fromEnvelope(_composePreview),
+      onDismiss: () {
+        Analytics.capture('compose_preview_dismissed', {
+          if (Analytics.currentEmail != null) 'email': Analytics.currentEmail!,
+        });
+        _clearComposePreview(remember: true);
+      },
+    );
   }
 
   void _updateMentions(String v) {
@@ -8554,10 +8653,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             Analytics.capture('chat_youtube_card_shown', {'video_id': envPreview.videoId ?? ''});
           }
         });
+        // WhatsApp order: the rich card sits ON TOP, the raw URL text below it.
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
-          children: [link, const SizedBox(height: 6), card],
+          children: [card, const SizedBox(height: 6), link],
         );
       }
     }
@@ -8573,9 +8673,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       if (mounted) Analytics.capture('chat_youtube_card_shown', {'video_id': ytId});
     });
     return Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-      link,
-      const SizedBox(height: 6),
       YouTubeCard(videoId: ytId, url: ytUrl),
+      const SizedBox(height: 6),
+      link,
     ]);
   }
 

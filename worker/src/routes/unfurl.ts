@@ -40,9 +40,29 @@ export interface Preview {
   image?: string;
   site_name?: string;
   domain?: string;
+  // WhatsApp-parity: a link that points at a video renders a play badge (and a
+  // duration pill when the page advertises one) over the thumbnail.
+  is_video?: boolean;
+  duration?: number; // seconds
   // youtube only
   video_id?: string;
   thumb?: string;
+}
+
+// Hosts that serve OpenGraph tags ONLY to the Facebook crawler UA (Instagram,
+// Threads, Facebook itself). A browser UA gets a login wall with no og:image —
+// which is exactly why an Instagram reel used to render as a bare
+// "Instagram / INSTAGRAM.COM" card with no thumbnail.
+const FB_CRAWLER_UA =
+  "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)";
+const FB_CRAWLER_HOSTS = [
+  "instagram.com", "www.instagram.com",
+  "facebook.com", "www.facebook.com", "m.facebook.com", "fb.watch",
+  "threads.net", "www.threads.net", "threads.com", "www.threads.com",
+];
+
+function uaFor(host: string): string {
+  return FB_CRAWLER_HOSTS.includes(host.toLowerCase()) ? FB_CRAWLER_UA : UA;
 }
 
 // --------------------------------------------------------------------------
@@ -115,6 +135,8 @@ async function unfurlYouTube(u: URL, id: string): Promise<Preview> {
     // hqdefault always exists even before oEmbed resolves.
     thumb: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
     domain: "youtube.com",
+    site_name: "YouTube",
+    is_video: true,
   };
   try {
     const ctl = new AbortController();
@@ -180,35 +202,93 @@ function ogPatterns(prop: string): RegExp[] {
   ];
 }
 
-async function unfurlGeneric(u: URL): Promise<Preview> {
-  const out: Preview = { type: "link", url: u.toString(), domain: u.hostname.replace(/^www\./, "") };
+/** Fetch + read the HTML with a given UA. Returns "" on any failure. */
+async function fetchHtml(u: URL, ua: string): Promise<{ html: string; finalUrl: string }> {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS);
   let r: Response;
   try {
     r = await fetch(u.toString(), {
-      headers: { "user-agent": UA, accept: "text/html,application/xhtml+xml" },
+      headers: { "user-agent": ua, accept: "text/html,application/xhtml+xml" },
       redirect: "follow",
       signal: ctl.signal,
     });
-  } catch { clearTimeout(t); return out; }
+  } catch { clearTimeout(t); return { html: "", finalUrl: u.toString() }; }
   clearTimeout(t);
   const ct = (r.headers.get("content-type") || "").toLowerCase();
-  if (!r.ok || !ct.includes("html")) return out;
+  if (!r.ok || !ct.includes("html")) return { html: "", finalUrl: r.url || u.toString() };
   const html = await readCapped(r).catch(() => "");
-  if (!html) return out;
+  return { html, finalUrl: r.url || u.toString() };
+}
 
+/** Fill a Preview from OG/Twitter-card meta. Returns true if anything landed. */
+function applyMeta(out: Preview, html: string, finalUrl: string): boolean {
   out.title =
     metaContent(html, ogPatterns("og:title")) ??
+    metaContent(html, ogPatterns("twitter:title")) ??
     metaContent(html, [/<title[^>]*>([^<]*)<\/title>/i]);
   out.description =
     metaContent(html, ogPatterns("og:description")) ??
+    metaContent(html, ogPatterns("twitter:description")) ??
     metaContent(html, ogPatterns("description"));
-  out.image = metaContent(html, ogPatterns("og:image"));
+  out.image =
+    metaContent(html, ogPatterns("og:image")) ??
+    metaContent(html, ogPatterns("og:image:secure_url")) ??
+    metaContent(html, ogPatterns("twitter:image"));
   out.site_name = metaContent(html, ogPatterns("og:site_name"));
+
+  // Video detection → the client paints a play badge over the thumbnail and a
+  // duration pill (WhatsApp/Instagram parity).
+  const ogType = metaContent(html, ogPatterns("og:type")) ?? "";
+  const ogVideo =
+    metaContent(html, ogPatterns("og:video")) ??
+    metaContent(html, ogPatterns("og:video:url")) ??
+    metaContent(html, ogPatterns("og:video:secure_url")) ??
+    metaContent(html, ogPatterns("twitter:player"));
+  if (/^video/i.test(ogType) || !!ogVideo) out.is_video = true;
+
+  const dur =
+    metaContent(html, ogPatterns("og:video:duration")) ??
+    metaContent(html, ogPatterns("video:duration"));
+  if (dur) {
+    const n = Math.round(Number(dur));
+    if (Number.isFinite(n) && n > 0 && n < 24 * 3600) out.duration = n;
+  }
+
   // Resolve a relative og:image against the final URL.
   if (out.image) {
-    try { out.image = new URL(out.image, r.url || u.toString()).toString(); } catch { /* leave */ }
+    try { out.image = new URL(out.image, finalUrl).toString(); } catch { /* leave */ }
+  }
+  return !!(out.title || out.image);
+}
+
+async function unfurlGeneric(u: URL): Promise<Preview> {
+  const host = u.hostname.toLowerCase();
+  const out: Preview = { type: "link", url: u.toString(), domain: host.replace(/^www\./, "") };
+
+  const first = await fetchHtml(u, uaFor(host));
+  const got = first.html ? applyMeta(out, first.html, first.finalUrl) : false;
+
+  // A browser UA that came back with nothing (login wall, JS-only shell, bot
+  // block) gets ONE retry as the Facebook crawler — the UA nearly every social
+  // site special-cases to serve full OG tags. This is what turns an Instagram
+  // reel from a bare domain chip into a real thumbnail + title card.
+  if (!got || !out.image) {
+    const ua = uaFor(host);
+    if (ua !== FB_CRAWLER_UA) {
+      const retry = await fetchHtml(u, FB_CRAWLER_UA);
+      if (retry.html) {
+        const alt: Preview = { type: "link", url: out.url, domain: out.domain };
+        if (applyMeta(alt, retry.html, retry.finalUrl) && (alt.image || !out.title)) {
+          // Prefer the richer of the two responses.
+          alt.title ??= out.title;
+          alt.description ??= out.description;
+          alt.image ??= out.image;
+          alt.site_name ??= out.site_name;
+          return alt;
+        }
+      }
+    }
   }
   return out;
 }

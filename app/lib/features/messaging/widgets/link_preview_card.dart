@@ -40,6 +40,8 @@ class LinkPreview {
   final String? domain;
   final String? videoId; // youtube
   final String? thumb; // youtube
+  final bool isVideo; // paint a play badge over the thumbnail
+  final int? duration; // seconds → duration pill
 
   const LinkPreview({
     required this.type,
@@ -51,9 +53,33 @@ class LinkPreview {
     this.domain,
     this.videoId,
     this.thumb,
+    this.isVideo = false,
+    this.duration,
   });
 
   bool get isYouTube => type == 'youtube' && (videoId?.isNotEmpty ?? false);
+
+  /// The best available image for the card (youtube thumb or og:image).
+  String? get displayImage => isYouTube
+      ? (thumb ?? 'https://i.ytimg.com/vi/$videoId/hqdefault.jpg')
+      : image;
+
+  /// Host without `www.`, lowercase — the WhatsApp footer text.
+  String get displayDomain {
+    if (domain != null && domain!.isNotEmpty) return domain!.toLowerCase();
+    try {
+      return Uri.parse(url).host.replaceFirst(RegExp(r'^www\.'), '').toLowerCase();
+    } catch (_) {
+      return siteName?.toLowerCase() ?? '';
+    }
+  }
+
+  /// Favicon for the footer row (WhatsApp shows the site's own mark).
+  String? get faviconUrl {
+    final d = displayDomain;
+    if (d.isEmpty) return null;
+    return 'https://www.google.com/s2/favicons?sz=64&domain=$d';
+  }
 
   /// True when there is enough to render a card (else the caller shows raw text).
   bool get hasCard =>
@@ -72,6 +98,7 @@ class LinkPreview {
       return (str == null || str.isEmpty) ? null : str;
     }
 
+    final dur = int.tryParse((m['duration'] ?? '').toString());
     return LinkPreview(
       type: type,
       url: url,
@@ -82,6 +109,95 @@ class LinkPreview {
       domain: s(m['domain']),
       videoId: s(m['video_id']),
       thumb: s(m['thumb']),
+      isVideo: m['is_video'] == true || type == 'youtube',
+      duration: (dur != null && dur > 0) ? dur : null,
+    );
+  }
+}
+
+String _fmtDuration(int secs) {
+  final h = secs ~/ 3600;
+  final m = (secs % 3600) ~/ 60;
+  final s = secs % 60;
+  final two = (int n) => n.toString().padLeft(2, '0');
+  return h > 0 ? '$h:${two(m)}:${two(s)}' : '$m:${two(s)}';
+}
+
+/// The dark translucent play badge WhatsApp/Instagram paint over a video
+/// thumbnail (replaces the old oversized red YouTube disc).
+class _PlayBadge extends StatelessWidget {
+  const _PlayBadge({this.size = 46});
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.55),
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white.withValues(alpha: 0.9), width: 1.5),
+        ),
+        child: Icon(Icons.play_arrow_rounded,
+            color: Colors.white, size: size * 0.62),
+      );
+}
+
+/// Bottom-left "0:56" pill.
+class _DurationPill extends StatelessWidget {
+  const _DurationPill({required this.seconds});
+  final int seconds;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.65),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.videocam_rounded, size: 11, color: Colors.white),
+          const SizedBox(width: 3),
+          Text(_fmtDuration(seconds),
+              style: ZineText.tag(size: 9.5, color: Colors.white)),
+        ]),
+      );
+}
+
+/// Footer: favicon + lowercase domain (WhatsApp parity).
+class _DomainFooter extends StatelessWidget {
+  const _DomainFooter({required this.preview, this.padding =
+      const EdgeInsets.fromLTRB(10, 0, 10, 9)});
+  final LinkPreview preview;
+  final EdgeInsets padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final d = preview.displayDomain;
+    if (d.isEmpty) return const SizedBox.shrink();
+    final fav = preview.faviconUrl;
+    return Padding(
+      padding: padding,
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        if (fav != null)
+          ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: Image.network(fav, width: 13, height: 13,
+                errorBuilder: (_, __, ___) => PhosphorIcon(
+                    PhosphorIcons.link(PhosphorIconsStyle.bold),
+                    size: 11, color: Zine.inkMute)),
+          )
+        else
+          PhosphorIcon(PhosphorIcons.link(PhosphorIconsStyle.bold),
+              size: 11, color: Zine.inkMute),
+        const SizedBox(width: 5),
+        Flexible(
+          child: Text(d,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: ZineText.tag(size: 10, color: Zine.inkMute)),
+        ),
+      ]),
     );
   }
 }
@@ -121,8 +237,7 @@ class LinkPreviewCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final domain =
-        preview.domain ?? preview.siteName ?? _domainOf(preview.url);
+    final img = preview.displayImage;
     return GestureDetector(
       onTap: () => _openExternal(preview.url),
       child: Container(
@@ -137,80 +252,156 @@ class LinkPreviewCard extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (preview.image != null)
-              Image.network(
-                preview.image!,
-                width: width,
-                height: width * 0.5,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                loadingBuilder: (ctx, child, progress) => progress == null
-                    ? child
-                    : Container(
-                        width: width,
-                        height: width * 0.5,
-                        color: Zine.ink.withValues(alpha: 0.06),
-                        alignment: Alignment.center,
-                        child: const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
+            if (img != null)
+              // Video links get a 4:5-ish tall thumb like Instagram reels in
+              // WhatsApp; plain articles keep the wide 2:1 hero.
+              AspectRatio(
+                aspectRatio: preview.isVideo ? 4 / 3 : 2 / 1,
+                child: Stack(fit: StackFit.expand, children: [
+                  Image.network(
+                    img,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) =>
+                        Container(color: Zine.ink.withValues(alpha: 0.06)),
+                    loadingBuilder: (ctx, child, progress) => progress == null
+                        ? child
+                        : Container(
+                            color: Zine.ink.withValues(alpha: 0.06),
+                            alignment: Alignment.center,
+                            child: const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          ),
+                  ),
+                  if (preview.isVideo) ...[
+                    const Center(child: _PlayBadge()),
+                    if (preview.duration != null)
+                      Positioned(
+                        left: 8,
+                        bottom: 8,
+                        child: _DurationPill(seconds: preview.duration!),
                       ),
-              ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 8, 10, 9),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (preview.title != null)
-                    Text(
-                      preview.title!,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: ZineText.value(size: 13, weight: FontWeight.w700),
-                    ),
-                  if (preview.description != null) ...[
-                    const SizedBox(height: 3),
-                    Text(
-                      preview.description!,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: ZineText.sub(size: 12, color: Zine.inkSoft),
-                    ),
                   ],
-                  if (domain.isNotEmpty) ...[
-                    const SizedBox(height: 5),
-                    Row(mainAxisSize: MainAxisSize.min, children: [
-                      PhosphorIcon(PhosphorIcons.link(PhosphorIconsStyle.bold),
-                          size: 11, color: Zine.inkMute),
-                      const SizedBox(width: 4),
-                      Flexible(
-                        child: Text(
-                          domain.toUpperCase(),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: ZineText.tag(size: 9.5, color: Zine.inkMute),
-                        ),
-                      ),
-                    ]),
-                  ],
-                ],
+                ]),
               ),
-            ),
+            if (preview.title != null)
+              Padding(
+                padding: EdgeInsets.fromLTRB(
+                    10, 8, 10, preview.description != null ? 0 : 6),
+                child: Text(
+                  preview.title!,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: ZineText.value(size: 13, weight: FontWeight.w700),
+                ),
+              ),
+            if (preview.description != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 3, 10, 6),
+                child: Text(
+                  preview.description!,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: ZineText.sub(size: 12, color: Zine.inkSoft),
+                ),
+              ),
+            _DomainFooter(preview: preview),
           ],
         ),
       ),
     );
   }
+}
 
-  String _domainOf(String url) {
-    try {
-      return Uri.parse(url).host.replaceFirst(RegExp(r'^www\.'), '');
-    } catch (_) {
-      return '';
-    }
+// ─────────────────────────────────────────────────────────────────────────────
+// Compose-time preview (WhatsApp: the little card that pops above the keyboard
+// the moment you paste a link, with an ✕ to dismiss it).
+// ─────────────────────────────────────────────────────────────────────────────
+
+class ComposeLinkPreview extends StatelessWidget {
+  const ComposeLinkPreview({
+    super.key,
+    required this.preview,
+    required this.onDismiss,
+    this.loading = false,
+  });
+
+  final LinkPreview? preview;
+  final VoidCallback onDismiss;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = preview;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(10, 8, 10, 2),
+      decoration: BoxDecoration(
+        color: Zine.card,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Zine.ink, width: 1.5),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Row(children: [
+        SizedBox(
+          width: 60,
+          height: 60,
+          child: loading || p?.displayImage == null
+              ? Container(
+                  color: Zine.ink.withValues(alpha: 0.06),
+                  alignment: Alignment.center,
+                  child: loading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : PhosphorIcon(PhosphorIcons.link(PhosphorIconsStyle.bold),
+                          size: 18, color: Zine.inkMute),
+                )
+              : Stack(fit: StackFit.expand, children: [
+                  Image.network(p!.displayImage!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) =>
+                          Container(color: Zine.ink.withValues(alpha: 0.06))),
+                  if (p.isVideo) const Center(child: _PlayBadge(size: 24)),
+                ]),
+        ),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  loading
+                      ? 'Fetching preview…'
+                      : (p?.title ?? p?.displayDomain ?? 'Link'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: ZineText.value(size: 12.5, weight: FontWeight.w700),
+                ),
+                if (!loading && p != null) ...[
+                  const SizedBox(height: 2),
+                  Text(p.displayDomain,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: ZineText.tag(size: 10, color: Zine.inkMute)),
+                ],
+              ],
+            ),
+          ),
+        ),
+        IconButton(
+          visualDensity: VisualDensity.compact,
+          icon: const Icon(Icons.close_rounded, size: 18),
+          color: Zine.inkMute,
+          onPressed: onDismiss,
+          tooltip: 'Remove preview',
+        ),
+      ]),
+    );
   }
 }
 
@@ -359,40 +550,21 @@ class _YouTubeInlineCardState extends State<YouTubeInlineCard> {
                         fit: BoxFit.cover,
                         errorBuilder: (_, __, ___) => Container(color: Zine.ink),
                       ),
-                      Container(color: Zine.ink.withValues(alpha: 0.12)),
-                      Container(
-                        width: 56,
-                        height: 56,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFF0000),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2.5),
-                          boxShadow: Zine.shadowXs,
+                      Container(color: Zine.ink.withValues(alpha: 0.10)),
+                      const Center(child: _PlayBadge()),
+                      if (widget.preview.duration != null)
+                        Positioned(
+                          left: 8,
+                          bottom: 8,
+                          child:
+                              _DurationPill(seconds: widget.preview.duration!),
                         ),
-                        child: const Icon(Icons.play_arrow,
-                            color: Colors.white, size: 30),
-                      ),
-                      Positioned(
-                        left: 8,
-                        top: 8,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 7, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: Zine.ink.withValues(alpha: 0.7),
-                            borderRadius: BorderRadius.circular(100),
-                          ),
-                          child: Text('YOUTUBE',
-                              style:
-                                  ZineText.tag(size: 8.5, color: Colors.white)),
-                        ),
-                      ),
                     ]),
               ),
             ),
           if ((widget.preview.title?.isNotEmpty ?? false))
             Padding(
-              padding: const EdgeInsets.fromLTRB(10, 8, 10, 9),
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
               child: Text(
                 widget.preview.title!,
                 maxLines: 2,
@@ -400,6 +572,7 @@ class _YouTubeInlineCardState extends State<YouTubeInlineCard> {
                 style: ZineText.value(size: 13, weight: FontWeight.w700),
               ),
             ),
+          _DomainFooter(preview: widget.preview),
         ],
       ),
     );
