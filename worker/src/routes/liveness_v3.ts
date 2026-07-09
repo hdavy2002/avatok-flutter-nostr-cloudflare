@@ -594,7 +594,8 @@ export async function runLivenessV3Checks(env: Env, uid: string, sid: string, re
     });
     void verdictTelemetry(env, uid, sid, sess, v.verdict, v.reason_codes, "none", 0, queueWaitMs, startedAt, true, edgeCorr, null, haveClientFrames ? "client" : "none");
     await writeVerdictRow(env, uid, sess, v.verdict, v.reason_codes, v.rule_pass_map, "none", 0, undefined, undefined, undefined, undefined, haveClientFrames ? "client" : "none");
-    await tagAndDiscard(env, uid, sid, "fail");
+    // [LIVE-RETAIN-1] FAIL (replay attack) → delete the clip immediately.
+    await discardEvidence(env, uid, sid);
     await bumpAttempt(env, uid);
     return finalize(v.verdict, v.reason_codes);
   }
@@ -821,9 +822,15 @@ export async function runLivenessV3Checks(env: Env, uid: string, sid: string, re
     return finalize("PASS", mergedCodes, 2);
   }
 
-  // FAIL or REVIEW → tag + discard, write audit row with r2 null.
+  // [LIVE-RETAIN-1] FAIL → delete the clip IMMEDIATELY (no 7d grace, nothing
+  // rejected is ever stored — a no-face/black/abusive clip must not sit in R2).
+  // REVIEW → keep 7d with the review tag; a human decision NEEDS the evidence.
   await recordLivenessAudit(env, { uid, provider: "workersai", status: finalVerdict === "FAIL" ? "fail" : "abandoned", req, device: deviceCtxFromBody({}), r2Prefix: null });
-  await tagAndDiscard(env, uid, sid, finalVerdict === "FAIL" ? "fail" : "review");
+  if (finalVerdict === "FAIL") {
+    await discardEvidence(env, uid, sid);
+  } else {
+    await tagAndDiscard(env, uid, sid, "review");
+  }
   return finalize(finalVerdict, mergedCodes);
 }
 
@@ -1098,7 +1105,22 @@ async function retainPassEvidence(env: Env, uid: string, sid: string, frameBufs:
       });
     }
   } catch { /* best-effort */ }
-  // Delete the raw video + transient prefix (never retain the full clip on pass).
+  // [LIVE-RETAIN-1] (owner decision 2026-07-09) INVERTED retention: PASS clips
+  // are KEPT (moved to the audit prefix) so a human can spot-review verified
+  // accounts later; FAIL clips are deleted immediately (see the FAIL branch).
+  // The old policy deleted the clip on pass and kept it 7d on fail — exactly
+  // backwards for auditability, and it left rejected (possibly abusive) footage
+  // sitting in R2.
+  try {
+    const raw = await env.VERIFICATION.get(videoKey(uid, sid)).catch(() => null);
+    if (raw) {
+      await env.VERIFICATION.put(retainedPrefix + "video.mp4", await raw.arrayBuffer(), {
+        customMetadata: { liveness_verdict: "pass", retain: "review", ruleset: RULESET },
+      });
+    }
+  } catch { /* best-effort — the thumb + verdict row still exist */ }
+  // Delete the transient upload prefix + session KV (the retained copy lives
+  // under the audit prefix now).
   await discardEvidence(env, uid, sid);
   return thumbKey;
 }
