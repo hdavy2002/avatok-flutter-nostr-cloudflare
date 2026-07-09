@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="com.sec.android.provider.badge.permission.READ" />
     <uses-permission android:name="com.sec.android.provider.badge.permission.WRITE" />
     <uses-permission android:name="com.htc.launcher.permission.READ_SETTINGS" />
@@ -49,16 +50,30 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules">
-        <!-- No empty taskAffinity here on purpose: an empty affinity put
-             MainActivity in a DIFFERENT task from the flutter_callkit_incoming
-             call activity (which uses the default package affinity), so after a
-             call ended the user saw TWO app cards in Recents and had to swipe
-             both away. The default (package) affinity keeps the call UI and the
-             app in ONE task → one Recents card. -->
+        <!-- [ISSUE-DUPTASK] Recents duplication — corrected diagnosis.
+             The old comment here claimed flutter_callkit_incoming's call activity
+             uses the default package affinity, and that giving MainActivity an
+             empty affinity was therefore what split them into two tasks. That was
+             WRONG. The plugin declares CallkitIncomingActivity with
+             launchMode="singleInstance" AND its own dedicated
+             taskAffinity="com.hiennv.flutter_callkit_incoming.INCOMING_CALL_AFFINITY",
+             so it is ALWAYS in its own task no matter what MainActivity does.
+             Removing the empty affinity could never have merged them, which is why
+             the second Recents card kept coming back. Two real fixes:
+               1. Below: MainActivity is singleTask, not singleTop. The ongoing-call
+                  notification relaunches it with FLAG_ACTIVITY_NEW_TASK from a
+                  service context (CallForegroundService.kt); a NEW_TASK launch of a
+                  singleTop activity can spawn a SECOND MainActivity task instead of
+                  reusing the existing one. singleTask forces task reuse.
+               2. Further down: we merge autoRemoveFromRecents onto the plugin's
+                  CallkitIncomingActivity so its task disappears when the ring
+                  activity finishes. The plugin's excludeFromRecents + noHistory are
+                  honoured on stock Android but unreliable on the Samsung/Oppo/
+                  Huawei/Xiaomi launchers we target (see badge permissions above). -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:launchMode="singleTop"
+            android:launchMode="singleTask"
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
@@ -102,6 +117,25 @@
                 <data android:scheme="avatok"/>
             </intent-filter>
         </activity>
+        <!-- [ISSUE-DUPTASK] Merge-override of flutter_callkit_incoming's ring
+             activity. We do NOT change its launchMode or taskAffinity (singleInstance
+             on a dedicated affinity is what lets it show over the lock screen), we
+             only add autoRemoveFromRecents so the task it creates is torn down as
+             soon as the ring activity finishes — killing the ghost card that lingers
+             after a call on OEM launchers. These attributes are absent upstream, so
+             the manifest merger adds them without needing tools:replace.
+             tools:node="merge" keeps the plugin's own declaration intact. -->
+        <activity
+            android:name="com.hiennv.flutter_callkit_incoming.CallkitIncomingActivity"
+            android:autoRemoveFromRecents="true"
+            android:excludeFromRecents="true"
+            tools:node="merge" />
+        <activity
+            android:name="com.hiennv.flutter_callkit_incoming.TransparentActivity"
+            android:autoRemoveFromRecents="true"
+            android:excludeFromRecents="true"
+            tools:node="merge" />
+
         <!-- flutter_web_auth_2 callback for the avatokauth:// OAuth return
              (AvaStorage "Connect Google Drive"). Lets the in-app auth tab
              auto-close and hand control straight back to the app. Distinct from
