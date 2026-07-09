@@ -164,6 +164,13 @@ class AvaTheme {
         contentTextStyle: ZineText.value(size: 14, color: Zine.paper),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         behavior: SnackBarBehavior.floating,
+        // App-wide dismiss affordance. Snackbars carrying a SnackBarAction
+        // (e.g. the "Can't reach the network — Retry" banner) otherwise give
+        // the user no way to get rid of them; swipe-to-dismiss alone is not
+        // discoverable. showCloseIcon renders the X for every snackbar that
+        // does not override it locally.
+        showCloseIcon: true,
+        closeIconColor: Zine.paper,
       ),
       progressIndicatorTheme: const ProgressIndicatorThemeData(color: Zine.blueInk),
     );
