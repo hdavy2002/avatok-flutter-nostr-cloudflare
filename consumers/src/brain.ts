@@ -5,6 +5,7 @@
 // embed a summary into Vectorize (uid-scoped), mark processed.
 import type { Env, BrainMsg } from "./types";
 import { aiText, bumpAiSpend } from "./ai";
+import { avaReason } from "./ava_reason"; // AVA-CORE-5: the ONE reasoning gateway
 
 const RAW_TTL_MS = 30 * 86_400_000; // 30 days
 
@@ -212,9 +213,13 @@ async function captionImage(env: Env, key: string): Promise<string> {
   const buf = await obj.arrayBuffer();
   const mime = obj.httpMetadata?.contentType || "image/jpeg";
   const dataUrl = `data:${mime};base64,${bytesToBase64(new Uint8Array(buf))}`;
-  const model = env.BRAIN_VISION_MODEL || env.BRAIN_EXTRACT_MODEL || "@cf/google/gemma-4-26b-a4b-it";
+  // AVA-CORE-5: BRAIN_VISION_MODEL/BRAIN_EXTRACT_MODEL still WIN over the reasoner
+  // default (behavior-preserving); undefined → AVA_REASONER.
+  const model = env.BRAIN_VISION_MODEL || env.BRAIN_EXTRACT_MODEL;
   try {
-    const out = (await env.AI.run(model as any, {
+    const out = (await avaReason(env, {
+      role: "brain", capability: "vision", trigger: "file_ingest",
+      model,
       messages: [{
         role: "user",
         content: [
@@ -222,8 +227,9 @@ async function captionImage(env: Env, key: string): Promise<string> {
           { type: "image_url", image_url: { url: dataUrl } },
         ],
       }],
-      max_tokens: 512,
+      maxTokens: 512,
       temperature: 0,
+      fallback: false, // multimodal input — keep on Workers AI, no OpenRouter hop
     })) as any;
     return (aiText(out) || "").toString().slice(0, 2000);
   } catch { return ""; }
@@ -284,7 +290,8 @@ interface Extracted {
 }
 
 async function extract(env: Env, msg: BrainMsg): Promise<Extracted> {
-  const model = env.BRAIN_EXTRACT_MODEL || "@cf/google/gemma-4-26b-a4b-it";
+  // AVA-CORE-5: BRAIN_EXTRACT_MODEL still WINS over the reasoner default.
+  const model = env.BRAIN_EXTRACT_MODEL || (env as any).AVA_REASONER || "@cf/google/gemma-4-26b-a4b-it";
   const sys =
     "You extract structured memory from a single app event. Return ONLY minified JSON: " +
     `{"summary":string,"entities":[{"name":string,"entity_type":"person|project|company|place|task|goal|interest|event|community","summary":string}],` +
@@ -296,11 +303,14 @@ async function extract(env: Env, msg: BrainMsg): Promise<Extracted> {
     // Single user message (sys + data): portable across models incl. Gemma 4,
     // whose chat template doesn't take a separate system role. max_tokens leaves
     // room for thinking-mode before the JSON. Parsed via aiText (choices/content).
-    const out = (await env.AI.run(model as any, {
+    const out = (await avaReason(env, {
+      role: "brain", capability: "fact_extract", trigger: "event_ingest",
+      uid: (msg as any).uid,
+      model,
       messages: [
         { role: "user", content: `${sys}\n\nEvent type: ${msg.event_type}\nApp: ${msg.source_app}\nData: ${JSON.stringify(msg.payload).slice(0, 4000)}` },
       ],
-      max_tokens: 1024,
+      maxTokens: 1024,
       temperature: 0,
     })) as unknown;
     try { env.ANALYTICS?.writeDataPoint({ blobs: ["brain_extract", model], doubles: [Date.now() - started, 1], indexes: ["brain"] }); } catch { /* noop */ }

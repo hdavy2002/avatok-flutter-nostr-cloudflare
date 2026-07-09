@@ -34,6 +34,7 @@
 // logic — see the clearly-commented hook in maybeMarkRead() below (left as a no-op).
 import type { Env, AutoReplyMsg, AutoDigestMsg } from "./types";
 import { aiText, bumpAiSpend } from "./ai";
+import { avaReason } from "./ava_reason"; // AVA-CORE-5: the ONE reasoning gateway
 
 const MODE_DEFAULTS: Record<string, string> = {
   travelling:
@@ -171,7 +172,8 @@ function maybeMarkRead(): void {
 /** AI-mode short reply grounded on recent thread + strict persona. Falls back to the
  *  canned message on any error/empty. */
 async function aiReply(env: Env, agent: string, owner: string, cfg: AutoResponderConfig, thread: Array<{ sender: string; body: string }>, incoming: string): Promise<string> {
-  const model = env.BRAIN_EXTRACT_MODEL || "@cf/google/gemma-4-26b-a4b-it";
+  // AVA-CORE-5: BRAIN_EXTRACT_MODEL still WINS over the reasoner default.
+  const model = env.BRAIN_EXTRACT_MODEL || (env as any).AVA_REASONER || "@cf/google/gemma-4-26b-a4b-it";
   const langRule = cfg.replyLang
     ? "Reply in the SAME language the last incoming message is written in. "
     : "";
@@ -184,9 +186,12 @@ async function aiReply(env: Env, agent: string, owner: string, cfg: AutoResponde
   const convText = thread.map((m) => `${m.sender === owner ? owner : "Them"}: ${m.body}`).join("\n");
   const started = Date.now();
   try {
-    const out = await env.AI.run(model as any, {
+    const out = await avaReason(env, {
+      role: "copilot", capability: "auto_reply", trigger: "away_message",
+      uid: owner,
+      model,
       messages: [{ role: "user", content: `${sys}\n\nRecent conversation:\n${convText}\n\nLatest incoming message:\n${incoming}\n\n${agent}'s one-sentence reply:` }],
-      max_tokens: 160,
+      maxTokens: 160,
       temperature: 0.4,
     });
     await bumpAiSpend(env, Date.now() - started);
@@ -201,12 +206,15 @@ async function aiReply(env: Env, agent: string, owner: string, cfg: AutoResponde
 async function classifyUrgent(env: Env, aiMode: boolean, incoming: string): Promise<boolean> {
   if (!incoming) return false;
   if (!aiMode) return URGENT_RE.test(incoming);
-  const model = env.BRAIN_EXTRACT_MODEL || "@cf/google/gemma-4-26b-a4b-it";
+  // AVA-CORE-5: BRAIN_EXTRACT_MODEL still WINS over the reasoner default.
+  const model = env.BRAIN_EXTRACT_MODEL || (env as any).AVA_REASONER || "@cf/google/gemma-4-26b-a4b-it";
   const started = Date.now();
   try {
-    const out = await env.AI.run(model as any, {
+    const out = await avaReason(env, {
+      role: "copilot", capability: "auto_reply", trigger: "urgency_check",
+      model,
       messages: [{ role: "user", content: `Is the following message URGENT (an emergency, time-critical, or needs an immediate human)? Answer ONLY "yes" or "no".\n\nMessage: ${incoming.slice(0, 600)}` }],
-      max_tokens: 6, temperature: 0,
+      maxTokens: 6, temperature: 0,
     });
     await bumpAiSpend(env, Date.now() - started);
     return /\byes\b/i.test(aiText(out));

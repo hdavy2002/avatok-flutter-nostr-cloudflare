@@ -21,6 +21,7 @@ import { perceptualHash, hamming, bands } from "./phash";
 import { notifyUser } from "./notify";
 import { aiText, bumpAiSpend } from "./ai";
 import { csamCheckHash, csamGate, handleCsam } from "./csam";
+import { avaReason } from "./ava_reason"; // AVA-CORE-5: the ONE reasoning gateway
 
 const REJECT = 0.85;
 const FLAG = 0.60;
@@ -188,14 +189,19 @@ function num(v: unknown): number {
 // --- Gemma 4 vision scan (the careful path) ---
 // MODERATION_MODEL_TYPE: "vision" (default; prompt+parse) | "classifier" (label+score model).
 async function classifyGemma(env: Env, bytes: Uint8Array): Promise<ScanResult> {
-  const model = env.MODERATION_MODEL || "@cf/google/gemma-4-26b-a4b-it";
+  // AVA-CORE-5: MODERATION_MODEL still WINS over the reasoner default.
+  const model = env.MODERATION_MODEL || (env as any).AVA_REASONER || "@cf/google/gemma-4-26b-a4b-it";
   const type = env.MODERATION_MODEL_TYPE || "vision";
   const started = Date.now();
   let completionTokens = 0; // [MOD-THINK-1] AI output tokens this scan (spend telemetry)
   try {
     let result: ScanResult;
     if (type === "classifier") {
-      const out = (await env.AI.run(model as any, { image: Array.from(bytes) })) as unknown;
+      const out = (await avaReason(env, {
+        role: "moderation", capability: "content_check", trigger: "media_scan",
+        model,
+        raw: { image: Array.from(bytes) }, // non-chat classifier body (no OR fallback)
+      })) as unknown;
       result = parseClassifier(out, model);
     } else {
       const prompt =
@@ -212,7 +218,9 @@ async function classifyGemma(env: Env, bytes: Uint8Array): Promise<ScanResult> {
       // truncates before the answer (empty content → parsed 0/0 → fail-open), so we
       // disable thinking FIRST, then cap. (thinking:false / reasoning_effort had no
       // effect; enable_thinking:false is the working flag.)
-      const out = (await env.AI.run(model as any, {
+      const out = (await avaReason(env, {
+        role: "moderation", capability: "content_check", trigger: "media_scan",
+        model,
         messages: [{
           role: "user",
           content: [
@@ -220,8 +228,9 @@ async function classifyGemma(env: Env, bytes: Uint8Array): Promise<ScanResult> {
             { type: "image_url", image_url: { url: dataUrl(bytes) } },
           ],
         }],
-        chat_template_kwargs: { enable_thinking: false },
-        max_completion_tokens: 32, temperature: 0,
+        temperature: 0,
+        aiOptions: { chat_template_kwargs: { enable_thinking: false }, max_completion_tokens: 32 },
+        fallback: false, // multimodal input — keep on Workers AI, no OpenRouter hop
       })) as unknown;
       completionTokens = Number((out as any)?.usage?.completion_tokens ?? 0);
       const text = aiText(out).toLowerCase();
@@ -332,8 +341,13 @@ async function setStatus(env: Env, mediaId: string, status: string): Promise<voi
 export async function moderateText(env: Env, text: string): Promise<{ safe: boolean; score: number; categories: string[]; raw: string }> {
   const model = env.TEXT_MODERATION_MODEL || "@cf/meta/llama-guard-3-8b";
   try {
-    const out = (await env.AI.run(model as any, {
+    // AVA-CORE-5: routed through avaReason for attribution. Llama Guard is a
+    // purpose-built binary safety classifier (a "sense"); its model pin stays.
+    const out = (await avaReason(env, {
+      role: "moderation", capability: "content_check", trigger: "text_scan",
+      model,
       messages: [{ role: "user", content: text }],
+      fallback: false, // guard-model verdict format — never substitute a chat model
     })) as unknown as { response?: string };
     const raw = (out.response ?? "").trim();
     const safe = /^\s*safe/i.test(raw);
