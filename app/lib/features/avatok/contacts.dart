@@ -12,6 +12,7 @@ import '../../core/config.dart';
 import '../../core/disk_cache.dart';
 import '../../core/vault.dart';
 import '../../core/account_key.dart';
+import '../../identity/identity.dart' show AccountScope;
 
 /// A saved AvaTok contact. `uid` holds the routing id (Clerk uid). Handles are
 /// retired — the network identity shown is the AvaTOK number (or real phone).
@@ -120,11 +121,28 @@ class ContactsStore {
     return cs;
   }
 
+  // [ISSUE-VAULT-OVERWRITE-1] (2026-07-09) Which account's vault we have
+  // successfully hydrated from (pulled + decrypted, or server-confirmed empty)
+  // during THIS process lifetime. Until that has happened, _syncUp must NOT
+  // push: after a failed restore the local list is empty/near-empty, and one
+  // add()/remove() used to encrypt that stub and OVERWRITE the user's good
+  // server backup — silent, permanent data loss. Now we pull-merge-push instead.
+  static String? _vaultHydratedFor;
+  static String get _scopeKey => AccountScope.id ?? '_default';
+
   /// Encrypt the contact list with the user's key and upload it so it follows
   /// the user to any device. Best-effort; never throws.
   Future<void> _syncUp(List<Contact> cs) async {
     final id = ApiAuth.identity;
     if (id == null) return;
+    if (_vaultHydratedFor != _scopeKey) {
+      // Never pushed-before-pulled. pullAndMerge unions local into remote and
+      // pushes the superset itself, so the mutation still reaches the vault —
+      // without ever being able to shrink it.
+      Analytics.capture('contacts_syncup_deferred', {'reason': 'not_hydrated', 'local_count': cs.length});
+      unawaited(pullAndMerge());
+      return;
+    }
     final keyMat = await AccountKey.I.ensureHex();
     if (keyMat == null) return; // no account key yet (offline) — the next sync carries it
     try {
@@ -142,10 +160,42 @@ class ContactsStore {
     final local = await load();
     if (id == null) return local;
     final keyMat = await AccountKey.I.ensureHex(); // restores from escrow / mints + escrows the key
-    final blob = await Vault.get('contacts');
-    if (blob == null) return local;
+    // [ISSUE-VAULT-RESTORE-1] (2026-07-09) Tri-state fetch with retries. The old
+    // `Vault.get` returned null for BOTH "no backup" and "request failed", and a
+    // single 8s-timeout failure at first login left the contact list empty with
+    // no retry and no telemetry — while the backup sat intact on the server.
+    final fetch = await Vault.fetch('contacts');
+    if (fetch.failed) {
+      Analytics.error(
+        domain: 'account',
+        code: 'contacts_restore_failed',
+        message: 'vault fetch failed',
+        action: 'pull_and_merge',
+        extra: {'stage': 'vault_get', 'local_count': local.length},
+      );
+      return local; // NOT hydrated — _syncUp stays deferred, backup stays safe
+    }
+    if (fetch.confirmedEmpty) {
+      // Server says: no backup for this account. That's an authoritative answer
+      // (fresh account), so pushes may proceed from here on.
+      _vaultHydratedFor = _scopeKey;
+      Analytics.capture('contacts_restored', {'remote_count': 0, 'local_count': local.length, 'confirmed_empty': true});
+      return local;
+    }
+    final blob = fetch.blob!;
     final plain = keyMat == null ? null : await Vault.decrypt(blob, keyMat);
-    if (plain == null) return local;
+    if (plain == null) {
+      // A backup EXISTS but we can't read it (missing/wrong key). Absolutely do
+      // not allow pushes — they'd replace a real backup with a stub.
+      Analytics.error(
+        domain: 'account',
+        code: 'contacts_restore_failed',
+        message: keyMat == null ? 'no account key' : 'decrypt failed',
+        action: 'pull_and_merge',
+        extra: {'stage': keyMat == null ? 'key' : 'decrypt', 'local_count': local.length},
+      );
+      return local;
+    }
     List<Contact> remote;
     try {
       remote = (jsonDecode(plain) as List)
@@ -153,14 +203,30 @@ class ContactsStore {
           .map(Contact.fromJson)
           .toList();
     } catch (_) {
+      Analytics.error(
+        domain: 'account',
+        code: 'contacts_restore_failed',
+        message: 'parse failed',
+        action: 'pull_and_merge',
+        extra: {'stage': 'parse', 'local_count': local.length},
+      );
       return local;
     }
+    _vaultHydratedFor = _scopeKey; // pulled + decrypted — pushes are safe now
     final byNpub = <String, Contact>{for (final c in local) c.uid: c};
     for (final c in remote) {
       byNpub[c.uid] = c;
     }
     final merged = byNpub.values.where((c) => c.uid.isNotEmpty).toList();
     await _save(merged);
+    _changes.add(merged); // live-refresh the chat list the moment restore lands
+    // [ISSUE-VAULT-RESTORE-1] restore counter — proves in PostHog whether the
+    // user's contacts actually came back (the 2026-07-09 report had no way to tell).
+    Analytics.capture('contacts_restored', {
+      'remote_count': remote.length,
+      'local_count': local.length,
+      'merged_count': merged.length,
+    });
     // If the merge added anything the server didn't have, push the superset back.
     if (merged.length != remote.length) _syncUp(merged);
     return merged;
@@ -395,7 +461,13 @@ class Directory {
         if (!_rejectCaptured) {
           _rejectCaptured = true;
           final body = res.body;
-          Analytics.capture('profile_restore_rejected', {
+          // [ISSUE-PROFILE-PUBLISH-1] (2026-07-09) Renamed from the misleading
+          // 'profile_restore_rejected' — this fires when PUBLISHING the local
+          // profile to the directory is rejected (e.g. the server's completeness
+          // gate 400s an empty launch publish). It has nothing to do with
+          // restoring the profile FROM the server, and the old name sent the
+          // 2026-07-09 missing-data investigation down the wrong path.
+          Analytics.capture('profile_publish_rejected', {
             'status': res.statusCode,
             'body': body.length > 300 ? body.substring(0, 300) : body,
           });

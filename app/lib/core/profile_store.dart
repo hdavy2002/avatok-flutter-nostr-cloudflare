@@ -215,6 +215,13 @@ class ProfileStore {
       gender: gender.isNotEmpty ? gender : null,
     ));
     try { await _s.write(key: scopedKey(_recoveredKey), value: '1'); } catch (_) {/* best-effort */}
+    // [ISSUE-VAULT-RESTORE-1] restore counter — the 2026-07-09 missing-data
+    // report had no event proving whether the profile came back from /api/me.
+    Analytics.capture('profile_restored', {
+      'has_photo': avatar.isNotEmpty,
+      'has_birth_year': by != null,
+      'has_gender': gender.isNotEmpty,
+    });
     return true;
   }
 
