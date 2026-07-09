@@ -90,6 +90,9 @@ function hourUtc(ts: number): number {
 // Fail-open, detached (void). Full event-bus consumption arrives with the consumers
 // wiring (plan §S1.5); this hook is the minimal in-worker fan-in point at launch.
 import { sentinelIngest } from "../sentinel/ingest";
+// Phase C (ODL) — detached, fail-silent, zero-AI wake scan. DARK behind the
+// `odlEnabled` KV flag (default OFF → no-op). Never blocks or delays delivery.
+import { odlProcess } from "../lib/ava_odl";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // G0: the guardian / shield watchdog is FREE on ALL plans — no premium gating
@@ -859,6 +862,18 @@ export async function guardianScan(env: Env, args: GuardianScanArgs): Promise<Gu
     guardianInlineEnabled: cfgSnapshot.guardianInlineEnabled ?? false,
     safetyScanEnabled: cfgSnapshot.safetyScanEnabled ?? true,
   });
+
+  // Phase C — ODL (Opportunity Detection Layer). One detached, fail-silent,
+  // ZERO-AI call per recipient. Gated by the `odlEnabled` KV flag (default OFF
+  // → no-op; flip via scripts/flags.sh). Shadow-mode only: no user-visible
+  // output; it can never affect Guardian or delivery.
+  try {
+    if (((await readConfig(env)) as any).odlEnabled === true) {
+      for (const uid of recipients) {
+        void odlProcess(env, { uid, conv, text, senderUid, isGroup });
+      }
+    }
+  } catch { /* ODL must never touch the Guardian path */ }
 
   // ILLEGAL-CONTENT FLOOR: message-level safety scan via Nemotron (:free). Runs once
   // per message (text is identical for all recipients). Async + FAIL-OPEN: any error
