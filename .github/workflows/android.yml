@@ -24,16 +24,31 @@ on:
   #     - 'app/**'
   #     - '.github/workflows/android.yml'
   workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Which backend does this build talk to?'
+        required: true
+        default: staging
+        type: choice
+        options: [staging, prod]
+      artifact:
+        description: 'Artifact format (APK is the default — owner decision 2026-07-04)'
+        required: true
+        default: apk
+        type: choice
+        options: [apk, aab, both]
 
 env:
-  AVATOK_ENV: ${{ github.ref_name == 'staging' && 'staging' || 'prod' }}
-  # APK-only, PERMANENT (owner decision 2026-07-04: "for all builds going forward
-  # I need an APK and not AAB"). This SUPERSEDES every earlier .aab-only decision.
-  # The universal side-loadable .apk is the ONLY artifact this workflow builds and
-  # publishes to the Release. Do NOT flip BUILD_AAB back to 'true' without an
-  # explicit owner request.
-  BUILD_AAB: 'false'
-  BUILD_APK: 'true'
+  # [BUILD-WIDGET-1] The environment is now an explicit dispatch INPUT, not an
+  # inference from the branch. The `|| (...)` keeps the old branch-derived value
+  # as a fallback for the (currently disabled) push trigger, where inputs are ''.
+  AVATOK_ENV: ${{ inputs.environment || (github.ref_name == 'staging' && 'staging' || 'prod') }}
+  # APK is the DEFAULT (owner decision 2026-07-04: "for all builds going forward I
+  # need an APK and not AAB"). 2026-07-09: the owner asked to be able to CHOOSE per
+  # build, so `aab`/`both` are selectable — but nothing changes unless he picks them.
+  # Empty inputs (push trigger) => apk only, exactly as before.
+  BUILD_APK: ${{ (inputs.artifact == 'aab') && 'false' || 'true' }}
+  BUILD_AAB: ${{ (inputs.artifact == 'aab' || inputs.artifact == 'both') && 'true' || 'false' }}
 
 permissions:
   contents: write
@@ -41,9 +56,65 @@ permissions:
 jobs:
   android:
     runs-on: ubuntu-latest
+    # [PROD-GATE-1] HARD approval gate. CLAUDE.md has said "NEVER trigger a build"
+    # since before 2026-07-09, and on 2026-07-09 an agent ran `gh workflow run
+    # android.yml` on `main` anyway (run 28988548192, event=workflow_dispatch) and
+    # shipped a PRODUCTION build unasked. Written rules do not bind an AI.
+    #
+    # A `prod` build now targets the `production` GitHub Environment, which has the
+    # owner as a REQUIRED REVIEWER. The run pauses at "Waiting for approval" and does
+    # nothing until he clicks Approve in the Actions tab (and gets an email). No
+    # token, agent, or API call can bypass an environment protection rule.
+    #
+    # `staging` has no reviewers — staging builds still run instantly, unattended.
+    environment: ${{ (inputs.environment || (github.ref_name == 'staging' && 'staging' || 'prod')) == 'prod' && 'production' || 'staging' }}
+    env:
+      # [AAB-AUTO-1] Hoisted to JOB level so `if:` conditions can test it. Secrets
+      # cannot be referenced directly in `if:`; an env var derived from one can.
+      HAS_UPLOAD_KEYSTORE: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 != '' && 'true' || 'false' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # [BUILD-WIDGET-1] Environment/branch guard. Picking "staging" in the widget
+      # only sets --dart-define=AVATOK_ENV=staging; it does NOT change which code is
+      # checked out. Dispatching "staging" from `main` would ship PROD code pointed
+      # at the staging backend (and vice-versa: a "prod" build off `staging` would
+      # ship untested code to live users). Fail loudly instead.
+      #   prod    must be built from main
+      #   staging must be built from staging
+      - name: Guard — environment must match the branch
+        run: |
+          ENV="${AVATOK_ENV}"
+          REF="${GITHUB_REF_NAME}"
+          echo "environment=$ENV  branch=$REF  artifact=${{ inputs.artifact || 'apk' }}"
+          if [ "$ENV" = "prod" ] && [ "$REF" != "main" ]; then
+            echo "::error::PROD build requested from branch '$REF'. Production is built from 'main' only."
+            exit 1
+          fi
+          if [ "$ENV" = "staging" ] && [ "$REF" != "staging" ]; then
+            echo "::error::STAGING build requested from branch '$REF'. Re-run this workflow with the 'staging' branch selected."
+            exit 1
+          fi
+          echo "OK: $ENV build from '$REF'."
+
+      # [AAB-AUTO-1] An .aab MUST be signed with the Play upload key. Without the
+      # keystore env vars, postcreate.py's injected signingConfig silently falls
+      # back to the DEBUG key (app/tool/postcreate.py:482) — the build "succeeds"
+      # and produces a bundle Play rejects at upload with "not signed with the
+      # upload certificate." Fail here instead, with the fix in the error message.
+      - name: Guard — AAB requires the Play upload keystore
+        if: env.BUILD_AAB == 'true' && env.HAS_UPLOAD_KEYSTORE != 'true'
+        run: |
+          echo "::error::AAB requested but ANDROID_UPLOAD_KEYSTORE_BASE64 is not set on this repo."
+          echo "Without it the .aab is signed with the DEBUG key and Play will reject it."
+          echo ""
+          echo "Fix (run once, from the repo root):"
+          echo "  gh secret set ANDROID_UPLOAD_KEYSTORE_BASE64 < secrets/avatok-upload.jks.base64"
+          echo "  gh secret set ANDROID_UPLOAD_STORE_PASSWORD"
+          echo "  gh secret set ANDROID_UPLOAD_KEY_ALIAS"
+          echo "  gh secret set ANDROID_UPLOAD_KEY_PASSWORD"
+          exit 1
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -131,8 +202,11 @@ jobs:
       # absent (e.g. before the secret is added) the release signingConfig in
       # postcreate.py falls back to the committed keystore, so the .aab still
       # builds — re-key with your real upload keystore before going live.
+      # [AAB-AUTO-1] Was `if: env.ANDROID_UPLOAD_KEYSTORE_BASE64 != ''`, testing a var
+      # defined only in THIS step's own `env:` block — whether that is in scope for
+      # the step's own `if` is ambiguous in Actions. Use the job-level flag instead.
       - name: Decode upload keystore
-        if: env.ANDROID_UPLOAD_KEYSTORE_BASE64 != ''
+        if: env.HAS_UPLOAD_KEYSTORE == 'true'
         id: keystore
         run: |
           echo "$ANDROID_UPLOAD_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/avatok-upload.jks"
@@ -141,8 +215,20 @@ jobs:
         env:
           ANDROID_UPLOAD_KEYSTORE_BASE64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}
 
-      # Android App Bundle (.aab) — the ONLY artifact we ship. Upload to Play
-      # Console. Play splits per-ABI/density server-side, so no APK is needed.
+      # [AAB-AUTO-1] Belt-and-braces: the decode step above is conditional, so if it
+      # ever no-ops the keystore path is empty and Gradle would fall back to the
+      # debug key. Assert the file really exists before we build a bundle.
+      - name: Verify upload keystore decoded (AAB only)
+        if: env.BUILD_AAB == 'true'
+        run: |
+          if [ ! -s "${{ steps.keystore.outputs.path }}" ]; then
+            echo "::error::Upload keystore did not decode — refusing to build a debug-signed .aab."
+            exit 1
+          fi
+          echo "Upload keystore present: ${{ steps.keystore.outputs.path }}"
+
+      # Android App Bundle (.aab) — for the Play Store. Play splits per-ABI/density
+      # server-side. Built only when the owner picks `aab` or `both`.
       - name: Build release App Bundle (.aab) for Play Store
         if: env.BUILD_AAB == 'true'
         working-directory: app
@@ -208,19 +294,25 @@ jobs:
         with:
           tag_name: ${{ env.AVATOK_ENV == 'staging' && 'staging-latest' || 'calltest-latest' }}
           name: ${{ env.AVATOK_ENV == 'staging' && 'AvaTok STAGING (latest)' || 'AvaTok Call Test (latest)' }}
+          # [AAB-AUTO-1] BOTH artifacts are listed. `fail_on_unmatched_files: false`
+          # means whichever one this run didn't build is simply skipped — so picking
+          # `aab` in the widget now actually lands an .aab on the Release, which it
+          # never did before (only the .apk was ever attached).
           files: |
             dist/avatok-call-arm64.apk
+            dist/avatok-call.aab
           fail_on_unmatched_files: false
           body: |
-            Side-loadable Android APK (.apk), arm64-v8a ONLY, built by CI from
-            `app/` (owner 2026-07-05: arm64 APK and nothing else). Install
-            `avatok-call-arm64.apk` (for virtually every modern phone). Install
-            directly on the device (enable "Install unknown apps" for your browser /
-            file manager if prompted). No Play Store or App Bundle step is involved.
+            Built by CI from `app/` — environment: **${{ env.AVATOK_ENV }}**,
+            format: **${{ inputs.artifact || 'apk' }}**.
 
-            Signed with the Play upload key when the ANDROID_UPLOAD_KEYSTORE_BASE64
-            (+ store/alias/key password) secrets are set; otherwise signed with
-            the committed fallback keystore so the build still succeeds.
+            `avatok-call-arm64.apk` — side-loadable, arm64-v8a only. Install directly
+            on the device (enable "Install unknown apps" for your browser / file
+            manager if prompted). No Play Store step involved.
+
+            `avatok-call.aab` — Play Store App Bundle, present only when this build
+            requested `aab` or `both`. Always signed with the Play upload key; the
+            build fails rather than emit a debug-signed bundle.
 
       # Automatic build tracking: drop a PostHog annotation (commit SHA + message)
       # on the project timeline for every APK/AAB build, matching the `release`
