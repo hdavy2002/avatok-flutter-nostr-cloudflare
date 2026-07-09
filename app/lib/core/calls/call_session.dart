@@ -609,8 +609,13 @@ class CallSession {
       gOutgoingSince = DateTime.now().millisecondsSinceEpoch;
 
       if (_takeoverGuard) {
-        // Wait up to 6 seconds for the callee's device-ringing or any signaling frame.
-        _deviceRingingTimer = Timer(const Duration(seconds: 6), () {
+        // [RING-WINDOW-12S-1] (2026-07-09): wait up to 12s for the ring-ack /
+        // device-ringing. Was 6s — but PostHog (avatok-65f9100f) shows the push
+        // FAN-OUT alone can take 6s server-side, so the ack physically cannot
+        // beat a 6s deadline and every call fell to Ava "unreachable". The
+        // searching beeps (CALL-SEARCH-TONE-1) give honest feedback meanwhile,
+        // so the longer wait no longer feels like a hang.
+        _deviceRingingTimer = Timer(const Duration(seconds: 12), () {
           if (!_ended && !_connected && !_deviceRinging) {
             AvaLog.I.log('call', 'Device ringing timeout: callee unreachable.');
             _ringback.stop();
