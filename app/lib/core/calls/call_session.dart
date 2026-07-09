@@ -177,6 +177,28 @@ class CallSession {
   final ValueNotifier<int> revision = ValueNotifier<int>(0);
   void _bump() => revision.value++;
 
+  // [DIAL-NARRATION-1] First name for the dial narration ("Amy" from "Amy
+  // williams"); neutral fallback when the title is empty.
+  String get _peerFirst {
+    final t = config.title.trim();
+    return t.isEmpty ? 'them' : t.split(RegExp(r'\s+')).first;
+  }
+
+  void _setDialStage(String s) {
+    if (_ended || _connected || _receptionistActive) return;
+    _dialStage = s;
+    _bump();
+  }
+
+  /// Schedule a narration line [after] dial start, skipped once the phone is
+  /// actually ringing / connected / with Ava.
+  void _stageAt(Duration after, String Function() line) {
+    _dialStageTimers.add(Timer(after, () {
+      if (_ended || _connected || _deviceRinging || _receptionistActive) return;
+      _setDialStage(line());
+    }));
+  }
+
   ReceptionistCall? get receptionist => _receptionist;
   String get myName => _myName;
   String get myAvatar => _myAvatar;
@@ -267,6 +289,12 @@ class CallSession {
   bool _takeoverGuard = false;
   bool _deviceRinging = false;
   Timer? _deviceRingingTimer;
+  // [DIAL-NARRATION-1] (owner request 2026-07-09): progressive status lines while
+  // the beeps play, tied to REAL signals, so the connecting phase never feels
+  // stalled ("Finding Amy on our network…" → "Found her! Waking the phone up…"
+  // → "Ah — it's ringing!"). Shown by statusText for connecting/ringing phases.
+  String? _dialStage;
+  final List<Timer> _dialStageTimers = [];
   Duration? _pendingRingWindow;
   Timer? _ringAckFallback;
   bool _ringAckHandled = false;
@@ -609,6 +637,10 @@ class CallSession {
       gOutgoingSince = DateTime.now().millisecondsSinceEpoch;
 
       if (_takeoverGuard) {
+        // [DIAL-NARRATION-1] Progressive, signal-tied status lines while beeping.
+        _setDialStage('Finding $_peerFirst on our network…');
+        _stageAt(const Duration(seconds: 3), () => "Checking if $_peerFirst's phone is on…");
+        _stageAt(const Duration(seconds: 7), () => "Trying to wake $_peerFirst's phone up…");
         // [RING-WINDOW-12S-1] (2026-07-09): wait up to 12s for the ring-ack /
         // device-ringing. Was 6s — but PostHog (avatok-65f9100f) shows the push
         // FAN-OUT alone can take 6s server-side, so the ack physically cannot
@@ -1860,6 +1892,8 @@ class CallSession {
       _deviceRingingTimer?.cancel();
       if (!_deviceRinging) {
         _startRingWindow(_pendingRingWindow ?? const Duration(seconds: 25));
+        // [DIAL-NARRATION-1] The push verifiably reached the network — narrate it.
+        _setDialStage("Found $_peerFirst! Waking the phone up…");
       }
       Analytics.capture('call_ring_ack',
           {'call_id': config.room, 'ok': ok, 'source': 'server', 'window_extended': true});
@@ -1897,6 +1931,16 @@ class CallSession {
 
     AvaLog.I.log('call', 'Device ringing receipted.');
 
+    // [DIAL-NARRATION-1] The phone is genuinely ringing — say so with delight,
+    // then settle into the classic 'Ringing…' after a few seconds.
+    _dialStage = "Ah — it's ringing!";
+    for (final t in _dialStageTimers) { t.cancel(); }
+    _dialStageTimers.clear();
+    _dialStageTimers.add(Timer(const Duration(seconds: 4), () {
+      if (_ended || _connected) return;
+      _dialStage = null;
+      _bump();
+    }));
     _setPhase('ringing');
 
     if (RemoteConfig.ringbackEnabled) {
@@ -2253,6 +2297,8 @@ class CallSession {
     _ringTimeout?.cancel();
     _ringAckFallback?.cancel();
     _deviceRingingTimer?.cancel();
+    for (final t in _dialStageTimers) { t.cancel(); } // [DIAL-NARRATION-1]
+    _dialStageTimers.clear();
     _failTimer?.cancel();
     _wsReconnectTimer?.cancel();
     _relayFallbackTimer?.cancel();
@@ -2301,14 +2347,16 @@ class CallSession {
       _phase == 'receptionist-wrapup';
 
   String get statusText => switch (_phase) {
-        'ringing' => 'Ringing…',
+        // [DIAL-NARRATION-1] Fresh device-ringing shows the delighted line once,
+        // then settles into the classic 'Ringing…'.
+        'ringing' => _dialStage ?? 'Ringing…',
         'connected' => _onCellularHold ? 'On hold — cellular call' : 'Connected · end-to-end encrypted',
         'declined' => 'Call declined',
         'busy' => 'User is busy',
         'no-answer' => 'No answer',
         // [CALL-DIAL-FAIL-1]
         'network-error' => "Can't reach the network — check your connection",
-        'ava-countdown' => 'Ava is taking your call…',
+        'ava-countdown' => "$_peerFirst isn't picking up — Ava is taking your call…",
         'receptionist-connecting' => 'Connecting you to Ava…',
         'receptionist' => 'Ava is taking a message',
         'receptionist-wrapup' => 'Ava is wrapping up…',
@@ -2317,6 +2365,7 @@ class CallSession {
         'receptionist-unavailable' => "Couldn't reach Ava — try again",
         'reconnecting' => 'Reconnecting…',
         'ended' => 'Call ended',
-        _ => 'Connecting…',
+        // [DIAL-NARRATION-1] connecting: the live narration line when we have one.
+        _ => _dialStage ?? 'Connecting…',
       };
 }
