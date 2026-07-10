@@ -144,11 +144,18 @@ SIM was the strong link. Accepted; Fast2SMS can be reinstalled if that changes.
 - comment publicly
 - go live
 - **send a DM to a non-contact**
-- join or post in a group
-- upload any media to a public surface
+- create or join a group; post into a group
 
 DMs **between existing contacts are not gated.** Enforced **server-side** in the Worker; a
 client-side check is a suggestion.
+
+> ⚠️ **`/upload/public` is NOT gated (corrected 2026-07-10).** An earlier version gated the
+> raw byte-upload endpoint as `'upload'`. That broke SIGNUP: a profile avatar is a required
+> onboarding field and uploads through `/upload/public`, so every new user 403'd before they
+> could finish. The gate is redundant anyway — uploaded bytes land in R2 as `pending`,
+> attached to nothing; the PUBLIC ACTION that exposes them (create post/listing/live) is
+> gated at its own endpoint. Gate the action, not the byte transfer. CSAM/nudity scanning
+> still runs on every upload. `'upload'` stays in the `PublicAction` union, currently unused.
 
 ### 3.2 Gate once per 90 days
 
