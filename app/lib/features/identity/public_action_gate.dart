@@ -40,6 +40,7 @@ class PublicAction {
   static const groupPost = 'group_post';
   static const groupCreate = 'group_create';
   static const groupJoin = 'group_join';
+  static const forward = 'forward';
   static const upload = 'upload';
 }
 

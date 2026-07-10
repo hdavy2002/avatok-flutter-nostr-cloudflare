@@ -50,6 +50,7 @@ export type PublicAction =
   | "group_post"
   | "group_create"
   | "group_join"
+  | "forward"
   | "upload";
 
 export type GateReason = "never_passed" | "expired" | "grandfather_expired";

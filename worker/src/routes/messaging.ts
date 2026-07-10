@@ -683,25 +683,9 @@ async function bumpForwardCount(env: Env, uid: string, by: number): Promise<void
   } catch { /* best-effort */ }
 }
 
-// DEPENDENCY (Stream H): forwarding is spam-capable, so it must require a
-// liveness/human check. Stream H owns the canonical `requireLiveness(uid)`
-// server helper; at the time of writing liveness.ts exports only the challenge
-// endpoints (start/upload/verify) and NO reusable `requireLiveness(env, uid)`
-// gate. This wrapper is the AGREED shim: when Stream H lands the helper, replace
-// the body with a call to it (import from ./liveness or wherever H puts it) and
-// delete this stub. Until then it reads the same kyc_status row the liveness
-// verify writes ('verified') so behaviour is already correct in prod; it fails
-// OPEN only if the row/table is absent (pre-verification / pre-migration), never
-// silently blocking legitimate users during rollout.
-async function requireLivenessOrKyc(env: Env, uid: string): Promise<boolean> {
-  try {
-    const r = await env.DB_META.prepare(
-      "SELECT status FROM kyc_status WHERE uid=?1 LIMIT 1",
-    ).bind(uid).first<{ status: string }>();
-    if (!r) return true;                 // no row yet → fail-open during rollout
-    return r.status === "verified";
-  } catch { return true; /* table missing → fail-open */ }
-}
+// [AVA-IDGATE-1] requireLivenessOrKyc REMOVED. It read kyc_status and FAILED OPEN
+// (no row ⇒ allowed), so it never actually gated a new user. forwardMsg now uses
+// gatePublicAction('forward'), which fails CLOSED against identity_proofs.
 
 export async function forwardMsg(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
@@ -728,9 +712,15 @@ export async function forwardMsg(req: Request, env: Env): Promise<Response> {
   const nTargets = dmTargets.length + nGroups;
   if (nTargets === 0) return json({ error: "no targets" }, 400);
 
-  // Liveness/human check (FWD-3 dependency on Stream H).
-  if (!(await requireLivenessOrKyc(env, ctx.uid))) {
-    return json({ error: "verify_required", message: "Verify you're human to forward messages." }, 403);
+  // [AVA-IDGATE-1] HOLE CLOSED 2026-07-10. This used requireLivenessOrKyc, which reads
+  // kyc_status and FAILS OPEN when no row exists — so a brand-new unverified user could
+  // forward/broadcast a message to many DMs + groups with NO liveness check. Forwarding
+  // is a bulk broadcast and a prime spam/grooming vector; it is exactly the kind of
+  // public action the gate exists for. Now gated by the new gate (fails CLOSED,
+  // identity_proofs, 90-day window). Any forward by an unverified user is blocked.
+  {
+    const blocked = await gatePublicAction(env, ctx.uid, await emailOf(env, ctx.uid), "forward");
+    if (blocked) return blocked;
   }
 
   // Rate backstop (FWD-3): 200 forward TARGETS / user / rolling hour. A group
