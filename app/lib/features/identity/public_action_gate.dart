@@ -41,6 +41,7 @@ class PublicAction {
   static const groupCreate = 'group_create';
   static const groupJoin = 'group_join';
   static const forward = 'forward';
+  static const callStranger = 'call_stranger';
   static const upload = 'upload';
 }
 

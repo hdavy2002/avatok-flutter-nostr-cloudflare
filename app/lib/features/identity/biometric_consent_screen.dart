@@ -151,14 +151,15 @@ class _BiometricConsentScreenState extends State<BiometricConsentScreen> {
               ),
               const SizedBox(height: 16),
 
-              // The deterrent. Stated plainly, because a record nobody knows about
-              // deters nobody. No over-claiming: we do not say we can identify anyone.
+              // [AVA-IDGATE-1] Softened copy (owner 2026-07-10): gentle + informative,
+              // no harsh/child-harm language. Still accurate about the lawful-request
+              // path (required for BIPA transparency) without the confrontational tone.
               const _Para(
-                title: 'Keeping AvaTok safe',
-                body: 'Every account is tied to a liveness check. We do not share this '
-                    'with anyone — but if we are ever legally required to, by a court '
-                    'or law enforcement, we can. People who come here to harm children '
-                    'should know that before they start.',
+                title: 'A safer community',
+                body: 'Tying each account to a quick liveness check helps keep AvaTok a '
+                    'safe, friendly place for everyone. We keep it private and never '
+                    'share it — the only exception is if a court or law enforcement ever '
+                    'legally requires it.',
               ),
               const SizedBox(height: 28),
 

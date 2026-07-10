@@ -9,7 +9,8 @@
 import type { Env } from "../types";
 import { json, sha256Hex, normalizePhone } from "../util";
 import { metaSession } from "../db/shard";
-import { requireUser, isFail } from "../authz";
+import { requireUser, isFail, dmConvId } from "../authz";
+import { gatePublicAction, emailOf } from "../lib/identity_gate"; // [AVA-IDGATE-1]
 import { verifyClerk } from "../auth";
 import { nameFor } from "../lib/identity";
 import { brainFact, track } from "../hooks";
@@ -116,6 +117,24 @@ export async function call(req: Request, env: Env): Promise<Response> {
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as { to?: string; callId?: string; kind?: string; fromName?: string };
   if (!b.to || !b.callId) return json({ error: "to and callId required" }, 400);
+  // [AVA-IDGATE-1] Dialing someone's AvaTOK number for the FIRST time is reaching out
+  // to a stranger — the same public action as a first DM (owner 2026-07-10). Gate it
+  // on liveness. Same 'initiator' signal as messaging: a call is cold unless a DM
+  // thread already exists AND the OTHER person opened it (they reached out first).
+  // If no thread, or the CALLER opened it, this is the caller's own outreach → gate.
+  // Calling a known contact, or being verified, is never gated.
+  {
+    let iInitiated = true;
+    try {
+      const row = await env.DB_META.prepare("SELECT created_by FROM conversations WHERE id=?1")
+        .bind(dmConvId(ctx.uid, b.to)).first<{ created_by: string }>();
+      iInitiated = !row || row.created_by === ctx.uid;
+    } catch { iInitiated = true; } // fail closed → gate
+    if (iInitiated) {
+      const blocked = await gatePublicAction(env, ctx.uid, await emailOf(env, ctx.uid), "call_stranger");
+      if (blocked) return blocked;
+    }
+  }
   // [TRACE-ID-1] Correlation id minted client-side at the dial boundary; propagate
   // it into the push payload (→ callee) and PostHog captures on this path so the
   // caller, Worker, and callee all stitch under one trace_id. Additive/optional.

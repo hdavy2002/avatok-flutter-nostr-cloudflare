@@ -51,6 +51,7 @@ export type PublicAction =
   | "group_create"
   | "group_join"
   | "forward"
+  | "call_stranger"
   | "upload";
 
 export type GateReason = "never_passed" | "expired" | "grandfather_expired";

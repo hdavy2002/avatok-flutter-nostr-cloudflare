@@ -154,9 +154,23 @@ export async function assign(req: Request, env: Env): Promise<Response> {
     const u = await metaSession(env).prepare(
       "SELECT free_number_used, avatok_number FROM users WHERE uid=?1",
     ).bind(ctx.uid).first<{ free_number_used: number | null; avatok_number: string | null }>();
-    if ((u?.free_number_used ?? 0) === 1 || (u?.avatok_number ?? "")) {
+    const hasNumber = !!(u?.avatok_number ?? "");
+    const freeUsed = (u?.free_number_used ?? 0) === 1;
+    // [NUMBER-STUCK-FIX 2026-07-10] Block a CHANGE only when the user ACTUALLY HOLDS
+    // a number (changing then needs a paid plan). The old check also blocked on
+    // `free_number_used === 1` alone — but that flag can be 1 while avatok_number is
+    // EMPTY (an interrupted earlier assign, a released number, or a cross-onboarding
+    // flag). That combination TRAPPED the user: the shell number gate shows (no
+    // number) yet every pick 402'd "Available on paid plans", forever. A free user
+    // with no number must always be able to claim their one number; this self-heals.
+    if (hasNumber) {
       analytics(env, "number_regen_blocked_free", ctx.uid, { tier, reason: "free_already_used" }, req);
       return json({ error: "upgrade_required" }, 402);
+    }
+    // Rich telemetry: we healed the inconsistent state (flag set, no number). If this
+    // fires often, something upstream is setting free_number_used without a number.
+    if (freeUsed && !hasNumber) {
+      analytics(env, "number_free_flag_self_healed", ctx.uid, { tier }, req);
     }
   }
   const body = (await req.json().catch(() => ({}))) as any;
