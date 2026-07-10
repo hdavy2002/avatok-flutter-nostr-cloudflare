@@ -256,21 +256,40 @@ String _fmtDuration(int secs) {
 
 /// The dark translucent play badge WhatsApp/Instagram paint over a video
 /// thumbnail (replaces the old oversized red YouTube disc).
+///
+/// Nothing here is a fixed pixel size: the badge is a fraction of whatever box
+/// it lands in (clamped so it stays tappable on a tiny compose thumb and doesn't
+/// balloon on a tablet), so it scales with the card, which scales with the
+/// bubble, which scales with the viewport.
 class _PlayBadge extends StatelessWidget {
-  const _PlayBadge({this.size = 46});
-  final double size;
+  const _PlayBadge({this.size, this.fraction = 0.18});
+
+  /// Explicit size — only used by the tiny compose thumbnail. Otherwise null.
+  final double? size;
+
+  /// Badge diameter as a fraction of the shortest side of the parent box.
+  final double fraction;
 
   @override
-  Widget build(BuildContext context) => Container(
-        width: size,
-        height: size,
+  Widget build(BuildContext context) {
+    if (size != null) return _disc(size!);
+    return LayoutBuilder(builder: (ctx, cons) {
+      final short = (cons.maxWidth.isFinite && cons.maxHeight.isFinite)
+          ? (cons.maxWidth < cons.maxHeight ? cons.maxWidth : cons.maxHeight)
+          : (cons.maxWidth.isFinite ? cons.maxWidth : 240.0);
+      return _disc((short * fraction).clamp(34.0, 72.0));
+    });
+  }
+
+  Widget _disc(double d) => Container(
+        width: d,
+        height: d,
         decoration: BoxDecoration(
           color: Colors.black.withValues(alpha: 0.55),
           shape: BoxShape.circle,
           border: Border.all(color: Colors.white.withValues(alpha: 0.9), width: 1.5),
         ),
-        child: Icon(Icons.play_arrow_rounded,
-            color: Colors.white, size: size * 0.62),
+        child: Icon(Icons.play_arrow_rounded, color: Colors.white, size: d * 0.62),
       );
 }
 
