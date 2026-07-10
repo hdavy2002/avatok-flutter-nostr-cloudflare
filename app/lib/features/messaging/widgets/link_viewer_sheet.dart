@@ -41,8 +41,39 @@ class LinkViewer {
   /// True while a viewer (expanded or mini) is on screen.
   static bool get isOpen => _entry != null;
 
+  /// Hosts that must open in their OWN native app, never in our viewer (owner
+  /// decision 2026-07-10). Meta and X don't serve real playback to embeds
+  /// anyway — an in-app webview would just show a poster and a login wall, so
+  /// deep-linking out is both the honest and the better experience.
+  static const _nativeOnlyHosts = [
+    'instagram.com',
+    'facebook.com',
+    'fb.watch',
+    'fb.com',
+    'threads.net',
+    'threads.com',
+    'twitter.com',
+    'x.com',
+    't.co',
+  ];
+
+  static bool _isNativeOnly(LinkPreview p) {
+    final d = p.displayDomain;
+    return _nativeOnlyHosts.any((h) => d == h || d.endsWith('.$h'));
+  }
+
   /// Open (or swap the content of) the in-app viewer for [preview].
   static void open(BuildContext context, LinkPreview preview) {
+    // Instagram / Facebook / Threads / X → straight to the native app.
+    if (_isNativeOnly(preview)) {
+      Analytics.capture('link_opened_native', {
+        'domain': preview.displayDomain,
+        if (Analytics.currentEmail != null) 'email': Analytics.currentEmail!,
+      });
+      _openExternal(preview.url);
+      return;
+    }
+
     final overlay = Overlay.maybeOf(context, rootOverlay: true);
     if (overlay == null) {
       // No overlay (shouldn't happen inside MaterialApp) → don't lose the tap.
@@ -113,6 +144,13 @@ class _LinkViewerHostState extends State<_LinkViewerHost>
     with SingleTickerProviderStateMixin {
   bool _mini = false;
   double _dragDy = 0; // live drag offset while the user's finger is down
+
+  /// The player lives under a GlobalKey. Expanded and mini are structurally
+  /// DIFFERENT subtrees, so without this Flutter tears the old element down and
+  /// builds a fresh one — a brand-new WebView/controller, i.e. a black box with
+  /// nothing playing. A GlobalKey lets the SAME State (and its platform view)
+  /// be reparented between the two layouts, so playback continues uninterrupted.
+  final GlobalKey _contentKey = GlobalKey();
   late final Widget _content; // built ONCE — never rebuilt across states
 
   String get url => widget.preview.url;
@@ -127,7 +165,7 @@ class _LinkViewerHostState extends State<_LinkViewerHost>
   @override
   void initState() {
     super.initState();
-    _content = _ViewerContent(preview: widget.preview);
+    _content = _ViewerContent(key: _contentKey, preview: widget.preview);
   }
 
   void expand() => setState(() {
@@ -191,7 +229,11 @@ class _LinkViewerHostState extends State<_LinkViewerHost>
             borderRadius: BorderRadius.circular(10),
             clipBehavior: Clip.antiAlias,
             child: Stack(children: [
-              Positioned.fill(child: _content),
+              // While mini, the player must NOT eat pointer events: the whole
+              // tile is one big "expand me" button (and a drag handle). The
+              // video keeps playing underneath — IgnorePointer only blocks hit
+              // testing, never rendering or playback.
+              Positioned.fill(child: IgnorePointer(child: _content)),
               Positioned(
                 top: 2,
                 right: 2,
@@ -320,7 +362,7 @@ class _RoundIconButton extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _ViewerContent extends StatefulWidget {
-  const _ViewerContent({required this.preview});
+  const _ViewerContent({super.key, required this.preview});
   final LinkPreview preview;
 
   @override
@@ -425,6 +467,9 @@ class _ViewerContentState extends State<_ViewerContent> {
               // The player's own vertical-drag-to-fullscreen gesture would eat
               // our drag-down-to-mini-player gesture. Ours wins.
               enableFullScreenOnVerticalDrag: false,
+              // Belt-and-braces with the GlobalKey: keep the platform view alive
+              // when the widget is moved between the expanded and mini subtrees.
+              keepAlive: true,
             );
           },
         ),
