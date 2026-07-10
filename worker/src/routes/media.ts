@@ -6,7 +6,8 @@ import { mediaSession, moderationSession } from "../db/shard";
 import { requireUser, isFail } from "../authz";
 import { walletOp } from "./wallet";
 import { checkUploadAllowed, afterRegisterFile } from "../storage";
-import { gatePublicAction, emailOf } from "../lib/identity_gate"; // [AVA-IDGATE-1]
+// [AVA-IDGATE-1] identity_gate import removed — /upload/public is no longer gated
+// (avatars must upload during onboarding; the public ACTION is gated at its endpoint).
 
 // POST /upload/public — plaintext media (posts). sha256 → blocklist check →
 // R2 PUT (status 'pending') → enqueue Workers-AI scan (Phase 4 consumer flips
@@ -14,13 +15,19 @@ import { gatePublicAction, emailOf } from "../lib/identity_gate"; // [AVA-IDGATE
 export async function uploadPublic(req: Request, env: Env, exec: ExecutionContext): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
-  // [AVA-IDGATE-1] Public upload is a public action. Gated BEFORE we read the body:
-  // an unverified user should not be able to push bytes at us, let alone have them
-  // land in R2 while moderation catches up. Spec §3.1.
-  {
-    const blocked = await gatePublicAction(env, ctx.uid, await emailOf(env, ctx.uid), "upload");
-    if (blocked) return blocked;
-  }
+  // [AVA-IDGATE-1] The liveness gate was REMOVED from this route (2026-07-10).
+  //
+  // WHY: /upload/public is the byte-staging endpoint for BOTH profile avatars AND
+  // post/listing media. Gating it here broke SIGNUP — a profile photo is a required
+  // onboarding field, and both the "take a selfie" and "upload" buttons post here
+  // (Directory.uploadAvatar). A brand-new user has no liveness pass, so every avatar
+  // upload 403'd and no one could finish onboarding.
+  //
+  // It was also redundant: uploading bytes is harmless on its own — they land in R2
+  // as 'pending' moderation, attached to nothing. The PUBLIC ACTION that exposes them
+  // (create post / listing / go live, all via /api/listings + /api/live) is gated at
+  // its own endpoint, so the deterrent is intact. CSAM + nudity scanning still run on
+  // every upload regardless. Gate the ACTION, not the byte transfer.
   const bytes = await req.arrayBuffer();
   if (!bytes.byteLength) return json({ error: "empty body" }, 400);
   const hash = await sha256Hex(bytes);                  // content id (moderation/blocklist/dedup)
