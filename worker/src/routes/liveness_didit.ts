@@ -137,20 +137,50 @@ export async function diditResult(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   if (!diditConfigured(env)) return json({ error: "liveness unavailable", reason: "not_configured" }, 503);
-  const sid = await env.TOKENS.get(sessKvKey(ctx.uid));
-  if (!sid) return json({ error: "no active session", reason: "no_session" }, 404);
   const key = (env as { DIDIT_API_KEY?: string }).DIDIT_API_KEY!;
-  let r: Response;
-  try {
-    r = await fetch(`${DIDIT_BASE}/v3/session/${sid}/decision/`, {
-      headers: { "x-api-key": key, Accept: "application/json" },
-    });
-  } catch {
-    return json({ pending: true, reason: "provider_unreachable" }); // client keeps polling
+  const kvSid = await env.TOKENS.get(sessKvKey(ctx.uid));
+  let sid = kvSid || "";
+  let status = "";
+  if (sid) {
+    try {
+      const r = await fetch(`${DIDIT_BASE}/v3/session/${sid}/decision/`, {
+        headers: { "x-api-key": key, Accept: "application/json" },
+      });
+      if (r.ok) status = String(((await r.json()) as { status?: string }).status || "");
+    } catch { /* fall through to the vendor_data scan */ }
   }
-  if (!r.ok) return json({ pending: true, reason: `provider_${r.status}` });
-  const d = await r.json() as { status?: string };
-  const status = String(d.status || "");
+  // [LIVE-DIDIT-3] (2026-07-10) Self-healing fallback: the 2026-07-10 00:08
+  // session for hdavy2002 was APPROVED on Didit yet the phone sat on
+  // "Checking…" forever — the KV pointer / decision read path failed silently
+  // and the pass was never claimed. Sessions carry vendor_data = uid, so when
+  // the pointed-at session isn't decisively resolved, scan the account's
+  // recent sessions directly and claim the newest decisive one.
+  const decisive = (s: string) => s === "Approved" || s === "Declined" || s === "Abandoned" || s === "Expired";
+  if (!decisive(status)) {
+    try {
+      const r = await fetch(`${DIDIT_BASE}/v3/sessions/?vendor_data=${encodeURIComponent(ctx.uid)}`, {
+        headers: { "x-api-key": key, Accept: "application/json" },
+      });
+      if (r.ok) {
+        const list = (await r.json()) as { results?: Array<{ session_id?: string; status?: string; created_at?: string }> };
+        const dayAgo = Date.now() - 86_400_000;
+        const candidates = (list.results ?? [])
+          .filter((s) => decisive(String(s.status || "")) && Date.parse(String(s.created_at || "")) > dayAgo)
+          .sort((a, b) => Date.parse(String(b.created_at || "")) - Date.parse(String(a.created_at || "")));
+        // Prefer an Approved session over a failed one — a user who failed once
+        // and then passed must resolve as PASS regardless of ordering quirks.
+        const approved = candidates.find((s) => s.status === "Approved");
+        const pick = approved ?? candidates[0];
+        if (pick?.session_id) {
+          sid = String(pick.session_id);
+          status = String(pick.status || "");
+          void track(env, ctx.uid, "didit_result_fallback", "platform", { session_id: sid, status });
+        }
+      }
+    } catch { /* keep whatever we had */ }
+  }
+  if (!sid) return json({ error: "no active session", reason: "no_session" }, 404);
+  if (!status) return json({ pending: true, reason: "provider_unreachable" }); // client keeps polling
   if (status === "Approved") {
     await applyDiditPass(env, ctx.uid, sid);
     await env.TOKENS.delete(sessKvKey(ctx.uid)).catch(() => {});

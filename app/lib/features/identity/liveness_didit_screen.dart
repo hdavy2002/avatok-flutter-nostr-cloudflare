@@ -60,6 +60,22 @@ class _DiditLivenessScreenState extends State<DiditLivenessScreen> {
   Future<void> _start() async {
     setState(() { _phase = _Phase.starting; _error = null; });
     Analytics.capture('liveness_started', {'provider': 'didit', 'source': widget.requester});
+    // [LIVE-DIDIT-3] Claim-before-create: if a recent session already passed
+    // (e.g. the phone lost the result last time — the 2026-07-10 stuck
+    // "Checking…" bug), the server finds it by account and we're done without
+    // making the user redo the check.
+    try {
+      final pre = await ApiAuth.getSigned('https://$kSignalingHost/api/liveness/didit/result')
+          .timeout(const Duration(seconds: 10));
+      if (pre.statusCode == 200) {
+        final j = jsonDecode(pre.body) as Map<String, dynamic>;
+        if ((j['verdict'] ?? '') == 'PASS') {
+          Analytics.capture('liveness_passed', {'provider': 'didit', 'source': widget.requester, 'resumed': true});
+          if (mounted) setState(() => _phase = _Phase.passed);
+          return;
+        }
+      }
+    } catch (_) {/* no prior pass — continue into a fresh session */}
     try {
       final res = await ApiAuth.postJson(
         'https://$kSignalingHost/api/liveness/didit/session', const {},
@@ -141,12 +157,26 @@ class _DiditLivenessScreenState extends State<DiditLivenessScreen> {
     _web = controller;
   }
 
+  int _pollErrors = 0;
+
   Future<void> _checkResult() async {
     if (!mounted || (_phase != _Phase.waiting && _phase != _Phase.webview)) return;
     if (++_pollCount > _maxPolls) { _poll?.cancel(); return; }
     try {
       final res = await ApiAuth.getSigned('https://$kSignalingHost/api/liveness/didit/result');
-      if (res.statusCode != 200) return; // keep polling (404 = session expired handled below)
+      if (res.statusCode != 200) {
+        // [LIVE-DIDIT-3] Silent-forever polling is how the 2026-07-10 stuck
+        // screen went undiagnosed — surface persistent poll failures.
+        if (++_pollErrors == 5) {
+          Analytics.error(
+            domain: 'liveness', code: 'didit_poll_failing',
+            message: 'status ${res.statusCode} x$_pollErrors',
+            screen: 'liveness_didit', action: 'result',
+          );
+        }
+        return; // keep polling
+      }
+      _pollErrors = 0;
       final j = jsonDecode(res.body) as Map<String, dynamic>;
       final verdict = (j['verdict'] ?? '').toString();
       if (verdict == 'PASS') {
