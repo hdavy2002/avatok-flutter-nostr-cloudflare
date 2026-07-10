@@ -3144,7 +3144,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   /// Handles: # headings, **bold**, `code`, numbered lists (1.) and bullets
   /// (- / *), and blank-line spacing — enough to make digests/results look neat.
   Widget _avaRich(String text, Color fg) {
-    final base = ZineText.sub(size: 13.5, color: fg).copyWith(height: 1.32);
+    // [AVA-FONT-1] (owner request 2026-07-10) Ava's replies read too small at
+    // 13.5 — bumped to 15 (headings scale with it below).
+    final base = ZineText.sub(size: 15, color: fg).copyWith(height: 1.34);
     final lines = text.replaceAll('\r\n', '\n').split('\n');
     final out = <Widget>[];
     final numRe = RegExp(r'^\s*(\d+)\.\s+(.*)$');
@@ -3159,7 +3161,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       if (head != null) {
         out.add(Padding(
           padding: const EdgeInsets.only(top: 2, bottom: 3),
-          child: _avaInline(head.group(1)!, base.copyWith(fontWeight: FontWeight.w800, fontSize: 14.5)),
+          child: _avaInline(head.group(1)!, base.copyWith(fontWeight: FontWeight.w800, fontSize: 16)),
         ));
       } else if (num != null) {
         out.add(Padding(
