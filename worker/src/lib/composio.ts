@@ -448,15 +448,25 @@ async function declsForToolkit(
 
 // Start (or reuse) an OAuth connection for each requested toolkit the user hasn't
 // connected yet. Returns the redirect URLs the client should open.
-export async function connectToolkits(env: Env, userId: string, slugs: string[]): Promise<Record<string, string>> {
+export async function connectToolkits(env: Env, userId: string, slugs: string[], origin?: string): Promise<Record<string, string>> {
   const active = new Set(await connectedToolkits(env, userId));
   const urls: Record<string, string> = {};
   for (const slug of slugs) {
     if (active.has(slug)) continue;
     const ac = await ensureAuthConfig(env, slug);
+    // [CONNECT-RETURN-1] (owner request 2026-07-10) After the OAuth consent,
+    // Composio used to land users on ITS "Successfully connected — you can
+    // close this window" page, stranding them in the browser. callback_url now
+    // points at our /api/connectors/done page, which instantly deep-links back
+    // into the app (avatok://connected) — the browser sheet closes itself and
+    // the user is back on the Connectors screen.
+    const callback = origin ? `${origin}/api/connectors/done?slug=${encodeURIComponent(slug)}` : undefined;
     const j = await cfetch(env, `/connected_accounts`, {
       method: "POST",
-      body: JSON.stringify({ auth_config: { id: ac }, connection: { user_id: userId } }),
+      body: JSON.stringify({
+        auth_config: { id: ac },
+        connection: { user_id: userId, ...(callback ? { callback_url: callback } : {}) },
+      }),
     });
     const url = j.redirect_url ?? j.redirectUrl ?? j?.connectionData?.val?.redirectUrl;
     if (url) urls[slug] = String(url);

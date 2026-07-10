@@ -149,7 +149,7 @@ export async function avaAppsConnect(req: Request, env: Env): Promise<Response> 
     : (b.slug ? [String(b.slug)] : GOOGLE_TOOLKITS);
   const { email, phone } = await contactFor(env, ctx.uid);
   try {
-    const oauthUrls = await connectToolkits(env, ctx.uid, slugs);
+    const oauthUrls = await connectToolkits(env, ctx.uid, slugs, new URL(req.url).origin); // [CONNECT-RETURN-1] auto-return deep link
     // Phase 1: a connection may have just completed — drop the conn cache so the
     // next /status reflects it (client also calls /status?fresh=1 post-OAuth).
     await invalidateConnCache(env, ctx.uid, (e, p) => trackUserContact(env, ctx.uid, email, phone, e, "avaapps", p));

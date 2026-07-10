@@ -314,6 +314,27 @@ export async function diditWebhook(req: Request, env: Env): Promise<Response> {
   return json({ ok: true });
 }
 
+// ── GET /api/connectors/done — Composio OAuth return page (no auth) ──────────
+// [CONNECT-RETURN-1] Composio redirects here after the Google consent instead
+// of stranding the user on its own "you can close this window" page. This page
+// immediately deep-links back into the app (avatok:// is registered in the
+// manifest), which closes the browser sheet; a tap-target remains as fallback.
+export function connectorsDone(req: Request): Response {
+  const slug = (new URL(req.url).searchParams.get("slug") ?? "").replace(/[^a-z0-9_-]/gi, "").slice(0, 40);
+  const deeplink = `avatok://connected${slug ? `?slug=${slug}` : ""}`;
+  return new Response(
+    `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AvaTOK</title>
+<meta http-equiv="refresh" content="0;url=${deeplink}">
+<script>setTimeout(function(){ location.href = ${JSON.stringify(deeplink)}; }, 50);</script></head>
+<body style="font-family:sans-serif;background:#F9F7ED;color:#1B1B1B;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
+<div style="text-align:center"><h2>Connected ✓</h2><p>Taking you back to AvaTOK…</p>
+<p><a href="${deeplink}" style="display:inline-block;padding:12px 22px;background:#D8F34F;color:#1B1B1B;border:2px solid #1B1B1B;border-radius:14px;text-decoration:none;font-weight:700">Open AvaTOK</a></p></div>
+</body></html>`,
+    { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } },
+  );
+}
+
 // ── GET /api/liveness/didit/done — WebView callback landing (no auth) ────────
 // The in-app WebView intercepts navigation to this URL BEFORE it loads; this
 // page only renders if interception missed (e.g. an OS webview quirk), so it

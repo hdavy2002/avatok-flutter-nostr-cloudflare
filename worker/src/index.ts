@@ -23,7 +23,7 @@ import { setTestClock } from "./clock";
 import { stripeIdentityWebhook, agreementStatus, agreementDoc, agreementAccept } from "./routes/kyc";
 import { livenessStart, livenessUpload, livenessVerify, livenessResult, runLivenessChecks } from "./routes/liveness";
 import { livenessV3Session, livenessV3Upload, livenessV3Verify, livenessV3Result, runLivenessV3Checks } from "./routes/liveness_v3";
-import { diditSession, diditResult, diditDone, diditWebhook } from "./routes/liveness_didit";
+import { diditSession, diditResult, diditDone, diditWebhook, connectorsDone } from "./routes/liveness_didit";
 import { guestCreate, guestHandleCheck, guestUpgrade, getIdentityLevel } from "./routes/ladder";
 import { createSlot, listSlots, cancelSlot, bookSlot, cancelBooking, listEvents, listBlocks, getRules, putRules, getTime } from "./routes/calendar";
 import { listBookings, getPolicies, putPolicies, proposeReschedule, respondReschedule, listReschedules, joinInfo } from "./routes/booking";
@@ -547,6 +547,8 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/liveness/didit/result" && req.method === "GET") return await diditResult(req, env);
       if (p === "/api/liveness/didit/done" && req.method === "GET") return diditDone();
       if (p === "/api/liveness/didit/webhook" && req.method === "POST") return await diditWebhook(req, env);
+      // [CONNECT-RETURN-1] Composio OAuth return → deep-links back into the app.
+      if (p === "/api/connectors/done" && req.method === "GET") return connectorsDone(req);
       // Progressive Identity ladder — guest tier (no auth) + level (Clerk auth).
       if (p === "/api/identity/guest" && req.method === "POST") return await guestCreate(req, env);
       if (p === "/api/identity/guest/check" && req.method === "GET") return await guestHandleCheck(req, env);
