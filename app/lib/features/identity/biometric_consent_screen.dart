@@ -26,6 +26,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
@@ -46,7 +47,7 @@ const String _kOutsideUs = 'OUTSIDE_US';
 /// Retention period we disclose. MUST match `biometricConsentVersion` on the server
 /// and the published retention schedule on the website. If any of the three drift,
 /// the consent is defective.
-const int _kRetentionDays = 584;
+const int _kRetentionDays = 256;
 
 class BiometricConsentScreen extends StatefulWidget {
   const BiometricConsentScreen({super.key, required this.action});
@@ -188,8 +189,12 @@ class _BiometricConsentScreenState extends State<BiometricConsentScreen> {
                     const Expanded(
                       child: Padding(
                         padding: EdgeInsets.only(top: 12),
+                        // Names WHAT is collected, WHY, and HOW LONG — all three are
+                        // required by BIPA §15(b). The "up to" wording is exact: on the
+                        // protective track the scan is destroyed immediately at deletion,
+                        // so 256 days is a ceiling, never a promise to keep it that long.
                         child: Text(
-                          'I agree that AvaTok may collect and store a scan of my facial '
+                          'I agree that AvaTOK may collect and store a scan of my facial '
                           'geometry to verify I am a real person, and may keep it for up '
                           'to $_kRetentionDays days after I delete my account.',
                           style: TextStyle(height: 1.4),
@@ -199,12 +204,24 @@ class _BiometricConsentScreenState extends State<BiometricConsentScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 4),
-              // TODO(AVA-IDGATE-1): point at the PUBLISHED retention schedule once it
-              // exists on the website. BIPA §15(a) requires it to be publicly
-              // available, and publishing a schedule we do not follow is worse than
-              // publishing none. Until then this link is intentionally absent rather
-              // than pointing at a page that does not exist.
+              const SizedBox(height: 6),
+              // [AVA-IDGATE-1] BIPA §15(a): the retention & destruction schedule must be
+              // PUBLICLY AVAILABLE. Published at web/src/pages/biometric-retention.astro.
+              // The periods on that page and _kRetentionDays above must never diverge —
+              // a published schedule we do not follow is evidence against us, not a defence.
+              Padding(
+                padding: const EdgeInsets.only(left: 48),
+                child: InkWell(
+                  onTap: () => launchUrl(
+                    Uri.parse('https://avatok.ai/biometric-retention'),
+                    mode: LaunchMode.externalApplication,
+                  ),
+                  child: const Text(
+                    'Read our biometric retention schedule',
+                    style: TextStyle(decoration: TextDecoration.underline, fontSize: 13),
+                  ),
+                ),
+              ),
               const SizedBox(height: 16),
 
               if (_error != null)

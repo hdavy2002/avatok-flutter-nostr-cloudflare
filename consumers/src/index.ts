@@ -4,6 +4,7 @@ import { handleMktAudio } from "./mkt_audio";
 import { handleLivenessVerify } from "./liveness_verify"; // LIVE-V2 P0 — async liveness-verify (dark; no live queue yet, see file header)
 import { handleAutoReply, handleAutoDigest, sweepAutoDigest } from "./auto_reply"; // STREAM F — away auto-responder job + away digest (+ schedule-end sweep)
 import { sweepAbandonedLiveness } from "./liveness_sweep"; // STREAM H — abandoned-liveness sweep (ported from worker/routes/liveness_audit)
+import { sweepRetention } from "./retention"; // [AVA-IDGATE-1] +256d biometric purge
 import { handleModeration } from "./moderation";
 import { handlePush } from "./fcm";
 import { handleBrain, purgeChurnedBrains } from "./brain";
@@ -96,6 +97,17 @@ export default {
       const { fired, scanned } = await sweepAutoDigest(env);
       if (fired) env.ANALYTICS?.writeDataPoint({ blobs: ["auto_digest_sweep"], doubles: [fired, scanned], indexes: ["cron"] });
     } catch (e) { console.error("[auto-digest-sweep]", String(e)); }
+
+    // [AVA-IDGATE-1] Biometric retention drain (spec §10.1). Hard-deletes
+    // deleted_account_retention rows past purge_after (+256d) and wipes any liveness
+    // video held on the 'extended' track. Bounded 200/run; a backlog catches up on the
+    // next tick. Runs on the 15-min tick — a retained biometric is the one thing we do
+    // NOT want sitting past its schedule because a 6-hourly cron was skipped.
+    // Accounts under legal hold never appear here: handleDeletion() refuses outright.
+    try {
+      const { rows, videos } = await sweepRetention(env);
+      if (rows) env.ANALYTICS?.writeDataPoint({ blobs: ["retention_sweep"], doubles: [rows, videos], indexes: ["cron"] });
+    } catch (e) { console.error("[retention-sweep]", String(e)); }
 
     if ((event as any).cron && (event as any).cron !== "0 */6 * * *") return; // 15m tick: reminders + sweeps only
 

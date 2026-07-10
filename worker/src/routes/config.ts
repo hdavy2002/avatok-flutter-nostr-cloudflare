@@ -327,7 +327,14 @@ const DEFAULTS: PlatformConfig = {
   // liveness_passed_at still NULL gates the ENTIRE existing user base at once.
   identityGatingEnabled: false,
   livenessValidityDays: 90,           // owner decision 2026-07-10
-  biometricConsentVersion: "2026-07-10-v1",
+  // [AVA-IDGATE-1] BUMPED v1→v2 when retention changed 584d → 256d. The version is
+  // stored per-user, and hasCurrentConsent() only accepts the CURRENT one — so a
+  // changed disclosure invalidates prior consent and the user is asked again. That is
+  // the entire point of versioning it: nobody consented to a period they never saw.
+  // Bump this string whenever the consent TEXT or the RETENTION PERIOD changes, and
+  // update app/.../biometric_consent_screen.dart:_kRetentionDays + the published
+  // schedule at /biometric-retention in the same commit. All three must agree.
+  biometricConsentVersion: "2026-07-10-v2",
   // [LIVE-DIDIT-1] didit.me-hosted liveness (owner decision 2026-07-09). Default
   // ON — this IS the liveness path now; v2/v3 above are retired. The client
   // routes the human check to DiditLivenessScreen when this is true.

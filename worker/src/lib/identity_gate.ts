@@ -212,7 +212,7 @@ export async function recordLivenessPass(
  * retention schedule. Both are required; without them ANY retention period is
  * exposed regardless of length. Spec §10.4.
  *
- * RETENTION TRACK — spec §10.2. `extended` (584-day video retention) applies ONLY
+ * RETENTION TRACK — spec §10.2. `extended` (256-day video retention) applies ONLY
  * where we have positive evidence the user is not an IL/TX resident. Unknown or
  * missing residency ⇒ `protective`, always. IP geolocation tells you where a
  * DEVICE is, not where a PERSON resides; BIPA protects Illinois residents wherever
@@ -280,7 +280,7 @@ export async function biometricConsent(req: Request, env: Env, uid: string, emai
     void trackUserContact(env, uid, email, null, "liveness_consent_declined", APP, {});
     return json({ ok: false, reason: "consent_declined" }, 200);
   }
-  let version = "2026-07-10-v1";
+  let version = "2026-07-10-v2";
   try {
     const cfg = await readConfig(env);
     if (typeof cfg.biometricConsentVersion === "string") version = cfg.biometricConsentVersion;
@@ -301,7 +301,7 @@ export async function biometricConsent(req: Request, env: Env, uid: string, emai
  */
 export async function hasCurrentConsent(env: Env, uid: string): Promise<boolean> {
   try {
-    let version = "2026-07-10-v1";
+    let version = "2026-07-10-v2";
     try {
       const cfg = await readConfig(env);
       if (typeof cfg.biometricConsentVersion === "string") version = cfg.biometricConsentVersion;

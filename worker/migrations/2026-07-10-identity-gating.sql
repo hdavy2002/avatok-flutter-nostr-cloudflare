@@ -33,7 +33,7 @@ ALTER TABLE users ADD COLUMN biometric_consent_version TEXT;
 -- Self-declared at the consent step. NOT ip geolocation (spec §10.2).
 ALTER TABLE users ADD COLUMN residency_state TEXT;
 
--- 'extended'   = 584-day video retention (confirmed non-IL/TX resident)
+-- 'extended'   = 256-day video retention (confirmed non-IL/TX resident)
 -- 'protective' = video deleted at account deletion (IL/TX, OR residency UNKNOWN)
 -- Default is 'protective'. Unknown residency must NEVER fail toward 'extended':
 -- IP tells you where a device is, not where a person resides, and BIPA carries a
@@ -53,7 +53,7 @@ ALTER TABLE users ADD COLUMN legal_hold_at     INTEGER;
 CREATE INDEX IF NOT EXISTS idx_users_legal_hold ON users(legal_hold) WHERE legal_hold = 1;
 
 -- ---------------------------------------------------------------------------
--- 4. Deletion retention queue (spec §10.1) — +584d sweep
+-- 4. Deletion retention queue (spec §10.1) — +256d sweep
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS deleted_account_retention (
   uid              TEXT PRIMARY KEY,
@@ -65,6 +65,6 @@ CREATE TABLE IF NOT EXISTS deleted_account_retention (
   video_retained   INTEGER NOT NULL DEFAULT 0, -- 1 only on the 'extended' track
   created_at       INTEGER NOT NULL,
   deleted_at       INTEGER NOT NULL,
-  purge_after      INTEGER NOT NULL            -- deleted_at + 584d
+  purge_after      INTEGER NOT NULL            -- deleted_at + 256d
 );
 CREATE INDEX IF NOT EXISTS idx_dar_purge_after ON deleted_account_retention(purge_after);

@@ -9,6 +9,7 @@
 // Stores not yet provisioned (wallet, agent-audio, stripe) are guarded and skipped
 // cleanly, so the cascade is correct now and stays correct as later phases add them.
 import type { Env, DeletionMsg } from "./types";
+import { recordDeletionRetention } from "./retention"; // [AVA-IDGATE-1] spec §10.1
 
 const npubToPubkeyHex = (msg: DeletionMsg) => msg.pubkey_hex ?? null;
 
@@ -66,6 +67,12 @@ export async function handleDeletion(msg: DeletionMsg, env: Env): Promise<void> 
     await env.DB_META.prepare("UPDATE deletion_requests SET status='held' WHERE uid=?1").bind(uid).run().catch(() => {});
     return;
   }
+
+  // [AVA-IDGATE-1] Snapshot the retention decision BEFORE the cascade below destroys
+  // the `users` / `clerk_account_link` rows it reads from. Fails PROTECTIVE on error.
+  // `keepVideo` is honoured at step 6: on the protective track the liveness video is
+  // deleted now; on the extended track it survives until the +256d sweep (retention.ts).
+  const retention = await recordDeletionRetention(env, uid);
 
   // Honor the grace window: if a message arrives early (shouldn't), re-delay.
   const req = await env.DB_META.prepare("SELECT status, scheduled_at, clerk_user_id FROM deletion_requests WHERE uid=?1")
@@ -189,13 +196,29 @@ export async function handleDeletion(msg: DeletionMsg, env: Env): Promise<void> 
   // wipes both prefixes at request time; this stays as a defense-in-depth
   // backstop for the 30-day-grace cascade (e.g. rows created before that fix).
   if (env.VERIFICATION) {
+    // Transient upload scratch — always wiped, on every track. Never evidence.
     try { await deleteR2Prefix(env.VERIFICATION, `u/${uid}/`); } catch { /* best-effort */ }
-    try { await deleteR2Prefix(env.VERIFICATION, `liveness/${uid}/`); } catch { /* best-effort */ }
-    // [LIVE-DIDIT-5] didit.me evidence archive (portrait + clip) lives under its
-    // own prefix — wipe it with the account.
-    try { await deleteR2Prefix(env.VERIFICATION, `didit/${uid}/`); } catch { /* best-effort */ }
-    if (verifKeys.length) { try { await env.VERIFICATION.delete(verifKeys); } catch { /* best-effort */ } }
-    done.push("r2_verification");
+
+    // [AVA-IDGATE-1] The LIVENESS VIDEO. Retention track decides (spec §10.1):
+    //   protective → delete now (IL/TX resident, or residency unknown)
+    //   extended   → keep 256 days, then retention.ts:sweepRetention() wipes it
+    // Metadata is retained on BOTH tracks in `deleted_account_retention`, so a lawful
+    // request can still be answered — who, when, verified how — without the face.
+    if (!retention.keepVideo) {
+      try { await deleteR2Prefix(env.VERIFICATION, `liveness/${uid}/`); } catch { /* best-effort */ }
+      // [LIVE-DIDIT-5] didit.me evidence archive (portrait + clip), its own prefix.
+      try { await deleteR2Prefix(env.VERIFICATION, `didit/${uid}/`); } catch { /* best-effort */ }
+      try {
+        env.ANALYTICS?.writeDataPoint({
+          blobs: ["liveness_video_deleted", "account_deleted", retention.track],
+          doubles: [1], indexes: ["retention"],
+        });
+      } catch { /* metrics best-effort */ }
+      if (verifKeys.length) { try { await env.VERIFICATION.delete(verifKeys); } catch { /* best-effort */ } }
+    } else {
+      console.log("retention: extended track — liveness video held until purge_after", uid);
+    }
+    done.push(`r2_verification:${retention.track}`);
   }
 
   // 6b. R2 digital goods (OLX seller files) — guarded.

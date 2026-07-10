@@ -231,7 +231,7 @@ Shown when a public action is attempted without a valid pass. Full-screen, unski
 > **State of residence:** `[ dropdown ]`
 >
 > ☐ I agree that AvaTok may collect and store a scan of my facial geometry to verify I am a
-> real person, and may keep it for up to 584 days after I delete my account.
+> real person, and may keep it for up to 256 days after I delete my account.
 > [Read our biometric retention schedule]
 >
 > `[Verify with camera]` — disabled until the box is ticked and a state is selected
@@ -346,7 +346,7 @@ Client events use `Analytics.capture()`. Both sides emit; the server is authorit
 |---|---|
 | `biometric_consent_recorded` | `policy_version`, `residency_state`, `retention_track` |
 | `retention_track_assigned` | `track`, `basis` (`self_declared` \| `unknown_default`) |
-| `liveness_video_deleted` | `track`, `reason` (`account_deleted` \| `sweep_584d`) |
+| `liveness_video_deleted` | `track`, `reason` (`account_deleted` \| `sweep_256d`) |
 | `legal_hold_blocked_deletion` | `uid`, `hold_reason` — **must never be zero if holds exist** |
 | `retention_sweep_ran` | `rows_deleted`, `videos_deleted`, `duration_ms` |
 
@@ -415,7 +415,7 @@ Rough shape for later: at $0.10/check ≈ $5k/mo at 1M users. At $0.50/check ≈
 
 ## 10. Biometric retention (owner decisions 2026-07-10)
 
-**Owner intent:** retain liveness video **1.6 years (584 days)** after account deletion, for
+**Owner intent:** retain liveness video **1.6 years (256 days)** after account deletion, for
 government requests. AvaTok is a US company. Illinois and Texas residents excluded from
 extended video retention.
 
@@ -436,7 +436,7 @@ Recorded because the decision was made on this premise:
 
 **BIPA's retention rule is the binding constraint:** destroy *"when the initial purpose for
 collection has been satisfied, **or** within three years of the last interaction, **whichever
-comes first**."* 584 days is inside the 3-year bound. The exposure is the *first* clause —
+comes first**."* 256 days is inside the 3-year bound. The exposure is the *first* clause —
 for a liveness check, the purpose is arguably satisfied the moment verification completes.
 Retention past that point is defensible **only** with §10.4's consent + published schedule.
 
@@ -444,8 +444,8 @@ Retention past that point is defensible **only** with §10.4's consent + publish
 
 | Track | Who | Video | Metadata |
 |---|---|---|---|
-| **A — Extended** | Deleted account, confirmed **not** IL/TX resident | 584 days | 584 days |
-| **B — Protective** | Deleted account, IL/TX resident **or residency unknown** | deleted at account deletion | 584 days |
+| **A — Extended** | Deleted account, confirmed **not** IL/TX resident | 256 days | 256 days |
+| **B — Protective** | Deleted account, IL/TX resident **or residency unknown** | deleted at account deletion | 256 days |
 | **C — Legal hold** | `legal_hold = 1`, any residency | **retained, never deleted** | retained |
 
 Metadata = `liveness_passed_at`, `liveness_source`, `liveness_ref`, account id, email hash,
@@ -453,7 +453,7 @@ Metadata = `liveness_passed_at`, `liveness_source`, `liveness_ref`, account id, 
 verified how — and it is retained on **every** track. Losing the video does not lose the
 response path.
 
-Scheduled sweep hard-deletes Track A/B rows at +584 days.
+Scheduled sweep hard-deletes Track A/B rows at +256 days.
 
 ### 10.2 ⚠️ Unknown residency fails PROTECTIVE, never permissive
 
@@ -513,7 +513,7 @@ copy, with a `TODO(legal)` sitting above it. Fix as part of this work.
 Owner has set the periods; engineering has implemented them in the least-exposed available
 form. These remain legal questions:
 
-- Does 584-day post-deletion video retention survive BIPA's "purpose satisfied, whichever
+- Does 256-day post-deletion video retention survive BIPA's "purpose satisfied, whichever
   comes first" clause, given a published schedule and explicit consent?
 - Is residency self-declaration a sufficient basis for the IL/TX carve-out?
 - Do we target EU or Indian users such that GDPR / DPDP apply?
@@ -598,20 +598,34 @@ cohort (§8).
       Enforced server-side too: `diditSession()` 403s `consent_required`.
 - [x] §3.1 — all seven public actions gated.
 
+- [x] §10.1 — **retention sweep BUILT.** `consumers/src/retention.ts`.
+      `recordDeletionRetention()` snapshots the track before the deletion cascade destroys
+      the rows it reads; `sweepRetention()` drains on the 15-min cron. Protective track drops
+      the video at deletion; extended track holds it 256 days. Bounded 200/run, idempotent
+      (bytes deleted before the row, so a mid-run failure retries rather than orphaning R2).
+- [x] §10.4 — **retention schedule PUBLISHED.** `web/src/pages/biometric-retention.astro`,
+      linked from the consent screen, the site footer, and the privacy policy.
+- [x] Retention period **584 → 256 days** (owner decision 2026-07-10). Consent version bumped
+      `v1 → v2`, which invalidates prior consent so nobody is held to a period they never saw.
+
+> ⚠️ **Four places state the retention period. They must never diverge.**
+> `app/lib/features/identity/biometric_consent_screen.dart:_kRetentionDays` ·
+> `consumers/src/retention.ts:RETENTION_DAYS` ·
+> `web/src/pages/biometric-retention.astro` ·
+> `worker/src/routes/config.ts:biometricConsentVersion` (bump on any change).
+> A published schedule you do not follow is evidence against you, not a defence.
+
 **Still open — these block turning the flag on:**
 
-- [ ] §10.1 — the **+584-day hard-delete sweep** is NOT built. `deleted_account_retention`
-      exists; nothing populates or drains it yet. Until it does, deletion drops the video
-      on every track, and nothing is retained for a lawful request.
-- [ ] §10.4 — **publish the retention schedule on the website.** The consent screen already
-      promises users it exists. The link is deliberately absent rather than pointing at a
-      404. **BIPA §15(a) requires it. This is now a promise the site does not keep.**
-- [ ] §9 — spend alarm at 400 checks/month; `didit_call_billed` / `didit_quota_warning`
-      are specced but not emitted.
 - [ ] §11.1 — run the backfill migration **before** flipping `identityGatingEnabled`.
       Turning the flag on first gates the entire existing user base at once.
+- [ ] **Deploy the web build.** `web-deploy.yml` is `workflow_dispatch` only — a push does
+      NOT publish the site. The schedule page is committed but **not live** until someone
+      runs that workflow. The app links to it. Until it deploys, the link 404s.
+- [ ] §9 — spend alarm at 400 checks/month; `didit_call_billed` / `didit_quota_warning`
+      are specced but not emitted.
 - [ ] §10.7 — counsel review before launch. Non-negotiable: BIPA carries a private right of
-      action and statutory damages, and §10.1 Track A is the exposed surface.
+      action and statutory damages, and §10.1's extended track is the exposed surface.
 - [ ] `comment` is defined as a `PublicAction` but there is no comment route in the Worker
       to gate. Confirm comments do not exist yet, or find where they live.
 - [ ] Extend the gate from listings-only to all of §3.1 — the bulk of the diff

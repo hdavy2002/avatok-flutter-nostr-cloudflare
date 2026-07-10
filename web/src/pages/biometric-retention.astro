@@ -1,0 +1,175 @@
+---
+// [AVA-IDGATE-1] BIPA §15(a) requires a PUBLICLY AVAILABLE written retention and
+// destruction schedule, which we must then actually follow.
+//
+// THIS PAGE IS A LEGAL INSTRUMENT, NOT MARKETING COPY.
+// Publishing a schedule you do not follow is worse than publishing none — it becomes
+// evidence against you. Every period stated here MUST match, exactly:
+//   • app/lib/features/identity/biometric_consent_screen.dart  → _kRetentionDays
+//   • consumers/src/retention.ts                               → RETENTION_DAYS
+//   • worker/src/routes/config.ts                              → biometricConsentVersion
+// If you change one, change all four in the same commit, and bump the consent version
+// so users are re-asked. Nobody may be held to a period they never saw.
+//
+// Spec: Specs/SPEC-2026-07-10-identity-gating.md §10
+export const prerender = true;
+import Content from '../layouts/Content.astro';
+---
+
+<Content
+  kicker="Legal"
+  title="Biometric Data Retention & Destruction Schedule"
+  lead="How AvaGlobal International, Inc. collects, stores, and destroys biometric identifiers used to verify that AvaTOK users are real people."
+  updated="2026-07-10"
+>
+  <p>
+    This schedule is published under the Illinois Biometric Information Privacy Act
+    (740 ILCS 14/15(a)) and applies to all users of avaTOK worldwide. It supplements our
+    <a href="/privacy">Privacy Policy</a>.
+  </p>
+
+  <h2>1. What we collect</h2>
+  <p>
+    Before you post publicly on AvaTOK for the first time, we ask you to complete a short
+    <strong>liveness check</strong> using your device camera. This produces a
+    <strong>scan of facial geometry</strong> — a biometric identifier — together with a short
+    video or set of images of your face.
+  </p>
+  <p>
+    We collect this <strong>only with your prior, explicit, written consent</strong>, given by
+    ticking a box before the camera opens. The box is never pre-ticked. If you decline, nothing
+    is captured, and you may continue to use AvaTOK to browse, read, and watch.
+  </p>
+
+  <h2>2. Why we collect it</h2>
+  <p>There are exactly two purposes. We use it for nothing else.</p>
+  <ul>
+    <li>
+      <strong>To confirm you are a real, living person</strong> before you can post publicly,
+      list an item, go live, message someone you have never messaged, post in a group, or upload
+      media to a public part of AvaTOK.
+    </li>
+    <li>
+      <strong>Safety and lawful-request response.</strong> Tying each account to a liveness check
+      deters people who would use AvaTOK to harm children or others, and allows us to respond if
+      we are lawfully compelled by a court or law enforcement to do so.
+    </li>
+  </ul>
+  <p>
+    We do <strong>not</strong> sell, lease, trade, or profit from your biometric data. We do not
+    use it for advertising, for facial recognition, to identify you in photographs or videos, or
+    to match you against any database of other people. We cannot identify you from your face; we
+    can only confirm that a live person completed the check.
+  </p>
+
+  <h2>3. Who else sees it</h2>
+  <p>
+    The liveness check is performed by our verification provider, <strong>Didit</strong>, acting
+    on our instructions. We do not disclose your biometric data to anyone else, except where we
+    are required to by a subpoena, court order, warrant, or other lawful process, or where
+    disclosure is required by law.
+  </p>
+
+  <h2>4. How long we keep it</h2>
+
+  <h3>While your account is open</h3>
+  <p>
+    We retain your liveness record for as long as your account remains open, because the check is
+    renewed periodically (currently every 90 days) and the record establishes when you were last
+    verified.
+  </p>
+
+  <h3>After you delete your account</h3>
+  <p>What happens then depends on where you live. Two tracks:</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Track</th>
+        <th>Who</th>
+        <th>Face scan &amp; video</th>
+        <th>Verification record</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Protective</strong></td>
+        <td>
+          Residents of <strong>Illinois</strong> and <strong>Texas</strong>, and
+          <strong>anyone whose state of residence we do not know</strong>
+        </td>
+        <td>Permanently destroyed <strong>when you delete your account</strong></td>
+        <td>Kept <strong>256 days</strong>, then permanently destroyed</td>
+      </tr>
+      <tr>
+        <td><strong>Standard</strong></td>
+        <td>All other users</td>
+        <td>Kept <strong>256 days</strong>, then permanently destroyed</td>
+        <td>Kept <strong>256 days</strong>, then permanently destroyed</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    If we are unsure which track applies to you, <strong>we apply the Protective track</strong> and
+    destroy the face scan immediately. We do not infer your residence from your IP address or
+    device location; we rely on the state you tell us.
+  </p>
+
+  <p>
+    The <em>verification record</em> retained in either case contains no biometric data. It is a
+    timestamp of when you were verified, how, a one-way hash of your email address, and your
+    account identifier — enough to answer a lawful request about whether an account existed and
+    when it was checked, and nothing more.
+  </p>
+
+  <h3>Accounts subject to a legal hold</h3>
+  <p>
+    If material has been reported on your account that we are legally required to preserve — most
+    notably suspected child sexual abuse material — we are obliged by law to retain the relevant
+    content and records, and we will do so notwithstanding any deletion request, for as long as the
+    law requires. We will not destroy evidence we are required to keep.
+  </p>
+
+  <h2>5. When we destroy it</h2>
+  <p>Biometric identifiers are permanently destroyed at the earliest of:</p>
+  <ul>
+    <li>the date the purpose for collecting them has been satisfied;</li>
+    <li><strong>256 days</strong> after you delete your account (or immediately on deletion, under
+      the Protective track above);</li>
+    <li>three years after your last interaction with AvaTOK; or</li>
+    <li>the date you withdraw consent, unless a legal hold applies.</li>
+  </ul>
+  <p>
+    Destruction is performed by an automated process that runs continuously. Once destroyed,
+    biometric data cannot be recovered by us or by anyone else.
+  </p>
+
+  <h2>6. Withdrawing consent</h2>
+  <p>
+    You may withdraw your consent at any time by deleting your account, or by contacting us at
+    <a href="mailto:privacy@avatok.ai">privacy@avatok.ai</a>. Withdrawing consent means you will no
+    longer be able to post publicly on AvaTOK. Your biometric data will be destroyed in accordance
+    with the schedule above.
+  </p>
+
+  <h2>7. How it is protected</h2>
+  <p>
+    Biometric data is stored encrypted at rest, in access-restricted storage separate from your
+    profile, using a reasonable standard of care that is the same as or more protective than the
+    manner in which we store other confidential and sensitive information.
+  </p>
+
+  <h2>8. Changes to this schedule</h2>
+  <p>
+    If we change the periods stated above, we will publish the updated schedule here and ask you to
+    give consent again before any further biometric data is collected. Consent you gave to a
+    previous version does not carry over to a new one.
+  </p>
+
+  <h2>9. Contact</h2>
+  <p>
+    AvaGlobal International, Inc.<br />
+    <a href="mailto:privacy@avatok.ai">privacy@avatok.ai</a>
+  </p>
+</Content>
