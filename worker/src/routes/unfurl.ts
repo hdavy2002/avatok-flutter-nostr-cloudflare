@@ -44,6 +44,11 @@ export interface Preview {
   // duration pill when the page advertises one) over the thumbnail.
   is_video?: boolean;
   duration?: number; // seconds
+  // Intrinsic thumbnail size (og:image:width/height). The client uses this to
+  // render the card at the media's TRUE aspect ratio — so a vertical reel/short
+  // stays vertical instead of being squashed into a 16:9 letterbox.
+  image_width?: number;
+  image_height?: number;
   // youtube only
   video_id?: string;
   thumb?: string;
@@ -128,15 +133,23 @@ async function unfurlYouTube(u: URL, id: string): Promise<Preview> {
   const oembed =
     "https://www.youtube.com/oembed?format=json&url=" +
     encodeURIComponent(u.toString());
+  // A Short is vertical 9:16. oEmbed hands back the 16:9 hqdefault, which is the
+  // SAME vertical frame letterboxed inside black bars — that's why a Short looked
+  // squashed with pillars. `oardefault.jpg` ("original aspect ratio") is the
+  // uncropped source frame, so a Short renders full-bleed vertical.
+  const isShort = /^\/shorts\//.test(u.pathname);
   const base: Preview = {
     type: "youtube",
     url: u.toString(),
     video_id: id,
     // hqdefault always exists even before oEmbed resolves.
-    thumb: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+    thumb: isShort
+      ? `https://i.ytimg.com/vi/${id}/oardefault.jpg`
+      : `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
     domain: "youtube.com",
     site_name: "YouTube",
     is_video: true,
+    ...(isShort ? { image_width: 1080, image_height: 1920 } : {}),
   };
   try {
     const ctl = new AbortController();
@@ -146,7 +159,8 @@ async function unfurlYouTube(u: URL, id: string): Promise<Preview> {
     if (r.ok) {
       const j = (await r.json().catch(() => ({}))) as any;
       if (j?.title) base.title = String(j.title);
-      if (j?.thumbnail_url) base.thumb = String(j.thumbnail_url);
+      // Only take oEmbed's 16:9 thumb for regular videos — never for a Short.
+      if (j?.thumbnail_url && !isShort) base.thumb = String(j.thumbnail_url);
     }
   } catch { /* keep base */ }
   return base;
@@ -187,10 +201,25 @@ function metaContent(html: string, patterns: RegExp[]): string | undefined {
 }
 
 function decodeEntities(s: string): string {
-  return s
+  // NUMERIC entities first — Facebook and Instagram encode every non-ASCII
+  // character this way (&#x92e; = म, &#xb7; = ·). Without this pass the card
+  // showed literal "&#x92e;&#x948;" gibberish instead of the Hindi title.
+  // Runs before the named pass so "&amp;#x92e;" can't double-decode.
+  const numeric = s
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => cp(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d) => cp(parseInt(d, 10)));
+  return numeric
     .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&#x27;/g, "'")
-    .replace(/&nbsp;/g, " ");
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, " ").replace(/&hellip;/g, "…")
+    .replace(/&mdash;/g, "—").replace(/&ndash;/g, "–")
+    .replace(/&middot;/g, "·");
+}
+
+/** Safe String.fromCodePoint — leaves invalid code points untouched. */
+function cp(n: number): string {
+  if (!Number.isFinite(n) || n < 0 || n > 0x10ffff) return "";
+  try { return String.fromCodePoint(n); } catch { return ""; }
 }
 
 // og:<prop> — attribute order varies, so match both content-after and content-before.
@@ -253,6 +282,15 @@ function applyMeta(out: Preview, html: string, finalUrl: string): boolean {
   if (dur) {
     const n = Math.round(Number(dur));
     if (Number.isFinite(n) && n > 0 && n < 24 * 3600) out.duration = n;
+  }
+
+  // Intrinsic thumbnail dimensions → the client renders the card at the real
+  // aspect ratio (portrait reels stay portrait).
+  const iw = Number(metaContent(html, ogPatterns("og:image:width")) ?? NaN);
+  const ih = Number(metaContent(html, ogPatterns("og:image:height")) ?? NaN);
+  if (Number.isFinite(iw) && Number.isFinite(ih) && iw > 0 && ih > 0) {
+    out.image_width = Math.round(iw);
+    out.image_height = Math.round(ih);
   }
 
   // Resolve a relative og:image against the final URL.

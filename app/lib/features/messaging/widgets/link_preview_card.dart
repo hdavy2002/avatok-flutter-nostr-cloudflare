@@ -42,6 +42,8 @@ class LinkPreview {
   final String? thumb; // youtube
   final bool isVideo; // paint a play badge over the thumbnail
   final int? duration; // seconds → duration pill
+  final int? imageWidth; // intrinsic thumb size (og:image:width/height)
+  final int? imageHeight;
 
   const LinkPreview({
     required this.type,
@@ -55,7 +57,21 @@ class LinkPreview {
     this.thumb,
     this.isVideo = false,
     this.duration,
+    this.imageWidth,
+    this.imageHeight,
   });
+
+  /// The thumbnail's true aspect ratio when the server told us the dimensions.
+  /// Null → the card measures the decoded image itself.
+  double? get imageAspect =>
+      (imageWidth != null && imageHeight != null && imageHeight! > 0)
+          ? imageWidth! / imageHeight!
+          : null;
+
+  /// A YouTube Short's `oardefault.jpg` occasionally 404s; fall back to the
+  /// always-present (letterboxed) hqdefault rather than showing a grey box.
+  String? get fallbackImage =>
+      isYouTube ? 'https://i.ytimg.com/vi/$videoId/hqdefault.jpg' : null;
 
   bool get isYouTube => type == 'youtube' && (videoId?.isNotEmpty ?? false);
 
@@ -99,6 +115,8 @@ class LinkPreview {
     }
 
     final dur = int.tryParse((m['duration'] ?? '').toString());
+    final iw = int.tryParse((m['image_width'] ?? '').toString());
+    final ih = int.tryParse((m['image_height'] ?? '').toString());
     return LinkPreview(
       type: type,
       url: url,
@@ -111,6 +129,119 @@ class LinkPreview {
       thumb: s(m['thumb']),
       isVideo: m['is_video'] == true || type == 'youtube',
       duration: (dur != null && dur > 0) ? dur : null,
+      imageWidth: (iw != null && iw > 0) ? iw : null,
+      imageHeight: (ih != null && ih > 0) ? ih : null,
+    );
+  }
+}
+
+/// Aspect-ratio bounds. A thumbnail is shown at its TRUE ratio, clamped so a
+/// freak 1:5 banner can't eat the whole thread. 9:16 = full vertical reel/Short.
+const double _kMinAspect = 9 / 16; // tallest we'll go (portrait video)
+const double _kMaxAspect = 1.91;   // widest (the standard OG hero)
+double _clampAspect(double a) => a.clamp(_kMinAspect, _kMaxAspect);
+
+/// An image that renders at its own aspect ratio. If the server supplied
+/// og:image:width/height we use that immediately (no layout jump); otherwise we
+/// start at [fallbackAspect] and snap to the true ratio once the image decodes.
+class _AutoAspectImage extends StatefulWidget {
+  const _AutoAspectImage({
+    required this.url,
+    this.fallbackUrl,
+    this.knownAspect,
+    this.fallbackAspect = 1.91,
+    this.overlay = const [],
+  });
+
+  final String url;
+  final String? fallbackUrl;
+  final double? knownAspect;
+  final double fallbackAspect;
+  final List<Widget> overlay;
+
+  @override
+  State<_AutoAspectImage> createState() => _AutoAspectImageState();
+}
+
+class _AutoAspectImageState extends State<_AutoAspectImage> {
+  double? _measured;
+  ImageStream? _stream;
+  ImageStreamListener? _listener;
+  bool _errored = false;
+
+  double get _aspect =>
+      _clampAspect(widget.knownAspect ?? _measured ?? widget.fallbackAspect);
+
+  String get _src => (_errored && widget.fallbackUrl != null)
+      ? widget.fallbackUrl!
+      : widget.url;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (widget.knownAspect == null) _resolve();
+  }
+
+  void _resolve() {
+    _detach();
+    final provider = NetworkImage(_src);
+    _stream = provider.resolve(createLocalImageConfiguration(context));
+    _listener = ImageStreamListener((info, _) {
+      final w = info.image.width.toDouble();
+      final h = info.image.height.toDouble();
+      if (!mounted || h <= 0) return;
+      final a = w / h;
+      if (_measured != a) setState(() => _measured = a);
+    }, onError: (_, __) {
+      if (mounted && !_errored && widget.fallbackUrl != null) {
+        setState(() => _errored = true);
+      }
+    });
+    _stream!.addListener(_listener!);
+  }
+
+  void _detach() {
+    if (_stream != null && _listener != null) _stream!.removeListener(_listener!);
+    _stream = null;
+    _listener = null;
+  }
+
+  @override
+  void dispose() {
+    _detach();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AspectRatio(
+      aspectRatio: _aspect,
+      child: Stack(fit: StackFit.expand, children: [
+        Image.network(
+          _src,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) {
+            if (!_errored && widget.fallbackUrl != null) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) setState(() => _errored = true);
+              });
+            }
+            return Container(color: Zine.ink.withValues(alpha: 0.06));
+          },
+          loadingBuilder: (ctx, child, progress) => progress == null
+              ? child
+              : Container(
+                  color: Zine.ink.withValues(alpha: 0.06),
+                  alignment: Alignment.center,
+                  child: const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+        ),
+        ...widget.overlay,
+      ]),
     );
   }
 }
@@ -216,7 +347,7 @@ Future<void> _openExternal(String url) async {
 Widget? buildLinkPreviewCard(
   LinkPreview preview, {
   bool pending = false,
-  double width = 260,
+  double? width,
 }) {
   if (pending) return null; // STRANGER GATE — raw URL only
   if (!preview.hasCard) return null;
@@ -231,9 +362,11 @@ Widget? buildLinkPreviewCard(
 // ─────────────────────────────────────────────────────────────────────────────
 
 class LinkPreviewCard extends StatelessWidget {
-  const LinkPreviewCard({super.key, required this.preview, this.width = 260});
+  const LinkPreviewCard({super.key, required this.preview, this.width});
   final LinkPreview preview;
-  final double width;
+
+  /// null → the card fills the bubble edge to edge (the default).
+  final double? width;
 
   @override
   Widget build(BuildContext context) {
@@ -241,7 +374,7 @@ class LinkPreviewCard extends StatelessWidget {
     return GestureDetector(
       onTap: () => _openExternal(preview.url),
       child: Container(
-        width: width,
+        width: width ?? double.infinity,
         decoration: BoxDecoration(
           color: Zine.paper2,
           borderRadius: BorderRadius.circular(14),
@@ -253,28 +386,15 @@ class LinkPreviewCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (img != null)
-              // Video links get a 4:5-ish tall thumb like Instagram reels in
-              // WhatsApp; plain articles keep the wide 2:1 hero.
-              AspectRatio(
-                aspectRatio: preview.isVideo ? 4 / 3 : 2 / 1,
-                child: Stack(fit: StackFit.expand, children: [
-                  Image.network(
-                    img,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) =>
-                        Container(color: Zine.ink.withValues(alpha: 0.06)),
-                    loadingBuilder: (ctx, child, progress) => progress == null
-                        ? child
-                        : Container(
-                            color: Zine.ink.withValues(alpha: 0.06),
-                            alignment: Alignment.center,
-                            child: const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                          ),
-                  ),
+              // Render at the media's TRUE aspect ratio: a vertical reel stays
+              // vertical, a wide article hero stays wide. (Hard-coding 2:1 / 4:3
+              // is what squashed Shorts and reels into letterboxed strips.)
+              _AutoAspectImage(
+                url: img,
+                fallbackUrl: preview.fallbackImage,
+                knownAspect: preview.imageAspect,
+                fallbackAspect: preview.isVideo ? 1.0 : 1.91,
+                overlay: [
                   if (preview.isVideo) ...[
                     const Center(child: _PlayBadge()),
                     if (preview.duration != null)
@@ -284,7 +404,7 @@ class LinkPreviewCard extends StatelessWidget {
                         child: _DurationPill(seconds: preview.duration!),
                       ),
                   ],
-                ]),
+                ],
               ),
             if (preview.title != null)
               Padding(
@@ -411,9 +531,11 @@ class ComposeLinkPreview extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class YouTubeInlineCard extends StatefulWidget {
-  const YouTubeInlineCard({super.key, required this.preview, this.width = 260});
+  const YouTubeInlineCard({super.key, required this.preview, this.width});
   final LinkPreview preview;
-  final double width;
+
+  /// null → fills the bubble edge to edge.
+  final double? width;
 
   @override
   State<YouTubeInlineCard> createState() => _YouTubeInlineCardState();
@@ -503,8 +625,10 @@ class _YouTubeInlineCardState extends State<YouTubeInlineCard> {
   @override
   Widget build(BuildContext context) {
     final c = _ctrl;
+    // Shorts play vertically; regular videos stay 16:9.
+    final playerAspect = _clampAspect(widget.preview.imageAspect ?? 16 / 9);
     return Container(
-      width: widget.width,
+      width: widget.width ?? double.infinity,
       decoration: BoxDecoration(
         color: Zine.paper2,
         borderRadius: BorderRadius.circular(14),
@@ -517,7 +641,7 @@ class _YouTubeInlineCardState extends State<YouTubeInlineCard> {
         children: [
           if (c != null)
             Stack(alignment: Alignment.bottomRight, children: [
-              YoutubePlayer(controller: c, aspectRatio: 16 / 9),
+              YoutubePlayer(controller: c, aspectRatio: playerAspect),
               Padding(
                 padding: const EdgeInsets.all(6),
                 child: GestureDetector(
@@ -539,27 +663,21 @@ class _YouTubeInlineCardState extends State<YouTubeInlineCard> {
           else
             GestureDetector(
               onTap: _playInline,
-              child: AspectRatio(
-                aspectRatio: 16 / 9,
-                child: Stack(
-                    fit: StackFit.expand,
-                    alignment: Alignment.center,
-                    children: [
-                      Image.network(
-                        _thumb,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(color: Zine.ink),
-                      ),
-                      Container(color: Zine.ink.withValues(alpha: 0.10)),
-                      const Center(child: _PlayBadge()),
-                      if (widget.preview.duration != null)
-                        Positioned(
-                          left: 8,
-                          bottom: 8,
-                          child:
-                              _DurationPill(seconds: widget.preview.duration!),
-                        ),
-                    ]),
+              child: _AutoAspectImage(
+                url: _thumb,
+                fallbackUrl: widget.preview.fallbackImage,
+                knownAspect: widget.preview.imageAspect,
+                fallbackAspect: 16 / 9,
+                overlay: [
+                  Container(color: Zine.ink.withValues(alpha: 0.10)),
+                  const Center(child: _PlayBadge()),
+                  if (widget.preview.duration != null)
+                    Positioned(
+                      left: 8,
+                      bottom: 8,
+                      child: _DurationPill(seconds: widget.preview.duration!),
+                    ),
+                ],
               ),
             ),
           if ((widget.preview.title?.isNotEmpty ?? false))

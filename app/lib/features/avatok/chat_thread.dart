@@ -8193,14 +8193,22 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                                   (m.localBytes != null ? MediaKind.image : MediaKind.file)) !=
                               MediaKind.audio)
                       ? const EdgeInsets.all(3)
-                      : const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      // A link-preview card hugs the bubble edge (3px, like
+                      // media) instead of floating inside a 14px gutter.
+                      : (m.extra?['preview'] is Map)
+                          ? const EdgeInsets.fromLTRB(4, 4, 4, 6)
+                          : const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               // Ava email-card and GenUI/A2UI bubbles need more room (the design
               // uses ~92%); everything else stays at the standard [UI-BUBBLE-1] 78%
               // (symmetric for incoming & outgoing — text sizes to content up to this).
+              // Link-preview bubbles also take the wide lane: the card is the
+              // content, and at 78% it left a dead gutter of bubble colour on
+              // both sides of the thumbnail.
               constraints: BoxConstraints(
                   maxWidth: MediaQuery.of(context).size.width *
                       (((m.extra?['emails'] is List && (m.extra!['emails'] as List).isNotEmpty) ||
-                              m.extra?['a2ui'] is Map)
+                              m.extra?['a2ui'] is Map ||
+                              m.extra?['preview'] is Map)
                           ? 0.92
                           : 0.78)),
               // Chat bubble (§7.14): 2.5px ink border, radius 16 with one
@@ -8654,10 +8662,19 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           }
         });
         // WhatsApp order: the rich card sits ON TOP, the raw URL text below it.
+        // The bubble drops to 4px padding for preview messages, so the text
+        // below the card re-adds its own breathing room.
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
-          children: [card, const SizedBox(height: 6), link],
+          children: [
+            card,
+            const SizedBox(height: 6),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: link,
+            ),
+          ],
         );
       }
     }
