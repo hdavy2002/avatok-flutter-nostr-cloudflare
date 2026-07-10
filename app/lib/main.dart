@@ -39,16 +39,16 @@ import 'features/auth/restore_screen.dart';
 import 'features/avatok/contacts.dart';
 import 'features/identity/liveness_v3/voice_packs.dart';
 import 'features/identity/public_action_gate.dart'; // [AVA-IDGATE-1] 403→consent flow
-
-// [AVA-IDGATE-1] Guards against stacking multiple consent/liveness flows when a burst
-// of gated requests (e.g. the outbox retrying) each return 403 identity_required.
-bool _identityFlowOpen = false;
 import 'features/onboarding/handle_claim_screen.dart';
 import 'features/onboarding/onboarding_flow.dart';
 import 'features/onboarding/welcome_screen.dart';
 import 'push/push_service.dart';
 import 'shell/ava_shell.dart';
 import 'sync/sync_hub.dart';
+
+// [AVA-IDGATE-1] Guards against stacking multiple consent/liveness flows when a burst
+// of gated requests (e.g. the outbox retrying) each return 403 identity_required.
+bool _identityFlowOpen = false;
 
 void main() async {
   final t0 = DateTime.now(); // for first_frame_ms telemetry (PERF-6)
