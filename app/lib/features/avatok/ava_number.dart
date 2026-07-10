@@ -260,7 +260,14 @@ class AvaNumber {
     if (fresh != null) { await _writeCache(_meCacheKey, fresh); return MyNumber.fromJson(fresh); }
     // Network unavailable → fall back to whatever cache we had, else a safe default.
     if (cached != null) return MyNumber.fromJson(cached);
-    return const MyNumber(entitled: false, tier: 0, featureOn: true);
+    // [NUMBER-GATE-FIX 2026-07-10] No cache AND the /me fetch failed → we genuinely
+    // DON'T KNOW whether this account has a number. The old default returned
+    // featureOn:true + no number, which the shell read as needs_number=true and
+    // popped the compulsory number gate — even for a user who already HAS a number,
+    // on a mere network hiccup (the "gate keeps re-appearing" report). featureOn:false
+    // makes the gate compute needs_number=false: on an UNKNOWN state we never force
+    // the gate. The next successful /me returns the real state and self-corrects.
+    return const MyNumber(entitled: false, tier: 0, featureOn: false);
   }
 
   static Future<bool> release() async {

@@ -177,7 +177,20 @@ class _AvaShellState extends State<AvaShell> {
       try {
         final me = await AvaNumber.me();
         needsNumber = me.featureOn && !me.hasNumber;
-      } catch (_) { needsNumber = false; }
+        // [NUMBER-GATE-DIAG 2026-07-10] Rich telemetry to catch the "gate re-appears
+        // even though I have a number" report. If needs_number is true while the
+        // account actually holds one, this row makes the contradiction visible.
+        Analytics.capture('number_gate_decided', {
+          'feature_on': me.featureOn,
+          'has_number': me.hasNumber,
+          'needs_number': needsNumber,
+          'stored_flag': storedHasNumber ?? 'null',
+          'assigned_this_session': _numberAssignedThisSession,
+        });
+      } catch (e) {
+        needsNumber = false; // fail-open: a network blip never traps the user
+        Analytics.capture('number_gate_me_error', {'err': e.runtimeType.toString()});
+      }
       // Dup-number fix: if the user already picked a number in this run, trust that
       // over a possibly-stale server read so the gate is never re-shown post-profile.
       if (_numberAssignedThisSession) needsNumber = false;
