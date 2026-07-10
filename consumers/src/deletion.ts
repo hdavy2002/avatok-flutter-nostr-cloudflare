@@ -150,6 +150,9 @@ export async function handleDeletion(msg: DeletionMsg, env: Env): Promise<void> 
   if (env.VERIFICATION) {
     try { await deleteR2Prefix(env.VERIFICATION, `u/${uid}/`); } catch { /* best-effort */ }
     try { await deleteR2Prefix(env.VERIFICATION, `liveness/${uid}/`); } catch { /* best-effort */ }
+    // [LIVE-DIDIT-5] didit.me evidence archive (portrait + clip) lives under its
+    // own prefix — wipe it with the account.
+    try { await deleteR2Prefix(env.VERIFICATION, `didit/${uid}/`); } catch { /* best-effort */ }
     if (verifKeys.length) { try { await env.VERIFICATION.delete(verifKeys); } catch { /* best-effort */ } }
     done.push("r2_verification");
   }
@@ -184,6 +187,7 @@ export async function handleDeletion(msg: DeletionMsg, env: Env): Promise<void> 
     "DELETE FROM notifications WHERE uid=?1",
     "DELETE FROM verification_status WHERE uid=?1",
     "DELETE FROM verification_attempts WHERE uid=?1",
+    "DELETE FROM liveness_didit_records WHERE uid=?1", // [LIVE-DIDIT-5] our didit check records
     "DELETE FROM identity_proofs WHERE uid=?1 AND proof='liveness'", // [LIVE-PURGE-1]
     "DELETE FROM calendar_slots WHERE uid=?1",
     // A1: bookings/orders KEEP their rows (the counterparty + finance need
