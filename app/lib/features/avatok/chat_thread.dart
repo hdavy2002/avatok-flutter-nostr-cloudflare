@@ -95,6 +95,7 @@ import 'stranger_gate_api.dart'; // STREAM B (stranger safety gate)
 import 'forward_sheet.dart';
 import 'chat_media_cards.dart';
 import '../messaging/widgets/link_preview_card.dart';
+import '../messaging/widgets/link_viewer_sheet.dart';
 import 'data.dart';
 import '../ava_guardian/guardian_settings.dart'; // shield watchdog (Nemotron) per-chat toggle
 import '../identity/human_check_page.dart'; // U1-lite: guardian verify_request → face check
@@ -1661,6 +1662,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _markReadTimer?.cancel();
     _smartReplyDebounce?.cancel(); // STREAM G smart replies
     _composeUnfurlDebounce?.cancel(); // compose-time link preview
+    LinkViewer.close(); // tear down the in-app video/article viewer overlay
     _persistNow(); // flush any pending message-cache write on exit
     // NOTE: do NOT dispose _nostr — it's the shared SyncHub client owned by the
     // whole app. _dm.stop()/_gdm.stop() above already cancel this screen's

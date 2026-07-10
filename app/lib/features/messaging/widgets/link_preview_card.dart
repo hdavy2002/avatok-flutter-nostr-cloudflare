@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 
-import '../../../core/analytics.dart';
 import '../../../core/ava_log.dart';
 import '../../../core/ui/zine.dart';
+import 'link_viewer_sheet.dart';
 
 /// Link previews + inline YouTube — AI Messenger Batch, STREAM C ([PREVIEW-3]).
 ///
@@ -16,13 +14,17 @@ import '../../../core/ui/zine.dart';
 /// envelope under `preview:{...}` — so recipients render straight from the
 /// envelope with ZERO network fetch (no leak of who opened what).
 ///
-///   • type "link"    → image top, bold title, 2-line description, domain footer;
-///                       tap opens the link the way the app does today (external
-///                       browser via url_launcher).
-///   • type "youtube" → thumbnail + play → inline player (youtube_player_iframe);
-///                       expand → full-screen landscape route; on exit Navigator
-///                       .pop returns to the same scroll position; the inline
-///                       player PAUSES when the bubble scrolls offscreen.
+/// Layout (WhatsApp parity): thumbnail at its TRUE aspect ratio on top, bold
+/// title, description, favicon + domain footer — then the raw URL text BELOW the
+/// card. Video thumbnails carry a play badge and a duration pill.
+///
+/// Tap targets (owner decision 2026-07-10):
+///   • thumbnail             → opens [LinkViewer]: an in-app draggable sheet that
+///                             plays/reads the content over the chat and can be
+///                             dragged down to a mini player while the user keeps
+///                             scrolling and replying. See link_viewer_sheet.dart.
+///   • title / desc / domain → deep-links OUT to the native YouTube / Instagram /
+///                             Facebook app via url_launcher.
 ///
 /// STRANGER GATE: the caller must pass `pending: true` while the thread's
 /// accept_state is pending — in that case the card is NOT built at all (the
@@ -370,9 +372,6 @@ Widget? buildLinkPreviewCard(
 }) {
   if (pending) return null; // STRANGER GATE — raw URL only
   if (!preview.hasCard) return null;
-  if (preview.isYouTube) {
-    return YouTubeInlineCard(preview: preview, width: width);
-  }
   return LinkPreviewCard(preview: preview, width: width);
 }
 
@@ -390,25 +389,28 @@ class LinkPreviewCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final img = preview.displayImage;
-    return GestureDetector(
-      onTap: () => _openExternal(preview.url),
-      child: Container(
-        width: width ?? double.infinity,
-        decoration: BoxDecoration(
-          color: Zine.paper2,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Zine.ink, width: 1.5),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (img != null)
+    // Two tap targets (owner decision 2026-07-10):
+    //   thumbnail            → play/read INSIDE AvaTOK (LinkViewer)
+    //   title / desc / domain → deep-link out to the native app
+    return Container(
+      width: width ?? double.infinity,
+      decoration: BoxDecoration(
+        color: Zine.paper2,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Zine.ink, width: 1.5),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (img != null)
+            GestureDetector(
+              onTap: () => LinkViewer.open(context, preview),
               // Render at the media's TRUE aspect ratio: a vertical reel stays
               // vertical, a wide article hero stays wide. (Hard-coding 2:1 / 4:3
               // is what squashed Shorts and reels into letterboxed strips.)
-              _AutoAspectImage(
+              child: _AutoAspectImage(
                 url: img,
                 fallbackUrl: preview.fallbackImage,
                 knownAspect: preview.imageAspect,
@@ -425,30 +427,40 @@ class LinkPreviewCard extends StatelessWidget {
                   ],
                 ],
               ),
-            if (preview.title != null)
-              Padding(
-                padding: EdgeInsets.fromLTRB(
-                    10, 8, 10, preview.description != null ? 0 : 6),
-                child: Text(
-                  preview.title!,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: ZineText.value(size: 13, weight: FontWeight.w700),
-                ),
-              ),
-            if (preview.description != null)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(10, 3, 10, 6),
-                child: Text(
-                  preview.description!,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: ZineText.sub(size: 12, color: Zine.inkSoft),
-                ),
-              ),
-            _DomainFooter(preview: preview),
-          ],
-        ),
+            ),
+          GestureDetector(
+            onTap: () => _openExternal(preview.url),
+            behavior: HitTestBehavior.opaque,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (preview.title != null)
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(
+                        10, 8, 10, preview.description != null ? 0 : 6),
+                    child: Text(
+                      preview.title!,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: ZineText.value(size: 13, weight: FontWeight.w700),
+                    ),
+                  ),
+                if (preview.description != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(10, 3, 10, 6),
+                    child: Text(
+                      preview.description!,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: ZineText.sub(size: 12, color: Zine.inkSoft),
+                    ),
+                  ),
+                _DomainFooter(preview: preview),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -538,232 +550,6 @@ class ComposeLinkPreview extends StatelessWidget {
           color: Zine.inkMute,
           onPressed: onDismiss,
           tooltip: 'Remove preview',
-        ),
-      ]),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// YouTube inline card — thumbnail + play → inline player; expand → fullscreen
-// landscape; pauses when scrolled offscreen.
-// ─────────────────────────────────────────────────────────────────────────────
-
-class YouTubeInlineCard extends StatefulWidget {
-  const YouTubeInlineCard({super.key, required this.preview, this.width});
-  final LinkPreview preview;
-
-  /// null → fills the bubble edge to edge.
-  final double? width;
-
-  @override
-  State<YouTubeInlineCard> createState() => _YouTubeInlineCardState();
-}
-
-class _YouTubeInlineCardState extends State<YouTubeInlineCard> {
-  YoutubePlayerController? _ctrl;
-  ScrollPosition? _pos;
-  bool _offscreen = false;
-
-  String get _videoId => widget.preview.videoId!;
-  String get _thumb =>
-      widget.preview.thumb ?? 'https://i.ytimg.com/vi/$_videoId/hqdefault.jpg';
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // Track the enclosing scrollable so we can pause the inline player when this
-    // bubble leaves the viewport (spec: "player pauses when bubble scrolls
-    // offscreen"). Re-subscribes if the Scrollable changes.
-    final newPos = Scrollable.maybeOf(context)?.position;
-    if (newPos != _pos) {
-      _pos?.removeListener(_onScroll);
-      _pos = newPos;
-      _pos?.addListener(_onScroll);
-    }
-  }
-
-  @override
-  void dispose() {
-    _pos?.removeListener(_onScroll);
-    _ctrl?.close();
-    super.dispose();
-  }
-
-  void _onScroll() {
-    if (_ctrl == null || !mounted) return;
-    final box = context.findRenderObject();
-    if (box is! RenderBox || !box.attached) return;
-    final size = MediaQuery.of(context).size;
-    final topLeft = box.localToGlobal(Offset.zero);
-    final rect = topLeft & box.size;
-    // Consider the card offscreen once it's fully above or below the viewport.
-    final off = rect.bottom < 0 || rect.top > size.height;
-    if (off && !_offscreen) {
-      _offscreen = true;
-      _ctrl?.pauseVideo();
-    } else if (!off && _offscreen) {
-      _offscreen = false;
-    }
-  }
-
-  void _playInline() {
-    Analytics.capture('yt_inline_play', {
-      'video_id': _videoId,
-      if (Analytics.currentEmail != null) 'email': Analytics.currentEmail!,
-    });
-    setState(() {
-      _ctrl = YoutubePlayerController.fromVideoId(
-        videoId: _videoId,
-        autoPlay: true,
-        params: const YoutubePlayerParams(
-          showControls: true,
-          showFullscreenButton: false, // we route to our own landscape screen
-          enableCaption: true,
-        ),
-      );
-    });
-  }
-
-  Future<void> _openFullscreen() async {
-    final c = _ctrl;
-    if (c == null) return;
-    Analytics.capture('yt_fullscreen', {
-      'video_id': _videoId,
-      if (Analytics.currentEmail != null) 'email': Analytics.currentEmail!,
-    });
-    // Full-screen landscape route; on exit Navigator.pop returns here and the
-    // inline player keeps its position (same controller is reused).
-    await Navigator.of(context).push(MaterialPageRoute(
-      fullscreenDialog: true,
-      builder: (_) => _FullscreenYouTube(controller: c),
-    ));
-    // Back to portrait when we return (best-effort; the route also restores it).
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final c = _ctrl;
-    // Shorts play vertically; regular videos stay 16:9.
-    final playerAspect = _clampAspect(widget.preview.imageAspect ?? 16 / 9);
-    return Container(
-      width: widget.width ?? double.infinity,
-      decoration: BoxDecoration(
-        color: Zine.paper2,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Zine.ink, width: 1.5),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (c != null)
-            Stack(alignment: Alignment.bottomRight, children: [
-              YoutubePlayer(controller: c, aspectRatio: playerAspect),
-              Padding(
-                padding: const EdgeInsets.all(6),
-                child: GestureDetector(
-                  onTap: _openFullscreen,
-                  child: Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: Zine.ink.withValues(alpha: 0.6),
-                      borderRadius: BorderRadius.circular(100),
-                    ),
-                    child: PhosphorIcon(
-                        PhosphorIcons.arrowsOut(PhosphorIconsStyle.bold),
-                        size: 15,
-                        color: Colors.white),
-                  ),
-                ),
-              ),
-            ])
-          else
-            GestureDetector(
-              onTap: _playInline,
-              child: _AutoAspectImage(
-                url: _thumb,
-                fallbackUrl: widget.preview.fallbackImage,
-                knownAspect: widget.preview.imageAspect,
-                fallbackAspect: 16 / 9,
-                overlay: [
-                  Container(color: Zine.ink.withValues(alpha: 0.10)),
-                  const Center(child: _PlayBadge()),
-                  if (widget.preview.duration != null)
-                    Positioned(
-                      left: 8,
-                      bottom: 8,
-                      child: _DurationPill(seconds: widget.preview.duration!),
-                    ),
-                ],
-              ),
-            ),
-          if ((widget.preview.title?.isNotEmpty ?? false))
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
-              child: Text(
-                widget.preview.title!,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: ZineText.value(size: 13, weight: FontWeight.w700),
-              ),
-            ),
-          _DomainFooter(preview: widget.preview),
-        ],
-      ),
-    );
-  }
-}
-
-/// Full-screen landscape YouTube route. Reuses the caller's controller so
-/// playback position is continuous; restores portrait + all overlays on exit.
-class _FullscreenYouTube extends StatefulWidget {
-  const _FullscreenYouTube({required this.controller});
-  final YoutubePlayerController controller;
-
-  @override
-  State<_FullscreenYouTube> createState() => _FullscreenYouTubeState();
-}
-
-class _FullscreenYouTubeState extends State<_FullscreenYouTube> {
-  @override
-  void initState() {
-    super.initState();
-    // Landscape immersive full-screen.
-    SystemChrome.setPreferredOrientations(
-        [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-  }
-
-  @override
-  void dispose() {
-    // Restore portrait + normal chrome on exit (back to the same scroll pos).
-    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(children: [
-        Center(
-          child: YoutubePlayer(
-            controller: widget.controller,
-            aspectRatio: 16 / 9,
-          ),
-        ),
-        Positioned(
-          top: 8,
-          left: 8,
-          child: SafeArea(
-            child: IconButton(
-              icon: const Icon(Icons.close, color: Colors.white, size: 28),
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-          ),
         ),
       ]),
     );
