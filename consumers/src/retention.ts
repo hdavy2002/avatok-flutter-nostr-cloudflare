@@ -31,13 +31,6 @@ import type { Env } from "./types";
 export const RETENTION_DAYS = 256;
 const RETENTION_MS = RETENTION_DAYS * 86_400_000;
 
-/** Cheap, non-reversible email fingerprint so support can match a lawful request
- *  to an account without us retaining the plaintext address after deletion. */
-async function sha256Hex(s: string): Promise<string> {
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
-  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
 export interface RetentionDecision {
   track: "extended" | "protective";
   /** True ⇒ deletion.ts must NOT wipe the liveness/didit R2 prefixes. */
@@ -55,13 +48,18 @@ export interface RetentionDecision {
 export async function recordDeletionRetention(env: Env, uid: string): Promise<RetentionDecision> {
   const now = Date.now();
   try {
+    // `users` stores email_hash, never a raw email — a deliberate privacy choice, and
+    // exactly what we want to retain after deletion. A hash lets us confirm "yes, that
+    // address held an account" for a lawful request, without us keeping the address.
     const u = await env.DB_META.prepare(
-      "SELECT email, retention_track, created_at FROM users WHERE uid=?1",
-    ).bind(uid).first<{ email: string | null; retention_track: string | null; created_at: number | null }>();
+      "SELECT email_hash, retention_track, created_at FROM users WHERE uid=?1",
+    ).bind(uid).first<{ email_hash: string | null; retention_track: string | null; created_at: number | null }>();
 
+    // Liveness lives in identity_proofs, NOT clerk_account_link (legacy, being dropped).
+    // provider = 'didit' | 'grandfathered'.
     const l = await env.DB_META.prepare(
-      "SELECT liveness_passed_at, liveness_source, liveness_ref FROM clerk_account_link WHERE uid=?1",
-    ).bind(uid).first<{ liveness_passed_at: number | null; liveness_source: string | null; liveness_ref: string | null }>();
+      "SELECT verified_at, provider, evidence_ref FROM identity_proofs WHERE uid=?1 AND proof='liveness'",
+    ).bind(uid).first<{ verified_at: number | null; provider: string | null; evidence_ref: string | null }>();
 
     // Anything other than an explicit 'extended' ⇒ protective. A null, an unexpected
     // string, a missing row: all mean "we do not have positive evidence", and that is
@@ -76,10 +74,10 @@ export async function recordDeletionRetention(env: Env, uid: string): Promise<Re
        VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)`,
     ).bind(
       uid,
-      u?.email ? await sha256Hex(u.email.trim().toLowerCase()) : null,
-      l?.liveness_passed_at ?? null,
-      l?.liveness_source ?? null,
-      l?.liveness_ref ?? null,
+      u?.email_hash ?? null,
+      l?.verified_at ?? null,
+      l?.provider ?? null,      // 'didit' | 'grandfathered' — never conflate
+      l?.evidence_ref ?? null,
       track,
       keepVideo ? 1 : 0,
       u?.created_at ?? null,

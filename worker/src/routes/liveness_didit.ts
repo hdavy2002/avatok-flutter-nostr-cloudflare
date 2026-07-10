@@ -24,7 +24,7 @@ import { json } from "../util";
 import { rateLimit } from "../money"; // shared KV rate limiter (abuse limits)
 import { requireUser, isFail } from "../authz";
 import { setVerifiedCache } from "../auth";
-import { recordLivenessPass, hasCurrentConsent, biometricConsent } from "../lib/identity_gate"; // [AVA-IDGATE-1]
+import { recordLivenessPass, hasCurrentConsent, biometricConsent, emailOf } from "../lib/identity_gate"; // [AVA-IDGATE-1]
 
 // ── POST /api/liveness/consent ───────────────────────────────────────────────
 // [AVA-IDGATE-1] Thin re-export so the consent endpoint lives beside the liveness
@@ -32,11 +32,8 @@ import { recordLivenessPass, hasCurrentConsent, biometricConsent } from "../lib/
 export async function livenessConsent(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
-  let email: string | null = null;
-  try {
-    const r = await metaDb(env).prepare("SELECT email FROM users WHERE uid=?1").bind(ctx.uid).first<{ email: string }>();
-    email = r?.email ?? null;
-  } catch { /* telemetry nicety, never load-bearing */ }
+  // D1 stores email_hash, never a raw email. emailOf → emailFor() (KV-cached Clerk).
+  const email = await emailOf(env, ctx.uid).catch(() => null);
   return biometricConsent(req, env, ctx.uid, email);
 }
 import { metaDb } from "../db/shard";

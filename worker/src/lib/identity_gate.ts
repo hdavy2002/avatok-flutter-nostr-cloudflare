@@ -6,22 +6,36 @@
 // gated. Payout/KYC is a SEPARATE project and is not touched here.
 //
 // WHY THIS SHAPE:
-//   • Deterrence lands at the moment of intent. A camera weeks earlier, during a
-//     signup the user has forgotten, deters nobody. The camera immediately before
-//     the first public post is the deterrent.
-//   • requireVerifiedKV() (auth.ts) is ALREADY a liveness gate — it reads
-//     clerk_account_link.tier, which applyDiditPass() sets. It never touched the
-//     phone. We layer a 90-day expiry on top rather than reinventing it.
+//   Deterrence lands at the moment of intent. A camera weeks earlier, during a signup
+//   the user has forgotten, deters nobody. The camera immediately before the first
+//   public post is the deterrent.
 //
-// EXPIRY IS READ FROM `liveness_passed_at`, NEVER FROM `tier`.
-// kyc.ts sets the same tier='verified' boolean. Expiring `tier` would silently
-// revoke the tier of users who passed a full KYC and re-gate their payouts.
-// `tier` is write-only and additive. See spec §3.4.
+// ── STORAGE: `identity_proofs`, NOT `clerk_account_link` ──────────────────────────
+// An earlier draft stored liveness on `clerk_account_link.tier`, because
+// auth.ts:requireVerifiedKV() reads that column. That was WRONG and would have bricked
+// the gate the moment it was switched on:
+//   • `clerk_account_link` is a LEGACY uid-keyed table, explicitly slated for deletion
+//     in migrations/cfnative.sql ("dropped in the housekeeping re-key pass").
+//   • NOTHING inserts into it. A new user has no row, so an UPDATE matches zero rows,
+//     `liveness_passed_at` is never set, and EVERY user is blocked forever.
+//   • `requireVerifiedKV()` has ZERO callers. It is dead code — which is precisely why
+//     nobody had noticed the table underneath it was dead too.
+//
+// The live record is `identity_proofs` (uid, proof='liveness'), which applyDiditPass()
+// already writes on every pass. We reuse its columns rather than inventing parallel ones:
+//   verified_at   → when liveness passed. The 90-day window is measured from here.
+//   provider      → 'didit' | 'grandfathered'. NEVER conflate these; see spec §11.1.
+//   evidence_ref  → 'didit:<session id>'
+//
+// `kyc_status` and `clerk_account_link.tier` are NOT touched. kyc.ts owns the first,
+// and the second is legacy. Expiring either would silently revoke the status of users
+// who passed a full KYC and re-gate their payouts.
 import type { Env } from "../types";
 import { json } from "../util";
 import { metaDb } from "../db/shard";
 import { readConfig } from "../routes/config";
 import { trackUserContact } from "../hooks";
+import { emailFor } from "./identity";
 
 const APP = "avatok";
 const DAY_MS = 86_400_000;
@@ -39,38 +53,40 @@ export type PublicAction =
 export type GateReason = "never_passed" | "expired" | "grandfather_expired";
 
 interface LivenessRow {
-  liveness_passed_at: number | null;
-  liveness_source: string | null;
-  tier: string | null;
+  verified_at: number | null;
+  provider: string | null;
 }
 
 /**
- * Resolve a user's liveness state. Returns null on a DB error so the caller can
- * FAIL CLOSED — a post can wait; a bad actor must not slip through on an infra
- * hiccup.
+ * Resolve a user's liveness proof. Returns undefined on a DB ERROR (caller fails
+ * closed) and null when the row genuinely does not exist (never verified).
+ *
+ * `status='verified'` matters: identity_proofs also holds 'pending' and 'rejected'
+ * rows, and a pending attempt must never satisfy the gate.
  */
-async function readLiveness(env: Env, uid: string): Promise<LivenessRow | null> {
+async function readLiveness(env: Env, uid: string): Promise<LivenessRow | null | undefined> {
   try {
     return await metaDb(env)
-      .prepare("SELECT liveness_passed_at, liveness_source, tier FROM clerk_account_link WHERE uid=?1")
+      .prepare(
+        "SELECT verified_at, provider FROM identity_proofs WHERE uid=?1 AND proof='liveness' AND status='verified'",
+      )
       .bind(uid)
       .first<LivenessRow>();
   } catch {
-    return null;
+    return undefined; // DB error — distinct from "no proof"
   }
 }
 
 /**
- * Best-effort email lookup. Project rule: EVERY telemetry event carries the user's
- * email so support can pull a person's whole history in PostHog by email alone.
- * Never throws; a missing email degrades telemetry, it must never block a request.
+ * Project rule: EVERY telemetry event carries the user's email so support can pull a
+ * person's whole history in PostHog by email alone.
+ *
+ * ⚠️ D1 NEVER STORES A RAW EMAIL — `users` has `email_hash` only, by design. An
+ * earlier draft did `SELECT email FROM users`, which silently threw on every call and
+ * shipped null. The canonical lookup is `emailFor()` (lib/identity.ts): a KV-cached
+ * Clerk API call. Re-exported here so gate call sites have one obvious import.
  */
-export async function emailOf(env: Env, uid: string): Promise<string | null> {
-  try {
-    const r = await metaDb(env).prepare("SELECT email FROM users WHERE uid=?1").bind(uid).first<{ email: string }>();
-    return r?.email ?? null;
-  } catch { return null; }
-}
+export { emailFor as emailOf };
 
 /** Days elapsed since the pass, or null if never passed. */
 function daysSince(passedAt: number | null | undefined): number | null {
@@ -100,25 +116,26 @@ export async function livenessState(env: Env, uid: string): Promise<LivenessStat
   } catch { /* DEFAULTS is the source of truth; 90 is the documented default */ }
 
   const row = await readLiveness(env, uid);
-  if (row === null) {
-    // DB error. Caller fails closed. Distinguished from "no row" below by the
-    // identity_gate_error event the caller emits.
+  // undefined = DB error → fail closed. null = no proof → never passed. Same outward
+  // answer, but the caller emits identity_gate_error for the first so a D1 wobble is
+  // visible in PostHog rather than looking like a wave of unverified users.
+  if (row === undefined || row === null) {
     return { valid: false, reason: "never_passed", daysSincePass: null, source: null };
   }
 
-  const d = daysSince(row.liveness_passed_at);
+  const d = daysSince(row.verified_at);
   if (d === null) {
     return { valid: false, reason: "never_passed", daysSincePass: null, source: null };
   }
   if (d >= validityDays) {
     // A grandfathered user hitting expiry is a different story from a real user
-    // re-verifying: they have NEVER faced a camera. Worth its own reason string
-    // so the day-30..90 wave is legible in PostHog.
+    // re-verifying: they have NEVER faced a camera. Its own reason string, so the
+    // day-30..90 wave is legible in PostHog.
     const reason: GateReason =
-      row.liveness_source === "grandfathered" ? "grandfather_expired" : "expired";
-    return { valid: false, reason, daysSincePass: d, source: row.liveness_source };
+      row.provider === "grandfathered" ? "grandfather_expired" : "expired";
+    return { valid: false, reason, daysSincePass: d, source: row.provider };
   }
-  return { valid: true, daysSincePass: d, source: row.liveness_source };
+  return { valid: true, daysSincePass: d, source: row.provider };
 }
 
 /**
@@ -186,9 +203,18 @@ export async function gatePublicAction(
 /**
  * Record a real Didit liveness pass. Called from applyDiditPass().
  *
- * Writes `tier='verified'` for backward compatibility with every existing reader
- * of requireVerifiedKV(), and `liveness_passed_at` as the expiry source of truth.
- * NEVER clears `tier` — see the header note.
+ * An UPSERT, not an UPDATE. A user who has never been verified has no
+ * `identity_proofs` row, so an UPDATE would match zero rows, report success, and
+ * leave the user permanently gated. That failure is silent, which is what makes it
+ * dangerous — hence the explicit ON CONFLICT.
+ *
+ * `provider='didit'` is what distinguishes a real check from a grandfathered user
+ * (spec §11.1). It must never be written for anyone who did not face a camera: that
+ * row is what a lawful request relies on.
+ *
+ * applyDiditPass() already writes this same row; this call is idempotent and exists so
+ * the gate owns its own invariant rather than depending on a sibling function's order
+ * of statements.
  */
 export async function recordLivenessPass(
   env: Env, uid: string, sessionId: string,
@@ -196,14 +222,16 @@ export async function recordLivenessPass(
   const now = Date.now();
   await metaDb(env)
     .prepare(
-      `UPDATE clerk_account_link
-          SET liveness_passed_at = ?2,
-              liveness_source    = 'didit',
-              liveness_ref       = ?3,
-              tier               = 'verified'
-        WHERE uid = ?1`,
+      `INSERT INTO identity_proofs (uid, proof, status, provider, evidence_ref, verified_at, updated_at)
+            VALUES (?1, 'liveness', 'verified', 'didit', ?2, ?3, ?3)
+       ON CONFLICT(uid, proof) DO UPDATE SET
+            status       = 'verified',
+            provider     = 'didit',
+            evidence_ref = ?2,
+            verified_at  = ?3,
+            updated_at   = ?3`,
     )
-    .bind(uid, now, `didit:${sessionId}`)
+    .bind(uid, `didit:${sessionId}`, now)
     .run();
 }
 

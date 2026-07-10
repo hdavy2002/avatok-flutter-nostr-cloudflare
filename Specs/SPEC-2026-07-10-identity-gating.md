@@ -21,6 +21,38 @@ before `identityGatingEnabled` is flipped on.
 | Client gate | `app/lib/features/identity/public_action_gate.dart` |
 | BIPA consent screen | `app/lib/features/identity/biometric_consent_screen.dart` |
 
+### ⚠️ Bug caught at migration time — `clerk_account_link` DOES NOT EXIST ON PROD
+
+The first implementation stored `liveness_passed_at` on `clerk_account_link`, because
+`auth.ts:requireVerifiedKV()` reads that table. Verifying against the live databases
+before the migration showed:
+
+| | prod `avatok-meta` | staging |
+|---|---|---|
+| `clerk_account_link` | **table does not exist** | exists, **0 rows** |
+| `identity_proofs` (liveness) | 1 | 1 |
+| `users` | 18 | 0 |
+
+`cfnative.sql` says the table is dropped in the re-key pass. Nothing inserts into it.
+`requireVerifiedKV()` has **zero callers**, which is why nobody noticed the table under
+it was gone.
+
+Had this shipped, `readLiveness()` would have thrown on every gate call. The gate fails
+closed, so **every user would have been 403'd on every public action** the moment
+`identityGatingEnabled` was flipped.
+
+Liveness now lives in **`identity_proofs` (uid, proof='liveness')**, which
+`applyDiditPass()` already writes: `verified_at` is the 90-day clock, `provider` is
+`'didit' | 'grandfathered'`, `evidence_ref` is the session. No parallel columns.
+
+**Second bug, same check:** `users` has **no `email` column** — only `email_hash`, by
+design. `SELECT email FROM users` threw silently on every telemetry call and shipped
+`null`, violating the project rule that every event carries the user's email. The
+canonical lookup is `emailFor()` (`lib/identity.ts`), a KV-cached Clerk call.
+
+Lesson: verify the schema against the live database before writing code that reads it.
+Reading `auth.ts` was not enough — the code was live, the table was not.
+
 ### Naming hazards discovered during the build — read before touching this
 
 1. **`authz.ts` already exports `requireLiveness()`.** It is the OLD onboarding gate:
@@ -615,10 +647,17 @@ cohort (§8).
 > `worker/src/routes/config.ts:biometricConsentVersion` (bump on any change).
 > A published schedule you do not follow is evidence against you, not a defence.
 
+- [x] §11.1 — **migrations RUN on staging and PROD, 2026-07-10.** Verified:
+      0 users without a verified liveness proof; 1 `didit` + 17 `grandfathered`;
+      expiry spread across days 36–88 (backdated 2–54 days), so no cliff and nobody
+      gated for at least 36 days. Prod had **18 users**, not 1M.
+
 **Still open — these block turning the flag on:**
 
-- [ ] §11.1 — run the backfill migration **before** flipping `identityGatingEnabled`.
-      Turning the flag on first gates the entire existing user base at once.
+- [ ] **Deploy the worker + consumers.** The gate code, the 410 routes, the consent
+      endpoint and the retention sweep are all committed but **not deployed**. The
+      schema is live; the code that reads it is not. `scripts/cf.sh worker deploy` /
+      `consumers deploy` with `ALLOW_PROD=1`.
 - [ ] **Deploy the web build.** `web-deploy.yml` is `workflow_dispatch` only — a push does
       NOT publish the site. The schedule page is committed but **not live** until someone
       runs that workflow. The app links to it. Until it deploys, the link 404s.

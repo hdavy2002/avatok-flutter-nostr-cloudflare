@@ -1,67 +1,69 @@
 -- [AVA-IDGATE-1] Grandfather existing users. Spec §11.1.
 --
--- RUN THIS SEPARATELY, AFTER 2026-07-10-identity-gating.sql, AND ONLY ONCE.
+-- Apply AFTER 2026-07-10-identity-gating.sql, and ONLY ONCE:
+--   scripts/cf.sh worker d1 execute avatok-meta --remote --file=migrations/2026-07-10-identity-gating-backfill.sql
+--
 -- Owner decision 2026-07-10: existing users must not be bothered by the new gate.
 --
--- TWO THINGS THIS DELIBERATELY DOES NOT DO:
+-- TWO THINGS THIS DELIBERATELY DOES:
 --
--- 1. It does NOT record grandfathered users as having passed a Didit check.
---    liveness_source='grandfathered' says, truthfully, that no check ever ran.
---    Setting liveness_passed_at without it would make the database assert a
---    liveness check happened — and that record is what gets handed to law
---    enforcement. A false record there undermines every claim built on the field.
+-- 1. It records grandfathered users as provider='grandfathered', NOT 'didit'.
+--    Writing 'didit' would make the database assert that a liveness check happened.
+--    That record is what gets handed to law enforcement. A false record there
+--    undermines every claim built on the field, and it is the only way to ever answer
+--    "what fraction of our users have actually been verified?"
 --
--- 2. It does NOT set a flat cutover timestamp. A flat value expires the ENTIRE
---    user base on the same day, 90 days later: a million liveness checks in 24
---    hours, a Didit invoice to match, and a support queue. Each row is backdated a
---    random 0-60 days so expiry spreads across days 30-90. Nobody is gated for at
---    least 30 days; renewals arrive as a curve, not a wall.
+-- 2. It backdates each row by a RANDOM 0-60 days rather than using a flat timestamp.
+--    A flat value expires the ENTIRE user base on the same day, 90 days later: a
+--    million liveness checks in 24 hours, a Didit invoice to match, and a support
+--    queue. Random backdating spreads expiry across days 30-90 — nobody is gated for
+--    at least 30 days, and renewals arrive as a curve rather than a wall.
 --
--- CONSEQUENCE, STATED PLAINLY: for the first 30-90 days the deterrent applies to
--- NEW users only. Every existing account — including any bad actor already on the
--- platform — is trusted without ever having faced a camera. Accepted cost of not
--- disrupting the base. It resolves itself as the window expires.
+-- CONSEQUENCE, STATED PLAINLY: for the first 30-90 days the deterrent applies to NEW
+-- users only. Every existing account — including any bad actor already on the platform
+-- — is trusted without ever having faced a camera. Accepted cost of not disrupting the
+-- base. It resolves itself as the window expires.
+--
+-- Users who REALLY passed already have an identity_proofs row with provider='didit'
+-- and a real verified_at (written by applyDiditPass). We do not touch them: the
+-- INSERT below skips any uid that already has a 'liveness' proof, whatever its status.
+-- That is intentional — a 'rejected' or 'pending' row means the user engaged with the
+-- real check, and silently promoting them to grandfathered would erase that.
 
--- Step 1 — users who REALLY passed a liveness check keep their real timestamp.
--- identity_proofs is the append-only record written by applyDiditPass().
-UPDATE clerk_account_link
-   SET liveness_passed_at = (
-         SELECT ip.verified_at FROM identity_proofs ip
-          WHERE ip.uid = clerk_account_link.uid
-            AND ip.proof = 'liveness' AND ip.status = 'verified'
-       ),
-       liveness_source = 'didit',
-       liveness_ref    = (
-         SELECT ip.evidence_ref FROM identity_proofs ip
-          WHERE ip.uid = clerk_account_link.uid
-            AND ip.proof = 'liveness' AND ip.status = 'verified'
-       ),
-       tier = 'verified'
- WHERE liveness_passed_at IS NULL
-   AND EXISTS (
-         SELECT 1 FROM identity_proofs ip
-          WHERE ip.uid = clerk_account_link.uid
-            AND ip.proof = 'liveness' AND ip.status = 'verified'
-       );
-
--- Step 2 — everyone else is grandfathered, backdated 0-60 days.
--- 5184000000 ms = 60 days. ABS(RANDOM()) % that ⇒ uniform spread.
--- Expiry (passed_at + 90d) therefore lands between day 30 and day 90 from now.
+-- 5184000000 ms = 60 days. ABS(RANDOM()) % that ⇒ uniform spread, evaluated PER ROW.
+-- Expiry (verified_at + 90d) therefore lands between day 30 and day 90 from now.
 --
--- :cutover — pass the migration run time in ms. Do NOT use a literal; the value
--- must match what the backfill telemetry reports.
-UPDATE clerk_account_link
-   SET liveness_passed_at = :cutover - (ABS(RANDOM()) % 5184000000),
-       liveness_source    = 'grandfathered',
-       tier               = 'verified'
- WHERE liveness_passed_at IS NULL;
+-- `unixepoch()*1000` rather than a bound :cutover parameter: `wrangler d1 execute
+-- --file` does not bind named parameters, and a hand-pasted literal is the kind of
+-- thing that gets copied into the wrong environment three weeks later.
+INSERT INTO identity_proofs (uid, proof, status, provider, evidence_ref, verified_at, updated_at)
+SELECT
+  u.uid,
+  'liveness',
+  'verified',
+  'grandfathered',
+  NULL,
+  (unixepoch() * 1000) - (ABS(RANDOM()) % 5184000000),
+  (unixepoch() * 1000)
+FROM users u
+WHERE NOT EXISTS (
+  SELECT 1 FROM identity_proofs p WHERE p.uid = u.uid AND p.proof = 'liveness'
+);
 
--- Step 3 — sanity. Both should be 0. If not, STOP and investigate before enabling
--- identityGatingEnabled: a NULL here means that user gets gated on their next
--- public action, which is exactly what this migration exists to prevent.
---   SELECT COUNT(*) FROM clerk_account_link WHERE liveness_passed_at IS NULL;
---   SELECT COUNT(*) FROM clerk_account_link WHERE liveness_source IS NULL;
+-- ---------------------------------------------------------------------------
+-- VERIFY BEFORE FLIPPING identityGatingEnabled
+-- ---------------------------------------------------------------------------
+-- (a) Should be 0. A user with no verified liveness proof gets gated on their next
+--     public action — exactly what this migration exists to prevent.
+--   SELECT COUNT(*) FROM users u
+--    WHERE NOT EXISTS (SELECT 1 FROM identity_proofs p
+--                       WHERE p.uid=u.uid AND p.proof='liveness' AND p.status='verified');
 --
--- And this tells you the true verified fraction of the user base — a question you
--- will be asked, and which is unanswerable without liveness_source:
---   SELECT liveness_source, COUNT(*) FROM clerk_account_link GROUP BY 1;
+-- (b) The true verified fraction of the user base — a question you will be asked, and
+--     one that is unanswerable without the provider distinction:
+--   SELECT provider, COUNT(*) FROM identity_proofs
+--    WHERE proof='liveness' AND status='verified' GROUP BY provider;
+--
+-- (c) Expiry spread — should be a smooth curve across ~60 buckets, not a spike:
+--   SELECT ((unixepoch()*1000) - verified_at)/86400000 AS days_ago, COUNT(*)
+--     FROM identity_proofs WHERE provider='grandfathered' GROUP BY 1 ORDER BY 1;
