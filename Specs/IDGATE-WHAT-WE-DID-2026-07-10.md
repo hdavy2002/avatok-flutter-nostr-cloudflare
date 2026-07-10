@@ -173,19 +173,68 @@ spec as an accepted gap, not something we forgot.
 
 ---
 
-## Before you turn it on — three blockers
+## Update — the three blockers are done
 
-1. **Run the backfill migration first.** `worker/migrations/2026-07-10-identity-gating-backfill.sql`.
-   Flip the flag before this and every existing user gets gated at once.
-2. **Publish the retention schedule on your website.** BIPA requires it, and the app already
-   promises it.
-3. **Build the 584-day deletion sweep.** The table exists; nothing fills or empties it yet.
-   Until then, deletion drops the video for everyone, and nothing is retained for a lawful
-   request — the opposite of what you asked for.
+**1. Migrations: run.** On staging first, then production. Checked afterwards:
 
-Also worth doing, not blocking: get Didit's price above 500 checks/month, and add the spend
-alarm. "500 free/month" is a cap, not a free tier, and with 90-day renewals it's up to four
-checks per active user per year. Fine at MVP. Not fine after a growth push.
+- 0 users left without a verification record (so nobody gets gated by surprise)
+- 1 person really did a camera check; 17 are marked `grandfathered`
+- Their renewal dates are spread across days 36–88, so no cliff
+
+Also worth knowing: **production has 18 users, not a million.** The "everyone gets gated on
+the same morning" worry was real but hypothetical at this scale.
+
+**2. Retention schedule: written and committed.** `avatok.ai/biometric-retention`, linked
+from the consent screen, the site footer, and the privacy policy.
+
+⚠️ **It is not live yet.** Your web deploy only runs when someone clicks it in the Actions
+tab — a push doesn't publish the site. Until you run `web-deploy.yml`, the link in the app
+404s and BIPA §15(a) is still unsatisfied. **This is now the top of the list.**
+
+**3. Deletion sweep: built, at 256 days** (changed from 584 as you asked). It runs every 15
+minutes. Deletion now keeps the record and — depending on where the person lives — either
+destroys the video immediately or holds it 256 days.
+
+Because the retention period changed, the consent version was bumped. Anyone who consented to
+584 days will be asked again. Nobody should be held to a period they never read.
+
+---
+
+## A serious bug we caught, and how
+
+Before running anything against production, I checked the tables actually existed.
+
+The original code stored the liveness record in a table called `clerk_account_link`, because
+that's what the existing verification code reads. **That table does not exist on production.**
+It's a leftover from an old design, marked for deletion, and the function that reads it has no
+callers left — so nobody noticed the ground had gone.
+
+If this had shipped, every single check would have errored. And because the gate is built to
+fail *safe*, an error means "block" — so **the moment you switched the gate on, every user
+would have been locked out of posting, permanently.**
+
+The record now lives in `identity_proofs`, the table your Didit flow already writes to.
+
+A second bug from the same check: your `users` table stores an email *hash*, never the address
+— which is good design. But my telemetry code was asking for `email`, which doesn't exist, and
+silently sending nothing. Fixed to use the proper Clerk lookup.
+
+The lesson is worth keeping: reading the code wasn't enough. The code was live; the table was
+not.
+
+---
+
+## What still has to happen
+
+1. **Run `web-deploy.yml`.** The retention schedule is written but not published. The app
+   already promises users it exists.
+2. **Deploy the worker and consumers.** The database is updated; the code that uses it isn't
+   deployed yet. Nothing breaks in the meantime — the gate is off — but nothing works either.
+3. **Then** flip `identityGatingEnabled` on staging and test.
+
+Not blocking, but don't forget: get Didit's price above 500 checks/month. "500 free/month" is a
+cap, not a free tier, and with 90-day renewals that's up to four checks per active user per
+year. Fine at 18 users. Not fine after a growth push.
 
 ---
 
