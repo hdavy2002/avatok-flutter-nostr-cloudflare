@@ -24,6 +24,21 @@ import { json } from "../util";
 import { rateLimit } from "../money"; // shared KV rate limiter (abuse limits)
 import { requireUser, isFail } from "../authz";
 import { setVerifiedCache } from "../auth";
+import { recordLivenessPass, hasCurrentConsent, biometricConsent } from "../lib/identity_gate"; // [AVA-IDGATE-1]
+
+// ── POST /api/liveness/consent ───────────────────────────────────────────────
+// [AVA-IDGATE-1] Thin re-export so the consent endpoint lives beside the liveness
+// routes it guards. Logic in lib/identity_gate.ts. Spec §10.4.
+export async function livenessConsent(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  let email: string | null = null;
+  try {
+    const r = await metaDb(env).prepare("SELECT email FROM users WHERE uid=?1").bind(ctx.uid).first<{ email: string }>();
+    email = r?.email ?? null;
+  } catch { /* telemetry nicety, never load-bearing */ }
+  return biometricConsent(req, env, ctx.uid, email);
+}
 import { metaDb } from "../db/shard";
 import { track, metric, brainFact } from "../hooks";
 import { notifyUser } from "../notify";
@@ -102,6 +117,14 @@ export async function diditSession(req: Request, env: Env): Promise<Response> {
   if (!diditConfigured(env)) {
     void track(env, ctx.uid, "didit_session_blocked", "platform", { reason: "not_configured" });
     return json({ error: "liveness unavailable", reason: "not_configured" }, 503);
+  }
+  // [AVA-IDGATE-1] BIPA §15(b): informed written consent BEFORE biometric capture.
+  // Enforced HERE, server-side, not just in the UI — a client that skips the consent
+  // screen must not be able to open a capture session. Fails closed (no proof of
+  // consent ⇒ no capture). The client should POST /api/liveness/consent first.
+  if (!(await hasCurrentConsent(env, ctx.uid))) {
+    void track(env, ctx.uid, "didit_session_blocked", "platform", { reason: "no_biometric_consent" });
+    return json({ error: "consent_required", reason: "no_biometric_consent" }, 403);
   }
   // [LIVE-DIDIT-4] Global create-throttle: Didit caps session creation at
   // 600/min per API key (and free-tier general APIs at 10/min) — stay well
@@ -468,6 +491,22 @@ async function applyDiditPass(env: Env, uid: string, sid: string): Promise<void>
       ).bind(uid, `didit:${sid}`, now),
     ]);
   } catch { /* best-effort — Didit's session record is the source of truth */ }
+  // [AVA-IDGATE-1] Stamp liveness_passed_at + liveness_source='didit'. This is the
+  // SOLE source of truth for the 90-day expiry (spec §3.4) — `tier` cannot express
+  // it, because kyc.ts writes the same boolean and expiring it would silently revoke
+  // KYC status. recordLivenessPass also writes tier='verified' for back-compat with
+  // every existing reader of requireVerifiedKV(); it never clears it.
+  // NOT best-effort: if this write fails the user is not actually gated-through, and
+  // silently swallowing it would leave them stuck in a verify loop with no signal.
+  try {
+    await recordLivenessPass(env, uid, sid);
+  } catch (e) {
+    void track(env, uid, "identity_gate_error", "platform", {
+      stage: "record_liveness_pass", session_id: sid, err: String(e).slice(0, 200),
+    });
+    throw e;
+  }
+  void track(env, uid, "verified_set_by", "platform", { caller: "didit", session_id: sid });
   await setVerifiedCache(env, uid, true).catch(() => {});
   await invalidateLevelCache(env, uid).catch(() => {});
   void markGatePassed(env, uid);

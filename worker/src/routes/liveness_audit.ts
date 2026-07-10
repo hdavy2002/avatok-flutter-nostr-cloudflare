@@ -11,6 +11,7 @@
 // yet, so the sweep is dark until a cron trigger is wired).
 import type { Env } from "../types";
 import { metaDb } from "../db/shard";
+import { isLegalHold } from "../lib/identity_gate"; // [AVA-IDGATE-1] spec §10.5
 
 export interface DeviceCtx { device_model?: string; os?: string; app_version?: string; }
 
@@ -123,6 +124,20 @@ export async function sweepAbandonedLiveness(env: Env): Promise<{ swept: number 
  * single missing bucket/binding.
  */
 export async function purgeLivenessEvidence(env: Env, uid: string): Promise<{ deleted: number }> {
+  // [AVA-IDGATE-1] Legal hold beats every purge. Spec §10.5/§10.6.
+  //
+  // This function destroys the liveness evidence for an account. If a CSAM or
+  // serious-harm report has been filed against that account, the evidence must be
+  // PRESERVED — destroying it may constitute spoliation, and US law generally
+  // requires preserving reported material for a year.
+  //
+  // FAILS CLOSED: isLegalHold() returns true when it cannot determine the answer.
+  // The rest of this function is deliberately best-effort/never-throws; this check
+  // is the one place that must stop the flow outright.
+  if (await isLegalHold(env, uid)) {
+    console.warn("purgeLivenessEvidence refused: account under legal hold", uid);
+    return { deleted: 0 };
+  }
   let deleted = 0;
   const wipe = async (prefix: string) => {
     try {

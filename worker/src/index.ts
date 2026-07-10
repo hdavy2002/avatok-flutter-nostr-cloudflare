@@ -13,7 +13,9 @@ import { getStorageSummary } from "./storage";
 import { streamWebhook } from "./routes/stream";
 import { brain } from "./routes/brain";
 import { deleteAccount, cancelDeletion, deletionStatus } from "./routes/account";
-import { idSession, idResult, idStatus, idEmailStart, idEmailVerify, idPhoneConfirm, idPasswordStart, idPasswordSet } from "./routes/id";
+// [AVA-IDGATE-1] idSession / idResult / idPhoneConfirm are NO LONGER ROUTED — they
+// minted verification without a Didit check. See LEGACY_GONE in the router.
+import { idStatus, idEmailStart, idEmailVerify, idPasswordStart, idPasswordSet } from "./routes/id";
 import { walletTopup, walletTopupIntent, stripeWebhook, walletSpend, walletBalance, walletTransactions, walletEarnings, walletLive, walletLedger, walletLedgerDetail, walletReceiptResend } from "./routes/wallet";
 import { adminLedger, adminRefund, adminAdjust, adminAccount, adminRecon, adminEscrowHold, adminEscrowRelease, adminTaxExport, adminFailedSettlements, adminRetrySettlement, requireAdmin } from "./routes/admin_money";
 import { liveStart, liveStop, liveJoin, liveRoom, liveDonate, liveMod, liveState } from "./routes/live";
@@ -21,9 +23,30 @@ import { consultJoin, consultRoom, consultSfu, consultComplete, consultCancel, c
 import { runMoney, moneyDlq, type MoneyMsg } from "./money_engine";
 import { setTestClock } from "./clock";
 import { stripeIdentityWebhook, agreementStatus, agreementDoc, agreementAccept } from "./routes/kyc";
-import { livenessStart, livenessUpload, livenessVerify, livenessResult, runLivenessChecks } from "./routes/liveness";
-import { livenessV3Session, livenessV3Upload, livenessV3Verify, livenessV3Result, runLivenessV3Checks } from "./routes/liveness_v3";
-import { diditSession, diditResult, diditDone, diditWebhook, connectorsDone } from "./routes/liveness_didit";
+// [AVA-IDGATE-1] The V2/V3 HTTP entrypoints are no longer routed (LEGACY_GONE).
+// The queue consumers stay imported: in-flight messages must still drain cleanly.
+// Nothing enqueues new ones now that the routes are closed.
+import { runLivenessChecks } from "./routes/liveness";
+import { runLivenessV3Checks } from "./routes/liveness_v3";
+import { diditSession, diditResult, diditDone, diditWebhook, connectorsDone, livenessConsent } from "./routes/liveness_didit";
+import * as hooks from "./hooks"; // [AVA-IDGATE-1] legacy-route telemetry
+
+// [AVA-IDGATE-1] Routes closed 2026-07-10. Each previously called setVerifiedCache(),
+// so each could mark a user "verified" without a Didit liveness check ever running —
+// the flag the entire deterrence model rests on. 410 + telemetry, never silently 404.
+const LEGACY_GONE = new Set<string>([
+  "/api/id/session",            // id.ts — Rekognition Face Liveness session
+  "/api/id/result",             // id.ts — auto-verified at >=90% confidence
+  "/api/id/phone/confirm",      // id.ts — phone OTP; all phone verification removed
+  "/api/id/liveness/start",     // liveness.ts — Workers AI provider
+  "/api/id/liveness/upload",
+  "/api/id/liveness/verify",
+  "/api/id/liveness/result",
+  "/api/liveness/v3/session",   // liveness_v3.ts — policy engine
+  "/api/liveness/v3/upload",
+  "/api/liveness/v3/verify",
+  "/api/liveness/v3/result",
+]);
 import { guestCreate, guestHandleCheck, guestUpgrade, getIdentityLevel } from "./routes/ladder";
 import { createSlot, listSlots, cancelSlot, bookSlot, cancelBooking, listEvents, listBlocks, getRules, putRules, getTime } from "./routes/calendar";
 import { listBookings, getPolicies, putPolicies, proposeReschedule, respondReschedule, listReschedules, joinInfo } from "./routes/booking";
@@ -518,31 +541,43 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // --- backup ---
       if (p === "/api/backup" && req.method === "POST") return await api.backup(req, env);
 
-      // --- AvaID (Tier-2 verification, dual auth) ---
-      if (p === "/api/id/session" && req.method === "POST") return await idSession(req, env);
-      if (p === "/api/id/result" && req.method === "POST") return await idResult(req, env);
+      // --- AvaID ---
       if (p === "/api/id/status" && req.method === "GET") return await idStatus(req, env);
-      // Onboarding contact verification — phone (Firebase OTP) + email (server OTP).
+      // Onboarding contact verification — email (server OTP) + password.
+      // PHONE OTP REMOVED 2026-07-10 (/api/id/phone/confirm) — see LEGACY_GONE below.
       if (p === "/api/id/email/start" && req.method === "POST") return await idEmailStart(req, env);
       if (p === "/api/id/email/verify" && req.method === "POST") return await idEmailVerify(req, env);
       if (p === "/api/id/password/start" && req.method === "POST") return await idPasswordStart(req, env);
       if (p === "/api/id/password/set" && req.method === "POST") return await idPasswordSet(req, env);
-      if (p === "/api/id/phone/confirm" && req.method === "POST") return await idPhoneConfirm(req, env);
-      // L2 liveness — Workers AI provider (flag-gated; Rekognition stays default).
-      if (p === "/api/id/liveness/start" && req.method === "POST") return await livenessStart(req, env);
-      if (p === "/api/id/liveness/upload" && req.method === "POST") return await livenessUpload(req, env);
-      if (p === "/api/id/liveness/verify" && req.method === "POST") return await livenessVerify(req, env, ctx);
-      // LIVE-V2 P0: async-verify poll target (verify now returns 202 immediately).
-      if (p === "/api/id/liveness/result" && req.method === "GET") return await livenessResult(req, env);
-      // [LIVENESS-V3] Policy-Engine entrypoint (dark behind livenessV3Enabled).
-      // Extends V2 — same async liveness-verify queue, Rekognition DetectFaces +
-      // deterministic rules, append-only verdicts. See routes/liveness_v3.ts.
-      if (p === "/api/liveness/v3/session" && req.method === "POST") return await livenessV3Session(req, env);
-      if (p === "/api/liveness/v3/upload" && req.method === "PUT") return await livenessV3Upload(req, env);
-      if (p === "/api/liveness/v3/verify" && req.method === "POST") return await livenessV3Verify(req, env, ctx);
-      if (p === "/api/liveness/v3/result" && req.method === "GET") return await livenessV3Result(req, env);
+
+      // [AVA-IDGATE-1] LEGACY TRUST-MINTING ROUTES — CLOSED 2026-07-10.
+      //
+      // Each of these called setVerifiedCache(uid, true), i.e. each was a door onto
+      // the SAME "this user is verified" switch that the whole deterrence model rests
+      // on. Didit replaced them as the liveness provider, but they stayed registered:
+      // an old client, a bug, or a direct request could mark a user verified WITHOUT
+      // any liveness check ever running. That is a bypass, not dead code.
+      //
+      //   /api/id/session,  /api/id/result          → id.ts        (Rekognition)
+      //   /api/id/liveness/{start,upload,verify,result} → liveness.ts   (Workers AI)
+      //   /api/liveness/v3/{session,upload,verify,result} → liveness_v3.ts
+      //   /api/id/phone/confirm                     → id.ts        (phone OTP, removed)
+      //
+      // 410 Gone, not 404 — an old client deserves a distinguishable answer, and the
+      // telemetry tells us whether anyone is still calling. `legacy_liveness_route_called`
+      // MUST be zero in PostHog. Non-zero ⇒ an old client in the wild, or someone
+      // probing. Alert on it; do not batch.
+      if (LEGACY_GONE.has(p)) {
+        void hooks.track(env, "anon", "legacy_liveness_route_called", "avatok", { path: p, method: req.method });
+        return new Response(JSON.stringify({ error: "gone", reason: "liveness_provider_migrated" }), {
+          status: 410, headers: { "content-type": "application/json" },
+        });
+      }
+
       // [LIVE-DIDIT-1] didit.me-powered liveness (owner decision 2026-07-09) —
-      // the LIVE path; v2/v3 above are retired behind diditLivenessEnabled.
+      // the ONLY liveness path. v2/v3/Rekognition are closed above.
+      // [AVA-IDGATE-1] BIPA consent — MUST precede a capture session (spec §10.4).
+      if (p === "/api/liveness/consent" && req.method === "POST") return await livenessConsent(req, env);
       if (p === "/api/liveness/didit/session" && req.method === "POST") return await diditSession(req, env);
       if (p === "/api/liveness/didit/result" && req.method === "GET") return await diditResult(req, env);
       if (p === "/api/liveness/didit/done" && req.method === "GET") return diditDone();

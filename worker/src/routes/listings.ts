@@ -42,7 +42,9 @@ import { recordView, trackImpressions, geoOf } from "./insights";
 import { guardWrite } from "./moderate"; // save-time content validation (Nemotron)
 import { notifyUser } from "../notify";
 import { emailBookingConfirmed } from "../cal/emails";
-import { readConfig } from "./config"; // P4: listingLivenessGate
+// [AVA-IDGATE-1] readConfig is no longer read here — requireLiveness() owns the
+// flag check (identityGatingEnabled) and the fail-closed posture.
+import { requireLiveness } from "../lib/identity_gate";
 
 const APP = "avaexplore";
 // live_event/consult = creator services; sell/buy/social = AvaMarketplace listings.
@@ -267,25 +269,36 @@ function normFields(b: any): Record<string, unknown> {
   return out;
 }
 
-// Marketplace "sell" gate (owner decision 2026-07-07): liveness is now the
-// ONBOARDING gate ONLY; creating/publishing a marketplace listing requires a
-// one-time PHONE OTP instead. When listingLivenessGate is ON (flag reused), NO
-// user may create/publish ANY listing unless contact_verification.phone_verified=1.
-// Browsing stays free. Returns a 403 Response to short-circuit, or null to proceed.
-// Fail CLOSED — if the lookup throws we treat the user as unverified (a listing can
-// wait; a bad actor cannot slip through on an infra hiccup).
+// [AVA-IDGATE-1] Marketplace listing gate. Spec: Specs/SPEC-2026-07-10-identity-gating.md
+//
+// WAS (2026-07-07): a one-time PHONE OTP — `contact_verification.phone_verified=1`,
+// rejecting with 403 `phone_required`.
+// NOW (2026-07-10): a Didit LIVENESS pass, valid 90 days. All phone verification is
+// removed app-wide; a phone number proved nothing about identity, cost money in SMS,
+// and could not be traced by us in any jurisdiction anyway.
+//
+// Creating a listing is a PUBLIC action, so it goes through the same gate as posts,
+// comments, going live, DMs to strangers, group posts and public uploads. One gate,
+// one contract, no per-surface special cases — a gap in a safety control is a
+// destination, not an omission.
+//
+// requireLiveness() fails CLOSED and emits its own telemetry. Returns a 403 Response
+// to short-circuit, or null to proceed. Browsing stays free.
 async function phoneGate(env: Env, uid: string, listingKind: string, listingId: string | null): Promise<Response | null> {
-  let on = false;
-  try { on = (await readConfig(env)).listingLivenessGate === true; } catch { on = false; }
-  if (!on) return null;
-  let verified = false;
+  const email = await emailOf(env, uid);
+  const blocked = await requireLiveness(env, uid, email, "listing");
+  if (!blocked) return null;
+  track(env, uid, "listing_blocked_identity_unverified", APP, { listing_id: listingId, listing_kind: listingKind });
+  return blocked;
+}
+
+// Best-effort email lookup so identity-gate telemetry is queryable by email in
+// PostHog (project rule: every event carries the user's email). Never throws.
+async function emailOf(env: Env, uid: string): Promise<string | null> {
   try {
-    const row = await metaDb(env).prepare("SELECT phone_verified FROM contact_verification WHERE uid=?1").bind(uid).first<{ phone_verified: number }>();
-    verified = Number(row?.phone_verified ?? 0) === 1;
-  } catch { verified = false; } // fail closed
-  if (verified) return null;
-  track(env, uid, "listing_blocked_phone_unverified", APP, { listing_id: listingId, listing_kind: listingKind });
-  return json({ error: "phone_required" }, 403);
+    const r = await metaDb(env).prepare("SELECT email FROM users WHERE uid=?1").bind(uid).first<{ email: string }>();
+    return r?.email ?? null;
+  } catch { return null; }
 }
 
 // POST /api/listings — create a draft.

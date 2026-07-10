@@ -65,8 +65,27 @@ export async function handleCsam(
   const { hash, r2Key, media_id, uid, source } = args;
   const now = Date.now();
 
+  // [AVA-IDGATE-1] LEGAL HOLD FIRST — before anything is destroyed, and before the
+  // ban, so a race with an in-flight account-deletion cannot win. While legal_hold=1,
+  // handleDeletion() and purgeLivenessEvidence() refuse to run, so the account's
+  // liveness evidence and identity record survive even if the user requests deletion.
+  // US law generally requires PRESERVING reported CSAM (18 U.S.C. §2258A); Cloudflare's
+  // own CSAM guidance says preserve for one year. Destroying it may be spoliation.
+  try {
+    await env.DB_META.prepare(
+      "UPDATE users SET legal_hold=1, legal_hold_reason=?2, legal_hold_at=?3 WHERE uid=?1",
+    ).bind(uid, `csam:${source}`, now).run();
+  } catch (e) {
+    // If we cannot set the hold we must NOT proceed to delete the blob — that would
+    // destroy the only copy with no preservation in place. Fail loudly and retry.
+    console.error("CSAM: failed to set legal_hold — aborting before delete", uid, String(e));
+    throw e;
+  }
+
   // TODO(legal): before delete, copy bytes to a locked evidence bucket for
   // preservation per NCMEC/§2258A. Left out deliberately pending counsel sign-off.
+  // The legal_hold above protects the ACCOUNT record and liveness evidence; it does
+  // NOT yet protect these bytes. This delete is still a preservation gap.
   await env.BLOBS.delete(r2Key);
   await env.DB_MEDIA.prepare("UPDATE user_media SET moderation_status='rejected' WHERE id=?1").bind(media_id).run();
 

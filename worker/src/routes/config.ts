@@ -141,6 +141,21 @@ export interface PlatformConfig {
   // entrypoint; while OFF those routes 503 `flag_off`. Flip ON in KV (never code —
   // 2026-07-04 lesson). Client mirror: RemoteConfig.livenessV3Enabled.
   livenessV3Enabled: boolean;
+  // [AVA-IDGATE-1] Just-in-time identity gating (Specs/SPEC-2026-07-10-identity-gating.md).
+  // Master kill switch. When ON, every PUBLIC action (post/listing/comment/live/
+  // dm-to-stranger/group-post/upload) requires a Didit liveness pass no older than
+  // `livenessValidityDays`. Consumers are never gated; signup is never gated.
+  // Ships DARK. Flip ON in KV only AFTER the backfill migration has run — otherwise
+  // every existing user is gated on their next public action (spec §11.1).
+  identityGatingEnabled: boolean;
+  // Liveness validity window in days (owner decision: 90). Widening this is the
+  // no-code contingency if Didit's per-call price above the 500/mo free cap bites
+  // (spec §9) — it divides check volume directly.
+  livenessValidityDays: number;
+  // [AVA-IDGATE-1] Version string for the biometric-consent disclosure the user
+  // agreed to (BIPA §15(b)). Bump when the disclosure text or retention period
+  // changes; the value is stored per-user so we can prove WHICH text they saw.
+  biometricConsentVersion: string;
   // P6: always-on per-message safety scanning (Nemotron :free via OpenRouter) with
   // red-bubble marking on the recipient. Ships **ON** (this one ships enabled).
   // Async, fail-open — a scan never blocks or delays delivery. Adult opt-out lives
@@ -308,6 +323,11 @@ const DEFAULTS: PlatformConfig = {
   livenessDeviceAuthoritative: false, // [LIVE-DEVAUTH-1] device-authoritative fast path — OFF (dark until device-signal trust is proven)
   livenessAuditSampleRate: 0.08,      // [LIVE-DEVAUTH-1] 8% of device-authoritative verifies also run full LLaVA for disagreement telemetry
   livenessV3Enabled: false,           // Liveness V3 voice-guided/Rekognition pipeline — DARK; extends V2, flip ON in KV once proven
+  // [AVA-IDGATE-1] DARK until the backfill migration has run. Turning this on with
+  // liveness_passed_at still NULL gates the ENTIRE existing user base at once.
+  identityGatingEnabled: false,
+  livenessValidityDays: 90,           // owner decision 2026-07-10
+  biometricConsentVersion: "2026-07-10-v1",
   // [LIVE-DIDIT-1] didit.me-hosted liveness (owner decision 2026-07-09). Default
   // ON — this IS the liveness path now; v2/v3 above are retired. The client
   // routes the human check to DiditLivenessScreen when this is true.

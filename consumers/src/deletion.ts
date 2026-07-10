@@ -23,15 +23,56 @@ async function deleteR2Prefix(bucket: R2Bucket, prefix: string): Promise<number>
   return n;
 }
 
+/**
+ * [AVA-IDGATE-1] Legal hold. Spec §10.5.
+ *
+ * If a CSAM or serious-harm report has been filed against this account, the content
+ * and the identity evidence must be PRESERVED, not destroyed. Deleting it may
+ * constitute spoliation, and US law generally requires preserving reported CSAM
+ * (Cloudflare's own CSAM guidance says one year, not six months).
+ *
+ * FAILS CLOSED. If we cannot determine whether a hold exists, we do NOT delete.
+ * Retaining data one extra day is recoverable. Destroying evidence we were obliged
+ * to keep is not.
+ */
+async function underLegalHold(env: Env, uid: string): Promise<boolean> {
+  try {
+    const r = await env.DB_META.prepare("SELECT legal_hold, legal_hold_reason FROM users WHERE uid=?1")
+      .bind(uid).first<{ legal_hold: number; legal_hold_reason: string | null }>();
+    if (Number(r?.legal_hold ?? 0) === 1) {
+      try {
+        env.ANALYTICS?.writeDataPoint({
+          blobs: ["legal_hold_blocked_deletion", uid, r?.legal_hold_reason ?? "unknown"],
+          doubles: [1], indexes: ["legal_hold"],
+        });
+      } catch { /* metrics best-effort */ }
+      return true;
+    }
+    return false;
+  } catch (e) {
+    console.error("legal_hold lookup failed — refusing to delete (fail closed)", uid, String(e));
+    return true;
+  }
+}
+
 export async function handleDeletion(msg: DeletionMsg, env: Env): Promise<void> {
   const uid = msg.uid;
   if (!uid) return;
+
+  // [AVA-IDGATE-1] Legal hold beats the user's deletion request. Mark the request
+  // held rather than failing it, so it neither retries forever nor silently vanishes.
+  if (await underLegalHold(env, uid)) {
+    console.warn("deletion refused: account under legal hold", uid);
+    await env.DB_META.prepare("UPDATE deletion_requests SET status='held' WHERE uid=?1").bind(uid).run().catch(() => {});
+    return;
+  }
 
   // Honor the grace window: if a message arrives early (shouldn't), re-delay.
   const req = await env.DB_META.prepare("SELECT status, scheduled_at, clerk_user_id FROM deletion_requests WHERE uid=?1")
     .bind(uid).first<{ status: string; scheduled_at: number; clerk_user_id: string | null }>();
   if (req && req.status === "cancelled") return;            // user cancelled — abort
   if (req && req.status === "done") return;                 // already processed
+  if (req && req.status === "held") return;                 // legal hold — never process
   if (req && Date.now() < req.scheduled_at) throw new Error("grace not elapsed — retry later");
 
   const clerkId = msg.clerk_user_id ?? req?.clerk_user_id ?? null;
