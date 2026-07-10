@@ -98,10 +98,13 @@ class _BiometricConsentScreenState extends State<BiometricConsentScreen> {
       }
       final j = jsonDecode(r.body);
       final track = (j is Map ? j['retention_track'] : null)?.toString();
+      // Analytics.capture takes Map<String, Object> — NOT Object?. A null value is a
+      // compile error, so coerce. '' reads as "unknown" in PostHog, which is exactly
+      // what an absent residency means, and what the server assumed (protective track).
       Analytics.capture('liveness_consent_granted', {
         'action': widget.action,
-        'residency_state': _state,
-        'retention_track': track,
+        'residency_state': _state ?? '',
+        'retention_track': track ?? '',
       });
       if (!mounted) return;
       Navigator.of(context).pop(true);
@@ -120,8 +123,11 @@ class _BiometricConsentScreenState extends State<BiometricConsentScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // LiveTheme has no `bg`. `stage` is the dark camera backdrop, which would make
+    // this screen's default-black body text invisible. `paper` is the light surface
+    // the rest of the Zine UI uses.
     return Scaffold(
-      backgroundColor: LiveTheme.bg,
+      backgroundColor: LiveTheme.paper,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
