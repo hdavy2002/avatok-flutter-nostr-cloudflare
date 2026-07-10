@@ -180,17 +180,29 @@ export async function diditWebhook(req: Request, env: Env): Promise<Response> {
   // UUID shape only — anything else is noise.
   if (!/^[0-9a-f-]{36}$/i.test(sid)) return json({ ok: true });
   const key = (env as { DIDIT_API_KEY?: string }).DIDIT_API_KEY!;
-  let d: { status?: string; vendor_data?: unknown } | null = null;
-  try {
-    const r = await fetch(`${DIDIT_BASE}/v3/session/${sid}/decision/`, {
-      headers: { "x-api-key": key, Accept: "application/json" },
-    });
-    if (r.ok) d = await r.json() as { status?: string; vendor_data?: unknown };
-  } catch { /* transient — the client poll fallback still works */ }
+  const readDecision = async (): Promise<{ status?: string; vendor_data?: unknown } | null> => {
+    try {
+      const r = await fetch(`${DIDIT_BASE}/v3/session/${sid}/decision/`, {
+        headers: { "x-api-key": key, Accept: "application/json" },
+      });
+      return r.ok ? await r.json() as { status?: string; vendor_data?: unknown } : null;
+    } catch { return null; }
+  };
+  const isDecisive = (s: string) => s === "Approved" || s === "Declined" || s === "Abandoned" || s === "Expired";
+  let d = await readDecision();
+  // [LIVE-DIDIT-4] Didit's decision reads are eventually consistent across
+  // regions (observed 2026-07-10: an Approved session read as "Not Started"
+  // from the Worker's colo). The webhook fires the instant a decision lands,
+  // so if the first pull looks undecided, wait 2s and pull once more.
+  if (d && !isDecisive(String(d.status ?? ""))) {
+    await new Promise((res) => setTimeout(res, 2000));
+    d = (await readDecision()) ?? d;
+  }
   if (!d) return json({ ok: true });
   const uid = String(d.vendor_data ?? "");
   const status = String(d.status ?? "");
   if (!uid.startsWith("user_") || !status) return json({ ok: true });
+  if (!isDecisive(status)) return json({ ok: true }); // never cache indecision
   await storeVerdict(env, uid, sid, status);
   if (status === "Approved") {
     await applyDiditPass(env, uid, sid);
