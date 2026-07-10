@@ -316,20 +316,36 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
   }
   const isDm = mem.length === 2;
 
-  // [AVA-IDGATE-1] Public-action gate. Spec §3.1.
+  // [AVA-IDGATE-1] Public-action gate. Spec §3.1. CORRECTED 2026-07-10 (prod bug).
   //
-  // PLACED HERE, NOT AT THE TOP OF THE FUNCTION, deliberately. Messaging an EXISTING
-  // contact is not a public action and must never be gated — but we cannot know
-  // whether the recipient is a known contact until `dmPreexisted` is resolved above.
-  // Gating at the top would have silently gated every private DM.
+  // The earlier signal (`dmPreexisted` = "a conversations row exists") was WRONG.
+  // Opening a chat calls ensureDm on the read/sync paths (/api/msg/sync line ~744,
+  // /api/conversations), so the row — and its created_by — already exist BEFORE the
+  // first message. Every first DM therefore read as "preexisting" and skipped the
+  // gate. Confirmed in prod: an unverified brand-new user cold-messaged a stranger
+  // with no liveness check.
   //
-  //   • first DM to someone you've never messaged  → "dm_stranger" (the spam/grooming
-  //     vector; a gate on posts that leaves this open is a gate with a door beside it)
-  //   • any message into a group                   → "group_post"
-  //   • DM into an existing thread                 → NOT gated
-  if (!dmPreexisted || !isDm) {
-    const action: PublicAction = isDm ? "dm_stranger" : "group_post";
-    const blocked = await gatePublicAction(env, ctx.uid, await emailOf(env, ctx.uid), action);
+  // The reliable signal is `created_by`: whoever's ensureDm ran FIRST for this pair is
+  // the INITIATOR reaching out. In the b.to branch ensureDm has just run above, so a
+  // brand-new thread is stamped created_by = ME. A thread the PEER opened first is
+  // stamped created_by = them (I am replying, not cold-reaching). So:
+  //   • DM I initiated (created_by == me)      → "dm_stranger"  (gate the outreach)
+  //   • DM the peer initiated (created_by peer)→ NOT gated       (I'm replying)
+  //   • any message into a group               → "group_post"
+  // Fails CLOSED: if created_by can't be read, treat as my outreach and gate.
+  if (isDm) {
+    let iInitiated = true;
+    try {
+      const row = await env.DB_META.prepare("SELECT created_by FROM conversations WHERE id=?1")
+        .bind(conv).first<{ created_by: string }>();
+      iInitiated = !row || row.created_by === ctx.uid;
+    } catch { iInitiated = true; }
+    if (iInitiated) {
+      const blocked = await gatePublicAction(env, ctx.uid, await emailOf(env, ctx.uid), "dm_stranger");
+      if (blocked) return blocked;
+    }
+  } else {
+    const blocked = await gatePublicAction(env, ctx.uid, await emailOf(env, ctx.uid), "group_post");
     if (blocked) return blocked;
   }
 
@@ -1239,7 +1255,24 @@ export async function convCreate(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
-  if (b.to) return json({ conv: await ensureDm(env, ctx.uid, String(b.to), normContext(b.context)), kind: "dm" });
+  if (b.to) {
+    // [AVA-IDGATE-1] THIS is the "initiate contact with a stranger" moment — the
+    // client calls POST /api/conversations when OPENING a chat, which is why the
+    // sendMsg gate alone missed it: convCreate's ensureDm creates the conversation
+    // row BEFORE the first message, so by send time dmPreexisted is already true.
+    //
+    // Gate here, checking existence BEFORE ensureDm creates the row. A row that does
+    // NOT yet exist ⇒ this is a NEW conversation with a non-contact ⇒ 'dm_stranger'.
+    // Opening an EXISTING conversation (row present) is a known contact ⇒ never gated.
+    const to = String(b.to);
+    const existed = await env.DB_META.prepare("SELECT 1 FROM conversations WHERE id=?1")
+      .bind(dmConvId(ctx.uid, to)).first();
+    if (!existed) {
+      const g = await gatePublicAction(env, ctx.uid, await emailOf(env, ctx.uid), "dm_stranger");
+      if (g) return g;
+    }
+    return json({ conv: await ensureDm(env, ctx.uid, to, normContext(b.context)), kind: "dm" });
+  }
   // group
   const list: string[] = Array.isArray(b.members) ? b.members.map(String) : [];
   if (!list.length) return json({ error: "members or to required" }, 400);
