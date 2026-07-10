@@ -48,6 +48,8 @@ export type PublicAction =
   | "live"
   | "dm_stranger"
   | "group_post"
+  | "group_create"
+  | "group_join"
   | "upload";
 
 export type GateReason = "never_passed" | "expired" | "grandfather_expired";

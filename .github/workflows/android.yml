@@ -273,21 +273,32 @@ jobs:
           ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
           ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
 
-      - name: Stage .apk with a stable name
+      - name: Stage .apk with a per-build unique name
         if: env.BUILD_APK == 'true'
+        env:
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
         run: |
           mkdir -p dist
           ls -la app/build/app/outputs/flutter-apk/
+          # [APK-NAME-1] Filename now carries the build number so EVERY build has a
+          # distinct name. Chrome (and most browsers) key their download cache on the
+          # filename — a stable name like avatok-call-arm64.apk meant re-downloading
+          # served the previously-cached file even after clearing the Downloads folder.
+          # Build number matches the in-app "build NNNNN" (10000 + run number) and the
+          # versionCode, so the filename, the About screen and the release all agree.
+          BUILD_NO=$((10000 + GITHUB_RUN_NUMBER))
+          APK_NAME="avatok-call-arm64-b${BUILD_NO}.apk"
           # arm64-v8a is the ONLY asset (owner 2026-07-05: arm64 and nothing else).
-          cp app/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk dist/avatok-call-arm64.apk
-          echo "size:"; ls -lh dist/
+          cp app/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "dist/${APK_NAME}"
+          echo "APK_NAME=${APK_NAME}" >> "$GITHUB_ENV"
+          echo "staged: ${APK_NAME}"; ls -lh dist/
 
       - name: Upload .apk artifact (side-load)
         if: env.BUILD_APK == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: avatok-call-apk
-          path: dist/avatok-call-arm64.apk
+          path: dist/${{ env.APK_NAME }}
 
       - name: Publish to Release (stable link)
         uses: softprops/action-gh-release@v2
@@ -295,20 +306,25 @@ jobs:
           tag_name: ${{ env.AVATOK_ENV == 'staging' && 'staging-latest' || 'calltest-latest' }}
           name: ${{ env.AVATOK_ENV == 'staging' && 'AvaTok STAGING (latest)' || 'AvaTok Call Test (latest)' }}
           # [AAB-AUTO-1] BOTH artifacts are listed. `fail_on_unmatched_files: false`
-          # means whichever one this run didn't build is simply skipped — so picking
-          # `aab` in the widget now actually lands an .aab on the Release, which it
-          # never did before (only the .apk was ever attached).
+          # means whichever one this run didn't build is simply skipped.
+          # [APK-NAME-1] The .apk is matched by GLOB (dist/*.apk) because its name now
+          # carries the build number — a hardcoded name here would silently attach
+          # nothing (fail_on_unmatched_files:false). Old versioned APKs accumulate on
+          # the release, which is intentional: each build has a stable, distinct URL.
           files: |
-            dist/avatok-call-arm64.apk
+            dist/*.apk
             dist/avatok-call.aab
           fail_on_unmatched_files: false
           body: |
             Built by CI from `app/` — environment: **${{ env.AVATOK_ENV }}**,
             format: **${{ inputs.artifact || 'apk' }}**.
 
-            `avatok-call-arm64.apk` — side-loadable, arm64-v8a only. Install directly
-            on the device (enable "Install unknown apps" for your browser / file
-            manager if prompted). No Play Store step involved.
+            **This build's APK: `${{ env.APK_NAME }}`** — download this one (the number
+            changes every build, so your browser never serves a stale cached file).
+
+            Side-loadable, arm64-v8a only. Install directly on the device (enable
+            "Install unknown apps" for your browser / file manager if prompted). No
+            Play Store step involved.
 
             `avatok-call.aab` — Play Store App Bundle, present only when this build
             requested `aab` or `both`. Always signed with the Play upload key; the

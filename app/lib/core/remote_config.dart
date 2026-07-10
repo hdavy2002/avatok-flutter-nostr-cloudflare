@@ -163,12 +163,9 @@ class RemoteConfig {
   /// live path; takes precedence over v3/v2/v1. Default TRUE (this is the
   /// pipeline now); the flag exists only as a kill switch. Mirrors config.ts.
   static bool get diditLivenessEnabled => _b('diditLivenessEnabled', true);
-  /// STREAM H (AI Messenger Batch): onboarding "human check" hard gate. When ON,
-  /// every account must pass liveness the moment it's created (D12) and existing
-  /// unverified users are redirected on app open (D13, non-dismissible). Server
-  /// enforcement (bypass-proof) mirrors this via authz.requireLiveness. Ships dark
-  /// (default OFF); flip ON in KV platform_config.livenessOnboardingGate.
-  static bool get livenessOnboardingGate => _b('livenessOnboardingGate', false);
+  // [AVA-IDGATE-1] livenessOnboardingGate getter REMOVED. The onboarding/app-open
+  // liveness gate (HumanCheckPage + _landOrGate) is gone; liveness fires at the first
+  // public action, enforced server-side. Nothing on the client reads this any more.
   /// P11: mandatory + AI-vetted profile completion. Ships dark (default OFF); flip
   /// ON at launch. When on, an incomplete profile is routed to the Profile screen
   /// before the app, and the save shows a hold state while the server vets. Mirrors config.ts.

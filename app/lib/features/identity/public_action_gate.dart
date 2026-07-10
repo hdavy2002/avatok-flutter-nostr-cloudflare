@@ -38,6 +38,8 @@ class PublicAction {
   static const live = 'live';
   static const dmStranger = 'dm_stranger';
   static const groupPost = 'group_post';
+  static const groupCreate = 'group_create';
+  static const groupJoin = 'group_join';
   static const upload = 'upload';
 }
 

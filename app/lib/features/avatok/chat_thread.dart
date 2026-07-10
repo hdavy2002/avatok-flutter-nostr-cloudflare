@@ -98,7 +98,7 @@ import '../messaging/widgets/link_preview_card.dart';
 import '../messaging/widgets/link_viewer_sheet.dart';
 import 'data.dart';
 import '../ava_guardian/guardian_settings.dart'; // shield watchdog (Nemotron) per-chat toggle
-import '../identity/human_check_page.dart'; // U1-lite: guardian verify_request → face check
+import '../identity/public_action_gate.dart'; // [AVA-IDGATE-1] guardian verify → consent-first gate
 import 'live_location.dart';
 import 'group_info_screen.dart';
 import 'media.dart';
@@ -7764,9 +7764,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               ),
               onPressed: () async {
                 Analytics.capture('verify_human_started', {'trigger': 'chat_prompt'});
-                final passed = await Navigator.of(context).push<bool>(MaterialPageRoute(
-                    builder: (_) => const HumanCheckPage(source: HumanCheckSource.guardian)));
-                if (passed == true && mounted) {
+                // [AVA-IDGATE-1] Was HumanCheckPage(guardian), which opened the camera
+                // WITHOUT the BIPA consent screen and showed retention copy that
+                // contradicted the published schedule. Now routes through the one
+                // consent-first gate: consent (tick-box + state) → Didit → server
+                // records the pass and flips the chat gate exactly as before.
+                final passed = await ensurePublicActionAllowed(context, 'guardian_verify');
+                if (passed && mounted) {
                   _toast('Verified — thanks for keeping chats human.');
                 }
               },

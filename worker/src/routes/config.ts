@@ -187,7 +187,8 @@ export interface PlatformConfig {
   groupTranslationEnabled: boolean;          // STREAM G: per-member group translation (cost watch)
   smartRepliesEnabled: boolean;              // STREAM G: DM smart-reply chips
   scamAutoScanEnabled: boolean;              // STREAM G: auto scam-scan on stranger-thread first render
-  livenessOnboardingGate: boolean;           // STREAM H: hard liveness gate at signup / existing-user redirect
+  // [AVA-IDGATE-1] livenessOnboardingGate REMOVED — superseded by identityGatingEnabled
+  // (gate at first public action, not at signup). See lib/identity_gate.ts.
   unlimitedForwardEnabled: boolean;          // STREAM I: unlimited forwarding + forward-to-groups
   // PERF-DNS-2: client DNS-over-HTTPS fallback (resolve our hosts via 1.1.1.1 when
   // the device resolver fails — carrier-proof). Default ON in the client even
@@ -359,12 +360,8 @@ const DEFAULTS: PlatformConfig = {
   groupTranslationEnabled: false,        // STREAM G — OFF (cost watch)
   smartRepliesEnabled: true,             // STREAM G — ships ON
   scamAutoScanEnabled: true,             // STREAM G — ships ON
-  // ON 2026-07-09 (owner decision). Reverses the 2026-07-03 change that quietly
-  // moved liveness to the listing-creation gate — the owner's standing requirement
-  // is that liveness is part of ONBOARDING. Paired with [LIVE-GATE-7] in main.dart,
-  // which routes a finished onboarding through _landOrGate so new signups are
-  // actually gated (before that fix this flag only ever caught existing users).
-  livenessOnboardingGate: true,
+  // [AVA-IDGATE-1] livenessOnboardingGate removed from DEFAULTS. Liveness is no longer
+  // an onboarding gate — it fires at the first public action via identityGatingEnabled.
   unlimitedForwardEnabled: true,         // STREAM I — ships ON
   dohFallbackEnabled: true,              // PERF-DNS-2 — DoH-to-1.1.1.1 fallback ON
   routingV2Enabled: false,               // [ARCH-ROUTING-V2] v4 routing path — DORMANT until wired + validated; legacy path unaffected

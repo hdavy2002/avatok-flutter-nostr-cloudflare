@@ -37,8 +37,6 @@ import 'identity/identity.dart';
 import 'features/auth/sign_in_screen.dart';
 import 'features/auth/restore_screen.dart';
 import 'features/avatok/contacts.dart';
-import 'features/identity/human_check_page.dart';
-import 'features/identity/ladder_api.dart';
 import 'features/identity/liveness_v3/voice_packs.dart';
 import 'features/onboarding/handle_claim_screen.dart';
 import 'features/onboarding/onboarding_flow.dart';
@@ -306,7 +304,7 @@ class AvaTalkApp extends StatelessWidget {
   }
 }
 
-enum _Stage { loading, welcome, handleClaim, signIn, onboarding, restore, humanCheck, shell }
+enum _Stage { loading, welcome, handleClaim, signIn, onboarding, restore, shell }
 
 class RootFlow extends StatefulWidget {
   const RootFlow({super.key});
@@ -408,16 +406,10 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
         AccountScope.id = cachedId;
         final local = await _idStore.load(); // in-memory cached after first read
         if (local != null && await _onb.isDone()) {
-          // [LIVE-GATE-4] instant local gate: when the human-check flag is ON and
-          // this account's CACHED level is < 2 (not liveness-verified), hold at the
-          // human check instead of the shell — no network on the critical path.
-          // (_validateClerkInBackground still runs; the gate page confirms server
-          // truth before letting the user proceed.)
-          if (RemoteConfig.livenessOnboardingGate && await LadderApi.cachedLevel() < 2) {
-            _enterHumanCheck('redirect'); // [LIVE-GATE-8] single emitter, no double-count
-            unawaited(_validateClerkInBackground());
-            return;
-          }
+          // [AVA-IDGATE-1] The old onboarding/landing liveness gate (HumanCheckPage,
+          // held here when livenessOnboardingGate was ON and level < 2) is REMOVED.
+          // Liveness now fires at the first PUBLIC action, server-side, via the new
+          // gate — not on app open. So a signed-in member lands straight on the shell.
           _to(_Stage.shell); // instant — no network on the critical path
           unawaited(_validateClerkInBackground());
           ContactsStore().pullAndMerge();
@@ -545,52 +537,14 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
     }
   }
 
-  /// STREAM H [LIVE-GATE-4]: the onboarding human-check gate. An existing member
-  /// who has NOT passed liveness is redirected to the non-dismissible human check
-  /// on app open when the livenessOnboardingGate flag is ON (D13 — no grace).
-  /// Guests (L0) and the flag-off case are never gated here (the server is still
-  /// the real gate on spam-capable routes). Returns true when the user should be
-  /// held at the human check instead of landing on the shell.
-  Future<bool> _needsHumanCheck() async {
-    if (!RemoteConfig.livenessOnboardingGate) return false;
-    if (!AccountGate.isMember) return false; // L0 guest — no account yet, no gate
-    // Fast path: cached level ≥2 means liveness already passed (instant, offline).
-    if (await LadderApi.cachedLevel() >= 2) return false;
-    // Confirm against server truth before blocking (avoids a stale-cache lockout).
-    final ld = await LadderApi.level();
-    final level = ld?.level ?? await LadderApi.cachedLevel();
-    return level < 2;
-  }
-
-  /// [LIVE-GATE-8 2026-07-09] One-shot guard for the gate-shown event. Two call
-  /// sites route into _Stage.humanCheck (the cold-boot fast path in _boot and
-  /// _landOrGate), and on a sign-in both ran within ~30ms of each other — PostHog
-  /// shows liveness_gate_shown duplicated on EVERY gate (08:52:09.146 + .173,
-  /// 12:39:50.070 + .099). That double-counts the top of the gate funnel, which is
-  /// the one number that tells us whether liveness converts. Reset on pass so a
-  /// later gate for the same session counts again.
-  bool _gateShownSent = false;
-
-  /// The ONLY place that enters the human-check stage, so the telemetry can't
-  /// drift from the navigation again. [source] distinguishes a fresh signup
-  /// ('onboarding') from an existing unverified user being held on open
-  /// ('redirect') — previously every gate reported 'redirect', which made the
-  /// onboarding gate impossible to verify in telemetry.
-  void _enterHumanCheck(String source) {
-    if (!_gateShownSent) {
-      _gateShownSent = true;
-      Analytics.capture('liveness_gate_shown', {'source': source});
-    }
-    _to(_Stage.humanCheck);
-  }
-
-  /// Land the signed-in member on the shell, OR hold them at the human-check gate
-  /// first (D13). Centralised so every "go to shell" path honours the gate.
+  /// [AVA-IDGATE-1] Land the signed-in member on the shell.
+  ///
+  /// This used to optionally hold the user at the onboarding liveness gate
+  /// (HumanCheckPage) via _needsHumanCheck / _enterHumanCheck. That whole
+  /// subsystem is removed: liveness now fires at the first PUBLIC action,
+  /// server-side, not on app open. The function and its `source` parameter are
+  /// kept so the ~6 call sites don't have to change; it now always lands the shell.
   Future<void> _landOrGate({String source = 'redirect'}) async {
-    if (await _needsHumanCheck()) {
-      _enterHumanCheck(source);
-      return;
-    }
     _to(_Stage.shell);
   }
 
@@ -800,16 +754,6 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
           onRestored: () => _to(_Stage.shell),
           onRetry: () { _to(_Stage.loading); _route(); },
           onSignOut: _signOut,
-        );
-      case _Stage.humanCheck:
-        // [LIVE-GATE-4] non-dismissible redirect for an existing unverified user.
-        // On pass, re-route through _landOrGate → the app shell.
-        return HumanCheckPage(
-          source: HumanCheckSource.redirect,
-          onVerified: () {
-            _gateShownSent = false; // [LIVE-GATE-8] arm the guard for a future gate
-            unawaited(_landOrGate());
-          },
         );
       case _Stage.shell:
         return AvaShell(clerk: _clerk, onSignOut: _signOut);

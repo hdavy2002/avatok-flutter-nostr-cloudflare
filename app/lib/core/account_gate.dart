@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../auth/clerk_client.dart';
 import '../features/auth/sign_in_screen.dart';
-import '../features/identity/human_check_page.dart';
 import '../identity/identity.dart';
-import 'remote_config.dart';
 
 /// Account gate (Trust Ladder L0 → L1). Browsing is free for an L0 visitor
 /// (handle-only guest token). The moment a guest tries to do something that
@@ -55,21 +53,11 @@ class AccountGate {
     );
     if (done == true) {
       await onUpgraded?.call();
-      // STREAM H [LIVE-GATE-3 signup]: D12 hard gate. The moment a real account is
-      // created (credentials now exist), require the human check BEFORE the gated
-      // action resumes / the app lands. Non-dismissible while the flag is ON.
-      if (RemoteConfig.livenessOnboardingGate && isMember && context.mounted) {
-        await Navigator.of(context, rootNavigator: true).push<bool>(
-          MaterialPageRoute(
-            fullscreenDialog: true,
-            builder: (_) => HumanCheckPage(
-              source: HumanCheckSource.signup,
-              // Signup variant pops itself on pass; the gated action then resumes.
-              onVerified: () => Navigator.of(context, rootNavigator: true).pop(true),
-            ),
-          ),
-        );
-      }
+      // [AVA-IDGATE-1] The signup-time liveness check (HumanCheckPage) was REMOVED.
+      // Signup is now clean — no camera. The liveness check fires later, at the
+      // user's first PUBLIC action, through public_action_gate.dart, which shows the
+      // BIPA consent screen first. Gating identity at the moment of intent rather
+      // than at signup is the whole point of AVA-IDGATE-1.
       return isMember;
     }
     return false;

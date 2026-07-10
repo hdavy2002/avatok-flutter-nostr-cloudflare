@@ -54,41 +54,13 @@ export async function requireKyc(env: Env, uid: string): Promise<AuthFail | null
   return { error: "identity verification required", status: 403 };
 }
 
-// STREAM H (AI Messenger Batch) — [LIVE-GATE-5] onboarding liveness gate.
-// Bypass-proof server enforcement of the "human check" hard gate (client gate is
-// NOT the gate). When platform_config.livenessOnboardingGate is ON, any account
-// WITHOUT a verified liveness/KYC proof is `liveness_required` and spam-capable
-// routes (message send, group create/join, forwarding, listing publish) reject
-// with 403 { error:'liveness_required' }. Default OFF (ships dark; flip in KV).
-//
-// Reusable helper — Stream I (forwarding) and the message-send path consume this:
-//   requireLiveness(env, uid): Promise<AuthFail | null>
-//     → null    when the gate is OFF, or the uid has a verified liveness proof
-//     → { error:'liveness_required', status:403 }  otherwise (surface as-is)
-export async function livenessOnboardingGateOn(env: Env): Promise<boolean> {
-  try {
-    const cfg = ((await env.TOKENS.get("platform_config", "json")) ?? {}) as Record<string, unknown>;
-    // Fail-safe DARK: only ON when the key is explicitly true (absent → OFF).
-    return cfg.livenessOnboardingGate === true;
-  } catch {
-    return false; // config read failed → do not lock users out
-  }
-}
-
-export async function requireLiveness(env: Env, uid: string, route?: string): Promise<AuthFail | null> {
-  if (!(await livenessOnboardingGateOn(env))) return null; // kill switch / dark
-  if (await kycVerified(env, uid)) return null;             // liveness OR stripe both write kyc_status
-  // STREAM H [LIVE-GATE-6]: telemetry for a blocked spam-capable action (uid-stamped).
-  if (route) {
-    try {
-      env.Q_ANALYTICS?.send({
-        event: "liveness_gate_blocked_action", uid, ts: Date.now(),
-        props: { route, worker: true, account_id: uid, app_name: "avaid" },
-      });
-    } catch { /* best-effort */ }
-  }
-  return { error: "liveness_required", status: 403 };
-}
+// [AVA-IDGATE-1] REMOVED: the old onboarding liveness gate (requireLiveness +
+// livenessOnboardingGateOn, flag livenessOnboardingGate). It gated at signup, read
+// kyc_status, and FAILED OPEN. It is fully superseded by gatePublicAction() in
+// lib/identity_gate.ts, which gates at the first PUBLIC action, reads identity_proofs,
+// fails CLOSED, enforces the 90-day window, and returns the 403 identity_required
+// contract the client's consent-first flow expects. All call sites (msg/send,
+// group/create, group/join, listing publish) now use the new gate.
 
 // Trust Ladder L3 — payouts specifically need DOCUMENT KYC (Stripe Identity),
 // not just liveness. Liveness (any provider) keeps satisfying requireKyc for

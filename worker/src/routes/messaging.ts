@@ -5,12 +5,10 @@
 // so moderation/reporting can operate.
 import type { Env } from "../types";
 import { json } from "../util";
-import { requireUser, kycVerified, dmConvId, isFail, requireLiveness } from "../authz";
-// [AVA-IDGATE-1] NOTE: authz.requireLiveness (above) is the OLD onboarding gate —
-// different flag (livenessOnboardingGate), different table (kyc_status), and it
-// FAILS OPEN when no row exists. gatePublicAction below is the new per-action gate:
-// different flag (identityGatingEnabled), reads liveness_passed_at, fails CLOSED,
-// and enforces the 90-day expiry. Two distinct gates; do not confuse them.
+import { requireUser, kycVerified, dmConvId, isFail } from "../authz";
+// [AVA-IDGATE-1] gatePublicAction is the ONE liveness gate now. The old
+// authz.requireLiveness was removed. gatePublicAction reads identity_proofs, fails
+// CLOSED, enforces the 90-day window, and returns 403 identity_required.
 import { gatePublicAction, emailOf, type PublicAction } from "../lib/identity_gate";
 import { nameFor } from "../lib/identity";        // resolve inviter display name
 import { readConfig } from "./config";            // groupInvitesEnabled kill switch
@@ -268,10 +266,11 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   // KYC gate is flag-gated OFF until Stripe Identity ships (set KYC_REQUIRED=1 to enforce).
   if (env.KYC_REQUIRED === "1" && !(await kycVerified(env, ctx.uid))) return json({ error: "kyc required" }, 403);
-  // STREAM H [LIVE-GATE-5]: onboarding human-check gate (bypass-proof). Dark by
-  // default; when platform_config.livenessOnboardingGate is ON, unverified
-  // accounts can't send messages (spam-capable route).
-  { const g = await requireLiveness(env, ctx.uid, "msg/send"); if (g) return json({ error: g.error }, g.status); }
+  // [AVA-IDGATE-1] The old onboarding requireLiveness(msg/send) is REMOVED. It gated
+  // EVERY send — including DMs to existing contacts — which the new design explicitly
+  // must not do. The correct per-action gate runs lower down, AFTER we resolve
+  // `dmPreexisted`: only a first DM to a stranger ('dm_stranger') or a group message
+  // ('group_post') is gated; messaging a known contact never is.
 
   let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
   const kind = String(b.kind || "text");
@@ -1244,8 +1243,11 @@ export async function convCreate(req: Request, env: Env): Promise<Response> {
   // group
   const list: string[] = Array.isArray(b.members) ? b.members.map(String) : [];
   if (!list.length) return json({ error: "members or to required" }, 400);
-  // STREAM H [LIVE-GATE-5]: gate GROUP creation (spam-capable) behind the human check.
-  { const g = await requireLiveness(env, ctx.uid, "group/create"); if (g) return json({ error: g.error }, g.status); }
+  // [AVA-IDGATE-1] Gate GROUP CREATION on a valid liveness pass (spec §3.1). Was the
+  // old onboarding requireLiveness (fail-open, flag livenessOnboardingGate); now the
+  // per-action gate: fails CLOSED, 90-day expiry, 403 identity_required → the client
+  // opens the consent-first flow and retries.
+  { const g = await gatePublicAction(env, ctx.uid, await emailOf(env, ctx.uid), "group_create"); if (g) return g; }
   const conv = "g_" + crypto.randomUUID();
   const now = Date.now();
   const invitees = list.filter((u) => u !== ctx.uid);
@@ -1459,9 +1461,9 @@ export async function convInviteRespond(req: Request, env: Env): Promise<Respons
   if (!conv) return json({ error: "conv required" }, 400);
   const inv = await env.DB_META.prepare("SELECT status FROM group_invites WHERE conv=?1 AND uid=?2").bind(conv, ctx.uid).first<{ status: string }>();
   if (!inv) return json({ error: "no_invite" }, 404);
-  // STREAM H [LIVE-GATE-5]: gate JOINING a group (accepting an invite) behind the
-  // human check. Declining is always allowed (accept === false skips the gate).
-  if (accept) { const g = await requireLiveness(env, ctx.uid, "group/join"); if (g) return json({ error: g.error }, g.status); }
+  // [AVA-IDGATE-1] Gate JOINING a group (accepting an invite) on a valid liveness
+  // pass. Declining is always allowed (accept === false skips the gate).
+  if (accept) { const g = await gatePublicAction(env, ctx.uid, await emailOf(env, ctx.uid), "group_join"); if (g) return g; }
   const now = Date.now();
   if (accept) {
     // Become a real member → the router now fans group messages to this user.
