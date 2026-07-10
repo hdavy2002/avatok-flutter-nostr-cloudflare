@@ -373,6 +373,30 @@ class _ViewerContentState extends State<_ViewerContent> {
   YoutubePlayerController? _yt;
   WebViewController? _web;
 
+  /// Latched so the hand-off to the YouTube app fires exactly once — the error
+  /// value can rebuild the builder several times.
+  bool _handedOff = false;
+
+  /// The video refused to embed (uploader disabled off-site playback). Try it in
+  /// AvaTOK, and the moment YouTube says no, hand the user straight to the
+  /// YouTube app rather than parking them on a dead-end card (owner decision
+  /// 2026-07-10). The card below stays behind as the landing state, so if the
+  /// launch fails there's still a button to tap.
+  void _handOffToYouTube() {
+    if (_handedOff) return;
+    _handedOff = true;
+    Analytics.capture('link_viewer_embed_blocked_handoff', {
+      'video_id': widget.preview.videoId ?? '',
+      if (Analytics.currentEmail != null) 'email': Analytics.currentEmail!,
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // Close the sheet first: returning from the YouTube app shouldn't dump the
+      // user back onto a black player they can't use.
+      LinkViewer.close();
+      await _openExternal(widget.preview.url);
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -459,7 +483,11 @@ class _ViewerContentState extends State<_ViewerContent> {
         child: YoutubeValueBuilder(
           controller: yt,
           builder: (context, value) {
-            if (value.hasError) return _EmbedBlocked(preview: widget.preview);
+            if (value.hasError) {
+              // Plays fine → we never get here. Doesn't → straight to YouTube.
+              _handOffToYouTube();
+              return _EmbedBlocked(preview: widget.preview);
+            }
             return YoutubePlayer(
               controller: yt,
               aspectRatio: widget.preview.imageAspect?.clamp(9 / 16, 1.91) ??
