@@ -77,6 +77,64 @@ class AvaAppsCache {
   static File _statusFile(Directory d) => File('${d.path}/status.json');
   static File _runFile(Directory d, String query) => File('${d.path}/run_${_hash(query)}.json');
 
+  // ---- app catalog (DEVICE-level, not per-account) -------------------------
+  //
+  // The Composio catalog (slug/name/logo) is PUBLIC and identical for every
+  // account, so — like AppIconCache — it lives outside the per-account dir and
+  // is intentionally NOT scoped. It is not user data.
+  //
+  // Why this exists: connection *status* was cached for instant screen open but
+  // the catalog itself was fetched from the network on EVERY open. `_all` stayed
+  // empty until that request landed, so the whole icon grid re-rendered from
+  // nothing each visit — on a slow connection, a visibly empty screen. The icon
+  // BYTES were cached on disk all along; the list they hang off wasn't.
+
+  /// In-process copy so a second open in the same session doesn't touch disk.
+  static List<Map<String, String>>? _catalogMem;
+
+  static Future<File> _catalogFile() async {
+    final base = await getApplicationSupportDirectory();
+    final d = Directory('${base.path}/avaapps');
+    if (!await d.exists()) await d.create(recursive: true);
+    return File('${d.path}/catalog.json');
+  }
+
+  /// Persist the catalog (list of {slug,name,logo}).
+  static Future<void> writeCatalog(List<Map<String, String>> apps) async {
+    if (!kAvaAppsDeviceCache || apps.isEmpty) return;
+    _catalogMem = apps;
+    try {
+      await (await _catalogFile()).writeAsString(jsonEncode({
+        'json': apps,
+        'fetched_at': DateTime.now().millisecondsSinceEpoch,
+      }), flush: true);
+    } catch (_) {/* best-effort */}
+  }
+
+  /// Last-known catalog, or null. Served local-first; the caller still
+  /// revalidates in the background (stale-while-revalidate).
+  static Future<AvaAppsSnapshot?> readCatalog() async {
+    if (!kAvaAppsDeviceCache) return null;
+    try {
+      final f = await _catalogFile();
+      if (!await f.exists()) return null;
+      final m = jsonDecode(await f.readAsString()) as Map<String, dynamic>;
+      final list = (m['json'] as List?)
+              ?.map((e) => (e as Map).map(
+                  (k, v) => MapEntry(k.toString(), v?.toString() ?? '')))
+              .toList() ??
+          const <Map<String, String>>[];
+      if (list.isEmpty) return null;
+      _catalogMem = list;
+      return AvaAppsSnapshot(list, _at(m));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Synchronous peek for the hot path (same-session reopen → zero await).
+  static List<Map<String, String>>? get catalogMem => _catalogMem;
+
   // ---- connection status --------------------------------------------------
 
   /// Persist the last-known connected toolkit slugs for instant screen open.

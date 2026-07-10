@@ -91,6 +91,28 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
           'kind': 'status', 'age_s': snap.ageSeconds, 'cache': 'hit',
         });
       }
+      // …and the CATALOG too. Without this `_all` is empty until the network
+      // returns, so the whole icon grid rebuilds from nothing on every open —
+      // a blank screen on a slow connection even though every icon's bytes are
+      // already on disk. Paint from the snapshot, then revalidate below.
+      final cat = await AvaAppsCache.readCatalog();
+      if (cat != null && mounted) {
+        final apps = (cat.json as List<Map<String, String>>)
+            .map((m) => AvaCatalogApp(m['slug'] ?? '', m['name'] ?? '', m['logo'] ?? ''))
+            .where((a) => a.slug.isNotEmpty)
+            .toList();
+        if (apps.isNotEmpty) {
+          setState(() {
+            _all = apps;
+            _loading = false;
+          });
+          // ignore: unawaited_futures
+          Analytics.capture('avaapps_snapshot_render', {
+            'kind': 'catalog', 'age_s': cat.ageSeconds, 'cache': 'hit',
+            'count': apps.length,
+          });
+        }
+      }
     }
     final results = await Future.wait([
       AppsService.I.catalog(),
@@ -100,12 +122,21 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
     if (!mounted) return;
     final bal = results[2] as Map<String, dynamic>;
     final connected = results[1] as Set<String>;
+    final catalog = results[0] as List<AvaCatalogApp>;
     setState(() {
-      _all = results[0] as List<AvaCatalogApp>;
+      // Keep the cached grid if the refresh came back empty (offline / error) —
+      // never blank out a working screen.
+      if (catalog.isNotEmpty || _all.isEmpty) _all = catalog;
       _connected = connected;
       _premium = bal['premium'] == 1 || bal['premium'] == true;
       _loading = false;
     });
+    if (catalog.isNotEmpty) {
+      // ignore: unawaited_futures
+      AvaAppsCache.writeCatalog([
+        for (final a in catalog) {'slug': a.slug, 'name': a.name, 'logo': a.logo},
+      ]);
+    }
     final ms = DateTime.now().difference(t0).inMilliseconds;
     // Phase 0 telemetry: screen-open latency + how many apps are connected.
     // ignore: unawaited_futures
