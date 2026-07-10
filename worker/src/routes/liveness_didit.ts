@@ -296,12 +296,17 @@ export async function diditWebhook(req: Request, env: Env): Promise<Response> {
   portraitKey = await archive(lc?.reference_image, `didit/${uid}/${sid}/portrait.jpg`, 5_000_000);
   videoKey2 = await archive(lc?.video_url, `didit/${uid}/${sid}/video.mp4`, 60_000_000);
   try {
+    // Upsert: sessions created before the records table existed (or whose
+    // create-time insert failed) still get a decided row with the evidence keys.
     await metaDb(env).prepare(
-      `UPDATE liveness_didit_records
-         SET status=?2, score=?3, r2_portrait_key=COALESCE(?4, r2_portrait_key),
-             r2_video_key=COALESCE(?5, r2_video_key), decided_at=?6
-       WHERE session_id=?1`,
-    ).bind(sid, status, lc?.score ?? null, portraitKey, videoKey2, Date.now()).run();
+      `INSERT INTO liveness_didit_records (session_id, uid, status, score, r2_portrait_key, r2_video_key, created_at, decided_at)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?7)
+       ON CONFLICT(session_id) DO UPDATE SET
+         status=?3, score=?4,
+         r2_portrait_key=COALESCE(?5, r2_portrait_key),
+         r2_video_key=COALESCE(?6, r2_video_key),
+         decided_at=COALESCE(decided_at, ?7)`,
+    ).bind(sid, uid, status, lc?.score ?? null, portraitKey, videoKey2, Date.now()).run();
   } catch { /* best-effort */ }
   void track(env, uid, "didit_webhook_received", "platform", {
     session_id: sid, status, archived_portrait: !!portraitKey, archived_video: !!videoKey2,
