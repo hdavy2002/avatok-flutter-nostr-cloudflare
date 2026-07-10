@@ -90,6 +90,17 @@ class _DiditLivenessScreenState extends State<DiditLivenessScreen> {
         });
         return;
       }
+      // [LIVE-DIDIT-4] Launch-spike backoff: the server throttles session
+      // creation to protect the Didit quota. Auto-retry after the advertised
+      // wait — the user just sees "getting ready…", no error, no dead end.
+      if (res.statusCode == 429) {
+        final waitS = ((j['retry_after_s'] as num?)?.toInt() ?? 20).clamp(5, 120);
+        Analytics.capture('liveness_didit_busy_retry', {'wait_s': waitS});
+        if (!mounted) return;
+        setState(() { _phase = _Phase.starting; _error = null; });
+        Future.delayed(Duration(seconds: waitS), () { if (mounted && _phase == _Phase.starting) _start(); });
+        return;
+      }
       if (res.statusCode != 200 || (j['url'] ?? '').toString().isEmpty) {
         Analytics.error(
           domain: 'liveness', code: 'didit_session_failed',
