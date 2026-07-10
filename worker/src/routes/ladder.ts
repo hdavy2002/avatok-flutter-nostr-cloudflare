@@ -19,6 +19,7 @@ import { json, sha256Hex } from "../util";
 import { metaDb, metaSession } from "../db/shard";
 import { requireUser, isFail } from "../authz";
 import { track, metric } from "../hooks";
+import { readConfig } from "./config";
 
 const GUEST_TTL_MS = 90 * 86_400_000;     // 90-day inactivity expiry
 const GUEST_TOKEN_TTL_MS = 180 * 86_400_000;
@@ -205,7 +206,17 @@ export async function computeLevel(env: Env, uid: string): Promise<LadderState> 
     .bind(uid).first<{ status: string; provider: string | null }>();
 
   let level: 0 | 1 | 2 | 3 = 1; // a Clerk uid is L1 by definition (email+password held by Clerk)
-  const liveOk = kyc?.status === "verified" || proofs["liveness"]?.status === "verified";
+  // [LIVE-DIDIT-5] (owner decision 2026-07-10) When requireDiditLiveness is ON,
+  // only a didit-provider liveness pass counts toward L2. Users verified by the
+  // retired v2/v3/Rekognition pipelines drop below the gate and are asked to do
+  // the (quicker) didit check on next app open — populating the Didit dashboard
+  // and our liveness_didit_records with their details.
+  let requireDidit = false;
+  try { requireDidit = ((await readConfig(env)) as { requireDiditLiveness?: boolean }).requireDiditLiveness === true; } catch { /* default off */ }
+  const liveOk = requireDidit
+    ? (proofs["liveness"]?.status === "verified" && proofs["liveness"]?.provider === "didit")
+      || (kyc?.status === "verified" && kyc?.provider === "didit")
+    : kyc?.status === "verified" || proofs["liveness"]?.status === "verified";
   if (liveOk) level = 2;
   const stripeOk = (kyc?.status === "verified" && (kyc.provider ?? "").startsWith("stripe"))
     || proofs["stripe_kyc"]?.status === "verified";

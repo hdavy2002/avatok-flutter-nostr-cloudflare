@@ -31,6 +31,20 @@ import { invalidateLevelCache } from "./ladder";
 import { markGatePassed } from "./ava_guardian";
 
 const DIDIT_BASE = "https://verification.didit.me";
+
+// [LIVE-DIDIT-5] EVERY Didit GET must bypass HTTP caching. Root cause of the
+// 2026-07-10 stuck-"Checking…" bug: Didit's decision endpoint returned a
+// cacheable response, the Worker's colo cached the early "Not Started" body,
+// and every subsequent read (polls, webhook pulls) got the STALE copy — the
+// session was long Approved upstream. Belt and braces: cf.cacheTtl 0, an
+// explicit no-store, and a cache-busting query param.
+function diditGet(url: string, key: string): Promise<Response> {
+  const bust = `${url.includes("?") ? "&" : "?"}_cb=${Date.now()}`;
+  return fetch(url + bust, {
+    headers: { "x-api-key": key, Accept: "application/json", "Cache-Control": "no-store" },
+    cf: { cacheTtl: 0, cacheEverything: false },
+  } as RequestInit);
+}
 const SESSION_TTL_S = 3600;
 const MAX_FAILS_MONTH = 5;
 
@@ -114,6 +128,30 @@ export async function diditSession(req: Request, env: Env): Promise<Response> {
   }
   const key = (env as { DIDIT_API_KEY?: string }).DIDIT_API_KEY!;
   const workflowId = (env as { DIDIT_WORKFLOW_ID?: string }).DIDIT_WORKFLOW_ID!;
+  // [LIVE-DIDIT-5] User details ride along so the Didit dashboard is searchable
+  // by name/email and our own record captures who the user WAS at check time.
+  // Client-sent fields win (raw email/phone live on the device); the users row
+  // fills the names as a server-side fallback (email/phone are only stored
+  // hashed in D1, so they can't be recovered here).
+  const b = (await req.json().catch(() => ({}))) as {
+    name?: string; first_name?: string; last_name?: string; email?: string; phone?: string;
+  };
+  const clean = (v: unknown, max: number) => {
+    const s = typeof v === "string" ? v.trim() : "";
+    return s.length > 0 && s.length <= max ? s : null;
+  };
+  let name = clean(b.name, 120), first = clean(b.first_name, 60), last = clean(b.last_name, 60);
+  const email = clean(b.email, 254), phone = clean(b.phone, 20);
+  if (!name || !first) {
+    try {
+      const row = await metaDb(env).prepare(
+        "SELECT display_name, first_name, last_name FROM users WHERE uid=?1",
+      ).bind(ctx.uid).first<{ display_name: string | null; first_name: string | null; last_name: string | null }>();
+      name = name ?? clean(row?.display_name, 120);
+      first = first ?? clean(row?.first_name, 60);
+      last = last ?? clean(row?.last_name, 60);
+    } catch { /* names stay null */ }
+  }
   let r: Response;
   try {
     // [LIVE-DIDIT-2] callback: the client renders the Didit flow in an IN-APP
@@ -129,6 +167,19 @@ export async function diditSession(req: Request, env: Env): Promise<Response> {
         vendor_data: ctx.uid,
         callback,
         callback_method: "both",
+        ...(email || phone ? {
+          contact_details: {
+            ...(email ? { email } : {}),
+            ...(phone ? { phone } : {}),
+            send_notification_emails: false, // WE own comms — Didit must not email users
+          },
+        } : {}),
+        ...(first || last ? {
+          expected_details: {
+            ...(first ? { first_name: first } : {}),
+            ...(last ? { last_name: last } : {}),
+          },
+        } : {}),
       }),
     });
   } catch (e) {
@@ -155,6 +206,15 @@ export async function diditSession(req: Request, env: Env): Promise<Response> {
   // A fresh attempt invalidates any cached verdict from a previous session —
   // otherwise a user who failed once would keep being served the stale FAIL.
   await env.TOKENS.delete(verdictKvKey(ctx.uid)).catch(() => {});
+  // [LIVE-DIDIT-5] Our own permanent record — details AS OF check time (the
+  // user may rename/re-email later; this row is the historical truth).
+  try {
+    await metaDb(env).prepare(
+      `INSERT INTO liveness_didit_records (session_id, uid, status, name, first_name, last_name, email, phone, created_at)
+       VALUES (?1,?2,'created',?3,?4,?5,?6,?7,?8)
+       ON CONFLICT(session_id) DO NOTHING`,
+    ).bind(j.session_id, ctx.uid, name, first, last, email, phone, Date.now()).run();
+  } catch { /* table may not exist yet — record is best-effort */ }
   void track(env, ctx.uid, "didit_session_created", "platform", { session_id: j.session_id, attempts_remaining: MAX_FAILS_MONTH - fails });
   metric(env, "didit_session_created", [1], ["didit"]);
   return json({ url: j.url, session_id: j.session_id, attempts_remaining: MAX_FAILS_MONTH - fails });
@@ -180,12 +240,14 @@ export async function diditWebhook(req: Request, env: Env): Promise<Response> {
   // UUID shape only — anything else is noise.
   if (!/^[0-9a-f-]{36}$/i.test(sid)) return json({ ok: true });
   const key = (env as { DIDIT_API_KEY?: string }).DIDIT_API_KEY!;
-  const readDecision = async (): Promise<{ status?: string; vendor_data?: unknown } | null> => {
+  interface Decision {
+    status?: string; vendor_data?: unknown;
+    liveness_checks?: Array<{ status?: string; score?: number; reference_image?: string; video_url?: string }>;
+  }
+  const readDecision = async (): Promise<Decision | null> => {
     try {
-      const r = await fetch(`${DIDIT_BASE}/v3/session/${sid}/decision/`, {
-        headers: { "x-api-key": key, Accept: "application/json" },
-      });
-      return r.ok ? await r.json() as { status?: string; vendor_data?: unknown } : null;
+      const r = await diditGet(`${DIDIT_BASE}/v3/session/${sid}/decision/`, key);
+      return r.ok ? await r.json() as Decision : null;
     } catch { return null; }
   };
   const isDecisive = (s: string) => s === "Approved" || s === "Declined" || s === "Abandoned" || s === "Expired";
@@ -213,7 +275,37 @@ export async function diditWebhook(req: Request, env: Env): Promise<Response> {
     await env.TOKENS.delete(sessKvKey(uid)).catch(() => {});
     metric(env, "didit_verdict", [1], ["fail_webhook"]);
   }
-  void track(env, uid, "didit_webhook_received", "platform", { session_id: sid, status });
+  // [LIVE-DIDIT-5] Archive the evidence on OUR R2 + finalize the record, so the
+  // portrait/clip and the verdict survive any future move away from Didit.
+  // (Didit's media URLs are short-lived presigned S3 links — copy them NOW.)
+  const lc = (d.liveness_checks ?? [])[0];
+  let portraitKey: string | null = null, videoKey2: string | null = null;
+  const archive = async (url: string | undefined, destKey: string, maxBytes: number): Promise<string | null> => {
+    if (!url || !url.startsWith("https://")) return null;
+    try {
+      const m = await fetch(url);
+      if (!m.ok) return null;
+      const buf = await m.arrayBuffer();
+      if (buf.byteLength === 0 || buf.byteLength > maxBytes) return null;
+      await env.VERIFICATION.put(destKey, buf, {
+        customMetadata: { source: "didit", session_id: sid, status },
+      });
+      return destKey;
+    } catch { return null; }
+  };
+  portraitKey = await archive(lc?.reference_image, `didit/${uid}/${sid}/portrait.jpg`, 5_000_000);
+  videoKey2 = await archive(lc?.video_url, `didit/${uid}/${sid}/video.mp4`, 60_000_000);
+  try {
+    await metaDb(env).prepare(
+      `UPDATE liveness_didit_records
+         SET status=?2, score=?3, r2_portrait_key=COALESCE(?4, r2_portrait_key),
+             r2_video_key=COALESCE(?5, r2_video_key), decided_at=?6
+       WHERE session_id=?1`,
+    ).bind(sid, status, lc?.score ?? null, portraitKey, videoKey2, Date.now()).run();
+  } catch { /* best-effort */ }
+  void track(env, uid, "didit_webhook_received", "platform", {
+    session_id: sid, status, archived_portrait: !!portraitKey, archived_video: !!videoKey2,
+  });
   return json({ ok: true });
 }
 
@@ -268,9 +360,7 @@ export async function diditResult(req: Request, env: Env): Promise<Response> {
   let status = "";
   if (sid) {
     try {
-      const r = await fetch(`${DIDIT_BASE}/v3/session/${sid}/decision/`, {
-        headers: { "x-api-key": key, Accept: "application/json" },
-      });
+      const r = await diditGet(`${DIDIT_BASE}/v3/session/${sid}/decision/`, key);
       if (r.ok) status = String(((await r.json()) as { status?: string }).status || "");
     } catch { /* fall through to the vendor_data scan */ }
   }
@@ -283,9 +373,7 @@ export async function diditResult(req: Request, env: Env): Promise<Response> {
   const decisive = (s: string) => s === "Approved" || s === "Declined" || s === "Abandoned" || s === "Expired";
   if (!decisive(status)) {
     try {
-      const r = await fetch(`${DIDIT_BASE}/v3/sessions/?vendor_data=${encodeURIComponent(ctx.uid)}`, {
-        headers: { "x-api-key": key, Accept: "application/json" },
-      });
+      const r = await diditGet(`${DIDIT_BASE}/v3/sessions/?vendor_data=${encodeURIComponent(ctx.uid)}`, key);
       if (r.ok) {
         const list = (await r.json()) as { results?: Array<{ session_id?: string; status?: string; created_at?: string }> };
         const dayAgo = Date.now() - 86_400_000;
@@ -309,6 +397,12 @@ export async function diditResult(req: Request, env: Env): Promise<Response> {
   // Cache whatever we learned so subsequent polls stop hitting Didit.
   if (status === "Approved" || status === "Declined" || status === "Abandoned" || status === "Expired") {
     await storeVerdict(env, ctx.uid, sid, status);
+    // Keep our permanent record in step even when the webhook was missed.
+    try {
+      await metaDb(env).prepare(
+        "UPDATE liveness_didit_records SET status=?2, decided_at=COALESCE(decided_at, ?3) WHERE session_id=?1",
+      ).bind(sid, status, Date.now()).run();
+    } catch { /* best-effort */ }
   }
   if (status === "Approved") {
     await applyDiditPass(env, ctx.uid, sid);

@@ -29,6 +29,7 @@ import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
 import '../../core/config.dart';
+import '../../core/profile_store.dart';
 import 'liveness_v2/live_theme.dart';
 
 class DiditLivenessScreen extends StatefulWidget {
@@ -77,8 +78,24 @@ class _DiditLivenessScreenState extends State<DiditLivenessScreen> {
       }
     } catch (_) {/* no prior pass — continue into a fresh session */}
     try {
+      // [LIVE-DIDIT-5] Attach the user's details (as of NOW) so the Didit
+      // dashboard is searchable by name/email and our server record captures
+      // who they were at check time. Liveness runs at the END of onboarding,
+      // so the profile is already filled in when we get here.
+      Map<String, Object> details = const {};
+      try {
+        final p = await ProfileStore().load();
+        final parts = p.displayName.trim().split(RegExp(r'\s+'));
+        details = {
+          if (p.displayName.trim().isNotEmpty) 'name': p.displayName.trim(),
+          if (parts.isNotEmpty && parts.first.isNotEmpty) 'first_name': parts.first,
+          if (parts.length > 1) 'last_name': parts.sublist(1).join(' '),
+          if (p.email.trim().isNotEmpty) 'email': p.email.trim(),
+          if (p.phone.trim().isNotEmpty) 'phone': p.phone.trim(),
+        };
+      } catch (_) {/* details are best-effort */}
       final res = await ApiAuth.postJson(
-        'https://$kSignalingHost/api/liveness/didit/session', const {},
+        'https://$kSignalingHost/api/liveness/didit/session', details,
         timeout: const Duration(seconds: 20),
       );
       final j = jsonDecode(res.body) as Map<String, dynamic>;

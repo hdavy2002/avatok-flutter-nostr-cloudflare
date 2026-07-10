@@ -312,6 +312,10 @@ const DEFAULTS: PlatformConfig = {
   // ON — this IS the liveness path now; v2/v3 above are retired. The client
   // routes the human check to DiditLivenessScreen when this is true.
   diditLivenessEnabled: true,
+  // [LIVE-DIDIT-5] When ON, only didit-provider liveness counts for L2 — users
+  // verified by the retired v2/v3 pipelines are re-gated on next app open.
+  // OWNER-CONTROLLED: flip in KV when ready to re-verify the existing base.
+  requireDiditLiveness: false,
   safetyScanEnabled: true,         // P6: always-on Nemotron per-message safety scan + red bubbles — ships ON
   profileCompletionGate: false,    // P11: mandatory + AI-vetted profile — dark, flip ON at launch
   chatArchiveV2: false,            // P8 Stage 1: batched R2 cold archive — dark until verified
