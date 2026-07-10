@@ -28,6 +28,17 @@ class ApiAuth {
   static DateTime _lastAuthRepair = DateTime.fromMillisecondsSinceEpoch(0);
   static const Duration _authRepairCooldown = Duration(seconds: 10);
 
+  /// [AVA-IDGATE-1] Invoked (at most once per [_identityPromptCooldown]) when a
+  /// PUBLIC action comes back `403 {error:'identity_required', action:...}`. Wired
+  /// in main.dart to open the consent + Didit liveness flow, so a gated action pops
+  /// the camera flow instead of failing silently. The `action` string is the server's
+  /// PublicAction (post/listing/live/dm_stranger/group_*/forward). The original
+  /// request is NOT auto-retried here; the message outbox retries on its own, and
+  /// other call sites re-issue after the user verifies.
+  static void Function(String action)? onIdentityRequired;
+  static DateTime _lastIdentityPrompt = DateTime.fromMillisecondsSinceEpoch(0);
+  static const Duration _identityPromptCooldown = Duration(seconds: 3);
+
   static Future<Map<String, String>> _headers(
       String method, String url, {List<int>? body, Map<String, String>? base}) async {
     final h = <String, String>{...?base};
@@ -81,6 +92,15 @@ class ApiAuth {
           contentType: res.headers['content-type'],
         );
         if (res.statusCode == 401) _onUnauthorized(uri.path);
+        // [AVA-IDGATE-1] A gated public action → open the liveness/consent flow.
+        if (res.statusCode == 403 && snippet != null && snippet.contains('identity_required')) {
+          String action = 'post';
+          try {
+            final j = jsonDecode(snippet);
+            if (j is Map && j['action'] is String) action = j['action'] as String;
+          } catch (_) { /* body wasn't the expected JSON; default action */ }
+          _onIdentityRequired(action, uri.path);
+        }
       }
       return res;
     } catch (e) {
@@ -114,6 +134,26 @@ class ApiAuth {
     if (hook != null) {
       // ignore: unawaited_futures
       hook();
+    }
+  }
+
+  /// [AVA-IDGATE-1] Coordinated, rate-limited reaction to a 403 identity_required.
+  /// The cooldown stops a burst of gated calls (e.g. the outbox retrying a queued
+  /// message every few seconds) from stacking multiple consent screens.
+  static void _onIdentityRequired(String action, String endpoint) {
+    final now = DateTime.now();
+    if (now.difference(_lastIdentityPrompt) < _identityPromptCooldown) return;
+    _lastIdentityPrompt = now;
+    // Rich telemetry so we can see, per action, how often the gate is hit at the
+    // client and whether the consent flow is actually being launched.
+    Analytics.capture('identity_gate_intercepted', {'action': action, 'endpoint': endpoint});
+    final hook = onIdentityRequired;
+    if (hook != null) {
+      hook(action);
+    } else {
+      // Should never happen once main.dart wires the hook — but if it does, we want
+      // to know, because it means a gated action failed with no path forward.
+      Analytics.capture('identity_gate_no_handler', {'action': action, 'endpoint': endpoint});
     }
   }
 

@@ -38,6 +38,11 @@ import 'features/auth/sign_in_screen.dart';
 import 'features/auth/restore_screen.dart';
 import 'features/avatok/contacts.dart';
 import 'features/identity/liveness_v3/voice_packs.dart';
+import 'features/identity/public_action_gate.dart'; // [AVA-IDGATE-1] 403→consent flow
+
+// [AVA-IDGATE-1] Guards against stacking multiple consent/liveness flows when a burst
+// of gated requests (e.g. the outbox retrying) each return 403 identity_required.
+bool _identityFlowOpen = false;
 import 'features/onboarding/handle_claim_screen.dart';
 import 'features/onboarding/onboarding_flow.dart';
 import 'features/onboarding/welcome_screen.dart';
@@ -330,6 +335,19 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
     // trip), repair the session once — rate-limited inside ApiAuth — instead of
     // letting authed calls storm and blank the thread.
     ApiAuth.onAuthExpired = _clerk.warmSession;
+    // [AVA-IDGATE-1] When any public action comes back 403 identity_required, open
+    // the consent + Didit liveness flow instead of letting it fail silently. A guard
+    // prevents a second flow stacking while one is already on screen; the outbox and
+    // other call sites naturally retry once the user is verified.
+    ApiAuth.onIdentityRequired = (action) {
+      if (_identityFlowOpen) return;
+      final ctx = navigatorKey.currentContext;
+      if (ctx == null) return;
+      _identityFlowOpen = true;
+      Analytics.capture('identity_gate_flow_opened', {'action': action});
+      // ignore: unawaited_futures
+      ensurePublicActionAllowed(ctx, action).whenComplete(() => _identityFlowOpen = false);
+    };
     // Let any deep widget upgrade an L0 guest to an L1 member (AccountGate):
     // it drives the Clerk sign-up, then calls back here to re-scope the app.
     AccountGate.clerk = _clerk;
