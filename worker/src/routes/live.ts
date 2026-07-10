@@ -21,6 +21,7 @@ import { rateLimit, RL } from "../money";
 import { donation } from "../ledger";
 import { track, metric, brainFact } from "../hooks";
 import { notifyUser } from "../notify";
+import { gatePublicAction, emailOf } from "../lib/identity_gate"; // [AVA-IDGATE-1]
 
 const APP = "avalive";
 const PRE_LIVE_MS = 15 * 60_000;   // creator can go live 15 min early
@@ -94,6 +95,13 @@ export async function liveStart(req: Request, env: Env): Promise<Response> {
   const id = sidOf(req); if (!id) return json({ error: "bad listing id" }, 400);
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  // [AVA-IDGATE-1] Going live is a public action. The listing was gated at creation,
+  // but a pass EXPIRES (90d) — so re-check here rather than trusting a stale pass on
+  // an event created months ago. Spec §3.1/§3.2.
+  {
+    const blocked = await gatePublicAction(env, ctx.uid, await emailOf(env, ctx.uid), "live");
+    if (blocked) return blocked;
+  }
   const l = await loadListing(env, id);
   if (!l || l.kind !== "live_event") return json({ error: "listing not found" }, 404);
   if (l.creator_id !== ctx.uid) return json({ error: "not your event" }, 403);

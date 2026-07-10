@@ -42,9 +42,9 @@ import { recordView, trackImpressions, geoOf } from "./insights";
 import { guardWrite } from "./moderate"; // save-time content validation (Nemotron)
 import { notifyUser } from "../notify";
 import { emailBookingConfirmed } from "../cal/emails";
-// [AVA-IDGATE-1] readConfig is no longer read here — requireLiveness() owns the
+// [AVA-IDGATE-1] readConfig is no longer read here — gatePublicAction() owns the
 // flag check (identityGatingEnabled) and the fail-closed posture.
-import { requireLiveness } from "../lib/identity_gate";
+import { gatePublicAction, emailOf, type PublicAction } from "../lib/identity_gate";
 
 const APP = "avaexplore";
 // live_event/consult = creator services; sell/buy/social = AvaMarketplace listings.
@@ -285,20 +285,12 @@ function normFields(b: any): Record<string, unknown> {
 // requireLiveness() fails CLOSED and emits its own telemetry. Returns a 403 Response
 // to short-circuit, or null to proceed. Browsing stays free.
 async function phoneGate(env: Env, uid: string, listingKind: string, listingId: string | null): Promise<Response | null> {
-  const email = await emailOf(env, uid);
-  const blocked = await requireLiveness(env, uid, email, "listing");
+  // A 'social' listing IS a post; 'live_event' IS going live. Same gate either way.
+  const action: PublicAction = listingKind === "live_event" ? "live" : listingKind === "social" ? "post" : "listing";
+  const blocked = await gatePublicAction(env, uid, await emailOf(env, uid), action);
   if (!blocked) return null;
   track(env, uid, "listing_blocked_identity_unverified", APP, { listing_id: listingId, listing_kind: listingKind });
   return blocked;
-}
-
-// Best-effort email lookup so identity-gate telemetry is queryable by email in
-// PostHog (project rule: every event carries the user's email). Never throws.
-async function emailOf(env: Env, uid: string): Promise<string | null> {
-  try {
-    const r = await metaDb(env).prepare("SELECT email FROM users WHERE uid=?1").bind(uid).first<{ email: string }>();
-    return r?.email ?? null;
-  } catch { return null; }
 }
 
 // POST /api/listings — create a draft.

@@ -60,6 +60,18 @@ async function readLiveness(env: Env, uid: string): Promise<LivenessRow | null> 
   }
 }
 
+/**
+ * Best-effort email lookup. Project rule: EVERY telemetry event carries the user's
+ * email so support can pull a person's whole history in PostHog by email alone.
+ * Never throws; a missing email degrades telemetry, it must never block a request.
+ */
+export async function emailOf(env: Env, uid: string): Promise<string | null> {
+  try {
+    const r = await metaDb(env).prepare("SELECT email FROM users WHERE uid=?1").bind(uid).first<{ email: string }>();
+    return r?.email ?? null;
+  } catch { return null; }
+}
+
 /** Days elapsed since the pass, or null if never passed. */
 function daysSince(passedAt: number | null | undefined): number | null {
   if (!passedAt) return null;
@@ -112,6 +124,11 @@ export async function livenessState(env: Env, uid: string): Promise<LivenessStat
 /**
  * Gate a public action. Returns a 403 Response to short-circuit, or null to proceed.
  *
+ * NAMED `gatePublicAction`, NOT `requireLiveness` — `authz.ts` already exports a
+ * DIFFERENT `requireLiveness()` (the old `livenessOnboardingGate`, which reads
+ * kyc_status and returns an AuthFail). Two functions with one name, opposite return
+ * types and different flags is how a gate silently stops gating. Keep them distinct.
+ *
  * The 403 contract is `{ error: "identity_required", reason, action }`. The client
  * intercepts it, opens the liveness flow, and RETRIES the original request — see
  * app/lib/features/identity/identity_gate.dart. This pattern already existed for
@@ -120,7 +137,7 @@ export async function livenessState(env: Env, uid: string): Promise<LivenessStat
  * FAIL CLOSED on any error. An unverified user posting because D1 blipped is a
  * worse outcome than a verified user seeing one spurious camera prompt.
  */
-export async function requireLiveness(
+export async function gatePublicAction(
   env: Env,
   uid: string,
   email: string | null | undefined,

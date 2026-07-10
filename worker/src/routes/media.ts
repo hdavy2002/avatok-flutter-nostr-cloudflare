@@ -6,6 +6,7 @@ import { mediaSession, moderationSession } from "../db/shard";
 import { requireUser, isFail } from "../authz";
 import { walletOp } from "./wallet";
 import { checkUploadAllowed, afterRegisterFile } from "../storage";
+import { gatePublicAction, emailOf } from "../lib/identity_gate"; // [AVA-IDGATE-1]
 
 // POST /upload/public — plaintext media (posts). sha256 → blocklist check →
 // R2 PUT (status 'pending') → enqueue Workers-AI scan (Phase 4 consumer flips
@@ -13,6 +14,13 @@ import { checkUploadAllowed, afterRegisterFile } from "../storage";
 export async function uploadPublic(req: Request, env: Env, exec: ExecutionContext): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  // [AVA-IDGATE-1] Public upload is a public action. Gated BEFORE we read the body:
+  // an unverified user should not be able to push bytes at us, let alone have them
+  // land in R2 while moderation catches up. Spec §3.1.
+  {
+    const blocked = await gatePublicAction(env, ctx.uid, await emailOf(env, ctx.uid), "upload");
+    if (blocked) return blocked;
+  }
   const bytes = await req.arrayBuffer();
   if (!bytes.byteLength) return json({ error: "empty body" }, 400);
   const hash = await sha256Hex(bytes);                  // content id (moderation/blocklist/dedup)

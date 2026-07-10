@@ -6,6 +6,12 @@
 import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, kycVerified, dmConvId, isFail, requireLiveness } from "../authz";
+// [AVA-IDGATE-1] NOTE: authz.requireLiveness (above) is the OLD onboarding gate —
+// different flag (livenessOnboardingGate), different table (kyc_status), and it
+// FAILS OPEN when no row exists. gatePublicAction below is the new per-action gate:
+// different flag (identityGatingEnabled), reads liveness_passed_at, fails CLOSED,
+// and enforces the 90-day expiry. Two distinct gates; do not confuse them.
+import { gatePublicAction, emailOf, type PublicAction } from "../lib/identity_gate";
 import { nameFor } from "../lib/identity";        // resolve inviter display name
 import { readConfig } from "./config";            // groupInvitesEnabled kill switch
 import { novuGroupInvite } from "../notify_novu"; // optional Novu orchestration
@@ -310,6 +316,23 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
     return json({ error: "conv or to required" }, 400);
   }
   const isDm = mem.length === 2;
+
+  // [AVA-IDGATE-1] Public-action gate. Spec §3.1.
+  //
+  // PLACED HERE, NOT AT THE TOP OF THE FUNCTION, deliberately. Messaging an EXISTING
+  // contact is not a public action and must never be gated — but we cannot know
+  // whether the recipient is a known contact until `dmPreexisted` is resolved above.
+  // Gating at the top would have silently gated every private DM.
+  //
+  //   • first DM to someone you've never messaged  → "dm_stranger" (the spam/grooming
+  //     vector; a gate on posts that leaves this open is a gate with a door beside it)
+  //   • any message into a group                   → "group_post"
+  //   • DM into an existing thread                 → NOT gated
+  if (!dmPreexisted || !isDm) {
+    const action: PublicAction = isDm ? "dm_stranger" : "group_post";
+    const blocked = await gatePublicAction(env, ctx.uid, await emailOf(env, ctx.uid), action);
+    if (blocked) return blocked;
+  }
 
   const created = Date.now();
   // Canonical, chronologically-sortable id shared by the live Ably message, the
