@@ -2,15 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
-import '../../core/remote_config.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'ladder_api.dart';
-import 'liveness_check_screen.dart';
+// [AVA-IDGATE-1] liveness_check_screen (V1), liveness_v2_screen, liveness_v3_screen
+// and pending_session are no longer imported — Didit is the sole provider.
 import 'liveness_didit_screen.dart';
-import 'liveness_v2/liveness_v2_screen.dart';
-import 'liveness_v2/pending_session.dart';
-import 'liveness_v3/liveness_v3_screen.dart';
 
 /// STREAM H (AI Messenger Batch) — the onboarding "human check" hard gate.
 ///
@@ -85,25 +82,9 @@ class _HumanCheckPageState extends State<HumanCheckPage> {
         widget.source != HumanCheckSource.signup) {
       Analytics.capture('liveness_gate_shown', {'source': _source});
     }
-    // Verify-pending resilience (LIVE-V2 P4): if a V2 verify was left in flight
-    // (app backgrounded mid-check), reopen the V2 screen so it can resume that
-    // session's result instead of making the user redo the whole video. The V2
-    // screen's initState does the actual poll/render. Flag-gated so V1 is unchanged.
-    // [LIVE-DIDIT-1] pending-session resume is a v2/v3 concept — skip it when
-    // didit is the live path (its result poll is stateless on the Worker).
-    if (!RemoteConfig.diditLivenessEnabled &&
-        (RemoteConfig.livenessV3Enabled || RemoteConfig.livenessV2Enabled)) {
-      _resumePendingV2();
-    }
-  }
-
-  Future<void> _resumePendingV2() async {
-    final sid = await LivenessPendingSession.get();
-    if (sid == null || sid.isEmpty || !mounted) return;
-    Analytics.capture('liveness_resume_pending', {'source': _source});
-    // _startCheck's push already routes to LivenessV2Screen under the flag; it
-    // resumes the pending sid on its own. Just launch it.
-    await _startCheck();
+    // [AVA-IDGATE-1] Pending-session resume was a V2/V3 concept. Didit's result
+    // poll is stateless on the Worker, and V2/V3 no longer exist, so there is
+    // nothing to resume. Removed with _resumePendingV2().
   }
 
   Future<void> _startCheck() async {
@@ -119,38 +100,19 @@ class _HumanCheckPageState extends State<HumanCheckPage> {
     try {
       ok = await Navigator.of(context).push<bool>(
             MaterialPageRoute(
-              builder: (_) {
-                // [LIVE-DIDIT-1] didit.me is THE liveness path (owner decision
-                // 2026-07-09). v3/v2/v1 below are retired fallbacks, reachable
-                // only if the didit kill switch is flipped off.
-                if (RemoteConfig.diditLivenessEnabled) {
-                  return DiditLivenessScreen(
-                    listingContext: widget.source == HumanCheckSource.listing,
-                    requester: widget.source == HumanCheckSource.listing
-                        ? 'marketplace_publish'
-                        : 'onboarding',
-                  );
-                }
-                // V3 (voice-guided) takes precedence when its flag is on, then V2
-                // (ML-Kit-gated), else V1. `requester` records who invoked the
-                // check (plan §0-A): a marketplace listing gate vs onboarding.
-                if (RemoteConfig.livenessV3Enabled) {
-                  return LivenessV3Screen(
-                    listingContext: widget.source == HumanCheckSource.listing,
-                    requester: widget.source == HumanCheckSource.listing
-                        ? 'marketplace_publish'
-                        : 'onboarding',
-                  );
-                }
-                if (RemoteConfig.livenessV2Enabled) {
-                  return LivenessV2Screen(
-                    // [LIVE-UI-3] pass listing context so the Accepted screen
-                    // shows a "Create a listing" CTA (else "Done").
-                    listingContext: widget.source == HumanCheckSource.listing,
-                  );
-                }
-                return const LivenessCheckScreen();
-              },
+              // [AVA-IDGATE-1] Didit is the ONLY liveness path. The V1/V2/V3
+              // fallbacks are gone — their Worker routes now return 410 Gone, and
+              // each of them called setVerifiedCache(uid,true), i.e. each was a
+              // door that could mark a user verified with no liveness check running
+              // at all. A retired provider that can still mint trust is a bypass,
+              // not a fallback. There is deliberately no fallback now: if Didit is
+              // down, nobody gets verified, which is the correct failure mode.
+              builder: (_) => DiditLivenessScreen(
+                listingContext: widget.source == HumanCheckSource.listing,
+                requester: widget.source == HumanCheckSource.listing
+                    ? 'marketplace_publish'
+                    : 'onboarding',
+              ),
             ),
           ) ==
           true;

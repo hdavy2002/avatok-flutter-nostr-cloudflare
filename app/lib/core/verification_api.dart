@@ -11,18 +11,19 @@ class VerifyApiResult {
   const VerifyApiResult(this.ok, this.status, [this.message]);
 }
 
-/// Client calls for identity verification that run through the Worker:
-///   - Email OTP: backend generates a code, emails it via Brevo, verifies it.
-///   - Phone:     verified client-side via Firebase Auth; we just tell the
-///                backend it's confirmed so the directory can mark it.
+/// Client calls for identity verification that run through the Worker.
 ///
-/// Phone OTP itself is handled by Firebase in the verify screen — Firebase sends
-/// and checks the SMS code; this class only records the confirmed number.
+/// EMAIL OTP ONLY. [AVA-IDGATE-1] `isPhoneVerified()` and `confirmPhone()` were
+/// removed on 2026-07-10 along with all phone verification — the Worker route
+/// `/api/id/phone/confirm` now returns 410 Gone, so calling them could only fail.
+///
+/// Identity is established by a Didit liveness check at the first PUBLIC action.
+/// See features/identity/public_action_gate.dart and
+/// Specs/SPEC-2026-07-10-identity-gating.md
 ///
 /// Backend endpoints required (see core/config.dart):
 ///   POST {kIdBase}/email/start   {email}        -> 200
 ///   POST {kIdBase}/email/verify  {email, code}  -> 200 | 400 (bad/expired code)
-///   POST {kIdBase}/phone/confirm {phone}        -> 200
 class VerificationApi {
   static Future<VerifyApiResult> sendEmailOtp(String email) async {
     try {
@@ -37,28 +38,6 @@ class VerificationApi {
     try {
       final r = await ApiAuth.postJson(
           kEmailOtpVerifyUrl, {'email': email.trim().toLowerCase(), 'code': code.trim()});
-      return VerifyApiResult(r.statusCode == 200, r.statusCode, _msg(r.body));
-    } catch (e) {
-      return VerifyApiResult(false, 0, e.toString());
-    }
-  }
-
-  /// Account-keyed phone status. True when THIS account already verified a phone
-  /// (so a reinstall / new device can skip the OTP — no wasted SMS). Best-effort.
-  static Future<bool> isPhoneVerified() async {
-    try {
-      final r = await ApiAuth.getSigned(kIdStatusUrl);
-      if (r.statusCode != 200) return false;
-      final j = jsonDecode(r.body);
-      return j is Map && j['phone_verified'] == true;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  static Future<VerifyApiResult> confirmPhone(String phoneE164) async {
-    try {
-      final r = await ApiAuth.postJson(kPhoneConfirmUrl, {'phone': phoneE164.trim()});
       return VerifyApiResult(r.statusCode == 200, r.statusCode, _msg(r.body));
     } catch (e) {
       return VerifyApiResult(false, 0, e.toString());

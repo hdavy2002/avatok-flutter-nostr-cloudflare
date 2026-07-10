@@ -1,42 +1,24 @@
 import 'package:flutter/material.dart';
 
-import '../../core/analytics.dart';
-import '../../core/verification_api.dart';
-import 'phone_verify_screen.dart';
+import 'public_action_gate.dart';
 
-/// First-time PHONE-OTP gate for LISTING CREATION (owner decision 2026-07-07).
+/// [AVA-IDGATE-1] Marketplace listing gate — now a thin delegate.
 ///
-/// Liveness is now the ONBOARDING gate only. The marketplace "sell" gate is a
-/// one-time PHONE OTP: anyone who wants to CREATE a marketplace listing confirms
-/// a real mobile number ONCE. On confirm the server flips the phone proof →
-/// 'verified' (the phone tick turns GREEN in the Identity menu) and enforces
-/// phone_verified on publish (the Worker returns 403 {error:'phone_required'}
-/// otherwise). This helper is the CLIENT side: it routes an unverified seller
-/// through the phone-OTP flow so they see the friendly check instead of a raw
-/// error.
+/// WAS (2026-07-07): a one-time PHONE OTP. The Worker rejected publish with
+/// `403 {error:'phone_required'}` and this helper routed the seller through a
+/// Firebase SMS flow.
 ///
-/// Kept the name `ensureListingLiveness` so existing call sites (marketplace_hub,
-/// sell_listing_flow) are unchanged; the gate is still flag-gated upstream by
-/// RemoteConfig.listingLivenessGate.
+/// NOW (2026-07-10): all phone verification is removed app-wide. Creating a listing
+/// is a PUBLIC ACTION and goes through the same liveness gate as posts, comments,
+/// going live, DMs to strangers, group posts and public uploads. The Worker now
+/// rejects with `403 {error:'identity_required'}`.
 ///
-/// Returns `true` if the user is (or becomes) phone-verified — the caller may
-/// then open the sell flow. Returns `false` if they cancelled or failed.
-Future<bool> ensureListingLiveness(BuildContext context) async {
-  // 1) Already phone-verified (account-keyed)? No UI — go straight through.
-  if (await VerificationApi.isPhoneVerified()) return true;
-
-  if (!context.mounted) return false;
-
-  // 2) Not verified → run the one-time phone-OTP confirm (dismissible).
-  Analytics.capture('listing_phone_gate_shown', const {});
-  final passed = await Navigator.of(context).push<bool>(
-        MaterialPageRoute(
-          builder: (_) => const PhoneVerifyScreen(reason: 'listing'),
-        ),
-      ) ==
-      true;
-
-  Analytics.capture(
-      passed ? 'listing_phone_passed' : 'listing_phone_cancelled', const {});
-  return passed;
-}
+/// The function name and signature are UNCHANGED so the existing call sites
+/// (marketplace_hub, sell_listing_flow) keep working untouched. It is now one line.
+/// Prefer calling `ensurePublicActionAllowed(context, PublicAction.listing)` directly
+/// in new code; this wrapper exists only to avoid churning working call sites.
+///
+/// Returns `true` if the user is (or becomes) liveness-verified — the caller may then
+/// open the sell flow. Returns `false` if they declined or failed.
+Future<bool> ensureListingLiveness(BuildContext context) =>
+    ensurePublicActionAllowed(context, PublicAction.listing);

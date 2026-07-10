@@ -231,8 +231,8 @@ const String kEmailOtpVerifyUrl = '$kIdBase/email/verify'; // POST {email, code}
 // password (rolls out alongside email+password sign-up, beside Google sign-in).
 const String kPasswordResetStartUrl = '$kIdBase/password/start'; // POST {} → emails a code (auth)
 const String kPasswordSetUrl = '$kIdBase/password/set';          // POST {code, password} (auth)
-const String kPhoneConfirmUrl = '$kIdBase/phone/confirm';  // POST {phone}
-const String kIdStatusUrl = '$kIdBase/status';             // GET → { phone_verified, ... }
+// [AVA-IDGATE-1] kPhoneConfirmUrl REMOVED — /api/id/phone/confirm now returns 410.
+const String kIdStatusUrl = '$kIdBase/status';             // GET → { ... }
 // L2 liveness — Workers AI provider (flag: workersAiLivenessEnabled).
 const String kLivenessStartUrl = '$kIdBase/liveness/start';   // POST -> {session_id, challenge}
 const String kLivenessUploadUrl = '$kIdBase/liveness/upload'; // POST ?session=&part= (raw bytes)
@@ -249,6 +249,12 @@ const String kLivenessV3SessionUrl = '$kApiBase/liveness/v3/session'; // POST {p
 const String kLivenessV3VerifyUrl = '$kApiBase/liveness/v3/verify';   // POST {session_id, object_key?} → 202 pending
 const String kLivenessV3ResultUrl = '$kApiBase/liveness/v3/result';   // GET ?session= → pending | done
 const String kLivenessV3UploadUrl = '$kApiBase/liveness/v3/upload';   // PUT ?session= (worker-proxy fallback, raw bytes)
+
+// [AVA-IDGATE-1] Biometric consent — BIPA §15(b) requires informed written consent
+// BEFORE capture. The Worker 403s `consent_required` on the Didit session route if
+// this has not been posted under the CURRENT policy version. See
+// Specs/SPEC-2026-07-10-identity-gating.md §10.4.
+const String kLivenessConsentUrl = '$kApiBase/liveness/consent'; // POST {consent, residency_state?}
 
 // Progressive Identity ladder (PROPOSAL-PROGRESSIVE-IDENTITY.md).
 const String kIdentityBase = '$kApiBase/identity';

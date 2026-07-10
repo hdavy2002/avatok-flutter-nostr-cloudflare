@@ -8,7 +8,6 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/account_restore.dart';
 import '../../core/admin_tools.dart';
-import '../../core/verification_api.dart';
 import '../../core/analytics.dart';
 import '../../core/app_registry.dart';
 import '../../core/apps.dart';
@@ -22,7 +21,6 @@ import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
 import '../ava_ai/ava_ai_setup.dart';
 import '../avatok/contacts.dart';
-import 'verify_identity_step.dart';
 
 /// The sign-up flow shown after Clerk auth on a fresh account. Starts by asking
 /// what kind of account this is (Single / Parent / Enterprise) — that choice
@@ -109,18 +107,13 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   }
 
   String? _guestHandle; // reserved pre-signup on the handle-claim screen (L0)
-  // Account-keyed: this account already verified a phone (reinstall / new device).
-  // When true the verify_identity step auto-advances so we never re-send an OTP.
-  bool _phoneAlreadyVerified = false;
+  // [AVA-IDGATE-1] _phoneAlreadyVerified removed — no phone verification exists.
 
   Future<void> _bootstrap() async {
     var id = await _idStore.load();
     id ??= await _idStore.createAndStore();
     if (mounted) setState(() => _id = id);
-    // Skip phone OTP if this account already verified one (no wasted SMS on reinstall).
-    VerificationApi.isPhoneVerified().then((v) {
-      if (v && mounted) setState(() => _phoneAlreadyVerified = true);
-    });
+    // [AVA-IDGATE-1] The isPhoneVerified() probe is gone with phone verification.
     // Handle-first onboarding: prefill the handle the visitor already reserved.
     final gh = await GuestSession.reservedHandle();
     if (gh != null && gh.isNotEmpty && mounted) {
@@ -250,7 +243,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       case 'notifications': return _notifications();
       case 'terms': return _terms();
       case 'profile': return _profileStep();
-      case 'verify_identity': return _verifyStep();
       case 'contacts': return _contacts();
       case 'add_ai': return _addAiStep();
       default: return _appsSetup();
@@ -269,23 +261,22 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         },
       );
 
-  // ---- Step: verify identity (age / gender / OPTIONAL phone OTP) ----
-  // Phone verification is skippable (2026-06-19). Auto-advances if the account
-  // already verified a phone (reinstall / new device) so we never re-send an OTP.
-  Widget _verifyStep() {
-    if (_phoneAlreadyVerified) {
-      WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _next(); });
-      return const Center(child: CircularProgressIndicator());
-    }
-    return VerifyIdentityStep(
-      onComplete: (data) {
-        _ageGroup = data.ageGroup;
-        _gender = data.gender;
-        if (data.phone.isNotEmpty) _profileStore.setPhone(data.phone);
-        _next();
-      },
-    );
-  }
+  // [AVA-IDGATE-1] _verifyStep() REMOVED (2026-07-10).
+  //
+  // Onboarding no longer contains a phone OTP step OR a liveness step. Signup is
+  // Clerk and nothing else. The liveness check now happens JUST IN TIME — the first
+  // time the user tries to do something PUBLIC (post, listing, comment, go live, DM
+  // a stranger, post in a group, upload). See features/identity/public_action_gate.dart.
+  //
+  // Two reasons, and the second matters more:
+  //   1. Nobody abandons signup over a camera they never see.
+  //   2. A camera check weeks before an offence, during a signup the user has
+  //      forgotten, deters nobody. The check immediately before the first public
+  //      post is the deterrent. Friction belongs at the moment of intent.
+  //
+  // NOTE: 'verify_identity' was already absent from _composeSteps() before this
+  // change — the step was unreachable dead code that still triggered an
+  // isPhoneVerified() network call on every boot.
 
   // ---- Step 1: account type — required, drives the sidebar tools ----
   Widget _accountType() {

@@ -43,6 +43,13 @@ class LadderApi {
 
   // ── Workers AI liveness (L2) ───────────────────────────────────────────────
 
+  /// ⚠️ [AVA-IDGATE-1] DEAD. `/api/id/liveness/start` now returns **410 Gone** —
+  /// the V2 Workers-AI liveness route was closed on 2026-07-10 because it called
+  /// setVerifiedCache(uid,true), i.e. it could mark a user verified without a Didit
+  /// check. Nothing calls this method any more (the V2/V3 screens are deleted).
+  /// Kept only so `LadderApi`'s surface does not shift mid-migration; delete on the
+  /// next pass. DO NOT call it — it can only fail.
+  ///
   /// POST /api/id/liveness/start → session + the random challenge.
   ///
   /// [LIVE-UI-3] Optional [lang] ('en'|'es'|'fr'|'de') asks the server for a

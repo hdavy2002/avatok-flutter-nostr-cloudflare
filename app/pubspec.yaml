@@ -42,10 +42,13 @@ dependencies:
   crypto: ^3.0.3
   flutter_secure_storage: ^9.2.2
   http: ^1.2.0
+  # firebase_core + firebase_messaging are FCM PUSH ONLY. Keep them.
   firebase_core: ^3.6.0
   firebase_messaging: ^15.1.3
-  # Phone (SMS) OTP verification at onboarding.
-  firebase_auth: ^5.3.1
+  # [AVA-IDGATE-1] firebase_auth REMOVED 2026-07-10. It existed solely for phone
+  # SMS OTP, which is gone app-wide — a phone number proved nothing about identity
+  # and every SMS cost money. Identity is now a Didit liveness check at the first
+  # public action. See Specs/SPEC-2026-07-10-identity-gating.md
   flutter_local_notifications: ^17.2.3
   # App-icon unread badge (red dot + count, WhatsApp-style). Android support is
   # launcher-dependent: Pixel shows a dot (count on long-press), Samsung/Oppo/

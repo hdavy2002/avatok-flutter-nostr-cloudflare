@@ -20,7 +20,6 @@ import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
 import '../ava_ai/ava_ai_setup.dart';
 import '../avabrain/brain_settings_screen.dart';
-import '../profile/phone_verify_card.dart';
 import 'auto_responder_settings_page.dart';
 import 'settings_registry.dart';
 
@@ -357,11 +356,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: SafeArea(
         child: ListView(padding: EdgeInsets.all(hPad), children: [
         // Soft nudge to verify phone for users who skipped it at onboarding.
-        // Self-hides when already verified or recently dismissed (account-scoped,
-        // re-surfaces after 7 days), so it leaves no gap when not shown.
-        // Owner request 2026-06-29: hide the phone-verify nudge card (we'll
-        // re-enable phone verification later). The widget stays imported/available.
-        // const PhoneNudgeCard(source: 'settings'),
+        // [AVA-IDGATE-1] The PhoneNudgeCard is GONE, not merely hidden. All phone
+        // verification was removed 2026-07-10; the widget and its Firebase SMS
+        // dependency no longer exist.
         // Account type (preview) section hidden (owner decision 2026-06-17).
         // Google AI Studio BYOK removed (owner decision 2026-06-18): premium is
         // top-up only, everything runs on Cloudflare. The _aiCard() is no longer

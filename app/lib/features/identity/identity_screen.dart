@@ -4,17 +4,13 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
 import '../../core/config.dart';
-import '../../core/remote_config.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
-import '../profile/phone_verify_card.dart';
 import '../profile/profile_screen.dart';
 import 'identity_api.dart';
-import 'identity_gate.dart';
+import 'identity_gate.dart';       // Stripe KYC (payouts) — a DIFFERENT gate
 import 'ladder_api.dart';
-import 'liveness_check_screen.dart';
-import 'liveness_didit_screen.dart';
-import 'liveness_v2/liveness_v2_screen.dart';
+import 'public_action_gate.dart';  // [AVA-IDGATE-1] liveness gate + BIPA consent
 
 /// AvaIdentity — the ONE-STOP identity hub (replaces the Profile sidebar
 /// entry; PROPOSAL-PROGRESSIVE-IDENTITY.md §7b). Shows the Trust Ladder with
@@ -61,20 +57,20 @@ class _IdentityScreenState extends State<IdentityScreen> {
       (_status?.verified == true && _status?.provider == 'stripe_identity');
 
   Future<void> _startLiveness() async {
-    // [LIVE-DIDIT-1] didit.me is the live liveness path; v2/v1 are retired
-    // fallbacks behind the kill switch.
-    final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(
-        builder: (_) => RemoteConfig.diditLivenessEnabled
-            ? const DiditLivenessScreen(requester: 'identity_hub')
-            : RemoteConfig.livenessV2Enabled
-                ? const LivenessV2Screen()
-                : const LivenessCheckScreen()));
-    if (ok == true) {
-      await _refresh();
-    } else if (mounted) {
-      // Workers AI flow unavailable (flag off / camera) → offer the Stripe path.
-      await _startStripe();
-    }
+    // [AVA-IDGATE-1] Didit is the ONLY liveness path. The V1/V2/V3 fallbacks are
+    // gone: their Worker routes now return 410, and each of them called
+    // setVerifiedCache(uid,true) — i.e. each was a door that could mark a user
+    // verified with no liveness check running at all.
+    //
+    // Goes through ensurePublicActionAllowed so the BIPA consent screen (§10.4) is
+    // shown before the camera. The Worker independently 403s a capture session
+    // without recorded consent, so this is belt-and-braces, not the only guard.
+    final ok = await ensurePublicActionAllowed(context, 'identity_hub');
+    if (ok) await _refresh();
+    // NOTE: we no longer silently fall through to the Stripe document flow on
+    // cancel. Stripe KYC is the PAYOUT tier (a separate project) and pushing a
+    // user into a government-ID upload because they closed a camera screen was
+    // never the right escalation.
   }
 
   Future<void> _startStripe() async {
@@ -144,20 +140,8 @@ class _IdentityScreenState extends State<IdentityScreen> {
     );
   }
 
-  Future<void> _changePhone() async {
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Zine.paper,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(Zine.r))),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-        child: const Padding(padding: EdgeInsets.all(16), child: PhoneVerifyCard()),
-      ),
-    );
-    await _refresh();
-  }
+  // [AVA-IDGATE-1] _changePhone() removed with the Phone rung. Phone verification
+  // no longer exists anywhere in the app.
 
   Future<void> _deleteAccount() async {
     final sure = await showDialog<bool>(
@@ -245,17 +229,20 @@ class _IdentityScreenState extends State<IdentityScreen> {
                     'Handle', 'Your unique @handle', null),
                 _tick(true, PhosphorIcons.envelope(PhosphorIconsStyle.bold), Zine.blue,
                     'Email & password', 'Tap to change your email (OTP re-verify)', _changeEmail),
-                _tick(_ladder?.proofs['phone'] == 'verified',
-                    PhosphorIcons.phone(PhosphorIconsStyle.bold), Zine.lilac, 'Phone',
-                    'Real SIM numbers only — temp/VoIP numbers are rejected', _changePhone),
+                // [AVA-IDGATE-1] The 'Phone' rung is GONE. All phone verification was
+                // removed 2026-07-10: a number proves nothing about identity in the
+                // ~85 territories with no SIM registration, cost real money in SMS,
+                // and no private company can trace a number to a person anywhere.
+                // The optional PERSONAL phone number in Profile is unrelated — it is
+                // unverified contact data and never a gate.
                 _tick(
                     _livenessDone,
                     PhosphorIcons.videoCamera(PhosphorIconsStyle.bold),
                     Zine.coral,
-                    'Video liveness',
+                    'Video verified',
                     _livenessDone
-                        ? 'Verified — cannot be removed (delete account to erase)'
-                        : 'A 5–10 s selfie clip with random gestures',
+                        ? 'Verified — renewed every 90 days'
+                        : 'A few seconds on camera, before you post publicly',
                     _livenessDone ? null : _startLiveness),
                 _tick(
                     _stripeDone,
