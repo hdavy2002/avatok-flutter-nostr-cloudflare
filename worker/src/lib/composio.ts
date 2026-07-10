@@ -1011,10 +1011,16 @@ export async function runAgentLoop(
     },
   };
   let appDecls: any[] = [];
+  // [AVA-CONNECT-HINT-1] (owner report 2026-07-10) Track WHICH toolkits are
+  // connected so Ava can say "connect Gmail in Account & Settings → Connectors"
+  // instead of the lost-sounding generic "couldn\'t find any saved notes" when
+  // the user asks for email/calendar/files and the connector isn\'t linked.
+  let connectedList: string[] = [];
   if (opts?.apps) {
     try {
       // Phase 1: chat @ava shares the same 5-min conn cache + 24h decl cache.
       const toolkits = await cachedConnectedToolkits(env, userId);
+      connectedList = toolkits;
       if (toolkits.length) appDecls = await geminiTools(env, toolkits);
     } catch { /* apps optional */ }
   }
@@ -1042,8 +1048,17 @@ export async function runAgentLoop(
     + "saved, noted, said, or shared before (e.g. 'my note about X', 'what did I say about Y', "
     + "'find my Z file'). When you do, answer from the results — never invent their content; "
     + "if nothing is found, say so. "
+    + (opts?.apps && appDecls.length === 0
+      ? "APP CONNECTORS — IMPORTANT: the user has NOT connected any app connectors yet "
+        + "(no Gmail, Calendar, Docs, Sheets or Drive). If they ask you to fetch, check, "
+        + "search or send email, calendar events, documents or files, DO NOT search memory "
+        + "and DO NOT give a generic answer. Instead tell them clearly: open the menu → "
+        + "Account & Settings → Connectors, tap the app they need (for example Gmail), "
+        + "finish the connection steps, then ask you again. Keep it friendly and short. "
+      : "")
     + (appDecls.length
-      ? "Only call a Google-apps tool (Gmail, Calendar, Docs, Sheets, Drive) when the user clearly asks you to check or act on those apps; then report the outcome (subjects/links). If a tool fails, say so plainly. "
+      ? `Connected apps right now: ${connectedList.join(", ")}. If the user asks about an app that is NOT in that list, do not attempt it or search memory — tell them to connect it first via menu → Account & Settings → Connectors, then ask again. `
+        + "Only call a Google-apps tool (Gmail, Calendar, Docs, Sheets, Drive) when the user clearly asks you to check or act on those apps; then report the outcome (subjects/links). If a tool fails, say so plainly. "
         + "If the user asks to SEND or create something but wants to review it first, compose it and show a clear preview — recipient (To), Subject, and the full body — then ask them to confirm; do NOT call the send tool yet. When they confirm in a later message, THEN call the send tool and report the result. "
         + "DRAFT vs SEND — be precise and truthful: creating a draft (GMAIL_CREATE_EMAIL_DRAFT) SAVES it to the Drafts folder; it does NOT send. NEVER tell the user a message was 'sent' unless you actually called GMAIL_SEND_EMAIL and it succeeded. After making a draft, say exactly 'Saved to your Drafts — say \"send it\" to send.' Sending and drafting are different actions; do not conflate them. "
       : "")
