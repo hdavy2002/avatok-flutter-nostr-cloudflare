@@ -1,7 +1,39 @@
 # SPEC — Just-in-Time Identity Gating
 
 **Date:** 2026-07-10 (rev. 3)
-**Status:** Approved to build. Counsel review of §10 required before launch.
+**Status:** BUILT (dark). Counsel review of §10 + published retention schedule required
+before `identityGatingEnabled` is flipped on.
+
+## 0. Implementation index (as built)
+
+| Piece | Where |
+|---|---|
+| Gate + consent + legal hold | `worker/src/lib/identity_gate.ts` |
+| Consent endpoint | `POST /api/liveness/consent` → `routes/liveness_didit.ts:livenessConsent` |
+| Gated: listing / post / live | `routes/listings.ts` (`social`→post, `live_event`→live) |
+| Gated: public upload | `routes/media.ts:uploadPublic` |
+| Gated: going live | `routes/live.ts:liveStart` |
+| Gated: DM-to-stranger, group post | `routes/messaging.ts:sendMsg` (after `dmPreexisted` resolves) |
+| Legacy routes closed (410) | `worker/src/index.ts:LEGACY_GONE` |
+| Legal hold enforced | `consumers/src/deletion.ts`, `routes/liveness_audit.ts` |
+| Legal hold set on CSAM | `consumers/src/csam.ts:handleCsam` |
+| Migrations | `worker/migrations/2026-07-10-identity-gating{,-backfill}.sql` |
+| Client gate | `app/lib/features/identity/public_action_gate.dart` |
+| BIPA consent screen | `app/lib/features/identity/biometric_consent_screen.dart` |
+
+### Naming hazards discovered during the build — read before touching this
+
+1. **`authz.ts` already exports `requireLiveness()`.** It is the OLD onboarding gate:
+   different flag (`livenessOnboardingGate`), reads `kyc_status`, returns `AuthFail`, and
+   **fails OPEN when no row exists.** The new gate is `gatePublicAction()` in
+   `lib/identity_gate.ts`: different flag, reads `liveness_passed_at`, returns a `Response`,
+   **fails CLOSED**. Two gates, similar names, opposite failure modes. Do not merge them
+   without deciding which failure mode you want.
+2. **`app/lib/features/identity/identity_gate.dart` already exists** and is the **Stripe KYC
+   payout gate** (Tier 2). The new client gate is `public_action_gate.dart`. Naming the new
+   file `identity_gate.dart` would have overwritten the payout gate; emitting
+   `identity_gate_shown` from it would have merged two unrelated PostHog funnels.
+3. **Fast2SMS was never implemented.** It appears only in specs. Nothing to remove.
 **Supersedes:** `SPEC-2026-07-10-whatsapp-verification.md`
 **Target:** `prod` (build on `staging`, promote to `main`)
 
@@ -557,15 +589,31 @@ cohort (§8).
 
 ## 12. Open items
 
-- [ ] **§3.6 — are the legacy liveness routes still registered in `index.ts`?**
-      If yes, live bypass, urgent. Do this first; it is a five-minute check.
-- [ ] §10.6 — add the `legal_hold` check to `handleDeletion()` + `purgeLivenessEvidence()`
-- [ ] §10.1 — +584-day hard-delete sweep; video dropped at deletion for Track B
-- [ ] §10.4 — biometric consent checkbox + state-of-residence field, before the camera opens
-- [ ] §10.4 — **publish the retention schedule on the website.** Code and page must match.
-- [ ] §9 — spend alarm at 400 checks/month
+- [x] **§3.6 — legacy liveness routes were STILL REGISTERED. Confirmed live bypass.**
+      `/api/id/session`, `/api/id/result`, `/api/id/liveness/*`, `/api/liveness/v3/*` all
+      called `setVerifiedCache(uid,true)`. Now 410 + `legacy_liveness_route_called`.
+- [x] §10.6 — `legal_hold` check added to `handleDeletion()` + `purgeLivenessEvidence()`,
+      both fail CLOSED. `handleCsam()` sets the hold **before** deleting anything.
+- [x] §10.4 — biometric consent checkbox + state-of-residence field, before the camera.
+      Enforced server-side too: `diditSession()` 403s `consent_required`.
+- [x] §3.1 — all seven public actions gated.
+
+**Still open — these block turning the flag on:**
+
+- [ ] §10.1 — the **+584-day hard-delete sweep** is NOT built. `deleted_account_retention`
+      exists; nothing populates or drains it yet. Until it does, deletion drops the video
+      on every track, and nothing is retained for a lawful request.
+- [ ] §10.4 — **publish the retention schedule on the website.** The consent screen already
+      promises users it exists. The link is deliberately absent rather than pointing at a
+      404. **BIPA §15(a) requires it. This is now a promise the site does not keep.**
+- [ ] §9 — spend alarm at 400 checks/month; `didit_call_billed` / `didit_quota_warning`
+      are specced but not emitted.
+- [ ] §11.1 — run the backfill migration **before** flipping `identityGatingEnabled`.
+      Turning the flag on first gates the entire existing user base at once.
 - [ ] §10.7 — counsel review before launch. Non-negotiable: BIPA carries a private right of
       action and statutory damages, and §10.1 Track A is the exposed surface.
+- [ ] `comment` is defined as a `PublicAction` but there is no comment route in the Worker
+      to gate. Confirm comments do not exist yet, or find where they live.
 - [ ] Extend the gate from listings-only to all of §3.1 — the bulk of the diff
 - [ ] Stagger the first 90-day renewal cohort (§8)
 - [ ] Does a parent's pass satisfy a child account on the same device?
