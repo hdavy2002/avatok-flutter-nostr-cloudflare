@@ -343,12 +343,16 @@ class _ViewerContentState extends State<_ViewerContent> {
           showFullscreenButton: true,
           enableCaption: true,
           playsInline: true,
-          // Serve from youtube.com (not the nocookie mirror) and declare an
-          // origin. Embeds without a declared origin get rejected outright by
-          // some videos; this recovers those. It does NOT rescue a video whose
-          // uploader disabled embedding (errors 101/150/152) — nothing can, and
-          // those fall through to the "Watch on YouTube" card below.
-          privacyEnhancedMode: false,
+          // NOTE (pinned version): youtube_player_iframe 5.2.0 has NO
+          // `privacyEnhancedMode` field and no nocookie host — it always serves
+          // youtube.com, and `origin` already defaults to this exact value. It's
+          // stated explicitly so nobody "helpfully" removes it later.
+          //
+          // Nothing here rescues a video whose uploader disabled embedding
+          // (YouTube codes 101/150/152). In 5.2.0's enum, 152 isn't listed and
+          // therefore parses to YoutubeError.unknown — but `hasError` is still
+          // true, which is what the fallback below keys off. Don't switch that
+          // check to a specific enum member.
           origin: 'https://www.youtube.com',
         ),
       );
@@ -418,6 +422,9 @@ class _ViewerContentState extends State<_ViewerContent> {
               controller: yt,
               aspectRatio: widget.preview.imageAspect?.clamp(9 / 16, 1.91) ??
                   16 / 9,
+              // The player's own vertical-drag-to-fullscreen gesture would eat
+              // our drag-down-to-mini-player gesture. Ours wins.
+              enableFullScreenOnVerticalDrag: false,
             );
           },
         ),
