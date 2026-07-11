@@ -1,5 +1,6 @@
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
@@ -83,9 +84,12 @@ class _VoicemailCardState extends State<VoicemailCard> {
       final url = _recordingUrl.startsWith('http')
           ? _recordingUrl
           : 'https://$kSignalingHost$_recordingUrl';
-      // Owner-authed stream (mirrors _ReceptionistCard's recording fetch).
+      // Owner-authed fetch → play from bytes (audioplayers UrlSource has no
+      // headers param in this project's version; same pattern as team_inbox).
       final headers = await ApiAuth.signedHeaders('GET', url);
-      await _player.play(UrlSource(url, headers: headers));
+      final r = await http.get(Uri.parse(url), headers: headers);
+      if (r.statusCode != 200) throw Exception('recording ${r.statusCode}');
+      await _player.play(BytesSource(r.bodyBytes, mimeType: 'audio/wav'));
       if (!mounted) return;
       setState(() { _playing = true; _loading = false; });
       Analytics.capture('voicemail_played', {'call_id': _callId});
