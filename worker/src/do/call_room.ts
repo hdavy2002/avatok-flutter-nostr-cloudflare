@@ -33,7 +33,22 @@
 //     both sides — no grace, no alarm, matches existing behavior exactly.
 // Only ONE peer can be "away" at a time in a 1:1 room; the 2-peer cap and
 // the join/welcome/offer flow above are untouched.
+//
+// --- [WP2] Per-minute billing ticker (plan §3B/§11/§15.3) -------------------
+// A paid call is "armed" via an internal POST /billing-arm right after the
+// escrow hold succeeds (routes/call_billing_routes.ts, or the WP4 Mode-A
+// agent path). Once armed, the DO's single alarm ALSO settles one minute
+// every 60s (lib/call_billing.ts settleCallMinute) and, on any call-end path
+// (bye/hangup, or the reconnect-grace alarm expiring), auto-refunds whatever
+// escrow is left (lib/call_billing.ts refundUnused). This is multiplexed onto
+// the SAME alarm the reconnect-grace window above already uses —
+// scheduleNextAlarm() always re-arms for whichever purpose is due soonest.
+// Signaling, the 2-peer cap, glare, and reconnect-grace are untouched by any
+// of this.
 import type { Env } from "../types";
+import type { CallSnapshot } from "../lib/call_snapshot";
+import type { ReasonCode } from "../lib/call_events";
+import { settleCallMinute, refundUnused } from "../lib/call_billing";
 
 interface AwayPeer {
   id: string;
@@ -42,8 +57,30 @@ interface AwayPeer {
   buffered: string[];
 }
 
+// [WP2] Per-minute billing ticker state (plan §3B/§11/§15.3). Armed by an
+// internal POST /billing-arm (called from routes/call_billing_routes.ts right
+// after the escrow hold succeeds, or by the WP4 Mode-A agent path). The DO's
+// SINGLE alarm is multiplexed between this ticker and the pre-existing
+// reconnect-grace alarm (see scheduleNextAlarm) — neither purpose can starve
+// the other, and arming/disarming billing never touches the reconnect-grace
+// logic, the 2-peer cap, glare, or signaling above.
+interface BillingState {
+  call_id: string;
+  trace_id: string;
+  caller_id: string;
+  callee_id: string;
+  billing_mode: "A" | "B";
+  is_service_number: boolean;
+  snapshot: CallSnapshot;
+  minute_index: number; // next minute index to settle (0-based)
+  next_tick: number;    // epoch ms — when the next minute settle is due
+  max_minutes: number;  // hard cap (Mode A = agentMaxCallSec/60; Mode B = chosen length)
+  stopped: boolean;
+}
+
 const RECONNECT_GRACE_MS = 30_000;
 const MAX_BUFFERED_MESSAGES = 100;
+const BILLING_TICK_MS = 60_000;
 
 export class CallRoom {
   private state: DurableObjectState;
@@ -78,9 +115,16 @@ export class CallRoom {
     this.ended = (await this.state.storage.get<boolean>("ended")) ?? false;
   }
 
-  private async markEnded(): Promise<void> {
+  /** [WP2] `reason` drives the refund event's ReasonCode when this transition
+   *  also disarms billing — defaults to NETWORK (the reconnect-grace-expiry
+   *  path); the explicit bye/hangup call site passes a more specific code.
+   *  Guarded so a call end is only "handled" once even if markEnded() is
+   *  invoked again later (e.g. a stray alarm after an explicit hangup). */
+  private async markEnded(reason: ReasonCode = "NETWORK"): Promise<void> {
+    const wasEnded = this.ended === true;
     this.ended = true;
     try { await this.state.storage.put("ended", true); } catch { /* best-effort */ }
+    if (!wasEnded) await this.stopBilling(reason);
   }
 
   /** CALL-GEN-1: bump + return the new generation for a peer id (accepted join/
@@ -130,6 +174,97 @@ export class CallRoom {
     this.away = peer;
     if (peer) await this.state.storage.put("awayPeer", peer);
     else await this.state.storage.delete("awayPeer");
+  }
+
+  // ---------------------------------------------------------------------
+  // [WP2] Billing ticker (plan §3B/§11/§15.3) — multiplexed onto the SAME
+  // single DO alarm the reconnect-grace logic already uses. Neither purpose
+  // is aware of the other beyond scheduleNextAlarm() picking whichever is
+  // due soonest; reconnect-grace behaviour above is untouched.
+  // ---------------------------------------------------------------------
+  private billing: BillingState | null | undefined; // undefined = not loaded yet
+
+  private async loadBilling(): Promise<BillingState | null> {
+    if (this.billing !== undefined) return this.billing;
+    const stored = await this.state.storage.get<BillingState>("billing");
+    this.billing = stored ?? null;
+    return this.billing;
+  }
+
+  private async setBilling(b: BillingState | null): Promise<void> {
+    this.billing = b;
+    if (b) await this.state.storage.put("billing", b);
+    else await this.state.storage.delete("billing");
+  }
+
+  /** Recompute the single DO alarm as the EARLIEST of (a) a pending reconnect-
+   *  grace expiry and (b) a pending billing tick. If neither is pending, the
+   *  alarm is cleared. Call this after ANY change to either purpose's state —
+   *  it is the only place that touches state.storage.setAlarm/deleteAlarm for
+   *  these two purposes, so they can never clobber each other. */
+  private async scheduleNextAlarm(): Promise<void> {
+    const away = await this.loadAway();
+    const billing = await this.loadBilling();
+    const candidates: number[] = [];
+    if (away) candidates.push(away.awaySince + RECONNECT_GRACE_MS);
+    if (billing && !billing.stopped) candidates.push(billing.next_tick);
+    if (candidates.length === 0) {
+      try { await this.state.storage.deleteAlarm(); } catch { /* no alarm set */ }
+      return;
+    }
+    try { await this.state.storage.setAlarm(Math.min(...candidates)); } catch { /* best-effort */ }
+  }
+
+  /** Arm the per-minute ticker for a paid call that just connected. Idempotent
+   *  re-arm (e.g. a retried /billing-arm) simply overwrites the state with a
+   *  fresh next_tick — safe because settleCallMinute is itself idempotent per
+   *  minute_index, so at worst a re-arm restarts the minute clock, never
+   *  double-charges. */
+  private async armBilling(b: Omit<BillingState, "minute_index" | "next_tick" | "stopped">): Promise<void> {
+    await this.setBilling({ ...b, minute_index: 0, next_tick: Date.now() + BILLING_TICK_MS, stopped: false });
+    await this.scheduleNextAlarm();
+  }
+
+  /** Disarm the ticker and refund whatever's left in escrow. Safe to call more
+   *  than once (refundUnused is idempotent on `refund:call:<call_id>`, and a
+   *  second call here is a no-op once `billing` is cleared). Never throws —
+   *  a billing hiccup must never break call teardown. */
+  private async stopBilling(reason: ReasonCode): Promise<void> {
+    const b = await this.loadBilling();
+    if (!b || b.stopped) return;
+    await this.setBilling({ ...b, stopped: true });
+    try {
+      await refundUnused(this.env, {
+        call_id: b.call_id, trace_id: b.trace_id, caller_id: b.caller_id, callee_id: b.callee_id,
+        caller_or_callee_id: b.billing_mode === "A" ? b.callee_id : b.caller_id,
+        reason, billing_mode: b.billing_mode,
+      });
+    } catch { /* best-effort — teardown must proceed regardless */ }
+    await this.setBilling(null);
+    await this.scheduleNextAlarm();
+  }
+
+  /** Settle one delivered minute and advance the ticker, capping at
+   *  max_minutes (Mode A = agentMaxCallSec/60, Mode B = the chosen length).
+   *  Hitting the cap disarms billing (refunds nothing further — the escrow is
+   *  fully consumed by definition at the cap) rather than refunding, since a
+   *  cap-out is "call completed its full paid length", not an early end. */
+  private async tickBilling(b: BillingState): Promise<void> {
+    try {
+      await settleCallMinute(this.env, {
+        call_id: b.call_id, trace_id: b.trace_id, caller_id: b.caller_id, callee_id: b.callee_id,
+        minute_index: b.minute_index, snapshot: b.snapshot, is_service_number: b.is_service_number,
+        billing_mode: b.billing_mode,
+      });
+    } catch { /* best-effort — a settle hiccup must never break signaling; next tick retries the NEXT minute */ }
+    const nextIndex = b.minute_index + 1;
+    if (nextIndex >= b.max_minutes) {
+      // Full paid length delivered — nothing left to refund, just disarm.
+      await this.setBilling(null);
+      await this.scheduleNextAlarm();
+      return;
+    }
+    await this.setBilling({ ...b, minute_index: nextIndex, next_tick: Date.now() + BILLING_TICK_MS });
   }
 
   async fetch(req: Request): Promise<Response> {
@@ -210,6 +345,41 @@ export class CallRoom {
         // No reciprocal yet — record this placer's pending invite for the window.
         try { await this.state.storage.put(`glare_invite:${placer}`, { callId, ts: now }); } catch { /* best-effort */ }
         return Response.json({ glare: false });
+      }
+      // [WP2] Internal-only: arm the per-minute billing ticker once a paid call
+      // connects (called from routes/call_billing_routes.ts right after the
+      // escrow hold succeeds, or the WP4 Mode-A agent path). No auth — same
+      // trust boundary as GET /state and /glare-place (only reachable from
+      // within this Worker, never client-exposed). Does not touch signaling,
+      // the 2-peer cap, glare, or reconnect-grace state.
+      if (req.method === "POST" && stateUrl.pathname.endsWith("/billing-arm")) {
+        let body: Record<string, unknown> = {};
+        try { body = (await req.json()) as Record<string, unknown>; } catch { /* empty */ }
+        const call_id = typeof body.call_id === "string" ? body.call_id : "";
+        const trace_id = typeof body.trace_id === "string" ? body.trace_id : "";
+        const caller_id = typeof body.caller_id === "string" ? body.caller_id : "";
+        const callee_id = typeof body.callee_id === "string" ? body.callee_id : "";
+        const billing_mode = body.billing_mode === "A" || body.billing_mode === "B" ? body.billing_mode : null;
+        const snapshot = body.snapshot as CallSnapshot | undefined;
+        const max_minutes = typeof body.max_minutes === "number" ? body.max_minutes : 0;
+        if (!call_id || !trace_id || !caller_id || !callee_id || !billing_mode || !snapshot || !(max_minutes > 0)) {
+          return Response.json({ error: "call_id, trace_id, caller_id, callee_id, billing_mode, snapshot, max_minutes required" }, { status: 400 });
+        }
+        await this.armBilling({
+          call_id, trace_id, caller_id, callee_id, billing_mode, snapshot, max_minutes,
+          is_service_number: body.is_service_number === true,
+        });
+        return Response.json({ ok: true, armed: true, next_tick: (await this.loadBilling())?.next_tick ?? null });
+      }
+      // [WP2] Internal-only: explicit disarm (e.g. a caller/callee abandons the
+      // price prompt before the DO ever sees a second peer, or an upstream
+      // route needs to cancel billing without a WS close/bye ever happening).
+      if (req.method === "POST" && stateUrl.pathname.endsWith("/billing-disarm")) {
+        let body: Record<string, unknown> = {};
+        try { body = (await req.json()) as Record<string, unknown>; } catch { /* empty */ }
+        const reason = (typeof body.reason === "string" ? body.reason : "NETWORK") as ReasonCode;
+        await this.stopBilling(reason);
+        return Response.json({ ok: true, disarmed: true });
       }
       if (req.method === "POST") {
         let body: Record<string, unknown> = {};
@@ -354,7 +524,7 @@ export class CallRoom {
     if (isRejoin) {
       // Cancel the pending alarm/away-state and tell the other peer we're back.
       await this.setAway(null);
-      try { await this.state.storage.deleteAlarm(); } catch { /* no alarm set */ }
+      await this.scheduleNextAlarm(); // [WP2] re-arms the alarm for a still-pending billing tick, if any
       const buffered = away!.buffered;
       // CALL-GEN-1: a rejoin is a NEW transport for this peer — bump its gen and
       // tell it, so its post-reconnect frames outrank any lingering old-socket ones.
@@ -444,8 +614,8 @@ export class CallRoom {
     // a stray peer-left after the call already ended cleanly.
     if (data.type === "bye" || data.type === "hangup") {
       await this.setAway(null);
-      await this.markEnded(); // CALL-KV-STATE-1: call is over — GET /state reports ended
-      try { await this.state.storage.deleteAlarm(); } catch { /* no alarm set */ }
+      await this.markEnded(); // CALL-KV-STATE-1: call is over — GET /state reports ended (also disarms billing → refundUnused)
+      await this.scheduleNextAlarm(); // [WP2] markEnded's stopBilling already clears the alarm when nothing else is pending; idempotent to call again here
     }
 
     if (typeof data.to === "string" && data.to) {
@@ -503,22 +673,37 @@ export class CallRoom {
     }
 
     await this.setAway({ id: from, awaySince: Date.now(), buffered: [] });
-    try { await this.state.storage.setAlarm(Date.now() + RECONNECT_GRACE_MS); } catch { /* best-effort */ }
+    await this.scheduleNextAlarm(); // [WP2] multiplexed with any pending billing tick
     for (const w of others) this.sendTo(w, { type: "peer-away", id: from });
   }
 
-  /** CALL-RC-D1: fires ~30s after a peer's WS closed/errored. If it never
-   *  reconnected (still marked away), end the call the old way: peer-left to
-   *  whoever's left, then close their socket too. */
+  /** CALL-RC-D1 + [WP2]: the single DO alarm now serves TWO purposes —
+   *  reconnect-grace expiry (unchanged behaviour) AND the per-minute billing
+   *  ticker. Both are checked on every firing; scheduleNextAlarm() at the end
+   *  re-arms whichever is still pending (or clears the alarm if neither is).
+   *  A firing that's "early" for one purpose (e.g. billing fired but away
+   *  hasn't expired yet) simply no-ops that branch — no cross-purpose effect. */
   async alarm(): Promise<void> {
+    const now = Date.now();
     const away = await this.loadAway();
-    if (!away) return; // peer already rejoined and cleared this
-    await this.setAway(null);
-    await this.markEnded(); // CALL-KV-STATE-1: grace expired, call ended
-    for (const w of this.state.getWebSockets()) {
-      this.sendTo(w, { type: "peer-left", id: away.id });
-      try { w.close(1000, "peer reconnect grace expired"); } catch { /* already closed */ }
+    if (away && now >= away.awaySince + RECONNECT_GRACE_MS - 500) {
+      // CALL-RC-D1: fires ~30s after a peer's WS closed/errored. If it never
+      // reconnected (still marked away), end the call the old way: peer-left
+      // to whoever's left, then close their socket too.
+      await this.setAway(null);
+      await this.markEnded(); // CALL-KV-STATE-1: grace expired, call ended (also disarms billing → refundUnused)
+      for (const w of this.state.getWebSockets()) {
+        this.sendTo(w, { type: "peer-left", id: away.id });
+        try { w.close(1000, "peer reconnect grace expired"); } catch { /* already closed */ }
+      }
     }
+    // [WP2] Billing tick — independent of the away branch above (markEnded,
+    // if it ran, already cleared `billing`, so loadBilling() below reflects that).
+    const billing = await this.loadBilling();
+    if (billing && !billing.stopped && now >= billing.next_tick - 500) {
+      await this.tickBilling(billing);
+    }
+    await this.scheduleNextAlarm();
   }
 
   private sendTo(ws: WebSocket, obj: unknown): void {
