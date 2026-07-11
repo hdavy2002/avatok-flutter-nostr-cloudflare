@@ -361,9 +361,22 @@ const DEFAULTS: PlatformConfig = {
   livenessDeviceAuthoritative: false, // [LIVE-DEVAUTH-1] device-authoritative fast path — OFF (dark until device-signal trust is proven)
   livenessAuditSampleRate: 0.08,      // [LIVE-DEVAUTH-1] 8% of device-authoritative verifies also run full LLaVA for disagreement telemetry
   livenessV3Enabled: false,           // Liveness V3 voice-guided/Rekognition pipeline — DARK; extends V2, flip ON in KV once proven
-  // [AVA-IDGATE-1] DARK until the backfill migration has run. Turning this on with
-  // liveness_passed_at still NULL gates the ENTIRE existing user base at once.
-  identityGatingEnabled: false,
+  // [AVA-IDGATE-1] [CSAM-GATE-1 2026-07-11] Was DARK pending the identity_proofs
+  // backfill migration (see Specs/IDGATE-WHAT-WE-DID-2026-07-10.md). The backfill
+  // has since RUN (confirmed: 0 users left without a verification record; 1 real
+  // Didit pass, 17 grandfathered, renewal dates spread days 36-88 — no gate cliff).
+  // With this flag OFF, gatePublicAction() always short-circuits `on=false` and
+  // returns null (allow) for EVERY action — including dm_stranger — so an
+  // unverified first-time user's first message to a stranger was NEVER actually
+  // gated server-side despite the gate code being correctly ordered before persist/
+  // deliver in messaging.ts sendMsg/convCreate. That is the confirmed root cause of
+  // the CSAM-risk hole (a first message to a stranger was delivered, unverified).
+  // Flipping the DEFAULT here only changes behaviour where no KV override exists —
+  // if `identityGatingEnabled` was ever explicitly set false in KV (scripts/
+  // flags.sh), that override still wins and must be cleared/re-set by the owner
+  // per the staging-then-prod protocol in CLAUDE.md. Test per the "what to test"
+  // checklist in IDGATE-WHAT-WE-DID-2026-07-10.md before promoting to prod.
+  identityGatingEnabled: true,
   livenessValidityDays: 90,           // owner decision 2026-07-10
   // [AVA-IDGATE-1] BUMPED v1→v2 when retention changed 584d → 256d. The version is
   // stored per-user, and hasCurrentConsent() only accepts the CURRENT one — so a

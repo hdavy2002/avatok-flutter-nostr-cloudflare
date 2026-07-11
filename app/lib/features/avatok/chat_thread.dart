@@ -1976,8 +1976,15 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     final composeDismissed = url != null && _composePreviewDismissed.contains(url);
 
     // Optimistic local bubble first — instant feel, independent of the unfurl.
+    // [CSAM-GATE-1 2026-07-11] MUST NOT be `sent: true`. This bubble is created
+    // BEFORE the outbox has even attempted the POST — sending true here made every
+    // message show a "SENT ✓" tick immediately, including one the server later
+    // 403s as identity_required (a first message to a stranger from an unverified
+    // account). `_Msg`'s own default is `sent: false` ("Sending…") for exactly this
+    // reason; only `_onSendStatus()` — driven by the outbox's real HTTP 200 ACK —
+    // may flip this to true. Do not reintroduce an optimistic `sent: true` here.
     final localMsg = _Msg(_seq++, true, t, _fmtTime(now),
-        ts: now, sent: true, replyTo: replyMeta, expireAt: expire,
+        ts: now, replyTo: replyMeta, expireAt: expire,
         extra: composeHit == null ? null : {'preview': composeHit});
     setState(() {
       _msgs.add(localMsg);
@@ -8393,9 +8400,15 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                               _upload(m, m.localBytes!, kind, 'application/octet-stream', m.text);
                             } else if (_realMode && _dm != null && m.media == null && m.special == null) {
                               // Resend a failed text message; track the new wrap.
+                              // [AVA-IDGATE-1 / CSAM-GATE-1] Do NOT optimistically mark this
+                              // `sent` — that showed a false "SENT" tick (and could show one
+                              // for a message the server 403s as identity_required) before the
+                              // outbox's own ACK. Re-queue as "sending…" and let
+                              // _onSendStatus() flip `sent` only once the server actually
+                              // returns 200 for this client_id.
                               final newId = _dm!.send(jsonEncode({'t': 'text', 'body': m.text,
                                   if (m.replyTo != null) 'replyTo': m.replyTo, if (m.expireAt != null) 'exp': m.expireAt}));
-                              setState(() { m.evId = newId; m.failed = false; m.sent = true; _seenEv.add(newId); });
+                              setState(() { m.evId = newId; m.failed = false; m.sent = false; _seenEv.add(newId); });
                             }
                           },
                           child: row,
