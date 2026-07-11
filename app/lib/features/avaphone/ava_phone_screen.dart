@@ -678,6 +678,16 @@ class _DialpadSheetState extends State<_DialpadSheet> with WidgetsBindingObserve
     }
     setState(() { _dialing = true; _status = null; });
     Analytics.capture('avaphone_dial', {'len': q.length});
+    // [DIALPAD-DISMISS-FIX] Grab the ROOT navigator's own BuildContext now, while
+    // the sheet is still mounted. `context` here belongs to this bottom sheet's
+    // element, which starts unmounting the instant we Navigator.pop it below —
+    // any `await` after that pop (place1to1Call's network round-trip, in
+    // particular) would then race context.mounted turning false and silently
+    // no-op every `if (!context.mounted) return;` guard downstream, so the
+    // sheet just vanished and no call screen / IVR / busy card ever opened.
+    // Push follow-up routes through this persisted navContext instead of the
+    // soon-to-be-disposed sheet context.
+    final navContext = Navigator.of(context, rootNavigator: true).context;
     // Team auto-attendant: if the dialed number runs a team IVR, open the spoken
     // menu (Ava greets + caller punches a digit + warm transfer) instead of a
     // direct 1:1 call. Spec: Specs/TEAM-RECEPTIONIST-IVR-SPEC.md §1b.
@@ -688,7 +698,7 @@ class _DialpadSheetState extends State<_DialpadSheet> with WidgetsBindingObserve
       Analytics.capture('avaphone_dial_team_ivr', const {});
       setState(() => _dialing = false);
       Navigator.pop(context); // close the dialpad
-      Navigator.push(context, MaterialPageRoute(builder: (_) => TeamIvrScreen(teamNumber: qDigits)));
+      Navigator.push(navContext, MaterialPageRoute(builder: (_) => TeamIvrScreen(teamNumber: qDigits)));
       return;
     }
     Contact? hit;
@@ -727,7 +737,11 @@ class _DialpadSheetState extends State<_DialpadSheet> with WidgetsBindingObserve
     // [AVA-IDGATE-1] Dialing a resolved number now goes through /api/call so the
     // liveness gate applies (first call to a stranger) and the callee is actually
     // rung. On 403 the global interceptor opens the consent flow and the dial aborts.
-    place1to1Call(context, uid: c.uid,
+    // [DIALPAD-DISMISS-FIX] Use navContext (captured above, before the pop) —
+    // NOT the sheet's own `context` — since place1to1Call awaits a network call
+    // and pushes CallScreen/the busy card afterwards; by then the sheet's
+    // context would already be unmounted and every push would silently no-op.
+    await place1to1Call(navContext, uid: c.uid,
         name: c.name.isNotEmpty ? c.name : (c.number.isNotEmpty ? c.number : q),
         avatarUrl: c.avatarUrl,
         paidHoldId: paidHoldId, paidMinutes: paidMinutes);

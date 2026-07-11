@@ -234,6 +234,13 @@ class _AvaSidebarState extends State<AvaSidebar> {
               // in prod) OR the signed-in account is an admin (uid ∈ ADMIN_UIDS).
               // So the operator dogfoods it in prod while testers never see it.
               if (RemoteConfig.marketplaceVisible) _marketplaceSection(),
+              // Wallet — was ACCOUNT-only (and commented out there since
+              // 2026-06-29), which meant the sidebar had NO way to reach it at
+              // all. Restored here as a top-level item directly under
+              // Marketplace (owner request). Always shown — unlike Marketplace
+              // itself, Wallet isn't admin/flag-gated.
+              _special('avawallet', 'Wallet', 'Balance & AvaCoins',
+                  PhosphorIcons.wallet(PhosphorIconsStyle.bold), Zine.mint),
               // Team — AI receptionist + staff routing. HIDDEN from the sidebar
               // (owner decision 2026-06-28). Re-enable by un-commenting this row.
               // _special('team', 'Team', 'AI receptionist & staff',
