@@ -21,32 +21,39 @@ import '../../core/ui/zine_widgets.dart';
 /// `_dial()` flow) — this widget itself does not re-check the flag so it can
 /// also be unit/preview-tested in isolation.
 ///
-/// On Confirm, this screen does the wallet hold via [PaidCallApi.prepare] itself
-/// (so a low-balance caller sees the "top up or pick a shorter length" state
-/// before Navigator ever pops) and returns the chosen length in minutes via
-/// `Navigator.pop<int>()`. The caller flow is responsible for calling
-/// [PaidCallApi.confirm] with the returned `holdId` once the call room is ready,
-/// and for calling [PaidCallApi.cancel] if the caller backs out after this
-/// screen already produced a hold (e.g. the callee never picks up — §11 also
+/// On Confirm, this screen validates the quote ([PaidCallApi.prepare]) and then
+/// does the wallet hold + billing-ticker arm ([PaidCallApi.confirm], server
+/// contract: confirmPaidCallRoute holds escrow keyed by call_id) — so a
+/// low-balance caller sees the "top up or pick a shorter length" state before
+/// Navigator ever pops. The caller flow is responsible for calling
+/// [PaidCallApi.cancel] with the same callId if it aborts after this screen
+/// already produced a hold (identity-gate 403, abandoned dial — §11 also
 /// auto-refunds server-side on RING_TIMEOUT, this is belt-and-braces).
 class PaidCallPromptResult {
   final int minutes;
+  /// The call_id the escrow hold is keyed to (== the CallRoom id). Kept under
+  /// the historical `holdId` name so existing call sites read unchanged.
   final String holdId;
   const PaidCallPromptResult({required this.minutes, required this.holdId});
 }
 
 /// Push this route before dialing when [PaidCallApi.offer] returns a non-null
-/// offer for the number being called. Returns null if the caller cancels.
+/// offer for the number being called. [calleeUid] is the resolved account the
+/// escrow settles to; [callId] the CallRoom id the dial will use. Returns null
+/// if the caller cancels.
 Future<PaidCallPromptResult?> showPaidCallPrompt(
   BuildContext context, {
   required PaidCallOffer offer,
   required String to,
+  required String calleeUid,
+  required String callId,
   String? serviceId,
 }) {
   return Navigator.of(context).push<PaidCallPromptResult>(
     MaterialPageRoute(
       fullscreenDialog: true,
-      builder: (_) => PaidCallPromptScreen(offer: offer, to: to, serviceId: serviceId),
+      builder: (_) => PaidCallPromptScreen(
+          offer: offer, to: to, calleeUid: calleeUid, callId: callId, serviceId: serviceId),
     ),
   );
 }
@@ -54,8 +61,13 @@ Future<PaidCallPromptResult?> showPaidCallPrompt(
 class PaidCallPromptScreen extends StatefulWidget {
   final PaidCallOffer offer;
   final String to;
+  final String calleeUid;
+  final String callId;
   final String? serviceId;
-  const PaidCallPromptScreen({super.key, required this.offer, required this.to, this.serviceId});
+  const PaidCallPromptScreen({
+    super.key, required this.offer, required this.to,
+    required this.calleeUid, required this.callId, this.serviceId,
+  });
 
   @override
   State<PaidCallPromptScreen> createState() => _PaidCallPromptScreenState();
@@ -98,16 +110,31 @@ class _PaidCallPromptScreenState extends State<PaidCallPromptScreen> {
     setState(() { _confirming = true; _error = null; });
     Analytics.capture('duration_selected', {'to': widget.to, 'minutes': mins});
     Analytics.capture('wallet_check', {'to': widget.to, 'minutes': mins, 'total': _total});
-    final res = await PaidCallApi.prepare(
-      to: widget.to, serviceId: widget.serviceId, minutes: mins, rate: widget.offer.rate,
+    // Server contract (call_billing_routes.ts): prepare = quote/validation
+    // only; confirm = the actual escrow hold + CallRoom billing-ticker arm,
+    // keyed by call_id. Both run here so a low-balance caller sees the error
+    // in-place instead of after the sheet already popped.
+    final quote = await PaidCallApi.prepare(
+      callee: widget.calleeUid, minutes: mins, callId: widget.callId,
     );
     if (!mounted) return;
-    final ok = res['ok'] == true || res['status'] == 200;
-    if (!ok) {
+    if (quote['ok'] != true) {
+      setState(() {
+        _confirming = false;
+        _error = 'Couldn’t start the call — try again.';
+      });
+      Analytics.capture('wallet_passed', {'to': widget.to, 'ok': false, 'reason': (quote['error'] ?? '').toString()});
+      return;
+    }
+    final res = await PaidCallApi.confirm(
+      callee: widget.calleeUid, minutes: mins, callId: widget.callId,
+    );
+    if (!mounted) return;
+    if (res['ok'] != true) {
       final reason = (res['reason'] ?? res['error'] ?? '').toString();
       setState(() {
         _confirming = false;
-        _error = reason == 'insufficient_funds'
+        _error = reason == 'WALLET_INSUFFICIENT'
             ? 'Not enough tokens for $mins min. Pick a shorter length or top up.'
             : 'Couldn’t start the call — try again.';
       });
@@ -116,9 +143,8 @@ class _PaidCallPromptScreenState extends State<PaidCallPromptScreen> {
     }
     Analytics.capture('wallet_passed', {'to': widget.to, 'ok': true});
     Analytics.capture('escrow_created', {'to': widget.to, 'minutes': mins, 'total': _total});
-    final holdId = (res['hold_id'] ?? '').toString();
     if (!mounted) return;
-    Navigator.of(context).pop(PaidCallPromptResult(minutes: mins, holdId: holdId));
+    Navigator.of(context).pop(PaidCallPromptResult(minutes: mins, holdId: widget.callId));
   }
 
   @override

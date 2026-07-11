@@ -716,10 +716,20 @@ class _DialpadSheetState extends State<_DialpadSheet> with WidgetsBindingObserve
     String paidHoldId = '';
     int paidMinutes = 0;
     if (RemoteConfig.paidCalls) {
-      final offer = await PaidCallApi.offer(to: qDigits);
+      // Offer lookup by the RESOLVED uid (the server route also accepts raw
+      // numbers, but the uid is unambiguous — hit.uid is already in hand).
+      final offer = await PaidCallApi.offer(to: hit.uid);
       if (!mounted) return;
       if (offer != null) {
-        final result = await showPaidCallPrompt(context, offer: offer, to: qDigits);
+        final result = await showPaidCallPrompt(
+          context,
+          offer: offer,
+          to: qDigits,
+          calleeUid: offer.calleeUid.isNotEmpty ? offer.calleeUid : hit.uid,
+          // Must match place1to1Call's room id — the escrow hold + billing
+          // ticker are keyed to this exact CallRoom id.
+          callId: 'avatok-${hit.uid}',
+        );
         if (result == null) {
           // Caller backed out at the price/length prompt (§11 — hold never taken).
           setState(() { _dialing = false; });

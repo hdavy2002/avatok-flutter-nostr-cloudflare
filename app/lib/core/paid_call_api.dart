@@ -58,32 +58,42 @@ class PaidCallApi {
     }
   }
 
-  /// Caller: pick a length → wallet-check + hold the FULL cost up front (§3B
-  /// steps 3-5, §11 "Wallet can't cover the chosen length" / "escrow_held").
-  /// Returns {ok, hold_id, balance_after} or {ok:false, reason: 'insufficient_funds'|...}.
+  /// Caller: price quote ONLY — no wallet check, no hold (server contract:
+  /// worker/src/routes/call_billing_routes.ts preparePaidCallRoute). The hold
+  /// happens on [confirm]. Body: {callee, minutes, call_id}.
+  /// Returns {ok, rate, minutes, total, length_options} or {error,...}.
   static Future<Map<String, dynamic>> prepare({
-    required String to,
-    String? serviceId,
+    required String callee,
     required int minutes,
-    required int rate,
+    required String callId,
   }) =>
       _post('$kApiBase/call/paid/prepare', {
-        'to': to,
-        if (serviceId != null && serviceId.isNotEmpty) 'service_id': serviceId,
+        'callee': callee,
         'minutes': minutes,
-        'rate': rate,
+        'call_id': callId,
       });
 
-  /// Caller: confirm connect after the funds are held (§3B step 5 "connect").
-  /// Idempotent by [holdId] + call id — a retry never double-connects.
-  static Future<Map<String, dynamic>> confirm({required String holdId, required String callId}) =>
-      _post('$kApiBase/call/paid/confirm', {'hold_id': holdId, 'call_id': callId});
+  /// Caller: confirm — holds the FULL chosen-duration cost and arms the
+  /// CallRoom DO's per-minute billing ticker (§3B step 5, confirmPaidCallRoute).
+  /// Idempotent per call_id — a retry never double-holds.
+  /// Returns {ok, held, call_id} or {error, reason:'WALLET_INSUFFICIENT'|...}.
+  static Future<Map<String, dynamic>> confirm({
+    required String callee,
+    required int minutes,
+    required String callId,
+  }) =>
+      _post('$kApiBase/call/paid/confirm', {
+        'callee': callee,
+        'minutes': minutes,
+        'call_id': callId,
+      });
 
-  /// Caller abandoned the price/length prompt (§11 "Caller abandons at the
-  /// price/length prompt" → hold never taken / released). Best-effort — the
-  /// server also auto-expires an unconfirmed hold after ESCROW_PROMPT_TIMEOUT.
-  static Future<void> cancel({required String holdId}) async {
-    try { await ApiAuth.postJson('$kApiBase/call/paid/cancel', {'hold_id': holdId}); } catch (_) {/* best-effort */}
+  /// Caller backed out AFTER [confirm] already held escrow (identity-gate 403
+  /// abort, abandoned dial). Disarms + refunds via the CallRoom DO — safe to
+  /// call unconditionally; a no-op when nothing was held. Best-effort: §11's
+  /// RING_TIMEOUT auto-refund is the server-side backstop.
+  static Future<void> cancel({required String callId}) async {
+    try { await ApiAuth.postJson('$kApiBase/call/paid/cancel', {'call_id': callId}); } catch (_) {/* best-effort */}
   }
 }
 
@@ -93,8 +103,10 @@ class PaidCallOffer {
   final List<int> lengthOptions; // minutes, callee-defined (no fixed ladder)
   final String calleeName;
   final bool isAgent; // true = paid AI agent (§3B example b), false = human P2P
+  final String calleeUid; // server-resolved uid behind the dialed number
   const PaidCallOffer({
     required this.rate, required this.lengthOptions, this.calleeName = '', this.isAgent = false,
+    this.calleeUid = '',
   });
   factory PaidCallOffer.fromJson(Map<String, dynamic> j) => PaidCallOffer(
         rate: (j['rate'] as num?)?.toInt() ?? 0,
@@ -102,6 +114,7 @@ class PaidCallOffer {
             .map((e) => (e as num).toInt()).toList(),
         calleeName: (j['callee_name'] ?? '').toString(),
         isAgent: j['is_agent'] == true,
+        calleeUid: (j['callee_uid'] ?? '').toString(),
       );
 
   int totalFor(int minutes) => rate * minutes;

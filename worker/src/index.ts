@@ -69,7 +69,7 @@ import { subscribeCheckout, subscribeAndroidVerify, subscribeCancel } from "./ro
 import { referralClaim, referralSummary } from "./routes/referral";
 import { inviteEmail } from "./routes/invite";
 // [WP2] Paid-call escrow/settlement routes (plan §3B/§11/§15.3)
-import { getPaidCallSettingsRoute, putPaidCallSettingsRoute, preparePaidCallRoute, confirmPaidCallRoute } from "./routes/call_billing_routes";
+import { getPaidCallOfferRoute, getPaidCallSettingsRoute, putPaidCallSettingsRoute, preparePaidCallRoute, confirmPaidCallRoute, cancelPaidCallRoute } from "./routes/call_billing_routes";
 // [WP3] Agent Profiles + service numbers (plan §4/§7/§8b/§12.5/§12.8/§12.10).
 import { getAgentSettings, putAgentSettings, listAgentServices, createAgentService, updateAgentService, deleteAgentService, listAgentCalls, getAgentCallTranscript } from "./routes/agent_profiles";
 // [WP3] Voicemail bot session start (plan §3 step 4 / §7 item 5 / §15.5).
@@ -548,10 +548,12 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // [WP3-ACT-1] After-ring routing decision (plan §3 step 4) — 503 unless businessCallUx is on.
       if (p === "/api/call/no-answer" && req.method === "POST") return await api.callNoAnswer(req, env);
       // [WP2] Paid calls (plan §3B/§11/§15.3) — all 403 unless paidCalls flag is on.
+      if (p === "/api/call/paid/offer" && req.method === "GET") return await getPaidCallOfferRoute(req, env);
       if (p === "/api/call/paid/settings" && req.method === "GET") return await getPaidCallSettingsRoute(req, env);
       if (p === "/api/call/paid/settings" && req.method === "PUT") return await putPaidCallSettingsRoute(req, env);
       if (p === "/api/call/paid/prepare" && req.method === "POST") return await preparePaidCallRoute(req, env);
       if (p === "/api/call/paid/confirm" && req.method === "POST") return await confirmPaidCallRoute(req, env);
+      if (p === "/api/call/paid/cancel" && req.method === "POST") return await cancelPaidCallRoute(req, env);
       // [WP3] Voicemail bot session start — 503 unless voicemailBot flag is on.
       if (p === "/api/voicemail/start" && req.method === "POST") return await voicemailStart(req, env);
       // GAP-3: owner-authed voicemail recording playback (mirrors /api/receptionist/recording).
