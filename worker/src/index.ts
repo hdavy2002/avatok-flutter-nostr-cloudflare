@@ -70,6 +70,14 @@ import { referralClaim, referralSummary } from "./routes/referral";
 import { inviteEmail } from "./routes/invite";
 // [WP2] Paid-call escrow/settlement routes (plan §3B/§11/§15.3)
 import { getPaidCallSettingsRoute, putPaidCallSettingsRoute, preparePaidCallRoute, confirmPaidCallRoute } from "./routes/call_billing_routes";
+// [WP3] Agent Profiles + service numbers (plan §4/§7/§8b/§12.5/§12.8/§12.10).
+import { getAgentSettings, putAgentSettings, listAgentServices, createAgentService, updateAgentService, deleteAgentService, listAgentCalls, getAgentCallTranscript } from "./routes/agent_profiles";
+// [WP3] Voicemail bot session start (plan §3 step 4 / §7 item 5 / §15.5).
+import { voicemailStart, voicemailRecording } from "./routes/voicemail_routes";
+// [WP4] Ava AI Voice Agent — Grok realtime session start (plan §4/§8/§15.1/§15.3).
+import { agentCallStart } from "./routes/agent_voice_routes";
+// [WP4] RAG document pipeline — Grok Collections (plan §5/§9).
+import { uploadAgentDoc, listAgentDocs, deleteAgentDoc } from "./routes/agent_docs";
 import { featureCostsRoute } from "./feature_pricing";
 import { googleAuth } from "./routes/google_auth";
 import { conferenceStart, conferenceJoin, conferenceStatus, conferenceEnd, conferenceWebhook, conferenceBeat } from "./routes/conference";
@@ -173,6 +181,8 @@ export { AvaAgentDO } from "./do/ava_agent"; // P3
 export { BackupDO } from "./do/backup";      // P10
 export { ReceptionRoom } from "./do/reception_room"; // Ava Receptionist call bridge (Gemini engine)
 export { ReceptionRoomCf } from "./do/reception_room_cf"; // Ava Receptionist — Cloudflare-native engine (separate)
+export { VoicemailRoom } from "./do/voicemail_room"; // [WP3] carrier-style voicemail bot (dark behind voicemailBot)
+export { AgentVoiceRoom } from "./do/agent_voice_room"; // [WP4] Ava AI Voice Agent — Grok realtime bridge (dark behind voiceAgent)
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -317,6 +327,29 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
         return env.RECEPTION_ROOM_CF.get(env.RECEPTION_ROOM_CF.idFromName(sid), hint ? { locationHint: hint } : undefined).fetch(req);
       }
       return env.RECEPTION_ROOM.get(env.RECEPTION_ROOM.idFromName(sid), hint ? { locationHint: hint } : undefined).fetch(req);
+    }
+
+    // Voicemail bot bridge → VoicemailRoom DO (WP3, plan §3 step 4 / §7 item 5).
+    // Same thin-router pattern as the receptionist WS above; the DO validates
+    // the one-time rtc token from KV. Dark unless a session was actually
+    // started via POST /api/voicemail/start (which itself 503s when
+    // voicemailBot is off), so this route is inert while the flag is off.
+    if (p === "/api/voicemail/rtc" && req.headers.get("Upgrade") === "websocket") {
+      const sid = url.searchParams.get("session") || "";
+      if (!sid) return new Response("session required", { status: 400 });
+      const hint = continentHint(req);
+      return env.VOICEMAIL_ROOM.get(env.VOICEMAIL_ROOM.idFromName(sid), hint ? { locationHint: hint } : undefined).fetch(req);
+    }
+
+    // Ava AI Voice Agent bridge → AgentVoiceRoom DO (WP4, plan §4/§7 item 7).
+    // Same thin-router pattern as voicemail/receptionist above. Dark unless a
+    // session was started via POST /api/agent/call/start (which itself 503s
+    // when voiceAgent is off).
+    if (p === "/api/agent/call/rtc" && req.headers.get("Upgrade") === "websocket") {
+      const sid = url.searchParams.get("session") || "";
+      if (!sid) return new Response("session required", { status: 400 });
+      const hint = continentHint(req);
+      return env.AGENT_VOICE_ROOMS.get(env.AGENT_VOICE_ROOMS.idFromName(sid), hint ? { locationHint: hint } : undefined).fetch(req);
     }
 
     try {
@@ -512,11 +545,46 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/call-status" && req.method === "POST") return await api.callStatus(req, env);
       if (p === "/api/call/ringing" && req.method === "POST") return await api.callRinging(req, env);
       if (p === "/api/call/notify-register" && req.method === "POST") return await api.callNotifyRegister(req, env);
+      // [WP3-ACT-1] After-ring routing decision (plan §3 step 4) — 503 unless businessCallUx is on.
+      if (p === "/api/call/no-answer" && req.method === "POST") return await api.callNoAnswer(req, env);
       // [WP2] Paid calls (plan §3B/§11/§15.3) — all 403 unless paidCalls flag is on.
       if (p === "/api/call/paid/settings" && req.method === "GET") return await getPaidCallSettingsRoute(req, env);
       if (p === "/api/call/paid/settings" && req.method === "PUT") return await putPaidCallSettingsRoute(req, env);
       if (p === "/api/call/paid/prepare" && req.method === "POST") return await preparePaidCallRoute(req, env);
       if (p === "/api/call/paid/confirm" && req.method === "POST") return await confirmPaidCallRoute(req, env);
+      // [WP3] Voicemail bot session start — 503 unless voicemailBot flag is on.
+      if (p === "/api/voicemail/start" && req.method === "POST") return await voicemailStart(req, env);
+      // GAP-3: owner-authed voicemail recording playback (mirrors /api/receptionist/recording).
+      if (p === "/api/voicemail/recording" && req.method === "GET") return await voicemailRecording(req, env);
+      // [WP3] Agent Profiles + service numbers (plan §4/§7/§8b/§12.5/§12.8/§12.10).
+      // Mode A (primary number) settings — 403 unless voiceAgent flag is on.
+      if (p === "/api/agent/settings" && req.method === "GET") return await getAgentSettings(req, env);
+      if (p === "/api/agent/settings" && req.method === "PUT") return await putAgentSettings(req, env);
+      // Mode B (service numbers) — 403 unless serviceNumbers flag is on.
+      if (p === "/api/agent/services" && req.method === "GET") return await listAgentServices(req, env);
+      if (p === "/api/agent/services" && req.method === "POST") return await createAgentService(req, env);
+      if (p === "/api/agent/services" && req.method === "PUT") return await updateAgentService(req, env);
+      if (p === "/api/agent/services" && req.method === "DELETE") return await deleteAgentService(req, env);
+      // Caller-side "My AI calls" style read for the OWNER (plan §12.11 covers
+      // the caller's own view; this is the owner's call log).
+      if (p === "/api/agent/my-calls" && req.method === "GET") return await listAgentCalls(req, env);
+      // GAP-2: caller-side full transcript for one of MY calls (§12.11 detail
+      // view). Path-segment route — mirrors the /api/team/members/<id> pattern
+      // above (startsWith + slice), since call_id is a UUID, not a query param.
+      if (p.startsWith("/api/agent/my-calls/") && req.method === "GET") {
+        return await getAgentCallTranscript(req, env, decodeURIComponent(p.slice("/api/agent/my-calls/".length)));
+      }
+
+      // [WP4] Ava AI Voice Agent — call start + RAG document pipeline (plan §4/§5/§8/§9).
+      if (p === "/api/agent/call/start" && req.method === "POST") return await agentCallStart(req, env);
+      if (p === "/api/agent/docs" && req.method === "POST") return await uploadAgentDoc(req, env);
+      if (p === "/api/agent/docs" && req.method === "GET") return await listAgentDocs(req, env);
+      if (p === "/api/agent/docs" && req.method === "DELETE") return await deleteAgentDoc(req, env);
+      // [DIALPAD-BIZ-CALLS] Account-level silent block (plan §15.2). The
+      // Flutter BlockingApi posts {uid} here; reuse the SAME `blocks` table
+      // messaging already writes (routes/safety.ts convBlock) — one blocklist
+      // for messaging AND business calls (voicemail/agent/ring all read it).
+      if (p === "/api/block" && req.method === "POST") return await convBlock(req, env);
       // [LASTSEEN-SERVER-1] WhatsApp-style last seen (InboxDO socket truth).
       if (p === "/api/user/last-seen" && req.method === "GET") return await api.userLastSeen(req, env);
 

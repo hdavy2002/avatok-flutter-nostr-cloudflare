@@ -106,6 +106,17 @@ export interface Env {
   // Ava Receptionist — Cloudflare-native engine DO (separate from the Gemini
   // bridge above). Workers AI STT→LLM→TTS. Specs/RECEPTIONIST-CF-PIPELINE.md.
   RECEPTION_ROOM_CF: DurableObjectNamespace;
+  // Voicemail bot DO (WP3, plan §7 item 5 / §15.5) — carrier-style "leave a
+  // 25s voicemail after the tone" bridge. Forked from RECEPTION_ROOM_CF's
+  // Workers AI STT→TTS pipeline but simpler (no dialog loop). One instance
+  // per session id. Specs/PLAN-2026-07-11-dialpad-business-calls-ava-voice-agent.md.
+  VOICEMAIL_ROOM: DurableObjectNamespace;
+  // Ava AI Voice Agent DO (WP4, plan §4/§7 item 7) — one instance per call
+  // session id. Bridges the caller's WebRTC audio to a Grok Voice Agent
+  // realtime session (RAG via Grok Collections `file_search`, Composio tool
+  // calls, booking-authority gated writes). Dark behind `voiceAgent`.
+  // Specs/PLAN-2026-07-11-dialpad-business-calls-ava-voice-agent.md.
+  AGENT_VOICE_ROOMS: DurableObjectNamespace;
 
   // vars
   BLOSSOM_BASE_URL: string;
@@ -156,6 +167,15 @@ export interface Env {
   // truth — every memory carries derived_from event ids and regenerates from the
   // append-only sentinel_evidence log. Specs/GUARDIAN-SENTINEL-FINAL-PLAN §S2.
   MEM0_API_KEY?: string;
+
+  // Ava AI Voice Agent (WP4, plan §4) — Grok Voice Agent realtime API +
+  // Collections RAG. `wrangler secret put GROK_API_KEY` — set SEPARATELY per
+  // environment (staging + prod each get their own x.ai key, plan §15.6 "no
+  // staging data ever promotes to prod"). Unset → do/agent_voice_room.ts fails
+  // fast at session start (GROK_SESSION_FAIL, refund, voicemail fallback) —
+  // the constructor itself never throws, so a bare deploy with no key set is
+  // safe as long as `voiceAgent` stays off in KV.
+  GROK_API_KEY?: string;
 
   // Store-review login bypass (routes/review.ts). When set, the allowlisted
   // reviewer account signs in with email+password and NO email OTP. Unset →

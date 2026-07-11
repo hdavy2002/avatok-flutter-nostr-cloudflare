@@ -16,6 +16,14 @@ import { nameFor } from "../lib/identity";
 import { brainFact, track } from "../hooks";
 import { guardWrite } from "./moderate"; // save-time content validation (Nemotron)
 import { readConfig } from "./config"; // P11: profileCompletionGate
+// [WP1] Event-sourced call stream (Specs/PLAN-2026-07-11-dialpad-business-calls-ava-voice-agent.md §13/§14)
+import { emitCallEvent, emitRoutingDecision, newTraceId, EVENT_SCHEMA_VERSION } from "../lib/call_events";
+import { buildCallSnapshot } from "../lib/call_snapshot";
+// [WP3] Routing engine — decides where a DIALPAD (business-channel) call goes
+// (blocked/offline/busy/business-hours/agent/voicemail/ring). Only invoked
+// when the client marks the call `via:'dialpad'`; friend-channel calls never
+// reach this engine.
+import { decideRouting, decideNoAnswerRouting, type NoAnswerOutcome } from "../lib/call_routing";
 import { authorityNotifyRegister } from "../lib/call_authority"; // [BUSY-CARD-1] "Notify me" waiter register
 import { rateLimit } from "../money"; // abuse limits (Phase 3 hardening)
 // R2-F2: avatar nudity moderation (AWS Rekognition DetectModerationLabels; SigV4
@@ -115,7 +123,10 @@ export async function accountDevice(req: Request, env: Env): Promise<Response> {
 export async function call(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
-  const b = (await req.json().catch(() => ({}))) as { to?: string; callId?: string; kind?: string; fromName?: string };
+  const b = (await req.json().catch(() => ({}))) as { to?: string; callId?: string; kind?: string; fromName?: string; via?: string };
+  // [WP3] 'dialpad' = the AvaTOK-number business channel (plan §3). Friend-
+  // channel (email/chat) calls never send this and are byte-for-byte unaffected.
+  const isDialpad = b.via === "dialpad";
   if (!b.to || !b.callId) return json({ error: "to and callId required" }, 400);
   // [AVA-IDGATE-1] Dialing someone's AvaTOK number for the FIRST time is reaching out
   // to a stranger — the same public action as a first DM (owner 2026-07-10). Gate it
@@ -231,6 +242,95 @@ export async function call(req: Request, env: Env): Promise<Response> {
       return json({ glare: true, join_call_id: gj.join_call_id, reachable: true, sent: 0 });
     }
   } catch { /* best-effort — glare detection never blocks placing a call */ }
+  // [WP1] Event-sourced call stream (plan §13/§14) — emit `call_created` (with
+  // the §15.3 rate/routing snapshot) and `routing_decision` (reason:
+  // 'rang_owner', since this path always rings the owner first). Gated behind
+  // `businessCallUx` so current prod/staging behavior is byte-identical while
+  // the flag is off — this is purely additive telemetry; nothing here can
+  // change what the caller/callee experience. Uses sensible nulls for
+  // per-number/Agent-Profile settings that don't exist yet (WP3/WP4 wire the
+  // real lookups). Best-effort — a telemetry hiccup must never block the call.
+  // [WP3] routing_decision — computed for real on the dialpad/business channel
+  // (blocked/offline/busy/business-hours/agent/voicemail/ring, §3/§15.1/§15.2);
+  // every other 'via' keeps the WP1 'rang_owner' placeholder byte-for-byte.
+  let routingResult: Awaited<ReturnType<typeof decideRouting>> | null = null;
+  try {
+    const cfg = await readConfig(env);
+    if (cfg.businessCallUx) {
+      const callTraceId = traceId || newTraceId();
+      if (isDialpad) {
+        // decideRouting() ALSO emits routing_decision internally when
+        // businessCallUx is on (lib/call_routing.ts finalize()) — so we do NOT
+        // call emitRoutingDecision a second time here for the dialpad path.
+        routingResult = await decideRouting(env, {
+          call_id: b.callId, trace_id: callTraceId, caller_id: ctx.uid, callee_id: b.to,
+          number_dialed: null, via: "dialpad", callee_reachable: n > 0 ? true : undefined,
+        });
+        await emitCallEvent(env, {
+          event: "call_created",
+          call_id: b.callId,
+          trace_id: callTraceId,
+          caller_id: ctx.uid,
+          callee_id: b.to,
+          call_mode: "business",
+          ts: Date.now(),
+          event_schema_version: EVENT_SCHEMA_VERSION,
+          props: { snapshot: routingResult.snapshot, call_type: b.kind ?? "audio", via: "dialpad" },
+        });
+      } else {
+        const snapshot = await buildCallSnapshot(env);
+        await emitCallEvent(env, {
+          event: "call_created",
+          call_id: b.callId,
+          trace_id: callTraceId,
+          caller_id: ctx.uid,
+          callee_id: b.to,
+          call_mode: "business",
+          ts: Date.now(),
+          event_schema_version: EVENT_SCHEMA_VERSION,
+          props: { snapshot, call_type: b.kind ?? "audio" },
+        });
+        await emitRoutingDecision(env, {
+          call_id: b.callId,
+          trace_id: callTraceId,
+          caller_id: ctx.uid,
+          callee_id: b.to,
+          reason: "rang_owner",
+          snapshot: {
+            routing_mode: snapshot.routing_mode,
+            business_hours_version: snapshot.business_hours_version,
+            blocked: snapshot.blocked,
+            agent_enabled: snapshot.agent_enabled,
+            voicemail_enabled: snapshot.voicemail_enabled,
+            booking_authority: snapshot.booking_authority,
+            concurrency_in_use: 0,
+          },
+        });
+      }
+    }
+  } catch { /* best-effort — event-stream emission must never block placing a call */ }
+  // [WP3-ACT-1] ACT on the routing decision (plan §3/§15.1/§15.2) instead of
+  // always ringing regardless of what decideRouting() said. Only reachable when
+  // businessCallUx is on AND via:'dialpad' (routingResult is null otherwise, or
+  // on any decideRouting hiccup — fail OPEN to the normal ring below, exactly
+  // the prior byte-identical behavior). action:'ring' falls through unchanged.
+  if (routingResult && routingResult.action !== "ring") {
+    if (routingResult.action === "silent_noanswer") {
+      // Blocked (or a retired number): the caller must experience a NORMAL
+      // ring-then-no-answer — never learn why (§15.2 silent semantics) — so we
+      // deliberately do NOT enqueue Q_PUSH or the WS ring. The client's own
+      // ring-timeout already drives it into the NoAnswerCard from here.
+      return json({ sent: 0, reachable: true, routed: "no_answer", voicemail_available: false });
+    }
+    // 'voicemail' or 'agent' with the ring skipped (offline/busy/business-hours,
+    // §15.1): hand the client just enough to call the matching /start route
+    // itself (POST /api/voicemail/start or /api/agent/call/start) — no ring is
+    // sent for either branch.
+    return json({
+      sent: 0, reachable: true, routed: routingResult.action,
+      start: { to: b.to, call_id: b.callId, trace_id: traceId },
+    });
+  }
   // Generate a cryptographically secure token + expiration for the true ringing receipt
   const ringReceiptToken = crypto.randomUUID();
   const expiresAt = Date.now() + 30000; // 30s expiration window
@@ -249,7 +349,10 @@ export async function call(req: Request, env: Env): Promise<Response> {
   await env.Q_PUSH.send({
     kind: "call", to: b.to, from: ctx.uid, fromName: resolvedName,
     callId: b.callId, callType: b.kind ?? "audio", traceId, ts: Date.now(),
-    ringReceiptToken, tokenExpiresAt: expiresAt
+    ringReceiptToken, tokenExpiresAt: expiresAt,
+    // [WP3] 'dialpad' marks this as a business-channel call so the callee's
+    // incoming-call screen shows the named business UI (client already checks d['via']).
+    ...(isDialpad ? { via: "dialpad" } : {}),
   });
   // [WS-RING-1] (2026-07-08): PARALLEL ring over the callee's live InboxDO
   // WebSocket. FCM delivery routinely takes 8-15s (the "everyone gets Ava"
@@ -268,6 +371,8 @@ export async function call(req: Request, env: Env): Promise<Response> {
         type: "call_ring", callId: b.callId, fromPub: ctx.uid,
         fromName: resolvedName, kind: b.kind ?? "audio",
         ringReceiptToken, trace_id: traceId, ts: Date.now(),
+        // [WP3] mirrors the Q_PUSH payload's via:'dialpad' marker above.
+        ...(isDialpad ? { via: "dialpad" } : {}),
       }),
     });
     const wj = (await wr.json().catch(() => ({}))) as { live?: number | boolean };
@@ -894,6 +999,40 @@ export async function userLastSeen(req: Request, env: Env): Promise<Response> {
   } catch {
     return json({ ok: false, online: false, last_active_at: null });
   }
+}
+
+// [WP3-ACT-1] POST /api/call/no-answer — plan §3 step 4: the CALLER's client
+// calls this once a genuine ring-timeout has elapsed (or the callee declined /
+// tapped "Send to Ava AI Agent") on a business (dialpad) call, so the
+// after-ring outcome (agent/voicemail/none) is decided server-side. Auth =
+// the caller (ctx.uid) — same trigger shape as the existing receptionistStart().
+export async function callNoAnswer(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const cfg = await readConfig(env);
+  if (cfg.businessCallUx !== true) return json({ error: "disabled", flag: "businessCallUx" }, 503);
+  const b = (await req.json().catch(() => ({}))) as {
+    callee?: string; call_id?: string; trace_id?: string; outcome?: string;
+  };
+  const callee = String(b.callee || "");
+  const callId = String(b.call_id || "");
+  if (!callee || !callId) return json({ error: "callee and call_id required" }, 400);
+  const outcomes: NoAnswerOutcome[] = ["declined", "no_answer", "manual_send_to_agent"];
+  const outcome: NoAnswerOutcome = outcomes.includes(b.outcome as NoAnswerOutcome)
+    ? (b.outcome as NoAnswerOutcome) : "no_answer"; // default: a genuine ring-timeout
+  const traceId = String(b.trace_id || req.headers.get("x-trace-id") || newTraceId());
+
+  const result = await decideNoAnswerRouting(env, {
+    call_id: callId, trace_id: traceId, caller_id: ctx.uid, callee_id: callee,
+    number_dialed: null, via: "dialpad", outcome,
+  });
+  const next: "voicemail" | "agent" | "none" =
+    result.action === "agent" ? "agent" : result.action === "voicemail" ? "voicemail" : "none";
+  return json({
+    next,
+    ...(next !== "none" ? { start: { to: callee, call_id: callId, trace_id: traceId } } : {}),
+    voicemail_available: result.snapshot.voicemail_enabled === true,
+  });
 }
 
 export async function callRinging(req: Request, env: Env): Promise<Response> {

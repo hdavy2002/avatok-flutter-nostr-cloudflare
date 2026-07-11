@@ -374,6 +374,19 @@ class_name = "ReceptionRoomCf"
 name = "CALL_STATE_AUTHORITY"
 class_name = "CallStateAuthorityDO"
 
+# Voicemail bot DO (WP3, plan §7 item 5 / §15.5) — carrier-style "leave a 25s
+# voicemail after the tone" bridge, forked from ReceptionRoomCf. DARK behind
+# voicemailBot (routes/config.ts). Specs/PLAN-2026-07-11-dialpad-business-calls-ava-voice-agent.md.
+[[durable_objects.bindings]]
+name = "VOICEMAIL_ROOM"
+class_name = "VoicemailRoom"
+
+# Ava AI Voice Agent DO (WP4, plan §4/§7 item 7) — Grok realtime bridge. DARK
+# behind voiceAgent (routes/config.ts). Specs/PLAN-2026-07-11-dialpad-business-calls-ava-voice-agent.md.
+[[durable_objects.bindings]]
+name = "AGENT_VOICE_ROOMS"
+class_name = "AgentVoiceRoom"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["CallRoom"]
@@ -439,6 +452,16 @@ new_sqlite_classes = ["SentinelDO"]
 [[migrations]]
 tag = "v13"
 new_sqlite_classes = ["CallStateAuthorityDO"]
+
+# Voicemail bot DO (WP3) — carrier-style voicemail bridge. DARK behind voicemailBot.
+[[migrations]]
+tag = "v14"
+new_sqlite_classes = ["VoicemailRoom"]
+
+# Ava AI Voice Agent DO (WP4) — Grok realtime bridge. DARK behind voiceAgent.
+[[migrations]]
+tag = "v15"
+new_sqlite_classes = ["AgentVoiceRoom"]
 
 # Brain reasoning + observability config (vars; secrets set via wrangler):
 #   BRAIN_REASONER_MODEL  — default @cf/meta/llama-3.1-8b-instruct-fp8 (8B)
@@ -701,6 +724,16 @@ class_name = "ReceptionRoomCf"
 name = "CALL_STATE_AUTHORITY"
 class_name = "CallStateAuthorityDO"
 
+# Voicemail bot DO (WP3, mirrored from prod). DARK behind voicemailBot.
+[[env.staging.durable_objects.bindings]]
+name = "VOICEMAIL_ROOM"
+class_name = "VoicemailRoom"
+
+# Ava AI Voice Agent DO (WP4, mirrored from prod). DARK behind voiceAgent.
+[[env.staging.durable_objects.bindings]]
+name = "AGENT_VOICE_ROOMS"
+class_name = "AgentVoiceRoom"
+
 [[env.staging.migrations]]
 tag = "v1"
 new_sqlite_classes = ["CallRoom"]
@@ -757,3 +790,13 @@ new_sqlite_classes = ["SentinelDO"]
 [[env.staging.migrations]]
 tag = "v13"
 new_sqlite_classes = ["CallStateAuthorityDO"]
+
+# Voicemail bot DO (WP3, mirrored from prod). DARK behind voicemailBot.
+[[env.staging.migrations]]
+tag = "v14"
+new_sqlite_classes = ["VoicemailRoom"]
+
+# Ava AI Voice Agent DO (WP4, mirrored from prod). DARK behind voiceAgent.
+[[env.staging.migrations]]
+tag = "v15"
+new_sqlite_classes = ["AgentVoiceRoom"]
