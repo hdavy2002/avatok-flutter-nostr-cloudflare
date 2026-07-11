@@ -6,11 +6,13 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../core/avatar.dart';
 import '../../core/group_store.dart';
+import '../../core/remote_config.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
 import '../profile/qr_share.dart';
 import 'contacts.dart';
+import 'dialpad_prefill.dart';
 
 /// Contact details: name, AvaTOK number, and shared groups.
 ///
@@ -133,7 +135,20 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
         if (_number.isNotEmpty)
           _box('AvaTOK number', PhosphorIcons.hash(PhosphorIconsStyle.bold), Zine.blue,
               child: Row(children: [
-            Expanded(child: SelectableText(_number, style: ZineText.value(size: 15))),
+            Expanded(
+              // [DIALPAD-BIZ-CALLS] Tapping the number drops it into the dialpad,
+              // ready to dial (not auto-dialed) — connects the friend channel
+              // (this profile, met by email) to the business channel (their
+              // AvaTOK number). Flag-gated; plain SelectableText when off.
+              child: RemoteConfig.businessCallUx
+                  ? GestureDetector(
+                      onTap: () => openDialpadWithNumber(context, _number),
+                      child: Text(_number,
+                          style: ZineText.value(size: 15, color: Zine.blueInk)
+                              .copyWith(decoration: TextDecoration.underline)),
+                    )
+                  : SelectableText(_number, style: ZineText.value(size: 15)),
+            ),
             IconButton(
                 icon: PhosphorIcon(PhosphorIcons.copy(PhosphorIconsStyle.bold), size: 18, color: Zine.ink),
                 onPressed: () {

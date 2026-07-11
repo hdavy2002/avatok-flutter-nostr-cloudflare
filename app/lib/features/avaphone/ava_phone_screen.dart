@@ -8,7 +8,10 @@ import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/call_log_store.dart';
 import '../../core/ice_cache.dart';
+import '../../core/paid_call_api.dart';
+import '../../core/remote_config.dart';
 import '../../core/team_api.dart';
+import '../avatok/paid_call_prompt.dart';
 import '../avatok/place_1to1_call.dart';
 import '../team/team_ivr_screen.dart';
 import '../avatok/contact_actions.dart';
@@ -26,7 +29,13 @@ import 'phone_theme.dart';
 ///   • Messages  — SMS-style inbox (distinct from the Messenger).
 ///   • Contacts  — AvaTOK-number contacts ONLY (never the phone's address book).
 class AvaPhoneScreen extends StatefulWidget {
-  const AvaPhoneScreen({super.key});
+  /// [DIALPAD-BIZ-CALLS] When non-empty, the dialpad sheet opens automatically
+  /// on first frame, pre-filled with this AvaTOK number (NOT auto-dialed — the
+  /// user still presses call). Set by [openDialpadWithNumber] so a tapped
+  /// AvaTOK number elsewhere in the app (e.g. a contact profile) drops straight
+  /// into the dialer. See dialpad_prefill.dart.
+  final String initialDialNumber;
+  const AvaPhoneScreen({super.key, this.initialDialNumber = ''});
   @override
   State<AvaPhoneScreen> createState() => _AvaPhoneScreenState();
 }
@@ -38,14 +47,19 @@ class _AvaPhoneScreenState extends State<AvaPhoneScreen> {
   void initState() {
     super.initState();
     Analytics.screenViewed('avaphone', 'home');
+    if (widget.initialDialNumber.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _openDialpad(initialNumber: widget.initialDialNumber);
+      });
+    }
   }
 
-  void _openDialpad() {
+  void _openDialpad({String initialNumber = ''}) {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => const _DialpadSheet(),
+      builder: (_) => _DialpadSheet(initialNumber: initialNumber),
     );
   }
 
@@ -328,6 +342,8 @@ class _CallsTabState extends State<_CallsTab> {
             context: context, isScrollControlled: true,
             backgroundColor: Colors.transparent, builder: (_) => const _DialpadSheet());
         }),
+        // (kept as the plain, unfilled dialpad — pre-fill only applies via
+        // AvaPhoneScreen.initialDialNumber / openDialpadWithNumber)
         const _NetworkBanner(),
         Expanded(
           child: !_loaded
@@ -539,13 +555,16 @@ class _CallRow extends StatelessWidget {
 // ──────────────────────────────── dialpad ─────────────────────────────────
 
 class _DialpadSheet extends StatefulWidget {
-  const _DialpadSheet();
+  /// [DIALPAD-BIZ-CALLS] Pre-fills the display with this number (digits are
+  /// editable, nothing is auto-dialed). Empty = today's blank dialpad.
+  final String initialNumber;
+  const _DialpadSheet({this.initialNumber = ''});
   @override
   State<_DialpadSheet> createState() => _DialpadSheetState();
 }
 
 class _DialpadSheetState extends State<_DialpadSheet> with WidgetsBindingObserver {
-  String _digits = '';
+  late String _digits = widget.initialNumber;
   bool _dialing = false;
   String? _status;
   // Whether the OS clipboard currently holds number-like text — drives the small
@@ -680,6 +699,27 @@ class _DialpadSheetState extends State<_DialpadSheet> with WidgetsBindingObserve
       setState(() { _dialing = false; _status = 'No AvaTOK account on that number'; });
       return;
     }
+    // WP6 (Specs/PLAN-2026-07-11-dialpad-business-calls-ava-voice-agent.md §3B):
+    // before ringing, check whether the callee published a paid-call offer on
+    // this number. [PaidCallApi.offer] returns null for every ordinary/free
+    // number, so this is a no-op until a callee actually turns paid calls on.
+    String paidHoldId = '';
+    int paidMinutes = 0;
+    if (RemoteConfig.paidCalls) {
+      final offer = await PaidCallApi.offer(to: qDigits);
+      if (!mounted) return;
+      if (offer != null) {
+        final result = await showPaidCallPrompt(context, offer: offer, to: qDigits);
+        if (result == null) {
+          // Caller backed out at the price/length prompt (§11 — hold never taken).
+          setState(() { _dialing = false; });
+          return;
+        }
+        paidHoldId = result.holdId;
+        paidMinutes = result.minutes;
+        if (!mounted) return;
+      }
+    }
     Analytics.capture('avaphone_dial_connect', const {});
     IceCache.prefetch();
     final c = hit; // non-null local for the closure below
@@ -689,7 +729,8 @@ class _DialpadSheetState extends State<_DialpadSheet> with WidgetsBindingObserve
     // rung. On 403 the global interceptor opens the consent flow and the dial aborts.
     place1to1Call(context, uid: c.uid,
         name: c.name.isNotEmpty ? c.name : (c.number.isNotEmpty ? c.number : q),
-        avatarUrl: c.avatarUrl);
+        avatarUrl: c.avatarUrl,
+        paidHoldId: paidHoldId, paidMinutes: paidMinutes);
   }
 
   @override

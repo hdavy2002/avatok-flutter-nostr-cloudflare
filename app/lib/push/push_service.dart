@@ -23,7 +23,9 @@ import '../core/calls/call_session_manager.dart';
 import '../core/config.dart';
 import '../core/disk_cache.dart';
 import '../core/ice_cache.dart';
+import '../core/remote_config.dart';
 import '../features/avatok/call_screen.dart';
+import '../features/avatok/incoming_business_call_screen.dart';
 import '../sync/sync_hub.dart';
 
 /// Global key so we can navigate to the call screen when a call is accepted.
@@ -593,6 +595,31 @@ Future<void> _showIncoming(Map<String, dynamic> d) async {
     ios: const IOSParams(handleType: 'generic', supportsVideo: true),
   );
   await FlutterCallkitIncoming.showCallkitIncoming(params);
+  // [DIALPAD-BIZ-CALLS] Named business-call screen (Accept · Decline · Send to
+  // Ava AI Agent · Block) shown IN-APP, on top of the native CallKit ring, when
+  // the app is foregrounded for a call that originated on the dialpad
+  // (business channel) — friend-channel calls keep the plain CallKit ring +
+  // CallScreen flow untouched. CallKit still owns background/lockscreen
+  // ringing either way; this is additive UI on top of it.
+  //
+  // Gated on BOTH `businessCallUx` AND a `via:'dialpad'` marker on the push
+  // payload. [place1to1Call] (the dialpad's only call-placing path) already
+  // sends `via:'dialpad'` on the OUTGOING POST /api/call, ready for the server
+  // to thread it through the ring push once that (separate) Worker routing
+  // work lands — until then `d['via']` is simply absent and this stays dark
+  // even with the flag on, so today's behaviour is unchanged either way.
+  if (RemoteConfig.businessCallUx &&
+      (d['via'] ?? '') == 'dialpad' &&
+      WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+    navigatorKey.currentState?.push(MaterialPageRoute(
+      builder: (_) => IncomingBusinessCallScreen(
+        callId: (d['callId'] ?? '').toString(),
+        fromUid: (d['fromPub'] ?? '').toString(),
+        fromName: (d['fromName'] ?? 'AvaTOK').toString(),
+        video: d['kind'] == 'video',
+      ),
+    ));
+  }
 }
 
 class PushService {
@@ -1273,6 +1300,15 @@ class PushService {
       }
     });
   }
+
+  /// [DIALPAD-BIZ-CALLS] Public wrapper around [_declineRouting] for the
+  /// in-app named incoming-business-call screen (Decline / Block actions),
+  /// which isn't a native CallKit action and so can't reach the private
+  /// handler otherwise. Same signalling as a CallKit decline: status +
+  /// missed-call log entry. Callers should also best-effort end the native
+  /// CallKit ring (`FlutterCallkitIncoming.endCall(callId)`) and clear the
+  /// `gIncomingRingingFrom`/`gIncomingRingingCallId` globals themselves.
+  static Future<void> declineIncomingCall(Map extra) => _declineRouting(extra);
 
   /// Decline routing (v2 Mode C). Audio calls only — Ava is audio. Reads the
   /// per-account local mirror written by the Settings card (DiskCache keys

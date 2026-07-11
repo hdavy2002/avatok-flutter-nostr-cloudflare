@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+// (unawaited comes from dart:async, already imported above)
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
@@ -9,13 +10,19 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/ava_identity.dart';
 import '../../core/avatar.dart';
+import '../../core/call_routing_api.dart';
 import '../../core/calls/call_overlay.dart';
 import '../../core/calls/call_session.dart';
 import '../../core/calls/call_session_manager.dart';
+import '../../core/remote_config.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../../core/voicemail_call.dart';
 import 'busy_card.dart';
 import 'call_outcome_menu.dart';
+import 'contacts.dart';
+import 'no_answer_card.dart';
+import 'place_1to1_call.dart';
 // Ringing globals (gIncomingRingingFrom/CallId) live here — cleared by
 // clearCallState() on account switch. push_service.dart also imports this file
 // (Dart permits the library cycle).
@@ -127,6 +134,14 @@ class CallScreen extends StatefulWidget {
   // when this call ends in the 'network-error' terminal state. Null → the
   // Retry button is hidden (the user falls back to the normal dial button).
   final VoidCallback? onRetry;
+  // [WP3-ACT-1] When place_1to1_call.dart's initial POST /api/call already came
+  // back `routed:'voicemail'|'agent'` (the server skipped ringing entirely —
+  // offline/busy/business-hours/blocked, plan §15.1/§15.2), it's pre-seeded here
+  // so the no-answer card shows the RIGHT voicemail/agent affordance the moment
+  // the client's own ring-timeout naturally elapses, without waiting on a second
+  // /api/call/no-answer round trip. null = the normal path (probe on timeout).
+  final String? initialRouted;
+  final Map<String, dynamic>? initialRoutingStart;
   const CallScreen({
     super.key,
     required this.room,
@@ -140,6 +155,8 @@ class CallScreen extends StatefulWidget {
     this.teamSlot,
     this.traceId = '',
     this.onRetry,
+    this.initialRouted,
+    this.initialRoutingStart,
   });
   @override
   State<CallScreen> createState() => _CallScreenState();
@@ -148,6 +165,78 @@ class CallScreen extends StatefulWidget {
 class _CallScreenState extends State<CallScreen> {
   late final CallSession _session;
   bool _popped = false;
+
+  // [WP3-ACT-1] After-ring routing (plan §3 step 4) — fetched ONCE when the
+  // outgoing call genuinely goes to 'no-answer' while businessCallUx is on, so
+  // the NoAnswerCard's "Leave a voicemail" button reflects what the server
+  // actually decided (voicemail/agent/none) instead of just the raw
+  // voicemailBot flag. null until the fetch resolves.
+  Map<String, dynamic>? _routingInfo;
+  bool _routingFetched = false;
+  VoicemailCall? _vmCall;
+  bool _vmInProgress = false;
+
+  void _maybeFetchNoAnswerRouting() {
+    if (_routingFetched || !RemoteConfig.businessCallUx || !widget.outgoing) return;
+    if (widget.initialRouted == 'voicemail' || widget.initialRouted == 'agent') {
+      // Pre-seeded by place_1to1_call.dart from the initial /api/call response
+      // (ring was skipped server-side) — no need for a second round trip.
+      _routingFetched = true;
+      _routingInfo = {
+        'next': widget.initialRouted,
+        'voicemail_available': widget.initialRouted == 'voicemail',
+        if (widget.initialRoutingStart != null) 'start': widget.initialRoutingStart,
+      };
+      return;
+    }
+    if (_session.uiPhase.value != 'no-answer') return;
+    _routingFetched = true;
+    CallRoutingApi.noAnswer(callee: widget.seed, callId: widget.room, traceId: widget.traceId).then((r) {
+      if (mounted && r != null) setState(() => _routingInfo = r);
+    });
+  }
+
+  /// Wires NoAnswerCard's "Leave a voicemail" button to the server's routing
+  /// decision. `start` is the `{to, call_id, trace_id}` blob /api/call/no-answer
+  /// (or the initial /api/call response) returned for a 'voicemail' outcome —
+  /// mirrors how core/receptionist_call.dart's caller-side WS join works, using
+  /// the SAME wire protocol (see core/voicemail_call.dart's header comment).
+  Future<void> _leaveVoicemail(Map<String, dynamic> start) async {
+    if (_vmInProgress) return;
+    setState(() => _vmInProgress = true);
+    final s = await VoicemailApi.start(
+      to: (start['to'] ?? widget.seed).toString(),
+      callId: (start['call_id'] ?? widget.room).toString(),
+      traceId: (start['trace_id'] ?? widget.traceId).toString(),
+    );
+    final rtcUrl = s?['rtc_url'] as String?;
+    if (s == null || rtcUrl == null) {
+      if (mounted) {
+        setState(() => _vmInProgress = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Voicemail is not available right now')));
+      }
+      return;
+    }
+    final call = VoicemailCall(rtcUrl: rtcUrl);
+    _vmCall = call;
+    call.onStatus = (status) {
+      if (!mounted) return;
+      if (status == 'connected') {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Recording your voicemail…'), duration: Duration(seconds: 3)));
+      } else if (status == 'ended') {
+        setState(() => _vmInProgress = false);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Voicemail sent')));
+      }
+    };
+    final ok = await call.start();
+    if (!ok && mounted) {
+      setState(() => _vmInProgress = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Couldn't connect to leave a voicemail")));
+    }
+  }
 
   @override
   void initState() {
@@ -209,9 +298,11 @@ class _CallScreenState extends State<CallScreen> {
     _session.cameraOn.addListener(_onSessionChanged);
     _session.videoActive.addListener(_onSessionChanged);
     _session.onCellularHold.addListener(_onSessionChanged);
+    _maybeFetchNoAnswerRouting(); // pre-seed from widget.initialRouted, if any
   }
 
   void _onSessionChanged() {
+    _maybeFetchNoAnswerRouting();
     if (mounted) setState(() {});
   }
 
@@ -243,6 +334,10 @@ class _CallScreenState extends State<CallScreen> {
     // them in initState.
     if (identical(_session.onRequestPop, _popIfMounted)) _session.onRequestPop = null;
     _session.setNoticeHooks();
+    // Don't leave an orphaned voicemail WS open if the screen is torn down
+    // mid-recording (e.g. the user navigates away) — best-effort, the server
+    // DO also self-finalizes on close either way.
+    if (_vmCall != null) unawaited(_vmCall!.hangup());
     super.dispose();
   }
 
@@ -415,6 +510,65 @@ class _CallScreenState extends State<CallScreen> {
                         // ignore: unawaited_futures
                         s.busyLeaveMessage();
                       },
+                    )
+                  // [DIALPAD-BIZ-CALLS] Phone-style "no answer" card for the
+                  // CALLER on an outgoing business (dialpad) call — replaces
+                  // dropping straight into the messenger thread. Only the
+                  // legacy plain sticker below is shown while the flag is off
+                  // (existing behaviour preserved byte-for-byte).
+                  else if (RemoteConfig.businessCallUx && widget.outgoing && phase == 'no-answer')
+                    NoAnswerCard(
+                      name: widget.title,
+                      seed: widget.seed,
+                      avatarUrl: widget.avatarUrl,
+                      // [WP3-ACT-1] Prefer the server's actual routing decision
+                      // (_routingInfo, from /api/call/no-answer) once it's back;
+                      // until then (or if the fetch failed) fall back to the raw
+                      // flag so the button still shows up while the probe is
+                      // in flight — _leaveVoicemail below handles the "start
+                      // info absent" case gracefully either way.
+                      voicemailAvailable: (_routingInfo?['voicemail_available'] == true) ||
+                          (_routingInfo == null && RemoteConfig.voicemailBot),
+                      onCallAgain: () {
+                        final nav = Navigator.of(context);
+                        final uidSeed = widget.seed, title = widget.title,
+                            avatar = widget.avatarUrl, vid = widget.video;
+                        _popIfMounted();
+                        // nav.context stays mounted after this route pops (it's
+                        // the ancestor Navigator), so it's safe to push from here.
+                        place1to1Call(nav.context, uid: uidSeed, name: title, avatarUrl: avatar, video: vid);
+                      },
+                      onLeaveVoicemail: RemoteConfig.voicemailBot && !_vmInProgress
+                          ? () {
+                              final start = _routingInfo?['start'];
+                              if (start is Map) {
+                                // ignore: unawaited_futures
+                                _leaveVoicemail(start.cast<String, dynamic>());
+                              } else {
+                                // TODO(WP3-ACT-1): no start info yet — either the
+                                // /api/call/no-answer probe hasn't resolved, or the
+                                // server decided 'agent'/'none' for this call. A
+                                // richer UX would poll/await the probe before
+                                // enabling the button; for now we degrade to a
+                                // clean "not available yet" message per the
+                                // verification plan's explicit fallback.
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Voicemail is not available for this call')));
+                              }
+                            }
+                          : null,
+                      onSaveContact: () async {
+                        try {
+                          await ContactsStore().add(Contact(
+                              uid: widget.seed, name: widget.title,
+                              avatarUrl: widget.avatarUrl));
+                        } catch (_) {/* best-effort */}
+                        if (mounted) {
+                          ScaffoldMessenger.of(context)
+                              .showSnackBar(const SnackBar(content: Text('Contact saved')));
+                        }
+                      },
+                      onClose: _popIfMounted,
                     )
                   else
                     ZineSticker(

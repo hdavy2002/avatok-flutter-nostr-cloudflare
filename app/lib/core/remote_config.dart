@@ -242,6 +242,28 @@ class RemoteConfig {
   /// requests grouping, no media blur. Default ON (safety ships enabled). Mirrors
   /// config.ts `strangerGateEnabled`.
   static bool get strangerGateEnabled => _b('strangerGateEnabled', true);
+  // DIALPAD BUSINESS CALLS + AVA VOICE AGENT (Specs/PLAN-2026-07-11-dialpad-
+  // business-calls-ava-voice-agent.md §8/§15.6). One kill switch per phase;
+  // all default OFF so a config-fetch failure keeps today's behaviour exactly
+  // as-is. Staging first; prod flipped one at a time on the owner's say-so.
+  /// Phase A — the friend/business channel split: email-only new-chat search,
+  /// tappable AvaTOK numbers → dialpad, the no-answer card, and the named
+  /// incoming-business-call screen. Mirrors config.ts `businessCallUx`.
+  static bool get businessCallUx => _b('businessCallUx', false);
+  /// Phase B — the server-side voicemail bot (5-rings → prompt → 25s record).
+  /// Mirrors config.ts `voicemailBot`.
+  static bool get voicemailBot => _b('voicemailBot', false);
+  /// Phase B2 — caller-pays paid calls (escrow + per-minute settle). Mirrors
+  /// config.ts `paidCalls`.
+  static bool get paidCalls => _b('paidCalls', false);
+  /// Phase C — the Ava AI Voice Agent (Grok realtime session). Gates the
+  /// "Send to Ava AI Agent" option on the incoming-business-call screen.
+  /// Mirrors config.ts `voiceAgent`.
+  static bool get voiceAgent => _b('voiceAgent', false);
+  /// Phase C — additional caller-pays AvaTOK service numbers (Mode B only).
+  /// Mirrors config.ts `serviceNumbers`.
+  static bool get serviceNumbers => _b('serviceNumbers', false);
+
   static int get minAppBuild => (_asNum(_cfg['minAppBuild'])?.toInt()) ?? 0;
 
   /// Installed build too old? → callers show the blocking "please update" screen.

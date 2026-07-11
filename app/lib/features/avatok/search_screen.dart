@@ -10,6 +10,7 @@ import '../../core/chat_state.dart';
 import '../../core/config.dart';
 import '../../core/db.dart';
 import '../../core/device_contacts.dart';
+import '../../core/remote_config.dart';
 import '../../sync/sync_hub.dart';
 import '../../core/group_store.dart';
 import '../../core/ui/zine.dart';
@@ -85,7 +86,14 @@ class _SearchScreenState extends State<SearchScreen> {
     // that hit with any directory matches. Same `Directory.resolve` the new-chat
     // sheet uses, so both surfaces now find people by email + AvaTOK number.
     final isEmail = Directory.isCompleteEmail(q);
-    final isNumber = RegExp(r'^[+\d][\d\s()-]{3,}$').hasMatch(q);
+    // [DIALPAD-BIZ-CALLS] Channel split (businessCallUx): New-chat/global search
+    // becomes email-only — a number-like query no longer resolves a directory
+    // hit here. AvaTOK numbers are dialed on the dialpad (the business channel),
+    // not searched into a chat. Flag OFF preserves the exact legacy behaviour
+    // (email OR AvaTOK/phone number both resolve).
+    final isNumber = RemoteConfig.businessCallUx
+        ? false
+        : RegExp(r'^[+\d][\d\s()-]{3,}$').hasMatch(q);
     final results = <Contact>[];
     if (isEmail || isNumber) {
       final hit = await Directory.resolve(q);
@@ -268,6 +276,16 @@ class _SearchScreenState extends State<SearchScreen> {
                   ),
                 ),
               ]),
+              // [DIALPAD-BIZ-CALLS] Channel-split hint: email is the friend
+              // channel; the AvaTOK number/dialpad is the business channel.
+              // Flag-gated — invisible while businessCallUx is off.
+              if (RemoteConfig.businessCallUx) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Add friends by email. To call a business, dial their AvaTOK number.',
+                  style: ZineText.sub(size: 12),
+                ),
+              ],
               const SizedBox(height: 12),
               // Scope chips
               SizedBox(
@@ -336,7 +354,9 @@ class _SearchScreenState extends State<SearchScreen> {
                   Padding(padding: const EdgeInsets.all(28),
                       child: Center(child: ZineEmptyState(
                           icon: PhosphorIcons.binoculars(PhosphorIconsStyle.bold),
-                          text: 'No matches.\nFind people by their full email address or AvaTOK number.'))),
+                          text: RemoteConfig.businessCallUx
+                              ? 'No matches.\nAdd friends by their full email address. To call a business, dial their AvaTOK number.'
+                              : 'No matches.\nFind people by their full email address or AvaTOK number.'))),
                 if (_q.isEmpty && _device.isEmpty)
                   Padding(padding: const EdgeInsets.all(28),
                       child: Center(child: ZineEmptyState(

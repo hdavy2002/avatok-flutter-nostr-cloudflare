@@ -7,6 +7,7 @@ import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/device_contacts.dart';
 import '../../core/profile_store.dart';
+import '../../core/remote_config.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'add_by_link_sheet.dart';
@@ -80,7 +81,13 @@ class _AddContactSheetState extends State<_AddContactSheet> {
   /// design — so we don't even probe for it.
   Future<void> _maybeResolve(String q) async {
     final isEmail = Directory.isCompleteEmail(q);
-    final isNumber = RegExp(r'^[+\d][\d\s()-]{3,}$').hasMatch(q);
+    // [DIALPAD-BIZ-CALLS] Channel split (businessCallUx): New chat becomes
+    // email-only — a number-like query no longer resolves here. AvaTOK numbers
+    // are dialed on the dialpad (business channel), not added as a friend.
+    // Flag OFF preserves the exact legacy behaviour (email OR number resolves).
+    final isNumber = RemoteConfig.businessCallUx
+        ? false
+        : RegExp(r'^[+\d][\d\s()-]{3,}$').hasMatch(q);
     if (!isEmail && !isNumber) {
       if (mounted) setState(() { _resolvedHit = null; _resolving = false; _resolvedMiss = false; });
       return;
@@ -151,11 +158,15 @@ class _AddContactSheetState extends State<_AddContactSheet> {
               ),
             ]),
             const SizedBox(height: 4),
-            Text('Find someone by their email or AvaTOK number.', style: ZineText.sub(size: 12.5)),
+            Text(
+                RemoteConfig.businessCallUx
+                    ? 'Add friends by email. To call a business, dial their AvaTOK number.'
+                    : 'Find someone by their email or AvaTOK number.',
+                style: ZineText.sub(size: 12.5)),
             const SizedBox(height: 14),
             ZineField(
               controller: _ctrl,
-              hint: 'Email or AvaTOK number',
+              hint: RemoteConfig.businessCallUx ? 'Email address' : 'Email or AvaTOK number',
               leadIcon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
               onChanged: _onQuery,
             ),
