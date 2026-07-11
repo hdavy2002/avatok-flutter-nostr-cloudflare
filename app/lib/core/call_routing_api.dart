@@ -19,18 +19,24 @@ class CallRoutingApi {
   }
 
   /// [callee] = the person that was dialed and didn't answer. [callId] = the
-  /// call room id (same id the ring push/CallRoom DO used). Returns
-  /// `{next:'voicemail'|'agent'|'none', start?:{to,call_id,trace_id}, voicemail_available:bool}`
-  /// on success, or null on any failure.
+  /// call room id (same id the ring push/CallRoom DO used). [outcome] tells the
+  /// server WHY the ring ended: 'no_answer' (default, genuine timeout — also
+  /// the early AGENT_AUTO probe), 'declined', or 'manual_send_to_agent' (the
+  /// callee tapped "Send to Ava AI Agent"). Returns
+  /// `{next:'voicemail'|'agent'|'busy'|'none', start?:{to,call_id,trace_id},
+  /// voicemail_available:bool, busy_kind?, message?}` on success, or null on
+  /// any failure.
   static Future<Map<String, dynamic>?> noAnswer({
     required String callee,
     required String callId,
     String? traceId,
+    String outcome = 'no_answer',
   }) async {
     try {
       final r = await ApiAuth.postJson('$kApiBase/call/no-answer', {
         'callee': callee,
         'call_id': callId,
+        'outcome': outcome,
         if (traceId != null && traceId.isNotEmpty) 'trace_id': traceId,
       });
       if (r.statusCode != 200) return null;

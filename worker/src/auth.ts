@@ -52,6 +52,59 @@ export async function verifyClerk(env: Env, bearer: string | null): Promise<Cler
   return { clerkUserId: String(payload.sub) };
 }
 
+// ---- [ACCT-RELINK-1] Clerk uid alias resolution ----
+// An account is keyed by its ORIGINAL Clerk uid (users.uid). If that Clerk user is
+// destroyed and the same person re-authenticates, Clerk mints a NEW id that no
+// longer matches. /api/me creates an alias (new id -> original uid) on an
+// email-verified relink; this helper makes EVERY authenticated request resolve the
+// new id back to the original uid, so all uid-keyed data (InboxDO messages, wallet,
+// media) stays reachable. We alias, never re-key — DO storage is bound to the
+// original uid and can't be moved.
+//
+// Fail-open + defensive: the alias table may not exist yet (migration lags deploy),
+// so a missing table / DB error simply returns the id unchanged (today's behaviour).
+const ALIAS_PREFIX = "alias:";        // KV: alias:{clerkId} -> canonical uid ("-" = none)
+const ALIAS_TTL = 6 * 60 * 60;        // 6h for a positive alias
+const ALIAS_MISS_TTL = 120;           // 2min for a negative (bounds staleness after a relink)
+
+export async function resolveCanonicalUid(env: Env, clerkId: string): Promise<string> {
+  if (!clerkId) return clerkId;
+  try {
+    const cached = await env.TOKENS.get(ALIAS_PREFIX + clerkId);
+    if (cached === "-") return clerkId;
+    if (cached) return cached;
+  } catch { /* fall through to D1 */ }
+  try {
+    const row = await metaSession(env)
+      .prepare("SELECT canonical_uid FROM clerk_uid_alias WHERE alias_clerk_id=?1")
+      .bind(clerkId).first<{ canonical_uid: string }>();
+    const canon = row?.canonical_uid ? String(row.canonical_uid) : null;
+    try {
+      await env.TOKENS.put(ALIAS_PREFIX + clerkId, canon ?? "-",
+        { expirationTtl: canon ? ALIAS_TTL : ALIAS_MISS_TTL });
+    } catch { /* best-effort cache */ }
+    return canon ?? clerkId;
+  } catch {
+    return clerkId; // table missing / DB error → behave exactly as before aliasing
+  }
+}
+
+// Record new-Clerk-id -> original-account-uid. Idempotent. Best-effort: if the
+// table isn't there yet the relink just won't persist (caller still returns the
+// restored profile for this request).
+export async function linkClerkAlias(
+  env: Env, aliasClerkId: string, canonicalUid: string, reason = "email_relink",
+): Promise<void> {
+  if (!aliasClerkId || !canonicalUid || aliasClerkId === canonicalUid) return;
+  try {
+    await env.DB_META.prepare(
+      "INSERT INTO clerk_uid_alias (alias_clerk_id, canonical_uid, reason, created_at) " +
+      "VALUES (?1,?2,?3,?4) ON CONFLICT(alias_clerk_id) DO UPDATE SET canonical_uid=?2, reason=?3, created_at=?4",
+    ).bind(aliasClerkId, canonicalUid, reason, Date.now()).run();
+    try { await env.TOKENS.put(ALIAS_PREFIX + aliasClerkId, canonicalUid, { expirationTtl: ALIAS_TTL }); } catch { /* best-effort */ }
+  } catch { /* table may not exist yet — non-fatal */ }
+}
+
 // ---- Tier-2 gate, KV-cached (spec §4 / §10.4: verified:{uid}, 1h TTL) ----
 // requireVerifiedKV is the canonical Tier-2 check for new routes. It reads the KV
 // cache first (one fast lookup), falling back to the source of truth in D1

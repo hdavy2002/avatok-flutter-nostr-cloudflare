@@ -3,7 +3,7 @@
 // JWT is verified at the edge (reusing verifyClerk from auth.ts); the uid comes
 // from the verified token `sub`, never from the request body.
 import type { Env } from "./types";
-import { verifyClerk } from "./auth";
+import { verifyClerk, resolveCanonicalUid } from "./auth";
 
 export interface UserCtx { uid: string; }
 export interface AuthFail { error: string; status: number; }
@@ -22,7 +22,11 @@ export async function requireUser(req: Request, env: Env): Promise<UserCtx | Aut
   const clerk = await verifyClerk(env, bearer);
   if ("skipped" in clerk) return { error: "auth not configured", status: 500 };
   if ("error" in clerk) return { error: "auth: " + clerk.error, status: 401 };
-  const uid = clerk.clerkUserId;
+  // [ACCT-RELINK-1] Resolve the raw Clerk id to the canonical account uid. For a
+  // normal login this is a no-op (returns the same id); for a login whose Clerk id
+  // changed (deleted+recreated Clerk user) it maps back to the original account so
+  // every uid-keyed store stays reachable. Fail-open: unknown → the id itself.
+  const uid = await resolveCanonicalUid(env, clerk.clerkUserId);
 
   // Account-status ban gate (account_status is already keyed by clerk_user_id).
   const st = await env.DB_META

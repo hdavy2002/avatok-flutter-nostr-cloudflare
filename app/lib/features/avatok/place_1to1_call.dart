@@ -178,6 +178,11 @@ Future<void> place1to1Call(
       avatarUrl: avatarUrl,
       initialRouted: routed,
       initialRoutingStart: routingStart,
+      // [DIALPAD-BIZ-CALLS Phase C] business channel → §3 after-ring flow
+      // (agent hand-off, post-ring busy) instead of the generic outcome menu.
+      business: true,
+      // [WP6 §3B] arms the in-call countdown + end-of-time beeps on connect.
+      paidMinutes: paidHoldId.isNotEmpty ? paidMinutes : 0,
     ),
   ));
 }

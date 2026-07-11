@@ -45,6 +45,25 @@ async function clerkPhone(env: Env, uid: string): Promise<string | null> {
 }
 
 /**
+ * [ACCT-RELINK-1] The user's PRIMARY email from Clerk, but ONLY if that address is
+ * verified. Used by /api/me to relink a returning login (which arrives under a NEW
+ * Clerk id) back to an existing account by email. Deliberately NOT KV-cached and
+ * verification-checked: this gates account access, so it must be fresh and must
+ * never trust an unverified address (which could hijack someone else's account).
+ * Returns null when there is no key, the lookup fails, or the primary email is
+ * unverified. Called only on the rare /api/me miss, so an uncached Clerk call is fine.
+ */
+export async function primaryVerifiedEmailFor(env: Env, uid: string): Promise<string | null> {
+  const u = await clerkUser(env, uid);
+  if (!u) return null;
+  const addrs = (u.email_addresses ?? []) as any[];
+  const primary = addrs.find((e) => e.id === u.primary_email_address_id) ?? addrs[0];
+  if (!primary?.email_address) return null;
+  const verified = primary?.verification?.status === "verified";
+  return verified ? String(primary.email_address) : null;
+}
+
+/**
  * uid → email, cached in KV. Returns null when unknown (no Clerk key, lookup
  * failed, or the user has no email). A cached empty string means "known absent"
  * and short-circuits repeat Clerk calls.

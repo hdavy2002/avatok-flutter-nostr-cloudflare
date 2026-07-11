@@ -324,6 +324,17 @@ export async function handleDeletion(msg: DeletionMsg, env: Env): Promise<void> 
   done.push("dos_noted");
 
   // 13. Clerk user (Backend API) — guarded.
+  // [ACCT-RELINK-1] Deleting the Clerk user is IRREVERSIBLE and, once done, the same
+  // person signing back in gets a brand-new Clerk id that no longer matches this
+  // account (root cause of the "re-onboarded / lost my number" report). Re-check the
+  // deletion request one last time here: if the user reactivated (cancelled) at any
+  // point AFTER the top-of-function check but before now, abort the whole cascade
+  // rather than destroy the identity out from under a returning user.
+  {
+    const still = await env.DB_META.prepare("SELECT status FROM deletion_requests WHERE uid=?1")
+      .bind(uid).first<{ status: string }>();
+    if (still && still.status === "cancelled") return; // reactivated mid-cascade — do NOT delete the Clerk user
+  }
   if (env.CLERK_SECRET_KEY && clerkId) {
     try {
       const r = await fetch(`https://api.clerk.com/v1/users/${clerkId}`, { method: "DELETE", headers: { Authorization: `Bearer ${env.CLERK_SECRET_KEY}` } });
