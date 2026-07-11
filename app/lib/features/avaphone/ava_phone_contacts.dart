@@ -7,7 +7,7 @@ import '../../core/chat_state.dart';
 import '../../core/ice_cache.dart';
 import '../../core/device_contacts.dart';
 import '../avatok/add_by_link_sheet.dart';
-import '../avatok/call_screen.dart';
+import '../avatok/place_1to1_call.dart';
 import '../avatok/chat_thread.dart';
 import '../avatok/contact_actions.dart';
 import '../avatok/contact_profile_screen.dart';
@@ -165,9 +165,10 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
   void _call(Contact c) {
     IceCache.prefetch();
     Analytics.capture('avaphone_contact_call', const {});
-    Navigator.push(context, MaterialPageRoute(builder: (_) => CallScreen(
-        room: 'avatok-${c.uid}', title: c.name.isNotEmpty ? c.name : c.number,
-        seed: c.uid, video: false, outgoing: true, avatarUrl: c.avatarUrl)));
+    // [AVA-IDGATE-1] Route through /api/call (gate + real ring) instead of opening
+    // CallScreen directly.
+    place1to1Call(context, uid: c.uid, name: c.name.isNotEmpty ? c.name : c.number,
+        avatarUrl: c.avatarUrl);
   }
 
   void _message(Contact c) {

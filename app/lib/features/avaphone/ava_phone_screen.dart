@@ -9,7 +9,7 @@ import '../../core/avatar.dart';
 import '../../core/call_log_store.dart';
 import '../../core/ice_cache.dart';
 import '../../core/team_api.dart';
-import '../avatok/call_screen.dart';
+import '../avatok/place_1to1_call.dart';
 import '../team/team_ivr_screen.dart';
 import '../avatok/contact_actions.dart';
 import '../avatok/contact_profile_screen.dart';
@@ -199,11 +199,10 @@ class _CallsTabState extends State<_CallsTab> {
   void _call(CallEntry c) {
     IceCache.prefetch();
     Analytics.capture('avaphone_call_back', {'dir': c.dir.name, 'video': c.video});
-    Navigator.push(context, MaterialPageRoute(
-      builder: (_) => CallScreen(
-        room: 'avatok-${c.seed}', title: c.name.isNotEmpty ? c.name : c.seed,
-        seed: c.seed, video: false, outgoing: true, avatarUrl: _avatarFor(c.seed) ?? ''),
-    )).then((_) => _load());
+    // [AVA-IDGATE-1] Route through /api/call (gate + real ring) instead of opening
+    // CallScreen directly. c.seed IS the peer uid (CallEntry.seed == uid).
+    place1to1Call(context, uid: c.seed, name: c.name.isNotEmpty ? c.name : c.seed,
+        avatarUrl: _avatarFor(c.seed) ?? '').then((_) => _load());
   }
 
   /// All log entries for a person (newest first) — drives the "called N times" count.
@@ -685,12 +684,12 @@ class _DialpadSheetState extends State<_DialpadSheet> with WidgetsBindingObserve
     IceCache.prefetch();
     final c = hit; // non-null local for the closure below
     Navigator.pop(context); // close the dialpad
-    Navigator.push(context, MaterialPageRoute(
-      builder: (_) => CallScreen(
-        room: 'avatok-${c.uid}',
-        title: c.name.isNotEmpty ? c.name : (c.number.isNotEmpty ? c.number : q),
-        seed: c.uid, video: false, outgoing: true, avatarUrl: c.avatarUrl),
-    ));
+    // [AVA-IDGATE-1] Dialing a resolved number now goes through /api/call so the
+    // liveness gate applies (first call to a stranger) and the callee is actually
+    // rung. On 403 the global interceptor opens the consent flow and the dial aborts.
+    place1to1Call(context, uid: c.uid,
+        name: c.name.isNotEmpty ? c.name : (c.number.isNotEmpty ? c.number : q),
+        avatarUrl: c.avatarUrl);
   }
 
   @override
