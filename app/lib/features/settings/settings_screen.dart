@@ -395,7 +395,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         // Owner request 2026-06-29: hide several of these sections (see
         // _hiddenSettingsSections); Ava Receptionist and any others stay visible.
         for (final s in SettingsSectionRegistry.sections)
-          if (!_hiddenSettingsSections.contains(s.id)) _sectionRow(s),
+          if (!_hiddenSettingsSections.contains(s.id) &&
+              (s.visible?.call() ?? true))
+            _sectionRow(s),
         // Owner request 2026-06-29: 'Backup' tile hidden from Settings. Backup &
         // restore now live in the Storage area (AvaStorage → "Back up & restore",
         // a Google-Drive-backed encrypted backup + restore). The _backup /

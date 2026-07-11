@@ -16,11 +16,19 @@ class SettingsSection {
   final String title; // shown as the SECTION kicker (uppercased by the screen)
   final WidgetBuilder builder; // builds the section's body card(s)
   final int order;
+
+  /// Optional visibility gate, evaluated at render time. Return false to hide
+  /// the section's row entirely (e.g. behind a RemoteConfig feature flag).
+  /// Null = always visible. [AVA-BIZCALL-12] — prevents a flag-gated section
+  /// from rendering a blank sub-page when its feature is off.
+  final bool Function()? visible;
+
   const SettingsSection({
     required this.id,
     required this.title,
     required this.builder,
     this.order = 100,
+    this.visible,
   });
 }
 

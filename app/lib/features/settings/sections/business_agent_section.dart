@@ -31,6 +31,9 @@ void registerBusinessAgentSection() {
       id: 'ava_business_agent',
       title: 'Ava Business Agent',
       order: 25, // just below Ava Receptionist (24)
+      // [AVA-BIZCALL-12] Hide the row entirely when the feature flag is off —
+      // never show a tile that opens a blank page.
+      visible: () => RemoteConfig.voiceAgent,
       builder: (context) => const _BusinessAgentCard(),
     ),
   );
@@ -184,7 +187,20 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
 
   @override
   Widget build(BuildContext context) {
-    if (!RemoteConfig.voiceAgent) return const SizedBox.shrink();
+    if (!RemoteConfig.voiceAgent) {
+      // [AVA-BIZCALL-12] The row is hidden when the flag is off (see
+      // registerBusinessAgentSection), but if the flag flips while this page
+      // is open, show a friendly note — never a blank page.
+      return const Padding(
+        padding: EdgeInsets.all(24),
+        child: Center(
+          child: Text(
+            'Ava Business Agent isn’t enabled on this account yet.',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
     return ZineCard(
       radius: Zine.rSm,
       padding: const EdgeInsets.all(14),
