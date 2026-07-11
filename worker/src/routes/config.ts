@@ -184,6 +184,11 @@ export interface PlatformConfig {
   // Master kill switch for the whole feature — the settings page, hot-path enqueue,
   // and the auto_reply consumer all gate on this. Default ON (per spec AUTOREP-5).
   autoResponderEnabled: boolean;
+  // AvaMarketplace (buy/sell/social + agent negotiation) master visibility switch.
+  // The client reads this via RemoteConfig.marketplaceEnabled; the sidebar tile is
+  // shown when `marketplaceEnabled || isAdmin`. Default OFF so the Marketplace stays
+  // admin-only during phased rollout; flip true in KV to surface it to ALL users.
+  marketplaceEnabled: boolean;
   // AI Messenger Batch 2026-07-03 — per-stream kill switches (spec §8 / §12).
   marketplaceAgentSettingsEnabled: boolean; // STREAM A: Marketplace Agent settings surface
   mktI18nNegotiationEnabled: boolean;        // STREAM A: English-canonical negotiation + translation
@@ -383,6 +388,7 @@ const DEFAULTS: PlatformConfig = {
   driveAutoBackup: true,          // P8 Stage 3: daily Drive backup for EVERY user (no premium gate)
   agentDailyCap: 10,               // P5: 10 marketplace agent conversations/user/UTC-day
   autoResponderEnabled: true,      // STREAM F: auto-responder "Ava replies while away" — ships ON
+  marketplaceEnabled: false,       // Marketplace tile visible to admins only until flipped true in KV
   // AI Messenger Batch 2026-07-03 defaults (spec §8 / §12).
   marketplaceAgentSettingsEnabled: true, // STREAM A — ships ON
   mktI18nNegotiationEnabled: true,       // STREAM A — ships ON
