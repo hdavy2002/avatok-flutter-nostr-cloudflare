@@ -12,14 +12,25 @@
 // custom function side effects (create_booking / send_email / other Composio
 // tools from the profile's tool_manifest) and relays audio both ways.
 //
-// ⚠️ Grok realtime wire-protocol assumption: modeled on the OpenAI-Realtime-
-// shaped event protocol (session.update / input_audio_buffer.append /
-// response.audio.delta / response.function_call_arguments.done / …), per
-// x.ai's own "Grok Voice Agent API" docs describing the same event names.
-// NOT verified against a live x.ai account as of this writing — same caveat
-// lib/grok.ts flags for the Collections REST paths. Every Grok-facing send/
-// receive is defensive (try/catch, no throw) so a wire-shape drift degrades to
-// "this call falls back to voicemail" rather than crashing the Worker.
+// Grok realtime wire protocol — VERIFIED against docs.x.ai on 2026-07-11
+// (fetched https://docs.x.ai/developers/model-capabilities/audio/voice-agent.md
+// directly). It is OpenAI-Realtime-shaped but xAI's *current* event names
+// use the output-prefixed GA scheme, not the older `response.audio.delta`
+// beta names this file used before:
+//   - session.update / input_audio_buffer.append — unchanged, doc-confirmed.
+//   - response.audio.delta        → response.output_audio.delta (doc-confirmed,
+//     appears verbatim in the doc's own function-call-handling code sample).
+//   - response.audio_transcript.delta → response.output_audio_transcript.delta
+//     (same output-prefixed rename family; not spelled out verbatim in the
+//     fetched page, so both the new and legacy name are accepted defensively).
+//   - conversation.item.input_audio_transcription.completed — kept: xAI's
+//     doc only renames the incremental *delta* variant to `.updated`
+//     (cumulative transcript); `.completed` isn't listed as unsupported.
+//   - response.function_call_arguments.done — doc-confirmed (exact event
+//     table: "Function Call Events").
+// Every Grok-facing send/receive stays defensive (try/catch, no throw) so a
+// wire-shape drift degrades to "this call falls back to voicemail" rather
+// than crashing the Worker.
 //
 // Wallet: Mode A holds 30 tokens BEFORE this DO is even started (routes/
 // agent_voice_routes.ts calls holdForAgentModeA — mirrors voicemailStart's
@@ -245,6 +256,11 @@ export class AgentVoiceRoom {
 
     const grokTools: GrokTool[] = [];
     if (init.collection_id) {
+      // Doc-confirmed shape (docs.x.ai "Using Tools with Grok Voice Agent
+      // API" → Collections Search): {type:"file_search", vector_store_ids,
+      // max_num_results}. The realtime doc explicitly documents file_search
+      // for Collections-backed retrieval, so no server-side search_docs
+      // fallback function tool is needed — Grok resolves this server-side.
       grokTools.push({ type: "file_search", vector_store_ids: [init.collection_id], max_num_results: 4 });
     }
     for (const t of this.tools) {
@@ -322,18 +338,31 @@ export class AgentVoiceRoom {
     const type = String(m?.type || "");
     if (!type) return;
 
-    if (type === "response.audio.delta" && typeof m.delta === "string") {
+    // response.output_audio.delta — doc-confirmed name (docs.x.ai Voice Agent
+    // API, both the audio-playback sample and the function-call-handling
+    // sample use this exact event). `response.audio.delta` accepted too as a
+    // defensive legacy fallback in case an older API version is pinned.
+    if ((type === "response.output_audio.delta" || type === "response.audio.delta") && typeof m.delta === "string") {
       if (!this.firstResponseReceived) { this.firstResponseReceived = true; this.ev("agent_first_audio", { ms: Date.now() - this.startedAt }); }
       const pcm = b64decode(m.delta);
       try { this.client?.send(pcm); } catch { /* caller gone */ }
       return;
     }
-    if (type === "response.audio_transcript.delta" && typeof m.delta === "string") {
+    // response.output_audio_transcript.delta — same output-prefixed GA rename
+    // family as response.output_audio.delta above. Not spelled out verbatim
+    // in the fetched doc page, so the legacy name is also accepted.
+    if ((type === "response.output_audio_transcript.delta" || type === "response.audio_transcript.delta") && typeof m.delta === "string") {
       this.pushDialog("ava", m.delta); return;
     }
+    // conversation.item.input_audio_transcription.completed — doc-confirmed
+    // to still exist (xAI only renames the incremental `.delta` variant to
+    // `.updated`; `.completed` isn't in the "Unsupported Server Events" list).
     if (type === "conversation.item.input_audio_transcription.completed" && typeof m.transcript === "string") {
       this.pushDialog("caller", m.transcript); return;
     }
+    // response.function_call_arguments.done — doc-confirmed exact event name
+    // ("Function Call Events" table). response.output_item.done kept as a
+    // defensive fallback only; not in the doc's event table.
     if (type === "response.function_call_arguments.done" || (type === "response.output_item.done" && m.item?.type === "function_call")) {
       const call = type === "response.output_item.done" ? m.item : m;
       const name = String(call?.name ?? "");
@@ -345,6 +374,14 @@ export class AgentVoiceRoom {
     }
     if (type === "error") {
       this.ev("agent_grok_error", { error: JSON.stringify(m?.error ?? m).slice(0, 300) });
+      return;
+    }
+    if (type === "session.updated" || type === "response.done" || type === "session.created" || type === "response.created") {
+      // Doc-confirmed lifecycle events (session.updated echoes applied
+      // config incl. `replace`; response.created/response.done bracket every
+      // turn, including force_message turns). No action needed today —
+      // logged for future diagnostics, never affects the audio bridge.
+      return;
     }
   }
 

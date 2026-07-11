@@ -82,19 +82,26 @@ export async function uploadAgentDoc(req: Request, env: Env): Promise<Response> 
 
   // 2. Lazily create the Grok Collection for this profile if it doesn't have
   //    one yet (plan §5 "create collection lazily per profile if profile.
-  //    collection_id null, store id + bump profile version").
+  //    collection_id null, store id + bump profile version"). Collection
+  //    create/update/delete needs GROK_MANAGEMENT_KEY (separate secret,
+  //    separate host — lib/grok.ts). If it's unset, that's NOT an error: the
+  //    doc is already safe in R2 (step 1 above), so owners can upload before
+  //    the key ever gets provisioned; ?reindex=1 (below) catches these up
+  //    once the key appears.
   let collectionId = profile.collection_id;
   if (!collectionId) {
     const c = await createCollection(env, `AvaTOK agent — ${profileId}`);
     if (!c.ok || !c.id) {
-      // Doc is safely in R2; Grok push can be retried later without asking the
-      // owner to re-upload — surface a soft failure so the client can show
-      // "saved, indexing pending" rather than losing the upload.
+      const managementKeyMissing = c.reason === "MANAGEMENT_KEY_MISSING";
       await metaDb(env).prepare(
         `INSERT INTO agent_docs (id, profile_id, owner_uid, filename, r2_key, grok_file_id, content_type, size, created_at)
          VALUES (?1,?2,?3,?4,?5,NULL,?6,?7,?8)`,
       ).bind(docId, profileId, ctx.uid, filename, r2Key, contentType, bytes.byteLength, Date.now()).run();
-      return json({ ok: true, doc_id: docId, indexed: false, error: c.error ?? "collection_create_failed" }, 200);
+      return json({
+        ok: true, doc_id: docId, indexed: false,
+        note: managementKeyMissing ? "management key not configured" : undefined,
+        error: managementKeyMissing ? undefined : (c.error ?? "collection_create_failed"),
+      }, 200);
     }
     collectionId = c.id;
     await setProfileCollectionId(env, profileId, collectionId);
@@ -102,16 +109,27 @@ export async function uploadAgentDoc(req: Request, env: Env): Promise<Response> 
 
   // 3. Push the file into the collection.
   const up = await uploadDocument(env, collectionId, filename, bytes, contentType);
+  const managementKeyMissing = up.reason === "MANAGEMENT_KEY_MISSING";
   await metaDb(env).prepare(
     `INSERT INTO agent_docs (id, profile_id, owner_uid, filename, r2_key, grok_file_id, content_type, size, created_at)
      VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)`,
   ).bind(docId, profileId, ctx.uid, filename, r2Key, up.fileId ?? null, contentType, bytes.byteLength, Date.now()).run();
   if (up.ok) await bumpProfileVersion(env, profileId);
 
-  return json({ ok: true, doc_id: docId, indexed: up.ok, collection_id: collectionId, error: up.ok ? undefined : up.error });
+  return json({
+    ok: true, doc_id: docId, indexed: up.ok, collection_id: collectionId,
+    note: managementKeyMissing ? "management key not configured" : undefined,
+    error: up.ok || managementKeyMissing ? undefined : up.error,
+  });
 }
 
-// GET /api/agent/docs?profile_id=...
+// GET /api/agent/docs?profile_id=...[&reindex=1]
+// ?reindex=1 (owner-auth, same as every other route here) pushes any R2-only
+// docs (grok_file_id IS NULL — uploaded while GROK_MANAGEMENT_KEY was unset,
+// or a push that soft-failed) into the profile's Collection now that the key
+// exists. A simple best-effort loop, not a queue — agent doc counts per
+// profile are small, and this only runs when an owner asks (GET query param),
+// never automatically.
 export async function listAgentDocs(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
@@ -122,11 +140,51 @@ export async function listAgentDocs(req: Request, env: Env): Promise<Response> {
   if (!profileId) return json({ error: "profile_id required" }, 400);
   const profile = await getProfileForOwner(env, profileId, ctx.uid);
   if (!profile) return json({ error: "not_found" }, 404);
+
+  if (url.searchParams.get("reindex") === "1") {
+    await reindexUnindexedDocs(env, profileId, profile.collection_id);
+  }
+
   const { results } = await metaDb(env).prepare(
     "SELECT id, filename, content_type, size, grok_file_id, created_at FROM agent_docs WHERE profile_id=?1 ORDER BY created_at DESC",
   ).bind(profileId).all<Pick<AgentDocRow, "id" | "filename" | "content_type" | "size" | "grok_file_id" | "created_at">>();
   const docs = (results ?? []).map((d) => ({ ...d, indexed: !!d.grok_file_id }));
-  return json({ ok: true, collection_id: profile.collection_id, docs });
+  // Re-read the profile in case reindex just created a collection.
+  const fresh = await getProfileForOwner(env, profileId, ctx.uid);
+  return json({ ok: true, collection_id: fresh?.collection_id ?? profile.collection_id, docs });
+}
+
+async function reindexUnindexedDocs(env: Env, profileId: string, existingCollectionId: string | null): Promise<void> {
+  if (!env.GROK_MANAGEMENT_KEY) return; // nothing to do — same graceful no-op as everywhere else
+  const { results } = await metaDb(env).prepare(
+    "SELECT * FROM agent_docs WHERE profile_id=?1 AND grok_file_id IS NULL ORDER BY created_at ASC",
+  ).bind(profileId).all<AgentDocRow>();
+  const pending = results ?? [];
+  if (!pending.length) return;
+
+  let collectionId = existingCollectionId;
+  if (!collectionId) {
+    const c = await createCollection(env, `AvaTOK agent — ${profileId}`);
+    if (!c.ok || !c.id) return; // still can't index (e.g. transient mgmt-api error) — leave for next reindex call
+    collectionId = c.id;
+    await setProfileCollectionId(env, profileId, collectionId);
+  }
+
+  let anyIndexed = false;
+  for (const row of pending) {
+    let bytes: Uint8Array;
+    try {
+      const obj = await env.BLOBS.get(row.r2_key);
+      if (!obj) continue;
+      bytes = new Uint8Array(await obj.arrayBuffer());
+    } catch { continue; }
+    const up = await uploadDocument(env, collectionId, row.filename, bytes, row.content_type || "application/octet-stream");
+    if (up.ok && up.fileId) {
+      await metaDb(env).prepare("UPDATE agent_docs SET grok_file_id=?1 WHERE id=?2").bind(up.fileId, row.id).run();
+      anyIndexed = true;
+    }
+  }
+  if (anyIndexed) await bumpProfileVersion(env, profileId);
 }
 
 // DELETE /api/agent/docs { profile_id, doc_id }

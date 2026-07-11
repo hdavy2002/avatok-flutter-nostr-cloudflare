@@ -176,6 +176,15 @@ export interface Env {
   // the constructor itself never throws, so a bare deploy with no key set is
   // safe as long as `voiceAgent` stays off in KV.
   GROK_API_KEY?: string;
+  // x.ai MANAGEMENT API key (separate secret from GROK_API_KEY, separate host
+  // management-api.x.ai) — needed for Collections CRUD + document add/remove
+  // (lib/grok.ts). Create in the x.ai console with the "AddFileToCollection"
+  // + "Collections Endpoint" permissions. `wrangler secret put
+  // GROK_MANAGEMENT_KEY`. Unset → collection create/update/delete and
+  // document add/remove return {ok:false, reason:"MANAGEMENT_KEY_MISSING"}
+  // (never throws) — routes/agent_docs.ts still stores uploads in R2 so
+  // owners can upload before the key exists, and reindexes once it's set.
+  GROK_MANAGEMENT_KEY?: string;
 
   // Store-review login bypass (routes/review.ts). When set, the allowlisted
   // reviewer account signs in with email+password and NO email OTP. Unset →
