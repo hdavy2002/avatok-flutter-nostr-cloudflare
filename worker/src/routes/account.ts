@@ -15,10 +15,13 @@ import { track } from "../hooks";
 // rule 5: an external SaaS can never block account deletion). No-ops without a key.
 import { enqueueMem0Purge } from "../sentinel/purge";
 
-// [TEMP-1H-GRACE] Temporarily shortened from 30 days to 1 hour to verify the
-// deletion cascade fully wipes an account end-to-end. Revert to `30 * 86_400_000`
-// (30-day grace, §10.5) once the wipe is confirmed.
-const GRACE_MS = 60 * 60_000; // 1-hour grace (TEMP — normally 30 days)
+// [ACCT-RELINK-1] Reverted the [TEMP-1H-GRACE] test hack back to the spec's 30-day
+// grace (§10.5). The 1-hour window let the deletion cascade mature and DELETE the
+// Clerk user within an hour of a test delete; the same person signing back in then
+// got a brand-new Clerk id, orphaning their account + number (root cause of the
+// "re-onboarded / choose a new number" report). 30 days gives a returning user room
+// to reactivate before anything is destroyed; email relink in /api/me covers the rest.
+const GRACE_MS = 30 * 86_400_000; // 30-day grace (§10.5)
 
 export async function deleteAccount(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);

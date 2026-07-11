@@ -11,8 +11,8 @@ import { json, sha256Hex, normalizePhone } from "../util";
 import { metaSession } from "../db/shard";
 import { requireUser, isFail, dmConvId } from "../authz";
 import { gatePublicAction, emailOf } from "../lib/identity_gate"; // [AVA-IDGATE-1]
-import { verifyClerk } from "../auth";
-import { nameFor } from "../lib/identity";
+import { verifyClerk, resolveCanonicalUid, linkClerkAlias } from "../auth";
+import { nameFor, primaryVerifiedEmailFor } from "../lib/identity";
 import { brainFact, track } from "../hooks";
 import { guardWrite } from "./moderate"; // save-time content validation (Nemotron)
 import { readConfig } from "./config"; // P11: profileCompletionGate
@@ -722,11 +722,44 @@ export async function me(req: Request, env: Env): Promise<Response> {
   const clerk = await verifyClerk(env, req.headers.get("authorization"));
   if ("skipped" in clerk) return json({ found: false, clerk_enabled: false });
   if ("error" in clerk) return json({ error: "clerk: " + clerk.error }, 401);
-  const uid = clerk.clerkUserId;
-  const prof = await metaSession(env).prepare(
-    "SELECT display_name, first_name, last_name, avatar_url, birth_year, bio, gender, avatok_number, avatok_number_display, phone_discoverable, email_discoverable, who_can_add, share_token FROM users WHERE uid=?1",
-  ).bind(uid).first<any>();
-  if (!prof) return json({ found: false, clerk_enabled: true, uid });
+  const clerkRaw = clerk.clerkUserId;
+  const PROF_COLS =
+    "SELECT display_name, first_name, last_name, avatar_url, birth_year, bio, gender, avatok_number, avatok_number_display, phone_discoverable, email_discoverable, who_can_add, share_token FROM users WHERE uid=?1";
+  // [ACCT-RELINK-1] Resolve to the canonical account first (handles a login whose
+  // Clerk id previously changed and was already aliased).
+  let uid = await resolveCanonicalUid(env, clerkRaw);
+  let prof = await metaSession(env).prepare(PROF_COLS).bind(uid).first<any>();
+  if (!prof) {
+    // No account for this Clerk id. Before forking the person into onboarding (which
+    // would orphan an existing account + number), check whether this is the SAME
+    // person returning under a NEW Clerk id: match by their Clerk-VERIFIED email
+    // against the email_hash we stored. If it matches, alias new id -> original uid
+    // and restore. Best-effort throughout — any failure falls through to newUser.
+    try {
+      const email = await primaryVerifiedEmailFor(env, clerkRaw);
+      if (email) {
+        const ehLower = await sha256Hex(email.trim().toLowerCase());
+        let match = await metaSession(env)
+          .prepare("SELECT uid FROM users WHERE email_hash=?1 ORDER BY updated_at DESC LIMIT 1")
+          .bind(ehLower).first<{ uid: string }>();
+        if (!match) {
+          const ehRaw = await sha256Hex(email.trim());
+          if (ehRaw !== ehLower) {
+            match = await metaSession(env)
+              .prepare("SELECT uid FROM users WHERE email_hash=?1 ORDER BY updated_at DESC LIMIT 1")
+              .bind(ehRaw).first<{ uid: string }>();
+          }
+        }
+        if (match?.uid && String(match.uid) !== clerkRaw) {
+          await linkClerkAlias(env, clerkRaw, String(match.uid), "email_relink");
+          try { track(env, String(match.uid), "account_email_relinked", "platform", { from_clerk_id: clerkRaw }); } catch { /* telemetry best-effort */ }
+          uid = String(match.uid);
+          prof = await metaSession(env).prepare(PROF_COLS).bind(uid).first<any>();
+        }
+      }
+    } catch { /* relink is best-effort; fall through to onboarding if it can't help */ }
+  }
+  if (!prof) return json({ found: false, clerk_enabled: true, uid: clerkRaw });
   // P11: completeness = photo + first + last + birth year + gender + About (phone
   // is the only optional field). The client routes an incomplete profile to the
   // Profile screen before the app when profileCompletionGate is ON.
