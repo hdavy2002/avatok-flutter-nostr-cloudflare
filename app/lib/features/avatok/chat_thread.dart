@@ -105,6 +105,7 @@ import 'media.dart';
 import 'media_library_screen.dart';
 import 'unknown_caller.dart';
 import 'video_player_screen.dart';
+import 'business_thread_widgets.dart'; // WP6: voicemail + agent-transcript bubbles (§6)
 // STREAM G (AI in chats): catch-up card, smart-reply chips, inline translate.
 import '../messaging/ai_chat_api.dart';
 import '../messaging/widgets/catchup_card.dart';
@@ -1008,7 +1009,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       if (env is Map && (env['t'] == 'del' || env['t'] == 'gdel')) { if (!m.mine) _applyDelete(env['target'].toString()); return; }
       if (env is Map && env['t'] == 'hide') { _applyHide(env['target'].toString(), env['hidden'] == true); return; }
       if (env is Map && env['t'] == 'vote') { _applyVote(env); return; }
-      if (env is Map && const ['loc', 'live', 'card', 'poll', 'sticker', 'gcall', 'ava', 'ava_private', 'ava_status', 'recept', 'marketplace_deal'].contains(env['t'])) {
+      if (env is Map && const ['loc', 'live', 'card', 'poll', 'sticker', 'gcall', 'ava', 'ava_private', 'ava_status', 'recept', 'marketplace_deal', 'voicemail', 'agent_transcript'].contains(env['t'])) {
         special = env['t'].toString(); extra = env.cast<String, dynamic>();
         text = _specialCaption(special!, extra!);
         // A poll bubble just arrived — pull its server tally so late joiners /
@@ -1170,7 +1171,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       if (env is Map && (env['t'] == 'del' || env['t'] == 'gdel')) { if (!m.mine) _applyDelete(env['target'].toString()); return; }
       if (env is Map && env['t'] == 'hide') { _applyHide(env['target'].toString(), env['hidden'] == true); return; }
       if (env is Map && env['t'] == 'vote') { _applyVote(env); return; }
-      if (env is Map && const ['loc', 'live', 'card', 'poll', 'sticker', 'gcall', 'ava', 'ava_private', 'ava_status', 'recept', 'marketplace_deal'].contains(env['t'])) {
+      if (env is Map && const ['loc', 'live', 'card', 'poll', 'sticker', 'gcall', 'ava', 'ava_private', 'ava_status', 'recept', 'marketplace_deal', 'voicemail', 'agent_transcript'].contains(env['t'])) {
         special = env['t'].toString(); extra = env.cast<String, dynamic>();
         text = _specialCaption(special!, extra!);
         // A poll bubble just arrived — pull its server tally so late joiners /
@@ -2505,6 +2506,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         'ava_status' => (e['label'] ?? 'Ava is working…').toString(),
         'recept' => (e['text'] ?? '📞 Ava took a message').toString(),
         'marketplace_deal' => '🤝 ${e['outcome'] == 'deal' ? 'Agents reached a deal' : 'Agents finished negotiating'}',
+        // [DIALPAD-BIZ-CALLS] WP6 — voicemail/agent_transcript envelopes already
+        // carry a server-composed `text` (see do/voicemail_room.ts postVoicemail /
+        // do/agent_voice_room.ts finalize), so reuse it verbatim for the chat-list
+        // preview instead of a generic fallback.
+        'voicemail' => (e['text'] ?? '📞 New voicemail').toString(),
+        'agent_transcript' => (e['text'] ?? '🤖 Ava AI Agent call').toString(),
         _ => '',
       };
 
@@ -3095,6 +3102,27 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         return _ReceptionistCard(
           extra: e,
           sessionId: (e['session_id'] ?? e['sid'] ?? '').toString(),
+        );
+      // WP6 (Specs/PLAN-2026-07-11-dialpad-business-calls-ava-voice-agent.md §6):
+      // callee-side business-call records. Caller sees none of this — these
+      // envelopes are only ever synced to the callee's own thread.
+      case 'voicemail':
+        if (!RemoteConfig.voicemailBot) return Text(m.text, style: ZineText.sub(size: 13.5, color: fg));
+        return VoicemailCard(extra: e);
+      case 'agent_transcript':
+        if (!RemoteConfig.voiceAgent) return Text(m.text, style: ZineText.sub(size: 13.5, color: fg));
+        return AgentTranscriptCard(
+          extra: e,
+          onReply: (callerNumber, callerName) {
+            // "Reply" (§6): this thread already IS the callee's channel to the
+            // caller (business calls sync into a normal per-caller thread with
+            // special bubbles) — jump into the composer to start a real
+            // back-and-forth, same affordance used elsewhere in this screen.
+            Analytics.capture('business_thread_reply_started', {
+              'caller_number': callerNumber,
+            });
+            _composerFocus.requestFocus();
+          },
         );
       case 'ava':
       case 'ava_private':

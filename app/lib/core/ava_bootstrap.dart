@@ -21,6 +21,7 @@ import '../features/settings/marketplace_agent_settings_page.dart';
 import '../features/settings/sections/guardian_section.dart';
 import '../features/settings/sections/ondevice_section.dart';
 import '../features/settings/sections/receptionist_section.dart';
+import '../features/settings/sections/business_agent_section.dart';
 import '../features/settings/sections/ringtone_section.dart';
 import '../features/settings/sections/tools_section.dart';
 import '../features/settings/sections/voice_section.dart';
@@ -74,6 +75,11 @@ class AvaBootstrap {
     // "Leave Instructions for Ava" box. First real AvaVoice deployment.
     // Spec: Specs/PROPOSAL-AI-RECEPTIONIST.md.
     registerReceptionistSection();
+    // WP6 (Specs/PLAN-2026-07-11-dialpad-business-calls-ava-voice-agent.md §4/§8
+    // Phase C): "Ava Business Agent" settings section — primary-number Mode A
+    // agent config + Mode-B service numbers + "My AI calls" entry. Hides itself
+    // when RemoteConfig.voiceAgent is off.
+    registerBusinessAgentSection();
     // AI Messenger Batch — STREAM A (MKT-LANG-2): "Marketplace Agent" settings
     // tile (default language/voice/tone + negotiation guardrails). The tile hides
     // itself when RemoteConfig.marketplaceAgentSettingsEnabled is false.

@@ -214,6 +214,16 @@ class ApiAuth {
     return _tracked(url, () => http.delete(Uri.parse(url), headers: headers).timeout(timeout));
   }
 
+  /// Signed DELETE with a JSON body (some routes, e.g. /api/agent/services,
+  /// identify the row to delete via the body rather than a path/query param).
+  static Future<http.Response> deleteJson(String url, Object jsonBody,
+      {Duration timeout = const Duration(seconds: 8)}) async {
+    final bodyStr = jsonEncode(jsonBody);
+    final bytes = utf8.encode(bodyStr);
+    final headers = await _headers('DELETE', url, body: bytes, base: {'Content-Type': 'application/json'});
+    return _tracked(url, () => http.delete(Uri.parse(url), headers: headers, body: bodyStr).timeout(timeout));
+  }
+
   /// Signed GET that returns raw bytes (e.g. agent TTS audio stream).
   static Future<http.Response> getBytes(String url,
       {Duration timeout = const Duration(seconds: 30)}) async {
