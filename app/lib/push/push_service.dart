@@ -1310,6 +1310,28 @@ class PushService {
   /// `gIncomingRingingFrom`/`gIncomingRingingCallId` globals themselves.
   static Future<void> declineIncomingCall(Map extra) => _declineRouting(extra);
 
+  /// [DIALPAD-BIZ-CALLS Phase C] "Send to Ava AI Agent" from the in-app named
+  /// incoming-business-call screen. Signals `decline_agent` to the CALLER
+  /// (fast signaling-room WS + durable /api/call-status, same dual path as a
+  /// decline) — the caller's CallSession then hands its leg to the agent flow
+  /// (routing_decision reason MANUAL_SEND_TO_AGENT, plan §13). Old caller
+  /// clients that don't know `decline_agent` end the ring like a plain
+  /// decline-shaped status; they never dead-end.
+  static Future<void> sendToAgentIncomingCall(Map extra) async {
+    final callId = (extra['callId'] ?? '').toString();
+    final from = (extra['from'] ?? '').toString();
+    _signalStatus(callId, 'decline_agent', from);
+    // CALL-GLARE-1: same dedupe key as decline — the two are mutually exclusive
+    // outcomes of one ring, and CallKit can double-fire either.
+    if (_onceCallEvent(callId, 'declined')) {
+      Analytics.capture('call_incoming_declined', {
+        'call_id': callId,
+        'routed_to': 'decline_agent',
+      });
+    }
+    _logMissed(extra);
+  }
+
   /// Decline routing (v2 Mode C). Audio calls only — Ava is audio. Reads the
   /// per-account local mirror written by the Settings card (DiskCache keys
   /// receptionist_enabled + receptionist_decline_to_ava) so it works even when

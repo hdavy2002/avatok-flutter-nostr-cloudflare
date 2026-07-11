@@ -87,21 +87,17 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
     if (mounted) Navigator.of(context).maybePop();
   }
 
-  /// Hands the caller to the Ava AI Voice Agent right away (§3 step 4). The
-  /// agent PIPELINE itself is Phase C (Grok realtime session, §4/§8) — not
-  /// built yet. This wires the callee-facing action + the decline-equivalent
-  /// signalling now (so the caller isn't left ringing forever), with a clear
-  /// hook for Phase C to swap in the real hand-off instead of ending the call.
+  /// Hands the caller to the Ava AI Voice Agent right away (§3 step 4). Phase C
+  /// wiring: signals `decline_agent` to the caller, whose CallSession probes
+  /// /api/call/no-answer with outcome 'manual_send_to_agent' and bridges into
+  /// the Grok realtime session (core/agent_voice_call.dart).
   Future<void> _sendToAgent() async {
     if (_busy) return;
     setState(() => _busy = true);
     Analytics.capture('business_call_incoming_send_to_agent', {'call_id': widget.callId});
     await _endNativeRing();
     _clearRingGlobals();
-    // TODO(Phase C — Ava AI Voice Agent, §4/§8): replace this decline-equivalent
-    // signal with the real Grok realtime session hand-off (routing_decision
-    // reason 'manual_send_to_agent', §13).
-    await PushService.declineIncomingCall(_extra);
+    await PushService.sendToAgentIncomingCall(_extra);
     if (mounted) Navigator.of(context).maybePop();
   }
 

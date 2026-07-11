@@ -57,6 +57,13 @@ class CallSessionConfig {
   /// in the incoming push (callee). '' when unknown → the session mints one so a
   /// trace always exists. Rides every call event + the reliability score.
   final String traceId;
+  /// [DIALPAD-BIZ-CALLS Phase C] true = this call was placed through the
+  /// business (dialpad) channel (place_1to1_call.dart, via:'dialpad'). While
+  /// RemoteConfig.businessCallUx is on, business OUTGOING AUDIO calls use the
+  /// plan-§3 after-ring flow (NoAnswerCard → voicemail / Ava AI agent) INSTEAD
+  /// of the generic call-outcome menu — otherwise the menu pre-empts the
+  /// 'no-answer' phase and the WP3 routing probe never runs.
+  final bool business;
   const CallSessionConfig({
     required this.room,
     required this.title,
@@ -68,6 +75,7 @@ class CallSessionConfig {
     this.teamId,
     this.teamSlot,
     this.traceId = '',
+    this.business = false,
   });
 }
 
@@ -708,6 +716,13 @@ class CallSession {
         return;
       }
       if (e.callId == config.room && !_connected) {
+        // [DIALPAD-BIZ-CALLS Phase C] Callee tapped "Send to Ava AI Agent" on
+        // the incoming-business-call screen — hand this ringing leg to the
+        // agent flow (routing_decision reason MANUAL_SEND_TO_AGENT, plan §13).
+        if (e.status == 'decline_agent' && !_ended) {
+          businessAgentHandoff('manual_send_to_agent');
+          return;
+        }
         // [CALL-OUTCOME-MENU-1] Declines land on the unified menu (all call
         // kinds — video simply hides Talk to Ava) instead of auto-Ava/plain end.
         if (_menuEnabled && !_ended &&
@@ -1427,6 +1442,11 @@ class CallSession {
       case 'ring-ack':
         _onRingAck(d['ok'] == true);
         break;
+      case 'decline_agent':
+        // [DIALPAD-BIZ-CALLS Phase C] Fast-WS "Send to Ava AI Agent" signal.
+        if (_receptionistActive) break;
+        if (!_connected && !_ended) businessAgentHandoff('manual_send_to_agent');
+        break;
       case 'decline':
         if (_receptionistActive) break;
         // [CALL-OUTCOME-MENU-1] Fast-WS decline → unified menu (all call kinds).
@@ -1641,6 +1661,8 @@ class CallSession {
     // [AVA-RING-BLEED-1] A stale no-answer timer firing while Ava is live must
     // not end the call under her ("no-answer"/timeout-ringing mid-voicemail).
     if (_receptionistActive || _receptionist != null || _avaCountingDown) return;
+    // [DIALPAD-BIZ-CALLS Phase C] Same protection for a live agent hand-off.
+    if (_phase == 'agent-handoff') return;
     _ringback.stop();
     // [CALL-OUTCOME-MENU-1] Unified menu replaces the auto-Ava handoff: the
     // caller heard the ring beeps, now gets an honest status + choices. Applies
@@ -1664,6 +1686,8 @@ class CallSession {
 
   Future<void> _onBusy() async {
     if (_ended || _connected) return;
+    // [DIALPAD-BIZ-CALLS Phase C] A racing busy must not stomp a live hand-off.
+    if (_phase == 'agent-handoff') return;
     // [CALL-DUP-SESSION-1] Self-inflicted-busy immunity. A 'busy' that lands on a
     // DUPLICATE/non-primary leg (this session is NOT the one connected, but
     // another live session for the same room IS connected/answered on this
@@ -1741,17 +1765,64 @@ class CallSession {
   String? _menuScenario;
   Timer? _menuTimeout;
 
-  bool get _menuEnabled => RemoteConfig.callMenuEnabled;
+  // [DIALPAD-BIZ-CALLS Phase C] Business (dialpad) outgoing audio calls use the
+  // plan-§3 after-ring flow, not the generic outcome menu (see
+  // CallSessionConfig.business).
+  bool get _businessFlow =>
+      config.business && config.outgoing && !config.video && RemoteConfig.businessCallUx;
+
+  bool get _menuEnabled => RemoteConfig.callMenuEnabled && !_businessFlow;
 
   /// View-facing: 'declined' | 'no-answer' | 'unreachable' | 'busy'.
   String? get menuScenario => _menuScenario;
   bool get showOutcomeMenu => _phase == 'outcome-menu';
 
+  // ─────────────────────────────────────────────────────────────────────────
+  //  [DIALPAD-BIZ-CALLS Phase C] Ava AI Voice Agent hand-off (plan §3 step 4,
+  //  §4/§8). The session only tears down the ringing dial leg and parks in the
+  //  'agent-handoff' phase — the SCREEN (call_screen.dart) owns the actual
+  //  /api/call/no-answer probe + /api/agent/call/start + AgentVoiceCall bridge,
+  //  mirroring how the voicemail flow already lives in the view.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /// Why the hand-off happened — the screen threads this into the
+  /// /api/call/no-answer probe ('manual_send_to_agent' | 'no_answer').
+  String? agentHandoffOutcome;
+
+  /// Cancels the ring and parks this session in 'agent-handoff' so the view
+  /// can bridge the caller to the callee's Ava AI agent. Falls back to the
+  /// plain decline path when the business flow / voiceAgent isn't available
+  /// (old-flag clients, video calls, menu-only setups).
+  void businessAgentHandoff(String outcome) {
+    if (_ended || _connected || _receptionistActive) return;
+    if (_phase == 'agent-handoff') return;
+    if (!_businessFlow || !RemoteConfig.voiceAgent) {
+      // Not eligible — behave exactly like a plain decline did before.
+      if (_menuEnabled) { _showOutcomeMenu('declined'); return; }
+      _endWith('declined', reason: 'decline');
+      return;
+    }
+    _ringTimeout?.cancel();
+    _ringback.stop();
+    // Tear down the dialing leg (stops any other callee device ringing, frees
+    // the mic for the agent bridge) — same teardown _showOutcomeMenu performs.
+    try { _send({'type': 'bye'}); } catch (_) {}
+    try { _stream?.getTracks().forEach((t) => t.stop()); } catch (_) {}
+    try { _pc?.close(); } catch (_) {}
+    _pc = null;
+    _notifyCalleeCanceled();
+    agentHandoffOutcome = outcome;
+    _setPhase('agent-handoff');
+    Analytics.capture('agent_handoff_started', {
+      'call_id': config.room, 'outcome': outcome,
+    });
+  }
+
   void _showOutcomeMenu(String scenario) {
     if (_ended || _connected || _receptionistActive) return;
     // A stale timer/status racing in must not overwrite an already-shown menu
     // (e.g. the device-ringing timer firing after a decline already landed).
-    if (_phase == 'outcome-menu') return;
+    if (_phase == 'outcome-menu' || _phase == 'agent-handoff') return;
     _ringTimeout?.cancel();
     _ringback.stop();
     // Tear down the dialing leg (stops the callee's phone ringing, frees the
@@ -2460,6 +2531,9 @@ class CallSession {
         'declined' => 'Call declined',
         'busy' => 'User is busy',
         'no-answer' => 'No answer',
+        // [DIALPAD-BIZ-CALLS Phase C] the view swaps in the live agent panel;
+        // this line only shows for the brief connect window.
+        'agent-handoff' => "Connecting you to $_peerFirst's Ava AI agent…",
         // [CALL-OUTCOME-MENU-1] honest per-scenario status header (spec §1).
         'outcome-menu' => switch (_menuScenario) {
           'busy' => '$_peerFirst is busy on another call',

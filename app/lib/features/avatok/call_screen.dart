@@ -8,6 +8,7 @@ import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../core/agent_voice_call.dart';
 import '../../core/ava_identity.dart';
 import '../../core/avatar.dart';
 import '../../core/call_routing_api.dart';
@@ -15,6 +16,7 @@ import '../../core/calls/call_overlay.dart';
 import '../../core/calls/call_session.dart';
 import '../../core/calls/call_session_manager.dart';
 import '../../core/remote_config.dart';
+import '../../core/ringback_player.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/voicemail_call.dart';
@@ -22,6 +24,8 @@ import 'busy_card.dart';
 import 'call_outcome_menu.dart';
 import 'contacts.dart';
 import 'no_answer_card.dart';
+import 'paid_busy_card.dart';
+import 'paid_call_prompt.dart' show CallCountdown;
 import 'place_1to1_call.dart';
 // Ringing globals (gIncomingRingingFrom/CallId) live here — cleared by
 // clearCallState() on account switch. push_service.dart also imports this file
@@ -142,6 +146,14 @@ class CallScreen extends StatefulWidget {
   // /api/call/no-answer round trip. null = the normal path (probe on timeout).
   final String? initialRouted;
   final Map<String, dynamic>? initialRoutingStart;
+  // [DIALPAD-BIZ-CALLS Phase C] true = placed through the business (dialpad)
+  // channel (place_1to1_call.dart) — enables the §3 after-ring flow (agent
+  // hand-off, post-ring busy card) on this session. See CallSessionConfig.business.
+  final bool business;
+  // [WP6 §3B] Minutes the caller pre-paid via the price sheet ('' hold →
+  // confirm on connect). >0 arms the in-call countdown + end-of-time beeps
+  // (CallCountdown) once the call connects. 0 = not a paid call.
+  final int paidMinutes;
   const CallScreen({
     super.key,
     required this.room,
@@ -157,6 +169,8 @@ class CallScreen extends StatefulWidget {
     this.onRetry,
     this.initialRouted,
     this.initialRoutingStart,
+    this.business = false,
+    this.paidMinutes = 0,
   });
   @override
   State<CallScreen> createState() => _CallScreenState();
@@ -176,6 +190,24 @@ class _CallScreenState extends State<CallScreen> {
   VoicemailCall? _vmCall;
   bool _vmInProgress = false;
 
+  // [DIALPAD-BIZ-CALLS Phase C] Caller↔agent Grok bridge state. The bridge
+  // itself is core/agent_voice_call.dart; this screen owns starting it (from
+  // the 'agent-handoff' phase, an 'agent' routing decision, or the early
+  // AGENT_AUTO probe) and rendering the live agent panel.
+  AgentVoiceCall? _agentCall;
+  String _agentStatus = ''; // '' | 'connecting' | 'connected' | 'ended' | 'failed'
+  bool _agentStarted = false;
+  Timer? _agentAutoProbe;
+  // Post-ring busy (plan §15.1): /api/call/no-answer said 'busy' after a
+  // genuine ring timeout — render the PaidBusyCard instead of the no-answer card.
+  Map<String, dynamic>? _postRingBusy;
+  // [WP6 §3B] Paid-call countdown + end-of-time beeps, armed on connect.
+  CallCountdown? _countdown;
+  bool _countdownStarted = false;
+  Timer? _paidEndTimer;
+
+  bool get _agentActive => _agentCall != null || _session.uiPhase.value == 'agent-handoff';
+
   void _maybeFetchNoAnswerRouting() {
     if (_routingFetched || !RemoteConfig.businessCallUx || !widget.outgoing) return;
     if (widget.initialRouted == 'voicemail' || widget.initialRouted == 'agent') {
@@ -192,8 +224,186 @@ class _CallScreenState extends State<CallScreen> {
     if (_session.uiPhase.value != 'no-answer') return;
     _routingFetched = true;
     CallRoutingApi.noAnswer(callee: widget.seed, callId: widget.room, traceId: widget.traceId).then((r) {
-      if (mounted && r != null) setState(() => _routingInfo = r);
+      if (!mounted || r == null) return;
+      setState(() => _routingInfo = r);
+      // Phase C: the server routed this no-answer to the agent — connect
+      // automatically (expectation: the caller HEARS the agent, not a card).
+      if (r['next'] == 'agent' && RemoteConfig.voiceAgent) {
+        // ignore: unawaited_futures
+        _startAgentBridge(r['start'] is Map ? (r['start'] as Map).cast<String, dynamic>() : null);
+      } else if (r['next'] == 'busy') {
+        _showPostRingBusy(r);
+      }
     });
+  }
+
+  // ── [DIALPAD-BIZ-CALLS Phase C] agent bridge ──────────────────────────────
+
+  /// Early AGENT_AUTO probe (plan §3 step 4: "auto" profiles answer after
+  /// agentAutoanswerSec ≈ 2 rings, well before the client's own 35s ring
+  /// timeout). Armed only for business outgoing audio calls with voiceAgent
+  /// on; the server is the decision-maker — a non-'agent' answer is ignored
+  /// and the normal ring keeps going.
+  void _armAgentAutoProbe() {
+    if (!widget.business || !widget.outgoing || widget.video) return;
+    if (!RemoteConfig.businessCallUx || !RemoteConfig.voiceAgent) return;
+    if (widget.initialRouted != null) return; // server already decided pre-ring
+    _agentAutoProbe = Timer(const Duration(seconds: 12), () async {
+      if (!mounted || _agentStarted || _session.isConnected || _session.isEnded) return;
+      final phase = _session.uiPhase.value;
+      if (phase != 'ringing' && phase != 'connecting') return;
+      final r = await CallRoutingApi.noAnswer(
+          callee: widget.seed, callId: widget.room, traceId: widget.traceId);
+      if (!mounted || r == null || r['next'] != 'agent') return;
+      if (_agentStarted || _session.isConnected || _session.isEnded) return;
+      _routingInfo = r;
+      _routingFetched = true;
+      // Cancels the ring toward the callee and parks the session in
+      // 'agent-handoff'; the phase listener below starts the bridge.
+      _session.businessAgentHandoff('no_answer');
+    });
+  }
+
+  /// Reacts to the session entering 'agent-handoff' (callee tapped "Send to
+  /// Ava AI Agent", or the early auto probe fired). Probes routing if the
+  /// screen doesn't already have a decision, then bridges.
+  void _maybeStartAgentFromPhase() {
+    if (_session.uiPhase.value != 'agent-handoff' || _agentStarted) return;
+    final start = _routingInfo?['next'] == 'agent' && _routingInfo?['start'] is Map
+        ? (_routingInfo!['start'] as Map).cast<String, dynamic>()
+        : null;
+    if (start != null) {
+      // ignore: unawaited_futures
+      _startAgentBridge(start);
+      return;
+    }
+    final outcome = _session.agentHandoffOutcome ?? 'manual_send_to_agent';
+    _agentStarted = true; // claim now — the probe below is async
+    CallRoutingApi.noAnswer(
+      callee: widget.seed, callId: widget.room, traceId: widget.traceId,
+      outcome: outcome,
+    ).then((r) {
+      if (!mounted) return;
+      if (r != null && r['next'] == 'agent') {
+        _agentStarted = false; // hand back to the bridge starter
+        // ignore: unawaited_futures
+        _startAgentBridge(r['start'] is Map ? (r['start'] as Map).cast<String, dynamic>() : null);
+      } else if (r != null && r['next'] == 'busy') {
+        _showPostRingBusy(r);
+      } else if (r != null && r['next'] == 'voicemail') {
+        // Agent slot gone between the tap and the probe (Mode A overflow) —
+        // fall back to the voicemail card flow.
+        setState(() { _routingInfo = r; _routingFetched = true; _agentStatus = 'failed'; });
+      } else {
+        setState(() => _agentStatus = 'failed');
+      }
+    });
+  }
+
+  Future<void> _startAgentBridge(Map<String, dynamic>? start) async {
+    if (_agentStarted) return;
+    _agentStarted = true;
+    setState(() => _agentStatus = 'connecting');
+    final s = await AgentCallApi.start(
+      to: (start?['to'] ?? widget.seed).toString(),
+      callId: (start?['call_id'] ?? widget.room).toString(),
+      traceId: (start?['trace_id'] ?? widget.traceId).toString(),
+    );
+    if (!mounted) return;
+    final rtcUrl = s?['rtc_url'] as String?;
+    if (s == null || rtcUrl == null) {
+      _onAgentFailed(fallbackVoicemail: s?['fallback'] == 'voicemail');
+      return;
+    }
+    final call = AgentVoiceCall(rtcUrl: rtcUrl);
+    _agentCall = call;
+    call.onStatus = (status) {
+      if (mounted && status != 'ended') setState(() => _agentStatus = status);
+    };
+    // ignore: unawaited_futures
+    call.done.then((reason) {
+      if (!mounted) return;
+      _agentCall = null;
+      if (reason == 'agent_fail') {
+        _onAgentFailed(fallbackVoicemail: true);
+      } else {
+        setState(() => _agentStatus = 'ended');
+        // Conversation over — end the session cleanly (pops via onRequestPop).
+        _session.endByUser();
+      }
+    });
+    final ok = await call.start();
+    if (!ok && mounted && _agentStatus != 'failed') {
+      _onAgentFailed(fallbackVoicemail: true);
+    }
+  }
+
+  void _onAgentFailed({required bool fallbackVoicemail}) {
+    _agentCall = null;
+    final vmOk = fallbackVoicemail &&
+        RemoteConfig.voicemailBot &&
+        (_routingInfo?['voicemail_available'] != false);
+    setState(() => _agentStatus = 'failed');
+    if (vmOk) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text("Ava couldn't take this call — you can leave a voicemail instead")));
+      // Surface the voicemail affordance through the normal no-answer card.
+      setState(() {
+        _routingInfo = {
+          'next': 'voicemail',
+          'voicemail_available': true,
+          'start': {'to': widget.seed, 'call_id': widget.room, 'trace_id': widget.traceId},
+        };
+      });
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Couldn't connect to the Ava AI agent")));
+      _session.endByUser();
+    }
+  }
+
+  void _hangupAgent() {
+    final call = _agentCall;
+    _agentCall = null;
+    if (call != null) unawaited(call.hangup());
+    _session.endByUser();
+  }
+
+  /// Post-ring busy (plan §15.1 — paid lines never overflow to voicemail):
+  /// busy tone + PaidBusyCard, mirroring place_1to1_call.dart's pre-ring path.
+  void _showPostRingBusy(Map<String, dynamic> r) {
+    final kind = (r['busy_kind'] ?? '').toString();
+    var msg = (r['message'] ?? '').toString();
+    if (msg.isEmpty) {
+      msg = kind == 'agents_full'
+          ? 'All agents are busy right now — please try again in a while.'
+          : 'This line is busy. Please try again later.';
+    }
+    setState(() => _postRingBusy = {'kind': kind, 'message': msg});
+    final player = RingbackPlayer();
+    unawaited(player.playBusyTone().catchError((_) {}).whenComplete(
+        () => Future.delayed(const Duration(seconds: 3), player.dispose)));
+  }
+
+  // ── [WP6 §3B] paid-call countdown ─────────────────────────────────────────
+
+  void _maybeStartPaidCountdown() {
+    if (_countdownStarted || widget.paidMinutes <= 0 || !_session.isConnected) return;
+    _countdownStarted = true;
+    _countdown = CallCountdown()..start(widget.paidMinutes);
+    // Local end-of-time stop — both sides agreed the duration up front (§3B);
+    // the server's CallRoom ticker is the billing authority either way.
+    _paidEndTimer = Timer(Duration(minutes: widget.paidMinutes), () {
+      if (mounted && _session.isConnected) _session.endByUser();
+    });
+  }
+
+  String? get _paidRemainingLabel {
+    if (!_countdownStarted || !_session.isConnected) return null;
+    final left = widget.paidMinutes * 60 - _session.elapsedSeconds.value;
+    if (left <= 0) return 'Paid time is up';
+    final m = left ~/ 60, s = left % 60;
+    return 'Paid call · $m:${s.toString().padLeft(2, '0')} left';
   }
 
   /// Wires NoAnswerCard's "Leave a voicemail" button to the server's routing
@@ -254,6 +464,7 @@ class _CallScreenState extends State<CallScreen> {
       teamId: widget.teamId,
       teamSlot: widget.teamSlot,
       traceId: widget.traceId, // [TRACE-ID-1]
+      business: widget.business, // [DIALPAD-BIZ-CALLS Phase C]
     ));
     // The session asks us to pop when a call ends (busy/decline/hangup, after
     // the ringback grace delay). Guarded so it fires once.
@@ -299,10 +510,25 @@ class _CallScreenState extends State<CallScreen> {
     _session.videoActive.addListener(_onSessionChanged);
     _session.onCellularHold.addListener(_onSessionChanged);
     _maybeFetchNoAnswerRouting(); // pre-seed from widget.initialRouted, if any
+    // [DIALPAD-BIZ-CALLS Phase C] Server said 'agent' before the ring even
+    // started (offline / auto profile with no reachable device) — connect the
+    // caller to the agent right away instead of ringing into nobody for 35s.
+    if (widget.initialRouted == 'agent' && RemoteConfig.voiceAgent) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _agentStarted) return;
+        _session.businessAgentHandoff('no_answer');
+        // ignore: unawaited_futures
+        _startAgentBridge(widget.initialRoutingStart);
+      });
+    } else {
+      _armAgentAutoProbe();
+    }
   }
 
   void _onSessionChanged() {
     _maybeFetchNoAnswerRouting();
+    _maybeStartAgentFromPhase(); // [DIALPAD-BIZ-CALLS Phase C]
+    _maybeStartPaidCountdown(); // [WP6 §3B]
     if (mounted) setState(() {});
   }
 
@@ -338,6 +564,13 @@ class _CallScreenState extends State<CallScreen> {
     // mid-recording (e.g. the user navigates away) — best-effort, the server
     // DO also self-finalizes on close either way.
     if (_vmCall != null) unawaited(_vmCall!.hangup());
+    // [DIALPAD-BIZ-CALLS Phase C] Same for an orphaned agent bridge — the
+    // AgentVoiceRoom DO finalizes (settle/refund/summary card) on WS close.
+    if (_agentCall != null) unawaited(_agentCall!.hangup());
+    _agentAutoProbe?.cancel();
+    // [WP6 §3B]
+    _paidEndTimer?.cancel();
+    _countdown?.dispose();
     super.dispose();
   }
 
@@ -511,6 +744,32 @@ class _CallScreenState extends State<CallScreen> {
                         s.busyLeaveMessage();
                       },
                     )
+                  // [DIALPAD-BIZ-CALLS Phase C] Live Ava AI agent bridge — the
+                  // caller is talking (or connecting) to the callee's Grok
+                  // voice agent. Takes precedence over the no-answer card.
+                  else if (_agentActive || _agentStatus == 'connecting' || _agentStatus == 'connected')
+                    _AgentCallPanel(
+                      name: widget.title,
+                      status: _agentStatus,
+                      onHangup: _hangupAgent,
+                    )
+                  // [DIALPAD-BIZ-CALLS Phase C] Post-ring busy (plan §15.1):
+                  // the ring genuinely timed out and /api/call/no-answer said
+                  // 'busy' (paid line, all agents full / human busy) — busy
+                  // card, never voicemail.
+                  else if (_postRingBusy != null)
+                    PaidBusyCard(
+                      name: widget.title,
+                      message: (_postRingBusy!['message'] ?? '').toString(),
+                      onTryAgain: () {
+                        final nav = Navigator.of(context);
+                        final uidSeed = widget.seed, title = widget.title,
+                            avatar = widget.avatarUrl, vid = widget.video;
+                        _popIfMounted();
+                        place1to1Call(nav.context, uid: uidSeed, name: title, avatarUrl: avatar, video: vid);
+                      },
+                      onClose: _popIfMounted,
+                    )
                   // [DIALPAD-BIZ-CALLS] Phone-style "no answer" card for the
                   // CALLER on an outgoing business (dialpad) call — replaces
                   // dropping straight into the messenger thread. Only the
@@ -570,11 +829,20 @@ class _CallScreenState extends State<CallScreen> {
                       },
                       onClose: _popIfMounted,
                     )
-                  else
+                  else ...[
                     ZineSticker(
                       connected ? s.clock : s.statusText,
                       kind: failed ? ZineStickerKind.no : ZineStickerKind.plain,
                     ),
+                    // [WP6 §3B] Live paid-call countdown under the clock —
+                    // CallCountdown handles the T-60s/T-10s warning beeps.
+                    if (_paidRemainingLabel != null) ...[
+                      const SizedBox(height: 8),
+                      Text(_paidRemainingLabel!,
+                          style: ZineText.sub(size: 12.5),
+                          textAlign: TextAlign.center),
+                    ],
+                  ],
                   // [CALL-DIAL-FAIL-1] Retry affordance — only on the
                   // network-error terminal state, only when the launch site
                   // gave us a redial hook.
@@ -1147,5 +1415,41 @@ class _QualityBars extends StatelessWidget {
         );
       }),
     );
+  }
+}
+
+/// [DIALPAD-BIZ-CALLS Phase C] Live Ava AI agent panel — shown in CallScreen's
+/// status slot while the caller is bridged to the callee's Grok voice agent
+/// (core/agent_voice_call.dart). Presentation only; the screen owns the bridge.
+class _AgentCallPanel extends StatelessWidget {
+  final String name;
+  final String status; // 'connecting' | 'connected' | 'failed' | 'ended' | ''
+  final VoidCallback onHangup;
+  const _AgentCallPanel({required this.name, required this.status, required this.onHangup});
+
+  String get _line => switch (status) {
+        'connected' => "You're talking to $name's Ava AI agent",
+        'failed' => "Couldn't reach $name's Ava AI agent",
+        'ended' => 'Agent call ended',
+        _ => "Connecting you to $name's Ava AI agent…",
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      ZineSticker(_line,
+          kind: status == 'failed' ? ZineStickerKind.no : ZineStickerKind.plain),
+      const SizedBox(height: 6),
+      Text('AI assistant · this call is transcribed',
+          style: ZineText.sub(size: 11.5), textAlign: TextAlign.center),
+      if (status == 'connecting' || status == 'connected') ...[
+        const SizedBox(height: 18),
+        ZineButton(
+          label: 'End agent call',
+          icon: PhosphorIcons.phoneX(PhosphorIconsStyle.bold),
+          onPressed: onHangup,
+        ),
+      ],
+    ]);
   }
 }
