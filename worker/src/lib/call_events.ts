@@ -209,6 +209,10 @@ export async function emitRoutingDecision(env: Env, args: {
   snapshot: RoutingSnapshot;
   call_mode?: CallEvent["call_mode"];
   billing_mode?: CallEvent["billing_mode"];
+  /** Set only when reason === 'BUSY' and action was 'busy' — 'agents_full'
+   *  (Mode B agent concurrency cap reached) or 'human_busy' (a human-answered
+   *  paid line already on a call). Plan §11/§15.1, owner decision 2026-07-11. */
+  busy_kind?: "agents_full" | "human_busy" | null;
 }): Promise<void> {
   await emitCallEvent(env, {
     event: "routing_decision",
@@ -221,7 +225,7 @@ export async function emitRoutingDecision(env: Env, args: {
     reason: args.reason,
     ts: Date.now(),
     event_schema_version: EVENT_SCHEMA_VERSION,
-    props: { snapshot: args.snapshot },
+    props: { snapshot: args.snapshot, ...(args.busy_kind ? { busy_kind: args.busy_kind } : {}) },
   });
 }
 

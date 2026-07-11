@@ -33,7 +33,17 @@ import { emitRoutingDecision, type ReasonCode } from "./call_events";
 import { authorityQuery, authorityEnabled } from "./call_authority";
 import { resolveNumberAndProfile, type ResolvedNumber } from "../routes/agent_profiles";
 
-export type RoutingAction = "ring" | "agent" | "voicemail" | "silent_noanswer";
+// 'busy' added (plan §11/§15.1, owner decision 2026-07-11): PAID lines
+// (Mode B — service numbers) never overflow to voicemail. Two variants are
+// distinguished by `busy_kind` on RoutingDecisionResult: 'agents_full' (every
+// AGENT_CONCURRENCY_B agent slot is in use) and 'human_busy' (a human-answered
+// paid line already on a call). Mode A (primary number, free receptionist)
+// keeps voicemail overflow unchanged — 'busy' is only ever returned for a
+// service number.
+export type RoutingAction = "ring" | "agent" | "voicemail" | "silent_noanswer" | "busy";
+
+/** Sub-classifies a 'busy' RoutingAction — see RoutingAction doc above. */
+export type BusyKind = "agents_full" | "human_busy" | null;
 
 export interface RoutingDecisionInput {
   call_id: string;
@@ -63,6 +73,8 @@ export interface RoutingDecisionResult {
   agent_profile_id: string | null;
   concurrency_in_use: number;
   concurrency_cap: number;
+  /** Set only when action === 'busy' — see BusyKind doc above. */
+  busy_kind: BusyKind;
 }
 
 // ---------------------------------------------------------------------------
@@ -180,6 +192,39 @@ function inBusinessHours(schedule: BusinessHoursSchedule | null): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// agentOrFallback — the shared "pick the agent, or fall back" decision used
+// at every branch that previously did `agentEnabled && hasSlot ? agent : ...`
+// (offline / busy / business-hours / no-answer / manual-send-to-agent).
+// Centralized so the plan §15.1 PAID-lines-never-overflow-to-voicemail rule
+// is enforced identically everywhere instead of being re-derived per branch:
+// a Mode B (service) number whose AGENT_CONCURRENCY_B slots are all in use
+// gets 'busy'/agents_full, never voicemail/silent. Mode A is untouched — its
+// overflow (cap=1) still falls through to voicemail/silent exactly as before.
+// ---------------------------------------------------------------------------
+function agentOrFallback(
+  resolved: ResolvedNumber,
+  agentEnabled: boolean,
+  hasSlot: boolean,
+  voicemailEnabled: boolean,
+): { action: RoutingAction; busy_kind: BusyKind } {
+  if (agentEnabled && hasSlot) return { action: "agent", busy_kind: null };
+  if (agentEnabled && !hasSlot && resolved.is_service_number) {
+    return { action: "busy", busy_kind: "agents_full" };
+  }
+  if (voicemailEnabled) return { action: "voicemail", busy_kind: null };
+  return { action: "silent_noanswer", busy_kind: null };
+}
+
+/** A 'busy' action always carries reason BUSY (plan §15.1 instruction),
+ *  regardless of which branch produced it — the contextual reason otherwise
+ *  used at that branch (OFFLINE/BUSINESS_HOURS/etc.) is dropped in favor of
+ *  BUSY so "why busy?" is answered by `busy_kind`, not by re-deriving it from
+ *  the branch's base reason. */
+function reasonFor(fb: { action: RoutingAction }, base: ReasonCode): ReasonCode {
+  return fb.action === "busy" ? "BUSY" : base;
+}
+
+// ---------------------------------------------------------------------------
 // decideRouting — the pre-ring decision (plan §3 steps 1-4, §15.1, §15.2).
 // ---------------------------------------------------------------------------
 export async function decideRouting(env: Env, input: RoutingDecisionInput): Promise<RoutingDecisionResult> {
@@ -193,7 +238,7 @@ export async function decideRouting(env: Env, input: RoutingDecisionInput): Prom
   // added to the registry later without breaking this call site.
   if (resolved.retired) {
     const snapshot = await buildCallSnapshot(env, { blocked: false, agent_enabled: false, voicemail_enabled: false });
-    return finalize(env, cfg, input, resolved, snapshot, "silent_noanswer", "BLOCKED", 0, 0);
+    return finalize(env, cfg, input, resolved, snapshot, "silent_noanswer", "BLOCKED", 0, 0, null);
   }
 
   const blocked = await isBlocked(env, input.callee_id, input.caller_id);
@@ -221,13 +266,22 @@ export async function decideRouting(env: Env, input: RoutingDecisionInput): Prom
 
   // 1. Blocked — silent no-answer (plan §15.2): normal ring UX, voicemail
   //    unavailable, caller never told.
-  if (blocked) return finalize(env, cfg, input, resolved, snapshot, "silent_noanswer", "BLOCKED", inUse, cap);
+  if (blocked) return finalize(env, cfg, input, resolved, snapshot, "silent_noanswer", "BLOCKED", inUse, cap, null);
+
+  // 1b. Concurrency (plan §11/§15.1, owner decision 2026-07-11): a Mode B
+  //     (service/paid) number whose AGENT_CONCURRENCY_B slots are all in use
+  //     is busy right now regardless of ring/offline/hours state — there is
+  //     no point ringing an AI line with zero capacity, and paid lines never
+  //     overflow to voicemail. Checked ahead of offline/busy/hours so a
+  //     genuinely-full agent number never dead-ends into a silent ring first.
+  if (resolved.is_service_number && agentEnabled && !hasSlot) {
+    return finalize(env, cfg, input, resolved, snapshot, "busy", "BUSY", inUse, cap, "agents_full");
+  }
 
   // 2. Offline (plan §15.1 OFFLINE_DETECT): skip the ring entirely.
   if (input.callee_reachable === false) {
-    if (agentEnabled && hasSlot) return finalize(env, cfg, input, resolved, snapshot, "agent", "OFFLINE", inUse, cap);
-    if (voicemailEnabled) return finalize(env, cfg, input, resolved, snapshot, "voicemail", "OFFLINE", inUse, cap);
-    return finalize(env, cfg, input, resolved, snapshot, "silent_noanswer", "OFFLINE", inUse, cap);
+    const fb = agentOrFallback(resolved, agentEnabled, hasSlot, voicemailEnabled);
+    return finalize(env, cfg, input, resolved, snapshot, fb.action, reasonFor(fb, "OFFLINE"), inUse, cap, fb.busy_kind);
   }
 
   // 3. Busy (plan §15.1): callee already on a call = decline immediately, no
@@ -242,24 +296,31 @@ export async function decideRouting(env: Env, input: RoutingDecisionInput): Prom
     } catch { busy = false; }
   }
   if (busy) {
-    if (agentEnabled && hasSlot) return finalize(env, cfg, input, resolved, snapshot, "agent", "BUSY", inUse, cap);
-    if (voicemailEnabled) return finalize(env, cfg, input, resolved, snapshot, "voicemail", "BUSY", inUse, cap);
-    return finalize(env, cfg, input, resolved, snapshot, "silent_noanswer", "BUSY", inUse, cap);
+    // Mode B human-answered paid line (no AI agent configured) already on a
+    // call — busy tone, no voicemail, no charge, hold released at the call
+    // site (plan §11 refund matrix / §15.1). Distinguished from agents_full
+    // (checked in step 1b above) by the absence of an agent profile.
+    if (resolved.is_service_number && !agentEnabled) {
+      return finalize(env, cfg, input, resolved, snapshot, "busy", "BUSY", inUse, cap, "human_busy");
+    }
+    const fb = agentOrFallback(resolved, agentEnabled, hasSlot, voicemailEnabled);
+    return finalize(env, cfg, input, resolved, snapshot, fb.action, reasonFor(fb, "BUSY"), inUse, cap, fb.busy_kind);
   }
 
   // 4. Business hours (plan §15.1): out-of-hours = agent/voicemail
   //    immediately, no ring.
   if (!inHours) {
-    if (agentEnabled && hasSlot) return finalize(env, cfg, input, resolved, snapshot, "agent", "BUSINESS_HOURS", inUse, cap);
-    if (voicemailEnabled) return finalize(env, cfg, input, resolved, snapshot, "voicemail", "BUSINESS_HOURS", inUse, cap);
-    return finalize(env, cfg, input, resolved, snapshot, "silent_noanswer", "BUSINESS_HOURS", inUse, cap);
+    const fb = agentOrFallback(resolved, agentEnabled, hasSlot, voicemailEnabled);
+    return finalize(env, cfg, input, resolved, snapshot, fb.action, reasonFor(fb, "BUSINESS_HOURS"), inUse, cap, fb.busy_kind);
   }
 
   // 5. Concurrency overflow while otherwise ringable is NOT a routing
-  //    decision by itself — a caller still gets a normal ring; overflow only
-  //    matters once the ring times out with no answer (decideNoAnswerRouting
-  //    below), so a busy agent never pre-empts a live human pickup.
-  return finalize(env, cfg, input, resolved, snapshot, "ring", "RANG_OWNER", inUse, cap);
+  //    decision by itself for Mode A — a caller still gets a normal ring;
+  //    overflow only matters once the ring times out with no answer
+  //    (decideNoAnswerRouting below), so a busy agent never pre-empts a live
+  //    human pickup. Mode B's overflow was already handled unconditionally in
+  //    step 1b above (never rings an AI line with zero capacity).
+  return finalize(env, cfg, input, resolved, snapshot, "ring", "RANG_OWNER", inUse, cap, null);
 }
 
 // ---------------------------------------------------------------------------
@@ -278,7 +339,7 @@ export async function decideNoAnswerRouting(
   const resolved = await resolveNumberAndProfile(env, input.callee_id, input.number_dialed ?? null);
   if (resolved.retired) {
     const snapshot = await buildCallSnapshot(env, { blocked: false, agent_enabled: false, voicemail_enabled: false });
-    return finalize(env, cfg, input, resolved, snapshot, "silent_noanswer", "BLOCKED", 0, 0);
+    return finalize(env, cfg, input, resolved, snapshot, "silent_noanswer", "BLOCKED", 0, 0, null);
   }
   const blocked = await isBlocked(env, input.callee_id, input.caller_id);
   const agentEnabled = resolved.agent_profile != null;
@@ -295,15 +356,15 @@ export async function decideNoAnswerRouting(
     blocked, agent_enabled: agentEnabled, voicemail_enabled: voicemailEnabled,
   });
 
-  if (blocked) return finalize(env, cfg, input, resolved, snapshot, "silent_noanswer", "BLOCKED", inUse, cap);
+  if (blocked) return finalize(env, cfg, input, resolved, snapshot, "silent_noanswer", "BLOCKED", inUse, cap, null);
 
   if (input.outcome === "manual_send_to_agent") {
     // Callee explicitly tapped "Send to Ava AI Agent" on the ringing screen —
     // MANUAL_SEND_TO_AGENT always wins over AUTO/timeout semantics, but still
-    // respects concurrency (overflow → voicemail, plan §15.1).
-    if (agentEnabled && hasSlot) return finalize(env, cfg, input, resolved, snapshot, "agent", "MANUAL_SEND_TO_AGENT", inUse, cap);
-    if (voicemailEnabled) return finalize(env, cfg, input, resolved, snapshot, "voicemail", "MANUAL_SEND_TO_AGENT", inUse, cap);
-    return finalize(env, cfg, input, resolved, snapshot, "silent_noanswer", "MANUAL_SEND_TO_AGENT", inUse, cap);
+    // respects concurrency (Mode B overflow → busy, never voicemail; Mode A
+    // overflow → voicemail, unchanged; plan §15.1).
+    const fb = agentOrFallback(resolved, agentEnabled, hasSlot, voicemailEnabled);
+    return finalize(env, cfg, input, resolved, snapshot, fb.action, reasonFor(fb, "MANUAL_SEND_TO_AGENT"), inUse, cap, fb.busy_kind);
   }
 
   if (input.outcome === "no_answer") {
@@ -312,16 +373,20 @@ export async function decideNoAnswerRouting(
     // (≈5 rings) — the client is the one enforcing the two different timers
     // (it calls this route at whichever timeout actually elapsed).
     const autoRouting = resolved.agent_profile?.routing === "auto";
-    if (autoRouting && agentEnabled && hasSlot) return finalize(env, cfg, input, resolved, snapshot, "agent", "AGENT_AUTO", inUse, cap);
-    if (voicemailEnabled) return finalize(env, cfg, input, resolved, snapshot, "voicemail", "VOICEMAIL", inUse, cap);
-    return finalize(env, cfg, input, resolved, snapshot, "silent_noanswer", "VOICEMAIL", inUse, cap);
+    if (autoRouting) {
+      const fb = agentOrFallback(resolved, agentEnabled, hasSlot, voicemailEnabled);
+      return finalize(env, cfg, input, resolved, snapshot, fb.action, reasonFor(fb, "AGENT_AUTO"), inUse, cap, fb.busy_kind);
+    }
+    if (voicemailEnabled) return finalize(env, cfg, input, resolved, snapshot, "voicemail", "VOICEMAIL", inUse, cap, null);
+    return finalize(env, cfg, input, resolved, snapshot, "silent_noanswer", "VOICEMAIL", inUse, cap, null);
   }
 
   // "declined" — the callee hit Decline, or has no agent set up (plan §3
   // step 4): straight to voicemail, never the agent (declining is an
-  // explicit "not now", not a routing invitation).
-  if (voicemailEnabled) return finalize(env, cfg, input, resolved, snapshot, "voicemail", "VOICEMAIL", inUse, cap);
-  return finalize(env, cfg, input, resolved, snapshot, "silent_noanswer", "VOICEMAIL", inUse, cap);
+  // explicit "not now", not a routing invitation). Not a concurrency-overflow
+  // path, so the Mode B busy substitution above doesn't apply here.
+  if (voicemailEnabled) return finalize(env, cfg, input, resolved, snapshot, "voicemail", "VOICEMAIL", inUse, cap, null);
+  return finalize(env, cfg, input, resolved, snapshot, "silent_noanswer", "VOICEMAIL", inUse, cap, null);
 }
 
 // ---------------------------------------------------------------------------
@@ -335,12 +400,13 @@ async function finalize(
   reason: ReasonCode,
   concurrency_in_use: number,
   concurrency_cap: number,
+  busy_kind: BusyKind,
 ): Promise<RoutingDecisionResult> {
   const result: RoutingDecisionResult = {
     action, reason, snapshot,
     is_service_number: resolved.is_service_number,
     agent_profile_id: resolved.agent_profile?.id ?? null,
-    concurrency_in_use, concurrency_cap,
+    concurrency_in_use, concurrency_cap, busy_kind,
   };
   // Emit routing_decision ALWAYS when businessCallUx is on (plan §3 deliverable).
   if (cfg.businessCallUx) {
@@ -353,6 +419,7 @@ async function finalize(
         reason,
         call_mode: resolved.is_service_number ? "paid_ai" : "business",
         billing_mode: resolved.is_service_number ? "B" : "A",
+        busy_kind,
         snapshot: {
           routing_mode: snapshot.routing_mode,
           business_hours_version: snapshot.business_hours_version,

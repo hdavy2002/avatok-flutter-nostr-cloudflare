@@ -1,13 +1,18 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show SystemSound, SystemSoundType;
 
 import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
 import '../../core/config.dart';
 import '../../core/paid_call_api.dart';
 import '../../core/profile_store.dart';
+import '../../core/ringback_player.dart';
+import '../../core/ui/zine.dart';
 import 'call_screen.dart';
+import 'paid_busy_card.dart';
 
 /// [AVA-IDGATE-1] Place a 1:1 AvaTOK call THROUGH POST /api/call.
 ///
@@ -56,6 +61,14 @@ Future<void> place1to1Call(
   // no-answer card already knows the right affordance without a second probe.
   String? routed;
   Map<String, dynamic>? routingStart;
+  // [DIALPAD-BIZ-CALLS] routed:'busy' (plan §11/§15.1, owner decision
+  // 2026-07-11): a PAID (Mode B) line whose agents are all full or whose
+  // human callee is already on a call. Never a normal call outcome — set only
+  // when the server's routing decision short-circuits BEFORE any ring, so
+  // below we skip both PaidCallApi.confirm() (never take the hold) and
+  // CallScreen entirely in favor of a full-screen busy card.
+  String? busyMessage;
+  String? busyKind;
   try {
     final res = await ApiAuth.postJsonH(kCallUrl, {
       'to': uid,
@@ -78,6 +91,15 @@ Future<void> place1to1Call(
           routed = r as String;
           final st = j['start'];
           if (st is Map) routingStart = st.cast<String, dynamic>();
+        } else if (r == 'busy') {
+          busyKind = (j['busy_kind'] ?? '').toString();
+          busyMessage = (j['message'] ?? '').toString();
+          if (busyMessage!.isEmpty) {
+            busyMessage = busyKind == 'agents_full'
+                ? 'All agents are busy right now — please try again in a while.'
+                : 'This line is busy. Please try again later.';
+          }
+          Analytics.capture('paid_call_busy', {'to': uid, 'busy_kind': busyKind});
         }
       } catch (_) {/* not JSON / no routed field — normal ring path */}
     }
@@ -92,13 +114,16 @@ Future<void> place1to1Call(
       }
       return;
     }
-    if (paidHoldId.isNotEmpty && res.statusCode >= 200 && res.statusCode < 300) {
+    if (busyMessage == null && paidHoldId.isNotEmpty && res.statusCode >= 200 && res.statusCode < 300) {
       // §3B step 5 "connect": flip the hold live now that the call is actually
       // placed. The per-minute settle/refund/beep-timer plumbing itself lives
       // server-side (CallRoom DO, WP3) + the in-call countdown (CallCountdown in
       // paid_call_prompt.dart) — wiring THOSE into CallScreen's live session is
       // deferred until WP3's routing/escrow endpoints land, so it isn't faked
       // here. See the WP6 report for the exact remaining hook point.
+      // Skipped entirely on routed:'busy' above — a busy line never takes a
+      // hold (worker/src/routes/api.ts call() already released any hold that
+      // was somehow armed for this call_id before this response came back).
       // ignore: unawaited_futures
       PaidCallApi.confirm(holdId: paidHoldId, callId: room);
     }
@@ -106,6 +131,40 @@ Future<void> place1to1Call(
     // Network error placing the call → fall through and still open the screen;
     // CallSession has its own reconnect/timeout handling, and this is no worse than
     // the previous behaviour (which opened the screen with no /api/call at all).
+  }
+
+  if (busyMessage != null) {
+    // Never ring, never open CallScreen — a busy tone + full-screen card
+    // instead (plan §15.1: "PAID lines never overflow to voicemail — the
+    // caller gets a BUSY tone + message").
+    unawaited(_playBusyTone());
+    if (!context.mounted) return;
+    final msg = busyMessage;
+    await Navigator.push(context, MaterialPageRoute(
+      fullscreenDialog: true,
+      builder: (dialogCtx) => Scaffold(
+        backgroundColor: Zine.paper,
+        body: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: PaidBusyCard(
+                name: name,
+                message: msg,
+                onTryAgain: () {
+                  final nav = Navigator.of(dialogCtx);
+                  final navCtx = nav.context;
+                  nav.pop();
+                  place1to1Call(navCtx, uid: uid, name: name, avatarUrl: avatarUrl, video: video);
+                },
+                onClose: () => Navigator.of(dialogCtx).pop(),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ));
+    return;
   }
 
   if (!context.mounted) return;
@@ -121,4 +180,28 @@ Future<void> place1to1Call(
       initialRoutingStart: routingStart,
     ),
   ));
+}
+
+/// Local busy tone for [routed]:'busy' (plan §15.1) — no ring was ever sent by
+/// the server, so this is the caller's ONLY audible signal. Reuses the same
+/// bundled clip [RingbackPlayer.playBusyTone] already plays for the ordinary
+/// "callee busy" phase (call_session.dart), stopped automatically once the
+/// clip finishes (ReleaseMode.release, not looped). A short-lived local
+/// player — not tied to any [CallSession] — since no call/session ever starts
+/// on this path.
+Future<void> _playBusyTone() async {
+  final player = RingbackPlayer();
+  try {
+    await player.playBusyTone();
+  } catch (_) {
+    // TODO(future): a purpose-built busy-tone asset load failure is rare
+    // (bundled asset), but fall back to a plain system alert so the caller
+    // still gets SOME signal rather than dead silence.
+    try { await SystemSound.play(SystemSoundType.alert); } catch (_) {/* best-effort */}
+  } finally {
+    // Fire-and-forget: dispose shortly after the clip would have finished so
+    // the underlying AudioPlayer doesn't leak. The busy card itself has no
+    // further use for this player.
+    unawaited(Future.delayed(const Duration(seconds: 3), player.dispose));
+  }
 }

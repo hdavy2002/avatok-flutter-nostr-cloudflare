@@ -182,6 +182,16 @@ class _PaidCallPromptScreenState extends State<PaidCallPromptScreen> {
                       color: _canAfford ? Zine.inkSoft : Zine.coral)),
               ]),
             ),
+            // [PLAN §11] "Escrow is a HOLD, never an immediate charge" — spelled
+            // out explicitly under the total so the caller never mistakes the
+            // hold for a charge before anyone's even answered.
+            const SizedBox(height: 8),
+            Text(
+              'Tokens are only held now — charging starts when the call is answered. '
+              'Unused minutes are refunded automatically.',
+              textAlign: TextAlign.center,
+              style: ZineText.sub(size: 11.5),
+            ),
             if (_error != null) ...[
               const SizedBox(height: 10),
               ZineErrorMsg(_error!),
@@ -194,6 +204,14 @@ class _PaidCallPromptScreenState extends State<PaidCallPromptScreen> {
               onPressed: (_selectedMinutes == null || _confirming || (!_loadingBalance && !_canAfford))
                   ? null
                   : _confirm,
+            ),
+            // ZineButton has no subtitle slot — the same reassurance repeated
+            // briefly just under the button, right where the tap happens.
+            const SizedBox(height: 6),
+            Text(
+              'Tokens are held, not charged, until the call connects.',
+              textAlign: TextAlign.center,
+              style: ZineText.sub(size: 11),
             ),
             const SizedBox(height: 10),
             ZineButton(

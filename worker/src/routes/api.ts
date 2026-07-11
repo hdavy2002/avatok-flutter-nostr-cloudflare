@@ -322,6 +322,28 @@ export async function call(req: Request, env: Env): Promise<Response> {
       // ring-timeout already drives it into the NoAnswerCard from here.
       return json({ sent: 0, reachable: true, routed: "no_answer", voicemail_available: false });
     }
+    if (routingResult.action === "busy") {
+      // Paid line (Mode B) busy overflow (plan §11/§15.1, owner decision
+      // 2026-07-11): never ring, never take/keep a hold. If the caller had
+      // already confirmed the price prompt for THIS call_id, /api/call/paid/
+      // confirm already armed the CallRoom DO's billing ticker with an escrow
+      // hold in place before this /api/call round-trip — disarm it now via
+      // the DO's existing /billing-disarm route (internally calls
+      // lib/call_billing.ts refundUnused, reason BUSY). Best-effort + a no-op
+      // when nothing was ever armed (refundUnused no-ops at escrow_balance=0).
+      try {
+        const stub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(b.callId));
+        await stub.fetch("https://call/billing-disarm", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ reason: "BUSY" }),
+        });
+      } catch { /* best-effort — a disarm hiccup must never block the busy response */ }
+      const busyKind = routingResult.busy_kind;
+      const message = busyKind === "agents_full"
+        ? "All agents are busy right now — please try again in a while."
+        : "This line is busy. Please try again later.";
+      return json({ sent: 0, reachable: true, routed: "busy", busy_kind: busyKind, message });
+    }
     // 'voicemail' or 'agent' with the ring skipped (offline/busy/business-hours,
     // §15.1): hand the client just enough to call the matching /start route
     // itself (POST /api/voicemail/start or /api/agent/call/start) — no ring is
@@ -1026,6 +1048,24 @@ export async function callNoAnswer(req: Request, env: Env): Promise<Response> {
     call_id: callId, trace_id: traceId, caller_id: ctx.uid, callee_id: callee,
     number_dialed: null, via: "dialpad", outcome,
   });
+  if (result.action === "busy") {
+    // Paid line (Mode B) overflow discovered only after the ring genuinely
+    // timed out (plan §11/§15.1) — same treatment as the pre-ring /api/call
+    // busy path: never voicemail, release any hold that was armed for this
+    // call_id before the ring started.
+    try {
+      const stub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(callId));
+      await stub.fetch("https://call/billing-disarm", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ reason: "BUSY" }),
+      });
+    } catch { /* best-effort */ }
+    const busyKind = result.busy_kind;
+    const message = busyKind === "agents_full"
+      ? "All agents are busy right now — please try again in a while."
+      : "This line is busy. Please try again later.";
+    return json({ next: "busy", busy_kind: busyKind, message, voicemail_available: false });
+  }
   const next: "voicemail" | "agent" | "none" =
     result.action === "agent" ? "agent" : result.action === "voicemail" ? "voicemail" : "none";
   return json({

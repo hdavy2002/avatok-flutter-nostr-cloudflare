@@ -600,8 +600,11 @@ liveness check on the dialpad (already live). None of the call-UX work removes i
 **Core principle: escrow is a HOLD, never an immediate charge. Money moves ONLY as delivered
 minutes settle; everything undelivered is refunded automatically.** So "caller picked 10 min
 but it disconnects at minute 3" is not a special case — only 3 minutes ever settle, the other
-7 are released back. Settlement is **per delivered second, rounded to the completed minute in
-the caller's favour** (partial minute in progress at disconnect = not charged).
+7 are released back. Settlement is **per delivered minute, rounded UP: a started minute
+counts as a whole minute** (owner decision 2026-07-11, superseding the earlier round-down
+rule — talked 4m20s on a 10-min booking = charged 5 minutes, 5 refunded). Charging begins
+only when the callee/agent actually answers; the pre-connect escrow is a hold, and the price
+sheet says so explicitly.
 
 ### Refund matrix
 
@@ -614,7 +617,7 @@ the caller's favour** (partial minute in progress at disconnect = not charged).
 | Connected, then **caller** hangs up early | only delivered minutes | remainder auto-refunded |
 | **AI agent fails to start** (Grok session errors before first response) | 0 | **100% auto-refund** |
 | AI/tool failure **mid-call** (agent dies) | minutes up to failure | remainder auto-refunded |
-| In-progress partial minute at any disconnect | **not charged** | included in refund |
+| In-progress partial minute at any disconnect | **charged as a full minute (round UP** — owner decision 2026-07-11**)** | remainder refunded |
 | Dispute / suspected fraud | **held pending review** | manual resolution |
 
 ### Fraud & abuse rules (MVP-level, feeds Guardian later)
@@ -871,7 +874,12 @@ A completeness review found the gaps below; solutions were agreed with the owner
   takes one call at a time; a second simultaneous caller goes to voicemail.
   `AGENT_CONCURRENCY_B = 5` — each service number handles up to **5 concurrent paid sessions**
   (safe because every Mode-B caller escrows their own funds up front). Enforced at the routing
-  layer; overflow → voicemail.
+  layer. **Overflow UX (owner decision 2026-07-11): PAID lines never overflow to voicemail —
+  the caller gets a BUSY tone + message.** AI service number with all 5 agents busy: *"All
+  agents are busy right now — please try again in a while."* Human paid callee already on a
+  call: plain busy tone, no voicemail, no charge, hold released. (Future enhancement: show
+  the callee's calendar to book a slot instead.) Mode A (free receptionist) keeps
+  overflow → voicemail.
 - **Business hours (owner decision).** Optional per-number schedule in routing, built into the
   Phase C settings screen: **in-hours** = ring the owner, then agent per normal rules;
   **out-of-hours** = agent/voicemail immediately, no ring.

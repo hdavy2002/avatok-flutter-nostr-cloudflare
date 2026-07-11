@@ -260,10 +260,14 @@ export async function settleCallMinute(
 
 // ---------------------------------------------------------------------------
 // 4. refundUnused — release whatever's left in escrow back to whoever funded
-//    the hold (caller in Mode B, callee in Mode A). Full refund matrix (§11):
-//    never-connected = 100%; partial minute in progress = never charged in the
-//    first place (settleCallMinute only ever settles COMPLETED minutes), so
-//    "refund the remainder" here is just "refund whatever's still in escrow".
+//    the hold (caller in Mode B, callee in Mode A). Full refund matrix (§11,
+//    owner decision 2026-07-11): never-connected = 100%; an in-progress
+//    partial minute at disconnect is ROUNDED UP and charged as one whole
+//    minute (superseding the earlier round-down rule) — the call site
+//    (do/call_room.ts stopBilling, do/agent_voice_room.ts finalize) settles
+//    that pending minute via settleCallMinute BEFORE calling refundUnused, so
+//    "refund the remainder" here is just "refund whatever's still in escrow"
+//    AFTER the round-up settle already happened.
 // ---------------------------------------------------------------------------
 export async function refundUnused(
   env: Env,

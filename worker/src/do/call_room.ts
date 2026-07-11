@@ -225,14 +225,33 @@ export class CallRoom {
     await this.scheduleNextAlarm();
   }
 
-  /** Disarm the ticker and refund whatever's left in escrow. Safe to call more
-   *  than once (refundUnused is idempotent on `refund:call:<call_id>`, and a
-   *  second call here is a no-op once `billing` is cleared). Never throws —
-   *  a billing hiccup must never break call teardown. */
+  /** Disarm the ticker: round UP the in-progress partial minute to one whole
+   *  settled minute (plan §11, owner decision 2026-07-11 — supersedes the
+   *  earlier round-down rule: "a started minute counts as a whole minute"),
+   *  THEN refund whatever's left in escrow. Safe to call more than once
+   *  (settleCallMinute and refundUnused are both idempotent per call_id/
+   *  minute_index, and a second call here is a no-op once `billing` is
+   *  cleared). Never throws — a billing hiccup must never break call teardown.
+   *
+   *  Guard against over-settling: `b.minute_index` is only ever a minute the
+   *  60s ticker has NOT yet settled (tickBilling disarms billing entirely
+   *  once max_minutes is reached, so a live `billing` state here always has
+   *  minute_index < max_minutes), and settleCallMinute itself clamps to
+   *  whatever remains in the call's escrow (escrowBalance), so this can never
+   *  settle more than was actually held for the call. */
   private async stopBilling(reason: ReasonCode): Promise<void> {
     const b = await this.loadBilling();
     if (!b || b.stopped) return;
     await this.setBilling({ ...b, stopped: true });
+    if (b.minute_index < b.max_minutes) {
+      try {
+        await settleCallMinute(this.env, {
+          call_id: b.call_id, trace_id: b.trace_id, caller_id: b.caller_id, callee_id: b.callee_id,
+          minute_index: b.minute_index, snapshot: b.snapshot, is_service_number: b.is_service_number,
+          billing_mode: b.billing_mode,
+        });
+      } catch { /* best-effort — an unsettled partial minute just refunds instead below */ }
+    }
     try {
       await refundUnused(this.env, {
         call_id: b.call_id, trace_id: b.trace_id, caller_id: b.caller_id, callee_id: b.callee_id,

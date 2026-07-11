@@ -627,6 +627,36 @@ export class AgentVoiceRoom {
     // mem0 caller summary (best-effort, never blocks finalize).
     await writeCallSummary(this.env, init.owner_uid, init.caller_uid, summaryText).catch(() => {});
 
+    // Round UP the final partial minute (plan §11, owner decision 2026-07-11
+    // — supersedes the earlier round-down rule: "a started minute counts as a
+    // whole minute"). `minuteIndex` only reflects minutes the 60s tickMinute()
+    // ticker has already settled; if real time elapsed into the NEXT minute
+    // (tickMinute never got to fire before finalize), settle that one minute
+    // as a full minute here, THEN refund the remainder below. Idempotent on
+    // the same `settle:call:<id>:m<n>` opId tickMinute uses, so a race with a
+    // just-fired tick can never double-charge. Guard against over-settling:
+    // Mode A is hard-capped at agentMaxCallSec/60 minutes (hardCapTimer fires
+    // finalize() at the cap, so this can add at most the one minute still
+    // inside the cap); settleCallMinute itself also refuses to settle past
+    // whatever's left in the call's escrow (see call_billing.ts), so neither
+    // mode can ever settle more than was actually held.
+    const elapsedMs = Date.now() - this.startedAt;
+    if (elapsedMs > this.minuteIndex * MINUTE_MS) {
+      const partialIndex = this.minuteIndex + 1;
+      const cfg = await readConfig(this.env).catch(() => null);
+      const capMinutes = init.billing_mode === "A" && cfg ? cfg.agentMaxCallSec / 60 : Infinity;
+      if (partialIndex <= capMinutes) {
+        try {
+          const r = await settleCallMinute(this.env, {
+            call_id: init.call_id, caller_id: init.caller_uid, callee_id: init.owner_uid,
+            minute_index: partialIndex, snapshot: init.snapshot,
+            is_service_number: init.is_service_number, billing_mode: init.billing_mode, trace_id: init.trace_id,
+          });
+          if (r.ok && r.settled > 0) this.minuteIndex = partialIndex;
+        } catch { /* best-effort — an unsettled partial minute just refunds instead below */ }
+      }
+    }
+
     // Refund whatever's left in escrow (plan §11/§15.3 — one money path for
     // every call type). CALL_ENDED = a normal end (hangup / wrap-up / hard
     // cap), not a Grok failure — GROK_SESSION_FAIL is used exclusively by
