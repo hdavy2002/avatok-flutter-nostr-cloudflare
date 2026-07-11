@@ -1,11 +1,15 @@
 // Paid-call routes (WP2, plan §3B / §11 / §15.3 / §15.4 of
 // Specs/PLAN-2026-07-11-dialpad-business-calls-ava-voice-agent.md).
 //
+//   GET  /api/call/paid/offer      — the CALLEE's published offer, resolved from
+//                                     a dialed number or uid (caller-facing, pre-prompt)
 //   GET  /api/call/paid/settings   — callee's published rate + length options
 //   PUT  /api/call/paid/settings   — callee sets rate + length options (>= minServiceRate)
 //   POST /api/call/paid/prepare    — caller gets a price quote (NO hold yet)
 //   POST /api/call/paid/confirm    — caller confirms: hold escrow, arm the CallRoom
 //                                     DO's per-minute billing ticker
+//   POST /api/call/paid/cancel     — caller abandoned after confirm (identity gate /
+//                                     backed out) — disarm + refund the untouched hold
 //
 // ALL routes 403 unless readConfig(env).paidCalls === true (plan §7 item 12 /
 // §15.6 — every phase ships behind its own kill switch).
@@ -17,6 +21,8 @@ import { readConfig } from "./config";
 import { buildCallSnapshot } from "../lib/call_snapshot";
 import { holdForCall } from "../lib/call_billing";
 import { newTraceId } from "../lib/call_events";
+import { nameFor } from "../lib/identity";
+import { resolveNumberAndProfile } from "./agent_profiles";
 
 // ---------------------------------------------------------------------------
 // paid_call_settings — the callee's published rate + length options. Lazily
@@ -73,6 +79,80 @@ async function isChildAccount(env: Env, uid: string): Promise<boolean> {
 
 function paidCallsGate(cfg: { paidCalls: boolean }): boolean {
   return cfg.paidCalls === true;
+}
+
+// GET /api/call/paid/offer?to=<number-or-uid>[&service_id=…] — the CALLEE's
+// published paid-call offer, shown to the CALLER before the price/length
+// prompt (plan §3B step 2). `to` may be a dialed AvaTOK number OR a uid —
+// resolveNumberAndProfile handles both (same resolver the routing engine
+// uses). Missing/unpublished offer → {available:false} (200, not an error:
+// "no offer" is the normal case for every free number). This route was the
+// missing half of the client's PaidCallApi.offer() — it 404'd in prod
+// (PostHog api_error /api/call/paid/offer, 2026-07-11) because only
+// settings/prepare/confirm were ever registered.
+export async function getPaidCallOfferRoute(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const cfg = await readConfig(env);
+  if (!paidCallsGate(cfg)) return json({ error: "disabled", flag: "paidCalls" }, 403);
+
+  const url = new URL(req.url);
+  const to = (url.searchParams.get("to") || "").trim();
+  if (!to) return json({ error: "to required" }, 400);
+  if (await isChildAccount(env, ctx.uid)) return json({ available: false, reason: "child_account" });
+
+  // `to` may be a uid OR a dialed number. Numbers resolve through (a) the
+  // Mode-B service_numbers table (resolveNumberAndProfile) and (b) the users
+  // primary-number columns (same lookup routes/number.ts uses) — whichever hits.
+  const digits = to.replace(/\D/g, "");
+  const looksLikeNumber = digits.length >= 4 && digits.length >= to.replace(/[\s()+-]/g, "").length;
+  const resolved = await resolveNumberAndProfile(env, to, looksLikeNumber ? digits : null).catch(() => null);
+  let calleeUid = resolved && !resolved.retired ? resolved.owner_uid : to;
+  if (looksLikeNumber && resolved && !resolved.is_service_number) {
+    // Not a service number — try the primary AvaTOK number directory.
+    try {
+      const row = await env.DB_META.prepare(
+        "SELECT uid FROM users WHERE avatok_number=?1 OR number_norm=substr(?1,-10) LIMIT 1",
+      ).bind(digits).first<{ uid: string }>();
+      if (row?.uid) calleeUid = row.uid;
+    } catch { /* directory miss → fall through with `to` as-is */ }
+  }
+  const settings = await getPaidCallSettings(env, calleeUid);
+  if (settings.rate == null || !(settings.rate >= cfg.minServiceRate) || settings.length_options.length === 0) {
+    return json({ available: false });
+  }
+  const calleeName = await nameFor(env, calleeUid).catch(() => null);
+  return json({
+    available: true,
+    rate: settings.rate,
+    length_options: settings.length_options,
+    callee_name: calleeName ?? "",
+    is_agent: resolved?.is_service_number === true && resolved?.agent_profile != null,
+    callee_uid: calleeUid,
+  });
+}
+
+// POST /api/call/paid/cancel { call_id } — the caller backed out AFTER
+// /api/call/paid/confirm already held escrow + armed the CallRoom ticker
+// (identity-gate 403 abort, abandoned dial). Disarm + refund via the DO's
+// existing /billing-disarm (refundUnused no-ops when nothing was held, so
+// this is safe to call unconditionally / repeatedly).
+export async function cancelPaidCallRoute(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const cfg = await readConfig(env);
+  if (!paidCallsGate(cfg)) return json({ error: "disabled", flag: "paidCalls" }, 403);
+  const b = (await req.json().catch(() => ({}))) as { call_id?: string };
+  const callId = String(b.call_id ?? "").trim();
+  if (!callId) return json({ error: "call_id required" }, 400);
+  try {
+    const stub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(callId));
+    await stub.fetch("https://call/billing-disarm", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ reason: "CALLER_ABANDONED" }),
+    });
+  } catch { /* best-effort — §11 RING_TIMEOUT auto-refund is the backstop */ }
+  return json({ ok: true });
 }
 
 // GET /api/call/paid/settings — the auth user's OWN published rate/options.

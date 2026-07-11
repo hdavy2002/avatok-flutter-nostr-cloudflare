@@ -109,24 +109,19 @@ Future<void> place1to1Call(
       Analytics.capture('call_blocked_identity', {'via': 'dialpad', 'to': uid});
       if (paidHoldId.isNotEmpty) {
         // §11 "Caller abandons" — the call never placed, release the hold.
+        // (Server contract: the hold was taken at the price prompt's confirm,
+        // keyed by this call_id; /api/call/paid/cancel disarms + refunds it.)
         // ignore: unawaited_futures
-        PaidCallApi.cancel(holdId: paidHoldId);
+        PaidCallApi.cancel(callId: room);
       }
       return;
     }
-    if (busyMessage == null && paidHoldId.isNotEmpty && res.statusCode >= 200 && res.statusCode < 300) {
-      // §3B step 5 "connect": flip the hold live now that the call is actually
-      // placed. The per-minute settle/refund/beep-timer plumbing itself lives
-      // server-side (CallRoom DO, WP3) + the in-call countdown (CallCountdown in
-      // paid_call_prompt.dart) — wiring THOSE into CallScreen's live session is
-      // deferred until WP3's routing/escrow endpoints land, so it isn't faked
-      // here. See the WP6 report for the exact remaining hook point.
-      // Skipped entirely on routed:'busy' above — a busy line never takes a
-      // hold (worker/src/routes/api.ts call() already released any hold that
-      // was somehow armed for this call_id before this response came back).
-      // ignore: unawaited_futures
-      PaidCallApi.confirm(holdId: paidHoldId, callId: room);
-    }
+    // NOTE (server contract, call_billing_routes.ts): the escrow hold + the
+    // CallRoom billing-ticker arm ALREADY happened at the price prompt's
+    // Confirm (POST /api/call/paid/confirm, keyed by this call_id) — there is
+    // no second "flip live" call here. routed:'busy' above is disarmed
+    // server-side (api.ts busy path posts /billing-disarm), and a ring
+    // timeout auto-refunds per §11.
   } catch (_) {
     // Network error placing the call → fall through and still open the screen;
     // CallSession has its own reconnect/timeout handling, and this is no worse than
