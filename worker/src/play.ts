@@ -145,3 +145,51 @@ export async function verifyPlaySubscription(
 
   return { ok: true, entitled, productId, expiryMs, state };
 }
+
+export interface PlayProductResult {
+  ok: boolean;
+  /** True only when Google reports the one-time purchase as PURCHASED (state 0). */
+  purchased: boolean;
+  /** Google order id (e.g. GPA.xxxx) — the idempotency key for wallet crediting. */
+  orderId?: string;
+  purchaseState?: number;   // 0 purchased, 1 canceled, 2 pending
+  consumptionState?: number; // 0 yet-to-consume, 1 consumed
+  reason?: string;
+}
+
+// Verify a ONE-TIME product purchase token via purchases.products.get. Used by
+// AvaWallet top-ups: the client buys a fixed-price `avatok_topup_*` product and
+// POSTs the token here; we confirm Google actually charged for it before the
+// server credits Tokens. purchaseState===0 (PURCHASED) is the only creditable
+// state; the returned orderId dedupes credits (never trust the client amount —
+// the caller maps productId→Tokens from a server-side table).
+export async function verifyPlayProduct(
+  env: Env,
+  productId: string,
+  purchaseToken: string,
+): Promise<PlayProductResult> {
+  let accessToken: string;
+  try { accessToken = await getAccessToken(env); }
+  catch (e) { return { ok: false, purchased: false, reason: (e as Error).message }; }
+
+  const pkg = playPackageId(env);
+  const url =
+    `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/` +
+    `${encodeURIComponent(pkg)}/purchases/products/${encodeURIComponent(productId)}/tokens/${encodeURIComponent(purchaseToken)}`;
+
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  const data = (await res.json()) as any;
+  if (!res.ok) {
+    return { ok: false, purchased: false, reason: data?.error?.message || `play_api_${res.status}` };
+  }
+
+  const purchaseState: number | undefined = typeof data.purchaseState === "number" ? data.purchaseState : undefined;
+  const consumptionState: number | undefined = typeof data.consumptionState === "number" ? data.consumptionState : undefined;
+  return {
+    ok: true,
+    purchased: purchaseState === 0,
+    orderId: data.orderId,
+    purchaseState,
+    consumptionState,
+  };
+}

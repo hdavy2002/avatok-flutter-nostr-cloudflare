@@ -65,6 +65,10 @@ class PlayBilling {
 
   Future<void> _onPurchaseUpdates(List<PurchaseDetails> list) async {
     for (final p in list) {
+      // The purchase stream is process-global and SHARED with wallet top-up
+      // billing. `avatok_topup_*` consumables belong to WalletTopupBilling —
+      // skip them here so we never mis-verify a top-up as a subscription.
+      if (p.productID.startsWith('avatok_topup_')) continue;
       switch (p.status) {
         case PurchaseStatus.pending:
           _notice('Completing your purchase…');

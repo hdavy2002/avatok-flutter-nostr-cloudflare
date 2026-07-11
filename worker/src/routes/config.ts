@@ -91,6 +91,12 @@ export interface PlatformConfig {
   // TRUE to enable real checkout + per-tier daily allowance enforcement. One KV
   // flip, no redeploy.
   billingEnabled: boolean;
+  // AvaWallet Google Play top-up (fixed-price `avatok_topup_*` products → Tokens).
+  // Independent of billingEnabled (that gates subscriptions): a user can top up
+  // their wallet even while subscription paywalls are off. When FALSE the verify
+  // endpoint 503s. Real security gate is the Play service account (fail-closed);
+  // this is the killable master switch. Owner flips via scripts/flags.sh.
+  playTopupEnabled: boolean;
   // AvaTOK Number (Specs/AVATOK-NUMBER-FEATURE-SPEC.md) — purchasable in-network
   // virtual number that represents a user and hides their real phone. Master
   // switch for /api/number/* and the directory's number search key.
@@ -268,6 +274,31 @@ export interface PlatformConfig {
   avaSessionsPerCallerPerDay: number;   // Talk-to-Ava cap per caller per owner per UTC day (owner 2026-07-09: 2)
   strangerVoiceNotesPerDay: number;     // stranger voice notes per caller per owner per day
   strangerTextNotesPerDay: number;      // stranger text notes per caller per owner per day
+  // Dialpad business calls + Ava AI Voice Agent (Specs/PLAN-2026-07-11-dialpad-
+  // business-calls-ava-voice-agent.md §7/§15.6). One kill switch per phase — ALL
+  // default OFF, staging first, prod flags flipped one at a time on the owner's
+  // say-so. While every one of these is false, the whole feature is byte-for-byte
+  // dark: no new UI, no new routes, no new event emission.
+  businessCallUx: boolean;    // Phase A: channel split UI (named incoming-call screen, no-answer card, tappable numbers)
+  voicemailBot: boolean;      // Phase B: server-side voice-prompt + 25s recording bot in the call room
+  paidCalls: boolean;         // Phase B2: caller-pays escrowed calls (§3B)
+  voiceAgent: boolean;        // Phase C: Ava AI Voice Agent (Grok realtime session)
+  serviceNumbers: boolean;    // Phase C: Mode-B-only additional AvaTOK numbers
+  // §11/§15 money + timing constants — flag-overridable via KV so a value tweak
+  // never needs a redeploy. These are VALUES, not design; see plan §11.
+  minServiceRate: number;          // MIN_SERVICE_RATE — floor for a caller-paid rate/min (owner proposed 20)
+  agentRateAPerMin: number;        // Mode A callee-pays agent rate, tokens/min (6)
+  platformFeePerMin: number;       // Mode B platform fee taken from the caller, tokens/min (10)
+  serviceLineFeePerMin: number;    // service-number "extra line" fee, tokens/min, billed to the callee (3)
+  agentMaxCallSec: number;         // AGENT_MAX_CALL — hard cap on an agent call, seconds (300 = 5 min)
+  ringTimeoutSec: number;          // RING_TIMEOUT — no-answer window, seconds (30 ≈ 5 rings)
+  agentAutoanswerSec: number;      // AGENT_AUTOANSWER — auto-handoff to agent, seconds (12 ≈ 2 rings)
+  voicemailRecordSec: number;      // VOICEMAIL_RECORD — max voicemail length, seconds (25)
+  escrowPromptTimeoutSec: number;  // ESCROW_PROMPT_TIMEOUT — price/length prompt abandon window, seconds (30)
+  offlineDetectSec: number;        // OFFLINE_DETECT — no push-ack within this → skip ring, seconds (6)
+  agentConcurrencyA: number;       // AGENT_CONCURRENCY_A — Mode A concurrent calls per primary number (1)
+  agentConcurrencyB: number;       // AGENT_CONCURRENCY_B — Mode B concurrent escrowed sessions per service number (5)
+  networkReconnectWindowSec: number; // NETWORK_RECONNECT_WINDOW — drop-past-this settles+refunds, seconds (20)
 }
 
 // FREE LAUNCH (2026-06-28, owner-locked Specs/FREE-LAUNCH-DIRECTION.md): ship an
@@ -314,6 +345,7 @@ const DEFAULTS: PlatformConfig = {
   ringbackEnabled: true,           // AI ringback + busy tone (free, our AI key)
   betaFreePremium: true,           // FREE LAUNCH: no paywalls — everyone premium, no metering
   billingEnabled: false,           // FREE LAUNCH: subscriptions/checkout off
+  playTopupEnabled: true,          // AvaWallet Google Play top-up (gated also by Play service account)
   numberFeatureEnabled: true,      // AvaTOK Number — virtual number + handle retirement
   teamIvrEnabled: false,           // Team Receptionist (IVR) — OFF until dogfood passes (enable via KV)
   ivrAiFrontDesk: false,           // tap-menu is the default routing; AI front desk is a future upsell
@@ -394,6 +426,27 @@ const DEFAULTS: PlatformConfig = {
   avaSessionsPerCallerPerDay: 2,     // owner 2026-07-09: 2 Ava sessions/caller/owner/day, then greyed out
   strangerVoiceNotesPerDay: 5,       // stranger voice-note cap (known contacts unlimited)
   strangerTextNotesPerDay: 10,       // stranger text-note cap (known contacts unlimited)
+  // Dialpad business calls + Ava AI Voice Agent — ALL DARK until each phase is
+  // device-verified on staging; flip one at a time in KV (never code).
+  businessCallUx: false,
+  voicemailBot: false,
+  paidCalls: false,
+  voiceAgent: false,
+  serviceNumbers: false,
+  // §11/§15 constants — flag-overridable values, not design. Defaults per plan.
+  minServiceRate: 20,
+  agentRateAPerMin: 6,
+  platformFeePerMin: 10,
+  serviceLineFeePerMin: 3,
+  agentMaxCallSec: 300,
+  ringTimeoutSec: 30,
+  agentAutoanswerSec: 12,
+  voicemailRecordSec: 25,
+  escrowPromptTimeoutSec: 30,
+  offlineDetectSec: 6,
+  agentConcurrencyA: 1,
+  agentConcurrencyB: 5,
+  networkReconnectWindowSec: 20,
 };
 
 /** Merged config for server-side gates (same blob getConfig serves). */
@@ -438,7 +491,15 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
   // (or `scripts/flags.sh prune` to sweep every key that just restates a default).
   const current = ((await env.TOKENS.get(KEY, "json")) ?? {}) as Partial<PlatformConfig>;
   const next: Record<string, unknown> = { ...current };
-  const numericKeys = new Set(["minAppBuild", "dailyAvaTurnLimit", "receptionistRings", "agentDailyCap", "livenessAuditSampleRate", "guardianInlineBudgetMs", "callProtocolVersion", "avaSessionsPerCallerPerDay", "strangerVoiceNotesPerDay", "strangerTextNotesPerDay"]);
+  const numericKeys = new Set([
+    "minAppBuild", "dailyAvaTurnLimit", "receptionistRings", "agentDailyCap", "livenessAuditSampleRate",
+    "guardianInlineBudgetMs", "callProtocolVersion", "avaSessionsPerCallerPerDay", "strangerVoiceNotesPerDay",
+    "strangerTextNotesPerDay",
+    // Dialpad business calls + Ava AI Voice Agent — §11/§15 numeric constants.
+    "minServiceRate", "agentRateAPerMin", "platformFeePerMin", "serviceLineFeePerMin", "agentMaxCallSec",
+    "ringTimeoutSec", "agentAutoanswerSec", "voicemailRecordSec", "escrowPromptTimeoutSec", "offlineDetectSec",
+    "agentConcurrencyA", "agentConcurrencyB", "networkReconnectWindowSec",
+  ]);
   for (const [k, v] of Object.entries(body)) {
     if (!(k in DEFAULTS)) return json({ error: `unknown key: ${k}` }, 400);
     if (numericKeys.has(k) ? typeof v !== "number" : typeof v !== "boolean") {

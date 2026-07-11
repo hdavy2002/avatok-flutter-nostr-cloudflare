@@ -23,6 +23,7 @@ import { payAffiliateOnTopup } from "./affiliate";
 import { readConfig } from "./config";
 import { getSub } from "./plans";
 import { subscribeWebhookEvent } from "./subscribe";
+import { verifyPlayProduct } from "../play";
 
 // Token economics — CANONICAL, site-wide (incl. AvaPayout): 1 USD = 100 tokens,
 // i.e. 1 token = $0.01. So 1 token == 1 USD cent and usdCentsForTokens is identity.
@@ -33,7 +34,7 @@ import { subscribeWebhookEvent } from "./subscribe";
 // live balances / in-flight payments / dashboards; the user-facing term is "Tokens".
 const TOKENS_PER_USD = 100;
 const usdCentsForTokens = (tokens: number) => Math.round((tokens * 100) / TOKENS_PER_USD); // tokens → USD cents (== tokens)
-const MIN_TOPUP = 1_000, MAX_TOPUP = 50_000; // in TOKENS: $10 (premium unlock min) .. $500
+const MIN_TOPUP = 500, MAX_TOPUP = 50_000; // in TOKENS: $5 (lowest Play tier) .. $500
 
 function walletStub(env: Env, uid: string) {
   return env.WALLET_DO.get(env.WALLET_DO.idFromName(uid));
@@ -196,6 +197,110 @@ export async function walletTopupIntent(req: Request, env: Env): Promise<Respons
     publishable_key: env.STRIPE_PUBLISHABLE_KEY || "",
     topup_id: id, coins, cents,
   });
+}
+
+// ── Google Play top-up ──────────────────────────────────────────────────────
+// The client buys a FIXED-PRICE consumable (`avatok_topup_*`) via native Play
+// Billing, then POSTs the purchase token here. The server maps productId→Tokens
+// from THIS table (never trusts a client amount), verifies the token with the
+// Play Developer API, and credits — idempotent on Google's orderId. This is the
+// Android money-in rail; Stripe stays the web rail. Keep in lock-step with the
+// active `avatok_topup_*` products in the Play Console.
+const PLAY_TOPUP_PRODUCTS: Record<string, number> = {
+  avatok_topup_5: 500,      // $5   → 500 Tokens
+  avatok_topup_10: 1_000,   // $10  → 1,000
+  avatok_topup_25: 2_500,   // $25  → 2,500
+  avatok_topup_50: 5_000,   // $50  → 5,000
+  avatok_topup_100: 10_000, // $100 → 10,000
+};
+
+// POST /api/wallet/topup/play/verify { productId, purchaseToken }
+// Money route: rate-limited 5/h (A3). Fails CLOSED until the Play service account
+// (PLAY_SERVICE_ACCOUNT_JSON) is configured — a forged token can never mint Tokens.
+export async function walletTopupPlayVerify(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+
+  // Killable master switch (KV): independent of subscription billing.
+  try {
+    if (!(await readConfig(env)).playTopupEnabled) {
+      return json({ ok: false, error: "top-up unavailable", reason: "play_topup_disabled" }, 503);
+    }
+  } catch { /* if config read fails, fall through to the service-account gate below */ }
+
+  const limited = await rateLimit(env, `topup:${ctx.uid}`, RL.topup.max, RL.topup.windowSec);
+  if (limited) return limited;
+
+  const b = (await req.json().catch(() => ({}))) as any;
+  const productId = String(b.productId ?? "");
+  const purchaseToken = String(b.purchaseToken ?? "");
+  if (!productId || !purchaseToken) return json({ error: "productId and purchaseToken required" }, 400);
+
+  // Server-side price map is the ONLY source of the credit amount.
+  const coins = PLAY_TOPUP_PRODUCTS[productId];
+  if (!coins) return json({ error: "unknown product" }, 400);
+  if (!(coins >= MIN_TOPUP && coins <= MAX_TOPUP)) return json({ error: "amount out of range" }, 400);
+
+  // Fail CLOSED until the service account is wired (forged token can't mint coins).
+  if (!(env as any).PLAY_SERVICE_ACCOUNT_JSON) {
+    return json({ ok: false, error: "play verification not configured", reason: "play_unconfigured" }, 503);
+  }
+
+  const v = await verifyPlayProduct(env, productId, purchaseToken);
+  if (!v.ok) {
+    track(env, ctx.uid, "wallet_topup_verify_failed", "avawallet", { source: "play", reason: v.reason });
+    return json({ ok: false, error: "play verification failed", reason: v.reason }, 502);
+  }
+  if (!v.purchased) {
+    track(env, ctx.uid, "wallet_topup_verify_rejected", "avawallet", { source: "play", state: v.purchaseState });
+    return json({ ok: false, error: "purchase not completed", reason: `state_${v.purchaseState ?? "unknown"}` }, 402);
+  }
+
+  // Idempotency key = Google order id (falls back to the token if absent).
+  const orderRef = v.orderId || `token:${purchaseToken.slice(0, 40)}`;
+  return creditPlayTopup(env, ctx.uid, coins, orderRef, productId);
+}
+
+// Credit a verified Play top-up. Idempotent twice over: a topup_records row keyed
+// on the Google orderId (stripe_session_id column, unique-indexed) short-circuits
+// replays, and the WalletDO dedupes on op_id `topup:play:<orderId>` so even a
+// racing double-submit credits exactly once.
+async function creditPlayTopup(
+  env: Env, uid: string, coins: number, orderRef: string, productId: string,
+): Promise<Response> {
+  const existing = await env.DB_WALLET.prepare(
+    "SELECT status FROM topup_records WHERE stripe_session_id=?1 AND uid=?2",
+  ).bind(orderRef, uid).first<{ status: string }>();
+  if (existing) {
+    const bal = await walletOp(env, uid, { op: "balance", uid });
+    return json({ ok: true, duplicate: true, coins, balance: bal.body?.balance ?? null });
+  }
+
+  const id = crypto.randomUUID();
+  const cents = usdCentsForTokens(coins);
+  try {
+    await env.DB_WALLET.prepare(
+      "INSERT INTO topup_records (id, uid, stripe_session_id, amount_coins, amount_cents, currency, status, paid_at, created_at) VALUES (?1,?2,?3,?4,?5,'usd','paid',?6,?6)",
+    ).bind(id, uid, orderRef, coins, cents, Date.now()).run();
+  } catch {
+    // UNIQUE(stripe_session_id) violation → a concurrent request already recorded
+    // this order. Treat as a duplicate; the op_id dedup guarantees single credit.
+    const bal = await walletOp(env, uid, { op: "balance", uid });
+    return json({ ok: true, duplicate: true, coins, balance: bal.body?.balance ?? null });
+  }
+
+  const meta: any = { title: `Top-up ${coins} Tokens`, cents, source: "topup", method: "google_play", product: productId };
+  const r = await walletOp(env, uid, {
+    op: "credit", uid, amount: coins, type: "topup", app_name: "avawallet", ref: orderRef, op_id: `topup:play:${orderRef}`,
+    ledger: { debit: "external:google_play", credit: acctUser(uid), type: "topup", ref: orderRef, meta: JSON.stringify(meta) },
+  });
+
+  try { await payAffiliateOnTopup(env, uid, coins, id); } catch { /* best-effort */ }
+  try { await sendReceipt(env, uid, "topup", { orderId: id, title: `${coins} Tokens`, lines: [{ label: `${coins} Tokens`, amount: coins }], total: coins }); } catch { /* best-effort */ }
+  brainFact(env, uid, "wallet_topup", "avawallet", { coins, source: "play" });
+  try { await notifyUser(env, uid, { type: "wallet", title: `Added ${coins} Tokens`, data: { deeplink: "/wallet", amount: coins } }); } catch { /* best-effort */ }
+  track(env, uid, "wallet_topup_completed", "avawallet", { coins, source: "play" });
+  return json({ ok: true, credited: coins, coins, balance: r.body?.balance ?? null });
 }
 
 // POST /webhooks/stripe — credit coins when Stripe confirms a payment. Handles

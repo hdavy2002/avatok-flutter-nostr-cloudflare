@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
@@ -8,6 +9,7 @@ import '../../core/analytics.dart';
 import '../../core/db.dart';
 import '../../core/money_api.dart';
 import '../../core/remote_config.dart';
+import '../../core/wallet_topup_billing.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../payout/payout_screen.dart';
@@ -102,6 +104,21 @@ class _WalletScreenState extends State<WalletScreen> {
     _paintFromCache();
     _refresh();
     MoneyApi.isAdmin().then((a) { if (mounted && a) setState(() => _admin = true); });
+    // Bind the native Play Billing purchase stream for wallet top-ups (Android).
+    // Credits land server-side; we just refresh the balance + surface a notice.
+    if (Platform.isAndroid) {
+      WalletTopupBilling.instance.start(
+        onNotice: (m) { if (mounted) _snack(m); },
+        onCredited: (_) async {
+          if (!mounted) return;
+          final before = _balance;
+          for (var i = 0; i < 6 && mounted && _balance <= before; i++) {
+            await Future.delayed(Duration(milliseconds: i == 0 ? 400 : 1000));
+            await _refresh();
+          }
+        },
+      );
+    }
   }
 
   @override
@@ -391,6 +408,48 @@ class _WalletScreenState extends State<WalletScreen> {
     );
   }
 
+  // ── top-up (Android — native Google Play Billing) ─────────────────────────
+  // Google requires in-app digital top-ups to go through Play Billing, which only
+  // sells FIXED-PRICE products — so we present tiered USD buttons ($5..$100), each
+  // mapped to an `avatok_topup_*` consumable. Tapping one launches the native Play
+  // sheet; the purchase lands on the stream bound in initState, is verified +
+  // credited server-side, and the balance refreshes here. No browser, no cards
+  // handled by us.
+  Future<void> _playTopupFlow() async {
+    Analytics.capture('wallet_topup_opened', {'method': 'play_billing'});
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Zine.paper,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (c) => Padding(
+        padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(c).viewInsets.bottom + 24),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Top up wallet', style: ZineText.cardTitle(size: 21)),
+          const SizedBox(height: 4),
+          Text('Pay securely with Google Play. \$1 = ${_coins(kCoinsPerUsd)} Tokens.', style: ZineText.sub(size: 14)),
+          const SizedBox(height: 16),
+          for (final t in kTopupTiers) ...[
+            ZineButton(
+              label: '\$${t.usd}   ·   ${_coins(t.tokens)} Tokens',
+              fullWidth: true,
+              trailingIcon: false,
+              icon: PhosphorIcons.plus(PhosphorIconsStyle.bold),
+              onPressed: () {
+                Analytics.capture('wallet_topup_tier_selected', {'usd': t.usd, 'tokens': t.tokens, 'product': t.productId});
+                Navigator.pop(c);
+                WalletTopupBilling.instance.buy(t.productId);
+              },
+            ),
+            const SizedBox(height: 10),
+          ],
+          const SizedBox(height: 4),
+          Text('Charged in your local currency at Google Play’s rate.', style: ZineText.sub(size: 12)),
+        ]),
+      ),
+    );
+  }
+
   void _snack(String m) {
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
   }
@@ -636,10 +695,12 @@ class _WalletScreenState extends State<WalletScreen> {
             const SizedBox(height: 16),
             // Withdraw/payout is HIDDEN for now — no marketplace/payout flow yet.
             // Flip _kShowWithdraw back to true to restore the two-button row.
-            // FREE LAUNCH: with billing off there are no paid features, so the
-            // top-up CTA is hidden (everything is free). A short note replaces it.
-            // Reverts automatically when billingEnabled flips back on.
-            if (!RemoteConfig.billingEnabled)
+            // Android tops up via native Google Play Billing (fixed-price tiers),
+            // independent of billingEnabled (that gates subscription paywalls). The
+            // server-side playTopupEnabled flag + Play service account are the real
+            // gate. Non-Android falls back to the Stripe rail, still hidden while
+            // billing is off (everything free).
+            if (!Platform.isAndroid && !RemoteConfig.billingEnabled)
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -659,7 +720,7 @@ class _WalletScreenState extends State<WalletScreen> {
                   fontSize: 17,
                   trailingIcon: false,
                   icon: PhosphorIcons.plus(PhosphorIconsStyle.bold),
-                  onPressed: _topupFlow,
+                  onPressed: Platform.isAndroid ? _playTopupFlow : _topupFlow,
                 ),
               ),
               if (_kShowWithdraw) ...[

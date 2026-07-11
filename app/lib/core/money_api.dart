@@ -55,6 +55,13 @@ class MoneyApi {
   static Future<Map<String, dynamic>> topupIntent(int usdCents) =>
       _post('$kWalletBase/topup/intent', {'usd_cents': usdCents});
 
+  /// Verify a Google Play top-up purchase server-side and credit Tokens. The
+  /// server maps [productId] → Tokens (never trusts a client amount) and dedupes
+  /// on Google's orderId, so replays/double-taps credit exactly once. Returns
+  /// {ok, credited/coins, balance} on success, or {ok:false, reason} otherwise.
+  static Future<Map<String, dynamic>> topupPlayVerify(String productId, String purchaseToken) =>
+      _post('$kWalletBase/topup/play/verify', {'productId': productId, 'purchaseToken': purchaseToken});
+
   /// Keyset-paginated double-entry statement with server-side filters.
   static Future<Map<String, dynamic>> ledger({
     String? cursor, int limit = 50, List<String> types = const [], int? from, int? to, String? q,

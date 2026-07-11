@@ -16,7 +16,7 @@ import { deleteAccount, cancelDeletion, deletionStatus } from "./routes/account"
 // [AVA-IDGATE-1] idSession / idResult / idPhoneConfirm are NO LONGER ROUTED — they
 // minted verification without a Didit check. See LEGACY_GONE in the router.
 import { idStatus, idEmailStart, idEmailVerify, idPasswordStart, idPasswordSet } from "./routes/id";
-import { walletTopup, walletTopupIntent, stripeWebhook, walletSpend, walletBalance, walletTransactions, walletEarnings, walletLive, walletLedger, walletLedgerDetail, walletReceiptResend } from "./routes/wallet";
+import { walletTopup, walletTopupIntent, walletTopupPlayVerify, stripeWebhook, walletSpend, walletBalance, walletTransactions, walletEarnings, walletLive, walletLedger, walletLedgerDetail, walletReceiptResend } from "./routes/wallet";
 import { adminLedger, adminRefund, adminAdjust, adminAccount, adminRecon, adminEscrowHold, adminEscrowRelease, adminTaxExport, adminFailedSettlements, adminRetrySettlement, requireAdmin } from "./routes/admin_money";
 import { liveStart, liveStop, liveJoin, liveRoom, liveDonate, liveMod, liveState } from "./routes/live";
 import { consultJoin, consultRoom, consultSfu, consultComplete, consultCancel, consultExtend, consultProbe, consultProbeBlob } from "./routes/consult";
@@ -68,6 +68,8 @@ import * as team from "./routes/team";
 import { subscribeCheckout, subscribeAndroidVerify, subscribeCancel } from "./routes/subscribe";
 import { referralClaim, referralSummary } from "./routes/referral";
 import { inviteEmail } from "./routes/invite";
+// [WP2] Paid-call escrow/settlement routes (plan §3B/§11/§15.3)
+import { getPaidCallSettingsRoute, putPaidCallSettingsRoute, preparePaidCallRoute, confirmPaidCallRoute } from "./routes/call_billing_routes";
 import { featureCostsRoute } from "./feature_pricing";
 import { googleAuth } from "./routes/google_auth";
 import { conferenceStart, conferenceJoin, conferenceStatus, conferenceEnd, conferenceWebhook, conferenceBeat } from "./routes/conference";
@@ -510,6 +512,11 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/call-status" && req.method === "POST") return await api.callStatus(req, env);
       if (p === "/api/call/ringing" && req.method === "POST") return await api.callRinging(req, env);
       if (p === "/api/call/notify-register" && req.method === "POST") return await api.callNotifyRegister(req, env);
+      // [WP2] Paid calls (plan §3B/§11/§15.3) — all 403 unless paidCalls flag is on.
+      if (p === "/api/call/paid/settings" && req.method === "GET") return await getPaidCallSettingsRoute(req, env);
+      if (p === "/api/call/paid/settings" && req.method === "PUT") return await putPaidCallSettingsRoute(req, env);
+      if (p === "/api/call/paid/prepare" && req.method === "POST") return await preparePaidCallRoute(req, env);
+      if (p === "/api/call/paid/confirm" && req.method === "POST") return await confirmPaidCallRoute(req, env);
       // [LASTSEEN-SERVER-1] WhatsApp-style last seen (InboxDO socket truth).
       if (p === "/api/user/last-seen" && req.method === "GET") return await api.userLastSeen(req, env);
 
@@ -604,6 +611,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/subscribe/android/verify" && req.method === "POST") return await subscribeAndroidVerify(req, env);
       if (p === "/api/subscribe/cancel" && req.method === "POST") return await subscribeCancel(req, env);
       if (p === "/api/wallet/topup/intent" && req.method === "POST") return await walletTopupIntent(req, env);
+      if (p === "/api/wallet/topup/play/verify" && req.method === "POST") return await walletTopupPlayVerify(req, env);
       if (p === "/api/wallet/topup" && req.method === "POST") return await walletTopup(req, env);
       if ((p === "/webhooks/stripe" || p === "/api/wallet/stripe-webhook") && req.method === "POST") return await stripeWebhook(req, env);
       if (p === "/api/wallet/spend" && req.method === "POST") return await walletSpend(req, env);
