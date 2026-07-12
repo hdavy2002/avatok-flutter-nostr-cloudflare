@@ -267,6 +267,14 @@ class AppDb extends _$AppDb {
         ..orderBy([(t) => OrderingTerm(expression: t.ts, mode: OrderingMode.desc)]))
       .get();
 
+  /// All saved in-network (AvaTOK) contacts — one query. Used by the Ask Ava
+  /// assistant's `search_contacts` fallback lane (when the AvaDial device-book
+  /// reader is off, plan §4.6). Read-only; the assistant filters the small result
+  /// in Dart and only sends the matching rows into the model context.
+  Future<List<ContactRow>> contactsOnce() => (select(contacts)
+        ..orderBy([(t) => OrderingTerm(expression: t.name)]))
+      .get();
+
   /// Replace the whole projection in one transaction (delete-all + bulk insert).
   /// Cheap: the row count equals the number of conversations, and it runs in the
   /// background right after the authoritative stores load. Takes plain records so

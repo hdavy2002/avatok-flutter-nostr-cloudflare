@@ -162,7 +162,7 @@ class ShellSidebar extends StatelessWidget {
                 subtitle: 'Universal assistant',
                 onTap: () {
                   Navigator.of(context).maybePop();
-                  scope.askAva();
+                  scope.askAva(current.key); // seed the assistant with this app's context
                 },
               ),
               if (extra.isNotEmpty) ...[

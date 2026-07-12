@@ -3,13 +3,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../auth/clerk_client.dart';
 import '../core/account_storage.dart';
 import '../core/analytics.dart';
 import '../core/ui/zine.dart';
-import '../core/ui/zine_widgets.dart';
+import '../features/askava/askava_screen.dart';
 import '../identity/identity.dart';
 import 'v2/avadial_root.dart';
 import 'v2/home_root.dart';
@@ -44,7 +43,12 @@ extension RootIdX on RootId {
 class ShellScope extends InheritedWidget {
   final RootId activeRoot;
   final void Function(RootId) switchRoot;
-  final VoidCallback askAva;
+
+  /// Open the universal Ask Ava assistant (plan §4.6). Optional [hint] names the
+  /// app that opened it ('avadial'|'avatalk'|'services'|'root') so the assistant
+  /// primes the right context/tools. It is a GLOBAL ACTION — pushed on the active
+  /// root's navigator, dismissing back to wherever the user was.
+  final void Function([String hint]) askAva;
   final ClerkClient clerk;
   final VoidCallback onSignOut;
   final Identity? identity;
@@ -181,42 +185,14 @@ class _ShellV2State extends State<ShellV2> {
     Analytics.capture('shellv2_root_selected', {'root': r.key});
   }
 
-  void _askAva() {
-    Analytics.capture('shellv2_askava_opened', {'root': _root.key});
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Zine.paper,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 26),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              ZineIconBadge(icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill), color: Zine.lime, size: 40),
-              const SizedBox(width: 12),
-              Expanded(child: Text('Ask Ava', style: ZineText.cardTitle(size: 20))),
-            ]),
-            const SizedBox(height: 14),
-            Text(
-              'Your universal assistant — dial someone, find a message, check a '
-              'listing or your wallet, all by asking. Coming soon.',
-              style: ZineText.sub(size: 14),
-            ),
-            const SizedBox(height: 20),
-            ZineButton(
-              label: 'Got it',
-              variant: ZineButtonVariant.blue,
-              fullWidth: true,
-              fontSize: 16,
-              trailingIcon: false,
-              onPressed: () => Navigator.pop(ctx),
-            ),
-          ]),
-        ),
-      ),
-    );
+  void _askAva([String hint = 'root']) {
+    Analytics.capture('shellv2_askava_opened', {'root': _root.key, 'hint': hint});
+    // Global action: push the assistant onto the ACTIVE root's navigator so it
+    // overlays the current app and Android back returns the user where they were.
+    final nav = _navKeys[_root]?.currentState ?? Navigator.of(context);
+    nav.push(MaterialPageRoute<void>(
+      builder: (_) => AskAvaScreen(contextHint: hint),
+    ));
   }
 
   Widget _rootScreen(RootId r) {

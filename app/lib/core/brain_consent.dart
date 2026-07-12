@@ -34,6 +34,11 @@ const kBrainCapabilities = <BrainCapability>[
   BrainCapability('files', 'Files & images', 'Read your public files (captions, text) so you can find them later'),
   BrainCapability('avawallet', 'AvaWallet', 'Remember wallet activity (top-ups, purchases) — never card details'),
   BrainCapability('avacalendar', 'AvaCalendar & bookings', 'Remember your bookings and events so AvaChat knows your schedule'),
+  // Phase 3 — Ask Ava universal assistant guardrail. Gates whether the assistant
+  // may run its LOCAL tools (contacts/call-log/chat search). Default ON (opt-out);
+  // when OFF the assistant still chats but runs no device tools (plan §4.6). Note:
+  // tool results are NEVER ingested into any brain store regardless of this toggle.
+  BrainCapability('askava', 'Ask Ava', 'Let the Ask Ava assistant search your contacts, calls and chats on-device to answer you'),
   // Pre-Phase-9 keys (kept for compatibility with already-stored rows).
   BrainCapability('avatok_files', 'Keep a tab on my files', 'AvaBrain can read your public AvaTok files (captions, text) so you can find them later'),
   BrainCapability('avatok_dms', 'Read my AvaTok DMs', 'On-device only — AvaBrain summarises chats without your messages ever leaving your phone'),
