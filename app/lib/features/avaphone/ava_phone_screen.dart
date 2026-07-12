@@ -14,6 +14,8 @@ import '../../core/team_api.dart';
 import '../avatok/paid_call_prompt.dart';
 import '../avatok/place_1to1_call.dart';
 import '../team/team_ivr_screen.dart';
+import '../avadial/avadial_channel.dart';
+import '../avadial/outgoing_call_screen.dart';
 import '../avatok/contact_actions.dart';
 import '../avatok/contact_profile_screen.dart';
 import '../avatok/contacts.dart';
@@ -705,6 +707,24 @@ class _DialpadSheetState extends State<_DialpadSheet> with WidgetsBindingObserve
     try { hit = await Directory.resolve(q); } catch (_) { hit = null; }
     if (!mounted) return;
     if (hit == null || hit.uid.isEmpty) {
+      // Not an AvaTOK account. When AvaDial is the default dialer (flag on + role
+      // held), place a CARRIER PSTN call via TelecomManager and open the outgoing
+      // call screen instead of dead-ending. Otherwise keep the existing message
+      // (the number simply isn't reachable in-network).
+      if (RemoteConfig.avaDialer && await AvaDialChannel.I.isDialerRoleHeld()) {
+        if (!mounted) return;
+        Analytics.capture('avadial_pstn_dial', {'len': q.length});
+        setState(() => _dialing = false);
+        Navigator.pop(context); // close the dialpad
+        final placed = await AvaDialChannel.I.placeCall(q);
+        if (placed) {
+          Navigator.push(navContext,
+              MaterialPageRoute(builder: (_) => OutgoingCallScreen(number: q)));
+        }
+        // placed == false → CALL_PHONE was not yet granted; the plugin kicked off the
+        // runtime prompt, so the next dial (post-grant) connects. No dead-end.
+        return;
+      }
       Analytics.capture('avaphone_dial_unreachable', {'len': q.length});
       setState(() { _dialing = false; _status = 'No AvaTOK account on that number'; });
       return;

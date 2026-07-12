@@ -328,3 +328,125 @@ Flutter is handed.
 
 **Defers:** SMS role (Phase 3), iOS Live Caller ID Lookup, call-log re-insert /
 restore-to-system, hard auto-reject policy, conference PSTN (never — 1:1 only).
+
+---
+
+## 11. SMS role + call UI (AVA-SMS / AVA-DIAL-5, owner decision 2026-07-12)
+
+AvaDial also becomes an **optional default SMS app** with AI spam filtering, and
+gains the **complete call UIs** (outgoing/dialing + shared in-call). Both ship
+**DARK**: SMS behind the new `avaSms` flag (independent of `avaDialer`), the call UIs
+behind `avaDialer`. Same cannot-compile disclaimer as the rest of this spike — every
+API below is written against SDK knowledge and MUST be re-verified in CI + on device.
+
+### 11.1 ROLE_SMS qualification checklist (all FOUR components are mandatory)
+
+Android's `RoleManager.ROLE_SMS` request **silently declines to offer the app** unless
+the manifest declares ALL of the following. This mirrors the canonical default-SMS-app
+manifest at https://developer.android.com/reference/android/provider/Telephony :
+
+- [x] **(1) SMS_DELIVER receiver** — `AvaSmsReceiver`, `exported=true`,
+  `permission=android.permission.BROADCAST_SMS`, intent-filter
+  `android.provider.Telephony.SMS_DELIVER`.
+- [x] **(2) WAP_PUSH_DELIVER receiver (MMS)** — `AvaMmsReceiver`, `exported=true`,
+  `permission=android.permission.BROADCAST_WAP_PUSH`, intent-filter
+  `android.provider.Telephony.WAP_PUSH_DELIVER` + `data mimeType
+  application/vnd.wap.mms-message`.
+- [x] **(3) RESPOND_VIA_MESSAGE service** — `AvaSmsSendService`, `exported=true`,
+  `permission=android.permission.SEND_RESPOND_VIA_MESSAGE_SERVICE`, intent-filter
+  `android.intent.action.RESPOND_VIA_MESSAGE` on `sms/smsto/mms/mmsto`.
+- [x] **(4) ACTION_SENDTO activity** — `SmsComposeAlias` (activity-alias →
+  `MainActivity`), `exported=true`, intent-filter `android.intent.action.SENDTO` on
+  `sms/smsto/mms/mmsto`.
+- [x] Permissions: `SEND_SMS`, `RECEIVE_SMS`, `READ_SMS`, `RECEIVE_MMS`,
+  `RECEIVE_WAP_PUSH` (added alongside the existing dialer perms).
+- [x] Role requested with `RoleManager.ROLE_SMS` via the same Activity-bound
+  `createRequestRoleIntent` path as the dialer role (`AvaDialRoleHelper`, req code
+  `REQ_SMS = 42103`). Independently requestable — a user can make AvaTOK their SMS app
+  without the dialer role (and vice-versa).
+
+**Result:** with all four declared + the flag on, the "SMS app" default slot offers
+AvaTOK and the role grants. **[verify on device: the role picker lists AvaTOK; grant
+→ `isRoleHeld(ROLE_SMS)` true; deny → banner remains.]**
+
+### 11.2 What changes when we become the DEFAULT SMS app
+
+- **Provider write access.** Only the default SMS app may write `content://sms`.
+  `SMS_DELIVER` (unlike the old `SMS_RECEIVED`) makes US responsible for persisting the
+  inbound message — the platform no longer auto-writes it. `AvaSmsReceiver` inserts to
+  `Telephony.Sms.Inbox`; `smsSend` mirrors outgoing into `Telephony.Sms.Sent`. If we
+  are NOT default, these writes are denied (caught + ignored).
+- **We suppress other apps' SMS notifications for delivery** — being the SMS_DELIVER
+  target means the previous default app no longer receives the message, so AvaTOK's
+  notification is the only one. This is the whole point of the role but must be honest
+  in onboarding copy ("AvaTOK will handle your texts").
+- **Device-data boundary.** Message BODIES live ONLY in the OS SMS provider. Our
+  account-scoped store (`sms_spam_store.dart`) keeps **only** spam labels/metadata
+  (`normKey(number) → verdict`), never text — same rule as contacts/call-log.
+- **AI spam filter.** Inbound SMS runs the SAME local snapshot check as call screening
+  (SHA-256 of the number → `spam_snapshot.json`), **label-only, never dropped**. The
+  Messages tab's Inbox/Spam segmented control resolves a thread's bucket as: user label
+  wins; else (spamShield on) a best-effort community `/spam/lookup`; else Inbox.
+
+### 11.3 Call UIs (AVA-DIAL-5)
+
+- **`outgoing_call_screen.dart`** — dialing state (callee name/avatar from device
+  contacts, Dialing…/Ringing… from `InCallService` state events, End). Placed after
+  `TelecomManager.placeCall`; adopts the call id from the first outgoing `onCallAdded`.
+  Transitions (pushReplacement) to the in-call screen on `ACTIVE`.
+- **`in_call_screen.dart`** — shared active-call UI (timer, mute, speaker, DTMF keypad
+  overlay via `Call.playDtmfTone`, End). Incoming (`PstnCallScreen` answer) and outgoing
+  both land here once connected. Mute/speaker chips mirror `onCallAudioStateChanged`.
+- **Native additions:** `AvaInCallService` gains a `dtmf` action
+  (`playDtmfTone`/`stopDtmfTone`) + `onCallAudioStateChanged` → `onAudioRoute` event;
+  `AvaDialPlugin.placeCall` uses `TelecomManager.placeCall` with the CALL_PHONE runtime
+  dance (denied → kicks off the prompt, returns false, Dart retries next tap). Dialpad
+  routes a non-AvaTOK number to `placeCall` **only when `avaDialer` on + dialer role
+  held**; otherwise the existing in-network behaviour is unchanged.
+- **Emergency rule still holds** — outgoing PSTN always goes through
+  `TelecomManager.placeCall`, never a fabricated connection, so the system emergency
+  flow is untouched (§1).
+
+### 11.4 Play Store policy risk (the BIG one)
+
+- **SMS + Call Log Permissions policy.** `SEND_SMS`/`READ_SMS`/`RECEIVE_SMS` and
+  `READ_CALL_LOG` are Play **restricted** permissions. An app may use them only if it
+  is **actively registered as the user's default SMS handler / default Phone handler**,
+  OR falls into a narrow exception set. AvaTOK must file the **Permissions Declaration**
+  in the Play Console declaring the **"Default SMS handler"** and **"Default Phone/Dialer
+  handler"** core use cases, with a demo video. **This is the single largest launch/
+  review risk** — rejection blocks the whole feature. Keep both flags OFF in production
+  until the declaration is APPROVED.
+- Apps that request these permissions **without** an approved default-handler use case
+  are removed from Play. Because everything is flag-gated and the role is only requested
+  behind `avaSms`/`avaDialer`, a dark build never *exercises* the permissions, but the
+  **declared** permissions in the manifest still trigger the Console declaration
+  requirement at upload — so the declaration must be filed before the APK/AAB that
+  contains these `<uses-permission>` lines is submitted to a review track.
+- Full-screen-intent (`USE_FULL_SCREEN_INTENT`) on Android 14+ is auto-granted only to
+  calling/alarm apps — verify AvaTOK's category qualifies for the incoming-call UI.
+
+### 11.5 Device-test additions (extend the §9 matrix)
+
+17. Request `ROLE_SMS` (dialer declined) → granted independently → `isRoleHeld(SMS)` true.
+18. Inbound SMS → written to `content://sms/inbox`, event to Flutter, notification on
+    `avadial_sms` channel; spam number → labelled (never dropped).
+19. Inbound MMS (WAP push) → `AvaMmsReceiver` acknowledges + "MMS received" notification
+    (full parse out of scope).
+20. Send SMS (single + multipart) → sent/delivered PendingIntents report `sent` then
+    `delivered` to Flutter; message mirrored into `content://sms/sent`.
+21. Quick-reply "reject call with text" → `AvaSmsSendService` fires → reply goes out.
+22. `SENDTO` (`sms:<num>`) from another app / notification tap → composer opens on that
+    recipient (`avadial/compose` route; cold-start drained via `getPendingCompose`).
+23. Messages Inbox/Spam filter: user "Move to Spam" → local scoped label + (spamShield
+    on) community report; label survives an account switch WITHOUT leaking cross-account.
+24. Outgoing PSTN: dialpad non-AvaTOK number (default dialer) → `placeCall` → outgoing
+    screen → transitions to in-call on connect; mute/speaker/DTMF/End map correctly.
+25. CALL_PHONE denied → first dial kicks off the runtime prompt (no crash, no call);
+    grant → next dial connects.
+26. Emergency number via dialpad still routes through the SYSTEM flow with both roles
+    held (do NOT dial a real emergency line — emulator allowlist / carrier test number).
+27. Not default SMS app → provider writes denied gracefully (no crash); the Messages tab
+    shows the "Make AvaTOK your messages app" banner.
+28. Play Console pre-launch: default-SMS + default-Phone Permissions Declaration
+    accepted for the restricted SMS/Call-Log permissions.

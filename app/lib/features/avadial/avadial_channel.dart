@@ -40,6 +40,16 @@ class AvaIncomingLaunch {
   const AvaIncomingLaunch(this.callId, this.number);
 }
 
+/// Live audio-route + mute state for the in-call UI, mirrored from
+/// [AvaInCallService.onCallAudioStateChanged]. [route] is
+/// `speaker|earpiece|bluetooth|headset`.
+class AvaAudioRoute {
+  final String route;
+  final bool muted;
+  const AvaAudioRoute(this.route, this.muted);
+  bool get isSpeaker => route == 'speaker';
+}
+
 /// An inbound SMS mirrored from the native [AvaSmsReceiver] (AVA-SMS). Bodies are
 /// live OS-owned data — never persisted by AvaTOK outside the SMS provider (plan
 /// device-data boundary). [spam] is the LOCAL snapshot verdict (label only).
@@ -89,6 +99,7 @@ class AvaDialChannel {
   final _roles = StreamController<AvaRoleResult>.broadcast();
   final _verdicts = StreamController<String>.broadcast();
   final _incoming = StreamController<AvaIncomingLaunch>.broadcast();
+  final _audio = StreamController<AvaAudioRoute>.broadcast();
   final _smsIn = StreamController<AvaSmsMessage>.broadcast();
   final _smsStatus = StreamController<AvaSmsSendStatus>.broadcast();
   final _compose = StreamController<AvaComposeLaunch>.broadcast();
@@ -113,6 +124,9 @@ class AvaDialChannel {
   /// Incoming-call launches from a cold start / background relaunch (the app was
   /// already running when the notification fired).
   Stream<AvaIncomingLaunch> get incomingLaunch => _incoming.stream;
+
+  /// Live audio-route + mute changes during a call (drives the in-call UI chips).
+  Stream<AvaAudioRoute> get audioRoute => _audio.stream;
 
   /// Inbound SMS mirrored from the native default-SMS receiver (AVA-SMS).
   Stream<AvaSmsMessage> get smsIncoming => _smsIn.stream;
@@ -170,6 +184,9 @@ class AvaDialChannel {
           if (id.isNotEmpty && id != 'null') {
             _incoming.add(AvaIncomingLaunch(id, a['number'] as String?));
           }
+          break;
+        case 'onAudioRoute':
+          _audio.add(AvaAudioRoute('${a['route']}', a['muted'] == true));
           break;
         case 'onSmsReceived':
           _smsIn.add(AvaSmsMessage(
@@ -278,6 +295,15 @@ class AvaDialChannel {
   Future<void> disconnect(String id) => _invokeVoid('disconnect', {'id': id});
   Future<void> setMuted(bool on) => _invokeVoid('setMuted', {'on': on});
   Future<void> setSpeaker(bool on) => _invokeVoid('setSpeaker', {'on': on});
+
+  /// Play a DTMF tone for [digit] ("0".."9","*","#") on the call [id] (keypad overlay).
+  Future<void> sendDtmf(String id, String digit) => _invokeVoid('dtmf', {'id': id, 'digit': digit});
+
+  /// Place an outgoing PSTN call via TelecomManager (default dialer). Returns true when
+  /// dispatched; false means the platform side is absent OR CALL_PHONE is not yet
+  /// granted (a runtime prompt was kicked off) — the caller then falls back to an
+  /// ACTION_DIAL intent for this attempt.
+  Future<bool> placeCall(String number) => _invokeBool('placeCall', {'number': number});
 
   // ── Screening snapshot handshake (spike §5) ──────────────────────────────
   /// SHA-256 of an E.164 number, lowercase hex — MUST match the Kotlin hashing in

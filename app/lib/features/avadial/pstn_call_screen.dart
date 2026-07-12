@@ -7,6 +7,7 @@ import '../../core/ui/zine_widgets.dart';
 import 'avadial_channel.dart';
 import 'block_list.dart';
 import 'device_contacts.dart';
+import 'in_call_screen.dart';
 
 /// The spam-shield paint bucket for an incoming PSTN call (plan §4.3).
 enum PstnColor { red, green, blue }
@@ -71,7 +72,17 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
 
   Future<void> _answer() async {
     final id = widget.callId;
-    if (id != null) await AvaDialChannel.I.answer(id);
+    if (id != null) {
+      await AvaDialChannel.I.answer(id);
+      // Hand off to the shared active-call UI (timer, mute, speaker, keypad).
+      if (mounted) {
+        Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
+          fullscreenDialog: true,
+          builder: (_) => InCallScreen(callId: id, number: widget.number, initialState: 'active'),
+        ));
+        return;
+      }
+    }
     _close();
   }
 

@@ -56,6 +56,16 @@ class AvaInCallService : InCallService() {
                     )
                     true
                 }
+                // DTMF keypad: play the tone for the digit then stop it. [arg] is the
+                // single-char digit ("0".."9","*","#") as a String from Dart.
+                "dtmf" -> {
+                    val digit = (arg as? String)?.firstOrNull() ?: return false
+                    id?.let {
+                        calls[it]?.playDtmfTone(digit)
+                        calls[it]?.stopDtmfTone()
+                        true
+                    } ?: false
+                }
                 else -> false
             }
         }
@@ -103,6 +113,23 @@ class AvaInCallService : InCallService() {
         override fun onStateChanged(call: Call, state: Int) {
             AvaDialPlugin.emit("onCallState", mapOf("id" to id, "state" to stateName(state)))
         }
+    }
+
+    /**
+     * Audio-route + mute report (drives the in-call UI's speaker/mute chips). Fired by
+     * the OS whenever the route or mute state changes. `route` is "speaker" | "earpiece"
+     * | "bluetooth" | "headset". Best-effort — a dead engine simply doesn't receive it.
+     */
+    override fun onCallAudioStateChanged(audioState: CallAudioState?) {
+        super.onCallAudioStateChanged(audioState)
+        val state = audioState ?: return
+        val route = when (state.route) {
+            CallAudioState.ROUTE_SPEAKER -> "speaker"
+            CallAudioState.ROUTE_BLUETOOTH -> "bluetooth"
+            CallAudioState.ROUTE_WIRED_HEADSET -> "headset"
+            else -> "earpiece"
+        }
+        AvaDialPlugin.emit("onAudioRoute", mapOf("route" to route, "muted" to state.isMuted))
     }
 
     private fun stateName(state: Int): String = when (state) {

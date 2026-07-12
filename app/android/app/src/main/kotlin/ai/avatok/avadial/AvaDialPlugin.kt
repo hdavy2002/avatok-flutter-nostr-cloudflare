@@ -1,18 +1,23 @@
 package ai.avatok.avadial
 
+import android.Manifest
 import android.app.PendingIntent
 import android.app.role.RoleManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.BlockedNumberContract
 import android.provider.CallLog
 import android.provider.ContactsContract
 import android.provider.Telephony
+import android.telecom.TelecomManager
 import android.telephony.SmsManager
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
@@ -45,6 +50,8 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
         const val CHANNEL = "avatok/avadial"
         const val SNAPSHOT_DIR = "avadial"
         const val SNAPSHOT_FILE = "spam_snapshot.json"
+        // Runtime CALL_PHONE request code for TelecomManager.placeCall.
+        const val REQ_CALL_PHONE = 42120
 
         // Single live instance so the InCallService / CallScreeningService can push
         // events up to Flutter when the engine is attached (best-effort).
@@ -289,6 +296,11 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
                     result.success(AvaInCallService.action(null, "setMuted", call.argument<Boolean>("on")))
                 "setSpeaker" ->
                     result.success(AvaInCallService.action(null, "setSpeaker", call.argument<Boolean>("on")))
+                "dtmf" ->
+                    result.success(AvaInCallService.action(call.argument<String>("id"), "dtmf", call.argument<String>("digit")))
+
+                // ---- outgoing PSTN call (default dialer) ----
+                "placeCall" -> result.success(placeCall(ctx, call.argument<String>("number")))
 
                 else -> result.notImplemented()
             }
@@ -392,6 +404,34 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
         BlockedNumberContract.canCurrentUserBlockNumbers(ctx)
     } catch (_: Throwable) {
         false
+    }
+
+    /**
+     * Place an outgoing PSTN call via [TelecomManager.placeCall] (never a fabricated
+     * connection — the platform's emergency routing stays in force, spike §1). Returns
+     * true when the call was dispatched. When CALL_PHONE is not yet granted we kick off
+     * the runtime request (needs the Activity) and return false so the Dart side can
+     * fall back to an ACTION_DIAL intent for this attempt; the next tap (post-grant)
+     * places the call directly.
+     */
+    private fun placeCall(ctx: Context, number: String?): Boolean {
+        if (number.isNullOrEmpty()) return false
+        val granted = ctx.checkSelfPermission(Manifest.permission.CALL_PHONE) ==
+            PackageManager.PERMISSION_GRANTED
+        if (!granted) {
+            activityBinding?.activity?.requestPermissions(arrayOf(Manifest.permission.CALL_PHONE), REQ_CALL_PHONE)
+            return false
+        }
+        return try {
+            val tm = ctx.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager ?: return false
+            val uri = Uri.fromParts("tel", number, null)
+            tm.placeCall(uri, Bundle())
+            true
+        } catch (_: SecurityException) {
+            false
+        } catch (_: Throwable) {
+            false
+        }
     }
 
     private fun systemBlock(ctx: Context, number: String?): Boolean {
