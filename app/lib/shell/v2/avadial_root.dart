@@ -183,7 +183,7 @@ class _AvaDialRootState extends State<AvaDialRoot> {
             onPressed: () => Scaffold.of(ctx).openDrawer(),
           ),
         ),
-        title: Text('Calls', style: ZineText.appbar(color: AvaDialTheme.text)),
+        title: Text('AvaDialer', style: ZineText.appbar(color: AvaDialTheme.text)),
       );
 }
 

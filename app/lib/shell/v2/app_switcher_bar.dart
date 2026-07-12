@@ -49,7 +49,7 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
   // icon · selectedIcon · label per root (2026-07-12 rebrand: AvaDial → "Calls",
   // AvaTalk → "AvaTOK", Services → "Marketplace"; Home root retired).
   static const Map<RootId, (IconData, IconData, String)> _meta = {
-    RootId.avaDial: (Icons.phone_outlined, Icons.phone, 'Calls'),
+    RootId.avaDial: (Icons.phone_outlined, Icons.phone, 'AvaDialer'),
     RootId.avaTalk: (Icons.chat_bubble_outline, Icons.chat_bubble, 'AvaTOK'),
     RootId.services: (Icons.storefront_outlined, Icons.storefront, 'Marketplace'),
   };

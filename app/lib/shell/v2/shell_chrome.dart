@@ -153,7 +153,7 @@ class ShellSidebar extends StatelessWidget {
                   child: Text('APPS', style: ZineText.kicker())),
               appRow(RootId.avaTalk, 'AvaTOK', 'Messages & in-network calls',
                   PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), Zine.mint),
-              appRow(RootId.avaDial, 'Calls', 'Phone & spam shield',
+              appRow(RootId.avaDial, 'AvaDialer', 'Phone, spam shield & device contacts',
                   PhosphorIcons.phone(PhosphorIconsStyle.bold), Zine.blue),
               appRow(RootId.services, 'Marketplace', 'Browse & wallet',
                   PhosphorIcons.storefront(PhosphorIconsStyle.bold), Zine.coral),

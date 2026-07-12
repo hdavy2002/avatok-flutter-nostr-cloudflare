@@ -18,7 +18,7 @@ class AppOrderScreen extends StatelessWidget {
   const AppOrderScreen({super.key});
 
   static const Map<RootId, (IconData, String, String, Color)> _meta = {
-    RootId.avaDial: (Icons.phone, 'Calls', 'Phone & spam shield', Zine.blue),
+    RootId.avaDial: (Icons.phone, 'AvaDialer', 'Phone, spam shield & device contacts', Zine.blue),
     RootId.avaTalk: (Icons.chat_bubble, 'AvaTOK', 'Messages & in-network calls', Zine.mint),
     RootId.services: (Icons.storefront, 'Marketplace', 'Browse & wallet', Zine.coral),
   };

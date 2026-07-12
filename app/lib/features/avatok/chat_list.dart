@@ -50,7 +50,6 @@ import 'new_group_screen.dart';
 import 'search_screen.dart';
 import 'stranger_gate_api.dart';
 import 'unknown_caller.dart';
-import '../avaphone/ava_phone_screen.dart';
 
 /// AvaTok home — chat + calls list (the AvaChat "ChatList" design).
 class ChatListScreen extends StatefulWidget {
@@ -72,7 +71,11 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   NostrClient? _inbox;
   StreamSubscription? _inboxSub; // our listener on the shared client (cancel on dispose, don't kill the socket)
   StreamSubscription? _contactsSub; // live refresh when a contact is added/removed anywhere
-  int _tab = 0; // 0 = Chats, 1 = Updates, 2 = Groups, 3 = Calls
+  // 2026-07-12 redesign: AvaTOK is a pure messenger (WhatsApp-like) — the old
+  // Dialpad shortcut and the "Ava PRIVATE" promo banner are gone; Ask Ava is
+  // reachable via the global shell-wide app-switcher's "Ava" action instead.
+  // 0 = Chat, 1 = Community (group chats), 2 = Call log (in-network AvaTOK calls).
+  int _tab = 0;
   int _notifUnread = 0;  // header bell badge (system + group-invite notifications)
   int _groupInvites = 0; // pending group invites → red count on the Groups footer icon
 
@@ -1245,49 +1248,6 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     Navigator.push(context, MaterialPageRoute(builder: (_) => const CompanionHome()));
   }
 
-  /// The pinned, clearly-marked PRIVATE Ava session at the top of the chat list —
-  /// green so it's never confused with a real person. Tapping opens the Ava chat.
-  Widget _avaSessionRow() => InkWell(
-        onTap: _openAvaChat,
-        child: Container(
-          margin: const EdgeInsets.fromLTRB(10, 8, 10, 4),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: Zine.lime.withValues(alpha: 0.20),
-            borderRadius: BorderRadius.circular(Zine.rSm),
-            border: Border.all(color: Zine.mintInk.withValues(alpha: 0.55), width: 1.5),
-          ),
-          child: Row(children: [
-            Container(
-              width: 50, height: 50,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle, color: Zine.lilac,
-                border: Border.all(color: Zine.ink, width: 2)),
-              child: Center(child: PhosphorIcon(
-                  PhosphorIcons.sparkle(PhosphorIconsStyle.fill), color: Zine.ink, size: 24)),
-            ),
-            const SizedBox(width: 12),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Text('Ava', style: ZineText.value(size: 15.5)),
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: Zine.mint, borderRadius: BorderRadius.circular(100),
-                    border: Border.all(color: Zine.ink, width: 1.5)),
-                  child: Text('PRIVATE', style: ZineText.tag(size: 9, color: Zine.mintInk)),
-                ),
-              ]),
-              const SizedBox(height: 3),
-              Text('Your private AI — brainstorm, practise a language, or just talk',
-                  maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.sub(size: 13)),
-            ])),
-            PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: Zine.inkMute),
-          ]),
-        ),
-      );
-
   /// New-chat menu (the green FAB): chat with Ava, message, group, or invite.
   void _openNewChatMenu() {
     _showActionSheet(
@@ -1322,11 +1282,6 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   }
 
   /// Open the AvaPhone dialer (PSTN-style calling/SMS over AvaTOK numbers).
-  void _openAvaPhone() {
-    Analytics.capture('avaphone_opened', const {'source': 'chat_list_header'});
-    Navigator.push(context, MaterialPageRoute(builder: (_) => const AvaPhoneScreen()));
-  }
-
   /// Create a custom filter chip (the "+" chip).
   Future<void> _addCustomFilter() async {
     final nameCtrl = TextEditingController();
@@ -1453,43 +1408,21 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
               ),
             )
           : null,
-      bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
-        ),
-        child: NavigationBar(
+      // No bottom nav bar anymore (2026-07-12 redesign): the persistent shell-wide
+      // AppSwitcherBar (AvaTOK · AvaDialer · Marketplace · Ava) owns the bottom of
+      // the screen. AvaTOK's own Chat/Community/Call-log sections are a colored
+      // top tab strip instead — same pattern as AvaDialer's tab strip. The old
+      // "Dialpad" shortcut is gone entirely: AvaTOK is a pure messenger now
+      // (WhatsApp-like); dialing PSTN numbers is AvaDialer's job.
+      body: Column(children: [
+        _AvaTokTabStrip(
           selectedIndex: _tab,
-          // The Dialpad slot (index 1) opens the AvaPhone dialer on top instead of
-          // being a tab body — so selection stays on the current tab.
-          onDestinationSelected: (i) { if (i == 1) { _openAvaPhone(); return; } setState(() => _tab = i); },
-          backgroundColor: Zine.paper2,
-          surfaceTintColor: Colors.transparent,
-          indicatorColor: Zine.lime,
-          destinations: [
-            NavigationDestination(
-                // Red dot on Chats when there are unread messages.
-                icon: _badged(PhosphorIcon(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold)),
-                    dot: _unread.values.fold<int>(0, (a, b) => a + b) > 0),
-                selectedIcon: PhosphorIcon(PhosphorIcons.chatCircle(PhosphorIconsStyle.fill)),
-                label: 'Chats'),
-            NavigationDestination(
-                icon: PhosphorIcon(PhosphorIcons.gridFour(PhosphorIconsStyle.bold)),
-                selectedIcon: PhosphorIcon(PhosphorIcons.gridFour(PhosphorIconsStyle.fill)),
-                label: 'Dialpad'),
-            NavigationDestination(
-                // Red count on Groups = pending group invites waiting.
-                icon: _badged(PhosphorIcon(PhosphorIcons.usersThree(PhosphorIconsStyle.bold)),
-                    count: _groupInvites),
-                selectedIcon: PhosphorIcon(PhosphorIcons.usersThree(PhosphorIconsStyle.fill)),
-                label: 'Groups'),
-            NavigationDestination(
-                icon: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold)),
-                selectedIcon: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.fill)),
-                label: 'Calls'),
-          ],
+          onSelected: (i) => setState(() => _tab = i),
+          chatUnread: _unread.values.fold<int>(0, (a, b) => a + b) > 0,
+          communityInvites: _groupInvites,
         ),
-      ),
-      body: IndexedStack(index: _tab, children: [
+        Expanded(
+          child: IndexedStack(index: _tab, children: [
         SafeArea(
         bottom: false,
         child: Column(
@@ -1538,10 +1471,6 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
             Expanded(
               child: ListView(
                 children: [
-                  // Ava lives INSIDE Messenger as a pinned, clearly-marked PRIVATE
-                  // session (green) so it's never confused with a real contact
-                  // (owner decision 2026-06-27). Tapping opens the Ava chat.
-                  if (_filter == 'all' || _filter == 'fav') _avaSessionRow(),
                   // [SAFE-GATE-2] "Message requests (N)" — pending stranger-gate
                   // threads, collapsed at the very top (only on the All filter).
                   if (_filter == 'all') ..._messageRequestsSection(),
@@ -1595,12 +1524,13 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
           ],
         ),
       ),
-        StatusScreen(identity: _id, contacts: _contacts),
         GroupsTab(
             identity: _id,
             contacts: _contacts,
             onMenu: () => _scaffoldKey.currentState?.openDrawer()),
         const CallsScreen(),
+          ]),
+        ),
       ]),
     );
   }
@@ -1773,6 +1703,96 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         .then((_) => _statusStore.load().then((l) { if (mounted) setState(() => _setStatuses(l)); }));
   }
 
+}
+
+/// AvaTOK's own colored tab strip (2026-07-12 redesign) — Chat · Community ·
+/// Call log — rendered below the app bar, same pattern as AvaDialer's tab strip.
+/// Replaces the old bottom NavigationBar (Chats/Dialpad/Groups/Calls): the
+/// bottom of the screen now belongs to the shell-wide [AppSwitcherBar].
+class _AvaTokTabStrip extends StatelessWidget {
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+  final bool chatUnread;
+  final int communityInvites;
+  const _AvaTokTabStrip({
+    required this.selectedIndex,
+    required this.onSelected,
+    required this.chatUnread,
+    required this.communityInvites,
+  });
+
+  static const _items = [
+    (Icons.chat_bubble_outline, Icons.chat_bubble, 'Chat', Zine.mint),
+    (Icons.groups_outlined, Icons.groups, 'Community', Zine.lilac),
+    (Icons.history_outlined, Icons.history, 'Call log', Zine.blue),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Zine.paper2,
+        border: Border(bottom: BorderSide(color: Zine.ink, width: Zine.bw)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            for (var i = 0; i < _items.length; i++) ...[
+              if (i > 0) const SizedBox(width: 8),
+              _tab(i),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _tab(int i) {
+    final (icon, selectedIcon, label, color) = _items[i];
+    final selected = i == selectedIndex;
+    final fg = Zine.ink;
+    final showDot = i == 0 && chatUnread;
+    final showCount = i == 1 && communityInvites > 0;
+    return GestureDetector(
+      onTap: () => onSelected(i),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        decoration: BoxDecoration(
+          color: selected ? color : Zine.card,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: Zine.ink, width: Zine.bw),
+          boxShadow: selected ? Zine.shadowXs : const [],
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Stack(clipBehavior: Clip.none, children: [
+            Icon(selected ? selectedIcon : icon, size: 17, color: fg),
+            if (showDot)
+              Positioned(
+                right: -2, top: -2,
+                child: Container(
+                  width: 8, height: 8,
+                  decoration: const BoxDecoration(color: Zine.coral, shape: BoxShape.circle),
+                ),
+              ),
+          ]),
+          const SizedBox(width: 6),
+          Text(label, style: ZineText.tag(size: 12.5, color: fg)),
+          if (showCount) ...[
+            const SizedBox(width: 5),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+              decoration: BoxDecoration(color: Zine.coral, borderRadius: BorderRadius.circular(100)),
+              child: Text('$communityInvites',
+                  style: ZineText.tag(size: 10, color: Colors.white)),
+            ),
+          ],
+        ]),
+      ),
+    );
+  }
 }
 
 class _ChatRow extends StatelessWidget {
