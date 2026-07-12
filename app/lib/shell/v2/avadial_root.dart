@@ -64,17 +64,21 @@ class _AvaDialRootState extends State<AvaDialRoot> {
   }
 
   void _onCall(AvaCallEvent e) {
-    if (!mounted || _screenOpen) return;
+    if (!mounted || _screenOpen || AvaDialChannel.I.incomingScreenOpen) return;
     if (e.state != 'ringing' || e.direction != 'incoming') return;
     final number = e.number;
     if (number == null || number.isEmpty) return;
     _screenOpen = true;
+    AvaDialChannel.I.incomingScreenOpen = true; // shared guard vs. the shell path
     Navigator.of(context)
         .push(MaterialPageRoute<void>(
           fullscreenDialog: true,
           builder: (_) => PstnCallScreen(callId: e.id, number: number),
         ))
-        .whenComplete(() => _screenOpen = false);
+        .whenComplete(() {
+      _screenOpen = false;
+      AvaDialChannel.I.incomingScreenOpen = false;
+    });
   }
 
   @override

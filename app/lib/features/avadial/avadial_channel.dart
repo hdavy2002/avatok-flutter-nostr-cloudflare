@@ -32,6 +32,14 @@ class AvaRoleResult {
   const AvaRoleResult(this.role, this.granted);
 }
 
+/// A cold-start / background incoming-call launch (MainActivity route extra
+/// `avadial/incoming`). The shell opens [PstnCallScreen] for it on app entry.
+class AvaIncomingLaunch {
+  final String callId;
+  final String? number;
+  const AvaIncomingLaunch(this.callId, this.number);
+}
+
 /// Dart bridge to the AvaDial native telecom layer
 /// (Specs/SPIKE-2026-07-12-avadial-telecom.md). Thin + best-effort: every method
 /// tolerates the platform side being absent (e.g. iOS, or the plugin not attached)
@@ -47,6 +55,12 @@ class AvaDialChannel {
   final _removed = StreamController<String>.broadcast();
   final _roles = StreamController<AvaRoleResult>.broadcast();
   final _verdicts = StreamController<String>.broadcast();
+  final _incoming = StreamController<AvaIncomingLaunch>.broadcast();
+
+  /// Shared guard so the incoming-call screen never double-opens: the shell
+  /// (cold-start/relaunch path) and [AvaDialRoot] (foreground ringing path) both
+  /// check + set this before pushing [PstnCallScreen].
+  bool incomingScreenOpen = false;
 
   /// Live PSTN call add/state events.
   Stream<AvaCallEvent> get calls => _calls.stream;
@@ -59,6 +73,10 @@ class AvaDialChannel {
 
   /// Best-effort screening verdicts ({red|reported|unknown}) — analytics only.
   Stream<String> get screeningVerdicts => _verdicts.stream;
+
+  /// Incoming-call launches from a cold start / background relaunch (the app was
+  /// already running when the notification fired).
+  Stream<AvaIncomingLaunch> get incomingLaunch => _incoming.stream;
 
   bool _wired = false;
 
@@ -102,6 +120,12 @@ class AvaDialChannel {
           // No raw phone number crosses this boundary — only the verdict bucket.
           Analytics.capture('screening_verdict', {'bucket': bucket});
           break;
+        case 'onLaunchIncoming':
+          final id = '${a['call_id']}';
+          if (id.isNotEmpty && id != 'null') {
+            _incoming.add(AvaIncomingLaunch(id, a['number'] as String?));
+          }
+          break;
       }
     } catch (e) {
       AvaLog.I.log('avadial', 'native event error: $e');
@@ -122,6 +146,22 @@ class AvaDialChannel {
 
   /// Whether this app may write [BlockedNumberContract] (default dialer / SMS app).
   Future<bool> canBlockNumbers() => _invokeBool('canBlockNumbers');
+
+  // ── Cold-start incoming-call drain ──────────────────────────────────────
+  /// Pull any pending incoming-call launch the native side stored before Dart was
+  /// ready (route extra `avadial/incoming`). Returns null when there is none.
+  Future<AvaIncomingLaunch?> consumePendingIncoming() async {
+    try {
+      final raw = await _ch.invokeMethod<Map<dynamic, dynamic>>('getPendingIncoming');
+      if (raw == null) return null;
+      final id = raw['call_id']?.toString();
+      if (id == null || id.isEmpty) return null;
+      return AvaIncomingLaunch(id, raw['number']?.toString());
+    } catch (e) {
+      AvaLog.I.log('avadial', 'getPendingIncoming failed: $e');
+      return null;
+    }
+  }
 
   // ── Device reads (LIVE — never persisted here; caller owns the boundary) ──
   Future<List<Map<String, dynamic>>> readContacts() => _invokeList('readContacts', null);

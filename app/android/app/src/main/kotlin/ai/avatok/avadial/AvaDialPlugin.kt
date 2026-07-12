@@ -46,10 +46,31 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
 
         private val main = Handler(Looper.getMainLooper())
 
+        // Cold-start / background incoming-call launch (route extra
+        // "avadial/incoming"). Stored so Dart can DRAIN it on startup via
+        // getPendingIncoming even when the launch beat the channel handler being
+        // installed; also emitted for the warm/relaunch case.
+        @Volatile
+        private var pendingCallId: String? = null
+        @Volatile
+        private var pendingNumber: String? = null
+
         /** Post an event to Dart on the main thread. No-op if the engine is gone. */
         fun emit(method: String, args: Map<String, Any?>) {
             val plugin = instance ?: return
             main.post { plugin.channel?.invokeMethod(method, args) }
+        }
+
+        /**
+         * Called by MainActivity when it is (re)launched with the AvaDial incoming
+         * route extra. Records the pending call for a cold-start drain AND emits
+         * `onLaunchIncoming` for the already-running case.
+         */
+        fun notifyIncomingLaunch(callId: String?, number: String?) {
+            if (callId.isNullOrEmpty()) return
+            pendingCallId = callId
+            pendingNumber = number
+            emit("onLaunchIncoming", mapOf("call_id" to callId, "number" to number))
         }
 
         /** Absolute path of the screening snapshot file (spike §5). */
@@ -118,6 +139,16 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
 
                 // ---- screening snapshot handshake ----
                 "snapshotPath" -> result.success(snapshotFile(ctx).absolutePath)
+
+                // ---- cold-start incoming-call drain (route extra "avadial/incoming") ----
+                "getPendingIncoming" -> {
+                    val out: Map<String, Any?>? = pendingCallId?.let {
+                        mapOf("call_id" to it, "number" to pendingNumber)
+                    }
+                    pendingCallId = null
+                    pendingNumber = null
+                    result.success(out)
+                }
 
                 // ---- system block-list write-through (default dialer only) ----
                 "systemBlock" -> result.success(systemBlock(ctx, call.argument<String>("number")))

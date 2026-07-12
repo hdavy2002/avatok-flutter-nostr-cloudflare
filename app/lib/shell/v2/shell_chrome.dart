@@ -21,6 +21,7 @@ Widget shellNavBar({
   required int selectedIndex,
   required List<ShellNavItem> items,
   required ValueChanged<int> onSelected,
+  Color? indicatorColor, // Home passes the user's accent (personalisation §D)
 }) {
   return Container(
     decoration: const BoxDecoration(
@@ -31,7 +32,7 @@ Widget shellNavBar({
       onDestinationSelected: onSelected,
       backgroundColor: Zine.paper2,
       surfaceTintColor: Colors.transparent,
-      indicatorColor: Zine.lime,
+      indicatorColor: indicatorColor ?? Zine.lime,
       destinations: [
         for (final it in items)
           NavigationDestination(

@@ -333,6 +333,44 @@ These two are live irritations and don't need to wait for the shell work:
 
 ## 8. Build phases
 
+> **STATUS (2026-07-12) — Phases 0–3 BUILT, DARK, pending device verification.**
+> Everything below is implemented behind the existing flags (`shellV2`,
+> `avaDialer`, `spamShield`), all default `false` in `config.ts` DEFAULTS, so
+> production is unaffected until each flag is flipped (staging first). No local
+> build/verify was run (Actions-only); the code mirrors neighbouring patterns but
+> has **not been compiled or run on a device** — treat first-device bring-up as
+> the verification gate. Per-phase status:
+>
+> - **Phase 0 — DONE** (dialpad paste + no-messenger-popup fixes).
+> - **Phase 1 — DONE** (4-root shell, footer/sidebar model, Home v1 cards, nav
+>   contract). Dark behind `shellV2`.
+> - **Phase 2a — DONE** (spam reputation worker: D1 + Cache API + R2 bloom,
+>   deterministic scorer). Dark behind `spamShield`.
+> - **Phase 2b — DONE** (native Android telecom: ROLE_DIALER/InCallService/
+>   CallScreeningService, device contacts/call-log/block-list, red/green/blue
+>   screens). Dark behind `avaDialer`. Cold-start/background incoming-call route
+>   (`avadial/incoming`) now wired end-to-end (native → plugin → shell opens
+>   PstnCallScreen).
+> - **Phase 3 — DONE (this pass):** worker `/api/home/cards` aggregate (cached,
+>   dark behind `shellV2`); Home cards complete (Earnings with a CustomPaint 7-day
+>   bar chart, Visitors, Listings, Analytics) + card manager drag-reorder;
+>   **Ask Ava** universal assistant with local tools (dark, gated by the new
+>   `askava` AvaBrain guardrail); Home personalisation (font size / accent /
+>   wallpaper, per-account). Ask Ava tool-calling uses the DOCUMENTED FALLBACK
+>   (single-line JSON tool calls parsed client-side, ≤3 hops) because the shared
+>   `AvaAiClient` proxy exposes no native function-calling surface.
+>
+> **DEFERRED (not built — tracked here explicitly):**
+> - **iOS Live Caller ID Lookup** (needs Apple's PIR server stack — §4.5).
+> - **SMS role + real carrier-SMS Messages tab** (AvaDial Messages tab stays an
+>   explicit unavailable state; Home Messages card is Talk-only — §3, §4.1).
+> - **PSTN forwarding receptionist / voicemail** (geo-dependent, separate
+>   initiative — §4.5).
+> - **Visitors card data source:** relies on the existing D1 `listing_views`
+>   table; if a deployment routes listing views only to PostHog/Q_ANALYTICS the
+>   aggregate returns `{available:false}` and the card hides (never queries
+>   PostHog from the Home hot path).
+
 - **Phase 0 — quick wins:** §7 bug fixes on the existing dialpad. Small, ships now.
 - **Phase 1 — shell restructure:** 4-root shell + footer/sidebar model; move
   messenger → AvaTalk, marketplace/wallet/payout → Services; Home v1 with

@@ -7,8 +7,11 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../auth/clerk_client.dart';
 import '../core/account_storage.dart';
 import '../core/analytics.dart';
+import '../core/remote_config.dart';
 import '../core/ui/zine.dart';
 import '../features/askava/askava_screen.dart';
+import '../features/avadial/avadial_channel.dart';
+import '../features/avadial/pstn_call_screen.dart';
 import '../identity/identity.dart';
 import 'v2/avadial_root.dart';
 import 'v2/home_root.dart';
@@ -153,10 +156,51 @@ class _ShellV2State extends State<ShellV2> {
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
 
+  StreamSubscription<AvaIncomingLaunch>? _incomingSub;
+
   @override
   void initState() {
     super.initState();
     _restoreLastRoot();
+    _wireIncomingCalls();
+  }
+
+  @override
+  void dispose() {
+    _incomingSub?.cancel();
+    super.dispose();
+  }
+
+  /// Cold-start / background incoming-call route (plan Phase 2b leftover). The
+  /// native AvaInCallService launches MainActivity with the `avadial/incoming`
+  /// route extra; MainActivity forwards it to the AvaDial plugin. Here we open
+  /// [PstnCallScreen] on the AvaDial navigator — both for a launch that beat us
+  /// (drained via consumePendingIncoming) and one that arrives while running
+  /// (the onLaunchIncoming stream). All DARK behind `avaDialer`.
+  void _wireIncomingCalls() {
+    if (!RemoteConfig.avaDialer) return;
+    AvaDialChannel.I.ensureWired();
+    _incomingSub = AvaDialChannel.I.incomingLaunch.listen((l) => _openIncoming(l.callId, l.number));
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final l = await AvaDialChannel.I.consumePendingIncoming();
+      if (l != null) _openIncoming(l.callId, l.number);
+    });
+  }
+
+  void _openIncoming(String callId, String? number) {
+    if (!mounted) return;
+    final n = number ?? '';
+    if (n.isEmpty) return;
+    if (AvaDialChannel.I.incomingScreenOpen) return; // AvaDialRoot may already have it
+    AvaDialChannel.I.incomingScreenOpen = true;
+    setState(() => _root = RootId.avaDial);
+    final nav = _navKeys[RootId.avaDial]?.currentState ?? Navigator.of(context);
+    nav
+        .push(MaterialPageRoute<void>(
+          fullscreenDialog: true,
+          builder: (_) => PstnCallScreen(callId: callId, number: n),
+        ))
+        .whenComplete(() => AvaDialChannel.I.incomingScreenOpen = false);
   }
 
   Future<void> _restoreLastRoot() async {

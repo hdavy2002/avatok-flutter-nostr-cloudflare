@@ -72,5 +72,17 @@ class MainActivity : FlutterFragmentActivity() {
         if (from == "call_notification" && !callId.isNullOrEmpty()) {
             ai.avatok.avavoiceaudio.AvaVoiceAudioPlugin.notifyNotificationTap(callId)
         }
+
+        // AvaDial full-screen incoming-call launch (AvaInCallService sets
+        // route="avadial/incoming" + call_id/number on the PendingIntent). Forward
+        // to the AvaDial plugin so the Flutter shell opens PstnCallScreen — handles
+        // both cold start (drained via getPendingIncoming) and the app-already-running
+        // case (onLaunchIncoming event). DARK unless the dialer role fired this.
+        if (intent?.getStringExtra("route") == "avadial/incoming") {
+            ai.avatok.avadial.AvaDialPlugin.notifyIncomingLaunch(
+                intent.getStringExtra("call_id"),
+                intent.getStringExtra("number"),
+            )
+        }
     }
 }
