@@ -149,6 +149,7 @@ import { avaDocSummarize, avaDocTranslate, avaDocTranslateFile, avaChatToggle } 
 import { avaTriggersGet, avaLedgerGet, avaMomentOutcome } from "./routes/ava_odl_routes"; // Copilot C+D (ODL trigger sync D31 + cost ledger D25 + learning loop)
 import { backupGet, backupPut, backupStatus } from "./routes/backup"; // P10
 import { ringtone } from "./routes/ringtone"; // AI ringback tones + busy tone
+import { spamReport, spamLookup, spamBloom, spamRescore } from "./routes/spam"; // AvaDial spam shield (Phase 2a, dark behind spamShield)
 import { delegateHandler } from "./routes/ava_delegate"; // P7 (Phase 11 route wiring)
 // --- AI Messenger Batch 2026-07-03 (Streams A/B/C/E/F/G/I) ---
 import { marketplaceAgentSettingsGet, marketplaceAgentSettingsPut } from "./routes/agent_settings"; // STREAM A
@@ -491,6 +492,12 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // AI Ringback Tones + Busy Tone — generation + 5-item library.
       // /api/ringtone/{generate|list|user/<uid>/default|<id>/default|<id>}
       if (p.startsWith("/api/ringtone/")) return await ringtone(req, env, p.slice("/api/ringtone/".length));
+
+      // --- AvaDial community spam shield (Phase 2a; DARK behind spamShield) ---
+      if (p === "/api/spam/report" && req.method === "POST") return await spamReport(req, env);
+      if (p.startsWith("/api/spam/lookup/") && req.method === "GET") return await spamLookup(req, env, ctx, p.slice("/api/spam/lookup/".length));
+      if (p === "/api/spam/bloom" && req.method === "GET") return await spamBloom(req, env);
+      if (p === "/api/spam/rescore" && req.method === "POST") return await spamRescore(req, env);
 
       // --- directory ---
       if (p === "/api/profile" && req.method === "POST") return await api.profileUpsert(req, env);
