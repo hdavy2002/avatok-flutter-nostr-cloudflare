@@ -4,6 +4,8 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/ui/zine.dart';
 import '../../core/update_service.dart';
 import '../shell_v2.dart';
+import 'card_manager_screen.dart';
+import 'home_cards.dart';
 import 'shell_chrome.dart';
 import 'shell_destinations.dart';
 
@@ -53,9 +55,17 @@ class HomeRoot extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(6, 8, 6, 4),
             child: Text('THIS DEVICE', style: ZineText.kicker()),
           ),
-          // NOTE: the "Cards" manager entry + the Home cards themselves land in
-          // the next commit (Home v1 cards + card manager stub). This commit is
-          // the shell skeleton only.
+          ShellMenuRow(
+            icon: PhosphorIcons.squaresFour(PhosphorIconsStyle.bold),
+            color: Zine.lime,
+            title: 'Cards',
+            subtitle: 'Choose what shows on Home',
+            onTap: () {
+              Navigator.of(context).maybePop();
+              Navigator.of(context)
+                  .push(MaterialPageRoute(builder: (_) => const HomeCardsManagerScreen()));
+            },
+          ),
           ShellMenuRow(
             icon: PhosphorIcons.identificationCard(PhosphorIconsStyle.bold),
             color: Zine.blue,
@@ -112,15 +122,7 @@ class HomeRoot extends StatelessWidget {
         items: _items,
         onSelected: onFooter,
       ),
-      body: const SafeArea(
-        top: false,
-        child: ShellEmptyState(
-          icon: Icons.dashboard_customize_outlined,
-          title: 'Your Home dashboard',
-          subtitle: 'Wallet, recent calls and messages will show here.',
-          color: Zine.lime,
-        ),
-      ),
+      body: const SafeArea(top: false, child: HomeCards()),
     );
   }
 }
