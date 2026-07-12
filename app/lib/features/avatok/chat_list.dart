@@ -1414,62 +1414,65 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       // top tab strip instead — same pattern as AvaDialer's tab strip. The old
       // "Dialpad" shortcut is gone entirely: AvaTOK is a pure messenger now
       // (WhatsApp-like); dialing PSTN numbers is AvaDialer's job.
-      body: Column(children: [
-        _AvaTokTabStrip(
-          selectedIndex: _tab,
-          onSelected: (i) => setState(() => _tab = i),
-          chatUnread: _unread.values.fold<int>(0, (a, b) => a + b) > 0,
-          communityInvites: _groupInvites,
-        ),
-        Expanded(
-          child: IndexedStack(index: _tab, children: [
-        SafeArea(
+      // SAFE-AREA FIX: the header row + tab strip must sit BELOW the status bar,
+      // and the tab strip must render BELOW the hamburger/search header row (not
+      // above it) — both now live in ONE shared Column, wrapped in a single
+      // SafeArea, so they stay put and in order no matter which of the 3 tabs
+      // is active.
+      body: SafeArea(
         bottom: false,
-        child: Column(
-          children: [
-            // Appbar band (§8): paper-2 fill, ink bottom border. Everything the
-            // old body strip held (search, status, filters) now lives up here so
-            // the chat list itself is uncluttered: menu · Messenger · status
-            // avatar · filter dropdown · Chat-with-Ava · search.
-            Container(
-              padding: const EdgeInsets.fromLTRB(10, 10, 8, 12),
-              decoration: const BoxDecoration(
-                color: Zine.paper2,
-                border: Border(bottom: BorderSide(color: Zine.ink, width: Zine.bw)),
-              ),
-              child: Row(
-                children: [
-                  // Left control — opens the app sidebar (this Scaffold hosts the
-                  // main nav drawer). The oversized "Messenger" title was removed
-                  // to free space; the icons now sit evenly on the right.
-                  ZineBackButton(
-                      onTap: () => _scaffoldKey.currentState?.openDrawer(),
-                      icon: PhosphorIcons.list(PhosphorIconsStyle.bold)),
-                  const Spacer(),
-                  // Status avatar — opens the status viewer; shows my latest photo
-                  // status as a thumbnail (glows when I have a live status).
-                  _headerStatusButton(),
-                  const SizedBox(width: 10),
-                  // Filters collapsed into a single dropdown (active label shown).
-                  _filterMenuButton(),
-                  const SizedBox(width: 10),
-                  // (Header "Chat with Ava" sparkle icon removed — owner request
-                  // 2026-06-28. Ava is still reachable via the pinned PRIVATE Ava
-                  // session at the top of the chat list and the new-chat menu.)
-                  _hdrIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold), _openSearch,
-                      color: Zine.blueInk, bg: Zine.blue),
-                  const SizedBox(width: 10),
-                  // Notification bell + red unread count → the notification center.
-                  _badged(
-                    _hdrIcon(PhosphorIcons.bell(PhosphorIconsStyle.bold), _openNotifications,
-                        color: Zine.ink, bg: Zine.lime),
-                    count: _notifUnread),
-                ],
-              ),
+        child: Column(children: [
+          // Shared header band (§8): paper-2 fill, ink bottom border — menu ·
+          // status avatar · filter dropdown · search · notifications. Persistent
+          // across all 3 tabs (Chat/Community/Call log), unlike the tab bodies.
+          Container(
+            padding: const EdgeInsets.fromLTRB(10, 10, 8, 12),
+            decoration: const BoxDecoration(
+              color: Zine.paper2,
+              border: Border(bottom: BorderSide(color: Zine.ink, width: Zine.bw)),
             ),
-            // chats
-            Expanded(
-              child: ListView(
+            child: Row(
+              children: [
+                // Left control — opens the app sidebar (this Scaffold hosts the
+                // main nav drawer). The oversized "Messenger" title was removed
+                // to free space; the icons now sit evenly on the right.
+                ZineBackButton(
+                    onTap: () => _scaffoldKey.currentState?.openDrawer(),
+                    icon: PhosphorIcons.list(PhosphorIconsStyle.bold)),
+                const Spacer(),
+                // Status avatar — opens the status viewer; shows my latest photo
+                // status as a thumbnail (glows when I have a live status).
+                _headerStatusButton(),
+                const SizedBox(width: 10),
+                // Filters collapsed into a single dropdown (active label shown).
+                _filterMenuButton(),
+                const SizedBox(width: 10),
+                // (Header "Chat with Ava" sparkle icon removed — owner request
+                // 2026-06-28. Ava is reachable via the shell-wide "Ava" action.)
+                _hdrIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold), _openSearch,
+                    color: Zine.blueInk, bg: Zine.blue),
+                const SizedBox(width: 10),
+                // Notification bell + red unread count → the notification center.
+                _badged(
+                  _hdrIcon(PhosphorIcons.bell(PhosphorIconsStyle.bold), _openNotifications,
+                      color: Zine.ink, bg: Zine.lime),
+                  count: _notifUnread),
+              ],
+            ),
+          ),
+          // Tab strip — Chat · Community · Call log — directly below the header,
+          // above the tab content (owner spec 2026-07-12).
+          _AvaTokTabStrip(
+            selectedIndex: _tab,
+            onSelected: (i) => setState(() => _tab = i),
+            chatUnread: _unread.values.fold<int>(0, (a, b) => a + b) > 0,
+            communityInvites: _groupInvites,
+          ),
+          Expanded(
+            child: IndexedStack(index: _tab, children: [
+              // Chat tab body — just the list now; the header lives above,
+              // shared with Community/Call log.
+              ListView(
                 children: [
                   // [SAFE-GATE-2] "Message requests (N)" — pending stranger-gate
                   // threads, collapsed at the very top (only on the All filter).
@@ -1520,18 +1523,15 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                     ),
                 ],
               ),
-            ),
-          ],
-        ),
+              GroupsTab(
+                  identity: _id,
+                  contacts: _contacts,
+                  onMenu: () => _scaffoldKey.currentState?.openDrawer()),
+              const CallsScreen(),
+            ]),
+          ),
+        ]),
       ),
-        GroupsTab(
-            identity: _id,
-            contacts: _contacts,
-            onMenu: () => _scaffoldKey.currentState?.openDrawer()),
-        const CallsScreen(),
-          ]),
-        ),
-      ]),
     );
   }
 
