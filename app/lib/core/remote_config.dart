@@ -263,6 +263,12 @@ class RemoteConfig {
   /// Phase C — additional caller-pays AvaTOK service numbers (Mode B only).
   /// Mirrors config.ts `serviceNumbers`.
   static bool get serviceNumbers => _b('serviceNumbers', false);
+  /// Home · AvaDial · AvaTalk · Services 4-root shell (Specs/PLAN-2026-07-12-home-
+  /// ava-tok-services-shell.md, Phase 1). Ships DARK (default false): while off the
+  /// app renders today's messenger-first [AvaShell] byte-for-byte. Flip
+  /// `shellV2: true` in KV `platform_config` (staging first) to switch to
+  /// [ShellV2]. Mirrors config.ts `shellV2`.
+  static bool get shellV2 => _b('shellV2', false);
 
   static int get minAppBuild => (_asNum(_cfg['minAppBuild'])?.toInt()) ?? 0;
 

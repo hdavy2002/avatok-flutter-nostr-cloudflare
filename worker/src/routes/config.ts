@@ -284,6 +284,14 @@ export interface PlatformConfig {
   paidCalls: boolean;         // Phase B2: caller-pays escrowed calls (§3B)
   voiceAgent: boolean;        // Phase C: Ava AI Voice Agent (Grok realtime session)
   serviceNumbers: boolean;    // Phase C: Mode-B-only additional AvaTOK numbers
+  // Home · AvaDial · AvaTalk · Services 4-root shell (Specs/PLAN-2026-07-12-home-
+  // ava-tok-services-shell.md, Phase 1). Master kill switch for "shellV2". Default
+  // OFF — while false the client renders the CURRENT shell (messenger-first, apps
+  // pushed on top) byte-for-byte, and none of the new 4-root code runs. Flip
+  // `shellV2: true` in KV `platform_config` (staging first) to switch the app to
+  // the four-sibling shell (Home/AvaDial/AvaTalk/Services). Client mirror:
+  // RemoteConfig.shellV2.
+  shellV2: boolean;
   // §11/§15 money + timing constants — flag-overridable via KV so a value tweak
   // never needs a redeploy. These are VALUES, not design; see plan §11.
   minServiceRate: number;          // MIN_SERVICE_RATE — floor for a caller-paid rate/min (owner proposed 20)
@@ -446,6 +454,10 @@ const DEFAULTS: PlatformConfig = {
   paidCalls: false,
   voiceAgent: false,
   serviceNumbers: false,
+  // 4-root shell (Home/AvaDial/AvaTalk/Services) — DARK. While false the client
+  // renders today's messenger-first shell unchanged; flip ON in KV (staging first)
+  // to switch to ShellV2. Client mirror: RemoteConfig.shellV2.
+  shellV2: false,
   // §11/§15 constants — flag-overridable values, not design. Defaults per plan.
   minServiceRate: 20,
   agentRateAPerMin: 6,
