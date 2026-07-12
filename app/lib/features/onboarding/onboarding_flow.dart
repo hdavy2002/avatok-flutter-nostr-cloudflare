@@ -11,15 +11,19 @@ import '../../core/admin_tools.dart';
 import '../../core/analytics.dart';
 import '../../core/app_registry.dart';
 import '../../core/apps.dart';
+import '../../core/disk_cache.dart';
 import '../../core/feature_flags.dart';
 import '../../core/guest_session.dart';
 import '../../core/onboarding_store.dart';
 import '../../core/prefs_sync.dart';
 import '../../core/profile_store.dart';
+import '../../core/remote_config.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
 import '../ava_ai/ava_ai_setup.dart';
+import '../avadial/avadial_channel.dart';
+import '../avadial/device_contacts.dart';
 import '../avatok/contacts.dart';
 
 /// The sign-up flow shown after Clerk auth on a fresh account. Starts by asking
@@ -52,7 +56,19 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   // this file but are no longer routed; apps default to the standard set in
   // _finish(), and contacts permission is now requested on demand at "add
   // contact" (not as an onboarding wall).
-  static List<String> _composeSteps() => <String>['terms', 'notifications'];
+  // AVA-ONBOARD-2: an OPTIONAL "Make AvaTOK your phone" step follows
+  // notifications. It only appears on Android (iOS can never be a default dialer)
+  // AND when both the shellV2 and avaDialer remote flags are on — otherwise the
+  // flow is byte-for-byte 'terms' → 'notifications' as before. Step indices in
+  // analytics re-index with the list, so onboarding_step_viewed/completed stay
+  // consistent whether or not the phone step is present.
+  static List<String> _composeSteps() {
+    final steps = <String>['terms', 'notifications'];
+    if (Platform.isAndroid && RemoteConfig.shellV2 && RemoteConfig.avaDialer) {
+      steps.add('phone_roles');
+    }
+    return steps;
+  }
   static final List<String> _stepNames = _composeSteps();
   static final int _steps = _stepNames.length;
   int _step = 0;
@@ -73,6 +89,15 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
   bool _notifEnabled = false;
   bool _agreedTerms = false;
+
+  // ---- phone-roles step (AVA-ONBOARD-2) ----
+  bool _phoneBusy = false;      // a role/permission request sequence is running
+  bool _phoneResolved = false;  // sequence finished → show the per-capability result
+  bool _phoneShownLogged = false; // onboarding_phone_step_shown fired once
+  bool _showPhonePreview = false; // after roles, when the dialer role was granted
+  bool? _dialerGranted;
+  bool? _smsGranted;     // null when the SMS layer (avaSms) is off → row hidden
+  bool? _contactsGranted;
   // Standard-tier apps only (Phase 1): a signup ends with exactly the standard
   // apps — hidden-tier apps stay registered but are not offered or enabled.
   late Set<String> _enabled = kApps
@@ -192,6 +217,11 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     if (_step < _steps - 1) {
       setState(() => _step++);
       Analytics.capture('onboarding_step_viewed', {'step_index': _step, 'step_name': _stepNames[_step]});
+      // AVA-ONBOARD-2: dedicated shown-event for the optional phone step (once).
+      if (_stepNames[_step] == 'phone_roles' && !_phoneShownLogged) {
+        _phoneShownLogged = true;
+        Analytics.capture('onboarding_phone_step_shown', const {});
+      }
     } else {
       _finish();
     }
@@ -251,6 +281,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     switch (_stepNames[_step]) {
       case 'account_kind': return _accountType();
       case 'notifications': return _notifications();
+      case 'phone_roles': return _phoneRoles();
       case 'terms': return _terms();
       case 'profile': return _profileStep();
       case 'contacts': return _contacts();
@@ -621,6 +652,249 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         ],
       ),
     );
+  }
+
+  // ---- Step: make AvaTOK your phone (AVA-ONBOARD-2) — OPTIONAL ----
+  // Only reachable on Android with shellV2 + avaDialer on (see _composeSteps).
+  // Pitches AvaTOK as the default dialer + Messages app + AI contact book. The
+  // primary button sequentially requests ROLE_DIALER, then ROLE_SMS (if avaSms),
+  // then contacts permission — each independent; the user proceeds either way.
+  // 'not now' skips all. All work goes through AvaDialChannel / DeviceContacts —
+  // the SAME native path the AvaDial in-app banners use, so the banners remain the
+  // retry route for anyone who declines here.
+  Widget _phoneRoles() {
+    if (_showPhonePreview) return _phonePreview();
+    if (_phoneResolved) return _phoneResult();
+    final hPad = ZineBreakpoints.pagePadding(context);
+    return SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(hPad, 8, hPad, 24),
+      child: Column(
+        children: [
+          const SizedBox(height: 12),
+          ZineCrest(
+            child: PhosphorIcon(PhosphorIcons.deviceMobile(PhosphorIconsStyle.fill),
+                size: 46, color: Zine.ink),
+          ),
+          const SizedBox(height: 18),
+          ZineMarkTitle(pre: 'Make AvaTOK your ', mark: 'phone',
+              fontSize: ZineBreakpoints.heroTextSize(context, regular: 32)),
+          const SizedBox(height: 12),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 320),
+            child: Text(
+                'Set AvaTOK as your default dialer and your Messages app — send & '
+                'receive SMS with AI spam filtering — plus an AI-powered contact book.',
+                textAlign: TextAlign.center, style: ZineText.sub(size: 14.5)),
+          ),
+          const SizedBox(height: 28),
+          _featureRow(PhosphorIcons.phone(PhosphorIconsStyle.bold), Zine.blue,
+              'A smarter dialer with spam protection'),
+          const SizedBox(height: 12),
+          _featureRow(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), Zine.lilac,
+              'SMS with an AI spam filter'),
+          const SizedBox(height: 12),
+          _featureRow(PhosphorIcons.addressBook(PhosphorIconsStyle.bold), Zine.mint,
+              'An AI-powered contact book'),
+          const SizedBox(height: 12),
+          _featureRow(PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold), Zine.coral,
+              'Community-powered caller ID'),
+          const SizedBox(height: 32),
+          _primary('Make AvaTOK my phone app', _makePhoneApp,
+              icon: PhosphorIcons.deviceMobile(PhosphorIconsStyle.bold), loading: _phoneBusy),
+          const SizedBox(height: 14),
+          ZineLink('not now', fontSize: 14, onTap: _phoneBusy ? null : _skipPhoneRoles),
+        ],
+      ),
+    );
+  }
+
+  // Compact per-capability result — shown after the request sequence. The user
+  // continues regardless of what they granted.
+  Widget _phoneResult() {
+    final hPad = ZineBreakpoints.pagePadding(context);
+    final dialerOk = _dialerGranted == true;
+    return SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(hPad, 8, hPad, 24),
+      child: Column(
+        children: [
+          const SizedBox(height: 12),
+          ZineCrest(
+            child: PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
+                size: 46, color: Zine.ink),
+          ),
+          const SizedBox(height: 18),
+          ZineMarkTitle(pre: 'All ', mark: 'set',
+              fontSize: ZineBreakpoints.heroTextSize(context, regular: 32)),
+          const SizedBox(height: 20),
+          _resultRow(PhosphorIcons.phone(PhosphorIconsStyle.bold), Zine.blue,
+              'Default dialer', _dialerGranted),
+          if (_smsGranted != null) ...[
+            const SizedBox(height: 12),
+            _resultRow(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), Zine.lilac,
+                'Messages (SMS)', _smsGranted),
+          ],
+          const SizedBox(height: 12),
+          _resultRow(PhosphorIcons.addressBook(PhosphorIconsStyle.bold), Zine.mint,
+              'Contacts', _contactsGranted),
+          const SizedBox(height: 28),
+          _primary('Continue', () {
+            // If the dialer role landed, show the one-screen preview; otherwise
+            // advance straight on (the AvaDial banners remain the retry path).
+            if (dialerOk) {
+              setState(() => _showPhonePreview = true);
+            } else {
+              _next();
+            }
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _resultRow(IconData icon, Color accent, String label, bool? granted) => ZineCard(
+        radius: Zine.rSm,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        boxShadow: Zine.shadowXs,
+        child: Row(children: [
+          ZineIconBadge(icon: icon, color: accent),
+          const SizedBox(width: 14),
+          Expanded(child: Text(label, style: ZineText.value(size: 15))),
+          ZineSticker(
+            granted == true ? 'On' : 'Not now',
+            kind: granted == true ? ZineStickerKind.ok : ZineStickerKind.no,
+            icon: granted == true
+                ? PhosphorIcons.checkCircle(PhosphorIconsStyle.fill)
+                : PhosphorIcons.circle(PhosphorIconsStyle.bold),
+          ),
+        ]),
+      );
+
+  // One-screen "Your new phone experience" preview — static Zine cards pointing at
+  // the Dialpad / call screen / Messages (no screenshots). Only shown when the
+  // dialer role was granted. A single Continue finishes the step.
+  Widget _phonePreview() {
+    final hPad = ZineBreakpoints.pagePadding(context);
+    return SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(hPad, 8, hPad, 24),
+      child: Column(
+        children: [
+          const SizedBox(height: 12),
+          ZineMarkTitle(pre: 'Your new ', mark: 'phone',
+              fontSize: ZineBreakpoints.heroTextSize(context, regular: 30)),
+          const SizedBox(height: 10),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 300),
+            child: Text('AvaTOK now handles your calls and texts. Here’s where to find things.',
+                textAlign: TextAlign.center, style: ZineText.sub(size: 14)),
+          ),
+          const SizedBox(height: 24),
+          _previewCard(PhosphorIcons.phone(PhosphorIconsStyle.bold), Zine.blue,
+              'Dialpad', 'Call anyone — spam numbers are flagged before they reach you.'),
+          const SizedBox(height: 12),
+          _previewCard(PhosphorIcons.phoneCall(PhosphorIconsStyle.bold), Zine.mint,
+              'Call screen', 'A clean full-screen call with a friend or spam label up top.'),
+          const SizedBox(height: 12),
+          _previewCard(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), Zine.lilac,
+              'Messages', 'Your SMS, sorted by AI into Inbox and Spam.'),
+          const SizedBox(height: 28),
+          _primary('Continue', _next),
+        ],
+      ),
+    );
+  }
+
+  Widget _previewCard(IconData icon, Color accent, String title, String sub) => ZineCard(
+        radius: Zine.rSm,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        boxShadow: Zine.shadowXs,
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          ZineIconBadge(icon: icon, color: accent, size: 42),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: ZineText.cardTitle(size: 16)),
+              const SizedBox(height: 3),
+              Text(sub, style: ZineText.sub(size: 12.5)),
+            ]),
+          ),
+        ]),
+      );
+
+  Future<void> _skipPhoneRoles() async {
+    Analytics.capture('onboarding_phone_roles_result',
+        const {'dialer': false, 'sms': false, 'contacts': false, 'skipped': true});
+    await _markPhoneRolesOffered();
+    _next();
+  }
+
+  Future<void> _makePhoneApp() async {
+    if (_phoneBusy) return;
+    setState(() => _phoneBusy = true);
+    // 1) Default dialer role.
+    final dialer = await _requestRoleAwait(
+      AvaDialChannel.I.requestDialerRole,
+      (r) => r.role.contains('DIALER'),
+      AvaDialChannel.I.isDialerRoleHeld,
+    );
+    // 2) Default SMS role — only when the SMS layer is enabled (independent role).
+    bool? sms;
+    if (RemoteConfig.avaSms) {
+      sms = await _requestRoleAwait(
+        AvaDialChannel.I.requestSmsRole,
+        (r) => r.role.contains('SMS'),
+        AvaDialChannel.I.isSmsRoleHeld,
+      );
+    }
+    // 3) Contacts permission — reuse the AvaDial device-contacts helper.
+    final contacts = await DeviceContacts.I.ensurePermission();
+    if (!mounted) return;
+    setState(() {
+      _dialerGranted = dialer;
+      _smsGranted = sms;
+      _contactsGranted = contacts;
+      _phoneResolved = true;
+      _phoneBusy = false;
+    });
+    Analytics.capture('onboarding_phone_roles_result', {
+      'dialer': dialer,
+      'sms': sms,
+      'contacts': contacts,
+    });
+    await _markPhoneRolesOffered();
+  }
+
+  /// Request a native role and resolve to whether it ended up held. [request]
+  /// returns `true` (already held), `null` (a system prompt showed — the verdict
+  /// arrives on [AvaDialChannel.roleResults]) or `false` (platform absent/error).
+  /// We await the matching stream verdict, then fall back to a direct held-state
+  /// read on timeout so a missed event never leaves the result wrong.
+  Future<bool> _requestRoleAwait(
+    Future<bool?> Function() request,
+    bool Function(AvaRoleResult) matches,
+    Future<bool> Function() heldCheck,
+  ) async {
+    final immediate = await request();
+    if (immediate == true) return true;
+    // `false` == platform absent / channel error: no system prompt was shown, so
+    // there is no verdict coming — read the live held state and return at once
+    // (never wait on a stream event that can't arrive).
+    if (immediate == false) return await heldCheck();
+    // `null` == a system prompt showed → the verdict lands on roleResults. Await
+    // it, falling back to a direct held-state read if no event arrives in time.
+    try {
+      final r = await AvaDialChannel.I.roleResults
+          .firstWhere(matches)
+          .timeout(const Duration(seconds: 60));
+      return r.granted;
+    } catch (_) {
+      return await heldCheck();
+    }
+  }
+
+  /// Persist that the phone-roles offer was made for this account so the step is a
+  /// one-time thing; the AvaDial in-app banners are the ongoing retry path.
+  Future<void> _markPhoneRolesOffered() async {
+    try { await DiskCache.write('phone_roles_offered', '1'); } catch (_) {/* best-effort */}
   }
 
   // ---- Step 2: terms ----
