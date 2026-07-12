@@ -6,10 +6,10 @@ import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'home_cards_store.dart';
 
-/// Home → Cards manager (plan §3, §9 item 5). A master list of the v1 card types
-/// with per-card on/off switches, persisted per-account via [HomeCardPrefs]
-/// (scopedKey — a parent + child on one phone keep independent layouts).
-/// Drag-reorder + additional cards land in Phase 3; v1 is a fixed set + order.
+/// Home → Cards manager (plan §3). A master list of every card type with a per-card
+/// on/off switch AND drag-to-reorder (Phase 3), persisted per-account via
+/// [HomeCardPrefs] (scopedKey — a parent + child on one phone keep independent
+/// layouts). The active cards render on Home in the order shown here.
 class HomeCardsManagerScreen extends StatefulWidget {
   const HomeCardsManagerScreen({super.key});
 
@@ -19,18 +19,27 @@ class HomeCardsManagerScreen extends StatefulWidget {
 
 class _HomeCardsManagerScreenState extends State<HomeCardsManagerScreen> {
   Map<String, bool> _visible = {for (final id in HomeCardPrefs.ids) id: true};
+  List<String> _order = List<String>.from(HomeCardPrefs.ids);
   bool _loading = true;
 
   static final Map<String, IconDataBuilder> _icons = {
-    'wallet': _walletIcon,
-    'calllogs': _callsIcon,
-    'messages': _messagesIcon,
+    'wallet': () => PhosphorIcons.wallet(PhosphorIconsStyle.bold),
+    'calllogs': () => PhosphorIcons.phone(PhosphorIconsStyle.bold),
+    'messages': () => PhosphorIcons.chatCircle(PhosphorIconsStyle.bold),
+    'analytics': () => PhosphorIcons.chartBar(PhosphorIconsStyle.bold),
+    'earnings': () => PhosphorIcons.trendUp(PhosphorIconsStyle.bold),
+    'visitors': () => PhosphorIcons.mapPin(PhosphorIconsStyle.bold),
+    'listings': () => PhosphorIcons.storefront(PhosphorIconsStyle.bold),
   };
 
   static const Map<String, Color> _colors = {
     'wallet': Zine.mint,
     'calllogs': Zine.blue,
     'messages': Zine.lilac,
+    'analytics': Zine.blue,
+    'earnings': Zine.mint,
+    'visitors': Zine.coral,
+    'listings': Zine.lime,
   };
 
   @override
@@ -41,13 +50,24 @@ class _HomeCardsManagerScreenState extends State<HomeCardsManagerScreen> {
 
   Future<void> _load() async {
     final v = await HomeCardPrefs.load();
-    if (mounted) setState(() { _visible = v; _loading = false; });
+    final o = await HomeCardPrefs.order();
+    if (mounted) setState(() { _visible = v; _order = o; _loading = false; });
   }
 
   Future<void> _toggle(String id, bool on) async {
     setState(() => _visible = {..._visible, id: on});
     await HomeCardPrefs.setVisible(id, on);
     Analytics.capture('shellv2_card_toggled', {'card': id, 'on': on});
+  }
+
+  Future<void> _reorder(int oldIndex, int newIndex) async {
+    setState(() {
+      if (newIndex > oldIndex) newIndex -= 1;
+      final id = _order.removeAt(oldIndex);
+      _order.insert(newIndex, id);
+    });
+    await HomeCardPrefs.setOrder(_order);
+    Analytics.capture('shellv2_cards_reordered', {'order': _order.join(',')});
   }
 
   @override
@@ -63,26 +83,47 @@ class _HomeCardsManagerScreenState extends State<HomeCardsManagerScreen> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: Zine.blueInk))
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-              children: [
-                Text('Choose what shows on your Home dashboard.',
-                    style: ZineText.sub(size: 14)),
-                const SizedBox(height: 16),
-                for (final id in HomeCardPrefs.ids) _cardRow(id),
-              ],
-            ),
+          : Column(children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Toggle cards on or off, and drag to reorder your Home dashboard.',
+                      style: ZineText.sub(size: 14)),
+                ),
+              ),
+              Expanded(
+                child: ReorderableListView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                  itemCount: _order.length,
+                  onReorder: _reorder,
+                  proxyDecorator: (child, index, animation) =>
+                      Material(color: Colors.transparent, child: child),
+                  itemBuilder: (context, i) => _cardRow(_order[i], i),
+                ),
+              ),
+            ]),
     );
   }
 
-  Widget _cardRow(String id) {
+  Widget _cardRow(String id, int index) {
     final on = _visible[id] ?? true;
+    final icon = _icons[id];
     return Padding(
+      key: ValueKey(id),
       padding: const EdgeInsets.only(bottom: 12),
       child: ZineCard(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         child: Row(children: [
-          ZineIconBadge(icon: _icons[id]!(), color: _colors[id] ?? Zine.blue),
+          ReorderableDragStartListener(
+            index: index,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 10),
+              child: PhosphorIcon(PhosphorIcons.dotsSixVertical(PhosphorIconsStyle.bold),
+                  size: 18, color: Zine.inkSoft),
+            ),
+          ),
+          ZineIconBadge(icon: (icon ?? _fallbackIcon)(), color: _colors[id] ?? Zine.blue),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -103,9 +144,7 @@ class _HomeCardsManagerScreenState extends State<HomeCardsManagerScreen> {
     );
   }
 
-  static IconData _walletIcon() => PhosphorIcons.wallet(PhosphorIconsStyle.bold);
-  static IconData _callsIcon() => PhosphorIcons.phone(PhosphorIconsStyle.bold);
-  static IconData _messagesIcon() => PhosphorIcons.chatCircle(PhosphorIconsStyle.bold);
+  static IconData _fallbackIcon() => PhosphorIcons.squaresFour(PhosphorIconsStyle.bold);
 }
 
 typedef IconDataBuilder = IconData Function();

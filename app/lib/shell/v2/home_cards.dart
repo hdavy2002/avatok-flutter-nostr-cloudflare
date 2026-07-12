@@ -10,18 +10,18 @@ import '../../core/money_api.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../shell_v2.dart';
+import 'home_cards_api.dart';
 import 'home_cards_store.dart';
 import 'shell_destinations.dart';
 
-/// The Home v1 dashboard body (plan §3): a scrollable column of cards, each
-/// toggleable per-account (see [HomeCardPrefs]). v1 ships THREE cards —
-/// Wallet, Call logs, Messages (Talk-only; SMS shows an explicit unavailable
-/// state until the SMS role lands in Phase 3).
-///
-/// Data sources are the existing local stores/APIs (no new endpoints in Phase 1):
-/// wallet balance (MoneyApi), recent calls (CallLogStore), unread messages (the
-/// persisted chat-list projection Db.chatsOnce). Each card fires
-/// `shellv2_card_tap {card}` on interaction.
+/// The Home dashboard body (plan §3): a scrollable, user-ORDERED column of cards,
+/// each toggleable per-account (see [HomeCardPrefs]). Phase 3 completes the set:
+/// Wallet · Call logs · Messages · Analytics (local) · Earnings · Visitors ·
+/// Listings. The last three read ONE precomputed server aggregate
+/// ([HomeCardsApi] → /api/home/cards), so Home never fans out and never touches
+/// PostHog (card contract §8). Every card defines a loading, empty and failure
+/// state and its own eligibility (Visitors hides when unavailable; Listings hides
+/// with no listings).
 class HomeCards extends StatefulWidget {
   const HomeCards({super.key});
 
@@ -38,6 +38,7 @@ class _UnreadPreview {
 
 class _HomeCardsState extends State<HomeCards> {
   Map<String, bool> _visible = {for (final id in HomeCardPrefs.ids) id: true};
+  List<String> _order = List<String>.from(HomeCardPrefs.ids);
 
   int? _coins;
   bool _walletLoading = true;
@@ -50,6 +51,16 @@ class _HomeCardsState extends State<HomeCards> {
 
   int _msgTab = 0; // 0 = Talk, 1 = SMS
 
+  // Local analytics (from on-device stores only — never PostHog).
+  int _callsToday = 0;
+  int _messagesToday = 0;
+  bool _analyticsLoading = true;
+
+  // Server aggregate (earnings / visitors / listings).
+  HomeCardsData? _agg;
+  bool _aggLoading = true;
+  bool _aggFailed = false;
+
   @override
   void initState() {
     super.initState();
@@ -58,6 +69,8 @@ class _HomeCardsState extends State<HomeCards> {
     _loadWallet();
     _loadCalls();
     _loadMessages();
+    _loadAnalytics();
+    _loadAggregate();
   }
 
   @override
@@ -68,7 +81,8 @@ class _HomeCardsState extends State<HomeCards> {
 
   Future<void> _reloadPrefs() async {
     final v = await HomeCardPrefs.load();
-    if (mounted) setState(() => _visible = v);
+    final o = await HomeCardPrefs.order();
+    if (mounted) setState(() { _visible = v; _order = o; });
   }
 
   Future<void> _loadWallet() async {
@@ -124,12 +138,51 @@ class _HomeCardsState extends State<HomeCards> {
     }
   }
 
+  Future<void> _loadAnalytics() async {
+    try {
+      final startOfToday = _startOfTodaySeconds();
+      final calls = await CallLogStore().load();
+      final callsToday = calls.where((c) => c.ts >= startOfToday).length;
+      final chats = await Db.I.chatsOnce();
+      // "Messages today" = conversations with activity since local midnight (ts is
+      // epoch seconds on the chat-list projection). Local-only, no server call.
+      final msgsToday = chats.where((r) => r.ts >= startOfToday).length;
+      if (!mounted) return;
+      setState(() {
+        _callsToday = callsToday;
+        _messagesToday = msgsToday;
+        _analyticsLoading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _analyticsLoading = false);
+    }
+  }
+
+  Future<void> _loadAggregate() async {
+    try {
+      final data = await HomeCardsApi.fetch();
+      if (!mounted) return;
+      setState(() {
+        _agg = data;
+        _aggFailed = data == null;
+        _aggLoading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() { _aggFailed = true; _aggLoading = false; });
+    }
+  }
+
+  static int _startOfTodaySeconds() {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day).millisecondsSinceEpoch ~/ 1000;
+  }
+
   void _tap(String card) => Analytics.capture('shellv2_card_tap', {'card': card});
 
   @override
   Widget build(BuildContext context) {
     final cards = <Widget>[];
-    for (final id in HomeCardPrefs.ids) {
+    for (final id in _order) {
       if (_visible[id] == false) continue;
       switch (id) {
         case 'wallet':
@@ -140,6 +193,20 @@ class _HomeCardsState extends State<HomeCards> {
           break;
         case 'messages':
           cards.add(_messagesCard(context));
+          break;
+        case 'analytics':
+          cards.add(_analyticsCard(context));
+          break;
+        case 'earnings':
+          cards.add(_earningsCard(context));
+          break;
+        case 'visitors':
+          final w = _visitorsCard(context);
+          if (w != null) cards.add(w); // eligibility: hidden when unavailable
+          break;
+        case 'listings':
+          final w = _listingsCard(context);
+          if (w != null) cards.add(w); // eligibility: hidden with no listings
           break;
       }
     }
@@ -330,6 +397,171 @@ class _HomeCardsState extends State<HomeCards> {
     );
   }
 
+  // ── Analytics card (LOCAL stores only — plan §3 item 2, never PostHog) ────
+  Widget _analyticsCard(BuildContext context) {
+    return ZineCard(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        ZineCardHead(
+            icon: PhosphorIcons.chartBar(PhosphorIconsStyle.bold),
+            title: 'Analytics', accent: Zine.blue, tag: 'TODAY'),
+        const SizedBox(height: 14),
+        if (_analyticsLoading)
+          _skeletonLine(160)
+        else
+          Row(children: [
+            Expanded(child: _stat('Calls', '$_callsToday')),
+            Expanded(child: _stat('Messages', '$_messagesToday')),
+          ]),
+      ]),
+    );
+  }
+
+  Widget _stat(String label, String value) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(value, style: ZineText.stat(size: 30)),
+          const SizedBox(height: 2),
+          Text(label, style: ZineText.sub(size: 12.5)),
+        ],
+      );
+
+  // ── Earnings card (server aggregate + a tiny 7-day bar chart) ────────────
+  Widget _earningsCard(BuildContext context) {
+    final e = _agg?.earnings;
+    return ZineCard(
+      onTap: () {
+        _tap('earnings');
+        openShellDestination(context, 'wallet');
+      },
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        ZineCardHead(
+            icon: PhosphorIcons.trendUp(PhosphorIconsStyle.bold),
+            title: 'Earnings', accent: Zine.mint, tag: 'AVACOINS'),
+        const SizedBox(height: 12),
+        if (_aggLoading)
+          _skeletonLine(200)
+        else if (e == null)
+          Text(_aggFailed ? 'Earnings are unavailable right now.' : 'No earnings yet.',
+              style: ZineText.sub(size: 13.5))
+        else ...[
+          Row(children: [
+            Expanded(child: _stat('Today', '${e.today}')),
+            Expanded(child: _stat('Week', '${e.week}')),
+            Expanded(child: _stat('Month', '${e.month}')),
+          ]),
+          const SizedBox(height: 14),
+          SizedBox(
+            height: 44,
+            child: CustomPaint(
+              size: const Size(double.infinity, 44),
+              painter: _MiniBarChartPainter(e.series7d, Zine.mintInk),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text('Last 7 days', style: ZineText.tag(size: 10.5, color: Zine.inkSoft)),
+        ],
+      ]),
+    );
+  }
+
+  // ── Visitors card (server aggregate; hidden entirely when unavailable) ────
+  Widget? _visitorsCard(BuildContext context) {
+    if (_aggLoading) {
+      return ZineCard(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          ZineCardHead(
+              icon: PhosphorIcons.mapPin(PhosphorIconsStyle.bold),
+              title: 'Visitors', accent: Zine.coral),
+          const SizedBox(height: 12),
+          _skeletonLine(180),
+        ]),
+      );
+    }
+    final v = _agg?.visitors;
+    if (v == null || !v.available) return null; // eligibility: hide when no data source
+    return ZineCard(
+      onTap: () {
+        _tap('visitors');
+        openShellDestination(context, 'mylistings');
+      },
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        ZineCardHead(
+            icon: PhosphorIcons.mapPin(PhosphorIconsStyle.bold),
+            title: 'Visitors', accent: Zine.coral, tag: '7 DAYS'),
+        const SizedBox(height: 12),
+        Text('${v.total7d}', style: ZineText.stat(size: 30)),
+        Text('listing views', style: ZineText.sub(size: 12.5)),
+        if (v.byCountry.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Text('TOP COUNTRIES', style: ZineText.kicker()),
+          const SizedBox(height: 4),
+          ...[for (final g in v.byCountry.take(5)) _geoRow(g.label, g.views)],
+        ],
+        if (v.byCity.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Text('TOP CITIES', style: ZineText.kicker()),
+          const SizedBox(height: 4),
+          ...[for (final g in v.byCity.take(5)) _geoRow(g.label, g.views)],
+        ],
+      ]),
+    );
+  }
+
+  Widget _geoRow(String label, int views) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(children: [
+          Expanded(
+            child: Text(label.isEmpty ? 'Unknown' : label,
+                maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.value(size: 13.5)),
+          ),
+          Text('$views', style: ZineText.tag(size: 11, color: Zine.inkSoft)),
+        ]),
+      );
+
+  // ── Listings card (server aggregate; hidden when the user has no listings) ─
+  Widget? _listingsCard(BuildContext context) {
+    if (_aggLoading) {
+      return ZineCard(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          ZineCardHead(
+              icon: PhosphorIcons.storefront(PhosphorIconsStyle.bold),
+              title: 'Listings', accent: Zine.lime),
+          const SizedBox(height: 12),
+          _skeletonLine(180),
+        ]),
+      );
+    }
+    final list = _agg?.listings ?? const <ListingAgg>[];
+    if (list.isEmpty) return null; // eligibility: only when the user has listings
+    return ZineCard(
+      onTap: () {
+        _tap('listings');
+        openShellDestination(context, 'mylistings');
+      },
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        ZineCardHead(
+            icon: PhosphorIcons.storefront(PhosphorIconsStyle.bold),
+            title: 'Listings', accent: Zine.lime, tag: 'TOP'),
+        const SizedBox(height: 10),
+        ...[for (final l in list.take(3)) _listingRow(l)],
+      ]),
+    );
+  }
+
+  Widget _listingRow(ListingAgg l) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(children: [
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(l.title.isEmpty ? 'Untitled listing' : l.title,
+                  maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.value(size: 14)),
+              Text('${l.views7d} views · ${l.joinedCount} joined',
+                  style: ZineText.tag(size: 10.5, color: Zine.inkSoft)),
+            ]),
+          ),
+        ]),
+      );
+
   Widget _skeletonLine(double width) => Container(
         width: width,
         height: 20,
@@ -339,4 +571,47 @@ class _HomeCardsState extends State<HomeCards> {
           border: Border.all(color: Zine.inkMute, width: 1),
         ),
       );
+}
+
+/// A tiny 7-bar chart drawn with [CustomPaint] — no chart dependency (plan §B).
+/// Bars are normalised to the max value; a flat/zero series draws faint baselines.
+class _MiniBarChartPainter extends CustomPainter {
+  final List<int> values;
+  final Color color;
+  const _MiniBarChartPainter(this.values, this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final n = values.isEmpty ? 7 : values.length;
+    final maxV = values.isEmpty ? 0 : values.reduce((a, b) => a > b ? a : b);
+    final gap = 6.0;
+    final barW = (size.width - gap * (n - 1)) / n;
+    final radius = Radius.circular(barW < 6 ? barW / 2 : 3);
+
+    final barPaint = Paint()..color = color;
+    final basePaint = Paint()..color = Zine.inkMute.withValues(alpha: 0.5);
+
+    for (var i = 0; i < n; i++) {
+      final v = i < values.length ? values[i] : 0;
+      final x = i * (barW + gap);
+      if (maxV <= 0) {
+        // Flat baseline for an all-zero week.
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(Rect.fromLTWH(x, size.height - 2, barW, 2), radius),
+          basePaint,
+        );
+        continue;
+      }
+      final h = (v / maxV) * size.height;
+      final top = size.height - (h < 2 ? 2 : h);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(Rect.fromLTWH(x, top, barW, size.height - top), radius),
+        v > 0 ? barPaint : basePaint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_MiniBarChartPainter old) =>
+      old.values != values || old.color != color;
 }
