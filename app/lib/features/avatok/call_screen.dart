@@ -20,6 +20,7 @@ import '../../core/ringback_player.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/voicemail_call.dart';
+import '../avaphone/phone_theme.dart';
 import 'busy_card.dart';
 import 'call_outcome_menu.dart';
 import 'contacts.dart';
@@ -31,6 +32,7 @@ import 'place_1to1_call.dart';
 // clearCallState() on account switch. push_service.dart also imports this file
 // (Dart permits the library cycle).
 import '../../push/push_service.dart';
+import '../../main.dart' show RootFlow;
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  BUSY / GLARE GLOBALS — thin shims delegating to the CallSession lifecycle.
@@ -150,6 +152,13 @@ class CallScreen extends StatefulWidget {
   // channel (place_1to1_call.dart) — enables the §3 after-ring flow (agent
   // hand-off, post-ring busy card) on this session. See CallSessionConfig.business.
   final bool business;
+  // [DIALER-UI-SPLIT 2026-07-12] true = launched from the phone DIALER ecosystem
+  // (dialpad / recents / phone-contacts) rather than a chat thread. Purely
+  // presentational: paints the call surface in the dialer's PhoneTheme palette
+  // so the dialer feels like its own app, separate from the messenger. The
+  // underlying CallSession logic is unchanged. Chat-initiated calls leave it
+  // false and keep the zine look.
+  final bool dialer;
   // [WP6 §3B] Minutes the caller pre-paid via the price sheet ('' hold →
   // confirm on connect). >0 arms the in-call countdown + end-of-time beeps
   // (CallCountdown) once the call connects. 0 = not a paid call.
@@ -170,6 +179,7 @@ class CallScreen extends StatefulWidget {
     this.initialRouted,
     this.initialRoutingStart,
     this.business = false,
+    this.dialer = false,
     this.paidMinutes = 0,
   });
   @override
@@ -534,13 +544,27 @@ class _CallScreenState extends State<CallScreen> {
 
   void _popIfMounted() {
     if (_popped || !mounted) return;
-    _popped = true;
     // CALL-UI-DEAD-1: use a DIRECT pop. `Navigator.maybePop()` consults this
     // screen's PopScope(canPop:false) and silently REFUSES to pop the route —
     // that deadlock is why end-call/minimize/back all appeared to do nothing
     // and users had to force-exit the app. `pop()` bypasses the PopScope veto.
     final nav = Navigator.of(context);
-    if (nav.canPop()) nav.pop();
+    if (nav.canPop()) {
+      _popped = true; // latch ONLY after we know a pop will actually happen
+      nav.pop();
+      return;
+    }
+    // CALL-UI-DEAD-2 (2026-07-12): the call screen is the FIRST/only route —
+    // cold-start straight into a call (push / CallKit tap), or the launching
+    // surface (e.g. the dialpad bottom sheet) was already gone. A bare pop()
+    // no-ops here, and the OLD code latched `_popped = true` BEFORE checking
+    // canPop(), so once the ~1.4s natural-end auto-pop hit this branch every
+    // later exit (red hang-up, ⌄ minimize, system back) dead-ended at the
+    // `_popped` guard — the user was stranded on the "Call ended" screen with a
+    // dead red button. Replace this route with the app root so there is ALWAYS
+    // a way out, and only latch after we've actually navigated.
+    _popped = true;
+    nav.pushReplacement(MaterialPageRoute(builder: (_) => const RootFlow()));
   }
 
   @override
@@ -575,7 +599,18 @@ class _CallScreenState extends State<CallScreen> {
   }
 
   // Red button: end the call (durable hangup) and pop.
-  void _hangup() => _session.endByUser();
+  void _hangup() {
+    // If the call has ALREADY ended (the "Call ended" screen), endByUser()'s
+    // only dismissal path is a pop hook it may have already consumed/nulled —
+    // so pop the screen directly instead. This is what makes the red button on
+    // the terminal screen reliably exit (pic2). During a live call, fall
+    // through to the durable hangup which tears down and then pops.
+    if (_session.isEnded || _session.phase.value == CallPhase.ended) {
+      _popIfMounted();
+      return;
+    }
+    _session.endByUser();
+  }
 
   /// Back gesture / header ⌄ button: MINIMIZE, not hang up. Keeps the call alive
   /// (the session owns the WS/PC/renderers/FGS) and shows the floating video
@@ -604,6 +639,12 @@ class _CallScreenState extends State<CallScreen> {
     final muted = s.muted.value;
     final showVideo = video && camOn;
     final light = !showVideo; // audio call → zine paper screen
+    // [DIALER-UI-SPLIT 2026-07-12] Dialer-initiated audio calls wear the phone
+    // dialer's DARK PhoneTheme surface instead of the messenger's cream paper,
+    // so the dialer reads as its own app. The zine control circles / back button
+    // / status sticker are all light-filled, so they stay legible on dark — only
+    // the background and the hero name need recolouring.
+    final dialerSkin = widget.dialer && light;
     // [CALL-DIAL-FAIL-1] 'network-error' joins the failed-sticker set so a
     // dead place-call POST/timeout reads as a clear failure, not a silent hang.
     final failed = phase == 'declined' || phase == 'busy' || phase == 'no-answer' ||
@@ -666,11 +707,24 @@ class _CallScreenState extends State<CallScreen> {
         ),
 
         // audio call: paper screen — ink-ringed avatar, name, mono call-state sticker.
+        // [NOTE-COMPOSER-LAYOUT 2026-07-12] Scrollable + keyboard-aware so the
+        // text/voice note composer (opened from the outcome menu) scrolls above
+        // BOTH the keyboard and the bottom control row instead of being drawn
+        // underneath them. Reserves the control-row footprint as bottom padding;
+        // the ConstrainedBox keeps the content vertically centred when it fits.
         if (light)
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Column(
+          Positioned.fill(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(
+                  24, 0, 24, 112 + (bottomInset > 0 ? bottomInset : 16)),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: MediaQuery.of(context).size.height -
+                      MediaQuery.of(context).viewInsets.bottom -
+                      (112 + (bottomInset > 0 ? bottomInset : 16)),
+                ),
+                child: Center(
+                  child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (s.isReceptDuo && s.receptionist != null) ...[
@@ -703,7 +757,8 @@ class _CallScreenState extends State<CallScreen> {
                     ),
                     const SizedBox(height: 24),
                     Text(widget.title, textAlign: TextAlign.center,
-                        style: ZineText.hero(size: 30)),
+                        style: ZineText.hero(size: 30)
+                            .copyWith(color: dialerSkin ? PhoneTheme.text : null)),
                   ],
                   const SizedBox(height: 16),
                   // [CALL-OUTCOME-MENU-1] Unified call outcome menu — ONE surface
@@ -859,9 +914,11 @@ class _CallScreenState extends State<CallScreen> {
                     ),
                   ],
                 ],
+                  ),
+                ),
+                ),
               ),
             ),
-          ),
 
         // [CALL-NETHUD-1] animated network health HUD — sits just under the
         // header, tap for a detail sheet. Only while the call is live.
@@ -932,8 +989,13 @@ class _CallScreenState extends State<CallScreen> {
         _minimize();
       },
       child: Scaffold(
-        backgroundColor: light ? Zine.paper : Zine.ink,
-        body: light ? ZinePaper(child: stack) : stack,
+        // [DIALER-UI-SPLIT 2026-07-12] dialer audio call → dark PhoneTheme surface.
+        backgroundColor: dialerSkin
+            ? PhoneTheme.bg
+            : (light ? Zine.paper : Zine.ink),
+        body: dialerSkin
+            ? Container(color: PhoneTheme.bg, child: stack)
+            : (light ? ZinePaper(child: stack) : stack),
       ),
     );
   }

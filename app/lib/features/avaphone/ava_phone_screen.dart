@@ -216,7 +216,7 @@ class _CallsTabState extends State<_CallsTab> {
     // [AVA-IDGATE-1] Route through /api/call (gate + real ring) instead of opening
     // CallScreen directly. c.seed IS the peer uid (CallEntry.seed == uid).
     place1to1Call(context, uid: c.seed, name: c.name.isNotEmpty ? c.name : c.seed,
-        avatarUrl: _avatarFor(c.seed) ?? '').then((_) => _load());
+        avatarUrl: _avatarFor(c.seed) ?? '', dialer: true).then((_) => _load());
   }
 
   /// All log entries for a person (newest first) — drives the "called N times" count.
@@ -753,7 +753,7 @@ class _DialpadSheetState extends State<_DialpadSheet> with WidgetsBindingObserve
     // context would already be unmounted and every push would silently no-op.
     await place1to1Call(navContext, uid: c.uid,
         name: c.name.isNotEmpty ? c.name : (c.number.isNotEmpty ? c.number : q),
-        avatarUrl: c.avatarUrl,
+        avatarUrl: c.avatarUrl, dialer: true,
         paidHoldId: paidHoldId, paidMinutes: paidMinutes);
   }
 

@@ -168,7 +168,7 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
     // [AVA-IDGATE-1] Route through /api/call (gate + real ring) instead of opening
     // CallScreen directly.
     place1to1Call(context, uid: c.uid, name: c.name.isNotEmpty ? c.name : c.number,
-        avatarUrl: c.avatarUrl);
+        avatarUrl: c.avatarUrl, dialer: true);
   }
 
   void _message(Contact c) {

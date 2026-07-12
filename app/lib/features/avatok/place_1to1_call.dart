@@ -44,6 +44,11 @@ Future<void> place1to1Call(
   // escrow to this call. '' = a normal free/callee-pays call (unchanged path).
   String paidHoldId = '',
   int paidMinutes = 0,
+  // [DIALER-UI-SPLIT 2026-07-12] true when the call was started from the phone
+  // DIALER ecosystem (dialpad / recents / phone-contacts) rather than a chat
+  // thread. Only themes CallScreen with the dialer's PhoneTheme palette so the
+  // dialer feels like its own app; the call engine/logic is identical.
+  bool dialer = false,
 }) async {
   if (uid.isEmpty) return;
   final room = 'avatok-$uid';
@@ -176,6 +181,8 @@ Future<void> place1to1Call(
       // [DIALPAD-BIZ-CALLS Phase C] business channel → §3 after-ring flow
       // (agent hand-off, post-ring busy) instead of the generic outcome menu.
       business: true,
+      // [DIALER-UI-SPLIT 2026-07-12] dialer-styled call screen for dialpad calls.
+      dialer: dialer,
       // [WP6 §3B] arms the in-call countdown + end-of-time beeps on connect.
       paidMinutes: paidHoldId.isNotEmpty ? paidMinutes : 0,
     ),
