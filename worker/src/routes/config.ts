@@ -301,6 +301,14 @@ export interface PlatformConfig {
   // pool + on-device bloom cache are device-verified. Client mirror:
   // RemoteConfig.spamShield.
   spamShield: boolean;
+  // AvaDial native dialer layer (Specs/PLAN-2026-07-12-home-ava-tok-services-shell
+  // .md §4.1-4.3, Phase 2b). Master kill switch for the AvaDial PSTN surfaces in
+  // the app: default-dialer onboarding banner, device contacts/logs tabs, block
+  // list, red/green/blue PSTN call screens. Default OFF — while false AvaDial
+  // shows the Phase-1 placeholders only. Flip `avaDialer: true` in KV
+  // `platform_config` (staging first) after the §9 device test matrix passes.
+  // Client mirror: RemoteConfig.avaDialer.
+  avaDialer: boolean;
   // §11/§15 money + timing constants — flag-overridable via KV so a value tweak
   // never needs a redeploy. These are VALUES, not design; see plan §11.
   minServiceRate: number;          // MIN_SERVICE_RATE — floor for a caller-paid rate/min (owner proposed 20)
@@ -470,6 +478,10 @@ const DEFAULTS: PlatformConfig = {
   // AvaDial spam shield — DARK. While false every /api/spam/* route 403s and the
   // nightly scoring job no-ops. Flip ON in KV (staging first) after device tests.
   spamShield: false,
+  // AvaDial native dialer surfaces — DARK. While false the AvaDial root keeps
+  // its Phase-1 placeholders. Flip ON in KV (staging first) after the telecom
+  // spike's device test matrix passes. Client mirror: RemoteConfig.avaDialer.
+  avaDialer: false,
   // §11/§15 constants — flag-overridable values, not design. Defaults per plan.
   minServiceRate: 20,
   agentRateAPerMin: 6,
