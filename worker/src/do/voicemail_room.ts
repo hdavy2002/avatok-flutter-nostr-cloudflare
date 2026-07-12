@@ -145,14 +145,51 @@ export class VoicemailRoom {
     this.gotAnyRecording = true;
   }
 
+  /** Greeting PCM with an R2 cache in front of the TTS call (owner decision
+   *  2026-07-12: a business getting 300 missed calls/day must not cost 300 TTS
+   *  generations). The greeting text is DETERMINISTIC per owner ("Hi, ‹Name›
+   *  isn't available. Please leave a ‹N›-second voicemail after the tone."),
+   *  so we synthesize ONCE per unique (model, voice, rate, text) and replay
+   *  the stored PCM for every later missed call. The owner's name is already
+   *  baked into the text, so per-owner personalization comes free via the
+   *  hash; a display-name or voicemailRecordSec change mints a new cache
+   *  entry automatically (old ones are just orphaned ~300KB objects). Any
+   *  cache read/write failure falls back to a live TTS call — never a silent
+   *  greeting. */
+  private async greetingPcm(text: string): Promise<Uint8Array | null> {
+    let cacheKey: string | null = null;
+    try {
+      const digest = await crypto.subtle.digest("SHA-256",
+        new TextEncoder().encode(`${TTS_MODEL}|${AURA_VOICE}|${SAMPLE_RATE_OUT}|${text.slice(0, 400)}`));
+      const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+      cacheKey = `tts-cache/voicemail/${hex}.pcm`;
+      const hit = await this.env.BLOBS.get(cacheKey);
+      if (hit) {
+        const bytes = new Uint8Array(await hit.arrayBuffer());
+        if (bytes.byteLength) {
+          this.ev("voicemail_tts_cache", { hit: true, bytes: bytes.byteLength });
+          return bytes;
+        }
+      }
+    } catch { /* cache unavailable → live TTS below */ }
+    const resp: unknown = await this.env.AI.run(TTS_MODEL,
+      { text: text.slice(0, 400), speaker: AURA_VOICE, encoding: "linear16", sample_rate: SAMPLE_RATE_OUT, container: "none" } as unknown as Record<string, unknown>);
+    const pcm = await ttsToPcm(resp);
+    if (pcm && pcm.byteLength && cacheKey) {
+      this.ev("voicemail_tts_cache", { hit: false, bytes: pcm.byteLength });
+      try {
+        await this.env.BLOBS.put(cacheKey, pcm, { httpMetadata: { contentType: "application/octet-stream" } });
+      } catch { /* best-effort — next call just re-generates */ }
+    }
+    return pcm;
+  }
+
   /** Buffered TTS (simpler than reception_room_cf's streaming path — a
    *  voicemail prompt is short, so the extra ~1-2s of buffering is fine). */
   private async speak(text: string): Promise<void> {
     if (!text) return;
     try {
-      const resp: unknown = await this.env.AI.run(TTS_MODEL,
-        { text: text.slice(0, 400), speaker: AURA_VOICE, encoding: "linear16", sample_rate: SAMPLE_RATE_OUT, container: "none" } as unknown as Record<string, unknown>);
-      const pcm = await ttsToPcm(resp);
+      const pcm = await this.greetingPcm(text);
       if (pcm && pcm.byteLength && this.client) {
         for (let o = 0; o < pcm.byteLength; o += 24000) {
           try { this.client.send(pcm.subarray(o, Math.min(o + 24000, pcm.byteLength))); } catch { /* caller gone */ }
