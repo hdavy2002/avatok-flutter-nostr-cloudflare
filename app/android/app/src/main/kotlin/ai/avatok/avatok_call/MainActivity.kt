@@ -22,6 +22,12 @@ class MainActivity : FlutterFragmentActivity() {
         // Full-duplex voice-call audio engine with platform echo cancellation
         // (Gemini Live "AI Voice Agent" — true barge-in on speaker).
         flutterEngine.plugins.add(ai.avatok.avavoiceaudio.AvaVoiceAudioPlugin())
+        // AvaDial PSTN telecom bridge (default-dialer role, InCallService,
+        // CallScreeningService, device contacts/call-log). DARK behind the Flutter
+        // `avaDialer` flag — the plugin only ever registers a MethodChannel; nothing
+        // fires until Dart requests a role. See
+        // Specs/SPIKE-2026-07-12-avadial-telecom.md.
+        flutterEngine.plugins.add(ai.avatok.avadial.AvaDialPlugin())
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, secureChannel)
             .setMethodCallHandler { call, result ->
