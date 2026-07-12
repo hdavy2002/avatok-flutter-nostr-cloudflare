@@ -108,11 +108,10 @@ bool isRootDestination(String dest) => rootIdForDestination(dest) != null;
 /// root-level taps to the shell instead of pushing a duplicate screen.
 RootId? rootIdForDestination(String dest) {
   switch (dest) {
-    case 'home':
-      return RootId.home;
     case 'avadial':
     case 'dial':
       return RootId.avaDial;
+    case 'home': // legacy links → the app now lands on AvaTOK (Home root retired)
     case 'avatalk':
     case 'avatok':
       return RootId.avaTalk;

@@ -6,8 +6,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../core/account_storage.dart';
 import '../shell_v2.dart';
 
-/// Per-account ORDER of the four Home footer app-switcher roots (Home · AvaDial ·
-/// AvaTalk · Services), plus a one-time "hold to rearrange" hint flag (AVA-SHELL-8).
+/// Per-account ORDER of the persistent app-switcher roots (AvaTOK · Calls ·
+/// Marketplace), plus a one-time "hold to rearrange" hint flag (AVA-SHELL-8).
 ///
 /// Why per-account (rulebook rule 1 — per-account scoping is MANDATORY): one phone
 /// is routinely shared by a parent + each child, so every user keeps their own
@@ -15,9 +15,11 @@ import '../shell_v2.dart';
 /// [HomeCardPrefs].
 ///
 /// The FIRST root in this order is the LANDING app on cold open (see
-/// [ShellV2] / `_initRootState`) — e.g. put AvaTalk first and the app opens in the
-/// messenger. The AI action in the footer is a global action, never a root, so it
-/// is neither ordered nor persisted here.
+/// [ShellV2] / `_initRootState`). The "Ava" action in the footer is a global
+/// action, never a root, so it is neither ordered nor persisted here.
+///
+/// 2026-07-12 nav rebrand: the Home root was retired, so AvaTalk (AvaTOK) is now
+/// always the default landing app; `defaultOrder` dropped `RootId.home`.
 class RootOrderPrefs {
   RootOrderPrefs._();
 
@@ -27,13 +29,12 @@ class RootOrderPrefs {
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
 
-  /// Default order (owner decision 2026-07-12): Home, AvaDial, AvaTalk, Services.
-  /// Home is the default landing app but need NOT stay first — a user can drag any
-  /// root to the front.
+  /// Default order (owner decision 2026-07-12): AvaTalk (AvaTOK), AvaDial (Calls),
+  /// Services (Marketplace). AvaTOK is the default landing app but need NOT stay
+  /// first — a user can drag any root to the front.
   static const List<RootId> defaultOrder = [
-    RootId.home,
-    RootId.avaDial,
     RootId.avaTalk,
+    RootId.avaDial,
     RootId.services,
   ];
 

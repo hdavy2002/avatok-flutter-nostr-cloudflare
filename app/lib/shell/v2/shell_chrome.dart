@@ -3,7 +3,9 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../../core/update_service.dart';
 import '../shell_v2.dart';
+import 'app_order_screen.dart';
 import 'shell_destinations.dart';
 
 /// A single destination in a shell footer (app switcher on Home, app tabs inside
@@ -149,12 +151,11 @@ class ShellSidebar extends StatelessWidget {
               Padding(
                   padding: const EdgeInsets.fromLTRB(6, 6, 6, 8),
                   child: Text('APPS', style: ZineText.kicker())),
-              appRow(RootId.home, 'Home', 'Dashboard', PhosphorIcons.house(PhosphorIconsStyle.bold), Zine.lime),
-              appRow(RootId.avaDial, 'AvaDial', 'Phone & spam shield',
-                  PhosphorIcons.phone(PhosphorIconsStyle.bold), Zine.blue),
-              appRow(RootId.avaTalk, 'AvaTalk', 'Messages & in-network calls',
+              appRow(RootId.avaTalk, 'AvaTOK', 'Messages & in-network calls',
                   PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), Zine.mint),
-              appRow(RootId.services, 'Services', 'Marketplace & wallet',
+              appRow(RootId.avaDial, 'Calls', 'Phone & spam shield',
+                  PhosphorIcons.phone(PhosphorIconsStyle.bold), Zine.blue),
+              appRow(RootId.services, 'Marketplace', 'Browse & wallet',
                   PhosphorIcons.storefront(PhosphorIconsStyle.bold), Zine.coral),
               _SidebarRow(
                 icon: PhosphorIcons.sparkle(PhosphorIconsStyle.bold),
@@ -170,6 +171,59 @@ class ShellSidebar extends StatelessWidget {
                 const SizedBox(height: 6),
                 ...extra,
               ],
+              const SizedBox(height: 6),
+              Padding(
+                  padding: const EdgeInsets.fromLTRB(6, 6, 6, 8),
+                  child: Text('MORE', style: ZineText.kicker())),
+              // Rescued from the retired Home dashboard drawer (2026-07-12 nav
+              // rebrand) so they stay reachable from every app, not just Home.
+              _SidebarRow(
+                icon: PhosphorIcons.listNumbers(PhosphorIconsStyle.bold),
+                color: Zine.lilac,
+                title: 'App order',
+                subtitle: 'Reorder apps & pick your landing app',
+                onTap: () {
+                  Navigator.of(context).maybePop();
+                  Navigator.of(context)
+                      .push(MaterialPageRoute(builder: (_) => const AppOrderScreen()));
+                },
+              ),
+              _SidebarRow(
+                icon: PhosphorIcons.identificationCard(PhosphorIconsStyle.bold),
+                color: Zine.blue,
+                title: 'Identity',
+                onTap: () {
+                  Navigator.of(context).maybePop();
+                  openShellDestination(context, 'identity');
+                },
+              ),
+              _SidebarRow(
+                icon: PhosphorIcons.chartPieSlice(PhosphorIconsStyle.bold),
+                color: Zine.mint,
+                title: 'Backup',
+                onTap: () {
+                  Navigator.of(context).maybePop();
+                  openShellDestination(context, 'avastorage');
+                },
+              ),
+              _SidebarRow(
+                icon: PhosphorIcons.info(PhosphorIconsStyle.bold),
+                color: Zine.lilac,
+                title: 'About',
+                onTap: () {
+                  Navigator.of(context).maybePop();
+                  openShellDestination(context, 'about');
+                },
+              ),
+              _SidebarRow(
+                icon: PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold),
+                color: Zine.coral,
+                title: 'Update',
+                onTap: () {
+                  Navigator.of(context).maybePop();
+                  UpdateService.runManual();
+                },
+              ),
               const SizedBox(height: 6),
               _SidebarRow(
                 icon: PhosphorIcons.gearSix(PhosphorIconsStyle.bold),

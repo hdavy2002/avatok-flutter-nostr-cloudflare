@@ -14,23 +14,24 @@ import '../features/avadial/avadial_channel.dart';
 import '../features/avadial/pstn_call_screen.dart';
 import '../features/avadial/sms/sms_thread_screen.dart';
 import '../identity/identity.dart';
+import 'v2/app_switcher_bar.dart';
 import 'v2/avadial_root.dart';
-import 'v2/home_root.dart';
 import 'v2/root_order_store.dart';
 import 'v2/services_root.dart';
 import 'v2/talk_root.dart';
 
-/// The four sibling apps of the [ShellV2] shell (Specs/PLAN-2026-07-12-home-ava-
-/// tok-services-shell.md). Each is its OWN [Navigator] inside an [IndexedStack],
-/// so switching apps preserves the app's nested route stack + scroll state.
-enum RootId { home, avaDial, avaTalk, services }
+/// The three sibling apps of the [ShellV2] shell (2026-07-12: Home root retired —
+/// AvaTOK/AvaTalk is now the sole landing app). Each is its OWN [Navigator] inside
+/// an [IndexedStack], so switching apps preserves the app's nested route stack +
+/// scroll state. The persistent [AppSwitcherBar] footer (rendered once, at the
+/// shell level — see [_ShellV2State.build]) is the SAME set of icons in the SAME
+/// position no matter which root is active.
+enum RootId { avaDial, avaTalk, services }
 
 extension RootIdX on RootId {
   /// Stable string used for restoration IDs, persistence + analytics.
   String get key {
     switch (this) {
-      case RootId.home:
-        return 'home';
       case RootId.avaDial:
         return 'avadial';
       case RootId.avaTalk:
@@ -133,8 +134,7 @@ class ShellV2 extends StatefulWidget {
   /// call, marketplace push, PSTN missed-call, etc.).
   static RootId? rootForDeepLink(String dest) {
     switch (dest) {
-      case 'home':
-        return RootId.home;
+      case 'home': // legacy links → the app now lands on AvaTOK
       case 'chat':
       case 'message':
       case 'avatalk':
@@ -163,7 +163,7 @@ class ShellV2 extends StatefulWidget {
 }
 
 class _ShellV2State extends State<ShellV2> {
-  RootId _root = RootId.home;
+  RootId _root = RootId.avaTalk;
 
   // User-chosen app-switcher order (AVA-SHELL-8). Drives BOTH the Home footer
   // rendering and the cold-open landing decision (order.first = landing app).
@@ -335,8 +335,6 @@ class _ShellV2State extends State<ShellV2> {
 
   Widget _rootScreen(RootId r) {
     switch (r) {
-      case RootId.home:
-        return const HomeRoot(key: PageStorageKey('shellv2_home'));
       case RootId.avaDial:
         return const AvaDialRoot(key: PageStorageKey('shellv2_avadial'));
       case RootId.avaTalk:
@@ -365,11 +363,11 @@ class _ShellV2State extends State<ShellV2> {
       nav.pop();
       return;
     }
-    if (_root != RootId.home) {
-      _switchRoot(RootId.home);
+    if (_root != RootId.avaTalk) {
+      _switchRoot(RootId.avaTalk);
       return;
     }
-    // At Home's first route → leave the app.
+    // At AvaTOK's (landing app) first route → leave the app.
     await SystemNavigator.pop();
   }
 
@@ -395,6 +393,17 @@ class _ShellV2State extends State<ShellV2> {
           body: IndexedStack(
             index: _root.index,
             children: [for (final r in RootId.values) _navigatorFor(r)],
+          ),
+          // The app switcher is rendered ONCE here, at the shell level — so the
+          // same icons stay in the same place as the user moves between AvaTOK,
+          // Calls and Marketplace (2026-07-12 nav rebrand). Each root no longer
+          // owns this bar itself.
+          bottomNavigationBar: AppSwitcherBar(
+            order: _order,
+            activeRoot: _root,
+            onSelect: _switchRoot,
+            onReorder: _setRootOrder,
+            onAskAva: _askAva,
           ),
         ),
       ),
