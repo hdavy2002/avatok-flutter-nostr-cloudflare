@@ -113,6 +113,16 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     var id = await _idStore.load();
     id ??= await _idStore.createAndStore();
     if (mounted) setState(() => _id = id);
+    // AVA-ONBOARD-1: the onboarding "notifications" step OWNS the single OS
+    // notification-permission ask (PushService.init defers it until onboarding is
+    // done — see the ordering contract there). If the permission is somehow
+    // already granted (re-onboarding, or the user enabled it in system Settings),
+    // render the step as already-on so we never show a redundant second prompt.
+    try {
+      if (await Permission.notification.isGranted && mounted) {
+        setState(() => _notifEnabled = true);
+      }
+    } catch (_) {/* status probe is best-effort — never block onboarding */}
     // [AVA-IDGATE-1] The isPhoneVerified() probe is gone with phone verification.
     // Handle-first onboarding: prefill the handle the visitor already reserved.
     final gh = await GuestSession.reservedHandle();

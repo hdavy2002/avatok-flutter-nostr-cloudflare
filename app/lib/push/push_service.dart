@@ -23,6 +23,7 @@ import '../core/calls/call_session_manager.dart';
 import '../core/config.dart';
 import '../core/disk_cache.dart';
 import '../core/ice_cache.dart';
+import '../core/onboarding_store.dart';
 import '../core/remote_config.dart';
 import '../features/avatok/call_screen.dart';
 import '../features/avatok/incoming_business_call_screen.dart';
@@ -900,6 +901,18 @@ class PushService {
     }
   }
 
+  /// Has the user finished onboarding? The single notification-permission ask is
+  /// deferred to the onboarding "notifications" step until then (see the ordering
+  /// contract in [_init]). When the answer is unknown we return false → defer the
+  /// ask, which is the safe default (never prompt before onboarding owns it).
+  static Future<bool> _onboardingComplete() async {
+    try {
+      return await OnboardingStore().isDone();
+    } catch (_) {
+      return false;
+    }
+  }
+
   static Future<void> _init() async {
     // Desktop (macOS) test build: no APNs and no native incoming-call UI
     // (flutter_callkit_incoming is mobile-only). Skip push/CallKit wiring so the
@@ -909,12 +922,36 @@ class PushService {
       return;
     }
     AvaLog.I.log('app', 'session start (app=${AvaLog.I.app}, session=${AvaLog.I.session})');
-    final perm = await FirebaseMessaging.instance.requestPermission();
+    // ── Notification-permission ordering contract (AVA-ONBOARD-1) ─────────────
+    // There must be exactly ONE OS notification-permission dialog on a fresh
+    // install, and the onboarding "notifications" step OWNS it. This init()
+    // historically called requestPermission() at app start, which fired the OS
+    // dialog BEFORE onboarding had even rendered — then the onboarding step
+    // asked a SECOND time (the owner-reported double prompt).
+    //
+    // Fix: while onboarding is NOT yet complete we only READ the current status
+    // (getNotificationSettings never prompts) and let the onboarding step do the
+    // single ask. Once onboarding is done (every returning/existing user) we
+    // request as before, so someone who skipped earlier is still re-offered on a
+    // later launch — and because the OS only shows its dialog once, this is a
+    // no-op read for anyone who already answered.
+    //
+    // IMPORTANT: FCM token retrieval + notification-channel setup below do NOT
+    // require GRANTED notification permission (only DISPLAYING a notification
+    // does — documented FCM behavior), so token registration keeps working even
+    // when we defer the ask. Do NOT move a requestPermission() ahead of this
+    // gate; that reintroduces the double prompt.
+    final onboardingDone = await _onboardingComplete();
+    final perm = onboardingDone
+        ? await FirebaseMessaging.instance.requestPermission()
+        : await FirebaseMessaging.instance.getNotificationSettings();
     // Telemetry: a denied/notDetermined notification permission is a common
     // reason a device never receives calls/messages — capture it so "user never
-    // got the push" is queryable instead of invisible.
+    // got the push" is queryable instead of invisible. `requested` distinguishes
+    // an actual ask from a pre-onboarding status read.
     Analytics.capture('push_permission', {
       'status': perm.authorizationStatus.name, // authorized|denied|notDetermined|provisional
+      'requested': onboardingDone,
     });
     await _local.initialize(
       const InitializationSettings(
