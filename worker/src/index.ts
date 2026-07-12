@@ -150,6 +150,7 @@ import { avaTriggersGet, avaLedgerGet, avaMomentOutcome } from "./routes/ava_odl
 import { backupGet, backupPut, backupStatus } from "./routes/backup"; // P10
 import { ringtone } from "./routes/ringtone"; // AI ringback tones + busy tone
 import { spamReport, spamLookup, spamBloom, spamRescore } from "./routes/spam"; // AvaDial spam shield (Phase 2a, dark behind spamShield)
+import { homeCards } from "./routes/homecards"; // Home dashboard card aggregates (Phase 3, dark behind shellV2)
 import { delegateHandler } from "./routes/ava_delegate"; // P7 (Phase 11 route wiring)
 // --- AI Messenger Batch 2026-07-03 (Streams A/B/C/E/F/G/I) ---
 import { marketplaceAgentSettingsGet, marketplaceAgentSettingsPut } from "./routes/agent_settings"; // STREAM A
@@ -498,6 +499,9 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p.startsWith("/api/spam/lookup/") && req.method === "GET") return await spamLookup(req, env, ctx, p.slice("/api/spam/lookup/".length));
       if (p === "/api/spam/bloom" && req.method === "GET") return await spamBloom(req, env);
       if (p === "/api/spam/rescore" && req.method === "POST") return await spamRescore(req, env);
+
+      // --- Home dashboard card aggregates (Phase 3; DARK behind shellV2) ---
+      if (p === "/api/home/cards" && req.method === "GET") return await homeCards(req, env, ctx);
 
       // --- directory ---
       if (p === "/api/profile" && req.method === "POST") return await api.profileUpsert(req, env);
