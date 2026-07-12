@@ -292,6 +292,15 @@ export interface PlatformConfig {
   // the four-sibling shell (Home/AvaDial/AvaTalk/Services). Client mirror:
   // RemoteConfig.shellV2.
   shellV2: boolean;
+  // AvaDial community spam shield (Specs/PLAN-2026-07-12-home-ava-tok-services-shell
+  // .md §4.4, Phase 2a). Master kill switch for the whole spam-reputation backend:
+  // /api/spam/report, /api/spam/lookup/:e164, /api/spam/bloom and the nightly
+  // scoring job. Default OFF — while false EVERY spam route 403s, the D1 tables go
+  // unused and the scoring job no-ops, so the feature is fully DARK. Flip
+  // `spamShield: true` in KV `platform_config` (staging first) once the reputation
+  // pool + on-device bloom cache are device-verified. Client mirror:
+  // RemoteConfig.spamShield.
+  spamShield: boolean;
   // §11/§15 money + timing constants — flag-overridable via KV so a value tweak
   // never needs a redeploy. These are VALUES, not design; see plan §11.
   minServiceRate: number;          // MIN_SERVICE_RATE — floor for a caller-paid rate/min (owner proposed 20)
@@ -458,6 +467,9 @@ const DEFAULTS: PlatformConfig = {
   // renders today's messenger-first shell unchanged; flip ON in KV (staging first)
   // to switch to ShellV2. Client mirror: RemoteConfig.shellV2.
   shellV2: false,
+  // AvaDial spam shield — DARK. While false every /api/spam/* route 403s and the
+  // nightly scoring job no-ops. Flip ON in KV (staging first) after device tests.
+  spamShield: false,
   // §11/§15 constants — flag-overridable values, not design. Defaults per plan.
   minServiceRate: 20,
   agentRateAPerMin: 6,
