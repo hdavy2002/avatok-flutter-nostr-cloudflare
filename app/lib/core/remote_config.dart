@@ -270,6 +270,16 @@ class RemoteConfig {
   /// [ShellV2]. Mirrors config.ts `shellV2`.
   static bool get shellV2 => _b('shellV2', false);
 
+  /// AvaDial PSTN dialer (Specs/PLAN-2026-07-12-home-ava-tok-services-shell.md §4,
+  /// Phase 2b + Specs/SPIKE-2026-07-12-avadial-telecom.md). Ships DARK (default
+  /// false): while off the AvaDial tabs render the Phase-1 placeholder empty states
+  /// and NO telecom role is ever requested. Flip `avaDialer: true` in KV
+  /// `platform_config` (staging first) to surface the device Contacts/Logs tabs, the
+  /// block list, the "Make Ava your phone app" onboarding, the red/green/blue PSTN
+  /// call screens and the CallScreeningService. Mirrors config.ts `avaDialer` (served
+  /// by the worker). Default false so a config-fetch failure keeps AvaDial inert.
+  static bool get avaDialer => _b('avaDialer', false);
+
   static int get minAppBuild => (_asNum(_cfg['minAppBuild'])?.toInt()) ?? 0;
 
   /// Installed build too old? → callers show the blocking "please update" screen.

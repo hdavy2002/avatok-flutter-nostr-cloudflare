@@ -1,0 +1,275 @@
+import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
+
+import '../../core/analytics.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
+import 'avadial_channel.dart';
+import 'block_list.dart';
+import 'device_contacts.dart';
+
+/// The spam-shield paint bucket for an incoming PSTN call (plan §4.3).
+enum PstnColor { red, green, blue }
+
+/// Full-screen incoming PSTN call screen (plan §4.3). Painted from the reputation
+/// score + the device phone book:
+///   - RED   — known spammer (score >= warn threshold): warning UI, default Decline.
+///   - GREEN — a device contact: friendly, name + avatar.
+///   - BLUE  — unknown: neutral, Answer · Decline · Block · Report spam.
+///
+/// All actions route through [AvaDialChannel] (answer/reject) + [BlockList]
+/// (block/report). No raw phone number reaches analytics — only the colour bucket.
+class PstnCallScreen extends StatefulWidget {
+  /// Native call id (from [AvaCallEvent.id]) — targets the right [Call] for
+  /// answer/reject. Null in a preview/no-active-call context (buttons then only
+  /// dismiss).
+  final String? callId;
+  final String number;
+
+  /// Community spam score 0..100 (from the snapshot / lookup); null = unknown.
+  final int? spamScore;
+
+  /// Warn threshold above which a score paints RED (mirrors the snapshot value).
+  final int warnThreshold;
+
+  const PstnCallScreen({
+    super.key,
+    required this.number,
+    this.callId,
+    this.spamScore,
+    this.warnThreshold = 70,
+  });
+
+  @override
+  State<PstnCallScreen> createState() => _PstnCallScreenState();
+}
+
+class _PstnCallScreenState extends State<PstnCallScreen> {
+  DeviceContact? _contact;
+  late PstnColor _color;
+
+  @override
+  void initState() {
+    super.initState();
+    _contact = DeviceContacts.I.lookup(widget.number);
+    _color = _resolveColor();
+    Analytics.capture('pstn_call_screen_shown', {'color': _color.name});
+  }
+
+  PstnColor _resolveColor() {
+    final score = widget.spamScore;
+    if (score != null && score >= widget.warnThreshold) return PstnColor.red;
+    if (_contact != null) return PstnColor.green;
+    return PstnColor.blue;
+  }
+
+  Color get _accent => switch (_color) {
+        PstnColor.red => Zine.coral,
+        PstnColor.green => Zine.mint,
+        PstnColor.blue => Zine.blue,
+      };
+
+  Future<void> _answer() async {
+    final id = widget.callId;
+    if (id != null) await AvaDialChannel.I.answer(id);
+    _close();
+  }
+
+  Future<void> _decline() async {
+    final id = widget.callId;
+    if (id != null) await AvaDialChannel.I.reject(id);
+    _close();
+  }
+
+  Future<void> _block() async {
+    await BlockList.I.block(widget.number, reportedSpam: false);
+    await _decline();
+  }
+
+  Future<void> _reportSpam() async {
+    await BlockList.I.reportSpam(widget.number);
+    await _decline();
+  }
+
+  void _close() {
+    if (mounted && Navigator.of(context).canPop()) Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Zine.paper,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 32, 24, 28),
+          child: Column(
+            children: [
+              const Spacer(),
+              _header(),
+              const SizedBox(height: 24),
+              if (_color == PstnColor.red) _redBanner(),
+              const Spacer(),
+              _actions(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _header() {
+    final name = _contact?.name;
+    final kicker = switch (_color) {
+      PstnColor.red => 'SUSPECTED SPAM',
+      PstnColor.green => 'INCOMING CALL',
+      PstnColor.blue => 'UNKNOWN NUMBER',
+    };
+    return Column(children: [
+      Container(
+        width: 108,
+        height: 108,
+        decoration: BoxDecoration(
+          color: _accent,
+          shape: BoxShape.circle,
+          border: Border.all(color: Zine.ink, width: Zine.bwLg),
+          boxShadow: Zine.shadow,
+        ),
+        child: Icon(
+          _color == PstnColor.red
+              ? PhosphorIcons.warning(PhosphorIconsStyle.fill)
+              : PhosphorIcons.phoneIncoming(PhosphorIconsStyle.fill),
+          size: 52,
+          color: _color == PstnColor.red ? Colors.white : Zine.ink,
+        ),
+      ),
+      const SizedBox(height: 20),
+      Text(kicker, style: ZineText.kicker(color: _accent == Zine.coral ? Zine.coral : Zine.inkSoft)),
+      const SizedBox(height: 6),
+      Text(
+        name ?? widget.number,
+        textAlign: TextAlign.center,
+        style: ZineText.hero(size: 30),
+      ),
+      if (name != null) ...[
+        const SizedBox(height: 4),
+        Text(widget.number, style: ZineText.sub(size: 15)),
+      ],
+    ]);
+  }
+
+  Widget _redBanner() => ZineCard(
+        color: Zine.coralMark,
+        child: Row(children: [
+          ZineIconBadge(icon: PhosphorIcons.shieldWarning(PhosphorIconsStyle.bold), color: Zine.coral),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              widget.spamScore != null
+                  ? 'Reported by the community (score ${widget.spamScore}). '
+                      'We recommend declining.'
+                  : 'This number has been reported as spam. We recommend declining.',
+              style: ZineText.sub(size: 13.5, color: Zine.ink),
+            ),
+          ),
+        ]),
+      );
+
+  Widget _actions() {
+    switch (_color) {
+      case PstnColor.red:
+        // Default action = Decline (prominent). Answer-anyway is secondary.
+        return Column(children: [
+          ZineButton(
+            label: 'Decline',
+            variant: ZineButtonVariant.coral,
+            fullWidth: true,
+            icon: Icons.call_end,
+            trailingIcon: false,
+            onPressed: _decline,
+          ),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(
+              child: ZineButton(
+                label: 'Block',
+                variant: ZineButtonVariant.ghost,
+                fullWidth: true,
+                onPressed: _block,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: ZineButton(
+                label: 'Answer anyway',
+                variant: ZineButtonVariant.ghost,
+                fullWidth: true,
+                onPressed: _answer,
+              ),
+            ),
+          ]),
+        ]);
+      case PstnColor.green:
+        return Row(children: [
+          Expanded(
+            child: ZineButton(
+              label: 'Decline',
+              variant: ZineButtonVariant.coral,
+              fullWidth: true,
+              onPressed: _decline,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: ZineButton(
+              label: 'Answer',
+              variant: ZineButtonVariant.lime,
+              fullWidth: true,
+              onPressed: _answer,
+            ),
+          ),
+        ]);
+      case PstnColor.blue:
+        return Column(children: [
+          Row(children: [
+            Expanded(
+              child: ZineButton(
+                label: 'Decline',
+                variant: ZineButtonVariant.coral,
+                fullWidth: true,
+                onPressed: _decline,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: ZineButton(
+                label: 'Answer',
+                variant: ZineButtonVariant.lime,
+                fullWidth: true,
+                onPressed: _answer,
+              ),
+            ),
+          ]),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(
+              child: ZineButton(
+                label: 'Block',
+                variant: ZineButtonVariant.ghost,
+                fullWidth: true,
+                onPressed: _block,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: ZineButton(
+                label: 'Report spam',
+                variant: ZineButtonVariant.ghost,
+                fullWidth: true,
+                onPressed: _reportSpam,
+              ),
+            ),
+          ]),
+        ]);
+    }
+  }
+}
