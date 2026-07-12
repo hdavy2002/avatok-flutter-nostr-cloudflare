@@ -25,14 +25,42 @@ import '../identity/identity.dart';
 class RingbackPlayer {
   final AudioPlayer _p = AudioPlayer();
   bool _disposed = false;
+  bool _ctxSet = false;
 
   // audioplayers AssetSource paths are relative to the `assets/` bundle prefix.
   static String _assetRel(String p) => p.startsWith('assets/') ? p.substring(7) : p;
+
+  /// [CALL-SPEAKER-RAMP 2026-07-12] Pin the ringback/beeps to the VOICE-CALL
+  /// audio route so they play at call volume the instant the speaker is toggled,
+  /// instead of ramping up from silence. The default audioplayers context is
+  /// USAGE_MEDIA → STREAM_MUSIC, which — while the device is already in
+  /// MODE_IN_COMMUNICATION for the WebRTC call — gets re-routed/attenuated with a
+  /// gain ramp when the comm device switches. voiceCommunication usage maps to
+  /// STREAM_VOICE_CALL, and `audioFocus: none` MIXES with the live call audio
+  /// (no focus grab, no ducking). Set once, lazily, before the first play.
+  Future<void> _ensureCallAudioContext() async {
+    if (_ctxSet) return;
+    _ctxSet = true;
+    try {
+      await _p.setAudioContext(AudioContext(
+        android: AudioContextAndroid(
+          isSpeakerphoneOn: false, // the call's own route decides earpiece/speaker
+          stayAwake: false,
+          contentType: AndroidContentType.speech,
+          usageType: AndroidUsageType.voiceCommunication,
+          audioFocus: AndroidAudioFocus.none,
+        ),
+      ));
+    } catch (e) {
+      AvaLog.I.log('call', 'ringback audio-context set failed: $e');
+    }
+  }
 
   /// Play the callee's ringback (looped). [value] is a bundled catalog id
   /// (preferred), or empty → bundled default, or a legacy http(s) URL.
   Future<void> playRingback(String value) async {
     try {
+      await _ensureCallAudioContext();
       await _p.setReleaseMode(ReleaseMode.loop);
       Source src;
       if (value.isEmpty) {
@@ -67,6 +95,7 @@ class RingbackPlayer {
   Future<void> _playDefaultRingback() async {
     if (_disposed) return;
     try {
+      await _ensureCallAudioContext();
       await _p.setReleaseMode(ReleaseMode.loop);
       await _p.play(AssetSource(_assetRel(kDefaultRingbackAsset)));
     } catch (_) { /* give up silently — a missing tone must never crash a call */ }
@@ -79,6 +108,7 @@ class RingbackPlayer {
   Future<void> playSearchingTone() async {
     if (_disposed) return;
     try {
+      await _ensureCallAudioContext();
       await _p.setReleaseMode(ReleaseMode.loop);
       await _p.play(AssetSource(_assetRel(kSearchingToneAsset)));
     } catch (e) {
@@ -90,6 +120,7 @@ class RingbackPlayer {
   Future<void> playBusyTone() async {
     if (_disposed) return;
     try {
+      await _ensureCallAudioContext();
       await _p.setReleaseMode(ReleaseMode.release);
       await _p.play(AssetSource(_assetRel(kBusyToneAsset)));
     } catch (e) {

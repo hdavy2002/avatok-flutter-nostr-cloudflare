@@ -906,8 +906,12 @@ class CallSession {
       return;
     }
     localRenderer.srcObject = _stream;
-    try { await Helper.setSpeakerphoneOn(_speaker); } catch (_) {}
+    // [CALL-SPEAKER-RAMP 2026-07-12] Establish the communication audio session
+    // (MODE_IN_COMMUNICATION + audio focus) BEFORE selecting the speaker route,
+    // so the route is applied once inside an established session instead of
+    // triggering a cold re-route + volume ramp at the very start of the call.
     try { await NativeVoiceAudio().startP2pAudioMode(); } catch (_) {}
+    try { await Helper.setSpeakerphoneOn(_speaker); } catch (_) {}
     try { await NativeVoiceAudio().startBluetoothSco(); } catch (_) {}
     if (NativeVoiceAudio.isSupported) {
       final route = (await NativeVoiceAudio().getAudioRoute()) ?? 'unknown';
@@ -1543,7 +1547,18 @@ class CallSession {
   void toggleSpeaker() {
     _speaker = !_speaker;
     speakerOn.value = _speaker;
+    // [CALL-SPEAKER-RAMP 2026-07-12] Drive BOTH the WebRTC helper AND the native
+    // engine. Helper.setSpeakerphoneOn alone flips isSpeakerphoneOn "cold", so
+    // Android ramps the volume up from quiet on the communication-device switch
+    // (the reported "quiet then suddenly loud" speaker/beeps bug). The native
+    // setSpeaker re-asserts MODE_IN_COMMUNICATION together with the route, so the
+    // switch happens inside the already-established comm session and audio comes
+    // in at full call volume immediately.
     Helper.setSpeakerphoneOn(_speaker);
+    if (NativeVoiceAudio.isSupported) {
+      // ignore: unawaited_futures
+      NativeVoiceAudio.instance.setSpeaker(_speaker);
+    }
     // ignore: unawaited_futures
     _receptionist?.setSpeaker(_speaker);
   }
