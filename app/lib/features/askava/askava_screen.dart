@@ -189,8 +189,9 @@ class _AskAvaScreenState extends State<AskAvaScreen> {
           }
           final res = await AskAvaTools.runData(tool, args);
           finalContacts = res.contacts;
+          // Record the model's tool-call turn; the tool result rides the NEXT
+          // message (ask() appends it as the newest user turn) — don't double-add.
           history.add({'role': 'model', 'text': reply});
-          history.add({'role': 'user', 'text': res.summaryForModel});
           pending = res.summaryForModel;
           continue;
         }
