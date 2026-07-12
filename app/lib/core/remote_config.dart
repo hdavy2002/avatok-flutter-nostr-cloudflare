@@ -280,6 +280,18 @@ class RemoteConfig {
   /// by the worker). Default false so a config-fetch failure keeps AvaDial inert.
   static bool get avaDialer => _b('avaDialer', false);
 
+  /// AvaDial default-SMS-app layer (Specs/PLAN-2026-07-12-home-ava-tok-services-shell
+  /// .md, AVA-SMS; owner decision 2026-07-12). Ships DARK (default false): while off
+  /// the AvaDial Messages tab renders its Phase-1 placeholder, NO SMS role is ever
+  /// requested and the native SMS receivers/send service stay inert. Flip
+  /// `avaSms: true` in KV `platform_config` (staging first) to surface the "Make
+  /// AvaTOK your messages app" onboarding, the SMS conversation list + composer and
+  /// the AI Inbox/Spam filter over carrier SMS. Requires ROLE_SMS at runtime
+  /// (independent of the dialer role). Mirrors config.ts `avaSms` (served by the
+  /// worker). Default false so a config-fetch failure keeps AvaDial's SMS surfaces
+  /// inert.
+  static bool get avaSms => _b('avaSms', false);
+
   static int get minAppBuild => (_asNum(_cfg['minAppBuild'])?.toInt()) ?? 0;
 
   /// Installed build too old? → callers show the blocking "please update" screen.

@@ -309,6 +309,18 @@ export interface PlatformConfig {
   // `platform_config` (staging first) after the §9 device test matrix passes.
   // Client mirror: RemoteConfig.avaDialer.
   avaDialer: boolean;
+  // AvaDial default-SMS-app layer (Specs/PLAN-2026-07-12-home-ava-tok-services-shell
+  // .md, AVA-SMS; owner decision 2026-07-12). Master kill switch for the AvaDial
+  // SMS surfaces in the app: the "Make AvaTOK your messages app" onboarding banner,
+  // the Messages tab conversation list + composer, and the AI Inbox/Spam filter over
+  // carrier SMS. Requires ROLE_SMS at runtime (independent of ROLE_DIALER). Default
+  // OFF — while false the Messages tab keeps its Phase-1 placeholder, NO SMS role is
+  // ever requested, and the native SMS receivers/send service stay inert (they only
+  // ever fire once the user grants the default-SMS role, which we never request unless
+  // this flag is on). Flip `avaSms: true` in KV `platform_config` (staging first)
+  // after the SMS role qualification + device test matrix passes and the Play Store
+  // default-SMS-handler declaration is approved. Client mirror: RemoteConfig.avaSms.
+  avaSms: boolean;
   // §11/§15 money + timing constants — flag-overridable via KV so a value tweak
   // never needs a redeploy. These are VALUES, not design; see plan §11.
   minServiceRate: number;          // MIN_SERVICE_RATE — floor for a caller-paid rate/min (owner proposed 20)
@@ -482,6 +494,12 @@ const DEFAULTS: PlatformConfig = {
   // its Phase-1 placeholders. Flip ON in KV (staging first) after the telecom
   // spike's device test matrix passes. Client mirror: RemoteConfig.avaDialer.
   avaDialer: false,
+  // AvaDial default-SMS-app surfaces — DARK. While false the Messages tab keeps its
+  // Phase-1 placeholder, NO SMS role is requested and the native SMS receivers stay
+  // inert. Flip ON in KV (staging first) after the SMS role + device matrix passes
+  // and Play's default-SMS-handler declaration is approved. Client mirror:
+  // RemoteConfig.avaSms.
+  avaSms: false,
   // §11/§15 constants — flag-overridable values, not design. Defaults per plan.
   minServiceRate: 20,
   agentRateAPerMin: 6,
