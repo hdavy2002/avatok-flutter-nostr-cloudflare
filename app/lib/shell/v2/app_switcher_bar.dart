@@ -13,6 +13,8 @@ import '../shell_v2.dart';
 ///
 /// Rendered ONCE by [ShellV2] itself (not by each root), so the same icons stay in
 /// the same place across every app — switching apps never moves or hides this bar.
+/// Full-size icons/labels (66px bar) — a shrunk 50px variant was tried and reverted
+/// per owner feedback (2026-07-12) since it made everything too small to read.
 ///
 /// The FIRST root in [order] is the landing app on cold open. Reorders are
 /// committed via [onReorder]; taps via [onSelect]; the Ava action via [onAskAva].
@@ -76,10 +78,11 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
       ),
       child: SafeArea(
         top: false,
-        // Shrunk from 66 → 50 (2026-07-12 owner request: reclaim screen real
-        // estate now that this bar is visible on every app, not just Home).
+        // Restored to the original 66px height + icon/text sizes (2026-07-12
+        // owner feedback: the shrunk 50px version made the icons/labels too
+        // small to read).
         child: SizedBox(
-          height: 50,
+          height: 66,
           child: Row(
             children: [
               for (var i = 0; i < widget.order.length; i++)
@@ -180,22 +183,22 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
       children: [
         AnimatedContainer(
           duration: const Duration(milliseconds: 160),
-          width: 42,
-          height: 22,
+          width: 46,
+          height: 28,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: selected ? _indicator : Colors.transparent,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(14),
           ),
-          child: Icon(selected ? selectedIcon : icon, size: 19, color: Zine.ink),
+          child: Icon(selected ? selectedIcon : icon, size: 22, color: Zine.ink),
         ),
-        const SizedBox(height: 2),
+        const SizedBox(height: 3),
         Text(
           label,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: ZineText.tag(
-            size: 9.5,
+            size: 10.5,
             color: selected ? Zine.ink : Zine.inkSoft,
           ),
         ),
