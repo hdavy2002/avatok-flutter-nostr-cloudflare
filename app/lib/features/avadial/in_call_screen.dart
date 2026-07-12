@@ -7,6 +7,7 @@ import '../../core/analytics.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'avadial_channel.dart';
+import 'avadial_theme.dart';
 import 'device_contacts.dart';
 
 /// The active-call UI shared by incoming (after answer) and outgoing (after connect)
@@ -152,7 +153,9 @@ class _InCallScreenState extends State<InCallScreen> {
   Widget build(BuildContext context) {
     final name = _contact?.name;
     return Scaffold(
-      backgroundColor: Zine.paper,
+      // Dark PSTN active-call screen (owner request 2026-07-12), shared by both
+      // the answer and outgoing-connected paths — never the AvaTalk/messenger UI.
+      backgroundColor: AvaDialTheme.bg,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(24, 32, 24, 28),
@@ -160,9 +163,10 @@ class _InCallScreenState extends State<InCallScreen> {
             const Spacer(),
             _avatar(name),
             const SizedBox(height: 20),
-            Text(name ?? widget.number, textAlign: TextAlign.center, style: ZineText.hero(size: 30)),
+            Text(name ?? widget.number,
+                textAlign: TextAlign.center, style: ZineText.hero(size: 30, color: AvaDialTheme.text)),
             const SizedBox(height: 6),
-            Text(_statusLine, style: ZineText.sub(size: 16)),
+            Text(_statusLine, style: ZineText.sub(size: 16, color: AvaDialTheme.textSoft)),
             const Spacer(),
             if (_keypad) _keypadGrid() else _controls(),
             const SizedBox(height: 18),
@@ -177,18 +181,20 @@ class _InCallScreenState extends State<InCallScreen> {
     final initial = (name != null && name.isNotEmpty)
         ? name.characters.first.toUpperCase()
         : null;
+    // Known contact = mint, same color-coding convention as PstnCallScreen.
+    final accent = _contact != null ? Zine.mint : Zine.blue;
     return Container(
       width: 108,
       height: 108,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: Zine.mint,
+        color: accent,
         shape: BoxShape.circle,
-        border: Border.all(color: Zine.ink, width: Zine.bwLg),
+        border: Border.all(color: AvaDialTheme.border, width: Zine.bwLg),
         boxShadow: Zine.shadow,
       ),
       child: initial != null
-          ? Text(initial, style: ZineText.hero(size: 44))
+          ? Text(initial, style: ZineText.hero(size: 44, color: Zine.ink))
           : Icon(PhosphorIcons.phoneCall(PhosphorIconsStyle.fill), size: 50, color: Zine.ink),
     );
   }
@@ -225,13 +231,14 @@ class _InCallScreenState extends State<InCallScreen> {
     return Column(mainAxisSize: MainAxisSize.min, children: [
       ZinePressable(
         onTap: onTap,
-        color: active ? Zine.lime : Zine.card,
+        color: active ? Zine.lime : AvaDialTheme.surface2,
+        borderColor: AvaDialTheme.border,
         radius: BorderRadius.circular(100),
         padding: const EdgeInsets.all(18),
-        child: Icon(icon, size: 26, color: Zine.ink),
+        child: Icon(icon, size: 26, color: active ? Zine.ink : AvaDialTheme.text),
       ),
       const SizedBox(height: 6),
-      Text(label, style: ZineText.tag(size: 11)),
+      Text(label, style: ZineText.tag(size: 11, color: AvaDialTheme.textSoft)),
     ]);
   }
 
@@ -249,9 +256,10 @@ class _InCallScreenState extends State<InCallScreen> {
           for (final k in keys)
             ZinePressable(
               onTap: () => _dtmf(k),
-              color: Zine.card,
+              color: AvaDialTheme.surface2,
+              borderColor: AvaDialTheme.border,
               radius: BorderRadius.circular(16),
-              child: Center(child: Text(k, style: ZineText.hero(size: 26))),
+              child: Center(child: Text(k, style: ZineText.hero(size: 26, color: AvaDialTheme.text))),
             ),
         ],
       ),

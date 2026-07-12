@@ -5,6 +5,7 @@ import '../../core/analytics.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'avadial_channel.dart';
+import 'avadial_theme.dart';
 import 'block_list.dart';
 import 'device_contacts.dart';
 import 'in_call_screen.dart';
@@ -109,7 +110,10 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Zine.paper,
+      // Dedicated dark PSTN screen (owner request 2026-07-12) — separate from,
+      // and never replaced by, the AvaTalk/messenger call UI. Color-coded by
+      // caller-id bucket: red = spam, green = known contact, blue = unknown.
+      backgroundColor: AvaDialTheme.bg,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(24, 32, 24, 28),
@@ -142,7 +146,7 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
         decoration: BoxDecoration(
           color: _accent,
           shape: BoxShape.circle,
-          border: Border.all(color: Zine.ink, width: Zine.bwLg),
+          border: Border.all(color: AvaDialTheme.border, width: Zine.bwLg),
           boxShadow: Zine.shadow,
         ),
         child: Icon(
@@ -154,22 +158,22 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
         ),
       ),
       const SizedBox(height: 20),
-      Text(kicker, style: ZineText.kicker(color: _accent == Zine.coral ? Zine.coral : Zine.inkSoft)),
+      Text(kicker, style: ZineText.kicker(color: _accent == Zine.coral ? Zine.coral : AvaDialTheme.textSoft)),
       const SizedBox(height: 6),
       Text(
         name ?? widget.number,
         textAlign: TextAlign.center,
-        style: ZineText.hero(size: 30),
+        style: ZineText.hero(size: 30, color: AvaDialTheme.text),
       ),
       if (name != null) ...[
         const SizedBox(height: 4),
-        Text(widget.number, style: ZineText.sub(size: 15)),
+        Text(widget.number, style: ZineText.sub(size: 15, color: AvaDialTheme.textSoft)),
       ],
     ]);
   }
 
   Widget _redBanner() => ZineCard(
-        color: Zine.coralMark,
+        color: AvaDialTheme.surface2,
         child: Row(children: [
           ZineIconBadge(icon: PhosphorIcons.shieldWarning(PhosphorIconsStyle.bold), color: Zine.coral),
           const SizedBox(width: 12),
@@ -179,7 +183,7 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
                   ? 'Reported by the community (score ${widget.spamScore}). '
                       'We recommend declining.'
                   : 'This number has been reported as spam. We recommend declining.',
-              style: ZineText.sub(size: 13.5, color: Zine.ink),
+              style: ZineText.sub(size: 13.5, color: AvaDialTheme.text),
             ),
           ),
         ]),

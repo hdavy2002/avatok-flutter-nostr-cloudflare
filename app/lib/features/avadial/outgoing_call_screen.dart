@@ -7,6 +7,7 @@ import '../../core/analytics.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'avadial_channel.dart';
+import 'avadial_theme.dart';
 import 'device_contacts.dart';
 import 'in_call_screen.dart';
 
@@ -98,8 +99,13 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> {
   Widget build(BuildContext context) {
     final name = _contact?.name;
     final initial = (name != null && name.isNotEmpty) ? name.characters.first.toUpperCase() : null;
+    // Known contact = mint, unknown = blue — same convention as PstnCallScreen.
+    final accent = _contact != null ? Zine.mint : Zine.blue;
     return Scaffold(
-      backgroundColor: Zine.paper,
+      // Dark PSTN outgoing/"dialing" screen (owner request 2026-07-12) — never
+      // the AvaTalk/messenger UI, and always shown for a placed PSTN call so a
+      // dial never silently just rings with no screen.
+      backgroundColor: AvaDialTheme.bg,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(24, 32, 24, 28),
@@ -110,25 +116,26 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> {
               height: 108,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: Zine.blue,
+                color: accent,
                 shape: BoxShape.circle,
-                border: Border.all(color: Zine.ink, width: Zine.bwLg),
+                border: Border.all(color: AvaDialTheme.border, width: Zine.bwLg),
                 boxShadow: Zine.shadow,
               ),
               child: initial != null
-                  ? Text(initial, style: ZineText.hero(size: 44))
+                  ? Text(initial, style: ZineText.hero(size: 44, color: Zine.ink))
                   : Icon(PhosphorIcons.phoneOutgoing(PhosphorIconsStyle.fill), size: 50, color: Zine.ink),
             ),
             const SizedBox(height: 20),
-            Text('CALLING', style: ZineText.kicker(color: Zine.inkSoft)),
+            Text('CALLING', style: ZineText.kicker(color: AvaDialTheme.textSoft)),
             const SizedBox(height: 6),
-            Text(name ?? widget.number, textAlign: TextAlign.center, style: ZineText.hero(size: 30)),
+            Text(name ?? widget.number,
+                textAlign: TextAlign.center, style: ZineText.hero(size: 30, color: AvaDialTheme.text)),
             if (name != null) ...[
               const SizedBox(height: 4),
-              Text(widget.number, style: ZineText.sub(size: 15)),
+              Text(widget.number, style: ZineText.sub(size: 15, color: AvaDialTheme.textSoft)),
             ],
             const SizedBox(height: 8),
-            Text(_statusLine, style: ZineText.sub(size: 16)),
+            Text(_statusLine, style: ZineText.sub(size: 16, color: AvaDialTheme.textSoft)),
             const Spacer(),
             ZineButton(
               label: 'End',
