@@ -51,6 +51,7 @@ import '../features/wallet/wallet_screen.dart';
 import '../features/settings/settings_screen.dart';
 import 'coming_soon.dart';
 import 'focus_mode.dart';
+import 'shell_v2.dart';
 
 /// The signed-in app shell. Opens on AvaTOK (messaging) as the home surface;
 /// other apps are pushed on top and pop back here.
@@ -522,6 +523,15 @@ class _AvaShellState extends State<AvaShell> {
         // no flash to the chat list).
         onDone: () { setState(() { _profileComplete = null; }); _load(); },
       );
+    }
+    // shellV2 (Specs/PLAN-2026-07-12-home-ava-tok-services-shell.md, Phase 1):
+    // when the remote flag is ON, render the four-root shell (Home · AvaDial ·
+    // AvaTalk · Services) instead of the messenger-first surface. ALL gates above
+    // (profile / number) still run first — only the LANDING changes. When the
+    // flag is OFF (default, dark), this returns the exact ChatListScreen below,
+    // byte-for-byte today's behaviour.
+    if (RemoteConfig.shellV2) {
+      return ShellV2(clerk: widget.clerk, onSignOut: widget.onSignOut, identity: _id);
     }
     // Messaging-first landing (owner decision 2026-06-18, free release): the app
     // opens directly on AvaTOK (ChatListScreen), where users see their chats &
