@@ -32,7 +32,7 @@ class AvaInCallService : InCallService() {
 
         @Volatile
         private var instance: AvaInCallService? = null
-        private val calls = LinkedHashMap<String, Call>()
+        private val callMap = LinkedHashMap<String, Call>()
 
         private fun idFor(call: Call): String = System.identityHashCode(call).toString()
 
@@ -44,9 +44,9 @@ class AvaInCallService : InCallService() {
         fun action(id: String?, action: String, arg: Any?): Boolean {
             val svc = instance ?: return false
             return when (action) {
-                "answer" -> id?.let { calls[it]?.answer(android.telecom.VideoProfile.STATE_AUDIO_ONLY); true } ?: false
-                "reject" -> id?.let { calls[it]?.reject(false, null); true } ?: false
-                "disconnect" -> id?.let { calls[it]?.disconnect(); true } ?: false
+                "answer" -> id?.let { callMap[it]?.answer(android.telecom.VideoProfile.STATE_AUDIO_ONLY); true } ?: false
+                "reject" -> id?.let { callMap[it]?.reject(false, null); true } ?: false
+                "disconnect" -> id?.let { callMap[it]?.disconnect(); true } ?: false
                 "setMuted" -> { svc.setMuted(arg == true); true }
                 "setSpeaker" -> {
                     // NOTE: setAudioRoute is deprecated on API 34 in favour of
@@ -61,8 +61,8 @@ class AvaInCallService : InCallService() {
                 "dtmf" -> {
                     val digit = (arg as? String)?.firstOrNull() ?: return false
                     id?.let {
-                        calls[it]?.playDtmfTone(digit)
-                        calls[it]?.stopDtmfTone()
+                        callMap[it]?.playDtmfTone(digit)
+                        callMap[it]?.stopDtmfTone()
                         true
                     } ?: false
                 }
@@ -75,7 +75,7 @@ class AvaInCallService : InCallService() {
         super.onCallAdded(call)
         instance = this
         val id = idFor(call)
-        calls[id] = call
+        callMap[id] = call
         call.registerCallback(callbackFor(id))
 
         val number = call.details?.handle?.schemeSpecificPart
@@ -100,9 +100,9 @@ class AvaInCallService : InCallService() {
     override fun onCallRemoved(call: Call) {
         super.onCallRemoved(call)
         val id = idFor(call)
-        calls.remove(id)
+        callMap.remove(id)
         AvaDialPlugin.emit("onCallRemoved", mapOf("id" to id))
-        if (calls.isEmpty()) {
+        if (callMap.isEmpty()) {
             try {
                 (getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager)?.cancel(NOTIF_ID)
             } catch (_: Throwable) { /* best-effort */ }
