@@ -13,6 +13,7 @@ import '../../../core/ui/zine.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../avadial_channel.dart';
 import '../device_contacts.dart';
+import 'sms_compose_screen.dart';
 import 'sms_spam_store.dart';
 import 'sms_thread_screen.dart';
 
@@ -161,13 +162,12 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
   }
 
   void _compose() {
-    // Blank composer — prompt for a recipient inline.
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (_) => const _ComposeSheet(),
-    );
+    // AVA-SMS-4: full new-message screen — searchable device-contact picker plus
+    // manual number entry (was a bare number-only sheet). Opens SmsThreadScreen
+    // for the chosen recipient, ready to send.
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => const SmsComposeScreen(),
+    ));
   }
 
   @override
@@ -305,62 +305,6 @@ class ShellEmptyStateFallback extends StatelessWidget {
           style: ZineText.sub(size: 14),
         ),
       ],
-    );
-  }
-}
-
-/// Blank-compose recipient prompt → opens [SmsThreadScreen] for the typed number.
-class _ComposeSheet extends StatefulWidget {
-  const _ComposeSheet();
-  @override
-  State<_ComposeSheet> createState() => _ComposeSheetState();
-}
-
-class _ComposeSheetState extends State<_ComposeSheet> {
-  final _to = TextEditingController();
-
-  @override
-  void dispose() {
-    _to.dispose();
-    super.dispose();
-  }
-
-  void _go() {
-    final n = _to.text.trim();
-    if (n.isEmpty) return;
-    Navigator.of(context).pop();
-    Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => SmsThreadScreen(address: n),
-    ));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final bottom = MediaQuery.of(context).viewInsets.bottom;
-    return Padding(
-      padding: EdgeInsets.only(bottom: bottom),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
-        decoration: const BoxDecoration(
-          color: Zine.paper,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-          border: Border(top: BorderSide(color: Zine.ink, width: Zine.bwLg)),
-        ),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text('New message', style: ZineText.cardTitle(size: 18)),
-          const SizedBox(height: 14),
-          ZineField(
-            controller: _to,
-            label: 'To',
-            hint: 'Phone number',
-            keyboardType: TextInputType.phone,
-            autofocus: true,
-            onSubmitted: (_) => _go(),
-          ),
-          const SizedBox(height: 16),
-          ZineButton(label: 'Start', variant: ZineButtonVariant.lime, fullWidth: true, onPressed: _go),
-        ]),
-      ),
     );
   }
 }
