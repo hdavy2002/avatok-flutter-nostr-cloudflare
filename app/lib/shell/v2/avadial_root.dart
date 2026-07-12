@@ -12,6 +12,7 @@ import '../../features/avadial/block_list.dart';
 import '../../features/avadial/device_call_log.dart';
 import '../../features/avadial/device_contacts.dart';
 import '../../features/avadial/pstn_call_screen.dart';
+import '../../features/avadial/sms/sms_threads_screen.dart';
 import '../../features/avaphone/ava_phone_screen.dart';
 import '../shell_v2.dart';
 import 'shell_chrome.dart';
@@ -121,12 +122,18 @@ class _AvaDialRootState extends State<AvaDialRoot> {
                           'Your device call history with friend/spam labels — coming with AvaDial.',
                       color: Zine.mint,
                     ),
-              const ShellEmptyState(
-                icon: Icons.sms_outlined,
-                title: 'Messages',
-                subtitle: 'Carrier SMS lands here once Ava is your SMS app — coming with AvaDial.',
-                color: Zine.lilac,
-              ),
+              // Messages tab — gated INDEPENDENTLY on `avaSms` (the SMS role is
+              // separate from the dialer role). While the flag is off it keeps the
+              // Phase-1 placeholder; when on it shows the role banner until ROLE_SMS
+              // is held, then the live SMS threads + AI Inbox/Spam filter.
+              RemoteConfig.avaSms
+                  ? const _MessagesTab()
+                  : const ShellEmptyState(
+                      icon: Icons.sms_outlined,
+                      title: 'Messages',
+                      subtitle: 'Carrier SMS lands here once Ava is your SMS app — coming with AvaDial.',
+                      color: Zine.lilac,
+                    ),
               on
                   ? const _BlockTab()
                   : const ShellEmptyState(
@@ -495,6 +502,127 @@ class _BlockTabState extends State<_BlockTab> {
           },
         );
       },
+    );
+  }
+}
+
+// ── Messages tab (SMS) ───────────────────────────────────────────────────────
+/// Fills the Messages tab when `avaSms` is on. Until AvaTOK holds ROLE_SMS it shows
+/// the "Make AvaTOK your messages app" banner over an explainer; once the role is
+/// held it renders the live SMS conversation list + AI Inbox/Spam filter
+/// ([SmsThreadsScreen]). The SMS role is independent of the dialer role.
+class _MessagesTab extends StatefulWidget {
+  const _MessagesTab();
+
+  @override
+  State<_MessagesTab> createState() => _MessagesTabState();
+}
+
+class _MessagesTabState extends State<_MessagesTab> {
+  bool _held = false;
+  bool _resolved = false;
+  StreamSubscription<AvaRoleResult>? _sub;
+
+  @override
+  void initState() {
+    super.initState();
+    AvaDialChannel.I.ensureWired();
+    _refresh();
+    _sub = AvaDialChannel.I.roleResults.listen((r) {
+      if (!mounted) return;
+      // Android role name for ROLE_SMS is `android.app.role.SMS`.
+      if (r.role.contains('SMS')) {
+        Analytics.capture(
+            r.granted ? 'avadial_sms_role_granted' : 'avadial_sms_role_denied', const {});
+        _refresh();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refresh() async {
+    final held = await AvaDialChannel.I.isSmsRoleHeld();
+    if (mounted) setState(() {
+      _held = held;
+      _resolved = true;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_resolved) {
+      return const Center(child: CircularProgressIndicator(color: Zine.ink));
+    }
+    if (_held) return const SmsThreadsScreen();
+    return Column(children: [
+      const _SmsRoleBanner(),
+      const Expanded(
+        child: ShellEmptyState(
+          icon: Icons.sms_outlined,
+          title: 'Make AvaTOK your messages app',
+          subtitle:
+              'Set AvaTOK as your default SMS app to read your texts here with AI spam filtering.',
+          color: Zine.lilac,
+        ),
+      ),
+    ]);
+  }
+}
+
+/// "Make AvaTOK your messages app" → ROLE_SMS request. Mirrors [_RoleBanner].
+class _SmsRoleBanner extends StatefulWidget {
+  const _SmsRoleBanner();
+
+  @override
+  State<_SmsRoleBanner> createState() => _SmsRoleBannerState();
+}
+
+class _SmsRoleBannerState extends State<_SmsRoleBanner> {
+  bool _busy = false;
+
+  Future<void> _request() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final immediate = await AvaDialChannel.I.requestSmsRole();
+    if (immediate == true) {
+      Analytics.capture('avadial_sms_role_granted', {'via': 'already_held'});
+    }
+    // Otherwise the verdict comes via roleResults (handled by _MessagesTab).
+    if (mounted) setState(() => _busy = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
+      child: ZineCard(
+        color: Zine.blueMark,
+        child: Row(children: [
+          ZineIconBadge(icon: PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), color: Zine.lilac),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Make AvaTOK your messages app', style: ZineText.cardTitle(size: 15)),
+              const SizedBox(height: 2),
+              Text('Read texts here with AI spam filtering.', style: ZineText.sub(size: 12.5)),
+            ]),
+          ),
+          const SizedBox(width: 10),
+          ZineButton(
+            label: 'Enable',
+            variant: ZineButtonVariant.blue,
+            fontSize: 14,
+            trailingIcon: false,
+            loading: _busy,
+            onPressed: _request,
+          ),
+        ]),
+      ),
     );
   }
 }

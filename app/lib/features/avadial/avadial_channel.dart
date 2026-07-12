@@ -40,6 +40,39 @@ class AvaIncomingLaunch {
   const AvaIncomingLaunch(this.callId, this.number);
 }
 
+/// An inbound SMS mirrored from the native [AvaSmsReceiver] (AVA-SMS). Bodies are
+/// live OS-owned data — never persisted by AvaTOK outside the SMS provider (plan
+/// device-data boundary). [spam] is the LOCAL snapshot verdict (label only).
+class AvaSmsMessage {
+  final String? address;
+  final String body;
+  final int date; // epoch ms
+  final bool spam;
+  const AvaSmsMessage({
+    required this.address,
+    required this.body,
+    required this.date,
+    required this.spam,
+  });
+}
+
+/// Delivery status of a sent SMS, from the native sent/delivered PendingIntents.
+/// [phase] is `sent` or `delivered`; [ref] matches the send request's ref.
+class AvaSmsSendStatus {
+  final String ref;
+  final String phase;
+  final bool ok;
+  const AvaSmsSendStatus(this.ref, this.phase, this.ok);
+}
+
+/// A cold-start / background SMS-compose launch (MainActivity route extra
+/// `avadial/compose`, or an ACTION_SENDTO on sms:/smsto:). [number] is the parsed
+/// recipient (may be null/empty for a blank compose).
+class AvaComposeLaunch {
+  final String? number;
+  const AvaComposeLaunch(this.number);
+}
+
 /// Dart bridge to the AvaDial native telecom layer
 /// (Specs/SPIKE-2026-07-12-avadial-telecom.md). Thin + best-effort: every method
 /// tolerates the platform side being absent (e.g. iOS, or the plugin not attached)
@@ -56,6 +89,9 @@ class AvaDialChannel {
   final _roles = StreamController<AvaRoleResult>.broadcast();
   final _verdicts = StreamController<String>.broadcast();
   final _incoming = StreamController<AvaIncomingLaunch>.broadcast();
+  final _smsIn = StreamController<AvaSmsMessage>.broadcast();
+  final _smsStatus = StreamController<AvaSmsSendStatus>.broadcast();
+  final _compose = StreamController<AvaComposeLaunch>.broadcast();
 
   /// Shared guard so the incoming-call screen never double-opens: the shell
   /// (cold-start/relaunch path) and [AvaDialRoot] (foreground ringing path) both
@@ -77,6 +113,15 @@ class AvaDialChannel {
   /// Incoming-call launches from a cold start / background relaunch (the app was
   /// already running when the notification fired).
   Stream<AvaIncomingLaunch> get incomingLaunch => _incoming.stream;
+
+  /// Inbound SMS mirrored from the native default-SMS receiver (AVA-SMS).
+  Stream<AvaSmsMessage> get smsIncoming => _smsIn.stream;
+
+  /// Sent/delivered status of SMS sent via [smsSend].
+  Stream<AvaSmsSendStatus> get smsSendStatus => _smsStatus.stream;
+
+  /// SMS-compose launches from a cold start / notification tap / ACTION_SENDTO.
+  Stream<AvaComposeLaunch> get composeLaunch => _compose.stream;
 
   bool _wired = false;
 
@@ -126,6 +171,27 @@ class AvaDialChannel {
             _incoming.add(AvaIncomingLaunch(id, a['number'] as String?));
           }
           break;
+        case 'onSmsReceived':
+          _smsIn.add(AvaSmsMessage(
+            address: a['address'] as String?,
+            body: '${a['body'] ?? ''}',
+            date: (a['date'] as num?)?.toInt() ?? 0,
+            spam: a['spam'] == true,
+          ));
+          break;
+        case 'onSmsSendStatus':
+          _smsStatus.add(AvaSmsSendStatus(
+            '${a['ref']}',
+            '${a['phase']}',
+            a['ok'] == true,
+          ));
+          break;
+        case 'onMmsReceived':
+          // Minimal: no MMS parsing yet (documented). Nothing to surface.
+          break;
+        case 'onLaunchCompose':
+          _compose.add(AvaComposeLaunch(a['number'] as String?));
+          break;
       }
     } catch (e) {
       AvaLog.I.log('avadial', 'native event error: $e');
@@ -141,8 +207,42 @@ class AvaDialChannel {
   Future<bool?> requestDialerRole() => _invokeNullableBool('requestDialerRole');
   Future<bool?> requestScreeningRole() => _invokeNullableBool('requestScreeningRole');
 
+  /// Request the default-SMS-app role (AVA-SMS). Same contract as
+  /// [requestDialerRole]: `true` if already held, else `null` (a system prompt
+  /// showed and the verdict arrives on [roleResults] with role `…role.SMS`).
+  Future<bool?> requestSmsRole() => _invokeNullableBool('requestSmsRole');
+
   Future<bool> isDialerRoleHeld() => _invokeBool('isDialerRoleHeld');
   Future<bool> isScreeningRoleHeld() => _invokeBool('isScreeningRoleHeld');
+  Future<bool> isSmsRoleHeld() => _invokeBool('isSmsRoleHeld');
+
+  // ── SMS (default-SMS-app layer, AVA-SMS) ──────────────────────────────────
+  /// Send an SMS to [dest]. [ref] correlates the send with its
+  /// [smsSendStatus] events; pass a stable id per outgoing message. Returns true
+  /// when the send was dispatched (delivery arrives async on [smsSendStatus]).
+  Future<bool> smsSend(String dest, String body, {required String ref}) =>
+      _invokeBool('smsSend', {'dest': dest, 'body': body, 'ref': ref});
+
+  /// LIVE read of SMS conversation threads (one row per thread, latest snippet).
+  Future<List<Map<String, dynamic>>> smsQueryThreads({int limit = 200}) =>
+      _invokeList('smsQueryThreads', {'limit': limit});
+
+  /// LIVE read of the messages in one thread, matched by [address].
+  Future<List<Map<String, dynamic>>> smsQueryMessages(String address, {int limit = 500}) =>
+      _invokeList('smsQueryMessages', {'address': address, 'limit': limit});
+
+  /// Drain any pending SMS-compose launch the native side stored before Dart was
+  /// ready (route extra `avadial/compose` / ACTION_SENDTO). Null when there is none.
+  Future<AvaComposeLaunch?> consumePendingCompose() async {
+    try {
+      final raw = await _ch.invokeMethod<Map<dynamic, dynamic>>('getPendingCompose');
+      if (raw == null) return null;
+      return AvaComposeLaunch(raw['number']?.toString());
+    } catch (e) {
+      AvaLog.I.log('avadial', 'getPendingCompose failed: $e');
+      return null;
+    }
+  }
 
   /// Whether this app may write [BlockedNumberContract] (default dialer / SMS app).
   Future<bool> canBlockNumbers() => _invokeBool('canBlockNumbers');

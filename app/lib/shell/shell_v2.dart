@@ -12,6 +12,7 @@ import '../core/ui/zine.dart';
 import '../features/askava/askava_screen.dart';
 import '../features/avadial/avadial_channel.dart';
 import '../features/avadial/pstn_call_screen.dart';
+import '../features/avadial/sms/sms_thread_screen.dart';
 import '../identity/identity.dart';
 import 'v2/avadial_root.dart';
 import 'v2/home_root.dart';
@@ -157,17 +158,20 @@ class _ShellV2State extends State<ShellV2> {
   );
 
   StreamSubscription<AvaIncomingLaunch>? _incomingSub;
+  StreamSubscription<AvaComposeLaunch>? _composeSub;
 
   @override
   void initState() {
     super.initState();
     _restoreLastRoot();
     _wireIncomingCalls();
+    _wireCompose();
   }
 
   @override
   void dispose() {
     _incomingSub?.cancel();
+    _composeSub?.cancel();
     super.dispose();
   }
 
@@ -185,6 +189,33 @@ class _ShellV2State extends State<ShellV2> {
       final l = await AvaDialChannel.I.consumePendingIncoming();
       if (l != null) _openIncoming(l.callId, l.number);
     });
+  }
+
+  /// Cold-start / background SMS-compose route (AVA-SMS). The native SMS notification
+  /// tap or an ACTION_SENDTO on sms:/smsto: forwards MainActivity → the AvaDial plugin
+  /// with the `avadial/compose` route; here we switch to the AvaDial root and open the
+  /// composer on its navigator (both the launch that beat us — drained via
+  /// consumePendingCompose — and one arriving while running). DARK behind `avaSms`.
+  void _wireCompose() {
+    if (!RemoteConfig.avaSms) return;
+    AvaDialChannel.I.ensureWired();
+    _composeSub = AvaDialChannel.I.composeLaunch.listen((c) => _openCompose(c.number));
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final c = await AvaDialChannel.I.consumePendingCompose();
+      if (c != null) _openCompose(c.number);
+    });
+  }
+
+  void _openCompose(String? number) {
+    if (!mounted) return;
+    final n = (number ?? '').trim();
+    setState(() => _root = RootId.avaDial);
+    final nav = _navKeys[RootId.avaDial]?.currentState ?? Navigator.of(context);
+    // A specific recipient opens straight into the thread composer; a blank compose
+    // still lands on the AvaDial root's Messages surface (the user picks a recipient).
+    if (n.isNotEmpty) {
+      nav.push(MaterialPageRoute<void>(builder: (_) => SmsThreadScreen(address: n)));
+    }
   }
 
   void _openIncoming(String callId, String? number) {
