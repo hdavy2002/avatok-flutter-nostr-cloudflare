@@ -11,14 +11,20 @@ import '../../features/avadial/avadial_channel.dart';
 import '../../features/avadial/block_list.dart';
 import '../../features/avadial/device_call_log.dart';
 import '../../features/avadial/device_contacts.dart';
+import '../../features/avadial/dialpad_search_tab.dart';
 import '../../features/avadial/pstn_call_screen.dart';
 import '../../features/avadial/sms/sms_threads_screen.dart';
-import '../../features/avaphone/ava_phone_screen.dart';
 import '../shell_v2.dart';
 import 'shell_chrome.dart';
 
-/// AvaDial root — the PSTN phone world (plan §4). The five footer tabs are always
-/// present. When the `avaDialer` remote flag is OFF (default) the Contacts/Logs/
+/// AvaDial ("Calls") root — the PSTN phone world (plan §4). 2026-07-12 redesign:
+/// the five sub-sections (Dialpad · Contacts · Logs · Messages · Block) are now a
+/// row of COLOR-CODED tabs BELOW the app bar (see [_CallsTabStrip]) instead of a
+/// bottom nav bar — the bottom of the screen is reserved for the shell-wide
+/// [AppSwitcherBar] (AvaTOK · Calls · Marketplace · Ava), which stays in the same
+/// place across every app.
+///
+/// When the `avaDialer` remote flag is OFF (default) the Contacts/Logs/
 /// Block tabs render the Phase-1 placeholder empty states and NO telecom role is
 /// ever requested. When the flag is ON, they render the live device phone book,
 /// device call log and account-scoped block list, backed by the native telecom
@@ -36,12 +42,15 @@ class _AvaDialRootState extends State<AvaDialRoot> {
   StreamSubscription<AvaCallEvent>? _callSub;
   bool _screenOpen = false;
 
+  // Each sub-section gets its OWN color (owner request — "give each tab header a
+  // different color, so users can recognise it"), reusing the same accents the
+  // empty states already used for these tabs so the palette stays consistent.
   static const _items = [
-    ShellNavItem(Icons.dialpad_outlined, Icons.dialpad, 'Dialpad'),
-    ShellNavItem(Icons.person_outline, Icons.person, 'Contacts'),
-    ShellNavItem(Icons.history_outlined, Icons.history, 'Logs'),
-    ShellNavItem(Icons.sms_outlined, Icons.sms, 'Messages'),
-    ShellNavItem(Icons.block_outlined, Icons.block, 'Block'),
+    _CallsTabItem(Icons.dialpad_outlined, Icons.dialpad, 'Dialpad', Zine.lime),
+    _CallsTabItem(Icons.person_outline, Icons.person, 'Contacts', Zine.blue),
+    _CallsTabItem(Icons.history_outlined, Icons.history, 'Logs', Zine.mint),
+    _CallsTabItem(Icons.sms_outlined, Icons.sms, 'Messages', Zine.lilac),
+    _CallsTabItem(Icons.block_outlined, Icons.block, 'Block Lists', Zine.coral),
   ];
 
   @override
@@ -88,23 +97,30 @@ class _AvaDialRootState extends State<AvaDialRoot> {
       backgroundColor: Zine.paper,
       drawer: const ShellSidebar(current: RootId.avaDial),
       appBar: _bar(context),
-      bottomNavigationBar: shellNavBar(
-        selectedIndex: _tab,
-        items: _items,
-        onSelected: (i) => setState(() => _tab = i),
-      ),
+      // No bottomNavigationBar here anymore (2026-07-12): the persistent shell-wide
+      // AppSwitcherBar owns the bottom of the screen now. Calls' own sub-sections
+      // moved to a colored tab STRIP below the app bar instead (see body below).
       body: SafeArea(
         top: false,
-        // Rebuild when a config fetch lands so flipping `avaDialer` in KV surfaces
-        // the live tabs without an app restart.
-        child: ValueListenableBuilder<int>(
-          valueListenable: RemoteConfig.revision,
-          builder: (context, _, __) {
-            final on = RemoteConfig.avaDialer;
-            if (on) AvaDialChannel.I.ensureWired();
-            return IndexedStack(index: _tab, children: [
-              // Dialpad — reuses the existing dialer, unchanged (plan §4.1).
-              const AvaPhoneScreen(),
+        child: Column(children: [
+          _CallsTabStrip(
+            items: _items,
+            selectedIndex: _tab,
+            onSelected: (i) => setState(() => _tab = i),
+          ),
+          Expanded(
+            // Rebuild when a config fetch lands so flipping `avaDialer` in KV
+            // surfaces the live tabs without an app restart.
+            child: ValueListenableBuilder<int>(
+              valueListenable: RemoteConfig.revision,
+              builder: (context, _, __) {
+                final on = RemoteConfig.avaDialer;
+                if (on) AvaDialChannel.I.ensureWired();
+                return IndexedStack(index: _tab, children: [
+              // Dialpad — the Calls app's OWN PSTN dialer: live contact search
+              // above a real keypad (2026-07-12 redesign; previously reused the
+              // in-network AvaPhone dialer, which had its own nested chrome).
+              const DialpadSearchTab(),
               on
                   ? const _ContactsTab()
                   : const ShellEmptyState(
@@ -142,9 +158,11 @@ class _AvaDialRootState extends State<AvaDialRoot> {
                       subtitle: 'Blocked numbers and one-tap spam reports — coming with AvaDial.',
                       color: Zine.coral,
                     ),
-            ]);
-          },
-        ),
+                ]);
+              },
+            ),
+          ),
+        ]),
       ),
     );
   }
@@ -162,6 +180,74 @@ class _AvaDialRootState extends State<AvaDialRoot> {
         ),
         title: Text('Calls', style: ZineText.appbar()),
       );
+}
+
+/// One Calls sub-section: icon/label pair plus its OWN recognisable color.
+class _CallsTabItem {
+  final IconData icon;
+  final IconData selectedIcon;
+  final String label;
+  final Color color;
+  const _CallsTabItem(this.icon, this.selectedIcon, this.label, this.color);
+}
+
+/// The Calls app's own colored tab strip (2026-07-12 redesign), rendered BELOW
+/// the app bar instead of as a bottom nav bar — the bottom of the screen belongs
+/// to the shell-wide [AppSwitcherBar] now. Each tab is filled with its own accent
+/// color when active ("give each tab header a different color, so users can
+/// recognise it" — owner spec) and scrolls horizontally on narrow phones.
+class _CallsTabStrip extends StatelessWidget {
+  final List<_CallsTabItem> items;
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+  const _CallsTabStrip({
+    required this.items,
+    required this.selectedIndex,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Zine.paper2,
+        border: Border(bottom: BorderSide(color: Zine.ink, width: Zine.bw)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            for (var i = 0; i < items.length; i++) ...[
+              if (i > 0) const SizedBox(width: 8),
+              _tab(items[i], i == selectedIndex, () => onSelected(i)),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _tab(_CallsTabItem item, bool selected, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        decoration: BoxDecoration(
+          color: selected ? item.color : Zine.card,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: Zine.ink, width: Zine.bw),
+          boxShadow: selected ? Zine.shadowXs : const [],
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(selected ? item.selectedIcon : item.icon, size: 17, color: Zine.ink),
+          const SizedBox(width: 6),
+          Text(item.label, style: ZineText.tag(size: 12.5, color: Zine.ink)),
+        ]),
+      ),
+    );
+  }
 }
 
 /// Onboarding hook (plan §4.2): "Make Ava your phone app" → ROLE_DIALER request.
