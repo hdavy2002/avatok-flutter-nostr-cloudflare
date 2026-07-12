@@ -6,6 +6,7 @@ import '../../core/analytics.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'avadial_channel.dart';
+import 'avadial_theme.dart';
 import 'device_contacts.dart';
 import 'outgoing_call_screen.dart';
 
@@ -117,34 +118,34 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
         child: TextField(
           controller: _searchCtrl,
           onChanged: _onSearchChanged,
-          style: ZineText.value(size: 15),
+          style: ZineText.value(size: 15, color: AvaDialTheme.text),
           decoration: InputDecoration(
             hintText: 'Search name or number…',
-            hintStyle: ZineText.sub(size: 14),
-            prefixIcon: const Icon(Icons.search, color: Zine.inkSoft),
+            hintStyle: ZineText.sub(size: 14, color: AvaDialTheme.textMute),
+            prefixIcon: const Icon(Icons.search, color: AvaDialTheme.textSoft),
             suffixIcon: _searchCtrl.text.isEmpty
                 ? null
                 : IconButton(
-                    icon: const Icon(Icons.close, color: Zine.inkSoft),
+                    icon: const Icon(Icons.close, color: AvaDialTheme.textSoft),
                     onPressed: () {
                       _searchCtrl.clear();
                       _onSearchChanged('');
                     },
                   ),
             filled: true,
-            fillColor: Zine.card,
+            fillColor: AvaDialTheme.surface2,
             contentPadding: const EdgeInsets.symmetric(vertical: 10),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(Zine.rField),
-              borderSide: const BorderSide(color: Zine.ink, width: Zine.bw),
+              borderSide: const BorderSide(color: AvaDialTheme.border, width: Zine.bw),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(Zine.rField),
-              borderSide: const BorderSide(color: Zine.ink, width: Zine.bw),
+              borderSide: const BorderSide(color: AvaDialTheme.border, width: Zine.bw),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(Zine.rField),
-              borderSide: const BorderSide(color: Zine.blueInk, width: Zine.bw),
+              borderSide: const BorderSide(color: AvaDialTheme.accent, width: Zine.bw),
             ),
           ),
         ),
@@ -159,11 +160,11 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
 
   Widget _searchResults() {
     if (_searching) {
-      return const Center(child: CircularProgressIndicator(color: Zine.ink));
+      return const Center(child: CircularProgressIndicator(color: AvaDialTheme.accent));
     }
     if (_results.isEmpty) {
       return Center(
-        child: Text('No matches yet', style: ZineText.sub(size: 14)),
+        child: Text('No matches yet', style: ZineText.sub(size: 14, color: AvaDialTheme.textSoft)),
       );
     }
     return ListView.builder(
@@ -174,19 +175,20 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
           child: ZineCard(
+            color: AvaDialTheme.surface2,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Row(children: [
               ZineIconBadge(icon: PhosphorIcons.user(PhosphorIconsStyle.bold), color: Zine.lime),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(c.name ?? c.number, style: ZineText.cardTitle(size: 15.5)),
-                  if (c.name != null) Text(c.number, style: ZineText.sub(size: 12.5)),
+                  Text(c.name ?? c.number, style: ZineText.cardTitle(size: 15.5, color: AvaDialTheme.text)),
+                  if (c.name != null) Text(c.number, style: ZineText.sub(size: 12.5, color: AvaDialTheme.textSoft)),
                 ]),
               ),
               IconButton(
                 onPressed: () => _dial(c.number),
-                icon: const Icon(Icons.call, color: Zine.mintInk),
+                icon: const Icon(Icons.call, color: Zine.mint),
               ),
             ]),
           ),
@@ -205,7 +207,8 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
             _digits.isEmpty ? 'Enter a number' : _digits,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: ZineText.cardTitle(size: 26),
+            style: ZineText.cardTitle(
+                size: 26, color: _digits.isEmpty ? AvaDialTheme.textMute : AvaDialTheme.text),
           ),
         ),
       ),
@@ -246,7 +249,7 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
             decoration: BoxDecoration(
               color: _dialing ? Zine.mint.withValues(alpha: 0.5) : Zine.mint,
               shape: BoxShape.circle,
-              border: Border.all(color: Zine.ink, width: Zine.bw),
+              border: Border.all(color: AvaDialTheme.border, width: Zine.bw),
               boxShadow: Zine.shadowSm,
             ),
             child: _dialing
@@ -262,7 +265,7 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
               ? null
               : IconButton(
                   onPressed: _backspace,
-                  icon: const Icon(Icons.backspace_outlined, color: Zine.inkSoft),
+                  icon: const Icon(Icons.backspace_outlined, color: AvaDialTheme.textSoft),
                 ),
         ),
       ]),
@@ -286,15 +289,15 @@ class _DialKey extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       child: Container(
         decoration: BoxDecoration(
-          color: Zine.card,
+          color: AvaDialTheme.surface2,
           borderRadius: BorderRadius.circular(Zine.rSm),
-          border: Border.all(color: Zine.ink, width: Zine.bw),
+          border: Border.all(color: AvaDialTheme.border, width: Zine.bw),
           boxShadow: Zine.shadowXs,
         ),
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Text(digit, style: ZineText.cardTitle(size: 22)),
+          Text(digit, style: ZineText.cardTitle(size: 22, color: AvaDialTheme.text)),
           if (sub.isNotEmpty)
-            Text(sub, style: ZineText.tag(size: 9, color: Zine.inkMute)),
+            Text(sub, style: ZineText.tag(size: 9, color: AvaDialTheme.textMute)),
         ]),
       ),
     );

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
+import 'avadial_theme.dart';
 import 'device_call_log.dart';
 import 'device_contacts.dart';
 
@@ -56,39 +57,43 @@ class _ContactCallHistoryScreenState extends State<ContactCallHistoryScreen> {
   Widget build(BuildContext context) {
     final title = (widget.name?.isNotEmpty ?? false) ? widget.name! : widget.number;
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AvaDialTheme.bg,
       appBar: AppBar(
-        backgroundColor: Zine.paper2,
+        backgroundColor: AvaDialTheme.surface,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
-        shape: const Border(bottom: BorderSide(color: Zine.ink, width: Zine.bw)),
-        title: Text('Call history', style: ZineText.appbar()),
+        shape: const Border(bottom: BorderSide(color: AvaDialTheme.border, width: Zine.bw)),
+        title: Text('Call history', style: ZineText.appbar(color: AvaDialTheme.text)),
       ),
       body: FutureBuilder<List<DeviceCall>>(
         future: _future,
         builder: (context, snap) {
           if (snap.connectionState != ConnectionState.done) {
-            return const Center(child: CircularProgressIndicator(color: Zine.ink));
+            return const Center(child: CircularProgressIndicator(color: AvaDialTheme.accent));
           }
           final calls = snap.data ?? const [];
           return ListView(
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
             children: [
-              Text(title, style: ZineText.cardTitle(size: 20)),
-              Text(widget.number, style: ZineText.sub(size: 13)),
+              Text(title, style: ZineText.cardTitle(size: 20, color: AvaDialTheme.text)),
+              Text(widget.number, style: ZineText.sub(size: 13, color: AvaDialTheme.textSoft)),
               const SizedBox(height: 4),
-              Text('${calls.length} call${calls.length == 1 ? '' : 's'}', style: ZineText.tag(size: 11.5)),
+              Text('${calls.length} call${calls.length == 1 ? '' : 's'}',
+                  style: ZineText.tag(size: 11.5, color: AvaDialTheme.textMute)),
               const SizedBox(height: 12),
               if (calls.isEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 40),
-                  child: Center(child: Text('No calls with this number yet', style: ZineText.sub(size: 14))),
+                  child: Center(
+                      child: Text('No calls with this number yet',
+                          style: ZineText.sub(size: 14, color: AvaDialTheme.textSoft))),
                 )
               else
                 for (final c in calls)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 4),
                     child: ZineCard(
+                      color: AvaDialTheme.surface2,
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                       child: Row(children: [
                         ZineIconBadge(icon: _iconFor(c.type), color: _colorFor(c.type)),
@@ -96,12 +101,12 @@ class _ContactCallHistoryScreenState extends State<ContactCallHistoryScreen> {
                         Expanded(
                           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                             Text(c.type.name[0].toUpperCase() + c.type.name.substring(1),
-                                style: ZineText.cardTitle(size: 14.5)),
-                            Text(_when(c.date), style: ZineText.sub(size: 12)),
+                                style: ZineText.cardTitle(size: 14.5, color: AvaDialTheme.text)),
+                            Text(_when(c.date), style: ZineText.sub(size: 12, color: AvaDialTheme.textSoft)),
                           ]),
                         ),
                         if (_durationLabel(c.duration).isNotEmpty)
-                          Text(_durationLabel(c.duration), style: ZineText.tag(size: 11.5)),
+                          Text(_durationLabel(c.duration), style: ZineText.tag(size: 11.5, color: AvaDialTheme.textMute)),
                       ]),
                     ),
                   ),

@@ -6,6 +6,7 @@ import '../../core/ui/zine.dart';
 import '../avatok/contact_actions.dart';
 import '../avatok/contacts.dart' show Contact;
 import 'avadial_channel.dart';
+import 'avadial_theme.dart';
 import 'block_list.dart';
 import 'contact_call_history_screen.dart';
 import 'contact_edit_screen.dart';
@@ -28,9 +29,9 @@ Future<void> showAvaDialRowMenu(
   final navContext = Navigator.of(context, rootNavigator: true).context;
   await showModalBottomSheet<void>(
     context: context,
-    backgroundColor: Zine.card,
+    backgroundColor: AvaDialTheme.surface,
     shape: const RoundedRectangleBorder(
-      side: BorderSide(color: Zine.ink, width: Zine.bw),
+      side: BorderSide(color: AvaDialTheme.border, width: Zine.bw),
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
     builder: (sheetCtx) => SafeArea(
@@ -38,14 +39,17 @@ Future<void> showAvaDialRowMenu(
         const SizedBox(height: 10),
         Container(
           width: 40, height: 4,
-          decoration: BoxDecoration(color: Zine.inkMute, borderRadius: BorderRadius.circular(100)),
+          decoration: BoxDecoration(color: AvaDialTheme.textMute, borderRadius: BorderRadius.circular(100)),
         ),
         ListTile(
-          leading: const Icon(Icons.perm_phone_msg_outlined, color: Zine.ink),
-          title: Text(name?.isNotEmpty == true ? name! : number, style: ZineText.cardTitle(size: 15.5)),
-          subtitle: name?.isNotEmpty == true ? Text(number, style: ZineText.sub(size: 12.5)) : null,
+          leading: const Icon(Icons.perm_phone_msg_outlined, color: AvaDialTheme.text),
+          title: Text(name?.isNotEmpty == true ? name! : number,
+              style: ZineText.cardTitle(size: 15.5, color: AvaDialTheme.text)),
+          subtitle: name?.isNotEmpty == true
+              ? Text(number, style: ZineText.sub(size: 12.5, color: AvaDialTheme.textSoft))
+              : null,
         ),
-        const Divider(color: Zine.paper2, height: 1),
+        const Divider(color: AvaDialTheme.border, height: 1),
         _row(
           icon: PhosphorIcons.phone(PhosphorIconsStyle.bold),
           color: Zine.mint,
@@ -157,19 +161,22 @@ Future<void> showAvaDialRowMenu(
 Future<bool?> _confirmDelete(BuildContext context, String label) => showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: Zine.card,
+        backgroundColor: AvaDialTheme.surface2,
         shape: RoundedRectangleBorder(
-          side: const BorderSide(color: Zine.ink, width: Zine.bw),
+          side: const BorderSide(color: AvaDialTheme.border, width: Zine.bw),
           borderRadius: BorderRadius.circular(Zine.rSm),
         ),
-        title: Text('Delete $label?', style: ZineText.cardTitle(size: 17)),
+        title: Text('Delete $label?', style: ZineText.cardTitle(size: 17, color: AvaDialTheme.text)),
         content: Text(
           'This removes the contact from AvaTOK\'s view. Your phone\'s own contact '
           'book is not touched.',
-          style: ZineText.sub(size: 13.5),
+          style: ZineText.sub(size: 13.5, color: AvaDialTheme.textSoft),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel', style: ZineText.value(size: 14, color: AvaDialTheme.textSoft)),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: Text('Delete', style: ZineText.value(size: 14, color: Zine.coral)),
@@ -187,7 +194,8 @@ Widget _row({
 }) {
   return ListTile(
     leading: PhosphorIcon(icon, color: color),
-    title: Text(label, style: ZineText.value(size: 15, color: danger ? Zine.coral : Zine.ink)),
+    title: Text(label,
+        style: ZineText.value(size: 15, color: danger ? Zine.coral : AvaDialTheme.text)),
     onTap: onTap,
   );
 }

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/analytics.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
+import 'avadial_theme.dart';
 import 'contact_overrides.dart';
 
 /// "Edit contact" screen for a Calls-app (device/PSTN) contact. There is no
@@ -41,46 +42,47 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AvaDialTheme.bg,
       appBar: AppBar(
-        backgroundColor: Zine.paper2,
+        backgroundColor: AvaDialTheme.surface,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
-        shape: const Border(bottom: BorderSide(color: Zine.ink, width: Zine.bw)),
-        title: Text('Edit contact', style: ZineText.appbar()),
+        shape: const Border(bottom: BorderSide(color: AvaDialTheme.border, width: Zine.bw)),
+        title: Text('Edit contact', style: ZineText.appbar(color: AvaDialTheme.text)),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text('NUMBER', style: ZineText.kicker()),
+          Text('NUMBER', style: ZineText.kicker(color: AvaDialTheme.textMute)),
           const SizedBox(height: 6),
           ZineCard(
+            color: AvaDialTheme.surface2,
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            child: Text(widget.number, style: ZineText.value(size: 16)),
+            child: Text(widget.number, style: ZineText.value(size: 16, color: AvaDialTheme.text)),
           ),
           const SizedBox(height: 18),
-          Text('DISPLAY NAME', style: ZineText.kicker()),
+          Text('DISPLAY NAME', style: ZineText.kicker(color: AvaDialTheme.textMute)),
           const SizedBox(height: 6),
           TextField(
             controller: _nameCtrl,
-            style: ZineText.value(size: 16),
+            style: ZineText.value(size: 16, color: AvaDialTheme.text),
             decoration: InputDecoration(
               hintText: 'Add a name for this number',
-              hintStyle: ZineText.sub(size: 15),
+              hintStyle: ZineText.sub(size: 15, color: AvaDialTheme.textMute),
               filled: true,
-              fillColor: Zine.card,
+              fillColor: AvaDialTheme.surface2,
               contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(Zine.rField),
-                borderSide: const BorderSide(color: Zine.ink, width: Zine.bw),
+                borderSide: const BorderSide(color: AvaDialTheme.border, width: Zine.bw),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(Zine.rField),
-                borderSide: const BorderSide(color: Zine.ink, width: Zine.bw),
+                borderSide: const BorderSide(color: AvaDialTheme.border, width: Zine.bw),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(Zine.rField),
-                borderSide: const BorderSide(color: Zine.blueInk, width: Zine.bw),
+                borderSide: const BorderSide(color: AvaDialTheme.accent, width: Zine.bw),
               ),
             ),
           ),
@@ -88,7 +90,7 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
           Text(
             'This only changes how the name appears inside AvaTOK — your phone\'s '
             'own contact book is not modified.',
-            style: ZineText.sub(size: 12.5),
+            style: ZineText.sub(size: 12.5, color: AvaDialTheme.textSoft),
           ),
           const SizedBox(height: 22),
           ZineButton(

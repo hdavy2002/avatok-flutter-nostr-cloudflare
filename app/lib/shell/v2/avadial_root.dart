@@ -8,6 +8,7 @@ import '../../core/remote_config.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../features/avadial/avadial_channel.dart';
+import '../../features/avadial/avadial_theme.dart';
 import '../../features/avadial/block_list.dart';
 import '../../features/avadial/contact_overrides.dart';
 import '../../features/avadial/contact_row_menu.dart';
@@ -96,7 +97,9 @@ class _AvaDialRootState extends State<AvaDialRoot> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Zine.paper,
+      // The Calls app is dark end-to-end (owner request 2026-07-12) — see
+      // avadial_theme.dart, which mirrors AvaPhone's existing dark palette.
+      backgroundColor: AvaDialTheme.bg,
       drawer: const ShellSidebar(current: RootId.avaDial),
       appBar: _bar(context),
       // No bottomNavigationBar here anymore (2026-07-12): the persistent shell-wide
@@ -170,17 +173,17 @@ class _AvaDialRootState extends State<AvaDialRoot> {
   }
 
   PreferredSizeWidget _bar(BuildContext context) => AppBar(
-        backgroundColor: Zine.paper2,
+        backgroundColor: AvaDialTheme.surface,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
-        shape: const Border(bottom: BorderSide(color: Zine.ink, width: Zine.bw)),
+        shape: const Border(bottom: BorderSide(color: AvaDialTheme.border, width: Zine.bw)),
         leading: Builder(
           builder: (ctx) => IconButton(
-            icon: PhosphorIcon(PhosphorIcons.list(PhosphorIconsStyle.bold), color: Zine.ink),
+            icon: PhosphorIcon(PhosphorIcons.list(PhosphorIconsStyle.bold), color: AvaDialTheme.text),
             onPressed: () => Scaffold.of(ctx).openDrawer(),
           ),
         ),
-        title: Text('Calls', style: ZineText.appbar()),
+        title: Text('Calls', style: ZineText.appbar(color: AvaDialTheme.text)),
       );
 }
 
@@ -212,8 +215,8 @@ class _CallsTabStrip extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: const BoxDecoration(
-        color: Zine.paper2,
-        border: Border(bottom: BorderSide(color: Zine.ink, width: Zine.bw)),
+        color: AvaDialTheme.surface,
+        border: Border(bottom: BorderSide(color: AvaDialTheme.border, width: Zine.bw)),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       child: SingleChildScrollView(
@@ -231,21 +234,25 @@ class _CallsTabStrip extends StatelessWidget {
   }
 
   Widget _tab(_CallsTabItem item, bool selected, VoidCallback onTap) {
+    // Ink text/icons on the bright accent fill (matches the rest of the design
+    // system's accent-fill + ink-text convention); light text on the dark,
+    // unselected surface.
+    final fg = selected ? Zine.ink : AvaDialTheme.text;
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 140),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
         decoration: BoxDecoration(
-          color: selected ? item.color : Zine.card,
+          color: selected ? item.color : AvaDialTheme.surface2,
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: Zine.ink, width: Zine.bw),
+          border: Border.all(color: AvaDialTheme.border, width: Zine.bw),
           boxShadow: selected ? Zine.shadowXs : const [],
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(selected ? item.selectedIcon : item.icon, size: 17, color: Zine.ink),
+          Icon(selected ? item.selectedIcon : item.icon, size: 17, color: fg),
           const SizedBox(width: 6),
-          Text(item.label, style: ZineText.tag(size: 12.5, color: Zine.ink)),
+          Text(item.label, style: ZineText.tag(size: 12.5, color: fg)),
         ]),
       ),
     );
@@ -317,10 +324,10 @@ class _RoleBannerState extends State<_RoleBanner> {
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Make Ava your phone app', style: ZineText.cardTitle(size: 15)),
+              Text('Make Ava your phone app', style: ZineText.cardTitle(size: 15, color: AvaDialTheme.text)),
               const SizedBox(height: 2),
               Text('Screen spam, see your call log and block numbers.',
-                  style: ZineText.sub(size: 12.5)),
+                  style: ZineText.sub(size: 12.5, color: AvaDialTheme.textSoft)),
             ]),
           ),
           const SizedBox(width: 10),
@@ -375,7 +382,7 @@ class _ContactsTabState extends State<_ContactsTab> {
           future: _future,
           builder: (context, snap) {
             if (snap.connectionState != ConnectionState.done) {
-              return const Center(child: CircularProgressIndicator(color: Zine.ink));
+              return const Center(child: CircularProgressIndicator(color: AvaDialTheme.accent));
             }
             final (all, overrides, blocked) = snap.data ?? (const <DeviceContact>[], const <String, ContactOverride>{}, const <String>{});
             // Hide numbers the user "removed"/"deleted" (AVA-side override only —
@@ -412,6 +419,7 @@ class _ContactsTabState extends State<_ContactsTab> {
                     child: GestureDetector(
                       onLongPress: openMenu,
                       child: ZineCard(
+                        color: AvaDialTheme.surface2,
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         child: Row(children: [
                           ZineIconBadge(
@@ -419,13 +427,14 @@ class _ContactsTabState extends State<_ContactsTab> {
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              Text(displayName ?? c.number, style: ZineText.cardTitle(size: 15.5)),
+                              Text(displayName ?? c.number,
+                                  style: ZineText.cardTitle(size: 15.5, color: AvaDialTheme.text)),
                               if (displayName != null)
-                                Text(c.number, style: ZineText.sub(size: 12.5)),
+                                Text(c.number, style: ZineText.sub(size: 12.5, color: AvaDialTheme.textSoft)),
                             ]),
                           ),
                           IconButton(
-                            icon: const Icon(Icons.more_vert, color: Zine.inkSoft),
+                            icon: const Icon(Icons.more_vert, color: AvaDialTheme.textSoft),
                             onPressed: openMenu,
                           ),
                         ]),
@@ -493,7 +502,7 @@ class _LogsTabState extends State<_LogsTab> {
           future: _future,
           builder: (context, snap) {
             if (snap.connectionState != ConnectionState.done) {
-              return const Center(child: CircularProgressIndicator(color: Zine.ink));
+              return const Center(child: CircularProgressIndicator(color: AvaDialTheme.accent));
             }
             final (logs, overrides, blocked) = snap.data ?? (const <DeviceCall>[], const <String, ContactOverride>{}, const <String>{});
             if (logs.isEmpty) {
@@ -528,18 +537,19 @@ class _LogsTabState extends State<_LogsTab> {
                     child: GestureDetector(
                       onLongPress: openMenu,
                       child: ZineCard(
+                        color: AvaDialTheme.surface2,
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         child: Row(children: [
                           ZineIconBadge(icon: _iconFor(e.type), color: _colorFor(e.type)),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              Text(displayName ?? e.number, style: ZineText.cardTitle(size: 15)),
-                              Text(_subtitle(e), style: ZineText.sub(size: 12)),
+                              Text(displayName ?? e.number, style: ZineText.cardTitle(size: 15, color: AvaDialTheme.text)),
+                              Text(_subtitle(e), style: ZineText.sub(size: 12, color: AvaDialTheme.textSoft)),
                             ]),
                           ),
                           IconButton(
-                            icon: const Icon(Icons.more_vert, color: Zine.inkSoft),
+                            icon: const Icon(Icons.more_vert, color: AvaDialTheme.textSoft),
                             onPressed: openMenu,
                           ),
                         ]),
@@ -592,7 +602,7 @@ class _BlockTabState extends State<_BlockTab> {
       future: _future,
       builder: (context, snap) {
         if (snap.connectionState != ConnectionState.done) {
-          return const Center(child: CircularProgressIndicator(color: Zine.ink));
+          return const Center(child: CircularProgressIndicator(color: AvaDialTheme.accent));
         }
         final entries = snap.data ?? const [];
         if (entries.isEmpty) {
@@ -620,6 +630,7 @@ class _BlockTabState extends State<_BlockTab> {
               child: GestureDetector(
                 onLongPress: openMenu,
                 child: ZineCard(
+                  color: AvaDialTheme.surface2,
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   child: Row(children: [
                     ZineIconBadge(
@@ -630,10 +641,10 @@ class _BlockTabState extends State<_BlockTab> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(e.number, style: ZineText.cardTitle(size: 15)),
+                        Text(e.number, style: ZineText.cardTitle(size: 15, color: AvaDialTheme.text)),
                         Text(
                           e.reportedSpam ? 'Reported as spam${e.label != null ? ' · ${e.label}' : ''}' : 'Blocked',
-                          style: ZineText.sub(size: 12),
+                          style: ZineText.sub(size: 12, color: AvaDialTheme.textSoft),
                         ),
                       ]),
                     ),
@@ -645,7 +656,7 @@ class _BlockTabState extends State<_BlockTab> {
                       onPressed: () => _unblock(e.number),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.more_vert, color: Zine.inkSoft),
+                      icon: const Icon(Icons.more_vert, color: AvaDialTheme.textSoft),
                       onPressed: openMenu,
                     ),
                   ]),
@@ -709,7 +720,7 @@ class _MessagesTabState extends State<_MessagesTab> {
   @override
   Widget build(BuildContext context) {
     if (!_resolved) {
-      return const Center(child: CircularProgressIndicator(color: Zine.ink));
+      return const Center(child: CircularProgressIndicator(color: AvaDialTheme.accent));
     }
     if (_held) return const SmsThreadsScreen();
     return Column(children: [
@@ -760,9 +771,9 @@ class _SmsRoleBannerState extends State<_SmsRoleBanner> {
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Make AvaTOK your messages app', style: ZineText.cardTitle(size: 15)),
+              Text('Make AvaTOK your messages app', style: ZineText.cardTitle(size: 15, color: AvaDialTheme.text)),
               const SizedBox(height: 2),
-              Text('Read texts here with AI spam filtering.', style: ZineText.sub(size: 12.5)),
+              Text('Read texts here with AI spam filtering.', style: ZineText.sub(size: 12.5, color: AvaDialTheme.textSoft)),
             ]),
           ),
           const SizedBox(width: 10),
@@ -804,9 +815,9 @@ class _PermState extends StatelessWidget {
         const SizedBox(height: 72),
         ZineIconBadge(icon: icon, color: color, size: 56),
         const SizedBox(height: 16),
-        Text(title, textAlign: TextAlign.center, style: ZineText.cardTitle(size: 18)),
+        Text(title, textAlign: TextAlign.center, style: ZineText.cardTitle(size: 18, color: AvaDialTheme.text)),
         const SizedBox(height: 8),
-        Text(subtitle, textAlign: TextAlign.center, style: ZineText.sub(size: 14)),
+        Text(subtitle, textAlign: TextAlign.center, style: ZineText.sub(size: 14, color: AvaDialTheme.textSoft)),
         const SizedBox(height: 20),
         Center(
           child: ZineButton(
