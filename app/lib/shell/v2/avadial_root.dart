@@ -9,6 +9,8 @@ import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../features/avadial/avadial_channel.dart';
 import '../../features/avadial/block_list.dart';
+import '../../features/avadial/contact_overrides.dart';
+import '../../features/avadial/contact_row_menu.dart';
 import '../../features/avadial/device_call_log.dart';
 import '../../features/avadial/device_contacts.dart';
 import '../../features/avadial/dialpad_search_tab.dart';
@@ -345,16 +347,23 @@ class _ContactsTab extends StatefulWidget {
 }
 
 class _ContactsTabState extends State<_ContactsTab> {
-  late Future<List<DeviceContact>> _future;
+  late Future<(List<DeviceContact>, Map<String, ContactOverride>, Set<String>)> _future;
 
   @override
   void initState() {
     super.initState();
-    _future = DeviceContacts.I.load();
+    _future = _loadAll();
+  }
+
+  Future<(List<DeviceContact>, Map<String, ContactOverride>, Set<String>)> _loadAll({bool force = false}) async {
+    final contacts = await DeviceContacts.I.load(force: force);
+    final overrides = {for (final o in await ContactOverrides.I.load()) DeviceContacts.normKey(o.number): o};
+    final blocked = {for (final b in await BlockList.I.load()) DeviceContacts.normKey(b.number)};
+    return (contacts, overrides, blocked);
   }
 
   Future<void> _reload() async {
-    setState(() => _future = DeviceContacts.I.load(force: true));
+    setState(() => _future = _loadAll(force: true));
   }
 
   @override
@@ -362,13 +371,16 @@ class _ContactsTabState extends State<_ContactsTab> {
     return Column(children: [
       const _RoleBanner(),
       Expanded(
-        child: FutureBuilder<List<DeviceContact>>(
+        child: FutureBuilder<(List<DeviceContact>, Map<String, ContactOverride>, Set<String>)>(
           future: _future,
           builder: (context, snap) {
             if (snap.connectionState != ConnectionState.done) {
               return const Center(child: CircularProgressIndicator(color: Zine.ink));
             }
-            final contacts = snap.data ?? const [];
+            final (all, overrides, blocked) = snap.data ?? (const <DeviceContact>[], const <String, ContactOverride>{}, const <String>{});
+            // Hide numbers the user "removed"/"deleted" (AVA-side override only —
+            // the device contact itself is never touched, see contact_overrides.dart).
+            final contacts = all.where((c) => overrides[DeviceContacts.normKey(c.number)]?.hidden != true).toList();
             if (contacts.isEmpty) {
               return _PermState(
                 icon: Icons.person_outline,
@@ -385,22 +397,39 @@ class _ContactsTabState extends State<_ContactsTab> {
                 itemCount: contacts.length,
                 itemBuilder: (context, i) {
                   final c = contacts[i];
+                  final key = DeviceContacts.normKey(c.number);
+                  final displayName = overrides[key]?.displayName ?? c.name;
+                  final isBlocked = blocked.contains(key);
+                  void openMenu() => showAvaDialRowMenu(
+                        context,
+                        number: c.number,
+                        name: displayName,
+                        alreadyBlocked: isBlocked,
+                        onChanged: _reload,
+                      );
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: ZineCard(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      child: Row(children: [
-                        ZineIconBadge(
-                            icon: PhosphorIcons.user(PhosphorIconsStyle.bold), color: Zine.blue),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text(c.name ?? c.number, style: ZineText.cardTitle(size: 15.5)),
-                            if (c.name != null)
-                              Text(c.number, style: ZineText.sub(size: 12.5)),
-                          ]),
-                        ),
-                      ]),
+                    child: GestureDetector(
+                      onLongPress: openMenu,
+                      child: ZineCard(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        child: Row(children: [
+                          ZineIconBadge(
+                              icon: PhosphorIcons.user(PhosphorIconsStyle.bold), color: Zine.blue),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              Text(displayName ?? c.number, style: ZineText.cardTitle(size: 15.5)),
+                              if (displayName != null)
+                                Text(c.number, style: ZineText.sub(size: 12.5)),
+                            ]),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.more_vert, color: Zine.inkSoft),
+                            onPressed: openMenu,
+                          ),
+                        ]),
+                      ),
                     ),
                   );
                 },
@@ -422,16 +451,23 @@ class _LogsTab extends StatefulWidget {
 }
 
 class _LogsTabState extends State<_LogsTab> {
-  late Future<List<DeviceCall>> _future;
+  late Future<(List<DeviceCall>, Map<String, ContactOverride>, Set<String>)> _future;
 
   @override
   void initState() {
     super.initState();
-    _future = DeviceCallLog.I.load();
+    _future = _loadAll();
+  }
+
+  Future<(List<DeviceCall>, Map<String, ContactOverride>, Set<String>)> _loadAll({bool force = false}) async {
+    final logs = await DeviceCallLog.I.load(force: force);
+    final overrides = {for (final o in await ContactOverrides.I.load()) DeviceContacts.normKey(o.number): o};
+    final blocked = {for (final b in await BlockList.I.load()) DeviceContacts.normKey(b.number)};
+    return (logs, overrides, blocked);
   }
 
   Future<void> _reload() async {
-    setState(() => _future = DeviceCallLog.I.load(force: true));
+    setState(() => _future = _loadAll(force: true));
   }
 
   IconData _iconFor(DeviceCallType t) => switch (t) {
@@ -453,13 +489,13 @@ class _LogsTabState extends State<_LogsTab> {
     return Column(children: [
       const _RoleBanner(),
       Expanded(
-        child: FutureBuilder<List<DeviceCall>>(
+        child: FutureBuilder<(List<DeviceCall>, Map<String, ContactOverride>, Set<String>)>(
           future: _future,
           builder: (context, snap) {
             if (snap.connectionState != ConnectionState.done) {
               return const Center(child: CircularProgressIndicator(color: Zine.ink));
             }
-            final logs = snap.data ?? const [];
+            final (logs, overrides, blocked) = snap.data ?? (const <DeviceCall>[], const <String, ContactOverride>{}, const <String>{});
             if (logs.isEmpty) {
               return _PermState(
                 icon: Icons.history_outlined,
@@ -477,20 +513,37 @@ class _LogsTabState extends State<_LogsTab> {
                 itemCount: logs.length,
                 itemBuilder: (context, i) {
                   final e = logs[i];
+                  final key = DeviceContacts.normKey(e.number);
+                  final displayName = overrides[key]?.displayName ?? e.cachedName;
+                  final isBlocked = blocked.contains(key);
+                  void openMenu() => showAvaDialRowMenu(
+                        context,
+                        number: e.number,
+                        name: displayName,
+                        alreadyBlocked: isBlocked,
+                        onChanged: _reload,
+                      );
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: ZineCard(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      child: Row(children: [
-                        ZineIconBadge(icon: _iconFor(e.type), color: _colorFor(e.type)),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text(e.cachedName ?? e.number, style: ZineText.cardTitle(size: 15)),
-                            Text(_subtitle(e), style: ZineText.sub(size: 12)),
-                          ]),
-                        ),
-                      ]),
+                    child: GestureDetector(
+                      onLongPress: openMenu,
+                      child: ZineCard(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        child: Row(children: [
+                          ZineIconBadge(icon: _iconFor(e.type), color: _colorFor(e.type)),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              Text(displayName ?? e.number, style: ZineText.cardTitle(size: 15)),
+                              Text(_subtitle(e), style: ZineText.sub(size: 12)),
+                            ]),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.more_vert, color: Zine.inkSoft),
+                            onPressed: openMenu,
+                          ),
+                        ]),
+                      ),
                     ),
                   );
                 },
@@ -555,34 +608,48 @@ class _BlockTabState extends State<_BlockTab> {
           itemCount: entries.length,
           itemBuilder: (context, i) {
             final e = entries[i];
+            void openMenu() => showAvaDialRowMenu(
+                  context,
+                  number: e.number,
+                  name: e.label,
+                  alreadyBlocked: true,
+                  onChanged: _reload,
+                );
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
-              child: ZineCard(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                child: Row(children: [
-                  ZineIconBadge(
-                      icon: e.reportedSpam
-                          ? PhosphorIcons.shieldWarning(PhosphorIconsStyle.bold)
-                          : PhosphorIcons.prohibit(PhosphorIconsStyle.bold),
-                      color: Zine.coral),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(e.number, style: ZineText.cardTitle(size: 15)),
-                      Text(
-                        e.reportedSpam ? 'Reported as spam${e.label != null ? ' · ${e.label}' : ''}' : 'Blocked',
-                        style: ZineText.sub(size: 12),
-                      ),
-                    ]),
-                  ),
-                  ZineButton(
-                    label: 'Unblock',
-                    variant: ZineButtonVariant.ghost,
-                    fontSize: 13,
-                    trailingIcon: false,
-                    onPressed: () => _unblock(e.number),
-                  ),
-                ]),
+              child: GestureDetector(
+                onLongPress: openMenu,
+                child: ZineCard(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  child: Row(children: [
+                    ZineIconBadge(
+                        icon: e.reportedSpam
+                            ? PhosphorIcons.shieldWarning(PhosphorIconsStyle.bold)
+                            : PhosphorIcons.prohibit(PhosphorIconsStyle.bold),
+                        color: Zine.coral),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(e.number, style: ZineText.cardTitle(size: 15)),
+                        Text(
+                          e.reportedSpam ? 'Reported as spam${e.label != null ? ' · ${e.label}' : ''}' : 'Blocked',
+                          style: ZineText.sub(size: 12),
+                        ),
+                      ]),
+                    ),
+                    ZineButton(
+                      label: 'Unblock',
+                      variant: ZineButtonVariant.ghost,
+                      fontSize: 13,
+                      trailingIcon: false,
+                      onPressed: () => _unblock(e.number),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.more_vert, color: Zine.inkSoft),
+                      onPressed: openMenu,
+                    ),
+                  ]),
+                ),
               ),
             );
           },
