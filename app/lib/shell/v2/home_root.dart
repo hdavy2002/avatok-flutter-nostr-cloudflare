@@ -6,10 +6,13 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/ui/zine.dart';
 import '../../core/update_service.dart';
 import '../shell_v2.dart';
+import 'app_order_screen.dart';
 import 'card_manager_screen.dart';
+import 'home_app_switcher.dart';
 import 'home_appearance_screen.dart';
 import 'home_cards.dart';
 import 'home_personalisation.dart';
+import 'root_order_store.dart';
 import 'shell_chrome.dart';
 import 'shell_destinations.dart';
 
@@ -28,42 +31,35 @@ class HomeRoot extends StatefulWidget {
 }
 
 class _HomeRootState extends State<HomeRoot> {
-  static const _items = [
-    ShellNavItem(Icons.home_outlined, Icons.home, 'Home'),
-    ShellNavItem(Icons.phone_outlined, Icons.phone, 'AvaDial'),
-    ShellNavItem(Icons.chat_bubble_outline, Icons.chat_bubble, 'AvaTalk'),
-    ShellNavItem(Icons.storefront_outlined, Icons.storefront, 'Services'),
-    ShellNavItem(Icons.auto_awesome_outlined, Icons.auto_awesome, 'AI'),
-  ];
-
   @override
   void initState() {
     super.initState();
     HomePersonalisation.load(); // per-account look; repaints via its revision notifier
+    _maybeShowReorderHint();
+  }
+
+  /// One-time, per-account nudge that the footer icons can be rearranged and the
+  /// first one is the landing app (AVA-SHELL-8, rule 1).
+  Future<void> _maybeShowReorderHint() async {
+    if (await RootOrderPrefs.hintSeen()) return;
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Hold an icon to rearrange — the first one opens at launch'),
+          backgroundColor: Zine.ink,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+      RootOrderPrefs.markHintSeen();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final scope = ShellScope.of(context);
-
-    void onFooter(int i) {
-      switch (i) {
-        case 0:
-          break; // already Home
-        case 1:
-          scope.switchRoot(RootId.avaDial);
-          break;
-        case 2:
-          scope.switchRoot(RootId.avaTalk);
-          break;
-        case 3:
-          scope.switchRoot(RootId.services);
-          break;
-        case 4:
-          scope.askAva(); // global action — not a root
-          break;
-      }
-    }
 
     return ValueListenableBuilder<int>(
       valueListenable: HomePersonalisation.revision,
@@ -100,6 +96,17 @@ class _HomeRootState extends State<HomeRoot> {
                   Navigator.of(context).maybePop();
                   Navigator.of(context)
                       .push(MaterialPageRoute(builder: (_) => const HomeCardsManagerScreen()));
+                },
+              ),
+              ShellMenuRow(
+                icon: PhosphorIcons.listNumbers(PhosphorIconsStyle.bold),
+                color: Zine.lilac,
+                title: 'App order',
+                subtitle: 'Reorder apps & pick your landing app',
+                onTap: () {
+                  Navigator.of(context).maybePop();
+                  Navigator.of(context)
+                      .push(MaterialPageRoute(builder: (_) => const AppOrderScreen()));
                 },
               ),
               ShellMenuRow(
@@ -164,10 +171,15 @@ class _HomeRootState extends State<HomeRoot> {
             ),
             title: Text('Home', style: ZineText.appbar()),
           ),
-          bottomNavigationBar: shellNavBar(
-            selectedIndex: 0,
-            items: _items,
-            onSelected: onFooter,
+          // Draggable app switcher (AVA-SHELL-8): the four root icons in the
+          // user's chosen order (long-press to rearrange → order.first = landing
+          // app), plus a FIXED AI action pinned at the far right.
+          bottomNavigationBar: HomeAppSwitcherBar(
+            order: scope.rootOrder,
+            activeRoot: scope.activeRoot,
+            onSelect: scope.switchRoot,
+            onReorder: scope.setRootOrder,
+            onAskAva: scope.askAva,
             indicatorColor: HomePersonalisation.accentColor,
           ),
           body: SafeArea(

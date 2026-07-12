@@ -16,6 +16,7 @@ import '../features/avadial/sms/sms_thread_screen.dart';
 import '../identity/identity.dart';
 import 'v2/avadial_root.dart';
 import 'v2/home_root.dart';
+import 'v2/root_order_store.dart';
 import 'v2/services_root.dart';
 import 'v2/talk_root.dart';
 
@@ -57,6 +58,15 @@ class ShellScope extends InheritedWidget {
   final VoidCallback onSignOut;
   final Identity? identity;
 
+  /// User-chosen order of the four Home footer app-switcher roots (AVA-SHELL-8).
+  /// The FIRST entry is the landing app on cold open. The Home footer reads this
+  /// to render + drag-reorder the icons; the AI action is not part of it.
+  final List<RootId> rootOrder;
+
+  /// Commit a new [rootOrder] (from a footer drag or the "App order" screen).
+  /// Persists per-account + fires the reorder analytics.
+  final void Function(List<RootId>) setRootOrder;
+
   const ShellScope({
     super.key,
     required this.activeRoot,
@@ -65,6 +75,8 @@ class ShellScope extends InheritedWidget {
     required this.clerk,
     required this.onSignOut,
     required this.identity,
+    required this.rootOrder,
+    required this.setRootOrder,
     required super.child,
   });
 
@@ -76,7 +88,17 @@ class ShellScope extends InheritedWidget {
 
   @override
   bool updateShouldNotify(ShellScope old) =>
-      old.activeRoot != activeRoot || old.identity != identity;
+      old.activeRoot != activeRoot ||
+      old.identity != identity ||
+      !_sameOrder(old.rootOrder, rootOrder);
+
+  static bool _sameOrder(List<RootId> a, List<RootId> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
 }
 
 /// The 4-root shell (Home · AvaDial · AvaTalk · Services), gated ENTIRELY behind
@@ -143,6 +165,11 @@ class ShellV2 extends StatefulWidget {
 class _ShellV2State extends State<ShellV2> {
   RootId _root = RootId.home;
 
+  // User-chosen app-switcher order (AVA-SHELL-8). Drives BOTH the Home footer
+  // rendering and the cold-open landing decision (order.first = landing app).
+  // Loaded per-account in initState; defaults until then.
+  List<RootId> _order = List<RootId>.from(RootOrderPrefs.defaultOrder);
+
   // One Navigator per root — kept alive by the IndexedStack so each app's
   // nested route stack survives an app switch.
   final Map<RootId, GlobalKey<NavigatorState>> _navKeys = {
@@ -163,7 +190,7 @@ class _ShellV2State extends State<ShellV2> {
   @override
   void initState() {
     super.initState();
-    _restoreLastRoot();
+    _initRootState();
     _wireIncomingCalls();
     _wireCompose();
   }
@@ -234,6 +261,42 @@ class _ShellV2State extends State<ShellV2> {
         .whenComplete(() => AvaDialChannel.I.incomingScreenOpen = false);
   }
 
+  /// Cold-open state (AVA-SHELL-8). Loads the per-account app-switcher order and
+  /// LANDS ON `order.first` — the user's chosen landing app (put AvaTalk first and
+  /// the app opens in the messenger). This REPLACES the old last-used-root landing.
+  Future<void> _initRootState() async {
+    List<RootId> order;
+    try {
+      order = await RootOrderPrefs.load();
+    } catch (_) {
+      order = List<RootId>.from(RootOrderPrefs.defaultOrder);
+    }
+    if (!mounted || order.isEmpty) return;
+    setState(() {
+      _order = order;
+      _root = order.first; // landing rule
+    });
+    Analytics.capture('shellv2_landing_root', {'root': order.first.key});
+  }
+
+  /// Persist a reordered app switcher (from the Home footer drag or the "App order"
+  /// screen). Updates the in-memory order so the footer + landing stay consistent,
+  /// writes it per-account, and fires the reorder analytics.
+  void _setRootOrder(List<RootId> order) {
+    if (order.isEmpty) return;
+    setState(() => _order = List<RootId>.from(order));
+    unawaited(RootOrderPrefs.save(order));
+    Analytics.capture('shellv2_roots_reordered', {
+      'order': order.map((r) => r.key).join(','),
+    });
+  }
+
+  /// LEGACY last-used-root path (plan §9 item 2), retained but SUPERSEDED by the
+  /// explicit order in [_initRootState]: cold open now prefers `order.first`, so
+  /// this is no longer invoked for the landing decision. Kept (with its writer
+  /// below) so the persisted value/behaviour can be restored if the explicit-order
+  /// landing is ever reverted.
+  // ignore: unused_element
   Future<void> _restoreLastRoot() async {
     try {
       final v = await readScoped(_ss, _kLastRoot);
@@ -319,6 +382,8 @@ class _ShellV2State extends State<ShellV2> {
       clerk: widget.clerk,
       onSignOut: widget.onSignOut,
       identity: widget.identity,
+      rootOrder: _order,
+      setRootOrder: _setRootOrder,
       child: PopScope(
         canPop: false,
         onPopInvokedWithResult: (didPop, _) {
