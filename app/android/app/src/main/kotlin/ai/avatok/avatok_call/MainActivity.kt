@@ -84,5 +84,19 @@ class MainActivity : FlutterFragmentActivity() {
                 intent.getStringExtra("number"),
             )
         }
+
+        // AvaDial SMS compose launch. Two entry points, both DARK behind `avaSms`:
+        //   1. The SMS notification tap sets route="avadial/compose" + number.
+        //   2. An ACTION_SENDTO on sms:/smsto:/mms:/mmsto: (SmsComposeAlias) — parse
+        //      the recipient from the intent data URI (scheme-specific part before '?').
+        if (intent?.getStringExtra("route") == "avadial/compose") {
+            ai.avatok.avadial.AvaDialPlugin.notifyComposeLaunch(intent.getStringExtra("number"))
+        } else if (intent?.action == Intent.ACTION_SENDTO) {
+            val scheme = intent.data?.scheme
+            if (scheme == "sms" || scheme == "smsto" || scheme == "mms" || scheme == "mmsto") {
+                val number = intent.data?.schemeSpecificPart?.substringBefore('?')?.trim()
+                ai.avatok.avadial.AvaDialPlugin.notifyComposeLaunch(number)
+            }
+        }
     }
 }

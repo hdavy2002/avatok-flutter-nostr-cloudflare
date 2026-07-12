@@ -11,6 +11,11 @@ import android.content.Context
  *   - ROLE_CALL_SCREENING  — "Caller ID & spam app" — independently requestable, so
  *                            the spam shield works even when the user declines the
  *                            full dialer role.
+ *   - ROLE_SMS             — "SMS app" / default messages app (AVA-SMS). Grants the
+ *                            SMS provider write + the four SMS role components (see
+ *                            the manifest). Independently requestable from the dialer
+ *                            role — a user can make AvaTOK their SMS app without making
+ *                            it their phone app, and vice-versa.
  *
  * We NEVER strip our own role (the OS owns removal). "Rollback" = detect we lost it
  * on resume ([isRoleHeld]) and downgrade the UI; that logic lives on the Dart side.
@@ -18,9 +23,11 @@ import android.content.Context
 object AvaDialRoleHelper {
     const val REQ_DIALER = 42101
     const val REQ_SCREENING = 42102
+    const val REQ_SMS = 42103
 
     private fun requestCodeFor(roleName: String): Int = when (roleName) {
         RoleManager.ROLE_CALL_SCREENING -> REQ_SCREENING
+        RoleManager.ROLE_SMS -> REQ_SMS
         else -> REQ_DIALER
     }
 

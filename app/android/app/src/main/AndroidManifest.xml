@@ -55,6 +55,20 @@
     <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
 
+    <!-- AvaDial default-SMS-app layer (AVA-SMS). All DARK behind the Flutter
+         `avaSms` flag: these components only become active when the user grants
+         ROLE_SMS, which we never request unless the flag is on. SEND_SMS sends;
+         RECEIVE_SMS + BROADCAST_SMS deliver inbound text to AvaSmsReceiver;
+         RECEIVE_MMS/RECEIVE_WAP_PUSH deliver MMS pushes to AvaMmsReceiver; READ_SMS
+         reads the conversation list/threads from the OS provider. These are
+         Play-"restricted" SMS permissions — AvaTOK must file the default-SMS-handler
+         Permissions Declaration (see Specs/SPIKE-2026-07-12-avadial-telecom.md). -->
+    <uses-permission android:name="android.permission.SEND_SMS" />
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <uses-permission android:name="android.permission.READ_SMS" />
+    <uses-permission android:name="android.permission.RECEIVE_MMS" />
+    <uses-permission android:name="android.permission.RECEIVE_WAP_PUSH" />
+
     <application
         android:label="AvaTOK"
         android:name="${applicationName}"
@@ -225,6 +239,72 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="tel" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- ── AvaDial default-SMS-app layer (DARK behind the `avaSms` flag) ──────
+             The four components below are ALL MANDATORY for ROLE_SMS: Android's
+             role request silently fails to offer AvaTOK as an SMS app unless the
+             app declares (1) an SMS_DELIVER receiver, (2) a WAP_PUSH_DELIVER
+             receiver for MMS, (3) a RESPOND_VIA_MESSAGE service, and (4) an
+             ACTION_SENDTO activity for sms:/smsto:/mms:/mmsto:. This mirrors the
+             canonical default-SMS-app manifest at
+             https://developer.android.com/reference/android/provider/Telephony .
+             None fires until the user grants ROLE_SMS, which we never request
+             unless the flag is on. See Specs/SPIKE-2026-07-12-avadial-telecom.md. -->
+
+        <!-- (1) Inbound SMS. BROADCAST_SMS-protected; the OS delivers here only while
+             we are the default SMS app. -->
+        <receiver
+            android:name="ai.avatok.avadial.AvaSmsReceiver"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS">
+            <intent-filter>
+                <action android:name="android.provider.Telephony.SMS_DELIVER" />
+            </intent-filter>
+        </receiver>
+
+        <!-- (2) Inbound MMS (WAP push). BROADCAST_WAP_PUSH-protected. -->
+        <receiver
+            android:name="ai.avatok.avadial.AvaMmsReceiver"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_WAP_PUSH">
+            <intent-filter>
+                <action android:name="android.provider.Telephony.WAP_PUSH_DELIVER" />
+                <data android:mimeType="application/vnd.wap.mms-message" />
+            </intent-filter>
+        </receiver>
+
+        <!-- (3) "Respond via message" quick-reply service. -->
+        <service
+            android:name="ai.avatok.avadial.AvaSmsSendService"
+            android:exported="true"
+            android:permission="android.permission.SEND_RESPOND_VIA_MESSAGE_SERVICE">
+            <intent-filter>
+                <action android:name="android.intent.action.RESPOND_VIA_MESSAGE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="sms" />
+                <data android:scheme="smsto" />
+                <data android:scheme="mms" />
+                <data android:scheme="mmsto" />
+            </intent-filter>
+        </service>
+
+        <!-- (4) ACTION_SENDTO compose activity-alias — aliases MainActivity with a
+             route extra so a tapped sms:/smsto: link (or another app's "send
+             message") opens the AvaDial composer. -->
+        <activity-alias
+            android:name="ai.avatok.avadial.SmsComposeAlias"
+            android:targetActivity=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.SENDTO" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="sms" />
+                <data android:scheme="smsto" />
+                <data android:scheme="mms" />
+                <data android:scheme="mmsto" />
             </intent-filter>
         </activity-alias>
 

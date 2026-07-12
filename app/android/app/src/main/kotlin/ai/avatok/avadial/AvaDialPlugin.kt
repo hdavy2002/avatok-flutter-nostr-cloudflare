@@ -1,12 +1,19 @@
 package ai.avatok.avadial
 
+import android.app.PendingIntent
 import android.app.role.RoleManager
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.BlockedNumberContract
 import android.provider.CallLog
 import android.provider.ContactsContract
+import android.provider.Telephony
+import android.telephony.SmsManager
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
@@ -55,6 +62,19 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
         @Volatile
         private var pendingNumber: String? = null
 
+        // Cold-start / background SMS-compose launch (ACTION_SENDTO on sms:/smsto:/
+        // mms:/mmsto:, route extra "avadial/compose"). Stored so Dart can DRAIN it on
+        // startup via getPendingCompose even when the launch beat the channel handler
+        // being installed; also emitted for the already-running case.
+        @Volatile
+        private var pendingComposeNumber: String? = null
+
+        // Sent/delivered PendingIntent actions (AVA-SMS). Suffixed with a per-send ref
+        // so a dynamically-registered receiver can map the result back to the Dart
+        // send request over the channel.
+        const val ACTION_SMS_SENT = "ai.avatok.avadial.SMS_SENT"
+        const val ACTION_SMS_DELIVERED = "ai.avatok.avadial.SMS_DELIVERED"
+
         /** Post an event to Dart on the main thread. No-op if the engine is gone. */
         fun emit(method: String, args: Map<String, Any?>) {
             val plugin = instance ?: return
@@ -73,6 +93,49 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
             emit("onLaunchIncoming", mapOf("call_id" to callId, "number" to number))
         }
 
+        /**
+         * Called by MainActivity when it is (re)launched with the AvaDial SMS-compose
+         * route extra (ACTION_SENDTO on an sms:/mms: URI). Records the pending compose
+         * for a cold-start drain AND emits `onLaunchCompose` for the already-running
+         * case. [number] is the recipient parsed from the sms:/smsto: URI (may be null
+         * for a blank compose). All DARK behind the Flutter `avaSms` flag.
+         */
+        fun notifyComposeLaunch(number: String?) {
+            pendingComposeNumber = number ?: ""
+            emit("onLaunchCompose", mapOf("number" to number))
+        }
+
+        /**
+         * One-shot SMS send for the RESPOND_VIA_MESSAGE quick-reply flow
+         * ([AvaSmsSendService]). Best-effort, no PendingIntent status reporting — the
+         * platform's call UI owns the UX here, we just make sure the reply goes out and
+         * is mirrored into the provider. Only meaningful while we hold ROLE_SMS.
+         */
+        fun sendQuickReply(context: Context, dest: String, text: String) {
+            try {
+                val sms = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    context.getSystemService(SmsManager::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    SmsManager.getDefault()
+                }
+                val parts = sms.divideMessage(text)
+                if (parts.size == 1) {
+                    sms.sendTextMessage(dest, null, text, null, null)
+                } else {
+                    sms.sendMultipartTextMessage(dest, null, parts, null, null)
+                }
+                val values = android.content.ContentValues().apply {
+                    put(Telephony.Sms.ADDRESS, dest)
+                    put(Telephony.Sms.BODY, text)
+                    put(Telephony.Sms.DATE, System.currentTimeMillis())
+                    put(Telephony.Sms.READ, 1)
+                    put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_SENT)
+                }
+                context.contentResolver.insert(Telephony.Sms.Sent.CONTENT_URI, values)
+            } catch (_: Throwable) { /* best-effort */ }
+        }
+
         /** Absolute path of the screening snapshot file (spike §5). */
         fun snapshotFile(context: Context): File {
             val dir = File(context.filesDir, SNAPSHOT_DIR)
@@ -84,6 +147,7 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
     private var channel: MethodChannel? = null
     private var appContext: Context? = null
     private var activityBinding: ActivityPluginBinding? = null
+    private var smsResultReceiver: BroadcastReceiver? = null
 
     // ── FlutterPlugin ──────────────────────────────────────────────────────────
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
@@ -92,12 +156,54 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
             it.setMethodCallHandler(this)
         }
         instance = this
+        registerSmsResultReceiver(binding.applicationContext)
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel?.setMethodCallHandler(null)
         channel = null
+        smsResultReceiver?.let {
+            try { binding.applicationContext.unregisterReceiver(it) } catch (_: Throwable) {}
+        }
+        smsResultReceiver = null
         if (instance === this) instance = null
+    }
+
+    /**
+     * Register the dynamic receiver that catches the SMS sent/delivered PendingIntent
+     * broadcasts fired by [smsSend] and forwards `onSmsSendStatus {ref, phase, ok}` to
+     * Dart. The delivery-state chips in the composer read these events. Best-effort:
+     * a send whose engine is dead simply never reports (the SMS still went out).
+     */
+    private fun registerSmsResultReceiver(ctx: Context) {
+        if (smsResultReceiver != null) return
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(c: Context?, intent: Intent?) {
+                val phase = when (intent?.action) {
+                    ACTION_SMS_SENT -> "sent"
+                    ACTION_SMS_DELIVERED -> "delivered"
+                    else -> return
+                }
+                val ref = intent.getStringExtra("ref") ?: return
+                // For "sent" the result code lives in getResultCode(); for "delivered"
+                // a non-null resultCode is likewise success (Activity.RESULT_OK == -1).
+                val ok = resultCode == android.app.Activity.RESULT_OK
+                emit("onSmsSendStatus", mapOf("ref" to ref, "phase" to phase, "ok" to ok))
+            }
+        }
+        val filter = IntentFilter().apply {
+            addAction(ACTION_SMS_SENT)
+            addAction(ACTION_SMS_DELIVERED)
+        }
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                ctx.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                @Suppress("UnspecifiedRegisterReceiverFlag")
+                ctx.registerReceiver(receiver, filter)
+            }
+            smsResultReceiver = receiver
+        } catch (_: Throwable) { /* best-effort — send still works without status */ }
     }
 
     // ── ActivityAware (role requests need an Activity) ───────────────────────────
@@ -127,11 +233,33 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
                 // ---- roles ----
                 "requestDialerRole" -> requestRole(RoleManager.ROLE_DIALER, result)
                 "requestScreeningRole" -> requestRole(RoleManager.ROLE_CALL_SCREENING, result)
+                "requestSmsRole" -> requestRole(RoleManager.ROLE_SMS, result)
                 "isDialerRoleHeld" ->
                     result.success(AvaDialRoleHelper.isRoleHeld(ctx, RoleManager.ROLE_DIALER))
                 "isScreeningRoleHeld" ->
                     result.success(AvaDialRoleHelper.isRoleHeld(ctx, RoleManager.ROLE_CALL_SCREENING))
+                "isSmsRoleHeld" ->
+                    result.success(AvaDialRoleHelper.isRoleHeld(ctx, RoleManager.ROLE_SMS))
                 "canBlockNumbers" -> result.success(canBlockNumbers(ctx))
+
+                // ---- SMS (default-SMS-app layer, AVA-SMS) ----
+                "smsSend" -> result.success(
+                    smsSend(
+                        ctx,
+                        call.argument<String>("dest"),
+                        call.argument<String>("body"),
+                        call.argument<String>("ref"),
+                    )
+                )
+                "smsQueryThreads" -> result.success(smsQueryThreads(ctx, call.argument<Int>("limit") ?: 200))
+                "smsQueryMessages" -> result.success(
+                    smsQueryMessages(ctx, call.argument<String>("address"), call.argument<Int>("limit") ?: 500)
+                )
+                "getPendingCompose" -> {
+                    val out: Map<String, Any?>? = pendingComposeNumber?.let { mapOf("number" to it) }
+                    pendingComposeNumber = null
+                    result.success(out)
+                }
 
                 // ---- live device reads (no persistence) ----
                 "readContacts" -> result.success(readContacts(ctx))
@@ -186,6 +314,7 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
         val role = when (requestCode) {
             AvaDialRoleHelper.REQ_DIALER -> RoleManager.ROLE_DIALER
             AvaDialRoleHelper.REQ_SCREENING -> RoleManager.ROLE_CALL_SCREENING
+            AvaDialRoleHelper.REQ_SMS -> RoleManager.ROLE_SMS
             else -> return false
         }
         val granted = resultCode == android.app.Activity.RESULT_OK
@@ -286,5 +415,156 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
         } catch (_: Throwable) {
             false
         }
+    }
+
+    // ── SMS (default-SMS-app layer, AVA-SMS) ─────────────────────────────────────
+    /**
+     * Send an SMS via [SmsManager], splitting long bodies into multipart. Registers a
+     * sent + delivered PendingIntent per part keyed by [ref]; the dynamic receiver
+     * forwards status to Dart as `onSmsSendStatus {ref, phase, ok}`. The default SMS
+     * app writes the outgoing message into the SMS provider (content://sms) itself, so
+     * we insert it into Telephony.Sms.Sent after handing it to the radio. Returns true
+     * when the send was dispatched (NOT when delivered — that arrives on the channel).
+     *
+     * Device-data boundary: message bodies live ONLY in the OS SMS provider; our
+     * scoped store keeps spam labels/metadata, never the text.
+     */
+    private fun smsSend(ctx: Context, dest: String?, body: String?, ref: String?): Boolean {
+        if (dest.isNullOrEmpty() || body == null) return false
+        val r = ref ?: System.currentTimeMillis().toString()
+        return try {
+            val sms = smsManager(ctx)
+            val parts = sms.divideMessage(body)
+            val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            val sentIntents = ArrayList<PendingIntent>(parts.size)
+            val deliveredIntents = ArrayList<PendingIntent>(parts.size)
+            for (i in parts.indices) {
+                val sentPi = PendingIntent.getBroadcast(
+                    ctx, r.hashCode() + i,
+                    Intent(ACTION_SMS_SENT).setPackage(ctx.packageName).putExtra("ref", r), flags
+                )
+                val delPi = PendingIntent.getBroadcast(
+                    ctx, (r.hashCode() + i) xor 0x7fffffff,
+                    Intent(ACTION_SMS_DELIVERED).setPackage(ctx.packageName).putExtra("ref", r), flags
+                )
+                sentIntents.add(sentPi)
+                deliveredIntents.add(delPi)
+            }
+            if (parts.size == 1) {
+                sms.sendTextMessage(dest, null, body, sentIntents[0], deliveredIntents[0])
+            } else {
+                sms.sendMultipartTextMessage(dest, null, parts, sentIntents, deliveredIntents)
+            }
+            // Mirror the sent message into the OS SMS provider so the thread reads back
+            // consistently (only meaningful while we hold ROLE_SMS).
+            try {
+                val values = android.content.ContentValues().apply {
+                    put(Telephony.Sms.ADDRESS, dest)
+                    put(Telephony.Sms.BODY, body)
+                    put(Telephony.Sms.DATE, System.currentTimeMillis())
+                    put(Telephony.Sms.READ, 1)
+                    put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_SENT)
+                }
+                ctx.contentResolver.insert(Telephony.Sms.Sent.CONTENT_URI, values)
+            } catch (_: Throwable) { /* not default SMS app → provider write denied */ }
+            true
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    private fun smsManager(ctx: Context): SmsManager =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            ctx.getSystemService(SmsManager::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            SmsManager.getDefault()
+        }
+
+    /**
+     * LIVE read of SMS conversation threads from the OS provider
+     * (content://mms-sms/conversations). Returns one row per thread with the latest
+     * snippet — bodies are read live, never persisted here (device-data boundary).
+     */
+    private fun smsQueryThreads(ctx: Context, limit: Int): List<Map<String, Any?>> {
+        val out = ArrayList<Map<String, Any?>>()
+        val proj = arrayOf(
+            Telephony.Sms.THREAD_ID,
+            Telephony.Sms.ADDRESS,
+            Telephony.Sms.BODY,
+            Telephony.Sms.DATE,
+            Telephony.Sms.READ,
+        )
+        // Group by thread via a DISTINCT-ish query: order newest first and keep the
+        // first row seen per thread (the latest message in that conversation).
+        ctx.contentResolver.query(
+            Telephony.Sms.CONTENT_URI, proj, null, null, Telephony.Sms.DATE + " DESC"
+        )?.use { c ->
+            val iThread = c.getColumnIndex(proj[0])
+            val iAddr = c.getColumnIndex(proj[1])
+            val iBody = c.getColumnIndex(proj[2])
+            val iDate = c.getColumnIndex(proj[3])
+            val iRead = c.getColumnIndex(proj[4])
+            val seen = HashSet<Long>()
+            while (c.moveToNext() && out.size < limit) {
+                val thread = if (iThread >= 0) c.getLong(iThread) else -1L
+                if (thread >= 0 && !seen.add(thread)) continue
+                out.add(
+                    mapOf(
+                        "thread_id" to thread,
+                        "address" to (if (iAddr >= 0) c.getString(iAddr) else null),
+                        "snippet" to (if (iBody >= 0) c.getString(iBody) else null),
+                        "date" to (if (iDate >= 0) c.getLong(iDate) else 0L),
+                        "read" to (if (iRead >= 0) c.getInt(iRead) == 1 else true),
+                    )
+                )
+            }
+        }
+        return out
+    }
+
+    /**
+     * LIVE read of the messages in one thread, matched by [address]. Ordered oldest →
+     * newest for a chat transcript. `type` maps Telephony.Sms.TYPE
+     * (1=inbox/received, 2=sent).
+     */
+    private fun smsQueryMessages(ctx: Context, address: String?, limit: Int): List<Map<String, Any?>> {
+        if (address.isNullOrEmpty()) return emptyList()
+        val out = ArrayList<Map<String, Any?>>()
+        val proj = arrayOf(
+            Telephony.Sms._ID,
+            Telephony.Sms.ADDRESS,
+            Telephony.Sms.BODY,
+            Telephony.Sms.DATE,
+            Telephony.Sms.TYPE,
+            Telephony.Sms.READ,
+        )
+        ctx.contentResolver.query(
+            Telephony.Sms.CONTENT_URI, proj,
+            Telephony.Sms.ADDRESS + " = ?", arrayOf(address),
+            Telephony.Sms.DATE + " ASC"
+        )?.use { c ->
+            val iId = c.getColumnIndex(proj[0])
+            val iAddr = c.getColumnIndex(proj[1])
+            val iBody = c.getColumnIndex(proj[2])
+            val iDate = c.getColumnIndex(proj[3])
+            val iType = c.getColumnIndex(proj[4])
+            val iRead = c.getColumnIndex(proj[5])
+            var n = 0
+            while (c.moveToNext() && n < limit) {
+                out.add(
+                    mapOf(
+                        "id" to (if (iId >= 0) c.getLong(iId) else 0L),
+                        "address" to (if (iAddr >= 0) c.getString(iAddr) else null),
+                        "body" to (if (iBody >= 0) c.getString(iBody) else null),
+                        "date" to (if (iDate >= 0) c.getLong(iDate) else 0L),
+                        "type" to (if (iType >= 0) c.getInt(iType) else 0),
+                        "read" to (if (iRead >= 0) c.getInt(iRead) == 1 else true),
+                    )
+                )
+                n++
+            }
+        }
+        return out
     }
 }
