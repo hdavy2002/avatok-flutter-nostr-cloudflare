@@ -16,6 +16,7 @@ import android.os.Looper
 import android.provider.BlockedNumberContract
 import android.provider.CallLog
 import android.provider.ContactsContract
+import android.provider.Settings
 import android.provider.Telephony
 import android.telecom.TelecomManager
 import android.telephony.SmsManager
@@ -248,6 +249,7 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
                 "isSmsRoleHeld" ->
                     result.success(AvaDialRoleHelper.isRoleHeld(ctx, RoleManager.ROLE_SMS))
                 "canBlockNumbers" -> result.success(canBlockNumbers(ctx))
+                "openDefaultAppsSettings" -> { openDefaultAppsSettings(ctx); result.success(null) }
 
                 // ---- SMS (default-SMS-app layer, AVA-SMS) ----
                 "smsSend" -> result.success(
@@ -398,6 +400,36 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
             }
         }
         return out
+    }
+
+    /**
+     * Deep-link to the OS "Default apps" screen (Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)
+     * so the user can pick AvaTOK — or hand a role back to another app (Truecaller / stock)
+     * — at the OS level. We can only LAUNCH this screen; we can never force or release a role
+     * programmatically. Prefers the foreground Activity; falls back to a NEW_TASK launch from
+     * the app context, and finally to this app's details page if the default-apps screen is
+     * unavailable on the device.
+     */
+    private fun openDefaultAppsSettings(ctx: Context) {
+        val activity = activityBinding?.activity
+        val primary = Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)
+        try {
+            if (activity != null) {
+                activity.startActivity(primary)
+            } else {
+                primary.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                ctx.startActivity(primary)
+            }
+        } catch (_: Throwable) {
+            // Fallback: this app's details page (still lets the user reach "Set as default").
+            try {
+                val fallback = Intent(
+                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.fromParts("package", ctx.packageName, null),
+                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                ctx.startActivity(fallback)
+            } catch (_: Throwable) { /* nothing else we can do */ }
+        }
     }
 
     private fun canBlockNumbers(ctx: Context): Boolean = try {

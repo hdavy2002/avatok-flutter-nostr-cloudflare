@@ -564,6 +564,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       case 'ava_receptionist':
         return _SecMeta(PhosphorIcons.phoneCall(PhosphorIconsStyle.bold), Zine.mint,
             'Your AI receptionist for incoming calls');
+      case 'default_dialer':
+        return _SecMeta(PhosphorIcons.phone(PhosphorIconsStyle.bold), Zine.blue,
+            'Make AvaTOK your default phone & messages app');
       case 'ava_guardian':
         return _SecMeta(PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold), Zine.coral,
             'Safety controls and guardian oversight');

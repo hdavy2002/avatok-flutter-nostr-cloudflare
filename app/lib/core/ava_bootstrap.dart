@@ -15,6 +15,7 @@ library;
 
 import '../features/settings/sections/auto_download_section.dart';
 import '../features/settings/sections/backup_sync_section.dart';
+import '../features/settings/sections/default_dialer_section.dart';
 import '../features/settings/sections/delegate_section.dart';
 import '../features/settings/sections/focus_section.dart';
 import '../features/settings/marketplace_agent_settings_page.dart';
@@ -116,6 +117,13 @@ class AvaBootstrap {
     // Never). Free setting, no flag. The choice is per-account and consulted by
     // MediaAutoDownload.shouldAutoFetch() at every incoming-media render site.
     registerAutoDownloadSection();
+    // AVA-DIAL-6: "Default phone & messages" settings section — wired OS-role
+    // toggles that reflect LIVE reality and launch the system RoleManager picker /
+    // default-apps screen. Hides itself unless Android + shellV2 + avaDialer (the
+    // messages toggle additionally needs avaSms). Gives users who declined the
+    // onboarding "make AvaTOK your phone" step a later path, and a place to hand a
+    // role back if Truecaller/stock took it. Idempotent (registry keys by id).
+    registerDefaultDialerSection();
     // Load the persisted "Activate Ava AI locally" preference; if the user had
     // it on, warm the model in the background so chat surfaces use it.
     // ignore: unawaited_futures

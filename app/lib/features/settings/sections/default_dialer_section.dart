@@ -1,0 +1,266 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
+
+import '../../../core/analytics.dart';
+import '../../../core/remote_config.dart';
+import '../../../core/ui/zine.dart';
+import '../../../core/ui/zine_widgets.dart';
+import '../../avadial/avadial_channel.dart';
+import '../settings_registry.dart';
+
+/// Settings → "Default phone & messages" section (AVA-DIAL-6, owner decision
+/// 2026-07-12). Gives users who declined the onboarding "make AvaTOK your phone"
+/// step a later path to become the OS default phone / SMS app — and, just as
+/// importantly, a place to see the LIVE truth and hand a role back if Truecaller
+/// or the stock dialer took it. We can only launch the OS RoleManager picker /
+/// the default-apps settings screen; a role can never be forced or released
+/// programmatically.
+///
+/// Visible only on Android when both the `shellV2` and `avaDialer` flags are on.
+/// The "Default messages app" toggle additionally requires `avaSms`.
+///
+/// Registered via [SettingsSectionRegistry] from [AvaBootstrap.init]
+/// (`registerDefaultDialerSection()`) — never by editing settings_screen.dart.
+void registerDefaultDialerSection() {
+  SettingsSectionRegistry.register(
+    SettingsSection(
+      id: 'default_dialer',
+      title: 'Default phone & messages',
+      order: 26, // just below Ava Receptionist (24) / Ava voice (25)
+      visible: () =>
+          Platform.isAndroid && RemoteConfig.shellV2 && RemoteConfig.avaDialer,
+      builder: (context) => const _DefaultDialerCard(),
+    ),
+  );
+}
+
+class _DefaultDialerCard extends StatefulWidget {
+  const _DefaultDialerCard();
+  @override
+  State<_DefaultDialerCard> createState() => _DefaultDialerCardState();
+}
+
+class _DefaultDialerCardState extends State<_DefaultDialerCard>
+    with WidgetsBindingObserver {
+  // Live reality — never optimistic. Re-read on mount, on every app resume, and
+  // after a role verdict, because the user can change these in OS Settings at any
+  // time and another app (Truecaller / stock) can take the role back.
+  bool _dialerHeld = false;
+  bool _smsHeld = false;
+  bool _loading = true;
+  StreamSubscription<AvaRoleResult>? _roleSub;
+
+  bool get _smsVisible => RemoteConfig.avaSms;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // The OS role picker returns its verdict on this stream (a prompt was shown).
+    _roleSub = AvaDialChannel.I.roleResults.listen(_onRoleVerdict);
+    _refresh();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _roleSub?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // The user may flip the default in OS Settings (or another app grabs it)
+    // while we're backgrounded — re-sync the toggles the moment we come back.
+    if (state == AppLifecycleState.resumed) _refresh();
+  }
+
+  Future<void> _refresh() async {
+    final dialer = await AvaDialChannel.I.isDialerRoleHeld();
+    final sms = _smsVisible ? await AvaDialChannel.I.isSmsRoleHeld() : false;
+    if (!mounted) return;
+    setState(() {
+      _dialerHeld = dialer;
+      _smsHeld = sms;
+      _loading = false;
+    });
+  }
+
+  /// A verdict arrived after the OS RoleManager picker (dialer or SMS). Update the
+  /// matching toggle to reality, log analytics, and — on a denial — nudge the user
+  /// toward the OS default-apps screen (the only place the choice can be made).
+  void _onRoleVerdict(AvaRoleResult r) {
+    final role = r.role.toUpperCase();
+    if (role.contains('DIALER')) {
+      if (mounted) setState(() => _dialerHeld = r.granted);
+      Analytics.capture('settings_default_dialer_toggle', {'granted': r.granted});
+      if (!r.granted) _deniedSnack('phone');
+    } else if (role.endsWith('SMS')) {
+      if (mounted) setState(() => _smsHeld = r.granted);
+      Analytics.capture('settings_default_sms_toggle', {'granted': r.granted});
+      if (!r.granted) _deniedSnack('messages');
+    }
+    // Re-read to catch any state the picker changed without a verdict for us.
+    _refresh();
+  }
+
+  void _deniedSnack(String what) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('AvaTOK wasn’t set as your default $what app.'),
+      action: SnackBarAction(
+        label: 'Open settings',
+        onPressed: () => AvaDialChannel.I.openDefaultAppsSettings(),
+      ),
+    ));
+  }
+
+  // ── Dialer toggle ─────────────────────────────────────────────────────────
+  Future<void> _onDialerChanged(bool want) async {
+    if (want) {
+      // Launch the OS RoleManager picker. `true` = already held (no prompt);
+      // `null` = a prompt was shown, verdict arrives on [roleResults].
+      final res = await AvaDialChannel.I.requestDialerRole();
+      if (res == true) {
+        if (mounted) setState(() => _dialerHeld = true);
+        Analytics.capture('settings_default_dialer_toggle', {'granted': true});
+      }
+      // res == null → wait for _onRoleVerdict. Toggle stays bound to reality.
+    } else {
+      // A role can't be released programmatically — explain + deep-link the user
+      // to the OS default-apps screen where they can hand it to another app.
+      _explainCannotRelease('phone');
+    }
+  }
+
+  // ── SMS toggle ────────────────────────────────────────────────────────────
+  Future<void> _onSmsChanged(bool want) async {
+    if (want) {
+      final res = await AvaDialChannel.I.requestSmsRole();
+      if (res == true) {
+        if (mounted) setState(() => _smsHeld = true);
+        Analytics.capture('settings_default_sms_toggle', {'granted': true});
+      }
+    } else {
+      _explainCannotRelease('messages');
+    }
+  }
+
+  void _explainCannotRelease(String what) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Zine.card,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(Zine.rSm),
+          side: const BorderSide(color: Zine.ink, width: Zine.bw),
+        ),
+        title: Text('Change your default $what app', style: ZineText.cardTitle()),
+        content: Text(
+          'Android doesn’t let an app remove itself as the default $what app. '
+          'To hand it back to another app, open the system “Default apps” '
+          'screen and pick the one you want.',
+          style: ZineText.sub(size: 13.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Not now', style: ZineText.value(size: 14)),
+          ),
+          ZineButton(
+            label: 'Open system settings',
+            variant: ZineButtonVariant.blue,
+            fontSize: 14,
+            onPressed: () {
+              Navigator.pop(ctx);
+              AvaDialChannel.I.openDefaultAppsSettings();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ZineCard(
+      radius: Zine.rSm,
+      padding: const EdgeInsets.all(14),
+      boxShadow: Zine.shadowXs,
+      child: _loading
+          ? const Padding(
+              padding: EdgeInsets.symmetric(vertical: 18),
+              child: Center(
+                child: SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2)),
+              ),
+            )
+          : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                ZineIconBadge(
+                    icon: PhosphorIcons.phone(PhosphorIconsStyle.fill),
+                    color: Zine.blue,
+                    size: 36),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Make AvaTOK your phone', style: ZineText.value(size: 14.5)),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Set AvaTOK as your default phone — and messages — '
+                          'app so calls and texts run through it, with the free '
+                          'scam/spam shield. You choose in the system picker.',
+                          style: ZineText.sub(size: 12),
+                        ),
+                      ]),
+                ),
+              ]),
+              const SizedBox(height: 16),
+              _toggleRow(
+                title: 'Default phone app',
+                held: _dialerHeld,
+                onChanged: _onDialerChanged,
+              ),
+              if (_smsVisible) ...[
+                const Divider(height: 22, thickness: 1, color: Zine.inkMute),
+                _toggleRow(
+                  title: 'Default messages app',
+                  held: _smsHeld,
+                  onChanged: _onSmsChanged,
+                ),
+              ],
+            ]),
+    );
+  }
+
+  Widget _toggleRow({
+    required String title,
+    required bool held,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return Row(children: [
+      Expanded(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title, style: ZineText.value(size: 14)),
+          const SizedBox(height: 3),
+          Text(
+            held ? 'Currently: AvaTOK' : 'Currently: another app',
+            style: ZineText.sub(
+              size: 11.5,
+              color: held ? Zine.blueInk : Zine.inkSoft,
+            ),
+          ),
+        ]),
+      ),
+      const SizedBox(width: 10),
+      ZineToggle(value: held, onChanged: onChanged),
+    ]);
+  }
+}

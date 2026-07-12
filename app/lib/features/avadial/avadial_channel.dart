@@ -233,6 +233,13 @@ class AvaDialChannel {
   Future<bool> isScreeningRoleHeld() => _invokeBool('isScreeningRoleHeld');
   Future<bool> isSmsRoleHeld() => _invokeBool('isSmsRoleHeld');
 
+  /// Deep-link to the OS "Default apps" settings screen so the user can set
+  /// AvaTOK as the default phone/SMS app — or hand a role back to another app
+  /// (Truecaller / stock) — at the OS level. We can only LAUNCH this screen; a
+  /// role can never be forced or released programmatically. Best-effort no-op on
+  /// unsupported platforms.
+  Future<void> openDefaultAppsSettings() => _invokeVoid('openDefaultAppsSettings');
+
   // ── SMS (default-SMS-app layer, AVA-SMS) ──────────────────────────────────
   /// Send an SMS to [dest]. [ref] correlates the send with its
   /// [smsSendStatus] events; pass a stable id per outgoing message. Returns true
