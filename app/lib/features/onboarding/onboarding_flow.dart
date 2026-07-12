@@ -856,8 +856,9 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       _phoneBusy = false;
     });
     Analytics.capture('onboarding_phone_roles_result', {
-      'dialer': dialer,
-      'sms': sms,
+      // Analytics maps are non-nullable; null (role flow unavailable) → false.
+      'dialer': dialer == true,
+      'sms': sms == true,
       'contacts': contacts,
     });
     await _markPhoneRolesOffered();

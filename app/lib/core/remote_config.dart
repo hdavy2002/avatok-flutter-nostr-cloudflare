@@ -292,6 +292,12 @@ class RemoteConfig {
   /// inert.
   static bool get avaSms => _b('avaSms', false);
 
+  /// AvaDial community spam shield (client mirror of config.ts `spamShield`).
+  /// Gates community lookups/reports from the SMS + call surfaces; while false
+  /// those degrade to local-only labels (the worker also 403s every /api/spam/*
+  /// route, so this mirror is a UX nicety — the server stays the security gate).
+  static bool get spamShield => _b('spamShield', false);
+
   static int get minAppBuild => (_asNum(_cfg['minAppBuild'])?.toInt()) ?? 0;
 
   /// Installed build too old? → callers show the blocking "please update" screen.
