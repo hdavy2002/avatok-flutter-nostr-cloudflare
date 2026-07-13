@@ -942,11 +942,30 @@ class _SmsRoleBannerState extends State<_SmsRoleBanner> {
   Future<void> _request() async {
     if (_busy) return;
     setState(() => _busy = true);
-    final immediate = await AvaDialChannel.I.requestSmsRole();
+    Analytics.capture('avadial_sms_enable_tapped', const {});
+    // requestSmsRole returns: true = already held, null = system prompt launched
+    // (verdict arrives on roleResults), false = the prompt could NOT be shown
+    // (no activity / role unavailable on this OEM / plugin error).
+    bool? immediate;
+    try {
+      immediate = await AvaDialChannel.I.requestSmsRole();
+    } catch (_) {
+      immediate = false;
+    }
     if (immediate == true) {
       Analytics.capture('avadial_sms_role_granted', {'via': 'already_held'});
+    } else if (immediate == false) {
+      // The direct role prompt didn't open — never leave the button dead. Send the
+      // user to the OS "Default apps" screen where they can pick AvaTOK as the SMS
+      // app manually, and tell them what to do.
+      Analytics.capture('avadial_sms_enable_fallback_settings', const {});
+      await AvaDialChannel.I.openDefaultAppsSettings();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Open "SMS app" and choose AvaTOK to enable messages.')));
+      }
     }
-    // Otherwise the verdict comes via roleResults (handled by _MessagesTab).
+    // immediate == null → the system prompt is showing; verdict via roleResults.
     if (mounted) setState(() => _busy = false);
   }
 

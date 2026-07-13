@@ -202,6 +202,13 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         shape: const Border(bottom: BorderSide(color: AvaDialTheme.border, width: 1)),
+        // Explicit close (X) so it's obvious how to back out without saving
+        // (owner request — the default back arrow was too faint to notice).
+        leading: IconButton(
+          icon: const Icon(Icons.close, color: AvaDialTheme.text),
+          tooltip: 'Cancel',
+          onPressed: _saving ? null : () => Navigator.of(context).pop(),
+        ),
         title: Text(widget.create ? 'Add contact' : 'Edit contact',
             style: ZineText.appbar(color: AvaDialTheme.text)),
       ),
@@ -279,8 +286,8 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
                 ),
                 const SizedBox(height: 14),
                 Text(
-                  'Saved inside AvaTOK only — your phone\'s own contact book is not '
-                  'modified.',
+                  'Saved to your phone\'s contacts. Extra AvaTOK details (AvaTOK '
+                  'number, custom fields) are kept in AvaTOK.',
                   style: ZineText.sub(size: 12.5, color: AvaDialTheme.textSoft),
                 ),
                 const SizedBox(height: 20),
