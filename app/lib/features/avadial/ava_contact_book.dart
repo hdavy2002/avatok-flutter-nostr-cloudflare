@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import '../../core/api_auth.dart';
@@ -140,12 +141,13 @@ class AvaContactBook {
   Future<int?> uploadBackup() async {
     try {
       final contacts = await load();
-      final resp = await ApiAuth.postJson(
-        kContactBookUrl,
-        {'contacts': contacts.map((e) => e.toJson()).toList()},
-      );
+      final payload = contacts.map((e) => e.toJson()).toList();
+      final body = jsonEncode(payload);
+      final resp = await ApiAuth.postJson(kContactBookUrl, {'contacts': payload});
       if (resp.statusCode == 200) {
         await ContactBackupPrefs.I.markServerSync();
+        // Remember what we uploaded so auto-sync won't re-send identical data.
+        await ContactBackupPrefs.I.setSyncedSig(_sig(body));
         return contacts.length;
       }
       AvaLog.I.log('avadial', 'contact book upload http ${resp.statusCode}');
@@ -154,6 +156,40 @@ class AvaContactBook {
       AvaLog.I.log('avadial', 'contact book upload failed: $e');
       return null;
     }
+  }
+
+  Timer? _debounce;
+
+  /// Auto-backup hook — called after the contact book is (re)captured. When the
+  /// user has backup ON and the book has actually CHANGED since the last upload,
+  /// it uploads in the background, debounced so a burst of edits sends once.
+  Future<void> autoSyncIfNeeded() async {
+    if (!await ContactBackupPrefs.I.enabled()) return;
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(seconds: 4), _runAutoSync);
+  }
+
+  Future<void> _runAutoSync() async {
+    try {
+      if (!await ContactBackupPrefs.I.enabled()) return;
+      final body = await exportJson();
+      if (_sig(body) == await ContactBackupPrefs.I.syncedSig()) return; // no change
+      await uploadBackup();
+    } catch (e) {
+      AvaLog.I.log('avadial', 'contact book auto-sync failed: $e');
+    }
+  }
+
+  /// Cheap, stable content signature (FNV-1a) — persisted to detect real changes
+  /// without re-uploading identical data. (String.hashCode isn't stable across
+  /// runs, so we can't use it here.)
+  static String _sig(String s) {
+    var h = 0x811c9dc5;
+    for (var i = 0; i < s.length; i++) {
+      h ^= s.codeUnitAt(i);
+      h = (h * 0x01000193) & 0xFFFFFFFF;
+    }
+    return h.toRadixString(16);
   }
 
   /// Restore the book from AvaTOK's servers onto THIS device: rebuilds any missing
@@ -246,8 +282,13 @@ class ContactBackupPrefs {
   static const _kEnabled = 'ava_contact_backup_enabled';
   static const _kLastTs = 'ava_contact_backup_last_ts';
   static const _kServerTs = 'ava_contact_backup_server_ts';
+  static const _kSyncedSig = 'ava_contact_backup_sig';
 
   Future<bool> enabled() async => (await DiskCache.read(_kEnabled)) == 'true';
+
+  /// Content signature of the last successfully-uploaded book (change detection).
+  Future<String> syncedSig() async => (await DiskCache.read(_kSyncedSig)) ?? '';
+  Future<void> setSyncedSig(String sig) async => DiskCache.write(_kSyncedSig, sig);
 
   Future<void> setEnabled(bool on) async {
     await DiskCache.write(_kEnabled, on ? 'true' : 'false');

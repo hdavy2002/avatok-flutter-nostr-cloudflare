@@ -5,8 +5,8 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/remote_config.dart';
-import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../features/avadial/ava_contact_book.dart';
 import '../../features/avadial/avadial_channel.dart';
 import '../../features/avadial/avadial_refresh.dart';
@@ -54,11 +54,11 @@ class _AvaDialRootState extends State<AvaDialRoot> {
   // different color, so users can recognise it"), reusing the same accents the
   // empty states already used for these tabs so the palette stays consistent.
   static const _items = [
-    _CallsTabItem(Icons.dialpad_outlined, Icons.dialpad, 'Dialpad', Zine.lime),
-    _CallsTabItem(Icons.person_outline, Icons.person, 'Contacts', Zine.blue),
-    _CallsTabItem(Icons.history_outlined, Icons.history, 'Logs', Zine.mint),
-    _CallsTabItem(Icons.sms_outlined, Icons.sms, 'Messages', Zine.lilac),
-    _CallsTabItem(Icons.block_outlined, Icons.block, 'Block Lists', Zine.coral),
+    _CallsTabItem(Icons.dialpad_outlined, Icons.dialpad, 'Dialpad', AD.primaryBadge),
+    _CallsTabItem(Icons.person_outline, Icons.person, 'Contacts', AD.iconSearch),
+    _CallsTabItem(Icons.history_outlined, Icons.history, 'Logs', AD.online),
+    _CallsTabItem(Icons.sms_outlined, Icons.sms, 'Messages', AD.iconVideo),
+    _CallsTabItem(Icons.block_outlined, Icons.block, 'Block Lists', AD.danger),
   ];
 
   @override
@@ -137,7 +137,7 @@ class _AvaDialRootState extends State<AvaDialRoot> {
                       icon: Icons.person_outline,
                       title: 'Contacts',
                       subtitle: 'Your phone book, spam-labelled — coming with AvaDial.',
-                      color: Zine.blue,
+                      color: AD.iconSearch,
                     ),
               on
                   ? const _LogsTab()
@@ -146,7 +146,7 @@ class _AvaDialRootState extends State<AvaDialRoot> {
                       title: 'Call logs',
                       subtitle:
                           'Your device call history with friend/spam labels — coming with AvaDial.',
-                      color: Zine.mint,
+                      color: AD.online,
                     ),
               // Messages tab — gated INDEPENDENTLY on `avaSms` (the SMS role is
               // separate from the dialer role). While the flag is off it keeps the
@@ -158,7 +158,7 @@ class _AvaDialRootState extends State<AvaDialRoot> {
                       icon: Icons.sms_outlined,
                       title: 'Messages',
                       subtitle: 'Carrier SMS lands here once Ava is your SMS app — coming with AvaDial.',
-                      color: Zine.lilac,
+                      color: AD.iconVideo,
                     ),
               on
                   ? const _BlockTab()
@@ -166,7 +166,7 @@ class _AvaDialRootState extends State<AvaDialRoot> {
                       icon: Icons.block_outlined,
                       title: 'Block list',
                       subtitle: 'Blocked numbers and one-tap spam reports — coming with AvaDial.',
-                      color: Zine.coral,
+                      color: AD.danger,
                     ),
                 ]);
               },
@@ -181,14 +181,14 @@ class _AvaDialRootState extends State<AvaDialRoot> {
         backgroundColor: AvaDialTheme.surface,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
-        shape: const Border(bottom: BorderSide(color: AvaDialTheme.border, width: Zine.bw)),
+        shape: const Border(bottom: BorderSide(color: AvaDialTheme.border, width: 1)),
         leading: Builder(
           builder: (ctx) => IconButton(
             icon: PhosphorIcon(PhosphorIcons.list(PhosphorIconsStyle.bold), color: AvaDialTheme.text),
             onPressed: () => Scaffold.of(ctx).openDrawer(),
           ),
         ),
-        title: Text('AvaDialer', style: ZineText.appbar(color: AvaDialTheme.text)),
+        title: Text('AvaDialer', style: ADText.appTitle(c: AvaDialTheme.text)),
       );
 }
 
@@ -221,7 +221,7 @@ class _CallsTabStrip extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         color: AvaDialTheme.surface,
-        border: Border(bottom: BorderSide(color: AvaDialTheme.border, width: Zine.bw)),
+        border: Border(bottom: BorderSide(color: AvaDialTheme.border, width: 1)),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       child: SingleChildScrollView(
@@ -239,10 +239,10 @@ class _CallsTabStrip extends StatelessWidget {
   }
 
   Widget _tab(_CallsTabItem item, bool selected, VoidCallback onTap) {
-    // Ink text/icons on the bright accent fill (matches the rest of the design
-    // system's accent-fill + ink-text convention); light text on the dark,
-    // unselected surface.
-    final fg = selected ? Zine.ink : AvaDialTheme.text;
+    // White text/icons on the bright accent fill (dark v2's accent-fill +
+    // white-label convention, see AdChip's active state); light text on the
+    // dark, unselected surface.
+    final fg = selected ? Colors.white : AvaDialTheme.text;
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
@@ -251,13 +251,13 @@ class _CallsTabStrip extends StatelessWidget {
         decoration: BoxDecoration(
           color: selected ? item.color : AvaDialTheme.surface2,
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: AvaDialTheme.border, width: Zine.bw),
-          boxShadow: selected ? Zine.shadowXs : const [],
+          border: Border.all(color: AvaDialTheme.border, width: 1),
+          boxShadow: const [],
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(selected ? item.selectedIcon : item.icon, size: 17, color: fg),
           const SizedBox(width: 6),
-          Text(item.label, style: ZineText.tag(size: 12.5, color: fg)),
+          Text(item.label, style: ADText.tabLabel(c: fg)),
         ]),
       ),
     );
@@ -322,23 +322,23 @@ class _RoleBannerState extends State<_RoleBanner> {
     if (_held) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
-      child: ZineCard(
-        color: Zine.blueMark,
+      child: AdCard(
+        color: AD.card,
         child: Row(children: [
-          ZineIconBadge(icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold), color: Zine.blue),
+          ZineIconBadge(icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold), color: AD.iconShield),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Make Ava your phone app', style: ZineText.cardTitle(size: 15, color: AvaDialTheme.text)),
+              Text('Make Ava your phone app', style: ADText.threadName(c: AvaDialTheme.text)),
               const SizedBox(height: 2),
               Text('Screen spam, see your call log and block numbers.',
-                  style: ZineText.sub(size: 12.5, color: AvaDialTheme.textSoft)),
+                  style: ADText.preview(c: AvaDialTheme.textSoft)),
             ]),
           ),
           const SizedBox(width: 10),
-          ZineButton(
+          AdButton(
             label: 'Enable',
-            variant: ZineButtonVariant.blue,
+            variant: AdButtonVariant.teal,
             fontSize: 14,
             trailingIcon: false,
             loading: _busy,
@@ -396,6 +396,10 @@ class _ContactsTabState extends State<_ContactsTab> {
     // Keep the local AvaTOK contact book (used for backup) in sync with what the
     // user sees. Best-effort — never blocks the list from rendering.
     await AvaContactBook.I.capture(contacts, overrides);
+    // Auto-backup: if the user turned backup ON, push changes in the background
+    // (debounced + change-detected inside). Every add/edit/delete funnels through
+    // here via the avaDialRev listener, so edits are backed up without a tap.
+    unawaited(AvaContactBook.I.autoSyncIfNeeded());
     return (contacts, overrides, blocked);
   }
 
@@ -424,19 +428,19 @@ class _ContactsTabState extends State<_ContactsTab> {
         onTap: _openBackup,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
-          child: ZineCard(
+          child: AdCard(
             color: AvaDialTheme.surface2,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Row(children: [
               ZineIconBadge(
-                  icon: PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.bold), color: Zine.blue),
+                  icon: PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.bold), color: AD.iconSearch),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text('Contacts backup',
-                      style: ZineText.cardTitle(size: 14.5, color: AvaDialTheme.text)),
+                      style: ADText.rowName(c: AvaDialTheme.text)),
                   Text('Back up to AvaTOK — no Gmail needed',
-                      style: ZineText.sub(size: 12, color: AvaDialTheme.textSoft)),
+                      style: ADText.preview(c: AvaDialTheme.textSoft)),
                 ]),
               ),
               const Icon(Icons.chevron_right, color: AvaDialTheme.textSoft),
@@ -460,7 +464,7 @@ class _ContactsTabState extends State<_ContactsTab> {
                 icon: Icons.person_outline,
                 title: 'No contacts yet',
                 subtitle: 'Grant contacts access to see your phone book here.',
-                color: Zine.blue,
+                color: AD.iconSearch,
                 onRetry: _reload,
               );
             }
@@ -492,19 +496,19 @@ class _ContactsTabState extends State<_ContactsTab> {
                     child: GestureDetector(
                       onTap: openDetail,
                       onLongPress: openMenu,
-                      child: ZineCard(
+                      child: AdCard(
                         color: AvaDialTheme.surface2,
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         child: Row(children: [
                           ZineIconBadge(
-                              icon: PhosphorIcons.user(PhosphorIconsStyle.bold), color: Zine.blue),
+                              icon: PhosphorIcons.user(PhosphorIconsStyle.bold), color: AD.iconSearch),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                               Text(displayName ?? c.number,
-                                  style: ZineText.cardTitle(size: 15.5, color: AvaDialTheme.text)),
+                                  style: ADText.threadName(c: AvaDialTheme.text)),
                               if (displayName != null)
-                                Text(c.number, style: ZineText.sub(size: 12.5, color: AvaDialTheme.textSoft)),
+                                Text(c.number, style: ADText.preview(c: AvaDialTheme.textSoft)),
                             ]),
                           ),
                           IconButton(
@@ -529,10 +533,10 @@ class _ContactsTabState extends State<_ContactsTab> {
         bottom: 18,
         child: FloatingActionButton(
           heroTag: 'avadial_add_contact',
-          backgroundColor: Zine.blue,
-          foregroundColor: Zine.ink,
+          backgroundColor: AD.iconSearch,
+          foregroundColor: Colors.white,
           onPressed: _addContact,
-          child: PhosphorIcon(PhosphorIcons.plus(PhosphorIconsStyle.bold), color: Zine.ink),
+          child: PhosphorIcon(PhosphorIcons.plus(PhosphorIconsStyle.bold), color: Colors.white),
         ),
       ),
     ]);
@@ -588,23 +592,23 @@ class _LogsTabState extends State<_LogsTab> {
       builder: (ctx) => AlertDialog(
         backgroundColor: AvaDialTheme.surface2,
         shape: RoundedRectangleBorder(
-          side: const BorderSide(color: AvaDialTheme.border, width: Zine.bw),
-          borderRadius: BorderRadius.circular(Zine.rSm),
+          side: const BorderSide(color: AvaDialTheme.border, width: 1),
+          borderRadius: BorderRadius.circular(AD.rDialog),
         ),
-        title: Text('Clear call history?', style: ZineText.cardTitle(size: 17, color: AvaDialTheme.text)),
+        title: Text('Clear call history?', style: ADText.threadName(c: AvaDialTheme.text)),
         content: Text(
           'This hides these calls from AvaTOK. Your phone\'s own call log is not '
           'touched.',
-          style: ZineText.sub(size: 13.5, color: AvaDialTheme.textSoft),
+          style: ADText.preview(c: AvaDialTheme.textSoft).copyWith(fontSize: 13.5),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel', style: ZineText.value(size: 14, color: AvaDialTheme.textSoft)),
+            child: Text('Cancel', style: ADText.rowName(c: AvaDialTheme.textSoft)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Clear', style: ZineText.value(size: 14, color: Zine.coral)),
+            child: Text('Clear', style: ADText.rowName(c: AD.danger)),
           ),
         ],
       ),
@@ -624,9 +628,9 @@ class _LogsTabState extends State<_LogsTab> {
       };
 
   Color _colorFor(DeviceCallType t) => switch (t) {
-        DeviceCallType.missed || DeviceCallType.rejected || DeviceCallType.blocked => Zine.coral,
-        DeviceCallType.outgoing => Zine.mint,
-        _ => Zine.blue,
+        DeviceCallType.missed || DeviceCallType.rejected || DeviceCallType.blocked => AD.danger,
+        DeviceCallType.outgoing => AD.online,
+        _ => AD.iconSearch,
       };
 
   @override
@@ -648,7 +652,7 @@ class _LogsTabState extends State<_LogsTab> {
                 title: 'No call history',
                 subtitle:
                     'Make Ava your phone app to see and label your device call log.',
-                color: Zine.mint,
+                color: AD.online,
                 onRetry: _reload,
               );
             }
@@ -664,14 +668,14 @@ class _LogsTabState extends State<_LogsTab> {
                       padding: const EdgeInsets.fromLTRB(2, 4, 2, 6),
                       child: Row(children: [
                         Text('${logs.length} call${logs.length == 1 ? '' : 's'}',
-                            style: ZineText.tag(size: 12, color: AvaDialTheme.textMute)),
+                            style: ADText.statCaption(c: AvaDialTheme.textMute)),
                         const Spacer(),
                         TextButton.icon(
                           onPressed: () => _clearHistory(logs),
                           icon: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.bold),
-                              color: Zine.coral, size: 17),
+                              color: AD.danger, size: 17),
                           label: Text('Clear history',
-                              style: ZineText.value(size: 13, color: Zine.coral)),
+                              style: ADText.rowName(c: AD.danger)),
                         ),
                       ]),
                     );
@@ -695,10 +699,10 @@ class _LogsTabState extends State<_LogsTab> {
                       padding: const EdgeInsets.only(right: 22),
                       margin: const EdgeInsets.symmetric(vertical: 4),
                       decoration: BoxDecoration(
-                        color: Zine.coral,
-                        borderRadius: BorderRadius.circular(Zine.rSm),
+                        color: AD.danger,
+                        borderRadius: BorderRadius.circular(AD.rListCard),
                       ),
-                      child: const Icon(Icons.delete_outline, color: Zine.ink),
+                      child: const Icon(Icons.delete_outline, color: Colors.white),
                     ),
                     onDismissed: (_) async {
                       await HiddenCallLog.I.hide(e.number, e.date);
@@ -708,7 +712,7 @@ class _LogsTabState extends State<_LogsTab> {
                       padding: const EdgeInsets.symmetric(vertical: 4),
                       child: GestureDetector(
                         onLongPress: openMenu,
-                        child: ZineCard(
+                        child: AdCard(
                           color: AvaDialTheme.surface2,
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                           child: Row(children: [
@@ -716,8 +720,8 @@ class _LogsTabState extends State<_LogsTab> {
                             const SizedBox(width: 12),
                             Expanded(
                               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                Text(displayName ?? e.number, style: ZineText.cardTitle(size: 15, color: AvaDialTheme.text)),
-                                Text(_subtitle(e), style: ZineText.sub(size: 12, color: AvaDialTheme.textSoft)),
+                                Text(displayName ?? e.number, style: ADText.threadName(c: AvaDialTheme.text)),
+                                Text(_subtitle(e), style: ADText.preview(c: AvaDialTheme.textSoft)),
                               ]),
                             ),
                             IconButton(
@@ -796,7 +800,7 @@ class _BlockTabState extends State<_BlockTab> {
             icon: Icons.block_outlined,
             title: 'Nothing blocked',
             subtitle: 'Numbers you block or report as spam show up here.',
-            color: Zine.coral,
+            color: AD.danger,
           );
         }
         return ListView.builder(
@@ -815,7 +819,7 @@ class _BlockTabState extends State<_BlockTab> {
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: GestureDetector(
                 onLongPress: openMenu,
-                child: ZineCard(
+                child: AdCard(
                   color: AvaDialTheme.surface2,
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   child: Row(children: [
@@ -823,20 +827,20 @@ class _BlockTabState extends State<_BlockTab> {
                         icon: e.reportedSpam
                             ? PhosphorIcons.shieldWarning(PhosphorIconsStyle.bold)
                             : PhosphorIcons.prohibit(PhosphorIconsStyle.bold),
-                        color: Zine.coral),
+                        color: AD.danger),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(e.number, style: ZineText.cardTitle(size: 15, color: AvaDialTheme.text)),
+                        Text(e.number, style: ADText.threadName(c: AvaDialTheme.text)),
                         Text(
                           e.reportedSpam ? 'Reported as spam${e.label != null ? ' · ${e.label}' : ''}' : 'Blocked',
-                          style: ZineText.sub(size: 12, color: AvaDialTheme.textSoft),
+                          style: ADText.preview(c: AvaDialTheme.textSoft),
                         ),
                       ]),
                     ),
-                    ZineButton(
+                    AdButton(
                       label: 'Unblock',
-                      variant: ZineButtonVariant.ghost,
+                      variant: AdButtonVariant.ghost,
                       fontSize: 13,
                       trailingIcon: false,
                       onPressed: () => _unblock(e.number),
@@ -917,7 +921,7 @@ class _MessagesTabState extends State<_MessagesTab> {
           title: 'Make AvaTOK your messages app',
           subtitle:
               'Set AvaTOK as your default SMS app to read your texts here with AI spam filtering.',
-          color: Zine.lilac,
+          color: AD.iconVideo,
         ),
       ),
     ]);
@@ -950,22 +954,22 @@ class _SmsRoleBannerState extends State<_SmsRoleBanner> {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
-      child: ZineCard(
-        color: Zine.blueMark,
+      child: AdCard(
+        color: AD.card,
         child: Row(children: [
-          ZineIconBadge(icon: PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), color: Zine.lilac),
+          ZineIconBadge(icon: PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), color: AD.iconVideo),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Make AvaTOK your messages app', style: ZineText.cardTitle(size: 15, color: AvaDialTheme.text)),
+              Text('Make AvaTOK your messages app', style: ADText.threadName(c: AvaDialTheme.text)),
               const SizedBox(height: 2),
-              Text('Read texts here with AI spam filtering.', style: ZineText.sub(size: 12.5, color: AvaDialTheme.textSoft)),
+              Text('Read texts here with AI spam filtering.', style: ADText.preview(c: AvaDialTheme.textSoft)),
             ]),
           ),
           const SizedBox(width: 10),
-          ZineButton(
+          AdButton(
             label: 'Enable',
-            variant: ZineButtonVariant.blue,
+            variant: AdButtonVariant.teal,
             fontSize: 14,
             trailingIcon: false,
             loading: _busy,
@@ -1001,14 +1005,14 @@ class _PermState extends StatelessWidget {
         const SizedBox(height: 72),
         ZineIconBadge(icon: icon, color: color, size: 56),
         const SizedBox(height: 16),
-        Text(title, textAlign: TextAlign.center, style: ZineText.cardTitle(size: 18, color: AvaDialTheme.text)),
+        Text(title, textAlign: TextAlign.center, style: ADText.threadName(c: AvaDialTheme.text).copyWith(fontSize: 18)),
         const SizedBox(height: 8),
-        Text(subtitle, textAlign: TextAlign.center, style: ZineText.sub(size: 14, color: AvaDialTheme.textSoft)),
+        Text(subtitle, textAlign: TextAlign.center, style: ADText.preview(c: AvaDialTheme.textSoft).copyWith(fontSize: 14)),
         const SizedBox(height: 20),
         Center(
-          child: ZineButton(
+          child: AdButton(
             label: 'Try again',
-            variant: ZineButtonVariant.ghost,
+            variant: AdButtonVariant.ghost,
             trailingIcon: false,
             onPressed: onRetry,
           ),

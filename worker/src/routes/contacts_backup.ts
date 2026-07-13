@@ -27,15 +27,24 @@ const WRAP_INFO = "avatok-contacts-book-v1";
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
-// D1 TEXT comfortably holds a typical address book. Guardrail well under D1's
-// statement limits; a book larger than this should chunk to R2 (future).
-const MAX_BYTES = 2 * 1024 * 1024;
+// The encrypted blob lives in R2 (no D1 row-size limit), so a large address book
+// backs up fine. This guardrail (25 MB plaintext ≈ tens of thousands of contacts)
+// only exists to keep a single request sane; R2 itself would take far more.
+const MAX_BYTES = 25 * 1024 * 1024;
 
+// R2 object key for a uid's encrypted contact book (single latest-wins object).
+function r2Key(uid: string): string {
+  return `contacts-book/${uid}`;
+}
+
+// Metadata only in D1; the ciphertext blob lives in R2. `wrapped` is kept
+// nullable for backward-compat with the earlier inline-blob shape (if a row was
+// ever written before this migration, GET still reads it).
 async function ensureTable(env: Env): Promise<void> {
   await env.DB_META.prepare(
     `CREATE TABLE IF NOT EXISTS contact_book_backup (
        uid        TEXT PRIMARY KEY,
-       wrapped    TEXT NOT NULL,
+       wrapped    TEXT,
        count      INTEGER NOT NULL,
        alg        TEXT NOT NULL,
        created_at INTEGER NOT NULL,
@@ -112,14 +121,19 @@ export async function contactBookPut(req: Request, env: Env): Promise<Response> 
 
   const now = Date.now();
   const wrapped = await encryptJson(env, ctx.uid, plaintext);
+  // Store the (already-encrypted) blob in R2; keep only metadata in D1.
+  await env.BACKUP_R2.put(r2Key(ctx.uid), wrapped, {
+    httpMetadata: { contentType: "text/plain" },
+    customMetadata: { uid: ctx.uid, count: String(contacts.length), updated: String(now) },
+  });
   await ensureTable(env);
   await env.DB_META
     .prepare(
       `INSERT INTO contact_book_backup (uid, wrapped, count, alg, created_at, updated_at)
-       VALUES (?1, ?2, ?3, 'v1', ?4, ?4)
-       ON CONFLICT(uid) DO UPDATE SET wrapped=?2, count=?3, updated_at=?4`,
+       VALUES (?1, NULL, ?2, 'v1r2', ?3, ?3)
+       ON CONFLICT(uid) DO UPDATE SET wrapped=NULL, count=?2, alg='v1r2', updated_at=?3`,
     )
-    .bind(ctx.uid, wrapped, contacts.length, now)
+    .bind(ctx.uid, contacts.length, now)
     .run();
   return json({ ok: true, count: contacts.length, updatedAt: now });
 }
@@ -134,9 +148,16 @@ export async function contactBookGet(req: Request, env: Env): Promise<Response> 
   const row = await env.DB_META
     .prepare("SELECT wrapped, count, updated_at FROM contact_book_backup WHERE uid=?1")
     .bind(ctx.uid)
-    .first<{ wrapped: string; count: number; updated_at: number }>();
+    .first<{ wrapped: string | null; count: number; updated_at: number }>();
   if (!row) return json({ found: false, contacts: [] });
-  const clear = await decryptJson(env, ctx.uid, row.wrapped);
+  // Blob lives in R2 (current); fall back to the legacy inline column if present.
+  let blob = row.wrapped;
+  if (!blob) {
+    const obj = await env.BACKUP_R2.get(r2Key(ctx.uid));
+    if (!obj) return json({ found: false, error: "blob_missing" }, 410);
+    blob = await obj.text();
+  }
+  const clear = await decryptJson(env, ctx.uid, blob);
   if (clear === null) return json({ found: false, error: "decrypt_failed" }, 500);
   let contacts: unknown = [];
   try { contacts = JSON.parse(clear); } catch { contacts = []; }
