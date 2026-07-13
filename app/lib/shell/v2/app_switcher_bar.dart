@@ -190,15 +190,21 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
             color: selected ? _indicator : Colors.transparent,
             borderRadius: BorderRadius.circular(14),
           ),
+          // Active icon sits on the orange pill (white glyph); inactive icons are
+          // white too (owner request 2026-07-13, pic 5) — not greyed.
           child: Icon(selected ? selectedIcon : icon, size: 22,
-              color: selected ? AD.textPrimary : AD.textTertiary),
+              color: AD.textPrimary),
         ),
         const SizedBox(height: 3),
         Text(
           label,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: selected ? ADText.navLabelPrimary() : ADText.navLabel(),
+          // Active label = bright green (indicates the active tab); inactive =
+          // white.
+          style: selected
+              ? ADText.navLabelPrimary(c: const Color(0xFF7BE08C))
+              : ADText.navLabel(c: AD.textPrimary),
         ),
       ],
     );

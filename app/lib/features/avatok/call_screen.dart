@@ -17,7 +17,6 @@ import '../../core/calls/call_session.dart';
 import '../../core/calls/call_session_manager.dart';
 import '../../core/remote_config.dart';
 import '../../core/ringback_player.dart';
-import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/voicemail_call.dart';
 import '../avaphone/phone_theme.dart';
@@ -675,32 +674,51 @@ class _CallScreenState extends State<CallScreen> {
           ),
         ],
 
-        // header: zine back circle + (video chrome) name + mono state/timer
+        // header: ⌄ minimize (left) · centered name + encrypted sub-line ·
+        // add-person square (right, decorative). The ⌄ keeps the call alive as a
+        // PiP/pill (minimize), it does NOT hang up.
         SafeArea(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
             child: Row(
               children: [
-                // Back = MINIMIZE (keeps the call alive as a PiP/pill), not hang up.
-                AdBackButton(onTap: _minimize),
+                _headerSquare(
+                  PhosphorIcons.caretDown(PhosphorIconsStyle.bold),
+                  onTap: _minimize,
+                ),
                 const SizedBox(width: 12),
-                if (showVideo)
-                  Expanded(
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
                       Text(widget.title,
                           maxLines: 1, overflow: TextOverflow.ellipsis,
-                          style: ADText.threadName(c: Colors.white)),
-                      const SizedBox(height: 2),
-                      Text((connected ? s.clock : s.statusText).toUpperCase(),
-                          maxLines: 1, overflow: TextOverflow.ellipsis,
-                          style: ADText.sectionLabel(c: Colors.white)),
-                    ]),
-                  )
-                else
-                  const Spacer(),
-                // Explicit ⌄ minimize control — shrink to the floating thumbnail
-                // (video) or the ongoing-call pill (audio) and return to the app.
-                _MinimizeButton(light: light, onTap: _minimize),
+                          textAlign: TextAlign.center,
+                          style: ADText.threadName(c: Colors.white).copyWith(fontSize: 16)),
+                      const SizedBox(height: 3),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          PhosphorIcon(PhosphorIcons.lockSimple(PhosphorIconsStyle.bold),
+                              size: 11, color: AD.textSecondary),
+                          const SizedBox(width: 5),
+                          Flexible(
+                            child: Text(connected ? s.clock : s.statusText,
+                                maxLines: 1, overflow: TextOverflow.ellipsis,
+                                style: TextStyle(fontFamily: ADText.family,
+                                    fontWeight: FontWeight.w700, fontSize: 11,
+                                    color: AD.textSecondary)),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                // Add-person — decorative in the 1:1 call surface (no group-add
+                // handler exists here); present to match the design header.
+                _headerSquare(PhosphorIcons.userPlus(PhosphorIconsStyle.bold)),
               ],
             ),
           ),
@@ -739,26 +757,18 @@ class _CallScreenState extends State<CallScreen> {
                     Text('Ava', textAlign: TextAlign.center,
                         style: ADText.appTitle().copyWith(fontSize: 28)),
                   ] else ...[
-                    Container(
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: phase == 'ava-countdown' ? AD.iconVideo : null,
-                        border: Border.all(color: AD.borderAvatar, width: 2),
-                        boxShadow: const [],
-                      ),
-                      child: phase == 'ava-countdown'
-                          ? SizedBox(
-                              width: 132, height: 132,
-                              child: Center(child: Text('${s.avaCount}',
-                                  style: ADText.appTitle().copyWith(fontSize: 76))),
-                            )
-                          : Avatar(seed: widget.seed, name: widget.title, size: 132,
-                              avatarUrl: widget.avatarUrl.isEmpty ? null : widget.avatarUrl),
+                    // 118px avatar, 3px white border, two pulsing family-colour
+                    // rings behind it. Countdown phase keeps its purple disc.
+                    _AudioAvatar(
+                      seed: widget.seed,
+                      name: widget.title,
+                      avatarUrl: widget.avatarUrl,
+                      countdown: phase == 'ava-countdown' ? s.avaCount : null,
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 20),
                     Text(widget.title, textAlign: TextAlign.center,
                         style: ADText.appTitle(c: dialerSkin ? PhoneTheme.text : AD.textPrimary)
-                            .copyWith(fontSize: 28)),
+                            .copyWith(fontSize: 23, fontWeight: FontWeight.w800)),
                   ],
                   const SizedBox(height: 16),
                   // [CALL-OUTCOME-MENU-1] Unified call outcome menu — ONE surface
@@ -885,9 +895,11 @@ class _CallScreenState extends State<CallScreen> {
                       onClose: _popIfMounted,
                     )
                   else ...[
-                    AdSticker(
-                      connected ? s.clock : s.statusText,
-                      kind: failed ? AdStickerKind.no : AdStickerKind.plain,
+                    // Plain ringing/connected status line (design: lock + status,
+                    // white@55%). Failed states drop the lock and read in red.
+                    _CallStatusLine(
+                      text: connected ? s.clock : s.statusText,
+                      failed: failed,
                     ),
                     // [WP6 §3B] Live paid-call countdown under the clock —
                     // CallCountdown handles the T-60s/T-10s warning beeps.
@@ -931,52 +943,115 @@ class _CallScreenState extends State<CallScreen> {
             ),
           ),
 
-        // control row — bordered zine circles; hang-up = coral circle.
+        // control cluster — captioned utility circles + a large red end button.
+        // Audio: Speaker · Video · Mute · Add.  Video: Flip · Video · Mute · Effects.
         Positioned(
           left: 0, right: 0, bottom: 0,
           child: Container(
-            color: light ? null : Colors.black.withValues(alpha: 0.45),
-            padding: EdgeInsets.fromLTRB(16, 16, 16, 20 + (bottomInset > 0 ? bottomInset : 16)),
-            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              // Chat: minimize the call (keeps it alive as a pill/PiP) so the
-              // user lands back on the thread and can read/send messages.
-              _btn(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), onTap: _minimize),
-              const SizedBox(width: 14),
-              _btn(
-                  speaker
-                      ? PhosphorIcons.speakerHigh(PhosphorIconsStyle.bold)
-                      : PhosphorIcons.speakerSlash(PhosphorIconsStyle.bold),
-                  active: speaker, onTap: s.toggleSpeaker),
-              const SizedBox(width: 14),
-              ZinePressable(
-                onTap: _hangup,
-                color: AD.destructiveBg,
-                radius: BorderRadius.circular(100),
-                boxShadow: const [],
-                borderWidth: 1,
-                borderColor: AD.destructiveBg,
-                child: SizedBox(
-                  width: 60, height: 60,
-                  child: Center(
-                    child: PhosphorIcon(
-                        PhosphorIcons.phoneDisconnect(PhosphorIconsStyle.bold),
-                        size: 27, color: Colors.white),
+            color: showVideo ? Colors.black.withValues(alpha: 0.28) : null,
+            padding: EdgeInsets.fromLTRB(14, 14, 14, 26 + (bottomInset > 0 ? bottomInset : 0)),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: showVideo
+                      ? [
+                          // Flip — decorative (no camera-switch handler on the
+                          // session); present to match the design row.
+                          _CallCtl(
+                            icon: PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold),
+                            label: 'Flip',
+                            bg: Colors.white.withValues(alpha: 0.09),
+                            ink: AD.iconSearch,
+                          ),
+                          const SizedBox(width: 13),
+                          _CallCtl(
+                            icon: camOn
+                                ? PhosphorIcons.videoCamera(PhosphorIconsStyle.bold)
+                                : PhosphorIcons.videoCameraSlash(PhosphorIconsStyle.bold),
+                            label: camOn ? 'Stop video' : 'Start video',
+                            bg: camOn ? Colors.white.withValues(alpha: 0.09) : AD.destructiveBg,
+                            ink: Colors.white,
+                            onTap: s.toggleCamera,
+                          ),
+                          const SizedBox(width: 13),
+                          _CallCtl(
+                            icon: muted
+                                ? PhosphorIcons.microphoneSlash(PhosphorIconsStyle.bold)
+                                : PhosphorIcons.microphone(PhosphorIconsStyle.bold),
+                            label: muted ? 'Unmute' : 'Mute',
+                            bg: muted ? AD.destructiveBg : Colors.white.withValues(alpha: 0.09),
+                            ink: Colors.white,
+                            onTap: s.toggleMute,
+                          ),
+                          const SizedBox(width: 13),
+                          // Effects — decorative (no effects pipeline on the
+                          // session); present to match the design row.
+                          _CallCtl(
+                            icon: PhosphorIcons.sparkle(PhosphorIconsStyle.bold),
+                            label: 'Effects',
+                            bg: Colors.white.withValues(alpha: 0.09),
+                            ink: AD.iconEmoji,
+                          ),
+                        ]
+                      : [
+                          _CallCtl(
+                            icon: PhosphorIcons.speakerHigh(PhosphorIconsStyle.bold),
+                            label: 'Speaker',
+                            bg: speaker ? AD.sendActiveBg : Colors.white.withValues(alpha: 0.09),
+                            ink: speaker ? AD.sendActiveInk : Colors.white,
+                            onTap: s.toggleSpeaker,
+                          ),
+                          const SizedBox(width: 14),
+                          // Video — starts/toggles the camera (upgrades this
+                          // audio call to video).
+                          _CallCtl(
+                            icon: PhosphorIcons.videoCamera(PhosphorIconsStyle.bold),
+                            label: 'Video',
+                            bg: Colors.white.withValues(alpha: 0.09),
+                            ink: AD.iconVideo,
+                            onTap: s.toggleCamera,
+                          ),
+                          const SizedBox(width: 14),
+                          _CallCtl(
+                            icon: muted
+                                ? PhosphorIcons.microphoneSlash(PhosphorIconsStyle.bold)
+                                : PhosphorIcons.microphone(PhosphorIconsStyle.bold),
+                            label: muted ? 'Unmute' : 'Mute',
+                            bg: muted ? AD.destructiveBg : Colors.white.withValues(alpha: 0.09),
+                            ink: Colors.white,
+                            onTap: s.toggleMute,
+                          ),
+                          const SizedBox(width: 14),
+                          // Add — decorative in the 1:1 surface (no group-add
+                          // handler); present to match the design row.
+                          _CallCtl(
+                            icon: PhosphorIcons.userPlus(PhosphorIconsStyle.bold),
+                            label: 'Add',
+                            bg: Colors.white.withValues(alpha: 0.09),
+                            ink: AD.iconSearch,
+                          ),
+                        ],
+                ),
+                const SizedBox(height: 20),
+                // Large round red end button — durable hangup.
+                GestureDetector(
+                  onTap: _hangup,
+                  behavior: HitTestBehavior.opaque,
+                  child: Container(
+                    width: 62, height: 62,
+                    decoration: const BoxDecoration(
+                        shape: BoxShape.circle, color: AD.destructiveBg),
+                    child: Center(
+                      child: PhosphorIcon(
+                          PhosphorIcons.phoneDisconnect(PhosphorIconsStyle.bold),
+                          size: 27, color: Colors.white),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 14),
-              _btn(
-                  video && camOn
-                      ? PhosphorIcons.videoCamera(PhosphorIconsStyle.bold)
-                      : PhosphorIcons.videoCameraSlash(PhosphorIconsStyle.bold),
-                  active: video && camOn, onTap: s.toggleCamera),
-              const SizedBox(width: 14),
-              _btn(
-                  muted
-                      ? PhosphorIcons.microphoneSlash(PhosphorIconsStyle.bold)
-                      : PhosphorIcons.microphone(PhosphorIconsStyle.bold),
-                  active: !muted, onTap: s.toggleMute),
-            ]),
+              ],
+            ),
           ),
         ),
       ],
@@ -1000,52 +1075,169 @@ class _CallScreenState extends State<CallScreen> {
     );
   }
 
-  // Dark v2 control circle — card fill, hairline border; active = orange badge.
-  Widget _btn(IconData icon, {bool active = false, required VoidCallback onTap}) {
-    return ZinePressable(
+  // Header 34px rounded-square control (⌄ minimize / add-person).
+  Widget _headerSquare(IconData icon, {VoidCallback? onTap}) {
+    return GestureDetector(
       onTap: onTap,
-      color: active ? AD.primaryBadge : AD.card,
-      pressedColor: AD.primaryBadge,
-      radius: BorderRadius.circular(100),
-      boxShadow: const [],
-      borderWidth: 1,
-      borderColor: active ? AD.primaryBadge : AD.borderControl,
-      child: SizedBox(
-        width: 48, height: 48,
-        child: Center(child: PhosphorIcon(icon, size: 21,
-            color: active ? AD.textOnInput : AD.textPrimary)),
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        width: 34, height: 34,
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(9),
+        ),
+        child: Center(child: PhosphorIcon(icon, size: 18, color: Colors.white)),
       ),
     );
   }
 }
 
-/// Header ⌄ control — shrinks the call to the floating PiP/pill. A small zine
-/// circle that adapts its colours to the video (dark chrome) vs audio (paper)
-/// screen so it stays legible on either background.
-class _MinimizeButton extends StatelessWidget {
-  const _MinimizeButton({required this.light, required this.onTap});
-  final bool light; // true = audio/paper screen; false = video/dark chrome
-  final VoidCallback onTap;
+/// A single captioned round utility control in the bottom cluster — 54px circle
+/// with a white/tinted glyph and a small white@65% caption. `onTap` null =
+/// decorative (e.g. Flip/Effects/Add have no session handler in the 1:1 surface).
+class _CallCtl extends StatelessWidget {
+  const _CallCtl({
+    required this.icon,
+    required this.label,
+    required this.bg,
+    required this.ink,
+    this.onTap,
+  });
+  final IconData icon;
+  final String label;
+  final Color bg;
+  final Color ink;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return ZinePressable(
+    return GestureDetector(
       onTap: onTap,
-      color: light ? AD.card : Colors.white.withValues(alpha: 0.16),
-      radius: BorderRadius.circular(100),
-      boxShadow: const [],
-      borderWidth: 1,
-      borderColor: light ? AD.borderControl : Colors.transparent,
-      child: SizedBox(
-        width: 42,
-        height: 42,
-        child: Center(
-          child: PhosphorIcon(
-            PhosphorIcons.caretDown(PhosphorIconsStyle.bold),
-            size: 20,
-            color: light ? AD.textPrimary : Colors.white,
+      behavior: HitTestBehavior.opaque,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 54, height: 54,
+            decoration: BoxDecoration(shape: BoxShape.circle, color: bg),
+            child: Center(child: PhosphorIcon(icon, size: 22, color: ink)),
           ),
+          const SizedBox(height: 7),
+          Text(label,
+              style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w700,
+                  fontSize: 10.5, color: Colors.white.withValues(alpha: 0.65))),
+        ],
+      ),
+    );
+  }
+}
+
+/// Plain call status line for the audio hero (design: lock glyph + status text,
+/// white@55%). Failed/terminal states drop the lock and read in red.
+class _CallStatusLine extends StatelessWidget {
+  const _CallStatusLine({required this.text, required this.failed});
+  final String text;
+  final bool failed;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = failed ? AD.missedCall : AD.textSecondary;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        if (!failed) ...[
+          PhosphorIcon(PhosphorIcons.lockSimple(PhosphorIconsStyle.bold), size: 12, color: color),
+          const SizedBox(width: 6),
+        ],
+        Flexible(
+          child: Text(text,
+              maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center,
+              style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w700,
+                  fontSize: 13.5, color: color)),
         ),
+      ],
+    );
+  }
+}
+
+/// Audio-call hero avatar — a 118px circle with a 3px white border and two
+/// staggered pulsing rings in the peer's avatar-family colour. The `countdown`
+/// path (ava-countdown phase) keeps the purple disc with the countdown number.
+class _AudioAvatar extends StatefulWidget {
+  const _AudioAvatar({
+    required this.seed,
+    required this.name,
+    required this.avatarUrl,
+    this.countdown,
+  });
+  final String seed;
+  final String name;
+  final String avatarUrl;
+  final int? countdown;
+
+  @override
+  State<_AudioAvatar> createState() => _AudioAvatarState();
+}
+
+class _AudioAvatarState extends State<_AudioAvatar>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 2400))
+    ..repeat();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  Widget _ring(Color color, double p) {
+    final scale = 1.0 + 0.32 * p;
+    return Opacity(
+      opacity: (1.0 - p) * 0.42,
+      child: Container(
+        width: 118 * scale,
+        height: 118 * scale,
+        decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ring = AD.family(widget.seed).solid;
+    final isCountdown = widget.countdown != null;
+    return SizedBox(
+      width: 158, height: 158,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          AnimatedBuilder(
+            animation: _c,
+            builder: (context, _) => Stack(
+              alignment: Alignment.center,
+              children: [
+                _ring(ring, _c.value),
+                _ring(ring, (_c.value + 0.5) % 1.0),
+              ],
+            ),
+          ),
+          Container(
+            width: 118, height: 118,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: isCountdown ? AD.iconVideo : null,
+              border: Border.all(color: AD.borderAvatar, width: 3),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: isCountdown
+                ? Center(child: Text('${widget.countdown}',
+                    style: ADText.appTitle().copyWith(fontSize: 60)))
+                : Avatar(seed: widget.seed, name: widget.name, size: 112,
+                    avatarUrl: widget.avatarUrl.isEmpty ? null : widget.avatarUrl),
+          ),
+        ],
       ),
     );
   }

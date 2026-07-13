@@ -10,8 +10,7 @@ import '../../core/account_storage.dart';
 import '../../core/analytics.dart';
 import '../../core/ava_ai_client.dart';
 import '../../core/brain_consent.dart';
-import '../../core/ui/zine.dart';
-import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../avadial/block_list.dart';
 import 'askava_tools.dart';
 
@@ -315,25 +314,40 @@ Never invent contacts or numbers; only use what the tools return. Keep answers c
     } catch (_) {}
   }
 
+  // Ava's green accent (sparkle badge + send button).
+  static const _avaGreen = Color(0xFF7BE08C);
+
+  Widget _sparkleBadge(double size) => Container(
+        width: size, height: size,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: _avaGreen,
+          borderRadius: BorderRadius.circular(size * 0.28),
+        ),
+        child: PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
+            size: size * 0.55, color: const Color(0xFF10361C)),
+      );
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       appBar: AppBar(
-        backgroundColor: Zine.paper2,
+        backgroundColor: AD.headerFooter,
         surfaceTintColor: Colors.transparent,
+        foregroundColor: AD.textPrimary,
         elevation: 0,
-        shape: const Border(bottom: BorderSide(color: Zine.ink, width: Zine.bw)),
+        shape: const Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
         title: Row(children: [
-          ZineIconBadge(icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill), color: Zine.lime, size: 30),
+          _sparkleBadge(30),
           const SizedBox(width: 10),
-          Text('Ask Ava', style: ZineText.appbar()),
+          Text('Ask Ava', style: ADText.appTitle()),
         ]),
         actions: [
           if (_turns.isNotEmpty)
             IconButton(
               tooltip: 'Clear',
-              icon: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.bold), color: Zine.inkSoft, size: 20),
+              icon: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.bold), color: AD.textSecondary, size: 20),
               onPressed: _clearThread,
             ),
         ],
@@ -364,15 +378,15 @@ Never invent contacts or numbers; only use what the tools return. Keep answers c
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 36),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            ZineIconBadge(icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill), color: Zine.lime, size: 54),
+            _sparkleBadge(54),
             const SizedBox(height: 14),
-            Text('Ask me anything', textAlign: TextAlign.center, style: ZineText.cardTitle(size: 18)),
+            Text('Ask me anything', textAlign: TextAlign.center, style: ADText.threadName().copyWith(fontSize: 18)),
             const SizedBox(height: 8),
             Text(
               '"Call the plumber from last Tuesday", "who called me most this month?", '
               '"is +1 555 0100 spam?"',
               textAlign: TextAlign.center,
-              style: ZineText.sub(size: 13.5),
+              style: ADText.preview(c: AD.textSecondary),
             ),
           ]),
         ),
@@ -388,13 +402,12 @@ Never invent contacts or numbers; only use what the tools return. Keep answers c
         constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.82),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: mine ? Zine.lime : Zine.card,
-          borderRadius: BorderRadius.circular(Zine.rSm),
-          border: Border.all(color: Zine.ink, width: Zine.bw),
-          boxShadow: Zine.shadowXs,
+          color: mine ? AD.bubbleOutBg : AD.card,
+          borderRadius: mine ? AD.bubbleOutRadius : AD.bubbleInRadius,
+          border: mine ? null : Border.all(color: AD.borderControl, width: 1),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(t.text, style: ZineText.value(size: 14.5, weight: FontWeight.w500)),
+          Text(t.text, style: ADText.bubbleBody(c: mine ? AD.bubbleOutInk : AD.textPrimary)),
           if (t.contacts.isNotEmpty) ...[
             const SizedBox(height: 10),
             Wrap(spacing: 8, runSpacing: 8, children: [
@@ -409,11 +422,11 @@ Never invent contacts or numbers; only use what the tools return. Keep answers c
   List<Widget> _contactChips(AskAvaContact c) {
     if (c.inNetwork) {
       // AvaTOK contact → Message chip (deep-link is a future refinement).
-      return [_chip('Message ${_short(c.name)}', PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), Zine.mint,
+      return [_chip('Message ${_short(c.name)}', PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), AD.online,
           () => _notice('Open AvaTalk to message ${c.name}.'))];
     }
     return [
-      _chip('Call ${_short(c.name)}', PhosphorIcons.phone(PhosphorIconsStyle.bold), Zine.blue,
+      _chip('Call ${_short(c.name)}', PhosphorIcons.phone(PhosphorIconsStyle.bold), AD.iconSearch,
           () => _confirmAction('dial', c.number)),
     ];
   }
@@ -422,10 +435,10 @@ Never invent contacts or numbers; only use what the tools return. Keep answers c
 
   Widget _actionChip(_Turn t) {
     final color = switch (t.actionTool) {
-      'dial' => Zine.blue,
-      'block' => Zine.coral,
-      'report_spam' => Zine.coral,
-      _ => Zine.lime,
+      'dial' => AD.iconSearch,
+      'block' => AD.danger,
+      'report_spam' => AD.danger,
+      _ => AD.online,
     };
     final label = switch (t.actionTool) {
       'dial' => 'Call ▸',
@@ -439,13 +452,12 @@ Never invent contacts or numbers; only use what the tools return. Keep answers c
         margin: const EdgeInsets.symmetric(vertical: 5),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: Zine.card,
-          borderRadius: BorderRadius.circular(Zine.rSm),
-          border: Border.all(color: Zine.ink, width: Zine.bw),
-          boxShadow: Zine.shadowXs,
+          color: AD.card,
+          borderRadius: BorderRadius.circular(AD.rListCard),
+          border: Border.all(color: AD.borderControl, width: 1),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Text(t.text, style: ZineText.value(size: 14.5)),
+          Text(t.text, style: ADText.rowName()),
           const SizedBox(width: 12),
           _chip(label, null, color, () {
             if (t.actionTool != null && t.actionArg != null) {
@@ -466,12 +478,10 @@ Never invent contacts or numbers; only use what the tools return. Keep answers c
         decoration: BoxDecoration(
           color: color,
           borderRadius: BorderRadius.circular(100),
-          border: Border.all(color: Zine.ink, width: Zine.bw),
-          boxShadow: Zine.shadowXs,
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          if (icon != null) ...[PhosphorIcon(icon, size: 14, color: Zine.ink), const SizedBox(width: 6)],
-          Text(label, style: ZineText.tag(size: 12.5, color: Zine.ink)),
+          if (icon != null) ...[PhosphorIcon(icon, size: 14, color: Colors.white), const SizedBox(width: 6)],
+          Text(label, style: ADText.statCaption(c: Colors.white)),
         ]),
       ),
     );
@@ -483,28 +493,29 @@ Never invent contacts or numbers; only use what the tools return. Keep answers c
           margin: const EdgeInsets.symmetric(vertical: 5),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
-            color: Zine.card,
-            borderRadius: BorderRadius.circular(Zine.rSm),
-            border: Border.all(color: Zine.ink, width: Zine.bw),
+            color: AD.card,
+            borderRadius: AD.bubbleInRadius,
+            border: Border.all(color: AD.borderControl, width: 1),
           ),
-          child: Text('Ava is thinking…', style: ZineText.sub(size: 13.5)),
+          child: Text('Ava is thinking…', style: ADText.preview(c: AD.textSecondary)),
         ),
       );
 
   Widget _composer() {
     return Container(
       decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
-        color: Zine.paper2,
+        border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
+        color: AD.headerFooter,
       ),
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
       child: Row(children: [
         Expanded(
+          // Input box stays WHITE (owner request 2026-07-13, pic 3).
           child: Container(
             decoration: BoxDecoration(
-              color: Zine.card,
-              borderRadius: BorderRadius.circular(Zine.rSm),
-              border: Border.all(color: Zine.ink, width: Zine.bw),
+              color: AD.inputField,
+              borderRadius: BorderRadius.circular(AD.rInput),
+              border: Border.all(color: AD.borderControl, width: 1),
             ),
             padding: const EdgeInsets.symmetric(horizontal: 14),
             child: TextField(
@@ -513,10 +524,14 @@ Never invent contacts or numbers; only use what the tools return. Keep answers c
               maxLines: 4,
               textInputAction: TextInputAction.send,
               onSubmitted: (_) => _send(),
-              style: ZineText.value(size: 15),
+              cursorColor: AD.iconSearch,
+              style: const TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600,
+                  fontSize: 15, color: AD.textOnInput),
               decoration: const InputDecoration(
                 border: InputBorder.none,
                 hintText: 'Ask Ava…',
+                hintStyle: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600,
+                    fontSize: 15, color: AD.placeholderOnWhite),
                 isDense: true,
                 contentPadding: EdgeInsets.symmetric(vertical: 12),
               ),
@@ -530,13 +545,11 @@ Never invent contacts or numbers; only use what the tools return. Keep answers c
             width: 46,
             height: 46,
             decoration: BoxDecoration(
-              color: _busy ? Zine.inkMute : Zine.lime,
-              borderRadius: BorderRadius.circular(Zine.rSm),
-              border: Border.all(color: Zine.ink, width: Zine.bw),
-              boxShadow: Zine.shadowXs,
+              color: _busy ? AD.card : _avaGreen,
+              borderRadius: BorderRadius.circular(AD.rInput),
             ),
             child: PhosphorIcon(PhosphorIcons.paperPlaneRight(PhosphorIconsStyle.fill),
-                color: Zine.ink, size: 20),
+                color: _busy ? AD.textTertiary : const Color(0xFF10361C), size: 20),
           ),
         ),
       ]),

@@ -121,6 +121,10 @@ import '../messaging/widgets/gif_api.dart';
 import '../messaging/widgets/picker_recents_store.dart';
 import '../messaging/widgets/sticker_media.dart';
 
+/// Bright green for the Guardian shield (on-state) + notice modal (owner request
+/// 2026-07-13 — brighter than the standard AD.online presence green).
+const Color kGuardianGreen = Color(0xFF7BE08C);
+
 /// AvaTok conversation thread — bubbles, media (photo/video/file/voice),
 /// long-press reactions, forward / delete, calls (1:1 or group), ⋮ overflow.
 class ChatThreadScreen extends StatefulWidget {
@@ -6333,10 +6337,81 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     final next = await GuardianPrefsClient.I.set(conv, secureChat: !_guardian.secureChat, source: 'tap');
     if (!mounted) return;
     setState(() => _guardian = next);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(next.secureChat
-            ? 'Ava is now watching this chat — you’ll get a private heads-up if something looks unsafe'
-            : 'Ava watch turned off for this chat')));
+    // Turning ON pops the centered Guardian notice (design 2026-07-13); turning
+    // OFF shows a quick snackbar.
+    if (next.secureChat) {
+      _showGuardianNotice(true);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Ava watch turned off for this chat')));
+    }
+  }
+
+  /// Centered Guardian notice modal (design 2026-07-13): dark card, shield glyph,
+  /// title + body, single "Got it" button. [on] switches between the "watching"
+  /// and "not monitoring" copy/icon.
+  void _showGuardianNotice(bool on) {
+    showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.7),
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 34),
+        child: Container(
+          decoration: BoxDecoration(
+            color: AD.popover,
+            border: Border.all(color: AD.borderControl, width: 1),
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: AD.dialogShadow,
+          ),
+          padding: const EdgeInsets.fromLTRB(24, 26, 24, 22),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+              width: 56, height: 56,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: kGuardianGreen.withValues(alpha: 0.15),
+              ),
+              child: PhosphorIcon(
+                  on ? PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold)
+                     : PhosphorIcons.shieldSlash(PhosphorIconsStyle.bold),
+                  size: 26, color: on ? kGuardianGreen : AD.danger),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              on ? 'Guardian is watching this chat'
+                 : 'Guardian is not monitoring this chat',
+              textAlign: TextAlign.center,
+              style: ADText.threadName().copyWith(fontSize: 16.5),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              on
+                  ? 'Ava is now reviewing this conversation for safety. You’ll get a private heads-up if something looks unsafe.'
+                  : 'Messages in this conversation aren’t being reviewed for safety. Stay alert and only share what you’re comfortable with.',
+              textAlign: TextAlign.center,
+              style: ADText.preview(c: AD.textSecondary).copyWith(height: 1.55),
+            ),
+            const SizedBox(height: 18),
+            GestureDetector(
+              onTap: () => Navigator.of(ctx).pop(),
+              child: Container(
+                height: 40,
+                padding: const EdgeInsets.symmetric(horizontal: 28),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: AD.sendActiveBg,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text('Got it',
+                    style: ADText.rowName(c: AD.sendActiveInk)),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
   }
 
   // G1.2: when the user ACCEPTS a message request from a non-contact stranger,
@@ -6394,7 +6469,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill),
           () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
               content: Text('Guardian always protects this account'))),
-          color: AD.online,
+          color: kGuardianGreen,
         ),
       );
     }
@@ -6405,7 +6480,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         on ? PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill)
            : PhosphorIcons.shield(PhosphorIconsStyle.bold),
         _toggleGuardian,
-        color: on ? AD.online : AD.textSecondary,
+        color: on ? kGuardianGreen : AD.textSecondary,
       ),
     );
   }
@@ -6651,12 +6726,15 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             child: Text.rich(
               TextSpan(children: [
                 const TextSpan(text: 'Type '),
-                TextSpan(text: '@ava', style: ADText.statCaption(c: AD.iconSearch)),
+                TextSpan(text: '@ava', style: ADText.preview(c: const Color(0xFF8FC0F5))
+                    .copyWith(fontWeight: FontWeight.w800)),
                 const TextSpan(text: ' for a private reply, or '),
-                TextSpan(text: '#ava', style: ADText.statCaption(c: AD.online)),
+                TextSpan(text: '#ava', style: ADText.preview(c: const Color(0xFF7BD98C))
+                    .copyWith(fontWeight: FontWeight.w800)),
                 const TextSpan(text: ' to ask Ava in the chat.'),
               ]),
-              style: ADText.preview(),
+              // White base text (was grey) so the hint reads clearly on dark.
+              style: ADText.preview(c: AD.textPrimary),
             ),
           ),
         ]),
