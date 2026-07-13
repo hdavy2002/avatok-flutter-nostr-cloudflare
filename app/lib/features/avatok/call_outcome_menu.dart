@@ -41,12 +41,26 @@ class CallOutcomeMenu extends StatefulWidget {
   /// Pop the call screen (used after a note is sent / menu closed).
   final VoidCallback onClosed;
 
+  /// [VM-IN-MENU-1 2026-07-14] Classic 25s recorded voicemail (VoicemailRoom)
+  /// from INSIDE the outcome menu. Owner report: with callMenuEnabled on, every
+  /// unanswered call lands here — and this menu had no voicemail option, so
+  /// voicemail was effectively unreachable even with voicemailBot=true. null =
+  /// hidden (flag off). The handler lives in CallScreen (_leaveVoicemail), which
+  /// owns the VoicemailCall lifecycle.
+  final VoidCallback? onLeaveVoicemail;
+
+  /// True while CallScreen's voicemail session is connecting/recording — keeps
+  /// the button honest and blocks double-starts.
+  final bool voicemailInProgress;
+
   const CallOutcomeMenu({
     super.key,
     required this.session,
     required this.name,
     required this.peerUid,
     required this.onClosed,
+    this.onLeaveVoicemail,
+    this.voicemailInProgress = false,
   });
 
   @override
@@ -258,7 +272,28 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
               const SizedBox(height: 10),
             ],
 
-            // 2) Voice note — records in place; tap again to stop & send.
+            // 2) [VM-IN-MENU-1] Leave a voicemail — the classic recorded
+            // voicemail (25s, lands in the callee's thread as a playable
+            // bubble). ALWAYS offered when the voicemailBot flag is on,
+            // regardless of why the call didn't connect (unreachable / pruned
+            // tokens / no-answer / declined) — leaving a voicemail must never
+            // depend on the callee's device being reachable.
+            if (widget.onLeaveVoicemail != null) ...[
+              AdButton(
+                label: widget.voicemailInProgress
+                    ? 'Recording voicemail…'
+                    : 'Leave a voicemail',
+                variant: AdButtonVariant.teal,
+                fullWidth: true,
+                fontSize: 16,
+                onPressed: (_sending || _recording || widget.voicemailInProgress)
+                    ? null
+                    : widget.onLeaveVoicemail,
+              ),
+              const SizedBox(height: 10),
+            ],
+
+            // 3) Voice note — records in place; tap again to stop & send.
             AdButton(
               label: _recording
                   ? 'Recording ${_fmtRec(_recSecs)} — tap to send'
@@ -271,7 +306,7 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
             ),
             const SizedBox(height: 10),
 
-            // 3) Text note — a box slides open underneath.
+            // 4) Text note — a box slides open underneath.
             AdButton(
               label: 'Leave a text note',
               variant: AdButtonVariant.teal,

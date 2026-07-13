@@ -9,6 +9,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/agent_voice_call.dart';
+import '../../core/analytics.dart'; // [VM-IN-MENU-1]
 import '../../core/ava_identity.dart';
 import '../../core/avatar.dart';
 import '../../core/call_routing_api.dart';
@@ -772,6 +773,28 @@ class _CallScreenState extends State<CallScreen> {
                       name: widget.title,
                       peerUid: widget.seed,
                       onClosed: _popIfMounted,
+                      // [VM-IN-MENU-1 2026-07-14] Classic voicemail from the
+                      // outcome menu. Gated ONLY on the voicemailBot flag —
+                      // never on the routing probe or the callee's device
+                      // reachability: /api/voicemail/start needs nothing but
+                      // {to, call_id, trace_id}, and _leaveVoicemail's start-map
+                      // defaults (widget.seed/room/traceId) cover the case where
+                      // no routing info ever arrived (unreachable / pruned-token
+                      // callees — the exact case that used to dead-end).
+                      voicemailInProgress: _vmInProgress,
+                      onLeaveVoicemail: RemoteConfig.voicemailBot
+                          ? () {
+                              Analytics.capture('call_menu_option_selected', {
+                                'call_id': widget.room,
+                                'option': 'voicemail',
+                              });
+                              final start = _routingInfo?['start'];
+                              // ignore: unawaited_futures
+                              _leaveVoicemail(start is Map
+                                  ? start.cast<String, dynamic>()
+                                  : const <String, dynamic>{});
+                            }
+                          : null,
                     )
                   // [BUSY-CARD-1] Personalized busy card — replaces the cold
                   // "User is busy" sticker when the server told us WHY the callee
