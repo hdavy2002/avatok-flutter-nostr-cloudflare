@@ -24,9 +24,10 @@ class ContactsBackupScreen extends StatefulWidget {
 class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
   bool _enabled = false;
   int _count = 0;
-  DateTime? _last;
+  DateTime? _lastCloud;
   bool _loading = true;
   bool _busy = false;
+  bool _restoring = false;
 
   @override
   void initState() {
@@ -37,12 +38,17 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
   Future<void> _load() async {
     final enabled = await ContactBackupPrefs.I.enabled();
     final count = await AvaContactBook.I.count();
-    final last = await ContactBackupPrefs.I.lastSnapshot();
+    var lastCloud = await ContactBackupPrefs.I.lastServerSync();
+    // Prefer the server's own timestamp when we can reach it (authoritative).
+    final status = await AvaContactBook.I.serverStatus();
+    if (status != null && status.updatedAt > 0) {
+      lastCloud = DateTime.fromMillisecondsSinceEpoch(status.updatedAt);
+    }
     if (!mounted) return;
     setState(() {
       _enabled = enabled;
       _count = count;
-      _last = last;
+      _lastCloud = lastCloud;
       _loading = false;
     });
   }
@@ -51,24 +57,70 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
     setState(() => _enabled = on);
     await ContactBackupPrefs.I.setEnabled(on);
     Analytics.capture('avadial_contact_backup_toggled', {'enabled': on});
+    // Turning it on does an immediate first upload so the user is covered.
+    if (on) await _backupNow();
   }
 
   Future<void> _backupNow() async {
     setState(() => _busy = true);
-    // Phase 1: refresh the local snapshot timestamp (the book itself is captured
-    // on every Contacts-tab load). Phase 2 uploads it to AvaTOK's servers here.
     await ContactBackupPrefs.I.markSnapshot();
-    Analytics.capture('avadial_contact_backup_now', {'count': _count});
+    final n = await AvaContactBook.I.uploadBackup();
+    Analytics.capture('avadial_contact_backup_now', {'count': _count, 'ok': n != null});
     await _load();
     if (mounted) {
       setState(() => _busy = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Contact book snapshot saved on this device')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(n != null
+              ? 'Backed up $n contacts to AvaTOK'
+              : "Couldn't back up — check your connection and try again")));
+    }
+  }
+
+  Future<void> _restore() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AvaDialTheme.surface2,
+        shape: RoundedRectangleBorder(
+          side: const BorderSide(color: AvaDialTheme.border, width: Zine.bw),
+          borderRadius: BorderRadius.circular(Zine.rSm),
+        ),
+        title: Text('Restore contacts?', style: ZineText.cardTitle(size: 17, color: AvaDialTheme.text)),
+        content: Text(
+          'This adds contacts from your AvaTOK backup that aren\'t already on this '
+          'phone. Existing contacts are left as they are.',
+          style: ZineText.sub(size: 13.5, color: AvaDialTheme.textSoft),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel', style: ZineText.value(size: 14, color: AvaDialTheme.textSoft)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Restore', style: ZineText.value(size: 14, color: Zine.blue)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() => _restoring = true);
+    final n = await AvaContactBook.I.restoreBackup();
+    Analytics.capture('avadial_contact_restore', {'restored': n ?? -1});
+    await _load();
+    if (mounted) {
+      setState(() => _restoring = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(n == null
+              ? "Couldn't restore — check your connection and try again"
+              : n == 0
+                  ? 'No AvaTOK backup found yet'
+                  : 'Restored $n contacts to this phone')));
     }
   }
 
   String _lastLabel() {
-    final d = _last;
+    final d = _lastCloud;
     if (d == null) return 'Never';
     return '${d.day}/${d.month}/${d.year} · ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
   }
@@ -113,7 +165,7 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
                 ),
                 const SizedBox(height: 16),
                 _stat('Contacts in your AvaTOK book', '$_count'),
-                _stat('Last snapshot on this device', _lastLabel()),
+                _stat('Last backed up to AvaTOK', _lastLabel()),
                 const SizedBox(height: 16),
                 if (_enabled)
                   ZineButton(
@@ -121,8 +173,16 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
                     variant: ZineButtonVariant.blue,
                     trailingIcon: false,
                     loading: _busy,
-                    onPressed: _busy ? null : _backupNow,
+                    onPressed: (_busy || _restoring) ? null : _backupNow,
                   ),
+                const SizedBox(height: 10),
+                ZineButton(
+                  label: 'Restore from AvaTOK',
+                  variant: ZineButtonVariant.ghost,
+                  trailingIcon: false,
+                  loading: _restoring,
+                  onPressed: (_busy || _restoring) ? null : _restore,
+                ),
                 const SizedBox(height: 20),
                 Text('HOW IT WORKS', style: ZineText.kicker(color: AvaDialTheme.textMute)),
                 const SizedBox(height: 8),
@@ -131,9 +191,8 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
                 _bullet('Backups are encrypted on AvaTOK\'s servers and restored with '
                     'your AvaTOK login — so a lost SIM or Google account can\'t lock '
                     'you out.'),
-                _bullet('Restore on a new device — and the cloud upload itself — arrive '
-                    'in the next update. For now your book is snapshotted safely on '
-                    'this device.'),
+                _bullet('On a new phone, sign in and tap Restore — AvaTOK rebuilds the '
+                    'contacts that aren\'t already there. Nothing is ever duplicated.'),
               ],
             ),
     );

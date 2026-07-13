@@ -64,6 +64,7 @@ import { createConversation, listConversations, getParticipants } from "./routes
 import { getPlans } from "./routes/plans";
 import * as num from "./routes/number";
 import * as keybk from "./routes/keybackup";
+import * as cbook from "./routes/contacts_backup";
 import * as team from "./routes/team";
 import { subscribeCheckout, subscribeAndroidVerify, subscribeCancel } from "./routes/subscribe";
 import { referralClaim, referralSummary } from "./routes/referral";
@@ -605,6 +606,11 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/contacts/sync" && req.method === "POST") return await api.contactsSync(req, env);
       if (p === "/api/contacts/match" && req.method === "POST") return await api.contactsMatch(req, env);
       if (p === "/api/contacts/list" && req.method === "GET") return api.contactsList();
+      // Contact-book backup/restore — AvaTOK's own encrypted backup lane (no Gmail
+      // needed, server-side encrypted, free). See routes/contacts_backup.ts.
+      if (p === "/api/contacts/book/status" && req.method === "GET") return await cbook.contactBookStatus(req, env);
+      if (p === "/api/contacts/book" && req.method === "GET") return await cbook.contactBookGet(req, env);
+      if (p === "/api/contacts/book" && req.method === "POST") return await cbook.contactBookPut(req, env);
 
       // --- communities ---
       if (p === "/api/community" && req.method === "POST") return await api.communityUpsert(req, env);

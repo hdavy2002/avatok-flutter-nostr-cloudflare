@@ -1,6 +1,8 @@
 import 'dart:convert';
 
+import '../../core/api_auth.dart';
 import '../../core/ava_log.dart';
+import '../../core/config.dart';
 import '../../core/disk_cache.dart';
 import 'contact_overrides.dart';
 import 'device_contacts.dart';
@@ -129,9 +131,108 @@ class AvaContactBook {
 
   Future<int> count() async => (await load()).length;
 
-  /// Serialized book (what Phase 2 will upload to AvaTOK's backup endpoint).
+  /// Serialized book (uploaded to AvaTOK's backup endpoint).
   Future<String> exportJson() async =>
       jsonEncode((await load()).map((e) => e.toJson()).toList());
+
+  /// Upload the local book to AvaTOK's servers (server-side encrypted). Returns
+  /// the count on success, or null on failure. Callers gate on user consent.
+  Future<int?> uploadBackup() async {
+    try {
+      final contacts = await load();
+      final resp = await ApiAuth.postJson(
+        kContactBookUrl,
+        {'contacts': contacts.map((e) => e.toJson()).toList()},
+      );
+      if (resp.statusCode == 200) {
+        await ContactBackupPrefs.I.markServerSync();
+        return contacts.length;
+      }
+      AvaLog.I.log('avadial', 'contact book upload http ${resp.statusCode}');
+      return null;
+    } catch (e) {
+      AvaLog.I.log('avadial', 'contact book upload failed: $e');
+      return null;
+    }
+  }
+
+  /// Restore the book from AvaTOK's servers onto THIS device: rebuilds any missing
+  /// device contacts (new phone / lost SIM) and re-applies the AvaTOK extras.
+  /// Returns the number of contacts restored, or null on failure. Existing device
+  /// contacts (matched by number) are left untouched — no duplicates.
+  Future<int?> restoreBackup() async {
+    try {
+      final resp = await ApiAuth.getSigned(kContactBookUrl);
+      if (resp.statusCode != 200) {
+        AvaLog.I.log('avadial', 'contact book restore http ${resp.statusCode}');
+        return null;
+      }
+      final body = jsonDecode(resp.body) as Map<String, dynamic>;
+      if (body['found'] != true) return 0;
+      final list = (body['contacts'] as List<dynamic>? ?? const [])
+          .whereType<Map>()
+          .map((m) => AvaBookContact.fromJson(m.map((k, v) => MapEntry('$k', v))))
+          .toList();
+      await DeviceContacts.I.load(); // warm the dedupe index
+      var restored = 0;
+      for (final c in list) {
+        if (c.number.isEmpty) continue;
+        final onDevice = DeviceContacts.I.lookup(c.number) != null;
+        String? id;
+        if (!onDevice) {
+          id = await DeviceContacts.I.write(
+            name: c.name.isEmpty ? c.number : c.name,
+            number: c.number,
+            personalEmail: c.personalEmail,
+            businessEmail: c.businessEmail,
+            linkedin: c.linkedin,
+            note: _noteFor(c),
+          );
+        }
+        await ContactOverrides.I.save(ContactOverride(
+          number: c.number,
+          displayName: c.name.isEmpty ? null : c.name,
+          local: !onDevice && id == null,
+          avatokNumber: c.avatokNumber,
+          personalEmail: c.personalEmail,
+          businessEmail: c.businessEmail,
+          linkedin: c.linkedin,
+          customFields: c.customFields,
+        ));
+        restored++;
+      }
+      return restored;
+    } catch (e) {
+      AvaLog.I.log('avadial', 'contact book restore failed: $e');
+      return null;
+    }
+  }
+
+  String? _noteFor(AvaBookContact c) {
+    final lines = <String>[
+      if (c.avatokNumber != null && c.avatokNumber!.isNotEmpty) 'AvaTOK: ${c.avatokNumber}',
+      for (final f in c.customFields)
+        if (f.value.isNotEmpty) '${f.label.isEmpty ? 'Note' : f.label}: ${f.value}',
+    ];
+    return lines.isEmpty ? null : lines.join('\n');
+  }
+
+  /// Server-side backup metadata (count + last-updated ms), or null when there is
+  /// no backup / the call failed.
+  Future<({int count, int updatedAt})?> serverStatus() async {
+    try {
+      final resp = await ApiAuth.getSigned(kContactBookStatusUrl);
+      if (resp.statusCode != 200) return null;
+      final b = jsonDecode(resp.body) as Map<String, dynamic>;
+      if (b['found'] != true) return null;
+      return (
+        count: (b['count'] as num?)?.toInt() ?? 0,
+        updatedAt: (b['updatedAt'] as num?)?.toInt() ?? 0,
+      );
+    } catch (e) {
+      return null;
+    }
+  }
 }
 
 /// User consent + status for backing the contact book up to AvaTOK's servers
@@ -144,6 +245,7 @@ class ContactBackupPrefs {
 
   static const _kEnabled = 'ava_contact_backup_enabled';
   static const _kLastTs = 'ava_contact_backup_last_ts';
+  static const _kServerTs = 'ava_contact_backup_server_ts';
 
   Future<bool> enabled() async => (await DiskCache.read(_kEnabled)) == 'true';
 
@@ -151,13 +253,18 @@ class ContactBackupPrefs {
     await DiskCache.write(_kEnabled, on ? 'true' : 'false');
   }
 
-  Future<DateTime?> lastSnapshot() async {
-    final raw = await DiskCache.read(_kLastTs);
-    final ms = int.tryParse(raw ?? '');
+  Future<DateTime?> lastSnapshot() async => _readTs(_kLastTs);
+  Future<void> markSnapshot() async => _writeNow(_kLastTs);
+
+  /// Last successful upload to AvaTOK's servers.
+  Future<DateTime?> lastServerSync() async => _readTs(_kServerTs);
+  Future<void> markServerSync() async => _writeNow(_kServerTs);
+
+  Future<DateTime?> _readTs(String key) async {
+    final ms = int.tryParse(await DiskCache.read(key) ?? '');
     return ms == null ? null : DateTime.fromMillisecondsSinceEpoch(ms);
   }
 
-  Future<void> markSnapshot() async {
-    await DiskCache.write(_kLastTs, '${DateTime.now().millisecondsSinceEpoch}');
-  }
+  Future<void> _writeNow(String key) async =>
+      DiskCache.write(key, '${DateTime.now().millisecondsSinceEpoch}');
 }

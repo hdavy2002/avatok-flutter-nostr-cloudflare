@@ -101,6 +101,9 @@ const String kDownloadUrl = 'https://avatok.ai/download';
 const String kContactsSyncUrl = 'https://$kSignalingHost/api/contacts/sync';   // POST
 const String kContactsMatchUrl = 'https://$kSignalingHost/api/contacts/match'; // POST
 const String kContactsListUrl = 'https://$kSignalingHost/api/contacts/list';   // GET
+// AvaTOK contact-book backup/restore (server-side encrypted, no Gmail needed).
+const String kContactBookUrl = 'https://$kSignalingHost/api/contacts/book';            // GET/POST
+const String kContactBookStatusUrl = 'https://$kSignalingHost/api/contacts/book/status'; // GET
 
 /// Communities — create/join (NIP-98) / list (public).
 const String kCommunityUrl = 'https://$kSignalingHost/api/community';          // POST upsert
