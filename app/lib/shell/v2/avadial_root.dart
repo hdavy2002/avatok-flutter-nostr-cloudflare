@@ -10,6 +10,7 @@ import '../../core/ui/avatok_dark.dart';
 import '../../features/avadial/ava_contact_book.dart';
 import '../../features/avadial/avadial_channel.dart';
 import '../../features/avadial/avadial_refresh.dart';
+import '../../features/avadial/avadial_setup_sheet.dart';
 import '../../features/avadial/avadial_theme.dart';
 import '../../features/avadial/block_list.dart';
 import '../../features/avadial/contact_detail_screen.dart';
@@ -72,6 +73,14 @@ class _AvaDialRootState extends State<AvaDialRoot> {
       // full-screen-intent notification, whose MainActivity route extra is wired by
       // the shell's notification handler — TODO(phase2) in shell_v2.dart.)
       _callSub = AvaDialChannel.I.calls.listen(_onCall);
+      // [AVADIAL-SETUP-1] First-run device setup. Calls only ring full-screen on
+      // the lock screen once the user grants OS permissions no app can grant itself
+      // (full-screen notifications, battery/background) and hands AvaDialer the
+      // phone + Caller-ID roles (replacing Truecaller). Surface a one-tap setup
+      // sheet the first time AvaDialer opens with anything essential still missing.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) maybeShowAvaDialSetup(context);
+      });
     }
   }
 

@@ -166,6 +166,23 @@ class AvaInCallService : InCallService() {
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         val pending = PendingIntent.getActivity(this, NOTIF_ID, intent, flags)
 
+        // [AVADIAL-LOCKSCREEN-1] Launch the call screen DIRECTLY, over the lock
+        // screen. As the OS-bound default-dialer InCallService for this call we are
+        // permitted to start the incoming-call activity from the background, so the
+        // full-screen call UI appears WITHOUT the user opening the app — the way any
+        // real phone app (and Truecaller) behaves. MainActivity is showWhenLocked +
+        // turnScreenOn + singleTask, so this wakes the screen and reuses the task.
+        // Previously we relied ONLY on the full-screen-intent notification below,
+        // which Android 14+ and aggressive OEM skins silently demote to a heads-up
+        // banner unless USE_FULL_SCREEN_INTENT is granted — which is why the screen
+        // only showed once the app was opened manually. The FSI notification stays
+        // as the OEM-safe fallback for the cases where a background launch is blocked.
+        try {
+            startActivity(intent)
+        } catch (_: Throwable) {
+            /* background-activity-launch blocked on this OEM — FSI notification below is the fallback */
+        }
+
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, CHANNEL_ID)
         } else {
