@@ -249,7 +249,7 @@ class _PrimaryButton extends StatelessWidget {
               const SizedBox(width: 18, height: 18,
                   child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
             else if (icon != null) ...[
-              PhosphorIcon(icon, size: 18, color: Colors.white),
+              PhosphorIcon(icon!, size: 18, color: Colors.white),
               const SizedBox(width: 8),
             ],
             Text(label, style: ADText.rowName(c: Colors.white)),
