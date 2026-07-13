@@ -3,8 +3,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/avatar.dart';
 import '../../core/profile_store.dart';
-import '../../core/ui/zine.dart';
-import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../sync/group_api.dart';
 import 'chat_thread.dart';
 import 'contacts.dart';
@@ -72,44 +71,79 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final canCreate = _canCreate && !_creating;
     return Scaffold(
-      backgroundColor: Zine.paper,
-      appBar: ZineAppBar(
-        title: 'New group',
-        markWord: 'group',
-        actions: [
-          // The ONE lime primary action on this screen.
-          ZineButton(
-            label: _creating ? '…' : 'Create',
-            fontSize: 16,
-            onPressed: _canCreate && !_creating ? _create : null,
-          ),
-        ],
-      ),
+      backgroundColor: AD.bg,
       body: Column(
         children: [
+          // Inline dark v2 header: back button + title + the ONE primary
+          // (teal) Create action.
+          Container(
+            decoration: const BoxDecoration(
+              color: AD.headerFooter,
+              border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
+            ),
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 10, 16, 12),
+                child: Row(children: [
+                  GestureDetector(
+                    onTap: () => Navigator.of(context).maybePop(),
+                    child: Container(
+                      width: 42, height: 42,
+                      decoration: BoxDecoration(
+                        color: AD.card,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: AD.borderControl, width: 1),
+                      ),
+                      child: Center(child: PhosphorIcon(
+                          PhosphorIcons.arrowLeft(PhosphorIconsStyle.bold),
+                          size: 20, color: AD.textPrimary)),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(child: Text('New group', style: ADText.appTitle())),
+                  _createButton(canCreate),
+                ]),
+              ),
+            ),
+          ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-            child: ZineField(
-              controller: _name,
-              hint: 'Group name',
-              leadIcon: PhosphorIcons.usersThree(PhosphorIconsStyle.bold),
-              onChanged: (_) => setState(() {}),
-            ),
+            child: _nameField(),
           ),
           Align(
             alignment: Alignment.centerLeft,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 10, 20, 4),
-              child: Text('ADD MEMBERS', style: ZineText.kicker()),
+              child: Text('ADD MEMBERS', style: ADText.sectionLabel()),
             ),
           ),
           Expanded(
             child: _selectable.isEmpty
                 ? Center(
-                    child: ZineEmptyState(
-                        icon: PhosphorIcons.usersThree(PhosphorIconsStyle.bold),
-                        text: 'Add contacts first to build a group'))
+                    child: Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Column(mainAxisSize: MainAxisSize.min, children: [
+                        Container(
+                          width: 72, height: 72,
+                          decoration: BoxDecoration(
+                            color: AD.card,
+                            borderRadius: BorderRadius.circular(AD.rListCard),
+                            border: Border.all(color: AD.borderControl, width: 1),
+                          ),
+                          child: Center(child: PhosphorIcon(
+                              PhosphorIcons.usersThree(PhosphorIconsStyle.bold),
+                              size: 32, color: AD.textTertiary)),
+                        ),
+                        const SizedBox(height: 14),
+                        Text('Add contacts first to build a group',
+                            textAlign: TextAlign.center,
+                            style: ADText.preview(c: AD.textSecondary)),
+                      ]),
+                    ),
+                  )
                 : ListView.builder(
                     itemCount: _selectable.length,
                     itemBuilder: (_, i) {
@@ -117,22 +151,22 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
                       final on = _picked.contains(c.uid);
                       return CheckboxListTile(
                         value: on,
-                        activeColor: Zine.ink,
-                        checkColor: Zine.lime,
-                        side: const BorderSide(color: Zine.ink, width: 2),
+                        activeColor: AD.newGroup,
+                        checkColor: Colors.white,
+                        side: const BorderSide(color: AD.borderControl, width: 2),
                         controlAffinity: ListTileControlAffinity.trailing,
                         onChanged: (v) => setState(() =>
                             v == true ? _picked.add(c.uid) : _picked.remove(c.uid)),
                         secondary: Container(
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            border: Border.all(color: Zine.ink, width: 2),
+                            border: Border.all(color: AD.borderAvatar, width: 2),
                           ),
                           child: Avatar(seed: c.seed, name: c.name, size: 42),
                         ),
-                        title: Text(c.name, style: ZineText.value(size: 15)),
+                        title: Text(c.name, style: ADText.rowName()),
                         subtitle: c.handle.isNotEmpty
-                            ? Text(c.atHandle, style: ZineText.sub(size: 12.5))
+                            ? Text(c.atHandle, style: ADText.preview())
                             : null,
                       );
                     },
@@ -142,4 +176,63 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
       ),
     );
   }
+
+  /// The primary teal "Create" pill; disabled = card fill + faint label.
+  Widget _createButton(bool enabled) {
+    final fill = enabled ? AD.newGroup : AD.card;
+    final fg = enabled ? Colors.white : AD.textTertiary;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: enabled ? _create : null,
+        borderRadius: BorderRadius.circular(100),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+          decoration: BoxDecoration(
+            color: fill,
+            borderRadius: BorderRadius.circular(100),
+            border: enabled ? null : Border.all(color: AD.borderControl, width: 1),
+          ),
+          child: Text(_creating ? '…' : 'Create', style: ADText.rowName(c: fg)),
+        ),
+      ),
+    );
+  }
+
+  /// White dark-v2 input field with a leading teal glyph cell.
+  Widget _nameField() => Container(
+        decoration: BoxDecoration(
+          color: AD.inputField,
+          borderRadius: BorderRadius.circular(AD.rInput),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Row(children: [
+          Container(
+            width: 48,
+            constraints: const BoxConstraints(minHeight: 52),
+            color: AD.newGroup,
+            alignment: Alignment.center,
+            child: PhosphorIcon(PhosphorIcons.usersThree(PhosphorIconsStyle.bold),
+                size: 20, color: Colors.white),
+          ),
+          Expanded(
+            child: TextField(
+              controller: _name,
+              onChanged: (_) => setState(() {}),
+              cursorColor: AD.newGroup,
+              style: ADText.rowName(c: AD.textOnInput),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: 'Group name',
+                hintStyle: ADText.rowName(c: AD.placeholderOnWhite),
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                filled: false,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+              ),
+            ),
+          ),
+        ]),
+      );
 }

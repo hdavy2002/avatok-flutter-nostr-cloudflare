@@ -4,8 +4,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/group_store.dart';
-import '../../core/ui/zine.dart';
-import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/avatok_dark.dart';
 import 'contacts.dart';
 
 /// STREAM I (FWD-1): a single multi-select Forward sheet.
@@ -67,9 +66,10 @@ Future<List<ForwardTarget>?> showForwardSheet(
   return showModalBottomSheet<List<ForwardTarget>>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: Zine.paper,
+    backgroundColor: AD.overlaySheet,
     shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+        side: BorderSide(color: AD.borderControl, width: 1),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AD.rSheet))),
     builder: (ctx) => const _ForwardSheet(),
   );
 }
@@ -149,46 +149,46 @@ class _ForwardSheetState extends State<_ForwardSheet> {
         const SizedBox(height: 10),
         // Grab handle.
         Container(
-          width: 40,
-          height: 4,
+          width: 44,
+          height: 5,
           decoration: BoxDecoration(
-              color: Zine.inkMute.withValues(alpha: 0.3),
-              borderRadius: BorderRadius.circular(2)),
+              color: AD.textFaint,
+              borderRadius: BorderRadius.circular(100)),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
           child: Row(children: [
-            Text('Forward to', style: ZineText.cardTitle(size: 18)),
+            Text('Forward to', style: ADText.threadName()),
             const Spacer(),
             if (n > 0)
               Text('$n selected',
-                  style: ZineText.sub(size: 13, color: Zine.inkMute)),
+                  style: ADText.preview(c: AD.textTertiary)),
           ]),
         ),
-        // Search bar.
+        // Search bar — white dark-v2 field.
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Container(
             decoration: BoxDecoration(
-              color: Zine.card,
-              borderRadius: BorderRadius.circular(Zine.rField),
-              border: Border.all(color: Zine.ink, width: 2),
+              color: AD.inputField,
+              borderRadius: BorderRadius.circular(AD.rInput),
             ),
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Row(children: [
               PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
-                  size: 18, color: Zine.inkMute),
+                  size: 18, color: AD.placeholderOnWhite),
               const SizedBox(width: 8),
               Expanded(
                 child: TextField(
                   controller: _search,
-                  style: ZineText.input(size: 15),
+                  cursorColor: AD.primaryBadge,
+                  style: ADText.rowName(c: AD.textOnInput),
                   decoration: InputDecoration(
                     border: InputBorder.none,
                     isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 13),
                     hintText: 'Search groups and contacts',
-                    hintStyle: ZineText.sub(size: 14, color: Zine.placeholder),
+                    hintStyle: ADText.rowName(c: AD.placeholderOnWhite),
                   ),
                 ),
               ),
@@ -200,7 +200,7 @@ class _ForwardSheetState extends State<_ForwardSheet> {
           child: _loading
               ? const Padding(
                   padding: EdgeInsets.symmetric(vertical: 40),
-                  child: CircularProgressIndicator())
+                  child: CircularProgressIndicator(color: AD.iconSearch))
               : (groups.isEmpty && contacts.isEmpty)
                   ? Padding(
                       padding: const EdgeInsets.symmetric(vertical: 30),
@@ -208,7 +208,7 @@ class _ForwardSheetState extends State<_ForwardSheet> {
                           _query.isEmpty
                               ? 'No groups or contacts yet'
                               : 'No matches',
-                          style: ZineText.sub()))
+                          style: ADText.preview(c: AD.textSecondary)))
                   : ListView(
                       shrinkWrap: true,
                       padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
@@ -249,7 +249,7 @@ class _ForwardSheetState extends State<_ForwardSheet> {
                   n == 0
                       ? 'Select recipients'
                       : 'Forwarding to $n recipient${n == 1 ? '' : 's'}',
-                  style: ZineText.sub(size: 14, color: Zine.inkMute),
+                  style: ADText.preview(c: AD.textTertiary),
                 ),
               ),
               _SendButton(
@@ -267,7 +267,7 @@ class _ForwardSheetState extends State<_ForwardSheet> {
   Widget _sectionHeader(String label) => Padding(
         padding: const EdgeInsets.fromLTRB(2, 12, 0, 6),
         child: Text(label.toUpperCase(),
-            style: ZineText.sub(size: 12, color: Zine.inkMute)),
+            style: ADText.sectionLabel()),
       );
 
   Widget _row({
@@ -293,12 +293,12 @@ class _ForwardSheetState extends State<_ForwardSheet> {
                   Text(title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: ZineText.value(size: 15)),
+                      style: ADText.rowName()),
                   if (subtitle.isNotEmpty)
                     Text(subtitle,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: ZineText.sub(size: 12, color: Zine.inkMute)),
+                        style: ADText.preview(c: AD.textTertiary)),
                 ]),
           ),
           const SizedBox(width: 8),
@@ -309,12 +309,12 @@ class _ForwardSheetState extends State<_ForwardSheet> {
             height: 24,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: on ? Zine.ink : Colors.transparent,
-              border: Border.all(color: Zine.ink, width: 2),
+              color: on ? AD.online : Colors.transparent,
+              border: Border.all(color: on ? AD.online : AD.borderControl, width: 2),
             ),
             child: on
-                ? Icon(PhosphorIcons.check(PhosphorIconsStyle.bold),
-                    size: 15, color: Zine.paper)
+                ? const Icon(Icons.check_rounded,
+                    size: 15, color: Colors.white)
                 : null,
           ),
         ]),
@@ -339,15 +339,15 @@ class _SendButton extends StatelessWidget {
           height: 48,
           padding: const EdgeInsets.symmetric(horizontal: 22),
           decoration: BoxDecoration(
-            color: Zine.ink,
-            borderRadius: BorderRadius.circular(24),
+            color: AD.primaryBadge,
+            borderRadius: BorderRadius.circular(100),
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Text('Send',
-                style: ZineText.value(size: 15, color: Zine.paper)),
+                style: ADText.rowName(c: Colors.white)),
             const SizedBox(width: 6),
             Icon(PhosphorIcons.paperPlaneRight(PhosphorIconsStyle.fill),
-                size: 17, color: Zine.paper),
+                size: 17, color: Colors.white),
           ]),
         ),
       ),

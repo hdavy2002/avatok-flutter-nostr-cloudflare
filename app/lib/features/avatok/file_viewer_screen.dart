@@ -9,7 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/analytics.dart';
 import '../../core/ava_log.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
 
 /// [CHAT-PDFVIEW-1] In-app viewer for downloaded/decrypted chat attachments.
 ///
@@ -106,7 +106,7 @@ class _FileViewerScreenState extends State<FileViewerScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        backgroundColor: Zine.ink,
+        backgroundColor: AD.headerFooter,
         foregroundColor: Colors.white,
         title: Text(widget.name,
             maxLines: 1, overflow: TextOverflow.ellipsis,

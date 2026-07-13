@@ -9,7 +9,7 @@ import '../../core/avatar.dart';
 import '../../core/blocking_api.dart';
 import '../../core/chat_state.dart';
 import '../../core/remote_config.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../push/push_service.dart';
 import 'call_screen.dart' show gIncomingRingingFrom, gIncomingRingingCallId;
@@ -123,7 +123,7 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
     return PopScope(
       canPop: false,
       child: Scaffold(
-        backgroundColor: Zine.ink,
+        backgroundColor: AD.bg,
         body: SafeArea(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
@@ -131,23 +131,23 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
               children: [
                 const Spacer(),
                 Container(
-                  decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 3)),
+                  decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: AD.borderAvatar, width: 3)),
                   child: Avatar(seed: widget.fromUid, name: name, size: 132,
                       avatarUrl: widget.avatarUrl.isEmpty ? null : widget.avatarUrl),
                 ),
                 const SizedBox(height: 24),
                 Text('$name is calling',
                     textAlign: TextAlign.center,
-                    style: ZineText.hero(size: 26, color: Colors.white)),
+                    style: ADText.appTitle(c: AD.textPrimary)),
                 const SizedBox(height: 8),
-                Text('AvaTOK business call', style: ZineText.sub(size: 13, color: Colors.white70)),
+                Text('AvaTOK business call', style: ADText.preview(c: AD.textSecondary)),
                 const Spacer(),
                 Row(children: [
                   Expanded(
                     child: _ActionButton(
                       icon: PhosphorIcons.prohibit(PhosphorIconsStyle.bold),
                       label: 'Block',
-                      color: Zine.coral,
+                      color: AD.destructiveBg,
                       onTap: _busy ? null : _block,
                     ),
                   ),
@@ -156,7 +156,7 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
                     child: _ActionButton(
                       icon: PhosphorIcons.phoneX(PhosphorIconsStyle.bold),
                       label: 'Decline',
-                      color: Zine.coral,
+                      color: AD.destructiveBg,
                       onTap: _busy ? null : _decline,
                     ),
                   ),
@@ -166,7 +166,7 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
                       child: _ActionButton(
                         icon: PhosphorIcons.robot(PhosphorIconsStyle.bold),
                         label: 'Send to Ava',
-                        color: Zine.lilac,
+                        color: AD.iconVideo,
                         onTap: _busy ? null : _sendToAgent,
                       ),
                     ),
@@ -176,7 +176,7 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
                     child: _ActionButton(
                       icon: PhosphorIcons.phone(PhosphorIconsStyle.bold),
                       label: 'Accept',
-                      color: Zine.mint,
+                      color: AD.incomingCall,
                       onTap: _busy ? null : _accept,
                     ),
                   ),
@@ -208,13 +208,13 @@ class _ActionButton extends StatelessWidget {
           decoration: BoxDecoration(
             color: onTap == null ? color.withValues(alpha: 0.4) : color,
             shape: BoxShape.circle,
-            border: Border.all(color: Colors.white, width: 2),
+            border: Border.all(color: AD.borderAvatar, width: 2),
           ),
-          child: Icon(icon, color: Zine.ink, size: 26),
+          child: Icon(icon, color: AD.bg, size: 26),
         ),
       ),
       const SizedBox(height: 6),
-      Text(label, style: ZineText.tag(size: 10.5, color: Colors.white), textAlign: TextAlign.center),
+      Text(label, style: ADText.sectionLabel(c: AD.textPrimary), textAlign: TextAlign.center),
     ]);
   }
 }

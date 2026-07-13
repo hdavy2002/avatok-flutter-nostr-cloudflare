@@ -7,8 +7,7 @@ import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/device_contacts.dart';
 import '../../core/profile_store.dart';
-import '../../core/ui/zine.dart';
-import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/avatok_dark.dart';
 import 'add_by_link_sheet.dart';
 import 'contacts.dart';
 
@@ -25,10 +24,10 @@ Future<Contact?> showAddContactSheet(BuildContext context) {
   return showModalBottomSheet<Contact>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: Zine.paper,
+    backgroundColor: AD.overlaySheet,
     shape: const RoundedRectangleBorder(
-        side: BorderSide(color: Zine.ink, width: Zine.bw),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(26))),
+        side: BorderSide(color: AD.borderControl, width: 1),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AD.rSheet))),
     builder: (_) => const _AddContactSheet(),
   );
 }
@@ -143,36 +142,58 @@ class _AddContactSheetState extends State<_AddContactSheet> {
             Center(
               child: Container(
                 width: 44, height: 5, margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(color: Zine.inkMute, borderRadius: BorderRadius.circular(100)),
+                decoration: BoxDecoration(color: AD.textFaint, borderRadius: BorderRadius.circular(100)),
               ),
             ),
             Row(children: [
-              Text('New chat', style: ZineText.cardTitle(size: 22)),
+              Text('New chat', style: ADText.appTitle()),
               const Spacer(),
               GestureDetector(
                 onTap: _addByLink,
-                child: PhosphorIcon(PhosphorIcons.qrCode(PhosphorIconsStyle.bold), size: 24, color: Zine.ink),
+                child: PhosphorIcon(PhosphorIcons.qrCode(PhosphorIconsStyle.bold), size: 24, color: AD.textPrimary),
               ),
             ]),
             const SizedBox(height: 4),
             Text(
                 'Find someone by their email or AvaTOK number.',
-                style: ZineText.sub(size: 12.5)),
+                style: ADText.preview()),
             const SizedBox(height: 14),
-            ZineField(
-              controller: _ctrl,
-              hint: 'Email or AvaTOK number',
-              leadIcon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
-              onChanged: _onQuery,
+            // White dark-v2 resolve field.
+            Container(
+              decoration: BoxDecoration(
+                color: AD.inputField,
+                borderRadius: BorderRadius.circular(AD.rInput),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: Row(children: [
+                PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
+                    size: 18, color: AD.placeholderOnWhite),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextField(
+                    controller: _ctrl,
+                    onChanged: _onQuery,
+                    cursorColor: AD.primaryBadge,
+                    style: ADText.rowName(c: AD.textOnInput),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      border: InputBorder.none,
+                      hintText: 'Email or AvaTOK number',
+                      hintStyle: ADText.rowName(c: AD.placeholderOnWhite),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 15),
+                    ),
+                  ),
+                ),
+              ]),
             ),
             const SizedBox(height: 10),
             if (_resolving)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 6),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
                 child: Row(children: [
-                  SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-                  SizedBox(width: 10),
-                  Text('Looking up on AvaTOK…'),
+                  const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AD.iconSearch)),
+                  const SizedBox(width: 10),
+                  Text('Looking up on AvaTOK…', style: ADText.preview()),
                 ]),
               ),
             if (_resolvedHit != null) _resolvedTile(_resolvedHit!),
@@ -182,12 +203,12 @@ class _AddContactSheetState extends State<_AddContactSheet> {
                 child: Text(
                     'No AvaTOK account for that. You can only find people by their '
                     'email or AvaTOK number — invite them below instead.',
-                    style: ZineText.sub(size: 12.5, color: Zine.inkSoft)),
+                    style: ADText.preview(c: AD.textSecondary)),
               ),
             // Saved AvaTOK contacts as quick-picks (never the phone book).
             if (saved.isNotEmpty) ...[
               const SizedBox(height: 10),
-              Text('YOUR AVATOK CONTACTS', style: ZineText.tag(size: 11, color: Zine.inkMute)),
+              Text('YOUR AVATOK CONTACTS', style: ADText.sectionLabel()),
               const SizedBox(height: 4),
               ConstrainedBox(
                 constraints: const BoxConstraints(maxHeight: 300),
@@ -200,15 +221,28 @@ class _AddContactSheetState extends State<_AddContactSheet> {
             ],
             const SizedBox(height: 14),
             // Invite is a separate, explicit, DEVICE-LOCAL action (OS share sheet).
-            ZineButton(
-              label: _inviting ? 'Opening…' : 'Invite friends to AvaTok',
-              variant: ZineButtonVariant.ghost,
-              fullWidth: true,
-              fontSize: 15,
-              loading: _inviting,
-              icon: PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold),
-              trailingIcon: false,
-              onPressed: _inviting ? null : _invite,
+            GestureDetector(
+              onTap: _inviting ? null : _invite,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 15),
+                decoration: BoxDecoration(
+                  color: AD.card,
+                  borderRadius: BorderRadius.circular(100),
+                  border: Border.all(color: AD.borderControl, width: 1),
+                ),
+                child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  if (_inviting)
+                    const SizedBox(width: 18, height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: AD.textSecondary))
+                  else
+                    PhosphorIcon(PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold),
+                        size: 18, color: AD.textPrimary),
+                  const SizedBox(width: 10),
+                  Text(_inviting ? 'Opening…' : 'Invite friends to AvaTok',
+                      style: ADText.rowName()),
+                ]),
+              ),
             ),
           ],
         ),
@@ -219,18 +253,18 @@ class _AddContactSheetState extends State<_AddContactSheet> {
   Widget _resolvedTile(Contact c) => Container(
         margin: const EdgeInsets.only(bottom: 8),
         decoration: BoxDecoration(
-          color: Zine.mint.withValues(alpha: 0.25),
-          borderRadius: BorderRadius.circular(Zine.r),
-          border: Border.all(color: Zine.ink, width: 2),
+          color: AD.online.withValues(alpha: 0.16),
+          borderRadius: BorderRadius.circular(AD.rListCard),
+          border: Border.all(color: AD.borderControl, width: 1),
         ),
         child: ListTile(
           leading: Container(
-            decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Zine.ink, width: 2)),
+            decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: AD.borderAvatar, width: 2)),
             child: Avatar(seed: c.uid, name: c.name, size: 40, avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl),
           ),
-          title: Text(c.name.isNotEmpty ? c.name : c.subtitle, style: ZineText.value(size: 14.5)),
-          subtitle: Text('On AvaTOK — tap to add & message', style: ZineText.sub(size: 12.5)),
-          trailing: PhosphorIcon(PhosphorIcons.userPlus(PhosphorIconsStyle.bold), color: Zine.ink, size: 22),
+          title: Text(c.name.isNotEmpty ? c.name : c.subtitle, style: ADText.rowName()),
+          subtitle: Text('On AvaTOK — tap to add & message', style: ADText.preview()),
+          trailing: PhosphorIcon(PhosphorIcons.userPlus(PhosphorIconsStyle.bold), color: AD.online, size: 22),
           onTap: () => Navigator.pop(context, c),
         ),
       );
@@ -238,12 +272,12 @@ class _AddContactSheetState extends State<_AddContactSheet> {
   Widget _savedTile(Contact c) => ListTile(
         contentPadding: EdgeInsets.zero,
         leading: Container(
-          decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Zine.ink, width: 2)),
+          decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: AD.borderAvatar, width: 2)),
           child: Avatar(seed: c.uid, name: c.name, size: 40, avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl),
         ),
-        title: Text(c.name.isNotEmpty ? c.name : c.subtitle, style: ZineText.value(size: 14.5)),
-        subtitle: Text(c.subtitle, style: ZineText.sub(size: 12.5)),
-        trailing: PhosphorIcon(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), color: Zine.blueInk, size: 20),
+        title: Text(c.name.isNotEmpty ? c.name : c.subtitle, style: ADText.rowName()),
+        subtitle: Text(c.subtitle, style: ADText.preview()),
+        trailing: PhosphorIcon(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), color: AD.iconSearch, size: 20),
         onTap: () => Navigator.pop(context, c),
       );
 }

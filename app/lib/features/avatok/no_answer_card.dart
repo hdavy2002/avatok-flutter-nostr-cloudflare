@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/avatar.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine_widgets.dart';
 
 /// [DIALPAD-BIZ-CALLS] Phone-style "No answer" card shown to the CALLER when an
@@ -45,7 +45,10 @@ class NoAnswerCard extends StatelessWidget {
     final displayName = name.trim().isEmpty ? 'They' : name.trim();
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 380),
-      child: ZineCard(
+      child: AdCard(
+        color: AD.card,
+        radius: AD.rDialog,
+        boxShadow: AD.dialogShadow,
         padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -53,47 +56,53 @@ class NoAnswerCard extends StatelessWidget {
           children: [
             Center(
               child: Container(
-                decoration: BoxDecoration(shape: BoxShape.circle, border: Zine.border),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AD.borderAvatar, width: 2),
+                ),
                 child: Avatar(seed: seed, name: displayName, size: 88,
                     avatarUrl: avatarUrl.isEmpty ? null : avatarUrl),
               ),
             ),
             const SizedBox(height: 14),
-            Text('$displayName didn’t answer', textAlign: TextAlign.center, style: ZineText.hero(size: 22)),
+            Text('$displayName didn’t answer',
+                textAlign: TextAlign.center, style: ADText.appTitle()),
             const SizedBox(height: 6),
-            Text('No answer', textAlign: TextAlign.center, style: ZineText.sub(size: 14.5)),
+            Text('No answer',
+                textAlign: TextAlign.center,
+                style: ADText.preview(c: AD.textSecondary)),
             const SizedBox(height: 22),
-            ZineButton(
+            _adPillButton(
               label: 'Call again',
-              variant: ZineButtonVariant.blue,
-              fullWidth: true,
+              fill: AD.primaryBadge,
               fontSize: 16,
               onPressed: onCallAgain,
             ),
             const SizedBox(height: 10),
             Tooltip(
               message: voicemailAvailable ? '' : 'Voicemail is coming soon',
-              child: ZineButton(
+              child: _adPillButton(
                 label: 'Leave a voicemail',
-                variant: ZineButtonVariant.lime,
-                fullWidth: true,
+                fill: AD.incomingCall,
                 fontSize: 16,
                 onPressed: voicemailAvailable ? onLeaveVoicemail : null,
               ),
             ),
             const SizedBox(height: 10),
-            ZineButton(
+            _adPillButton(
               label: 'Save contact',
-              variant: ZineButtonVariant.ghost,
-              fullWidth: true,
+              fill: AD.card,
+              border: AD.borderControl,
+              textColor: AD.textPrimary,
               fontSize: 16,
               onPressed: onSaveContact,
             ),
             const SizedBox(height: 10),
-            ZineButton(
+            _adPillButton(
               label: 'Close',
-              variant: ZineButtonVariant.ghost,
-              fullWidth: true,
+              fill: AD.card,
+              border: AD.borderControl,
+              textColor: AD.textPrimary,
               fontSize: 15,
               onPressed: onClose,
             ),
@@ -102,4 +111,57 @@ class NoAnswerCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Dark v2 pill button — the AD-themed replacement for the light [ZineButton]
+/// fills these call-outcome cards used. Visual-only: it keeps the same
+/// label / onPressed / loading contract, recolored to the AvaTOK dark tokens
+/// with soft (no hard-offset) elevation. Disabled (onPressed == null or
+/// loading) renders on the card surface with tertiary ink and a hairline
+/// control border.
+Widget _adPillButton({
+  required String label,
+  required VoidCallback? onPressed,
+  Color fill = AD.card,
+  Color? border,
+  Color textColor = Colors.white,
+  bool loading = false,
+  double fontSize = 16,
+}) {
+  final bool disabled = onPressed == null || loading;
+  final Color bg = disabled ? AD.card : fill;
+  final Color fg = disabled ? AD.textTertiary : textColor;
+  final Color bc = disabled ? AD.borderControl : (border ?? fill);
+  return ZinePressable(
+    onTap: loading ? null : onPressed,
+    color: bg,
+    pressedColor: bg,
+    borderColor: bc,
+    borderWidth: 1,
+    boxShadow: const <BoxShadow>[],
+    radius: BorderRadius.circular(100),
+    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+    child: Row(
+      mainAxisSize: MainAxisSize.max,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        if (loading)
+          SizedBox(
+            width: fontSize + 2,
+            height: fontSize + 2,
+            child: CircularProgressIndicator(strokeWidth: 2.6, color: fg),
+          )
+        else
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: ADText.rowName(c: fg).copyWith(fontSize: fontSize),
+            ),
+          ),
+      ],
+    ),
+  );
 }

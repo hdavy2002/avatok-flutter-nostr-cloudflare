@@ -16,7 +16,7 @@ import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 
 import '../../core/analytics.dart';
 import '../../core/ava_log.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../messaging/widgets/media_download_placeholder.dart';
 import 'media.dart';
 
@@ -102,7 +102,7 @@ class ChatLinkText extends StatelessWidget {
     final spans = urlSpans(text);
     if (spans.isEmpty) return Text(text, style: style);
     final linkStyle = style.copyWith(
-      color: Zine.blueInk,
+      color: AD.iconSearch,
       decoration: TextDecoration.underline,
     );
     final children = <InlineSpan>[];
@@ -193,8 +193,9 @@ class _VoiceNoteBubbleState extends State<VoiceNoteBubble> {
   @override
   Widget build(BuildContext context) {
     final active = widget.playing;
-    final barPlayed = widget.onRight ? Zine.ink : Zine.blueInk;
-    final barIdle = Zine.ink.withValues(alpha: 0.28);
+    final barPlayed = widget.onRight ? AD.bubbleOutPlay : AD.bubbleInPlay;
+    final barIdle =
+        (widget.onRight ? AD.bubbleOutMeta : AD.bubbleInMeta).withValues(alpha: 0.4);
     return Row(mainAxisSize: MainAxisSize.min, children: [
       // LARGE circular play/pause — 44dp touch target.
       GestureDetector(
@@ -204,10 +205,10 @@ class _VoiceNoteBubbleState extends State<VoiceNoteBubble> {
           width: 44,
           height: 44,
           decoration: BoxDecoration(
-            color: Zine.lime,
+            color: widget.onRight ? AD.bubbleOutPlay : AD.bubbleInPlay,
             shape: BoxShape.circle,
-            border: Border.all(color: Zine.ink, width: 2.5),
-            boxShadow: Zine.shadowXs,
+            border: Border.all(color: AD.borderControl, width: 1),
+            boxShadow: const [],
           ),
           child: Center(
             child: PhosphorIcon(
@@ -215,7 +216,7 @@ class _VoiceNoteBubbleState extends State<VoiceNoteBubble> {
                   ? PhosphorIcons.pause(PhosphorIconsStyle.fill)
                   : PhosphorIcons.play(PhosphorIconsStyle.fill),
               size: 20,
-              color: Zine.ink,
+              color: Colors.white,
             ),
           ),
         ),
@@ -247,7 +248,8 @@ class _VoiceNoteBubbleState extends State<VoiceNoteBubble> {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Text(active ? _durLabel : 'Voice',
-              style: ZineText.tag(size: 11, color: Zine.inkSoft)),
+              style: ADText.bubbleMeta(
+                  c: widget.onRight ? AD.bubbleOutMeta : AD.bubbleInMeta)),
           // Speed chip — only after playback has started.
           if (active) ...[
             const SizedBox(height: 3),
@@ -256,15 +258,20 @@ class _VoiceNoteBubbleState extends State<VoiceNoteBubble> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                 decoration: BoxDecoration(
-                  color: Zine.card,
+                  color: (widget.onRight ? AD.bubbleOutInk : AD.bubbleInInk)
+                      .withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(100),
-                  border: Border.all(color: Zine.ink, width: 1.5),
+                  border: Border.all(
+                      color: (widget.onRight ? AD.bubbleOutInk : AD.bubbleInInk)
+                          .withValues(alpha: 0.30),
+                      width: 1),
                 ),
                 child: Text(
                   widget.speed == 1.0
                       ? '1x'
                       : (widget.speed == 1.5 ? '1.5x' : '2x'),
-                  style: ZineText.tag(size: 9.5, color: Zine.ink),
+                  style: ADText.bubbleMeta(
+                      c: widget.onRight ? AD.bubbleOutInk : AD.bubbleInInk),
                 ),
               ),
             ),
@@ -299,7 +306,7 @@ class MediaTimestampScrim extends StatelessWidget {
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [Colors.transparent, Zine.ink.withValues(alpha: 0.55)],
+              colors: [Colors.transparent, Colors.black.withValues(alpha: 0.55)],
             ),
           ),
           child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [trailing]),
@@ -317,14 +324,14 @@ class MediaForwardedLabel extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
           decoration: BoxDecoration(
-            color: Zine.ink.withValues(alpha: 0.6),
+            color: Colors.black.withValues(alpha: 0.6),
             borderRadius: BorderRadius.circular(100),
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             PhosphorIcon(PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold),
                 size: 11, color: Colors.white),
             const SizedBox(width: 3),
-            Text('FORWARDED', style: ZineText.tag(size: 8.5, color: Colors.white)),
+            Text('FORWARDED', style: ADText.statCaption(c: Colors.white)),
           ]),
         ),
       );
@@ -572,7 +579,7 @@ class _ChatVideoCardState extends State<ChatVideoCard> {
             Container(
               width: widget.width,
               height: widget.width * 9 / 16,
-              color: Zine.ink,
+              color: AD.card,
               alignment: Alignment.center,
               child: _thumbTried
                   ? PhosphorIcon(PhosphorIcons.filmSlate(PhosphorIconsStyle.fill),
@@ -603,28 +610,28 @@ class _ChatVideoCardState extends State<ChatVideoCard> {
         width: 52,
         height: 52,
         decoration: BoxDecoration(
-          color: Zine.lime,
+          color: AD.bubbleOutPlay,
           shape: BoxShape.circle,
-          border: Border.all(color: Zine.ink, width: 2.5),
-          boxShadow: Zine.shadowXs,
+          border: Border.all(color: Colors.white, width: 2),
+          boxShadow: const [],
         ),
         child: Center(
           child: PhosphorIcon(PhosphorIcons.play(PhosphorIconsStyle.fill),
-              size: 22, color: Zine.ink),
+              size: 22, color: Colors.white),
         ),
       );
 
   Widget _pill(IconData icon, {String? label}) => Container(
         padding: EdgeInsets.symmetric(horizontal: label == null ? 6 : 8, vertical: 4),
         decoration: BoxDecoration(
-          color: Zine.ink.withValues(alpha: 0.6),
+          color: Colors.black.withValues(alpha: 0.6),
           borderRadius: BorderRadius.circular(100),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(icon, size: 13, color: Colors.white),
           if (label != null) ...[
             const SizedBox(width: 4),
-            Text(label, style: ZineText.tag(size: 9, color: Colors.white)),
+            Text(label, style: ADText.statCaption(c: Colors.white)),
           ],
         ]),
       );
@@ -734,9 +741,9 @@ class _ChatFileCardState extends State<ChatFileCard> {
       return (icon: PhosphorIcons.fileAudio(PhosphorIconsStyle.fill), color: const Color(0xFFB83280), label: ext.isEmpty ? 'AUDIO' : ext);
     }
     if (n.endsWith('.txt') || n.endsWith('.md') || m.startsWith('text/')) {
-      return (icon: PhosphorIcons.fileText(PhosphorIconsStyle.fill), color: Zine.ink, label: ext.isEmpty ? 'TXT' : ext);
+      return (icon: PhosphorIcons.fileText(PhosphorIconsStyle.fill), color: AD.textSecondary, label: ext.isEmpty ? 'TXT' : ext);
     }
-    return (icon: PhosphorIcons.file(PhosphorIconsStyle.fill), color: Zine.ink, label: ext.isEmpty ? 'FILE' : ext);
+    return (icon: PhosphorIcons.file(PhosphorIconsStyle.fill), color: AD.textSecondary, label: ext.isEmpty ? 'FILE' : ext);
   }
 
   @override
@@ -759,7 +766,7 @@ class _ChatFileCardState extends State<ChatFileCard> {
               bottom: 0,
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                color: Zine.ink.withValues(alpha: 0.62),
+                color: Colors.black.withValues(alpha: 0.62),
                 child: Row(children: [
                   Icon(info.icon, size: 16, color: Colors.white),
                   const SizedBox(width: 6),
@@ -767,11 +774,11 @@ class _ChatFileCardState extends State<ChatFileCard> {
                     child: Text(widget.name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: ZineText.tag(size: 11, color: Colors.white)),
+                        style: ADText.preview(c: Colors.white)),
                   ),
                   if (sizeLabel.isNotEmpty) ...[
                     const SizedBox(width: 6),
-                    Text(sizeLabel, style: ZineText.tag(size: 9.5, color: Colors.white)),
+                    Text(sizeLabel, style: ADText.statCaption(c: Colors.white)),
                   ],
                 ]),
               ),
@@ -788,9 +795,9 @@ class _ChatFileCardState extends State<ChatFileCard> {
         width: widget.width,
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: Zine.paper2,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Zine.ink, width: 1.5),
+          color: AD.card,
+          borderRadius: BorderRadius.circular(AD.rListCard),
+          border: Border.all(color: AD.borderControl, width: 1),
         ),
         child: Row(children: [
           Container(
@@ -798,8 +805,8 @@ class _ChatFileCardState extends State<ChatFileCard> {
             height: 52,
             decoration: BoxDecoration(
               color: info.color.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(9),
-              border: Border.all(color: info.color, width: 1.5),
+              borderRadius: BorderRadius.circular(AD.rBadge),
+              border: Border.all(color: info.color, width: 1),
             ),
             child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
               Icon(info.icon, size: 22, color: info.color),
@@ -807,7 +814,7 @@ class _ChatFileCardState extends State<ChatFileCard> {
               Text(info.label,
                   maxLines: 1,
                   overflow: TextOverflow.clip,
-                  style: ZineText.tag(size: 7.5, color: info.color)),
+                  style: ADText.statCaption(c: info.color)),
             ]),
           ),
           const SizedBox(width: 10),
@@ -819,16 +826,16 @@ class _ChatFileCardState extends State<ChatFileCard> {
                 Text(widget.name,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: ZineText.value(size: 13)),
+                    style: ADText.rowName()),
                 const SizedBox(height: 3),
                 Row(children: [
                   if (sizeLabel.isNotEmpty)
-                    Text(sizeLabel, style: ZineText.tag(size: 10, color: Zine.inkSoft)),
+                    Text(sizeLabel, style: ADText.statCaption(c: AD.textSecondary)),
                   if (sizeLabel.isNotEmpty) const SizedBox(width: 8),
                   PhosphorIcon(PhosphorIcons.downloadSimple(PhosphorIconsStyle.bold),
-                      size: 13, color: Zine.blueInk),
+                      size: 13, color: AD.iconSearch),
                   const SizedBox(width: 3),
-                  Text('OPEN', style: ZineText.tag(size: 9.5, color: Zine.blueInk)),
+                  Text('OPEN', style: ADText.statCaption(c: AD.iconSearch)),
                 ]),
               ],
             ),
@@ -919,9 +926,9 @@ class _YouTubeCardState extends State<YouTubeCard> {
     return Container(
       width: widget.width,
       decoration: BoxDecoration(
-        color: Zine.paper2,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Zine.ink, width: 1.5),
+        color: AD.card,
+        borderRadius: BorderRadius.circular(AD.rListCard),
+        border: Border.all(color: AD.borderControl, width: 1),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -936,17 +943,17 @@ class _YouTubeCardState extends State<YouTubeCard> {
                 Image.network(
                   'https://img.youtube.com/vi/${widget.videoId}/hqdefault.jpg',
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(color: Zine.ink),
+                  errorBuilder: (_, __, ___) => Container(color: AD.card),
                 ),
-                Container(color: Zine.ink.withValues(alpha: 0.12)),
+                Container(color: Colors.black.withValues(alpha: 0.12)),
                 Container(
                   width: 56,
                   height: 56,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFF0000),
+                    color: AD.brandYoutube,
                     shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2.5),
-                    boxShadow: Zine.shadowXs,
+                    border: Border.all(color: Colors.white, width: 2),
+                    boxShadow: const [],
                   ),
                   child: const Icon(Icons.play_arrow, color: Colors.white, size: 30),
                 ),
@@ -956,10 +963,10 @@ class _YouTubeCardState extends State<YouTubeCard> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                     decoration: BoxDecoration(
-                      color: Zine.ink.withValues(alpha: 0.7),
+                      color: Colors.black.withValues(alpha: 0.7),
                       borderRadius: BorderRadius.circular(100),
                     ),
-                    child: Text('YOUTUBE', style: ZineText.tag(size: 8.5, color: Colors.white)),
+                    child: Text('YOUTUBE', style: ADText.statCaption(c: Colors.white)),
                   ),
                 ),
               ]),
@@ -972,12 +979,12 @@ class _YouTubeCardState extends State<YouTubeCard> {
               _loadingMeta ? 'YouTube video' : (_title?.isNotEmpty == true ? _title! : 'YouTube video'),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: ZineText.value(size: 13),
+              style: ADText.rowName(),
             ),
             if (_author?.isNotEmpty == true) ...[
               const SizedBox(height: 2),
               Text(_author!, maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: ZineText.tag(size: 10, color: Zine.inkSoft)),
+                  style: ADText.statCaption(c: AD.textSecondary)),
             ],
           ]),
         ),

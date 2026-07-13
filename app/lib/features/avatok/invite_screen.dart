@@ -10,8 +10,7 @@ import '../../core/avatar.dart';
 import '../../core/db.dart';
 import '../../core/device_contacts.dart';
 import '../../core/profile_store.dart';
-import '../../core/ui/zine.dart';
-import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/avatok_dark.dart';
 
 /// AvaInvite — "invite your phone contacts to AvaTOK".
 ///
@@ -201,28 +200,29 @@ class _InviteScreenState extends State<InviteScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       body: SafeArea(
+        bottom: false,
         child: Column(children: [
           Container(
             decoration: const BoxDecoration(
-              color: Zine.paper2,
-              border: Border(bottom: BorderSide(color: Zine.ink, width: Zine.bw)),
+              color: AD.headerFooter,
+              border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
             ),
-            padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+            padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
             child: Column(children: [
               Row(children: [
-                const ZineBackButton(),
-                const SizedBox(width: 12),
-                Expanded(child: Text('Invite friends', style: ZineText.appbar())),
+                _backButton(context),
+                const SizedBox(width: 6),
+                Expanded(child: Text('Invite friends', style: ADText.appTitle())),
                 if (_refreshing)
-                  const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                  const SizedBox(width: 16, height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: AD.iconSearch)),
               ]),
               const SizedBox(height: 12),
-              ZineField(
+              _searchDock(
                 controller: _searchCtrl,
                 hint: 'Search by name',
-                leadIcon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
                 onChanged: (v) => setState(() => _query = v),
               ),
             ]),
@@ -232,6 +232,55 @@ class _InviteScreenState extends State<InviteScreen> {
       ),
     );
   }
+
+  /// Circular back button (inline dark v2 replacement for ZineBackButton).
+  Widget _backButton(BuildContext context) => GestureDetector(
+        onTap: () => Navigator.of(context).maybePop(),
+        child: Container(
+          width: 38, height: 38,
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(AD.rIconButton)),
+          child: const Icon(Icons.arrow_back_rounded, size: 22, color: AD.textPrimary),
+        ),
+      );
+
+  /// White search dock — dark ink text on a white field, mirrors the dark v2
+  /// search idiom. Keeps controller / onChanged wiring intact.
+  Widget _searchDock({
+    required TextEditingController controller,
+    required String hint,
+    required ValueChanged<String> onChanged,
+    bool autofocus = false,
+    Widget? trailing,
+  }) =>
+      Container(
+        decoration: BoxDecoration(
+          color: AD.inputField,
+          borderRadius: BorderRadius.circular(AD.rInput),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Row(children: [
+          PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
+              size: 18, color: AD.iconSearch),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              controller: controller,
+              autofocus: autofocus,
+              onChanged: onChanged,
+              cursorColor: AD.iconSearch,
+              style: ADText.rowName(c: AD.textOnInput),
+              decoration: InputDecoration(
+                isDense: true,
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(vertical: 13),
+                hintText: hint,
+                hintStyle: ADText.preview(c: AD.placeholderOnWhite),
+              ),
+            ),
+          ),
+          if (trailing != null) trailing,
+        ]),
+      );
 
   Widget _body() {
     if (_softAsk && _all.isEmpty) {
@@ -251,7 +300,8 @@ class _InviteScreenState extends State<InviteScreen> {
       );
     }
     if (!_loaded) {
-      return const Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)));
+      return const Center(child: SizedBox(width: 22, height: 22,
+          child: CircularProgressIndicator(strokeWidth: 2, color: AD.iconSearch)));
     }
     final items = _filtered;
     if (items.isEmpty) {
@@ -259,7 +309,7 @@ class _InviteScreenState extends State<InviteScreen> {
           _query.trim().isEmpty
               ? (_refreshing ? 'Loading your contacts…' : 'No contacts found on your phone')
               : 'No matches',
-          style: ZineText.sub(size: 13)));
+          style: ADText.preview(c: AD.textSecondary)));
     }
     return ListView.separated(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -273,12 +323,12 @@ class _InviteScreenState extends State<InviteScreen> {
         padding: const EdgeInsets.symmetric(vertical: 6),
         child: Row(children: [
           Container(
-            decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Zine.ink, width: 2)),
+            decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: AD.borderAvatar, width: 2)),
             child: Avatar(seed: c.id, name: c.name, size: 42),
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(c.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.value(size: 15)),
+            child: Text(c.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.rowName()),
           ),
           const SizedBox(width: 8),
           _channels(c),
@@ -296,13 +346,13 @@ class _InviteScreenState extends State<InviteScreen> {
       ),
       _channelBtn(
         icon: PhosphorIcons.chatCircleText(PhosphorIconsStyle.fill),
-        color: Zine.blue,
+        color: AD.iconSearch,
         sent: _isSent(c, 'sms'),
         onTap: () => _sms(c),
       ),
       _channelBtn(
         icon: PhosphorIcons.envelopeSimple(PhosphorIconsStyle.fill),
-        color: Zine.lilac,
+        color: AD.iconVideo,
         sent: _isSent(c, 'email'),
         busy: sendingEmail,
         sentLabel: 'Email Sent',
@@ -327,9 +377,9 @@ class _InviteScreenState extends State<InviteScreen> {
           height: 14,
           child: sent
               ? Row(mainAxisSize: MainAxisSize.min, children: [
-                  PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold), size: 9, color: Zine.mintInk),
+                  PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold), size: 9, color: AD.online),
                   const SizedBox(width: 2),
-                  Text(sentLabel, style: ZineText.tag(size: 8.5).copyWith(color: Zine.mintInk)),
+                  Text(sentLabel, style: ADText.statCaption(c: AD.online)),
                 ])
               : null,
         ),
@@ -343,13 +393,12 @@ class _InviteScreenState extends State<InviteScreen> {
               decoration: BoxDecoration(
                 color: color,
                 shape: BoxShape.circle,
-                border: Border.all(color: Zine.ink, width: 2),
-                boxShadow: Zine.shadowXs,
+                border: Border.all(color: AD.borderControl, width: 1),
               ),
               child: busy
                   ? const Padding(padding: EdgeInsets.all(11),
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Zine.ink))
-                  : PhosphorIcon(icon, size: 19, color: Zine.ink),
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : PhosphorIcon(icon, size: 19, color: Colors.white),
             ),
           ),
         ),
@@ -362,15 +411,29 @@ class _InviteScreenState extends State<InviteScreen> {
       child: Padding(
         padding: const EdgeInsets.all(28),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          PhosphorIcon(PhosphorIcons.addressBook(PhosphorIconsStyle.bold), size: 48, color: Zine.ink),
+          PhosphorIcon(PhosphorIcons.addressBook(PhosphorIconsStyle.bold), size: 48, color: AD.textTertiary),
           const SizedBox(height: 16),
-          Text(title, textAlign: TextAlign.center, style: ZineText.cardTitle(size: 19)),
+          Text(title, textAlign: TextAlign.center, style: ADText.threadName()),
           const SizedBox(height: 8),
-          Text(body, textAlign: TextAlign.center, style: ZineText.sub(size: 13.5)),
+          Text(body, textAlign: TextAlign.center, style: ADText.preview(c: AD.textSecondary)),
           const SizedBox(height: 20),
-          ZineButton(label: cta, onPressed: _allowContacts),
+          _ctaButton(label: cta, onPressed: _allowContacts),
         ]),
       ),
     );
   }
+
+  /// Inline dark v2 primary button (replaces ZineButton).
+  Widget _ctaButton({required String label, required VoidCallback onPressed}) =>
+      GestureDetector(
+        onTap: onPressed,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 13),
+          decoration: BoxDecoration(
+            color: AD.primaryBadge,
+            borderRadius: BorderRadius.circular(100),
+          ),
+          child: Text(label, style: ADText.rowName()),
+        ),
+      );
 }

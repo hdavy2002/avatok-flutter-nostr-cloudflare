@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
 
 /// Live-location shared state for ONE live-share bubble (WhatsApp-style).
 ///
@@ -105,7 +105,7 @@ class LiveMapView extends StatelessWidget {
     required this.height,
     this.zoom = 15,
     this.showPin = true,
-    this.pinColor = Zine.coral,
+    this.pinColor = AD.danger,
     this.radius = 12,
   });
 
@@ -164,7 +164,7 @@ class LiveMapView extends StatelessWidget {
         width: width,
         height: height,
         decoration: BoxDecoration(
-          border: Border.all(color: Zine.ink, width: 2),
+          border: Border.all(color: AD.borderControl, width: 1),
           borderRadius: BorderRadius.circular(radius),
         ),
         child: Stack(
@@ -228,11 +228,11 @@ class LiveMapScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       appBar: AppBar(
-        backgroundColor: Zine.paper,
+        backgroundColor: AD.headerFooter,
         elevation: 0,
-        title: Text(title, style: ZineText.cardTitle(size: 18)),
+        title: Text(title, style: ADText.threadName()),
       ),
       body: AnimatedBuilder(
         animation: session,
@@ -279,11 +279,11 @@ class LiveMapScreen extends StatelessWidget {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(session.statusLabel(),
-                              style: ZineText.value(size: 14)),
+                              style: ADText.rowName()),
                         ),
                         if (session.speed != null && session.isActive)
                           Text('${(session.speed! * 3.6).toStringAsFixed(0)} km/h',
-                              style: ZineText.tag(size: 11, color: Zine.inkSoft)),
+                              style: ADText.statCaption(c: AD.textSecondary)),
                       ]),
                       const SizedBox(height: 12),
                       Row(children: [
@@ -306,7 +306,7 @@ class LiveMapScreen extends StatelessWidget {
                           Expanded(
                             child: FilledButton.icon(
                               style: FilledButton.styleFrom(
-                                  backgroundColor: Zine.coral),
+                                  backgroundColor: AD.destructiveBg),
                               onPressed: () {
                                 onStop!.call();
                                 Navigator.maybePop(context);
@@ -355,11 +355,11 @@ class _LiveDotState extends State<_LiveDot>
   @override
   Widget build(BuildContext context) {
     if (!widget.active) {
-      return Icon(Icons.circle, size: 11, color: Zine.inkSoft);
+      return Icon(Icons.circle, size: 11, color: AD.textSecondary);
     }
     return FadeTransition(
       opacity: Tween(begin: 0.35, end: 1.0).animate(_c),
-      child: const Icon(Icons.circle, size: 11, color: Color(0xFF2ECC71)),
+      child: const Icon(Icons.circle, size: 11, color: AD.online),
     );
   }
 }

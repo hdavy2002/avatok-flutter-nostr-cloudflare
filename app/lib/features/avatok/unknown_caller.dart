@@ -4,8 +4,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/device_contacts.dart';
-import '../../core/ui/zine.dart';
-import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/avatok_dark.dart';
 import 'contacts.dart';
 
 /// Helpers + UI for "unknown number" threads — a caller the AI Receptionist
@@ -112,10 +111,10 @@ Future<Contact?> showSavePhoneContactSheet(
   return showModalBottomSheet<Contact>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: Zine.paper,
+    backgroundColor: AD.overlaySheet,
     shape: const RoundedRectangleBorder(
-        side: BorderSide(color: Zine.ink, width: Zine.bw),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(26))),
+        side: BorderSide(color: AD.borderControl, width: 1),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AD.rSheet))),
     builder: (_) => _SavePhoneContactSheet(phone: phone, presetName: presetName, source: source),
   );
 }
@@ -192,13 +191,13 @@ class _SavePhoneContactSheetState extends State<_SavePhoneContactSheet> {
             Center(
               child: Container(
                 width: 44, height: 5, margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(color: Zine.inkMute, borderRadius: BorderRadius.circular(100)),
+                decoration: BoxDecoration(color: AD.textFaint, borderRadius: BorderRadius.circular(100)),
               ),
             ),
-            Text('Save to contacts', style: ZineText.cardTitle(size: 22)),
+            Text('Save to contacts', style: ADText.appTitle()),
             const SizedBox(height: 4),
             Text('Add this caller to your AvaTOK contacts so the thread shows their name.',
-                style: ZineText.sub(size: 12.5)),
+                style: ADText.preview()),
             const SizedBox(height: 16),
             Row(children: [
               Avatar(seed: telNpub(widget.phone), name: pretty, size: 44),
@@ -206,16 +205,16 @@ class _SavePhoneContactSheetState extends State<_SavePhoneContactSheet> {
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Row(children: [
-                    Icon(Icons.phone, size: 14, color: Zine.inkSoft),
+                    Icon(Icons.phone, size: 14, color: AD.iconPhone),
                     const SizedBox(width: 5),
-                    Flexible(child: Text(pretty, style: ZineText.value(size: 15))),
+                    Flexible(child: Text(pretty, style: ADText.threadName())),
                   ]),
-                  Text('Not on AvaTOK', style: ZineText.tag(size: 10.5, color: Zine.inkMute)),
+                  Text('Not on AvaTOK', style: ADText.statCaption()),
                 ]),
               ),
             ]),
             const SizedBox(height: 14),
-            ZineField(
+            AdField(
               controller: _name,
               hint: 'Name (optional)',
               leadIcon: PhosphorIcons.user(PhosphorIconsStyle.bold),
@@ -227,13 +226,13 @@ class _SavePhoneContactSheetState extends State<_SavePhoneContactSheet> {
               onTap: () => setState(() => _alsoDevice = !_alsoDevice),
               child: Row(children: [
                 Icon(_alsoDevice ? Icons.check_box : Icons.check_box_outline_blank,
-                    size: 20, color: _alsoDevice ? Zine.mintInk : Zine.inkMute),
+                    size: 20, color: _alsoDevice ? AD.online : AD.textTertiary),
                 const SizedBox(width: 8),
-                Text('Also save to my phone contacts', style: ZineText.sub(size: 13)),
+                Text('Also save to my phone contacts', style: ADText.preview()),
               ]),
             ),
             const SizedBox(height: 16),
-            ZineButton(
+            AdButton(
               label: _saving ? 'Saving…' : 'Save contact',
               onPressed: _saving ? null : _save,
               loading: _saving,

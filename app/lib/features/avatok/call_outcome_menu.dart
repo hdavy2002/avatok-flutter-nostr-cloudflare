@@ -10,8 +10,7 @@ import 'package:record/record.dart';
 import '../../core/calls/call_session.dart';
 import '../../core/db.dart';
 import '../../core/receptionist_api.dart';
-import '../../core/ui/zine.dart';
-import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../sync/outbox.dart';
 import 'media.dart';
 
@@ -206,17 +205,23 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
     if (_sent) {
       return ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 380),
-        child: ZineCard(
+        child: AdCard(
+          color: AD.popover,
+          radius: AD.rDialog,
+          boxShadow: const [],
           padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
           child: Text('Sent — $_first will see it',
-              textAlign: TextAlign.center, style: ZineText.hero(size: 20)),
+              textAlign: TextAlign.center, style: ADText.appTitle()),
         ),
       );
     }
     final header = s.statusText;
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 380),
-      child: ZineCard(
+      child: AdCard(
+        color: AD.popover,
+        radius: AD.rDialog,
+        boxShadow: const [],
         padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -227,20 +232,20 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
             Text(header,
                 textAlign: TextAlign.center,
                 style: _isBusy
-                    ? ZineText.hero(size: 21).copyWith(color: const Color(0xFFD32F2F))
-                    : ZineText.hero(size: 21)),
+                    ? ADText.appTitle(c: AD.missedCall)
+                    : ADText.appTitle()),
             const SizedBox(height: 8),
             Text("Here's what you can do:",
-                textAlign: TextAlign.center, style: ZineText.sub(size: 14.5)),
+                textAlign: TextAlign.center, style: ADText.preview()),
             const SizedBox(height: 18),
 
             // 1) Talk to Ava — audio calls only; greyed at the daily cap.
             if (!s.video) ...[
-              ZineButton(
+              AdButton(
                 label: _avaCapped
                     ? 'Talk to Ava — daily limit reached'
                     : 'Talk to Ava',
-                variant: ZineButtonVariant.lime,
+                variant: AdButtonVariant.primary,
                 fullWidth: true,
                 fontSize: 16,
                 onPressed: (!_avaAvailable || _avaCapped || _sending || _recording)
@@ -254,11 +259,11 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
             ],
 
             // 2) Voice note — records in place; tap again to stop & send.
-            ZineButton(
+            AdButton(
               label: _recording
                   ? 'Recording ${_fmtRec(_recSecs)} — tap to send'
                   : 'Leave a voice note',
-              variant: ZineButtonVariant.blue,
+              variant: AdButtonVariant.teal,
               fullWidth: true,
               fontSize: 16,
               loading: _sending && !_textOpen,
@@ -267,9 +272,9 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
             const SizedBox(height: 10),
 
             // 3) Text note — a box slides open underneath.
-            ZineButton(
+            AdButton(
               label: 'Leave a text note',
-              variant: ZineButtonVariant.blue,
+              variant: AdButtonVariant.teal,
               fullWidth: true,
               fontSize: 16,
               onPressed: (_sending || _recording)
@@ -285,18 +290,34 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
                 maxLines: 4,
                 textInputAction: TextInputAction.send,
                 onSubmitted: (_) => _sendText(),
+                style: ADText.bubbleBody(),
+                cursorColor: AD.iconSearch,
                 decoration: InputDecoration(
                   hintText: 'Write a quick note for $_first…',
-                  border: const OutlineInputBorder(),
+                  hintStyle: ADText.preview(c: AD.textTertiary),
+                  filled: true,
+                  fillColor: AD.card,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AD.rInput),
+                    borderSide: BorderSide(color: AD.borderControl),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AD.rInput),
+                    borderSide: BorderSide(color: AD.borderControl),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AD.rInput),
+                    borderSide: BorderSide(color: AD.iconSearch),
+                  ),
                   isDense: true,
                   contentPadding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 ),
               ),
               const SizedBox(height: 8),
-              ZineButton(
+              AdButton(
                 label: 'Send note',
-                variant: ZineButtonVariant.lime,
+                variant: AdButtonVariant.primary,
                 fullWidth: true,
                 fontSize: 15,
                 loading: _sending && _textOpen,
@@ -308,9 +329,9 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
             // 4) See Listings — intentionally NOT rendered yet: gated behind
             // callMenuListingsEnabled (false until the marketplace goes public).
 
-            ZineButton(
+            AdButton(
               label: 'Close',
-              variant: ZineButtonVariant.ghost,
+              variant: AdButtonVariant.ghost,
               fullWidth: true,
               fontSize: 16,
               onPressed: _sending

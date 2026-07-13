@@ -10,7 +10,7 @@ import '../../core/config.dart';
 import '../../core/paid_call_api.dart';
 import '../../core/profile_store.dart';
 import '../../core/ringback_player.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
 import 'call_screen.dart';
 import 'paid_busy_card.dart';
 
@@ -143,7 +143,7 @@ Future<void> place1to1Call(
     await Navigator.push(context, MaterialPageRoute(
       fullscreenDialog: true,
       builder: (dialogCtx) => Scaffold(
-        backgroundColor: Zine.paper,
+        backgroundColor: AD.bg,
         body: SafeArea(
           child: Center(
             child: Padding(

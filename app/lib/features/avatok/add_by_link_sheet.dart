@@ -4,8 +4,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/avatar.dart';
-import '../../core/ui/zine.dart';
-import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/avatok_dark.dart';
 import 'ava_number.dart';
 import 'contacts.dart';
 
@@ -22,10 +21,10 @@ Future<Contact?> showAddByLinkSheet(BuildContext context, {String? token}) {
   return showModalBottomSheet<Contact>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: Zine.paper,
+    backgroundColor: AD.overlaySheet,
     shape: const RoundedRectangleBorder(
-        side: BorderSide(color: Zine.ink, width: Zine.bw),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(26))),
+        side: BorderSide(color: AD.borderControl, width: 1),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AD.rSheet))),
     builder: (_) => _AddByLinkSheet(initialToken: token),
   );
 }
@@ -108,32 +107,54 @@ class _AddByLinkSheetState extends State<_AddByLinkSheet> {
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Center(child: Container(
             width: 44, height: 5, margin: const EdgeInsets.only(bottom: 16),
-            decoration: BoxDecoration(color: Zine.inkMute, borderRadius: BorderRadius.circular(100)))),
-          Text('Add by QR link', style: ZineText.cardTitle(size: 22)),
+            decoration: BoxDecoration(color: AD.textFaint, borderRadius: BorderRadius.circular(100)))),
+          Text('Add by QR link', style: ADText.appTitle()),
           const SizedBox(height: 4),
-          Text('Paste an AvaTOK add link, or scan a code that opens it.', style: ZineText.sub(size: 12.5)),
+          Text('Paste an AvaTOK add link, or scan a code that opens it.', style: ADText.preview()),
           const SizedBox(height: 14),
           if (_card == null) ...[
-            ZineField(
-              controller: _linkCtrl,
-              hint: 'avatok.ai/add?t=…',
-              leadIcon: PhosphorIcons.link(PhosphorIconsStyle.bold),
-              error: _error != null,
-              onSubmitted: (_) => _resolve(),
-              trailing: TextButton(
-                onPressed: () async {
-                  final data = await Clipboard.getData('text/plain');
-                  if (data?.text != null) { _linkCtrl.text = data!.text!; setState(() {}); }
-                },
-                child: Text('Paste', style: ZineText.button(size: 13, color: Zine.blue)),
+            // White dark-v2 link field with a Paste action.
+            Container(
+              decoration: BoxDecoration(
+                color: AD.inputField,
+                borderRadius: BorderRadius.circular(AD.rInput),
+                border: _error != null ? Border.all(color: AD.danger, width: 1.5) : null,
               ),
+              padding: const EdgeInsets.only(left: 14, right: 4),
+              child: Row(children: [
+                PhosphorIcon(PhosphorIcons.link(PhosphorIconsStyle.bold),
+                    size: 18, color: AD.placeholderOnWhite),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextField(
+                    controller: _linkCtrl,
+                    cursorColor: AD.primaryBadge,
+                    style: ADText.rowName(c: AD.textOnInput),
+                    onSubmitted: (_) => _resolve(),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      border: InputBorder.none,
+                      hintText: 'avatok.ai/add?t=…',
+                      hintStyle: ADText.rowName(c: AD.placeholderOnWhite),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 15),
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    final data = await Clipboard.getData('text/plain');
+                    if (data?.text != null) { _linkCtrl.text = data!.text!; setState(() {}); }
+                  },
+                  child: Text('Paste', style: ADText.rowName(c: AD.iconClipOnWhite)),
+                ),
+              ]),
             ),
-            if (_error != null) Padding(padding: const EdgeInsets.only(top: 6), child: Text(_error!, style: ZineText.sub(size: 12, color: Zine.coral))),
+            if (_error != null) Padding(padding: const EdgeInsets.only(top: 6), child: Text(_error!, style: ADText.preview(c: AD.danger))),
             const SizedBox(height: 14),
-            ZineButton(
+            _PrimaryButton(
               label: _resolving ? 'Looking up…' : 'Continue',
-              fullWidth: true, fontSize: 16, loading: _resolving,
-              onPressed: _resolving ? null : _resolve,
+              loading: _resolving,
+              onTap: _resolving ? null : _resolve,
             ),
           ] else
             _confirmCard(_card!),
@@ -145,17 +166,23 @@ class _AddByLinkSheetState extends State<_AddByLinkSheet> {
   Widget _confirmCard(AddCard c) {
     final name = c.name.isNotEmpty ? c.name : [c.firstName, c.lastName].where((s) => s.isNotEmpty).join(' ').trim();
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      ZineCard(
+      Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AD.card,
+          borderRadius: BorderRadius.circular(AD.rListCard),
+          border: Border.all(color: AD.borderControl, width: 1),
+        ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Container(
-              decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Zine.ink, width: 2)),
+              decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: AD.borderAvatar, width: 2)),
               child: Avatar(seed: c.uid, name: name, size: 46, avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl),
             ),
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(name.isNotEmpty ? name : 'AvaTOK member', style: ZineText.cardTitle(size: 17)),
-              Text(c.sharesRealNumber ? 'Shared a private number' : 'AvaTOK member', style: ZineText.sub(size: 12)),
+              Text(name.isNotEmpty ? name : 'AvaTOK member', style: ADText.threadName()),
+              Text(c.sharesRealNumber ? 'Shared a private number' : 'AvaTOK member', style: ADText.preview()),
             ])),
           ]),
           const SizedBox(height: 14),
@@ -166,19 +193,20 @@ class _AddByLinkSheetState extends State<_AddByLinkSheet> {
             const SizedBox(height: 10),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
-              decoration: BoxDecoration(color: Zine.coral.withOpacity(0.16), borderRadius: BorderRadius.circular(10), border: Border.all(color: Zine.ink, width: 1.5)),
-              child: Text('No AvaTOK number yet — this contact shares a real phone number.', style: ZineText.sub(size: 11.5)),
+              decoration: BoxDecoration(color: AD.danger.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(10), border: Border.all(color: AD.borderControl, width: 1)),
+              child: Text('No AvaTOK number yet — this contact shares a real phone number.', style: ADText.preview()),
             ),
           ],
         ]),
       ),
       const SizedBox(height: 14),
       Row(children: [
-        Expanded(child: ZineButton(label: 'Cancel', variant: ZineButtonVariant.ghost, fullWidth: true, fontSize: 15,
-            onPressed: () => Navigator.pop(context))),
+        Expanded(child: _GhostButton(label: 'Cancel', onTap: () => Navigator.pop(context))),
         const SizedBox(width: 10),
-        Expanded(child: ZineButton(label: 'Add contact', fullWidth: true, fontSize: 15,
-            icon: PhosphorIcons.userPlus(PhosphorIconsStyle.bold), trailingIcon: false, onPressed: _add)),
+        Expanded(child: _PrimaryButton(
+            label: 'Add contact',
+            icon: PhosphorIcons.userPlus(PhosphorIconsStyle.bold),
+            onTap: _add)),
       ]),
     ]);
   }
@@ -186,11 +214,73 @@ class _AddByLinkSheetState extends State<_AddByLinkSheet> {
   Widget _row(IconData icon, String label, String value) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 5),
         child: Row(children: [
-          PhosphorIcon(icon, size: 16, color: Zine.inkSoft),
+          PhosphorIcon(icon, size: 16, color: AD.textSecondary),
           const SizedBox(width: 8),
-          Text(label, style: ZineText.sub(size: 13)),
+          Text(label, style: ADText.preview()),
           const Spacer(),
-          Flexible(child: Text(value, style: ZineText.value(size: 13.5), textAlign: TextAlign.right, overflow: TextOverflow.ellipsis)),
+          Flexible(child: Text(value, style: ADText.rowName(), textAlign: TextAlign.right, overflow: TextOverflow.ellipsis)),
         ]),
       );
+}
+
+/// Primary dark-v2 pill button (orange fill, white bold label).
+class _PrimaryButton extends StatelessWidget {
+  final String label;
+  final IconData? icon;
+  final bool loading;
+  final VoidCallback? onTap;
+  const _PrimaryButton({required this.label, this.icon, this.loading = false, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Opacity(
+        opacity: onTap == null ? 0.5 : 1,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 15),
+          decoration: BoxDecoration(
+            color: AD.primaryBadge,
+            borderRadius: BorderRadius.circular(100),
+          ),
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            if (loading)
+              const SizedBox(width: 18, height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+            else if (icon != null) ...[
+              PhosphorIcon(icon, size: 18, color: Colors.white),
+              const SizedBox(width: 8),
+            ],
+            Text(label, style: ADText.rowName(c: Colors.white)),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// Ghost dark-v2 pill button (card fill, hairline border, primary text).
+class _GhostButton extends StatelessWidget {
+  final String label;
+  final VoidCallback? onTap;
+  const _GhostButton({required this.label, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 15),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: AD.card,
+          borderRadius: BorderRadius.circular(100),
+          border: Border.all(color: AD.borderControl, width: 1),
+        ),
+        child: Text(label, style: ADText.rowName()),
+      ),
+    );
+  }
 }

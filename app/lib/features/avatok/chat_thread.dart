@@ -55,6 +55,7 @@ import '../../core/library_api.dart';
 import '../../core/rag_service.dart';
 import '../library/library_picker.dart';
 import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/group_store.dart';
 import '../../core/message_store.dart';
@@ -977,7 +978,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
 
   void _pickBurstEmoji() {
     showModalBottomSheet(
-      context: context, backgroundColor: Zine.paper,
+      context: context, backgroundColor: AD.overlaySheet,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (ctx) => SafeArea(
         child: Padding(
@@ -1120,24 +1121,24 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     // My bubbles are lime (ink text), so status ticks read in ink tones:
     // read = blue-ink, everything in-flight = ink-soft, failed = coral.
     if (m.failed) {
-      return (icon: PhosphorIcons.warningCircle(PhosphorIconsStyle.bold), color: Zine.coral, label: 'Not sent · tap to retry');
+      return (icon: PhosphorIcons.warningCircle(PhosphorIconsStyle.bold), color: AD.danger, label: 'Not sent · tap to retry');
     }
     if (m.uploading) {
-      return (icon: PhosphorIcons.clock(PhosphorIconsStyle.bold), color: Zine.inkSoft, label: 'Sending…');
+      return (icon: PhosphorIcons.clock(PhosphorIconsStyle.bold), color: AD.bubbleOutMeta, label: 'Sending…');
     }
     if (_peerReadTs > 0 && m.ts <= _peerReadTs) {
-      return (icon: PhosphorIcons.checks(PhosphorIconsStyle.bold), color: Zine.blueInk, label: 'Read'); // 2 blue ticks
+      return (icon: PhosphorIcons.checks(PhosphorIconsStyle.bold), color: AD.iconSearch, label: 'Read'); // 2 blue ticks
     }
     if (_peerDeliveredTs > 0 && m.ts <= _peerDeliveredTs) {
-      return (icon: PhosphorIcons.checks(PhosphorIconsStyle.bold), color: Zine.inkSoft, label: 'Delivered'); // 2 grey ticks
+      return (icon: PhosphorIcons.checks(PhosphorIconsStyle.bold), color: AD.bubbleOutMeta, label: 'Delivered'); // 2 grey ticks
     }
     if (m.sent) {
       // 1 tick = left this device / accepted. We deliberately DON'T claim
       // "waiting to reach phone" here — that contradicted the peer showing as
       // online (pic2). Truthful escalation: Sent → Delivered → Read.
-      return (icon: PhosphorIcons.check(PhosphorIconsStyle.bold), color: Zine.inkSoft, label: 'Sent'); // 1 tick
+      return (icon: PhosphorIcons.check(PhosphorIconsStyle.bold), color: AD.bubbleOutMeta, label: 'Sent'); // 1 tick
     }
-    return (icon: PhosphorIcons.clock(PhosphorIconsStyle.bold), color: Zine.inkSoft, label: 'Sending…');
+    return (icon: PhosphorIcons.clock(PhosphorIconsStyle.bold), color: AD.bubbleOutMeta, label: 'Sending…');
   }
 
   // [seed]=true when replaying stored history (hub memory / local DB) on open —
@@ -1545,20 +1546,20 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   Widget _olderMessagesDivider() => Padding(
         padding: const EdgeInsets.only(top: 4, bottom: 10),
         child: Row(children: [
-          Expanded(child: Divider(color: Zine.ink.withValues(alpha: 0.18), thickness: 1)),
+          Expanded(child: Divider(color: AD.textPrimary.withValues(alpha: 0.18), thickness: 1)),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10),
             child: _archiveLoading
                 ? Row(mainAxisSize: MainAxisSize.min, children: [
                     SizedBox(width: 12, height: 12,
-                        child: CircularProgressIndicator(strokeWidth: 1.6, color: Zine.inkSoft)),
+                        child: CircularProgressIndicator(strokeWidth: 1.6, color: AD.textSecondary)),
                     const SizedBox(width: 7),
-                    Text('Loading older messages…', style: ZineText.tag(size: 10, color: Zine.inkSoft)),
+                    Text('Loading older messages…', style: ADText.statCaption(c: AD.textSecondary)),
                   ])
                 : Text(_archiveDone ? 'Start of conversation' : 'Older messages',
-                    style: ZineText.tag(size: 10, color: Zine.inkSoft)),
+                    style: ADText.statCaption(c: AD.textSecondary)),
           ),
-          Expanded(child: Divider(color: Zine.ink.withValues(alpha: 0.18), thickness: 1)),
+          Expanded(child: Divider(color: AD.textPrimary.withValues(alpha: 0.18), thickness: 1)),
         ]),
       );
 
@@ -1610,13 +1611,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             decoration: BoxDecoration(
-              color: Zine.card,
+              color: AD.card,
               borderRadius: BorderRadius.circular(100),
-              border: Border.all(color: Zine.ink, width: 1.5),
-              boxShadow: Zine.shadowXs,
+              border: Border.all(color: AD.borderControl, width: 1.5),
+              boxShadow: const [],
             ),
             child: Text(label.toUpperCase(),
-                style: ZineText.tag(size: 10, color: Zine.inkSoft)),
+                style: ADText.statCaption(c: AD.textSecondary)),
           ),
         ),
       );
@@ -2474,20 +2475,20 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         onTap: () => _groupCall(true),
         child: Container(
           decoration: const BoxDecoration(
-            color: Zine.mint,
-            border: Border(bottom: BorderSide(color: Zine.ink, width: 2)),
+            color: AD.online,
+            border: Border(bottom: BorderSide(color: AD.borderHairline, width: 2)),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           child: Row(children: [
-            PhosphorIcon(PhosphorIcons.videoCamera(PhosphorIconsStyle.fill), color: Zine.ink, size: 17),
+            PhosphorIcon(PhosphorIcons.videoCamera(PhosphorIconsStyle.fill), color: AD.textPrimary, size: 17),
             const SizedBox(width: 8),
             Expanded(child: Text(
               _confOngoingHere
                   ? 'Ongoing call · $_confCount — tap to return'
                   : 'Ongoing call · $_confCount — tap to join',
-              style: ZineText.value(size: 12.5),
+              style: ADText.rowName(),
             )),
-            PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: Zine.ink),
+            PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: AD.textPrimary),
           ]),
         ),
       );
@@ -2657,17 +2658,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   Future<void> _shareLiveLocation() async {
     final minutes = await showModalBottomSheet<int>(
       context: context,
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.overlaySheet,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (ctx) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Share live location', style: ZineText.cardTitle(size: 18)),
+            Text('Share live location', style: ADText.threadName()),
             const SizedBox(height: 4),
             Text('Your real-time position updates as you move, until the time runs out or you tap Stop.',
-                style: ZineText.sub(size: 12.5, color: Zine.inkSoft)),
+                style: ADText.preview(c: AD.textSecondary)),
             const SizedBox(height: 12),
             for (final opt in const [
               ('15 minutes', 15),
@@ -2676,8 +2677,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             ])
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: PhosphorIcon(PhosphorIcons.broadcast(PhosphorIconsStyle.bold), color: Zine.coral),
-                title: Text(opt.$1, style: ZineText.value(size: 15)),
+                leading: PhosphorIcon(PhosphorIcons.broadcast(PhosphorIconsStyle.bold), color: AD.danger),
+                title: Text(opt.$1, style: ADText.rowName()),
                 onTap: () => Navigator.pop(ctx, opt.$2),
               ),
           ]),
@@ -2800,10 +2801,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
-                          color: Zine.coral,
+                          color: AD.danger,
                           borderRadius: BorderRadius.circular(100),
-                          border: Border.all(color: Zine.ink, width: 2)),
-                      child: Text('LIVE', style: ZineText.tag(size: 9.5, color: Colors.white)),
+                          border: Border.all(color: AD.bubbleInInk, width: 2)),
+                      child: Text('LIVE', style: ADText.bubbleMeta(c: Colors.white)),
                     ),
                   ),
               ]),
@@ -2813,17 +2814,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                     active
                         ? PhosphorIcons.broadcast(PhosphorIconsStyle.fill)
                         : PhosphorIcons.mapPin(PhosphorIconsStyle.fill),
-                    color: active ? Zine.coral : Zine.inkSoft,
+                    color: active ? AD.danger : AD.bubbleInMeta,
                     size: 16),
                 const SizedBox(width: 6),
-                Flexible(child: Text(s.statusLabel(), style: ZineText.value(size: 12.5, color: Zine.blueInk))),
+                Flexible(child: Text(s.statusLabel(), style: ADText.rowName(c: AD.iconSearch))),
               ]),
               if (s.mine && active)
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
                   child: GestureDetector(
                     onTap: () => _stopLiveShare(s.id),
-                    child: Text('STOP SHARING', style: ZineText.tag(size: 10, color: Zine.coral)),
+                    child: Text('STOP SHARING', style: ADText.bubbleMeta(c: AD.danger)),
                   ),
                 ),
             ],
@@ -2848,16 +2849,16 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   Future<void> _shareContactCard() async {
     final contacts = await ContactsStore().load();
     if (!mounted) return;
-    showModalBottomSheet(context: context, backgroundColor: Zine.paper,
+    showModalBottomSheet(context: context, backgroundColor: AD.overlaySheet,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (ctx) => SafeArea(child: Padding(padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Share a contact', style: ZineText.cardTitle(size: 18)),
+          Text('Share a contact', style: ADText.threadName()),
           const SizedBox(height: 8),
           ConstrainedBox(constraints: const BoxConstraints(maxHeight: 320), child: ListView(shrinkWrap: true, children: [
             for (final c in contacts)
               ListTile(contentPadding: EdgeInsets.zero, leading: Avatar(seed: c.seed, name: c.name, size: 40),
-                title: Text(c.name, style: ZineText.value(size: 15)),
+                title: Text(c.name, style: ADText.rowName()),
                 onTap: () { Navigator.pop(ctx); _sendSpecial('card', {'name': c.name, 'uid': c.uid, 'handle': c.handle}, '👤 ${c.name}'); }),
           ])),
         ]))));
@@ -2873,7 +2874,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     final ok = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.overlaySheet,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (ctx) => StatefulBuilder(builder: (ctx, setSheet) => Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
@@ -2881,34 +2882,34 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              Icon(PhosphorIcons.chartBar(PhosphorIconsStyle.bold), size: 20, color: Zine.ink),
+              Icon(PhosphorIcons.chartBar(PhosphorIconsStyle.bold), size: 20, color: AD.textPrimary),
               const SizedBox(width: 8),
-              Text('Create poll', style: ZineText.value(size: 16)),
+              Text('Create poll', style: ADText.rowName()),
             ]),
             const SizedBox(height: 14),
             TextField(controller: q, autofocus: true, textCapitalization: TextCapitalization.sentences,
-              style: ZineText.value(size: 15),
+              style: ADText.rowName(),
               decoration: InputDecoration(hintText: 'Ask a question…',
-                hintStyle: ZineText.sub(size: 15, color: Zine.inkSoft),
-                filled: true, fillColor: Zine.card,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Zine.ink, width: 2)),
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Zine.ink, width: 2)),
-                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Zine.ink, width: 2)))),
+                hintStyle: ADText.preview(c: AD.textSecondary),
+                filled: true, fillColor: AD.card,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AD.borderControl, width: 2)),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AD.borderControl, width: 2)),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AD.borderControl, width: 2)))),
             const SizedBox(height: 12),
             ConstrainedBox(constraints: const BoxConstraints(maxHeight: 320), child: ListView(shrinkWrap: true, children: [
               for (var i = 0; i < opts.length; i++)
                 Padding(padding: const EdgeInsets.only(bottom: 8), child: Row(children: [
                   Expanded(child: TextField(controller: opts[i], textCapitalization: TextCapitalization.sentences,
-                    style: ZineText.value(size: 14),
+                    style: ADText.rowName(),
                     decoration: InputDecoration(hintText: 'Option ${i + 1}',
-                      hintStyle: ZineText.sub(size: 14, color: Zine.inkSoft),
-                      isDense: true, filled: true, fillColor: Zine.card,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Zine.ink, width: 2)),
-                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Zine.ink, width: 2)),
-                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Zine.ink, width: 2))))),
+                      hintStyle: ADText.preview(c: AD.textSecondary),
+                      isDense: true, filled: true, fillColor: AD.card,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: AD.borderControl, width: 2)),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: AD.borderControl, width: 2)),
+                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: AD.borderControl, width: 2))))),
                   if (opts.length > 2)
                     IconButton(
-                      icon: Icon(PhosphorIcons.minusCircle(PhosphorIconsStyle.bold), size: 20, color: Zine.inkSoft),
+                      icon: Icon(PhosphorIcons.minusCircle(PhosphorIconsStyle.bold), size: 20, color: AD.textSecondary),
                       onPressed: () => setSheet(() { opts.removeAt(i).dispose(); }),
                     ),
                 ])),
@@ -2916,8 +2917,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             if (opts.length < 10)
               TextButton.icon(
                 onPressed: () => setSheet(() => opts.add(TextEditingController())),
-                icon: Icon(PhosphorIcons.plusCircle(PhosphorIconsStyle.bold), size: 18, color: Zine.ink),
-                label: Text('Add option', style: ZineText.tag(size: 12, color: Zine.ink)),
+                icon: Icon(PhosphorIcons.plusCircle(PhosphorIconsStyle.bold), size: 18, color: AD.textPrimary),
+                label: Text('Add option', style: ADText.statCaption(c: AD.textPrimary)),
               ),
             const SizedBox(height: 4),
             InkWell(
@@ -2926,17 +2927,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               child: Padding(padding: const EdgeInsets.symmetric(vertical: 6),
                 child: Row(children: [
                   Icon(multi ? PhosphorIcons.checkSquare(PhosphorIconsStyle.fill) : PhosphorIcons.square(PhosphorIconsStyle.bold),
-                      size: 22, color: multi ? Zine.accents[1] : Zine.inkSoft),
+                      size: 22, color: multi ? AD.primaryBadge : AD.textSecondary),
                   const SizedBox(width: 10),
-                  Expanded(child: Text('Allow multiple answers', style: ZineText.value(size: 14))),
+                  Expanded(child: Text('Allow multiple answers', style: ADText.rowName())),
                 ])),
             ),
             const SizedBox(height: 12),
             SizedBox(width: double.infinity, child: FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: Zine.ink, foregroundColor: Zine.paper,
+              style: FilledButton.styleFrom(backgroundColor: AD.textPrimary, foregroundColor: AD.overlaySheet,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
               onPressed: () => Navigator.pop(ctx, true),
-              child: Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: Text('Create poll', style: ZineText.tag(size: 13, color: Zine.paper))),
+              child: Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: Text('Create poll', style: ADText.statCaption(c: AD.overlaySheet))),
             )),
           ]),
         )),
@@ -2956,7 +2957,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
 
   void _stickerPicker() {
     const stickers = ['😀','😂','🥳','😍','😎','🤩','😭','🙏','👍','👏','🔥','❤️','🎉','💯','🚀','🌈','🍕','☕','⚡','✨'];
-    showModalBottomSheet(context: context, backgroundColor: Zine.paper,
+    showModalBottomSheet(context: context, backgroundColor: AD.overlaySheet,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (ctx) => SafeArea(child: Padding(padding: const EdgeInsets.all(16),
         child: Wrap(spacing: 10, runSpacing: 10, children: [
@@ -2970,7 +2971,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     final e = m.extra ?? {};
     // Both bubble fills (lime/card) are light — text is always ink (§2: white
     // text only on coral).
-    const fg = Zine.ink;
+    const fg = AD.bubbleInInk;
     switch (m.special) {
       case 'sticker':
         return Text((e['emoji'] ?? '🙂').toString(), style: const TextStyle(fontSize: 46));
@@ -2979,9 +2980,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           onTap: () => launchUrl(Uri.parse('https://maps.google.com/?q=${e['lat']},${e['lng']}'),
               mode: LaunchMode.externalApplication),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
-            PhosphorIcon(PhosphorIcons.mapPin(PhosphorIconsStyle.fill), color: Zine.coral, size: 20),
+            PhosphorIcon(PhosphorIcons.mapPin(PhosphorIconsStyle.fill), color: AD.danger, size: 20),
             const SizedBox(width: 6),
-            Text('Location · open in Maps', style: ZineText.value(size: 13.5, color: Zine.blueInk)),
+            Text('Location · open in Maps', style: ADText.rowName(c: AD.iconSearch)),
           ]),
         );
       case 'live':
@@ -3006,15 +3007,15 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           Container(
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: Zine.ink, width: 2),
+              border: Border.all(color: AD.bubbleInInk, width: 2),
             ),
             child: Avatar(seed: (e['uid'] ?? 'c').toString(), name: (e['name'] ?? '').toString(), size: 36),
           ),
           const SizedBox(width: 8),
           Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            Text((e['name'] ?? 'Contact').toString(), style: ZineText.value(size: 14)),
+            Text((e['name'] ?? 'Contact').toString(), style: ADText.rowName(c: AD.bubbleInInk)),
             GestureDetector(onTap: () => _addSharedContact(e),
-                child: Text('ADD CONTACT', style: ZineText.tag(size: 10, color: Zine.blueInk))),
+                child: Text('ADD CONTACT', style: ADText.bubbleMeta(c: AD.iconSearch))),
           ]),
         ]);
       case 'gcall':
@@ -3027,18 +3028,18 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                 audio
                     ? PhosphorIcons.phone(PhosphorIconsStyle.fill)
                     : PhosphorIcons.videoCamera(PhosphorIconsStyle.fill),
-                size: 17, color: Zine.mintInk),
+                size: 17, color: AD.online),
             const SizedBox(width: 6),
-            Text(audio ? 'Audio call' : 'Video call', style: ZineText.value(size: 14)),
+            Text(audio ? 'Audio call' : 'Video call', style: ADText.rowName(c: AD.bubbleInInk)),
             if (_confLive) ...[
               const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                    color: Zine.mint,
+                    color: AD.online,
                     borderRadius: BorderRadius.circular(100),
-                    border: Border.all(color: Zine.ink, width: 2)),
-                child: Text('JOIN', style: ZineText.tag(size: 10.5)),
+                    border: Border.all(color: AD.bubbleInInk, width: 2)),
+                child: Text('JOIN', style: ADText.bubbleMeta(c: AD.bubbleInMeta)),
               ),
             ],
           ]),
@@ -3055,9 +3056,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         return ConstrainedBox(
           constraints: const BoxConstraints(minWidth: 200),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            Text((e['q'] ?? 'Poll').toString(), style: ZineText.value(size: 14)),
+            Text((e['q'] ?? 'Poll').toString(), style: ADText.rowName(c: AD.bubbleInInk)),
             if (multi) Padding(padding: const EdgeInsets.only(top: 2),
-              child: Text('Select one or more', style: ZineText.tag(size: 10, color: Zine.inkSoft))),
+              child: Text('Select one or more', style: ADText.bubbleMeta(c: AD.bubbleInMeta))),
             const SizedBox(height: 8),
             for (var i = 0; i < options.length; i++)
               Builder(builder: (_) {
@@ -3072,7 +3073,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                   child: Container(
                     margin: const EdgeInsets.only(bottom: 6),
                     decoration: BoxDecoration(
-                        border: Border.all(color: mine ? Zine.accents[1] : Zine.ink, width: 2),
+                        border: Border.all(color: mine ? AD.primaryBadge : AD.bubbleInInk, width: 2),
                         borderRadius: BorderRadius.circular(10)),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(8),
@@ -3080,15 +3081,15 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                         // Percentage bar fill.
                         Positioned.fill(child: FractionallySizedBox(
                           alignment: Alignment.centerLeft, widthFactor: frac.clamp(0.0, 1.0),
-                          child: Container(color: (mine ? Zine.accents[1] : Zine.ink).withValues(alpha: 0.14)))),
+                          child: Container(color: (mine ? AD.primaryBadge : AD.bubbleInInk).withValues(alpha: 0.14)))),
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                           child: Row(children: [
                             if (mine) Padding(padding: const EdgeInsets.only(right: 6),
-                              child: Icon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill), size: 15, color: Zine.accents[1])),
+                              child: Icon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill), size: 15, color: AD.primaryBadge)),
                             Expanded(child: Text(options[i],
-                              style: ZineText.sub(size: 13, color: fg).copyWith(fontWeight: mine ? FontWeight.w700 : FontWeight.w500))),
-                            Text('$pct%', style: ZineText.tag(size: 11, color: Zine.inkSoft)),
+                              style: ADText.bubbleBody(c: fg).copyWith(fontWeight: mine ? FontWeight.w700 : FontWeight.w500))),
+                            Text('$pct%', style: ADText.bubbleMeta(c: AD.bubbleInMeta)),
                           ]),
                         ),
                       ]),
@@ -3100,7 +3101,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               child: Text(
                 totalVoters == 0 ? 'Tap to vote' : '$totalVoters ${totalVoters == 1 ? 'vote' : 'votes'}'
                     '${m.pollMine.isNotEmpty ? ' · tap again to change' : ''}',
-                style: ZineText.tag(size: 10, color: Zine.inkSoft))),
+                style: ADText.bubbleMeta(c: AD.bubbleInMeta))),
           ]),
         );
       case 'marketplace_deal':
@@ -3114,10 +3115,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       // callee-side business-call records. Caller sees none of this — these
       // envelopes are only ever synced to the callee's own thread.
       case 'voicemail':
-        if (!RemoteConfig.voicemailBot) return Text(m.text, style: ZineText.sub(size: 13.5, color: fg));
+        if (!RemoteConfig.voicemailBot) return Text(m.text, style: ADText.bubbleBody(c: fg));
         return VoicemailCard(extra: e);
       case 'agent_transcript':
-        if (!RemoteConfig.voiceAgent) return Text(m.text, style: ZineText.sub(size: 13.5, color: fg));
+        if (!RemoteConfig.voiceAgent) return Text(m.text, style: ADText.bubbleBody(c: fg));
         return AgentTranscriptCard(
           extra: e,
           onReply: (callerNumber, callerName) {
@@ -3173,7 +3174,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         }
         return _avaRich(body, fg);
       default:
-        return Text(m.text, style: ZineText.sub(size: 13.5, color: fg));
+        return Text(m.text, style: ADText.bubbleBody(c: fg));
     }
   }
 
@@ -3183,7 +3184,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   Widget _avaRich(String text, Color fg) {
     // [AVA-FONT-1] (owner request 2026-07-10) Ava's replies read too small at
     // 13.5 — bumped to 15 (headings scale with it below).
-    final base = ZineText.sub(size: 15, color: fg).copyWith(height: 1.34);
+    final base = ADText.bubbleBody(c: fg).copyWith(height: 1.34);
     final lines = text.replaceAll('\r\n', '\n').split('\n');
     final out = <Widget>[];
     final numRe = RegExp(r'^\s*(\d+)\.\s+(.*)$');
@@ -3205,7 +3206,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           padding: const EdgeInsets.only(bottom: 3),
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
             SizedBox(width: 22, child: Text('${num.group(1)}.',
-                style: base.copyWith(fontWeight: FontWeight.w800, color: Zine.blueInk))),
+                style: base.copyWith(fontWeight: FontWeight.w800, color: AD.iconSearch))),
             Expanded(child: _avaInline(num.group(2)!, base)),
           ]),
         ));
@@ -3214,7 +3215,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           padding: const EdgeInsets.only(bottom: 3),
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
             Padding(padding: const EdgeInsets.only(left: 2, right: 8, top: 1),
-                child: Text('•', style: base.copyWith(fontWeight: FontWeight.w800, color: Zine.blueInk))),
+                child: Text('•', style: base.copyWith(fontWeight: FontWeight.w800, color: AD.iconSearch))),
             Expanded(child: _avaInline(bul.group(1)!, base)),
           ]),
         ));
@@ -3236,7 +3237,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         spans.add(TextSpan(text: mt.group(1), style: base.copyWith(fontWeight: FontWeight.w800)));
       } else {
         spans.add(TextSpan(text: ' ${mt.group(2)} ',
-            style: base.copyWith(fontFeatures: const [], backgroundColor: Zine.paper2)));
+            style: base.copyWith(fontFeatures: const [], backgroundColor: AD.mediaPlaceholderBg)));
       }
       i = mt.end;
     }
@@ -3254,9 +3255,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   // colour throughout the thread and you can tell who's who at a glance. Lime
   // (me) and lilac (Ava) are intentionally excluded from this palette.
   static const List<Color> _groupTints = [
-    Zine.mint,
-    Zine.blue,
-    Zine.coral,
+    AD.online,
+    AD.iconSearch,
+    AD.danger,
     Color(0xFFF7D070), // amber
     Color(0xFFB7E4A0), // sage
     Color(0xFFF3A6C9), // pink
@@ -3287,17 +3288,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
-          color: Zine.lilac,
+          color: AD.bubbleInBg,
           borderRadius: BorderRadius.circular(100),
-          border: Zine.border,
-          boxShadow: Zine.shadowXs,
+          border: Border.all(color: AD.bubbleInInk, width: 1),
+          boxShadow: const [],
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           const SizedBox(width: 12, height: 12,
-              child: CircularProgressIndicator(strokeWidth: 1.6, color: Zine.ink)),
+              child: CircularProgressIndicator(strokeWidth: 1.6, color: AD.bubbleInInk)),
           const SizedBox(width: 8),
           Text(label.isEmpty ? 'Ava is working…' : label,
-              style: ZineText.sub(size: 12.5, color: Zine.ink)
+              style: ADText.bubbleBody(c: AD.bubbleInInk)
                   .copyWith(fontStyle: FontStyle.italic)),
         ]),
       ),
@@ -3315,21 +3316,21 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         width: 240,
         height: 200,
         decoration: BoxDecoration(
-          color: Zine.lilac,
+          color: AD.bubbleInBg,
           borderRadius: BorderRadius.circular(14),
-          border: Zine.border,
-          boxShadow: Zine.shadowXs,
+          border: Border.all(color: AD.bubbleInInk, width: 1),
+          boxShadow: const [],
         ),
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
           PhosphorIcon(PhosphorIcons.image(PhosphorIconsStyle.duotone),
-              size: 34, color: Zine.ink),
+              size: 34, color: AD.bubbleInInk),
           const SizedBox(height: 14),
           const SizedBox(
               width: 20, height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2, color: Zine.ink)),
+              child: CircularProgressIndicator(strokeWidth: 2, color: AD.bubbleInInk)),
           const SizedBox(height: 12),
           Text(label.isEmpty ? 'Generating image…' : label,
-              style: ZineText.sub(size: 12.5, color: Zine.ink)
+              style: ADText.bubbleBody(c: AD.bubbleInInk)
                   .copyWith(fontStyle: FontStyle.italic)),
         ]),
       ),
@@ -3926,7 +3927,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     return showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.overlaySheet,
       builder: (ctx) => Padding(
         padding: EdgeInsets.only(
           left: 14, right: 14, top: 14,
@@ -3946,9 +3947,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
-                  color: Zine.card,
-                  borderRadius: BorderRadius.circular(Zine.rField),
-                  border: Border.all(color: Zine.ink, width: 2),
+                  color: AD.card,
+                  borderRadius: BorderRadius.circular(AD.rInput),
+                  border: Border.all(color: AD.borderControl, width: 2),
                 ),
                 padding: const EdgeInsets.symmetric(horizontal: 14),
                 child: TextField(
@@ -3958,13 +3959,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                   maxLines: 4,
                   textInputAction: TextInputAction.send,
                   onSubmitted: (v) => Navigator.pop(ctx, v),
-                  style: ZineText.input(size: 15),
+                  style: ADText.rowName(),
                   decoration: InputDecoration(
                     border: InputBorder.none,
                     isDense: true,
                     contentPadding: const EdgeInsets.symmetric(vertical: 12),
                     hintText: 'Add a caption…',
-                    hintStyle: ZineText.sub(size: 14, color: Zine.placeholder),
+                    hintStyle: ADText.preview(c: AD.textTertiary),
                   ),
                 ),
               ),
@@ -4129,7 +4130,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     return showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.overlaySheet,
       builder: (ctx) => Padding(
         padding: EdgeInsets.only(
           left: 14, right: 14, top: 16,
@@ -4139,19 +4140,19 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Zine.card,
+              color: AD.card,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Zine.ink, width: 2),
+              border: Border.all(color: AD.borderControl, width: 2),
             ),
             child: Row(children: [
               PhosphorIcon(
                   label == 'Video'
                       ? PhosphorIcons.videoCamera(PhosphorIconsStyle.bold)
                       : PhosphorIcons.file(PhosphorIconsStyle.bold),
-                  size: 22, color: Zine.ink),
+                  size: 22, color: AD.textPrimary),
               const SizedBox(width: 10),
               Expanded(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: ZineText.value(size: 14))),
+                  style: ADText.rowName())),
             ]),
           ),
           const SizedBox(height: 12),
@@ -4159,9 +4160,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
-                  color: _avaMode ? Zine.lilac : Zine.card,
-                  borderRadius: BorderRadius.circular(Zine.rField),
-                  border: Border.all(color: Zine.ink, width: 2),
+                  color: _avaMode ? AD.iconVideo : AD.card,
+                  borderRadius: BorderRadius.circular(AD.rInput),
+                  border: Border.all(color: AD.borderControl, width: 2),
                 ),
                 padding: const EdgeInsets.symmetric(horizontal: 14),
                 child: TextField(
@@ -4171,13 +4172,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                   maxLines: 4,
                   textInputAction: TextInputAction.send,
                   onSubmitted: (v) => Navigator.pop(ctx, v),
-                  style: ZineText.input(size: 15),
+                  style: ADText.rowName(),
                   decoration: InputDecoration(
                     border: InputBorder.none,
                     isDense: true,
                     contentPadding: const EdgeInsets.symmetric(vertical: 12),
                     hintText: _avaMode ? 'Tell Ava about this file…' : 'Add a note…',
-                    hintStyle: ZineText.sub(size: 14, color: Zine.placeholder),
+                    hintStyle: ADText.preview(c: AD.textTertiary),
                   ),
                 ),
               ),
@@ -4234,14 +4235,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     showMicInputSheet(context, options: [
       MicSheetOption(
         icon: PhosphorIcons.microphone(PhosphorIconsStyle.fill),
-        color: Zine.coral,
+        color: AD.danger,
         title: 'Record audio',
         subtitle: 'Record a voice note and send it',
         onTap: _toggleRecord,
       ),
       MicSheetOption(
         icon: PhosphorIcons.textT(PhosphorIconsStyle.bold),
-        color: Zine.mint,
+        color: AD.online,
         title: 'Convert voice to text',
         subtitle: 'Speak and watch it type into the box',
         onTap: _startVoiceToText,
@@ -4420,9 +4421,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
             child: Row(children: [
-              Icon(icon, size: 18, color: danger ? Zine.coral : Zine.ink),
+              Icon(icon, size: 18, color: danger ? AD.danger : AD.textPrimary),
               const SizedBox(width: 12),
-              Text(label, style: ZineText.value(size: 14.5, color: danger ? Zine.coral : Zine.ink)),
+              Text(label, style: ADText.rowName(c: danger ? AD.danger : AD.textPrimary)),
             ]),
           ),
         );
@@ -4443,10 +4444,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                   decoration: BoxDecoration(
-                    color: Zine.paper,
+                    color: AD.overlaySheet,
                     borderRadius: BorderRadius.circular(100),
-                    border: Border.all(color: Zine.ink, width: 2),
-                    boxShadow: Zine.shadowXs,
+                    border: Border.all(color: AD.borderControl, width: 2),
+                    boxShadow: const [],
                   ),
                   child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                     for (final e in quick)
@@ -4459,9 +4460,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                       Container(
                         width: 30, height: 30, alignment: Alignment.center,
                         decoration: BoxDecoration(
-                          color: Zine.card, shape: BoxShape.circle,
-                          border: Border.all(color: Zine.ink, width: 1.5)),
-                        child: PhosphorIcon(PhosphorIcons.plus(PhosphorIconsStyle.bold), size: 15, color: Zine.ink),
+                          color: AD.card, shape: BoxShape.circle,
+                          border: Border.all(color: AD.borderControl, width: 1.5)),
+                        child: PhosphorIcon(PhosphorIcons.plus(PhosphorIconsStyle.bold), size: 15, color: AD.textPrimary),
                       ),
                       () async {
                         _closeReactionOverlay();
@@ -4478,10 +4479,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                 // Compact action menu.
                 Container(
                   decoration: BoxDecoration(
-                    color: Zine.paper,
+                    color: AD.overlaySheet,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Zine.ink, width: 2),
-                    boxShadow: Zine.shadowXs,
+                    border: Border.all(color: AD.borderControl, width: 2),
+                    boxShadow: const [],
                   ),
                   child: Column(mainAxisSize: MainAxisSize.min, children: [
                     menuRow(PhosphorIcons.arrowBendUpLeft(PhosphorIconsStyle.bold), 'Reply',
@@ -4514,7 +4515,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     final hasImage = _msgHasImage(m);
     showModalBottomSheet(
       context: context,
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.overlaySheet,
       // Tall menus must be able to grow + scroll; the default sheet clips its
       // child. isScrollControlled lets it size up, the ListView scrolls, and
       // SafeArea keeps the last items clear of the phone's nav bar.
@@ -4614,9 +4615,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   Widget _action(BuildContext ctx, IconData icon, String label, VoidCallback onTap, {bool danger = false}) =>
       ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-        leading: Icon(icon, color: danger ? Zine.coral : Zine.ink),
+        leading: Icon(icon, color: danger ? AD.danger : AD.textPrimary),
         title: Text(label,
-            style: ZineText.value(size: 15, color: danger ? Zine.coral : Zine.ink)),
+            style: ADText.rowName(c: danger ? AD.danger : AD.textPrimary)),
         onTap: () { Navigator.pop(ctx); onTap(); },
       );
 
@@ -4642,7 +4643,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     if (urls.length > 1) {
       final picked = await showModalBottomSheet<String>(
         context: context,
-        backgroundColor: Zine.paper,
+        backgroundColor: AD.overlaySheet,
         shape: const RoundedRectangleBorder(
             borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
         builder: (ctx) => SafeArea(
@@ -4651,14 +4652,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: Text('Copy which link?', style: ZineText.value(size: 15)),
+                child: Text('Copy which link?', style: ADText.rowName()),
               ),
             ),
             for (final u in urls)
               ListTile(
-                leading: Icon(PhosphorIcons.link(PhosphorIconsStyle.bold), color: Zine.ink),
+                leading: Icon(PhosphorIcons.link(PhosphorIconsStyle.bold), color: AD.textPrimary),
                 title: Text(u, maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: ZineText.sub(size: 13.5, color: Zine.ink)),
+                    style: ADText.preview(c: AD.textPrimary)),
                 onTap: () => Navigator.pop(ctx, u),
               ),
           ]),
@@ -4767,7 +4768,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   Future<String?> _openEmojiPicker() {
     return showModalBottomSheet<String>(
       context: context,
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.overlaySheet,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (ctx) => SafeArea(
@@ -4777,7 +4778,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
               child: Align(alignment: Alignment.centerLeft,
-                  child: Text('React with…', style: ZineText.value(size: 15))),
+                  child: Text('React with…', style: ADText.rowName())),
             ),
             Flexible(
               child: ListView(
@@ -4787,7 +4788,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                     Padding(
                       padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
                       child: Align(alignment: Alignment.centerLeft,
-                          child: Text(cat.key.toUpperCase(), style: ZineText.tag(size: 10, color: Zine.inkSoft))),
+                          child: Text(cat.key.toUpperCase(), style: ADText.statCaption(c: AD.textSecondary))),
                     ),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -4829,21 +4830,21 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     Analytics.capture('chat_reacted_by_view', {'kinds': m.reactBy.length});
     showModalBottomSheet(
       context: context,
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.overlaySheet,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
             child: Align(alignment: Alignment.centerLeft,
-                child: Text('Reactions', style: ZineText.value(size: 15))),
+                child: Text('Reactions', style: ADText.rowName())),
           ),
           for (final e in m.reactBy.entries)
             for (final uid in e.value)
               ListTile(
                 dense: true,
                 leading: Text(e.key, style: const TextStyle(fontSize: 22)),
-                title: Text(_reactorName(uid), style: ZineText.value(size: 14, color: Zine.ink)),
+                title: Text(_reactorName(uid), style: ADText.rowName(c: AD.textPrimary)),
               ),
           const SizedBox(height: 6),
         ]),
@@ -4857,21 +4858,21 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     Analytics.capture('poll_voters_view', {'count': uids.length});
     showModalBottomSheet(
       context: context,
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.overlaySheet,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
             child: Align(alignment: Alignment.centerLeft,
-                child: Text('Voted "$option"', style: ZineText.value(size: 15))),
+                child: Text('Voted "$option"', style: ADText.rowName())),
           ),
           ConstrainedBox(constraints: const BoxConstraints(maxHeight: 360), child: ListView(shrinkWrap: true, children: [
             for (final uid in uids)
               ListTile(
                 dense: true,
-                leading: Icon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill), size: 20, color: Zine.accents[1]),
-                title: Text(_reactorName(uid), style: ZineText.value(size: 14, color: Zine.ink)),
+                leading: Icon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill), size: 20, color: AD.primaryBadge),
+                title: Text(_reactorName(uid), style: ADText.rowName(c: AD.textPrimary)),
               ),
           ])),
           const SizedBox(height: 6),
@@ -5140,7 +5141,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     final result = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.overlaySheet,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (ctx) => Padding(
@@ -5149,11 +5150,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
         ),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Forward to ${c.name}', style: ZineText.cardTitle(size: 18)),
+          Text('Forward to ${c.name}', style: ADText.threadName()),
           const SizedBox(height: 4),
           Text(isMedia ? 'Edit or remove the caption before sending'
                        : 'Edit the message before sending',
-              style: ZineText.sub(size: 13, color: Zine.inkMute)),
+              style: ADText.preview(c: AD.textTertiary)),
           const SizedBox(height: 12),
           // For media, show a small preview chip so it's clear what rides along.
           if (isMedia) ...[
@@ -5170,10 +5171,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                         : m.media!.kind == MediaKind.image
                             ? PhosphorIcons.image(PhosphorIconsStyle.bold)
                             : PhosphorIcons.file(PhosphorIconsStyle.bold),
-                    size: 26, color: Zine.ink),
+                    size: 26, color: AD.textPrimary),
               const SizedBox(width: 10),
               Expanded(child: Text(m.media!.name, maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: ZineText.value(size: 14))),
+                  style: ADText.rowName())),
             ]),
             const SizedBox(height: 12),
           ],
@@ -5181,9 +5182,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
-                  color: Zine.card,
-                  borderRadius: BorderRadius.circular(Zine.rField),
-                  border: Border.all(color: Zine.ink, width: 2),
+                  color: AD.card,
+                  borderRadius: BorderRadius.circular(AD.rInput),
+                  border: Border.all(color: AD.borderControl, width: 2),
                 ),
                 padding: const EdgeInsets.symmetric(horizontal: 14),
                 child: TextField(
@@ -5193,13 +5194,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                   maxLines: 4,
                   textInputAction: TextInputAction.send,
                   onSubmitted: (v) => Navigator.pop(ctx, v),
-                  style: ZineText.input(size: 15),
+                  style: ADText.rowName(),
                   decoration: InputDecoration(
                     border: InputBorder.none,
                     isDense: true,
                     contentPadding: const EdgeInsets.symmetric(vertical: 12),
                     hintText: isMedia ? 'Add a caption…' : 'Message',
-                    hintStyle: ZineText.sub(size: 14, color: Zine.placeholder),
+                    hintStyle: ADText.preview(c: AD.textTertiary),
                   ),
                 ),
               ),
@@ -5531,7 +5532,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   /// remembering it as the composer target.
   Future<ComposerLang?> _pickVoiceLang() => showModalBottomSheet<ComposerLang>(
         context: context,
-        backgroundColor: Zine.paper,
+        backgroundColor: AD.overlaySheet,
         shape: const RoundedRectangleBorder(
             borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
         builder: (ctx) => SafeArea(
@@ -5540,9 +5541,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
               child: Row(children: [
                 PhosphorIcon(PhosphorIcons.translate(PhosphorIconsStyle.bold),
-                    size: 20, color: Zine.ink),
+                    size: 20, color: AD.textPrimary),
                 const SizedBox(width: 10),
-                Text('Translate into…', style: ZineText.cardTitle(size: 18)),
+                Text('Translate into…', style: ADText.threadName()),
               ]),
             ),
             Flexible(
@@ -5551,9 +5552,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                 children: [
                   for (final l in ComposerAi.languages)
                     ListTile(
-                      title: Text(l.label, style: ZineText.value(size: 16)),
+                      title: Text(l.label, style: ADText.rowName()),
                       subtitle: l.code != l.label
-                          ? Text(l.code, style: ZineText.sub(size: 13))
+                          ? Text(l.code, style: ADText.preview())
                           : null,
                       onTap: () => Navigator.pop(ctx, l),
                     ),
@@ -5616,7 +5617,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   void _overflow() {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.overlaySheet,
       // This sheet grows to ~14 rows depending on thread type (group, tel
       // thread, unsaved caller, flags). Without isScrollControlled the sheet is
       // capped near half-screen and the tail items (Mute / Block / Delete) were
@@ -5643,13 +5644,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           if (_convKey != null)
             StatefulBuilder(builder: (sctx, setSheet) => SwitchListTile(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-                  secondary: Icon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill), color: Zine.ink),
-                  title: Text('Ava in this chat', style: ZineText.value(size: 15, color: Zine.ink)),
+                  secondary: Icon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill), color: AD.textPrimary),
+                  title: Text('Ava in this chat', style: ADText.rowName(c: AD.textPrimary)),
                   subtitle: Text(
                       _avaInChatOn ? 'Ava can help in this chat' : 'Ava is off for this chat',
-                      style: ZineText.sub(size: 12, color: Zine.inkMute)),
+                      style: ADText.preview(c: AD.textTertiary)),
                   value: _avaInChatOn,
-                  activeColor: Zine.ink,
+                  activeColor: AD.textPrimary,
                   onChanged: (v) async {
                     await _setAvaInChat(v);
                     if (sctx.mounted) setSheet(() {});
@@ -5831,16 +5832,16 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
 
   void _pickDisappear() {
     showModalBottomSheet(
-      context: context, backgroundColor: Zine.paper,
+      context: context, backgroundColor: AD.overlaySheet,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
         Padding(padding: const EdgeInsets.all(14),
-            child: Text('Disappearing messages', style: ZineText.cardTitle(size: 17))),
+            child: Text('Disappearing messages', style: ADText.threadName())),
         for (final opt in [['Off', 0], ['1 hour', 3600], ['1 day', 86400], ['1 week', 604800]])
           ListTile(
             title: Text(opt[0] as String),
             trailing: _disappearSecs == opt[1]
-                ? PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold), color: Zine.blueInk)
+                ? PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold), color: AD.iconSearch)
                 : null,
             onTap: () async {
               final secs = opt[1] as int;
@@ -5871,25 +5872,25 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _maybeShowPasteHint();
     showModalBottomSheet(
       context: context,
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.overlaySheet,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (ctx) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Wrap(spacing: 18, runSpacing: 18, children: [
-            _attachItem(ctx, PhosphorIcons.image(PhosphorIconsStyle.bold), 'Photos', Zine.accents[0], _pickPhotos),
+            _attachItem(ctx, PhosphorIcons.image(PhosphorIconsStyle.bold), 'Photos', AD.iconSearch, _pickPhotos),
             // [CHAT-PASTE-1] 'Paste image' removed — the message box already pastes
             // images natively (keyboard commitContent + context-menu Paste). A
             // one-time hint (below) points users at the long-press paste instead.
-            _attachItem(ctx, PhosphorIcons.camera(PhosphorIconsStyle.bold), 'Camera', Zine.accents[1], () => _pickImage(ImageSource.camera)),
-            _attachItem(ctx, PhosphorIcons.folderOpen(PhosphorIconsStyle.bold), 'Library', Zine.accents[4], _addFromLibrary),
-            _attachItem(ctx, PhosphorIcons.videoCamera(PhosphorIconsStyle.bold), 'Video', Zine.accents[2], () => _pickVideo(ImageSource.camera)),
-            _attachItem(ctx, PhosphorIcons.file(PhosphorIconsStyle.bold), 'File', Zine.accents[3], _pickFile),
-            _attachItem(ctx, PhosphorIcons.mapPin(PhosphorIconsStyle.bold), 'Location', Zine.accents[4], _shareLocation),
-            _attachItem(ctx, PhosphorIcons.broadcast(PhosphorIconsStyle.bold), 'Live location', Zine.accents[2], _shareLiveLocation),
-            _attachItem(ctx, PhosphorIcons.user(PhosphorIconsStyle.bold), 'Contact', Zine.accents[0], _shareContactCard),
-            _attachItem(ctx, PhosphorIcons.chartBar(PhosphorIconsStyle.bold), 'Poll', Zine.accents[1], _createPoll),
-            _attachItem(ctx, PhosphorIcons.smiley(PhosphorIconsStyle.bold), 'Sticker', Zine.accents[3], _stickerPicker),
+            _attachItem(ctx, PhosphorIcons.camera(PhosphorIconsStyle.bold), 'Camera', AD.primaryBadge, () => _pickImage(ImageSource.camera)),
+            _attachItem(ctx, PhosphorIcons.folderOpen(PhosphorIconsStyle.bold), 'Library', AD.online, _addFromLibrary),
+            _attachItem(ctx, PhosphorIcons.videoCamera(PhosphorIconsStyle.bold), 'Video', AD.danger, () => _pickVideo(ImageSource.camera)),
+            _attachItem(ctx, PhosphorIcons.file(PhosphorIconsStyle.bold), 'File', AD.iconVideo, _pickFile),
+            _attachItem(ctx, PhosphorIcons.mapPin(PhosphorIconsStyle.bold), 'Location', AD.online, _shareLocation),
+            _attachItem(ctx, PhosphorIcons.broadcast(PhosphorIconsStyle.bold), 'Live location', AD.danger, _shareLiveLocation),
+            _attachItem(ctx, PhosphorIcons.user(PhosphorIconsStyle.bold), 'Contact', AD.iconSearch, _shareContactCard),
+            _attachItem(ctx, PhosphorIcons.chartBar(PhosphorIconsStyle.bold), 'Poll', AD.primaryBadge, _createPoll),
+            _attachItem(ctx, PhosphorIcons.smiley(PhosphorIconsStyle.bold), 'Sticker', AD.iconVideo, _stickerPicker),
           ]),
         ),
       ),
@@ -5907,12 +5908,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             Container(width: 56, height: 56,
                 decoration: BoxDecoration(
                     color: color,
-                    borderRadius: BorderRadius.circular(Zine.rSm),
-                    border: Zine.border,
-                    boxShadow: Zine.shadowXs),
-                child: Icon(icon, color: color == Zine.coral ? Colors.white : Zine.ink, size: 24)),
+                    borderRadius: BorderRadius.circular(AD.rListCard),
+                    border: Border.all(color: AD.borderControl, width: 1),
+                    boxShadow: const []),
+                child: Icon(icon, color: color == AD.danger ? Colors.white : AD.textPrimary, size: 24)),
             const SizedBox(height: 8),
-            Text(label.toUpperCase(), style: ZineText.tag(size: 9.5, color: Zine.inkSoft)),
+            Text(label.toUpperCase(), style: ADText.statCaption(c: AD.textSecondary)),
           ]),
         ),
       );
@@ -5921,7 +5922,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   Widget build(BuildContext context) {
     final c = widget.chat;
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       body: Stack(children: [
       SafeArea(
         bottom: false,
@@ -5931,19 +5932,19 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             Container(
               height: 58,
               decoration: const BoxDecoration(
-                color: Zine.paper2,
-                border: Border(bottom: BorderSide(color: Zine.ink, width: Zine.bw)),
+                color: AD.headerFooter,
+                border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
               ),
               padding: const EdgeInsets.only(left: 4, right: 6),
               child: _searchMode ? _searchBar() : Row(children: [
                 IconButton(
-                  icon: PhosphorIcon(PhosphorIcons.caretLeft(PhosphorIconsStyle.bold), size: 22, color: Zine.ink),
+                  icon: PhosphorIcon(PhosphorIcons.caretLeft(PhosphorIconsStyle.bold), size: 22, color: AD.textPrimary),
                   onPressed: () => Navigator.pop(context),
                 ),
                 Container(
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    border: Border.all(color: Zine.ink, width: 2),
+                    border: Border.all(color: AD.borderAvatar, width: 2),
                   ),
                   child: Avatar(seed: c.seed, name: c.name, size: 38, avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl),
                 ),
@@ -5957,17 +5958,16 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(c.name, maxLines: 1, overflow: TextOverflow.ellipsis,
-                          style: ZineText.value(size: 15)),
+                          style: ADText.threadName()),
                       Text(
                           (_peerTyping
                               ? (c.group ? '${_typingWho ?? "Someone"} is typing…' : 'typing…')
                               : (c.group ? '${c.members} members · tap to manage'
                                   : (_peerOnline ? 'online' : _relLastSeen()))).toUpperCase(),
                           maxLines: 1, overflow: TextOverflow.ellipsis,
-                          style: ZineText.tag(size: 9,
-                              color: (_peerTyping || _peerOnline)
-                                  ? (_peerOnline && !_peerTyping ? Zine.mintInk : Zine.blueInk)
-                                  : Zine.inkMute)),
+                          style: ADText.statCaption(c: (_peerTyping || _peerOnline)
+                                  ? (_peerOnline && !_peerTyping ? AD.online : AD.iconSearch)
+                                  : AD.textTertiary)),
                     ],
                   ),
                   ),
@@ -5980,30 +5980,30 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                 if (RemoteConfig.guardianEnabled) _shieldAction(),
                 _headerAction(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
                     () => setState(() { _searchMode = true; _searchQuery = ''; }),
-                    color: Zine.blueInk),
+                    color: AD.iconSearch),
                 if (_isTelThread) ...[
                   // Unknown-number voicemail record — no live peer to call. Offer
                   // a quick "save contact" shortcut in the header instead.
                   if (!_callerSaved)
                     _headerAction(PhosphorIcons.userPlus(PhosphorIconsStyle.bold),
-                        () => _saveUnknownContact(source: 'thread_header'), color: Zine.lilac),
+                        () => _saveUnknownContact(source: 'thread_header'), color: AD.iconVideo),
                 ] else if (!c.group) ...[
-                  _headerAction(PhosphorIcons.phone(PhosphorIconsStyle.bold), () => _call('voice'), color: Zine.mintInk),
-                  _headerAction(PhosphorIcons.videoCamera(PhosphorIconsStyle.bold), () => _call('video'), color: Zine.coral),
+                  _headerAction(PhosphorIcons.phone(PhosphorIconsStyle.bold), () => _call('voice'), color: AD.iconPhone),
+                  _headerAction(PhosphorIcons.videoCamera(PhosphorIconsStyle.bold), () => _call('video'), color: AD.iconVideo),
                 ] else if (RemoteConfig.conferenceEnabled) ...[
                   // Phase 10 RULE CHANGE: group conferences (LiveKit, ≤25).
                   // >25 members → greyed icons; tapping pops the limit notice.
                   _headerAction(PhosphorIcons.phone(PhosphorIconsStyle.bold),
                       () => _confAllowed ? _groupCall(false) : _confLimitNotice(false),
-                      color: _confAllowed ? Zine.ink : Zine.inkMute),
+                      color: _confAllowed ? AD.textPrimary : AD.textTertiary),
                   _headerAction(PhosphorIcons.videoCamera(PhosphorIconsStyle.bold),
                       () => _confAllowed ? _groupCall(true) : _confLimitNotice(true),
-                      color: _confAllowed ? Zine.ink : Zine.inkMute),
+                      color: _confAllowed ? AD.textPrimary : AD.textTertiary),
                   if (!_confAllowed)
                     _headerAction(PhosphorIcons.info(PhosphorIconsStyle.bold),
-                        () => _confLimitNotice(true), size: 22, color: Zine.inkMute),
+                        () => _confLimitNotice(true), size: 22, color: AD.textTertiary),
                 ],
-                _headerAction(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold), _overflow, color: Zine.lilac),
+                _headerAction(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold), _overflow, color: AD.iconVideo),
               ]),
             ),
             if (_pinned != null) _pinBanner(),
@@ -6215,9 +6215,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       context: context,
       isScrollControlled: true,
       isDismissible: true,
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.overlaySheet,
       shape: const RoundedRectangleBorder(
-          side: BorderSide(color: Zine.ink, width: Zine.bw),
+          side: BorderSide(color: AD.borderControl, width: 1),
           borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (ctx) => StatefulBuilder(builder: (ctx, setSheet) {
         Future<void> run(Future<void> Function() action, String verb) async {
@@ -6231,18 +6231,18 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
-                PhosphorIcon(PhosphorIcons.userCircle(PhosphorIconsStyle.bold), size: 26, color: Zine.blueInk),
+                PhosphorIcon(PhosphorIcons.userCircle(PhosphorIconsStyle.bold), size: 26, color: AD.iconSearch),
                 const SizedBox(width: 10),
-                Expanded(child: Text('Message request', style: ZineText.value(size: 18))),
+                Expanded(child: Text('Message request', style: ADText.rowName())),
               ]),
               const SizedBox(height: 10),
               Text('$name is not in your contacts. Accept to reply, or block/report if it looks like spam. Decline keeps it under Message requests.',
-                  style: ZineText.sub(size: 13.5)),
+                  style: ADText.preview()),
               const SizedBox(height: 18),
               // Accept — restore the composer and resume normal receipts.
               _gateSheetBtn(
                 icon: PhosphorIcons.checkCircle(PhosphorIconsStyle.bold),
-                label: 'Accept', bg: Zine.lime, fg: Zine.ink, busy: busy,
+                label: 'Accept', bg: AD.primaryBadge, fg: AD.textPrimary, busy: busy,
                 onTap: () => run(() async {
                   await StrangerGateApi.accept(conv);
                   trackStrangerGate('stranger_gate_accept', {'conv': conv, 'peer': peerHex, 'via': 'overlay'});
@@ -6254,7 +6254,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               Row(children: [
                 Expanded(child: _gateSheetBtn(
                   icon: PhosphorIcons.prohibit(PhosphorIconsStyle.bold),
-                  label: 'Block', bg: Zine.lilac, fg: Zine.ink, busy: busy,
+                  label: 'Block', bg: AD.iconVideo, fg: AD.textPrimary, busy: busy,
                   onTap: () => run(() async {
                     await StrangerGateApi.block(conv: conv, uid: peerHex.isEmpty ? null : peerHex);
                     trackStrangerGate('stranger_gate_block', {'conv': conv, 'peer': peerHex, 'via': 'overlay'});
@@ -6265,7 +6265,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                 const SizedBox(width: 10),
                 Expanded(child: _gateSheetBtn(
                   icon: PhosphorIcons.flag(PhosphorIconsStyle.bold),
-                  label: 'Report', bg: Zine.coral, fg: Colors.white, busy: busy,
+                  label: 'Report', bg: AD.danger, fg: Colors.white, busy: busy,
                   onTap: () => run(() async {
                     final id = await StrangerGateApi.report(conv: conv, lastN: 10);
                     trackStrangerGate('stranger_gate_report', {'conv': conv, 'peer': peerHex, 'ok': id != null, 'via': 'overlay'});
@@ -6281,7 +6281,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                   trackStrangerGate('stranger_gate_decline', {'conv': conv, 'peer': peerHex, 'via': 'overlay'});
                   Navigator.of(ctx).pop();
                 },
-                child: Text('Decline', style: ZineText.value(size: 15, color: Zine.inkSoft)),
+                child: Text('Decline', style: ADText.rowName(c: AD.textSecondary)),
               )),
             ]),
           ),
@@ -6301,7 +6301,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           PhosphorIcon(icon, size: 18, color: fg),
           const SizedBox(width: 8),
-          Text(label, style: ZineText.value(size: 15, color: fg)),
+          Text(label, style: ADText.rowName(c: fg)),
         ]),
       );
 
@@ -6372,7 +6372,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   // with 46px tap targets (owner request 2026-06-24: the top-bar icons were too
   // small to read/tap comfortably).
   Widget _headerAction(IconData icon, VoidCallback onTap,
-          {double size = 26, Color color = Zine.ink}) =>
+          {double size = 26, Color color = AD.textPrimary}) =>
       IconButton(
         icon: PhosphorIcon(icon, size: size, color: color),
         onPressed: onTap,
@@ -6394,7 +6394,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill),
           () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
               content: Text('Guardian always protects this account'))),
-          color: Zine.mintInk,
+          color: AD.online,
         ),
       );
     }
@@ -6405,7 +6405,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         on ? PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill)
            : PhosphorIcons.shield(PhosphorIconsStyle.bold),
         _toggleGuardian,
-        color: on ? Zine.mintInk : Zine.inkSoft,
+        color: on ? AD.online : AD.textSecondary,
       ),
     );
   }
@@ -6416,25 +6416,25 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         onTap: onTap,
         child: Container(width: 44, height: 44,
             decoration: BoxDecoration(
-                color: Zine.lime, shape: BoxShape.circle,
-                border: Zine.border, boxShadow: Zine.shadowXs),
-            child: Icon(icon, color: Zine.ink, size: 20)),
+                color: AD.sendActiveBg, shape: BoxShape.circle,
+                border: Border.all(color: AD.borderControl, width: 1), boxShadow: const []),
+            child: Icon(icon, color: AD.sendActiveInk, size: 20)),
       );
 
   Widget _inputBar() {
     // Input band: paper-2 with ink top border; field = ink-bordered pill.
     const bandDeco = BoxDecoration(
-      color: Zine.paper2,
-      border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
+      color: AD.headerFooter,
+      border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
     );
     if (_recording) {
       return Container(
         decoration: bandDeco,
         padding: const EdgeInsets.fromLTRB(16, 12, 12, 10),
         child: Row(children: [
-          PhosphorIcon(PhosphorIcons.record(PhosphorIconsStyle.fill), color: Zine.coral, size: 16),
+          PhosphorIcon(PhosphorIcons.record(PhosphorIconsStyle.fill), color: AD.danger, size: 16),
           const SizedBox(width: 8),
-          Expanded(child: Text('Recording… tap to send', style: ZineText.value(size: 14))),
+          Expanded(child: Text('Recording… tap to send', style: ADText.rowName())),
           _sendCircle(PhosphorIcons.paperPlaneRight(PhosphorIconsStyle.fill), _toggleRecord),
         ]),
       );
@@ -6451,7 +6451,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         focusNode: _composerFocus,
         hasText: _hasText,
         hintText: _avaMode ? 'Ask Ava privately…' : 'Message',
-        fieldColor: _avaMode ? Zine.lilac : Zine.card,
+        fieldColor: _avaMode ? AD.micIdleBg : AD.inputField,
         onSend: _send,
         onAttach: _attach,
         onCamera: () => _pickImage(ImageSource.camera),
@@ -6481,14 +6481,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           // lives in the quick-tools row above — see _avaModeChip.)
           child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
         IconButton(
-            icon: PhosphorIcon(PhosphorIcons.plusCircle(PhosphorIconsStyle.bold), color: Zine.ink, size: 26),
+            icon: PhosphorIcon(PhosphorIcons.plusCircle(PhosphorIconsStyle.bold), color: AD.iconClipOnWhite, size: 26),
             onPressed: _attach),
         // Phase 4: tap = send a 🎉 burst to the room; long-press picks the emoji.
         if (_party != null)
           GestureDetector(
             onLongPress: _pickBurstEmoji,
             child: IconButton(
-              icon: PhosphorIcon(PhosphorIcons.confetti(PhosphorIconsStyle.bold), color: Zine.coral, size: 24),
+              icon: PhosphorIcon(PhosphorIcons.confetti(PhosphorIconsStyle.bold), color: AD.danger, size: 24),
               onPressed: () => _sendBurst('🎉'),
             ),
           ),
@@ -6496,9 +6496,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             decoration: BoxDecoration(
-                color: _avaMode ? Zine.lilac : Zine.card,
-                borderRadius: BorderRadius.circular(5),
-                border: Zine.border),
+                color: _avaMode ? AD.micIdleBg : AD.inputField,
+                borderRadius: BorderRadius.circular(AD.rInput),
+                border: Border.all(color: AD.borderControl, width: 1)),
             // Wrap the field so BOTH a hardware Cmd/Ctrl+V and the long-press
             // toolbar "Paste" route through _onComposerPaste — which pastes an
             // image from the clipboard (super_clipboard) when one is present and
@@ -6536,8 +6536,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               maxLines: 5,
               keyboardType: TextInputType.multiline,
               textInputAction: TextInputAction.send,
-              style: ZineText.input(size: 15.5),
-              cursorColor: Zine.blueInk,
+              style: ADText.rowName(c: AD.textOnInput),
+              cursorColor: AD.iconSearch,
               contextMenuBuilder: (ctx, editableState) {
                 // Rebuild the default selection toolbar but re-point its "Paste"
                 // button at our image-aware handler, so pasting a copied image
@@ -6560,8 +6560,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               },
               decoration: InputDecoration(
                   hintText: _avaMode ? 'Ask Ava privately…' : 'Message',
-                  hintStyle: ZineText.input(size: 15.5).copyWith(
-                      color: Zine.placeholder, fontWeight: FontWeight.w600),
+                  hintStyle: ADText.rowName(c: AD.placeholderOnWhite).copyWith(
+                      fontWeight: FontWeight.w600),
                   border: InputBorder.none, isDense: true,
                   contentPadding: const EdgeInsets.symmetric(vertical: 12)),
               ),
@@ -6574,8 +6574,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             onTap: _stopVoiceToText,
             child: Container(width: 44, height: 44,
                 decoration: BoxDecoration(
-                    color: Zine.coral, shape: BoxShape.circle,
-                    border: Zine.border, boxShadow: Zine.shadowXs),
+                    color: AD.danger, shape: BoxShape.circle,
+                    border: Border.all(color: AD.borderControl, width: 1), boxShadow: const []),
                 child: Icon(Icons.stop_rounded, color: Colors.white, size: 22)),
           )
         else
@@ -6599,18 +6599,18 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         padding: const EdgeInsets.fromLTRB(16, 8, 12, 0),
         child: Row(children: [
           PhosphorIcon(PhosphorIcons.waveform(PhosphorIconsStyle.fill),
-              color: Zine.mintInk, size: 16),
+              color: AD.online, size: 16),
           const SizedBox(width: 8),
           Expanded(
             child: ValueListenableBuilder<String>(
               valueListenable: AvaOnDeviceStt.I.statusLine,
               builder: (_, s, __) => Text(
                 s.isEmpty ? 'Listening…' : s,
-                style: ZineText.kicker(size: 11, color: Zine.mintInk),
+                style: ADText.sectionLabel(c: AD.online),
               ),
             ),
           ),
-          Text('TAP ■ TO INSERT', style: ZineText.kicker(size: 9.5)),
+          Text('TAP ■ TO INSERT', style: ADText.sectionLabel()),
         ]),
       );
 
@@ -6645,18 +6645,18 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
         child: Row(children: [
           PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
-              size: 14, color: Zine.blueInk),
+              size: 14, color: AD.iconSearch),
           const SizedBox(width: 6),
           Expanded(
             child: Text.rich(
               TextSpan(children: [
                 const TextSpan(text: 'Type '),
-                TextSpan(text: '@ava', style: ZineText.tag(size: 11.5, color: Zine.blueInk)),
+                TextSpan(text: '@ava', style: ADText.statCaption(c: AD.iconSearch)),
                 const TextSpan(text: ' for a private reply, or '),
-                TextSpan(text: '#ava', style: ZineText.tag(size: 11.5, color: Zine.mintInk)),
+                TextSpan(text: '#ava', style: ADText.statCaption(c: AD.online)),
                 const TextSpan(text: ' to ask Ava in the chat.'),
               ]),
-              style: ZineText.sub(size: 11.5),
+              style: ADText.preview(),
             ),
           ),
         ]),
@@ -6679,16 +6679,16 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             width: 48, height: 48,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: _avaMode ? Zine.lilac : Zine.card,
+              color: _avaMode ? AD.iconVideo : AD.card,
               shape: BoxShape.circle,
-              border: Zine.border,
-              boxShadow: Zine.shadowXs,
+              border: Border.all(color: AD.borderControl, width: 1),
+              boxShadow: const [],
             ),
             child: PhosphorIcon(
                 PhosphorIcons.sparkle(
                     _avaMode ? PhosphorIconsStyle.fill : PhosphorIconsStyle.bold),
                 size: 23,
-                color: _avaMode ? Zine.blueInk : Zine.ink),
+                color: _avaMode ? AD.iconSearch : AD.textPrimary),
           ),
         ),
       );
@@ -6708,18 +6708,18 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
           decoration: BoxDecoration(
-            color: busy ? Zine.lime : Zine.card,
+            color: busy ? AD.primaryBadge : AD.card,
             borderRadius: BorderRadius.circular(100),
-            border: Zine.border,
-            boxShadow: Zine.shadowXs,
+            border: Border.all(color: AD.borderControl, width: 1),
+            boxShadow: const [],
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             busy
                 ? const SizedBox(width: 18, height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Zine.ink))
-                : PhosphorIcon(PhosphorIcons.magicWand(PhosphorIconsStyle.bold), size: 20, color: Zine.ink),
+                    child: CircularProgressIndicator(strokeWidth: 2, color: AD.textPrimary))
+                : PhosphorIcon(PhosphorIcons.magicWand(PhosphorIconsStyle.bold), size: 20, color: AD.textPrimary),
             const SizedBox(width: 8),
-            Text('Help me write better', style: ZineText.tag(size: 12.5, color: Zine.ink)),
+            Text('Help me write better', style: ADText.statCaption(c: AD.textPrimary)),
           ]),
         ),
       ),
@@ -6734,23 +6734,23 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
         decoration: const BoxDecoration(
-          color: Zine.paper,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(Zine.r)),
-          border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
+          color: AD.overlaySheet,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(AD.rSheet)),
+          border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
         ),
         padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
         child: SafeArea(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('HELP ME WRITE BETTER', style: ZineText.kicker()),
+          Text('HELP ME WRITE BETTER', style: ADText.sectionLabel()),
           const SizedBox(height: 12),
-          _writeHelpRow(ctx, PhosphorIcons.checkCircle(PhosphorIconsStyle.bold), Zine.blue,
+          _writeHelpRow(ctx, PhosphorIcons.checkCircle(PhosphorIconsStyle.bold), AD.iconSearch,
               'Fix grammar', 'Spelling & grammar, same meaning', 'grammar'),
-          _writeHelpRow(ctx, PhosphorIcons.smiley(PhosphorIconsStyle.bold), Zine.lime,
+          _writeHelpRow(ctx, PhosphorIcons.smiley(PhosphorIconsStyle.bold), AD.primaryBadge,
               'Friendlier', 'Warmer, friendlier tone', 'friendly'),
-          _writeHelpRow(ctx, PhosphorIcons.briefcase(PhosphorIconsStyle.bold), Zine.mint,
+          _writeHelpRow(ctx, PhosphorIcons.briefcase(PhosphorIconsStyle.bold), AD.online,
               'More formal', 'Formal and professional', 'formal'),
-          _writeHelpRow(ctx, PhosphorIcons.scissors(PhosphorIconsStyle.bold), Zine.lilac,
+          _writeHelpRow(ctx, PhosphorIcons.scissors(PhosphorIconsStyle.bold), AD.iconVideo,
               'Shorter & clearer', 'Trim it down, keep the point', 'short'),
-          _writeHelpRow(ctx, PhosphorIcons.lightbulb(PhosphorIconsStyle.bold), Zine.coral,
+          _writeHelpRow(ctx, PhosphorIcons.lightbulb(PhosphorIconsStyle.bold), AD.danger,
               'Reply ideas', 'Suggest replies to the last message', 'reply_ideas'),
         ])),
       ),
@@ -6770,18 +6770,18 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       padding: const EdgeInsets.only(bottom: 10),
       child: ZinePressable(
         onTap: () => Navigator.pop(ctx, action),
-        radius: BorderRadius.circular(Zine.rSm),
-        boxShadow: Zine.shadowXs,
+        radius: BorderRadius.circular(AD.rListCard),
+        boxShadow: const [],
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         child: Row(children: [
           ZineIconBadge(icon: icon, color: accent, size: 32),
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: ZineText.value(size: 15)),
+            Text(title, style: ADText.rowName()),
             const SizedBox(height: 2),
-            Text(subtitle, style: ZineText.sub(size: 12)),
+            Text(subtitle, style: ADText.preview()),
           ])),
-          PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: Zine.inkMute),
+          PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: AD.textTertiary),
         ]),
       ),
     );
@@ -6797,10 +6797,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         opacity: dimmed ? 0.4 : 1,
         child: Container(
           decoration: BoxDecoration(
-            color: busy ? Zine.lime : Zine.mint,
+            color: busy ? AD.primaryBadge : AD.online,
             borderRadius: BorderRadius.circular(100),
-            border: Zine.border,
-            boxShadow: Zine.shadowXs,
+            border: Border.all(color: AD.borderControl, width: 1),
+            boxShadow: const [],
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Tooltip(
@@ -6812,10 +6812,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                   child: busy
                       ? const SizedBox(
                           width: 16, height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Zine.ink),
+                          child: CircularProgressIndicator(strokeWidth: 2, color: AD.textPrimary),
                         )
                       : PhosphorIcon(PhosphorIcons.translate(PhosphorIconsStyle.bold),
-                          size: 23, color: Zine.ink),
+                          size: 23, color: AD.textPrimary),
                 ),
               ),
             ),
@@ -6824,14 +6824,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               child: Container(
                 padding: const EdgeInsets.fromLTRB(9, 9, 12, 9),
                 decoration: const BoxDecoration(
-                  border: Border(left: BorderSide(color: Zine.ink, width: Zine.bw)),
+                  border: Border(left: BorderSide(color: AD.borderControl, width: 1)),
                 ),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   Text(_transLang.label,
-                      style: ZineText.tag(size: 12.5, color: Zine.blueInk)),
+                      style: ADText.statCaption(c: AD.iconSearch)),
                   const SizedBox(width: 3),
                   PhosphorIcon(PhosphorIcons.caretDown(PhosphorIconsStyle.bold),
-                      size: 12, color: Zine.blueInk),
+                      size: 12, color: AD.iconSearch),
                 ]),
               ),
             ),
@@ -7011,7 +7011,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   Future<void> _pickTransLang() async {
     final picked = await showModalBottomSheet<ComposerLang>(
       context: context,
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.overlaySheet,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => SafeArea(
@@ -7020,9 +7020,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
             child: Row(children: [
               PhosphorIcon(PhosphorIcons.translate(PhosphorIconsStyle.bold),
-                  size: 20, color: Zine.ink),
+                  size: 20, color: AD.textPrimary),
               const SizedBox(width: 10),
-              Text('Translate into…', style: ZineText.cardTitle(size: 18)),
+              Text('Translate into…', style: ADText.threadName()),
             ]),
           ),
           Flexible(
@@ -7031,13 +7031,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               children: [
                 for (final l in ComposerAi.languages)
                   ListTile(
-                    title: Text(l.label, style: ZineText.value(size: 16)),
+                    title: Text(l.label, style: ADText.rowName()),
                     subtitle: l.code != l.label
-                        ? Text(l.code, style: ZineText.sub(size: 13))
+                        ? Text(l.code, style: ADText.preview())
                         : null,
                     trailing: l.code == _transLangCode
                         ? PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold),
-                            color: Zine.blueInk)
+                            color: AD.iconSearch)
                         : null,
                     onTap: () => Navigator.pop(ctx, l),
                   ),
@@ -7059,7 +7059,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   void _showReplyIdeas(List<String> ideas) {
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.overlaySheet,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => SafeArea(
@@ -7068,9 +7068,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
             child: Row(children: [
               PhosphorIcon(PhosphorIcons.lightbulb(PhosphorIconsStyle.bold),
-                  size: 20, color: Zine.ink),
+                  size: 20, color: AD.textPrimary),
               const SizedBox(width: 10),
-              Text('Reply ideas', style: ZineText.cardTitle(size: 18)),
+              Text('Reply ideas', style: ADText.threadName()),
             ]),
           ),
           Padding(
@@ -7078,7 +7078,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             child: Align(
               alignment: Alignment.centerLeft,
               child: Text('Tap one to drop it into your message.',
-                  style: ZineText.sub(size: 13)),
+                  style: ADText.preview()),
             ),
           ),
           for (final idea in ideas)
@@ -7090,12 +7090,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   decoration: BoxDecoration(
-                    color: Zine.card,
+                    color: AD.card,
                     borderRadius: BorderRadius.circular(14),
-                    border: Zine.border,
-                    boxShadow: Zine.shadowXs,
+                    border: Border.all(color: AD.borderControl, width: 1),
+                    boxShadow: const [],
                   ),
-                  child: Text(idea, style: ZineText.value(size: 15, weight: FontWeight.w600)),
+                  child: Text(idea, style: ADText.rowName()),
                 ),
               ),
             ),
@@ -7111,18 +7111,18 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 8, 8, 0),
       child: Row(children: [
-        Container(width: 3, height: 32, color: Zine.blueInk),
+        Container(width: 3, height: 32, color: AD.iconSearch),
         const SizedBox(width: 8),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
             Text((isEdit ? 'Editing' : 'Replying to ${_replyTo!.me ? "yourself" : (_replyTo!.senderLabel ?? widget.chat.name)}').toUpperCase(),
-                style: ZineText.kicker(size: 10, color: Zine.blueInk)),
+                style: ADText.sectionLabel(c: AD.iconSearch)),
             Text(preview, maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: ZineText.sub(size: 12.5)),
+                style: ADText.preview()),
           ]),
         ),
         IconButton(
-          icon: PhosphorIcon(PhosphorIcons.x(PhosphorIconsStyle.bold), size: 16, color: Zine.inkSoft),
+          icon: PhosphorIcon(PhosphorIcons.x(PhosphorIconsStyle.bold), size: 16, color: AD.textSecondary),
           onPressed: () => setState(() {
             _replyTo = null;
             if (_editing != null) { _editing = null; _ctrl.clear(); _hasText = false; }
@@ -7298,13 +7298,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
         child: Row(children: [
-          Expanded(child: Container(height: Zine.bw, color: Zine.inkMute.withValues(alpha: 0.4))),
+          Expanded(child: Container(height: 1, color: AD.textTertiary.withValues(alpha: 0.4))),
           const SizedBox(width: 8),
-          PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill), size: 13, color: Zine.blueInk),
+          PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill), size: 13, color: AD.iconSearch),
           const SizedBox(width: 5),
-          Text('AI RESULTS', style: ZineText.tag(size: 9, color: Zine.blueInk)),
+          Text('AI RESULTS', style: ADText.statCaption(c: AD.iconSearch)),
           const SizedBox(width: 8),
-          Expanded(child: Container(height: Zine.bw, color: Zine.inkMute.withValues(alpha: 0.4))),
+          Expanded(child: Container(height: 1, color: AD.textTertiary.withValues(alpha: 0.4))),
         ]),
       ),
     ];
@@ -7313,7 +7313,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       children.add(Padding(
         padding: const EdgeInsets.fromLTRB(16, 2, 16, 12),
         child: Text('Enable AvaBrain for your messages in Settings to search by meaning.',
-            textAlign: TextAlign.center, style: ZineText.sub(size: 12)),
+            textAlign: TextAlign.center, style: ADText.preview()),
       ));
       return Column(mainAxisSize: MainAxisSize.min, children: children);
     }
@@ -7321,7 +7321,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       children.add(const Padding(
         padding: EdgeInsets.symmetric(vertical: 14),
         child: Center(child: SizedBox(
-            width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Zine.blueInk))),
+            width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AD.iconSearch))),
       ));
       return Column(mainAxisSize: MainAxisSize.min, children: children);
     }
@@ -7329,7 +7329,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       children.add(Padding(
         padding: const EdgeInsets.fromLTRB(16, 2, 16, 12),
         child: Text("Couldn't reach smart search. Tap to retry.",
-            textAlign: TextAlign.center, style: ZineText.sub(size: 12, color: Zine.coral)),
+            textAlign: TextAlign.center, style: ADText.preview(c: AD.danger)),
       ));
       children.add(_aiSearchButton(label: 'Retry smart search'));
       return Column(mainAxisSize: MainAxisSize.min, children: children);
@@ -7341,7 +7341,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       children.add(Padding(
         padding: const EdgeInsets.fromLTRB(16, 2, 16, 12),
         child: Text('No meaning-based matches in this chat.',
-            textAlign: TextAlign.center, style: ZineText.sub(size: 12)),
+            textAlign: TextAlign.center, style: ADText.preview()),
       ));
       return Column(mainAxisSize: MainAxisSize.min, children: children);
     }
@@ -7355,10 +7355,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             PhosphorIcon(
                 _aiShowOther ? PhosphorIcons.caretDown(PhosphorIconsStyle.bold)
                     : PhosphorIcons.caretRight(PhosphorIconsStyle.bold),
-                size: 12, color: Zine.inkMute),
+                size: 12, color: AD.textTertiary),
             const SizedBox(width: 4),
             Text('${other.length} from your other chats',
-                style: ZineText.tag(size: 10, color: Zine.inkMute)),
+                style: ADText.statCaption(c: AD.textTertiary)),
           ]),
         ),
       ));
@@ -7387,16 +7387,16 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       margin: const EdgeInsets.fromLTRB(16, 3, 16, 3),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: Zine.paper,
+        color: AD.overlaySheet,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: tappable ? Zine.ink : Zine.inkMute, width: tappable ? 2 : 1),
+        border: Border.all(color: tappable ? AD.textPrimary : AD.textTertiary, width: tappable ? 2 : 1),
       ),
       child: Row(children: [
         Expanded(child: Text(label, maxLines: 2, overflow: TextOverflow.ellipsis,
-            style: ZineText.value(size: 13.5))),
+            style: ADText.rowName())),
         if (tappable) ...[
           const SizedBox(width: 8),
-          PhosphorIcon(PhosphorIcons.arrowUpRight(PhosphorIconsStyle.bold), size: 15, color: Zine.blueInk),
+          PhosphorIcon(PhosphorIcons.arrowUpRight(PhosphorIconsStyle.bold), size: 15, color: AD.iconSearch),
         ],
       ]),
     );
@@ -7414,15 +7414,15 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
               decoration: BoxDecoration(
-                color: Zine.lilac,
+                color: AD.iconVideo,
                 borderRadius: BorderRadius.circular(100),
-                border: Zine.border,
-                boxShadow: Zine.shadowXs,
+                border: Border.all(color: AD.borderControl, width: 1),
+                boxShadow: const [],
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill), size: 15, color: Zine.blueInk),
+                PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill), size: 15, color: AD.iconSearch),
                 const SizedBox(width: 6),
-                Text(label, style: ZineText.value(size: 13, color: Zine.blueInk)),
+                Text(label, style: ADText.rowName(c: AD.iconSearch)),
               ]),
             ),
           ),
@@ -7440,13 +7440,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 12),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
-            size: 30, color: Zine.inkMute),
+            size: 30, color: AD.textTertiary),
         const SizedBox(height: 10),
         Text('No messages match “$query”.',
-            textAlign: TextAlign.center, style: ZineText.value(size: 14)),
+            textAlign: TextAlign.center, style: ADText.rowName()),
         const SizedBox(height: 4),
         Text('Search this chat by meaning, not just exact words.',
-            textAlign: TextAlign.center, style: ZineText.sub(size: 12)),
+            textAlign: TextAlign.center, style: ADText.preview()),
         const SizedBox(height: 14),
         // Server-side smart (semantic) search over the user's own consented
         // index — the primary "AI search" path. Shows spinner/hits/error once run.
@@ -7465,17 +7465,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
             decoration: BoxDecoration(
-              color: Zine.paper,
+              color: AD.overlaySheet,
               borderRadius: BorderRadius.circular(100),
-              border: Zine.border,
-              boxShadow: Zine.shadowXs,
+              border: Border.all(color: AD.borderControl, width: 1),
+              boxShadow: const [],
             ),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               PhosphorIcon(PhosphorIcons.chatCircleText(PhosphorIconsStyle.bold),
-                  size: 15, color: Zine.ink),
+                  size: 15, color: AD.textPrimary),
               const SizedBox(width: 6),
               Text('Discuss with Ava',
-                  style: ZineText.value(size: 13, color: Zine.ink)),
+                  style: ADText.rowName(c: AD.textPrimary)),
             ]),
           ),
         ),
@@ -7484,28 +7484,28 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   }
 
   Widget _searchBar() => Row(children: [
-        IconButton(icon: PhosphorIcon(PhosphorIcons.arrowLeft(PhosphorIconsStyle.bold), color: Zine.ink),
+        IconButton(icon: PhosphorIcon(PhosphorIcons.arrowLeft(PhosphorIconsStyle.bold), color: AD.textPrimary),
             onPressed: () => setState(() { _searchMode = false; _searchQuery = ''; _resetAiSearch(); })),
         Expanded(child: TextField(
           autofocus: true,
           controller: _searchCtrl,
           onChanged: (v) => setState(() { _searchQuery = v; _resetAiSearch(); }),
-          style: ZineText.input(size: 15.5),
-          cursorColor: Zine.blueInk,
+          style: ADText.rowName(),
+          cursorColor: AD.iconSearch,
           decoration: InputDecoration(
               hintText: 'Search messages',
-              hintStyle: ZineText.input(size: 15.5).copyWith(
-                  color: Zine.placeholder, fontWeight: FontWeight.w700),
+              hintStyle: ADText.rowName().copyWith(
+                  color: AD.textTertiary, fontWeight: FontWeight.w700),
               border: InputBorder.none),
         )),
       ]);
 
   void _pickWallpaper() {
-    showModalBottomSheet(context: context, backgroundColor: Zine.paper,
+    showModalBottomSheet(context: context, backgroundColor: AD.overlaySheet,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (ctx) => SafeArea(child: Padding(padding: const EdgeInsets.all(16),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Chat wallpaper', style: ZineText.cardTitle(size: 18)),
+          Text('Chat wallpaper', style: ADText.threadName()),
           const SizedBox(height: 12),
           Wrap(spacing: 12, runSpacing: 12, children: [
             for (final id in kWallpaperOrder)
@@ -7519,7 +7519,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                   decoration: BoxDecoration(
                       gradient: wallpaperGradient(id), borderRadius: BorderRadius.circular(14),
                       border: Border.all(
-                          color: _wallpaperId == id ? Zine.ink : Zine.inkMute,
+                          color: _wallpaperId == id ? AD.textPrimary : AD.textTertiary,
                           width: _wallpaperId == id ? 3 : 2)),
                 ),
               ),
@@ -7627,8 +7627,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
 
   Widget _mentionBar() => Container(
         decoration: const BoxDecoration(
-          color: Zine.paper2,
-          border: Border(top: BorderSide(color: Zine.ink, width: 2)),
+          color: AD.headerFooter,
+          border: Border(top: BorderSide(color: AD.borderHairline, width: 2)),
         ),
         constraints: const BoxConstraints(maxHeight: 160),
         child: ListView(shrinkWrap: true, children: [
@@ -7638,11 +7638,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               leading: Container(
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(color: Zine.ink, width: 2),
+                  border: Border.all(color: AD.borderControl, width: 2),
                 ),
                 child: Avatar(seed: n, name: n, size: 32),
               ),
-              title: Text(n, style: ZineText.value(size: 14)),
+              title: Text(n, style: ADText.rowName()),
               onTap: () => _insertMention(n),
             ),
         ]),
@@ -7667,31 +7667,31 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   /// to save the caller as a contact.
   Widget _saveContactBanner() => Container(
         decoration: const BoxDecoration(
-          color: Zine.paper2,
-          border: Border(bottom: BorderSide(color: Zine.ink, width: 2)),
+          color: AD.headerFooter,
+          border: Border(bottom: BorderSide(color: AD.borderHairline, width: 2)),
         ),
         padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
         child: Row(children: [
-          PhosphorIcon(PhosphorIcons.userPlus(PhosphorIconsStyle.bold), size: 16, color: Zine.lilac),
+          PhosphorIcon(PhosphorIcons.userPlus(PhosphorIconsStyle.bold), size: 16, color: AD.iconVideo),
           const SizedBox(width: 8),
           Expanded(child: Text('Unknown number · ${formatTelDisplay(_telPhone)}',
               maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: ZineText.sub(size: 12.5, color: Zine.ink))),
+              style: ADText.preview(c: AD.textPrimary))),
           GestureDetector(
             onTap: () => _saveUnknownContact(source: 'thread_banner'),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: Zine.card,
+                color: AD.card,
                 borderRadius: BorderRadius.circular(100),
-                border: Border.all(color: Zine.ink, width: 2),
+                border: Border.all(color: AD.borderControl, width: 2),
               ),
-              child: Text('Save', style: ZineText.tag(size: 11)),
+              child: Text('Save', style: ADText.statCaption()),
             ),
           ),
           const SizedBox(width: 6),
           GestureDetector(onTap: () => setState(() => _saveBannerDismissed = true),
-              child: PhosphorIcon(PhosphorIcons.x(PhosphorIconsStyle.bold), size: 15, color: Zine.inkSoft)),
+              child: PhosphorIcon(PhosphorIcons.x(PhosphorIconsStyle.bold), size: 15, color: AD.textSecondary)),
           const SizedBox(width: 8),
         ]),
       );
@@ -7700,23 +7700,23 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   Widget _telFooter() => Container(
         width: double.infinity,
         decoration: const BoxDecoration(
-          color: Zine.paper2,
-          border: Border(top: BorderSide(color: Zine.ink, width: 2)),
+          color: AD.headerFooter,
+          border: Border(top: BorderSide(color: AD.borderHairline, width: 2)),
         ),
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
         child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Icon(Icons.voicemail, size: 15, color: Zine.inkMute),
+          Icon(Icons.voicemail, size: 15, color: AD.textTertiary),
           const SizedBox(width: 8),
           Flexible(child: Text(
               _callerSaved
                   ? 'Voicemail record · this caller isn’t on AvaTOK'
                   : 'Voicemail record from an unknown number',
-              style: ZineText.sub(size: 12.5, color: Zine.inkSoft))),
+              style: ADText.preview(c: AD.textSecondary))),
           if (!_callerSaved) ...[
             const SizedBox(width: 10),
             GestureDetector(
               onTap: () => _saveUnknownContact(source: 'thread_footer'),
-              child: Text('Save contact', style: ZineText.tag(size: 12, color: Zine.blueInk)),
+              child: Text('Save contact', style: ADText.statCaption(c: AD.iconSearch)),
             ),
           ],
         ]),
@@ -7724,17 +7724,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
 
   Widget _pinBanner() => Container(
         decoration: const BoxDecoration(
-          color: Zine.paper2,
-          border: Border(bottom: BorderSide(color: Zine.ink, width: 2)),
+          color: AD.headerFooter,
+          border: Border(bottom: BorderSide(color: AD.borderHairline, width: 2)),
         ),
         padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
         child: Row(children: [
-          PhosphorIcon(PhosphorIcons.pushPin(PhosphorIconsStyle.fill), size: 15, color: Zine.blueInk),
+          PhosphorIcon(PhosphorIcons.pushPin(PhosphorIconsStyle.fill), size: 15, color: AD.iconSearch),
           const SizedBox(width: 8),
           Expanded(child: Text('Pinned: ${_pinned!['text'] ?? ''}',
-              maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.sub(size: 12.5, color: Zine.ink))),
+              maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.preview(c: AD.textPrimary))),
           GestureDetector(onTap: _unpin,
-              child: PhosphorIcon(PhosphorIcons.x(PhosphorIconsStyle.bold), size: 15, color: Zine.inkSoft)),
+              child: PhosphorIcon(PhosphorIcons.x(PhosphorIconsStyle.bold), size: 15, color: AD.textSecondary)),
           const SizedBox(width: 8),
         ]),
       );
@@ -7771,29 +7771,29 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.82),
         decoration: BoxDecoration(
-          color: Zine.lilac,
-          border: Border.all(color: Zine.ink, width: 2),
-          boxShadow: Zine.shadowXs,
+          color: AD.bubbleInBg,
+          border: Border.all(color: AD.bubbleInInk, width: 2),
+          boxShadow: const [],
           borderRadius: const BorderRadius.only(
               topLeft: Radius.circular(16), topRight: Radius.circular(16),
               bottomLeft: Radius.circular(4), bottomRight: Radius.circular(16)),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
           Row(mainAxisSize: MainAxisSize.min, children: [
-            PhosphorIcon(PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill), size: 14, color: Zine.ink),
+            PhosphorIcon(PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill), size: 14, color: AD.bubbleInInk),
             const SizedBox(width: 5),
-            Text('AVA · HUMAN CHECK', style: TextStyle(color: Zine.ink, fontSize: 9.5,
+            Text('AVA · HUMAN CHECK', style: TextStyle(color: AD.bubbleInInk, fontSize: 9.5,
                 fontWeight: FontWeight.w800, letterSpacing: 0.6)),
           ]),
           const SizedBox(height: 4),
-          Text(m.text, style: TextStyle(color: Zine.ink, fontSize: 13.5, height: 1.3,
+          Text(m.text, style: TextStyle(color: AD.bubbleInInk, fontSize: 13.5, height: 1.3,
               fontWeight: FontWeight.w500)),
           const SizedBox(height: 8),
           SizedBox(
             width: double.infinity,
             child: FilledButton(
               style: FilledButton.styleFrom(
-                backgroundColor: Zine.ink, foregroundColor: Colors.white,
+                backgroundColor: AD.bubbleInInk, foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
@@ -7814,7 +7814,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             ),
           ),
           const SizedBox(height: 3),
-          Text(m.time, style: TextStyle(color: Zine.ink.withValues(alpha: 0.55), fontSize: 10)),
+          Text(m.time, style: TextStyle(color: AD.bubbleInInk.withValues(alpha: 0.55), fontSize: 10)),
         ]),
       ),
     );
@@ -7841,23 +7841,23 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: Zine.paper2,
-          border: Border.all(color: Zine.ink.withValues(alpha: 0.35), width: 1.5),
+          color: AD.headerFooter,
+          border: Border.all(color: AD.borderControl.withValues(alpha: 0.35), width: 1.5),
           borderRadius: BorderRadius.circular(14),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.bold), size: 14, color: Zine.inkSoft),
+          PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.bold), size: 14, color: AD.textSecondary),
           const SizedBox(width: 6),
           Text('You deleted this message',
-              style: ZineText.sub(size: 12.5, color: Zine.inkSoft)),
+              style: ADText.preview(c: AD.textSecondary)),
           const SizedBox(width: 12),
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () => _undoDelete(m),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
-              PhosphorIcon(PhosphorIcons.arrowCounterClockwise(PhosphorIconsStyle.bold), size: 13, color: Zine.blueInk),
+              PhosphorIcon(PhosphorIcons.arrowCounterClockwise(PhosphorIconsStyle.bold), size: 13, color: AD.iconSearch),
               const SizedBox(width: 3),
-              Text('UNDO', style: ZineText.tag(size: 11, color: Zine.blueInk)),
+              Text('UNDO', style: ADText.statCaption(c: AD.iconSearch)),
             ]),
           ),
         ]),
@@ -7876,8 +7876,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.82),
           decoration: BoxDecoration(
             color: const Color(0xFFD32F2F), // strong red — unmistakable danger
-            border: Border.all(color: Zine.ink, width: 2),
-            boxShadow: Zine.shadowXs,
+            border: Border.all(color: AD.borderControl, width: 2),
+            boxShadow: const [],
             borderRadius: const BorderRadius.only(
               topLeft: Radius.circular(16), topRight: Radius.circular(16),
               bottomLeft: Radius.circular(4), bottomRight: Radius.circular(16)),
@@ -7967,8 +7967,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.82),
           decoration: BoxDecoration(
             color: const Color(0xFFD32F2F), // strong red — unmistakable danger
-            border: Border.all(color: Zine.ink, width: 2),
-            boxShadow: Zine.shadowXs,
+            border: Border.all(color: AD.borderControl, width: 2),
+            boxShadow: const [],
             borderRadius: const BorderRadius.only(
               topLeft: Radius.circular(16), topRight: Radius.circular(16),
               bottomLeft: Radius.circular(4), bottomRight: Radius.circular(16)),
@@ -8004,7 +8004,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     Analytics.capture('safety_flag_sheet_opened', {'category': category, 'is_group': _isGroup});
     showModalBottomSheet(
       context: context,
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.overlaySheet,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (ctx) => SafeArea(
@@ -8012,45 +8012,45 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              ZineIconBadge(icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill), color: Zine.coral, size: 40),
+              ZineIconBadge(icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill), color: AD.danger, size: 40),
               const SizedBox(width: 12),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Ava flagged this message', style: ZineText.cardTitle(size: 18)),
-                Text('From Ava — only you can see this', style: ZineText.sub(size: 11.5)),
+                Text('Ava flagged this message', style: ADText.threadName()),
+                Text('From Ava — only you can see this', style: ADText.preview()),
               ])),
             ]),
             const SizedBox(height: 14),
             Container(
               padding: const EdgeInsets.all(13),
               decoration: BoxDecoration(
-                color: Zine.paper2,
+                color: AD.headerFooter,
                 borderRadius: BorderRadius.circular(12),
-                border: Zine.border,
+                border: Border.all(color: AD.borderControl, width: 1),
               ),
-              child: Text(_safetyCategoryExplain(category), style: ZineText.sub(size: 13.5)),
+              child: Text(_safetyCategoryExplain(category), style: ADText.preview()),
             ),
             const SizedBox(height: 16),
-            ZineButton(
+            AdButton(
               label: 'Block sender',
-              variant: ZineButtonVariant.coral,
+              variant: AdButtonVariant.danger,
               fullWidth: true,
               icon: PhosphorIcons.prohibit(PhosphorIconsStyle.bold),
               trailingIcon: false,
               onPressed: () { Navigator.pop(ctx); _blockSender(category); },
             ),
             const SizedBox(height: 8),
-            ZineButton(
+            AdButton(
               label: 'Report',
-              variant: ZineButtonVariant.blue,
+              variant: AdButtonVariant.teal,
               fullWidth: true,
               icon: PhosphorIcons.flag(PhosphorIconsStyle.bold),
               trailingIcon: false,
               onPressed: () { Navigator.pop(ctx); _reportFlagged(m, category); },
             ),
             const SizedBox(height: 8),
-            ZineButton(
+            AdButton(
               label: 'This is fine',
-              variant: ZineButtonVariant.ghost,
+              variant: AdButtonVariant.ghost,
               fullWidth: true,
               icon: PhosphorIcons.check(PhosphorIconsStyle.bold),
               trailingIcon: false,
@@ -8261,20 +8261,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                 // and in GROUPS each sender gets their own stable tint so you can
                 // tell at a glance who said what.
                 color: (isAva || toAva)
-                    ? Zine.lilac
+                    ? AD.bubbleInBg
                     : onRight
-                        ? Zine.lime
+                        ? AD.bubbleOutBg
                         : (widget.chat.group && m.senderLabel != null
                             ? _groupSenderTint(m.senderLabel!)
-                            : Zine.card),
-                border: Zine.border,
-                boxShadow: Zine.shadowXs,
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(16),
-                  topRight: const Radius.circular(16),
-                  bottomLeft: Radius.circular(onRight ? 16 : 4),
-                  bottomRight: Radius.circular(onRight ? 4 : 16),
-                ),
+                            : AD.bubbleInBg),
+                boxShadow: const [],
+                borderRadius: onRight ? AD.bubbleOutRadius : AD.bubbleInRadius,
               ),
               // [UI-BUBBLE-2] clip edge-to-edge media to the bubble's rounded shape.
               clipBehavior: isPureMedia ? Clip.antiAlias : Clip.none,
@@ -8289,11 +8283,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                       padding: const EdgeInsets.only(bottom: 2),
                       child: Row(mainAxisSize: MainAxisSize.min, children: [
                         PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
-                            size: 11, color: Zine.ink),
+                            size: 11, color: AD.bubbleInInk),
                         const SizedBox(width: 4),
                         Text(
                             m.special == 'ava_private' ? 'AVA · PRIVATE' : 'AVA',
-                            style: ZineText.tag(size: 9.5, color: Zine.ink)),
+                            style: ADText.bubbleMeta(c: AD.bubbleInInk)),
                       ]),
                     ),
                   // [UI-BUBBLE-2] For pure media the FORWARDED label overlays the
@@ -8303,30 +8297,30 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                       padding: const EdgeInsets.only(bottom: 1),
                       child: Row(mainAxisSize: MainAxisSize.min, children: [
                         PhosphorIcon(PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold),
-                            size: 11, color: Zine.inkMute),
+                            size: 11, color: AD.bubbleInMeta),
                         const SizedBox(width: 3),
-                        Text('FORWARDED', style: ZineText.tag(size: 9, color: Zine.inkMute)),
+                        Text('FORWARDED', style: ADText.bubbleMeta(c: AD.bubbleInMeta)),
                       ]),
                     ),
                   if (m.senderLabel != null)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 2),
                       child: Text(m.senderLabel!.toUpperCase(),
-                          style: ZineText.tag(size: 9.5, color: Zine.blueInk)),
+                          style: ADText.bubbleMeta(c: AD.iconSearch)),
                     ),
                   if (m.replyTo != null)
                     Container(
                       margin: const EdgeInsets.only(bottom: 4),
                       padding: const EdgeInsets.fromLTRB(8, 5, 8, 5),
                       decoration: BoxDecoration(
-                          color: Zine.paper2,
-                          border: const Border(left: BorderSide(color: Zine.blueInk, width: 3)),
+                          color: AD.mediaPlaceholderBg,
+                          border: const Border(left: BorderSide(color: AD.iconSearch, width: 3)),
                           borderRadius: BorderRadius.circular(6)),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
                         Text((m.replyTo!['who'] ?? '').toString().toUpperCase(),
-                            style: ZineText.tag(size: 9, color: Zine.blueInk)),
+                            style: ADText.bubbleMeta(c: AD.iconSearch)),
                         Text((m.replyTo!['preview'] ?? '').toString(), maxLines: 1, overflow: TextOverflow.ellipsis,
-                            style: ZineText.sub(size: 11.5)),
+                            style: ADText.bubbleBody(c: AD.bubbleInInk)),
                       ]),
                     ),
                   if (m.special != null) _specialContent(m)
@@ -8344,12 +8338,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                       Container(
                         margin: const EdgeInsets.fromLTRB(-3, 7, -3, 0),
                         height: 2,
-                        color: Zine.ink.withValues(alpha: 0.28),
+                        color: AD.bubbleInInk.withValues(alpha: 0.28),
                       ),
                       Padding(
                         padding: const EdgeInsets.only(top: 7, left: 5, right: 5),
                         child: Text(_mediaCaptionOf(m),
-                            style: ZineText.sub(size: 13.5, color: Zine.ink)),
+                            style: ADText.bubbleBody(c: AD.bubbleInInk)),
                       ),
                     ],
                     // Voice-note transcript / translation (viewer-only). Rendered
@@ -8365,19 +8359,19 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                     padding: const EdgeInsets.only(top: 3, left: 2, right: 2),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       if (m.starred) ...[
-                        PhosphorIcon(PhosphorIcons.star(PhosphorIconsStyle.fill), size: 11, color: Zine.blueInk),
+                        PhosphorIcon(PhosphorIcons.star(PhosphorIconsStyle.fill), size: 11, color: AD.iconSearch),
                         const SizedBox(width: 3),
                       ],
                       if (m.edited) ...[
-                        Text('EDITED ', style: ZineText.tag(size: 9, color: Zine.inkMute)),
+                        Text('EDITED ', style: ADText.bubbleMeta(c: AD.bubbleInMeta)),
                       ],
                       // Mono timestamp (10px) — Phase 5: live relative age for
                       // recent messages ("now"/"2m"/"1h"), fixed HH:MM for older.
                       Text(m.ts != 0 ? _relTime(m.ts) : m.time,
-                          style: ZineText.tag(size: 10, color: Zine.inkSoft)),
+                          style: ADText.bubbleMeta(c: AD.bubbleInMeta)),
                       if (m.expireAt != null) ...[
                         const SizedBox(width: 4),
-                        PhosphorIcon(PhosphorIcons.timer(PhosphorIconsStyle.bold), size: 11, color: Zine.inkSoft),
+                        PhosphorIcon(PhosphorIcons.timer(PhosphorIconsStyle.bold), size: 11, color: AD.bubbleInMeta),
                       ],
                       // Delivery status (my 1:1 messages): tick + tiny caption —
                       // sending → "waiting to reach phone" (1 tick) → "delivered"
@@ -8390,7 +8384,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                           Icon(st.icon, size: 13, color: st.color),
                           const SizedBox(width: 3),
                           Text(st.label.toUpperCase(),
-                              style: ZineText.tag(size: 8.5, color: st.color)),
+                              style: ADText.bubbleMeta(c: st.color)),
                         ]);
                         if (!m.failed) return row;
                         return GestureDetector(
@@ -8417,7 +8411,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                       if (m.uploading && _statusFor(m) == null) ...[
                         const SizedBox(width: 6),
                         const SizedBox(width: 10, height: 10,
-                            child: CircularProgressIndicator(strokeWidth: 1.5, color: Zine.inkSoft)),
+                            child: CircularProgressIndicator(strokeWidth: 1.5, color: AD.bubbleInMeta)),
                       ],
                     ]),
                   ),
@@ -8437,10 +8431,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                         decoration: BoxDecoration(
-                            color: m.reaction == e.key ? Zine.lime : Zine.card,
+                            color: m.reaction == e.key ? AD.primaryBadge : AD.mediaPlaceholderBg,
                             borderRadius: BorderRadius.circular(100),
-                            border: Border.all(color: Zine.ink, width: 2),
-                            boxShadow: Zine.shadowXs),
+                            border: Border.all(color: AD.bubbleInInk, width: 2),
+                            boxShadow: const []),
                         child: Text(e.value > 1 ? '${e.key} ${e.value}' : e.key,
                             style: const TextStyle(fontSize: 13)),
                       ),
@@ -8453,10 +8447,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 // Reaction sticker — ink border + hard offset shadow, no blur.
                 decoration: BoxDecoration(
-                    color: Zine.card,
+                    color: AD.mediaPlaceholderBg,
                     borderRadius: BorderRadius.circular(100),
-                    border: Border.all(color: Zine.ink, width: 2),
-                    boxShadow: Zine.shadowXs),
+                    border: Border.all(color: AD.bubbleInInk, width: 2),
+                    boxShadow: const []),
                 child: Text(m.reaction!, style: const TextStyle(fontSize: 14)),
               ),
           ],
@@ -8476,7 +8470,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               margin: const EdgeInsets.only(bottom: 10),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(color: Zine.ink, width: 1.5),
+                border: Border.all(color: AD.bubbleInInk, width: 1.5),
               ),
               child: Avatar(
                 seed: _myNpub ?? 'me',
@@ -8538,11 +8532,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         if (m.starred) ...[
           PhosphorIcon(PhosphorIcons.star(PhosphorIconsStyle.fill),
-              size: 11, color: Zine.blueInk),
+              size: 11, color: AD.iconSearch),
           const SizedBox(width: 3),
         ],
         Text(m.ts != 0 ? _relTime(m.ts) : m.time,
-            style: ZineText.tag(size: 10, color: Zine.inkSoft)),
+            style: ADText.bubbleMeta(c: AD.bubbleInMeta)),
         if (st != null) ...[
           const SizedBox(width: 4),
           Icon(st.icon, size: 13, color: st.color),
@@ -8576,10 +8570,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                     decoration: BoxDecoration(
-                        color: m.reaction == e.key ? Zine.lime : Zine.card,
+                        color: m.reaction == e.key ? AD.primaryBadge : AD.mediaPlaceholderBg,
                         borderRadius: BorderRadius.circular(100),
-                        border: Border.all(color: Zine.ink, width: 2),
-                        boxShadow: Zine.shadowXs),
+                        border: Border.all(color: AD.bubbleInInk, width: 2),
+                        boxShadow: const []),
                     child: Text(e.value > 1 ? '${e.key} ${e.value}' : e.key,
                         style: const TextStyle(fontSize: 13)),
                   ),
@@ -8614,9 +8608,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           AvaId.avatarAsset,
           width: s, height: s, fit: BoxFit.cover,
           errorBuilder: (_, __, ___) => Container(
-            width: s, height: s, color: Zine.lilac, alignment: Alignment.center,
+            width: s, height: s, color: AD.bubbleInBg, alignment: Alignment.center,
             child: PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
-                size: 15, color: Zine.ink),
+                size: 15, color: AD.bubbleInInk),
           ),
         ),
       );
@@ -8630,7 +8624,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        border: Border.all(color: Zine.ink, width: 1.5),
+        border: Border.all(color: AD.bubbleInInk, width: 1.5),
       ),
       child: inner,
     );
@@ -8657,19 +8651,19 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           padding: const EdgeInsets.only(top: 6, left: 5, right: 5),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
             Row(mainAxisSize: MainAxisSize.min, children: [
-              PhosphorIcon(icon, size: 11, color: Zine.blueInk),
+              PhosphorIcon(icon, size: 11, color: AD.iconSearch),
               const SizedBox(width: 4),
-              Text(label, style: ZineText.tag(size: 9.5, color: Zine.blueInk)),
+              Text(label, style: ADText.bubbleMeta(c: AD.iconSearch)),
             ]),
             const SizedBox(height: 2),
-            Text(body, style: ZineText.sub(size: 13.5, color: Zine.ink)),
+            Text(body, style: ADText.bubbleBody(c: AD.bubbleInInk)),
           ]),
         );
     return [
       Container(
         margin: const EdgeInsets.fromLTRB(-3, 7, -3, 0),
         height: 2,
-        color: Zine.ink.withValues(alpha: 0.28),
+        color: AD.bubbleInInk.withValues(alpha: 0.28),
       ),
       if (transcript != null && transcript.isNotEmpty)
         line(PhosphorIcons.textAa(PhosphorIconsStyle.bold), 'transcript', transcript),
@@ -8682,7 +8676,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   // Plain-text bubble content: links are tappable, and a YouTube link renders a
   // rich card with inline playback right inside the chat (no leaving the thread).
   Widget _textContent(_Msg m) {
-    final style = ZineText.sub(size: 13.5, color: Zine.ink);
+    final style = ADText.bubbleBody(c: AD.bubbleInInk);
     final link = ChatLinkText(text: m.text, style: style);
 
     // STREAM G [GROUP-AI-3/5]: translated bubble → "show original" toggle. Wraps
@@ -8752,14 +8746,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     final st = _statusFor(m);
     final trailing = Row(mainAxisSize: MainAxisSize.min, children: [
       Text(m.ts != 0 ? _relTime(m.ts) : m.time,
-          style: ZineText.tag(size: 10, color: Colors.white)),
+          style: ADText.statCaption(c: Colors.white)),
       if (m.expireAt != null) ...[
         const SizedBox(width: 4),
         PhosphorIcon(PhosphorIcons.timer(PhosphorIconsStyle.bold), size: 11, color: Colors.white),
       ],
       if (st != null) ...[
         const SizedBox(width: 5),
-        Icon(st.icon, size: 13, color: st.color == Zine.blueInk ? const Color(0xFF7EC8FF) : Colors.white),
+        Icon(st.icon, size: 13, color: st.color == AD.iconSearch ? const Color(0xFF7EC8FF) : Colors.white),
       ],
     ]);
     return [
@@ -8944,7 +8938,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               child: DecoratedBox(
                 decoration: BoxDecoration(
                     color: Colors.black.withOpacity(0.18),
-                    borderRadius: BorderRadius.circular(Zine.rSm)),
+                    borderRadius: BorderRadius.circular(AD.rListCard)),
                 child: const Center(
                     child: SizedBox(
                         width: 22, height: 22,
@@ -9002,11 +8996,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   }
 
   Widget _fileChip(_Msg m, IconData icon, String label) => Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, color: Zine.ink),
+        Icon(icon, color: AD.bubbleInInk),
         const SizedBox(width: 8),
         Flexible(child: Text(label,
             maxLines: 1, overflow: TextOverflow.ellipsis,
-            style: ZineText.value(size: 14))),
+            style: ADText.rowName(c: AD.bubbleInInk))),
       ]);
 }
 
@@ -9093,16 +9087,16 @@ class _MarketplaceDealCardState extends State<_MarketplaceDealCard> {
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: bg,
-        border: Border.all(color: Zine.ink, width: 2),
+        border: Border.all(color: AD.bubbleInInk, width: 2),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Text(_isDeal ? '🤝 Deal' : '💬 No deal',
-              style: ZineText.tag(size: 12, color: Zine.ink)),
+              style: ADText.bubbleMeta(c: AD.bubbleInInk)),
         ]),
         const SizedBox(height: 4),
-        Text(text, style: ZineText.sub(size: 13, color: Zine.ink)),
+        Text(text, style: ADText.bubbleBody(c: AD.bubbleInInk)),
         const SizedBox(height: 8),
         Row(children: [
           GestureDetector(
@@ -9110,7 +9104,7 @@ class _MarketplaceDealCardState extends State<_MarketplaceDealCard> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: _audioKey.isEmpty ? Zine.inkSoft : Zine.ink,
+                color: _audioKey.isEmpty ? AD.bubbleInMeta : AD.bubbleInInk,
                 borderRadius: BorderRadius.circular(100),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -9129,12 +9123,12 @@ class _MarketplaceDealCardState extends State<_MarketplaceDealCard> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: Zine.paper,
-                  border: Border.all(color: Zine.ink, width: 1.5),
+                  color: AD.mediaPlaceholderBg,
+                  border: Border.all(color: AD.bubbleInInk, width: 1.5),
                   borderRadius: BorderRadius.circular(100),
                 ),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(_sharing ? Icons.hourglass_top : Icons.ios_share, color: Zine.ink, size: 16),
+                  Icon(_sharing ? Icons.hourglass_top : Icons.ios_share, color: AD.bubbleInInk, size: 16),
                   const SizedBox(width: 5),
                   const Text('Share', style: TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.w600)),
                 ]),
@@ -9146,7 +9140,7 @@ class _MarketplaceDealCardState extends State<_MarketplaceDealCard> {
             GestureDetector(
               onTap: () => setState(() => _expanded = !_expanded),
               child: Text(_expanded ? 'Hide' : 'Transcript',
-                  style: ZineText.tag(size: 12, color: Zine.inkSoft)),
+                  style: ADText.bubbleMeta(c: AD.bubbleInMeta)),
             ),
         ]),
         if (_expanded && transcript.isNotEmpty) ...[
@@ -9154,7 +9148,7 @@ class _MarketplaceDealCardState extends State<_MarketplaceDealCard> {
           ...transcript.whereType<Map>().map((t) => Padding(
                 padding: const EdgeInsets.only(bottom: 4),
                 child: Text('${t['speaker'] ?? 'Agent'}: ${t['text'] ?? ''}',
-                    style: ZineText.sub(size: 12, color: Zine.ink)),
+                    style: ADText.bubbleBody(c: AD.bubbleInInk)),
               )),
         ],
       ]),
@@ -9374,25 +9368,25 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
     final dur = _durationLabel;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
       Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(Icons.phone_callback, size: 18, color: Zine.lilac),
+        Icon(Icons.phone_callback, size: 18, color: AD.bubbleInBg),
         const SizedBox(width: 6),
-        Flexible(child: Text('$_caller called', style: ZineText.value(size: 14))),
+        Flexible(child: Text('$_caller called', style: ADText.rowName(c: AD.bubbleInInk))),
       ]),
       const SizedBox(height: 2),
-      Text('Ava took a message', style: ZineText.kicker(size: 10.5)),
+      Text('Ava took a message', style: ADText.sectionLabel(c: AD.bubbleInMeta)),
       // Caller's phone number — always shown when present, even if Ava also
       // captured a name, so the owner can identify/return the call.
       if (_phone.isNotEmpty) ...[
         const SizedBox(height: 4),
         Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(Icons.phone, size: 13, color: Zine.inkSoft),
+          Icon(Icons.phone, size: 13, color: AD.bubbleInMeta),
           const SizedBox(width: 5),
           Flexible(child: Text(formatTelDisplay(_phone),
-              style: ZineText.tag(size: 12, color: Zine.inkSoft))),
+              style: ADText.bubbleMeta(c: AD.bubbleInMeta))),
         ]),
       ],
       const SizedBox(height: 6),
-      Text(_reason, style: ZineText.sub(size: 13, color: Zine.ink)),
+      Text(_reason, style: ADText.bubbleBody(c: AD.bubbleInInk)),
       const SizedBox(height: 8),
       // Unknown caller → offer to save them as a contact right from the card.
       if (_phone.isNotEmpty && !_saved) ...[
@@ -9401,14 +9395,14 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: Zine.card,
+              color: AD.mediaPlaceholderBg,
               borderRadius: BorderRadius.circular(100),
-              border: Border.all(color: Zine.ink, width: 2),
+              border: Border.all(color: AD.bubbleInInk, width: 2),
             ),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.person_add_alt, size: 15, color: Zine.ink),
+              Icon(Icons.person_add_alt, size: 15, color: AD.bubbleInInk),
               const SizedBox(width: 5),
-              Text('Save contact', style: ZineText.tag(size: 11)),
+              Text('Save contact', style: ADText.bubbleMeta(c: AD.bubbleInMeta)),
             ]),
           ),
         ),
@@ -9421,22 +9415,22 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: Zine.card,
+                color: AD.mediaPlaceholderBg,
                 borderRadius: BorderRadius.circular(100),
-                border: Border.all(color: Zine.ink, width: 2),
+                border: Border.all(color: AD.bubbleInInk, width: 2),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 _loadingAudio
                     ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                    : Icon(_playing ? Icons.stop : Icons.play_arrow, size: 16, color: Zine.ink),
+                    : Icon(_playing ? Icons.stop : Icons.play_arrow, size: 16, color: AD.bubbleInInk),
                 const SizedBox(width: 5),
-                Text(_playing ? 'Stop' : 'Play recording', style: ZineText.tag(size: 11)),
+                Text(_playing ? 'Stop' : 'Play recording', style: ADText.bubbleMeta(c: AD.bubbleInMeta)),
               ]),
             ),
           ),
         if (hasRec && dur.isNotEmpty) ...[
           const SizedBox(width: 8),
-          Text('⏱ $dur', style: ZineText.tag(size: 11, color: Zine.inkSoft)),
+          Text('⏱ $dur', style: ADText.bubbleMeta(c: AD.bubbleInMeta)),
         ],
         if (hasRec) ...[
           const SizedBox(width: 8),
@@ -9445,16 +9439,16 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: Zine.card,
+                color: AD.mediaPlaceholderBg,
                 borderRadius: BorderRadius.circular(100),
-                border: Border.all(color: Zine.ink, width: 2),
+                border: Border.all(color: AD.bubbleInInk, width: 2),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 _sharing
                     ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                    : Icon(Icons.ios_share, size: 15, color: Zine.ink),
+                    : Icon(Icons.ios_share, size: 15, color: AD.bubbleInInk),
                 const SizedBox(width: 4),
-                Text('Share', style: ZineText.tag(size: 11)),
+                Text('Share', style: ADText.bubbleMeta(c: AD.bubbleInMeta)),
               ]),
             ),
           ),
@@ -9465,11 +9459,11 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
         GestureDetector(
           onTap: () => setState(() => _expanded = !_expanded),
           child: Text(_expanded ? 'Hide transcript' : 'Show transcript',
-              style: ZineText.tag(size: 11, color: Zine.blueInk)),
+              style: ADText.bubbleMeta(c: AD.iconSearch)),
         ),
         if (_expanded) ...[
           const SizedBox(height: 4),
-          Text(transcript, style: ZineText.sub(size: 12.5, color: Zine.inkSoft)),
+          Text(transcript, style: ADText.bubbleBody(c: AD.bubbleInMeta)),
         ],
       ],
     ]);

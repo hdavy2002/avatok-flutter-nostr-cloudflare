@@ -17,8 +17,8 @@ import '../../core/calls/call_session.dart';
 import '../../core/calls/call_session_manager.dart';
 import '../../core/remote_config.dart';
 import '../../core/ringback_player.dart';
-import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../core/voicemail_call.dart';
 import '../avaphone/phone_theme.dart';
 import 'busy_card.dart';
@@ -656,17 +656,17 @@ class _CallScreenState extends State<CallScreen> {
           Positioned.fill(
             child: connected
                 ? RTCVideoView(s.remoteRenderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover)
-                : Container(color: Zine.ink),
+                : Container(color: AD.bg),
           ),
           Positioned(top: 0, left: 0, right: 0, height: 128,
-              child: Container(color: Zine.ink.withValues(alpha: 0.45))),
+              child: Container(color: Colors.black.withValues(alpha: 0.45))),
           Positioned(
             top: 56, right: 16, width: 78, height: 112,
             child: Container(
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(Zine.rSm),
-                border: Zine.border,
-                boxShadow: Zine.shadowSm,
+                borderRadius: BorderRadius.circular(AD.rListCard),
+                border: Border.all(color: AD.borderControl, width: 1),
+                boxShadow: const [],
               ),
               clipBehavior: Clip.antiAlias,
               child: RTCVideoView(s.localRenderer, mirror: true,
@@ -682,18 +682,18 @@ class _CallScreenState extends State<CallScreen> {
             child: Row(
               children: [
                 // Back = MINIMIZE (keeps the call alive as a PiP/pill), not hang up.
-                ZineBackButton(onTap: _minimize),
+                AdBackButton(onTap: _minimize),
                 const SizedBox(width: 12),
                 if (showVideo)
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text(widget.title,
                           maxLines: 1, overflow: TextOverflow.ellipsis,
-                          style: ZineText.cardTitle(size: 18, color: Colors.white)),
+                          style: ADText.threadName(c: Colors.white)),
                       const SizedBox(height: 2),
                       Text((connected ? s.clock : s.statusText).toUpperCase(),
                           maxLines: 1, overflow: TextOverflow.ellipsis,
-                          style: ZineText.tag(size: 11, color: Colors.white)),
+                          style: ADText.sectionLabel(c: Colors.white)),
                     ]),
                   )
                 else
@@ -737,28 +737,28 @@ class _CallScreenState extends State<CallScreen> {
                     ),
                     const SizedBox(height: 22),
                     Text('Ava', textAlign: TextAlign.center,
-                        style: ZineText.hero(size: 30)),
+                        style: ADText.appTitle().copyWith(fontSize: 28)),
                   ] else ...[
                     Container(
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: phase == 'ava-countdown' ? Zine.lilac : null,
-                        border: Zine.borderLg,
-                        boxShadow: Zine.shadow,
+                        color: phase == 'ava-countdown' ? AD.iconVideo : null,
+                        border: Border.all(color: AD.borderAvatar, width: 2),
+                        boxShadow: const [],
                       ),
                       child: phase == 'ava-countdown'
                           ? SizedBox(
                               width: 132, height: 132,
                               child: Center(child: Text('${s.avaCount}',
-                                  style: ZineText.hero(size: 76))),
+                                  style: ADText.appTitle().copyWith(fontSize: 76))),
                             )
                           : Avatar(seed: widget.seed, name: widget.title, size: 132,
                               avatarUrl: widget.avatarUrl.isEmpty ? null : widget.avatarUrl),
                     ),
                     const SizedBox(height: 24),
                     Text(widget.title, textAlign: TextAlign.center,
-                        style: ZineText.hero(size: 30)
-                            .copyWith(color: dialerSkin ? PhoneTheme.text : null)),
+                        style: ADText.appTitle(c: dialerSkin ? PhoneTheme.text : AD.textPrimary)
+                            .copyWith(fontSize: 28)),
                   ],
                   const SizedBox(height: 16),
                   // [CALL-OUTCOME-MENU-1] Unified call outcome menu — ONE surface
@@ -885,16 +885,16 @@ class _CallScreenState extends State<CallScreen> {
                       onClose: _popIfMounted,
                     )
                   else ...[
-                    ZineSticker(
+                    AdSticker(
                       connected ? s.clock : s.statusText,
-                      kind: failed ? ZineStickerKind.no : ZineStickerKind.plain,
+                      kind: failed ? AdStickerKind.no : AdStickerKind.plain,
                     ),
                     // [WP6 §3B] Live paid-call countdown under the clock —
                     // CallCountdown handles the T-60s/T-10s warning beeps.
                     if (_paidRemainingLabel != null) ...[
                       const SizedBox(height: 8),
                       Text(_paidRemainingLabel!,
-                          style: ZineText.sub(size: 12.5),
+                          style: ADText.preview(),
                           textAlign: TextAlign.center),
                     ],
                   ],
@@ -903,7 +903,7 @@ class _CallScreenState extends State<CallScreen> {
                   // gave us a redial hook.
                   if (phase == 'network-error' && widget.onRetry != null) ...[
                     const SizedBox(height: 20),
-                    ZineButton(
+                    AdButton(
                       label: 'Retry',
                       icon: PhosphorIcons.arrowClockwise(PhosphorIconsStyle.bold),
                       onPressed: () {
@@ -935,7 +935,7 @@ class _CallScreenState extends State<CallScreen> {
         Positioned(
           left: 0, right: 0, bottom: 0,
           child: Container(
-            color: light ? null : Zine.ink.withValues(alpha: 0.45),
+            color: light ? null : Colors.black.withValues(alpha: 0.45),
             padding: EdgeInsets.fromLTRB(16, 16, 16, 20 + (bottomInset > 0 ? bottomInset : 16)),
             child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
               // Chat: minimize the call (keeps it alive as a pill/PiP) so the
@@ -950,9 +950,11 @@ class _CallScreenState extends State<CallScreen> {
               const SizedBox(width: 14),
               ZinePressable(
                 onTap: _hangup,
-                color: Zine.coral,
+                color: AD.destructiveBg,
                 radius: BorderRadius.circular(100),
-                boxShadow: Zine.shadowSm,
+                boxShadow: const [],
+                borderWidth: 1,
+                borderColor: AD.destructiveBg,
                 child: SizedBox(
                   width: 60, height: 60,
                   child: Center(
@@ -990,27 +992,28 @@ class _CallScreenState extends State<CallScreen> {
       },
       child: Scaffold(
         // [DIALER-UI-SPLIT 2026-07-12] dialer audio call → dark PhoneTheme surface.
-        backgroundColor: dialerSkin
-            ? PhoneTheme.bg
-            : (light ? Zine.paper : Zine.ink),
+        backgroundColor: dialerSkin ? PhoneTheme.bg : AD.bg,
         body: dialerSkin
             ? Container(color: PhoneTheme.bg, child: stack)
-            : (light ? ZinePaper(child: stack) : stack),
+            : Container(color: AD.bg, child: stack),
       ),
     );
   }
 
-  // Zine control circle — ink border, card fill, hard shadow; active = lime.
+  // Dark v2 control circle — card fill, hairline border; active = orange badge.
   Widget _btn(IconData icon, {bool active = false, required VoidCallback onTap}) {
     return ZinePressable(
       onTap: onTap,
-      color: active ? Zine.lime : Zine.card,
-      pressedColor: Zine.lime,
+      color: active ? AD.primaryBadge : AD.card,
+      pressedColor: AD.primaryBadge,
       radius: BorderRadius.circular(100),
-      boxShadow: Zine.shadowXs,
+      boxShadow: const [],
+      borderWidth: 1,
+      borderColor: active ? AD.primaryBadge : AD.borderControl,
       child: SizedBox(
         width: 48, height: 48,
-        child: Center(child: PhosphorIcon(icon, size: 21, color: Zine.ink)),
+        child: Center(child: PhosphorIcon(icon, size: 21,
+            color: active ? AD.textOnInput : AD.textPrimary)),
       ),
     );
   }
@@ -1028,9 +1031,11 @@ class _MinimizeButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return ZinePressable(
       onTap: onTap,
-      color: light ? Zine.card : Colors.white.withValues(alpha: 0.16),
+      color: light ? AD.card : Colors.white.withValues(alpha: 0.16),
       radius: BorderRadius.circular(100),
-      boxShadow: light ? Zine.shadowXs : const [],
+      boxShadow: const [],
+      borderWidth: 1,
+      borderColor: light ? AD.borderControl : Colors.transparent,
       child: SizedBox(
         width: 42,
         height: 42,
@@ -1038,7 +1043,7 @@ class _MinimizeButton extends StatelessWidget {
           child: PhosphorIcon(
             PhosphorIcons.caretDown(PhosphorIconsStyle.bold),
             size: 20,
-            color: light ? Zine.ink : Colors.white,
+            color: light ? AD.textPrimary : Colors.white,
           ),
         ),
       ),
@@ -1106,9 +1111,9 @@ class _ReceptionistDuoState extends State<_ReceptionistDuo>
         height: 88,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: Zine.lilac,
-          border: Zine.borderLg,
-          boxShadow: Zine.shadowSm,
+          color: AD.iconVideo,
+          border: Border.all(color: AD.borderAvatar, width: 2),
+          boxShadow: const [],
         ),
         clipBehavior: Clip.antiAlias,
         child: Image.asset(
@@ -1117,7 +1122,7 @@ class _ReceptionistDuoState extends State<_ReceptionistDuo>
           height: 88,
           fit: BoxFit.cover,
           errorBuilder: (_, __, ___) =>
-              Center(child: Text('A', style: ZineText.hero(size: 40))),
+              Center(child: Text('A', style: ADText.appTitle().copyWith(fontSize: 40))),
         ),
       );
 
@@ -1127,7 +1132,7 @@ class _ReceptionistDuoState extends State<_ReceptionistDuo>
             textAlign: TextAlign.center,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: ZineText.tag(size: 12)),
+            style: ADText.preview(c: AD.textSecondary)),
       );
 
   @override
@@ -1144,7 +1149,7 @@ class _ReceptionistDuoState extends State<_ReceptionistDuo>
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                _pulse(child: widget.me, level: mic, color: Zine.ink),
+                _pulse(child: widget.me, level: mic, color: AD.textPrimary),
                 SizedBox(
                   width: 92,
                   height: 104,
@@ -1152,7 +1157,7 @@ class _ReceptionistDuoState extends State<_ReceptionistDuo>
                     painter: _LinkPainter(phase: _flow.value, mic: mic, ava: ava),
                   ),
                 ),
-                _pulse(child: _avaCircle(), level: ava, color: Zine.lilac),
+                _pulse(child: _avaCircle(), level: ava, color: AD.iconVideo),
               ],
             ),
             const SizedBox(height: 8),
@@ -1186,7 +1191,7 @@ class _LinkPainter extends CustomPainter {
     final level = (active ? mic : ava).clamp(0.0, 1.0);
     final speaking = level > 0.06;
     final dir = active ? 1.0 : -1.0;
-    final color = active ? Zine.ink : Zine.lilac;
+    final color = active ? AD.textPrimary : AD.iconVideo;
     for (int i = 0; i < n; i++) {
       final t = (i + 0.5) / n; // 0..1 across the width
       final x = size.width * t;
@@ -1276,10 +1281,10 @@ class _CallNetHudState extends State<_CallNetHud>
     super.dispose();
   }
 
-  Color get _fg => widget.onVideo ? Colors.white : Zine.ink;
+  Color get _fg => widget.onVideo ? Colors.white : AD.textPrimary;
   Color get _bg => widget.onVideo
       ? Colors.black.withValues(alpha: 0.38)
-      : Zine.card;
+      : AD.card;
 
   @override
   Widget build(BuildContext context) {
@@ -1318,8 +1323,8 @@ class _CallNetHudState extends State<_CallNetHud>
         decoration: BoxDecoration(
           color: _bg,
           borderRadius: BorderRadius.circular(100),
-          border: widget.onVideo ? null : Zine.border,
-          boxShadow: widget.onVideo ? const [] : Zine.shadowXs,
+          border: widget.onVideo ? null : Border.all(color: AD.borderControl, width: 1),
+          boxShadow: const [],
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1331,7 +1336,7 @@ class _CallNetHudState extends State<_CallNetHud>
                 size: 15, color: _fg),
             const SizedBox(width: 6),
             Text(_transport,
-                style: ZineText.tag(size: 11, color: _fg)),
+                style: ADText.timestamp(c: _fg)),
             const SizedBox(width: 10),
             _QualityBars(quality: ns.quality, color: _fg),
             const SizedBox(width: 10),
@@ -1342,7 +1347,7 @@ class _CallNetHudState extends State<_CallNetHud>
                 PhosphorIcons.arrowUpRight(PhosphorIconsStyle.bold), ns.upKbps),
             const SizedBox(width: 10),
             Text('${ns.dataMb.toStringAsFixed(ns.dataMb < 10 ? 1 : 0)} MB',
-                style: ZineText.tag(size: 11, color: _fg)),
+                style: ADText.timestamp(c: _fg)),
             if (weak) ...[
               const SizedBox(width: 8),
               AnimatedOpacity(
@@ -1351,11 +1356,11 @@ class _CallNetHudState extends State<_CallNetHud>
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                   decoration: BoxDecoration(
-                    color: Zine.coral,
+                    color: AD.danger,
                     borderRadius: BorderRadius.circular(100),
                   ),
                   child: Text('WEAK',
-                      style: ZineText.tag(size: 9, color: Colors.white)),
+                      style: ADText.statCaption(c: Colors.white)),
                 ),
               ),
             ],
@@ -1370,16 +1375,16 @@ class _CallNetHudState extends State<_CallNetHud>
       PhosphorIcon(icon, size: 12, color: _fg),
       const SizedBox(width: 2),
       Text('$kbps',
-          style: ZineText.tag(size: 11, color: _fg)),
+          style: ADText.timestamp(c: _fg)),
     ]);
   }
 
   void _openDetail(CallNetStats ns) {
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.overlaySheet,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AD.rSheet)),
       ),
       builder: (_) => SafeArea(
         child: Padding(
@@ -1388,9 +1393,9 @@ class _CallNetHudState extends State<_CallNetHud>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Connection', style: ZineText.hero(size: 24)),
+              Text('Connection', style: ADText.appTitle()),
               const SizedBox(height: 4),
-              Text(_transport, style: ZineText.tag(size: 12)),
+              Text(_transport, style: ADText.statCaption(c: AD.textTertiary)),
               const SizedBox(height: 16),
               _detailRow('Signal', _qualityLabel(ns.quality)),
               _detailRow('Round-trip',
@@ -1404,11 +1409,11 @@ class _CallNetHudState extends State<_CallNetHud>
                 const SizedBox(height: 12),
                 Row(children: [
                   PhosphorIcon(PhosphorIcons.warning(PhosphorIconsStyle.bold),
-                      size: 16, color: Zine.coral),
+                      size: 16, color: AD.danger),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text('The other side is on a weak network.',
-                        style: ZineText.tag(size: 12, color: Zine.coral)),
+                        style: ADText.preview(c: AD.danger)),
                   ),
                 ]),
               ],
@@ -1424,8 +1429,8 @@ class _CallNetHudState extends State<_CallNetHud>
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(k, style: ZineText.tag(size: 13)),
-            Text(v, style: ZineText.cardTitle(size: 14)),
+            Text(k, style: ADText.preview(c: AD.textSecondary)),
+            Text(v, style: ADText.rowName()),
           ],
         ),
       );
@@ -1448,9 +1453,9 @@ class _QualityBars extends StatelessWidget {
   final Color color; // foreground (for the empty-bar tint)
 
   Color get _fillColor {
-    if (quality <= 1) return Zine.coral;
+    if (quality <= 1) return AD.danger;
     if (quality == 2) return const Color(0xFFF5B942); // amber
-    return Zine.mintInk;
+    return AD.online;
   }
 
   @override
@@ -1499,14 +1504,14 @@ class _AgentCallPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(mainAxisSize: MainAxisSize.min, children: [
-      ZineSticker(_line,
-          kind: status == 'failed' ? ZineStickerKind.no : ZineStickerKind.plain),
+      AdSticker(_line,
+          kind: status == 'failed' ? AdStickerKind.no : AdStickerKind.plain),
       const SizedBox(height: 6),
       Text('AI assistant · this call is transcribed',
-          style: ZineText.sub(size: 11.5), textAlign: TextAlign.center),
+          style: ADText.preview(), textAlign: TextAlign.center),
       if (status == 'connecting' || status == 'connected') ...[
         const SizedBox(height: 18),
-        ZineButton(
+        AdButton(
           label: 'End agent call',
           icon: PhosphorIcons.phoneX(PhosphorIconsStyle.bold),
           onPressed: onHangup,

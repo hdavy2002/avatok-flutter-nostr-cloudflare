@@ -7,8 +7,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../../core/avatar.dart';
 import '../../core/group_store.dart';
 import '../../core/remote_config.dart';
-import '../../core/ui/zine.dart';
-import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../identity/identity.dart';
 import '../profile/qr_share.dart';
 import 'contacts.dart';
@@ -120,20 +119,26 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Zine.paper,
-      appBar: const ZineAppBar(title: 'Contact info', markWord: 'Contact'),
-      body: ListView(padding: const EdgeInsets.all(20), children: [
+      backgroundColor: AD.bg,
+      body: SafeArea(
+        bottom: false,
+        child: Column(children: [
+          _header(context),
+          Expanded(
+            child: ListView(padding: const EdgeInsets.all(20), children: [
         Center(
           child: Container(
-            decoration: BoxDecoration(shape: BoxShape.circle, border: Zine.border, boxShadow: Zine.shadowSm),
+            decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: AD.borderAvatar, width: 2)),
             child: Avatar(seed: widget.uid, name: _displayName, size: 96),
           ),
         ),
         const SizedBox(height: 14),
-        Center(child: Text(_displayName, style: ZineText.cardTitle(size: 23))),
+        Center(child: Text(_displayName, style: ADText.appTitle())),
         const SizedBox(height: 20),
         if (_number.isNotEmpty)
-          _box('AvaTOK number', PhosphorIcons.hash(PhosphorIconsStyle.bold), Zine.blue,
+          _box('AvaTOK number', PhosphorIcons.hash(PhosphorIconsStyle.bold), AD.iconSearch,
               child: Row(children: [
             Expanded(
               // [DIALPAD-BIZ-CALLS] Tapping the number drops it into the dialpad,
@@ -144,13 +149,13 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
                   ? GestureDetector(
                       onTap: () => openDialpadWithNumber(context, _number),
                       child: Text(_number,
-                          style: ZineText.value(size: 15, color: Zine.blueInk)
+                          style: ADText.rowName(c: AD.iconSearch)
                               .copyWith(decoration: TextDecoration.underline)),
                     )
-                  : SelectableText(_number, style: ZineText.value(size: 15)),
+                  : SelectableText(_number, style: ADText.rowName()),
             ),
             IconButton(
-                icon: PhosphorIcon(PhosphorIcons.copy(PhosphorIconsStyle.bold), size: 18, color: Zine.ink),
+                icon: PhosphorIcon(PhosphorIcons.copy(PhosphorIconsStyle.bold), size: 18, color: AD.textPrimary),
                 onPressed: () {
                   Clipboard.setData(ClipboardData(text: _number));
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied')));
@@ -158,16 +163,16 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
           ]))
         else
           // No shared AvaTOK number — show a friendly note, never the raw user_… id.
-          _box('AvaTOK number', PhosphorIcons.hash(PhosphorIconsStyle.bold), Zine.blue,
+          _box('AvaTOK number', PhosphorIcons.hash(PhosphorIconsStyle.bold), AD.iconSearch,
               child: Text('This contact hasn’t shared an AvaTOK number yet.',
-                  style: ZineText.sub(size: 13))),
+                  style: ADText.preview(c: AD.textSecondary))),
         if (_email.isNotEmpty) ...[
           const SizedBox(height: 12),
-          _box('Email', PhosphorIcons.envelope(PhosphorIconsStyle.bold), Zine.lilac,
+          _box('Email', PhosphorIcons.envelope(PhosphorIconsStyle.bold), AD.iconVideo,
               child: Row(children: [
-            Expanded(child: SelectableText(_email, style: ZineText.value(size: 15))),
+            Expanded(child: SelectableText(_email, style: ADText.rowName())),
             IconButton(
-                icon: PhosphorIcon(PhosphorIcons.copy(PhosphorIconsStyle.bold), size: 18, color: Zine.ink),
+                icon: PhosphorIcon(PhosphorIcons.copy(PhosphorIconsStyle.bold), size: 18, color: AD.textPrimary),
                 onPressed: () {
                   Clipboard.setData(ClipboardData(text: _email));
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied')));
@@ -176,17 +181,21 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
         ],
         if (_number.isNotEmpty) ...[
           const SizedBox(height: 16),
-          _box('Add $_displayName on AvaTOK', PhosphorIcons.qrCode(PhosphorIconsStyle.bold), Zine.mint,
+          _box('Add $_displayName on AvaTOK', PhosphorIcons.qrCode(PhosphorIconsStyle.bold), AD.online,
               child: Column(children: [
+            // QR keeps a WHITE tile so the code stays scannable on the dark card.
             Center(child: Container(
               padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(color: Zine.card, borderRadius: BorderRadius.circular(14), border: Zine.border),
-              child: QrImageView(data: _addLink, size: 150, backgroundColor: Zine.card),
+              decoration: BoxDecoration(
+                  color: AD.inputField,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AD.borderControl, width: 1)),
+              child: QrImageView(data: _addLink, size: 150, backgroundColor: AD.inputField),
             )),
             const SizedBox(height: 12),
-            ZineButton(
-              label: 'Share contact', icon: PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold), trailingIcon: false,
-              fullWidth: true, fontSize: 15,
+            _primaryButton(
+              label: 'Share contact',
+              icon: PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold),
               onPressed: () async {
                 try {
                   await QrShare.share(link: _addLink, name: _displayName, number: _number);
@@ -198,32 +207,94 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
           ])),
         ],
         const SizedBox(height: 18),
-        Text('SHARED GROUPS', style: ZineText.kicker()),
+        Text('SHARED GROUPS', style: ADText.sectionLabel()),
         const SizedBox(height: 6),
         if (_shared.isEmpty)
-          Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Text('No groups in common', style: ZineText.sub()))
+          Padding(padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text('No groups in common', style: ADText.preview(c: AD.textSecondary)))
         else
           for (final g in _shared)
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: Container(
-                decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Zine.ink, width: 2)),
+                decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: AD.borderAvatar, width: 2)),
                 child: Avatar(seed: 'group-${g.id}', name: g.name, size: 40),
               ),
-              title: Text(g.name, style: ZineText.value(size: 15)),
-              subtitle: Text('${g.members.length} members', style: ZineText.sub(size: 12)),
+              title: Text(g.name, style: ADText.rowName()),
+              subtitle: Text('${g.members.length} members', style: ADText.preview(c: AD.textSecondary)),
             ),
-      ]),
+            ]),
+          ),
+        ]),
+      ),
     );
   }
 
-  Widget _box(String label, IconData icon, Color accent, {required Widget child}) => ZineCard(
+  /// Inline dark v2 header (replaces the light ZineAppBar): header/footer fill,
+  /// hairline bottom border, circular back button + kicker/title stack.
+  Widget _header(BuildContext context) => Container(
+        padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
+        decoration: const BoxDecoration(
+          color: AD.headerFooter,
+          border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
+        ),
+        child: Row(children: [
+          GestureDetector(
+            onTap: () => Navigator.of(context).maybePop(),
+            child: Container(
+              width: 38, height: 38,
+              decoration: BoxDecoration(borderRadius: BorderRadius.circular(AD.rIconButton)),
+              child: const Icon(Icons.arrow_back_rounded, size: 22, color: AD.textPrimary),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            Text('CONTACT', style: ADText.sectionLabel()),
+            const SizedBox(height: 1),
+            Text('Contact info', style: ADText.appTitle()),
+          ]),
+        ]),
+      );
+
+  /// Inline dark v2 primary (full-width) button — replaces ZineButton.
+  Widget _primaryButton({required String label, required IconData icon, required VoidCallback onPressed}) =>
+      GestureDetector(
+        onTap: onPressed,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 13),
+          decoration: BoxDecoration(
+            color: AD.primaryBadge,
+            borderRadius: BorderRadius.circular(100),
+          ),
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Icon(icon, size: 17, color: AD.textPrimary),
+            const SizedBox(width: 10),
+            Text(label, style: ADText.rowName()),
+          ]),
+        ),
+      );
+
+  Widget _box(String label, IconData icon, Color accent, {required Widget child}) => Container(
         padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AD.card,
+          borderRadius: BorderRadius.circular(AD.rListCard),
+          border: Border.all(color: AD.borderCard, width: 1),
+        ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            ZineIconBadge(icon: icon, color: accent, size: 28),
+            // Inline AD icon badge (accent-tinted fill + colored glyph).
+            Container(
+              width: 28, height: 28,
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(AD.rChip),
+              ),
+              child: Icon(icon, size: 15, color: accent),
+            ),
             const SizedBox(width: 9),
-            Expanded(child: Text(label.toUpperCase(), style: ZineText.kicker())),
+            Expanded(child: Text(label.toUpperCase(), style: ADText.sectionLabel())),
           ]),
           const SizedBox(height: 10),
           child,

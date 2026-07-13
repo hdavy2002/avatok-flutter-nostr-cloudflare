@@ -9,6 +9,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../core/analytics.dart';
 import '../../core/business_agent_api.dart';
 import '../../core/disk_cache.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 
@@ -104,11 +105,11 @@ class _MyAiCallsScreenState extends State<MyAiCallsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       appBar: AppBar(
-        backgroundColor: Zine.paper,
+        backgroundColor: AD.headerFooter,
         elevation: 0,
-        title: Text('My AI calls', style: ZineText.value(size: 17)),
+        title: Text('My AI calls', style: ADText.appTitle()),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
@@ -145,9 +146,9 @@ class _MyAiCallsScreenState extends State<MyAiCallsScreen> {
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(PhosphorIcons.phoneCall(PhosphorIconsStyle.duotone), size: 42, color: Zine.inkMute),
+          Icon(PhosphorIcons.phoneCall(PhosphorIconsStyle.duotone), size: 42, color: AD.iconPhone),
           const SizedBox(height: 12),
-          Text(text, textAlign: TextAlign.center, style: ZineText.sub(size: 13)),
+          Text(text, textAlign: TextAlign.center, style: ADText.preview()),
         ]),
       ),
     );
@@ -157,12 +158,14 @@ class _MyAiCallsScreenState extends State<MyAiCallsScreen> {
     return ZinePressable(
       onTap: () => Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => _MyAiCallDetailScreen(call: c))),
-      color: Zine.card,
-      radius: BorderRadius.circular(Zine.rSm),
-      boxShadow: Zine.shadowXs,
+      color: AD.card,
+      radius: BorderRadius.circular(AD.rListCard),
+      boxShadow: const [],
+      borderColor: AD.borderControl,
+      borderWidth: 1,
       padding: const EdgeInsets.all(13),
       child: Row(children: [
-        ZineIconBadge(icon: PhosphorIcons.robot(PhosphorIconsStyle.fill), color: Zine.lilac, size: 36),
+        ZineIconBadge(icon: PhosphorIcons.robot(PhosphorIconsStyle.fill), color: AD.iconVideo, size: 36),
         const SizedBox(width: 10),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -170,15 +173,15 @@ class _MyAiCallsScreenState extends State<MyAiCallsScreen> {
               c.serviceName.isEmpty
                   ? (c.ownerName.isEmpty ? 'Ava AI agent' : c.ownerName)
                   : '${c.serviceName} by ${c.ownerName.isEmpty ? 'owner' : c.ownerName}',
-              style: ZineText.value(size: 13.5),
+              style: ADText.rowName(),
             ),
             const SizedBox(height: 2),
-            Text(_summaryLine(c), style: ZineText.sub(size: 11.5), maxLines: 2, overflow: TextOverflow.ellipsis),
+            Text(_summaryLine(c), style: ADText.preview(), maxLines: 2, overflow: TextOverflow.ellipsis),
             const SizedBox(height: 2),
-            Text(_when(c.startedAt), style: ZineText.tag(size: 10.5, color: Zine.inkMute)),
+            Text(_when(c.startedAt), style: ADText.timestamp()),
           ]),
         ),
-        Icon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: Zine.inkMute),
+        Icon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: AD.textTertiary),
       ]),
     );
   }
@@ -240,15 +243,15 @@ class _MyAiCallDetailScreenState extends State<_MyAiCallDetailScreen> {
   Widget build(BuildContext context) {
     final c = widget.call;
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       appBar: AppBar(
-        backgroundColor: Zine.paper,
+        backgroundColor: AD.headerFooter,
         elevation: 0,
-        title: Text(c.serviceName.isEmpty ? 'AI call' : c.serviceName, style: ZineText.value(size: 16)),
+        title: Text(c.serviceName.isEmpty ? 'AI call' : c.serviceName, style: ADText.threadName()),
         actions: [
           if (_t != null)
             IconButton(
-              icon: Icon(PhosphorIcons.downloadSimple(PhosphorIconsStyle.bold), color: Zine.ink),
+              icon: Icon(PhosphorIcons.downloadSimple(PhosphorIconsStyle.bold), color: AD.textPrimary),
               onPressed: _download,
             ),
         ],
@@ -256,16 +259,16 @@ class _MyAiCallDetailScreenState extends State<_MyAiCallDetailScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
           : _t == null
-              ? Center(child: Text('Couldn’t load this transcript.', style: ZineText.sub(size: 13)))
+              ? Center(child: Text('Couldn’t load this transcript.', style: ADText.preview()))
               : ListView(
                   padding: const EdgeInsets.all(16),
                   children: [
                     if (_t!.whatTheAgentDid.isNotEmpty) ...[
-                      ZineCard(
-                        radius: Zine.rSm,
-                        boxShadow: Zine.shadowXs,
-                        color: Zine.mint,
-                        child: Text(_t!.whatTheAgentDid, style: ZineText.value(size: 13)),
+                      AdCard(
+                        radius: AD.rListCard,
+                        boxShadow: const [],
+                        color: AD.incomingCall,
+                        child: Text(_t!.whatTheAgentDid, style: ADText.rowName(c: AD.textOnInput)),
                       ),
                       const SizedBox(height: 14),
                     ],
@@ -273,9 +276,9 @@ class _MyAiCallDetailScreenState extends State<_MyAiCallDetailScreen> {
                       Padding(
                         padding: const EdgeInsets.only(bottom: 10),
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text(t.speaker == 'caller' ? 'You' : 'Ava', style: ZineText.tag(size: 10.5, color: Zine.inkMute)),
+                          Text(t.speaker == 'caller' ? 'You' : 'Ava', style: ADText.statCaption()),
                           const SizedBox(height: 2),
-                          Text(t.text, style: ZineText.sub(size: 13.5)),
+                          Text(t.text, style: ADText.bubbleBody()),
                         ]),
                       ),
                   ],

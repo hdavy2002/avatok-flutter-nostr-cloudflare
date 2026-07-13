@@ -10,6 +10,7 @@ import '../../core/feature_flags.dart';
 import '../../core/money_api.dart';
 import '../../core/paid_call_api.dart';
 import '../../core/remote_config.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 
@@ -151,61 +152,62 @@ class _PaidCallPromptScreenState extends State<PaidCallPromptScreen> {
   Widget build(BuildContext context) {
     final o = widget.offer;
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Row(children: [
-              ZineIconBadge(icon: PhosphorIcons.coins(PhosphorIconsStyle.fill), color: Zine.mint, size: 44),
+              ZineIconBadge(icon: PhosphorIcons.coins(PhosphorIconsStyle.fill), color: AD.incomingCall, size: 44),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(o.isAgent ? 'Paid Ava AI call' : 'Paid call', style: ZineText.value(size: 18)),
+                  Text(o.isAgent ? 'Paid Ava AI call' : 'Paid call', style: ADText.threadName()),
                   if (o.calleeName.isNotEmpty)
-                    Text(o.calleeName, style: ZineText.sub(size: 13)),
+                    Text(o.calleeName, style: ADText.preview()),
                 ]),
               ),
             ]),
             const SizedBox(height: 20),
-            ZineCard(
-              radius: Zine.rSm,
-              boxShadow: Zine.shadowXs,
+            AdCard(
+              radius: AD.rListCard,
+              boxShadow: const [],
+              color: AD.card,
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('This call costs ${o.rate} tokens per minute.', style: ZineText.value(size: 15)),
+                Text('This call costs ${o.rate} tokens per minute.', style: ADText.rowName()),
                 const SizedBox(height: 4),
                 Text('You’ll only be charged for the minutes you actually use — anything unused is refunded.',
-                    style: ZineText.sub(size: 12)),
+                    style: ADText.preview()),
               ]),
             ),
             const SizedBox(height: 18),
-            Text('CHOOSE A LENGTH', style: ZineText.kicker()),
+            Text('CHOOSE A LENGTH', style: ADText.sectionLabel()),
             const SizedBox(height: 9),
             Wrap(spacing: 8, runSpacing: 8, children: [
               for (final m in o.lengthOptions)
-                ZineChip(
+                AdChip(
                   label: '$m min',
                   active: _selectedMinutes == m,
                   onTap: () => setState(() { _selectedMinutes = m; _error = null; }),
                 ),
             ]),
             const SizedBox(height: 20),
-            ZineCard(
-              radius: Zine.rSm,
-              boxShadow: Zine.shadowXs,
-              color: Zine.paper2,
+            AdCard(
+              radius: AD.rListCard,
+              boxShadow: const [],
+              color: AD.headerFooter,
               child: Row(children: [
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('Total', style: ZineText.sub(size: 12)),
-                    Text('$_total tokens', style: ZineText.value(size: 20)),
+                    Text('Total', style: ADText.preview()),
+                    Text('$_total tokens', style: ADText.rowName()),
                   ]),
                 ),
                 if (_loadingBalance)
                   const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                 else
-                  Text('Balance: $_balance', style: ZineText.sub(size: 12,
-                      color: _canAfford ? Zine.inkSoft : Zine.coral)),
+                  Text('Balance: $_balance', style: ADText.preview(
+                      c: _canAfford ? AD.textSecondary : AD.danger)),
               ]),
             ),
             // [PLAN §11] "Escrow is a HOLD, never an immediate charge" — spelled
@@ -216,14 +218,14 @@ class _PaidCallPromptScreenState extends State<PaidCallPromptScreen> {
               'Tokens are only held now — charging starts when the call is answered. '
               'Unused minutes are refunded automatically.',
               textAlign: TextAlign.center,
-              style: ZineText.sub(size: 11.5),
+              style: ADText.preview(),
             ),
             if (_error != null) ...[
               const SizedBox(height: 10),
-              ZineErrorMsg(_error!),
+              AdErrorMsg(_error!),
             ],
             const Spacer(),
-            ZineButton(
+            AdButton(
               label: _confirming ? 'Confirming…' : 'Confirm & call',
               loading: _confirming,
               fullWidth: true,
@@ -237,12 +239,12 @@ class _PaidCallPromptScreenState extends State<PaidCallPromptScreen> {
             Text(
               'Tokens are held, not charged, until the call connects.',
               textAlign: TextAlign.center,
-              style: ZineText.sub(size: 11),
+              style: ADText.preview(),
             ),
             const SizedBox(height: 10),
-            ZineButton(
+            AdButton(
               label: 'Cancel',
-              variant: ZineButtonVariant.ghost,
+              variant: AdButtonVariant.ghost,
               fullWidth: true,
               onPressed: _confirming ? null : () {
                 Analytics.capture('paid_call_prompt_abandoned', {'to': widget.to});

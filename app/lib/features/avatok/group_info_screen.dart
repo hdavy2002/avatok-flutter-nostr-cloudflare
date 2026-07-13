@@ -6,8 +6,7 @@ import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/chat_state.dart';
 import '../../core/group_store.dart';
-import '../../core/ui/zine.dart';
-import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../identity/identity.dart';
 import '../../sync/group_api.dart';
 import 'contacts.dart';
@@ -131,12 +130,29 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     final v = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Group description'),
-        content: TextField(controller: ctrl, maxLines: 3, autofocus: true,
-            decoration: const InputDecoration(hintText: 'What is this group about?')),
+        backgroundColor: AD.menu,
+        shape: RoundedRectangleBorder(
+            side: const BorderSide(color: AD.borderControl, width: 1),
+            borderRadius: BorderRadius.circular(AD.rDialog)),
+        title: Text('Group description', style: ADText.threadName()),
+        content: TextField(
+          controller: ctrl, maxLines: 3, autofocus: true,
+          cursorColor: AD.newGroup,
+          style: ADText.rowName(),
+          decoration: InputDecoration(
+            hintText: 'What is this group about?',
+            hintStyle: ADText.preview(),
+            enabledBorder: const OutlineInputBorder(
+                borderSide: BorderSide(color: AD.borderControl)),
+            focusedBorder: const OutlineInputBorder(
+                borderSide: BorderSide(color: AD.newGroup)),
+          ),
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text.trim()), child: const Text('Save')),
+          TextButton(onPressed: () => Navigator.pop(ctx),
+              child: Text('Cancel', style: ADText.rowName(c: AD.textSecondary))),
+          TextButton(onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              child: Text('Save', style: ADText.rowName(c: AD.newGroup))),
         ],
       ),
     );
@@ -152,10 +168,10 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     final canManageAdmin = _amOwner; // only the owner promotes/demotes admins
     showModalBottomSheet(
       context: context,
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.overlaySheet,
       shape: const RoundedRectangleBorder(
-          side: BorderSide(color: Zine.ink, width: Zine.bw),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+          side: BorderSide(color: AD.borderHairline, width: 1),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(AD.rSheet))),
       builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
         const SizedBox(height: 8),
         if (canManageAdmin && _roleOf(uid) != 'owner')
@@ -164,14 +180,14 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                 isAdmin
                     ? PhosphorIcons.shieldSlash(PhosphorIconsStyle.bold)
                     : PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold),
-                color: Zine.blueInk),
+                color: AD.iconSearch),
             title: Text(isAdmin ? 'Dismiss as admin' : 'Make admin',
-                style: ZineText.value(size: 15)),
+                style: ADText.rowName()),
             onTap: () { Navigator.pop(ctx); _toggleAdmin(uid); },
           ),
         ListTile(
-          leading: PhosphorIcon(PhosphorIcons.minusCircle(PhosphorIconsStyle.bold), color: Zine.coral),
-          title: Text('Remove from group', style: ZineText.value(size: 15, color: Zine.coral)),
+          leading: PhosphorIcon(PhosphorIcons.minusCircle(PhosphorIconsStyle.bold), color: AD.danger),
+          title: Text('Remove from group', style: ADText.rowName(c: AD.danger)),
           onTap: () { Navigator.pop(ctx); _removeMember(uid); },
         ),
       ])),
@@ -195,12 +211,18 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete group?'),
-        content: const Text('This permanently deletes the group for everyone. This cannot be undone.'),
+        backgroundColor: AD.menu,
+        shape: RoundedRectangleBorder(
+            side: const BorderSide(color: AD.borderControl, width: 1),
+            borderRadius: BorderRadius.circular(AD.rDialog)),
+        title: Text('Delete group?', style: ADText.threadName()),
+        content: Text('This permanently deletes the group for everyone. This cannot be undone.',
+            style: ADText.preview(c: AD.textSecondary)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+              child: Text('Cancel', style: ADText.rowName(c: AD.textSecondary))),
           TextButton(onPressed: () => Navigator.pop(ctx, true),
-              child: Text('Delete', style: ZineText.value(color: Zine.coral))),
+              child: Text('Delete', style: ADText.rowName(c: AD.danger))),
         ],
       ),
     );
@@ -224,18 +246,19 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     Analytics.capture('group_add_picker_opened', {'gid': _group.id, 'candidate_count': candidates.length});
     showModalBottomSheet(
       context: context,
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.overlaySheet,
       shape: const RoundedRectangleBorder(
-          side: BorderSide(color: Zine.ink, width: Zine.bw),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+          side: BorderSide(color: AD.borderHairline, width: 1),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(AD.rSheet))),
       builder: (ctx) => SafeArea(child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Add members', style: ZineText.cardTitle(size: 18)),
+          Text('Add members', style: ADText.threadName()),
           const SizedBox(height: 8),
           if (candidates.isEmpty)
             Padding(padding: const EdgeInsets.symmetric(vertical: 20),
-                child: Text('All your contacts are already in this group', style: ZineText.sub()))
+                child: Text('All your contacts are already in this group',
+                    style: ADText.preview(c: AD.textSecondary)))
           else
             ConstrainedBox(constraints: const BoxConstraints(maxHeight: 340), child: ListView(shrinkWrap: true, children: [
               for (final c in candidates)
@@ -244,12 +267,12 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                   leading: Container(
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      border: Border.all(color: Zine.ink, width: 2),
+                      border: Border.all(color: AD.borderAvatar, width: 2),
                     ),
                     child: Avatar(seed: c.seed, name: c.name, size: 40, avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl),
                   ),
-                  title: Text(c.name, style: ZineText.value(size: 15)),
-                  trailing: PhosphorIcon(PhosphorIcons.plusCircle(PhosphorIconsStyle.fill), color: Zine.blueInk),
+                  title: Text(c.name, style: ADText.rowName()),
+                  trailing: PhosphorIcon(PhosphorIcons.plusCircle(PhosphorIconsStyle.fill), color: AD.newGroup),
                   onTap: () { Navigator.pop(ctx); _addMember(c.uid); },
                 ),
             ])),
@@ -261,124 +284,217 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Zine.paper,
-      appBar: const ZineAppBar(title: 'Group info', markWord: 'Group'),
-      body: ListView(children: [
-        const SizedBox(height: 16),
-        Center(
-          child: Container(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Zine.border,
-              boxShadow: Zine.shadowSm,
+      backgroundColor: AD.bg,
+      body: Column(children: [
+        // Inline dark v2 header: back button + title.
+        Container(
+          decoration: const BoxDecoration(
+            color: AD.headerFooter,
+            border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
+          ),
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 10, 16, 12),
+              child: Row(children: [
+                GestureDetector(
+                  onTap: () => Navigator.of(context).maybePop(),
+                  child: Container(
+                    width: 42, height: 42,
+                    decoration: BoxDecoration(
+                      color: AD.card,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AD.borderControl, width: 1),
+                    ),
+                    child: Center(child: PhosphorIcon(
+                        PhosphorIcons.arrowLeft(PhosphorIconsStyle.bold),
+                        size: 20, color: AD.textPrimary)),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Text('Group info', style: ADText.appTitle()),
+              ]),
             ),
-            child: Avatar(seed: 'group-${_group.id}', name: _group.name, size: 84),
           ),
         ),
-        const SizedBox(height: 12),
-        Center(child: Text(_group.name, style: ZineText.cardTitle(size: 22))),
-        const SizedBox(height: 4),
-        Center(child: Text('${_group.members.length} MEMBERS', style: ZineText.kicker())),
-        const SizedBox(height: 14),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: ZineCard(
-            color: Zine.paper2,
-            radius: Zine.rSm,
-            boxShadow: Zine.shadowXs,
-            padding: const EdgeInsets.all(14),
-            onTap: _amAdmin ? _editDescription : null,
-            child: Row(children: [
-              Expanded(child: Text(
-                  _group.description.isEmpty ? (_amAdmin ? 'Add a group description' : 'No description') : _group.description,
-                  style: ZineText.sub(size: 13.5,
-                      color: _group.description.isEmpty ? Zine.inkMute : Zine.inkSoft))),
-              if (_amAdmin)
-                PhosphorIcon(PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold), size: 16, color: Zine.inkSoft),
-            ]),
-          ),
-        ),
-        const SizedBox(height: 8),
-        ListTile(
-          leading: ZineIconBadge(icon: PhosphorIcons.link(PhosphorIconsStyle.bold), color: Zine.blue),
-          title: Text('Copy invite link', style: ZineText.value(size: 15)),
-          subtitle: Text('Share so others can ask to join', style: ZineText.sub(size: 12.5)),
-          onTap: () {
-            Clipboard.setData(ClipboardData(text: 'https://avatok.ai/g/${_group.id}'));
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invite link copied')));
-          },
-        ),
-        if (_amAdmin)
-          ListTile(
-            leading: ZineIconBadge(icon: PhosphorIcons.userPlus(PhosphorIconsStyle.bold), color: Zine.lime),
-            title: Text('Add members', style: ZineText.value(size: 15)),
-            onTap: _busy ? null : _pickToAdd,
-          ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(18, 14, 18, 4),
-          child: Text('MEMBERS', style: ZineText.kicker()),
-        ),
-        for (final m in _group.members)
-          ListTile(
-            leading: Container(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: Zine.ink, width: 2),
+        Expanded(
+          child: ListView(children: [
+            const SizedBox(height: 16),
+            Center(
+              child: Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AD.borderAvatar, width: 2),
+                  boxShadow: AD.overlayShadow,
+                ),
+                child: Avatar(seed: 'group-${_group.id}', name: _group.name, size: 84),
               ),
-              child: Avatar(seed: m, name: _label(m), size: 42, avatarUrl: _avatars[m]),
             ),
-            title: Row(children: [
-              Flexible(child: Text(_label(m), maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: ZineText.value(size: 15))),
-              if (_group.admins.contains(m)) ...[
-                const SizedBox(width: 6),
-                const ZineSticker('admin', kind: ZineStickerKind.ok),
-              ],
-            ]),
-            subtitle: m == _myUid ? Text('You', style: ZineText.sub(size: 12)) : null,
-            trailing: (_amAdmin && m != _myUid)
-                ? IconButton(
-                    icon: PhosphorIcon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold), color: Zine.inkSoft),
-                    onPressed: _busy ? null : () => _memberActions(m))
-                : null,
-          ),
-        const SizedBox(height: 16),
-        // Archive (anyone) — hides the group from your list without leaving it.
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: ZineButton(
-            label: 'Archive group',
-            variant: ZineButtonVariant.ghost,
-            fullWidth: true,
-            icon: PhosphorIcons.archive(PhosphorIconsStyle.bold),
-            trailingIcon: false,
-            onPressed: _busy ? null : _archive,
-          ),
-        ),
-        // Delete (owner only) — removes the group for everyone.
-        if (_amOwner)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: ZineButton(
-              label: 'Delete group',
-              variant: ZineButtonVariant.coral,
-              fullWidth: true,
-              icon: PhosphorIcons.trash(PhosphorIconsStyle.bold),
-              trailingIcon: false,
-              onPressed: _busy ? null : _confirmDelete,
+            const SizedBox(height: 12),
+            Center(child: Text(_group.name, style: ADText.appTitle())),
+            const SizedBox(height: 4),
+            Center(child: Text('${_group.members.length} MEMBERS', style: ADText.sectionLabel())),
+            const SizedBox(height: 14),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: _amAdmin ? _editDescription : null,
+                  borderRadius: BorderRadius.circular(AD.rListCard),
+                  child: Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: AD.card,
+                      borderRadius: BorderRadius.circular(AD.rListCard),
+                      border: Border.all(color: AD.borderCard, width: 1),
+                    ),
+                    child: Row(children: [
+                      Expanded(child: Text(
+                          _group.description.isEmpty ? (_amAdmin ? 'Add a group description' : 'No description') : _group.description,
+                          style: ADText.preview(
+                              c: _group.description.isEmpty ? AD.textTertiary : AD.textSecondary))),
+                      if (_amAdmin)
+                        PhosphorIcon(PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold), size: 16, color: AD.textSecondary),
+                    ]),
+                  ),
+                ),
+              ),
             ),
-          ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          child: ZineButton(
-            label: 'Leave group',
-            variant: ZineButtonVariant.coral,
-            fullWidth: true,
-            icon: PhosphorIcons.signOut(PhosphorIconsStyle.bold),
-            onPressed: _busy ? null : _leave,
-          ),
+            const SizedBox(height: 8),
+            ListTile(
+              leading: _badge(PhosphorIcons.link(PhosphorIconsStyle.bold), AD.iconSearch),
+              title: Text('Copy invite link', style: ADText.rowName()),
+              subtitle: Text('Share so others can ask to join', style: ADText.preview()),
+              onTap: () {
+                Clipboard.setData(ClipboardData(text: 'https://avatok.ai/g/${_group.id}'));
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invite link copied')));
+              },
+            ),
+            if (_amAdmin)
+              ListTile(
+                leading: _badge(PhosphorIcons.userPlus(PhosphorIconsStyle.bold), AD.newGroup),
+                title: Text('Add members', style: ADText.rowName()),
+                onTap: _busy ? null : _pickToAdd,
+              ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 14, 18, 4),
+              child: Text('MEMBERS', style: ADText.sectionLabel()),
+            ),
+            for (final m in _group.members)
+              ListTile(
+                leading: Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: AD.borderAvatar, width: 2),
+                  ),
+                  child: Avatar(seed: m, name: _label(m), size: 42, avatarUrl: _avatars[m]),
+                ),
+                title: Row(children: [
+                  Flexible(child: Text(_label(m), maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: ADText.rowName())),
+                  if (_group.admins.contains(m)) ...[
+                    const SizedBox(width: 6),
+                    _adminPill(),
+                  ],
+                ]),
+                subtitle: m == _myUid ? Text('You', style: ADText.preview()) : null,
+                trailing: (_amAdmin && m != _myUid)
+                    ? IconButton(
+                        icon: PhosphorIcon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold), color: AD.textSecondary),
+                        onPressed: _busy ? null : () => _memberActions(m))
+                    : null,
+              ),
+            const SizedBox(height: 16),
+            // Archive (anyone) — hides the group from your list without leaving it.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: _actionButton(
+                label: 'Archive group',
+                icon: PhosphorIcons.archive(PhosphorIconsStyle.bold),
+                fill: AD.card, labelColor: AD.textPrimary, borderColor: AD.borderControl,
+                onTap: _busy ? null : _archive,
+              ),
+            ),
+            // Delete (owner only) — removes the group for everyone.
+            if (_amOwner)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: _actionButton(
+                  label: 'Delete group',
+                  icon: PhosphorIcons.trash(PhosphorIconsStyle.bold),
+                  fill: AD.destructiveBg, labelColor: AD.destructiveInk,
+                  onTap: _busy ? null : _confirmDelete,
+                ),
+              ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: _actionButton(
+                label: 'Leave group',
+                icon: PhosphorIcons.signOut(PhosphorIconsStyle.bold),
+                fill: AD.destructiveBg, labelColor: AD.destructiveInk,
+                onTap: _busy ? null : _leave,
+              ),
+            ),
+          ]),
         ),
       ]),
+    );
+  }
+
+  /// Rounded-square glyph badge in an AD accent (replaces ZineIconBadge).
+  Widget _badge(IconData icon, Color fill, {double size = 34}) => Container(
+        width: size, height: size,
+        decoration: BoxDecoration(
+          color: fill,
+          borderRadius: BorderRadius.circular(AD.rIconButton),
+        ),
+        child: Center(child: PhosphorIcon(icon, size: size * 0.53, color: Colors.white)),
+      );
+
+  /// Small "admin" pill (replaces ZineSticker).
+  Widget _adminPill() => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: AD.newGroup.withValues(alpha: 0.18),
+          borderRadius: BorderRadius.circular(AD.rChip),
+        ),
+        child: Text('ADMIN', style: ADText.statCaption(c: AD.newGroup)),
+      );
+
+  /// Full-width action pill; solid (destructive) or ghost/secondary variant.
+  Widget _actionButton({
+    required String label,
+    required IconData icon,
+    required Color fill,
+    required Color labelColor,
+    Color? borderColor,
+    required VoidCallback? onTap,
+  }) {
+    final enabled = onTap != null;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(100),
+        child: Opacity(
+          opacity: enabled ? 1 : 0.5,
+          child: Container(
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            decoration: BoxDecoration(
+              color: fill,
+              borderRadius: BorderRadius.circular(100),
+              border: borderColor == null ? null : Border.all(color: borderColor, width: 1),
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              PhosphorIcon(icon, size: 18, color: labelColor),
+              const SizedBox(width: 10),
+              Text(label, style: ADText.rowName(c: labelColor)),
+            ]),
+          ),
+        ),
+      ),
     );
   }
 }

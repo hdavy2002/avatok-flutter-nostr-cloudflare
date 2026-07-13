@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/avatok_dark.dart';
 import 'media.dart';
 import 'video_player_screen.dart';
 
@@ -38,28 +39,28 @@ class MediaLibraryScreen extends StatelessWidget {
     return DefaultTabController(
       length: 3,
       child: Scaffold(
-        backgroundColor: Zine.paper,
+        backgroundColor: AD.bg,
         appBar: AppBar(
-          backgroundColor: Zine.paper2,
+          backgroundColor: AD.headerFooter,
           elevation: 0,
           scrolledUnderElevation: 0,
           surfaceTintColor: Colors.transparent,
-          foregroundColor: Zine.ink,
-          shape: const Border(bottom: BorderSide(color: Zine.ink, width: Zine.bw)),
+          foregroundColor: AD.textPrimary,
+          shape: const Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
           leading: const Padding(
             padding: EdgeInsets.only(left: 10),
-            child: Center(child: ZineBackButton()),
+            child: Center(child: AdBackButton()),
           ),
           leadingWidth: 60,
-          title: Text(title, style: ZineText.appbar().copyWith(fontSize: 21)),
+          title: Text(title, style: ADText.appTitle()),
           bottom: TabBar(
-            labelColor: Zine.ink,
-            unselectedLabelColor: Zine.inkMute,
-            indicatorColor: Zine.ink,
+            labelColor: AD.textPrimary,
+            unselectedLabelColor: AD.textTertiary,
+            indicatorColor: AD.textPrimary,
             indicatorWeight: 3,
             dividerColor: Colors.transparent,
-            labelStyle: ZineText.tag(size: 11.5),
-            unselectedLabelStyle: ZineText.tag(size: 11.5, color: Zine.inkMute),
+            labelStyle: ADText.tabLabel(),
+            unselectedLabelStyle: ADText.tabLabel(c: AD.textTertiary),
             tabs: [
               Tab(text: 'MEDIA (${media.length})'),
               Tab(text: 'LINKS (${links.length})'),
@@ -76,8 +77,14 @@ class MediaLibraryScreen extends StatelessWidget {
     );
   }
 
-  Widget _empty(IconData icon, String label) =>
-      Center(child: ZineEmptyState(icon: icon, text: label));
+  Widget _empty(IconData icon, String label) => Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          PhosphorIcon(icon, size: 40, color: AD.textFaint),
+          const SizedBox(height: 14),
+          Text(label, textAlign: TextAlign.center,
+              style: ADText.preview(c: AD.textTertiary)),
+        ]),
+      );
 
   Widget _mediaGrid(BuildContext context) {
     if (media.isEmpty) {
@@ -103,25 +110,25 @@ class MediaLibraryScreen extends StatelessWidget {
           child: Container(
             clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
-              color: Zine.paper2,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Zine.ink, width: 2),
+              color: AD.card,
+              borderRadius: BorderRadius.circular(AD.rListCard),
+              border: Border.all(color: AD.borderControl, width: 1),
             ),
             child: Stack(fit: StackFit.expand, children: [
               if (isVideo)
                 Center(child: PhosphorIcon(
-                    PhosphorIcons.videoCamera(PhosphorIconsStyle.bold), color: Zine.inkSoft, size: 26))
+                    PhosphorIcons.videoCamera(PhosphorIconsStyle.bold), color: AD.textSecondary, size: 26))
               else
                 FutureBuilder<Uint8List>(
                   future: MediaService.downloadAndDecrypt(m),
                   builder: (_, s) => s.hasData
                       ? Image.memory(s.data!, fit: BoxFit.cover)
                       : Center(child: PhosphorIcon(
-                          PhosphorIcons.image(PhosphorIconsStyle.bold), color: Zine.inkMute)),
+                          PhosphorIcons.image(PhosphorIconsStyle.bold), color: AD.textTertiary)),
                 ),
               if (isVideo)
                 Center(child: PhosphorIcon(
-                    PhosphorIcons.playCircle(PhosphorIconsStyle.fill), color: Zine.ink, size: 32)),
+                    PhosphorIcons.playCircle(PhosphorIconsStyle.fill), color: AD.textPrimary, size: 32)),
             ]),
           ),
         );
@@ -139,18 +146,27 @@ class MediaLibraryScreen extends StatelessWidget {
       separatorBuilder: (_, __) => const SizedBox(height: 10),
       itemBuilder: (_, i) {
         final l = links[i];
-        return ZineCard(
-          radius: Zine.rSm,
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-          boxShadow: Zine.shadowXs,
-          onTap: () => launchUrl(Uri.parse(l.url), mode: LaunchMode.externalApplication),
-          child: Row(children: [
-            ZineIconBadge(icon: PhosphorIcons.link(PhosphorIconsStyle.bold),
-                color: Zine.accents[i % Zine.accents.length]),
-            const SizedBox(width: 11),
-            Expanded(child: Text(l.url, maxLines: 2, overflow: TextOverflow.ellipsis,
-                style: ZineText.link(size: 12))),
-          ]),
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(AD.rListCard),
+            onTap: () => launchUrl(Uri.parse(l.url), mode: LaunchMode.externalApplication),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+              decoration: BoxDecoration(
+                color: AD.card,
+                borderRadius: BorderRadius.circular(AD.rListCard),
+                border: Border.all(color: AD.borderControl, width: 1),
+              ),
+              child: Row(children: [
+                ZineIconBadge(icon: PhosphorIcons.link(PhosphorIconsStyle.bold),
+                    color: Zine.accents[i % Zine.accents.length]),
+                const SizedBox(width: 11),
+                Expanded(child: Text(l.url, maxLines: 2, overflow: TextOverflow.ellipsis,
+                    style: ADText.preview(c: AD.iconSearch))),
+              ]),
+            ),
+          ),
         );
       },
     );
@@ -167,31 +183,40 @@ class MediaLibraryScreen extends StatelessWidget {
       itemBuilder: (_, i) {
         final d = docs[i];
         final isAudio = d.kind == MediaKind.audio;
-        return ZineCard(
-          radius: Zine.rSm,
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-          boxShadow: Zine.shadowXs,
-          onTap: () => launchUrl(Uri.parse(d.downloadUrl), mode: LaunchMode.externalApplication),
-          child: Row(children: [
-            ZineIconBadge(
-              icon: isAudio
-                  ? PhosphorIcons.microphone(PhosphorIconsStyle.bold)
-                  : PhosphorIcons.file(PhosphorIconsStyle.bold),
-              color: Zine.accents[i % Zine.accents.length],
-            ),
-            const SizedBox(width: 11),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(d.name.isNotEmpty ? d.name : (isAudio ? 'Voice note' : 'File'),
-                    maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: ZineText.value(size: 14)),
-                if (_fmtSize(d.size).isNotEmpty)
-                  Text(_fmtSize(d.size).toUpperCase(), style: ZineText.tag(size: 10, color: Zine.inkSoft)),
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(AD.rListCard),
+            onTap: () => launchUrl(Uri.parse(d.downloadUrl), mode: LaunchMode.externalApplication),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+              decoration: BoxDecoration(
+                color: AD.card,
+                borderRadius: BorderRadius.circular(AD.rListCard),
+                border: Border.all(color: AD.borderControl, width: 1),
+              ),
+              child: Row(children: [
+                ZineIconBadge(
+                  icon: isAudio
+                      ? PhosphorIcons.microphone(PhosphorIconsStyle.bold)
+                      : PhosphorIcons.file(PhosphorIconsStyle.bold),
+                  color: Zine.accents[i % Zine.accents.length],
+                ),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(d.name.isNotEmpty ? d.name : (isAudio ? 'Voice note' : 'File'),
+                        maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: ADText.rowName()),
+                    if (_fmtSize(d.size).isNotEmpty)
+                      Text(_fmtSize(d.size).toUpperCase(), style: ADText.statCaption(c: AD.textSecondary)),
+                  ]),
+                ),
+                PhosphorIcon(PhosphorIcons.downloadSimple(PhosphorIconsStyle.bold),
+                    size: 18, color: AD.textSecondary),
               ]),
             ),
-            PhosphorIcon(PhosphorIcons.downloadSimple(PhosphorIconsStyle.bold),
-                size: 18, color: Zine.inkSoft),
-          ]),
+          ),
         );
       },
     );
@@ -200,14 +225,14 @@ class MediaLibraryScreen extends StatelessWidget {
   void _openImage(BuildContext context, ChatMedia m) {
     showDialog(context: context, builder: (_) => Dialog(
       // Image lightbox sits on a warm-ink scrim (allowed as an overlay dim).
-      backgroundColor: Zine.ink,
+      backgroundColor: AD.scrim,
       insetPadding: const EdgeInsets.all(10),
       child: FutureBuilder<Uint8List>(
         future: MediaService.downloadAndDecrypt(m),
         builder: (_, s) => s.hasData
             ? InteractiveViewer(child: Image.memory(s.data!, fit: BoxFit.contain))
             : const Padding(padding: EdgeInsets.all(40),
-                child: Center(child: CircularProgressIndicator(color: Zine.lime))),
+                child: Center(child: CircularProgressIndicator(color: AD.primaryBadge))),
       ),
     ));
   }

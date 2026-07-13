@@ -6,8 +6,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:video_player/video_player.dart';
 
-import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/avatok_dark.dart';
 import 'media.dart';
 
 /// Plays a chat video: fetches the encrypted blob, decrypts it to a temp file,
@@ -62,7 +62,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // Video is content — ink letterbox; chrome = flat ink-alpha bands + zine
     // bordered circles (no gradients, no blurred shadows).
     return Scaffold(
-      backgroundColor: Zine.ink,
+      backgroundColor: AD.bg,
       body: Stack(children: [
         Positioned.fill(
           child: Center(
@@ -72,12 +72,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     child: AspectRatio(aspectRatio: c.value.aspectRatio, child: VideoPlayer(c)),
                   )
                 : Column(mainAxisSize: MainAxisSize.min, children: [
-                    const CircularProgressIndicator(color: Zine.lime),
+                    const CircularProgressIndicator(color: AD.primaryBadge),
                     const SizedBox(height: 14),
                     Text(_status.toUpperCase(),
                         textAlign: TextAlign.center,
-                        // White text only inside ink bands over video areas.
-                        style: ZineText.tag(size: 12, color: Colors.white)),
+                        // White text only inside dark bands over video areas.
+                        style: ADText.sectionLabel(c: AD.textPrimary)),
                   ]),
           ),
         ),
@@ -85,15 +85,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         Positioned(
           top: 0, left: 0, right: 0,
           child: Container(
-            color: Zine.ink.withValues(alpha: 0.45),
+            color: Colors.black.withValues(alpha: 0.45),
             child: SafeArea(
               bottom: false,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(14, 8, 18, 10),
                 child: Row(children: [
-                  const ZineBackButton(),
+                  const AdBackButton(),
                   const Spacer(),
-                  Text('VIDEO', style: ZineText.tag(size: 11, color: Colors.white)),
+                  Text('VIDEO', style: ADText.sectionLabel(c: AD.textPrimary)),
                 ]),
               ),
             ),
@@ -104,7 +104,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           Positioned(
             left: 0, right: 0, bottom: 0,
             child: Container(
-              color: Zine.ink.withValues(alpha: 0.45),
+              color: Colors.black.withValues(alpha: 0.45),
               child: SafeArea(
                 top: false,
                 child: Padding(
@@ -112,9 +112,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   child: Row(children: [
                     ZinePressable(
                       onTap: () => setState(() => c.value.isPlaying ? c.pause() : c.play()),
-                      pressedColor: Zine.lime,
+                      color: AD.card,
+                      pressedColor: AD.primaryBadge,
+                      borderColor: AD.borderControl,
                       radius: BorderRadius.circular(100),
-                      boxShadow: Zine.shadowXs,
+                      boxShadow: const [],
                       child: SizedBox(
                         width: 46, height: 46,
                         child: Center(
@@ -122,7 +124,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                               c.value.isPlaying
                                   ? PhosphorIcons.pause(PhosphorIconsStyle.fill)
                                   : PhosphorIcons.play(PhosphorIconsStyle.fill),
-                              size: 20, color: Zine.ink),
+                              size: 20, color: AD.textPrimary),
                         ),
                       ),
                     ),
@@ -137,7 +139,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                             allowScrubbing: true,
                             padding: EdgeInsets.zero,
                             colors: VideoProgressColors(
-                              playedColor: Zine.lime,
+                              playedColor: AD.primaryBadge,
                               bufferedColor: Colors.white.withValues(alpha: 0.35),
                               backgroundColor: Colors.white.withValues(alpha: 0.18),
                             ),

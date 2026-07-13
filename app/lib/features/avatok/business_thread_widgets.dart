@@ -7,8 +7,7 @@ import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
 import '../../core/blocking_api.dart';
 import '../../core/config.dart';
-import '../../core/ui/zine.dart';
-import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/avatok_dark.dart';
 import 'unknown_caller.dart';
 
 /// Message-bubble renderers for business-call records (Specs/PLAN-2026-07-11-
@@ -129,12 +128,12 @@ class _VoicemailCardState extends State<VoicemailCard> {
       constraints: const BoxConstraints(minWidth: 220),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
         Row(children: [
-          Icon(PhosphorIcons.voicemail(PhosphorIconsStyle.fill), size: 18, color: Zine.coral),
+          Icon(PhosphorIcons.voicemail(PhosphorIconsStyle.fill), size: 18, color: AD.danger),
           const SizedBox(width: 6),
-          Expanded(child: Text('$_callerName left a voicemail', style: ZineText.value(size: 13.5))),
+          Expanded(child: Text('$_callerName left a voicemail', style: ADText.rowName())),
         ]),
         if (_callerNumber.isNotEmpty)
-          Padding(padding: const EdgeInsets.only(top: 2), child: Text(_callerNumber, style: ZineText.sub(size: 11.5))),
+          Padding(padding: const EdgeInsets.only(top: 2), child: Text(_callerNumber, style: ADText.preview())),
         const SizedBox(height: 8),
         GestureDetector(
           onTap: _togglePlay,
@@ -143,10 +142,10 @@ class _VoicemailCardState extends State<VoicemailCard> {
                 ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                 : Icon(_playing
                     ? PhosphorIcons.pauseCircle(PhosphorIconsStyle.fill)
-                    : PhosphorIcons.playCircle(PhosphorIconsStyle.fill), size: 26, color: Zine.blueInk),
+                    : PhosphorIcons.playCircle(PhosphorIconsStyle.fill), size: 26, color: AD.iconSearch),
             const SizedBox(width: 8),
             Text(_durationSec > 0 ? '${_durationSec}s voicemail' : 'Play voicemail',
-                style: ZineText.value(size: 13, color: Zine.blueInk)),
+                style: ADText.rowName(c: AD.iconSearch)),
           ]),
         ),
         if (_transcript.isNotEmpty) ...[
@@ -154,20 +153,20 @@ class _VoicemailCardState extends State<VoicemailCard> {
           GestureDetector(
             onTap: () => setState(() => _expanded = !_expanded),
             child: Text(_expanded ? 'Hide transcript ▲' : 'Show transcript ▼',
-                style: ZineText.tag(size: 10.5, color: Zine.inkMute)),
+                style: ADText.statCaption(c: AD.textTertiary)),
           ),
           if (_expanded)
             Padding(
               padding: const EdgeInsets.only(top: 6),
-              child: Text(_transcript, style: ZineText.sub(size: 12.5)),
+              child: Text(_transcript, style: ADText.preview()),
             ),
         ],
         if (!_handled) ...[
           const SizedBox(height: 10),
           Wrap(spacing: 8, runSpacing: 6, children: [
-            ZineChip(label: 'Accept', onTap: _accept),
-            ZineChip(label: 'Block', onTap: _block),
-            ZineChip(label: 'Save contact', onTap: _saveContact),
+            AdChip(label: 'Accept', onTap: _accept),
+            AdChip(label: 'Block', onTap: _block),
+            AdChip(label: 'Save contact', onTap: _saveContact),
           ]),
         ],
       ]),
@@ -223,12 +222,12 @@ class _AgentTranscriptCardState extends State<AgentTranscriptCard> {
       constraints: const BoxConstraints(minWidth: 220),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
         Row(children: [
-          Icon(PhosphorIcons.robot(PhosphorIconsStyle.fill), size: 18, color: Zine.lilac),
+          Icon(PhosphorIcons.robot(PhosphorIconsStyle.fill), size: 18, color: AD.iconVideo),
           const SizedBox(width: 6),
-          Expanded(child: Text('Ava AI Agent talked to $_callerName', style: ZineText.value(size: 13.5))),
+          Expanded(child: Text('Ava AI Agent talked to $_callerName', style: ADText.rowName())),
         ]),
         if (_callerNumber.isNotEmpty)
-          Padding(padding: const EdgeInsets.only(top: 2), child: Text(_callerNumber, style: ZineText.sub(size: 11.5))),
+          Padding(padding: const EdgeInsets.only(top: 2), child: Text(_callerNumber, style: ADText.preview())),
         const SizedBox(height: 6),
         // "What the agent did" summary line — the owner reads this without
         // opening the whole transcript.
@@ -236,9 +235,9 @@ class _AgentTranscriptCardState extends State<AgentTranscriptCard> {
           if (_bookingCreated)
             Padding(
               padding: const EdgeInsets.only(right: 6, top: 1),
-              child: Icon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill), size: 14, color: Zine.mintInk),
+              child: Icon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill), size: 14, color: AD.online),
             ),
-          Expanded(child: Text(_summary, style: ZineText.sub(size: 12.5))),
+          Expanded(child: Text(_summary, style: ADText.preview())),
         ]),
         if (_turns.isNotEmpty) ...[
           const SizedBox(height: 8),
@@ -248,7 +247,7 @@ class _AgentTranscriptCardState extends State<AgentTranscriptCard> {
               if (_expanded) Analytics.capture('agent_transcript_expanded', {'call_id': _callId});
             },
             child: Text(_expanded ? 'Hide transcript ▲' : 'Show full transcript ▼',
-                style: ZineText.tag(size: 10.5, color: Zine.inkMute)),
+                style: ADText.statCaption(c: AD.textTertiary)),
           ),
           if (_expanded)
             Padding(
@@ -259,7 +258,7 @@ class _AgentTranscriptCardState extends State<AgentTranscriptCard> {
                     padding: const EdgeInsets.only(bottom: 4),
                     child: Text(
                       '${(t['speaker'] ?? 'agent') == 'caller' ? _callerName : 'Ava'}: ${t['text'] ?? ''}',
-                      style: ZineText.sub(size: 12),
+                      style: ADText.preview(),
                     ),
                   ),
               ]),
@@ -267,7 +266,7 @@ class _AgentTranscriptCardState extends State<AgentTranscriptCard> {
         ],
         if (widget.onReply != null) ...[
           const SizedBox(height: 10),
-          ZineChip(
+          AdChip(
             label: 'Reply',
             onTap: () {
               Analytics.capture('agent_transcript_reply_tapped', {'call_id': _callId});

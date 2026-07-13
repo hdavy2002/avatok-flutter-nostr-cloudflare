@@ -4,8 +4,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/analytics.dart';
 import '../../core/chat_state.dart';
 import '../../core/group_store.dart';
-import '../../core/ui/zine.dart';
-import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../identity/identity.dart';
 import '../../sync/group_api.dart';
 import 'chat_thread.dart';
@@ -102,118 +101,242 @@ class _GroupsTabState extends State<GroupsTab> {
 
   @override
   Widget build(BuildContext context) {
+    final canPop = Navigator.of(context).canPop();
     return Scaffold(
-      backgroundColor: Zine.paper,
-      appBar: ZineAppBar(
-        title: 'Groups',
-        markWord: 'Groups',
-        tag: 'your group chats',
-        showBack: Navigator.of(context).canPop(),
-        leading: widget.onMenu == null
-            ? null
-            : ZineBackButton(
-                icon: PhosphorIcons.list(PhosphorIconsStyle.bold),
-                onTap: widget.onMenu),
-      ),
-      floatingActionButton: ZineButton(
-        label: 'New group',
-        fontSize: 17,
+      backgroundColor: AD.bg,
+      floatingActionButton: _fab(
         icon: PhosphorIcons.usersThree(PhosphorIconsStyle.bold),
-        trailingIcon: false,
-        onPressed: _newGroup,
+        label: 'New group',
+        onTap: _newGroup,
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator(color: Zine.blueInk))
-          : (_groups.isEmpty && _invites.isEmpty)
-              ? _empty()
-              : ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 110),
+      body: Column(children: [
+        // Inline dark v2 header band: near-black header fill + hairline bottom
+        // border (mirrors chat_list). Leading = menu (opens sidebar) or back.
+        Container(
+          decoration: const BoxDecoration(
+            color: AD.headerFooter,
+            border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
+          ),
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 10, 16, 12),
+              child: Row(children: [
+                if (widget.onMenu != null) ...[
+                  _hdrBtn(PhosphorIcons.list(PhosphorIconsStyle.bold), widget.onMenu!),
+                  const SizedBox(width: 14),
+                ] else if (canPop) ...[
+                  _hdrBtn(PhosphorIcons.arrowLeft(PhosphorIconsStyle.bold),
+                      () => Navigator.of(context).maybePop()),
+                  const SizedBox(width: 14),
+                ],
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (_invites.isNotEmpty) ...[
-                      Text('PENDING INVITES', style: ZineText.kicker()),
-                      const SizedBox(height: 10),
-                      for (final inv in _invites)
-                        Padding(padding: const EdgeInsets.only(bottom: 12), child: _inviteCard(inv)),
-                      const SizedBox(height: 4),
-                      if (_groups.isNotEmpty) Text('YOUR GROUPS', style: ZineText.kicker()),
-                      if (_groups.isNotEmpty) const SizedBox(height: 10),
-                    ],
-                    for (int i = 0; i < _groups.length; i++)
-                      Padding(padding: const EdgeInsets.only(bottom: 12), child: _groupCard(_groups[i], i)),
+                    Text('Groups', style: ADText.appTitle()),
+                    const SizedBox(height: 2),
+                    Text('YOUR GROUP CHATS', style: ADText.sectionLabel()),
                   ],
                 ),
+              ]),
+            ),
+          ),
+        ),
+        Expanded(
+          child: _loading
+              ? const Center(
+                  child: CircularProgressIndicator(color: AD.iconSearch))
+              : (_groups.isEmpty && _invites.isEmpty)
+                  ? _empty()
+                  : ListView(
+                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 110),
+                      children: [
+                        if (_invites.isNotEmpty) ...[
+                          Text('PENDING INVITES', style: ADText.sectionLabel()),
+                          const SizedBox(height: 10),
+                          for (final inv in _invites)
+                            Padding(padding: const EdgeInsets.only(bottom: 12), child: _inviteCard(inv)),
+                          const SizedBox(height: 4),
+                          if (_groups.isNotEmpty) Text('YOUR GROUPS', style: ADText.sectionLabel()),
+                          if (_groups.isNotEmpty) const SizedBox(height: 10),
+                        ],
+                        for (int i = 0; i < _groups.length; i++)
+                          Padding(padding: const EdgeInsets.only(bottom: 12), child: _groupCard(_groups[i], i)),
+                      ],
+                    ),
+        ),
+      ]),
     );
   }
 
-  Widget _groupCard(Group g, int i) => ZineCard(
-        radius: Zine.rSm,
-        padding: const EdgeInsets.all(13),
+  /// Circular header icon button (card fill + hairline control border).
+  Widget _hdrBtn(IconData icon, VoidCallback onTap) => GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 42, height: 42,
+          decoration: BoxDecoration(
+            color: AD.card,
+            shape: BoxShape.circle,
+            border: Border.all(color: AD.borderControl, width: 1),
+          ),
+          child: Center(child: PhosphorIcon(icon, size: 20, color: AD.textPrimary)),
+        ),
+      );
+
+  /// The primary teal pill (group actions) — replaces the light lime ZineButton.
+  Widget _fab({required IconData icon, required String label, required VoidCallback onTap}) =>
+      Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(100),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            decoration: BoxDecoration(
+              color: AD.newGroup,
+              borderRadius: BorderRadius.circular(100),
+              boxShadow: AD.overlayShadow,
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              PhosphorIcon(icon, size: 19, color: Colors.white),
+              const SizedBox(width: 10),
+              Text(label, style: ADText.rowName(c: Colors.white)),
+            ]),
+          ),
+        ),
+      );
+
+  /// Rounded-square glyph badge in an AD accent (replaces ZineIconBadge).
+  Widget _badge(IconData icon, Color fill, {double size = 48}) => Container(
+        width: size, height: size,
+        decoration: BoxDecoration(
+          color: fill,
+          borderRadius: BorderRadius.circular(AD.rBadge),
+        ),
+        child: Center(child: PhosphorIcon(icon, size: size * 0.5, color: Colors.white)),
+      );
+
+  /// A dark card surface with an optional tap (replaces ZineCard).
+  Widget _card({required Widget child, EdgeInsetsGeometry? padding, VoidCallback? onTap}) {
+    final content = Container(
+      padding: padding ?? const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: AD.card,
+        borderRadius: BorderRadius.circular(AD.rListCard),
+        border: Border.all(color: AD.borderCard, width: 1),
+      ),
+      child: child,
+    );
+    if (onTap == null) return content;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AD.rListCard),
+        child: content,
+      ),
+    );
+  }
+
+  Widget _groupCard(Group g, int i) => _card(
         onTap: () => _openGroup(g),
         child: Row(children: [
-          ZineIconBadge(
-            icon: PhosphorIcons.usersThree(PhosphorIconsStyle.bold),
-            color: Zine.accents[i % Zine.accents.length],
-            size: 48,
-          ),
+          _badge(PhosphorIcons.usersThree(PhosphorIconsStyle.bold),
+              AD.family('${g.id}$i').solid, size: 48),
           const SizedBox(width: 13),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            Text(g.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.cardTitle(size: 17)),
+            Text(g.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.threadName()),
             const SizedBox(height: 3),
             Text(g.description.isNotEmpty ? g.description : 'Tap to open · calls inside',
-                maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.sub(size: 13)),
+                maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.preview()),
           ])),
           const SizedBox(width: 10),
-          Text('${g.members.length} MEMBERS', style: ZineText.tag(size: 9.5, color: Zine.inkSoft)),
+          Text('${g.members.length} MEMBERS', style: ADText.statCaption()),
         ]),
       );
 
   /// A pending group invite with Accept / Decline (Phase D — true pending
   /// membership; only shown when the server flag is on).
-  Widget _inviteCard(GroupInvite inv) => ZineCard(
-        radius: Zine.rSm,
-        padding: const EdgeInsets.all(13),
+  Widget _inviteCard(GroupInvite inv) => _card(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            ZineIconBadge(
-                icon: PhosphorIcons.usersThree(PhosphorIconsStyle.fill), color: Zine.blue, size: 44),
+            _badge(PhosphorIcons.usersThree(PhosphorIconsStyle.fill), AD.newGroup, size: 44),
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-              Text(inv.groupName, maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.cardTitle(size: 16)),
+              Text(inv.groupName, maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.threadName()),
               const SizedBox(height: 3),
               Text("You've been invited to join${inv.memberCount > 0 ? ' · ${inv.memberCount} members' : ''}",
-                  maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.sub(size: 12.5)),
+                  maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.preview()),
             ])),
           ]),
           const SizedBox(height: 12),
           Row(children: [
-            Expanded(child: ZineButton(
-              label: 'Accept', variant: ZineButtonVariant.lime, fontSize: 14.5, trailingIcon: false,
-              onPressed: () => _respondInvite(inv, true))),
+            Expanded(child: _pillButton(
+              label: 'Accept', fill: AD.newGroup, labelColor: Colors.white,
+              onTap: () => _respondInvite(inv, true))),
             const SizedBox(width: 10),
-            Expanded(child: ZineButton(
-              label: 'Decline', variant: ZineButtonVariant.ghost, fontSize: 14.5, trailingIcon: false,
-              onPressed: () => _respondInvite(inv, false))),
+            Expanded(child: _pillButton(
+              label: 'Decline', fill: AD.card, labelColor: AD.textPrimary,
+              borderColor: AD.borderControl, onTap: () => _respondInvite(inv, false))),
           ]),
         ]),
+      );
+
+  /// Full-width pill button (solid or ghost/secondary variant).
+  Widget _pillButton({
+    required String label,
+    required Color fill,
+    required Color labelColor,
+    Color? borderColor,
+    required VoidCallback onTap,
+  }) =>
+      Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(100),
+          child: Container(
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              color: fill,
+              borderRadius: BorderRadius.circular(100),
+              border: borderColor == null ? null : Border.all(color: borderColor, width: 1),
+            ),
+            child: Text(label, style: ADText.rowName(c: labelColor)),
+          ),
+        ),
       );
 
   Widget _empty() => Center(
         child: Padding(
           padding: const EdgeInsets.all(32),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            ZineEmptyState(
-              icon: PhosphorIcons.usersThree(PhosphorIconsStyle.bold),
-              text: 'No groups yet — start a group chat with a few people. '
-                  'Up to 5 can be on a free call; paid plans unlock larger calls.',
+            // Inline dark empty tile (replaces ZineEmptyState).
+            Container(
+              width: 72, height: 72,
+              decoration: BoxDecoration(
+                color: AD.card,
+                borderRadius: BorderRadius.circular(AD.rListCard),
+                border: Border.all(color: AD.borderControl, width: 1),
+              ),
+              child: Center(child: PhosphorIcon(
+                  PhosphorIcons.usersThree(PhosphorIconsStyle.bold),
+                  size: 32, color: AD.textTertiary)),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'No groups yet — start a group chat with a few people. '
+              'Up to 5 can be on a free call; paid plans unlock larger calls.',
+              textAlign: TextAlign.center,
+              style: ADText.preview(c: AD.textSecondary),
             ),
             const SizedBox(height: 20),
-            ZineButton(
-              label: 'New group',
-              variant: ZineButtonVariant.blue,
+            _fab(
               icon: PhosphorIcons.plus(PhosphorIconsStyle.bold),
-              trailingIcon: false,
-              fontSize: 17,
-              onPressed: _newGroup,
+              label: 'New group',
+              onTap: _newGroup,
             ),
           ]),
         ),

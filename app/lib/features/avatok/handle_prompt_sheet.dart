@@ -6,8 +6,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/profile_store.dart';
-import '../../core/ui/zine.dart';
-import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/avatok_dark.dart';
 import 'contacts.dart';
 
 /// Just-in-time @handle prompt. We no longer collect a handle during onboarding
@@ -21,10 +20,10 @@ Future<String?> showHandlePromptSheet(BuildContext context, {required String uid
   return showModalBottomSheet<String>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: Zine.paper,
+    backgroundColor: AD.overlaySheet,
     shape: const RoundedRectangleBorder(
-      side: BorderSide(color: Zine.ink, width: Zine.bw),
-      borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+      side: BorderSide(color: AD.borderControl, width: 1),
+      borderRadius: BorderRadius.vertical(top: Radius.circular(AD.rSheet)),
     ),
     builder: (_) => _HandlePromptSheet(uid: uid),
   );
@@ -111,43 +110,93 @@ class _HandlePromptSheetState extends State<_HandlePromptSheet> {
             Center(
               child: Container(
                 width: 44, height: 5, margin: const EdgeInsets.only(bottom: 18),
-                decoration: BoxDecoration(color: Zine.inkMute, borderRadius: BorderRadius.circular(100)),
+                decoration: BoxDecoration(color: AD.textFaint, borderRadius: BorderRadius.circular(100)),
               ),
             ),
-            ZineIconBadge(icon: PhosphorIcons.at(PhosphorIconsStyle.bold), color: Zine.lime, size: 40),
+            // Accent glyph badge (@).
+            Container(
+              width: 40, height: 40,
+              decoration: BoxDecoration(
+                color: AD.primaryBadge.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(AD.rIconButton),
+              ),
+              child: Center(child: PhosphorIcon(
+                  PhosphorIcons.at(PhosphorIconsStyle.bold), size: 22, color: AD.primaryBadge)),
+            ),
             const SizedBox(height: 14),
-            ZineMarkTitle(pre: 'Pick your ', mark: 'handle', fontSize: 26, textAlign: TextAlign.left),
+            Text.rich(
+              TextSpan(children: [
+                TextSpan(text: 'Pick your ', style: ADText.appTitle()),
+                TextSpan(text: 'handle', style: ADText.appTitle(c: AD.primaryBadge)),
+              ]),
+            ),
             const SizedBox(height: 8),
             Text('A @handle is how friends find and tag you on AvaTok. You can change it '
                 'later in your profile.',
-                style: ZineText.sub(size: 13.5)),
+                style: ADText.preview()),
             const SizedBox(height: 18),
-            ZineField(
-              controller: _ctrl,
-              leadText: '@',
-              hint: 'yourname',
-              autofocus: true,
-              onChanged: _onChanged,
-              onSubmitted: (_) => _save(),
-              error: _available == false,
-              trailing: _trailing(),
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9_]')),
-                LengthLimitingTextInputFormatter(20),
-              ],
+            // White dark-v2 handle field with a leading @ and a status trailing.
+            Container(
+              decoration: BoxDecoration(
+                color: AD.inputField,
+                borderRadius: BorderRadius.circular(AD.rInput),
+                border: _available == false ? Border.all(color: AD.danger, width: 1.5) : null,
+              ),
+              padding: const EdgeInsets.only(left: 14, right: 12),
+              child: Row(children: [
+                Text('@', style: ADText.rowName(c: AD.placeholderOnWhite)),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: TextField(
+                    controller: _ctrl,
+                    autofocus: true,
+                    cursorColor: AD.primaryBadge,
+                    style: ADText.rowName(c: AD.textOnInput),
+                    onChanged: _onChanged,
+                    onSubmitted: (_) => _save(),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9_]')),
+                      LengthLimitingTextInputFormatter(20),
+                    ],
+                    decoration: InputDecoration(
+                      isDense: true,
+                      border: InputBorder.none,
+                      hintText: 'yourname',
+                      hintStyle: ADText.rowName(c: AD.placeholderOnWhite),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 15),
+                    ),
+                  ),
+                ),
+                if (_trailing() != null) ...[const SizedBox(width: 8), _trailing()!],
+              ]),
             ),
             const SizedBox(height: 10),
             _status(),
             const SizedBox(height: 16),
-            ZineButton(
-              label: 'Set handle',
-              fullWidth: true,
-              fontSize: 18,
-              loading: _saving,
-              onPressed: _ready ? _save : null,
+            GestureDetector(
+              onTap: _ready ? _save : null,
+              child: Opacity(
+                opacity: _ready ? 1 : 0.5,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: AD.primaryBadge,
+                    borderRadius: BorderRadius.circular(100),
+                  ),
+                  child: _saving
+                      ? const SizedBox(width: 20, height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : Text('Set handle', style: ADText.threadName(c: Colors.white)),
+                ),
+              ),
             ),
             const SizedBox(height: 10),
-            Center(child: ZineLink('Maybe later', onTap: _saving ? null : _skip)),
+            Center(child: GestureDetector(
+              onTap: _saving ? null : _skip,
+              child: Text('Maybe later', style: ADText.preview(c: AD.textSecondary)),
+            )),
           ],
         ),
       ),
@@ -157,32 +206,49 @@ class _HandlePromptSheetState extends State<_HandlePromptSheet> {
   Widget? _trailing() {
     if (_checking) {
       return const SizedBox(width: 18, height: 18,
-          child: CircularProgressIndicator(strokeWidth: 2.4, color: Zine.blueInk));
+          child: CircularProgressIndicator(strokeWidth: 2.4, color: AD.iconSearch));
     }
     if (_available == true) {
-      return PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill), size: 20, color: Zine.mintInk);
+      return PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill), size: 20, color: AD.online);
     }
     if (_available == false) {
-      return PhosphorIcon(PhosphorIcons.xCircle(PhosphorIconsStyle.fill), size: 20, color: Zine.coral);
+      return PhosphorIcon(PhosphorIcons.xCircle(PhosphorIconsStyle.fill), size: 20, color: AD.danger);
     }
     return null;
   }
 
   Widget _status() {
     if (_msg != null) {
-      return ZineSticker(
-        _msg!,
-        kind: _available == true ? ZineStickerKind.ok : ZineStickerKind.no,
-        icon: _available == true
-            ? PhosphorIcons.checkCircle(PhosphorIconsStyle.fill)
-            : PhosphorIcons.xCircle(PhosphorIconsStyle.fill),
-      );
+      return _sticker(_msg!,
+          ok: _available == true,
+          hint: false,
+          icon: _available == true
+              ? PhosphorIcons.checkCircle(PhosphorIconsStyle.fill)
+              : PhosphorIcons.xCircle(PhosphorIconsStyle.fill));
     }
     if (_available == true) {
-      return ZineSticker('@${_ctrl.text.trim().toLowerCase()} is available',
-          kind: ZineStickerKind.ok, icon: PhosphorIcons.checkCircle(PhosphorIconsStyle.fill));
+      return _sticker('@${_ctrl.text.trim().toLowerCase()} is available',
+          ok: true, hint: false, icon: PhosphorIcons.checkCircle(PhosphorIconsStyle.fill));
     }
-    return ZineSticker('3–20 letters, numbers or _',
-        kind: ZineStickerKind.hint, icon: PhosphorIcons.pencilSimple(PhosphorIconsStyle.fill));
+    return _sticker('3–20 letters, numbers or _',
+        ok: false, hint: true, icon: PhosphorIcons.pencilSimple(PhosphorIconsStyle.fill));
+  }
+
+  /// Inline dark-v2 status sticker: ok = green, error = danger, hint = neutral.
+  Widget _sticker(String text, {required bool ok, required bool hint, required IconData icon}) {
+    final accent = hint ? AD.textTertiary : (ok ? AD.online : AD.danger);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(AD.rStatCard),
+        border: Border.all(color: AD.borderControl, width: 1),
+      ),
+      child: Row(children: [
+        PhosphorIcon(icon, size: 16, color: accent),
+        const SizedBox(width: 8),
+        Expanded(child: Text(text, style: ADText.preview(c: AD.textSecondary))),
+      ]),
+    );
   }
 }

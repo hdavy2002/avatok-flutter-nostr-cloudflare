@@ -6,8 +6,8 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/avatar.dart';
 import '../../core/call_log_store.dart';
 import '../../core/ice_cache.dart';
-import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/avatok_dark.dart';
 import 'call_screen.dart';
 import 'contacts.dart';
 
@@ -64,42 +64,47 @@ class _CallsScreenState extends State<CallsScreen> {
           height: 60,
           padding: const EdgeInsets.symmetric(horizontal: 18),
           decoration: const BoxDecoration(
-            color: Zine.paper2,
-            border: Border(bottom: BorderSide(color: Zine.ink, width: Zine.bw)),
+            color: AD.headerFooter,
+            border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
           ),
           child: Row(children: [
-            const Expanded(
-              child: ZineMarkTitle(pre: '', mark: 'Calls', fontSize: 24, textAlign: TextAlign.left),
+            Expanded(
+              child: Text('Calls', style: ADText.appTitle()),
             ),
             if (_calls.isNotEmpty)
               ZinePressable(
                 onTap: _confirmClearAll,
-                color: Zine.card,
-                pressedColor: Zine.coral,
+                color: AD.card,
+                pressedColor: AD.destructiveBg,
                 radius: BorderRadius.circular(100),
-                boxShadow: Zine.shadowXs,
+                boxShadow: const [],
                 child: SizedBox(
                   width: 40, height: 40,
                   child: Center(child: PhosphorIcon(
                       PhosphorIcons.trash(PhosphorIconsStyle.bold),
-                      size: 19, color: Zine.ink)),
+                      size: 19, color: AD.textPrimary)),
                 ),
               ),
           ]),
         ),
         Expanded(
           child: !_loaded
-              ? const Center(child: CircularProgressIndicator(color: Zine.blueInk))
+              ? const Center(child: CircularProgressIndicator(color: AD.iconSearch))
               : _calls.isEmpty
                   ? Center(child: Padding(
                       padding: const EdgeInsets.all(24),
-                      child: ZineEmptyState(
-                          icon: PhosphorIcons.phone(PhosphorIconsStyle.bold),
-                          text: 'No calls yet — start one from a chat'),
+                      child: Column(mainAxisSize: MainAxisSize.min, children: [
+                        PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold),
+                            size: 40, color: AD.textFaint),
+                        const SizedBox(height: 14),
+                        Text('No calls yet — start one from a chat',
+                            textAlign: TextAlign.center,
+                            style: ADText.preview(c: AD.textTertiary)),
+                      ]),
                     ))
                   : RefreshIndicator(
                       onRefresh: _load,
-                      color: Zine.blueInk,
+                      color: AD.iconSearch,
                       child: ListView.separated(
                         padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
                         itemCount: _calls.length,
@@ -117,9 +122,9 @@ class _CallsScreenState extends State<CallsScreen> {
   Widget _row(CallEntry c, int index) {
     final missed = c.dir == CallDir.missed;
     final dirColor = switch (c.dir) {
-      CallDir.missed => Zine.coral,
-      CallDir.incoming => Zine.mintInk,
-      CallDir.outgoing => Zine.inkSoft,
+      CallDir.missed => AD.missedCall,
+      CallDir.incoming => AD.incomingCall,
+      CallDir.outgoing => AD.outgoingCall,
     };
     return GestureDetector(
       onLongPress: () => _confirmDelete(c, index),
@@ -127,16 +132,16 @@ class _CallsScreenState extends State<CallsScreen> {
       child: Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
-        color: Zine.card,
-        borderRadius: BorderRadius.circular(Zine.rSm),
-        border: Zine.border,
-        boxShadow: Zine.shadowXs,
+        color: AD.card,
+        borderRadius: BorderRadius.circular(AD.rListCard),
+        border: Border.all(color: AD.borderControl, width: 1),
+        boxShadow: const [],
       ),
       child: Row(children: [
         Container(
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            border: Border.all(color: Zine.ink, width: 2),
+            border: Border.all(color: AD.borderAvatar, width: 2),
           ),
           child: Avatar(seed: c.seed, name: c.name, size: 44, avatarUrl: _avatars[c.seed]),
         ),
@@ -145,31 +150,31 @@ class _CallsScreenState extends State<CallsScreen> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(c.name,
                 maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: ZineText.value(size: 15, color: missed ? Zine.coral : Zine.ink)),
+                style: ADText.rowName(c: missed ? AD.missedCall : AD.textPrimary)),
             const SizedBox(height: 3),
             Row(children: [
               PhosphorIcon(_dirIcon(c.dir), size: 14, color: dirColor),
               const SizedBox(width: 5),
               Flexible(child: Text('${_dirLabel(c.dir)} · ${c.timeLabel}'.toUpperCase(),
                   maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: ZineText.tag(size: 10, color: Zine.inkSoft))),
+                  style: ADText.sectionLabel(c: AD.textTertiary))),
             ]),
           ]),
         ),
         const SizedBox(width: 8),
         ZinePressable(
           onTap: () => _callBack(c),
-          color: Zine.card,
-          pressedColor: Zine.lime,
+          color: AD.card,
+          pressedColor: AD.primaryBadge,
           radius: BorderRadius.circular(100),
-          boxShadow: Zine.shadowXs,
+          boxShadow: const [],
           child: SizedBox(
             width: 40, height: 40,
             child: Center(child: PhosphorIcon(
                 c.video
                     ? PhosphorIcons.videoCamera(PhosphorIconsStyle.bold)
                     : PhosphorIcons.phone(PhosphorIconsStyle.bold),
-                size: 19, color: Zine.ink)),
+                size: 19, color: c.video ? AD.iconVideo : AD.iconPhone)),
           ),
         ),
       ]),
@@ -182,13 +187,14 @@ class _CallsScreenState extends State<CallsScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: Zine.paper,
-        title: const Text('Delete call'),
-        content: Text('Remove the call with ${c.name} from your history?'),
+        backgroundColor: AD.popover,
+        title: Text('Delete call', style: ADText.threadName()),
+        content: Text('Remove the call with ${c.name} from your history?',
+            style: ADText.preview(c: AD.textSecondary)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Zine.coral),
+            style: FilledButton.styleFrom(backgroundColor: AD.destructiveBg),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Delete'),
           ),
@@ -206,13 +212,14 @@ class _CallsScreenState extends State<CallsScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: Zine.paper,
-        title: const Text('Clear call logs'),
-        content: const Text('Delete your entire call history? This cannot be undone.'),
+        backgroundColor: AD.popover,
+        title: Text('Clear call logs', style: ADText.threadName()),
+        content: Text('Delete your entire call history? This cannot be undone.',
+            style: ADText.preview(c: AD.textSecondary)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Zine.coral),
+            style: FilledButton.styleFrom(backgroundColor: AD.destructiveBg),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Clear all'),
           ),

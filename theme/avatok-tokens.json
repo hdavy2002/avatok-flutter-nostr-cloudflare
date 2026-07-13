@@ -1,0 +1,156 @@
+{
+  "$name": "AvaTOK Dark v2 Design Tokens",
+  "$description": "Token set for the dark-black AvaTOK redesign (Nunito, pale accent surfaces, multicolor icons). Canonical app-wide tokens. Source of truth for app/lib/core/ui/avatok_dark.dart. Supersedes all earlier papercraft/turquoise token files.",
+  "$source": "design/black-mobile/AvaTOK App Dark v2.dc.html",
+  "typography": {
+    "fontFamily": "'Nunito', system-ui, sans-serif",
+    "weights": { "regular": 400, "semibold": 600, "bold": 700, "extrabold": 800, "black": 900 },
+    "sizes": {
+      "appTitle": "22px",
+      "threadName": "15px",
+      "rowName": "14px",
+      "bubbleBody": "13.5px",
+      "preview": "12.5px",
+      "tabLabel": "13px",
+      "navLabelPrimary": "11.5px",
+      "navLabel": "11px",
+      "sectionLabel": "11px",
+      "timestamp": "10.5px",
+      "bubbleMeta": "9.5px",
+      "statCaption": "9px"
+    }
+  },
+  "color": {
+    "background": {
+      "app": "#0B0B0D",
+      "headerFooter": "#131316",
+      "card": "#17171B",
+      "cardHover": "#1D1D23",
+      "overlaySheet": "#141418",
+      "menu": "#17171B",
+      "popover": "#1B1B20",
+      "inputField": "#FFFFFF",
+      "scrim": "rgba(0,0,0,.65)"
+    },
+    "border": {
+      "hairline": "#232329",
+      "card": "#26262D",
+      "control": "#2C2C33",
+      "avatar": "#FFFFFF"
+    },
+    "text": {
+      "primary": "#FFFFFF",
+      "secondary": "rgba(255,255,255,.6)",
+      "tertiary": "rgba(255,255,255,.45)",
+      "faint": "rgba(255,255,255,.3)",
+      "onInputField": "#17171B",
+      "placeholderOnWhite": "rgba(0,0,0,.45)"
+    },
+    "tabs": {
+      "chats": "#E8833A",
+      "groups": "#2FA98C",
+      "calls": "#8B6FD6",
+      "inactiveTintAlpha": 0.22,
+      "activeLabel": "#FFFFFF"
+    },
+    "bubbles": {
+      "outgoing": { "bg": "#CDEBD3", "ink": "#1C3324", "meta": "#567E63", "playButton": "#3E8E5A", "radius": "14px 4px 14px 14px" },
+      "incoming": { "bg": "#E6E3F6", "ink": "#2A2640", "meta": "#7B76A0", "playButton": "#6A63B8", "radius": "4px 14px 14px 14px" },
+      "mediaPlaceholder": { "bg": "#D9DCE6", "label": "#70778C", "dash": "#AEB5C9" }
+    },
+    "icons": {
+      "search": "#6FA8E8",
+      "bell": "#F2A65A",
+      "shield": "#6FCF97",
+      "phone": "#4FD0BD",
+      "video": "#A78BFA",
+      "camera": "#E58BB0",
+      "cameraOnWhite": "#C14E77",
+      "clipOnWhite": "#3E6CA6",
+      "emoji": "#F2C94C",
+      "mic": "#5B3FB8",
+      "star": "#E58BB0"
+    },
+    "buttons": {
+      "primaryBadge": "#E8833A",
+      "newGroup": "#2FA98C",
+      "sendActive": { "bg": "#CDEBD3", "ink": "#1C3324" },
+      "micIdle": { "bg": "#E4DDF7", "ink": "#5B3FB8" },
+      "gotIt": { "bg": "#CDEBD3", "ink": "#1C3324" },
+      "destructive": { "bg": "#C0533F", "bgHover": "#CE5C47", "ink": "#FFFFFF" }
+    },
+    "paleCards": {
+      "neutral": { "bg": "#EDEDF4", "number": "#17171B", "caption": "#5C5C70" },
+      "rose": { "bg": "#F8DCD4", "number": "#B23E2C", "caption": "#8A5044" },
+      "mint": { "bg": "#D2F0E4", "number": "#14694E", "caption": "#47705F" },
+      "pink": { "bg": "#F6DEE8", "hover": "#F0CDDD", "icon": "#B23A66", "label": "#4A1F31" },
+      "blue": { "bg": "#DCE8F8", "hover": "#CBDCF2", "icon": "#2F5E96", "label": "#1B355A" }
+    },
+    "status": {
+      "online": "#57B865",
+      "outgoingCall": "#F2A65A",
+      "incomingCall": "#6FCF97",
+      "missedCall": "#E5735C",
+      "danger": "#E5735C",
+      "unreadAccent": "#F2A65A"
+    },
+    "avatars": {
+      "borderWidth": "2px",
+      "borderColor": "#FFFFFF",
+      "chips": {
+        "lilac": { "bg": "#3A2F63", "ink": "#CBBCF2" },
+        "peach": { "bg": "#59392A", "ink": "#F2B98E" },
+        "mint": { "bg": "#274536", "ink": "#A5E3C2" },
+        "butter": { "bg": "#544625", "ink": "#EBD48A" },
+        "rose": { "bg": "#553144", "ink": "#F0B3C9" },
+        "sky": { "bg": "#2A425C", "ink": "#A8CBEE" },
+        "mustard": { "bg": "#544625", "ink": "#EBC575" },
+        "sage": { "bg": "#38462B", "ink": "#C2DBA0" },
+        "aqua": { "bg": "#1E4A44", "ink": "#8AE3D6" },
+        "terra": { "bg": "#54332A", "ink": "#F0A886" }
+      },
+      "solid": {
+        "lilac": "#6E5BA8", "peach": "#C07A4E", "mint": "#4E9A6E", "butter": "#A98B34",
+        "rose": "#B76A85", "sky": "#5583B0", "mustard": "#B08A34", "sage": "#7A9455",
+        "aqua": "#3E9E90", "terra": "#B06A4A"
+      },
+      "self": { "bg": "#E8833A", "ink": "#FFFFFF", "initial": "Y" }
+    },
+    "brand": {
+      "youtube": "#C7523F",
+      "instagram": "#A94F6F",
+      "facebook": "#3E6CA6"
+    }
+  },
+  "radius": {
+    "phoneFrame": "44px",
+    "sheet": "22px",
+    "menu": "18px",
+    "dialog": "16px",
+    "listCard": "14px",
+    "statCard": "11px",
+    "inputField": "11px",
+    "iconButton": "10px",
+    "tab": "10px",
+    "chip": "7px",
+    "badge": "9px",
+    "circle": "50%"
+  },
+  "spacing": {
+    "screenPadding": "20px",
+    "listGutter": "12px",
+    "rowGap": "6px",
+    "rowPadding": "10px 12px",
+    "bubbleGap": "10px",
+    "bubbleAvatarGap": "6px",
+    "footerHeight": "58px",
+    "footerPadding": "3px 14px 4px",
+    "dockPadding": "8px 12px 14px"
+  },
+  "elevation": {
+    "phone": "0 24px 60px rgba(0,0,0,0.7)",
+    "overlay": "0 16px 48px rgba(0,0,0,.65)",
+    "dialog": "0 20px 60px rgba(0,0,0,.65)",
+    "toast": "0 8px 30px rgba(0,0,0,.55)"
+  }
+}

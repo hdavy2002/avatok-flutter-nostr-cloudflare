@@ -13,8 +13,7 @@ import '../../core/device_contacts.dart';
 import '../../core/remote_config.dart';
 import '../../sync/sync_hub.dart';
 import '../../core/group_store.dart';
-import '../../core/ui/zine.dart';
-import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../identity/identity.dart';
 import 'chat_thread.dart';
 import 'contacts.dart';
@@ -243,33 +242,40 @@ class _SearchScreenState extends State<SearchScreen> {
     final showGroups = _scope == _Scope.all || _scope == _Scope.groups;
 
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       body: SafeArea(
+        bottom: false,
         child: Column(children: [
-          // Search band — paper-2 fill with ink bottom border.
+          // Search band — header/footer fill with hairline bottom border.
           Container(
             decoration: const BoxDecoration(
-              color: Zine.paper2,
-              border: Border(bottom: BorderSide(color: Zine.ink, width: Zine.bw)),
+              color: AD.headerFooter,
+              border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
             ),
-            padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+            padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
             child: Column(children: [
               Row(children: [
-                const ZineBackButton(),
-                const SizedBox(width: 12),
+                GestureDetector(
+                  onTap: () => Navigator.of(context).maybePop(),
+                  child: Container(
+                    width: 38, height: 38,
+                    decoration: BoxDecoration(borderRadius: BorderRadius.circular(AD.rIconButton)),
+                    child: const Icon(Icons.arrow_back_rounded, size: 22, color: AD.textPrimary),
+                  ),
+                ),
+                const SizedBox(width: 6),
                 Expanded(
-                  child: ZineField(
+                  child: _searchDock(
                     controller: _ctrl,
                     autofocus: true,
                     hint: 'Search name, email or phone',
-                    leadIcon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
                     onChanged: _onChanged,
                     trailing: _q.isEmpty
                         ? null
                         : GestureDetector(
                             onTap: () { _ctrl.clear(); _onChanged(''); },
                             child: PhosphorIcon(PhosphorIcons.x(PhosphorIconsStyle.bold),
-                                size: 18, color: Zine.inkSoft),
+                                size: 18, color: AD.placeholderOnWhite),
                           ),
                   ),
                 ),
@@ -281,7 +287,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 const SizedBox(height: 8),
                 Text(
                   'Find people by email or AvaTOK number. To call a business, dial their AvaTOK number.',
-                  style: ZineText.sub(size: 12),
+                  style: ADText.preview(c: AD.textSecondary),
                 ),
               ],
               const SizedBox(height: 12),
@@ -312,8 +318,8 @@ class _SearchScreenState extends State<SearchScreen> {
                   for (final g in groupHits)
                     ListTile(
                       leading: _ring(Avatar(seed: 'group-${g.id}', name: g.name, size: 46)),
-                      title: Text(g.name, style: ZineText.value(size: 15)),
-                      subtitle: Text('${g.members.length} members', style: ZineText.sub(size: 12.5)),
+                      title: Text(g.name, style: ADText.rowName()),
+                      subtitle: Text('${g.members.length} members', style: ADText.preview(c: AD.textSecondary)),
                       onTap: () => _openGroup(g),
                     ),
                 ],
@@ -322,11 +328,11 @@ class _SearchScreenState extends State<SearchScreen> {
                   for (final h in _msgHits)
                     ListTile(
                       leading: _ring(Avatar(seed: h.chat.seed, name: h.chat.name, size: 46)),
-                      title: Text(h.chat.name, style: ZineText.value(size: 15)),
+                      title: Text(h.chat.name, style: ADText.rowName()),
                       subtitle: Text('${h.mine ? "You: " : ""}${h.snippet}',
-                          maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.sub(size: 12.5)),
+                          maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.preview(c: AD.textSecondary)),
                       trailing: PhosphorIcon(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold),
-                          size: 16, color: Zine.inkSoft),
+                          size: 16, color: AD.textTertiary),
                       onTap: () => Navigator.push(context,
                           MaterialPageRoute(builder: (_) => ChatThreadScreen(chat: h.chat))),
                     ),
@@ -339,7 +345,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   _section('Directory'),
                   if (_searchingDir)
                     const Padding(padding: EdgeInsets.all(12),
-                        child: LinearProgressIndicator(color: Zine.blueInk, backgroundColor: Zine.paper2)),
+                        child: LinearProgressIndicator(color: AD.iconSearch, backgroundColor: AD.card)),
                   for (final c in _directory.where((c) => !knownUids.contains(c.uid))) _avatokRow(c),
                 ],
                 if (showContacts && invitable.isNotEmpty) ...[
@@ -350,12 +356,12 @@ class _SearchScreenState extends State<SearchScreen> {
                     contactHits.isEmpty && groupHits.isEmpty && onAvatok.isEmpty &&
                     _directory.isEmpty && invitable.isEmpty && _msgHits.isEmpty && !_searchingDir)
                   Padding(padding: const EdgeInsets.all(28),
-                      child: Center(child: ZineEmptyState(
+                      child: Center(child: _emptyState(
                           icon: PhosphorIcons.binoculars(PhosphorIconsStyle.bold),
                           text: 'No matches.\nFind people by their full email address or AvaTOK number.'))),
                 if (_q.isEmpty && _device.isEmpty)
                   Padding(padding: const EdgeInsets.all(28),
-                      child: Center(child: ZineEmptyState(
+                      child: Center(child: _emptyState(
                           icon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
                           text: 'Search your contacts, the directory and your phone book'))),
                 const SizedBox(height: 20),
@@ -367,27 +373,95 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  // Bordered-circle avatar ring (zine avatars are bordered circles).
+  // Bordered-circle avatar ring (white hairline ring on dark).
   Widget _ring(Widget avatar) => Container(
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          border: Border.all(color: Zine.ink, width: 2),
+          border: Border.all(color: AD.borderAvatar, width: 2),
         ),
         child: avatar,
       );
 
-  Widget _chip(String label, _Scope scope) => Padding(
-        padding: const EdgeInsets.only(right: 9),
-        child: ZineChip(
-          label: label,
-          active: _scope == scope,
-          onTap: () => setState(() => _scope = scope),
+  /// White search dock — dark ink text on white, mirrors the dark v2 idiom.
+  /// Keeps controller / autofocus / onChanged / trailing wiring intact.
+  Widget _searchDock({
+    required TextEditingController controller,
+    required String hint,
+    required ValueChanged<String> onChanged,
+    bool autofocus = false,
+    Widget? trailing,
+  }) =>
+      Container(
+        decoration: BoxDecoration(
+          color: AD.inputField,
+          borderRadius: BorderRadius.circular(AD.rInput),
         ),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Row(children: [
+          PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
+              size: 18, color: AD.iconSearch),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              controller: controller,
+              autofocus: autofocus,
+              onChanged: onChanged,
+              cursorColor: AD.iconSearch,
+              style: ADText.rowName(c: AD.textOnInput),
+              decoration: InputDecoration(
+                isDense: true,
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(vertical: 13),
+                hintText: hint,
+                hintStyle: ADText.preview(c: AD.placeholderOnWhite),
+              ),
+            ),
+          ),
+          if (trailing != null) ...[const SizedBox(width: 6), trailing],
+        ]),
       );
+
+  /// Inline dark v2 empty state (replaces ZineEmptyState).
+  Widget _emptyState({required IconData icon, required String text}) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 56, height: 56,
+            decoration: BoxDecoration(
+              color: AD.card,
+              borderRadius: BorderRadius.circular(AD.rListCard),
+              border: Border.all(color: AD.borderControl, width: 1),
+            ),
+            child: PhosphorIcon(icon, size: 24, color: AD.textTertiary),
+          ),
+          const SizedBox(height: 12),
+          Text(text, textAlign: TextAlign.center, style: ADText.preview(c: AD.textSecondary)),
+        ],
+      );
+
+  Widget _chip(String label, _Scope scope) {
+    final active = _scope == scope;
+    return Padding(
+      padding: const EdgeInsets.only(right: 9),
+      child: GestureDetector(
+        onTap: () => setState(() => _scope = scope),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: active ? AD.primaryBadge : AD.card,
+            borderRadius: BorderRadius.circular(AD.rTab),
+            border: Border.all(color: active ? AD.primaryBadge : AD.borderControl, width: 1),
+          ),
+          child: Text(label,
+              style: ADText.tabLabel(c: active ? AD.textPrimary : AD.textSecondary)),
+        ),
+      ),
+    );
+  }
 
   Widget _section(String label) => Padding(
         padding: const EdgeInsets.fromLTRB(18, 16, 18, 6),
-        child: Text(label.toUpperCase(), style: ZineText.kicker()),
+        child: Text(label.toUpperCase(), style: ADText.sectionLabel()),
       );
 
   // An AvaTok contact (local or directory) row with status badges.
@@ -398,8 +472,8 @@ class _SearchScreenState extends State<SearchScreen> {
     final muted = _flags['muted']!.contains(k);
     return ListTile(
       leading: _ring(Avatar(seed: c.seed, name: c.name, size: 46, avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl)),
-      title: Text(c.name.isNotEmpty ? c.name : c.subtitle, style: ZineText.value(size: 15)),
-      subtitle: Text(c.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.sub(size: 12.5)),
+      title: Text(c.name.isNotEmpty ? c.name : c.subtitle, style: ADText.rowName()),
+      subtitle: Text(c.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.preview(c: AD.textSecondary)),
       trailing: _badges(blocked: blocked, archived: archived, muted: muted),
       onTap: () => _openContactChat(c.uid, c.name, c.seed),
     );
@@ -412,8 +486,8 @@ class _SearchScreenState extends State<SearchScreen> {
       leading: _ring(Avatar(
           seed: d.uid.isNotEmpty ? d.uid : d.name, name: d.displayName, size: 46,
           avatarUrl: d.avatarUrl.isEmpty ? null : d.avatarUrl)),
-      title: Text(d.displayName, style: ZineText.value(size: 15)),
-      subtitle: Text(d.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.sub(size: 12.5)),
+      title: Text(d.displayName, style: ADText.rowName()),
+      subtitle: Text(d.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.preview(c: AD.textSecondary)),
       trailing: _badges(
         blocked: _flags['blocked']!.contains(k),
         archived: _flags['archived']!.contains(k),
@@ -423,30 +497,42 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  // A phone contact NOT on AvaTok → mint invite action (money/positive accent).
+  // A phone contact NOT on AvaTok → green invite action (positive/group accent).
   Widget _inviteRow(DeviceContact d) => ListTile(
         leading: _ring(Avatar(seed: d.name, name: d.name, size: 46)),
-        title: Text(d.name.isNotEmpty ? d.name : d.subtitle, style: ZineText.value(size: 15)),
-        subtitle: Text(d.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.sub(size: 12.5)),
-        trailing: ZinePressable(
+        title: Text(d.name.isNotEmpty ? d.name : d.subtitle, style: ADText.rowName()),
+        subtitle: Text(d.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.preview(c: AD.textSecondary)),
+        trailing: GestureDetector(
           onTap: () => DeviceContactsService.invite(d),
-          color: Zine.mint,
-          radius: BorderRadius.circular(100),
-          boxShadow: Zine.shadowXs,
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            PhosphorIcon(PhosphorIcons.userPlus(PhosphorIconsStyle.bold), size: 14, color: Zine.ink),
-            const SizedBox(width: 5),
-            Text('INVITE', style: ZineText.tag(size: 11)),
-          ]),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+            decoration: BoxDecoration(
+              color: AD.newGroup,
+              borderRadius: BorderRadius.circular(100),
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              PhosphorIcon(PhosphorIcons.userPlus(PhosphorIconsStyle.bold), size: 14, color: AD.textPrimary),
+              const SizedBox(width: 5),
+              Text('INVITE', style: ADText.statCaption(c: AD.textPrimary)),
+            ]),
+          ),
         ),
       );
 
   Widget? _badges({required bool blocked, required bool archived, required bool muted}) {
     final icons = <Widget>[
-      if (muted) PhosphorIcon(PhosphorIcons.bellSlash(PhosphorIconsStyle.bold), size: 16, color: Zine.inkSoft),
-      if (blocked) PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.bold), size: 16, color: Zine.coral),
-      if (archived) const ZineSticker('Archived', kind: ZineStickerKind.hint),
+      if (muted) PhosphorIcon(PhosphorIcons.bellSlash(PhosphorIconsStyle.bold), size: 16, color: AD.textTertiary),
+      if (blocked) PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.bold), size: 16, color: AD.danger),
+      if (archived)
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: AD.card,
+            borderRadius: BorderRadius.circular(AD.rBadge),
+            border: Border.all(color: AD.borderControl, width: 1),
+          ),
+          child: Text('Archived', style: ADText.statCaption(c: AD.textSecondary)),
+        ),
     ];
     if (icons.isEmpty) return null;
     return Row(mainAxisSize: MainAxisSize.min, children: [

@@ -5,9 +5,12 @@
 // sent → back to the chat). Actions call the worker /api/ava/email/* routes,
 // which act on the user's Gmail via Composio.
 //
-// Styling follows the design kit (theme/design/gmail/ui_kits/avatok) mapped onto
-// the Zine design system. Telemetry (PostHog, email-stamped) tracks design
-// render, view opens, reply speed and every Composio action's ok/ms/error.
+// Styling follows the AvaTOK Dark v2 system (AD / ADText). NOTE: EmailInboxCards
+// + the per-email cards render INSIDE Ava's chat bubble, whose fill is the LIGHT
+// AD.bubbleInBg (lilac) — so those cards use dark ink on near-white surfaces. The
+// full-screen EmailViewerScreen is its own dark scaffold and uses the dark chrome.
+// Telemetry (PostHog, email-stamped) tracks design render, view opens, reply
+// speed and every Composio action's ok/ms/error.
 
 import 'dart:convert';
 
@@ -18,7 +21,7 @@ import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
 import '../../core/ava_log.dart';
 import '../../core/config.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
 
 /// One inbox email as sent by the worker (lib/gmail.ts InboxEmail).
 class AvaInboxEmail {
@@ -30,7 +33,7 @@ class AvaInboxEmail {
   final String snippet;
   String body; // filled lazily on View via /email/get
   final String time;
-  final String? flag; // "Action" → coral pill
+  final String? flag; // "Action" → danger pill
   final String accentToken; // e.g. "var(--blue)"
 
   AvaInboxEmail({
@@ -62,21 +65,21 @@ class AvaInboxEmail {
   }
 }
 
-/// Map a design-kit accent token to a Zine colour.
+/// Map a design-kit accent token to a dark v2 accent colour (monogram fills).
 Color avaEmailAccent(String? token) {
   switch (token) {
     case 'var(--blue)':
-      return Zine.blue;
+      return AD.iconSearch;
     case 'var(--lime)':
-      return Zine.lime;
+      return AD.primaryBadge;
     case 'var(--mint)':
-      return Zine.mint;
+      return AD.online;
     case 'var(--coral)':
-      return Zine.coral;
+      return AD.danger;
     case 'var(--lilac)':
-      return Zine.lilac;
+      return AD.iconVideo;
     default:
-      return Zine.card;
+      return AD.iconSearch;
   }
 }
 
@@ -114,6 +117,14 @@ class AvaEmailApi {
 }
 
 const _mono = TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.w700, letterSpacing: 0.5);
+
+// ---- Ava-bubble palette --------------------------------------------------
+// These email cards sit on Ava's LIGHT bubble (AD.bubbleInBg), so they read as
+// dark ink on near-white surfaces (mirrors the dark v2 incoming-bubble idiom).
+const Color _bubbleInk = AD.bubbleInInk;       // dark primary text
+const Color _bubbleMuted = AD.bubbleInMeta;    // muted meta text
+const Color _bubbleSurface = Color(0xFFFFFFFF); // white card over the lilac bubble
+const Color _bubbleHair = Color(0x1F2A2640);    // faint dark hairline
 
 /// The inbox header strip + email cards, rendered inside an Ava bubble.
 class EmailInboxCards extends StatefulWidget {
@@ -190,26 +201,26 @@ class _EmailInboxCardsState extends State<EmailInboxCards> {
           margin: const EdgeInsets.only(bottom: 8),
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
-            color: Zine.paper,
-            border: Zine.border,
+            color: _bubbleSurface,
+            border: Border.all(color: _bubbleHair, width: 1),
             borderRadius: BorderRadius.circular(100),
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
-            PhosphorIcon(PhosphorIcons.tray(PhosphorIconsStyle.fill), size: 13, color: Zine.ink),
+            PhosphorIcon(PhosphorIcons.tray(PhosphorIconsStyle.fill), size: 13, color: _bubbleInk),
             const SizedBox(width: 6),
             Text('INBOX · ${visible.length} ${visible.length == 1 ? 'EMAIL' : 'EMAILS'}',
-                style: _mono.copyWith(fontSize: 9.5, color: Zine.ink)),
+                style: _mono.copyWith(fontSize: 9.5, color: _bubbleInk)),
           ]),
         ),
         if (visible.isEmpty)
           Container(
             padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: Zine.card, border: Zine.border, borderRadius: BorderRadius.circular(14)),
+            decoration: BoxDecoration(color: _bubbleSurface, border: Border.all(color: _bubbleHair, width: 1), borderRadius: BorderRadius.circular(14)),
             child: Row(children: [
-              PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill), size: 18, color: Zine.mintInk),
+              PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill), size: 18, color: AD.online),
               const SizedBox(width: 8),
               Flexible(child: Text('Inbox zero — all caught up.',
-                  style: ZineText.sub(size: 13, color: Zine.inkSoft))),
+                  style: _mono.copyWith(fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: 0, color: _bubbleMuted))),
             ]),
           )
         else
@@ -234,8 +245,8 @@ class _EmailCard extends StatelessWidget {
     final initial = (e.from.trim().isEmpty ? '?' : e.from.trim()[0]).toUpperCase();
     return Container(
       decoration: BoxDecoration(
-        color: Zine.card, border: Zine.border,
-        borderRadius: BorderRadius.circular(14), boxShadow: Zine.shadowXs,
+        color: _bubbleSurface, border: Border.all(color: _bubbleHair, width: 1),
+        borderRadius: BorderRadius.circular(14),
       ),
       padding: const EdgeInsets.fromLTRB(11, 10, 11, 10),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -243,25 +254,25 @@ class _EmailCard extends StatelessWidget {
           // sender monogram
           Container(
             width: 34, height: 34,
-            decoration: BoxDecoration(color: accent, border: Zine.border, borderRadius: BorderRadius.circular(11)),
+            decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(11)),
             alignment: Alignment.center,
-            child: Text(initial, style: ZineText.value(size: 16)),
+            child: Text(initial, style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w800, fontSize: 16, color: Colors.white)),
           ),
           const SizedBox(width: 10),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
                 Expanded(child: Text(e.from, maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: ZineText.value(size: 13.5))),
+                    style: ADText.rowName(c: _bubbleInk).copyWith(fontSize: 13.5))),
                 if (e.flag != null) ...[
                   const SizedBox(width: 6),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                    decoration: BoxDecoration(color: Zine.coral, border: Zine.border, borderRadius: BorderRadius.circular(100)),
+                    decoration: BoxDecoration(color: AD.danger, borderRadius: BorderRadius.circular(100)),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      PhosphorIcon(PhosphorIcons.warning(PhosphorIconsStyle.fill), size: 9, color: Zine.paper),
+                      PhosphorIcon(PhosphorIcons.warning(PhosphorIconsStyle.fill), size: 9, color: Colors.white),
                       const SizedBox(width: 3),
-                      Text(e.flag!.toUpperCase(), style: _mono.copyWith(fontSize: 8.5, color: Zine.paper)),
+                      Text(e.flag!.toUpperCase(), style: _mono.copyWith(fontSize: 8.5, color: Colors.white)),
                     ]),
                   ),
                 ],
@@ -269,44 +280,52 @@ class _EmailCard extends StatelessWidget {
               if (e.addr.isNotEmpty)
                 Padding(padding: const EdgeInsets.only(top: 1),
                     child: Text(e.addr, maxLines: 1, overflow: TextOverflow.ellipsis,
-                        style: _mono.copyWith(fontSize: 10, color: Zine.inkMute))),
+                        style: _mono.copyWith(fontSize: 10, color: _bubbleMuted))),
               Padding(padding: const EdgeInsets.only(top: 6),
                   child: Text(e.subject, maxLines: 2, overflow: TextOverflow.ellipsis,
-                      style: ZineText.value(size: 13.5))),
+                      style: ADText.rowName(c: _bubbleInk).copyWith(fontSize: 13.5))),
               if (e.snippet.isNotEmpty)
                 Padding(padding: const EdgeInsets.only(top: 2),
                     child: Text(e.snippet, maxLines: 2, overflow: TextOverflow.ellipsis,
-                        style: ZineText.sub(size: 12.5, color: Zine.inkSoft))),
+                        style: ADText.preview(c: _bubbleMuted).copyWith(fontSize: 12.5))),
             ]),
           ),
         ]),
         const SizedBox(height: 9),
         Row(children: [
-          _pill('View', PhosphorIcons.envelopeOpen(PhosphorIconsStyle.fill), Zine.lime, onView),
+          _pill('View', PhosphorIcons.envelopeOpen(PhosphorIconsStyle.fill), AD.primaryBadge, onView),
           const SizedBox(width: 6),
-          _pill('Spam', PhosphorIcons.prohibit(PhosphorIconsStyle.bold), Zine.coralMark, onSpam),
+          _pill('Spam', PhosphorIcons.prohibit(PhosphorIconsStyle.bold), AD.danger, onSpam),
           const SizedBox(width: 6),
-          _pill('Delete', PhosphorIcons.trash(PhosphorIconsStyle.bold), Zine.card, onDelete),
+          _pill('Delete', PhosphorIcons.trash(PhosphorIconsStyle.bold), _bubbleSurface, onDelete),
         ]),
       ]),
     );
   }
 
-  Widget _pill(String label, IconData icon, Color fill, VoidCallback onTap) => Expanded(
-        child: GestureDetector(
-          onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            decoration: BoxDecoration(color: fill, border: Zine.border, borderRadius: BorderRadius.circular(100), boxShadow: Zine.shadowXs),
-            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              PhosphorIcon(icon, size: 13, color: Zine.ink),
-              const SizedBox(width: 5),
-              Flexible(child: Text(label.toUpperCase(), maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: _mono.copyWith(fontSize: 10, color: Zine.ink))),
-            ]),
+  Widget _pill(String label, IconData icon, Color fill, VoidCallback onTap) {
+    final ghost = fill == _bubbleSurface;
+    final fg = ghost ? _bubbleInk : Colors.white;
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          decoration: BoxDecoration(
+            color: fill,
+            border: ghost ? Border.all(color: _bubbleHair, width: 1) : null,
+            borderRadius: BorderRadius.circular(100),
           ),
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            PhosphorIcon(icon, size: 13, color: fg),
+            const SizedBox(width: 5),
+            Flexible(child: Text(label.toUpperCase(), maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: _mono.copyWith(fontSize: 10, color: fg))),
+          ]),
         ),
-      );
+      ),
+    );
+  }
 }
 
 /// Full-screen email overlay: read → reply → sent, then pops back to the chat.
@@ -389,29 +408,29 @@ class _EmailViewerScreenState extends State<EmailViewerScreen> {
     final e = widget.email;
     final title = _mode == 'reply' ? 'Reply' : _mode == 'sent' ? 'Sent' : 'Email';
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       body: SafeArea(
         child: Column(children: [
           // header
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(color: Zine.paper2, border: const Border(bottom: BorderSide(color: Zine.ink, width: Zine.bw))),
+            decoration: const BoxDecoration(color: AD.headerFooter, border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1))),
             child: Row(children: [
               _circleBtn(_mode == 'reply' ? PhosphorIcons.arrowLeft(PhosphorIconsStyle.bold) : PhosphorIcons.x(PhosphorIconsStyle.bold),
                   () => _mode == 'reply' ? setState(() => _mode = 'read') : Navigator.of(context).pop(false)),
               const SizedBox(width: 11),
-              Expanded(child: Text(title, style: ZineText.cardTitle(size: 19))),
+              Expanded(child: Text(title, style: ADText.appTitle().copyWith(fontSize: 19))),
               if (_mode != 'sent')
                 _circleBtn(PhosphorIcons.trash(PhosphorIconsStyle.regular), _trash),
             ]),
           ),
           Expanded(child: _body(e)),
           if (_mode == 'read') _footer(
-            'Reply', PhosphorIcons.arrowBendUpLeft(PhosphorIconsStyle.bold), Zine.lime,
+            'Reply', PhosphorIcons.arrowBendUpLeft(PhosphorIconsStyle.bold), AD.primaryBadge,
             () => setState(() => _mode = 'reply')),
           if (_mode == 'reply') _footer(
             _sending ? 'Sending…' : 'Send', PhosphorIcons.paperPlaneRight(PhosphorIconsStyle.fill),
-            _reply.text.trim().isEmpty ? Zine.card : Zine.lime, _send,
+            _reply.text.trim().isEmpty ? AD.card : AD.primaryBadge, _send,
             enabled: _reply.text.trim().isNotEmpty && !_sending),
         ]),
       ),
@@ -424,15 +443,15 @@ class _EmailViewerScreenState extends State<EmailViewerScreen> {
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Container(
             width: 76, height: 76,
-            decoration: BoxDecoration(color: Zine.mint, border: Zine.borderLg, borderRadius: BorderRadius.circular(100), boxShadow: Zine.shadowSm),
-            child: Center(child: PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold), size: 38, color: Zine.ink)),
+            decoration: const BoxDecoration(color: AD.online, shape: BoxShape.circle),
+            child: const Center(child: Icon(Icons.check_rounded, size: 40, color: Colors.white)),
           ),
           const SizedBox(height: 16),
-          Text('Message sent', style: ZineText.cardTitle(size: 26)),
+          Text('Message sent', style: ADText.appTitle().copyWith(fontSize: 26)),
           const SizedBox(height: 8),
           Padding(padding: const EdgeInsets.symmetric(horizontal: 40),
               child: Text('Your reply to ${e.from} is on its way. Returning to chat…',
-                  textAlign: TextAlign.center, style: ZineText.sub(size: 14, color: Zine.inkSoft))),
+                  textAlign: TextAlign.center, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14))),
         ]),
       );
     }
@@ -445,7 +464,7 @@ class _EmailViewerScreenState extends State<EmailViewerScreen> {
           _metaRow('SUBJ', 'Re: ${e.subject}'),
           const SizedBox(height: 12),
           Container(
-            decoration: BoxDecoration(color: Zine.card, border: Zine.border, borderRadius: BorderRadius.circular(Zine.rField), boxShadow: Zine.shadowXs),
+            decoration: BoxDecoration(color: AD.card, border: Border.all(color: AD.borderControl, width: 1), borderRadius: BorderRadius.circular(AD.rInput)),
             padding: const EdgeInsets.all(14),
             child: TextField(
               controller: _reply,
@@ -453,8 +472,14 @@ class _EmailViewerScreenState extends State<EmailViewerScreen> {
               minLines: 6,
               maxLines: 14,
               onChanged: (_) => setState(() {}),
-              style: ZineText.sub(size: 15, color: Zine.ink),
-              decoration: const InputDecoration.collapsed(hintText: 'Write your reply…'),
+              cursorColor: AD.iconSearch,
+              style: ADText.preview(c: AD.textPrimary).copyWith(fontSize: 15, height: 1.4),
+              decoration: InputDecoration(
+                isCollapsed: true,
+                border: InputBorder.none,
+                hintText: 'Write your reply…',
+                hintStyle: ADText.preview(c: AD.textTertiary).copyWith(fontSize: 15),
+              ),
             ),
           ),
         ]),
@@ -469,64 +494,72 @@ class _EmailViewerScreenState extends State<EmailViewerScreen> {
         Row(children: [
           Container(
             width: 46, height: 46,
-            decoration: BoxDecoration(color: accent, border: Zine.border, borderRadius: BorderRadius.circular(14), boxShadow: Zine.shadowXs),
+            decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(14)),
             alignment: Alignment.center,
-            child: Text(initial, style: ZineText.value(size: 21)),
+            child: Text(initial, style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w800, fontSize: 21, color: Colors.white)),
           ),
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(e.from, maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.value(size: 16)),
-            Text(e.addr, maxLines: 1, overflow: TextOverflow.ellipsis, style: _mono.copyWith(fontSize: 11, color: Zine.inkMute)),
+            Text(e.from, maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.rowName().copyWith(fontSize: 16)),
+            Text(e.addr, maxLines: 1, overflow: TextOverflow.ellipsis, style: _mono.copyWith(fontSize: 11, color: AD.textTertiary)),
             Padding(padding: const EdgeInsets.only(top: 2),
-                child: Text('to me · ${e.time}', style: _mono.copyWith(fontSize: 10.5, color: Zine.inkMute))),
+                child: Text('to me · ${e.time}', style: _mono.copyWith(fontSize: 10.5, color: AD.textTertiary))),
           ])),
         ]),
         const SizedBox(height: 14),
-        Text(e.subject, style: ZineText.cardTitle(size: 23)),
+        Text(e.subject, style: ADText.appTitle().copyWith(fontSize: 23)),
         const SizedBox(height: 12),
-        const Divider(color: Zine.inkMute, height: 1, thickness: 1),
+        const Divider(color: AD.borderHairline, height: 1, thickness: 1),
         const SizedBox(height: 14),
         if (_loadingBody)
           const Padding(padding: EdgeInsets.symmetric(vertical: 20),
-              child: Center(child: CircularProgressIndicator(strokeWidth: 2)))
+              child: Center(child: CircularProgressIndicator(strokeWidth: 2, color: AD.iconSearch)))
         else
           Text(e.body.isNotEmpty ? e.body : e.snippet,
-              style: ZineText.sub(size: 15, color: Zine.inkSoft).copyWith(height: 1.5)),
+              style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 15, height: 1.5)),
       ]),
     );
   }
 
   Widget _metaRow(String label, String value) => Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        SizedBox(width: 44, child: Text(label, style: _mono.copyWith(fontSize: 10, color: Zine.inkMute))),
-        Expanded(child: Text(value, style: ZineText.value(size: 14))),
+        SizedBox(width: 44, child: Text(label, style: _mono.copyWith(fontSize: 10, color: AD.textTertiary))),
+        Expanded(child: Text(value, style: ADText.rowName().copyWith(fontSize: 14))),
       ]);
 
   Widget _circleBtn(IconData icon, VoidCallback onTap) => GestureDetector(
         onTap: onTap,
         child: Container(
           width: 42, height: 42,
-          decoration: BoxDecoration(color: Zine.card, border: Zine.border, borderRadius: BorderRadius.circular(100), boxShadow: Zine.shadowSm),
-          child: Center(child: PhosphorIcon(icon, size: 19, color: Zine.ink)),
+          decoration: BoxDecoration(color: AD.card, shape: BoxShape.circle, border: Border.all(color: AD.borderControl, width: 1)),
+          child: Center(child: PhosphorIcon(icon, size: 19, color: AD.textPrimary)),
         ),
       );
 
-  Widget _footer(String label, IconData icon, Color fill, VoidCallback onTap, {bool enabled = true}) => Container(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-        decoration: BoxDecoration(color: Zine.paper2, border: const Border(top: BorderSide(color: Zine.ink, width: Zine.bw))),
-        child: GestureDetector(
-          onTap: enabled ? onTap : null,
-          child: Opacity(
-            opacity: enabled ? 1 : 0.55,
-            child: Container(
-              height: 50,
-              decoration: BoxDecoration(color: fill, border: Zine.border, borderRadius: BorderRadius.circular(100), boxShadow: enabled ? Zine.shadowSm : null),
-              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                PhosphorIcon(icon, size: 20, color: Zine.ink),
-                const SizedBox(width: 8),
-                Text(label, style: ZineText.button(size: 16)),
-              ]),
+  Widget _footer(String label, IconData icon, Color fill, VoidCallback onTap, {bool enabled = true}) {
+    final ghost = fill == AD.card;
+    final fg = ghost ? AD.textPrimary : Colors.white;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      decoration: const BoxDecoration(color: AD.headerFooter, border: Border(top: BorderSide(color: AD.borderHairline, width: 1))),
+      child: GestureDetector(
+        onTap: enabled ? onTap : null,
+        child: Opacity(
+          opacity: enabled ? 1 : 0.55,
+          child: Container(
+            height: 50,
+            decoration: BoxDecoration(
+              color: fill,
+              border: ghost ? Border.all(color: AD.borderControl, width: 1) : null,
+              borderRadius: BorderRadius.circular(100),
             ),
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              PhosphorIcon(icon, size: 20, color: fg),
+              const SizedBox(width: 8),
+              Text(label, style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w800, fontSize: 16, color: fg)),
+            ]),
           ),
         ),
-      );
+      ),
+    );
+  }
 }
