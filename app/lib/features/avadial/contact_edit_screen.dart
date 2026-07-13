@@ -6,6 +6,7 @@ import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'avadial_theme.dart';
 import 'contact_overrides.dart';
+import 'device_contacts.dart';
 
 /// "Add contact" / "Edit contact" screen for a Calls-app (device/PSTN) contact.
 ///
@@ -108,6 +109,18 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
     return t.isEmpty ? null : t;
   }
 
+  /// Extras that have no first-class OS-contact slot (AvaTOK number + custom
+  /// fields) are stored in the contact's Note so the phone's address book keeps
+  /// them too. Returns null when there's nothing extra to store.
+  String? _buildNote(String? avatok, List<ContactField> fields) {
+    final lines = <String>[
+      if (avatok != null && avatok.isNotEmpty) 'AvaTOK: $avatok',
+      for (final f in fields)
+        if (f.value.isNotEmpty) '${f.label.isEmpty ? 'Note' : f.label}: ${f.value}',
+    ];
+    return lines.isEmpty ? null : lines.join('\n');
+  }
+
   Future<void> _save() async {
     final number = _numberCtrl.text.trim();
     if (number.isEmpty) {
@@ -121,19 +134,58 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
         if (l.text.trim().isNotEmpty || v.text.trim().isNotEmpty)
           ContactField(label: l.text.trim(), value: v.text.trim()),
     ];
+    final name = _trimOrNull(_nameCtrl);
+    final personalEmail = _trimOrNull(_personalEmailCtrl);
+    final businessEmail = _trimOrNull(_businessEmailCtrl);
+    final linkedin = _trimOrNull(_linkedinCtrl);
+    final avatok = _trimOrNull(_avatokCtrl);
+    // Fold the AvaTOK-specific extras into the OS contact's Note so they survive in
+    // the phone's own address book too (the rich fields still live in the override).
+    final note = _buildNote(avatok, fields);
+
+    // Write to the REAL phone address book (owner request 2026-07-13). We resolve
+    // the device contact id for an edit; on create we insert. If the device write
+    // fails (permission denied / unsupported), we keep the AVA-side override so the
+    // edit is never lost — hence `local` is only set when the device write didn't land.
+    await DeviceContacts.I.load(); // ensure the lookup index is warm
+    final deviceId = DeviceContacts.I.lookup(number)?.id;
+    var onDevice = false;
+    if (widget.create) {
+      final id = await DeviceContacts.I.write(
+        name: name ?? number,
+        number: number,
+        personalEmail: personalEmail,
+        businessEmail: businessEmail,
+        linkedin: linkedin,
+        note: note,
+      );
+      onDevice = id != null;
+    } else if (deviceId != null) {
+      onDevice = await DeviceContacts.I.update(
+        id: deviceId,
+        name: name ?? number,
+        number: number,
+        personalEmail: personalEmail,
+        businessEmail: businessEmail,
+        linkedin: linkedin,
+        note: note,
+      );
+    }
+
     await ContactOverrides.I.save(ContactOverride(
       number: number,
-      displayName: _trimOrNull(_nameCtrl),
-      local: widget.create,
-      avatokNumber: _trimOrNull(_avatokCtrl),
-      personalEmail: _trimOrNull(_personalEmailCtrl),
-      businessEmail: _trimOrNull(_businessEmailCtrl),
-      linkedin: _trimOrNull(_linkedinCtrl),
+      displayName: name,
+      local: widget.create && !onDevice,
+      avatokNumber: avatok,
+      personalEmail: personalEmail,
+      businessEmail: businessEmail,
+      linkedin: linkedin,
       customFields: fields,
     ));
     Analytics.capture(widget.create ? 'avadial_contact_added' : 'avadial_contact_edited', {
-      'has_avatok': _trimOrNull(_avatokCtrl) != null,
+      'has_avatok': avatok != null,
       'custom_fields': fields.length,
+      'on_device': onDevice,
     });
     if (!mounted) return;
     setState(() => _saving = false);

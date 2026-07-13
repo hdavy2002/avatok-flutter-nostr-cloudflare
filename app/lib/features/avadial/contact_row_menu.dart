@@ -11,6 +11,7 @@ import 'block_list.dart';
 import 'contact_call_history_screen.dart';
 import 'contact_edit_screen.dart';
 import 'contact_overrides.dart';
+import 'device_contacts.dart';
 import 'outgoing_call_screen.dart';
 import 'sms/sms_thread_screen.dart';
 
@@ -159,8 +160,14 @@ Future<void> showAvaDialRowMenu(
             Navigator.pop(sheetCtx);
             final ok = await _confirmDelete(navContext, name?.isNotEmpty == true ? name! : number);
             if (ok != true) return;
+            // Delete the REAL device contact when there is one (owner request
+            // 2026-07-13); always hide any AVA override / local contact too.
+            await DeviceContacts.I.load();
+            final id = DeviceContacts.I.lookup(number)?.id;
+            var onDevice = false;
+            if (id != null) onDevice = await DeviceContacts.I.delete(id);
             await ContactOverrides.I.hide(number);
-            Analytics.capture('avadial_contact_deleted', const {});
+            Analytics.capture('avadial_contact_deleted', {'on_device': onDevice});
             onChanged?.call();
           },
         ),
@@ -180,8 +187,8 @@ Future<bool?> _confirmDelete(BuildContext context, String label) => showDialog<b
         ),
         title: Text('Delete $label?', style: ZineText.cardTitle(size: 17, color: AvaDialTheme.text)),
         content: Text(
-          'This removes the contact from AvaTOK\'s view. Your phone\'s own contact '
-          'book is not touched.',
+          'This deletes the contact from your phone\'s address book. This can\'t be '
+          'undone.',
           style: ZineText.sub(size: 13.5, color: AvaDialTheme.textSoft),
         ),
         actions: [

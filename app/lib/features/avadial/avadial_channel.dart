@@ -292,6 +292,56 @@ class AvaDialChannel {
   Future<List<Map<String, dynamic>>> readCallLog({int limit = 500}) =>
       _invokeList('readCallLog', {'limit': limit});
 
+  // ── Device contact WRITES (WRITE_CONTACTS — writes the real OS phone book) ──
+  /// Create a new contact in the device address book. Returns the new aggregated
+  /// contact id on success, or null (fell back / unsupported / permission absent).
+  Future<String?> writeContact({
+    required String name,
+    required String number,
+    String? personalEmail,
+    String? businessEmail,
+    String? linkedin,
+    String? note,
+  }) async {
+    try {
+      return await _ch.invokeMethod<String>('writeContact', {
+        'name': name,
+        'number': number,
+        'personalEmail': personalEmail,
+        'businessEmail': businessEmail,
+        'linkedin': linkedin,
+        'note': note,
+      });
+    } catch (e) {
+      AvaLog.I.log('avadial', 'writeContact failed: $e');
+      return null;
+    }
+  }
+
+  /// Update an existing device contact (by aggregated [id]). Managed fields (name,
+  /// phone, emails, website, note) are replaced. Returns true on success.
+  Future<bool> updateContact({
+    required String id,
+    required String name,
+    required String number,
+    String? personalEmail,
+    String? businessEmail,
+    String? linkedin,
+    String? note,
+  }) =>
+      _invokeBool('updateContact', {
+        'id': id,
+        'name': name,
+        'number': number,
+        'personalEmail': personalEmail,
+        'businessEmail': businessEmail,
+        'linkedin': linkedin,
+        'note': note,
+      });
+
+  /// Delete a device contact (and its raw rows) by aggregated [id].
+  Future<bool> deleteContact(String id) => _invokeBool('deleteContact', {'id': id});
+
   // ── System block-list write-through (no-op unless default dialer) ─────────
   Future<bool> systemBlock(String number) => _invokeBool('systemBlock', {'number': number});
   Future<bool> systemUnblock(String number) => _invokeBool('systemUnblock', {'number': number});

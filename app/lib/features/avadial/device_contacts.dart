@@ -68,6 +68,66 @@ class DeviceContacts {
     }
   }
 
+  /// WRITE_CONTACTS is bundled with READ under the same runtime group on Android,
+  /// so requesting [Permission.contacts] covers writes too.
+  Future<bool> ensureWritePermission() => ensurePermission();
+
+  /// Create a real device contact. Returns the new contact id, or null on failure
+  /// / permission-denied (the caller then keeps the AVA-side override as a
+  /// fallback so the user never loses the edit).
+  Future<String?> write({
+    required String name,
+    required String number,
+    String? personalEmail,
+    String? businessEmail,
+    String? linkedin,
+    String? note,
+  }) async {
+    if (!await ensureWritePermission()) return null;
+    final id = await AvaDialChannel.I.writeContact(
+      name: name,
+      number: number,
+      personalEmail: personalEmail,
+      businessEmail: businessEmail,
+      linkedin: linkedin,
+      note: note,
+    );
+    if (id != null) clear(); // in-memory cache is stale after a write
+    return id;
+  }
+
+  /// Update an existing device contact by [id]. Returns true on success.
+  Future<bool> update({
+    required String id,
+    required String name,
+    required String number,
+    String? personalEmail,
+    String? businessEmail,
+    String? linkedin,
+    String? note,
+  }) async {
+    if (!await ensureWritePermission()) return false;
+    final ok = await AvaDialChannel.I.updateContact(
+      id: id,
+      name: name,
+      number: number,
+      personalEmail: personalEmail,
+      businessEmail: businessEmail,
+      linkedin: linkedin,
+      note: note,
+    );
+    if (ok) clear();
+    return ok;
+  }
+
+  /// Delete a real device contact by [id]. Returns true on success.
+  Future<bool> delete(String id) async {
+    if (!await ensureWritePermission()) return false;
+    final ok = await AvaDialChannel.I.deleteContact(id);
+    if (ok) clear();
+    return ok;
+  }
+
   /// Load the device contacts (from the in-memory cache unless [force]). Returns an
   /// empty list when permission is denied or on an unsupported platform.
   Future<List<DeviceContact>> load({bool force = false}) async {

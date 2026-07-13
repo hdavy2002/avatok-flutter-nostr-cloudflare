@@ -7,12 +7,14 @@ import '../../core/analytics.dart';
 import '../../core/remote_config.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../../features/avadial/ava_contact_book.dart';
 import '../../features/avadial/avadial_channel.dart';
 import '../../features/avadial/avadial_refresh.dart';
 import '../../features/avadial/avadial_theme.dart';
 import '../../features/avadial/block_list.dart';
 import '../../features/avadial/contact_detail_screen.dart';
 import '../../features/avadial/contact_edit_screen.dart';
+import '../../features/avadial/contacts_backup_screen.dart';
 import '../../features/avadial/contact_overrides.dart';
 import '../../features/avadial/contact_row_menu.dart';
 import '../../features/avadial/device_call_log.dart';
@@ -391,7 +393,16 @@ class _ContactsTabState extends State<_ContactsTab> {
       contacts.add(DeviceContact(name: o.displayName, number: o.number));
       present.add(key);
     }
+    // Keep the local AvaTOK contact book (used for backup) in sync with what the
+    // user sees. Best-effort — never blocks the list from rendering.
+    await AvaContactBook.I.capture(contacts, overrides);
     return (contacts, overrides, blocked);
+  }
+
+  Future<void> _openBackup() async {
+    await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(builder: (_) => const ContactsBackupScreen()));
+    _reload();
   }
 
   Future<void> _reload() async {
@@ -409,6 +420,30 @@ class _ContactsTabState extends State<_ContactsTab> {
     return Stack(children: [
       Column(children: [
       const _RoleBanner(),
+      GestureDetector(
+        onTap: _openBackup,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+          child: ZineCard(
+            color: AvaDialTheme.surface2,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(children: [
+              ZineIconBadge(
+                  icon: PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.bold), color: Zine.blue),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Contacts backup',
+                      style: ZineText.cardTitle(size: 14.5, color: AvaDialTheme.text)),
+                  Text('Back up to AvaTOK — no Gmail needed',
+                      style: ZineText.sub(size: 12, color: AvaDialTheme.textSoft)),
+                ]),
+              ),
+              const Icon(Icons.chevron_right, color: AvaDialTheme.textSoft),
+            ]),
+          ),
+        ),
+      ),
       Expanded(
         child: FutureBuilder<(List<DeviceContact>, Map<String, ContactOverride>, Set<String>)>(
           future: _future,

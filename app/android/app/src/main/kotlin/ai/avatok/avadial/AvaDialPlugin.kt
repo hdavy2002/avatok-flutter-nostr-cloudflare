@@ -4,6 +4,8 @@ import android.Manifest
 import android.app.PendingIntent
 import android.app.role.RoleManager
 import android.content.BroadcastReceiver
+import android.content.ContentProviderOperation
+import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -274,6 +276,11 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
                 "readContacts" -> result.success(readContacts(ctx))
                 "readCallLog" -> result.success(readCallLog(ctx, (call.argument<Int>("limit")) ?: 500))
 
+                // ---- device contact WRITES (WRITE_CONTACTS) ----
+                "writeContact" -> result.success(writeContact(ctx, call))
+                "updateContact" -> result.success(updateContact(ctx, call))
+                "deleteContact" -> result.success(deleteContact(ctx, call.argument<String>("id")))
+
                 // ---- screening snapshot handshake ----
                 "snapshotPath" -> result.success(snapshotFile(ctx).absolutePath)
 
@@ -365,6 +372,175 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
             }
         }
         return out
+    }
+
+    // ── Device contact writes (WRITE_CONTACTS) ───────────────────────────────────
+    // These write to the phone's REAL address book (owner request 2026-07-13:
+    // contacts must be added/edited/deleted for real, not just inside AvaTOK). All
+    // best-effort: on any provider failure we return null/false and Dart falls back
+    // to the AVA-side override so the user never loses their edit.
+
+    /** Insert a brand-new contact. Returns the aggregated CONTACT_ID as a string, or null. */
+    private fun writeContact(ctx: Context, call: MethodCall): String? {
+        val name = call.argument<String>("name")?.trim().orEmpty()
+        val number = call.argument<String>("number")?.trim().orEmpty()
+        val personalEmail = call.argument<String>("personalEmail")?.trim().orEmpty()
+        val businessEmail = call.argument<String>("businessEmail")?.trim().orEmpty()
+        val linkedin = call.argument<String>("linkedin")?.trim().orEmpty()
+        val note = call.argument<String>("note")?.trim().orEmpty()
+
+        val ops = ArrayList<ContentProviderOperation>()
+        // Raw contact under the local ("device") account — no Google sync account.
+        ops.add(
+            ContentProviderOperation.newInsert(ContactsContract.RawContacts.CONTENT_URI)
+                .withValue(ContactsContract.RawContacts.ACCOUNT_TYPE, null)
+                .withValue(ContactsContract.RawContacts.ACCOUNT_NAME, null)
+                .build()
+        )
+        if (name.isNotEmpty()) {
+            ops.add(dataInsert(0)
+                .withValue(ContactsContract.Data.MIMETYPE,
+                    ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
+                .withValue(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, name)
+                .build())
+        }
+        if (number.isNotEmpty()) {
+            ops.add(dataInsert(0)
+                .withValue(ContactsContract.Data.MIMETYPE,
+                    ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE)
+                .withValue(ContactsContract.CommonDataKinds.Phone.NUMBER, number)
+                .withValue(ContactsContract.CommonDataKinds.Phone.TYPE,
+                    ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE)
+                .build())
+        }
+        if (personalEmail.isNotEmpty()) ops.add(emailOp(0, personalEmail,
+            ContactsContract.CommonDataKinds.Email.TYPE_HOME))
+        if (businessEmail.isNotEmpty()) ops.add(emailOp(0, businessEmail,
+            ContactsContract.CommonDataKinds.Email.TYPE_WORK))
+        if (linkedin.isNotEmpty()) ops.add(websiteOp(0, linkedin))
+        if (note.isNotEmpty()) ops.add(noteOp(0, note))
+
+        val results = ctx.contentResolver.applyBatch(ContactsContract.AUTHORITY, ops)
+        val rawUri = results.firstOrNull()?.uri ?: return null
+        val rawContactId = ContentUris.parseId(rawUri)
+        return contactIdForRaw(ctx, rawContactId)?.toString()
+    }
+
+    /** Update the managed fields of an existing contact (by aggregated CONTACT_ID). */
+    private fun updateContact(ctx: Context, call: MethodCall): Boolean {
+        val id = call.argument<String>("id")?.toLongOrNull() ?: return false
+        val rawId = rawContactIdForContact(ctx, id) ?: return false
+        val name = call.argument<String>("name")?.trim().orEmpty()
+        val number = call.argument<String>("number")?.trim().orEmpty()
+        val personalEmail = call.argument<String>("personalEmail")?.trim().orEmpty()
+        val businessEmail = call.argument<String>("businessEmail")?.trim().orEmpty()
+        val linkedin = call.argument<String>("linkedin")?.trim().orEmpty()
+        val note = call.argument<String>("note")?.trim().orEmpty()
+
+        val ops = ArrayList<ContentProviderOperation>()
+        // Managed mimetypes get replaced (delete-then-insert) so an edit is idempotent.
+        val managed = listOf(
+            ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE,
+            ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE,
+            ContactsContract.CommonDataKinds.Email.CONTENT_ITEM_TYPE,
+            ContactsContract.CommonDataKinds.Website.CONTENT_ITEM_TYPE,
+            ContactsContract.CommonDataKinds.Note.CONTENT_ITEM_TYPE,
+        )
+        for (mt in managed) {
+            ops.add(
+                ContentProviderOperation.newDelete(ContactsContract.Data.CONTENT_URI)
+                    .withSelection(
+                        "${ContactsContract.Data.RAW_CONTACT_ID}=? AND ${ContactsContract.Data.MIMETYPE}=?",
+                        arrayOf(rawId.toString(), mt))
+                    .build())
+        }
+        if (name.isNotEmpty()) ops.add(dataInsertRaw(rawId)
+            .withValue(ContactsContract.Data.MIMETYPE,
+                ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
+            .withValue(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, name)
+            .build())
+        if (number.isNotEmpty()) ops.add(dataInsertRaw(rawId)
+            .withValue(ContactsContract.Data.MIMETYPE,
+                ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE)
+            .withValue(ContactsContract.CommonDataKinds.Phone.NUMBER, number)
+            .withValue(ContactsContract.CommonDataKinds.Phone.TYPE,
+                ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE)
+            .build())
+        if (personalEmail.isNotEmpty()) ops.add(emailOpRaw(rawId, personalEmail,
+            ContactsContract.CommonDataKinds.Email.TYPE_HOME))
+        if (businessEmail.isNotEmpty()) ops.add(emailOpRaw(rawId, businessEmail,
+            ContactsContract.CommonDataKinds.Email.TYPE_WORK))
+        if (linkedin.isNotEmpty()) ops.add(websiteOpRaw(rawId, linkedin))
+        if (note.isNotEmpty()) ops.add(noteOpRaw(rawId, note))
+
+        val results = ctx.contentResolver.applyBatch(ContactsContract.AUTHORITY, ops)
+        return results.isNotEmpty()
+    }
+
+    /** Delete a contact (and its raw rows) by aggregated CONTACT_ID. */
+    private fun deleteContact(ctx: Context, id: String?): Boolean {
+        val cid = id?.toLongOrNull() ?: return false
+        val uri = ContentUris.withAppendedId(ContactsContract.Contacts.CONTENT_URI, cid)
+        return ctx.contentResolver.delete(uri, null, null) > 0
+    }
+
+    // Back-reference insert (row 0 of the batch is the new RawContacts insert).
+    private fun dataInsert(rawContactRef: Int) =
+        ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+            .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, rawContactRef)
+
+    private fun dataInsertRaw(rawId: Long) =
+        ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+            .withValue(ContactsContract.Data.RAW_CONTACT_ID, rawId)
+
+    private fun emailOp(ref: Int, address: String, type: Int) = dataInsert(ref)
+        .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Email.CONTENT_ITEM_TYPE)
+        .withValue(ContactsContract.CommonDataKinds.Email.ADDRESS, address)
+        .withValue(ContactsContract.CommonDataKinds.Email.TYPE, type)
+        .build()
+
+    private fun emailOpRaw(rawId: Long, address: String, type: Int) = dataInsertRaw(rawId)
+        .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Email.CONTENT_ITEM_TYPE)
+        .withValue(ContactsContract.CommonDataKinds.Email.ADDRESS, address)
+        .withValue(ContactsContract.CommonDataKinds.Email.TYPE, type)
+        .build()
+
+    private fun websiteOp(ref: Int, url: String) = dataInsert(ref)
+        .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Website.CONTENT_ITEM_TYPE)
+        .withValue(ContactsContract.CommonDataKinds.Website.URL, url)
+        .build()
+
+    private fun websiteOpRaw(rawId: Long, url: String) = dataInsertRaw(rawId)
+        .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Website.CONTENT_ITEM_TYPE)
+        .withValue(ContactsContract.CommonDataKinds.Website.URL, url)
+        .build()
+
+    private fun noteOp(ref: Int, text: String) = dataInsert(ref)
+        .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Note.CONTENT_ITEM_TYPE)
+        .withValue(ContactsContract.CommonDataKinds.Note.NOTE, text)
+        .build()
+
+    private fun noteOpRaw(rawId: Long, text: String) = dataInsertRaw(rawId)
+        .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Note.CONTENT_ITEM_TYPE)
+        .withValue(ContactsContract.CommonDataKinds.Note.NOTE, text)
+        .build()
+
+    private fun contactIdForRaw(ctx: Context, rawId: Long): Long? {
+        ctx.contentResolver.query(
+            ContentUris.withAppendedId(ContactsContract.RawContacts.CONTENT_URI, rawId),
+            arrayOf(ContactsContract.RawContacts.CONTACT_ID), null, null, null
+        )?.use { c -> if (c.moveToFirst()) return c.getLong(0) }
+        return null
+    }
+
+    private fun rawContactIdForContact(ctx: Context, contactId: Long): Long? {
+        ctx.contentResolver.query(
+            ContactsContract.RawContacts.CONTENT_URI,
+            arrayOf(ContactsContract.RawContacts._ID),
+            "${ContactsContract.RawContacts.CONTACT_ID}=?",
+            arrayOf(contactId.toString()), null
+        )?.use { c -> if (c.moveToFirst()) return c.getLong(0) }
+        return null
     }
 
     private fun readCallLog(ctx: Context, limit: Int): List<Map<String, Any?>> {
