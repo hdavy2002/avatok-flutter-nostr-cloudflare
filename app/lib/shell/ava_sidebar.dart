@@ -609,10 +609,9 @@ class _AvaSidebarState extends State<AvaSidebar> {
         //       Navigator.push(context, MaterialPageRoute(builder: (_) => const LogPage()));
         //     }),
         _acct('settings', 'Settings', PhosphorIcons.gearSix(PhosphorIconsStyle.bold)),
-        // Update — checks Google Play for a newer build and updates in-place
-        // (flexible download → restart), then confirms "updated to build #X". No
-        // route key: runs the flow directly. Android-only + gated by
-        // RemoteConfig.inAppUpdateEnabled (UpdateService no-ops elsewhere).
+        // Update — opens the Google Play listing so the user can tap Play's
+        // Update button. No route key: runs the flow directly. Android-only +
+        // gated by RemoteConfig.inAppUpdateEnabled (UpdateService no-ops elsewhere).
         _acct('update', 'Update', PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold),
             onTap: () {
               if (!widget.permanent) Navigator.pop(context);

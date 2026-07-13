@@ -240,6 +240,12 @@ export interface PlatformConfig {
   // hidden, and NOTHING is wired to enforcement. Flip ON via KV (never code).
   guardianGateEnabled: boolean;
   minAppBuild: number;
+  // Newest build published to the store. When it is greater than the build the
+  // user has installed, the app shows a (dismissible) "new version available"
+  // popup whose Update button opens the Google Play listing. Owner bumps this in
+  // KV each time a new release is published. 0 = never prompt. Distinct from
+  // minAppBuild, which is the HARD floor that shows a blocking update screen.
+  latestAppBuild: number;
   // Call-state control-plane authority (Specs/CALL-CONTROL-PLANE-UNIFIED-PLAN.md
   // §5 — protocol-v1/v2 shadow rollout). All default OFF/legacy: CallStateAuthorityDO
   // is wired (wrangler binding + v13 migration) but fully dormant until these flip.
@@ -453,6 +459,7 @@ const DEFAULTS: PlatformConfig = {
   guardianInlineBudgetMs: 600,           // G3 fast-lane hard budget (ms) for the single Nemotron moderate() call
   guardianGateEnabled: false,            // U1-lite manual "Require verification" gate — DARK; server modes 403 + client control hidden
   minAppBuild: 0,
+  latestAppBuild: 0,                     // newest published build; >installed → soft "update available" popup (opens Play Store). Owner bumps in KV per release. 0 = never prompt.
   // Call-state control-plane authority (Specs/CALL-CONTROL-PLANE-UNIFIED-PLAN.md §5)
   // — Phase A plumbing only. All OFF/legacy: CallStateAuthorityDO is bound but dark.
   authorityShadowEnabled: true,   // CALL-AUTH-LIVE-1: authority observes + records vs legacy
@@ -559,7 +566,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
   const current = ((await env.TOKENS.get(KEY, "json")) ?? {}) as Partial<PlatformConfig>;
   const next: Record<string, unknown> = { ...current };
   const numericKeys = new Set([
-    "minAppBuild", "dailyAvaTurnLimit", "receptionistRings", "agentDailyCap", "livenessAuditSampleRate",
+    "minAppBuild", "latestAppBuild", "dailyAvaTurnLimit", "receptionistRings", "agentDailyCap", "livenessAuditSampleRate",
     "guardianInlineBudgetMs", "callProtocolVersion", "avaSessionsPerCallerPerDay", "strangerVoiceNotesPerDay",
     "strangerTextNotesPerDay",
     // Dialpad business calls + Ava AI Voice Agent — §11/§15 numeric constants.

@@ -303,6 +303,13 @@ class RemoteConfig {
   /// Installed build too old? → callers show the blocking "please update" screen.
   static bool get updateRequired => minAppBuild > kAppBuild;
 
+  /// Newest build published to the store (KV `latestAppBuild`). When it is
+  /// greater than the build the user actually has installed, [UpdateService]
+  /// shows the dismissible "new version available" popup that opens the Google
+  /// Play listing. 0 (default) = never prompt. Owner bumps this in KV per
+  /// release. Distinct from [minAppBuild] (the hard, blocking floor).
+  static int get latestAppBuild => (_asNum(_cfg['latestAppBuild'])?.toInt()) ?? 0;
+
   /// Kill switch for the Google Play in-app update flow (the "Update" sidebar row
   /// + the on-launch "new version available" popup). Default ON; flip to false in
   /// KV to silence all Play update checks (e.g. if they ever get noisy).

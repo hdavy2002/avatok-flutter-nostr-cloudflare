@@ -1,49 +1,40 @@
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:in_app_update/in_app_update.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../push/push_service.dart' show navigatorKey;
 import 'analytics.dart';
 import 'ava_log.dart';
 import 'remote_config.dart';
 
-/// Google Play **in-app update** flow for AvaTOK (Android only).
+/// "Update available" prompt for AvaTOK (Android/Play).
+///
+/// WHY THIS IS CONFIG-DRIVEN (not Google Play in-app-update): the old flow used
+/// `InAppUpdate.checkForUpdate()`, which is unreliable on the *internal testing*
+/// and closed tracks — it frequently reports "no update" even when a newer build
+/// is live, so testers never saw a popup. This version instead compares the
+/// installed build number against [RemoteConfig.latestAppBuild] (a value the
+/// owner bumps in KV each time a release is published) and, when a newer build
+/// exists, shows a dismissible popup whose **Update** button opens the Google
+/// Play listing so the user can tap Play's own Update button. No dependency on
+/// Play's in-app-update propagation, and it works on every track.
 ///
 /// Two entry points:
-///  • [runManual] — the "Update" row under ACCOUNT & SETTINGS. Always force-checks
-///    Play, downloads the newest build in the background (flexible flow) and, once
-///    the app restarts into it, confirms "Your app has been updated to build #X".
-///  • [maybePromptOnLaunch] — called once per cold launch by the home shell. If a
-///    newer build exists it shows the popup "There is a new version. Press Update
-///    below to update to the new version." It ALSO surfaces the post-restart
-///    "updated to build #X" confirmation.
-///
-/// Data-usage guard (owner note: a new build ships ~every 30 min): the *automatic*
-/// launch check is throttled to at most once per [_autoCheckFloor] and at most
-/// once per app session, so we never hammer Play. The manual row bypasses the
-/// throttle because the user explicitly asked to check.
+///  • [runManual] — the "Update" row under ACCOUNT & SETTINGS. Always opens the
+///    Play Store listing so the button reliably does something.
+///  • [maybePromptOnLaunch] — called once per cold launch by the home shell.
+///    If `latestAppBuild > installedBuild` it shows the centered popup
+///    "There is a new version. Press Update to get it." → opens Play.
 ///
 /// Everything here is best-effort — like [Analytics], a failure must never throw
 /// into the app. iOS and non-Play installs simply no-op.
 class UpdateService {
   UpdateService._();
 
-  // Device-level state. Like the Clerk client token, a build is installed once
-  // for the WHOLE device (not per account), so these keys are deliberately GLOBAL
-  // — an explicit, documented exception to the per-account scoping rule.
-  static const FlutterSecureStorage _sec = FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-  );
-  static const String _kLastCheckMs = 'upd_last_check_ms';
-  static const String _kPendingBuild = 'upd_pending_build';
-
-  /// Floor between automatic (launch) checks. ~one release cycle.
-  static const Duration _autoCheckFloor = Duration(minutes: 30);
-
-  /// Show the launch popup at most once per app session.
+  /// Show the launch popup at most once per app session (don't nag on every
+  /// navigation). A fresh cold launch shows it again until they update.
   static bool _promptedThisSession = false;
 
   static bool get _supported =>
@@ -70,95 +61,83 @@ class UpdateService {
     }
   }
 
-  static Future<int> _lastCheckMs() async {
+  /// Installed package name (e.g. `ai.avatok.avatok_call` in prod, `…​.staging`
+  /// on the staging flavour) so the Play link points at the RIGHT listing.
+  static Future<String?> _packageName() async {
     try {
-      return int.tryParse(await _sec.read(key: _kLastCheckMs) ?? '') ?? 0;
+      return (await PackageInfo.fromPlatform()).packageName;
     } catch (_) {
-      return 0;
+      return null;
     }
   }
 
-  static Future<void> _stampCheck() async {
+  /// Open the Google Play listing for the installed package. Tries the native
+  /// `market://` intent first (opens the Play app straight on the listing, which
+  /// shows the Update button for opted-in testers), then falls back to the https
+  /// listing URL. Best-effort — never throws.
+  static Future<void> _openPlayStore({required String source}) async {
+    final pkg = await _packageName();
+    if (pkg == null) {
+      _snack("Couldn't open the Play Store. Please update from the Play Store app.");
+      return;
+    }
+    Analytics.capture('update_open_store', {'source': source, 'package': pkg});
+    final market = Uri.parse('market://details?id=$pkg');
+    final web = Uri.parse('https://play.google.com/store/apps/details?id=$pkg');
     try {
-      await _sec.write(
-          key: _kLastCheckMs,
-          value: DateTime.now().millisecondsSinceEpoch.toString());
-    } catch (_) {}
+      if (await canLaunchUrl(market)) {
+        await launchUrl(market, mode: LaunchMode.externalApplication);
+        return;
+      }
+      await launchUrl(web, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      AvaLog.I.log('update', 'open play store failed: $e');
+      Analytics.capture(
+          'update_open_store_failed', {'source': source, 'reason': e.toString()});
+      _snack("Couldn't open the Play Store. Please update from the Play Store app.");
+    }
   }
 
   // ── MANUAL: the "Update" sidebar row ──────────────────────────────────────
   static Future<void> runManual() async {
     if (!Platform.isAndroid) {
-      _snack('In-app updates are available on Android only.');
+      _snack('Updates are available on Android only.');
       return;
     }
     Analytics.capture('update_check', {'source': 'manual'});
-    AppUpdateInfo info;
-    try {
-      info = await InAppUpdate.checkForUpdate();
-    } catch (e) {
-      AvaLog.I.log('update', 'manual check failed: $e');
-      Analytics.capture(
-          'update_check_failed', {'source': 'manual', 'reason': e.toString()});
-      _snack("Couldn't check for updates right now. Please try again later.");
-      return;
-    }
-    await _stampCheck();
-    if (info.updateAvailability != UpdateAvailability.updateAvailable) {
-      final b = await _currentBuild();
-      _snack("You're on the latest version${b != null ? ' (build #$b)' : ''}.");
-      Analytics.capture(
-          'update_check', {'source': 'manual', 'result': 'up_to_date'});
-      return;
-    }
-    final target = info.availableVersionCode;
-    Analytics.capture('update_available', {
-      'source': 'manual',
-      if (target != null) 'available_build': target,
-    });
-    await _runFlexible(target, source: 'manual');
+    // Always take the user to the store — the store itself shows Update or Open,
+    // so the button is never a dead end.
+    await _openPlayStore(source: 'manual');
   }
 
-  // ── LAUNCH: throttled auto-check + post-restart confirmation ──────────────
+  // ── LAUNCH: config-driven "new version available" popup ───────────────────
   static Future<void> maybePromptOnLaunch() async {
     if (!_supported || _promptedThisSession) return;
     _promptedThisSession = true;
 
-    // If we just restarted INTO the build we were updating to, confirm it.
-    await _confirmAppliedUpdate();
+    final latest = RemoteConfig.latestAppBuild;
+    if (latest <= 0) return; // owner hasn't published a target yet
 
-    // Throttle the network check so we don't hammer Play (owner ships ~every 30m).
-    final since = DateTime.now().millisecondsSinceEpoch - await _lastCheckMs();
-    if (since < _autoCheckFloor.inMilliseconds) return;
-
-    Analytics.capture('update_check', {'source': 'launch'});
-    AppUpdateInfo info;
-    try {
-      info = await InAppUpdate.checkForUpdate();
-    } catch (e) {
-      AvaLog.I.log('update', 'launch check failed: $e');
-      return;
-    }
-    await _stampCheck();
-    if (info.updateAvailability != UpdateAvailability.updateAvailable) return;
+    final current = await _currentBuild();
+    if (current == null || latest <= current) return; // already up to date
 
     final ctx = _dialogCtx;
     if (ctx == null || !ctx.mounted) return;
-    final target = info.availableVersionCode;
+
     Analytics.capture('update_available', {
       'source': 'launch',
-      if (target != null) 'available_build': target,
+      'available_build': latest,
+      'installed_build': current,
     });
-    Analytics.capture(
-        'update_popup_shown', {if (target != null) 'available_build': target});
+    Analytics.capture('update_popup_shown', {'available_build': latest});
 
     final go = await showDialog<bool>(
       context: ctx,
       builder: (dctx) => AlertDialog(
         title: const Text('New version available'),
-        content: Text(
-          'There is a new version${target != null ? ' (build #$target)' : ''}. '
-          'Press Update below to update to the new version.',
+        content: const Text(
+          'A new version of AvaTOK is available. Press Update to get the latest '
+          'features and fixes from the Google Play Store.',
         ),
         actions: [
           TextButton(
@@ -171,85 +150,9 @@ class UpdateService {
       ),
     );
     if (go == true) {
-      await _runFlexible(target, source: 'launch');
+      await _openPlayStore(source: 'launch');
     } else {
-      Analytics.capture('update_popup_dismissed',
-          {if (target != null) 'available_build': target});
+      Analytics.capture('update_popup_dismissed', {'available_build': latest});
     }
-  }
-
-  // ── shared flexible download → restart flow ───────────────────────────────
-  static Future<void> _runFlexible(int? target, {required String source}) async {
-    _snack('Downloading the latest update…');
-    Analytics.capture('update_started', {
-      'source': source,
-      'type': 'flexible',
-      if (target != null) 'available_build': target,
-    });
-    try {
-      final res = await InAppUpdate.startFlexibleUpdate();
-      if (res != AppUpdateResult.success) {
-        Analytics.capture(
-            'update_cancelled', {'source': source, 'result': res.toString()});
-        return;
-      }
-      // Stash the target so the NEXT launch can say "updated to build #X".
-      if (target != null) {
-        try {
-          await _sec.write(key: _kPendingBuild, value: target.toString());
-        } catch (_) {}
-      }
-      Analytics.capture('update_downloaded',
-          {'source': source, if (target != null) 'available_build': target});
-
-      final ctx = _dialogCtx;
-      if (ctx == null || !ctx.mounted) return;
-      final restart = await showDialog<bool>(
-        context: ctx,
-        builder: (dctx) => AlertDialog(
-          title: const Text('Update ready'),
-          content: Text(
-            'The update${target != null ? ' (build #$target)' : ''} has been '
-            'downloaded. Restart now to finish updating.',
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(dctx, false),
-                child: const Text('Later')),
-            FilledButton(
-                onPressed: () => Navigator.pop(dctx, true),
-                child: const Text('Restart & update')),
-          ],
-        ),
-      );
-      if (restart == true) {
-        Analytics.capture('update_completing',
-            {'source': source, if (target != null) 'available_build': target});
-        await InAppUpdate.completeFlexibleUpdate(); // app restarts here
-      }
-    } catch (e) {
-      AvaLog.I.log('update', 'flexible update failed: $e');
-      Analytics.capture(
-          'update_failed', {'source': source, 'reason': e.toString()});
-      _snack("The update couldn't be completed. Please try again later.");
-    }
-  }
-
-  /// One-time "Your app has been updated to build #X" after a completed update.
-  static Future<void> _confirmAppliedUpdate() async {
-    String? raw;
-    try {
-      raw = await _sec.read(key: _kPendingBuild);
-    } catch (_) {}
-    final pending = int.tryParse(raw ?? '');
-    if (pending == null) return;
-    final current = await _currentBuild();
-    // Clear regardless so we never nag twice.
-    try {
-      await _sec.delete(key: _kPendingBuild);
-    } catch (_) {}
-    if (current == null || current < pending) return; // didn't land yet
-    Analytics.capture('update_completed', {'build': current});
-    _snack('Your app has been updated to the latest build #$current.');
   }
 }
