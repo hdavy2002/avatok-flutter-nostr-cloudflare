@@ -5,6 +5,7 @@ import '../../core/analytics.dart';
 import '../../core/ava_log.dart';
 import '../../core/disk_cache.dart';
 import 'avadial_channel.dart';
+import 'avadial_refresh.dart';
 
 /// One blocked/labelled number. This is AVA metadata (the user's own labels +
 /// spam-report history) — account-scoped and eligible for the encrypted backup
@@ -71,6 +72,9 @@ class BlockList {
   Future<void> _save(List<BlockEntry> entries) async {
     try {
       await DiskCache.write(_kCache, jsonEncode(entries.map((e) => e.toJson()).toList()));
+      // Wake every listening Calls tab so a number blocked on Contacts/Logs shows
+      // up on the Block tab immediately (owner bug report, pic 6).
+      bumpAvaDial();
     } catch (e) {
       AvaLog.I.log('avadial', 'blocklist save failed: $e');
     }

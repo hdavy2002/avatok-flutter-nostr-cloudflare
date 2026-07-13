@@ -74,6 +74,18 @@ Future<void> showAvaDialRowMenu(
           },
         ),
         _row(
+          icon: PhosphorIcons.userPlus(PhosphorIconsStyle.bold),
+          color: Zine.blue,
+          label: 'Save contact',
+          onTap: () async {
+            Navigator.pop(sheetCtx);
+            await Navigator.push<bool>(navContext, MaterialPageRoute<bool>(
+                builder: (_) =>
+                    ContactEditScreen(number: number, initialName: name, create: true)));
+            onChanged?.call();
+          },
+        ),
+        _row(
           icon: PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold),
           color: Zine.blue,
           label: 'Edit contact',

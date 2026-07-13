@@ -8,8 +8,11 @@ import '../../core/remote_config.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../features/avadial/avadial_channel.dart';
+import '../../features/avadial/avadial_refresh.dart';
 import '../../features/avadial/avadial_theme.dart';
 import '../../features/avadial/block_list.dart';
+import '../../features/avadial/contact_detail_screen.dart';
+import '../../features/avadial/contact_edit_screen.dart';
 import '../../features/avadial/contact_overrides.dart';
 import '../../features/avadial/contact_row_menu.dart';
 import '../../features/avadial/device_call_log.dart';
@@ -360,12 +363,34 @@ class _ContactsTabState extends State<_ContactsTab> {
   void initState() {
     super.initState();
     _future = _loadAll();
+    // Reload when any Calls store mutates (block/edit/add from another tab), so
+    // newly added/edited contacts appear without an app restart.
+    avaDialRev.addListener(_onRev);
+  }
+
+  @override
+  void dispose() {
+    avaDialRev.removeListener(_onRev);
+    super.dispose();
+  }
+
+  void _onRev() {
+    if (mounted) setState(() => _future = _loadAll());
   }
 
   Future<(List<DeviceContact>, Map<String, ContactOverride>, Set<String>)> _loadAll({bool force = false}) async {
-    final contacts = await DeviceContacts.I.load(force: force);
+    final contacts = List<DeviceContact>.of(await DeviceContacts.I.load(force: force));
     final overrides = {for (final o in await ContactOverrides.I.load()) DeviceContacts.normKey(o.number): o};
     final blocked = {for (final b in await BlockList.I.load()) DeviceContacts.normKey(b.number)};
+    // Inject AvaTOK-only contacts the user created here (no device row) so they
+    // show up in the Contacts tab (owner spec, pic 1 — add contact).
+    final present = {for (final c in contacts) DeviceContacts.normKey(c.number)};
+    for (final o in await ContactOverrides.I.localContacts()) {
+      final key = DeviceContacts.normKey(o.number);
+      if (present.contains(key)) continue;
+      contacts.add(DeviceContact(name: o.displayName, number: o.number));
+      present.add(key);
+    }
     return (contacts, overrides, blocked);
   }
 
@@ -373,9 +398,16 @@ class _ContactsTabState extends State<_ContactsTab> {
     setState(() => _future = _loadAll(force: true));
   }
 
+  Future<void> _addContact() async {
+    await Navigator.of(context).push<bool>(
+        MaterialPageRoute<bool>(builder: (_) => const ContactEditScreen(create: true)));
+    _reload();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Column(children: [
+    return Stack(children: [
+      Column(children: [
       const _RoleBanner(),
       Expanded(
         child: FutureBuilder<(List<DeviceContact>, Map<String, ContactOverride>, Set<String>)>(
@@ -414,9 +446,16 @@ class _ContactsTabState extends State<_ContactsTab> {
                         alreadyBlocked: isBlocked,
                         onChanged: _reload,
                       );
+                  Future<void> openDetail() async {
+                    await Navigator.of(context).push<void>(MaterialPageRoute<void>(
+                        builder: (_) =>
+                            ContactDetailScreen(number: c.number, name: displayName)));
+                    _reload();
+                  }
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 4),
                     child: GestureDetector(
+                      onTap: openDetail,
                       onLongPress: openMenu,
                       child: ZineCard(
                         color: AvaDialTheme.surface2,
@@ -447,6 +486,20 @@ class _ContactsTabState extends State<_ContactsTab> {
           },
         ),
       ),
+      ]),
+      // Floating "+" to add a new contact (owner spec, pic 1). Sits above the list,
+      // clear of the shell-wide AppSwitcherBar at the very bottom.
+      Positioned(
+        right: 18,
+        bottom: 18,
+        child: FloatingActionButton(
+          heroTag: 'avadial_add_contact',
+          backgroundColor: Zine.blue,
+          foregroundColor: Zine.ink,
+          onPressed: _addContact,
+          child: PhosphorIcon(PhosphorIcons.plus(PhosphorIconsStyle.bold), color: Zine.ink),
+        ),
+      ),
     ]);
   }
 }
@@ -460,23 +513,71 @@ class _LogsTab extends StatefulWidget {
 }
 
 class _LogsTabState extends State<_LogsTab> {
-  late Future<(List<DeviceCall>, Map<String, ContactOverride>, Set<String>)> _future;
+  late Future<(List<DeviceCall>, Map<String, ContactOverride>, Set<String>, Set<String>)> _future;
 
   @override
   void initState() {
     super.initState();
     _future = _loadAll();
+    avaDialRev.addListener(_onRev);
   }
 
-  Future<(List<DeviceCall>, Map<String, ContactOverride>, Set<String>)> _loadAll({bool force = false}) async {
-    final logs = await DeviceCallLog.I.load(force: force);
+  @override
+  void dispose() {
+    avaDialRev.removeListener(_onRev);
+    super.dispose();
+  }
+
+  void _onRev() {
+    if (mounted) setState(() => _future = _loadAll());
+  }
+
+  Future<(List<DeviceCall>, Map<String, ContactOverride>, Set<String>, Set<String>)> _loadAll({bool force = false}) async {
+    final all = await DeviceCallLog.I.load(force: force);
+    final hidden = await HiddenCallLog.I.load();
+    // Drop rows the user deleted from AvaTOK's view (never touches the OS log).
+    final logs = all.where((e) => !hidden.contains(HiddenCallLog.keyFor(e.number, e.date))).toList();
     final overrides = {for (final o in await ContactOverrides.I.load()) DeviceContacts.normKey(o.number): o};
     final blocked = {for (final b in await BlockList.I.load()) DeviceContacts.normKey(b.number)};
-    return (logs, overrides, blocked);
+    return (logs, overrides, blocked, hidden);
   }
 
   Future<void> _reload() async {
     setState(() => _future = _loadAll(force: true));
+  }
+
+  /// "Delete history" — hides every currently-visible call from AvaTOK's view.
+  Future<void> _clearHistory(List<DeviceCall> logs) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AvaDialTheme.surface2,
+        shape: RoundedRectangleBorder(
+          side: const BorderSide(color: AvaDialTheme.border, width: Zine.bw),
+          borderRadius: BorderRadius.circular(Zine.rSm),
+        ),
+        title: Text('Clear call history?', style: ZineText.cardTitle(size: 17, color: AvaDialTheme.text)),
+        content: Text(
+          'This hides these calls from AvaTOK. Your phone\'s own call log is not '
+          'touched.',
+          style: ZineText.sub(size: 13.5, color: AvaDialTheme.textSoft),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel', style: ZineText.value(size: 14, color: AvaDialTheme.textSoft)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Clear', style: ZineText.value(size: 14, color: Zine.coral)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await HiddenCallLog.I.hideAll(logs.map((e) => HiddenCallLog.keyFor(e.number, e.date)));
+    Analytics.capture('avadial_call_history_cleared', {'count': logs.length});
+    _reload();
   }
 
   IconData _iconFor(DeviceCallType t) => switch (t) {
@@ -498,13 +599,14 @@ class _LogsTabState extends State<_LogsTab> {
     return Column(children: [
       const _RoleBanner(),
       Expanded(
-        child: FutureBuilder<(List<DeviceCall>, Map<String, ContactOverride>, Set<String>)>(
+        child: FutureBuilder<(List<DeviceCall>, Map<String, ContactOverride>, Set<String>, Set<String>)>(
           future: _future,
           builder: (context, snap) {
             if (snap.connectionState != ConnectionState.done) {
               return const Center(child: CircularProgressIndicator(color: AvaDialTheme.accent));
             }
-            final (logs, overrides, blocked) = snap.data ?? (const <DeviceCall>[], const <String, ContactOverride>{}, const <String>{});
+            final (logs, overrides, blocked, _) = snap.data ??
+                (const <DeviceCall>[], const <String, ContactOverride>{}, const <String>{}, const <String>{});
             if (logs.isEmpty) {
               return _PermState(
                 icon: Icons.history_outlined,
@@ -519,9 +621,27 @@ class _LogsTabState extends State<_LogsTab> {
               onRefresh: _reload,
               child: ListView.builder(
                 padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
-                itemCount: logs.length,
-                itemBuilder: (context, i) {
-                  final e = logs[i];
+                itemCount: logs.length + 1,
+                itemBuilder: (context, idx) {
+                  if (idx == 0) {
+                    // Toolbar: count + "Clear history".
+                    return Padding(
+                      padding: const EdgeInsets.fromLTRB(2, 4, 2, 6),
+                      child: Row(children: [
+                        Text('${logs.length} call${logs.length == 1 ? '' : 's'}',
+                            style: ZineText.tag(size: 12, color: AvaDialTheme.textMute)),
+                        const Spacer(),
+                        TextButton.icon(
+                          onPressed: () => _clearHistory(logs),
+                          icon: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.bold),
+                              color: Zine.coral, size: 17),
+                          label: Text('Clear history',
+                              style: ZineText.value(size: 13, color: Zine.coral)),
+                        ),
+                      ]),
+                    );
+                  }
+                  final e = logs[idx - 1];
                   final key = DeviceContacts.normKey(e.number);
                   final displayName = overrides[key]?.displayName ?? e.cachedName;
                   final isBlocked = blocked.contains(key);
@@ -532,27 +652,45 @@ class _LogsTabState extends State<_LogsTab> {
                         alreadyBlocked: isBlocked,
                         onChanged: _reload,
                       );
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: GestureDetector(
-                      onLongPress: openMenu,
-                      child: ZineCard(
-                        color: AvaDialTheme.surface2,
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        child: Row(children: [
-                          ZineIconBadge(icon: _iconFor(e.type), color: _colorFor(e.type)),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              Text(displayName ?? e.number, style: ZineText.cardTitle(size: 15, color: AvaDialTheme.text)),
-                              Text(_subtitle(e), style: ZineText.sub(size: 12, color: AvaDialTheme.textSoft)),
-                            ]),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.more_vert, color: AvaDialTheme.textSoft),
-                            onPressed: openMenu,
-                          ),
-                        ]),
+                  return Dismissible(
+                    key: ValueKey(HiddenCallLog.keyFor(e.number, e.date)),
+                    direction: DismissDirection.endToStart,
+                    background: Container(
+                      alignment: Alignment.centerRight,
+                      padding: const EdgeInsets.only(right: 22),
+                      margin: const EdgeInsets.symmetric(vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Zine.coral,
+                        borderRadius: BorderRadius.circular(Zine.rSm),
+                      ),
+                      child: const Icon(Icons.delete_outline, color: Zine.ink),
+                    ),
+                    onDismissed: (_) async {
+                      await HiddenCallLog.I.hide(e.number, e.date);
+                      Analytics.capture('avadial_call_deleted', const {});
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: GestureDetector(
+                        onLongPress: openMenu,
+                        child: ZineCard(
+                          color: AvaDialTheme.surface2,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          child: Row(children: [
+                            ZineIconBadge(icon: _iconFor(e.type), color: _colorFor(e.type)),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                Text(displayName ?? e.number, style: ZineText.cardTitle(size: 15, color: AvaDialTheme.text)),
+                                Text(_subtitle(e), style: ZineText.sub(size: 12, color: AvaDialTheme.textSoft)),
+                              ]),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.more_vert, color: AvaDialTheme.textSoft),
+                              onPressed: openMenu,
+                            ),
+                          ]),
+                        ),
                       ),
                     ),
                   );
@@ -587,6 +725,19 @@ class _BlockTabState extends State<_BlockTab> {
   void initState() {
     super.initState();
     _future = BlockList.I.load();
+    // Reload when a number is blocked/unblocked from another tab (Contacts, Logs,
+    // the contact detail screen) so it appears here immediately (owner bug, pic 6).
+    avaDialRev.addListener(_onRev);
+  }
+
+  @override
+  void dispose() {
+    avaDialRev.removeListener(_onRev);
+    super.dispose();
+  }
+
+  void _onRev() {
+    if (mounted) setState(() => _future = BlockList.I.load());
   }
 
   void _reload() => setState(() => _future = BlockList.I.load());
