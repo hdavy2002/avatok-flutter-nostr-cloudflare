@@ -682,11 +682,15 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
      *  revoke its "appear on top" permission or disable it. We can only OPEN this
      *  screen — Android never lets one app disable/revoke another. */
     private fun openAppDetails(ctx: Context, pkg: String?) {
-        if (pkg.isNullOrEmpty()) return
+        // [AVA-SMS-FIX-1] null/empty → OUR OWN App info page (the screen with
+        // ⋮ → "Allow restricted settings", needed to unlock ROLE_SMS on
+        // Android 15+ sideloaded installs). Using ctx.packageName keeps this
+        // correct across the prod / ".staging" applicationId suffixes.
+        val target = if (pkg.isNullOrEmpty()) ctx.packageName else pkg
         try {
             val intent = Intent(
                 Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                Uri.fromParts("package", pkg, null),
+                Uri.fromParts("package", target, null),
             ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             (activityBinding?.activity ?: ctx).startActivity(intent)
         } catch (_: Throwable) { /* best-effort */ }

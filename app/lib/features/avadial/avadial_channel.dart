@@ -259,6 +259,14 @@ class AvaDialChannel {
   Future<void> openAppDetails(String package) =>
       _invokeVoid('openAppDetails', {'package': package});
 
+  /// [AVA-SMS-FIX-1] Deep-link to OUR OWN system "App info" page — the screen
+  /// with ⋮ → "Allow restricted settings", which is the only unlock for the
+  /// Android 15+ hard-restriction on SMS permissions for sideloaded installs.
+  /// The native side resolves an empty package to `ctx.packageName`, so this
+  /// stays correct across the prod / `.staging` applicationId suffixes.
+  Future<void> openOwnAppDetails() =>
+      _invokeVoid('openAppDetails', {'package': ''});
+
   // ── SMS (default-SMS-app layer, AVA-SMS) ──────────────────────────────────
   /// Send an SMS to [dest]. [ref] correlates the send with its
   /// [smsSendStatus] events; pass a stable id per outgoing message. Returns true

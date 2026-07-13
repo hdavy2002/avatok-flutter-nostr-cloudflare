@@ -23,6 +23,7 @@ import '../../features/avadial/device_contacts.dart';
 import '../../features/avadial/dialpad_search_tab.dart';
 import '../../features/avadial/pstn_call_screen.dart';
 import '../../features/avadial/sms/sms_threads_screen.dart';
+import '../../features/avadial/sms_role_help.dart';
 import '../shell_v2.dart';
 import 'shell_chrome.dart';
 
@@ -952,6 +953,48 @@ class _SmsRoleBanner extends StatefulWidget {
 
 class _SmsRoleBannerState extends State<_SmsRoleBanner> {
   bool _busy = false;
+  // [AVA-SMS-FIX-1] When the verdict arrives < kSmsRoleInstantDenial after the
+  // request, the OS AUTO-DENIED without ever showing the picker (Android 15+
+  // hard-restricts SMS for sideloaded installs until "Allow restricted
+  // settings"; repeated denials also trip don't-ask-again). Previously that
+  // path did NOTHING visible — a dead Enable button (root cause of the
+  // 2026-07-13 "enable messages does nothing", 17 instant denials in PostHog).
+  DateTime? _requestedAt;
+  StreamSubscription<AvaRoleResult>? _verdictSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _verdictSub = AvaDialChannel.I.roleResults.listen(_onVerdict);
+  }
+
+  @override
+  void dispose() {
+    _verdictSub?.cancel();
+    super.dispose();
+  }
+
+  void _onVerdict(AvaRoleResult r) {
+    if (!r.role.contains('SMS')) return;
+    final askedAt = _requestedAt;
+    _requestedAt = null;
+    if (r.granted || askedAt == null || !mounted) return;
+    if (isInstantDenial(askedAt)) {
+      Analytics.capture('avadial_sms_role_autodenied',
+          {'elapsed_ms': DateTime.now().difference(askedAt).inMilliseconds});
+      showSmsRoleRestrictedHelp(context);
+    } else {
+      // A real human denial in the picker — nudge, don't nag.
+      Analytics.capture('avadial_sms_enable_fallback_settings', const {});
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: const Text('AvaTOK wasn’t set as your messages app.'),
+        action: SnackBarAction(
+          label: 'Open settings',
+          onPressed: () => AvaDialChannel.I.openDefaultAppsSettings(),
+        ),
+      ));
+    }
+  }
 
   Future<void> _request() async {
     if (_busy) return;
@@ -961,11 +1004,13 @@ class _SmsRoleBannerState extends State<_SmsRoleBanner> {
     // (verdict arrives on roleResults), false = the prompt could NOT be shown
     // (no activity / role unavailable on this OEM / plugin error).
     bool? immediate;
+    _requestedAt = DateTime.now();
     try {
       immediate = await AvaDialChannel.I.requestSmsRole();
     } catch (_) {
       immediate = false;
     }
+    if (immediate != null) _requestedAt = null; // resolved synchronously
     if (immediate == true) {
       Analytics.capture('avadial_sms_role_granted', {'via': 'already_held'});
     } else if (immediate == false) {

@@ -9,6 +9,7 @@ import '../../../core/remote_config.dart';
 import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../../avadial/avadial_channel.dart';
+import '../../avadial/sms_role_help.dart';
 import '../settings_registry.dart';
 
 /// Settings → "Default phone & messages" section (AVA-DIAL-6, owner decision
@@ -52,6 +53,9 @@ class _DefaultDialerCardState extends State<_DefaultDialerCard>
   bool _smsHeld = false;
   bool _loading = true;
   StreamSubscription<AvaRoleResult>? _roleSub;
+  // [AVA-SMS-FIX-1] When the SMS toggle's role request was launched — used to
+  // detect the OS auto-denying without showing the picker.
+  DateTime? _smsAskedAt;
 
   bool get _smsVisible => RemoteConfig.avaSms;
 
@@ -101,7 +105,19 @@ class _DefaultDialerCardState extends State<_DefaultDialerCard>
     } else if (role.endsWith('SMS')) {
       if (mounted) setState(() => _smsHeld = r.granted);
       Analytics.capture('settings_default_sms_toggle', {'granted': r.granted});
-      if (!r.granted) _deniedSnack('messages');
+      // [AVA-SMS-FIX-1] Instant denial = the OS never showed the picker
+      // (Android 15+ restricted-settings gate on sideloaded installs, or
+      // don't-ask-again). Explain the unlock instead of a generic snack.
+      final askedAt = _smsAskedAt;
+      _smsAskedAt = null;
+      if (!r.granted) {
+        if (mounted && isInstantDenial(askedAt)) {
+          Analytics.capture('settings_default_sms_autodenied', const {});
+          showSmsRoleRestrictedHelp(context);
+        } else {
+          _deniedSnack('messages');
+        }
+      }
     }
     // Re-read to catch any state the picker changed without a verdict for us.
     _refresh();
@@ -139,7 +155,9 @@ class _DefaultDialerCardState extends State<_DefaultDialerCard>
   // ── SMS toggle ────────────────────────────────────────────────────────────
   Future<void> _onSmsChanged(bool want) async {
     if (want) {
+      _smsAskedAt = DateTime.now(); // [AVA-SMS-FIX-1] instant-denial detection
       final res = await AvaDialChannel.I.requestSmsRole();
+      if (res != null) _smsAskedAt = null; // resolved synchronously
       if (res == true) {
         if (mounted) setState(() => _smsHeld = true);
         Analytics.capture('settings_default_sms_toggle', {'granted': true});
