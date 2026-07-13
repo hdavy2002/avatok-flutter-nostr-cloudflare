@@ -268,6 +268,35 @@ bool _isTransientNetworkError(Object error) {
   return false;
 }
 
+// RESPUI-SMALL-1: fire ONCE per session (guarded by the size signature) so a
+// build-method call can't spam PostHog. Lets us diagnose small-screen reports
+// (e.g. hdavy2005@gmail.com) by seeing the actual logical width / DPR / scale
+// the device resolved to.
+String? _lastScreenMetricSig;
+void _reportScreenMetricsOnce(double w, double h, double dpr, double sysScale,
+    double baseBump, double ceil) {
+  final sig = '${w.round()}x${h.round()}@${dpr.toStringAsFixed(2)}';
+  if (sig == _lastScreenMetricSig) return;
+  _lastScreenMetricSig = sig;
+  final resolved = (sysScale * baseBump).clamp(0.85, ceil);
+  unawaited(Analytics.capture('screen_metrics', {
+    'width_dp': w.round(),
+    'height_dp': h.round(),
+    'device_pixel_ratio': double.parse(dpr.toStringAsFixed(3)),
+    'os_text_scale': double.parse(sysScale.toStringAsFixed(3)),
+    'base_bump': baseBump,
+    'scale_ceiling': ceil,
+    'resolved_text_scale': double.parse(resolved.toStringAsFixed(3)),
+    'width_class': w < 320
+        ? 'xcompact'
+        : w < 360
+            ? 'compact'
+            : w < 600
+                ? 'regular'
+                : 'expanded',
+  }));
+}
+
 class AvaTalkApp extends StatelessWidget {
   const AvaTalkApp({super.key});
   @override
@@ -292,11 +321,34 @@ class AvaTalkApp extends StatelessWidget {
       builder: (context, child) {
         final mq = MediaQuery.of(context);
         final sys = mq.textScaler.scale(1.0);
+        // RESPUI-SMALL-1 (2026-07-13): the base bump + ceiling now ADAPT to
+        // device width. A flat 1.22x base with a 1.3x ceiling inflated the
+        // whole UI on very small phones (reported: a ~4.5" device where
+        // "everything looks big" and the app didn't fit). Screens >=360dp are
+        // UNCHANGED (1.22x base, 1.3x ceiling — exactly as before), so typical
+        // phones/tablets see zero difference. Below 360dp we taper the base
+        // bump toward 1.0 and lower the ceiling so text (the biggest driver of
+        // the "too big" look) shrinks and more content fits, composing with the
+        // existing ZineBreakpoints padding/type ramps.
+        final double w = mq.size.width;
+        final double baseBump = w >= 360
+            ? 1.22
+            : w >= 320
+                ? 1.08
+                : 1.0;
+        final double ceil = w >= 360
+            ? 1.30
+            : w >= 320
+                ? 1.15
+                : 1.05;
+        _reportScreenMetricsOnce(w, mq.size.height, mq.devicePixelRatio,
+            sys, baseBump, ceil);
         return ValueListenableBuilder<double>(
           valueListenable: FontScale.scale,
           builder: (_, userScale, __) => MediaQuery(
             data: mq.copyWith(
-                textScaler: TextScaler.linear((sys * 1.22 * userScale).clamp(0.85, 1.3))),
+                textScaler:
+                    TextScaler.linear((sys * baseBump * userScale).clamp(0.85, ceil))),
             // CALL-PIP-C: paint the minimized-call overlay (draggable video
             // thumbnail / audio pill) ABOVE every route. Renders nothing and
             // adds no hit-test surface when there's no minimized call.
