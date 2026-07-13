@@ -69,7 +69,17 @@ class AvaSmsReceiver : BroadcastReceiver() {
             // positives on ordinary texts. Spam messages are skipped (never invite a
             // one-tap copy from a suspected-spam sender).
             if (!spam) {
-                extractOtp(text)?.let { code -> notifyOtp(context, address, code) }
+                extractOtp(text)?.let { code ->
+                    if (AvaOtpOverlay.canDraw(context)) {
+                        // Primary: the Truecaller-style floating card over all apps.
+                        AvaOtpOverlay.show(context, code, address)
+                    } else {
+                        // "Appear on top" not granted yet (the setup sheet prompts for
+                        // it) — fall back to the heads-up copy notification so the OTP
+                        // is never lost in the meantime.
+                        notifyOtp(context, address, code)
+                    }
+                }
             }
             notify(context, address, text, spam)
         } catch (_: Throwable) {

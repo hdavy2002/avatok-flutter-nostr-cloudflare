@@ -26,6 +26,11 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!-- [AVADIAL-OTP-1] Draw the Truecaller-style floating OTP card OVER other apps
+         so the user copies a one-time code without opening AvaTOK. User-granted via
+         the setup sheet ("appear on top"); the OTP falls back to a heads-up copy
+         notification until it's granted. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />

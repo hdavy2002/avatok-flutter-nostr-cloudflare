@@ -61,6 +61,7 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
   bool _dialer = false; // default phone app
   bool _screening = false; // Caller ID & spam role (replaces Truecaller)
   bool _sms = false; // default SMS app
+  bool _overlay = false; // "appear on top" — the floating OTP card
   bool _loading = true;
 
   // Auto-detected rivals: who currently holds the phone/SMS slots, and which
@@ -94,7 +95,8 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
         battery = _battery,
         dialer = _dialer,
         screening = _screening,
-        sms = _sms;
+        sms = _sms,
+        overlay = _overlay;
     String? dialerLabel;
     String? smsLabel;
     var rivals = _rivals;
@@ -114,6 +116,9 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
       sms = await AvaDialChannel.I.isSmsRoleHeld();
     } catch (_) {}
     try {
+      overlay = await Permission.systemAlertWindow.isGranted;
+    } catch (_) {}
+    try {
       dialerLabel = await AvaDialChannel.I.defaultDialerLabel();
     } catch (_) {}
     try {
@@ -129,6 +134,7 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
       _dialer = dialer;
       _screening = screening;
       _sms = sms;
+      _overlay = overlay;
       _dialerLabel = dialerLabel;
       _smsLabel = smsLabel;
       _rivals = rivals;
@@ -147,6 +153,14 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
     Analytics.capture('avadial_setup_tap', <String, Object>{'step': 'battery'});
     try {
       await Permission.ignoreBatteryOptimizations.request();
+    } catch (_) {}
+    _refresh();
+  }
+
+  Future<void> _openOverlay() async {
+    Analytics.capture('avadial_setup_tap', <String, Object>{'step': 'overlay'});
+    try {
+      await Permission.systemAlertWindow.request();
     } catch (_) {}
     _refresh();
   }
@@ -237,6 +251,13 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
                 title: 'Keep AvaDialer running',
                 subtitle: 'Ignore battery optimisation so calls arrive instantly.',
                 onTap: _openBattery,
+              ),
+              _StepRow(
+                done: _overlay,
+                title: 'Show OTP pop-ups over apps',
+                subtitle: 'Appear on top, so one-time codes float over any app with '
+                    'a one-tap Copy — no need to open AvaTOK.',
+                onTap: _openOverlay,
               ),
               _StepRow(
                 done: _dialer,
