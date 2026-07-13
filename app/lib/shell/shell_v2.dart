@@ -8,7 +8,7 @@ import '../auth/clerk_client.dart';
 import '../core/account_storage.dart';
 import '../core/analytics.dart';
 import '../core/remote_config.dart';
-import '../core/ui/zine.dart';
+import '../core/ui/avatok_dark.dart';
 import '../features/askava/askava_screen.dart';
 import '../features/avadial/avadial_channel.dart';
 import '../features/avadial/pstn_call_screen.dart';
@@ -389,7 +389,7 @@ class _ShellV2State extends State<ShellV2> {
           _handleBack();
         },
         child: Scaffold(
-          backgroundColor: Zine.paper,
+          backgroundColor: AD.bg,
           body: IndexedStack(
             index: _root.index,
             children: [for (final r in RootId.values) _navigatorFor(r)],

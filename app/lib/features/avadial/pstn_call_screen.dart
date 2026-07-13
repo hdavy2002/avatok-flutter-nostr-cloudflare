@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'avadial_channel.dart';
@@ -66,9 +67,9 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
   }
 
   Color get _accent => switch (_color) {
-        PstnColor.red => Zine.coral,
-        PstnColor.green => Zine.mint,
-        PstnColor.blue => Zine.blue,
+        PstnColor.red => AD.danger,
+        PstnColor.green => AD.incomingCall,
+        PstnColor.blue => AD.iconSearch,
       };
 
   Future<void> _answer() async {
@@ -146,19 +147,19 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
         decoration: BoxDecoration(
           color: _accent,
           shape: BoxShape.circle,
-          border: Border.all(color: AvaDialTheme.border, width: Zine.bwLg),
-          boxShadow: Zine.shadow,
+          border: Border.all(color: AvaDialTheme.border, width: 2),
+          boxShadow: const <BoxShadow>[],
         ),
         child: Icon(
           _color == PstnColor.red
               ? PhosphorIcons.warning(PhosphorIconsStyle.fill)
               : PhosphorIcons.phoneIncoming(PhosphorIconsStyle.fill),
           size: 52,
-          color: _color == PstnColor.red ? Colors.white : Zine.ink,
+          color: Colors.white,
         ),
       ),
       const SizedBox(height: 20),
-      Text(kicker, style: ZineText.kicker(color: _accent == Zine.coral ? Zine.coral : AvaDialTheme.textSoft)),
+      Text(kicker, style: ZineText.kicker(color: _accent == AD.danger ? AD.danger : AvaDialTheme.textSoft)),
       const SizedBox(height: 6),
       Text(
         name ?? widget.number,
@@ -172,10 +173,10 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
     ]);
   }
 
-  Widget _redBanner() => ZineCard(
+  Widget _redBanner() => AdCard(
         color: AvaDialTheme.surface2,
         child: Row(children: [
-          ZineIconBadge(icon: PhosphorIcons.shieldWarning(PhosphorIconsStyle.bold), color: Zine.coral),
+          ZineIconBadge(icon: PhosphorIcons.shieldWarning(PhosphorIconsStyle.bold), color: AD.danger),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
@@ -194,9 +195,9 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
       case PstnColor.red:
         // Default action = Decline (prominent). Answer-anyway is secondary.
         return Column(children: [
-          ZineButton(
+          AdButton(
             label: 'Decline',
-            variant: ZineButtonVariant.coral,
+            variant: AdButtonVariant.danger,
             fullWidth: true,
             icon: Icons.call_end,
             trailingIcon: false,
@@ -205,18 +206,18 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
           const SizedBox(height: 12),
           Row(children: [
             Expanded(
-              child: ZineButton(
+              child: AdButton(
                 label: 'Block',
-                variant: ZineButtonVariant.ghost,
+                variant: AdButtonVariant.ghost,
                 fullWidth: true,
                 onPressed: _block,
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: ZineButton(
+              child: AdButton(
                 label: 'Answer anyway',
-                variant: ZineButtonVariant.ghost,
+                variant: AdButtonVariant.ghost,
                 fullWidth: true,
                 onPressed: _answer,
               ),
@@ -226,18 +227,18 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
       case PstnColor.green:
         return Row(children: [
           Expanded(
-            child: ZineButton(
+            child: AdButton(
               label: 'Decline',
-              variant: ZineButtonVariant.coral,
+              variant: AdButtonVariant.danger,
               fullWidth: true,
               onPressed: _decline,
             ),
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: ZineButton(
+            child: AdButton(
               label: 'Answer',
-              variant: ZineButtonVariant.lime,
+              variant: AdButtonVariant.primary,
               fullWidth: true,
               onPressed: _answer,
             ),
@@ -247,18 +248,18 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
         return Column(children: [
           Row(children: [
             Expanded(
-              child: ZineButton(
+              child: AdButton(
                 label: 'Decline',
-                variant: ZineButtonVariant.coral,
+                variant: AdButtonVariant.danger,
                 fullWidth: true,
                 onPressed: _decline,
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: ZineButton(
+              child: AdButton(
                 label: 'Answer',
-                variant: ZineButtonVariant.lime,
+                variant: AdButtonVariant.primary,
                 fullWidth: true,
                 onPressed: _answer,
               ),
@@ -267,18 +268,18 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
           const SizedBox(height: 12),
           Row(children: [
             Expanded(
-              child: ZineButton(
+              child: AdButton(
                 label: 'Block',
-                variant: ZineButtonVariant.ghost,
+                variant: AdButtonVariant.ghost,
                 fullWidth: true,
                 onPressed: _block,
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: ZineButton(
+              child: AdButton(
                 label: 'Report spam',
-                variant: ZineButtonVariant.ghost,
+                variant: AdButtonVariant.ghost,
                 fullWidth: true,
                 onPressed: _reportSpam,
               ),

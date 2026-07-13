@@ -4,7 +4,7 @@
 // when thread open + foreground" gate; this widget is pure presentation.
 import 'package:flutter/material.dart';
 
-import '../../../core/ui/zine.dart';
+import '../../../core/ui/avatok_dark.dart';
 
 class SmartReplyChips extends StatelessWidget {
   final List<String> suggestions;
@@ -30,12 +30,11 @@ class SmartReplyChips extends StatelessWidget {
                   alignment: Alignment.center,
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
                   decoration: BoxDecoration(
-                    color: Zine.mint,
-                    border: Zine.border,
+                    color: AD.card,
+                    border: Border.all(color: AD.borderControl, width: 1),
                     borderRadius: BorderRadius.circular(100),
-                    boxShadow: Zine.shadowXs,
                   ),
-                  child: Text(s, maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.value(size: 13, color: Zine.ink)),
+                  child: Text(s, maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.rowName()),
                 ),
               ),
             ),

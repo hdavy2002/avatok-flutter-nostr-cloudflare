@@ -10,8 +10,8 @@ import '../core/paid_feature.dart';
 import '../core/profile_store.dart';
 import '../core/team_api.dart';
 import '../core/update_service.dart';
-import '../core/ui/zine.dart';
 import '../core/ui/zine_widgets.dart';
+import '../core/ui/avatok_dark.dart';
 import '../features/diagnostics/log_page.dart';
 import '../features/settings/about_screen.dart';
 import 'focus_mode.dart';
@@ -114,15 +114,15 @@ class _AvaSidebarState extends State<AvaSidebar> {
           return Container(
             width: 300,
             decoration: const BoxDecoration(
-              color: Zine.paper2,
-              border: Border(right: BorderSide(color: Zine.ink, width: Zine.bw)),
+              color: AD.headerFooter,
+              border: Border(right: BorderSide(color: AD.borderHairline, width: 1)),
             ),
             child: body,
           );
         }
         return Drawer(
-          backgroundColor: Zine.paper2,
-          shape: const Border(right: BorderSide(color: Zine.ink, width: Zine.bw)),
+          backgroundColor: AD.headerFooter,
+          shape: const Border(right: BorderSide(color: AD.borderHairline, width: 1)),
           width: MediaQuery.of(context).size.width * 0.82,
           child: body,
         );
@@ -150,17 +150,17 @@ class _AvaSidebarState extends State<AvaSidebar> {
               Text.rich(
                 TextSpan(
                   style: const TextStyle(
-                      fontFamily: ZineText.display, fontWeight: FontWeight.w600,
-                      fontSize: 19, letterSpacing: -0.38, color: Zine.ink),
+                      fontFamily: ADText.family, fontWeight: FontWeight.w800,
+                      fontSize: 19, letterSpacing: -0.38, color: AD.textPrimary),
                   children: const [
                     TextSpan(text: 'Ava'),
-                    TextSpan(text: 'TOK', style: TextStyle(color: Zine.blueInk)),
+                    TextSpan(text: 'TOK', style: TextStyle(color: AD.iconSearch)),
                   ],
                 ),
               ),
               const Spacer(),
               if (!widget.permanent)
-                ZineBackButton(
+                AdBackButton(
                   icon: PhosphorIcons.x(PhosphorIconsStyle.bold),
                   onTap: () => Navigator.pop(context),
                 ),
@@ -171,8 +171,11 @@ class _AvaSidebarState extends State<AvaSidebar> {
             padding: const EdgeInsets.fromLTRB(14, 6, 14, 12),
             child: ZinePressable(
               onTap: () => widget.onSelect('profile'),
-              radius: BorderRadius.circular(Zine.rSm),
-              boxShadow: Zine.shadowXs,
+              color: AD.card,
+              borderColor: AD.borderControl,
+              borderWidth: 1,
+              radius: BorderRadius.circular(AD.rListCard),
+              boxShadow: const [],
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               child: Row(children: [
                 _inkedAvatar(),
@@ -182,14 +185,14 @@ class _AvaSidebarState extends State<AvaSidebar> {
                     Row(children: [
                       Flexible(
                           child: Text(_name, maxLines: 1, overflow: TextOverflow.ellipsis,
-                              style: ZineText.cardTitle(size: 16))),
+                              style: ADText.threadName())),
                       const SizedBox(width: 4),
                       PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold),
-                          size: 14, color: Zine.inkSoft),
+                          size: 14, color: AD.textSecondary),
                     ]),
                     const SizedBox(height: 2),
                     Text(_sub, maxLines: 1, overflow: TextOverflow.ellipsis,
-                        style: ZineText.tag(size: 10.5, color: Zine.inkSoft)),
+                        style: ADText.statCaption(c: AD.textSecondary)),
                   ]),
                 ),
               ]),
@@ -211,7 +214,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
               // AI Voice Agent (hands-free call), then Library. Connectors live in
               // the ACCOUNT section; AvaExplore/AvaVerse hidden.
               _special('avatok', 'Messenger', 'Messages & calls',
-                  PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), Zine.blue),
+                  PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), AD.iconSearch),
               // ChatAVA removed from the sidebar (owner decision 2026-06-27): the
               // private Ava chat now lives INSIDE Messenger as a pinned green
               // session (and via the + menu), so this duplicate is gone.
@@ -222,10 +225,10 @@ class _AvaSidebarState extends State<AvaSidebar> {
               // _special('aivoice', 'AI Voice Agent', 'Call Ava and talk hands-free',
               //     PhosphorIcons.phoneCall(PhosphorIconsStyle.bold), Zine.mint, paid: true),
               _special('library', 'Library', 'Saved media & files',
-                  PhosphorIcons.folderOpen(PhosphorIconsStyle.bold), Zine.mint),
+                  PhosphorIcons.folderOpen(PhosphorIconsStyle.bold), AD.online),
               // Contacts — moved out of ACCOUNT to sit below Library; own colour.
               _special('invite', 'Contacts', 'Find & manage people',
-                  PhosphorIcons.addressBook(PhosphorIconsStyle.bold), Zine.coral),
+                  PhosphorIcons.addressBook(PhosphorIconsStyle.bold), AD.danger),
               // AvaMarketplace — expandable group with its sub-pages (Browse,
               // Create listing, My listings, Archived). ADMIN-ONLY during the
               // pro/live launch (owner decision 2026-07-04): the whole section +
@@ -240,7 +243,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
               // Marketplace (owner request). Always shown — unlike Marketplace
               // itself, Wallet isn't admin/flag-gated.
               _special('avawallet', 'Wallet', 'Balance & AvaCoins',
-                  PhosphorIcons.wallet(PhosphorIconsStyle.bold), Zine.mint),
+                  PhosphorIcons.wallet(PhosphorIconsStyle.bold), AD.online),
               // Team — AI receptionist + staff routing. HIDDEN from the sidebar
               // (owner decision 2026-06-28). Re-enable by un-commenting this row.
               // _special('team', 'Team', 'AI receptionist & staff',
@@ -253,24 +256,29 @@ class _AvaSidebarState extends State<AvaSidebar> {
                 padding: const EdgeInsets.only(top: 4, bottom: 4),
                 child: ZinePressable(
                   onTap: () => widget.onSelect('subscribe'),
-                  color: Zine.lilac,
-                  radius: BorderRadius.circular(Zine.rSm),
-                  boxShadow: Zine.shadowXs,
+                  color: AD.iconVideo,
+                  borderColor: AD.borderControl,
+                  borderWidth: 1,
+                  radius: BorderRadius.circular(AD.rListCard),
+                  boxShadow: const [],
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   child: Row(children: [
+                    // Pale fill so the badge's Zine.ink glyph stays legible against
+                    // the purple Subscribe tile (ZineIconBadge always draws its icon
+                    // in dark ink unless the fill is Zine.coral — see AD.card note below).
                     ZineIconBadge(
-                        icon: PhosphorIcons.crown(PhosphorIconsStyle.bold), color: Zine.card),
+                        icon: PhosphorIcons.crown(PhosphorIconsStyle.bold), color: Colors.white),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text('Subscribe', style: ZineText.cardTitle(size: 15.5)),
+                        Text('Subscribe', style: ADText.rowName(c: Colors.white)),
                         const SizedBox(height: 1),
                         Text('Plans & upgrades',
-                            style: ZineText.tag(size: 10.5, color: Zine.inkSoft)),
+                            style: ADText.statCaption(c: Colors.white70)),
                       ]),
                     ),
                     PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold),
-                        size: 14, color: Zine.ink),
+                        size: 14, color: Colors.white),
                   ]),
                 ),
               ),
@@ -281,7 +289,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
               if (apps.isNotEmpty) ...[
                 Padding(
                     padding: const EdgeInsets.fromLTRB(6, 16, 6, 8),
-                    child: Text('APPS', style: ZineText.kicker())),
+                    child: Text('APPS', style: ADText.sectionLabel())),
                 for (final a in apps) _appRow(a),
               ],
               // Invite friends + Diagnostics moved into the ACCOUNT section
@@ -291,7 +299,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
           ),
           Container(
             decoration: const BoxDecoration(
-              border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
+              border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
             ),
             padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
             child: GestureDetector(
@@ -300,9 +308,9 @@ class _AvaSidebarState extends State<AvaSidebar> {
               child: Row(children: [
                 ZineIconBadge(
                     icon: PhosphorIcons.signOut(PhosphorIconsStyle.bold),
-                    color: Zine.coral, size: 30),
+                    color: AD.danger, size: 30),
                 const SizedBox(width: 12),
-                Text('Log out', style: ZineText.value(size: 15, color: Zine.coral)),
+                Text('Log out', style: ADText.rowName(c: AD.danger)),
               ]),
             ),
           ),
@@ -315,42 +323,21 @@ class _AvaSidebarState extends State<AvaSidebar> {
   /// premium pill / "top up" ghost chip automatically.
   Widget _planChip() {
     if (_premium) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
-        decoration: BoxDecoration(
-          color: Zine.mint, // money/success green
-          borderRadius: BorderRadius.circular(100),
-          border: Border.all(color: Zine.ink, width: Zine.bw),
-          boxShadow: Zine.shadowXs,
-        ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(PhosphorIcons.sealCheck(PhosphorIconsStyle.fill), size: 14, color: Zine.mintInk),
-          const SizedBox(width: 6),
-          Text('BETA-FREE', style: ZineText.tag(size: 11.5, color: Zine.mintInk)),
-        ]),
+      return AdSticker(
+        'BETA-FREE',
+        kind: AdStickerKind.ok,
+        icon: PhosphorIcons.sealCheck(PhosphorIconsStyle.fill),
       );
     }
     // FREE LAUNCH: no paywalls. With billing off, show a plain non-tappable
     // "FREE PLAN" pill (no upgrade route). Reverts to the upgrade chip when
     // billingEnabled flips back on.
     final billingOn = RemoteConfig.billingEnabled;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+    return AdSticker(
+      billingOn ? 'FREE PLAN · UPGRADE' : 'FREE PLAN',
+      kind: AdStickerKind.hint,
+      icon: PhosphorIcons.crown(PhosphorIconsStyle.fill),
       onTap: billingOn ? () => widget.onSelect('subscribe') : null,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
-        decoration: BoxDecoration(
-          color: Zine.card,
-          borderRadius: BorderRadius.circular(100),
-          border: Border.all(color: Zine.inkMute, width: Zine.bw),
-        ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          PhosphorIcon(PhosphorIcons.crown(PhosphorIconsStyle.fill), size: 13, color: Zine.inkSoft),
-          const SizedBox(width: 6),
-          Text(billingOn ? 'FREE PLAN · UPGRADE' : 'FREE PLAN',
-              style: ZineText.tag(size: 11, color: Zine.inkSoft)),
-        ]),
-      ),
     );
   }
 
@@ -360,18 +347,20 @@ class _AvaSidebarState extends State<AvaSidebar> {
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: ZinePressable(
         onTap: () => widget.onSelect(key),
-        color: active ? Zine.lime : Zine.card,
-        radius: BorderRadius.circular(Zine.rSm),
-        boxShadow: active ? Zine.shadowSm : Zine.shadowXs,
+        color: active ? AD.primaryBadge : AD.card,
+        borderColor: AD.borderControl,
+        borderWidth: 1,
+        radius: BorderRadius.circular(AD.rListCard),
+        boxShadow: const [],
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Row(children: [
           ZineIconBadge(icon: icon, color: color),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(name, style: ZineText.cardTitle(size: 15.5)),
+              Text(name, style: ADText.rowName(c: active ? Colors.white : AD.textPrimary)),
               const SizedBox(height: 1),
-              Text(sub, style: ZineText.tag(size: 10.5, color: Zine.inkSoft)),
+              Text(sub, style: ADText.statCaption(c: active ? Colors.white70 : AD.textSecondary)),
             ]),
           ),
           // Premium marker — hidden once the user is on a paid plan / topped up,
@@ -391,25 +380,27 @@ class _AvaSidebarState extends State<AvaSidebar> {
       child: Column(children: [
         ZinePressable(
           onTap: () => setState(() => _marketplaceOpen = !_marketplaceOpen),
-          color: headerActive ? Zine.lime : Zine.card,
-          radius: BorderRadius.circular(Zine.rSm),
-          boxShadow: Zine.shadowXs,
+          color: headerActive ? AD.primaryBadge : AD.card,
+          borderColor: AD.borderControl,
+          borderWidth: 1,
+          radius: BorderRadius.circular(AD.rListCard),
+          boxShadow: const [],
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Row(children: [
-            ZineIconBadge(icon: PhosphorIcons.storefront(PhosphorIconsStyle.bold), color: Zine.coral),
+            ZineIconBadge(icon: PhosphorIcons.storefront(PhosphorIconsStyle.bold), color: AD.danger),
             const SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Marketplace', style: ZineText.cardTitle(size: 15.5)),
+                Text('Marketplace', style: ADText.rowName(c: headerActive ? Colors.white : AD.textPrimary)),
                 const SizedBox(height: 1),
-                Text('Buy, sell & social', style: ZineText.tag(size: 10.5, color: Zine.inkSoft)),
+                Text('Buy, sell & social', style: ADText.statCaption(c: headerActive ? Colors.white70 : AD.textSecondary)),
               ]),
             ),
             PhosphorIcon(
                 _marketplaceOpen
                     ? PhosphorIcons.caretUp(PhosphorIconsStyle.bold)
                     : PhosphorIcons.caretDown(PhosphorIconsStyle.bold),
-                size: 14, color: Zine.inkSoft),
+                size: 14, color: AD.textSecondary),
           ]),
         ),
         if (_marketplaceOpen) ...[
@@ -427,14 +418,17 @@ class _AvaSidebarState extends State<AvaSidebar> {
         padding: const EdgeInsets.only(left: 14, top: 3),
         child: ZinePressable(
           onTap: () => widget.onSelect(key),
+          color: AD.card,
+          borderColor: AD.borderControl,
+          borderWidth: 1,
           radius: BorderRadius.circular(14),
           boxShadow: const <BoxShadow>[],
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           child: Row(children: [
-            ZineIconBadge(icon: icon, color: Zine.blue, size: 30),
+            ZineIconBadge(icon: icon, color: AD.iconSearch, size: 30),
             const SizedBox(width: 11),
-            Expanded(child: Text(label, style: ZineText.value(size: 14))),
-            PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 12, color: Zine.inkSoft),
+            Expanded(child: Text(label, style: ADText.rowName())),
+            PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 12, color: AD.textSecondary),
           ]),
         ),
       );
@@ -446,7 +440,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
     return [
       Padding(
         padding: const EdgeInsets.fromLTRB(6, 16, 6, 8),
-        child: Text(headerFor(widget.accountKind).toUpperCase(), style: ZineText.kicker()),
+        child: Text(headerFor(widget.accountKind).toUpperCase(), style: ADText.sectionLabel()),
       ),
       for (final t in tools) _toolRow(t),
     ];
@@ -456,6 +450,9 @@ class _AvaSidebarState extends State<AvaSidebar> {
         padding: const EdgeInsets.symmetric(vertical: 3),
         child: ZinePressable(
           onTap: () => widget.onSelect(t.key),
+          color: AD.card,
+          borderColor: AD.borderControl,
+          borderWidth: 1,
           radius: BorderRadius.circular(14),
           boxShadow: const <BoxShadow>[],
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -464,9 +461,9 @@ class _AvaSidebarState extends State<AvaSidebar> {
             const SizedBox(width: 11),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(t.name, style: ZineText.value(size: 14)),
+                Text(t.name, style: ADText.rowName()),
                 Text(t.tagline, maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: ZineText.sub(size: 11.5)),
+                    style: ADText.preview(c: AD.textSecondary)),
               ]),
             ),
           ]),
@@ -482,13 +479,16 @@ class _AvaSidebarState extends State<AvaSidebar> {
           // The actual spend gate (PaidFeature) lives at the feature's point of
           // use, so we don't block navigation from the menu.
           onTap: () => widget.onSelect(a.route),
+          color: AD.card,
+          borderColor: AD.borderControl,
+          borderWidth: 1,
           radius: BorderRadius.circular(14),
           boxShadow: const <BoxShadow>[],
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           child: Row(children: [
             ZineIconBadge(icon: a.icon, color: a.color, size: 30),
             const SizedBox(width: 11),
-            Expanded(child: Text(a.title, style: ZineText.value(size: 14))),
+            Expanded(child: Text(a.title, style: ADText.rowName())),
             // Owner request 2026-06-27: hide the PAID marker once the user is on
             // a paid plan / topped-up wallet — subscribers shouldn't see it on
             // the AI Voice Agent (or any other premium app) row.
@@ -497,7 +497,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
               const SizedBox(width: 8),
             ],
             PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold),
-                size: 14, color: Zine.inkMute),
+                size: 14, color: AD.textTertiary),
           ]),
         ),
       );
@@ -512,6 +512,9 @@ class _AvaSidebarState extends State<AvaSidebar> {
   }) =>
       ZinePressable(
         onTap: onTap,
+        color: AD.card,
+        borderColor: AD.borderControl,
+        borderWidth: 1,
         radius: BorderRadius.circular(14),
         boxShadow: const <BoxShadow>[],
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -520,10 +523,10 @@ class _AvaSidebarState extends State<AvaSidebar> {
           const SizedBox(width: 11),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title, style: ZineText.value(size: 14)),
+              Text(title, style: ADText.rowName()),
               if (subtitle != null)
                 Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: ZineText.sub(size: 11.5)),
+                    style: ADText.preview(c: AD.textSecondary)),
             ]),
           ),
         ]),
@@ -539,8 +542,8 @@ class _AvaSidebarState extends State<AvaSidebar> {
             padding: const EdgeInsets.all(2),
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: Zine.card,
-              border: Border.all(color: Zine.ink, width: 2),
+              color: AD.card,
+              border: Border.all(color: AD.borderAvatar, width: 2),
             ),
             child: Avatar(seed: widget.seed, name: _name, size: 42,
                 avatarUrl: _avatarUrl.isEmpty ? null : _avatarUrl),
@@ -550,11 +553,11 @@ class _AvaSidebarState extends State<AvaSidebar> {
             child: Container(
               width: 18, height: 18,
               decoration: BoxDecoration(
-                color: Zine.lime, shape: BoxShape.circle,
-                border: Border.all(color: Zine.ink, width: 2),
+                color: AD.primaryBadge, shape: BoxShape.circle,
+                border: Border.all(color: AD.borderAvatar, width: 2),
               ),
               child: PhosphorIcon(PhosphorIcons.camera(PhosphorIconsStyle.fill),
-                  size: 9, color: Zine.ink),
+                  size: 9, color: Colors.white),
             ),
           ),
         ]),
@@ -573,14 +576,14 @@ class _AvaSidebarState extends State<AvaSidebar> {
           child: Row(children: [
             Text('ACCOUNT & SETTINGS',
                 style: TextStyle(
-                    fontFamily: ZineText.display, fontWeight: FontWeight.w700,
-                    fontSize: 13.5, letterSpacing: 0.6, color: Zine.ink)),
+                    fontFamily: ADText.family, fontWeight: FontWeight.w800,
+                    fontSize: 13.5, letterSpacing: 0.6, color: AD.textPrimary)),
             const SizedBox(width: 6),
             PhosphorIcon(
                 _accountOpen
                     ? PhosphorIcons.caretUp(PhosphorIconsStyle.bold)
                     : PhosphorIcons.caretDown(PhosphorIconsStyle.bold),
-                size: 14, color: Zine.inkSoft),
+                size: 14, color: AD.textSecondary),
           ]),
         ),
       ),
@@ -629,13 +632,19 @@ class _AvaSidebarState extends State<AvaSidebar> {
         padding: const EdgeInsets.symmetric(vertical: 3),
         child: ZinePressable(
           onTap: onTap ?? () => widget.onSelect(key),
+          color: AD.card,
+          borderColor: AD.borderControl,
+          borderWidth: 1,
           radius: BorderRadius.circular(14),
           boxShadow: const <BoxShadow>[],
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           child: Row(children: [
-            ZineIconBadge(icon: icon, color: Zine.paper2, size: 30),
+            // ZineIconBadge always renders its glyph in Zine.ink (dark) unless the
+            // fill is Zine.coral — so a neutral badge needs a PALE fill to stay
+            // legible on the dark v2 surface (mirrors the old Zine.paper2 intent).
+            ZineIconBadge(icon: icon, color: Colors.white, size: 30),
             const SizedBox(width: 11),
-            Expanded(child: Text(name, style: ZineText.value(size: 14))),
+            Expanded(child: Text(name, style: ADText.rowName())),
           ]),
         ),
       );

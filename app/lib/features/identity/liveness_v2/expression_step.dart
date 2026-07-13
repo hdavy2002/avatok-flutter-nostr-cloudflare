@@ -8,8 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 
 import '../../../core/analytics.dart';
-import '../../../core/ui/zine.dart';
-import '../../../core/ui/zine_widgets.dart';
+import '../../../core/ui/avatok_dark.dart';
 
 /// Liveness V2 — EXPRESSION challenge step (Specs/LIVENESS-V2-PLAN.md §4 step
 /// 4b). ONE random expression from the server challenge list is asked; ML Kit
@@ -363,14 +362,19 @@ class _ExpressionStepState extends State<ExpressionStep> {
             margin: const EdgeInsets.symmetric(horizontal: 24),
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
-              color: Zine.ink.withValues(alpha: .72),
-              borderRadius: BorderRadius.circular(Zine.rSm),
-              border: Border.all(color: Zine.lime, width: Zine.bw),
+              color: const Color(0xE60B0B0D), // AD.bg @90%
+              borderRadius: BorderRadius.circular(AD.rDialog),
+              border: Border.all(color: AD.primaryBadge, width: 1),
             ),
             child: Text(
               _prompt,
               textAlign: TextAlign.center,
-              style: ZineText.cardTitle(size: 24, color: Zine.paper),
+              style: TextStyle(
+                fontFamily: ADText.family,
+                fontWeight: FontWeight.w800,
+                fontSize: 24,
+                color: AD.textPrimary,
+              ),
             ),
           ),
         ),
@@ -380,19 +384,29 @@ class _ExpressionStepState extends State<ExpressionStep> {
               margin: const EdgeInsets.symmetric(horizontal: 32),
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: Zine.paper,
-                borderRadius: BorderRadius.circular(Zine.rSm),
-                border: Border.all(color: Zine.ink, width: Zine.bwLg),
-                boxShadow: Zine.shadow,
+                color: AD.popover,
+                borderRadius: BorderRadius.circular(AD.rDialog),
+                border: Border.all(color: AD.borderControl, width: 1),
+                boxShadow: const [],
               ),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Text('Nearly there', textAlign: TextAlign.center, style: ZineText.hero(size: 20)),
+                Text('Nearly there',
+                    textAlign: TextAlign.center,
+                    style: ADText.appTitle().copyWith(fontSize: 20)),
                 const SizedBox(height: 8),
-                Text(_prompt, textAlign: TextAlign.center, style: ZineText.sub(size: 14)),
+                Text(_prompt,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontFamily: ADText.family,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                      height: 1.42,
+                      color: AD.textSecondary,
+                    )),
                 const SizedBox(height: 16),
                 SizedBox(
                   width: 200,
-                  child: ZineButton(label: 'Retry', fullWidth: true, onPressed: _retry),
+                  child: AdButton(label: 'Retry', fullWidth: true, onPressed: _retry),
                 ),
               ]),
             ),

@@ -3,8 +3,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/font_scale.dart';
-import '../../core/ui/zine.dart';
-import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/avatok_dark.dart';
 
 /// Settings → Display & fonts. Lets the user make the whole app's text bigger or
 /// smaller (applied live at the app root via [FontScale]).
@@ -31,67 +30,86 @@ class _DisplayFontsScreenState extends State<DisplayFontsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Zine.paper,
-      appBar: const ZineAppBar(title: 'Display & fonts', markWord: 'fonts'),
+      backgroundColor: AD.bg,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(64),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: AD.headerFooter,
+            border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
+          ),
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 6, 12, 10),
+              child: Row(children: [
+                const AdBackButton(),
+                const SizedBox(width: 4),
+                Expanded(child: Text('Display & fonts', style: ADText.appTitle(), maxLines: 1, overflow: TextOverflow.ellipsis)),
+              ]),
+            ),
+          ),
+        ),
+      ),
       body: ListView(padding: const EdgeInsets.all(20), children: [
         Text('Make message, chat, contacts and menu text bigger or smaller. '
-            'Big titles and icons stay the same size.', style: ZineText.sub(size: 13.5)),
+            'Big titles and icons stay the same size.', style: ADText.preview()),
         const SizedBox(height: 18),
         // Live preview card — text inside scales with the chosen value.
-        ZineCard(
+        AdCard(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('PREVIEW', style: ZineText.kicker()),
+            Text('PREVIEW', style: ADText.sectionLabel()),
             const SizedBox(height: 10),
             MediaQuery(
               data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(_v)),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Amy Williams', style: ZineText.cardTitle(size: 17)),
+                Text('Amy Williams', style: ADText.threadName()),
                 const SizedBox(height: 4),
-                Text('Hey! Did you get my message? 👋', style: ZineText.value(size: 15)),
+                Text('Hey! Did you get my message? 👋', style: ADText.rowName()),
                 const SizedBox(height: 2),
-                Text('Delivered · 19:59', style: ZineText.sub(size: 12.5)),
+                Text('Delivered · 19:59', style: ADText.preview()),
               ]),
             ),
           ]),
         ),
         const SizedBox(height: 20),
         Row(children: [
-          Text('TEXT SIZE', style: ZineText.kicker()),
+          Text('TEXT SIZE', style: ADText.sectionLabel()),
           const Spacer(),
-          Text(FontScale.labelFor(_v), style: ZineText.tag(size: 12, color: Zine.blueInk)),
+          Text(FontScale.labelFor(_v), style: ADText.statCaption(c: AD.iconSearch)),
         ]),
         Row(children: [
-          PhosphorIcon(PhosphorIcons.textAa(PhosphorIconsStyle.bold), size: 16, color: Zine.inkMute),
+          PhosphorIcon(PhosphorIcons.textAa(PhosphorIconsStyle.bold), size: 16, color: AD.textTertiary),
           Expanded(
             child: Slider(
               value: _v,
               min: FontScale.min,
               max: FontScale.max,
               divisions: 6,
-              activeColor: Zine.blueInk,
+              activeColor: AD.iconSearch,
               label: FontScale.labelFor(_v),
               onChanged: _apply,
             ),
           ),
-          PhosphorIcon(PhosphorIcons.textAa(PhosphorIconsStyle.bold), size: 26, color: Zine.ink),
+          PhosphorIcon(PhosphorIcons.textAa(PhosphorIconsStyle.bold), size: 26, color: AD.textPrimary),
         ]),
         const SizedBox(height: 6),
         Wrap(spacing: 8, runSpacing: 8, children: [
           for (final p in const [('Small', 0.9), ('Default', 1.0), ('Large', 1.18), ('Larger', 1.35), ('Largest', 1.6)])
             ChoiceChip(
-              label: Text(p.$1, style: ZineText.value(size: 13)),
+              label: Text(p.$1, style: ADText.rowName()),
               selected: (_v - p.$2).abs() < 0.02,
-              selectedColor: Zine.lime,
-              backgroundColor: Zine.card,
+              selectedColor: AD.primaryBadge,
+              backgroundColor: AD.card,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(100),
-                side: const BorderSide(color: Zine.ink, width: 1.5)),
+                side: const BorderSide(color: AD.borderControl, width: 1)),
               onSelected: (_) => _apply(p.$2),
             ),
         ]),
         const SizedBox(height: 18),
-        Center(child: ZineButton(
-          label: 'Reset to default', variant: ZineButtonVariant.ghost, fontSize: 14,
+        Center(child: AdButton(
+          label: 'Reset to default', variant: AdButtonVariant.ghost, fontSize: 14,
           icon: PhosphorIcons.arrowCounterClockwise(PhosphorIconsStyle.bold), trailingIcon: false,
           onPressed: () => _apply(1.0))),
       ]),

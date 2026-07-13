@@ -5,7 +5,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/guest_session.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine_widgets.dart';
 
 /// L0 entry — the FIRST thing a new user sees (Trust Ladder, §3).
@@ -91,20 +91,37 @@ class _HandleClaimScreenState extends State<HandleClaimScreen> {
   Widget build(BuildContext context) {
     if (_claimed) {
       return Scaffold(
-        body: ZineSuccessOverlay(
-          icon: Icons.verified_rounded,
-          headline: "It's yours!",
-          accentLine: '@$_clean',
-          sub: "Locked in and reserved. Let's set up the rest of you.",
-          ctaLabel: 'Keep going',
-          onCta: widget.onClaimed,
+        body: Container(
+          color: AD.bg,
+          child: SafeArea(child: Center(child: Padding(
+            padding: const EdgeInsets.all(40),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Container(
+                width: 120, height: 120,
+                decoration: BoxDecoration(shape: BoxShape.circle, color: AD.primaryBadge, boxShadow: AD.overlayShadow),
+                child: const Icon(Icons.verified_rounded, size: 56, color: Colors.white),
+              ),
+              const SizedBox(height: 24),
+              Text("It's yours!", style: ADText.appTitle().copyWith(fontSize: 34), textAlign: TextAlign.center),
+              const SizedBox(height: 10),
+              Text('@$_clean', style: ADText.rowName(c: AD.iconSearch)),
+              const SizedBox(height: 12),
+              ConstrainedBox(constraints: const BoxConstraints(maxWidth: 280),
+                child: Text("Locked in and reserved. Let's set up the rest of you.",
+                    style: ADText.preview(c: AD.textSecondary), textAlign: TextAlign.center)),
+              const SizedBox(height: 26),
+              AdButton(label: 'Keep going', onPressed: widget.onClaimed,
+                  icon: PhosphorIcons.arrowRight(PhosphorIconsStyle.bold)),
+            ]),
+          ))),
         ),
       );
     }
 
     final canPop = Navigator.of(context).canPop();
     return Scaffold(
-      body: ZinePaper(
+      body: Container(
+        color: AD.bg,
         child: SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
@@ -114,17 +131,48 @@ class _HandleClaimScreenState extends State<HandleClaimScreen> {
                 mainAxisAlignment:
                     canPop ? MainAxisAlignment.spaceBetween : MainAxisAlignment.end,
                 children: [
-                  if (canPop) const ZineBackButton(),
-                  const ZineStepPips(total: 3, active: 1),
+                  if (canPop) const AdBackButton(),
+                  Row(mainAxisSize: MainAxisSize.min, children: [
+                    for (var i = 1; i <= 3; i++) ...[
+                      Container(width: 9, height: 9, decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: i == 1 ? AD.primaryBadge : AD.card,
+                        border: Border.all(color: AD.borderControl, width: 1))),
+                      const SizedBox(width: 7),
+                    ],
+                    const SizedBox(width: 4),
+                    Text('STEP 1 / 3', style: ADText.sectionLabel()),
+                  ]),
                 ],
               ),
               Expanded(
                 child: SingleChildScrollView(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                     const SizedBox(height: 34),
-                    const Center(child: ZineCrest()),
+                    Center(
+                      child: Container(
+                        width: 116, height: 116,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: AD.card,
+                          border: Border.all(color: AD.borderControl, width: 1),
+                          boxShadow: AD.overlayShadow,
+                        ),
+                        child: Center(
+                          child: PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
+                              size: 46, color: AD.primaryBadge),
+                        ),
+                      ),
+                    ),
                     const SizedBox(height: 14),
-                    const ZineMarkTitle(pre: 'Pick your ', mark: 'handle', fontSize: 38),
+                    Text.rich(
+                      TextSpan(children: [
+                        const TextSpan(text: 'Pick your '),
+                        TextSpan(text: 'handle', style: const TextStyle(color: AD.primaryBadge)),
+                      ]),
+                      textAlign: TextAlign.center,
+                      style: ADText.appTitle().copyWith(fontSize: 38, height: 1.08),
+                    ),
                     const SizedBox(height: 14),
                     Center(
                       child: ConstrainedBox(
@@ -135,17 +183,17 @@ class _HandleClaimScreenState extends State<HandleClaimScreen> {
                             children: [
                               TextSpan(
                                   text: 'yours to own.',
-                                  style: ZineText.sub().copyWith(
-                                      fontWeight: FontWeight.w900, color: Zine.ink)),
+                                  style: ADText.preview(c: AD.textSecondary).copyWith(
+                                      fontWeight: FontWeight.w900, color: AD.textPrimary)),
                             ],
                           ),
-                          style: ZineText.sub(),
+                          style: ADText.preview(c: AD.textSecondary),
                           textAlign: TextAlign.center,
                         ),
                       ),
                     ),
                     const SizedBox(height: 34),
-                    ZineField(
+                    AdField(
                       controller: _ctrl,
                       label: 'your handle',
                       labelIcon: PhosphorIcons.at(PhosphorIconsStyle.bold),
@@ -163,7 +211,7 @@ class _HandleClaimScreenState extends State<HandleClaimScreen> {
                       const SizedBox(height: 14),
                       Wrap(spacing: 8, runSpacing: 8, children: [
                         for (final s in _suggestions)
-                          ZineSticker('@$s', onTap: () {
+                          AdSticker('@$s', onTap: () {
                             _ctrl.text = s;
                             _onChanged(s);
                           }),
@@ -173,7 +221,7 @@ class _HandleClaimScreenState extends State<HandleClaimScreen> {
                   ]),
                 ),
               ),
-              ZineButton(
+              AdButton(
                 label: 'Claim my handle',
                 icon: PhosphorIcons.arrowRight(PhosphorIconsStyle.bold),
                 fullWidth: true,
@@ -183,15 +231,15 @@ class _HandleClaimScreenState extends State<HandleClaimScreen> {
               ),
               const SizedBox(height: 18),
               Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                Text('already on AvaTOK? ', style: ZineText.tag(size: 14, color: Zine.inkSoft)),
-                ZineLink('log in', onTap: widget.onHaveAccount, fontSize: 14),
+                Text('already on AvaTOK? ', style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14)),
+                ZineLink('log in', onTap: widget.onHaveAccount, fontSize: 14, underline: AD.iconSearch),
               ]),
               const SizedBox(height: 16),
               Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                 PhosphorIcon(PhosphorIcons.lockKey(PhosphorIconsStyle.fill),
-                    size: 14, color: Zine.blueInk),
+                    size: 14, color: AD.iconSearch),
                 const SizedBox(width: 8),
-                Text('reserved instantly · no email yet', style: ZineText.kicker()),
+                Text('reserved instantly · no email yet', style: ADText.sectionLabel(c: AD.textTertiary)),
               ]),
             ]),
           ),
@@ -204,24 +252,24 @@ class _HandleClaimScreenState extends State<HandleClaimScreen> {
     final v = _clean;
     Widget sticker;
     if (_checking) {
-      sticker = ZineSticker('checking…',
-          kind: ZineStickerKind.hint,
+      sticker = AdSticker('checking…',
+          kind: AdStickerKind.hint,
           icon: PhosphorIcons.dotsThree(PhosphorIconsStyle.bold));
     } else if (v.isEmpty) {
-      sticker = ZineSticker('3–20 letters, numbers or _',
-          kind: ZineStickerKind.hint,
+      sticker = AdSticker('3–20 letters, numbers or _',
+          kind: AdStickerKind.hint,
           icon: PhosphorIcons.pencilSimple(PhosphorIconsStyle.fill));
     } else if (_avail == true) {
-      sticker = ZineSticker('@$v is available',
-          kind: ZineStickerKind.ok,
+      sticker = AdSticker('@$v is available',
+          kind: AdStickerKind.ok,
           icon: PhosphorIcons.checkCircle(PhosphorIconsStyle.fill));
     } else if (_avail == false) {
-      sticker = ZineSticker(_msg == null || _msg == 'Taken' ? '@$v is taken' : _msg!,
-          kind: ZineStickerKind.no,
+      sticker = AdSticker(_msg == null || _msg == 'Taken' ? '@$v is taken' : _msg!,
+          kind: AdStickerKind.no,
           icon: PhosphorIcons.xCircle(PhosphorIconsStyle.fill));
     } else {
-      sticker = ZineSticker('keep going — min 3 chars',
-          kind: ZineStickerKind.hint,
+      sticker = AdSticker('keep going — min 3 chars',
+          kind: AdStickerKind.hint,
           icon: PhosphorIcons.dotsThree(PhosphorIconsStyle.bold));
     }
     return Row(children: [
@@ -230,9 +278,9 @@ class _HandleClaimScreenState extends State<HandleClaimScreen> {
       if (v.isNotEmpty)
         Text.rich(
           TextSpan(text: 'avatok.me/', children: [
-            TextSpan(text: v, style: ZineText.tag(size: 12, color: Zine.blueInk)),
+            TextSpan(text: v, style: ADText.statCaption(c: AD.iconSearch).copyWith(fontSize: 12)),
           ]),
-          style: ZineText.tag(size: 12, color: Zine.inkSoft),
+          style: ADText.statCaption(c: AD.textTertiary).copyWith(fontSize: 12),
         ),
     ]);
   }

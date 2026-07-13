@@ -1,32 +1,31 @@
 import 'package:flutter/material.dart';
 
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
 
 /// AvaPhone is a DARK surface that simulates a PSTN-style phone app (dialer,
 /// SMS-style inbox, contacts) while every "call"/"message" is really an
-/// AvaTOK→AvaTOK in-network action (no real PSTN). The owner asked for a dark
-/// theme that still speaks the zine design language, so this palette layers
-/// dark surfaces UNDER the canonical zine ACCENT tokens ([Zine.lime],
-/// [Zine.mint], [Zine.blue], [Zine.coral], [Zine.lilac]) — the accents, ink
-/// borders, radii and Phosphor iconography all stay on-brand.
+/// AvaTOK→AvaTOK in-network action (no real PSTN). Migrated to the AvaTOK
+/// Dark v2 language ([AD]) — near-black surfaces, hairline borders, multicolor
+/// glyph accents and Phosphor iconography all stay on-brand.
 class PhoneTheme {
-  // Surfaces (dark).
-  static const bg = Color(0xFF0E1116);
-  static const surface = Color(0xFF161A20);
-  static const surface2 = Color(0xFF1E232B);
-  static const border = Color(0xFF2C323B);
+  // Surfaces (dark) — AD dark v2 tokens.
+  static const bg = AD.bg;
+  static const surface = AD.card;
+  static const surface2 = AD.cardHover;
+  static const border = AD.borderControl;
 
   // Text on dark.
-  static const text = Color(0xFFF2F4F7);
-  static const textSoft = Color(0xFF9AA2AD);
-  static const textMute = Color(0xFF6B7480);
+  static const text = AD.textPrimary;
+  static const textSoft = AD.textSecondary;
+  static const textMute = AD.textTertiary;
 
-  // Accents reuse the zine tokens so AvaPhone reads as part of AvaVerse.
-  static const accent = Zine.lime;    // primary action accent
-  static const callGreen = Zine.mint; // the round "call" button
-  static const teal = Zine.blue;      // info / network chips
-  static const danger = Zine.coral;   // missed / spam
-  static const lilac = Zine.lilac;    // assistant / receptionist
+  // Accents reuse the AD dark v2 glyph/status tokens so AvaPhone reads as
+  // part of AvaVerse.
+  static const accent = AD.primaryBadge;  // primary action accent
+  static const callGreen = AD.incomingCall; // the round "call" button
+  static const teal = AD.iconSearch;      // info / network chips
+  static const danger = AD.danger;        // missed / spam
+  static const lilac = AD.iconVideo;      // assistant / receptionist
 
   static const double radius = 18;
   static const double radiusSm = 12;

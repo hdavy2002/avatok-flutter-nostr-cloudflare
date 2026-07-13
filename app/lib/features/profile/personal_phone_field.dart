@@ -3,8 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
-import '../../core/ui/zine.dart';
-import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/avatok_dark.dart';
 
 /// [AVA-IDGATE-1] Personal phone number — UNVERIFIED contact data.
 ///
@@ -87,18 +86,18 @@ class _PersonalPhoneFieldState extends State<PersonalPhoneField> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(children: [
-          Icon(PhosphorIcons.phone(PhosphorIconsStyle.bold), size: 18, color: Zine.inkSoft),
+          Icon(PhosphorIcons.phone(PhosphorIconsStyle.bold), size: 18, color: AD.textSecondary),
           const SizedBox(width: 8),
-          Text('Personal phone (optional)', style: ZineText.cardTitle(size: 15)),
+          Text('Personal phone (optional)', style: ADText.threadName()),
         ]),
         const SizedBox(height: 6),
         Text(
           'Shown on your share card if you turn that on. We don\'t verify it, '
           'don\'t text it, and it has no effect on your account.',
-          style: ZineText.sub(size: 12, color: Zine.inkMute),
+          style: ADText.preview(c: AD.textTertiary).copyWith(fontSize: 12),
         ),
         const SizedBox(height: 10),
-        ZineField(
+        AdField(
           controller: _phoneCtrl,
           label: 'Phone number',
           keyboardType: TextInputType.phone,
@@ -107,10 +106,10 @@ class _PersonalPhoneFieldState extends State<PersonalPhoneField> {
         ),
         const SizedBox(height: 8),
         Row(children: [
-          ZineButton(label: 'Save', fontSize: 15, onPressed: _save),
+          AdButton(label: 'Save', fontSize: 15, onPressed: _save),
           if (_saved) ...[
             const SizedBox(width: 10),
-            Text('Saved', style: ZineText.sub(size: 13, color: Zine.inkMute)),
+            Text('Saved', style: ADText.preview(c: AD.textTertiary).copyWith(fontSize: 13)),
           ],
         ]),
       ],

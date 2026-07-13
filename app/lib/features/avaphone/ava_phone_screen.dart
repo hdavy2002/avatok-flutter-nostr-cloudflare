@@ -129,7 +129,7 @@ class _AvaPhoneScreenState extends State<AvaPhoneScreen> {
 }
 
 /// Convenience: ink colour for FAB foreground (kept readable on the teal accent).
-const Color _kInk = Color(0xFF0E1116);
+const Color _kInk = Colors.white;
 
 /// The dialpad footer destination keeps its distinctive teal rounded-square
 /// badge so it still reads as the dialer entry point now that it lives inline

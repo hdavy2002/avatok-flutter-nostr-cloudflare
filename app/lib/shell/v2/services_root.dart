@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../features/marketplace/marketplace_browse.dart';
 import '../shell_v2.dart';
 import 'shell_chrome.dart';
@@ -22,17 +22,17 @@ class ServicesRoot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       drawer: ShellSidebar(
         current: RootId.services,
         extra: [
           Padding(
             padding: const EdgeInsets.fromLTRB(6, 8, 6, 4),
-            child: Text('MARKETPLACE', style: ZineText.kicker()),
+            child: Text('MARKETPLACE', style: ADText.sectionLabel()),
           ),
           ShellMenuRow(
             icon: PhosphorIcons.storefront(PhosphorIconsStyle.bold),
-            color: Zine.coral,
+            color: AD.danger,
             title: 'Browse',
             onTap: () {
               Navigator.of(context).maybePop();
@@ -41,7 +41,7 @@ class ServicesRoot extends StatelessWidget {
           ),
           ShellMenuRow(
             icon: PhosphorIcons.tag(PhosphorIconsStyle.bold),
-            color: Zine.blue,
+            color: AD.iconSearch,
             title: 'My listings',
             onTap: () {
               Navigator.of(context).maybePop();
@@ -50,7 +50,7 @@ class ServicesRoot extends StatelessWidget {
           ),
           ShellMenuRow(
             icon: PhosphorIcons.plusCircle(PhosphorIconsStyle.bold),
-            color: Zine.lime,
+            color: AD.primaryBadge,
             title: 'Sell',
             onTap: () {
               Navigator.of(context).maybePop();
@@ -59,7 +59,7 @@ class ServicesRoot extends StatelessWidget {
           ),
           ShellMenuRow(
             icon: PhosphorIcons.archive(PhosphorIconsStyle.bold),
-            color: Zine.lilac,
+            color: AD.iconVideo,
             title: 'Archived',
             onTap: () {
               Navigator.of(context).maybePop();
@@ -70,7 +70,7 @@ class ServicesRoot extends StatelessWidget {
           if (walletEntryVisible)
             ShellMenuRow(
               icon: PhosphorIcons.wallet(PhosphorIconsStyle.bold),
-              color: Zine.mint,
+              color: AD.online,
               title: 'Wallet',
               subtitle: 'Balance & AvaCoins',
               onTap: () {
@@ -81,7 +81,7 @@ class ServicesRoot extends StatelessWidget {
           if (payoutEntryVisible)
             ShellMenuRow(
               icon: PhosphorIcons.bank(PhosphorIconsStyle.bold),
-              color: Zine.blue,
+              color: AD.iconSearch,
               title: 'Payout',
               subtitle: 'Cash out earnings',
               onTap: () {
@@ -92,17 +92,17 @@ class ServicesRoot extends StatelessWidget {
         ],
       ),
       appBar: AppBar(
-        backgroundColor: Zine.paper2,
+        backgroundColor: AD.headerFooter,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
-        shape: const Border(bottom: BorderSide(color: Zine.ink, width: Zine.bw)),
+        shape: const Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
         leading: Builder(
           builder: (ctx) => IconButton(
-            icon: PhosphorIcon(PhosphorIcons.list(PhosphorIconsStyle.bold), color: Zine.ink),
+            icon: PhosphorIcon(PhosphorIcons.list(PhosphorIconsStyle.bold), color: AD.textPrimary),
             onPressed: () => Scaffold.of(ctx).openDrawer(),
           ),
         ),
-        title: Text('Services', style: ZineText.appbar()),
+        title: Text('Services', style: ADText.appTitle()),
       ),
       body: const MarketplaceBrowse(),
     );

@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/analytics.dart';
-import '../../../core/ui/zine.dart';
+import '../../../core/ui/avatok_dark.dart';
 import '../../avatok/media.dart';
 
 /// Human-readable byte size (e.g. "2.4 MB"). Local copy so this widget has no
@@ -106,24 +106,24 @@ class _MediaDownloadPlaceholderState extends State<MediaDownloadPlaceholder> {
             width: 30,
             height: 30,
             decoration: BoxDecoration(
-              color: Zine.lime,
+              color: AD.primaryBadge,
               shape: BoxShape.circle,
-              border: Border.all(color: Zine.ink, width: 1.8),
+              border: Border.all(color: AD.borderControl, width: 1.8),
             ),
             child: Center(
               child: _busy
                   ? const SizedBox(
                       width: 14,
                       height: 14,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Zine.ink))
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                   : PhosphorIcon(PhosphorIcons.downloadSimple(PhosphorIconsStyle.bold),
-                      size: 15, color: Zine.ink),
+                      size: 15, color: Colors.white),
             ),
           ),
           const SizedBox(width: 8),
           Text(
             sizeLabel.isEmpty ? 'Voice message' : 'Voice message · $sizeLabel',
-            style: ZineText.value(size: 14),
+            style: ADText.rowName(),
           ),
         ]),
       );
@@ -144,8 +144,8 @@ class _MediaDownloadPlaceholderState extends State<MediaDownloadPlaceholder> {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Zine.placeholder.withValues(alpha: 0.55),
-                Zine.inkSoft.withValues(alpha: 0.65),
+                AD.textTertiary.withValues(alpha: 0.55),
+                AD.card.withValues(alpha: 0.9),
               ],
             ),
           ),
@@ -162,19 +162,18 @@ class _MediaDownloadPlaceholderState extends State<MediaDownloadPlaceholder> {
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.92),
+                  color: AD.card,
                   shape: BoxShape.circle,
-                  border: Border.all(color: Zine.ink, width: 2),
-                  boxShadow: Zine.shadowXs,
+                  border: Border.all(color: AD.borderControl, width: 2),
                 ),
                 child: Center(
                   child: _busy
                       ? const SizedBox(
                           width: 20,
                           height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2.4, color: Zine.ink))
+                          child: CircularProgressIndicator(strokeWidth: 2.4, color: AD.textPrimary))
                       : PhosphorIcon(PhosphorIcons.downloadSimple(PhosphorIconsStyle.fill),
-                          size: 22, color: Zine.ink),
+                          size: 22, color: AD.textPrimary),
                 ),
               ),
               if (sizeLabel.isNotEmpty) ...[
@@ -182,11 +181,12 @@ class _MediaDownloadPlaceholderState extends State<MediaDownloadPlaceholder> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: Zine.ink.withValues(alpha: 0.6),
+                    color: Colors.black.withValues(alpha: 0.6),
                     borderRadius: BorderRadius.circular(100),
                   ),
                   child: Text(sizeLabel,
-                      style: ZineText.tag(size: 10, color: Colors.white)),
+                      style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w700,
+                          fontSize: 10, color: Colors.white)),
                 ),
               ],
             ]),

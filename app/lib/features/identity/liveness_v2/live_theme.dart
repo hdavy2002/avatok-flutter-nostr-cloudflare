@@ -1,44 +1,45 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/ui/zine.dart';
+import '../../../core/ui/avatok_dark.dart';
 
-/// [LIVE-UI-3] Shared styling for the redesigned Liveness V2 flow (design port
-/// of `design/Liveliness Check Screens/Liveness Check.dc.html`).
+/// [LIVE-UI-3] Shared styling for the redesigned Liveness V2 flow, re-skinned to
+/// the AvaTOK Dark v2 language (design port of `design/Liveliness Check
+/// Screens/Liveness Check.dc.html`).
 ///
-/// The new flow is a DARK stage (#062D2A) with the zine poster palette layered
-/// on top — distinct from the light zine paper the rest of the app uses. These
-/// tokens/helpers keep that look consistent across the orchestrator + step
-/// widgets without re-deriving colours everywhere. Where a value matches a zine
-/// token (lime/coral/lilac/mint/ink) we alias it; the dark surfaces are local
-/// to this flow and taken from the design CSS.
+/// The flow is a DARK stage — near-black AD surfaces with dark-v2 accents layered
+/// on top. Every token below maps to `AD`/`ADText` so the whole flow shifts with
+/// the rest of the app. Hairline borders replace the old ink borders and the hard
+/// offset shadows are dropped (soft/flat elevation).
 class LiveTheme {
   LiveTheme._();
 
-  // ── Surfaces (from the design CSS) ────────────────────────────────────────
-  /// Stage background — deep teal `#062D2A`.
-  static const stage = Color(0xFF062D2A);
-  /// Camera card inner fill — `#04201D`.
-  static const cameraCard = Color(0xFF04201D);
-  /// Paper on the dark stage (headlines, checks) — reuses zine paper.
-  static const paper = Zine.paper;
+  // ── Surfaces (dark v2 — mapped to AD tokens) ──────────────────────────────
+  /// Stage background — near-black (was deep teal).
+  static const stage = AD.bg;
+  /// Camera card inner fill — dark card surface.
+  static const cameraCard = AD.card;
+  /// Light text / corner brackets on the dark stage.
+  static const paper = AD.textPrimary;
 
-  // ── Poster accents (aliased to zine tokens) ───────────────────────────────
-  static const lime = Zine.lime;
-  static const coral = Zine.coral;
-  static const lilac = Zine.lilac;
-  static const mint = Zine.mint;
-  static const blue = Zine.blue;
-  static const ink = Zine.ink;
-  static const inkSoft = Zine.inkSoft;
-  static const card = Zine.card;
-  static const tape = Zine.tape;
-  /// Coral marker-highlight (34%) — headline tape for "recording"/"yet".
-  static const coralMark = Zine.coralMark;
+  // ── Accents (mapped to AD dark-v2 tokens) ─────────────────────────────────
+  static const lime = AD.primaryBadge; // primary action (orange)
+  static const coral = AD.danger;
+  static const lilac = AD.iconVideo;
+  static const mint = AD.online;
+  static const blue = AD.iconSearch;
+  /// Hairline border "ink" (was warm-black ink).
+  static const ink = AD.borderControl;
+  static const inkSoft = AD.textSecondary;
+  static const card = AD.card;
+  /// Tape highlight — primaryBadge @30%.
+  static const tape = Color(0x4DE8833A);
+  /// Danger marker-highlight @34%.
+  static const coralMark = Color(0x57E5735C);
 
-  /// 62%-paper — the design's muted sub-text on the dark stage.
-  static const subPaper = Color(0x9EF9F7ED);
-  /// 45%-paper — dashed borders / pending markers.
-  static const dimPaper = Color(0x73F9F7ED);
+  /// Muted sub-text on the dark stage.
+  static const subPaper = AD.textSecondary;
+  /// Faint dashed borders / pending markers.
+  static const dimPaper = AD.textTertiary;
 
   // ── Motion ────────────────────────────────────────────────────────────────
   /// Honour the OS "reduce motion" setting for every animation in this flow.
@@ -59,7 +60,7 @@ class LiveTheme {
     fontWeight: FontWeight.w700,
     fontSize: 10.5,
     letterSpacing: 1,
-    color: Zine.inkMute,
+    color: AD.textTertiary,
   );
 
   static const TextStyle phraseStyle = TextStyle(
@@ -67,7 +68,7 @@ class LiveTheme {
     fontWeight: FontWeight.w800,
     fontSize: 21,
     height: 1.35,
-    color: Zine.ink,
+    color: AD.textPrimary,
   );
 
   static const TextStyle checkRowStyle = TextStyle(
@@ -80,7 +81,7 @@ class LiveTheme {
   /// Headline with a tape-highlighted [markWord] (the design's rotated lime tape
   /// on the last word). Renders paper-coloured text on the dark stage.
   static Widget stageHeadline(String lead,
-      {required String markWord, Color markFill = tape, Color markText = ink}) {
+      {required String markWord, Color markFill = tape, Color markText = paper}) {
     return RichText(
       text: TextSpan(
         style: const TextStyle(
@@ -131,15 +132,14 @@ class LiveTheme {
         decoration: BoxDecoration(
           color: active ? lime : card,
           borderRadius: BorderRadius.circular(100),
-          border: Border.all(color: ink, width: 2),
-          boxShadow: active ? Zine.shadowXs : null,
+          border: Border.all(color: active ? lime : ink, width: 1),
         ),
         child: Text(label,
             style: const TextStyle(
               fontFamily: 'Nunito',
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w800,
               fontSize: 13,
-              color: ink,
+              color: paper,
             )),
       ),
     );
@@ -150,7 +150,7 @@ class LiveTheme {
   static Widget pill({
     required String label,
     Color? filled,
-    Color textOnFill = ink,
+    Color textOnFill = paper,
     IconData? icon,
     bool leadingDotBlink = false,
     bool outlined = false,
@@ -162,8 +162,7 @@ class LiveTheme {
         color: filled,
         borderRadius: BorderRadius.circular(100),
         border: Border.all(
-            color: filled != null ? ink : dimPaper, width: 2),
-        boxShadow: filled != null ? Zine.shadowXs : null,
+            color: filled != null ? ink : dimPaper, width: 1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -203,14 +202,13 @@ class LiveTheme {
           decoration: BoxDecoration(
             color: lime,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: ink, width: 2.5),
-            boxShadow: Zine.shadowSm,
+            border: Border.all(color: ink, width: 1),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               if (icon != null) ...[
-                Icon(icon, size: 20, color: ink),
+                Icon(icon, size: 20, color: paper),
                 const SizedBox(width: 8),
               ],
               Text(label,
@@ -218,7 +216,7 @@ class LiveTheme {
                     fontFamily: 'Nunito',
                     fontWeight: FontWeight.w800,
                     fontSize: 18,
-                    color: ink,
+                    color: paper,
                   )),
             ],
           ),
@@ -231,8 +229,8 @@ class LiveTheme {
   static BoxDecoration get taperedCardDecoration => BoxDecoration(
         color: card,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: ink, width: 2.5),
-        boxShadow: Zine.shadowSm,
+        border: Border.all(color: ink, width: 1),
+        boxShadow: const [],
       );
 
   /// A little tape strip (rotated lime rectangle) that sits on card tops.
@@ -247,8 +245,8 @@ class LiveTheme {
       decoration: BoxDecoration(
         color: cameraCard,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: ink, width: 2.5),
-        boxShadow: Zine.shadowSm,
+        border: Border.all(color: ink, width: 1),
+        boxShadow: const [],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(19.5),

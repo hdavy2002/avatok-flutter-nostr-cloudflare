@@ -7,7 +7,7 @@ import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 
 import '../../../core/analytics.dart';
 import '../../../core/ava_log.dart';
-import '../../../core/ui/zine.dart';
+import '../../../core/ui/avatok_dark.dart';
 import 'link_preview_card.dart';
 
 /// In-app link viewer — the "draggable sheet + mini player" experience.
@@ -267,8 +267,8 @@ class _LinkViewerHostState extends State<_LinkViewerHost>
           bottom: -dy,
           height: sheetH,
           child: Material(
-            color: Zine.paper2,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+            color: AD.overlaySheet,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(AD.rSheet)),
             clipBehavior: Clip.antiAlias,
             child: Column(children: [
               // Grab handle + actions. Dragging anywhere on this bar moves the
@@ -292,7 +292,7 @@ class _LinkViewerHostState extends State<_LinkViewerHost>
                           width: 44,
                           height: 4,
                           decoration: BoxDecoration(
-                            color: Zine.inkMute,
+                            color: AD.textFaint,
                             borderRadius: BorderRadius.circular(100),
                           ),
                         ),
@@ -350,7 +350,7 @@ class _RoundIconButton extends StatelessWidget {
           shape: BoxShape.circle,
         ),
         child: Icon(icon,
-            size: size * 0.62, color: dark ? Colors.white : Zine.ink),
+            size: size * 0.62, color: dark ? Colors.white : AD.textPrimary),
       ),
     );
     return tooltip == null ? btn : Tooltip(message: tooltip!, child: btn);
@@ -528,14 +528,13 @@ class _EmbedBlocked extends StatelessWidget {
           Text(
             "This video can't be played here",
             textAlign: TextAlign.center,
-            style: ZineText.value(size: 15, weight: FontWeight.w700)
-                .copyWith(color: Colors.white),
+            style: ADText.rowName(c: Colors.white),
           ),
           const SizedBox(height: 6),
           Text(
             'The uploader turned off playback outside YouTube.',
             textAlign: TextAlign.center,
-            style: ZineText.sub(size: 12.5, color: Colors.white60),
+            style: ADText.preview(c: Colors.white60),
           ),
           const SizedBox(height: 16),
           FilledButton.icon(

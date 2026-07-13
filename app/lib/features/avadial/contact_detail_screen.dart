@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../avatok/chat_thread.dart';
@@ -121,7 +122,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
         backgroundColor: AvaDialTheme.surface,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
-        shape: const Border(bottom: BorderSide(color: AvaDialTheme.border, width: Zine.bw)),
+        shape: const Border(bottom: BorderSide(color: AvaDialTheme.border, width: 1)),
         title: Text('Contact', style: ZineText.appbar(color: AvaDialTheme.text)),
         actions: [
           IconButton(
@@ -147,13 +148,13 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
                       width: 96,
                       height: 96,
                       decoration: BoxDecoration(
-                        color: Zine.blueMark,
+                        color: AD.card,
                         shape: BoxShape.circle,
-                        border: Border.all(color: AvaDialTheme.border, width: Zine.bw),
+                        border: Border.all(color: AvaDialTheme.border, width: 1),
                       ),
                       alignment: Alignment.center,
                       child: Text(_initials,
-                          style: ZineText.cardTitle(size: 34, color: Zine.blue)),
+                          style: ZineText.cardTitle(size: 34, color: AD.iconSearch)),
                     ),
                     const SizedBox(height: 14),
                     Text(_title,
@@ -166,23 +167,23 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
                 ),
                 const SizedBox(height: 22),
                 Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-                  _action(PhosphorIcons.phone(PhosphorIconsStyle.bold), 'Call', Zine.mint, _call),
-                  _action(PhosphorIcons.chatText(PhosphorIconsStyle.bold), 'Message', Zine.lilac, _sms),
-                  _action(PhosphorIcons.chatCircleDots(PhosphorIconsStyle.fill), 'AvaTOK', Zine.lime, _avatok),
-                  _action(PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold), 'Edit', Zine.blue, _edit),
+                  _action(PhosphorIcons.phone(PhosphorIconsStyle.bold), 'Call', AD.incomingCall, _call),
+                  _action(PhosphorIcons.chatText(PhosphorIconsStyle.bold), 'Message', AD.iconVideo, _sms),
+                  _action(PhosphorIcons.chatCircleDots(PhosphorIconsStyle.fill), 'AvaTOK', AD.primaryBadge, _avatok),
+                  _action(PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold), 'Edit', AD.iconSearch, _edit),
                   _action(
                       _blocked
                           ? PhosphorIcons.prohibitInset(PhosphorIconsStyle.bold)
                           : PhosphorIcons.prohibit(PhosphorIconsStyle.bold),
                       _blocked ? 'Unblock' : 'Block',
-                      Zine.coral,
+                      AD.danger,
                       _toggleBlock),
                 ]),
                 const SizedBox(height: 24),
                 if (hasAvatok)
                   _fieldTile(
                     icon: PhosphorIcons.chatCircleDots(PhosphorIconsStyle.fill),
-                    color: Zine.lime,
+                    color: AD.primaryBadge,
                     label: 'AvaTOK',
                     value: _o!.avatokNumber!,
                     onTap: _avatok,
@@ -190,7 +191,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
                   ),
                 _fieldTile(
                   icon: PhosphorIcons.phone(PhosphorIconsStyle.bold),
-                  color: Zine.mint,
+                  color: AD.incomingCall,
                   label: 'Phone',
                   value: widget.number,
                   onTap: _call,
@@ -198,21 +199,21 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
                 if (_o?.personalEmail?.isNotEmpty ?? false)
                   _fieldTile(
                     icon: PhosphorIcons.envelopeSimple(PhosphorIconsStyle.bold),
-                    color: Zine.blue,
+                    color: AD.iconSearch,
                     label: 'Personal email',
                     value: _o!.personalEmail!,
                   ),
                 if (_o?.businessEmail?.isNotEmpty ?? false)
                   _fieldTile(
                     icon: PhosphorIcons.briefcase(PhosphorIconsStyle.bold),
-                    color: Zine.blue,
+                    color: AD.iconSearch,
                     label: 'Business email',
                     value: _o!.businessEmail!,
                   ),
                 if (_o?.linkedin?.isNotEmpty ?? false)
                   _fieldTile(
                     icon: PhosphorIcons.linkedinLogo(PhosphorIconsStyle.bold),
-                    color: Zine.blue,
+                    color: AD.iconSearch,
                     label: 'LinkedIn',
                     value: _o!.linkedin!,
                   ),
@@ -227,7 +228,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
                 const SizedBox(height: 10),
                 _fieldTile(
                   icon: PhosphorIcons.clockCounterClockwise(PhosphorIconsStyle.bold),
-                  color: Zine.mint,
+                  color: AD.incomingCall,
                   label: 'Call history',
                   value: 'View calls with this number',
                   onTap: () => Navigator.push(context, MaterialPageRoute<void>(
@@ -249,7 +250,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
           decoration: BoxDecoration(
             color: AvaDialTheme.surface2,
             shape: BoxShape.circle,
-            border: Border.all(color: AvaDialTheme.border, width: Zine.bw),
+            border: Border.all(color: AvaDialTheme.border, width: 1),
           ),
           alignment: Alignment.center,
           child: PhosphorIcon(icon, color: color, size: 23),
@@ -279,7 +280,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
                 .showSnackBar(SnackBar(content: Text('$label copied')));
           }
         },
-        child: ZineCard(
+        child: AdCard(
           color: AvaDialTheme.surface2,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           child: Row(children: [

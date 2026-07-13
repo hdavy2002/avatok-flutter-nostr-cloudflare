@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'avadial_channel.dart';
@@ -182,7 +183,7 @@ class _InCallScreenState extends State<InCallScreen> {
         ? name.characters.first.toUpperCase()
         : null;
     // Known contact = mint, same color-coding convention as PstnCallScreen.
-    final accent = _contact != null ? Zine.mint : Zine.blue;
+    final accent = _contact != null ? AD.incomingCall : AD.iconSearch;
     return Container(
       width: 108,
       height: 108,
@@ -190,12 +191,12 @@ class _InCallScreenState extends State<InCallScreen> {
       decoration: BoxDecoration(
         color: accent,
         shape: BoxShape.circle,
-        border: Border.all(color: AvaDialTheme.border, width: Zine.bwLg),
-        boxShadow: Zine.shadow,
+        border: Border.all(color: AvaDialTheme.border, width: 2),
+        boxShadow: const <BoxShadow>[],
       ),
       child: initial != null
-          ? Text(initial, style: ZineText.hero(size: 44, color: Zine.ink))
-          : Icon(PhosphorIcons.phoneCall(PhosphorIconsStyle.fill), size: 50, color: Zine.ink),
+          ? Text(initial, style: ZineText.hero(size: 44, color: Colors.white))
+          : Icon(PhosphorIcons.phoneCall(PhosphorIconsStyle.fill), size: 50, color: Colors.white),
     );
   }
 
@@ -231,11 +232,11 @@ class _InCallScreenState extends State<InCallScreen> {
     return Column(mainAxisSize: MainAxisSize.min, children: [
       ZinePressable(
         onTap: onTap,
-        color: active ? Zine.lime : AvaDialTheme.surface2,
+        color: active ? AD.primaryBadge : AvaDialTheme.surface2,
         borderColor: AvaDialTheme.border,
         radius: BorderRadius.circular(100),
         padding: const EdgeInsets.all(18),
-        child: Icon(icon, size: 26, color: active ? Zine.ink : AvaDialTheme.text),
+        child: Icon(icon, size: 26, color: active ? Colors.white : AvaDialTheme.text),
       ),
       const SizedBox(height: 6),
       Text(label, style: ZineText.tag(size: 11, color: AvaDialTheme.textSoft)),
@@ -264,18 +265,18 @@ class _InCallScreenState extends State<InCallScreen> {
         ],
       ),
       const SizedBox(height: 10),
-      ZineButton(
+      AdButton(
         label: 'Hide keypad',
-        variant: ZineButtonVariant.ghost,
+        variant: AdButtonVariant.ghost,
         trailingIcon: false,
         onPressed: () => setState(() => _keypad = false),
       ),
     ]);
   }
 
-  Widget _endButton() => ZineButton(
+  Widget _endButton() => AdButton(
         label: 'End',
-        variant: ZineButtonVariant.coral,
+        variant: AdButtonVariant.danger,
         fullWidth: true,
         icon: Icons.call_end,
         trailingIcon: false,

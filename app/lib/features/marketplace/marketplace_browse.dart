@@ -6,6 +6,7 @@ import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/avatar_cache.dart';
 import '../../core/listings_api.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../explore/listing_detail.dart';
 import 'sell_listing_flow.dart' show kMarketCategories;
 
@@ -75,10 +76,31 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
     return items;
   }
 
+  /// Dark-themed ChoiceChip — orange fill when selected, hairline card otherwise.
+  Widget _chipStyled({required String label, required bool selected, required ValueChanged<bool> onSelected}) =>
+      ChoiceChip(
+        label: Text(label),
+        labelStyle: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w800,
+            color: selected ? Colors.white : AD.textSecondary),
+        selected: selected,
+        showCheckmark: false,
+        onSelected: onSelected,
+        backgroundColor: AD.card,
+        selectedColor: AD.primaryBadge,
+        side: BorderSide(color: selected ? AD.primaryBadge : AD.borderControl, width: 1),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100)),
+      );
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Marketplace')),
+      backgroundColor: AD.bg,
+      appBar: AppBar(
+        backgroundColor: AD.headerFooter,
+        foregroundColor: AD.textPrimary,
+        elevation: 0,
+        title: Text('Marketplace', style: ADText.appTitle()),
+      ),
       body: Column(children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
@@ -88,19 +110,20 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
             onSubmitted: (_) => _load(),
             decoration: InputDecoration(
               hintText: 'Search the marketplace…',
-              prefixIcon: const Icon(Icons.search),
+              hintStyle: TextStyle(color: AD.placeholderOnWhite),
+              prefixIcon: Icon(Icons.search, color: AD.placeholderOnWhite),
               filled: true,
-              fillColor: Colors.white,
+              fillColor: AD.inputField,
               isDense: true,
               border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(100),
-                  borderSide: const BorderSide(color: Colors.black, width: 2)),
+                  borderSide: BorderSide(color: AD.borderControl, width: 1)),
               enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(100),
-                  borderSide: const BorderSide(color: Colors.black, width: 2)),
+                  borderSide: BorderSide(color: AD.borderControl, width: 1)),
               focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(100),
-                  borderSide: const BorderSide(color: Colors.black, width: 2)),
+                  borderSide: BorderSide(color: AD.iconSearch, width: 1)),
             ),
           ),
         ),
@@ -111,37 +134,37 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
             if (_country.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(right: 8),
-                child: ChoiceChip(
-                  label: Text('${_flagOf(_country)} My country'),
+                child: _chipStyled(
+                  label: '${_flagOf(_country)} My country',
                   selected: _myCountryOnly,
                   onSelected: (v) { _myCountryOnly = v; _load(); },
                 ),
               ),
             Padding(
               padding: const EdgeInsets.only(right: 8),
-              child: ChoiceChip(
-                label: const Text('🌍 All'),
+              child: _chipStyled(
+                label: '🌍 All',
                 selected: !_myCountryOnly,
                 onSelected: (v) { _myCountryOnly = !v; _load(); },
               ),
             ),
             const SizedBox(width: 8),
-            ChoiceChip(
-              label: const Text('All categories'),
+            _chipStyled(
+              label: 'All categories',
               selected: _category == null,
               onSelected: (_) { _category = null; _load(); },
             ),
             for (final c in kMarketCategories) ...[
               const SizedBox(width: 8),
-              ChoiceChip(
-                label: Text(c),
+              _chipStyled(
+                label: c,
                 selected: _category == c,
                 onSelected: (_) { _category = c; _load(); },
               ),
             ],
           ]),
         ),
-        const Divider(height: 1),
+        Divider(height: 1, color: AD.borderHairline),
         Expanded(
           child: RefreshIndicator(
             onRefresh: () async => _load(fresh: true),
@@ -153,11 +176,11 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
                 }
                 final items = snap.data ?? const <ListingCard>[];
                 if (items.isEmpty) {
-                  return ListView(children: const [
-                    SizedBox(height: 120),
-                    Icon(Icons.storefront_outlined, size: 48, color: Colors.black26),
-                    SizedBox(height: 8),
-                    Center(child: Text('No listings here yet — try All countries.')),
+                  return ListView(children: [
+                    const SizedBox(height: 120),
+                    Icon(Icons.storefront_outlined, size: 48, color: AD.textTertiary),
+                    const SizedBox(height: 8),
+                    Center(child: Text('No listings here yet — try All countries.', style: ADText.preview())),
                   ]);
                 }
                 return GridView.builder(
@@ -184,15 +207,15 @@ class _CachedCover extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final placeholder = Container(
-      color: const Color(0x11000000),
-      child: const Center(child: Icon(Icons.inventory_2_outlined, size: 36, color: Colors.black26)),
+      color: AD.card,
+      child: Center(child: Icon(Icons.inventory_2_outlined, size: 36, color: AD.textTertiary)),
     );
     if (url == null || url!.isEmpty) return placeholder;
     return FutureBuilder<File?>(
       future: AvatarCache.getAny(url!, 600),
       builder: (_, snap) {
         if (snap.connectionState != ConnectionState.done) {
-          return Container(color: const Color(0x08000000));
+          return Container(color: AD.cardHover);
         }
         final f = snap.data;
         if (f == null) return placeholder;
@@ -245,9 +268,9 @@ class _CardState extends State<_Card> {
       },
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
-          border: Border.all(color: Colors.black, width: 2),
-          borderRadius: BorderRadius.circular(12),
+          color: AD.card,
+          border: Border.all(color: AD.borderControl, width: 1),
+          borderRadius: BorderRadius.circular(AD.rListCard),
         ),
         clipBehavior: Clip.antiAlias,
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -256,7 +279,7 @@ class _CardState extends State<_Card> {
               _CachedCover(url: card.coverUrl),
               // "NEW" chip (top-left) — only when created_at < 48h.
               if (card.isNew)
-                Positioned(left: 6, top: 6, child: _chip('NEW', bg: const Color(0xFF111111), fg: Colors.white)),
+                Positioned(left: 6, top: 6, child: _chip('NEW', bg: AD.primaryBadge, fg: Colors.white)),
               // Heart overlay (top-right) — optimistic favorite toggle.
               Positioned(
                 right: 4, top: 4,
@@ -269,7 +292,7 @@ class _CardState extends State<_Card> {
                     child: Icon(
                       card.favorited ? Icons.favorite : Icons.favorite_border,
                       size: 18,
-                      color: card.favorited ? const Color(0xFFE23744) : Colors.black87,
+                      color: card.favorited ? AD.danger : AD.textOnInput,
                     ),
                   ),
                 ),
@@ -282,28 +305,28 @@ class _CardState extends State<_Card> {
               Row(children: [
                 Expanded(child: Text(card.displayPrice,
                     maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
+                    style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w800, fontSize: 14, color: AD.online))),
                 if (card.country != null && card.country!.isNotEmpty)
                   Text(_flagOf(card.country), style: const TextStyle(fontSize: 13)),
               ]),
               const SizedBox(height: 2),
               Text(card.title, maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12.5)),
+                  style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600, fontSize: 12.5, color: AD.textPrimary)),
               const SizedBox(height: 5),
               // Wired micro-stats row — every chip guards its own value (no 0/NULL).
               Row(children: [
                 if (card.ratingAvg != null && card.ratingCount > 0) ...[
-                  const Icon(Icons.star, size: 12, color: Color(0xFFF5A623)),
+                  Icon(Icons.star, size: 12, color: AD.iconEmoji),
                   const SizedBox(width: 1),
                   Text('${card.ratingAvg!.toStringAsFixed(1)} (${card.ratingCount})',
-                      style: const TextStyle(fontSize: 10.5, color: Colors.black54, fontWeight: FontWeight.w700)),
+                      style: TextStyle(fontFamily: ADText.family, fontSize: 10.5, color: AD.textTertiary, fontWeight: FontWeight.w700)),
                   const SizedBox(width: 8),
                 ],
                 if (card.viewCount > 0) ...[
-                  const Icon(Icons.visibility_outlined, size: 12, color: Colors.black45),
+                  Icon(Icons.visibility_outlined, size: 12, color: AD.textTertiary),
                   const SizedBox(width: 2),
                   Text('${card.viewCount}',
-                      style: const TextStyle(fontSize: 10.5, color: Colors.black54, fontWeight: FontWeight.w600)),
+                      style: TextStyle(fontFamily: ADText.family, fontSize: 10.5, color: AD.textTertiary, fontWeight: FontWeight.w600)),
                 ],
                 const Spacer(),
                 // Small seller avatar chip (never a dummy — Avatar seeds from uid).

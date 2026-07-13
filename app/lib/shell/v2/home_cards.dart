@@ -7,8 +7,8 @@ import '../../core/analytics.dart';
 import '../../core/call_log_store.dart';
 import '../../core/db.dart';
 import '../../core/money_api.dart';
-import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../shell_v2.dart';
 import 'home_cards_api.dart';
 import 'home_cards_store.dart';
@@ -179,6 +179,23 @@ class _HomeCardsState extends State<HomeCards> {
 
   void _tap(String card) => Analytics.capture('shellv2_card_tap', {'card': card});
 
+  /// Dark v2 replacement for the old ZineCardHead row: icon badge (ZineIconBadge
+  /// kept as-is per the re-skin plan) + Nunito title + optional right caption.
+  Widget _cardHead({
+    required IconData icon,
+    required String title,
+    Color accent = AD.iconSearch,
+    String? tag,
+  }) {
+    return Row(children: [
+      ZineIconBadge(icon: icon, color: accent),
+      const SizedBox(width: 11),
+      Expanded(child: Text(title, style: ADText.threadName())),
+      if (tag != null)
+        Text(tag.toUpperCase(), style: ADText.statCaption(c: AD.textTertiary)),
+    ]);
+  }
+
   @override
   Widget build(BuildContext context) {
     final cards = <Widget>[];
@@ -216,12 +233,12 @@ class _HomeCardsState extends State<HomeCards> {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 36),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            ZineIconBadge(icon: PhosphorIcons.squaresFour(PhosphorIconsStyle.bold), color: Zine.lime, size: 52),
+            ZineIconBadge(icon: PhosphorIcons.squaresFour(PhosphorIconsStyle.bold), color: AD.primaryBadge, size: 52),
             const SizedBox(height: 14),
-            Text('No cards on Home', textAlign: TextAlign.center, style: ZineText.cardTitle(size: 17)),
+            Text('No cards on Home', textAlign: TextAlign.center, style: ADText.threadName().copyWith(fontSize: 17)),
             const SizedBox(height: 6),
             Text('Turn cards on from the menu → Cards.',
-                textAlign: TextAlign.center, style: ZineText.sub(size: 13.5)),
+                textAlign: TextAlign.center, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13.5)),
           ]),
         ),
       );
@@ -237,42 +254,48 @@ class _HomeCardsState extends State<HomeCards> {
 
   // ── Wallet card ─────────────────────────────────────────────────────────
   Widget _walletCard(BuildContext context) {
-    return ZineCard(
+    return AdCard(
+      radius: AD.rStatCard,
       onTap: () {
         _tap('wallet');
         openShellDestination(context, 'wallet');
       },
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        ZineCardHead(
+        _cardHead(
             icon: PhosphorIcons.wallet(PhosphorIconsStyle.bold),
-            title: 'Wallet', accent: Zine.mint, tag: 'AVACOINS'),
+            title: 'Wallet', accent: AD.online, tag: 'AVACOINS'),
         const SizedBox(height: 14),
         if (_walletLoading)
           _skeletonLine(120)
         else
-          Text('${_coins ?? '—'}', style: ZineText.stat(size: 34)),
+          Text('${_coins ?? '—'}',
+              style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w900,
+                  fontSize: 34, color: AD.textPrimary)),
         const SizedBox(height: 4),
-        Text('Tap to open your wallet', style: ZineText.sub(size: 13)),
+        Text('Tap to open your wallet',
+            style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13)),
       ]),
     );
   }
 
   // ── Call logs card ──────────────────────────────────────────────────────
   Widget _callsCard(BuildContext context) {
-    return ZineCard(
+    return AdCard(
+      radius: AD.rStatCard,
       onTap: () {
         _tap('calllogs');
         ShellScope.of(context).switchRoot(RootId.avaTalk);
       },
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        ZineCardHead(
+        _cardHead(
             icon: PhosphorIcons.phone(PhosphorIconsStyle.bold),
-            title: 'Call logs', accent: Zine.blue),
+            title: 'Call logs', accent: AD.iconSearch),
         const SizedBox(height: 12),
         if (_callsLoading)
           _skeletonLine(180)
         else if (_calls.isEmpty)
-          Text('No recent calls yet.', style: ZineText.sub(size: 13.5))
+          Text('No recent calls yet.',
+              style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13.5))
         else
           ...[for (final c in _calls) _callRow(c)],
       ]),
@@ -285,15 +308,15 @@ class _HomeCardsState extends State<HomeCards> {
     switch (c.dir) {
       case CallDir.incoming:
         icon = PhosphorIcons.phoneIncoming(PhosphorIconsStyle.bold);
-        color = Zine.mintInk;
+        color = AD.online;
         break;
       case CallDir.outgoing:
         icon = PhosphorIcons.phoneOutgoing(PhosphorIconsStyle.bold);
-        color = Zine.blueInk;
+        color = AD.iconSearch;
         break;
       case CallDir.missed:
         icon = PhosphorIcons.phoneX(PhosphorIconsStyle.bold);
-        color = Zine.coral;
+        color = AD.danger;
         break;
     }
     return Padding(
@@ -303,20 +326,21 @@ class _HomeCardsState extends State<HomeCards> {
         const SizedBox(width: 10),
         Expanded(
           child: Text(c.name.isEmpty ? 'Unknown' : c.name,
-              maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.value(size: 14)),
+              maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.rowName()),
         ),
-        Text(c.timeLabel, style: ZineText.tag(size: 11, color: Zine.inkSoft)),
+        Text(c.timeLabel, style: ADText.statCaption(c: AD.textTertiary).copyWith(fontSize: 11)),
       ]),
     );
   }
 
   // ── Messages card (Talk-only; SMS is an explicit unavailable state) ──────
   Widget _messagesCard(BuildContext context) {
-    return ZineCard(
+    return AdCard(
+      radius: AD.rStatCard,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        ZineCardHead(
+        _cardHead(
             icon: PhosphorIcons.chatCircle(PhosphorIconsStyle.bold),
-            title: 'Messages', accent: Zine.lilac),
+            title: 'Messages', accent: AD.iconVideo),
         const SizedBox(height: 12),
         Row(children: [
           _msgChip('Talk', 0),
@@ -330,14 +354,15 @@ class _HomeCardsState extends State<HomeCards> {
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 6),
             child: Text('SMS available once Ava is your SMS app.',
-                style: ZineText.sub(size: 13.5)),
+                style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13.5)),
           )
         else if (_messagesLoading)
           _skeletonLine(200)
         else if (_unread.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 6),
-            child: Text('You are all caught up.', style: ZineText.sub(size: 13.5)),
+            child: Text('You are all caught up.',
+                style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13.5)),
           )
         else
           ...[for (final m in _unread) _unreadRow(context, m)],
@@ -353,12 +378,13 @@ class _HomeCardsState extends State<HomeCards> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
         decoration: BoxDecoration(
-          color: active ? Zine.lime : Zine.card,
+          color: active ? AD.primaryBadge : AD.card,
           borderRadius: BorderRadius.circular(100),
-          border: Border.all(color: Zine.ink, width: Zine.bw),
-          boxShadow: active ? Zine.shadowXs : const <BoxShadow>[],
+          border: Border.all(color: active ? AD.primaryBadge : AD.borderControl, width: 1),
         ),
-        child: Text(label, style: ZineText.tag(size: 12.5, color: Zine.ink)),
+        child: Text(label,
+            style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w800,
+                fontSize: 12.5, color: active ? Colors.white : AD.textSecondary)),
       ),
     );
   }
@@ -376,21 +402,24 @@ class _HomeCardsState extends State<HomeCards> {
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(m.name.isEmpty ? 'Unknown' : m.name,
-                  maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.value(size: 14)),
+                  maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.rowName()),
               if (m.preview.isNotEmpty)
                 Text(m.preview,
-                    maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.sub(size: 12.5)),
+                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12.5)),
             ]),
           ),
           const SizedBox(width: 8),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
-              color: Zine.coral,
+              color: AD.unreadAccent,
               borderRadius: BorderRadius.circular(100),
-              border: Border.all(color: Zine.ink, width: Zine.bw),
+              border: Border.all(color: AD.borderControl, width: 1),
             ),
-            child: Text('${m.count}', style: ZineText.tag(size: 11, color: Colors.white)),
+            child: Text('${m.count}',
+                style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w800,
+                    fontSize: 11, color: Colors.white)),
           ),
         ]),
       ),
@@ -399,11 +428,12 @@ class _HomeCardsState extends State<HomeCards> {
 
   // ── Analytics card (LOCAL stores only — plan §3 item 2, never PostHog) ────
   Widget _analyticsCard(BuildContext context) {
-    return ZineCard(
+    return AdCard(
+      radius: AD.rStatCard,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        ZineCardHead(
+        _cardHead(
             icon: PhosphorIcons.chartBar(PhosphorIconsStyle.bold),
-            title: 'Analytics', accent: Zine.blue, tag: 'TODAY'),
+            title: 'Analytics', accent: AD.iconSearch, tag: 'TODAY'),
         const SizedBox(height: 14),
         if (_analyticsLoading)
           _skeletonLine(160)
@@ -419,30 +449,33 @@ class _HomeCardsState extends State<HomeCards> {
   Widget _stat(String label, String value) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(value, style: ZineText.stat(size: 30)),
+          Text(value,
+              style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w900,
+                  fontSize: 30, color: AD.textPrimary)),
           const SizedBox(height: 2),
-          Text(label, style: ZineText.sub(size: 12.5)),
+          Text(label, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12.5)),
         ],
       );
 
   // ── Earnings card (server aggregate + a tiny 7-day bar chart) ────────────
   Widget _earningsCard(BuildContext context) {
     final e = _agg?.earnings;
-    return ZineCard(
+    return AdCard(
+      radius: AD.rStatCard,
       onTap: () {
         _tap('earnings');
         openShellDestination(context, 'wallet');
       },
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        ZineCardHead(
+        _cardHead(
             icon: PhosphorIcons.trendUp(PhosphorIconsStyle.bold),
-            title: 'Earnings', accent: Zine.mint, tag: 'AVACOINS'),
+            title: 'Earnings', accent: AD.online, tag: 'AVACOINS'),
         const SizedBox(height: 12),
         if (_aggLoading)
           _skeletonLine(200)
         else if (e == null)
           Text(_aggFailed ? 'Earnings are unavailable right now.' : 'No earnings yet.',
-              style: ZineText.sub(size: 13.5))
+              style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13.5))
         else ...[
           Row(children: [
             Expanded(child: _stat('Today', '${e.today}')),
@@ -454,11 +487,11 @@ class _HomeCardsState extends State<HomeCards> {
             height: 44,
             child: CustomPaint(
               size: const Size(double.infinity, 44),
-              painter: _MiniBarChartPainter(e.series7d, Zine.mintInk),
+              painter: _MiniBarChartPainter(e.series7d, AD.online),
             ),
           ),
           const SizedBox(height: 4),
-          Text('Last 7 days', style: ZineText.tag(size: 10.5, color: Zine.inkSoft)),
+          Text('Last 7 days', style: ADText.statCaption(c: AD.textTertiary).copyWith(fontSize: 10.5)),
         ],
       ]),
     );
@@ -467,11 +500,12 @@ class _HomeCardsState extends State<HomeCards> {
   // ── Visitors card (server aggregate; hidden entirely when unavailable) ────
   Widget? _visitorsCard(BuildContext context) {
     if (_aggLoading) {
-      return ZineCard(
+      return AdCard(
+        radius: AD.rStatCard,
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          ZineCardHead(
+          _cardHead(
               icon: PhosphorIcons.mapPin(PhosphorIconsStyle.bold),
-              title: 'Visitors', accent: Zine.coral),
+              title: 'Visitors', accent: AD.danger),
           const SizedBox(height: 12),
           _skeletonLine(180),
         ]),
@@ -479,27 +513,30 @@ class _HomeCardsState extends State<HomeCards> {
     }
     final v = _agg?.visitors;
     if (v == null || !v.available) return null; // eligibility: hide when no data source
-    return ZineCard(
+    return AdCard(
+      radius: AD.rStatCard,
       onTap: () {
         _tap('visitors');
         openShellDestination(context, 'mylistings');
       },
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        ZineCardHead(
+        _cardHead(
             icon: PhosphorIcons.mapPin(PhosphorIconsStyle.bold),
-            title: 'Visitors', accent: Zine.coral, tag: '7 DAYS'),
+            title: 'Visitors', accent: AD.danger, tag: '7 DAYS'),
         const SizedBox(height: 12),
-        Text('${v.total7d}', style: ZineText.stat(size: 30)),
-        Text('listing views', style: ZineText.sub(size: 12.5)),
+        Text('${v.total7d}',
+            style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w900,
+                fontSize: 30, color: AD.textPrimary)),
+        Text('listing views', style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12.5)),
         if (v.byCountry.isNotEmpty) ...[
           const SizedBox(height: 12),
-          Text('TOP COUNTRIES', style: ZineText.kicker()),
+          Text('TOP COUNTRIES', style: ADText.sectionLabel(c: AD.textTertiary)),
           const SizedBox(height: 4),
           ...[for (final g in v.byCountry.take(5)) _geoRow(g.label, g.views)],
         ],
         if (v.byCity.isNotEmpty) ...[
           const SizedBox(height: 10),
-          Text('TOP CITIES', style: ZineText.kicker()),
+          Text('TOP CITIES', style: ADText.sectionLabel(c: AD.textTertiary)),
           const SizedBox(height: 4),
           ...[for (final g in v.byCity.take(5)) _geoRow(g.label, g.views)],
         ],
@@ -512,20 +549,22 @@ class _HomeCardsState extends State<HomeCards> {
         child: Row(children: [
           Expanded(
             child: Text(label.isEmpty ? 'Unknown' : label,
-                maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.value(size: 13.5)),
+                maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: ADText.rowName().copyWith(fontSize: 13.5, fontWeight: FontWeight.w600)),
           ),
-          Text('$views', style: ZineText.tag(size: 11, color: Zine.inkSoft)),
+          Text('$views', style: ADText.statCaption(c: AD.textTertiary).copyWith(fontSize: 11)),
         ]),
       );
 
   // ── Listings card (server aggregate; hidden when the user has no listings) ─
   Widget? _listingsCard(BuildContext context) {
     if (_aggLoading) {
-      return ZineCard(
+      return AdCard(
+        radius: AD.rStatCard,
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          ZineCardHead(
+          _cardHead(
               icon: PhosphorIcons.storefront(PhosphorIconsStyle.bold),
-              title: 'Listings', accent: Zine.lime),
+              title: 'Listings', accent: AD.primaryBadge),
           const SizedBox(height: 12),
           _skeletonLine(180),
         ]),
@@ -533,15 +572,16 @@ class _HomeCardsState extends State<HomeCards> {
     }
     final list = _agg?.listings ?? const <ListingAgg>[];
     if (list.isEmpty) return null; // eligibility: only when the user has listings
-    return ZineCard(
+    return AdCard(
+      radius: AD.rStatCard,
       onTap: () {
         _tap('listings');
         openShellDestination(context, 'mylistings');
       },
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        ZineCardHead(
+        _cardHead(
             icon: PhosphorIcons.storefront(PhosphorIconsStyle.bold),
-            title: 'Listings', accent: Zine.lime, tag: 'TOP'),
+            title: 'Listings', accent: AD.primaryBadge, tag: 'TOP'),
         const SizedBox(height: 10),
         ...[for (final l in list.take(3)) _listingRow(l)],
       ]),
@@ -554,9 +594,9 @@ class _HomeCardsState extends State<HomeCards> {
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(l.title.isEmpty ? 'Untitled listing' : l.title,
-                  maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.value(size: 14)),
+                  maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.rowName()),
               Text('${l.views7d} views · ${l.joinedCount} joined',
-                  style: ZineText.tag(size: 10.5, color: Zine.inkSoft)),
+                  style: ADText.statCaption(c: AD.textTertiary).copyWith(fontSize: 10.5)),
             ]),
           ),
         ]),
@@ -566,9 +606,9 @@ class _HomeCardsState extends State<HomeCards> {
         width: width,
         height: 20,
         decoration: BoxDecoration(
-          color: Zine.paper2,
+          color: AD.card,
           borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: Zine.inkMute, width: 1),
+          border: Border.all(color: AD.borderControl, width: 1),
         ),
       );
 }
@@ -589,7 +629,7 @@ class _MiniBarChartPainter extends CustomPainter {
     final radius = Radius.circular(barW < 6 ? barW / 2 : 3);
 
     final barPaint = Paint()..color = color;
-    final basePaint = Paint()..color = Zine.inkMute.withValues(alpha: 0.5);
+    final basePaint = Paint()..color = AD.textFaint;
 
     for (var i = 0; i < n; i++) {
       final v = i < values.length ? values[i] : 0;

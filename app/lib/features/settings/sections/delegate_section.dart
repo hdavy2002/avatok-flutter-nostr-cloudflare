@@ -4,7 +4,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/disk_cache.dart';
 import '../../../core/paid_feature.dart';
-import '../../../core/ui/zine.dart';
+import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../settings_registry.dart';
 
@@ -95,13 +95,11 @@ class _DelegateCardState extends State<_DelegateCard> {
 
   @override
   Widget build(BuildContext context) {
-    return ZineCard(
-      radius: Zine.rSm,
+    return AdCard(
       padding: const EdgeInsets.all(14),
-      boxShadow: Zine.shadowXs,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          ZineIconBadge(icon: PhosphorIcons.userFocus(PhosphorIconsStyle.fill), color: Zine.lilac, size: 36),
+          ZineIconBadge(icon: PhosphorIcons.userFocus(PhosphorIconsStyle.fill), color: AD.iconVideo, size: 36),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
@@ -109,7 +107,7 @@ class _DelegateCardState extends State<_DelegateCard> {
               'Replies are always disclosed ("Ava — for you") — never impersonation. '
               'Switch it on per chat from the chat’s Ava menu; set the defaults '
               'for new chats here.',
-              style: ZineText.sub(size: 12.5),
+              style: ADText.preview(),
             ),
           ),
         ]),
@@ -120,16 +118,16 @@ class _DelegateCardState extends State<_DelegateCard> {
           builder: (context, on, _) => Row(children: [
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Alert me on mentions by default', style: ZineText.value(size: 13.5)),
-                Text('New chats start by pushing you on @mentions.', style: ZineText.sub(size: 11.5)),
+                Text('Alert me on mentions by default', style: ADText.rowName()),
+                Text('New chats start by pushing you on @mentions.', style: ADText.preview()),
               ]),
             ),
             const SizedBox(width: 10),
-            ZineToggle(value: on, onChanged: (v) => DelegateDefaults.setAlert(v)),
+            _AdToggle(value: on, onChanged: (v) => DelegateDefaults.setAlert(v)),
           ]),
         ),
         const SizedBox(height: 12),
-        const Divider(height: 1, thickness: 1, color: Zine.inkMute),
+        const Divider(height: 1, thickness: 1, color: AD.borderHairline),
         const SizedBox(height: 12),
         // PREMIUM default — let Ava reply for me. Enable is paid-gated; off free.
         ValueListenableBuilder<bool>(
@@ -138,26 +136,58 @@ class _DelegateCardState extends State<_DelegateCard> {
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [
-                  Flexible(child: Text('Let Ava reply for me by default', style: ZineText.value(size: 13.5))),
+                  Flexible(child: Text('Let Ava reply for me by default', style: ADText.rowName())),
                   const SizedBox(width: 8),
                   const PaidBadge(),
                 ]),
                 Text('New chats start with on-your-behalf replies (while offline).',
-                    style: ZineText.sub(size: 11.5)),
+                    style: ADText.preview()),
               ]),
             ),
             const SizedBox(width: 10),
             if (on)
-              ZineToggle(value: true, onChanged: (_) => DelegateDefaults.setMonitor(false))
+              _AdToggle(value: true, onChanged: (_) => DelegateDefaults.setMonitor(false))
             else
               PaidFeature(
                 actionLabel: 'Enable Ava delegate by default',
                 onRun: () async => DelegateDefaults.setMonitor(true),
-                child: const IgnorePointer(child: ZineToggle(value: false, onChanged: null)),
+                child: const IgnorePointer(child: _AdToggle(value: false, onChanged: null)),
               ),
           ]),
         ),
       ]),
+    );
+  }
+}
+
+/// Dark v2 inline toggle — track [AD.card] off / [AD.online] on, white thumb.
+class _AdToggle extends StatelessWidget {
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+  const _AdToggle({required this.value, this.onChanged});
+  @override
+  Widget build(BuildContext context) {
+    final reduce = MediaQuery.of(context).disableAnimations;
+    return GestureDetector(
+      onTap: onChanged == null ? null : () => onChanged!(!value),
+      child: AnimatedContainer(
+        duration: reduce ? Duration.zero : const Duration(milliseconds: 120),
+        width: 52, height: 30,
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          color: value ? AD.online : AD.card,
+          borderRadius: BorderRadius.circular(100),
+          border: Border.all(color: AD.borderControl, width: 1),
+        ),
+        child: AnimatedAlign(
+          duration: reduce ? Duration.zero : const Duration(milliseconds: 120),
+          alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+          child: Container(
+            width: 22, height: 22,
+            decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
+          ),
+        ),
+      ),
     );
   }
 }

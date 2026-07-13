@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/analytics.dart';
 import '../../core/marketplace_api.dart';
+import '../../core/ui/avatok_dark.dart';
 import 'sell_listing_flow.dart' show kMarketCurrencies;
 
 /// AvaMarketplace P5 — "Call Agent" sheet (Zine-styled). Captures the buyer's
@@ -25,17 +26,18 @@ Future<bool> showCallAgentSheet(
 
   InputDecoration box(String? hint) => InputDecoration(
         hintText: hint,
+        hintStyle: TextStyle(color: AD.placeholderOnWhite),
         filled: true,
-        fillColor: Colors.white,
+        fillColor: AD.inputField,
         isDense: true,
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.black, width: 2)),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.black, width: 2)),
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.black, width: 2)),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AD.rInput), borderSide: BorderSide(color: AD.borderControl, width: 1)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AD.rInput), borderSide: BorderSide(color: AD.borderControl, width: 1)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AD.rInput), borderSide: BorderSide(color: AD.iconSearch, width: 1)),
       );
   Widget label(String t) => Padding(
         padding: const EdgeInsets.only(bottom: 6, top: 2),
-        child: Text(t, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.black)),
+        child: Text(t, style: TextStyle(fontFamily: ADText.family, fontSize: 14, fontWeight: FontWeight.w700, color: AD.textPrimary)),
       );
 
   final started = await showModalBottomSheet<bool>(
@@ -44,10 +46,10 @@ Future<bool> showCallAgentSheet(
     backgroundColor: Colors.transparent,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setState) => Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFFF5F1E8),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          border: Border(top: BorderSide(color: Colors.black, width: 3)),
+        decoration: BoxDecoration(
+          color: AD.overlaySheet,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(AD.rSheet)),
+          border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
         ),
         // Bottom inset = keyboard + system nav bar, so the lime button is never
         // hidden behind the navigation bar (pic 10).
@@ -55,11 +57,11 @@ Future<bool> showCallAgentSheet(
             20 + MediaQuery.of(ctx).viewInsets.bottom + MediaQuery.of(ctx).viewPadding.bottom),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Center(child: Container(width: 40, height: 5, margin: const EdgeInsets.only(bottom: 14),
-              decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(3)))),
-          const Text('Call the seller’s agent', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 19, color: Colors.black)),
+              decoration: BoxDecoration(color: AD.borderControl, borderRadius: BorderRadius.circular(3)))),
+          Text('Call the seller’s agent', style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w800, fontSize: 19, color: AD.textPrimary)),
           const SizedBox(height: 6),
-          const Text('Your agent negotiates in the background — you can keep browsing. The result lands in your chat as a voice note.',
-              style: TextStyle(fontSize: 13, color: Colors.black54)),
+          Text('Your agent negotiates in the background — you can keep browsing. The result lands in your chat as a voice note.',
+              style: TextStyle(fontFamily: ADText.family, fontSize: 13, color: AD.textSecondary)),
           const SizedBox(height: 16),
           label('Your max price'),
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -79,29 +81,21 @@ Future<bool> showCallAgentSheet(
           TextField(controller: mustCtrl, decoration: box('e.g. must include warranty, pickup this week')),
           if (error != null)
             Padding(padding: const EdgeInsets.only(top: 10),
-                child: Text(error!, style: const TextStyle(color: Colors.red, fontWeight: FontWeight.w600))),
+                child: AdErrorMsg(error!)),
           const SizedBox(height: 18),
           if (dailyLimited)
-            SizedBox(
-              height: 52, width: double.infinity,
-              child: FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFFC4F24D), foregroundColor: Colors.black,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100), side: const BorderSide(color: Colors.black, width: 2)),
-                ),
-                onPressed: () { Navigator.of(ctx).pop(false); onMessageSeller?.call(); },
-                child: const Text('Message seller',
-                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-              ),
+            AdButton(
+              label: 'Message seller',
+              fullWidth: true,
+              fontSize: 17,
+              onPressed: () { Navigator.of(ctx).pop(false); onMessageSeller?.call(); },
             )
           else
-          SizedBox(
-            height: 52, width: double.infinity,
-            child: FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFFC4F24D), foregroundColor: Colors.black,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100), side: const BorderSide(color: Colors.black, width: 2)),
-              ),
+          AdButton(
+              label: busy ? 'Starting…' : 'Start negotiation',
+              fullWidth: true,
+              fontSize: 17,
+              loading: busy,
               onPressed: busy ? null : () async {
                 final max = int.tryParse(maxCtrl.text.trim()) ?? 0;
                 if (max <= 0) { setState(() => error = 'Enter your max price.'); return; }
@@ -136,10 +130,7 @@ Future<bool> showCallAgentSheet(
                   setState(() { busy = false; error = 'Could not start the negotiation. Try again.'; });
                 }
               },
-              child: Text(busy ? 'Starting…' : 'Start negotiation',
-                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
             ),
-          ),
         ]),
       ),
     ),

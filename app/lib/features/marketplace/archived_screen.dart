@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/analytics.dart';
 import '../../core/cached_image.dart';
 import '../../core/listings_api.dart';
+import '../../core/ui/avatok_dark.dart';
 
 /// AvaMarketplace — Archived. Shows the owner's expired + cancelled listings with
 /// a Restore action (→ draft). Restored drafts appear in the "Drafts" section
@@ -33,7 +34,13 @@ class _ArchivedScreenState extends State<ArchivedScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Archived')),
+      backgroundColor: AD.bg,
+      appBar: AppBar(
+        backgroundColor: AD.headerFooter,
+        foregroundColor: AD.textPrimary,
+        elevation: 0,
+        title: Text('Archived', style: ADText.appTitle()),
+      ),
       body: RefreshIndicator(
         onRefresh: () async => _reload(),
         child: FutureBuilder<List<ListingCard>>(
@@ -48,9 +55,9 @@ class _ArchivedScreenState extends State<ArchivedScreen> {
             final drafts = mine.where((c) => c.status == 'draft').toList();
             final archived = mine.where(_isArchived).toList();
             if (drafts.isEmpty && archived.isEmpty) {
-              return ListView(children: const [
-                SizedBox(height: 120),
-                Center(child: Text('Nothing archived yet.')),
+              return ListView(children: [
+                const SizedBox(height: 120),
+                Center(child: Text('Nothing archived yet.', style: ADText.preview())),
               ]);
             }
             return ListView(padding: const EdgeInsets.all(12), children: [
@@ -76,8 +83,7 @@ class _SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
-        child: Text(text.toUpperCase(),
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+        child: Text(text.toUpperCase(), style: ADText.sectionLabel()),
       );
 }
 
@@ -110,11 +116,14 @@ class _Row extends StatelessWidget {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete forever?'),
-        content: const Text('This permanently removes the listing and its photos everywhere. This cannot be undone.'),
+        backgroundColor: AD.popover,
+        title: Text('Delete forever?', style: ADText.threadName()),
+        content: Text('This permanently removes the listing and its photos everywhere. This cannot be undone.',
+            style: ADText.preview()),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+              child: Text('Cancel', style: TextStyle(color: AD.textSecondary, fontFamily: ADText.family, fontWeight: FontWeight.w800))),
+          AdButton(label: 'Delete', variant: AdButtonVariant.danger, onPressed: () => Navigator.pop(ctx, true)),
         ],
       ),
     );
@@ -147,18 +156,32 @@ class _Row extends StatelessWidget {
     final title = TextEditingController(text: card.title);
     final desc = TextEditingController(text: card.description ?? card.oneLiner);
     final price = TextEditingController(text: card.price.toString());
+    InputDecoration deco(String label) => InputDecoration(
+          labelText: label,
+          labelStyle: TextStyle(color: AD.placeholderOnWhite),
+          filled: true,
+          fillColor: AD.inputField,
+          isDense: true,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(AD.rInput), borderSide: BorderSide(color: AD.borderControl, width: 1)),
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AD.rInput), borderSide: BorderSide(color: AD.borderControl, width: 1)),
+          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AD.rInput), borderSide: BorderSide(color: AD.iconSearch, width: 1)),
+        );
     final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
+      backgroundColor: AD.overlaySheet,
       builder: (ctx) => Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom + 16, left: 16, right: 16, top: 16),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Text('Edit draft', style: TextStyle(fontWeight: FontWeight.w600)),
-          TextField(controller: title, decoration: const InputDecoration(labelText: 'Title')),
-          TextField(controller: desc, maxLines: 3, decoration: const InputDecoration(labelText: 'Description')),
-          TextField(controller: price, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Price')),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Edit draft', style: ADText.threadName()),
+          const SizedBox(height: 10),
+          TextField(controller: title, decoration: deco('Title')),
+          const SizedBox(height: 10),
+          TextField(controller: desc, maxLines: 3, decoration: deco('Description')),
+          const SizedBox(height: 10),
+          TextField(controller: price, keyboardType: TextInputType.number, decoration: deco('Price')),
           const SizedBox(height: 12),
-          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Save')),
+          AdButton(label: 'Save', fullWidth: true, onPressed: () => Navigator.of(ctx).pop(true)),
         ]),
       ),
     );
@@ -176,21 +199,23 @@ class _Row extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    return AdCard(
+      padding: EdgeInsets.zero,
       child: ListTile(
         leading: card.coverUrl != null
             ? CachedImage(card.coverUrl!, width: 48, height: 48, radius: BorderRadius.circular(6))
-            : const Icon(Icons.inventory_2_outlined, size: 32),
-        title: Text(card.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-        subtitle: Text('${card.displayPrice} · $_label'),
+            : Icon(Icons.inventory_2_outlined, size: 32, color: AD.textTertiary),
+        title: Text(card.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.rowName()),
+        subtitle: Text('${card.displayPrice} · $_label', style: ADText.preview()),
         trailing: draft
-            ? Wrap(spacing: 4, children: [
-                IconButton(tooltip: 'Edit', icon: const Icon(Icons.edit_outlined), onPressed: () => _edit(context)),
-                FilledButton(onPressed: () => _republish(context), child: const Text('Publish')),
+            ? Wrap(spacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                IconButton(tooltip: 'Edit', icon: Icon(Icons.edit_outlined, color: AD.textSecondary), onPressed: () => _edit(context)),
+                AdButton(label: 'Publish', fontSize: 13, onPressed: () => _republish(context)),
               ])
             : Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: [
-                TextButton(onPressed: () => _restore(context), child: const Text('Restore')),
-                IconButton(tooltip: 'Delete forever', icon: const Icon(Icons.delete_outline), onPressed: () => _deleteForever(context)),
+                TextButton(onPressed: () => _restore(context),
+                    child: Text('Restore', style: TextStyle(color: AD.iconSearch, fontFamily: ADText.family, fontWeight: FontWeight.w800))),
+                IconButton(tooltip: 'Delete forever', icon: Icon(Icons.delete_outline, color: AD.danger), onPressed: () => _deleteForever(context)),
               ]),
       ),
     );

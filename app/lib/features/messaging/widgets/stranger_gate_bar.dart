@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/remote_config.dart';
-import '../../../core/ui/zine.dart';
+import '../../../core/ui/avatok_dark.dart';
 import '../../avatok/stranger_gate_api.dart';
 
 /// STREAM B (SAFE-GATE-2) — the stranger safety gate action bar.
@@ -108,9 +108,9 @@ class _StrangerGateBarState extends State<StrangerGateBar> {
   Widget build(BuildContext context) {
     final scam = _score != null && _score!.available && _score!.score >= 0.8;
     return Container(
-      decoration: BoxDecoration(
-        color: Zine.paper,
-        border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
+      decoration: const BoxDecoration(
+        color: AD.headerFooter,
+        border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
       ),
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -119,23 +119,23 @@ class _StrangerGateBarState extends State<StrangerGateBar> {
         if (_scored) const SizedBox(height: 10),
         // ── explainer line ──────────────────────────────────────────────────
         Row(children: [
-          const Icon(Icons.shield_outlined, size: 16, color: Zine.inkSoft),
+          const Icon(Icons.shield_outlined, size: 16, color: AD.textSecondary),
           const SizedBox(width: 6),
           Expanded(
             child: Text(
               'This person is not in your contacts. Accept to reply, or block/report if it looks like spam.',
-              style: ZineText.sub(size: 12.5, color: Zine.inkSoft),
+              style: ADText.preview(c: AD.textSecondary),
             ),
           ),
         ]),
         const SizedBox(height: 10),
         // ── action row ──────────────────────────────────────────────────────
         Row(children: [
-          _iconBtn(Icons.verified_user_outlined, 'Safety', Zine.blue, _busy ? null : _shield),
+          _iconBtn(Icons.verified_user_outlined, 'Safety', AD.iconSearch, _busy ? null : _shield),
           const SizedBox(width: 8),
-          _iconBtn(Icons.block, 'Block', Zine.lilac, _busy ? null : _block),
+          _iconBtn(Icons.block, 'Block', AD.iconVideo, _busy ? null : _block),
           const SizedBox(width: 8),
-          _iconBtn(Icons.report_gmailerrorred_outlined, 'Report', Zine.coral, _busy ? null : _report),
+          _iconBtn(Icons.report_gmailerrorred_outlined, 'Report', AD.danger, _busy ? null : _report),
           const SizedBox(width: 8),
           Expanded(child: _acceptBtn()),
         ]),
@@ -146,16 +146,16 @@ class _StrangerGateBarState extends State<StrangerGateBar> {
   Widget _scoreBanner(bool scam) {
     if (_score != null && !_score!.available) {
       return _bannerShell(
-        Zine.paper,
+        AD.card,
         Icons.info_outline,
-        Zine.inkSoft,
+        AD.textSecondary,
         "Couldn't check this chat right now. Trust your instincts.",
         null,
       );
     }
     if (scam) {
       return _bannerShell(
-        Zine.coral,
+        AD.destructiveBg,
         Icons.warning_amber_rounded,
         Colors.white,
         'Likely scam — this chat scored high risk.',
@@ -167,9 +167,9 @@ class _StrangerGateBarState extends State<StrangerGateBar> {
       );
     }
     return _bannerShell(
-      Zine.mint,
+      AD.online,
       Icons.check_circle_outline,
-      Zine.ink,
+      Colors.white,
       'No strong scam signals — stay cautious with strangers.',
       null,
     );
@@ -180,14 +180,13 @@ class _StrangerGateBarState extends State<StrangerGateBar> {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
           color: bg,
-          borderRadius: BorderRadius.circular(Zine.rSm),
-          border: Zine.border,
-          boxShadow: Zine.shadowXs,
+          borderRadius: BorderRadius.circular(AD.rStatCard),
+          border: Border.all(color: AD.borderControl, width: 1),
         ),
         child: Row(children: [
           Icon(icon, size: 18, color: fg),
           const SizedBox(width: 8),
-          Expanded(child: Text(text, style: ZineText.value(size: 13, color: fg))),
+          Expanded(child: Text(text, style: ADText.rowName(c: fg))),
           if (trailing != null) trailing,
         ]),
       );
@@ -202,14 +201,13 @@ class _StrangerGateBarState extends State<StrangerGateBar> {
               height: 44,
               decoration: BoxDecoration(
                 color: color,
-                borderRadius: BorderRadius.circular(Zine.rSm),
-                border: Zine.border,
-                boxShadow: Zine.shadowXs,
+                borderRadius: BorderRadius.circular(AD.rStatCard),
+                border: Border.all(color: AD.borderControl, width: 1),
               ),
-              child: Icon(icon, size: 20, color: color == Zine.coral || color == Zine.blue ? Colors.white : Zine.ink),
+              child: Icon(icon, size: 20, color: Colors.white),
             ),
             const SizedBox(height: 4),
-            Text(label.toUpperCase(), style: ZineText.tag(size: 9, color: Zine.inkSoft)),
+            Text(label.toUpperCase(), style: ADText.statCaption(c: AD.textSecondary)),
           ]),
         ),
       );
@@ -222,14 +220,15 @@ class _StrangerGateBarState extends State<StrangerGateBar> {
             height: 44,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: Zine.lime,
-              borderRadius: BorderRadius.circular(Zine.rSm),
-              border: Zine.border,
-              boxShadow: Zine.shadowSm,
+              color: AD.primaryBadge,
+              borderRadius: BorderRadius.circular(AD.rStatCard),
+              border: Border.all(color: AD.borderControl, width: 1),
             ),
             child: _busy
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Zine.ink))
-                : Text('ACCEPT', style: ZineText.button(size: 15, color: Zine.ink)),
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : Text('ACCEPT',
+                    style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w800,
+                        fontSize: 15, color: Colors.white)),
           ),
         ),
       );

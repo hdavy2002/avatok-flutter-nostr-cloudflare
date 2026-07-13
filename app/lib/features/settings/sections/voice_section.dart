@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/disk_cache.dart';
-import '../../../core/ui/zine.dart';
+import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../../../core/voice/google_voice.dart';
 import '../settings_registry.dart';
@@ -79,23 +79,21 @@ class _VoiceCardState extends State<_VoiceCard> {
 
   @override
   Widget build(BuildContext context) {
-    return ZineCard(
-      radius: Zine.rSm,
+    return AdCard(
       padding: const EdgeInsets.all(14),
-      boxShadow: Zine.shadowXs,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           ZineIconBadge(
               icon: PhosphorIcons.phoneCall(PhosphorIconsStyle.fill),
-              color: Zine.lilac,
+              color: AD.iconVideo,
               size: 36),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text("Ava's voice", style: ZineText.value(size: 14.5)),
+              Text("Ava's voice", style: ADText.rowName()),
               const SizedBox(height: 2),
               Text('Choose the voice Ava speaks with on a hands-free call.',
-                  style: ZineText.sub(size: 12)),
+                  style: ADText.preview()),
             ]),
           ),
         ]),
@@ -113,14 +111,14 @@ class _VoiceCardState extends State<_VoiceCard> {
                     child: Text(
                       'Selected: ${sel.name} · ${sel.style} '
                       '(${sel.female ? "female" : "male"})',
-                      style: ZineText.sub(size: 12.5, color: Zine.blueInk),
+                      style: ADText.preview(c: AD.iconSearch),
                     ),
                   ),
-                Text('FEMALE', style: ZineText.kicker(size: 11)),
+                Text('FEMALE', style: ADText.sectionLabel()),
                 const SizedBox(height: 8),
                 _voiceWrap(GoogleVoiceCatalog.female, current),
                 const SizedBox(height: 16),
-                Text('MALE', style: ZineText.kicker(size: 11)),
+                Text('MALE', style: ADText.sectionLabel()),
                 const SizedBox(height: 8),
                 _voiceWrap(GoogleVoiceCatalog.male, current),
               ],
@@ -128,12 +126,12 @@ class _VoiceCardState extends State<_VoiceCard> {
           },
         ),
         const SizedBox(height: 18),
-        const Divider(height: 1, color: Zine.inkMute),
+        const Divider(height: 1, color: AD.borderHairline),
         const SizedBox(height: 16),
-        Text('LANGUAGE', style: ZineText.kicker(size: 11)),
+        Text('LANGUAGE', style: ADText.sectionLabel()),
         const SizedBox(height: 4),
         Text('The language Ava speaks on a call. Auto follows whatever you speak.',
-            style: ZineText.sub(size: 12)),
+            style: ADText.preview()),
         const SizedBox(height: 10),
         ValueListenableBuilder<String>(
           valueListenable: AvaVoiceLangPref.lang,
@@ -142,7 +140,7 @@ class _VoiceCardState extends State<_VoiceCard> {
             runSpacing: 8,
             children: [
               for (final l in AvaLangCatalog.all)
-                ZineChip(
+                AdChip(
                   label: l.label,
                   active: l.code == code,
                   onTap: () => AvaVoiceLangPref.set(l.code),
@@ -159,7 +157,7 @@ class _VoiceCardState extends State<_VoiceCard> {
         runSpacing: 8,
         children: [
           for (final v in voices)
-            ZineChip(
+            AdChip(
               label: v.name,
               active: v.name == current,
               onTap: () => GoogleVoicePref.set(v.name),

@@ -5,7 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/listings_api.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/verse_api.dart';
 import '../../identity/identity.dart';
@@ -75,20 +75,20 @@ class _CreatorChannelScreenState extends State<CreatorChannelScreen> {
   void _overflow() {
     final c = _c;
     if (c == null) return;
-    showModalBottomSheet(context: context, backgroundColor: Zine.paper,
+    showModalBottomSheet(context: context, backgroundColor: AD.overlaySheet,
         shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
         builder: (s) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
       if (c.following) ListTile(
         leading: PhosphorIcon(
             c.notify ? PhosphorIcons.bellSlash(PhosphorIconsStyle.bold) : PhosphorIcons.bellRinging(PhosphorIconsStyle.bold),
-            color: Zine.ink),
+            color: AD.textPrimary),
         title: Text(c.notify ? 'Mute notifications from this creator' : 'Unmute notifications',
-            style: ZineText.value(size: 15, weight: FontWeight.w700)),
+            style: ADText.rowName(c: AD.textPrimary)),
         onTap: () { Navigator.pop(s); _toggleMute(); },
       ),
       ListTile(
-        leading: PhosphorIcon(PhosphorIcons.flag(PhosphorIconsStyle.bold), color: Zine.ink),
-        title: Text('Report creator', style: ZineText.value(size: 15, weight: FontWeight.w700)),
+        leading: PhosphorIcon(PhosphorIcons.flag(PhosphorIconsStyle.bold), color: AD.textPrimary),
+        title: Text('Report creator', style: ADText.rowName(c: AD.textPrimary)),
         onTap: () async {
           Navigator.pop(s);
           final ok = await ListingsApi.report('creator', c.uid, 'inappropriate');
@@ -96,8 +96,8 @@ class _CreatorChannelScreenState extends State<CreatorChannelScreen> {
         },
       ),
       ListTile(
-        leading: PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.bold), color: Zine.coral),
-        title: Text('Block creator', style: ZineText.value(size: 15, color: Zine.coral, weight: FontWeight.w700)),
+        leading: PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.bold), color: AD.danger),
+        title: Text('Block creator', style: ADText.rowName(c: AD.danger)),
         onTap: () async {
           Navigator.pop(s);
           final ok = await ListingsApi.blockCreator(c.uid);
@@ -121,25 +121,50 @@ class _CreatorChannelScreenState extends State<CreatorChannelScreen> {
   Widget build(BuildContext context) {
     final c = _c;
     return Scaffold(
-      backgroundColor: Zine.paper,
-      appBar: ZineAppBar(
-        title: c?.name ?? 'Channel',
-        tag: 'creator channel',
-        actions: [
-          if (_isSelf) ...[
-            ZineBackButton(onTap: _editChannel, icon: PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold)),
-            const SizedBox(width: 8),
-          ],
-          ZineBackButton(onTap: _overflow, icon: PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold)),
-        ],
+      backgroundColor: AD.bg,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(76),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: AD.headerFooter,
+            border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
+          ),
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
+              child: Row(children: [
+                const AdBackButton(),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(c?.name ?? 'Channel',
+                          style: ADText.appTitle(), maxLines: 1, overflow: TextOverflow.ellipsis),
+                      const SizedBox(height: 2),
+                      Text('CREATOR CHANNEL', style: ADText.sectionLabel()),
+                    ],
+                  ),
+                ),
+                if (_isSelf) ...[
+                  AdBackButton(onTap: _editChannel, icon: PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold)),
+                  const SizedBox(width: 4),
+                ],
+                AdBackButton(onTap: _overflow, icon: PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold)),
+              ]),
+            ),
+          ),
+        ),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: Zine.blueInk))
+          ? const Center(child: CircularProgressIndicator(color: AD.iconSearch))
           : c == null
               ? Center(child: ZineEmptyState(
                   icon: PhosphorIcons.userCircle(PhosphorIconsStyle.bold),
                   text: 'Creator not found.'))
-              : RefreshIndicator(onRefresh: _load, color: Zine.blueInk, child: _body(c)),
+              : RefreshIndicator(onRefresh: _load, color: AD.iconSearch, child: _body(c)),
     );
   }
 
@@ -165,35 +190,35 @@ class _CreatorChannelScreenState extends State<CreatorChannelScreen> {
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
                 Flexible(child: Text(c.name ?? 'Creator', maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: ZineText.cardTitle(size: 21))),
+                    style: ADText.appTitle())),
                 if (c.kycVerified) ...[
                   const SizedBox(width: 6),
                   Tooltip(message: 'ID verified',
-                      child: PhosphorIcon(PhosphorIcons.sealCheck(PhosphorIconsStyle.fill), size: 19, color: Zine.blueInk)),
+                      child: PhosphorIcon(PhosphorIcons.sealCheck(PhosphorIconsStyle.fill), size: 19, color: AD.iconSearch)),
                 ],
               ]),
               if (c.handle != null)
-                Text('@${c.handle}', style: ZineText.tag(size: 12, color: Zine.blueInk)),
+                Text('@${c.handle}', style: ADText.preview(c: AD.iconSearch)),
               const SizedBox(height: 4),
               Text(
                 [
                   '${c.followerCount} followers',
                   if (c.ratingAvg != null && c.ratingCount > 0) '★ ${c.ratingAvg!.toStringAsFixed(1)} (${c.ratingCount})',
                 ].join(' · ').toUpperCase(),
-                style: ZineText.kicker(size: 10.5),
+                style: ADText.sectionLabel(),
               ),
             ])),
           ]),
           if ((c.bio ?? '').isNotEmpty) ...[
             const SizedBox(height: 12),
-            Text(c.bio!, style: ZineText.sub(size: 13.5, color: Zine.ink)),
+            Text(c.bio!, style: ADText.preview(c: AD.textPrimary)),
           ],
           if (c.links.isNotEmpty) ...[
             const SizedBox(height: 12),
             Wrap(spacing: 8, runSpacing: 8, children: [
               for (final li in c.links)
                 if (li is Map && (li['url']?.toString().startsWith('https://') ?? false))
-                  ZineSticker(
+                  AdSticker(
                     '${li['label'] ?? Uri.tryParse(li['url'].toString())?.host ?? 'link'}',
                     icon: PhosphorIcons.linkSimple(PhosphorIconsStyle.bold),
                     onTap: () => launchUrl(Uri.parse(li['url'].toString()), mode: LaunchMode.externalApplication),
@@ -203,9 +228,9 @@ class _CreatorChannelScreenState extends State<CreatorChannelScreen> {
           if (!_isSelf) ...[
             const SizedBox(height: 16),
             Row(children: [
-              Expanded(child: ZineButton(
+              Expanded(child: AdButton(
                 label: c.following ? 'Following' : 'Follow',
-                variant: c.following ? ZineButtonVariant.ghost : ZineButtonVariant.lime,
+                variant: c.following ? AdButtonVariant.ghost : AdButtonVariant.primary,
                 icon: c.following
                     ? PhosphorIcons.check(PhosphorIconsStyle.bold)
                     : PhosphorIcons.plus(PhosphorIconsStyle.bold),
@@ -214,9 +239,9 @@ class _CreatorChannelScreenState extends State<CreatorChannelScreen> {
                 onPressed: _followBusy ? null : _toggleFollow,
               )),
               const SizedBox(width: 10),
-              Expanded(child: ZineButton(
+              Expanded(child: AdButton(
                 label: 'Message',
-                variant: ZineButtonVariant.blue,
+                variant: AdButtonVariant.teal,
                 icon: PhosphorIcons.chatCircle(PhosphorIconsStyle.bold),
                 trailingIcon: false,
                 fontSize: 16,
@@ -226,7 +251,7 @@ class _CreatorChannelScreenState extends State<CreatorChannelScreen> {
           ],
           const SizedBox(height: 22),
           if (pinned != null) ...[
-            Text('📌 PINNED', style: ZineText.kicker(size: 11.5)),
+            Text('📌 PINNED', style: ADText.sectionLabel()),
             const SizedBox(height: 10),
             SizedBox(height: 250, child: Padding(
               padding: const EdgeInsets.only(right: 80),
@@ -234,11 +259,11 @@ class _CreatorChannelScreenState extends State<CreatorChannelScreen> {
             )),
             const SizedBox(height: 18),
           ],
-          Text('Listings', style: ZineText.cardTitle()),
+          Text('Listings', style: ADText.appTitle()),
           const SizedBox(height: 10),
           if (rest.isEmpty && pinned == null)
             Padding(padding: const EdgeInsets.symmetric(vertical: 10),
-                child: Text('No listings yet — check back soon.', style: ZineText.sub(size: 14))),
+                child: Text('No listings yet — check back soon.', style: ADText.preview())),
           GridView.builder(
             shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -247,10 +272,10 @@ class _CreatorChannelScreenState extends State<CreatorChannelScreen> {
             itemBuilder: (_, i) => ListingCardTile(card: rest[i], onTap: () => _open(rest[i].id)),
           ),
           const SizedBox(height: 22),
-          Text('Reviews', style: ZineText.cardTitle()),
+          Text('Reviews', style: ADText.appTitle()),
           if (c.reviews.isEmpty)
             Padding(padding: const EdgeInsets.symmetric(vertical: 10),
-                child: Text('No reviews yet.', style: ZineText.sub(size: 14))),
+                child: Text('No reviews yet.', style: ADText.preview())),
           for (final r in c.reviews) ReviewTile(review: r),
         ]),
       ),
@@ -309,21 +334,21 @@ class _ChannelEditorSheetState extends State<_ChannelEditorSheet> {
   @override
   Widget build(BuildContext context) => Container(
         decoration: const BoxDecoration(
-          color: Zine.paper,
+          color: AD.overlaySheet,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          border: Border(top: BorderSide(color: Zine.ink, width: Zine.bwLg)),
+          border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
         ),
         padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).viewPadding.bottom),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('My channel', style: ZineText.cardTitle(size: 20)),
+          Text('My channel', style: ADText.appTitle()),
           const SizedBox(height: 14),
-          ZineField(controller: _bio, maxLines: 3, label: 'Bio', hint: 'Tell people what you do'),
+          AdField(controller: _bio, maxLines: 3, label: 'Bio', hint: 'Tell people what you do'),
           const SizedBox(height: 14),
-          ZineField(controller: _links, maxLines: 4,
+          AdField(controller: _links, maxLines: 4,
               label: 'Links (one per line: Label|https://…)', hint: 'My site|https://…'),
-          if (_error != null) ZineErrorMsg(_error!),
+          if (_error != null) AdErrorMsg(_error!),
           const SizedBox(height: 16),
-          ZineButton(
+          AdButton(
             label: 'Save',
             fullWidth: true,
             loading: _busy,

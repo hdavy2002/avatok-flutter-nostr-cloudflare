@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 
-import '../../../core/ui/zine.dart';
+import '../../../core/ui/avatok_dark.dart';
 
 /// Liveness V2 flash-fill (Specs/LIVENESS-V2-PLAN.md §4 step 1, A8/A9
 /// mitigation): while the POSITION/challenge capture is active, push the screen
@@ -81,12 +81,12 @@ class FlashFillSurround extends StatelessWidget {
   Widget build(BuildContext context) {
     if (!active) return child;
     return Container(
-      color: Zine.paper, // warm zine white — the "ring light"
+      color: Colors.white, // white "ring light" — functional face illumination
       padding: EdgeInsets.all(thickness),
       child: DecoratedBox(
         decoration: const BoxDecoration(
           border: Border.fromBorderSide(
-            BorderSide(color: Zine.ink, width: Zine.bw),
+            BorderSide(color: AD.borderControl, width: 1),
           ),
         ),
         child: child,

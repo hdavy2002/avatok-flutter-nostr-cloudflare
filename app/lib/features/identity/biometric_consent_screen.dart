@@ -31,7 +31,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
 import '../../core/config.dart';
-import 'liveness_v2/live_theme.dart';
+import '../../core/ui/avatok_dark.dart';
 
 /// US states + DC. Used to route the user's retention track (spec §10.2).
 /// Deliberately a plain list — no geolocation, no IP inference.
@@ -123,15 +123,13 @@ class _BiometricConsentScreenState extends State<BiometricConsentScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // LiveTheme has no `bg`. `stage` is the dark camera backdrop, which would make
-    // this screen's default-black body text invisible. `paper` is the light surface
-    // the rest of the Zine UI uses.
     return Scaffold(
-      backgroundColor: LiveTheme.paper,
+      backgroundColor: AD.bg,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: IconButton(icon: const Icon(Icons.close), onPressed: _decline),
+        leading: IconButton(
+            icon: const Icon(Icons.close, color: AD.textPrimary), onPressed: _decline),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -139,8 +137,9 @@ class _BiometricConsentScreenState extends State<BiometricConsentScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Quick check before you post',
-                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, height: 1.2)),
+              Text('Quick check before you post',
+                  style: TextStyle(fontFamily: ADText.family, fontSize: 26,
+                      fontWeight: FontWeight.w800, height: 1.2, color: AD.textPrimary)),
               const SizedBox(height: 20),
 
               const _Para(
@@ -164,16 +163,35 @@ class _BiometricConsentScreenState extends State<BiometricConsentScreen> {
               const SizedBox(height: 28),
 
               // ---- State of residence. Drives the retention track (spec §10.2). ----
-              const Text('State of residence',
-                  style: TextStyle(fontWeight: FontWeight.w600)),
+              Text('State of residence',
+                  style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w700,
+                      color: AD.textSecondary)),
               const SizedBox(height: 8),
               DropdownButtonFormField<String>(
                 initialValue: _state,
                 isExpanded: true,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                dropdownColor: AD.menu,
+                iconEnabledColor: AD.textSecondary,
+                style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w700,
+                    fontSize: 15, color: AD.textPrimary),
+                decoration: InputDecoration(
+                  filled: true,
+                  fillColor: AD.card,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AD.rInput),
+                    borderSide: const BorderSide(color: AD.borderControl, width: 1),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AD.rInput),
+                    borderSide: const BorderSide(color: AD.borderControl, width: 1),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AD.rInput),
+                    borderSide: const BorderSide(color: AD.iconSearch, width: 1),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   hintText: 'Select your state',
+                  hintStyle: TextStyle(fontFamily: ADText.family, color: AD.textTertiary),
                 ),
                 items: [
                   ..._kUsStates.map((s) => DropdownMenuItem(value: s, child: Text(s))),
@@ -191,6 +209,9 @@ class _BiometricConsentScreenState extends State<BiometricConsentScreen> {
                   children: [
                     Checkbox(
                       value: _agreed,
+                      activeColor: AD.online,
+                      checkColor: Colors.white,
+                      side: const BorderSide(color: AD.borderControl, width: 1.5),
                       onChanged: _submitting ? null : (v) => setState(() => _agreed = v ?? false),
                     ),
                     const Expanded(
@@ -204,7 +225,8 @@ class _BiometricConsentScreenState extends State<BiometricConsentScreen> {
                           'I agree that AvaTOK may collect and store a scan of my facial '
                           'geometry to verify I am a real person, and may keep it for up '
                           'to $_kRetentionDays days after I delete my account.',
-                          style: TextStyle(height: 1.4),
+                          style: TextStyle(
+                              fontFamily: ADText.family, height: 1.4, color: AD.textPrimary),
                         ),
                       ),
                     ),
@@ -223,9 +245,10 @@ class _BiometricConsentScreenState extends State<BiometricConsentScreen> {
                     Uri.parse('https://avatok.ai/biometric-retention'),
                     mode: LaunchMode.externalApplication,
                   ),
-                  child: const Text(
+                  child: Text(
                     'Read our biometric retention schedule',
-                    style: TextStyle(decoration: TextDecoration.underline, fontSize: 13),
+                    style: TextStyle(fontFamily: ADText.family,
+                        decoration: TextDecoration.underline, fontSize: 13, color: AD.iconSearch),
                   ),
                 ),
               ),
@@ -234,24 +257,21 @@ class _BiometricConsentScreenState extends State<BiometricConsentScreen> {
               if (_error != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(_error!, style: const TextStyle(color: Colors.redAccent)),
+                  child: AdErrorMsg(_error!),
                 ),
 
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: _canSubmit ? _submit : null,
-                  child: _submitting
-                      ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Text('Verify with camera'),
-                ),
+              AdButton(
+                label: 'Verify with camera',
+                fullWidth: true,
+                loading: _submitting,
+                onPressed: _canSubmit ? _submit : null,
               ),
               const SizedBox(height: 8),
               SizedBox(
                 width: double.infinity,
                 child: TextButton(
                   onPressed: _submitting ? null : _decline,
-                  child: const Text('Not now'),
+                  child: Text('Not now', style: ADText.preview(c: AD.textSecondary)),
                 ),
               ),
             ],
@@ -272,9 +292,11 @@ class _Para extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+        Text(title, style: TextStyle(fontFamily: ADText.family,
+            fontWeight: FontWeight.w800, fontSize: 16, color: AD.textPrimary)),
         const SizedBox(height: 6),
-        Text(body, style: const TextStyle(height: 1.45)),
+        Text(body, style: TextStyle(fontFamily: ADText.family,
+            height: 1.45, color: AD.textSecondary)),
       ],
     );
   }

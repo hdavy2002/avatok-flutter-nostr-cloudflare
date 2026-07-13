@@ -3,6 +3,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/analytics.dart';
+import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/zine.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../avadial_channel.dart';
@@ -104,14 +105,21 @@ class _SmsComposeScreenState extends State<SmsComposeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       resizeToAvoidBottomInset: true,
-      appBar: const ZineAppBar(title: 'New message', markWord: 'message', showBack: true),
+      appBar: AppBar(
+        backgroundColor: AD.headerFooter,
+        elevation: 0,
+        foregroundColor: AD.textPrimary,
+        leading: AdBackButton(),
+        title: Text('New message', style: ADText.appTitle()),
+        shape: const Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
+      ),
       body: SafeArea(
         child: Column(children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
-            child: ZineField(
+            child: AdField(
               controller: _search,
               hint: 'Search name or type a number',
               leadIcon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
@@ -131,7 +139,7 @@ class _SmsComposeScreenState extends State<SmsComposeScreen> {
 
   Widget _body() {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator(color: Zine.ink));
+      return const Center(child: CircularProgressIndicator(color: AD.textPrimary));
     }
     final filtered = _filtered;
     return ListView(
@@ -151,26 +159,26 @@ class _SmsComposeScreenState extends State<SmsComposeScreen> {
     final number = _search.text.trim();
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
-      child: ZineCard(
+      child: AdCard(
         onTap: () => _openThread(number),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         child: Row(children: [
           ZineIconBadge(
               icon: PhosphorIcons.paperPlaneTilt(PhosphorIconsStyle.bold),
-              color: Zine.lime),
+              color: AD.primaryBadge),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Send to this number', style: ZineText.sub(size: 11.5)),
+              Text('Send to this number', style: ZineText.sub(size: 11.5, color: AD.textSecondary)),
               const SizedBox(height: 2),
               Text(number,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: ZineText.cardTitle(size: 15.5)),
+                  style: ZineText.cardTitle(size: 15.5, color: AD.textPrimary)),
             ]),
           ),
           PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold),
-              size: 16, color: Zine.inkMute),
+              size: 16, color: AD.textTertiary),
         ]),
       ),
     );
@@ -182,7 +190,7 @@ class _SmsComposeScreenState extends State<SmsComposeScreen> {
         trimmedName.isNotEmpty ? trimmedName.substring(0, 1).toUpperCase() : '#';
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
-      child: ZineCard(
+      child: AdCard(
         onTap: () => _openThread(c.number),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
         child: Row(children: [
@@ -191,11 +199,11 @@ class _SmsComposeScreenState extends State<SmsComposeScreen> {
             height: 38,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: Zine.blue,
+              color: AD.iconSearch,
               shape: BoxShape.circle,
-              border: Zine.border,
+              border: Border.all(color: AD.borderControl, width: 1),
             ),
-            child: Text(initial, style: ZineText.cardTitle(size: 16)),
+            child: Text(initial, style: ZineText.cardTitle(size: 16, color: AD.textPrimary)),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -203,18 +211,18 @@ class _SmsComposeScreenState extends State<SmsComposeScreen> {
               Text(c.name ?? c.number,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: ZineText.cardTitle(size: 15.5)),
+                  style: ZineText.cardTitle(size: 15.5, color: AD.textPrimary)),
               if (c.name != null) ...[
                 const SizedBox(height: 2),
                 Text(c.number,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: ZineText.sub(size: 12.5)),
+                    style: ZineText.sub(size: 12.5, color: AD.textSecondary)),
               ],
             ]),
           ),
           PhosphorIcon(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold),
-              size: 18, color: Zine.inkSoft),
+              size: 18, color: AD.textSecondary),
         ]),
       ),
     );
@@ -226,21 +234,22 @@ class _SmsComposeScreenState extends State<SmsComposeScreen> {
       child: Column(children: [
         ZineIconBadge(
             icon: PhosphorIcons.addressBook(PhosphorIconsStyle.bold),
-            color: Zine.blue,
+            color: AD.iconSearch,
             size: 52),
         const SizedBox(height: 14),
-        Text('Contacts are off', textAlign: TextAlign.center, style: ZineText.cardTitle(size: 17)),
+        Text('Contacts are off',
+            textAlign: TextAlign.center, style: ZineText.cardTitle(size: 17, color: AD.textPrimary)),
         const SizedBox(height: 8),
         Text(
           'Allow contacts so you can pick someone by name. You can still text any '
           'number by typing it above.',
           textAlign: TextAlign.center,
-          style: ZineText.sub(size: 13.5),
+          style: ZineText.sub(size: 13.5, color: AD.textSecondary),
         ),
         const SizedBox(height: 16),
-        ZineButton(
+        AdButton(
           label: 'Allow contacts',
-          variant: ZineButtonVariant.blue,
+          variant: AdButtonVariant.teal,
           fontSize: 15,
           onPressed: () async {
             await openAppSettings();
@@ -251,7 +260,7 @@ class _SmsComposeScreenState extends State<SmsComposeScreen> {
         const SizedBox(height: 10),
         TextButton(
           onPressed: _load,
-          child: Text('Try again', style: ZineText.link(size: 14)),
+          child: Text('Try again', style: ZineText.link(size: 14, color: AD.iconSearch)),
         ),
       ]),
     );
@@ -263,17 +272,17 @@ class _SmsComposeScreenState extends State<SmsComposeScreen> {
       child: Column(children: [
         ZineIconBadge(
             icon: PhosphorIcons.chatCircle(PhosphorIconsStyle.bold),
-            color: Zine.blue,
+            color: AD.iconSearch,
             size: 52),
         const SizedBox(height: 14),
         Text(
           _search.text.trim().isEmpty ? 'No contacts found' : 'No matches',
           textAlign: TextAlign.center,
-          style: ZineText.cardTitle(size: 17),
+          style: ZineText.cardTitle(size: 17, color: AD.textPrimary),
         ),
         const SizedBox(height: 8),
         Text('Type a phone number above to start a new text.',
-            textAlign: TextAlign.center, style: ZineText.sub(size: 13.5)),
+            textAlign: TextAlign.center, style: ZineText.sub(size: 13.5, color: AD.textSecondary)),
       ]),
     );
   }

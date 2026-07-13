@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
-import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../shell_v2.dart';
 import 'root_order_store.dart';
 
@@ -18,9 +18,9 @@ class AppOrderScreen extends StatelessWidget {
   const AppOrderScreen({super.key});
 
   static const Map<RootId, (IconData, String, String, Color)> _meta = {
-    RootId.avaDial: (Icons.phone, 'AvaDialer', 'Phone, spam shield & device contacts', Zine.blue),
-    RootId.avaTalk: (Icons.chat_bubble, 'AvaTOK', 'Messages & in-network calls', Zine.mint),
-    RootId.services: (Icons.storefront, 'Marketplace', 'Browse & wallet', Zine.coral),
+    RootId.avaDial: (Icons.phone, 'AvaDialer', 'Phone, spam shield & device contacts', AD.iconSearch),
+    RootId.avaTalk: (Icons.chat_bubble, 'AvaTOK', 'Messages & in-network calls', AD.online),
+    RootId.services: (Icons.storefront, 'Marketplace', 'Browse & wallet', AD.danger),
   };
 
   @override
@@ -37,17 +37,17 @@ class AppOrderScreen extends StatelessWidget {
     }
 
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       appBar: AppBar(
-        backgroundColor: Zine.paper2,
+        backgroundColor: AD.headerFooter,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
-        shape: const Border(bottom: BorderSide(color: Zine.ink, width: Zine.bw)),
-        title: Text('App order', style: ZineText.appbar()),
+        shape: const Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
+        title: Text('App order', style: ADText.appTitle()),
         actions: [
           TextButton(
             onPressed: () => scope.setRootOrder(List<RootId>.from(RootOrderPrefs.defaultOrder)),
-            child: Text('Reset', style: ZineText.value(size: 14, color: Zine.blueInk)),
+            child: Text('Reset', style: ADText.rowName(c: AD.iconSearch)),
           ),
         ],
       ),
@@ -58,7 +58,7 @@ class AppOrderScreen extends StatelessWidget {
             alignment: Alignment.centerLeft,
             child: Text(
               'Drag to reorder your apps. The first app opens automatically when you launch AvaTOK.',
-              style: ZineText.sub(size: 14),
+              style: ADText.preview(),
             ),
           ),
         ),
@@ -81,7 +81,7 @@ class AppOrderScreen extends StatelessWidget {
     return Padding(
       key: ValueKey(root.key),
       padding: const EdgeInsets.only(bottom: 12),
-      child: ZineCard(
+      child: AdCard(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         child: Row(children: [
           ReorderableDragStartListener(
@@ -89,27 +89,27 @@ class AppOrderScreen extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.only(right: 10),
               child: PhosphorIcon(PhosphorIcons.dotsSixVertical(PhosphorIconsStyle.bold),
-                  size: 18, color: Zine.inkSoft),
+                  size: 18, color: AD.textTertiary),
             ),
           ),
           ZineIconBadge(icon: m.$1, color: m.$4),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(m.$2, style: ZineText.cardTitle(size: 15.5)),
+              Text(m.$2, style: ADText.rowName()),
               const SizedBox(height: 1),
-              Text(m.$3, style: ZineText.tag(size: 10.5, color: Zine.inkSoft)),
+              Text(m.$3, style: ADText.statCaption()),
             ]),
           ),
           if (isLanding)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: Zine.lime,
+                color: AD.primaryBadge,
                 borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: Zine.ink, width: Zine.bw),
+                border: Border.all(color: AD.borderControl, width: 1),
               ),
-              child: Text('Opens at launch', style: ZineText.tag(size: 9.5, color: Zine.ink)),
+              child: Text('Opens at launch', style: ADText.statCaption(c: Colors.white)),
             ),
         ]),
       ),

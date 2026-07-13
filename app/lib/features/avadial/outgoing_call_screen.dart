@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'avadial_channel.dart';
@@ -100,7 +101,7 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> {
     final name = _contact?.name;
     final initial = (name != null && name.isNotEmpty) ? name.characters.first.toUpperCase() : null;
     // Known contact = mint, unknown = blue — same convention as PstnCallScreen.
-    final accent = _contact != null ? Zine.mint : Zine.blue;
+    final accent = _contact != null ? AD.incomingCall : AD.iconSearch;
     return Scaffold(
       // Dark PSTN outgoing/"dialing" screen (owner request 2026-07-12) — never
       // the AvaTalk/messenger UI, and always shown for a placed PSTN call so a
@@ -118,12 +119,12 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> {
               decoration: BoxDecoration(
                 color: accent,
                 shape: BoxShape.circle,
-                border: Border.all(color: AvaDialTheme.border, width: Zine.bwLg),
-                boxShadow: Zine.shadow,
+                border: Border.all(color: AvaDialTheme.border, width: 2),
+                boxShadow: const <BoxShadow>[],
               ),
               child: initial != null
-                  ? Text(initial, style: ZineText.hero(size: 44, color: Zine.ink))
-                  : Icon(PhosphorIcons.phoneOutgoing(PhosphorIconsStyle.fill), size: 50, color: Zine.ink),
+                  ? Text(initial, style: ZineText.hero(size: 44, color: Colors.white))
+                  : Icon(PhosphorIcons.phoneOutgoing(PhosphorIconsStyle.fill), size: 50, color: Colors.white),
             ),
             const SizedBox(height: 20),
             Text('CALLING', style: ZineText.kicker(color: AvaDialTheme.textSoft)),
@@ -137,9 +138,9 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> {
             const SizedBox(height: 8),
             Text(_statusLine, style: ZineText.sub(size: 16, color: AvaDialTheme.textSoft)),
             const Spacer(),
-            ZineButton(
+            AdButton(
               label: 'End',
-              variant: ZineButtonVariant.coral,
+              variant: AdButtonVariant.danger,
               fullWidth: true,
               icon: Icons.call_end,
               trailingIcon: false,

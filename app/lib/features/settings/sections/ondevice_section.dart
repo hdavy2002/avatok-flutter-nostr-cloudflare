@@ -11,7 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/ava_local_mode.dart';
-import '../../../core/ui/zine.dart';
+import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../settings_registry.dart';
 
@@ -55,23 +55,21 @@ class _LocalAvaCardState extends State<_LocalAvaCard> {
 
   @override
   Widget build(BuildContext context) {
-    return ZineCard(
-      radius: Zine.rSm,
+    return AdCard(
       padding: const EdgeInsets.all(14),
-      boxShadow: Zine.shadowXs,
       child: ValueListenableBuilder<bool>(
         valueListenable: _mode.enabled,
         builder: (context, on, _) {
           final (dotColor, label) = on
-              ? (const Color(0xFF22A06B), 'On — your memory stays on this phone')
-              : (Zine.inkMute, 'Off — Ava uses the cloud');
+              ? (AD.online, 'On — your memory stays on this phone')
+              : (AD.textTertiary, 'Off — Ava uses the cloud');
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(children: [
                 ZineIconBadge(
                     icon: PhosphorIcons.cpu(PhosphorIconsStyle.fill),
-                    color: Zine.lilac,
+                    color: AD.iconVideo,
                     size: 36),
                 const SizedBox(width: 12),
                 Expanded(
@@ -79,7 +77,7 @@ class _LocalAvaCardState extends State<_LocalAvaCard> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text('Keep my memory on this phone',
-                            style: ZineText.value(size: 14.5)),
+                            style: ADText.rowName()),
                         const SizedBox(height: 3),
                         Row(children: [
                           Container(
@@ -91,7 +89,7 @@ class _LocalAvaCardState extends State<_LocalAvaCard> {
                           const SizedBox(width: 6),
                           Flexible(
                             child:
-                                Text(label, style: ZineText.sub(size: 12)),
+                                Text(label, style: ADText.preview()),
                           ),
                         ]),
                       ]),
@@ -102,21 +100,21 @@ class _LocalAvaCardState extends State<_LocalAvaCard> {
                 'When on, your messages and notes are indexed privately on this '
                 'phone so Ava can recall them offline. Ava still thinks in the '
                 'cloud for answers — only your data stays local.',
-                style: ZineText.sub(size: 12),
+                style: ADText.preview(),
               ),
               const SizedBox(height: 12),
               if (!on)
-                ZineButton(
+                AdButton(
                   label: _busy ? 'Turning on…' : 'Keep memory on this phone',
                   onPressed: _busy ? null : _activate,
-                  variant: ZineButtonVariant.lime,
+                  variant: AdButtonVariant.primary,
                   fontSize: 14,
                 )
               else
-                ZineButton(
+                AdButton(
                   label: 'Turn off (use cloud only)',
                   onPressed: _disconnect,
-                  variant: ZineButtonVariant.ghost,
+                  variant: AdButtonVariant.ghost,
                   fontSize: 14,
                 ),
             ],

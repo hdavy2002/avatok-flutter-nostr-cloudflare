@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'avadial_theme.dart';
@@ -200,7 +201,7 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
         backgroundColor: AvaDialTheme.surface,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
-        shape: const Border(bottom: BorderSide(color: AvaDialTheme.border, width: Zine.bw)),
+        shape: const Border(bottom: BorderSide(color: AvaDialTheme.border, width: 1)),
         title: Text(widget.create ? 'Add contact' : 'Edit contact',
             style: ZineText.appbar(color: AvaDialTheme.text)),
       ),
@@ -217,7 +218,7 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
                     ? _field(_numberCtrl, 'Phone number',
                         icon: PhosphorIcons.phone(PhosphorIconsStyle.bold),
                         keyboard: TextInputType.phone)
-                    : ZineCard(
+                    : AdCard(
                         color: AvaDialTheme.surface2,
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
                         child: Text(widget.number,
@@ -227,7 +228,7 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
                 _label('AVATOK NUMBER'),
                 _field(_avatokCtrl, 'Their AvaTOK number or @handle',
                     icon: PhosphorIcons.chatCircleDots(PhosphorIconsStyle.bold),
-                    accent: Zine.lime),
+                    accent: AD.primaryBadge),
                 const SizedBox(height: 16),
                 _label('PERSONAL EMAIL'),
                 _field(_personalEmailCtrl, 'name@personal.com',
@@ -259,7 +260,7 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
                         child: _plainField(_custom[i].$2, 'Value'),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.remove_circle_outline, color: Zine.coral),
+                        icon: const Icon(Icons.remove_circle_outline, color: AD.danger),
                         onPressed: () => _removeField(i),
                       ),
                     ]),
@@ -271,9 +272,9 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
                   child: TextButton.icon(
                     onPressed: _addField,
                     icon: PhosphorIcon(PhosphorIcons.plusCircle(PhosphorIconsStyle.bold),
-                        color: Zine.blue, size: 20),
+                        color: AD.iconSearch, size: 20),
                     label: Text('Add field',
-                        style: ZineText.value(size: 14.5, color: Zine.blue)),
+                        style: ZineText.value(size: 14.5, color: AD.iconSearch)),
                   ),
                 ),
                 const SizedBox(height: 14),
@@ -283,9 +284,9 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
                   style: ZineText.sub(size: 12.5, color: AvaDialTheme.textSoft),
                 ),
                 const SizedBox(height: 20),
-                ZineButton(
+                AdButton(
                   label: widget.create ? 'Add contact' : 'Save',
-                  variant: ZineButtonVariant.lime,
+                  variant: AdButtonVariant.primary,
                   loading: _saving,
                   onPressed: _saving ? null : _save,
                 ),
@@ -302,8 +303,8 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
   Widget _field(TextEditingController c, String hint,
       {IconData? icon, Color? accent, TextInputType? keyboard}) {
     final border = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(Zine.rField),
-      borderSide: const BorderSide(color: AvaDialTheme.border, width: Zine.bw),
+      borderRadius: BorderRadius.circular(AD.rInput),
+      borderSide: const BorderSide(color: AvaDialTheme.border, width: 1),
     );
     return TextField(
       controller: c,
@@ -325,8 +326,8 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
         border: border,
         enabledBorder: border,
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(Zine.rField),
-          borderSide: BorderSide(color: accent ?? AvaDialTheme.accent, width: Zine.bw),
+          borderRadius: BorderRadius.circular(AD.rInput),
+          borderSide: BorderSide(color: accent ?? AvaDialTheme.accent, width: 1),
         ),
       ),
     );
@@ -334,8 +335,8 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
 
   Widget _plainField(TextEditingController c, String hint) {
     final border = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(Zine.rField),
-      borderSide: const BorderSide(color: AvaDialTheme.border, width: Zine.bw),
+      borderRadius: BorderRadius.circular(AD.rInput),
+      borderSide: const BorderSide(color: AvaDialTheme.border, width: 1),
     );
     return TextField(
       controller: c,
@@ -349,8 +350,8 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
         border: border,
         enabledBorder: border,
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(Zine.rField),
-          borderSide: const BorderSide(color: AvaDialTheme.accent, width: Zine.bw),
+          borderRadius: BorderRadius.circular(AD.rInput),
+          borderSide: const BorderSide(color: AvaDialTheme.accent, width: 1),
         ),
       ),
     );

@@ -21,7 +21,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../core/analytics.dart';
-import '../../../core/ui/zine.dart';
+import '../../../core/ui/avatok_dark.dart';
 import 'emoji_data.dart';
 import 'gif_api.dart';
 import 'giphy_controller.dart';
@@ -86,8 +86,8 @@ class _RichPickerPanelState extends State<RichPickerPanel> {
     return Container(
       height: widget.height,
       decoration: const BoxDecoration(
-        color: Zine.paper2,
-        border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
+        color: AD.headerFooter,
+        border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
       ),
       child: Column(children: [
         _topBar(),
@@ -101,12 +101,12 @@ class _RichPickerPanelState extends State<RichPickerPanel> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: Zine.ink, width: 1)),
+        border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
       ),
       child: Row(children: [
         IconButton(
           icon: Icon(_searching ? Icons.close_rounded : Icons.search_rounded,
-              color: Zine.ink, size: 22),
+              color: AD.textPrimary, size: 22),
           visualDensity: VisualDensity.compact,
           onPressed: () => setState(() {
             _searching = !_searching;
@@ -123,7 +123,7 @@ class _RichPickerPanelState extends State<RichPickerPanel> {
                 ]),
         ),
         IconButton(
-          icon: const Icon(Icons.backspace_outlined, color: Zine.ink, size: 20),
+          icon: const Icon(Icons.backspace_outlined, color: AD.textPrimary, size: 20),
           visualDensity: VisualDensity.compact,
           onPressed: _tab == PickerTab.emoji ? widget.onBackspace : null,
         ),
@@ -135,11 +135,13 @@ class _RichPickerPanelState extends State<RichPickerPanel> {
         controller: _search,
         autofocus: true,
         onChanged: (_) => setState(() {}),
-        style: ZineText.input(size: 14.5),
+        style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w700,
+            fontSize: 14.5, color: AD.textPrimary),
         decoration: InputDecoration(
           isDense: true,
           hintText: _tab == PickerTab.gif ? 'Search GIFs' : 'Search emoji',
-          hintStyle: ZineText.input(size: 14.5).copyWith(color: Zine.placeholder),
+          hintStyle: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600,
+              fontSize: 14.5, color: AD.textTertiary),
           border: InputBorder.none,
         ),
       );
@@ -152,14 +154,14 @@ class _RichPickerPanelState extends State<RichPickerPanel> {
         margin: const EdgeInsets.symmetric(horizontal: 4),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
         decoration: BoxDecoration(
-          color: on ? Zine.lime : Colors.transparent,
+          color: on ? AD.primaryBadge : Colors.transparent,
           borderRadius: BorderRadius.circular(20),
-          border: on ? Zine.border : Border.all(color: Colors.transparent, width: Zine.bw),
+          border: Border.all(color: on ? AD.primaryBadge : Colors.transparent, width: 1),
         ),
         child: Text(label,
-            style: ZineText.value(size: 13.5).copyWith(
+            style: TextStyle(fontFamily: ADText.family, fontSize: 13.5,
                 fontWeight: FontWeight.w800,
-                color: on ? Zine.ink : Zine.inkSoft)),
+                color: on ? Colors.white : AD.textSecondary)),
       ),
     );
   }
@@ -206,7 +208,7 @@ class _EmojiTabState extends State<_EmojiTab> {
     if (widget.query.trim().isNotEmpty) {
       final hits = searchEmoji(widget.query);
       return hits.isEmpty
-          ? Center(child: Text('No emoji', style: ZineText.sub()))
+          ? Center(child: Text('No emoji', style: ADText.preview()))
           : _grid(hits);
     }
     final recents = PickerRecentsStore.I.emoji;
@@ -234,7 +236,7 @@ class _EmojiTabState extends State<_EmojiTab> {
           key: key,
           padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
           child: Text(label.toUpperCase(),
-              style: ZineText.kicker(size: 11, color: Zine.inkMute)),
+              style: ADText.sectionLabel()),
         ),
       );
 
@@ -269,7 +271,7 @@ class _EmojiTabState extends State<_EmojiTab> {
 
   Widget _categoryBar() => Container(
         decoration: const BoxDecoration(
-          border: Border(top: BorderSide(color: Zine.ink, width: 1)),
+          border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
         ),
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
@@ -419,8 +421,7 @@ class _GifTabState extends State<_GifTab> {
           behavior: HitTestBehavior.opaque,
           child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             Text('Open full GIPHY ↗',
-                style: ZineText.sub().copyWith(
-                    fontWeight: FontWeight.w700, color: Zine.inkMute)),
+                style: ADText.preview(c: AD.textTertiary).copyWith(fontWeight: FontWeight.w700)),
           ]),
         ),
       );
@@ -469,7 +470,7 @@ class _GifTabState extends State<_GifTab> {
   Widget _note(String msg) => Center(
         child: Padding(
           padding: const EdgeInsets.all(20),
-          child: Text(msg, textAlign: TextAlign.center, style: ZineText.sub()),
+          child: Text(msg, textAlign: TextAlign.center, style: ADText.preview()),
         ),
       );
 
@@ -479,7 +480,7 @@ class _GifTabState extends State<_GifTab> {
           child: Align(
             alignment: Alignment.centerLeft,
             child: Text(label,
-                style: ZineText.kicker(size: 11, color: Zine.inkMute)),
+                style: ADText.sectionLabel()),
           ),
         ),
       );
@@ -504,7 +505,7 @@ class _GifTabState extends State<_GifTab> {
         child: ClipRRect(
           borderRadius: BorderRadius.circular(6),
           child: Container(
-            color: Zine.card,
+            color: AD.card,
             child: Image.network(
               // Muted autoplaying preview from GIPHY's CDN. CDN asset fetches do
               // NOT count against the API quota — only the (cached) JSON call does.
@@ -512,9 +513,9 @@ class _GifTabState extends State<_GifTab> {
               fit: BoxFit.cover,
               gaplessPlayback: true,
               errorBuilder: (_, __, ___) =>
-                  const Icon(Icons.gif_box_outlined, color: Zine.inkMute),
+                  const Icon(Icons.gif_box_outlined, color: AD.textTertiary),
               loadingBuilder: (c, w, p) =>
-                  p == null ? w : Container(color: Zine.card),
+                  p == null ? w : Container(color: AD.card),
             ),
           ),
         ),
@@ -585,7 +586,7 @@ class _StickerTabState extends State<_StickerTab> {
         child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
           child: Text(label.toUpperCase(),
-              style: ZineText.kicker(size: 11, color: Zine.inkMute)),
+              style: ADText.sectionLabel()),
         ),
       );
 
@@ -604,7 +605,7 @@ class _StickerTabState extends State<_StickerTab> {
                   fit: BoxFit.contain,
                   errorBuilder: (_, __, ___) =>
                       const Icon(Icons.emoji_emotions_outlined,
-                          color: Zine.inkMute)),
+                          color: AD.textTertiary)),
             ),
             childCount: assets.length,
           ),
@@ -627,7 +628,7 @@ class _StickerTabState extends State<_StickerTab> {
                   gaplessPlayback: true,
                   errorBuilder: (_, __, ___) =>
                       const Icon(Icons.emoji_emotions_outlined,
-                          color: Zine.inkMute)),
+                          color: AD.textTertiary)),
             ),
             childCount: items.length,
           ),

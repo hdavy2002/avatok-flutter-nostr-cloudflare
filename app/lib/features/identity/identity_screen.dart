@@ -4,7 +4,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
 import '../../core/config.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../profile/profile_screen.dart';
 import 'identity_api.dart';
@@ -106,14 +106,14 @@ class _IdentityScreenState extends State<IdentityScreen> {
         }
 
         return AlertDialog(
-          backgroundColor: Zine.card,
+          backgroundColor: AD.popover,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(Zine.r),
-            side: const BorderSide(color: Zine.ink, width: Zine.bw),
+            borderRadius: BorderRadius.circular(AD.rDialog),
+            side: const BorderSide(color: AD.borderHairline, width: 1),
           ),
-          title: Text('Change email', style: ZineText.cardTitle()),
+          title: Text('Change email', style: ADText.threadName()),
           content: Column(mainAxisSize: MainAxisSize.min, children: [
-            ZineField(
+            AdField(
               controller: emailCtrl,
               enabled: !sent,
               label: 'New email address',
@@ -121,18 +121,18 @@ class _IdentityScreenState extends State<IdentityScreen> {
             ),
             if (sent) ...[
               const SizedBox(height: 14),
-              ZineField(
+              AdField(
                 controller: codeCtrl,
                 label: '6-digit code from your inbox',
                 keyboardType: TextInputType.number,
               ),
             ],
-            if (err != null) ZineErrorMsg(err!),
+            if (err != null) AdErrorMsg(err!),
           ]),
           actions: [
             TextButton(onPressed: () => Navigator.of(ctx).pop(),
-                child: Text('Not now', style: ZineText.link(size: 14, color: Zine.inkSoft))),
-            ZineButton(label: sent ? 'Verify' : 'Send code', variant: ZineButtonVariant.blue,
+                child: Text('Not now', style: ADText.preview(c: AD.textSecondary))),
+            AdButton(label: sent ? 'Verify' : 'Send code', variant: AdButtonVariant.teal,
                 fontSize: 15, onPressed: sent ? verify : send),
           ],
         );
@@ -147,24 +147,24 @@ class _IdentityScreenState extends State<IdentityScreen> {
     final sure = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: Zine.card,
+        backgroundColor: AD.popover,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(Zine.r),
-          side: const BorderSide(color: Zine.ink, width: Zine.bw),
+          borderRadius: BorderRadius.circular(AD.rDialog),
+          side: const BorderSide(color: AD.borderHairline, width: 1),
         ),
-        title: Text('Delete your account?', style: ZineText.cardTitle()),
+        title: Text('Delete your account?', style: ADText.threadName()),
         content: Text(
           'This wipes EVERYTHING after a 30-day grace period: your profile, '
           'messages, wallet, listings — and your identity verifications, '
           'including the liveness photo and all KYC records. Verification '
           'media cannot be deleted any other way.\n\n'
           'You can cancel within 30 days by signing back in.',
-          style: ZineText.sub(size: 14),
+          style: ADText.preview(),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.of(ctx).pop(false),
-              child: Text('Keep my account', style: ZineText.link(size: 14, color: Zine.inkSoft))),
-          ZineButton(label: 'Delete everything', variant: ZineButtonVariant.coral,
+              child: Text('Keep my account', style: ADText.preview(c: AD.textSecondary))),
+          AdButton(label: 'Delete everything', variant: AdButtonVariant.danger,
               fontSize: 15, onPressed: () => Navigator.of(ctx).pop(true)),
         ],
       ),
@@ -182,28 +182,50 @@ class _IdentityScreenState extends State<IdentityScreen> {
   @override
   Widget build(BuildContext context) {
     final level = _ladder?.level ?? 1;
+    final activePip = level.clamp(1, 3).toInt();
     return Scaffold(
-      backgroundColor: Zine.paper,
-      appBar: const ZineAppBar(title: 'AvaIdentity', markWord: 'Identity', tag: 'trust ladder'),
+      backgroundColor: AD.bg,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(64),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: AD.headerFooter,
+            border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
+          ),
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 6, 12, 10),
+              child: Row(children: [
+                const AdBackButton(),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text('AvaIdentity',
+                      style: ADText.appTitle(), maxLines: 1, overflow: TextOverflow.ellipsis),
+                ),
+              ]),
+            ),
+          ),
+        ),
+      ),
       body: RefreshIndicator(
         onRefresh: _refresh,
-        color: Zine.blueInk,
+        color: AD.iconSearch,
         child: _loading
-            ? const Center(child: CircularProgressIndicator(color: Zine.blueInk))
+            ? const Center(child: CircularProgressIndicator(color: AD.iconSearch))
             : ListView(padding: const EdgeInsets.all(20), children: [
                 // ── Level card ────────────────────────────────────────────
-                ZineCard(
-                  color: Zine.blue,
+                AdCard(
+                  color: AD.card,
                   padding: const EdgeInsets.all(18),
-                  boxShadow: Zine.shadow,
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Row(children: [
                       ZineIconBadge(icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold),
-                          color: Zine.card, size: 42),
+                          color: AD.iconShield, size: 42),
                       const SizedBox(width: 14),
                       Expanded(
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text('Trust level $level', style: ZineText.cardTitle(size: 21)),
+                          Text('Trust level $level', style: ADText.appTitle()),
                           const SizedBox(height: 3),
                           Text(
                             level >= 3
@@ -211,23 +233,37 @@ class _IdentityScreenState extends State<IdentityScreen> {
                                 : level == 2
                                     ? 'Verified human — creator features unlocked.'
                                     : 'Member — verify to unlock creator features.',
-                            style: ZineText.sub(size: 13, color: Zine.ink),
+                            style: ADText.preview(),
                           ),
                         ]),
                       ),
                     ]),
                     const SizedBox(height: 14),
-                    ZineStepPips(total: 3, active: level.clamp(1, 3).toInt()),
+                    Row(mainAxisSize: MainAxisSize.min, children: [
+                      for (var i = 1; i <= 3; i++) ...[
+                        Container(
+                          width: 9, height: 9,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: i == activePip ? AD.primaryBadge : AD.card,
+                            border: Border.all(color: AD.borderControl, width: 1),
+                          ),
+                        ),
+                        const SizedBox(width: 7),
+                      ],
+                      const SizedBox(width: 4),
+                      Text('STEP $activePip / 3', style: ADText.sectionLabel()),
+                    ]),
                   ]),
                 ),
                 const SizedBox(height: 22),
 
                 // ── The ladder ────────────────────────────────────────────
-                Text('YOUR IDENTITY', style: ZineText.kicker(size: 11.5)),
+                Text('YOUR IDENTITY', style: ADText.sectionLabel()),
                 const SizedBox(height: 10),
-                _tick(true, PhosphorIcons.at(PhosphorIconsStyle.bold), Zine.lime,
+                _tick(true, PhosphorIcons.at(PhosphorIconsStyle.bold), AD.primaryBadge,
                     'Handle', 'Your unique @handle', null),
-                _tick(true, PhosphorIcons.envelope(PhosphorIconsStyle.bold), Zine.blue,
+                _tick(true, PhosphorIcons.envelope(PhosphorIconsStyle.bold), AD.iconSearch,
                     'Email & password', 'Tap to change your email (OTP re-verify)', _changeEmail),
                 // [AVA-IDGATE-1] The 'Phone' rung is GONE. All phone verification was
                 // removed 2026-07-10: a number proves nothing about identity in the
@@ -238,7 +274,7 @@ class _IdentityScreenState extends State<IdentityScreen> {
                 _tick(
                     _livenessDone,
                     PhosphorIcons.videoCamera(PhosphorIconsStyle.bold),
-                    Zine.coral,
+                    AD.danger,
                     'Video verified',
                     _livenessDone
                         ? 'Verified — renewed every 90 days'
@@ -247,7 +283,7 @@ class _IdentityScreenState extends State<IdentityScreen> {
                 _tick(
                     _stripeDone,
                     PhosphorIcons.identificationCard(PhosphorIconsStyle.bold),
-                    Zine.mint,
+                    AD.online,
                     'Document KYC (Stripe)',
                     _stripeDone
                         ? 'Verified by Stripe — cannot be removed (delete account to erase)'
@@ -256,19 +292,19 @@ class _IdentityScreenState extends State<IdentityScreen> {
                 const SizedBox(height: 22),
 
                 // ── Account actions ───────────────────────────────────────
-                Text('ACCOUNT', style: ZineText.kicker(size: 11.5)),
+                Text('ACCOUNT', style: ADText.sectionLabel()),
                 const SizedBox(height: 10),
-                _row(PhosphorIcons.userCircle(PhosphorIconsStyle.bold), Zine.blue,
+                _row(PhosphorIcons.userCircle(PhosphorIconsStyle.bold), AD.iconSearch,
                     'Profile & photo', 'Display name, bio, profile picture',
                     () => Navigator.of(context)
                         .push(MaterialPageRoute(builder: (_) => const ProfileScreen()))
                         .then((_) => _refresh())),
-                _row(PhosphorIcons.lockSimple(PhosphorIconsStyle.bold), Zine.lilac,
+                _row(PhosphorIcons.lockSimple(PhosphorIconsStyle.bold), AD.iconVideo,
                     'Password',
                     'Managed securely by sign-in — use "Forgot password" at sign-in to change it',
                     null),
                 const SizedBox(height: 10),
-                _row(PhosphorIcons.trash(PhosphorIconsStyle.bold), Zine.coral,
+                _row(PhosphorIcons.trash(PhosphorIconsStyle.bold), AD.danger,
                     'Delete account', 'Wipes everything — including verification media',
                     _deleteAccount, danger: true),
                 const SizedBox(height: 24),
@@ -277,7 +313,7 @@ class _IdentityScreenState extends State<IdentityScreen> {
     );
   }
 
-  /// Trust Ladder rung — zine card with a status sticker (current = ok lime,
+  /// Trust Ladder rung — dark card with a status sticker (current = ok,
   /// pending/locked = hint).
   Widget _tick(bool done, IconData icon, Color accent, String title, String subtitle, VoidCallback? onTap) {
     final body = Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -285,26 +321,29 @@ class _IdentityScreenState extends State<IdentityScreen> {
       const SizedBox(width: 12),
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Expanded(child: Text(title, style: ZineText.cardTitle(size: 16))),
+          Expanded(child: Text(title, style: ADText.threadName())),
           const SizedBox(width: 6),
           done
-              ? ZineSticker('done', kind: ZineStickerKind.ok,
+              ? AdSticker('done', kind: AdStickerKind.ok,
                   icon: PhosphorIcons.check(PhosphorIconsStyle.bold))
-              : const ZineSticker('to do', kind: ZineStickerKind.hint),
+              : const AdSticker('to do', kind: AdStickerKind.hint),
         ]),
         const SizedBox(height: 4),
-        Text(subtitle, style: ZineText.sub(size: 12.5)),
+        Text(subtitle, style: ADText.preview()),
       ])),
     ]);
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: onTap == null
-          ? ZineCard(radius: Zine.rSm, padding: const EdgeInsets.all(13),
-              boxShadow: Zine.shadowXs, child: body)
+          ? AdCard(radius: AD.rListCard, padding: const EdgeInsets.all(13), child: body)
           : ZinePressable(
               onTap: onTap,
-              radius: BorderRadius.circular(Zine.rSm),
-              boxShadow: Zine.shadowXs,
+              color: AD.card,
+              pressedColor: AD.cardHover,
+              borderColor: AD.borderControl,
+              borderWidth: 1,
+              radius: BorderRadius.circular(AD.rListCard),
+              boxShadow: const [],
               padding: const EdgeInsets.all(13),
               child: body,
             ),
@@ -317,22 +356,26 @@ class _IdentityScreenState extends State<IdentityScreen> {
       ZineIconBadge(icon: icon, color: accent, size: 34),
       const SizedBox(width: 12),
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(title, style: ZineText.value(size: 15, color: danger ? Zine.coral : Zine.ink)),
+        Text(title, style: ADText.rowName(c: danger ? AD.danger : AD.textPrimary)),
         const SizedBox(height: 2),
-        Text(subtitle, style: ZineText.sub(size: 12)),
+        Text(subtitle, style: ADText.preview()),
       ])),
       if (onTap != null)
-        PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: Zine.inkMute),
+        PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: AD.textTertiary),
     ]);
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: onTap == null
-          ? ZineCard(radius: Zine.rSm, padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              boxShadow: Zine.shadowXs, child: body)
+          ? AdCard(radius: AD.rListCard, padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              child: body)
           : ZinePressable(
               onTap: onTap,
-              radius: BorderRadius.circular(Zine.rSm),
-              boxShadow: Zine.shadowXs,
+              color: AD.card,
+              pressedColor: AD.cardHover,
+              borderColor: AD.borderControl,
+              borderWidth: 1,
+              radius: BorderRadius.circular(AD.rListCard),
+              boxShadow: const [],
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               child: body,
             ),

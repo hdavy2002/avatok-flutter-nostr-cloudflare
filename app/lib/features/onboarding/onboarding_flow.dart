@@ -18,6 +18,7 @@ import '../../core/onboarding_store.dart';
 import '../../core/prefs_sync.dart';
 import '../../core/profile_store.dart';
 import '../../core/remote_config.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
@@ -257,14 +258,25 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     final hPad = ZineBreakpoints.pagePadding(context);
     return Scaffold(
       resizeToAvoidBottomInset: true,
-      body: ZinePaper(
+      body: Container(
+        color: AD.bg,
         child: SafeArea(
           child: Column(
             children: [
               Padding(
                 padding: EdgeInsets.fromLTRB(hPad, 12, hPad, 4),
                 child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-                  ZineStepPips(total: _steps, active: _step + 1),
+                  Row(mainAxisSize: MainAxisSize.min, children: [
+                    for (var i = 1; i <= _steps; i++) ...[
+                      Container(width: 9, height: 9, decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: i == _step + 1 ? AD.primaryBadge : AD.card,
+                        border: Border.all(color: AD.borderControl, width: 1))),
+                      const SizedBox(width: 7),
+                    ],
+                    const SizedBox(width: 4),
+                    Text('STEP ${_step + 1} / $_steps', style: ADText.sectionLabel()),
+                  ]),
                 ]),
               ),
               Expanded(child: _body()),
@@ -335,22 +347,28 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
               children: [
                 ZineIconBadge(
                     icon: PhosphorIcons.crownSimple(PhosphorIconsStyle.fill),
-                    color: Zine.blue, size: 44),
+                    color: AD.iconSearch, size: 44),
                 const SizedBox(height: 16),
-                ZineMarkTitle(
-                    pre: 'How will you ', mark: 'use', post: ' AvaTOK?',
-                    fontSize: ZineBreakpoints.heroTextSize(context, regular: 28),
-                    textAlign: TextAlign.left),
+                Text.rich(
+                  TextSpan(children: [
+                    const TextSpan(text: 'How will you '),
+                    TextSpan(text: 'use', style: const TextStyle(color: AD.primaryBadge)),
+                    const TextSpan(text: ' AvaTOK?'),
+                  ]),
+                  textAlign: TextAlign.left,
+                  style: ADText.appTitle().copyWith(
+                      fontSize: ZineBreakpoints.heroTextSize(context, regular: 28), height: 1.08),
+                ),
                 const SizedBox(height: 8),
                 Text(
                     'This sets up your account. Parent and Business accounts unlock extra '
                     'management tools in the sidebar. You can change this later in Settings.',
-                    style: ZineText.sub(size: 14.5)),
+                    style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14.5)),
                 const SizedBox(height: 22),
                 _kindCard(
                   kind: AccountKind.personal,
                   icon: PhosphorIcons.user(PhosphorIconsStyle.bold),
-                  color: Zine.blue,
+                  color: AD.iconSearch,
                   title: 'Just me',
                   sub: 'A personal account with all the standard AvaVerse apps.',
                 ),
@@ -358,7 +376,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                 _kindCard(
                   kind: AccountKind.parent,
                   icon: PhosphorIcons.usersThree(PhosphorIconsStyle.bold),
-                  color: Zine.lilac,
+                  color: AD.iconVideo,
                   title: 'Parent / family',
                   sub: 'Create and manage accounts for your kids — app controls, '
                       'contact approvals, screen time and safety alerts.',
@@ -367,7 +385,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                 _kindCard(
                   kind: AccountKind.enterprise,
                   icon: PhosphorIcons.buildings(PhosphorIconsStyle.bold),
-                  color: Zine.mint,
+                  color: AD.online,
                   title: 'Business / enterprise',
                   sub: 'Provision accounts for your team — employees, teams & roles, '
                       'app grants, billing and an audit log.',
@@ -397,18 +415,21 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         setState(() => _selectedKind = kind);
         Analytics.capture('onboarding_account_kind_selected', {'account_kind': kind.wire});
       },
-      color: selected ? Zine.lime : Zine.card,
+      color: selected ? AD.primaryBadge : AD.card,
+      pressedColor: AD.primaryBadge,
+      borderColor: selected ? AD.primaryBadge : AD.borderControl,
+      borderWidth: 1,
       radius: BorderRadius.circular(Zine.rSm),
-      boxShadow: selected ? Zine.shadowSm : Zine.shadowXs,
+      boxShadow: const [],
       padding: const EdgeInsets.all(14),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         ZineIconBadge(icon: icon, color: color, size: 42),
         const SizedBox(width: 14),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: ZineText.cardTitle(size: 18)),
+            Text(title, style: ADText.threadName(c: selected ? Colors.white : AD.textPrimary).copyWith(fontSize: 18)),
             const SizedBox(height: 4),
-            Text(sub, style: ZineText.sub(size: 12.5)),
+            Text(sub, style: ADText.preview(c: selected ? Colors.white : AD.textSecondary).copyWith(fontSize: 12.5)),
           ]),
         ),
         const SizedBox(width: 8),
@@ -416,7 +437,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           selected
               ? PhosphorIcons.checkCircle(PhosphorIconsStyle.fill)
               : PhosphorIcons.circle(PhosphorIconsStyle.bold),
-          color: selected ? Zine.ink : Zine.inkMute,
+          color: selected ? Colors.white : AD.textTertiary,
           size: 22,
         ),
       ]),
@@ -438,15 +459,20 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
               children: [
                 ZineIconBadge(
                     icon: PhosphorIcons.user(PhosphorIconsStyle.bold),
-                    color: Zine.lime, size: 44),
+                    color: AD.primaryBadge, size: 44),
                 const SizedBox(height: 16),
-                ZineMarkTitle(
-                    pre: 'Your ', mark: 'name',
-                    fontSize: ZineBreakpoints.heroTextSize(context, regular: 30),
-                    textAlign: TextAlign.left),
+                Text.rich(
+                  TextSpan(children: [
+                    const TextSpan(text: 'Your '),
+                    TextSpan(text: 'name', style: const TextStyle(color: AD.primaryBadge)),
+                  ]),
+                  textAlign: TextAlign.left,
+                  style: ADText.appTitle().copyWith(
+                      fontSize: ZineBreakpoints.heroTextSize(context, regular: 30), height: 1.08),
+                ),
                 const SizedBox(height: 8),
                 Text('This is how you’ll appear to people you message. You can set a private AvaTOK number later in Settings.',
-                    style: ZineText.sub(size: 14.5)),
+                    style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14.5)),
                 const SizedBox(height: 24),
                 _field(
                   controller: _nameCtrl,
@@ -483,24 +509,24 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
   Widget _handleStatus() {
     if (_handleMsg != null) {
-      return ZineSticker(
+      return AdSticker(
         _handleMsg!,
-        kind: _handleAvail == true ? ZineStickerKind.ok : ZineStickerKind.no,
+        kind: _handleAvail == true ? AdStickerKind.ok : AdStickerKind.no,
         icon: _handleAvail == true
             ? PhosphorIcons.checkCircle(PhosphorIconsStyle.fill)
             : PhosphorIcons.xCircle(PhosphorIconsStyle.fill),
       );
     }
     if (_handleAvail == true) {
-      return ZineSticker(
+      return AdSticker(
         '@${_handleCtrl.text.trim().toLowerCase()} is available',
-        kind: ZineStickerKind.ok,
+        kind: AdStickerKind.ok,
         icon: PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
       );
     }
-    return ZineSticker(
+    return AdSticker(
       '3–20 letters, numbers or _',
-      kind: ZineStickerKind.hint,
+      kind: AdStickerKind.hint,
       icon: PhosphorIcons.pencilSimple(PhosphorIconsStyle.fill),
     );
   }
@@ -508,15 +534,15 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   Widget? _handleTrailing() {
     if (_checkingHandle) {
       return const SizedBox(width: 18, height: 18,
-          child: CircularProgressIndicator(strokeWidth: 2.4, color: Zine.blueInk));
+          child: CircularProgressIndicator(strokeWidth: 2.4, color: AD.iconSearch));
     }
     if (_handleAvail == true) {
       return PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
-          size: 20, color: Zine.mintInk);
+          size: 20, color: AD.online);
     }
     if (_handleAvail == false) {
       return PhosphorIcon(PhosphorIcons.xCircle(PhosphorIconsStyle.fill),
-          size: 20, color: Zine.coral);
+          size: 20, color: AD.danger);
     }
     return null;
   }
@@ -539,15 +565,14 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     final hasLead = leadText != null || leadIcon != null;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       if (label != null) ...[
-        Text(label.toUpperCase(), style: ZineText.kicker()),
+        Text(label.toUpperCase(), style: ADText.sectionLabel(c: AD.textSecondary)),
         const SizedBox(height: 9),
       ],
       Container(
         decoration: BoxDecoration(
-          color: Zine.card,
-          borderRadius: BorderRadius.circular(Zine.rField),
-          border: Zine.border,
-          boxShadow: error ? Zine.shadowError : Zine.shadowSm,
+          color: AD.inputField,
+          borderRadius: BorderRadius.circular(AD.rInput),
+          border: Border.all(color: error ? AD.danger : AD.borderControl, width: 1),
         ),
         clipBehavior: Clip.antiAlias,
         child: Row(children: [
@@ -556,16 +581,15 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
               width: 50,
               constraints: const BoxConstraints(minHeight: 56),
               decoration: const BoxDecoration(
-                color: Zine.lime,
-                border: Border(right: BorderSide(color: Zine.ink, width: Zine.bw)),
+                border: Border(right: BorderSide(color: Color(0x22000000), width: 1)),
               ),
               alignment: Alignment.center,
               child: leadText != null
                   ? Text(leadText,
                       style: const TextStyle(
-                          fontFamily: ZineText.display, fontWeight: FontWeight.w600,
-                          fontSize: 24, color: Zine.ink))
-                  : Icon(leadIcon, size: 22, color: Zine.ink),
+                          fontFamily: ADText.family, fontWeight: FontWeight.w800,
+                          fontSize: 20, color: AD.textOnInput))
+                  : Icon(leadIcon, size: 20, color: AD.textOnInput),
             ),
           Expanded(
             child: TextField(
@@ -575,12 +599,13 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
               textCapitalization: textCapitalization,
               // RESPUI-2: keep the focused field clear of the keyboard on short screens.
               scrollPadding: const EdgeInsets.all(80),
-              cursorColor: Zine.blueInk,
-              style: ZineText.input(),
+              cursorColor: AD.iconSearch,
+              style: const TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w700,
+                  fontSize: 15, color: AD.textOnInput),
               decoration: InputDecoration(
                 hintText: hint,
-                hintStyle: ZineText.input()
-                    .copyWith(color: Zine.placeholder, fontWeight: FontWeight.w700),
+                hintStyle: const TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600,
+                    fontSize: 15, color: AD.placeholderOnWhite),
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
@@ -612,29 +637,45 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       child: Column(
         children: [
           const SizedBox(height: 12),
-          ZineCrest(
-            child: PhosphorIcon(
-                _notifEnabled
-                    ? PhosphorIcons.bellRinging(PhosphorIconsStyle.fill)
-                    : PhosphorIcons.bell(PhosphorIconsStyle.bold),
-                size: 46, color: Zine.ink),
+          Container(
+            width: 116, height: 116,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AD.card,
+              border: Border.all(color: AD.borderControl, width: 1),
+              boxShadow: AD.overlayShadow,
+            ),
+            child: Center(
+              child: PhosphorIcon(
+                  _notifEnabled
+                      ? PhosphorIcons.bellRinging(PhosphorIconsStyle.fill)
+                      : PhosphorIcons.bell(PhosphorIconsStyle.bold),
+                  size: 46, color: AD.textPrimary),
+            ),
           ),
           const SizedBox(height: 18),
-          ZineMarkTitle(pre: 'Stay in the ', mark: 'loop',
-              fontSize: ZineBreakpoints.heroTextSize(context, regular: 32)),
+          Text.rich(
+            TextSpan(children: [
+              const TextSpan(text: 'Stay in the '),
+              TextSpan(text: 'loop', style: const TextStyle(color: AD.primaryBadge)),
+            ]),
+            textAlign: TextAlign.center,
+            style: ADText.appTitle().copyWith(
+                fontSize: ZineBreakpoints.heroTextSize(context, regular: 32), height: 1.08),
+          ),
           const SizedBox(height: 12),
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 300),
             child: Text(
                 'Get notified when creators you follow post, when you earn a payout, or when someone tips your work.',
-                textAlign: TextAlign.center, style: ZineText.sub(size: 14.5)),
+                textAlign: TextAlign.center, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14.5)),
           ),
           const SizedBox(height: 28),
-          _featureRow(PhosphorIcons.heart(PhosphorIconsStyle.bold), Zine.coral, 'New followers & tips'),
+          _featureRow(PhosphorIcons.heart(PhosphorIconsStyle.bold), AD.danger, 'New followers & tips'),
           const SizedBox(height: 12),
-          _featureRow(PhosphorIcons.wallet(PhosphorIconsStyle.bold), Zine.mint, 'Payouts & wallet activity'),
+          _featureRow(PhosphorIcons.wallet(PhosphorIconsStyle.bold), AD.online, 'Payouts & wallet activity'),
           const SizedBox(height: 12),
-          _featureRow(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), Zine.blue, 'Replies & mentions'),
+          _featureRow(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), AD.iconSearch, 'Replies & mentions'),
           const SizedBox(height: 32),
           if (_notifEnabled)
             _primary('Keep going', _next)
@@ -647,7 +688,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
               setState(() => _notifEnabled = true);
             }, icon: PhosphorIcons.bell(PhosphorIconsStyle.bold)),
             const SizedBox(height: 14),
-            ZineLink('not now', fontSize: 14, onTap: _next),
+            ZineLink('not now', fontSize: 14, onTap: _next, underline: AD.iconSearch),
           ],
         ],
       ),
@@ -671,38 +712,54 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       child: Column(
         children: [
           const SizedBox(height: 12),
-          ZineCrest(
-            child: PhosphorIcon(PhosphorIcons.deviceMobile(PhosphorIconsStyle.fill),
-                size: 46, color: Zine.ink),
+          Container(
+            width: 116, height: 116,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AD.card,
+              border: Border.all(color: AD.borderControl, width: 1),
+              boxShadow: AD.overlayShadow,
+            ),
+            child: Center(
+              child: PhosphorIcon(PhosphorIcons.deviceMobile(PhosphorIconsStyle.fill),
+                  size: 46, color: AD.textPrimary),
+            ),
           ),
           const SizedBox(height: 18),
-          ZineMarkTitle(pre: 'Make AvaTOK your ', mark: 'phone',
-              fontSize: ZineBreakpoints.heroTextSize(context, regular: 32)),
+          Text.rich(
+            TextSpan(children: [
+              const TextSpan(text: 'Make AvaTOK your '),
+              TextSpan(text: 'phone', style: const TextStyle(color: AD.primaryBadge)),
+            ]),
+            textAlign: TextAlign.center,
+            style: ADText.appTitle().copyWith(
+                fontSize: ZineBreakpoints.heroTextSize(context, regular: 32), height: 1.08),
+          ),
           const SizedBox(height: 12),
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 320),
             child: Text(
                 'Set AvaTOK as your default dialer and your Messages app — send & '
                 'receive SMS with AI spam filtering — plus an AI-powered contact book.',
-                textAlign: TextAlign.center, style: ZineText.sub(size: 14.5)),
+                textAlign: TextAlign.center, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14.5)),
           ),
           const SizedBox(height: 28),
-          _featureRow(PhosphorIcons.phone(PhosphorIconsStyle.bold), Zine.blue,
+          _featureRow(PhosphorIcons.phone(PhosphorIconsStyle.bold), AD.iconSearch,
               'A smarter dialer with spam protection'),
           const SizedBox(height: 12),
-          _featureRow(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), Zine.lilac,
+          _featureRow(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), AD.iconVideo,
               'SMS with an AI spam filter'),
           const SizedBox(height: 12),
-          _featureRow(PhosphorIcons.addressBook(PhosphorIconsStyle.bold), Zine.mint,
+          _featureRow(PhosphorIcons.addressBook(PhosphorIconsStyle.bold), AD.online,
               'An AI-powered contact book'),
           const SizedBox(height: 12),
-          _featureRow(PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold), Zine.coral,
+          _featureRow(PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold), AD.danger,
               'Community-powered caller ID'),
           const SizedBox(height: 32),
           _primary('Make AvaTOK my phone app', _makePhoneApp,
               icon: PhosphorIcons.deviceMobile(PhosphorIconsStyle.bold), loading: _phoneBusy),
           const SizedBox(height: 14),
-          ZineLink('not now', fontSize: 14, onTap: _phoneBusy ? null : _skipPhoneRoles),
+          ZineLink('not now', fontSize: 14, onTap: _phoneBusy ? null : _skipPhoneRoles, underline: AD.iconSearch),
         ],
       ),
     );
@@ -718,23 +775,39 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       child: Column(
         children: [
           const SizedBox(height: 12),
-          ZineCrest(
-            child: PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
-                size: 46, color: Zine.ink),
+          Container(
+            width: 116, height: 116,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AD.card,
+              border: Border.all(color: AD.borderControl, width: 1),
+              boxShadow: AD.overlayShadow,
+            ),
+            child: Center(
+              child: PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
+                  size: 46, color: AD.textPrimary),
+            ),
           ),
           const SizedBox(height: 18),
-          ZineMarkTitle(pre: 'All ', mark: 'set',
-              fontSize: ZineBreakpoints.heroTextSize(context, regular: 32)),
+          Text.rich(
+            TextSpan(children: [
+              const TextSpan(text: 'All '),
+              TextSpan(text: 'set', style: const TextStyle(color: AD.primaryBadge)),
+            ]),
+            textAlign: TextAlign.center,
+            style: ADText.appTitle().copyWith(
+                fontSize: ZineBreakpoints.heroTextSize(context, regular: 32), height: 1.08),
+          ),
           const SizedBox(height: 20),
-          _resultRow(PhosphorIcons.phone(PhosphorIconsStyle.bold), Zine.blue,
+          _resultRow(PhosphorIcons.phone(PhosphorIconsStyle.bold), AD.iconSearch,
               'Default dialer', _dialerGranted),
           if (_smsGranted != null) ...[
             const SizedBox(height: 12),
-            _resultRow(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), Zine.lilac,
+            _resultRow(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), AD.iconVideo,
                 'Messages (SMS)', _smsGranted),
           ],
           const SizedBox(height: 12),
-          _resultRow(PhosphorIcons.addressBook(PhosphorIconsStyle.bold), Zine.mint,
+          _resultRow(PhosphorIcons.addressBook(PhosphorIconsStyle.bold), AD.online,
               'Contacts', _contactsGranted),
           const SizedBox(height: 28),
           _primary('Continue', () {
@@ -751,17 +824,16 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     );
   }
 
-  Widget _resultRow(IconData icon, Color accent, String label, bool? granted) => ZineCard(
+  Widget _resultRow(IconData icon, Color accent, String label, bool? granted) => AdCard(
         radius: Zine.rSm,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        boxShadow: Zine.shadowXs,
         child: Row(children: [
           ZineIconBadge(icon: icon, color: accent),
           const SizedBox(width: 14),
-          Expanded(child: Text(label, style: ZineText.value(size: 15))),
-          ZineSticker(
+          Expanded(child: Text(label, style: ADText.rowName().copyWith(fontSize: 15))),
+          AdSticker(
             granted == true ? 'On' : 'Not now',
-            kind: granted == true ? ZineStickerKind.ok : ZineStickerKind.no,
+            kind: granted == true ? AdStickerKind.ok : AdStickerKind.no,
             icon: granted == true
                 ? PhosphorIcons.checkCircle(PhosphorIconsStyle.fill)
                 : PhosphorIcons.circle(PhosphorIconsStyle.bold),
@@ -779,22 +851,29 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       child: Column(
         children: [
           const SizedBox(height: 12),
-          ZineMarkTitle(pre: 'Your new ', mark: 'phone',
-              fontSize: ZineBreakpoints.heroTextSize(context, regular: 30)),
+          Text.rich(
+            TextSpan(children: [
+              const TextSpan(text: 'Your new '),
+              TextSpan(text: 'phone', style: const TextStyle(color: AD.primaryBadge)),
+            ]),
+            textAlign: TextAlign.center,
+            style: ADText.appTitle().copyWith(
+                fontSize: ZineBreakpoints.heroTextSize(context, regular: 30), height: 1.08),
+          ),
           const SizedBox(height: 10),
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 300),
             child: Text('AvaTOK now handles your calls and texts. Here’s where to find things.',
-                textAlign: TextAlign.center, style: ZineText.sub(size: 14)),
+                textAlign: TextAlign.center, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14)),
           ),
           const SizedBox(height: 24),
-          _previewCard(PhosphorIcons.phone(PhosphorIconsStyle.bold), Zine.blue,
+          _previewCard(PhosphorIcons.phone(PhosphorIconsStyle.bold), AD.iconSearch,
               'Dialpad', 'Call anyone — spam numbers are flagged before they reach you.'),
           const SizedBox(height: 12),
-          _previewCard(PhosphorIcons.phoneCall(PhosphorIconsStyle.bold), Zine.mint,
+          _previewCard(PhosphorIcons.phoneCall(PhosphorIconsStyle.bold), AD.online,
               'Call screen', 'A clean full-screen call with a friend or spam label up top.'),
           const SizedBox(height: 12),
-          _previewCard(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), Zine.lilac,
+          _previewCard(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), AD.iconVideo,
               'Messages', 'Your SMS, sorted by AI into Inbox and Spam.'),
           const SizedBox(height: 28),
           _primary('Continue', _next),
@@ -803,18 +882,17 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     );
   }
 
-  Widget _previewCard(IconData icon, Color accent, String title, String sub) => ZineCard(
+  Widget _previewCard(IconData icon, Color accent, String title, String sub) => AdCard(
         radius: Zine.rSm,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        boxShadow: Zine.shadowXs,
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           ZineIconBadge(icon: icon, color: accent, size: 42),
           const SizedBox(width: 14),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title, style: ZineText.cardTitle(size: 16)),
+              Text(title, style: ADText.threadName().copyWith(fontSize: 16)),
               const SizedBox(height: 3),
-              Text(sub, style: ZineText.sub(size: 12.5)),
+              Text(sub, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12.5)),
             ]),
           ),
         ]),
@@ -912,12 +990,17 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                ZineMarkTitle(
-                    pre: 'Terms & ', mark: 'Conditions',
-                    fontSize: ZineBreakpoints.heroTextSize(context, regular: 30),
-                    textAlign: TextAlign.left),
+                Text.rich(
+                  TextSpan(children: [
+                    const TextSpan(text: 'Terms & '),
+                    TextSpan(text: 'Conditions', style: const TextStyle(color: AD.primaryBadge)),
+                  ]),
+                  textAlign: TextAlign.left,
+                  style: ADText.appTitle().copyWith(
+                      fontSize: ZineBreakpoints.heroTextSize(context, regular: 30), height: 1.08),
+                ),
                 const SizedBox(height: 6),
-                Text('PLEASE REVIEW BEFORE CONTINUING', style: ZineText.kicker()),
+                Text('PLEASE REVIEW BEFORE CONTINUING', style: ADText.sectionLabel(c: AD.textTertiary)),
                 const SizedBox(height: 20),
                 _termSection('1. Your Account', '$para $para'),
                 _termSection('2. Content & Ownership', '$para $para'),
@@ -931,8 +1014,8 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         Container(
           padding: EdgeInsets.fromLTRB(hPad, 14, hPad, 20),
           decoration: const BoxDecoration(
-            color: Zine.paper2,
-            border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
+            color: AD.headerFooter,
+            border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
           ),
           child: Column(
             children: [
@@ -943,20 +1026,19 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                   Container(
                     width: 26, height: 26,
                     decoration: BoxDecoration(
-                      color: _agreedTerms ? Zine.lime : Zine.card,
+                      color: _agreedTerms ? AD.primaryBadge : AD.card,
                       borderRadius: BorderRadius.circular(8),
-                      border: Zine.border,
-                      boxShadow: _agreedTerms ? Zine.shadowXs : null,
+                      border: Border.all(color: _agreedTerms ? AD.primaryBadge : AD.borderControl, width: 1),
                     ),
                     child: _agreedTerms
                         ? PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold),
-                            size: 15, color: Zine.ink)
+                            size: 15, color: Colors.white)
                         : null,
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text('I have read and agree to the Terms & Conditions',
-                        style: ZineText.value(size: 14)),
+                        style: ADText.rowName().copyWith(fontSize: 14)),
                   ),
                 ]),
               ),
@@ -972,9 +1054,9 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   Widget _termSection(String title, String body) => Padding(
         padding: const EdgeInsets.only(bottom: 18),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title, style: ZineText.cardTitle(size: 17)),
+          Text(title, style: ADText.threadName().copyWith(fontSize: 17)),
           const SizedBox(height: 6),
-          Text(body, style: ZineText.sub(size: 13.5)),
+          Text(body, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13.5)),
         ]),
       );
 
@@ -989,19 +1071,26 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         SizedBox(
           width: 74, height: 46,
           child: Stack(alignment: Alignment.center, children: [
-            Positioned(left: 0, child: _dot(Zine.blue)),
-            Positioned(right: 0, child: _dot(Zine.lilac)),
-            _dot(Zine.coral, big: true),
+            Positioned(left: 0, child: _dot(AD.iconSearch)),
+            Positioned(right: 0, child: _dot(AD.iconVideo)),
+            _dot(AD.danger, big: true),
           ]),
         ),
         const SizedBox(height: 22),
-        const ZineMarkTitle(pre: 'Find people you ', mark: 'know', fontSize: 28),
+        Text.rich(
+          TextSpan(children: [
+            const TextSpan(text: 'Find people you '),
+            TextSpan(text: 'know', style: const TextStyle(color: AD.primaryBadge)),
+          ]),
+          textAlign: TextAlign.center,
+          style: ADText.appTitle().copyWith(fontSize: 28, height: 1.08),
+        ),
         const SizedBox(height: 12),
         ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 300),
           child: Text(
               'Upload your contacts to instantly connect with friends already creating on AvaTOK. We never store your contacts.',
-              textAlign: TextAlign.center, style: ZineText.sub(size: 14.5)),
+              textAlign: TextAlign.center, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14.5)),
         ),
         const SizedBox(height: 32),
         _primary('Find my people', () async {
@@ -1010,7 +1099,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           _next();
         }, icon: PhosphorIcons.uploadSimple(PhosphorIconsStyle.bold)),
         const SizedBox(height: 14),
-        ZineLink('skip for now', fontSize: 14, onTap: _next),
+        ZineLink('skip for now', fontSize: 14, onTap: _next, underline: AD.iconSearch),
       ]),
     );
   }
@@ -1020,7 +1109,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         decoration: BoxDecoration(
           color: c,
           shape: BoxShape.circle,
-          border: Border.all(color: Zine.ink, width: 2),
+          border: Border.all(color: AD.borderControl, width: 2),
         ),
       );
 
@@ -1037,13 +1126,18 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         Padding(
           padding: EdgeInsets.fromLTRB(hPad, 12, hPad, 4),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            ZineMarkTitle(
-                pre: 'Set up your ', mark: 'apps',
-                fontSize: ZineBreakpoints.heroTextSize(context, regular: 28),
-                textAlign: TextAlign.left),
+            Text.rich(
+              TextSpan(children: [
+                const TextSpan(text: 'Set up your '),
+                TextSpan(text: 'apps', style: const TextStyle(color: AD.primaryBadge)),
+              ]),
+              textAlign: TextAlign.left,
+              style: ADText.appTitle().copyWith(
+                  fontSize: ZineBreakpoints.heroTextSize(context, regular: 28), height: 1.08),
+            ),
             const SizedBox(height: 6),
             Text('Toggle the AvaVerse apps you want. Change these anytime.',
-                style: ZineText.sub(size: 14)),
+                style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14)),
           ]),
         ),
         Expanded(
@@ -1054,19 +1148,19 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
             itemBuilder: (c, i) {
               final a = _offeredApps[i];
               final on = _enabled.contains(a.key);
-              return ZineCard(
+              const adAccents = [AD.iconSearch, AD.primaryBadge, AD.danger, AD.iconVideo, AD.online];
+              return AdCard(
                 radius: Zine.rSm,
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                boxShadow: on ? Zine.shadowSm : Zine.shadowXs,
                 child: Row(children: [
-                  ZineIconBadge(icon: a.icon, color: Zine.accents[i % Zine.accents.length], size: 40),
+                  ZineIconBadge(icon: a.icon, color: adAccents[i % adAccents.length], size: 40),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(a.name, style: ZineText.cardTitle(size: 16)),
+                      Text(a.name, style: ADText.threadName().copyWith(fontSize: 16)),
                       const SizedBox(height: 2),
                       Text(a.tagline, maxLines: 1, overflow: TextOverflow.ellipsis,
-                          style: ZineText.sub(size: 12)),
+                          style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12)),
                     ]),
                   ),
                   const SizedBox(width: 8),
@@ -1087,19 +1181,18 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   }
 
   // ---- shared bits ----
-  Widget _featureRow(IconData icon, Color accent, String label) => ZineCard(
+  Widget _featureRow(IconData icon, Color accent, String label) => AdCard(
         radius: Zine.rSm,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        boxShadow: Zine.shadowXs,
         child: Row(children: [
           ZineIconBadge(icon: icon, color: accent),
           const SizedBox(width: 14),
-          Expanded(child: Text(label, style: ZineText.value(size: 15))),
+          Expanded(child: Text(label, style: ADText.rowName().copyWith(fontSize: 15))),
         ]),
       );
 
   Widget _primary(String text, VoidCallback? onTap, {IconData? icon, bool loading = false}) =>
-      ZineButton(
+      AdButton(
         label: text,
         onPressed: onTap,
         fullWidth: true,

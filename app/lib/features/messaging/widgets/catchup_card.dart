@@ -5,7 +5,7 @@
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
-import '../../../core/ui/zine.dart';
+import '../../../core/ui/avatok_dark.dart';
 import '../ai_chat_api.dart';
 
 class CatchupCard extends StatelessWidget {
@@ -21,25 +21,24 @@ class CatchupCard extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(12, 8, 12, 8),
       padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
       decoration: BoxDecoration(
-        color: Zine.lilac,
-        border: Zine.border,
-        borderRadius: BorderRadius.circular(Zine.rSm),
-        boxShadow: Zine.shadowSm,
+        color: AD.card,
+        border: Border.all(color: AD.borderControl, width: 1),
+        borderRadius: BorderRadius.circular(AD.rStatCard),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill), size: 15, color: Zine.ink),
+          PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill), size: 15, color: AD.iconVideo),
           const SizedBox(width: 6),
           Expanded(
             child: Text('WHAT YOU MISSED · $msgCount messages',
-                style: ZineText.tag(size: 10.5, color: Zine.ink)),
+                style: ADText.statCaption(c: AD.textSecondary)),
           ),
           GestureDetector(
             onTap: onDismiss,
             behavior: HitTestBehavior.opaque,
             child: Padding(
               padding: const EdgeInsets.all(4),
-              child: PhosphorIcon(PhosphorIcons.x(PhosphorIconsStyle.bold), size: 16, color: Zine.ink),
+              child: PhosphorIcon(PhosphorIcons.x(PhosphorIconsStyle.bold), size: 16, color: AD.textSecondary),
             ),
           ),
         ]),
@@ -50,14 +49,14 @@ class CatchupCard extends StatelessWidget {
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Padding(
                 padding: const EdgeInsets.only(top: 2, right: 6),
-                child: Text('•', style: ZineText.value(size: 13, color: Zine.ink)),
+                child: Text('•', style: ADText.rowName()),
               ),
               Expanded(
                 child: RichText(
                   text: TextSpan(children: [
                     if (b.sender.isNotEmpty)
-                      TextSpan(text: '${b.sender} ', style: ZineText.value(size: 12.5, color: Zine.blueInk)),
-                    TextSpan(text: b.text, style: ZineText.sub(size: 12.5, color: Zine.ink)),
+                      TextSpan(text: '${b.sender} ', style: ADText.rowName(c: AD.iconSearch)),
+                    TextSpan(text: b.text, style: ADText.preview(c: AD.textSecondary)),
                   ]),
                 ),
               ),

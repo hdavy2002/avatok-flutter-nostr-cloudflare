@@ -14,7 +14,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../../core/ui/zine.dart';
+import '../../../core/ui/avatok_dark.dart';
 import 'gif_api.dart';
 import 'picker_recents_store.dart';
 import 'rich_picker_panel.dart';
@@ -52,7 +52,7 @@ class RichInputBar extends StatefulWidget {
     required this.onGif,
     required this.onSticker,
     this.hintText = 'Message',
-    this.fieldColor = Zine.card,
+    this.fieldColor = AD.inputField,
     this.topSlot,
   });
 
@@ -160,8 +160,8 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
   @override
   Widget build(BuildContext context) {
     const bandDeco = BoxDecoration(
-      color: Zine.paper2,
-      border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
+      color: AD.headerFooter,
+      border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
     );
     return Column(mainAxisSize: MainAxisSize.min, children: [
       Container(
@@ -177,7 +177,7 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
                     _panelOpen && _tab == PickerTab.emoji
                         ? Icons.keyboard_alt_outlined
                         : Icons.emoji_emotions_outlined,
-                    color: Zine.ink,
+                    color: AD.iconEmoji,
                     size: 26),
                 visualDensity: VisualDensity.compact,
                 onPressed: _toggleEmoji,
@@ -189,7 +189,7 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
                   decoration: BoxDecoration(
                     color: widget.fieldColor,
                     borderRadius: BorderRadius.circular(22),
-                    border: Zine.border,
+                    border: Border.all(color: AD.borderControl, width: 1),
                   ),
                   child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
                     Expanded(
@@ -203,12 +203,13 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
                         maxLines: 5,
                         keyboardType: TextInputType.multiline,
                         textInputAction: TextInputAction.newline,
-                        style: ZineText.input(size: 15.5),
-                        cursorColor: Zine.blueInk,
+                        style: const TextStyle(fontFamily: ADText.family,
+                            fontWeight: FontWeight.w600, fontSize: 15.5, color: AD.textOnInput),
+                        cursorColor: AD.iconSearch,
                         decoration: InputDecoration(
                           hintText: widget.hintText,
-                          hintStyle: ZineText.input(size: 15.5).copyWith(
-                              color: Zine.placeholder,
+                          hintStyle: const TextStyle(fontFamily: ADText.family,
+                              fontSize: 15.5, color: AD.placeholderOnWhite,
                               fontWeight: FontWeight.w600),
                           border: InputBorder.none,
                           isDense: true,
@@ -219,14 +220,14 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
                     ),
                     IconButton(
                       icon: const Icon(Icons.attach_file_rounded,
-                          color: Zine.inkSoft, size: 22),
+                          color: AD.iconClipOnWhite, size: 22),
                       visualDensity: VisualDensity.compact,
                       onPressed: widget.onAttach,
                     ),
                     if (!widget.hasText)
                       IconButton(
                         icon: const Icon(Icons.photo_camera_outlined,
-                            color: Zine.inkSoft, size: 22),
+                            color: AD.iconCameraOnWhite, size: 22),
                         visualDensity: VisualDensity.compact,
                         onPressed: widget.onCamera,
                       ),
@@ -267,19 +268,18 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
 
   Widget _greenButton() {
     final send = widget.hasText;
+    // Send = green send pill; idle = lilac mic (dark v2).
     return GestureDetector(
       onTap: send ? widget.onSend : widget.onMic,
       child: Container(
         width: 46,
         height: 46,
         decoration: BoxDecoration(
-          color: Zine.lime,
+          color: send ? AD.sendActiveBg : AD.micIdleBg,
           shape: BoxShape.circle,
-          border: Zine.border,
-          boxShadow: Zine.shadowXs,
         ),
         child: Icon(send ? Icons.send_rounded : Icons.mic_rounded,
-            color: Zine.ink, size: 22),
+            color: send ? AD.sendActiveInk : AD.micIdleInk, size: 22),
       ),
     );
   }

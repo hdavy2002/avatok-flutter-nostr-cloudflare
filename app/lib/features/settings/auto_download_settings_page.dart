@@ -3,7 +3,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/media_auto_download.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine_widgets.dart';
 
 /// ACCOUNT & SETTINGS → Auto-download (STREAM J / D17).
@@ -59,8 +59,27 @@ class _AutoDownloadSettingsPageState extends State<AutoDownloadSettingsPage> {
   Widget build(BuildContext context) {
     final mode = _mode;
     return Scaffold(
-      backgroundColor: Zine.paper,
-      appBar: const ZineAppBar(title: 'Auto-download'),
+      backgroundColor: AD.bg,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(64),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: AD.headerFooter,
+            border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
+          ),
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 6, 12, 10),
+              child: Row(children: [
+                const AdBackButton(),
+                const SizedBox(width: 4),
+                Expanded(child: Text('Auto-download', style: ADText.appTitle(), maxLines: 1, overflow: TextOverflow.ellipsis)),
+              ]),
+            ),
+          ),
+        ),
+      ),
       body: mode == null
           ? const Center(
               child: SizedBox(
@@ -73,14 +92,14 @@ class _AutoDownloadSettingsPageState extends State<AutoDownloadSettingsPage> {
                 Text(
                   'When should AvaTOK download the photos, videos, files and voice '
                   'notes people send you?',
-                  style: ZineText.sub(size: 13),
+                  style: ADText.preview(),
                 ),
                 const SizedBox(height: 16),
                 _option(
                   mode: mode,
                   value: AutoDownloadMode.always,
                   icon: PhosphorIcons.downloadSimple(PhosphorIconsStyle.fill),
-                  color: Zine.mint,
+                  color: AD.online,
                   title: 'Download media automatically',
                   subtitle: 'Media is ready to view the moment it arrives.',
                 ),
@@ -88,7 +107,7 @@ class _AutoDownloadSettingsPageState extends State<AutoDownloadSettingsPage> {
                   mode: mode,
                   value: AutoDownloadMode.wifiOnly,
                   icon: PhosphorIcons.wifiHigh(PhosphorIconsStyle.fill),
-                  color: Zine.blue,
+                  color: AD.iconSearch,
                   title: 'Download on Wi-Fi only',
                   subtitle: 'Save mobile data — download over Wi-Fi, tap to fetch on cellular.',
                 ),
@@ -96,7 +115,7 @@ class _AutoDownloadSettingsPageState extends State<AutoDownloadSettingsPage> {
                   mode: mode,
                   value: AutoDownloadMode.never,
                   icon: PhosphorIcons.handPalm(PhosphorIconsStyle.fill),
-                  color: Zine.coral,
+                  color: AD.danger,
                   title: 'Do not download automatically',
                   subtitle: 'Nothing downloads until you tap it — you stay fully in control.',
                 ),
@@ -104,19 +123,19 @@ class _AutoDownloadSettingsPageState extends State<AutoDownloadSettingsPage> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Zine.paper2,
+                    color: AD.card,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Zine.ink, width: 1.2),
+                    border: Border.all(color: AD.borderControl, width: 1),
                   ),
                   child: Row(children: [
                     PhosphorIcon(PhosphorIcons.info(PhosphorIconsStyle.fill),
-                        size: 18, color: Zine.inkSoft),
+                        size: 18, color: AD.textSecondary),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
                         'You can always tap any attachment to download it, whatever '
                         'you choose here. Once downloaded, it is kept on this phone.',
-                        style: ZineText.sub(size: 12),
+                        style: ADText.preview(),
                       ),
                     ),
                   ]),
@@ -137,12 +156,12 @@ class _AutoDownloadSettingsPageState extends State<AutoDownloadSettingsPage> {
     final selected = mode == value;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: ZineCard(
+      child: AdCard(
         onTap: () => _select(value),
-        radius: Zine.rSm,
+        radius: AD.rListCard,
         padding: const EdgeInsets.all(13),
-        color: selected ? Zine.paper2 : Zine.card,
-        boxShadow: selected ? Zine.shadowXs : const [],
+        color: selected ? AD.cardHover : AD.card,
+        boxShadow: const [],
         child: Row(children: [
           ZineIconBadge(icon: icon, color: color, size: 38),
           const SizedBox(width: 12),
@@ -150,9 +169,9 @@ class _AutoDownloadSettingsPageState extends State<AutoDownloadSettingsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: ZineText.value(size: 14.5)),
+                Text(title, style: ADText.rowName()),
                 const SizedBox(height: 3),
-                Text(subtitle, style: ZineText.sub(size: 12)),
+                Text(subtitle, style: ADText.preview()),
               ],
             ),
           ),
@@ -169,8 +188,8 @@ class _AutoDownloadSettingsPageState extends State<AutoDownloadSettingsPage> {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           border: Border.all(
-              color: selected ? Zine.ink : Zine.inkMute, width: 2),
-          color: selected ? Zine.ink : Colors.transparent,
+              color: selected ? AD.online : AD.borderControl, width: 2),
+          color: selected ? AD.online : Colors.transparent,
         ),
         child: selected
             ? const Icon(Icons.check, size: 14, color: Colors.white)

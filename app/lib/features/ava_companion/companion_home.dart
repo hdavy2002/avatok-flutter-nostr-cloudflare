@@ -7,6 +7,7 @@ import '../../core/analytics.dart';
 import '../../core/ava_ai_client.dart';
 import '../../core/brain_consent.dart';
 import '../../core/db.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../avachat/discuss_seed.dart';
@@ -119,16 +120,16 @@ class _CompanionHomeState extends State<CompanionHome> {
     }
     final picked = await showModalBottomSheet<({String convKey, String name, bool group})>(
       context: context,
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.overlaySheet,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           const SizedBox(height: 12),
-          Text('Discuss a chat with Ava', style: ZineText.cardTitle(size: 16)),
+          Text('Discuss a chat with Ava', style: ADText.threadName(c: AD.textPrimary)),
           const SizedBox(height: 4),
-          Text('Your messages stay on this device.', style: ZineText.sub(size: 12)),
+          Text('Your messages stay on this device.', style: ADText.preview()),
           const SizedBox(height: 8),
           Flexible(
             child: ListView(shrinkWrap: true, children: [
@@ -138,8 +139,8 @@ class _CompanionHomeState extends State<CompanionHome> {
                       it.group
                           ? PhosphorIcons.usersThree(PhosphorIconsStyle.bold)
                           : PhosphorIcons.user(PhosphorIconsStyle.bold),
-                      color: Zine.ink),
-                  title: Text(it.name, style: ZineText.value(size: 15)),
+                      color: AD.textSecondary),
+                  title: Text(it.name, style: ADText.rowName()),
                   onTap: () => Navigator.pop(ctx, it),
                 ),
             ]),
@@ -229,21 +230,21 @@ class _CompanionHomeState extends State<CompanionHome> {
   Future<AvaPersona?> _pickPersona() {
     return showModalBottomSheet<AvaPersona>(
       context: context,
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.overlaySheet,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-          side: BorderSide(color: Zine.ink, width: Zine.bw),
+          side: BorderSide(color: AD.borderHairline, width: 1),
           borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (ctx) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              ZineIconBadge(icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill), color: Zine.lilac, size: 38),
+              ZineIconBadge(icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill), color: AD.iconVideo, size: 38),
               const SizedBox(width: 10),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('New chat with Ava', style: ZineText.cardTitle(size: 17)),
-                Text('Pick how you want to talk', style: ZineText.sub(size: 12)),
+                Text('New chat with Ava', style: ADText.threadName(c: AD.textPrimary)),
+                Text('Pick how you want to talk', style: ADText.preview()),
               ])),
             ]),
             const SizedBox(height: 14),
@@ -267,7 +268,7 @@ class _CompanionHomeState extends State<CompanionHome> {
             Text(
               'Talking to Ava is free. Replies are AI-generated and moderated. '
               'Turn on Ava’s voice in Settings → Ava voice (premium).',
-              style: ZineText.sub(size: 12),
+              style: ADText.preview(),
             ),
           ]),
         ),
@@ -278,31 +279,31 @@ class _CompanionHomeState extends State<CompanionHome> {
   void _showAdultGate() {
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.overlaySheet,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-          side: BorderSide(color: Zine.ink, width: Zine.bw),
+          side: BorderSide(color: AD.borderHairline, width: 1),
           borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (ctx) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              ZineIconBadge(icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill), color: Zine.lilac, size: 38),
+              ZineIconBadge(icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill), color: AD.iconVideo, size: 38),
               const SizedBox(width: 12),
-              Expanded(child: Text('Adults only', style: ZineText.cardTitle(size: 18))),
+              Expanded(child: Text('Adults only', style: ADText.threadName(c: AD.textPrimary))),
             ]),
             const SizedBox(height: 12),
             Text(
               'Roleplay is limited to verified adults. Verify your identity in '
               'AvaIdentity (a quick liveness check) to unlock it. Everything stays '
               'safe and moderated either way.',
-              style: ZineText.sub(size: 13.5),
+              style: ADText.preview(),
             ),
             const SizedBox(height: 18),
-            ZineButton(
+            AdButton(
               label: 'Verify in AvaIdentity',
-              variant: ZineButtonVariant.blue,
+              variant: AdButtonVariant.teal,
               fullWidth: true,
               fontSize: 15,
               icon: PhosphorIcons.identificationCard(PhosphorIconsStyle.bold),
@@ -315,7 +316,7 @@ class _CompanionHomeState extends State<CompanionHome> {
             const SizedBox(height: 8),
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: Text('Not now', style: ZineText.link(size: 14, color: Zine.inkSoft)),
+              child: Text('Not now', style: ADText.preview(c: AD.textSecondary)),
             ),
           ]),
         ),
@@ -328,9 +329,9 @@ class _CompanionHomeState extends State<CompanionHome> {
   Future<void> _showSessionMenu(CompanionSession s) async {
     final action = await showModalBottomSheet<String>(
       context: context,
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.overlaySheet,
       shape: const RoundedRectangleBorder(
-          side: BorderSide(color: Zine.ink, width: Zine.bw),
+          side: BorderSide(color: AD.borderHairline, width: 1),
           borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -340,7 +341,7 @@ class _CompanionHomeState extends State<CompanionHome> {
             child: Align(
               alignment: Alignment.centerLeft,
               child: Text(s.title.isEmpty ? 'Chat' : s.title,
-                  style: ZineText.cardTitle(size: 15), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  style: ADText.threadName(c: AD.textPrimary), maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
           ),
           _menuRow(ctx, 'star', s.starred ? PhosphorIcons.starHalf(PhosphorIconsStyle.bold) : PhosphorIcons.star(PhosphorIconsStyle.bold),
@@ -375,9 +376,8 @@ class _CompanionHomeState extends State<CompanionHome> {
 
   Widget _menuRow(BuildContext ctx, String value, IconData icon, String label, {bool danger = false}) {
     return ListTile(
-      leading: PhosphorIcon(icon, size: 20, color: danger ? Zine.coral : Zine.ink),
-      title: Text(label, style: ZineText.value(size: 14.5, weight: FontWeight.w600)
-          .copyWith(color: danger ? Zine.coral : Zine.ink)),
+      leading: PhosphorIcon(icon, size: 20, color: danger ? AD.danger : AD.textSecondary),
+      title: Text(label, style: ADText.rowName(c: danger ? AD.danger : AD.textPrimary)),
       onTap: () => Navigator.pop(ctx, value),
     );
   }
@@ -387,22 +387,26 @@ class _CompanionHomeState extends State<CompanionHome> {
     final newTitle = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: Zine.paper,
+        backgroundColor: AD.popover,
         shape: RoundedRectangleBorder(
-            side: const BorderSide(color: Zine.ink, width: Zine.bw),
-            borderRadius: BorderRadius.circular(18)),
-        title: Text('Rename chat', style: ZineText.cardTitle(size: 16)),
+            side: const BorderSide(color: AD.borderControl, width: 1),
+            borderRadius: BorderRadius.circular(AD.rDialog)),
+        title: Text('Rename chat', style: ADText.threadName(c: AD.textPrimary)),
         content: TextField(
           controller: ctrl,
           autofocus: true,
           maxLength: 80,
-          style: ZineText.input(size: 15),
-          decoration: const InputDecoration(hintText: 'Chat name'),
+          style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w700,
+              fontSize: 15, color: AD.textPrimary),
+          decoration: InputDecoration(
+            hintText: 'Chat name',
+            hintStyle: ADText.preview(c: AD.textTertiary),
+          ),
           onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: ZineText.link(size: 14, color: Zine.inkSoft))),
-          TextButton(onPressed: () => Navigator.pop(ctx, ctrl.text.trim()), child: Text('Save', style: ZineText.link(size: 14))),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: ADText.preview(c: AD.textSecondary))),
+          TextButton(onPressed: () => Navigator.pop(ctx, ctrl.text.trim()), child: Text('Save', style: ADText.preview(c: AD.iconSearch))),
         ],
       ),
     );
@@ -416,16 +420,16 @@ class _CompanionHomeState extends State<CompanionHome> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: Zine.paper,
+        backgroundColor: AD.popover,
         shape: RoundedRectangleBorder(
-            side: const BorderSide(color: Zine.ink, width: Zine.bw),
-            borderRadius: BorderRadius.circular(18)),
-        title: Text('Delete chat?', style: ZineText.cardTitle(size: 16)),
+            side: const BorderSide(color: AD.borderControl, width: 1),
+            borderRadius: BorderRadius.circular(AD.rDialog)),
+        title: Text('Delete chat?', style: ADText.threadName(c: AD.textPrimary)),
         content: Text('This removes the conversation from this device and the cloud backup. This can’t be undone.',
-            style: ZineText.sub(size: 13.5)),
+            style: ADText.preview()),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: ZineText.link(size: 14, color: Zine.inkSoft))),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text('Delete', style: ZineText.link(size: 14, color: Zine.coral))),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: ADText.preview(c: AD.textSecondary))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text('Delete', style: ADText.preview(c: AD.danger))),
         ],
       ),
     );
@@ -452,18 +456,17 @@ class _CompanionHomeState extends State<CompanionHome> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       floatingActionButton: _showArchived
           ? null
           : FloatingActionButton.extended(
               onPressed: _newChat,
-              backgroundColor: Zine.lime,
-              foregroundColor: Zine.ink,
+              backgroundColor: AD.primaryBadge,
+              foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
-                  side: const BorderSide(color: Zine.ink, width: Zine.bw),
                   borderRadius: BorderRadius.circular(100)),
-              icon: PhosphorIcon(PhosphorIcons.plus(PhosphorIconsStyle.bold), color: Zine.ink),
-              label: Text('New chat', style: ZineText.value(size: 14.5, weight: FontWeight.w700)),
+              icon: PhosphorIcon(PhosphorIcons.plus(PhosphorIconsStyle.bold), color: Colors.white),
+              label: Text('New chat', style: ADText.rowName(c: Colors.white)),
             ),
       body: SafeArea(
         child: Column(children: [
@@ -478,32 +481,32 @@ class _CompanionHomeState extends State<CompanionHome> {
     return Container(
       padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
       decoration: const BoxDecoration(
-        color: Zine.paper2,
-        border: Border(bottom: BorderSide(color: Zine.ink, width: Zine.bw)),
+        color: AD.headerFooter,
+        border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
       ),
       child: Row(children: [
-        const ZineBackButton(),
+        const AdBackButton(),
         const SizedBox(width: 4),
-        ZineIconBadge(icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill), color: Zine.lilac, size: 40),
+        ZineIconBadge(icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill), color: AD.iconVideo, size: 40),
         const SizedBox(width: 10),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Chat with Ava', style: ZineText.cardTitle(size: 18)),
-            Text(_showArchived ? 'Archived chats' : 'Your conversations', style: ZineText.sub(size: 12)),
+            Text('Chat with Ava', style: ADText.threadName(c: AD.textPrimary)),
+            Text(_showArchived ? 'Archived chats' : 'Your conversations', style: ADText.preview()),
           ]),
         ),
         if (!_showArchived)
           IconButton(
             tooltip: 'Discuss a chat',
             icon: PhosphorIcon(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold),
-                color: Zine.ink, size: 22),
+                color: AD.textSecondary, size: 22),
             onPressed: _discussAChat,
           ),
         IconButton(
           tooltip: _showArchived ? 'Back to chats' : 'Archived',
           icon: PhosphorIcon(
               _showArchived ? PhosphorIcons.chatsCircle(PhosphorIconsStyle.bold) : PhosphorIcons.archive(PhosphorIconsStyle.bold),
-              color: Zine.ink, size: 22),
+              color: AD.textSecondary, size: 22),
           onPressed: () {
             setState(() {
               _showArchived = !_showArchived;
@@ -517,7 +520,7 @@ class _CompanionHomeState extends State<CompanionHome> {
   }
 
   Widget _loadingState() => const Center(
-      child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2, color: Zine.blueInk)));
+      child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2, color: AD.iconSearch)));
 
   Widget _emptyState() {
     return Center(
@@ -526,22 +529,22 @@ class _CompanionHomeState extends State<CompanionHome> {
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           ZineIconBadge(
               icon: PhosphorIcons.chatTeardropDots(PhosphorIconsStyle.fill),
-              color: Zine.lilac, size: 54),
+              color: AD.iconVideo, size: 54),
           const SizedBox(height: 14),
           Text(_showArchived ? 'No archived chats' : 'No chats yet',
-              style: ZineText.cardTitle(size: 17), textAlign: TextAlign.center),
+              style: ADText.threadName(c: AD.textPrimary), textAlign: TextAlign.center),
           const SizedBox(height: 6),
           Text(
             _showArchived
                 ? 'Chats you archive will show up here.'
                 : 'Start a conversation with Ava — vent, brainstorm, practise a language, or more. Your chats save automatically.',
-            style: ZineText.sub(size: 13.5), textAlign: TextAlign.center,
+            style: ADText.preview(), textAlign: TextAlign.center,
           ),
           if (!_showArchived) ...[
             const SizedBox(height: 18),
-            ZineButton(
+            AdButton(
               label: 'Start a chat',
-              variant: ZineButtonVariant.lime,
+              variant: AdButtonVariant.primary,
               fontSize: 15,
               icon: PhosphorIcons.plus(PhosphorIconsStyle.bold),
               onPressed: _newChat,
@@ -610,16 +613,16 @@ class _SessionCard extends StatelessWidget {
       onTap: onTap,
       onLongPress: onLongPress,
       behavior: HitTestBehavior.opaque,
-      child: ZineCard(
-        radius: Zine.rSm,
+      child: AdCard(
+        radius: AD.rListCard,
         padding: const EdgeInsets.fromLTRB(12, 12, 6, 12),
         child: Row(children: [
         Container(
           width: 44, height: 44, alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: Zine.lilac,
-            borderRadius: BorderRadius.circular(Zine.rBadge),
-            border: Zine.border,
+            color: AD.iconVideo,
+            borderRadius: BorderRadius.circular(AD.rBadge),
+            border: Border.all(color: AD.borderControl, width: 1),
           ),
           child: Text(p.glyph, style: const TextStyle(fontSize: 20)),
         ),
@@ -628,18 +631,18 @@ class _SessionCard extends StatelessWidget {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               if (session.starred) ...[
-                PhosphorIcon(PhosphorIcons.star(PhosphorIconsStyle.fill), size: 14, color: Zine.blueInk),
+                PhosphorIcon(PhosphorIcons.star(PhosphorIconsStyle.fill), size: 14, color: AD.iconSearch),
                 const SizedBox(width: 4),
               ],
-              Flexible(child: Text(title, style: ZineText.value(size: 15), maxLines: 1, overflow: TextOverflow.ellipsis)),
+              Flexible(child: Text(title, style: ADText.rowName(), maxLines: 1, overflow: TextOverflow.ellipsis)),
             ]),
             const SizedBox(height: 3),
             Text(
               session.preview.isEmpty ? '${p.name} · tap to continue' : session.preview,
-              style: ZineText.sub(size: 12.5), maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: ADText.preview(), maxLines: 1, overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: 3),
-            Text('${p.name} · ${_ago(session.updatedAt)}', style: ZineText.tag(size: 10, color: Zine.inkSoft)),
+            Text('${p.name} · ${_ago(session.updatedAt)}', style: ADText.statCaption(c: AD.textTertiary)),
           ]),
         ),
         IconButton(
@@ -647,13 +650,13 @@ class _SessionCard extends StatelessWidget {
           tooltip: session.starred ? 'Unstar' : 'Star',
           icon: PhosphorIcon(
               session.starred ? PhosphorIcons.star(PhosphorIconsStyle.fill) : PhosphorIcons.star(PhosphorIconsStyle.bold),
-              size: 18, color: session.starred ? Zine.blueInk : Zine.inkMute),
+              size: 18, color: session.starred ? AD.iconSearch : AD.textTertiary),
           onPressed: onStar,
         ),
         IconButton(
           visualDensity: VisualDensity.compact,
           tooltip: 'More',
-          icon: PhosphorIcon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold), size: 20, color: Zine.ink),
+          icon: PhosphorIcon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold), size: 20, color: AD.textSecondary),
           onPressed: onMenu,
         ),
         if (reorderable)
@@ -661,7 +664,7 @@ class _SessionCard extends StatelessWidget {
             index: index,
             child: Padding(
               padding: const EdgeInsets.only(left: 2, right: 4),
-              child: PhosphorIcon(PhosphorIcons.dotsSixVertical(PhosphorIconsStyle.bold), size: 20, color: Zine.inkMute),
+              child: PhosphorIcon(PhosphorIcons.dotsSixVertical(PhosphorIconsStyle.bold), size: 20, color: AD.textTertiary),
             ),
           ),
         ]),
@@ -697,17 +700,17 @@ class _PersonaTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ZineCard(
-      radius: Zine.rSm,
+    return AdCard(
+      radius: AD.rListCard,
       padding: const EdgeInsets.all(14),
       onTap: onTap,
       child: Row(children: [
         Container(
           width: 46, height: 46, alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: Zine.lilac,
-            borderRadius: BorderRadius.circular(Zine.rBadge),
-            border: Zine.border,
+            color: AD.iconVideo,
+            borderRadius: BorderRadius.circular(AD.rBadge),
+            border: Border.all(color: AD.borderControl, width: 1),
           ),
           child: Text(persona.glyph, style: const TextStyle(fontSize: 22)),
         ),
@@ -715,23 +718,23 @@ class _PersonaTile extends StatelessWidget {
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              Flexible(child: Text(persona.name, style: ZineText.value(size: 15.5))),
+              Flexible(child: Text(persona.name, style: ADText.rowName())),
               if (persona.adultOnly) ...[
                 const SizedBox(width: 8),
                 _AdultChip(locked: locked),
               ],
             ]),
             const SizedBox(height: 2),
-            Text(persona.tagline, style: ZineText.sub(size: 12.5)),
+            Text(persona.tagline, style: ADText.preview()),
           ]),
         ),
         const SizedBox(width: 6),
         if (loading)
-          const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Zine.blueInk))
+          const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: AD.iconSearch))
         else
           PhosphorIcon(
               locked ? PhosphorIcons.lock(PhosphorIconsStyle.bold) : PhosphorIcons.caretRight(PhosphorIconsStyle.bold),
-              size: 18, color: locked ? Zine.inkMute : Zine.ink),
+              size: 18, color: locked ? AD.textTertiary : AD.textSecondary),
       ]),
     );
   }
@@ -744,11 +747,10 @@ class _AdultChip extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
         decoration: BoxDecoration(
-          color: locked ? Zine.paper2 : Zine.mint,
+          color: locked ? AD.card : AD.online,
           borderRadius: BorderRadius.circular(100),
-          border: Border.all(color: Zine.ink, width: 2),
-          boxShadow: Zine.shadowXs,
+          border: Border.all(color: AD.borderControl, width: 1),
         ),
-        child: Text('18+', style: ZineText.tag(size: 9.5, color: Zine.ink)),
+        child: Text('18+', style: ADText.statCaption(c: locked ? AD.textSecondary : Colors.white)),
       );
 }

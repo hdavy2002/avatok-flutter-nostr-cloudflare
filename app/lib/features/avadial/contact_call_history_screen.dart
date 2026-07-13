@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'avadial_theme.dart';
@@ -38,9 +39,9 @@ class _ContactCallHistoryScreenState extends State<ContactCallHistoryScreen> {
       };
 
   Color _colorFor(DeviceCallType t) => switch (t) {
-        DeviceCallType.missed || DeviceCallType.rejected || DeviceCallType.blocked => Zine.coral,
-        DeviceCallType.outgoing => Zine.mint,
-        _ => Zine.blue,
+        DeviceCallType.missed || DeviceCallType.rejected || DeviceCallType.blocked => AD.danger,
+        DeviceCallType.outgoing => AD.incomingCall,
+        _ => AD.iconSearch,
       };
 
   String _when(DateTime d) =>
@@ -62,7 +63,7 @@ class _ContactCallHistoryScreenState extends State<ContactCallHistoryScreen> {
         backgroundColor: AvaDialTheme.surface,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
-        shape: const Border(bottom: BorderSide(color: AvaDialTheme.border, width: Zine.bw)),
+        shape: const Border(bottom: BorderSide(color: AvaDialTheme.border, width: 1)),
         title: Text('Call history', style: ZineText.appbar(color: AvaDialTheme.text)),
       ),
       body: FutureBuilder<List<DeviceCall>>(
@@ -92,7 +93,7 @@ class _ContactCallHistoryScreenState extends State<ContactCallHistoryScreen> {
                 for (final c in calls)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: ZineCard(
+                    child: AdCard(
                       color: AvaDialTheme.surface2,
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                       child: Row(children: [

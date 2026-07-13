@@ -1,18 +1,18 @@
 import 'package:flutter/material.dart';
 
-/// Chat wallpaper presets — FLAT zine tints (design system: no gradients).
-/// Each entry keeps two identical stops so `wallpaperGradient` can stay a
-/// [LinearGradient] for type compatibility with chat_thread + settings.
-/// Tints are the zine accents blended at low alpha over paper:
-///   default = paper, teal = blue tint, sunset = coral tint, forest = mint
-///   tint, lavender = lilac tint, sky = paper2.
+/// Chat wallpaper presets — dark v2 (flat; two identical stops keep
+/// `wallpaperGradient` a [LinearGradient] for type compatibility with
+/// chat_thread + settings). Default is the app near-black; the others are
+/// subtle dark tints so the pale chat bubbles still pop.
+///   default = app bg, teal/sunset/forest/lavender = dark accent tints,
+///   sky = header/footer surface.
 const Map<String, List<Color>> kWallpapers = {
-  'default': [Color(0xFFF9F7ED), Color(0xFFF9F7ED)], // Zine.paper
-  'teal': [Color(0xFFE3F7EE), Color(0xFFE3F7EE)], // blue @25% over paper
-  'sunset': [Color(0xFFFAE1D5), Color(0xFFFAE1D5)], // coral @15% over paper
-  'forest': [Color(0xFFDFF5E0), Color(0xFFDFF5E0)], // mint @20% over paper
-  'lavender': [Color(0xFFEFE7EE), Color(0xFFEFE7EE)], // lilac @22% over paper
-  'sky': [Color(0xFFF4F0E3), Color(0xFFF4F0E3)], // Zine.paper2
+  'default': [Color(0xFF0B0B0D), Color(0xFF0B0B0D)], // AD.bg
+  'teal': [Color(0xFF0E1B18), Color(0xFF0E1B18)], // dark teal tint
+  'sunset': [Color(0xFF1C120C), Color(0xFF1C120C)], // dark warm tint
+  'forest': [Color(0xFF0E1A12), Color(0xFF0E1A12)], // dark green tint
+  'lavender': [Color(0xFF15121F), Color(0xFF15121F)], // dark lilac tint
+  'sky': [Color(0xFF131316), Color(0xFF131316)], // AD.headerFooter
 };
 
 const List<String> kWallpaperOrder = ['default', 'teal', 'sunset', 'forest', 'lavender', 'sky'];

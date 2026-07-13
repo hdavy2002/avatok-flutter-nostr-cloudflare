@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/analytics.dart';
 import '../../core/remote_config.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../identity/listing_liveness_gate.dart';
 import '../explore/explore_home.dart';
 import 'my_listings_screen.dart';
@@ -37,7 +38,13 @@ class MarketplaceHub extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Marketplace')),
+      backgroundColor: AD.bg,
+      appBar: AppBar(
+        backgroundColor: AD.headerFooter,
+        foregroundColor: AD.textPrimary,
+        elevation: 0,
+        title: Text('Marketplace', style: ADText.appTitle()),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -84,12 +91,13 @@ class _Tile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    return AdCard(
+      padding: EdgeInsets.zero,
       child: ListTile(
-        leading: Icon(icon, size: 28),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-        subtitle: Text(subtitle),
-        trailing: const Icon(Icons.chevron_right),
+        leading: Icon(icon, size: 28, color: AD.iconSearch),
+        title: Text(title, style: ADText.rowName()),
+        subtitle: Text(subtitle, style: ADText.preview()),
+        trailing: Icon(Icons.chevron_right, color: AD.textTertiary),
         onTap: onTap,
       ),
     );

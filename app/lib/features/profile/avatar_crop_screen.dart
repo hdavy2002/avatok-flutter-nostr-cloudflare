@@ -5,8 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:image/image.dart' as img;
 
-import '../../core/ui/zine.dart';
-import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/avatok_dark.dart';
 
 /// Lightweight, dependency-free circular crop editor. The user pans/zooms/rotates
 /// the picked image inside a circular viewport; we capture exactly that circle,
@@ -112,16 +111,45 @@ class _AvatarCropScreenState extends State<AvatarCropScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Zine.paper,
-      appBar: const ZineAppBar(title: 'Crop photo', markWord: 'Crop'),
+      backgroundColor: AD.bg,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(76),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: AD.headerFooter,
+            border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
+          ),
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(10, 8, 18, 12),
+              child: Row(children: [
+                const AdBackButton(),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Text.rich(
+                    const TextSpan(children: [
+                      TextSpan(text: 'Crop', style: TextStyle(color: AD.primaryBadge)),
+                      TextSpan(text: ' photo'),
+                    ]),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: ADText.appTitle().copyWith(height: 1.08),
+                  ),
+                ),
+              ]),
+            ),
+          ),
+        ),
+      ),
       body: Center(
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          // Ink ring + hard shadow AROUND the capture boundary (never captured).
+          // Soft-ringed circle AROUND the capture boundary (never captured).
           Container(
             decoration: const BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.fromBorderSide(BorderSide(color: Zine.ink, width: Zine.bwLg)),
-              boxShadow: Zine.shadow,
+              border: Border.fromBorderSide(BorderSide(color: AD.borderAvatar, width: 2)),
+              boxShadow: AD.overlayShadow,
             ),
             // Captured region = the circle (ClipOval inside the RepaintBoundary).
             child: RepaintBoundary(
@@ -143,11 +171,11 @@ class _AvatarCropScreenState extends State<AvatarCropScreen> {
             ),
           ),
           const SizedBox(height: 22),
-          const ZineSticker('pinch to zoom · drag to move · twist to rotate', kind: ZineStickerKind.hint),
+          const AdSticker('pinch to zoom · drag to move · twist to rotate', kind: AdStickerKind.hint),
           const SizedBox(height: 26),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: ZineButton(
+            child: AdButton(
               label: 'Use this photo',
               fullWidth: true,
               fontSize: 18,

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'avadial_channel.dart';
@@ -136,16 +137,16 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
             fillColor: AvaDialTheme.surface2,
             contentPadding: const EdgeInsets.symmetric(vertical: 10),
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(Zine.rField),
-              borderSide: const BorderSide(color: AvaDialTheme.border, width: Zine.bw),
+              borderRadius: BorderRadius.circular(AD.rInput),
+              borderSide: const BorderSide(color: AvaDialTheme.border, width: 1),
             ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(Zine.rField),
-              borderSide: const BorderSide(color: AvaDialTheme.border, width: Zine.bw),
+              borderRadius: BorderRadius.circular(AD.rInput),
+              borderSide: const BorderSide(color: AvaDialTheme.border, width: 1),
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(Zine.rField),
-              borderSide: const BorderSide(color: AvaDialTheme.accent, width: Zine.bw),
+              borderRadius: BorderRadius.circular(AD.rInput),
+              borderSide: const BorderSide(color: AvaDialTheme.accent, width: 1),
             ),
           ),
         ),
@@ -174,11 +175,11 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
         final c = _results[i];
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
-          child: ZineCard(
+          child: AdCard(
             color: AvaDialTheme.surface2,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Row(children: [
-              ZineIconBadge(icon: PhosphorIcons.user(PhosphorIconsStyle.bold), color: Zine.lime),
+              ZineIconBadge(icon: PhosphorIcons.user(PhosphorIconsStyle.bold), color: AD.primaryBadge),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -188,7 +189,7 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
               ),
               IconButton(
                 onPressed: () => _dial(c.number),
-                icon: const Icon(Icons.call, color: Zine.mint),
+                icon: const Icon(Icons.call, color: AD.incomingCall),
               ),
             ]),
           ),
@@ -215,7 +216,7 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
       if (_status != null)
         Padding(
           padding: const EdgeInsets.only(bottom: 4),
-          child: Text(_status!, style: ZineText.sub(size: 12.5, color: Zine.coral)),
+          child: Text(_status!, style: ZineText.sub(size: 12.5, color: AD.danger)),
         ),
       const SizedBox(height: 8),
       Padding(
@@ -247,15 +248,15 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
           child: Container(
             width: 62, height: 62,
             decoration: BoxDecoration(
-              color: _dialing ? Zine.mint.withValues(alpha: 0.5) : Zine.mint,
+              color: _dialing ? AD.incomingCall.withValues(alpha: 0.5) : AD.incomingCall,
               shape: BoxShape.circle,
-              border: Border.all(color: AvaDialTheme.border, width: Zine.bw),
-              boxShadow: Zine.shadowSm,
+              border: Border.all(color: AvaDialTheme.border, width: 1),
+              boxShadow: const [],
             ),
             child: _dialing
                 ? const Padding(padding: EdgeInsets.all(18),
-                    child: CircularProgressIndicator(strokeWidth: 2.6, color: Zine.ink))
-                : const Icon(Icons.call, size: 28, color: Zine.ink),
+                    child: CircularProgressIndicator(strokeWidth: 2.6, color: Colors.white))
+                : const Icon(Icons.call, size: 28, color: Colors.white),
           ),
         ),
         const Spacer(),
@@ -290,9 +291,9 @@ class _DialKey extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           color: AvaDialTheme.surface2,
-          borderRadius: BorderRadius.circular(Zine.rSm),
-          border: Border.all(color: AvaDialTheme.border, width: Zine.bw),
-          boxShadow: Zine.shadowXs,
+          borderRadius: BorderRadius.circular(AD.rListCard),
+          border: Border.all(color: AvaDialTheme.border, width: 1),
+          boxShadow: const [],
         ),
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
           Text(digit, style: ZineText.cardTitle(size: 22, color: AvaDialTheme.text)),

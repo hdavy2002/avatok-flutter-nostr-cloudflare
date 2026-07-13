@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
-import '../../../core/ui/zine.dart';
+import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../../avaapps/avaapps_screen.dart';
 import '../settings_registry.dart';
@@ -29,10 +29,8 @@ class _ToolsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ZineCard(
-      radius: Zine.rSm,
+    return AdCard(
       padding: const EdgeInsets.all(4),
-      boxShadow: Zine.shadowXs,
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => const AvaAppsScreen()),
       ),
@@ -41,23 +39,23 @@ class _ToolsCard extends StatelessWidget {
         child: Row(children: [
           ZineIconBadge(
             icon: PhosphorIcons.plugs(PhosphorIconsStyle.fill),
-            color: Zine.lilac,
+            color: AD.iconVideo,
             size: 36,
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Connect Ava to your tools', style: ZineText.value(size: 14.5)),
+              Text('Connect Ava to your tools', style: ADText.rowName()),
               const SizedBox(height: 2),
               Text(
                 'Link Gmail, Drive and more so Ava can act for you. Your tokens '
                 'stay private to this account.',
-                style: ZineText.sub(size: 12),
+                style: ADText.preview(),
               ),
             ]),
           ),
           const SizedBox(width: 8),
-          PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 18, color: Zine.inkSoft),
+          PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 18, color: AD.textSecondary),
         ]),
       ),
     );

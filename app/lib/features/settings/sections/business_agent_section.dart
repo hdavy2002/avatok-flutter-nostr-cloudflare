@@ -8,7 +8,7 @@ import '../../../core/analytics.dart';
 import '../../../core/business_agent_api.dart';
 import '../../../core/disk_cache.dart';
 import '../../../core/remote_config.dart';
-import '../../../core/ui/zine.dart';
+import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../../avatok/my_ai_calls_screen.dart';
 import '../settings_registry.dart';
@@ -174,9 +174,9 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
     final created = await showModalBottomSheet<BusinessAgentService>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Zine.paper2,
+      backgroundColor: AD.overlaySheet,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(Zine.rSm)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AD.rSheet)),
       ),
       builder: (_) => const _AddServiceSheet(),
     );
@@ -201,10 +201,8 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
         ),
       );
     }
-    return ZineCard(
-      radius: Zine.rSm,
+    return AdCard(
       padding: const EdgeInsets.all(14),
-      boxShadow: Zine.shadowXs,
       child: _loading
           ? const Padding(
               padding: EdgeInsets.symmetric(vertical: 18),
@@ -217,7 +215,7 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
                 const SizedBox(height: 14),
                 Text(
                   'Ava Business Agent is rolling out — not available on your account yet.',
-                  style: ZineText.sub(size: 12.5, color: Zine.inkMute),
+                  style: ADText.preview(c: AD.textTertiary),
                 ),
               ] else ...[
                 const SizedBox(height: 14),
@@ -226,7 +224,7 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
                 _myAiCallsTile(),
                 if (RemoteConfig.serviceNumbers) ...[
                   const SizedBox(height: 22),
-                  const Divider(),
+                  const Divider(color: AD.borderHairline),
                   const SizedBox(height: 14),
                   _servicesSection(),
                 ],
@@ -237,17 +235,17 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
 
   Widget _header() {
     return Row(children: [
-      ZineIconBadge(icon: PhosphorIcons.robot(PhosphorIconsStyle.fill), color: Zine.lilac, size: 36),
+      ZineIconBadge(icon: PhosphorIcons.robot(PhosphorIconsStyle.fill), color: AD.iconVideo, size: 36),
       const SizedBox(width: 12),
       Expanded(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Ava Business Agent', style: ZineText.value(size: 14.5)),
+          Text('Ava Business Agent', style: ADText.rowName()),
           const SizedBox(height: 2),
           Text(
             'A real AI voice agent that answers your AvaTOK number, uses your '
             'documents, and can take a booking — paid from your wallet, minute '
             'by minute.',
-            style: ZineText.sub(size: 12),
+            style: ADText.preview(),
           ),
         ]),
       ),
@@ -259,22 +257,22 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
       Row(children: [
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Answer my calls', style: ZineText.value(size: 14)),
+            Text('Answer my calls', style: ADText.rowName()),
             const SizedBox(height: 2),
             Text(
               '6 tokens/min from your wallet, up to a 5-minute call. Turns off '
               'automatically if your wallet runs out.',
-              style: ZineText.sub(size: 11.5),
+              style: ADText.preview(),
             ),
           ]),
         ),
         const SizedBox(width: 8),
-        ZineToggle(value: _settings.enabled, onChanged: _saving ? null : _toggleEnabled),
+        _AdToggle(value: _settings.enabled, onChanged: _saving ? null : _toggleEnabled),
       ]),
       const SizedBox(height: 14),
-      Text('INSTRUCTIONS', style: ZineText.kicker()),
+      Text('INSTRUCTIONS', style: ADText.sectionLabel()),
       const SizedBox(height: 9),
-      ZineField(
+      AdField(
         controller: _instructions,
         label: 'What should Ava do when you can’t answer?',
         hint: 'e.g. Answer questions about our opening hours and menu. If a '
@@ -286,24 +284,24 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
         onChanged: (_) => setState(() {}),
       ),
       const SizedBox(height: 16),
-      Text('KNOWLEDGE (DOCUMENTS)', style: ZineText.kicker()),
+      Text('KNOWLEDGE (DOCUMENTS)', style: ADText.sectionLabel()),
       const SizedBox(height: 9),
       _docsList(serviceId: null),
       const SizedBox(height: 8),
-      ZineChip(
+      AdChip(
         label: _uploadingDoc ? 'Uploading…' : 'Upload a document',
         onTap: _uploadingDoc ? null : () => _pickAndUploadDoc(),
       ),
       const SizedBox(height: 16),
-      Text('ROUTING', style: ZineText.kicker()),
+      Text('ROUTING', style: ADText.sectionLabel()),
       const SizedBox(height: 9),
       _routingPicker(_settings.routing, (r) => setState(() => _settings = _settings.copyWith(routing: r))),
       const SizedBox(height: 16),
-      Text('BUSINESS HOURS (OPTIONAL)', style: ZineText.kicker()),
+      Text('BUSINESS HOURS (OPTIONAL)', style: ADText.sectionLabel()),
       const SizedBox(height: 9),
       _hoursEditor(_settings.hours, (h) => setState(() => _settings = _settings.copyWith(hours: h))),
       const SizedBox(height: 16),
-      ZineButton(
+      AdButton(
         label: _saving ? 'Saving…' : 'Save',
         fullWidth: true,
         fontSize: 15,
@@ -316,20 +314,21 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
   Widget _myAiCallsTile() {
     return ZinePressable(
       onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MyAiCallsScreen())),
-      color: Zine.card,
-      radius: BorderRadius.circular(Zine.rSm),
-      boxShadow: Zine.shadowXs,
+      color: AD.card,
+      borderColor: AD.borderControl,
+      radius: BorderRadius.circular(AD.rListCard),
+      boxShadow: const [],
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
       child: Row(children: [
-        Icon(PhosphorIcons.clockCounterClockwise(PhosphorIconsStyle.bold), size: 18, color: Zine.inkSoft),
+        Icon(PhosphorIcons.clockCounterClockwise(PhosphorIconsStyle.bold), size: 18, color: AD.textSecondary),
         const SizedBox(width: 10),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('My AI calls', style: ZineText.value(size: 13.5)),
-            Text('Calls YOU made to other people’s Ava AI agents.', style: ZineText.sub(size: 11)),
+            Text('My AI calls', style: ADText.rowName()),
+            Text('Calls YOU made to other people’s Ava AI agents.', style: ADText.preview()),
           ]),
         ),
-        Icon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: Zine.inkMute),
+        Icon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: AD.textTertiary),
       ]),
     );
   }
@@ -338,19 +337,19 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
     final docs = _docs; // primary-only for now; service docs load per-sheet
     if (docs.isEmpty) {
       return Text('No documents yet. Upload a menu, FAQ or price list for Ava to answer from.',
-          style: ZineText.sub(size: 11.5));
+          style: ADText.preview());
     }
     return Column(children: [
       for (final d in docs)
         Padding(
           padding: const EdgeInsets.only(bottom: 6),
           child: Row(children: [
-            Icon(PhosphorIcons.fileText(PhosphorIconsStyle.bold), size: 16, color: Zine.inkSoft),
+            Icon(PhosphorIcons.fileText(PhosphorIconsStyle.bold), size: 16, color: AD.textSecondary),
             const SizedBox(width: 8),
-            Expanded(child: Text(d.name, style: ZineText.value(size: 12.5), overflow: TextOverflow.ellipsis)),
-            if (!d.indexed) Text('indexing…', style: ZineText.tag(size: 10, color: Zine.inkMute)),
+            Expanded(child: Text(d.name, style: ADText.rowName(), overflow: TextOverflow.ellipsis)),
+            if (!d.indexed) Text('indexing…', style: ADText.statCaption(c: AD.textTertiary)),
             IconButton(
-              icon: Icon(PhosphorIcons.trash(PhosphorIconsStyle.bold), size: 16, color: Zine.coral),
+              icon: Icon(PhosphorIcons.trash(PhosphorIconsStyle.bold), size: 16, color: AD.danger),
               onPressed: () => _deleteDoc(d),
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
@@ -362,11 +361,11 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
 
   Widget _routingPicker(AgentRouting value, ValueChanged<AgentRouting> onChanged) {
     return Wrap(spacing: 8, runSpacing: 8, children: [
-      ZineChip(label: 'Auto after 2 rings', active: value == AgentRouting.auto2Rings,
+      AdChip(label: 'Auto after 2 rings', active: value == AgentRouting.auto2Rings,
           onTap: () => onChanged(AgentRouting.auto2Rings)),
-      ZineChip(label: 'Manual — “Send to Agent” only', active: value == AgentRouting.manualOnly,
+      AdChip(label: 'Manual — “Send to Agent” only', active: value == AgentRouting.manualOnly,
           onTap: () => onChanged(AgentRouting.manualOnly)),
-      ZineChip(label: 'Off', active: value == AgentRouting.off, onTap: () => onChanged(AgentRouting.off)),
+      AdChip(label: 'Off', active: value == AgentRouting.off, onTap: () => onChanged(AgentRouting.off)),
     ]);
   }
 
@@ -377,8 +376,8 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
         Padding(
           padding: const EdgeInsets.only(bottom: 8),
           child: Row(children: [
-            SizedBox(width: 40, child: Text(labels[i], style: ZineText.value(size: 12.5))),
-            ZineToggle(
+            SizedBox(width: 40, child: Text(labels[i], style: ADText.rowName())),
+            _AdToggle(
               value: hours.days[i].enabled,
               onChanged: (v) {
                 final days = List<BusinessHoursDay>.from(hours.days);
@@ -396,7 +395,7 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
                 }),
               ),
               const SizedBox(width: 6),
-              Text('–', style: ZineText.sub(size: 12)),
+              Text('–', style: ADText.preview()),
               const SizedBox(width: 6),
               Expanded(
                 child: _hourField(hours.days[i].end, (v) {
@@ -406,13 +405,13 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
                 }),
               ),
             ] else
-              Expanded(child: Text('Closed', style: ZineText.sub(size: 11.5, color: Zine.inkMute))),
+              Expanded(child: Text('Closed', style: ADText.preview(c: AD.textTertiary))),
           ]),
         ),
       Text(
         'Leave every day off for no hours restriction — Ava routes the same '
         'way around the clock.',
-        style: ZineText.sub(size: 11),
+        style: ADText.preview(),
       ),
     ]);
   }
@@ -430,25 +429,26 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
           onChanged('${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}');
         }
       },
-      color: Zine.card,
-      radius: BorderRadius.circular(Zine.rSm),
-      boxShadow: Zine.shadowXs,
+      color: AD.card,
+      borderColor: AD.borderControl,
+      radius: BorderRadius.circular(AD.rListCard),
+      boxShadow: const [],
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      child: Text(value, style: ZineText.value(size: 12.5), textAlign: TextAlign.center),
+      child: Text(value, style: ADText.rowName(), textAlign: TextAlign.center),
     );
   }
 
   Widget _servicesSection() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
-        Expanded(child: Text('Service numbers', style: ZineText.value(size: 14))),
-        ZineChip(label: '+ Add a service', onTap: _addService),
+        Expanded(child: Text('Service numbers', style: ADText.rowName())),
+        AdChip(label: '+ Add a service', onTap: _addService),
       ]),
       const SizedBox(height: 4),
       Text(
         'Extra AvaTOK numbers you advertise for paid calls (e.g. visa-interview '
         'practice). The caller pays; you set the rate and length options.',
-        style: ZineText.sub(size: 11.5),
+        style: ADText.preview(),
       ),
       const SizedBox(height: 12),
       if (_loadingServices)
@@ -457,7 +457,7 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
           child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
         ))
       else if (_services.isEmpty)
-        Text('No service numbers yet.', style: ZineText.sub(size: 11.5, color: Zine.inkMute))
+        Text('No service numbers yet.', style: ADText.preview(c: AD.textTertiary))
       else
         Column(children: [for (final s in _services) _serviceTile(s)]),
     ]);
@@ -471,31 +471,32 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
           final updated = await showModalBottomSheet<BusinessAgentService>(
             context: context,
             isScrollControlled: true,
-            backgroundColor: Zine.paper2,
+            backgroundColor: AD.overlaySheet,
             shape: const RoundedRectangleBorder(
-              borderRadius: BorderRadius.vertical(top: Radius.circular(Zine.rSm)),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(AD.rSheet)),
             ),
             builder: (_) => _AddServiceSheet(existing: s),
           );
           if (updated != null) _loadServices();
         },
-        color: Zine.card,
-        radius: BorderRadius.circular(Zine.rSm),
-        boxShadow: Zine.shadowXs,
+        color: AD.card,
+        borderColor: AD.borderControl,
+        radius: BorderRadius.circular(AD.rListCard),
+        boxShadow: const [],
         padding: const EdgeInsets.all(12),
         child: Row(children: [
-          ZineIconBadge(icon: PhosphorIcons.phoneCall(PhosphorIconsStyle.fill), color: Zine.mint, size: 34),
+          ZineIconBadge(icon: PhosphorIcons.phoneCall(PhosphorIconsStyle.fill), color: AD.online, size: 34),
           const SizedBox(width: 10),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('${s.name} by ${s.ownerName.isEmpty ? 'you' : s.ownerName}',
-                  style: ZineText.value(size: 13)),
+                  style: ADText.rowName()),
               const SizedBox(height: 2),
               Text('${s.rate} tokens/min · ${s.number.isEmpty ? 'number pending' : s.number}',
-                  style: ZineText.sub(size: 11)),
+                  style: ADText.preview()),
             ]),
           ),
-          Icon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: Zine.inkMute),
+          Icon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: AD.textTertiary),
         ]),
       ),
     );
@@ -574,19 +575,19 @@ class _AddServiceSheetState extends State<_AddServiceSheet> {
             padding: const EdgeInsets.fromLTRB(18, 14, 18, 24),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Center(child: Container(width: 40, height: 4,
-                  decoration: BoxDecoration(color: Zine.inkMute, borderRadius: BorderRadius.circular(100)))),
+                  decoration: BoxDecoration(color: AD.borderControl, borderRadius: BorderRadius.circular(100)))),
               const SizedBox(height: 14),
-              Text(widget.existing == null ? 'Add a service' : 'Edit service', style: ZineText.value(size: 17)),
+              Text(widget.existing == null ? 'Add a service' : 'Edit service', style: ADText.threadName()),
               const SizedBox(height: 4),
               Text(
                 'Callers see “${_name.text.isEmpty ? 'Your service' : _name.text} by you” '
                 'before they pay — a service number never shows as your personal line.',
-                style: ZineText.sub(size: 11.5),
+                style: ADText.preview(),
               ),
               const SizedBox(height: 16),
-              ZineField(controller: _name, label: 'Service name', hint: 'e.g. US visa interview practice'),
+              AdField(controller: _name, label: 'Service name', hint: 'e.g. US visa interview practice'),
               const SizedBox(height: 14),
-              Text('RATE (TOKENS / MIN, CALLER PAYS — MIN $kMinServiceRate)', style: ZineText.kicker()),
+              Text('RATE (TOKENS / MIN, CALLER PAYS — MIN $kMinServiceRate)', style: ADText.sectionLabel()),
               const SizedBox(height: 9),
               Row(children: [
                 Expanded(
@@ -596,24 +597,25 @@ class _AddServiceSheetState extends State<_AddServiceSheet> {
                     max: 200,
                     divisions: 200 - kMinServiceRate,
                     label: '$_rate',
+                    activeColor: AD.primaryBadge,
                     onChanged: (v) => setState(() => _rate = v.round()),
                   ),
                 ),
-                SizedBox(width: 44, child: Text('$_rate', textAlign: TextAlign.end, style: ZineText.value(size: 14))),
+                SizedBox(width: 44, child: Text('$_rate', textAlign: TextAlign.end, style: ADText.rowName())),
               ]),
               Text('You net ${(_rate - 13).clamp(0, 999)} tokens/min after platform + line fees.',
-                  style: ZineText.sub(size: 11)),
+                  style: ADText.preview()),
               const SizedBox(height: 14),
-              Text('LENGTH OPTIONS (MINUTES)', style: ZineText.kicker()),
+              Text('LENGTH OPTIONS (MINUTES)', style: ADText.sectionLabel()),
               const SizedBox(height: 9),
               Wrap(spacing: 8, runSpacing: 8, children: [
                 for (final m in const [10, 15, 20, 30, 45, 60, 90])
-                  ZineChip(label: '$m min', active: _lengths.contains(m), onTap: () => _toggleLength(m)),
+                  AdChip(label: '$m min', active: _lengths.contains(m), onTap: () => _toggleLength(m)),
               ]),
               const SizedBox(height: 14),
-              Text('INSTRUCTIONS', style: ZineText.kicker()),
+              Text('INSTRUCTIONS', style: ADText.sectionLabel()),
               const SizedBox(height: 9),
-              ZineField(
+              AdField(
                 controller: _instructions,
                 label: 'What does this service do?',
                 minLines: 3,
@@ -621,19 +623,19 @@ class _AddServiceSheetState extends State<_AddServiceSheet> {
                 textCapitalization: TextCapitalization.sentences,
               ),
               const SizedBox(height: 14),
-              Text('ROUTING', style: ZineText.kicker()),
+              Text('ROUTING', style: ADText.sectionLabel()),
               const SizedBox(height: 9),
               Wrap(spacing: 8, runSpacing: 8, children: [
-                ZineChip(label: 'Auto after 2 rings', active: _routing == AgentRouting.auto2Rings,
+                AdChip(label: 'Auto after 2 rings', active: _routing == AgentRouting.auto2Rings,
                     onTap: () => setState(() => _routing = AgentRouting.auto2Rings)),
-                ZineChip(label: 'Manual only', active: _routing == AgentRouting.manualOnly,
+                AdChip(label: 'Manual only', active: _routing == AgentRouting.manualOnly,
                     onTap: () => setState(() => _routing = AgentRouting.manualOnly)),
-                ZineChip(label: 'Off', active: _routing == AgentRouting.off,
+                AdChip(label: 'Off', active: _routing == AgentRouting.off,
                     onTap: () => setState(() => _routing = AgentRouting.off)),
               ]),
               if (widget.existing != null) ...[
                 const SizedBox(height: 14),
-                ZineChip(
+                AdChip(
                   label: 'Upload knowledge document',
                   onTap: () async {
                     final res = await FilePicker.platform.pickFiles(withData: true);
@@ -643,15 +645,47 @@ class _AddServiceSheetState extends State<_AddServiceSheet> {
                   },
                 ),
               ],
-              if (_error != null) ZineErrorMsg(_error!),
+              if (_error != null) AdErrorMsg(_error!),
               const SizedBox(height: 18),
-              ZineButton(
+              AdButton(
                 label: _saving ? 'Saving…' : (widget.existing == null ? 'Add service' : 'Save changes'),
                 fullWidth: true,
                 loading: _saving,
                 onPressed: _saving ? null : _save,
               ),
             ]),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Dark v2 inline toggle — track [AD.card] off / [AD.online] on, white thumb.
+class _AdToggle extends StatelessWidget {
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+  const _AdToggle({required this.value, this.onChanged});
+  @override
+  Widget build(BuildContext context) {
+    final reduce = MediaQuery.of(context).disableAnimations;
+    return GestureDetector(
+      onTap: onChanged == null ? null : () => onChanged!(!value),
+      child: AnimatedContainer(
+        duration: reduce ? Duration.zero : const Duration(milliseconds: 120),
+        width: 52, height: 30,
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          color: value ? AD.online : AD.card,
+          borderRadius: BorderRadius.circular(100),
+          border: Border.all(color: AD.borderControl, width: 1),
+        ),
+        child: AnimatedAlign(
+          duration: reduce ? Duration.zero : const Duration(milliseconds: 120),
+          alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+          child: Container(
+            width: 22, height: 22,
+            decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
           ),
         ),
       ),

@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/analytics.dart';
-import '../../../core/ui/zine.dart';
-import '../../../core/ui/zine_widgets.dart';
+import '../../../core/ui/avatok_dark.dart';
 
 /// "Tips for a good video" bottom sheet (Liveness V2 · plan §8, Agent E P4).
 /// Short, actionable zine bullets that map 1:1 to the most common client-side
@@ -16,11 +15,11 @@ class LivenessTipsSheet {
     Analytics.capture('liveness_tips_opened', const {'v': 2});
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.overlaySheet,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(Zine.r)),
-        side: BorderSide(color: Zine.ink, width: Zine.bwLg),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AD.rSheet)),
+        side: BorderSide(color: AD.borderHairline, width: 1),
       ),
       builder: (_) => const _TipsBody(),
     );
@@ -77,16 +76,23 @@ class _TipsBody extends StatelessWidget {
                 width: 46,
                 height: 5,
                 decoration: BoxDecoration(
-                  color: Zine.ink.withValues(alpha: .2),
+                  color: AD.borderControl,
                   borderRadius: BorderRadius.circular(3),
                 ),
               ),
             ),
             const SizedBox(height: 18),
-            Text('Tips for a good video', style: ZineText.hero(size: 24)),
+            Text('Tips for a good video',
+                style: ADText.appTitle().copyWith(fontSize: 24)),
             const SizedBox(height: 6),
             Text('A few seconds of setup makes the check pass first time.',
-                style: ZineText.sub(size: 14)),
+                style: TextStyle(
+                  fontFamily: ADText.family,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                  height: 1.42,
+                  color: AD.textSecondary,
+                )),
             const SizedBox(height: 18),
             for (final t in _tips) ...[
               Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -95,23 +101,30 @@ class _TipsBody extends StatelessWidget {
                   height: 34,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Zine.lime,
-                    border: Border.all(color: Zine.ink, width: Zine.bw),
+                    color: AD.primaryBadge,
+                    border: Border.all(color: AD.borderControl, width: 1),
                   ),
-                  child: PhosphorIcon(t.$1, size: 18, color: Zine.ink),
+                  child: PhosphorIcon(t.$1, size: 18, color: AD.textPrimary),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.only(top: 6),
-                    child: Text(t.$2, style: ZineText.sub(size: 14)),
+                    child: Text(t.$2,
+                        style: TextStyle(
+                          fontFamily: ADText.family,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                          height: 1.42,
+                          color: AD.textSecondary,
+                        )),
                   ),
                 ),
               ]),
               const SizedBox(height: 14),
             ],
             const SizedBox(height: 6),
-            ZineButton(
+            AdButton(
               label: 'Got it',
               fullWidth: true,
               onPressed: () => Navigator.of(context).pop(),

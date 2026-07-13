@@ -8,7 +8,7 @@ import '../../../core/analytics.dart';
 import '../../../core/ava_log.dart';
 import '../../../core/drive_service.dart';
 import '../../../core/paid_feature.dart';
-import '../../../core/ui/zine.dart';
+import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../../ava_backup/backup_service.dart';
 import '../settings_registry.dart';
@@ -204,15 +204,13 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
 
   // ── FREE: Google Drive backup ──────────────────────────────────────────────
   Widget _driveCard() {
-    return ZineCard(
-      radius: Zine.rSm,
+    return AdCard(
       padding: const EdgeInsets.all(14),
-      boxShadow: Zine.shadowXs,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          ZineIconBadge(icon: PhosphorIcons.cloud(PhosphorIconsStyle.fill), color: Zine.lime, size: 34),
+          ZineIconBadge(icon: PhosphorIcons.cloud(PhosphorIconsStyle.fill), color: AD.primaryBadge, size: 34),
           const SizedBox(width: 10),
-          Expanded(child: Text('Google Drive backup', style: ZineText.value(size: 14.5))),
+          Expanded(child: Text('Google Drive backup', style: ADText.rowName())),
           const _FreeChip(),
         ]),
         const SizedBox(height: 8),
@@ -220,7 +218,7 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
           'Free, encrypted backup to your own Google Drive. Your chats are '
           'encrypted on this device before upload, so neither AvaTOK nor Google '
           'can read them. Survives reinstalling the app.',
-          style: ZineText.sub(size: 12),
+          style: ADText.preview(),
         ),
         const SizedBox(height: 12),
         _driveActions(),
@@ -246,9 +244,9 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
     final ready = _driveConnected == true && _folderReady;
     if (!ready) {
       return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        ZineButton(
+        AdButton(
           label: _connecting ? 'Opening Google…' : 'Connect Google Drive',
-          variant: ZineButtonVariant.lime,
+          variant: AdButtonVariant.primary,
           fullWidth: true,
           fontSize: 14,
           icon: PhosphorIcons.googleDriveLogo(PhosphorIconsStyle.bold),
@@ -261,6 +259,7 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
           child: ZineLink(
             _driveConnected == true ? 'finish setup' : "I've connected — refresh",
             fontSize: 13,
+            underline: AD.iconSearch,
             onTap: _connecting ? null : _refreshDrive,
           ),
         ),
@@ -269,9 +268,9 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
 
     return Row(children: [
       Expanded(
-        child: ZineButton(
+        child: AdButton(
           label: 'Back up now',
-          variant: ZineButtonVariant.lime,
+          variant: AdButtonVariant.primary,
           fullWidth: true,
           fontSize: 14,
           icon: PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.bold),
@@ -282,9 +281,9 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
       ),
       const SizedBox(width: 10),
       Expanded(
-        child: ZineButton(
+        child: AdButton(
           label: 'Restore',
-          variant: ZineButtonVariant.ghost,
+          variant: AdButtonVariant.ghost,
           fullWidth: true,
           fontSize: 14,
           icon: PhosphorIcons.cloudArrowDown(PhosphorIconsStyle.bold),
@@ -299,22 +298,20 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
 
   // ── PAID: R2 cross-device sync ──────────────────────────────────────────────
   Widget _r2Card() {
-    return ZineCard(
-      radius: Zine.rSm,
+    return AdCard(
       padding: const EdgeInsets.all(14),
-      boxShadow: Zine.shadowXs,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          ZineIconBadge(icon: PhosphorIcons.devices(PhosphorIconsStyle.fill), color: Zine.blue, size: 34),
+          ZineIconBadge(icon: PhosphorIcons.devices(PhosphorIconsStyle.fill), color: AD.iconSearch, size: 34),
           const SizedBox(width: 10),
-          Expanded(child: Text('Cross-device sync', style: ZineText.value(size: 14.5))),
+          Expanded(child: Text('Cross-device sync', style: ADText.rowName())),
           const PaidBadge(),
         ]),
         const SizedBox(height: 8),
         Text(
           'Keep your chats in sync across all your devices, encrypted end-to-end. '
           'Premium feature${_r2Summary != null ? ' · $_r2Summary' : ''}.',
-          style: ZineText.sub(size: 12),
+          style: ADText.preview(),
         ),
         const SizedBox(height: 12),
         Row(children: [
@@ -324,7 +321,7 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
             child: PaidFeature(
               actionLabel: 'Sync across devices',
               onRun: () => _run(BackupService.I.syncToR2, 'Synced to your other devices.', name: 'r2_sync'),
-              child: _pillLabel('Sync now', PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.bold), Zine.blue),
+              child: _pillLabel('Sync now', PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.bold), AD.newGroup),
             ),
           ),
           const SizedBox(width: 10),
@@ -335,7 +332,7 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
             child: PaidFeature(
               actionLabel: 'Restore from sync',
               onRun: () => _run(BackupService.I.restoreFromR2, 'Restored from sync.', name: 'r2_restore'),
-              child: _pillLabel('Restore', PhosphorIcons.cloudArrowDown(PhosphorIconsStyle.bold), Zine.card),
+              child: _pillLabel('Restore', PhosphorIcons.cloudArrowDown(PhosphorIconsStyle.bold), AD.card),
             ),
           ),
         ]),
@@ -343,20 +340,22 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
     );
   }
 
-  Widget _pillLabel(String text, IconData icon, Color fill) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
-        decoration: BoxDecoration(
-          color: fill,
-          borderRadius: BorderRadius.circular(100),
-          border: Border.all(color: Zine.ink, width: Zine.bw),
-          boxShadow: Zine.shadowXs,
-        ),
-        child: Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.max, children: [
-          Icon(icon, size: 16, color: Zine.ink),
-          const SizedBox(width: 8),
-          Flexible(child: Text(text, maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.button(size: 14, color: Zine.ink))),
-        ]),
-      );
+  Widget _pillLabel(String text, IconData icon, Color fill) {
+    final fg = fill == AD.card ? AD.textPrimary : Colors.white;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+      decoration: BoxDecoration(
+        color: fill,
+        borderRadius: BorderRadius.circular(100),
+        border: Border.all(color: AD.borderControl, width: 1),
+      ),
+      child: Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.max, children: [
+        Icon(icon, size: 16, color: fg),
+        const SizedBox(width: 8),
+        Flexible(child: Text(text, maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.rowName(c: fg))),
+      ]),
+    );
+  }
 }
 
 /// A small "FREE" counterpart to [PaidBadge].
@@ -366,11 +365,10 @@ class _FreeChip extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
-          color: Zine.lime,
+          color: AD.primaryBadge,
           borderRadius: BorderRadius.circular(100),
-          border: Border.all(color: Zine.ink, width: 2),
-          boxShadow: Zine.shadowXs,
+          border: Border.all(color: AD.borderControl, width: 1),
         ),
-        child: Text('FREE', style: ZineText.tag(size: 9.5, color: Zine.ink)),
+        child: Text('FREE', style: ADText.statCaption(c: Colors.white)),
       );
 }

@@ -4,6 +4,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/analytics.dart';
+import '../../../core/ui/avatok_dark.dart';
 import 'face_gate.dart';
 import 'flash_fill.dart';
 import 'live_theme.dart';
@@ -157,7 +158,7 @@ class _PositionStepState extends State<PositionStep> {
                     child: LiveTheme.pill(
                       label: 'Camera on',
                       filled: LiveTheme.card,
-                      textOnFill: LiveTheme.ink,
+                      textOnFill: AD.textPrimary,
                       leadingDotBlink: true,
                     ),
                   ),
@@ -186,7 +187,7 @@ class _PositionStepState extends State<PositionStep> {
                         : LiveTheme.pill(
                             label: _shortHint(),
                             filled: LiveTheme.card,
-                            textOnFill: LiveTheme.ink,
+                            textOnFill: AD.textPrimary,
                           ),
                   ),
                 ),
@@ -301,7 +302,7 @@ class _ScanLineState extends State<_ScanLine>
               child: Container(
                 height: 22,
                 decoration: const BoxDecoration(
-                  color: Color(0x29BFEB56), // lime @16%
+                  color: Color(0x29E8833A), // primaryBadge @16%
                   border: Border(top: BorderSide(color: LiveTheme.lime, width: 2.5)),
                 ),
               ),

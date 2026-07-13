@@ -6,7 +6,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/analytics.dart';
 import '../../../core/remote_config.dart';
-import '../../../core/ui/zine.dart';
+import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../../avadial/avadial_channel.dart';
 import '../settings_registry.dart';
@@ -153,26 +153,26 @@ class _DefaultDialerCardState extends State<_DefaultDialerCard>
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: Zine.card,
+        backgroundColor: AD.popover,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(Zine.rSm),
-          side: const BorderSide(color: Zine.ink, width: Zine.bw),
+          borderRadius: BorderRadius.circular(AD.rDialog),
+          side: const BorderSide(color: AD.borderControl, width: 1),
         ),
-        title: Text('Change your default $what app', style: ZineText.cardTitle()),
+        title: Text('Change your default $what app', style: ADText.threadName()),
         content: Text(
           'Android doesn’t let an app remove itself as the default $what app. '
           'To hand it back to another app, open the system “Default apps” '
           'screen and pick the one you want.',
-          style: ZineText.sub(size: 13.5),
+          style: ADText.preview(),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: Text('Not now', style: ZineText.value(size: 14)),
+            child: Text('Not now', style: ADText.rowName()),
           ),
-          ZineButton(
+          AdButton(
             label: 'Open system settings',
-            variant: ZineButtonVariant.blue,
+            variant: AdButtonVariant.teal,
             fontSize: 14,
             onPressed: () {
               Navigator.pop(ctx);
@@ -186,10 +186,8 @@ class _DefaultDialerCardState extends State<_DefaultDialerCard>
 
   @override
   Widget build(BuildContext context) {
-    return ZineCard(
-      radius: Zine.rSm,
+    return AdCard(
       padding: const EdgeInsets.all(14),
-      boxShadow: Zine.shadowXs,
       child: _loading
           ? const Padding(
               padding: EdgeInsets.symmetric(vertical: 18),
@@ -204,20 +202,20 @@ class _DefaultDialerCardState extends State<_DefaultDialerCard>
               Row(children: [
                 ZineIconBadge(
                     icon: PhosphorIcons.phone(PhosphorIconsStyle.fill),
-                    color: Zine.blue,
+                    color: AD.iconSearch,
                     size: 36),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Make AvaTOK your phone', style: ZineText.value(size: 14.5)),
+                        Text('Make AvaTOK your phone', style: ADText.rowName()),
                         const SizedBox(height: 2),
                         Text(
                           'Set AvaTOK as your default phone — and messages — '
                           'app so calls and texts run through it, with the free '
                           'scam/spam shield. You choose in the system picker.',
-                          style: ZineText.sub(size: 12),
+                          style: ADText.preview(),
                         ),
                       ]),
                 ),
@@ -229,7 +227,7 @@ class _DefaultDialerCardState extends State<_DefaultDialerCard>
                 onChanged: _onDialerChanged,
               ),
               if (_smsVisible) ...[
-                const Divider(height: 22, thickness: 1, color: Zine.inkMute),
+                const Divider(height: 22, thickness: 1, color: AD.borderHairline),
                 _toggleRow(
                   title: 'Default messages app',
                   held: _smsHeld,
@@ -248,19 +246,48 @@ class _DefaultDialerCardState extends State<_DefaultDialerCard>
     return Row(children: [
       Expanded(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title, style: ZineText.value(size: 14)),
+          Text(title, style: ADText.rowName()),
           const SizedBox(height: 3),
           Text(
             held ? 'Currently: AvaTOK' : 'Currently: another app',
-            style: ZineText.sub(
-              size: 11.5,
-              color: held ? Zine.blueInk : Zine.inkSoft,
-            ),
+            style: ADText.preview(c: held ? AD.iconSearch : AD.textSecondary),
           ),
         ]),
       ),
       const SizedBox(width: 10),
-      ZineToggle(value: held, onChanged: onChanged),
+      _AdToggle(value: held, onChanged: onChanged),
     ]);
+  }
+}
+
+/// Dark v2 inline toggle — track [AD.card] off / [AD.online] on, white thumb.
+class _AdToggle extends StatelessWidget {
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+  const _AdToggle({required this.value, this.onChanged});
+  @override
+  Widget build(BuildContext context) {
+    final reduce = MediaQuery.of(context).disableAnimations;
+    return GestureDetector(
+      onTap: onChanged == null ? null : () => onChanged!(!value),
+      child: AnimatedContainer(
+        duration: reduce ? Duration.zero : const Duration(milliseconds: 120),
+        width: 52, height: 30,
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          color: value ? AD.online : AD.card,
+          borderRadius: BorderRadius.circular(100),
+          border: Border.all(color: AD.borderControl, width: 1),
+        ),
+        child: AnimatedAlign(
+          duration: reduce ? Duration.zero : const Duration(milliseconds: 120),
+          alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+          child: Container(
+            width: 22, height: 22,
+            decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
+          ),
+        ),
+      ),
+    );
   }
 }

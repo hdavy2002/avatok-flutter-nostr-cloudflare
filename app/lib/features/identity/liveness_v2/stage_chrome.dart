@@ -2,7 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../../../core/ui/zine.dart';
+import '../../../core/ui/avatok_dark.dart';
 import 'live_theme.dart';
 
 /// [LIVE-UI-3] Chrome + per-stage decorative widgets for the redesigned dark
@@ -19,14 +19,11 @@ class LivenessHeader extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        const Text(
+        Text(
           'LIVENESS CHECK',
-          style: TextStyle(
-            fontFamily: 'Nunito',
-            fontWeight: FontWeight.w700,
+          style: ADText.sectionLabel(c: AD.textSecondary).copyWith(
             fontSize: 11,
             letterSpacing: 1.1,
-            color: Color(0x9EF9F7ED), // paper @62%
           ),
         ),
         if (onRestart != null)
@@ -38,10 +35,9 @@ class LivenessHeader extends StatelessWidget {
               decoration: BoxDecoration(
                 color: LiveTheme.card,
                 shape: BoxShape.circle,
-                border: Border.all(color: LiveTheme.ink, width: 2),
-                boxShadow: Zine.shadowXs,
+                border: Border.all(color: LiveTheme.ink, width: 1),
               ),
-              child: const Icon(Icons.restart_alt_rounded, size: 18, color: LiveTheme.ink),
+              child: const Icon(Icons.restart_alt_rounded, size: 18, color: LiveTheme.paper),
             ),
           )
         else
@@ -64,8 +60,7 @@ class StepPips extends StatelessWidget {
       decoration: BoxDecoration(
         color: LiveTheme.card,
         borderRadius: BorderRadius.circular(100),
-        border: Border.all(color: LiveTheme.ink, width: 2),
-        boxShadow: Zine.shadowXs,
+        border: Border.all(color: LiveTheme.ink, width: 1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -84,11 +79,10 @@ class StepPips extends StatelessWidget {
         width: isActive ? 18 : 8,
         height: 8,
         decoration: BoxDecoration(
-          color: (isActive || isDone) ? LiveTheme.lime : LiveTheme.ink.withValues(alpha: 0.18),
+          color: (isActive || isDone)
+              ? LiveTheme.lime
+              : LiveTheme.paper.withValues(alpha: 0.18),
           borderRadius: BorderRadius.circular(100),
-          border: (isActive || isDone)
-              ? Border.all(color: LiveTheme.ink, width: 1.4)
-              : null,
         ),
       );
 }
@@ -102,7 +96,7 @@ class LivenessFooter extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: const [
-        Icon(Icons.lock_outline, size: 13, color: Color(0x80F9F7ED)),
+        Icon(Icons.lock_outline, size: 13, color: AD.textTertiary),
         SizedBox(width: 7),
         Flexible(
           child: Text(
@@ -112,7 +106,7 @@ class LivenessFooter extends StatelessWidget {
               fontFamily: 'Nunito',
               fontWeight: FontWeight.w700,
               fontSize: 11,
-              color: Color(0x80F9F7ED),
+              color: AD.textTertiary,
             ),
           ),
         ),
@@ -197,9 +191,9 @@ class _LiveProgressBarState extends State<LiveProgressBar>
     return Container(
       height: 18,
       decoration: BoxDecoration(
-        color: const Color(0x24F9F7ED),
+        color: const Color(0x24FFFFFF),
         borderRadius: BorderRadius.circular(100),
-        border: Border.all(color: const Color(0x66F9F7ED), width: 2),
+        border: Border.all(color: const Color(0x59FFFFFF), width: 1),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(100),
@@ -238,11 +232,11 @@ class TurnHeadGuide extends StatelessWidget {
             width: 150,
             height: 150,
             decoration: BoxDecoration(
-              color: const Color(0x0FF9F7ED),
+              color: const Color(0x0FFFFFFF),
               shape: BoxShape.circle,
-              border: Border.all(color: LiveTheme.dimPaper, width: 3),
+              border: Border.all(color: LiveTheme.dimPaper, width: 2),
             ),
-            child: const Icon(Icons.person, size: 92, color: Color(0xD1F9F7ED)),
+            child: const Icon(Icons.person, size: 92, color: Color(0xD1FFFFFF)),
           ),
           const SizedBox(width: 18),
           _carets(Icons.chevron_right, rightActive, reduced),
@@ -252,7 +246,7 @@ class TurnHeadGuide extends StatelessWidget {
   }
 
   Widget _carets(IconData icon, bool active, bool reduced, {bool reverse = false}) {
-    final color = active ? LiveTheme.lime : const Color(0x38F9F7ED);
+    final color = active ? LiveTheme.lime : const Color(0x38FFFFFF);
     final sizes = [22.0, 30.0, 38.0];
     final row = <Widget>[
       for (var i = 0; i < 3; i++)
@@ -383,9 +377,9 @@ class AnalyzingStage extends StatelessWidget {
           decoration: BoxDecoration(
             color: LiveTheme.mint,
             shape: BoxShape.circle,
-            border: Border.all(color: LiveTheme.ink, width: 2),
+            border: Border.all(color: LiveTheme.ink, width: 1),
           ),
-          child: const Icon(Icons.check, size: 12, color: LiveTheme.ink),
+          child: const Icon(Icons.check, size: 12, color: LiveTheme.paper),
         );
         break;
       case RowState.active:
@@ -403,7 +397,7 @@ class AnalyzingStage extends StatelessWidget {
           height: 22,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            border: Border.all(color: LiveTheme.dimPaper, width: 2),
+            border: Border.all(color: LiveTheme.dimPaper, width: 1),
           ),
         );
         break;
@@ -472,10 +466,9 @@ class _SpinningBadgeState extends State<_SpinningBadge>
             decoration: BoxDecoration(
               color: LiveTheme.lilac,
               shape: BoxShape.circle,
-              border: Border.all(color: LiveTheme.ink, width: 2.5),
-              boxShadow: Zine.shadowSm,
+              border: Border.all(color: LiveTheme.ink, width: 1),
             ),
-            child: const Icon(Icons.auto_awesome, size: 44, color: LiveTheme.ink),
+            child: const Icon(Icons.auto_awesome, size: 44, color: LiveTheme.paper),
           ),
         ],
       ),
@@ -565,10 +558,9 @@ class _AcceptedStageState extends State<AcceptedStage>
                       decoration: BoxDecoration(
                         color: LiveTheme.lime,
                         shape: BoxShape.circle,
-                        border: Border.all(color: LiveTheme.ink, width: 3),
-                        boxShadow: const [BoxShadow(color: LiveTheme.ink, offset: Offset(6, 7))],
+                        border: Border.all(color: LiveTheme.ink, width: 1),
                       ),
-                      child: const Icon(Icons.check, size: 60, color: LiveTheme.ink),
+                      child: const Icon(Icons.check, size: 60, color: LiveTheme.paper),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -577,18 +569,17 @@ class _AcceptedStageState extends State<AcceptedStage>
                     decoration: BoxDecoration(
                       color: LiveTheme.mint,
                       borderRadius: BorderRadius.circular(100),
-                      border: Border.all(color: LiveTheme.ink, width: 2),
-                      boxShadow: Zine.shadowXs,
+                      border: Border.all(color: LiveTheme.ink, width: 1),
                     ),
                     child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(Icons.verified, size: 14, color: LiveTheme.ink),
+                      Icon(Icons.verified, size: 14, color: LiveTheme.paper),
                       SizedBox(width: 6),
                       Text('Verified',
                           style: TextStyle(
                             fontFamily: 'Nunito',
                             fontWeight: FontWeight.w800,
                             fontSize: 12,
-                            color: LiveTheme.ink,
+                            color: LiveTheme.paper,
                           )),
                     ]),
                   ),
@@ -624,9 +615,9 @@ class _AcceptedStageState extends State<AcceptedStage>
                 decoration: BoxDecoration(
                   color: LiveTheme.mint,
                   borderRadius: BorderRadius.circular(11),
-                  border: Border.all(color: LiveTheme.ink, width: 2),
+                  border: Border.all(color: LiveTheme.ink, width: 1),
                 ),
-                child: const Icon(Icons.shield_outlined, size: 18, color: LiveTheme.ink),
+                child: const Icon(Icons.shield_outlined, size: 18, color: LiveTheme.paper),
               ),
               const SizedBox(width: 12),
               const Expanded(
@@ -638,7 +629,7 @@ class _AcceptedStageState extends State<AcceptedStage>
                           fontFamily: 'Nunito',
                           fontWeight: FontWeight.w800,
                           fontSize: 14,
-                          color: LiveTheme.ink,
+                          color: AD.textPrimary,
                         )),
                     SizedBox(height: 2),
                     Text(
@@ -648,7 +639,7 @@ class _AcceptedStageState extends State<AcceptedStage>
                         fontWeight: FontWeight.w700,
                         fontSize: 12.5,
                         height: 1.45,
-                        color: LiveTheme.inkSoft,
+                        color: AD.textSecondary,
                       ),
                     ),
                   ],
@@ -718,7 +709,7 @@ class _ConfettiState extends State<_Confetti> with SingleTickerProviderStateMixi
                       color: p.color,
                       shape: p.square ? BoxShape.rectangle : BoxShape.circle,
                       borderRadius: p.square ? BorderRadius.circular(3) : null,
-                      border: Border.all(color: LiveTheme.ink, width: 2),
+                      border: Border.all(color: LiveTheme.ink, width: 1),
                     ),
                   ),
                 ),

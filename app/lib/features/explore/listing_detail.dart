@@ -15,7 +15,7 @@ import '../../core/chat_state.dart';
 import '../../sync/sync_hub.dart';
 import '../avatok/contacts.dart';
 import '../../core/session_api.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/verse_api.dart';
 import '../avalive/live_viewer_screen.dart';
@@ -224,12 +224,12 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
   void _overflow() {
     final d = _d;
     if (d == null) return;
-    showModalBottomSheet(context: context, backgroundColor: Zine.paper,
+    showModalBottomSheet(context: context, backgroundColor: AD.overlaySheet,
         shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
         builder: (c) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
       ListTile(
-        leading: PhosphorIcon(PhosphorIcons.flag(PhosphorIconsStyle.bold), color: Zine.ink),
-        title: Text('Report listing', style: ZineText.value(size: 15, weight: FontWeight.w700)),
+        leading: PhosphorIcon(PhosphorIcons.flag(PhosphorIconsStyle.bold), color: AD.textPrimary),
+        title: Text('Report listing', style: ADText.rowName(c: AD.textPrimary)),
         onTap: () async {
           Navigator.pop(c);
           final ok = await ListingsApi.report('listing', d.listing.id, 'inappropriate');
@@ -237,8 +237,8 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
         },
       ),
       ListTile(
-        leading: PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.bold), color: Zine.coral),
-        title: Text('Block this creator', style: ZineText.value(size: 15, color: Zine.coral, weight: FontWeight.w700)),
+        leading: PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.bold), color: AD.danger),
+        title: Text('Block this creator', style: ADText.rowName(c: AD.danger)),
         onTap: () async {
           Navigator.pop(c);
           final ok = await ListingsApi.blockCreator(d.listing.creator.uid);
@@ -252,23 +252,37 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
   Widget build(BuildContext context) {
     final d = _d;
     return Scaffold(
-      backgroundColor: Zine.paper,
-      appBar: ZineAppBar(
-        title: 'Listing',
-        markWord: 'Listing',
-        actions: [
-          ZineBackButton(onTap: _overflow, icon: PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold)),
-        ],
+      backgroundColor: AD.bg,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(64),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: AD.headerFooter,
+            border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
+          ),
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
+              child: Row(children: [
+                const AdBackButton(),
+                const SizedBox(width: 4),
+                Expanded(child: Text('Listing', style: ADText.appTitle())),
+                AdBackButton(onTap: _overflow, icon: PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold)),
+              ]),
+            ),
+          ),
+        ),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: Zine.blueInk))
+          ? const Center(child: CircularProgressIndicator(color: AD.iconSearch))
           : d == null
               ? Center(child: ZineEmptyState(
                   icon: PhosphorIcons.fileX(PhosphorIconsStyle.bold),
                   text: 'Listing not found.'))
               : RefreshIndicator(
                   onRefresh: _load,
-                  color: Zine.blueInk,
+                  color: AD.iconSearch,
                   child: ListingDetailView(
                     card: d.listing, reviews: d.reviews,
                     creatorRating: d.creatorRating, creatorRatingCount: d.creatorRatingCount,
@@ -281,8 +295,8 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
                 ),
       bottomNavigationBar: d == null || d.isOwner ? null : Container(
         decoration: const BoxDecoration(
-          color: Zine.paper2,
-          border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
+          color: AD.headerFooter,
+          border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
         ),
         child: SafeArea(
           child: Padding(
@@ -297,30 +311,36 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
                   child: Padding(
                     padding: const EdgeInsets.only(bottom: 8),
                     child: Row(children: [
-                      PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold), size: 16, color: Zine.ink),
+                      PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold), size: 16, color: AD.textPrimary),
                       const SizedBox(width: 6),
-                      Text(d.listing.creator.avatokNumber!, style: ZineText.value(size: 14, color: Zine.ink)),
+                      Text(d.listing.creator.avatokNumber!, style: ADText.rowName(c: AD.textPrimary)),
                       const SizedBox(width: 8),
-                      Text('· tap to message or call', style: ZineText.tag(size: 11, color: Zine.inkSoft)),
+                      Text('· tap to message or call', style: ADText.statCaption(c: AD.textSecondary)),
                     ]),
                   ),
                 ),
               Row(children: [
               ZinePressable(
                 onTap: _message,
+                color: AD.card,
+                borderColor: AD.borderControl,
+                boxShadow: const [],
                 radius: BorderRadius.circular(100),
                 child: SizedBox(width: 52, height: 52, child: Center(
-                  child: PhosphorIcon(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), size: 22, color: Zine.ink),
+                  child: PhosphorIcon(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), size: 22, color: AD.textPrimary),
                 )),
               ),
               const SizedBox(width: 12),
               if (const ['sell', 'buy', 'social'].contains(d.listing.kind)) ...[
                 ZinePressable(
                   onTap: _alreadyTalked ? _alreadyTalkedNotice : _callAgent,
+                  color: AD.card,
+                  borderColor: AD.borderControl,
+                  boxShadow: const [],
                   radius: BorderRadius.circular(100),
                   child: SizedBox(width: 52, height: 52, child: Center(
                     child: Icon(Icons.support_agent, size: 24,
-                        color: _alreadyTalked ? Zine.ink.withOpacity(0.3) : Zine.ink),
+                        color: _alreadyTalked ? AD.textTertiary : AD.textPrimary),
                   )),
                 ),
                 const SizedBox(width: 12),
@@ -330,20 +350,20 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
                 if (isMarket) {
                   // Marketplace listing: the primary action is to message the owner
                   // directly (price is shown above; agents handle negotiation).
-                  return ZineButton(
+                  return AdButton(
                     label: 'Message owner',
-                    variant: ZineButtonVariant.lime,
+                    variant: AdButtonVariant.primary,
                     fontSize: 18, fullWidth: true,
                     onPressed: _message,
                   );
                 }
-                return ZineButton(
+                return AdButton(
                   label: d.listing.status == 'live'
                       ? 'Join now · ${d.listing.priceLabel}'
                       : d.listing.kind == 'live_event'
                           ? 'Book · ${d.listing.priceLabel}'
                           : 'Book a session · ${d.listing.priceLabel}',
-                  variant: d.listing.status == 'live' ? ZineButtonVariant.coral : ZineButtonVariant.lime,
+                  variant: d.listing.status == 'live' ? AdButtonVariant.danger : AdButtonVariant.primary,
                   fontSize: 18,
                   fullWidth: true,
                   onPressed: _book,
@@ -389,23 +409,22 @@ class ListingDetailView extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Expanded(child: Text(card.title, style: ZineText.cardTitle(size: 22))),
+            Expanded(child: Text(card.title, style: ADText.appTitle())),
             const SizedBox(width: 10),
             Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
               if (card.promoPct > 0)
                 Text(fmtCoins(card.price),
-                    style: ZineText.sub(size: 12, color: Zine.inkMute)
+                    style: ADText.preview(c: AD.textTertiary)
                         .copyWith(decoration: TextDecoration.lineThrough)),
-              // money = mint pill (§7.10).
+              // money = green pill.
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Zine.mint,
+                  color: AD.online,
                   borderRadius: BorderRadius.circular(100),
-                  border: Zine.border,
-                  boxShadow: Zine.shadowXs,
+                  border: Border.all(color: AD.borderControl, width: 1),
                 ),
-                child: Text(card.displayPrice, style: ZineText.value(size: 15, weight: FontWeight.w900)),
+                child: Text(card.displayPrice, style: ADText.rowName(c: Colors.white)),
               ),
             ]),
           ]),
@@ -414,7 +433,7 @@ class ListingDetailView extends StatelessWidget {
           if (viewers > 1) ...[
             const SizedBox(height: 6),
             Text('👀 $viewers people viewing now',
-                style: ZineText.sub(size: 12, color: Zine.inkMute)),
+                style: ADText.preview(c: AD.textTertiary)),
           ],
           const SizedBox(height: 12),
           // [UI-MKT-2] wired stats row: star reviews / eye views / posted-ago.
@@ -422,7 +441,7 @@ class ListingDetailView extends StatelessWidget {
           Builder(builder: (_) {
             final chips = <Widget>[
               if (card.ratingAvg != null && card.ratingCount > 0)
-                _statPill(PhosphorIcons.star(PhosphorIconsStyle.fill), '${card.ratingAvg!.toStringAsFixed(1)} (${card.ratingCount})', color: Zine.coral),
+                _statPill(PhosphorIcons.star(PhosphorIconsStyle.fill), '${card.ratingAvg!.toStringAsFixed(1)} (${card.ratingCount})', color: AD.iconStar),
               if (card.viewCount > 0)
                 _statPill(PhosphorIcons.eye(PhosphorIconsStyle.bold), '${card.viewCount} view${card.viewCount == 1 ? '' : 's'}'),
               if (card.createdAt != null)
@@ -440,35 +459,35 @@ class ListingDetailView extends StatelessWidget {
             // social) capacity is null, which used to print "Group session (NULL)".
             // Render it only for those kinds AND only when capacity is a real value.
             if (card.kind == 'live_event')
-              const ZineSticker('🎥 Live event')
+              const AdSticker('🎥 Live event')
             else if (card.kind == 'consult' && card.capacity != null)
-              ZineSticker(card.capacity == 1 ? '🗓 1:1 session' : '🗓 Group session (${card.capacity})'),
-            if (card.startsAt != null) ZineSticker('🕐 ${fmtWhen(card.startsAt)}'),
-            if (card.durationMin != null) ZineSticker('${card.durationMin} min'),
-            if (card.country != null && card.country!.isNotEmpty) ZineSticker('${flagEmoji(card.country)} ${card.country}'),
-            if (card.adultsOnly) const ZineSticker('18+', kind: ZineStickerKind.no),
+              AdSticker(card.capacity == 1 ? '🗓 1:1 session' : '🗓 Group session (${card.capacity})'),
+            if (card.startsAt != null) AdSticker('🕐 ${fmtWhen(card.startsAt)}'),
+            if (card.durationMin != null) AdSticker('${card.durationMin} min'),
+            if (card.country != null && card.country!.isNotEmpty) AdSticker('${flagEmoji(card.country)} ${card.country}'),
+            if (card.adultsOnly) const AdSticker('18+', kind: AdStickerKind.no),
             if (card.translationEnabled)
-              ZineSticker('🌐 Voice translation${card.spokenLang != null ? ' · speaks ${translationLangLabel(card.spokenLang!)}' : ''}'),
+              AdSticker('🌐 Voice translation${card.spokenLang != null ? ' · speaks ${translationLangLabel(card.spokenLang!)}' : ''}'),
             // Guard badges: skip null/empty entries so a stray null never prints "null".
             for (final b in card.badges)
-              if (b != null && b.toString().trim().isNotEmpty) ZineSticker(b.toString()),
+              if (b != null && b.toString().trim().isNotEmpty) AdSticker(b.toString()),
             // Category hint — only when it's a real, non-empty value.
-            if (card.category.trim().isNotEmpty) ZineSticker(card.category, kind: ZineStickerKind.hint),
+            if (card.category.trim().isNotEmpty) AdSticker(card.category, kind: AdStickerKind.hint),
           ]),
           if (card.joinedCount > 0) ...[
             const SizedBox(height: 10),
-            Text('🔥 ${card.joinedCount} joined', style: ZineText.value(size: 13, color: Zine.inkSoft, weight: FontWeight.w800)),
+            Text('🔥 ${card.joinedCount} joined', style: ADText.preview(c: AD.textSecondary)),
           ],
           const SizedBox(height: 16),
           if ((card.description ?? '').isNotEmpty) ...[
-            Text(card.description!, style: ZineText.sub(size: 14.5, color: Zine.ink)),
+            Text(card.description!, style: ADText.preview(c: AD.textPrimary)),
             const SizedBox(height: 18),
           ],
           // creator mini-card → channel
-          ZineCard(
+          AdCard(
             onTap: onCreatorTap,
             padding: const EdgeInsets.all(12),
-            radius: Zine.rSm,
+            radius: AD.rListCard,
             child: Row(children: [
               Avatar(seed: card.creator.uid, name: card.creator.name ?? '?', size: 44,
                   avatarUrl: card.creator.avatarUrl),
@@ -477,10 +496,10 @@ class ListingDetailView extends StatelessWidget {
                 Row(children: [
                   Flexible(child: Text(card.creator.name ?? (card.creator.handle ?? 'Creator'),
                       maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: ZineText.value(size: 15, weight: FontWeight.w800))),
+                      style: ADText.rowName())),
                   if (card.creator.kycVerified) ...[
                     const SizedBox(width: 5),
-                    PhosphorIcon(PhosphorIcons.sealCheck(PhosphorIconsStyle.fill), size: 16, color: Zine.blueInk),
+                    PhosphorIcon(PhosphorIcons.sealCheck(PhosphorIconsStyle.fill), size: 16, color: AD.iconSearch),
                   ],
                 ]),
                 Text(
@@ -488,23 +507,28 @@ class ListingDetailView extends StatelessWidget {
                     if (creatorRating != null && creatorRatingCount > 0) '★ ${creatorRating!.toStringAsFixed(1)} ($creatorRatingCount)',
                     if (followerCount > 0) '$followerCount followers',
                   ].join(' · '),
-                  style: ZineText.tag(size: 10.5, color: Zine.inkSoft),
+                  style: ADText.statCaption(c: AD.textSecondary),
                 ),
               ])),
-              PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 18, color: Zine.inkSoft),
+              PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 18, color: AD.textSecondary),
             ]),
           ),
           const SizedBox(height: 22),
           Row(children: [
-            Text('Reviews', style: ZineText.cardTitle()),
+            Text('Reviews', style: ADText.appTitle()),
             const SizedBox(width: 10),
             RatingStars(rating: card.ratingAvg, count: card.ratingCount, size: 15),
             const Spacer(),
-            if (canReview) ZineLink('Leave a review', onTap: onReview),
+            if (canReview)
+              GestureDetector(
+                onTap: onReview,
+                behavior: HitTestBehavior.opaque,
+                child: Text('Leave a review', style: ADText.preview(c: AD.iconSearch)),
+              ),
           ]),
           if (reviews.isEmpty)
             Padding(padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Text('No reviews yet — be the first.', style: ZineText.sub(size: 14))),
+                child: Text('No reviews yet — be the first.', style: ADText.preview())),
           for (final r in reviews) ReviewTile(review: r),
         ]),
       ),
@@ -516,9 +540,9 @@ class ListingDetailView extends StatelessWidget {
 Widget _statPill(IconData icon, String label, {Color? color}) => Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        PhosphorIcon(icon, size: 14, color: color ?? Zine.inkSoft),
+        PhosphorIcon(icon, size: 14, color: color ?? AD.textSecondary),
         const SizedBox(width: 4),
-        Text(label, style: ZineText.value(size: 12, color: Zine.inkSoft, weight: FontWeight.w800)),
+        Text(label, style: ADText.preview(c: AD.textSecondary)),
       ],
     );
 
@@ -578,7 +602,7 @@ class _GalleryHeaderState extends State<_GalleryHeader> {
       child: Stack(children: [
         Positioned.fill(
           child: Container(
-            decoration: BoxDecoration(borderRadius: BorderRadius.circular(Zine.rSm), boxShadow: Zine.shadowSm),
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(AD.rListCard), boxShadow: const []),
             child: covers.isEmpty
                 ? CoverImage(url: null, seed: card.id.hashCode)
                 : PageView(
@@ -599,9 +623,9 @@ class _GalleryHeaderState extends State<_GalleryHeader> {
                   margin: const EdgeInsets.symmetric(horizontal: 3),
                   width: i == _page ? 18 : 6, height: 6,
                   decoration: BoxDecoration(
-                    color: i == _page ? Zine.ink : Colors.white,
+                    color: i == _page ? Colors.white : AD.textFaint,
                     borderRadius: BorderRadius.circular(100),
-                    border: Border.all(color: Zine.ink, width: 1),
+                    border: Border.all(color: AD.borderControl, width: 1),
                   ),
                 ),
             ]),
@@ -617,13 +641,13 @@ class _GalleryHeaderState extends State<_GalleryHeader> {
               decoration: BoxDecoration(
                 color: const Color(0xF2FFFFFF),
                 shape: BoxShape.circle,
-                border: Border.all(color: Zine.ink, width: Zine.bw),
-                boxShadow: Zine.shadowXs,
+                border: Border.all(color: AD.borderControl, width: 1),
+                boxShadow: const [],
               ),
               child: Icon(
                 card.favorited ? Icons.favorite : Icons.favorite_border,
                 size: 20,
-                color: card.favorited ? Zine.coral : Zine.ink,
+                color: card.favorited ? AD.danger : AD.textOnInput,
               ),
             ),
           ),
@@ -646,16 +670,16 @@ class ReviewTile extends StatelessWidget {
             Row(children: [
               Expanded(child: Text(review.authorName ?? 'AvaTOK user',
                   maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: ZineText.value(size: 13, weight: FontWeight.w800))),
+                  style: ADText.rowName())),
               Row(children: List.generate(5, (i) => PhosphorIcon(
                   i < review.rating
                       ? PhosphorIcons.star(PhosphorIconsStyle.fill)
                       : PhosphorIcons.star(PhosphorIconsStyle.bold),
-                  size: 13, color: i < review.rating ? Zine.coral : Zine.inkMute))),
+                  size: 13, color: i < review.rating ? AD.iconStar : AD.textTertiary))),
             ]),
             if (review.body.isNotEmpty)
               Padding(padding: const EdgeInsets.only(top: 2),
-                  child: Text(review.body, style: ZineText.sub(size: 13, color: Zine.ink))),
+                  child: Text(review.body, style: ADText.preview(c: AD.textPrimary))),
           ])),
         ]),
       );
@@ -765,22 +789,22 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
     final l = widget.listing;
     return Container(
       decoration: const BoxDecoration(
-        color: Zine.paper,
+        color: AD.overlaySheet,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        border: Border(top: BorderSide(color: Zine.ink, width: Zine.bwLg)),
+        border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
       ),
       padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).viewPadding.bottom),
       child: SingleChildScrollView(
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Center(child: Container(width: 40, height: 5, margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(color: Zine.ink, borderRadius: BorderRadius.circular(3)))),
-          Text(l.status == 'live' ? 'Join & pay' : 'Confirm booking', style: ZineText.cardTitle(size: 21)),
+              decoration: BoxDecoration(color: AD.borderControl, borderRadius: BorderRadius.circular(3)))),
+          Text(l.status == 'live' ? 'Join & pay' : 'Confirm booking', style: ADText.appTitle()),
           const SizedBox(height: 4),
-          Text(l.title, style: ZineText.sub(size: 14)),
+          Text(l.title, style: ADText.preview()),
           const SizedBox(height: 14),
           if (_isConsult) ...[
             Row(children: [
-              Text('PICK A TIME', style: ZineText.kicker()),
+              Text('PICK A TIME', style: ADText.sectionLabel()),
               const Spacer(),
               ZinePressable(
                 onTap: () async {
@@ -788,22 +812,24 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                       firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 90)));
                   if (d != null) { setState(() => _day = d); _loadSlots(); }
                 },
+                color: AD.card,
+                borderColor: AD.borderControl,
                 radius: BorderRadius.circular(100),
-                boxShadow: Zine.shadowXs,
+                boxShadow: const [],
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  PhosphorIcon(PhosphorIcons.calendarBlank(PhosphorIconsStyle.bold), size: 14, color: Zine.ink),
+                  PhosphorIcon(PhosphorIcons.calendarBlank(PhosphorIconsStyle.bold), size: 14, color: AD.textPrimary),
                   const SizedBox(width: 6),
-                  Text(_ymd, style: ZineText.tag(size: 11.5)),
+                  Text(_ymd, style: ADText.preview(c: AD.textPrimary)),
                 ]),
               ),
             ]),
             const SizedBox(height: 10),
             if (_loadingSlots) const Center(child: Padding(padding: EdgeInsets.all(12),
-                child: CircularProgressIndicator(color: Zine.blueInk)))
+                child: CircularProgressIndicator(color: AD.iconSearch)))
             else if (_slots.isEmpty)
               Padding(padding: const EdgeInsets.symmetric(vertical: 10),
-                  child: Text('No availability this day — try another date.', style: ZineText.sub(size: 13.5)))
+                  child: Text('No availability this day — try another date.', style: ADText.preview()))
             else
               Wrap(spacing: 8, runSpacing: 8, children: [
                 for (final s in _slots) _slotChip(s),
@@ -811,7 +837,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
             const SizedBox(height: 14),
           ],
           if (l.effectivePrice > 0) ...[
-            ZineField(
+            AdField(
               controller: _promo,
               hint: 'Promo code (optional)',
               textCapitalization: TextCapitalization.characters,
@@ -819,22 +845,21 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
             ),
             const SizedBox(height: 12),
           ],
-          // Voice translation add-on (only when the creator offers it) — AI = lilac.
+          // Voice translation add-on (only when the creator offers it) — AI accent.
           if (l.translationEnabled) ...[
-            ZineCard(
-              color: Zine.lilac,
-              radius: Zine.rSm,
+            AdCard(
+              radius: AD.rListCard,
               padding: const EdgeInsets.all(12),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text('🌐 Would you like this to be translated into the language of your choice?',
-                        style: ZineText.value(size: 13, weight: FontWeight.w800)),
+                        style: ADText.rowName()),
                     const SizedBox(height: 4),
                     Text(
                       'Live voice translation · \$3 per hour'
                       '${l.spokenLang != null ? ' · the creator speaks ${translationLangLabel(l.spokenLang!)}' : ''}',
-                      style: ZineText.sub(size: 12, color: Zine.ink),
+                      style: ADText.preview(c: AD.textPrimary),
                     ),
                   ])),
                   const SizedBox(width: 10),
@@ -857,40 +882,40 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
             ),
             const SizedBox(height: 12),
           ],
-          ZineCard(
-            radius: Zine.rSm,
+          AdCard(
+            radius: AD.rListCard,
             padding: const EdgeInsets.all(12),
             child: Column(children: [
               Row(children: [
-                PhosphorIcon(PhosphorIcons.wallet(PhosphorIconsStyle.bold), size: 18, color: Zine.ink),
+                PhosphorIcon(PhosphorIcons.wallet(PhosphorIconsStyle.bold), size: 18, color: AD.textPrimary),
                 const SizedBox(width: 8),
                 Text('Wallet: ${_balance == null ? '…' : fmtCoins(_balance!)}',
-                    style: ZineText.value(size: 14, weight: FontWeight.w700)),
+                    style: ADText.rowName()),
                 const Spacer(),
-                Text(l.priceLabel, style: ZineText.value(size: 15, color: Zine.mintInk, weight: FontWeight.w900)),
+                Text(l.priceLabel, style: ADText.rowName(c: AD.online)),
               ]),
               // Itemized total when translation is on: e.g. $60 + $3 × 1 h = $63.
               if (_translationCoins > 0) ...[
-                const Divider(height: 16, color: Zine.ink, thickness: 1),
+                const Divider(height: 16, color: AD.borderControl, thickness: 1),
                 Row(children: [
                   Expanded(child: Text(
                     'Voice translation · $_durationMin min',
-                    style: ZineText.sub(size: 12.5),
+                    style: ADText.preview(),
                   )),
-                  Text('+ ${fmtCoins(_translationCoins)}', style: ZineText.value(size: 12.5, weight: FontWeight.w800)),
+                  Text('+ ${fmtCoins(_translationCoins)}', style: ADText.preview(c: AD.textPrimary)),
                 ]),
                 const SizedBox(height: 4),
                 Row(children: [
                   Expanded(child: Text('Total (including voice translation)',
-                      style: ZineText.value(size: 13.5, weight: FontWeight.w800))),
-                  Text(fmtCoins(_totalCoins), style: ZineText.value(size: 15, color: Zine.mintInk, weight: FontWeight.w900)),
+                      style: ADText.rowName())),
+                  Text(fmtCoins(_totalCoins), style: ADText.rowName(c: AD.online)),
                 ]),
               ],
             ]),
           ),
-          if (_error != null) ZineErrorMsg(_error!),
+          if (_error != null) AdErrorMsg(_error!),
           const SizedBox(height: 16),
-          ZineButton(
+          AdButton(
             label: _totalCoins == 0
                 ? 'Confirm (free)'
                 : 'Pay ${l.money(_totalCoins)} & confirm',
@@ -917,13 +942,13 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: sel ? Zine.lime : (available ? Zine.card : Zine.paper2),
-          border: Border.all(color: available ? Zine.ink : Zine.inkMute, width: Zine.bw),
+          color: sel ? AD.primaryBadge : (available ? AD.card : AD.headerFooter),
+          border: Border.all(color: sel ? AD.primaryBadge : AD.borderControl, width: 1),
           borderRadius: BorderRadius.circular(100),
-          boxShadow: sel ? Zine.shadowXs : null,
+          boxShadow: const [],
         ),
-        child: Text(label, style: ZineText.tag(size: 12,
-                color: available ? Zine.ink : Zine.inkMute)
+        child: Text(label, style: ADText.preview(
+                c: sel ? Colors.white : (available ? AD.textPrimary : AD.textTertiary))
             .copyWith(decoration: available ? null : TextDecoration.lineThrough)),
       ),
     );
@@ -954,28 +979,28 @@ class _ReviewSheetState extends State<_ReviewSheet> {
   @override
   Widget build(BuildContext context) => Container(
         decoration: const BoxDecoration(
-          color: Zine.paper,
+          color: AD.overlaySheet,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          border: Border(top: BorderSide(color: Zine.ink, width: Zine.bwLg)),
+          border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
         ),
         padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).viewPadding.bottom),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('Rate this session', style: ZineText.cardTitle(size: 20)),
+          Text('Rate this session', style: ADText.appTitle()),
           const SizedBox(height: 12),
           Row(mainAxisAlignment: MainAxisAlignment.center, children: List.generate(5, (i) => IconButton(
               onPressed: () => setState(() => _rating = i + 1),
               icon: PhosphorIcon(
                   i < _rating ? PhosphorIcons.star(PhosphorIconsStyle.fill) : PhosphorIcons.star(PhosphorIconsStyle.bold),
-                  size: 32, color: i < _rating ? Zine.coral : Zine.inkMute)))),
+                  size: 32, color: i < _rating ? AD.iconStar : AD.textTertiary)))),
           const SizedBox(height: 12),
-          ZineField(
+          AdField(
             controller: _body,
             maxLines: 3,
             hint: 'Share your experience (optional)',
           ),
-          if (_error != null) ZineErrorMsg(_error!),
+          if (_error != null) AdErrorMsg(_error!),
           const SizedBox(height: 14),
-          ZineButton(
+          AdButton(
             label: 'Send review',
             fullWidth: true,
             loading: _busy,

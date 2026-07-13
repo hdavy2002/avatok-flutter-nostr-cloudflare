@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/ui/zine.dart';
-import '../../../core/ui/zine_widgets.dart';
+import '../../../core/ui/avatok_dark.dart';
 import '../../../shell/focus_mode.dart';
 import '../settings_registry.dart';
 
@@ -40,16 +39,14 @@ class _FocusModeCardState extends State<_FocusModeCard> {
 
   @override
   Widget build(BuildContext context) {
-    return ZineCard(
-      radius: Zine.rSm,
+    return AdCard(
       padding: const EdgeInsets.all(14),
-      boxShadow: Zine.shadowXs,
       child: ValueListenableBuilder<bool>(
         valueListenable: FocusMode.enabled,
         builder: (context, on, _) => Row(children: [
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Keep the menu focused', style: ZineText.value(size: 14.5)),
+              Text('Keep the menu focused', style: ADText.rowName()),
               const SizedBox(height: 2),
               Text(
                 on
@@ -57,13 +54,45 @@ class _FocusModeCardState extends State<_FocusModeCard> {
                         'show all AvaVerse apps in the menu.'
                     : 'Showing all AvaVerse apps. Turn on to keep the menu to '
                         'AvaTOK + your account essentials.',
-                style: ZineText.sub(size: 12),
+                style: ADText.preview(),
               ),
             ]),
           ),
           const SizedBox(width: 10),
-          ZineToggle(value: on, onChanged: (v) => FocusMode.set(v)),
+          _AdToggle(value: on, onChanged: (v) => FocusMode.set(v)),
         ]),
+      ),
+    );
+  }
+}
+
+/// Dark v2 inline toggle — track [AD.card] off / [AD.online] on, white thumb.
+class _AdToggle extends StatelessWidget {
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+  const _AdToggle({required this.value, this.onChanged});
+  @override
+  Widget build(BuildContext context) {
+    final reduce = MediaQuery.of(context).disableAnimations;
+    return GestureDetector(
+      onTap: onChanged == null ? null : () => onChanged!(!value),
+      child: AnimatedContainer(
+        duration: reduce ? Duration.zero : const Duration(milliseconds: 120),
+        width: 52, height: 30,
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          color: value ? AD.online : AD.card,
+          borderRadius: BorderRadius.circular(100),
+          border: Border.all(color: AD.borderControl, width: 1),
+        ),
+        child: AnimatedAlign(
+          duration: reduce ? Duration.zero : const Duration(milliseconds: 120),
+          alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+          child: Container(
+            width: 22, height: 22,
+            decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
+          ),
+        ),
       ),
     );
   }

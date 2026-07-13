@@ -14,8 +14,8 @@ import '../../core/config.dart';
 import '../../core/minor_terms.dart';
 import '../../core/moderation_service.dart';
 import '../../core/profile_store.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine.dart';
-import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
 import '../avatok/ava_number.dart';
 import '../avatok/contacts.dart';
@@ -341,18 +341,18 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
         decoration: const BoxDecoration(
-          color: Zine.paper,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(Zine.r)),
-          border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
+          color: AD.overlaySheet,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(AD.rSheet)),
+          border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
         ),
         padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
         child: SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-          ZineButton(
-            label: 'Take photo', fullWidth: true, variant: ZineButtonVariant.blue,
+          AdButton(
+            label: 'Take photo', fullWidth: true, variant: AdButtonVariant.teal,
             icon: PhosphorIcons.camera(PhosphorIconsStyle.bold), trailingIcon: false,
             onPressed: () { Navigator.pop(ctx); _pickAndCrop(ImageSource.camera); }),
           const SizedBox(height: 10),
-          ZineButton(
+          AdButton(
             label: 'Choose from gallery', fullWidth: true,
             icon: PhosphorIcons.image(PhosphorIconsStyle.bold), trailingIcon: false,
             onPressed: () { Navigator.pop(ctx); _pickAndCrop(ImageSource.gallery); }),
@@ -656,7 +656,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   Widget _errFor(String field) {
     final e = _fieldErrors[field];
     if (e == null) return const SizedBox.shrink();
-    return ZineErrorMsg(e);
+    return AdErrorMsg(e);
   }
 
   void _clearErr(String field) {
@@ -677,30 +677,32 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   }) {
     final has = value.isNotEmpty;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(label.toUpperCase(), style: ZineText.kicker()),
+      Text(label.toUpperCase(), style: ADText.sectionLabel(c: AD.textSecondary)),
       const SizedBox(height: 9),
       GestureDetector(
         onTap: onTap,
         behavior: HitTestBehavior.opaque,
         child: Container(
           decoration: BoxDecoration(
-            color: Zine.card,
-            borderRadius: BorderRadius.circular(Zine.rField),
-            border: Zine.border,
-            boxShadow: error ? Zine.shadowError : Zine.shadowSm,
+            color: AD.inputField,
+            borderRadius: BorderRadius.circular(AD.rInput),
+            border: Border.all(color: error ? AD.danger : AD.borderControl, width: 1),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
           child: Row(children: [
-            Icon(icon, size: 20, color: Zine.ink),
+            Icon(icon, size: 20, color: AD.textOnInput),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
                 has ? value : hint,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: has
-                    ? ZineText.input()
-                    : ZineText.input().copyWith(color: Zine.placeholder, fontWeight: FontWeight.w700),
+                style: TextStyle(
+                  fontFamily: ADText.family,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                  color: has ? AD.textOnInput : AD.placeholderOnWhite,
+                ),
               ),
             ),
           ]),
@@ -722,10 +724,36 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     return PopScope(
       canPop: false, // mandatory — can't back out until complete
       child: Scaffold(
-        backgroundColor: Zine.paper,
+        backgroundColor: AD.bg,
         resizeToAvoidBottomInset: true,
-        appBar: const ZineAppBar(
-            title: 'Complete your profile', markWord: 'profile', showBack: false),
+        appBar: PreferredSize(
+          preferredSize: const Size.fromHeight(76),
+          child: Container(
+            decoration: const BoxDecoration(
+              color: AD.headerFooter,
+              border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
+            ),
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(18, 10, 18, 12),
+                child: Row(children: [
+                  Expanded(
+                    child: Text.rich(
+                      const TextSpan(children: [
+                        TextSpan(text: 'Complete your '),
+                        TextSpan(text: 'profile', style: TextStyle(color: AD.primaryBadge)),
+                      ]),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: ADText.appTitle().copyWith(height: 1.08),
+                    ),
+                  ),
+                ]),
+              ),
+            ),
+          ),
+        ),
         body: SafeArea(
           child: AbsorbPointer(
           absorbing: held,
@@ -738,14 +766,14 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                 padding: const EdgeInsets.only(bottom: 14),
                 child: Row(children: [
                   const SizedBox(width: 18, height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Zine.blueInk)),
+                      child: CircularProgressIndicator(strokeWidth: 2, color: AD.iconSearch)),
                   const SizedBox(width: 10),
-                  Expanded(child: Text(_holdMsg!, style: ZineText.value(size: 13))),
+                  Expanded(child: Text(_holdMsg!, style: ADText.rowName().copyWith(fontSize: 13))),
                 ]),
               ),
             Text('A few details so people can recognise you. Your email and AvaTOK '
                 'number are set from sign-up and shown locked below.',
-                style: ZineText.sub(size: 13)),
+                style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13)),
             const SizedBox(height: 18),
             Center(
               key: _photoKey,
@@ -755,8 +783,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                   Container(
                     decoration: const BoxDecoration(
                       shape: BoxShape.circle,
-                      border: Border.fromBorderSide(BorderSide(color: Zine.ink, width: Zine.bw)),
-                      boxShadow: Zine.shadowSm,
+                      border: Border.fromBorderSide(BorderSide(color: AD.borderAvatar, width: 2)),
+                      boxShadow: [],
                     ),
                     child: Avatar(
                       seed: id?.uid ?? 'me',
@@ -767,20 +795,20 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                   ),
                   if (_photoBusy)
                     Positioned.fill(child: Container(
-                      decoration: BoxDecoration(shape: BoxShape.circle, color: Zine.ink.withValues(alpha: .45)),
+                      decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.black.withValues(alpha: .45)),
                       child: const Center(child: SizedBox(width: 22, height: 22,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Zine.lime))),
+                          child: CircularProgressIndicator(strokeWidth: 2, color: AD.primaryBadge))),
                     )),
                   Positioned(
                     right: -4, bottom: -4,
                     child: Container(
                       width: 34, height: 34,
                       decoration: const BoxDecoration(
-                        color: Zine.lime, shape: BoxShape.circle,
-                        border: Border.fromBorderSide(BorderSide(color: Zine.ink, width: Zine.bw)),
-                        boxShadow: Zine.shadowXs,
+                        color: AD.primaryBadge, shape: BoxShape.circle,
+                        border: Border.fromBorderSide(BorderSide(color: AD.bg, width: 2)),
+                        boxShadow: [],
                       ),
-                      child: PhosphorIcon(PhosphorIcons.camera(PhosphorIconsStyle.bold), color: Zine.ink, size: 17),
+                      child: PhosphorIcon(PhosphorIcons.camera(PhosphorIconsStyle.bold), color: Colors.white, size: 17),
                     ),
                   ),
                 ]),
@@ -788,32 +816,32 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             ),
             const SizedBox(height: 6),
             if (_avatarUrl.isEmpty && !_fieldErrors.containsKey('photo'))
-              Center(child: Text('Tap to add a profile photo', style: ZineText.sub(size: 12.5, color: Zine.coral))),
+              Center(child: Text('Tap to add a profile photo', style: ADText.preview(c: AD.danger).copyWith(fontSize: 12.5))),
             Center(child: _errFor('photo')),
             const SizedBox(height: 20),
-            ZineField(key: _firstKey, controller: _first, label: 'First name', hint: 'Your first name',
+            AdField(key: _firstKey, controller: _first, label: 'First name', hint: 'Your first name',
                 error: _fieldErrors.containsKey('first_name'),
                 textCapitalization: TextCapitalization.words,
                 onChanged: (_) { _clearErr('first_name'); _maybeDetectGender(); setState(() {}); }),
             _errFor('first_name'),
             const SizedBox(height: 14),
-            ZineField(key: _lastKey, controller: _last, label: 'Last name', hint: 'Your last name',
+            AdField(key: _lastKey, controller: _last, label: 'Last name', hint: 'Your last name',
                 error: _fieldErrors.containsKey('last_name'),
                 textCapitalization: TextCapitalization.words,
                 onChanged: (_) { _clearErr('last_name'); _maybeDetectGender(); setState(() {}); }),
             _errFor('last_name'),
             const SizedBox(height: 14),
-            ZineField(controller: _email, label: 'Email', hint: 'you@example.com',
+            AdField(controller: _email, label: 'Email', hint: 'you@example.com',
                 enabled: false),
             const SizedBox(height: 4),
-            Text('The email you signed in with — locked here.', style: ZineText.sub(size: 12)),
+            Text('The email you signed in with — locked here.', style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12)),
             const SizedBox(height: 14),
-            ZineField(controller: _phone, label: 'Your AvaTOK number',
+            AdField(controller: _phone, label: 'Your AvaTOK number',
                 hint: _avatokNumber.isEmpty ? 'Assigned just now' : _avatokNumber,
                 enabled: false),
             const SizedBox(height: 4),
             Text('This is your AvaTOK number — it represents you and keeps your real '
-                'phone private. You can change it later in Settings.', style: ZineText.sub(size: 12)),
+                'phone private. You can change it later in Settings.', style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12)),
             const SizedBox(height: 14),
             // Personal (real) phone with SMS OTP → locked once verified.
             PersonalPhoneField(
@@ -853,18 +881,18 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             const SizedBox(height: 4),
             Text('Private — never shown to anyone. Used to confirm your age '
                 '(under-18 accounts get extra safety protections). Time of birth is optional.',
-                style: ZineText.sub(size: 12)),
+                style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12)),
             const SizedBox(height: 14),
             // ── Gender (mandatory) — AI-detected from the name and LOCKED. Only
             //    editable when detection is uncertain, so an unusual name never traps. ──
             Row(key: _genderKey, children: [
-              Text('Gender', style: ZineText.value(size: 13)),
+              Text('Gender', style: ADText.rowName().copyWith(fontSize: 13)),
               if (_genderDetecting) ...[
                 const SizedBox(width: 8),
                 const SizedBox(width: 13, height: 13,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Zine.blueInk)),
+                    child: CircularProgressIndicator(strokeWidth: 2, color: AD.iconSearch)),
                 const SizedBox(width: 6),
-                Text('detecting from your name…', style: ZineText.tag(size: 12, color: Zine.inkSoft)),
+                Text('detecting from your name…', style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12)),
               ],
             ]),
             const SizedBox(height: 6),
@@ -872,16 +900,17 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 decoration: BoxDecoration(
-                  color: Zine.card,
-                  borderRadius: BorderRadius.circular(Zine.rField),
-                  border: Zine.border,
-                  boxShadow: Zine.shadowXs,
+                  color: AD.inputField,
+                  borderRadius: BorderRadius.circular(AD.rInput),
+                  border: Border.all(color: AD.borderControl, width: 1),
                 ),
                 child: Row(children: [
-                  PhosphorIcon(PhosphorIcons.lockSimple(PhosphorIconsStyle.fill), size: 18, color: Zine.inkSoft),
+                  PhosphorIcon(PhosphorIcons.lockSimple(PhosphorIconsStyle.fill), size: 18, color: AD.textOnInput),
                   const SizedBox(width: 10),
-                  Expanded(child: Text(_genderLabel(_gender), style: ZineText.value(size: 15))),
-                  Text('set from your name', style: ZineText.tag(size: 11, color: Zine.inkSoft)),
+                  Expanded(child: Text(_genderLabel(_gender), style: TextStyle(
+                      fontFamily: ADText.family, fontWeight: FontWeight.w700, fontSize: 15, color: AD.textOnInput))),
+                  Text('set from your name', style: TextStyle(
+                      fontFamily: ADText.family, fontWeight: FontWeight.w700, fontSize: 11, color: AD.placeholderOnWhite)),
                 ]),
               )
             else
@@ -895,42 +924,45 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                     label: Text(opt[1]),
                     selected: _gender == opt[0],
                     onSelected: (_) { _clearErr('gender'); setState(() => _gender = opt[0]); },
+                    backgroundColor: AD.card,
+                    selectedColor: AD.primaryBadge,
+                    side: BorderSide(color: _gender == opt[0] ? AD.primaryBadge : AD.borderControl, width: 1),
+                    labelStyle: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w800,
+                        fontSize: 13, color: _gender == opt[0] ? Colors.white : AD.textSecondary),
                   ),
               ]),
             _errFor('gender'),
             const SizedBox(height: 4),
             Text('Ava uses this when she answers your missed calls — '
-                '"can I take a message for him/her/them?"', style: ZineText.sub(size: 12)),
+                '"can I take a message for him/her/them?"', style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12)),
             const SizedBox(height: 14),
             // ── About you (bio) — live AI moderation + "write my bio" sparkle ──
             Row(key: _bioKey, children: [
-              Expanded(child: Text('ABOUT YOU', style: ZineText.kicker())),
+              Expanded(child: Text('ABOUT YOU', style: ADText.sectionLabel())),
               // Sparkle: type 1–2 lines, tap to have Ava draft a short bio.
               GestureDetector(
                 onTap: _bioAiBusy ? null : _writeBioWithAi,
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
-                    color: Zine.lime,
-                    borderRadius: BorderRadius.circular(Zine.rField),
-                    border: Zine.border,
-                    boxShadow: Zine.shadowXs,
+                    color: AD.primaryBadge,
+                    borderRadius: BorderRadius.circular(100),
                   ),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     if (_bioAiBusy)
                       const SizedBox(width: 14, height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Zine.ink))
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                     else
-                      PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill), size: 15, color: Zine.ink),
+                      PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill), size: 15, color: Colors.white),
                     const SizedBox(width: 6),
                     Text(_bioAiBusy ? 'Writing…' : 'Write my bio',
-                        style: ZineText.tag(size: 12, color: Zine.ink)),
+                        style: const TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w800, fontSize: 12, color: Colors.white)),
                   ]),
                 ),
               ),
             ]),
             const SizedBox(height: 9),
-            ZineField(controller: _bio, hint: 'Tell Ava a little about yourself…',
+            AdField(controller: _bio, hint: 'Tell Ava a little about yourself…',
                 error: _fieldErrors.containsKey('about') || _bioModError != null,
                 maxLines: 4, maxLength: 600, textCapitalization: TextCapitalization.sentences,
                 onChanged: (_) => _onBioChanged()),
@@ -940,13 +972,13 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                 padding: const EdgeInsets.only(top: 9),
                 child: Row(children: [
                   const SizedBox(width: 14, height: 14,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Zine.blueInk)),
+                      child: CircularProgressIndicator(strokeWidth: 2, color: AD.iconSearch)),
                   const SizedBox(width: 7),
-                  Text('Ava is checking your profile…', style: ZineText.tag(size: 12, color: Zine.inkSoft)),
+                  Text('Ava is checking your profile…', style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12)),
                 ]),
               ),
             // Red inline message when the bio is blocked by moderation.
-            if (!_bioChecking && _bioModError != null) ZineErrorMsg(_bioModError!),
+            if (!_bioChecking && _bioModError != null) AdErrorMsg(_bioModError!),
             // Required-field (empty) helper still applies.
             if (_bioModError == null) _errFor('about'),
             const SizedBox(height: 24),
@@ -957,21 +989,21 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                 width: double.infinity,
                 padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
                 decoration: BoxDecoration(
-                  color: Zine.coral.withValues(alpha: .12),
-                  borderRadius: BorderRadius.circular(Zine.rField),
-                  border: Border.all(color: Zine.coral, width: Zine.bw),
+                  color: AD.danger.withValues(alpha: .14),
+                  borderRadius: BorderRadius.circular(AD.rInput),
+                  border: Border.all(color: AD.danger, width: 1),
                 ),
                 child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   PhosphorIcon(PhosphorIcons.warningCircle(PhosphorIconsStyle.fill),
-                      color: Zine.coral, size: 20),
+                      color: AD.danger, size: 20),
                   const SizedBox(width: 10),
                   Expanded(child: Text(_rejectBanner!,
-                      style: ZineText.value(size: 13.5, color: Zine.ink))),
+                      style: ADText.rowName().copyWith(fontSize: 13.5, fontWeight: FontWeight.w700))),
                 ]),
               ),
               const SizedBox(height: 14),
             ],
-            ZineButton(
+            AdButton(
               label: _saving ? 'Saving…' : 'Save & continue',
               fullWidth: true, fontSize: 18, loading: _saving,
               // Disabled while the bio is being AI-checked or is flagged unsafe
@@ -986,7 +1018,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             const SizedBox(height: 14),
             Center(child: GestureDetector(
               onTap: widget.onSignOut,
-              child: Text('Sign out instead', style: ZineText.link(size: 13, color: Zine.inkSoft)),
+              child: Text('Sign out instead', style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13)),
             )),
           ],
         ),

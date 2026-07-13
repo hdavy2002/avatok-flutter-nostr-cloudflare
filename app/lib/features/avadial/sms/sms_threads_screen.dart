@@ -9,6 +9,7 @@ import '../../../core/api_auth.dart';
 import '../../../core/ava_log.dart';
 import '../../../core/config.dart';
 import '../../../core/remote_config.dart';
+import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/zine.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../avadial_channel.dart';
@@ -179,7 +180,7 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
         _segmented(),
         Expanded(
           child: _loading
-              ? const Center(child: CircularProgressIndicator(color: Zine.ink))
+              ? const Center(child: CircularProgressIndicator(color: AD.textPrimary))
               : visible.isEmpty
                   ? ShellEmptyStateFallback(filter: _filter)
                   : RefreshIndicator(
@@ -197,11 +198,13 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
         bottom: 18,
         child: ZinePressable(
           onTap: _compose,
-          color: Zine.lime,
+          color: AD.primaryBadge,
           radius: BorderRadius.circular(100),
-          boxShadow: Zine.shadow,
+          borderColor: AD.borderControl,
+          borderWidth: 1,
+          boxShadow: const [],
           padding: const EdgeInsets.all(16),
-          child: Icon(PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold), size: 24, color: Zine.ink),
+          child: Icon(PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold), size: 24, color: Colors.white),
         ),
       ),
     ]);
@@ -220,17 +223,20 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
 
   Widget _segTab(String label, _Filter f, IconData icon) {
     final active = _filter == f;
+    final fill = active ? (f == _Filter.spam ? AD.danger : AD.primaryBadge) : AD.card;
+    final fg = active ? Colors.white : AD.textPrimary;
     return ZinePressable(
       onTap: () => setState(() => _filter = f),
-      color: active ? (f == _Filter.spam ? Zine.coral : Zine.lime) : Zine.card,
+      color: fill,
       radius: BorderRadius.circular(100),
+      borderColor: AD.borderControl,
+      borderWidth: 1,
+      boxShadow: const [],
       padding: const EdgeInsets.symmetric(vertical: 11),
       child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Icon(icon, size: 17, color: active && f == _Filter.spam ? Colors.white : Zine.ink),
+        Icon(icon, size: 17, color: fg),
         const SizedBox(width: 7),
-        Text(label,
-            style: ZineText.button(
-                size: 15, color: active && f == _Filter.spam ? Colors.white : Zine.ink)),
+        Text(label, style: ZineText.button(size: 15, color: fg)),
       ]),
     );
   }
@@ -240,7 +246,7 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
     final spam = _threadIsSpam(t);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
-      child: ZineCard(
+      child: AdCard(
         onTap: () => _openThread(t),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
         child: Row(children: [
@@ -248,24 +254,35 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
             icon: spam
                 ? PhosphorIcons.shieldWarning(PhosphorIconsStyle.bold)
                 : PhosphorIcons.chatCircle(PhosphorIconsStyle.bold),
-            color: spam ? Zine.coral : Zine.blue,
+            color: spam ? AD.danger : AD.iconSearch,
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(name ?? t.address,
-                  maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.cardTitle(size: 15.5)),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: ZineText.cardTitle(size: 15.5, color: AD.textPrimary)),
               const SizedBox(height: 2),
               Text(t.snippet,
-                  maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.sub(size: 12.5)),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: ZineText.sub(size: 12.5, color: AD.textSecondary)),
             ]),
           ),
           PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert, color: Zine.inkSoft),
+            icon: const Icon(Icons.more_vert, color: AD.textSecondary),
+            color: AD.menu,
             onSelected: (v) => v == 'spam' ? _moveToSpam(t) : _moveToInbox(t),
             itemBuilder: (_) => [
-              if (!spam) const PopupMenuItem(value: 'spam', child: Text('Move to Spam')),
-              if (spam) const PopupMenuItem(value: 'inbox', child: Text('Not spam')),
+              if (!spam)
+                PopupMenuItem(
+                    value: 'spam',
+                    child: Text('Move to Spam', style: TextStyle(color: AD.textPrimary))),
+              if (spam)
+                PopupMenuItem(
+                    value: 'inbox',
+                    child: Text('Not spam', style: TextStyle(color: AD.textPrimary))),
             ],
           ),
         ]),
@@ -290,19 +307,20 @@ class ShellEmptyStateFallback extends StatelessWidget {
           icon: spam
               ? PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold)
               : PhosphorIcons.tray(PhosphorIconsStyle.bold),
-          color: spam ? Zine.coral : Zine.blue,
+          color: spam ? AD.danger : AD.iconSearch,
           size: 56,
         ),
         const SizedBox(height: 16),
         Text(spam ? 'No spam' : 'No messages',
-            textAlign: TextAlign.center, style: ZineText.cardTitle(size: 18)),
+            textAlign: TextAlign.center,
+            style: ZineText.cardTitle(size: 18, color: AD.textPrimary)),
         const SizedBox(height: 8),
         Text(
           spam
               ? 'Filtered spam texts will collect here.'
               : 'Your carrier text conversations show up here.',
           textAlign: TextAlign.center,
-          style: ZineText.sub(size: 14),
+          style: ZineText.sub(size: 14, color: AD.textSecondary),
         ),
       ],
     );

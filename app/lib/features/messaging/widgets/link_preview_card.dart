@@ -3,7 +3,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/ava_log.dart';
-import '../../../core/ui/zine.dart';
+import '../../../core/ui/avatok_dark.dart';
 import 'link_viewer_sheet.dart';
 
 /// Link previews + inline YouTube — AI Messenger Batch, STREAM C ([PREVIEW-3]).
@@ -228,12 +228,12 @@ class _AutoAspectImageState extends State<_AutoAspectImage> {
                 if (mounted) setState(() => _errored = true);
               });
             }
-            return Container(color: Zine.ink.withValues(alpha: 0.06));
+            return Container(color: AD.card);
           },
           loadingBuilder: (ctx, child, progress) => progress == null
               ? child
               : Container(
-                  color: Zine.ink.withValues(alpha: 0.06),
+                  color: AD.card,
                   alignment: Alignment.center,
                   child: const SizedBox(
                     width: 20,
@@ -311,7 +311,7 @@ class _DurationPill extends StatelessWidget {
           const Icon(Icons.videocam_rounded, size: 11, color: Colors.white),
           const SizedBox(width: 3),
           Text(_fmtDuration(seconds),
-              style: ZineText.tag(size: 9.5, color: Colors.white)),
+              style: ADText.statCaption(c: Colors.white)),
         ]),
       );
 }
@@ -337,17 +337,17 @@ class _DomainFooter extends StatelessWidget {
             child: Image.network(fav, width: 13, height: 13,
                 errorBuilder: (_, __, ___) => PhosphorIcon(
                     PhosphorIcons.link(PhosphorIconsStyle.bold),
-                    size: 11, color: Zine.inkMute)),
+                    size: 11, color: AD.textTertiary)),
           )
         else
           PhosphorIcon(PhosphorIcons.link(PhosphorIconsStyle.bold),
-              size: 11, color: Zine.inkMute),
+              size: 11, color: AD.textTertiary),
         const SizedBox(width: 5),
         Flexible(
           child: Text(d,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: ZineText.tag(size: 10, color: Zine.inkMute)),
+              style: ADText.statCaption(c: AD.textTertiary)),
         ),
       ]),
     );
@@ -395,9 +395,9 @@ class LinkPreviewCard extends StatelessWidget {
     return Container(
       width: width ?? double.infinity,
       decoration: BoxDecoration(
-        color: Zine.paper2,
+        color: AD.card,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Zine.ink, width: 1.5),
+        border: Border.all(color: AD.borderControl, width: 1),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -443,7 +443,7 @@ class LinkPreviewCard extends StatelessWidget {
                       preview.title!,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: ZineText.value(size: 13, weight: FontWeight.w700),
+                      style: ADText.rowName(),
                     ),
                   ),
                 if (preview.description != null)
@@ -453,7 +453,7 @@ class LinkPreviewCard extends StatelessWidget {
                       preview.description!,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: ZineText.sub(size: 12, color: Zine.inkSoft),
+                      style: ADText.preview(c: AD.textSecondary),
                     ),
                   ),
                 _DomainFooter(preview: preview),
@@ -489,9 +489,9 @@ class ComposeLinkPreview extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.fromLTRB(10, 8, 10, 2),
       decoration: BoxDecoration(
-        color: Zine.card,
+        color: AD.card,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Zine.ink, width: 1.5),
+        border: Border.all(color: AD.borderControl, width: 1),
       ),
       clipBehavior: Clip.antiAlias,
       child: Row(children: [
@@ -500,7 +500,7 @@ class ComposeLinkPreview extends StatelessWidget {
           height: 60,
           child: loading || p?.displayImage == null
               ? Container(
-                  color: Zine.ink.withValues(alpha: 0.06),
+                  color: AD.cardHover,
                   alignment: Alignment.center,
                   child: loading
                       ? const SizedBox(
@@ -508,13 +508,13 @@ class ComposeLinkPreview extends StatelessWidget {
                           height: 16,
                           child: CircularProgressIndicator(strokeWidth: 2))
                       : PhosphorIcon(PhosphorIcons.link(PhosphorIconsStyle.bold),
-                          size: 18, color: Zine.inkMute),
+                          size: 18, color: AD.textTertiary),
                 )
               : Stack(fit: StackFit.expand, children: [
                   Image.network(p!.displayImage!,
                       fit: BoxFit.cover,
                       errorBuilder: (_, __, ___) =>
-                          Container(color: Zine.ink.withValues(alpha: 0.06))),
+                          Container(color: AD.cardHover)),
                   if (p.isVideo) const Center(child: _PlayBadge(size: 24)),
                 ]),
         ),
@@ -531,14 +531,14 @@ class ComposeLinkPreview extends StatelessWidget {
                       : (p?.title ?? p?.displayDomain ?? 'Link'),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: ZineText.value(size: 12.5, weight: FontWeight.w700),
+                  style: ADText.rowName(),
                 ),
                 if (!loading && p != null) ...[
                   const SizedBox(height: 2),
                   Text(p.displayDomain,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: ZineText.tag(size: 10, color: Zine.inkMute)),
+                      style: ADText.statCaption(c: AD.textTertiary)),
                 ],
               ],
             ),
@@ -547,7 +547,7 @@ class ComposeLinkPreview extends StatelessWidget {
         IconButton(
           visualDensity: VisualDensity.compact,
           icon: const Icon(Icons.close_rounded, size: 18),
-          color: Zine.inkMute,
+          color: AD.textTertiary,
           onPressed: onDismiss,
           tooltip: 'Remove preview',
         ),

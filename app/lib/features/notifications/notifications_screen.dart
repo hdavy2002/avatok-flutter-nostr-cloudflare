@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/notifications_api.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine_widgets.dart';
 
 /// In-app notification feed (wallet, moderation, briefings, social).
@@ -48,33 +48,81 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   (IconData, Color) _meta(String type) {
     switch (type) {
       case 'wallet':
-      case 'payment': return (PhosphorIcons.wallet(PhosphorIconsStyle.bold), Zine.mint);
-      case 'moderation': return (PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold), Zine.coral);
-      case 'brain': return (PhosphorIcons.sparkle(PhosphorIconsStyle.bold), Zine.lilac);
-      case 'social': return (PhosphorIcons.usersThree(PhosphorIconsStyle.bold), Zine.blue);
-      case 'group_invite': return (PhosphorIcons.usersThree(PhosphorIconsStyle.fill), Zine.blue);
-      default: return (PhosphorIcons.bell(PhosphorIconsStyle.bold), Zine.lime);
+      case 'payment': return (PhosphorIcons.wallet(PhosphorIconsStyle.bold), AD.online);
+      case 'moderation': return (PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold), AD.danger);
+      case 'brain': return (PhosphorIcons.sparkle(PhosphorIconsStyle.bold), AD.iconVideo);
+      case 'social': return (PhosphorIcons.usersThree(PhosphorIconsStyle.bold), AD.iconSearch);
+      case 'group_invite': return (PhosphorIcons.usersThree(PhosphorIconsStyle.fill), AD.iconSearch);
+      default: return (PhosphorIcons.bell(PhosphorIconsStyle.bold), AD.primaryBadge);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Zine.paper,
-      appBar: const ZineAppBar(title: 'Notifications', markWord: 'Notif', tag: 'what happened'),
+      backgroundColor: AD.bg,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(76),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: AD.headerFooter,
+            border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
+          ),
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 6, 18, 10),
+              child: Row(children: [
+                AdBackButton(onTap: () => Navigator.of(context).maybePop()),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text.rich(
+                        TextSpan(children: [
+                          const TextSpan(text: 'Notif'),
+                          const TextSpan(text: 'ications',
+                              style: TextStyle(color: AD.primaryBadge)),
+                        ]),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: ADText.appTitle().copyWith(fontSize: 22, height: 1.08),
+                      ),
+                      Text('WHAT HAPPENED', style: ADText.sectionLabel()),
+                    ],
+                  ),
+                ),
+              ]),
+            ),
+          ),
+        ),
+      ),
       body: RefreshIndicator(
         onRefresh: _load,
-        color: Zine.blueInk,
+        color: AD.iconSearch,
         child: _loading
-            ? const Center(child: CircularProgressIndicator(color: Zine.blueInk))
+            ? const Center(child: CircularProgressIndicator(color: AD.iconSearch))
             : _items.isEmpty
                 ? ListView(children: [
                     const SizedBox(height: 120),
                     Center(
-                      child: ZineEmptyState(
-                        icon: PhosphorIcons.bell(PhosphorIconsStyle.bold),
-                        text: 'All caught up',
-                      ),
+                      child: Column(mainAxisSize: MainAxisSize.min, children: [
+                        Container(
+                          width: 64, height: 64,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(AD.rListCard),
+                            border: Border.all(color: AD.borderControl, width: 1),
+                          ),
+                          child: Icon(PhosphorIcons.bell(PhosphorIconsStyle.bold),
+                              size: 30, color: AD.textTertiary),
+                        ),
+                        const SizedBox(height: 12),
+                        Text('All caught up',
+                            style: ADText.preview(c: AD.textSecondary),
+                            textAlign: TextAlign.center),
+                      ]),
                     ),
                   ])
                 : ListView.separated(
@@ -84,10 +132,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     itemBuilder: (_, i) {
                       final n = _items[i];
                       final (icon, accent) = _meta(n.type);
-                      return ZineCard(
-                        radius: Zine.rSm,
+                      return AdCard(
+                        radius: AD.rListCard,
                         padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
-                        boxShadow: Zine.shadowXs,
+                        boxShadow: const [],
                         // A group invite taps back to the messenger — the Groups
                         // tab badge points the user at the new group.
                         onTap: n.type == 'group_invite' ? () => Navigator.of(context).maybePop() : null,
@@ -96,10 +144,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              Text(n.title, style: ZineText.value(size: 14.5)),
+                              Text(n.title, style: ADText.rowName().copyWith(fontSize: 14.5)),
                               if (n.body.isNotEmpty) ...[
                                 const SizedBox(height: 2),
-                                Text(n.body, style: ZineText.sub(size: 12.5)),
+                                Text(n.body, style: ADText.preview().copyWith(fontSize: 12.5)),
                               ],
                             ]),
                           ),
@@ -110,8 +158,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                               margin: const EdgeInsets.only(top: 4),
                               decoration: const BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: Zine.coral,
-                                border: Border.fromBorderSide(BorderSide(color: Zine.ink, width: 2)),
+                                color: AD.unreadAccent,
+                                border: Border.fromBorderSide(BorderSide(color: AD.card, width: 2)),
                               ),
                             ),
                           ],

@@ -16,7 +16,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
 import '../../core/config.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine_widgets.dart';
 
 const String _kAutoResponderUrl = '$kApiBase/auto-responder';
@@ -180,8 +180,27 @@ class _AutoResponderSettingsPageState extends State<AutoResponderSettingsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Zine.paper,
-      appBar: ZineAppBar(title: 'Auto-Responder', markWord: 'Auto', showBack: true),
+      backgroundColor: AD.bg,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(64),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: AD.headerFooter,
+            border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
+          ),
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 6, 12, 10),
+              child: Row(children: [
+                const AdBackButton(),
+                const SizedBox(width: 4),
+                Expanded(child: Text('Auto-Responder', style: ADText.appTitle(), maxLines: 1, overflow: TextOverflow.ellipsis)),
+              ]),
+            ),
+          ),
+        ),
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
@@ -191,7 +210,7 @@ class _AutoResponderSettingsPageState extends State<AutoResponderSettingsPage> {
                   Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: Text('This feature is currently turned off by AvaTOK.',
-                        style: ZineText.sub(size: 12, color: Zine.coral)),
+                        style: ADText.preview(c: AD.danger)),
                   ),
                 _masterCard(),
                 if (_enabled) ...[
@@ -207,7 +226,7 @@ class _AutoResponderSettingsPageState extends State<AutoResponderSettingsPage> {
                   _togglesCard(),
                 ],
                 const SizedBox(height: 24),
-                ZineButton(
+                AdButton(
                   label: 'Save',
                   loading: _saving,
                   fullWidth: true,
@@ -219,20 +238,38 @@ class _AutoResponderSettingsPageState extends State<AutoResponderSettingsPage> {
     );
   }
 
+  Widget _switch(bool v, ValueChanged<bool> cb) => GestureDetector(
+        onTap: () => cb(!v),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          width: 52, height: 30, padding: const EdgeInsets.all(3),
+          decoration: BoxDecoration(
+            color: v ? AD.online : AD.card,
+            borderRadius: BorderRadius.circular(100),
+            border: Border.all(color: AD.borderControl, width: 1),
+          ),
+          child: AnimatedAlign(
+            duration: const Duration(milliseconds: 120),
+            alignment: v ? Alignment.centerRight : Alignment.centerLeft,
+            child: Container(width: 22, height: 22, decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white)),
+          ),
+        ),
+      );
+
   Widget _rowToggle(String title, String sub, bool value, ValueChanged<bool> onChanged) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Row(children: [
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: ZineText.value(size: 14)),
+            Text(title, style: ADText.rowName()),
             const SizedBox(height: 2),
-            Text(sub, style: ZineText.sub(size: 12)),
+            Text(sub, style: ADText.preview()),
           ])),
           const SizedBox(width: 12),
-          ZineToggle(value: value, onChanged: onChanged),
+          _switch(value, onChanged),
         ]),
       );
 
-  Widget _masterCard() => ZineCard(
+  Widget _masterCard() => AdCard(
         child: _rowToggle(
           'Auto-reply while I\'m away',
           'Ava sends a short reply so people know you\'ll get back to them.',
@@ -247,16 +284,20 @@ class _AutoResponderSettingsPageState extends State<AutoResponderSettingsPage> {
           onTap: onTap,
           radius: BorderRadius.circular(100),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          color: selected ? Zine.lime : Zine.paper2,
-          child: Text(label, style: ZineText.value(size: 13, color: Zine.ink)),
+          color: selected ? AD.primaryBadge : AD.card,
+          pressedColor: AD.cardHover,
+          borderColor: selected ? AD.primaryBadge : AD.borderControl,
+          borderWidth: 1,
+          boxShadow: const [],
+          child: Text(label, style: ADText.rowName(c: selected ? Colors.white : AD.textPrimary)),
         ),
       );
 
-  Widget _modeCard() => ZineCard(
+  Widget _modeCard() => AdCard(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Mode', style: ZineText.value(size: 15)),
+          Text('Mode', style: ADText.rowName()),
           const SizedBox(height: 4),
-          Text('Pick a preset — the message is editable.', style: ZineText.sub(size: 12)),
+          Text('Pick a preset — the message is editable.', style: ADText.preview()),
           const SizedBox(height: 12),
           Wrap(children: [
             for (final e in _kModeLabels.entries) _chip(e.value, _mode == e.key, () => _onModeChanged(e.key)),
@@ -267,25 +308,35 @@ class _AutoResponderSettingsPageState extends State<AutoResponderSettingsPage> {
             maxLength: 200,
             maxLines: 3,
             inputFormatters: [LengthLimitingTextInputFormatter(200)],
-            decoration: const InputDecoration(
+            cursorColor: AD.iconSearch,
+            style: ADText.bubbleBody(),
+            decoration: InputDecoration(
               hintText: 'Your away message',
-              border: OutlineInputBorder(),
+              hintStyle: ADText.preview(c: AD.textTertiary),
+              filled: true,
+              fillColor: AD.card,
               counterText: '',
+              enabledBorder: OutlineInputBorder(
+                borderSide: const BorderSide(color: AD.borderControl, width: 1),
+                borderRadius: BorderRadius.circular(AD.rInput)),
+              focusedBorder: OutlineInputBorder(
+                borderSide: const BorderSide(color: AD.iconSearch, width: 1),
+                borderRadius: BorderRadius.circular(AD.rInput)),
             ),
           ),
           Align(
             alignment: Alignment.centerRight,
-            child: Text('${_msg.text.length}/200', style: ZineText.sub(size: 11)),
+            child: Text('${_msg.text.length}/200', style: ADText.statCaption()),
           ),
         ]),
       );
 
-  Widget _audienceCard() => ZineCard(
+  Widget _audienceCard() => AdCard(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Who gets an auto-reply', style: ZineText.value(size: 15)),
+          Text('Who gets an auto-reply', style: ADText.rowName()),
           const SizedBox(height: 4),
           Text('Ava never auto-replies to pending message requests from strangers.',
-              style: ZineText.sub(size: 12)),
+              style: ADText.preview()),
           const SizedBox(height: 12),
           Wrap(children: [
             _chip('Known contacts only', _audience == 'known', () => setState(() => _audience = 'known')),
@@ -294,9 +345,9 @@ class _AutoResponderSettingsPageState extends State<AutoResponderSettingsPage> {
         ]),
       );
 
-  Widget _durationCard() => ZineCard(
+  Widget _durationCard() => AdCard(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('How long', style: ZineText.value(size: 15)),
+          Text('How long', style: ADText.rowName()),
           const SizedBox(height: 12),
           Wrap(children: [
             _chip('Until I turn it off', _durationKind == 'off', () => setState(() => _durationKind = 'off')),
@@ -318,28 +369,32 @@ class _AutoResponderSettingsPageState extends State<AutoResponderSettingsPage> {
               Expanded(child: _timeField('End', _fmtMins(_schedEnd), () => _pickTime(false))),
             ]),
             const SizedBox(height: 6),
-            Text('Times are in UTC on the server.', style: ZineText.sub(size: 11)),
+            Text('Times are in UTC on the server.', style: ADText.statCaption()),
           ],
         ]),
       );
 
   Widget _timeField(String label, String value, VoidCallback onTap) => ZinePressable(
         onTap: onTap,
-        radius: BorderRadius.circular(Zine.rSm),
+        radius: BorderRadius.circular(AD.rInput),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        color: Zine.paper2,
+        color: AD.card,
+        pressedColor: AD.cardHover,
+        borderColor: AD.borderControl,
+        borderWidth: 1,
+        boxShadow: const [],
         child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(label, style: ZineText.sub(size: 11)),
-            Text(value, style: ZineText.value(size: 16)),
+            Text(label, style: ADText.statCaption()),
+            Text(value, style: ADText.threadName()),
           ]),
-          PhosphorIcon(PhosphorIcons.clock(PhosphorIconsStyle.bold), size: 18, color: Zine.inkMute),
+          PhosphorIcon(PhosphorIcons.clock(PhosphorIconsStyle.bold), size: 18, color: AD.textTertiary),
         ]),
       );
 
-  Widget _depthCard() => ZineCard(
+  Widget _depthCard() => AdCard(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Conversation depth', style: ZineText.value(size: 15)),
+          Text('Conversation depth', style: ADText.rowName()),
           const SizedBox(height: 12),
           Wrap(children: [
             _chip('Reply once per contact', _depth == 'once', () => setState(() => _depth = 'once')),
@@ -348,19 +403,19 @@ class _AutoResponderSettingsPageState extends State<AutoResponderSettingsPage> {
           if (_depth == 'chat') ...[
             const SizedBox(height: 8),
             Text('AI mode: Ava replies briefly using your recent chat, capped at 3 exchanges per contact per day. Ava never invents commitments.',
-                style: ZineText.sub(size: 12)),
+                style: ADText.preview()),
           ],
         ]),
       );
 
-  Widget _togglesCard() => ZineCard(
+  Widget _togglesCard() => AdCard(
         child: Column(children: [
           _rowToggle('Reply in the sender\'s language', 'Match the language they wrote in.', _replyLang,
               (v) => setState(() => _replyLang = v)),
-          const Divider(height: 20),
+          const Divider(height: 20, color: AD.borderHairline),
           _rowToggle('Urgent escalation', 'Push urgent messages through even while away.', _urgent,
               (v) => setState(() => _urgent = v)),
-          const Divider(height: 20),
+          const Divider(height: 20, color: AD.borderHairline),
           _rowToggle('Away digest', 'When you turn this off, Ava sums up who it replied to.', _digest,
               (v) => setState(() => _digest = v)),
         ]),

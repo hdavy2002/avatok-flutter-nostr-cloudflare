@@ -12,7 +12,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/analytics.dart';
 import '../../../core/media_auto_download.dart';
-import '../../../core/ui/zine.dart';
+import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../auto_download_settings_page.dart';
 import '../settings_registry.dart';
@@ -66,31 +66,29 @@ class _AutoDownloadTileState extends State<_AutoDownloadTile> {
 
   @override
   Widget build(BuildContext context) {
-    return ZineCard(
+    return AdCard(
       onTap: _open,
-      radius: Zine.rSm,
       padding: const EdgeInsets.all(14),
-      boxShadow: Zine.shadowXs,
       child: Row(children: [
         ZineIconBadge(
             icon: PhosphorIcons.downloadSimple(PhosphorIconsStyle.fill),
-            color: Zine.blue,
+            color: AD.iconSearch,
             size: 36),
         const SizedBox(width: 12),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Auto-download', style: ZineText.value(size: 14.5)),
+            Text('Auto-download', style: ADText.rowName()),
             const SizedBox(height: 2),
             Text(
               _mode == null
                   ? 'Choose when media downloads'
                   : 'Media downloads: ${_summary(_mode)}',
-              style: ZineText.sub(size: 12),
+              style: ADText.preview(),
             ),
           ]),
         ),
         PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold),
-            size: 18, color: Zine.inkSoft),
+            size: 18, color: AD.textSecondary),
       ]),
     );
   }

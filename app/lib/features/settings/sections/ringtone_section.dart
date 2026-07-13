@@ -7,7 +7,7 @@ import '../../../core/ava_log.dart';
 import '../../../core/remote_config.dart';
 import '../../../core/ringtone_api.dart';
 import '../../../core/ringtone_catalog.dart';
-import '../../../core/ui/zine.dart';
+import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../../avavision/widgets.dart' show MiniPill;
 import '../settings_registry.dart';
@@ -153,10 +153,8 @@ class _RingtoneCardState extends State<_RingtoneCard> {
 
   @override
   Widget build(BuildContext context) {
-    return ZineCard(
-      radius: Zine.rSm,
+    return AdCard(
       padding: const EdgeInsets.all(14),
-      boxShadow: Zine.shadowXs,
       child: _loading
           ? const Padding(
               padding: EdgeInsets.symmetric(vertical: 18),
@@ -167,17 +165,17 @@ class _RingtoneCardState extends State<_RingtoneCard> {
               Row(children: [
                 ZineIconBadge(
                     icon: PhosphorIcons.musicNotes(PhosphorIconsStyle.fill),
-                    color: Zine.lilac,
+                    color: AD.iconVideo,
                     size: 36),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('Ringback tone', style: ZineText.value(size: 14.5)),
+                    Text('Ringback tone', style: ADText.rowName()),
                     const SizedBox(height: 2),
                     Text(
                       'Preview a tone and set it as your ringback — the sound people '
                       'hear while your phone is ringing.',
-                      style: ZineText.sub(size: 12),
+                      style: ADText.preview(),
                     ),
                   ]),
                 ),
@@ -199,19 +197,19 @@ class _RingtoneCardState extends State<_RingtoneCard> {
           icon: Icon(playing
               ? PhosphorIcons.stop(PhosphorIconsStyle.fill)
               : PhosphorIcons.play(PhosphorIconsStyle.fill)),
-          color: Zine.ink,
+          color: AD.textPrimary,
           onPressed: () => _togglePreview(t),
         ),
         Expanded(
-          child: Text(t.name, style: ZineText.value(size: 13.5), maxLines: 1, overflow: TextOverflow.ellipsis),
+          child: Text(t.name, style: ADText.rowName(), maxLines: 1, overflow: TextOverflow.ellipsis),
         ),
         const SizedBox(width: 6),
         if (isDefault)
-          const MiniPill('Default', fill: Zine.mint, fg: Zine.ink)
+          const MiniPill('Default', fill: AD.online, fg: Colors.white)
         else
-          ZineButton(
+          AdButton(
             label: 'Make default',
-            variant: ZineButtonVariant.ghost,
+            variant: AdButtonVariant.ghost,
             fontSize: 12,
             onPressed: _saving ? null : () => _makeDefault(t),
           ),

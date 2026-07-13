@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/analytics.dart';
+import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/zine.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../avadial_channel.dart';
@@ -117,25 +118,27 @@ class _SmsThreadScreenState extends State<SmsThreadScreen> {
   Widget build(BuildContext context) {
     final name = DeviceContacts.I.lookup(widget.address)?.name;
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       appBar: AppBar(
-        backgroundColor: Zine.paper2,
+        backgroundColor: AD.headerFooter,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
-        shape: const Border(bottom: BorderSide(color: Zine.ink, width: Zine.bw)),
+        foregroundColor: AD.textPrimary,
+        leading: AdBackButton(),
+        shape: const Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
         title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(name ?? widget.address, style: ZineText.appbar()),
-          if (name != null) Text(widget.address, style: ZineText.sub(size: 12)),
+          Text(name ?? widget.address, style: ZineText.appbar(color: AD.textPrimary)),
+          if (name != null) Text(widget.address, style: ZineText.sub(size: 12, color: AD.textSecondary)),
         ]),
       ),
       body: SafeArea(
         child: Column(children: [
           Expanded(
             child: _loading
-                ? const Center(child: CircularProgressIndicator(color: Zine.ink))
+                ? const Center(child: CircularProgressIndicator(color: AD.textPrimary))
                 : _rows.isEmpty
                     ? const Center(
-                        child: Text('No messages yet', style: TextStyle(color: Zine.inkSoft)))
+                        child: Text('No messages yet', style: TextStyle(color: AD.textSecondary)))
                     : ListView.builder(
                         controller: _scroll,
                         padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
@@ -159,12 +162,13 @@ class _SmsThreadScreenState extends State<SmsThreadScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.76),
         decoration: BoxDecoration(
-          color: mine ? Zine.lime : Zine.card,
+          color: mine ? AD.bubbleOutBg : AD.card,
           borderRadius: BorderRadius.circular(16),
-          border: Zine.border,
-          boxShadow: Zine.shadowXs,
+          border: Border.all(color: AD.borderControl, width: 1),
+          boxShadow: const [],
         ),
-        child: Text(r.body, style: ZineText.value(size: 15)),
+        child: Text(r.body,
+            style: ZineText.value(size: 15, color: mine ? AD.bubbleOutInk : AD.textPrimary)),
       ),
     );
   }
@@ -180,7 +184,7 @@ class _SmsThreadScreenState extends State<SmsThreadScreen> {
       'failed' => 'Failed to send',
       _ => latest,
     };
-    final color = latest == 'failed' ? Zine.coral : Zine.inkSoft;
+    final color = latest == 'failed' ? AD.danger : AD.textSecondary;
     return Padding(
       padding: const EdgeInsets.only(right: 18, bottom: 2),
       child: Align(
@@ -194,11 +198,12 @@ class _SmsThreadScreenState extends State<SmsThreadScreen> {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
       decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
+        color: AD.headerFooter,
+        border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
       ),
       child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
         Expanded(
-          child: ZineField(
+          child: AdField(
             controller: _composer,
             hint: 'Text message',
             keyboardType: TextInputType.text,
@@ -225,14 +230,17 @@ class _SendButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return ZinePressable(
       onTap: loading ? null : onTap,
-      color: Zine.lime,
+      color: AD.primaryBadge,
       radius: BorderRadius.circular(100),
+      borderColor: AD.borderControl,
+      borderWidth: 1,
+      boxShadow: const [],
       padding: const EdgeInsets.all(14),
       child: loading
           ? const SizedBox(
               width: 20, height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2.4, color: Zine.ink))
-          : Icon(PhosphorIcons.paperPlaneTilt(PhosphorIconsStyle.fill), size: 22, color: Zine.ink),
+              child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white))
+          : Icon(PhosphorIcons.paperPlaneTilt(PhosphorIconsStyle.fill), size: 22, color: Colors.white),
     );
   }
 }

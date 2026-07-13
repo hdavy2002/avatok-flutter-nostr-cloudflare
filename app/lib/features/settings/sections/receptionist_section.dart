@@ -8,7 +8,7 @@ import '../../../core/ava_log.dart';
 import '../../../core/disk_cache.dart';
 import '../../../core/moderation_service.dart';
 import '../../../core/receptionist_api.dart';
-import '../../../core/ui/zine.dart';
+import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../settings_registry.dart';
 
@@ -454,10 +454,8 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
 
   @override
   Widget build(BuildContext context) {
-    return ZineCard(
-      radius: Zine.rSm,
+    return AdCard(
       padding: const EdgeInsets.all(14),
-      boxShadow: Zine.shadowXs,
       child: _loading
           ? const Padding(
               padding: EdgeInsets.symmetric(vertical: 18),
@@ -468,18 +466,18 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
               Row(children: [
                 ZineIconBadge(
                     icon: PhosphorIcons.phoneCall(PhosphorIconsStyle.fill),
-                    color: Zine.lilac,
+                    color: AD.iconVideo,
                     size: 36),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('Ava Receptionist', style: ZineText.value(size: 14.5)),
+                    Text('Ava Receptionist', style: ADText.rowName()),
                     const SizedBox(height: 2),
                     Text(
                       'When you miss a call, Ava answers, tells the caller why '
                       'you can’t pick up, takes a message and leaves you a recording. '
                       'Always on.',
-                      style: ZineText.sub(size: 12),
+                      style: ADText.preview(),
                     ),
                   ]),
                 ),
@@ -489,7 +487,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
               ...[
                 const SizedBox(height: 14),
                 // ── The note: tell Ava your availability ───────────────────
-                ZineField(
+                AdField(
                   controller: _note,
                   label: 'Let Ava know if you’re busy, away, etc.',
                   hint: 'e.g. I’m in meetings until 5pm — please take a message and I’ll call back.',
@@ -505,11 +503,10 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                   alignment: Alignment.centerRight,
                   child: Text(
                     '${_note.text.length}/$kReceptionistNoteMax',
-                    style: ZineText.tag(
-                      size: 11,
-                      color: _note.text.length > kReceptionistNoteMax
-                          ? Zine.coral
-                          : Zine.inkMute,
+                    style: ADText.statCaption(
+                      c: _note.text.length > kReceptionistNoteMax
+                          ? AD.danger
+                          : AD.textTertiary,
                     ),
                   ),
                 ),
@@ -517,15 +514,15 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                 Text(
                   'Ava uses this to tell callers why you can’t pick up and to take a '
                   'message in your words. Your name and gender come from your Profile.',
-                  style: ZineText.sub(size: 11),
+                  style: ADText.preview(),
                 ),
                 const SizedBox(height: 16),
                 // ── Expiry chips ───────────────────────────────────────────
-                Text('CLEAR THIS NOTE AFTER', style: ZineText.kicker()),
+                Text('CLEAR THIS NOTE AFTER', style: ADText.sectionLabel()),
                 const SizedBox(height: 9),
                 Wrap(spacing: 8, runSpacing: 8, children: [
                   for (final o in _kExpiryOptions)
-                    ZineChip(
+                    AdChip(
                       label: o.label,
                       active: _isExpiryActive(o),
                       onTap: () => _onExpiryTap(o),
@@ -535,17 +532,17 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                   const SizedBox(height: 8),
                   Text(
                     'Note clears at ${_formatExpiry(_expiresAtMs!)}',
-                    style: ZineText.sub(size: 11.5),
+                    style: ADText.preview(),
                   ),
                 ],
                 const SizedBox(height: 16),
                 // ── Greeting ───────────────────────────────────────────────
-                Text('GREETING', style: ZineText.kicker()),
+                Text('GREETING', style: ADText.sectionLabel()),
                 const SizedBox(height: 9),
                 _greetingDropdown(),
                 if (_greetingStyle == 'custom') ...[
                   const SizedBox(height: 10),
-                  ZineField(
+                  AdField(
                     controller: _greeting,
                     label: 'Your greeting',
                     hint: 'e.g. Jai Shree Ram',
@@ -558,7 +555,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                 Text(
                   'Ava opens with this, then the caller’s name — e.g. '
                   '“${_greetingPreview()} Anita, you can’t take the call right now…”.',
-                  style: ZineText.sub(size: 11),
+                  style: ADText.preview(),
                 ),
                 const SizedBox(height: 12),
                 _toggleRow(
@@ -570,31 +567,32 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                 ),
                 const SizedBox(height: 16),
                 // ── Answering language ─────────────────────────────────────
-                Text('ANSWERING LANGUAGE', style: ZineText.kicker()),
+                Text('ANSWERING LANGUAGE', style: ADText.sectionLabel()),
                 const SizedBox(height: 9),
                 ZinePressable(
                   onTap: _pickLanguage,
-                  color: Zine.card,
-                  radius: BorderRadius.circular(Zine.rField),
-                  boxShadow: Zine.shadowSm,
+                  color: AD.card,
+                  borderColor: AD.borderControl,
+                  radius: BorderRadius.circular(AD.rInput),
+                  boxShadow: const [],
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
                   child: Row(children: [
                     Icon(PhosphorIcons.translate(PhosphorIconsStyle.bold),
-                        size: 18, color: Zine.inkSoft),
+                        size: 18, color: AD.textSecondary),
                     const SizedBox(width: 10),
-                    Expanded(child: Text(_langLabel(), style: ZineText.value(size: 13.5))),
+                    Expanded(child: Text(_langLabel(), style: ADText.rowName())),
                     Icon(PhosphorIcons.caretDown(PhosphorIconsStyle.bold),
-                        size: 16, color: Zine.inkMute),
+                        size: 16, color: AD.textTertiary),
                   ]),
                 ),
                 const SizedBox(height: 6),
                 Text(
                   'Ava opens in this language, then follows the caller if they speak '
                   'another.',
-                  style: ZineText.sub(size: 11),
+                  style: ADText.preview(),
                 ),
                 const SizedBox(height: 16),
-                ZineButton(
+                AdButton(
                   label: _saving ? 'Saving…' : 'Save',
                   fullWidth: true,
                   fontSize: 15,
@@ -688,18 +686,19 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
-        color: Zine.card,
-        border: Zine.border,
-        borderRadius: BorderRadius.circular(Zine.rSm),
-        boxShadow: Zine.shadowXs,
+        color: AD.card,
+        border: Border.all(color: AD.borderControl, width: 1),
+        borderRadius: BorderRadius.circular(AD.rInput),
       ),
       child: DropdownButton<String>(
         value: _greetingStyle,
         isExpanded: true,
         underline: const SizedBox.shrink(),
+        dropdownColor: AD.menu,
+        iconEnabledColor: AD.textSecondary,
         items: [
           for (final e in kReceptionistGreetingPresets.entries)
-            DropdownMenuItem(value: e.key, child: Text(e.value, style: ZineText.value(size: 15))),
+            DropdownMenuItem(value: e.key, child: Text(e.value, style: ADText.rowName())),
         ],
         onChanged: (v) { if (v != null) setState(() => _greetingStyle = v); },
       ),
@@ -712,13 +711,13 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
       child: Row(children: [
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: ZineText.value(size: 14)),
+            Text(title, style: ADText.rowName()),
             const SizedBox(height: 2),
-            Text(sub, style: ZineText.sub(size: 11.5)),
+            Text(sub, style: ADText.preview()),
           ]),
         ),
         const SizedBox(width: 8),
-        ZineToggle(value: value, onChanged: onChanged),
+        _AdToggle(value: value, onChanged: onChanged),
       ]),
     );
   }
@@ -746,9 +745,9 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
     final picked = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Zine.paper2,
+      backgroundColor: AD.overlaySheet,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(Zine.rSm)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AD.rSheet)),
       ),
       builder: (ctx) => _LangPickerSheet(
         selected: _langIsDetected ? '' : _answerLang,
@@ -812,13 +811,13 @@ class _LangPickerSheetState extends State<_LangPickerSheet> {
             Container(
               width: 40, height: 4,
               decoration: BoxDecoration(
-                color: Zine.inkMute,
+                color: AD.borderControl,
                 borderRadius: BorderRadius.circular(100),
               ),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-              child: ZineField(
+              child: AdField(
                 controller: _search,
                 hint: 'Search languages',
                 leadIcon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
@@ -862,12 +861,44 @@ class _LangPickerSheetState extends State<_LangPickerSheet> {
   }) {
     return ListTile(
       onTap: onTap,
-      title: Text(title, style: ZineText.value(size: 14.5)),
-      subtitle: Text(subtitle, style: ZineText.sub(size: 11.5)),
+      title: Text(title, style: ADText.rowName()),
+      subtitle: Text(subtitle, style: ADText.preview()),
       trailing: active
           ? Icon(PhosphorIcons.check(PhosphorIconsStyle.bold),
-              size: 18, color: Zine.blueInk)
+              size: 18, color: AD.iconSearch)
           : null,
+    );
+  }
+}
+
+/// Dark v2 inline toggle — track [AD.card] off / [AD.online] on, white thumb.
+class _AdToggle extends StatelessWidget {
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+  const _AdToggle({required this.value, this.onChanged});
+  @override
+  Widget build(BuildContext context) {
+    final reduce = MediaQuery.of(context).disableAnimations;
+    return GestureDetector(
+      onTap: onChanged == null ? null : () => onChanged!(!value),
+      child: AnimatedContainer(
+        duration: reduce ? Duration.zero : const Duration(milliseconds: 120),
+        width: 52, height: 30,
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          color: value ? AD.online : AD.card,
+          borderRadius: BorderRadius.circular(100),
+          border: Border.all(color: AD.borderControl, width: 1),
+        ),
+        child: AnimatedAlign(
+          duration: reduce ? Duration.zero : const Duration(milliseconds: 120),
+          alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+          child: Container(
+            width: 22, height: 22,
+            decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
+          ),
+        ),
+      ),
     );
   }
 }

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
-import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../core/update_service.dart';
 import '../shell_v2.dart';
 import 'app_order_screen.dart';
@@ -27,14 +27,15 @@ Widget shellNavBar({
 }) {
   return Container(
     decoration: const BoxDecoration(
-      border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
+      color: AD.headerFooter,
+      border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
     ),
     child: NavigationBar(
       selectedIndex: selectedIndex,
       onDestinationSelected: onSelected,
-      backgroundColor: Zine.paper2,
+      backgroundColor: AD.headerFooter,
       surfaceTintColor: Colors.transparent,
-      indicatorColor: indicatorColor ?? Zine.lime,
+      indicatorColor: indicatorColor ?? AD.primaryBadge,
       destinations: [
         for (final it in items)
           NavigationDestination(
@@ -59,7 +60,7 @@ class ShellEmptyState extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.subtitle,
-    this.color = Zine.blue,
+    this.color = AD.iconSearch,
   });
 
   @override
@@ -70,9 +71,10 @@ class ShellEmptyState extends StatelessWidget {
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           ZineIconBadge(icon: icon, color: color, size: 56),
           const SizedBox(height: 16),
-          Text(title, textAlign: TextAlign.center, style: ZineText.cardTitle(size: 18)),
+          Text(title, textAlign: TextAlign.center, style: ADText.threadName().copyWith(fontSize: 18)),
           const SizedBox(height: 8),
-          Text(subtitle, textAlign: TextAlign.center, style: ZineText.sub(size: 14)),
+          Text(subtitle, textAlign: TextAlign.center,
+              style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14)),
         ]),
       ),
     );
@@ -115,8 +117,8 @@ class ShellSidebar extends StatelessWidget {
     }
 
     return Drawer(
-      backgroundColor: Zine.paper2,
-      shape: const Border(right: BorderSide(color: Zine.ink, width: Zine.bw)),
+      backgroundColor: AD.menu,
+      shape: const Border(right: BorderSide(color: AD.borderHairline, width: 1)),
       width: MediaQuery.of(context).size.width * 0.82,
       child: SafeArea(
         child: Column(children: [
@@ -127,20 +129,20 @@ class ShellSidebar extends StatelessWidget {
               const SizedBox(width: 8),
               Text.rich(
                 TextSpan(
-                  style: const TextStyle(
-                      fontFamily: ZineText.display,
-                      fontWeight: FontWeight.w600,
+                  style: TextStyle(
+                      fontFamily: ADText.family,
+                      fontWeight: FontWeight.w900,
                       fontSize: 19,
                       letterSpacing: -0.38,
-                      color: Zine.ink),
-                  children: const [
-                    TextSpan(text: 'Ava'),
-                    TextSpan(text: 'TOK', style: TextStyle(color: Zine.blueInk)),
+                      color: AD.textPrimary),
+                  children: [
+                    const TextSpan(text: 'Ava'),
+                    TextSpan(text: 'TOK', style: TextStyle(color: AD.iconSearch)),
                   ],
                 ),
               ),
               const Spacer(),
-              ZineBackButton(
+              AdBackButton(
                 icon: PhosphorIcons.x(PhosphorIconsStyle.bold),
                 onTap: () => Navigator.of(context).maybePop(),
               ),
@@ -150,16 +152,16 @@ class ShellSidebar extends StatelessWidget {
             child: ListView(padding: const EdgeInsets.fromLTRB(14, 0, 14, 10), children: [
               Padding(
                   padding: const EdgeInsets.fromLTRB(6, 6, 6, 8),
-                  child: Text('APPS', style: ZineText.kicker())),
+                  child: Text('APPS', style: ADText.sectionLabel(c: AD.textTertiary))),
               appRow(RootId.avaTalk, 'AvaTOK', 'Messages & in-network calls',
-                  PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), Zine.mint),
+                  PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), AD.online),
               appRow(RootId.avaDial, 'AvaDialer', 'Phone, spam shield & device contacts',
-                  PhosphorIcons.phone(PhosphorIconsStyle.bold), Zine.blue),
+                  PhosphorIcons.phone(PhosphorIconsStyle.bold), AD.iconSearch),
               appRow(RootId.services, 'Marketplace', 'Browse & wallet',
-                  PhosphorIcons.storefront(PhosphorIconsStyle.bold), Zine.coral),
+                  PhosphorIcons.storefront(PhosphorIconsStyle.bold), AD.danger),
               _SidebarRow(
                 icon: PhosphorIcons.sparkle(PhosphorIconsStyle.bold),
-                color: Zine.lilac,
+                color: AD.iconVideo,
                 title: 'Ask Ava',
                 subtitle: 'Universal assistant',
                 onTap: () {
@@ -174,12 +176,12 @@ class ShellSidebar extends StatelessWidget {
               const SizedBox(height: 6),
               Padding(
                   padding: const EdgeInsets.fromLTRB(6, 6, 6, 8),
-                  child: Text('MORE', style: ZineText.kicker())),
+                  child: Text('MORE', style: ADText.sectionLabel(c: AD.textTertiary))),
               // Rescued from the retired Home dashboard drawer (2026-07-12 nav
               // rebrand) so they stay reachable from every app, not just Home.
               _SidebarRow(
                 icon: PhosphorIcons.listNumbers(PhosphorIconsStyle.bold),
-                color: Zine.lilac,
+                color: AD.iconVideo,
                 title: 'App order',
                 subtitle: 'Reorder apps & pick your landing app',
                 onTap: () {
@@ -190,7 +192,7 @@ class ShellSidebar extends StatelessWidget {
               ),
               _SidebarRow(
                 icon: PhosphorIcons.identificationCard(PhosphorIconsStyle.bold),
-                color: Zine.blue,
+                color: AD.iconSearch,
                 title: 'Identity',
                 onTap: () {
                   Navigator.of(context).maybePop();
@@ -199,7 +201,7 @@ class ShellSidebar extends StatelessWidget {
               ),
               _SidebarRow(
                 icon: PhosphorIcons.chartPieSlice(PhosphorIconsStyle.bold),
-                color: Zine.mint,
+                color: AD.online,
                 title: 'Backup',
                 onTap: () {
                   Navigator.of(context).maybePop();
@@ -208,7 +210,7 @@ class ShellSidebar extends StatelessWidget {
               ),
               _SidebarRow(
                 icon: PhosphorIcons.info(PhosphorIconsStyle.bold),
-                color: Zine.lilac,
+                color: AD.iconVideo,
                 title: 'About',
                 onTap: () {
                   Navigator.of(context).maybePop();
@@ -217,7 +219,7 @@ class ShellSidebar extends StatelessWidget {
               ),
               _SidebarRow(
                 icon: PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold),
-                color: Zine.coral,
+                color: AD.danger,
                 title: 'Update',
                 onTap: () {
                   Navigator.of(context).maybePop();
@@ -227,7 +229,7 @@ class ShellSidebar extends StatelessWidget {
               const SizedBox(height: 6),
               _SidebarRow(
                 icon: PhosphorIcons.gearSix(PhosphorIconsStyle.bold),
-                color: Zine.paper,
+                color: AD.textTertiary,
                 title: 'Settings',
                 onTap: () {
                   Navigator.of(context).maybePop();
@@ -238,7 +240,7 @@ class ShellSidebar extends StatelessWidget {
           ),
           Container(
             decoration: const BoxDecoration(
-              border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
+              border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
             ),
             padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
             child: GestureDetector(
@@ -246,9 +248,9 @@ class ShellSidebar extends StatelessWidget {
               onTap: scope.onSignOut,
               child: Row(children: [
                 ZineIconBadge(
-                    icon: PhosphorIcons.signOut(PhosphorIconsStyle.bold), color: Zine.coral, size: 30),
+                    icon: PhosphorIcons.signOut(PhosphorIconsStyle.bold), color: AD.danger, size: 30),
                 const SizedBox(width: 12),
-                Text('Log out', style: ZineText.value(size: 15, color: Zine.coral)),
+                Text('Log out', style: ADText.rowName(c: AD.danger).copyWith(fontSize: 15)),
               ]),
             ),
           ),
@@ -304,23 +306,25 @@ class _SidebarRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: ZinePressable(
           onTap: onTap,
-          color: Zine.card,
-          radius: BorderRadius.circular(Zine.rSm),
-          boxShadow: Zine.shadowXs,
+          color: AD.card,
+          borderColor: AD.borderControl,
+          borderWidth: 1,
+          radius: BorderRadius.circular(AD.rListCard),
+          boxShadow: const [],
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Row(children: [
             ZineIconBadge(icon: icon, color: color),
             const SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(title, style: ZineText.cardTitle(size: 15.5)),
+                Text(title, style: ADText.threadName().copyWith(fontSize: 15.5)),
                 if (subtitle != null) ...[
                   const SizedBox(height: 1),
-                  Text(subtitle!, style: ZineText.tag(size: 10.5, color: Zine.inkSoft)),
+                  Text(subtitle!, style: ADText.statCaption(c: AD.textSecondary).copyWith(fontSize: 10.5)),
                 ],
               ]),
             ),
-            PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 14, color: Zine.inkSoft),
+            PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 14, color: AD.textSecondary),
           ]),
         ),
       );

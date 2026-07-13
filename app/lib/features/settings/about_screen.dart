@@ -4,6 +4,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../core/analytics.dart';
 import '../../core/config.dart' show kSignalingHost;
 import '../../core/feature_flags.dart' show kAvatokEnv, kAppBuild, kAppVersion;
+import '../../core/ui/avatok_dark.dart';
 
 /// ACCOUNT & SETTINGS → About. Shows the app version, build, environment
 /// (prod/staging) and the exact git build — so a tester/owner can tell at a
@@ -46,18 +47,42 @@ class _AboutScreenState extends State<AboutScreen> {
     final env = kAvatokEnv.toUpperCase(); // PROD | STAGING
     final isProd = kAvatokEnv == 'prod';
     return Scaffold(
-      appBar: AppBar(title: const Text('About')),
+      backgroundColor: AD.bg,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(64),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: AD.headerFooter,
+            border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
+          ),
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 6, 12, 10),
+              child: Row(children: [
+                const AdBackButton(),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text('About',
+                      style: ADText.appTitle(),
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                ),
+              ]),
+            ),
+          ),
+        ),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           const SizedBox(height: 8),
           Row(children: [
-            const Text('AvaTOK', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800)),
+            Text('AvaTOK', style: ADText.appTitle()),
             const SizedBox(width: 10),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: isProd ? Colors.green.shade600 : Colors.orange.shade700,
+                color: isProd ? AD.online : AD.unreadAccent,
                 borderRadius: BorderRadius.circular(100),
               ),
               child: Text(env, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12)),
@@ -69,10 +94,10 @@ class _AboutScreenState extends State<AboutScreen> {
           _row('Backend', kSignalingHost),
           _row('Build (git)', Analytics.release),
           const SizedBox(height: 28),
-          const Text(
+          Text(
             'Tip: testers should install the prod build to use live features. '
             'A STAGING badge means this device is talking to the staging backend.',
-            style: TextStyle(color: Colors.grey, fontSize: 12),
+            style: ADText.preview(c: AD.textSecondary),
           ),
         ],
       ),
@@ -84,9 +109,9 @@ class _AboutScreenState extends State<AboutScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w600)),
+            Text(label, style: ADText.sectionLabel(c: AD.textTertiary)),
             const SizedBox(height: 3),
-            SelectableText(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            SelectableText(value, style: ADText.rowName()),
           ],
         ),
       );

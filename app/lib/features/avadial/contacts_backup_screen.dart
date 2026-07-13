@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'ava_contact_book.dart';
@@ -82,8 +83,8 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: AvaDialTheme.surface2,
         shape: RoundedRectangleBorder(
-          side: const BorderSide(color: AvaDialTheme.border, width: Zine.bw),
-          borderRadius: BorderRadius.circular(Zine.rSm),
+          side: const BorderSide(color: AvaDialTheme.border, width: 1),
+          borderRadius: BorderRadius.circular(AD.rListCard),
         ),
         title: Text('Restore contacts?', style: ZineText.cardTitle(size: 17, color: AvaDialTheme.text)),
         content: Text(
@@ -98,7 +99,7 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Restore', style: ZineText.value(size: 14, color: Zine.blue)),
+            child: Text('Restore', style: ZineText.value(size: 14, color: AD.iconSearch)),
           ),
         ],
       ),
@@ -133,7 +134,7 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
         backgroundColor: AvaDialTheme.surface,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
-        shape: const Border(bottom: BorderSide(color: AvaDialTheme.border, width: Zine.bw)),
+        shape: const Border(bottom: BorderSide(color: AvaDialTheme.border, width: 1)),
         title: Text('Contacts backup', style: ZineText.appbar(color: AvaDialTheme.text)),
       ),
       body: _loading
@@ -141,11 +142,11 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                ZineCard(
-                  color: Zine.blueMark,
+                AdCard(
+                  color: AD.card,
                   child: Row(children: [
                     ZineIconBadge(
-                        icon: PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.bold), color: Zine.blue),
+                        icon: PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.bold), color: AD.iconSearch),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -158,7 +159,7 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
                     ),
                     Switch(
                       value: _enabled,
-                      activeColor: Zine.blue,
+                      activeColor: AD.iconSearch,
                       onChanged: _toggle,
                     ),
                   ]),
@@ -168,17 +169,17 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
                 _stat('Last backed up to AvaTOK', _lastLabel()),
                 const SizedBox(height: 16),
                 if (_enabled)
-                  ZineButton(
+                  AdButton(
                     label: 'Back up now',
-                    variant: ZineButtonVariant.blue,
+                    variant: AdButtonVariant.teal,
                     trailingIcon: false,
                     loading: _busy,
                     onPressed: (_busy || _restoring) ? null : _backupNow,
                   ),
                 const SizedBox(height: 10),
-                ZineButton(
+                AdButton(
                   label: 'Restore from AvaTOK',
-                  variant: ZineButtonVariant.ghost,
+                  variant: AdButtonVariant.ghost,
                   trailingIcon: false,
                   loading: _restoring,
                   onPressed: (_busy || _restoring) ? null : _restore,
@@ -200,12 +201,12 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
 
   Widget _stat(String label, String value) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 5),
-        child: ZineCard(
+        child: AdCard(
           color: AvaDialTheme.surface2,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
           child: Row(children: [
             Expanded(child: Text(label, style: ZineText.value(size: 14, color: AvaDialTheme.text))),
-            Text(value, style: ZineText.cardTitle(size: 14.5, color: Zine.blue)),
+            Text(value, style: ZineText.cardTitle(size: 14.5, color: AD.iconSearch)),
           ]),
         ),
       );
@@ -215,7 +216,7 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Padding(
             padding: const EdgeInsets.only(top: 3, right: 10),
-            child: PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold), color: Zine.mint, size: 15),
+            child: PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold), color: AD.online, size: 15),
           ),
           Expanded(child: Text(text, style: ZineText.sub(size: 13.5, color: AvaDialTheme.textSoft))),
         ]),

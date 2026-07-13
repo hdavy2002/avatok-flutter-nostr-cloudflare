@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../shell_v2.dart';
 
 /// The persistent, shell-level app switcher (2026-07-12 nav rebrand — supersedes
@@ -56,7 +56,7 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
     RootId.services: (Icons.storefront_outlined, Icons.storefront, 'Marketplace'),
   };
 
-  Color get _indicator => widget.indicatorColor ?? Zine.lime;
+  Color get _indicator => widget.indicatorColor ?? AD.primaryBadge;
 
   void _commitMove(int from, int to) {
     if (from == to) return;
@@ -73,8 +73,8 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
   Widget build(BuildContext context) {
     return Container(
       decoration: const BoxDecoration(
-        color: Zine.paper2,
-        border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
+        color: AD.headerFooter,
+        border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
       ),
       child: SafeArea(
         top: false,
@@ -190,24 +190,22 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
             color: selected ? _indicator : Colors.transparent,
             borderRadius: BorderRadius.circular(14),
           ),
-          child: Icon(selected ? selectedIcon : icon, size: 22, color: Zine.ink),
+          child: Icon(selected ? selectedIcon : icon, size: 22,
+              color: selected ? AD.textPrimary : AD.textTertiary),
         ),
         const SizedBox(height: 3),
         Text(
           label,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: ZineText.tag(
-            size: 10.5,
-            color: selected ? Zine.ink : Zine.inkSoft,
-          ),
+          style: selected ? ADText.navLabelPrimary() : ADText.navLabel(),
         ),
       ],
     );
   }
 
-  /// The lifted item that follows the finger — a bordered paper tile with a hard
-  /// offset shadow, so the drag reads as a physical pick-up (Zine language).
+  /// The lifted item that follows the finger — a bordered dark v2 tile,
+  /// so the drag reads as a physical pick-up.
   Widget _dragFeedback(RootId root) {
     final m = _meta[root]!;
     return Transform.translate(
@@ -219,15 +217,15 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
           width: 64,
           padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
-            color: Zine.card,
-            border: Border.all(color: Zine.ink, width: Zine.bw),
-            borderRadius: BorderRadius.circular(Zine.rSm),
-            boxShadow: Zine.shadowSm,
+            color: AD.card,
+            border: Border.all(color: AD.borderControl, width: 1),
+            borderRadius: BorderRadius.circular(AD.rListCard),
+            boxShadow: const [],
           ),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Icon(m.$2, size: 22, color: Zine.ink),
+            Icon(m.$2, size: 22, color: AD.textPrimary),
             const SizedBox(height: 3),
-            Text(m.$3, style: ZineText.tag(size: 10.5, color: Zine.ink)),
+            Text(m.$3, style: ADText.navLabelPrimary()),
           ]),
         ),
       ),

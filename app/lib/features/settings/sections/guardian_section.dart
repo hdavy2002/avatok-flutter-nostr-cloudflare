@@ -11,7 +11,7 @@ import '../../../core/config.dart';
 import '../../../core/disk_cache.dart';
 import '../../../core/profile_store.dart';
 import '../../../core/remote_config.dart';
-import '../../../core/ui/zine.dart';
+import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../../ava_guardian/guardian_settings.dart';
 import '../settings_registry.dart';
@@ -135,32 +135,30 @@ class _GuardianCardState extends State<_GuardianCard> {
   @override
   Widget build(BuildContext context) {
     final isParent = _kind == AccountKind.parent;
-    return ZineCard(
-      radius: Zine.rSm,
+    return AdCard(
       padding: const EdgeInsets.all(14),
-      boxShadow: Zine.shadowXs,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          ZineIconBadge(icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill), color: Zine.lilac, size: 36),
+          ZineIconBadge(icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill), color: AD.iconVideo, size: 36),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
               'Ava watches for scams, spam, and unsafe behaviour and warns you '
               'privately — only you ever see a warning, never the other person. '
               'Turn on secure-chat mode per chat from the chat’s Ava menu.',
-              style: ZineText.sub(size: 12.5),
+              style: ADText.preview(),
             ),
           ),
         ]),
         const SizedBox(height: 14),
         // FREE — scam-shield assurance (always on). Read-only row.
         Row(children: [
-          PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill), size: 18, color: Zine.mintInk),
+          PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill), size: 18, color: AD.online),
           const SizedBox(width: 8),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Scam & spam shield', style: ZineText.value(size: 13.5)),
-              Text('Always on and free. Ava flags likely scams and spam.', style: ZineText.sub(size: 11.5)),
+              Text('Scam & spam shield', style: ADText.rowName()),
+              Text('Always on and free. Ava flags likely scams and spam.', style: ADText.preview()),
             ]),
           ),
         ]),
@@ -171,12 +169,12 @@ class _GuardianCardState extends State<_GuardianCard> {
           builder: (context, on, _) => Row(children: [
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Show prominent warning cards', style: ZineText.value(size: 13.5)),
-                Text('In addition to the private in-chat note.', style: ZineText.sub(size: 11.5)),
+                Text('Show prominent warning cards', style: ADText.rowName()),
+                Text('In addition to the private in-chat note.', style: ADText.preview()),
               ]),
             ),
             const SizedBox(width: 10),
-            ZineToggle(value: on, onChanged: (v) => GuardianDisplayPrefs.setShowBanner(v)),
+            _AdToggle(value: on, onChanged: (v) => GuardianDisplayPrefs.setShowBanner(v)),
           ]),
         ),
         // F6 — adult-content warning opt-out (ADULT accounts only). Hidden for
@@ -188,14 +186,14 @@ class _GuardianCardState extends State<_GuardianCard> {
             builder: (context, optedOut, _) => Row(children: [
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Show adult-only content warnings', style: ZineText.value(size: 13.5)),
+                  Text('Show adult-only content warnings', style: ADText.rowName()),
                   Text('Turn off to view adult content without the extra caution card.',
-                      style: ZineText.sub(size: 11.5)),
+                      style: ADText.preview()),
                 ]),
               ),
               const SizedBox(width: 10),
               // The toggle shows "warnings ON" = NOT opted out, so invert.
-              ZineToggle(value: !optedOut, onChanged: (show) => _setAdultOptOut(!show)),
+              _AdToggle(value: !optedOut, onChanged: (show) => _setAdultOptOut(!show)),
             ]),
           ),
         ],
@@ -208,25 +206,57 @@ class _GuardianCardState extends State<_GuardianCard> {
         // {digest:true}) stays; flip kParentDigestUiEnabled when delivery ships.
         if (kParentDigestUiEnabled && isParent) ...[
           const SizedBox(height: 12),
-          const Divider(height: 1, thickness: 1, color: Zine.inkMute),
+          const Divider(height: 1, thickness: 1, color: AD.borderHairline),
           const SizedBox(height: 12),
           ValueListenableBuilder<bool>(
             valueListenable: GuardianDefaults.parentDigest,
             builder: (context, on, _) => Row(children: [
-              ZineIconBadge(icon: PhosphorIcons.envelopeSimple(PhosphorIconsStyle.fill), color: Zine.lilac, size: 30),
+              ZineIconBadge(icon: PhosphorIcons.envelopeSimple(PhosphorIconsStyle.fill), color: AD.iconVideo, size: 30),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Weekly safety digest', style: ZineText.value(size: 13.5)),
-                  Text('A weekly summary of safety flags for your children.', style: ZineText.sub(size: 11.5)),
+                  Text('Weekly safety digest', style: ADText.rowName()),
+                  Text('A weekly summary of safety flags for your children.', style: ADText.preview()),
                 ]),
               ),
               const SizedBox(width: 10),
-              ZineToggle(value: on, onChanged: (v) => GuardianParentDigest.setOptIn(v)),
+              _AdToggle(value: on, onChanged: (v) => GuardianParentDigest.setOptIn(v)),
             ]),
           ),
         ],
       ]),
+    );
+  }
+}
+
+/// Dark v2 inline toggle — track [AD.card] off / [AD.online] on, white thumb.
+class _AdToggle extends StatelessWidget {
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+  const _AdToggle({required this.value, this.onChanged});
+  @override
+  Widget build(BuildContext context) {
+    final reduce = MediaQuery.of(context).disableAnimations;
+    return GestureDetector(
+      onTap: onChanged == null ? null : () => onChanged!(!value),
+      child: AnimatedContainer(
+        duration: reduce ? Duration.zero : const Duration(milliseconds: 120),
+        width: 52, height: 30,
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          color: value ? AD.online : AD.card,
+          borderRadius: BorderRadius.circular(100),
+          border: Border.all(color: AD.borderControl, width: 1),
+        ),
+        child: AnimatedAlign(
+          duration: reduce ? Duration.zero : const Duration(milliseconds: 120),
+          alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+          child: Container(
+            width: 22, height: 22,
+            decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
+          ),
+        ),
+      ),
     );
   }
 }

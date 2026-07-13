@@ -13,8 +13,8 @@ import '../core/apps.dart';
 import '../core/disk_cache.dart';
 import '../core/remote_config.dart';
 import '../core/profile_store.dart';
-import '../core/ui/zine.dart';
 import '../core/ui/zine_widgets.dart';
+import '../core/ui/avatok_dark.dart';
 import '../identity/identity.dart';
 import '../features/avaapps/avaapps_screen.dart';
 import '../features/ava_companion/companion_home.dart';
@@ -287,7 +287,7 @@ class _AvaShellState extends State<AvaShell> {
       _push(AppRegistry.byId(dest) != null
           ? ComingSoon.forApp(dest)
           : ComingSoon(title: 'Coming soon', subtitle: 'Not available right now',
-              icon: PhosphorIcons.lightning(PhosphorIconsStyle.fill), color: Zine.blue));
+              icon: PhosphorIcons.lightning(PhosphorIconsStyle.fill), color: AD.iconSearch));
       return;
     }
     switch (dest) {
@@ -416,7 +416,7 @@ class _AvaShellState extends State<AvaShell> {
             title: dest[0].toUpperCase() + dest.substring(1),
             subtitle: 'Coming soon',
             icon: PhosphorIcons.lightning(PhosphorIconsStyle.fill),
-            color: Zine.blue));
+            color: AD.iconSearch));
         return;
       default:
         // Parent/Enterprise management tools (dummy → coming soon for now).
@@ -452,30 +452,31 @@ class _AvaShellState extends State<AvaShell> {
     if (!me.featureOn || me.hasNumber || !me.canGenerate) return;
     final go = await showModalBottomSheet<bool>(
       context: context,
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.overlaySheet,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (ctx) => SafeArea(child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            ZineIconBadge(icon: PhosphorIcons.hash(PhosphorIconsStyle.bold), color: Zine.lime, size: 36),
+            ZineIconBadge(icon: PhosphorIcons.hash(PhosphorIconsStyle.bold), color: AD.primaryBadge, size: 36),
             const SizedBox(width: 12),
-            Expanded(child: Text('Get your AvaTOK number', style: ZineText.cardTitle(size: 18))),
+            Expanded(child: Text('Get your AvaTOK number', style: ADText.threadName())),
           ]),
           const SizedBox(height: 12),
           Text('Pick a free number that represents you on AvaTOK so you can stay in '
               'touch without giving out your real phone — your real number always '
               'stays private. Free accounts get one number; you can choose it now.',
-              style: ZineText.sub(size: 13.5)),
+              style: ADText.preview()),
           const SizedBox(height: 18),
-          ZineButton(label: 'Choose my number', variant: ZineButtonVariant.blue,
+          AdButton(label: 'Choose my number', variant: AdButtonVariant.teal,
               fullWidth: true, fontSize: 16, trailingIcon: false,
               icon: PhosphorIcons.hash(PhosphorIconsStyle.bold),
               onPressed: () => Navigator.pop(ctx, true)),
           const SizedBox(height: 8),
           Center(child: TextButton(onPressed: () => Navigator.pop(ctx, false),
-              child: Text('Maybe later', style: ZineText.link(size: 14, color: Zine.inkSoft)))),
+              child: Text('Maybe later', style: TextStyle(fontFamily: ADText.family,
+                  fontWeight: FontWeight.w700, fontSize: 14, color: AD.textSecondary)))),
         ]),
       )),
     );
@@ -491,8 +492,8 @@ class _AvaShellState extends State<AvaShell> {
     // non-skippable setup screen or the real shell.
     if (_profileComplete == null) {
       return const Scaffold(
-        backgroundColor: Zine.paper,
-        body: Center(child: CircularProgressIndicator(color: Zine.blueInk)),
+        backgroundColor: AD.bg,
+        body: Center(child: CircularProgressIndicator(color: AD.iconSearch)),
       );
     }
     // Compulsory AvaTOK number gate FIRST (owner decision 2026-06-27): the user

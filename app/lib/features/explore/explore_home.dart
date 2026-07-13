@@ -3,7 +3,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/listings_api.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../listings/create_listing_flow.dart';
 import '../listings/my_listings_screen.dart';
@@ -75,12 +75,12 @@ class _ExploreHomeState extends State<ExploreHome> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       body: SafeArea(
         bottom: false,
         child: RefreshIndicator(
           onRefresh: _load,
-          color: Zine.blueInk,
+          color: AD.iconSearch,
           child: CustomScrollView(physics: const AlwaysScrollableScrollPhysics(), slivers: [
             SliverToBoxAdapter(child: _topBar()),
             SliverToBoxAdapter(child: _search()),
@@ -90,7 +90,7 @@ class _ExploreHomeState extends State<ExploreHome> {
             if (_loading)
               const SliverToBoxAdapter(child: Padding(
                   padding: EdgeInsets.all(40),
-                  child: Center(child: CircularProgressIndicator(color: Zine.blueInk))))
+                  child: Center(child: CircularProgressIndicator(color: AD.iconSearch))))
             else if (_listings.isEmpty)
               SliverToBoxAdapter(child: Padding(
                   padding: const EdgeInsets.all(40),
@@ -118,17 +118,17 @@ class _ExploreHomeState extends State<ExploreHome> {
   // the marker highlight on "Explore". Keeps the onMenu wiring.
   Widget _topBar() => Container(
         decoration: const BoxDecoration(
-          color: Zine.paper2,
-          border: Border(bottom: BorderSide(color: Zine.ink, width: Zine.bw)),
+          color: AD.headerFooter,
+          border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
         ),
         padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
         child: Row(children: [
-          ZineBackButton(onTap: widget.onMenu, icon: PhosphorIcons.list(PhosphorIconsStyle.bold)),
+          AdBackButton(onTap: widget.onMenu, icon: PhosphorIcons.list(PhosphorIconsStyle.bold)),
           const SizedBox(width: 12),
-          const Expanded(
-            child: ZineMarkTitle(pre: 'Ava', mark: 'Explore', fontSize: 24, textAlign: TextAlign.left),
+          Expanded(
+            child: Text('AvaExplore', style: ADText.appTitle()),
           ),
-          ZineBackButton(
+          AdBackButton(
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MyListingsScreen())),
             icon: PhosphorIcons.storefront(PhosphorIconsStyle.bold),
           ),
@@ -143,9 +143,9 @@ class _ExploreHomeState extends State<ExploreHome> {
           radius: BorderRadius.circular(100),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
           child: Row(children: [
-            PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold), color: Zine.inkSoft, size: 19),
+            PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold), color: AD.iconSearch, size: 19),
             const SizedBox(width: 10),
-            Text('Search events, sessions, creators…', style: ZineText.sub(size: 14)),
+            Text('Search events, sessions, creators…', style: ADText.preview(c: AD.placeholderOnWhite)),
           ]),
         ),
       );
@@ -158,10 +158,10 @@ class _ExploreHomeState extends State<ExploreHome> {
           padding: const EdgeInsets.fromLTRB(18, 14, 18, 4),
           child: Row(children: [
             Container(width: 9, height: 9, decoration: BoxDecoration(
-                color: Zine.coral, shape: BoxShape.circle,
-                border: Border.all(color: Zine.ink, width: 2))),
+                color: AD.danger, shape: BoxShape.circle,
+                border: Border.all(color: AD.borderControl, width: 1))),
             const SizedBox(width: 8),
-            Text('Live now', style: ZineText.cardTitle()),
+            Text('Live now', style: ADText.appTitle()),
           ]),
         ),
         SizedBox(
@@ -179,10 +179,9 @@ class _ExploreHomeState extends State<ExploreHome> {
                   width: 230,
                   clipBehavior: Clip.antiAlias,
                   decoration: BoxDecoration(
-                    color: Zine.card,
-                    borderRadius: BorderRadius.circular(Zine.rSm),
-                    border: Zine.border,
-                    boxShadow: Zine.shadowXs,
+                    color: AD.card,
+                    borderRadius: BorderRadius.circular(AD.rListCard),
+                    border: Border.all(color: AD.borderControl, width: 1),
                   ),
                   child: Column(children: [
                     Expanded(child: Stack(children: [
@@ -191,20 +190,19 @@ class _ExploreHomeState extends State<ExploreHome> {
                       Positioned(left: 8, top: 8, child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
                         decoration: BoxDecoration(
-                          color: Zine.coral,
+                          color: AD.destructiveBg,
                           borderRadius: BorderRadius.circular(100),
-                          border: Border.all(color: Zine.ink, width: 2),
-                          boxShadow: Zine.shadowXs,
+                          border: Border.all(color: AD.borderControl, width: 1),
                         ),
                         child: Row(mainAxisSize: MainAxisSize.min, children: [
                           Container(width: 6, height: 6, decoration: const BoxDecoration(
                               color: Colors.white, shape: BoxShape.circle)),
                           const SizedBox(width: 4),
-                          Text('LIVE', style: ZineText.tag(size: 10, color: Colors.white)),
+                          Text('LIVE', style: ADText.statCaption(c: Colors.white)),
                         ]),
                       )),
                     ])),
-                    Container(height: Zine.bw, color: Zine.ink),
+                    Container(height: 1, color: AD.borderControl),
                     Padding(
                       padding: const EdgeInsets.fromLTRB(10, 7, 10, 8),
                       child: Row(children: [
@@ -213,19 +211,20 @@ class _ExploreHomeState extends State<ExploreHome> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                           Text(l.title, maxLines: 1, overflow: TextOverflow.ellipsis,
-                              style: ZineText.value(size: 12.5, weight: FontWeight.w800)),
+                              style: ADText.rowName()),
                           Text('${l.joinedCount} watching · ${l.priceLabel}',
                               maxLines: 1, overflow: TextOverflow.ellipsis,
-                              style: ZineText.tag(size: 9.5, color: Zine.inkSoft)),
+                              style: ADText.statCaption(c: AD.textSecondary)),
                         ])),
                         const SizedBox(width: 8),
                         ZinePressable(
                           onTap: () => _joinLive(l),
-                          color: Zine.coral,
+                          color: AD.destructiveBg,
+                          borderColor: AD.destructiveBg,
                           radius: BorderRadius.circular(100),
-                          boxShadow: Zine.shadowXs,
+                          boxShadow: const [],
                           padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
-                          child: Text('Join', style: ZineText.button(size: 14, color: Colors.white)),
+                          child: Text('Join', style: ADText.rowName(c: Colors.white)),
                         ),
                       ]),
                     ),
@@ -247,7 +246,7 @@ class _ExploreHomeState extends State<ExploreHome> {
         itemCount: labels.length,
         separatorBuilder: (_, __) => const SizedBox(width: 9),
         itemBuilder: (c, i) => Center(
-          child: ZineChip(
+          child: AdChip(
             label: labels[i],
             active: i == _cat,
             onTap: () => _pickCat(i),
@@ -262,20 +261,19 @@ class _ExploreHomeState extends State<ExploreHome> {
   /// create-listing stepper (mockup behavior).
   Widget _drop() => Padding(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-        child: ZineCard(
-          color: Zine.blue,
+        child: AdCard(
           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MyListingsScreen())),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              const Icon(Icons.auto_awesome, color: Zine.blueInk, size: 14),
+              const Icon(Icons.auto_awesome, color: AD.iconSearch, size: 14),
               const SizedBox(width: 6),
-              Text('BECOME A CREATOR', style: ZineText.kicker(color: Zine.blueInk)),
+              Text('BECOME A CREATOR', style: ADText.sectionLabel(c: AD.iconSearch)),
             ]),
             const SizedBox(height: 10),
             Text('Host live events & paid sessions,\nearn straight to your wallet',
-                style: ZineText.cardTitle(size: 19)),
+                style: ADText.threadName()),
             const SizedBox(height: 14),
-            ZineButton(
+            AdButton(
               label: 'Create a listing',
               fontSize: 17,
               onPressed: () => Navigator.push(

@@ -1,40 +1,39 @@
 import 'package:flutter/material.dart';
 
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
 
 /// The Calls (AvaDial) app is a DARK surface, top to bottom (owner request
 /// 2026-07-12) — Contacts, Logs, Messages, Block Lists, the dialpad, contact
 /// edit/history screens and the PSTN call screens (phase 5) all use this
-/// palette. Mirrors the existing [features/avaphone/phone_theme.dart]
-/// `PhoneTheme` pattern: dark surfaces UNDER the canonical zine ACCENT tokens
-/// ([Zine.lime], [Zine.mint], [Zine.blue], [Zine.coral], [Zine.lilac]) so Calls
-/// still reads as part of AvaVerse instead of a bolted-on separate app. There is
-/// no per-subtree Flutter `Theme`/`ThemeData` override anywhere else in the app
+/// palette. Migrated to the AvaTOK Dark v2 language ([AD]) — near-black
+/// surfaces, hairline borders, multicolor glyph accents — so Calls reads as
+/// part of AvaVerse instead of a bolted-on separate app. There is no
+/// per-subtree Flutter `Theme`/`ThemeData` override anywhere else in the app
 /// (see shell_v2.dart / core/theme.dart, which is light-only), so — like
 /// AvaPhone — this is a plain constants class screens style against directly,
 /// not a `ThemeData`.
 class AvaDialTheme {
   AvaDialTheme._();
 
-  // Surfaces (dark) — identical values to PhoneTheme for visual consistency
-  // across AvaVerse's two dark surfaces.
-  static const bg = Color(0xFF0E1116);
-  static const surface = Color(0xFF161A20);
-  static const surface2 = Color(0xFF1E232B);
-  static const border = Color(0xFF2C323B);
+  // Surfaces (dark) — AD dark v2 tokens, shared with PhoneTheme for visual
+  // consistency across AvaVerse's two dark surfaces.
+  static const bg = AD.bg;
+  static const surface = AD.card;
+  static const surface2 = AD.cardHover;
+  static const border = AD.borderControl;
 
   // Text on dark.
-  static const text = Color(0xFFF2F4F7);
-  static const textSoft = Color(0xFF9AA2AD);
-  static const textMute = Color(0xFF6B7480);
+  static const text = AD.textPrimary;
+  static const textSoft = AD.textSecondary;
+  static const textMute = AD.textTertiary;
 
-  // Accents reuse the zine tokens (contact/log row colors, tab strip fills,
-  // PSTN caller-id colors) so Calls stays on-brand.
-  static const contact = Zine.mint;  // known contact / outgoing
-  static const spam = Zine.coral;    // spam / missed / blocked
-  static const unknown = Zine.blue;  // unrecognised caller
-  static const accent = Zine.lime;   // primary action (call button)
-  static const lilac = Zine.lilac;   // messages / AI
+  // Accents reuse the AD dark v2 glyph/status tokens (contact/log row colors,
+  // tab strip fills, PSTN caller-id colors) so Calls stays on-brand.
+  static const contact = AD.online;      // known contact / outgoing
+  static const spam = AD.danger;         // spam / missed / blocked
+  static const unknown = AD.iconSearch;  // unrecognised caller
+  static const accent = AD.primaryBadge; // primary action (call button)
+  static const lilac = AD.iconVideo;     // messages / AI
 
   static const double radius = 18;
   static const double radiusSm = 12;

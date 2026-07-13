@@ -28,7 +28,7 @@ import '../../core/disk_cache.dart';
 import '../../core/marketplace_api.dart';
 import '../../core/profile_store.dart';
 import '../../core/remote_config.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/voice/google_voice.dart';
 import 'settings_registry.dart';
@@ -96,10 +96,10 @@ class _MarketplaceAgentTile extends StatelessWidget {
         if (!RemoteConfig.marketplaceAgentSettingsEnabled) {
           return const SizedBox.shrink();
         }
-        return ZineCard(
-          radius: Zine.rSm,
+        return AdCard(
+          radius: AD.rListCard,
           padding: const EdgeInsets.all(4),
-          boxShadow: Zine.shadowXs,
+          boxShadow: const [],
           onTap: () => Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => const MarketplaceAgentSettingsPage()),
           ),
@@ -108,23 +108,23 @@ class _MarketplaceAgentTile extends StatelessWidget {
             child: Row(children: [
               ZineIconBadge(
                 icon: PhosphorIcons.storefront(PhosphorIconsStyle.fill),
-                color: Zine.coral,
+                color: AD.danger,
                 size: 36,
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Marketplace Agent', style: ZineText.value(size: 14.5)),
+                  Text('Marketplace Agent', style: ADText.rowName()),
                   const SizedBox(height: 2),
                   Text(
                     'Language, voice, tone and negotiation limits your buying/selling '
                     'agent uses on your behalf.',
-                    style: ZineText.sub(size: 12),
+                    style: ADText.preview(),
                   ),
                 ]),
               ),
               const SizedBox(width: 8),
-              PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 18, color: Zine.inkSoft),
+              PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 18, color: AD.textSecondary),
             ]),
           ),
         );
@@ -290,12 +290,12 @@ class _MarketplaceAgentSettingsPageState extends State<MarketplaceAgentSettingsP
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       appBar: AppBar(
-        backgroundColor: Zine.paper,
+        backgroundColor: AD.headerFooter,
         elevation: 0,
-        leading: const ZineBackButton(),
-        title: Text('Marketplace Agent', style: ZineText.appbar()),
+        leading: const AdBackButton(),
+        title: Text('Marketplace Agent', style: ADText.appTitle()),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -304,7 +304,7 @@ class _MarketplaceAgentSettingsPageState extends State<MarketplaceAgentSettingsP
               children: [
                 // ── Agent name ──
                 _label('Agent name'),
-                ZineField(
+                AdField(
                   controller: _name,
                   hint: _defaultName,
                   maxLength: 30,
@@ -348,13 +348,13 @@ class _MarketplaceAgentSettingsPageState extends State<MarketplaceAgentSettingsP
                           value: _floorPct.toDouble(),
                           min: 50, max: 100, divisions: 50,
                           label: '$_floorPct%',
-                          activeColor: Zine.coral,
+                          activeColor: AD.danger,
                           onChanged: (v) => setState(() => _floorPct = v.round()),
                         ),
                       ),
                       SizedBox(
                         width: 56,
-                        child: Text('Never below $_floorPct%', style: ZineText.sub(size: 12)),
+                        child: Text('Never below $_floorPct%', style: ADText.preview()),
                       ),
                     ]),
                   ),
@@ -385,7 +385,7 @@ class _MarketplaceAgentSettingsPageState extends State<MarketplaceAgentSettingsP
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(
                     'During quiet hours your agent defers new negotiations until they end.',
-                    style: ZineText.sub(size: 12),
+                    style: ADText.preview(),
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -400,11 +400,11 @@ class _MarketplaceAgentSettingsPageState extends State<MarketplaceAgentSettingsP
                 ),
                 const SizedBox(height: 28),
 
-                ZineButton(
+                AdButton(
                   label: 'Save',
                   fullWidth: true,
                   loading: _saving,
-                  variant: ZineButtonVariant.coral,
+                  variant: AdButtonVariant.danger,
                   onPressed: _saving ? null : _save,
                 ),
               ],
@@ -414,12 +414,12 @@ class _MarketplaceAgentSettingsPageState extends State<MarketplaceAgentSettingsP
 
   Widget _label(String s) => Padding(
         padding: const EdgeInsets.only(bottom: 6, top: 2),
-        child: Text(s, style: ZineText.value(size: 13.5)),
+        child: Text(s, style: ADText.rowName()),
       );
 
   Widget _sectionKicker(String s) => Padding(
         padding: const EdgeInsets.only(bottom: 8, top: 4),
-        child: Text(s.toUpperCase(), style: ZineText.kicker()),
+        child: Text(s.toUpperCase(), style: ADText.sectionLabel()),
       );
 
   Widget _langDropdown() {
@@ -428,9 +428,12 @@ class _MarketplaceAgentSettingsPageState extends State<MarketplaceAgentSettingsP
         value: _lang,
         isExpanded: true,
         underline: const SizedBox.shrink(),
+        dropdownColor: AD.menu,
+        style: ADText.rowName(),
+        iconEnabledColor: AD.textSecondary,
         items: [
           for (final l in kMktAgentLangs)
-            DropdownMenuItem(value: l.code, child: Text('${l.label}  (${l.code})', style: ZineText.value(size: 15))),
+            DropdownMenuItem(value: l.code, child: Text('${l.label}  (${l.code})', style: ADText.rowName())),
         ],
         onChanged: (v) { if (v != null) setState(() => _lang = v); },
       ),
@@ -444,13 +447,16 @@ class _MarketplaceAgentSettingsPageState extends State<MarketplaceAgentSettingsP
         value: GoogleVoiceCatalog.isValid(_voice) ? _voice : GoogleVoiceCatalog.defaultVoice,
         isExpanded: true,
         underline: const SizedBox.shrink(),
+        dropdownColor: AD.menu,
+        style: ADText.rowName(),
+        iconEnabledColor: AD.textSecondary,
         items: [
           for (final v in all)
             DropdownMenuItem(
               value: v.name,
               child: Text(
                 '${v.name} — ${v.female ? 'female' : 'male'}${v.style.isNotEmpty ? ' · ${v.style.toLowerCase()}' : ''}',
-                style: ZineText.value(size: 15),
+                style: ADText.rowName(),
               ),
             ),
         ],
@@ -462,10 +468,9 @@ class _MarketplaceAgentSettingsPageState extends State<MarketplaceAgentSettingsP
   Widget _dropdownShell(Widget child) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
-          color: Zine.card,
-          border: Zine.border,
-          borderRadius: BorderRadius.circular(Zine.rSm),
-          boxShadow: Zine.shadowXs,
+          color: AD.card,
+          border: Border.all(color: AD.borderControl, width: 1),
+          borderRadius: BorderRadius.circular(AD.rInput),
         ),
         child: child,
       );
@@ -481,15 +486,14 @@ class _MarketplaceAgentSettingsPageState extends State<MarketplaceAgentSettingsP
                 padding: const EdgeInsets.symmetric(vertical: 11),
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: sel == e.key ? Zine.coral : Zine.card,
-                  border: Zine.border,
-                  borderRadius: BorderRadius.circular(Zine.rSm),
-                  boxShadow: sel == e.key ? Zine.shadowXs : null,
+                  color: sel == e.key ? AD.destructiveBg : AD.card,
+                  border: Border.all(color: sel == e.key ? AD.destructiveBg : AD.borderControl, width: 1),
+                  borderRadius: BorderRadius.circular(AD.rInput),
                 ),
                 child: Text(
                   e.value,
                   textAlign: TextAlign.center,
-                  style: ZineText.value(size: 13, color: sel == e.key ? Colors.white : Zine.ink),
+                  style: ADText.rowName(c: sel == e.key ? Colors.white : AD.textPrimary),
                 ),
               ),
             ),
@@ -506,13 +510,13 @@ class _MarketplaceAgentSettingsPageState extends State<MarketplaceAgentSettingsP
       child: Row(children: [
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: ZineText.value(size: 14)),
+            Text(title, style: ADText.rowName()),
             const SizedBox(height: 2),
-            Text(sub, style: ZineText.sub(size: 12)),
+            Text(sub, style: ADText.preview()),
           ]),
         ),
         const SizedBox(width: 8),
-        Switch(value: value, activeColor: Zine.coral, onChanged: onChanged),
+        Switch(value: value, activeColor: AD.online, onChanged: onChanged),
       ]),
     );
   }
@@ -524,14 +528,13 @@ class _MarketplaceAgentSettingsPageState extends State<MarketplaceAgentSettingsP
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         decoration: BoxDecoration(
-          color: Zine.card,
-          border: Zine.border,
-          borderRadius: BorderRadius.circular(Zine.rSm),
-          boxShadow: Zine.shadowXs,
+          color: AD.card,
+          border: Border.all(color: AD.borderControl, width: 1),
+          borderRadius: BorderRadius.circular(AD.rInput),
         ),
         child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Text('$label: $txt', style: ZineText.value(size: 13.5)),
-          PhosphorIcon(PhosphorIcons.clock(PhosphorIconsStyle.bold), size: 16, color: Zine.inkSoft),
+          Text('$label: $txt', style: ADText.rowName()),
+          PhosphorIcon(PhosphorIcons.clock(PhosphorIconsStyle.bold), size: 16, color: AD.textSecondary),
         ]),
       ),
     );

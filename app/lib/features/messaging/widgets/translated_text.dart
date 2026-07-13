@@ -11,7 +11,7 @@
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
-import '../../../core/ui/zine.dart';
+import '../../../core/ui/avatok_dark.dart';
 
 class TranslatedText extends StatefulWidget {
   /// The original bubble content (already styled by the caller / Stream K bubble).
@@ -48,18 +48,18 @@ class _TranslatedTextState extends State<TranslatedText> {
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
       _showTranslated
-          ? Text(t, style: widget.translatedStyle ?? ZineText.sub(size: 13.5, color: Zine.ink))
+          ? Text(t, style: widget.translatedStyle ?? ADText.bubbleBody())
           : widget.original,
       const SizedBox(height: 3),
       GestureDetector(
         onTap: () => setState(() => _showTranslated = !_showTranslated),
         behavior: HitTestBehavior.opaque,
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          PhosphorIcon(PhosphorIcons.translate(PhosphorIconsStyle.bold), size: 11, color: Zine.blueInk),
+          PhosphorIcon(PhosphorIcons.translate(PhosphorIconsStyle.bold), size: 11, color: AD.iconSearch),
           const SizedBox(width: 4),
           Text(
             _showTranslated ? 'translated · show original' : 'show translation',
-            style: ZineText.tag(size: 9.5, color: Zine.blueInk),
+            style: ADText.statCaption(c: AD.iconSearch),
           ),
         ]),
       ),

@@ -14,7 +14,7 @@ import '../../core/config.dart';
 import '../../core/minor_terms.dart';
 import '../../core/moderation_service.dart';
 import '../../core/profile_store.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -231,25 +231,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
         decoration: const BoxDecoration(
-          color: Zine.paper,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(Zine.r)),
-          border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
+          color: AD.overlaySheet,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(AD.rSheet)),
+          border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
         ),
         padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
         child: SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
           Container(
             width: 38, height: 5,
             margin: const EdgeInsets.only(bottom: 14),
-            decoration: BoxDecoration(color: Zine.inkMute, borderRadius: BorderRadius.circular(3)),
+            decoration: BoxDecoration(color: AD.borderControl, borderRadius: BorderRadius.circular(3)),
           ),
-          _sheetTile(ctx, PhosphorIcons.camera(PhosphorIconsStyle.bold), Zine.blue, 'Take photo',
+          _sheetTile(ctx, PhosphorIcons.camera(PhosphorIconsStyle.bold), AD.iconSearch, 'Take photo',
               () { Navigator.pop(ctx); _pickAndCrop(ImageSource.camera); }),
           const SizedBox(height: 10),
-          _sheetTile(ctx, PhosphorIcons.image(PhosphorIconsStyle.bold), Zine.lime, 'Choose from gallery',
+          _sheetTile(ctx, PhosphorIcons.image(PhosphorIconsStyle.bold), AD.primaryBadge, 'Choose from gallery',
               () { Navigator.pop(ctx); _pickAndCrop(ImageSource.gallery); }),
           if (hasPhoto) ...[
             const SizedBox(height: 10),
-            _sheetTile(ctx, PhosphorIcons.trash(PhosphorIconsStyle.bold), Zine.coral, 'Remove photo',
+            _sheetTile(ctx, PhosphorIcons.trash(PhosphorIconsStyle.bold), AD.danger, 'Remove photo',
                 () { Navigator.pop(ctx); _removePhoto(); }, danger: true),
           ],
         ])),
@@ -261,15 +261,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
       {bool danger = false}) {
     return ZinePressable(
       onTap: onTap,
-      radius: BorderRadius.circular(Zine.rSm),
-      boxShadow: Zine.shadowXs,
+      color: AD.card,
+      borderColor: AD.borderControl,
+      radius: BorderRadius.circular(AD.rListCard),
+      boxShadow: const [],
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       child: Row(children: [
         ZineIconBadge(icon: icon, color: accent, size: 32),
         const SizedBox(width: 12),
         Expanded(child: Text(label,
-            style: ZineText.value(size: 15, color: danger ? Zine.coral : Zine.ink))),
-        PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: Zine.inkMute),
+            style: ADText.rowName(c: danger ? AD.danger : AD.textPrimary).copyWith(fontSize: 15))),
+        PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: AD.textTertiary),
       ]),
     );
   }
@@ -358,14 +360,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
 
         return AlertDialog(
-          backgroundColor: Zine.card,
+          backgroundColor: AD.popover,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(Zine.r),
-            side: const BorderSide(color: Zine.ink, width: Zine.bw),
+            borderRadius: BorderRadius.circular(AD.rDialog),
+            side: const BorderSide(color: AD.borderControl, width: 1),
           ),
-          title: Text('Change email', style: ZineText.cardTitle()),
+          title: Text('Change email', style: ADText.threadName().copyWith(fontSize: 19)),
           content: Column(mainAxisSize: MainAxisSize.min, children: [
-            ZineField(
+            AdField(
               controller: emailCtrl,
               enabled: !sent,
               label: 'New email address',
@@ -373,18 +375,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             if (sent) ...[
               const SizedBox(height: 14),
-              ZineField(
+              AdField(
                 controller: codeCtrl,
                 label: '6-digit code from your inbox',
                 keyboardType: TextInputType.number,
               ),
             ],
-            if (err != null) ZineErrorMsg(err!),
+            if (err != null) AdErrorMsg(err!),
           ]),
           actions: [
             TextButton(onPressed: () => Navigator.of(ctx).pop(),
-                child: Text('Not now', style: ZineText.link(size: 14, color: Zine.inkSoft))),
-            ZineButton(label: sent ? 'Verify' : 'Send code', variant: ZineButtonVariant.blue,
+                child: Text('Not now', style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14))),
+            AdButton(label: sent ? 'Verify' : 'Send code', variant: AdButtonVariant.teal,
                 fontSize: 15, onPressed: sent ? verify : send),
           ],
         );
@@ -437,29 +439,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
 
         return AlertDialog(
-          backgroundColor: Zine.card,
+          backgroundColor: AD.popover,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(Zine.r),
-            side: const BorderSide(color: Zine.ink, width: Zine.bw),
+            borderRadius: BorderRadius.circular(AD.rDialog),
+            side: const BorderSide(color: AD.borderControl, width: 1),
           ),
-          title: Text(sent ? 'Set password' : 'Set or change password', style: ZineText.cardTitle()),
+          title: Text(sent ? 'Set password' : 'Set or change password', style: ADText.threadName().copyWith(fontSize: 19)),
           content: Column(mainAxisSize: MainAxisSize.min, children: [
             if (!sent)
-              Text('We\'ll email a 6-digit code to confirm it\'s you.', style: ZineText.sub(size: 13)),
+              Text('We\'ll email a 6-digit code to confirm it\'s you.', style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13)),
             if (sent) ...[
               Text('Code sent${hint != null && hint!.isNotEmpty ? ' to $hint' : ''}.',
-                  style: ZineText.sub(size: 13)),
+                  style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13)),
               const SizedBox(height: 12),
-              ZineField(controller: codeCtrl, label: '6-digit code', keyboardType: TextInputType.number),
+              AdField(controller: codeCtrl, label: '6-digit code', keyboardType: TextInputType.number),
               const SizedBox(height: 12),
-              ZineField(controller: pwCtrl, label: 'New password', obscureText: true),
+              AdField(controller: pwCtrl, label: 'New password', obscureText: true),
             ],
-            if (err != null) ZineErrorMsg(err!),
+            if (err != null) AdErrorMsg(err!),
           ]),
           actions: [
             TextButton(onPressed: () => Navigator.of(ctx).pop(),
-                child: Text('Not now', style: ZineText.link(size: 14, color: Zine.inkSoft))),
-            ZineButton(label: sent ? 'Set password' : 'Send code', variant: ZineButtonVariant.blue,
+                child: Text('Not now', style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14))),
+            AdButton(label: sent ? 'Set password' : 'Send code', variant: AdButtonVariant.teal,
                 fontSize: 15, loading: busy, onPressed: busy ? null : (sent ? set : send)),
           ],
         );
@@ -472,18 +474,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
         padding: const EdgeInsets.only(bottom: 10),
         child: ZinePressable(
           onTap: onTap,
-          radius: BorderRadius.circular(Zine.rSm),
-          boxShadow: Zine.shadowXs,
+          color: AD.card,
+          borderColor: AD.borderControl,
+          radius: BorderRadius.circular(AD.rListCard),
+          boxShadow: const [],
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(children: [
             ZineIconBadge(icon: icon, color: accent, size: 34),
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title, style: ZineText.value(size: 15)),
+              Text(title, style: ADText.rowName().copyWith(fontSize: 15)),
               const SizedBox(height: 2),
-              Text(subtitle, style: ZineText.sub(size: 12)),
+              Text(subtitle, style: ADText.preview().copyWith(fontSize: 12)),
             ])),
-            PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: Zine.inkMute),
+            PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: AD.textTertiary),
           ]),
         ),
       );
@@ -492,8 +496,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     final id = _id;
     return Scaffold(
-      backgroundColor: Zine.paper,
-      appBar: const ZineAppBar(title: 'Profile', markWord: 'Profile', tag: 'your public card'),
+      backgroundColor: AD.bg,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(84),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: AD.headerFooter,
+            border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
+          ),
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(10, 8, 18, 12),
+              child: Row(children: [
+                const AdBackButton(),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('Profile', style: ADText.appTitle(), maxLines: 1, overflow: TextOverflow.ellipsis),
+                      const SizedBox(height: 2),
+                      Text('YOUR PUBLIC CARD', style: ADText.sectionLabel()),
+                    ],
+                  ),
+                ),
+              ]),
+            ),
+          ),
+        ),
+      ),
       // Generous bottom padding (plus the system nav-bar inset) so the Update
       // button always sits comfortably above the nav bar — never chopped.
       body: ListView(padding: EdgeInsets.fromLTRB(20, 20, 20, 40 + MediaQuery.of(context).padding.bottom), children: [
@@ -501,12 +534,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: GestureDetector(
             onTap: _photoBusy ? null : _editPhoto,
             child: Stack(clipBehavior: Clip.none, children: [
-              // Ink-ringed avatar with a hard offset shadow (§4).
+              // White-ringed avatar (dark v2 §4).
               Container(
                 decoration: const BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.fromBorderSide(BorderSide(color: Zine.ink, width: Zine.bw)),
-                  boxShadow: Zine.shadowSm,
+                  border: Border.fromBorderSide(BorderSide(color: AD.borderAvatar, width: 2)),
+                  boxShadow: [],
                 ),
                 child: Avatar(
                   seed: id?.uid ?? 'me',
@@ -520,23 +553,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: Container(
                     decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: Zine.ink.withValues(alpha: .45)),
+                        color: Colors.black.withValues(alpha: .45)),
                     child: const Center(child: SizedBox(width: 22, height: 22,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Zine.lime))),
+                        child: CircularProgressIndicator(strokeWidth: 2, color: AD.primaryBadge))),
                   ),
                 ),
-              // Lime camera seal.
+              // Orange camera seal.
               Positioned(
                 right: -4, bottom: -4,
                 child: Container(
                   width: 34, height: 34,
                   decoration: const BoxDecoration(
-                    color: Zine.lime,
+                    color: AD.primaryBadge,
                     shape: BoxShape.circle,
-                    border: Border.fromBorderSide(BorderSide(color: Zine.ink, width: Zine.bw)),
-                    boxShadow: Zine.shadowXs,
+                    border: Border.fromBorderSide(BorderSide(color: AD.bg, width: 2)),
+                    boxShadow: [],
                   ),
-                  child: PhosphorIcon(PhosphorIcons.camera(PhosphorIconsStyle.bold), color: Zine.ink, size: 17),
+                  child: PhosphorIcon(PhosphorIcons.camera(PhosphorIconsStyle.bold), color: Colors.white, size: 17),
                 ),
               ),
             ]),
@@ -544,9 +577,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         const SizedBox(height: 16),
         Center(child: Text(_fullName.isEmpty ? 'You' : _fullName,
-            style: ZineText.cardTitle(size: 22))),
+            style: ADText.appTitle())),
         const SizedBox(height: 22),
-        ZineField(
+        AdField(
           controller: _name,
           label: 'First name',
           hint: 'Your first name',
@@ -554,7 +587,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           onChanged: (_) => setState(() {}),
         ),
         const SizedBox(height: 16),
-        ZineField(
+        AdField(
           controller: _last,
           label: 'Last name',
           hint: 'Your last name',
@@ -563,9 +596,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         const SizedBox(height: 7),
         Text('People find you by your AvaTOK number, phone, or email — set your number in Settings → Your number.',
-            style: ZineText.sub(size: 12.5)),
+            style: ADText.preview()),
         const SizedBox(height: 16),
-        ZineField(
+        AdField(
           controller: _birthYear,
           label: 'Birth year (Private)',
           hint: 'e.g. 1990',
@@ -578,9 +611,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         Text('Private — never shown to anyone. Required. Used to confirm your age '
             '(under-18 accounts get extra safety protections) and for anonymous '
             'age-group stats (e.g. "25-34").',
-            style: ZineText.sub(size: 12.5)),
+            style: ADText.preview()),
         const SizedBox(height: 16),
-        Text('Gender', style: ZineText.value(size: 13.5)),
+        Text('Gender', style: ADText.rowName().copyWith(fontSize: 13.5)),
         const SizedBox(height: 7),
         Wrap(spacing: 8, runSpacing: 8, children: [
           for (final opt in const [
@@ -592,13 +625,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
               label: Text(opt[1]),
               selected: _gender == opt[0],
               onSelected: (_) => setState(() => _gender = opt[0]),
+              backgroundColor: AD.card,
+              selectedColor: AD.primaryBadge,
+              side: BorderSide(color: _gender == opt[0] ? AD.primaryBadge : AD.borderControl, width: 1),
+              labelStyle: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w800,
+                  fontSize: 13, color: _gender == opt[0] ? Colors.white : AD.textSecondary),
             ),
         ]),
         const SizedBox(height: 7),
         Text('Ava uses this when she answers your missed calls — '
-            '"can I take a message for him/her/them?"', style: ZineText.sub(size: 12.5)),
+            '"can I take a message for him/her/them?"', style: ADText.preview()),
         const SizedBox(height: 16),
-        ZineField(
+        AdField(
           controller: _bio,
           label: 'About you',
           hint: 'Tell Ava a little about yourself…',
@@ -609,17 +647,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         const SizedBox(height: 7),
         Text('Private to you. Ava reads this to personalise its help — manage what Ava '
-            'learns from in Settings → AvaBrain.', style: ZineText.sub(size: 12.5)),
+            'learns from in Settings → AvaBrain.', style: ADText.preview()),
         const SizedBox(height: 16),
-        ZineCard(
-          radius: Zine.rSm,
+        AdCard(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          boxShadow: Zine.shadowXs,
           child: Row(children: [
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Share last seen / online', style: ZineText.value(size: 14.5)),
+              Text('Share last seen / online', style: ADText.rowName().copyWith(fontSize: 14.5)),
               const SizedBox(height: 2),
-              Text('Let contacts see when you are online', style: ZineText.sub(size: 12)),
+              Text('Let contacts see when you are online', style: ADText.preview().copyWith(fontSize: 12)),
             ])),
             const SizedBox(width: 10),
             ZineToggle(value: _sharePresence, onChanged: (v) => setState(() => _sharePresence = v)),
@@ -630,9 +666,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         // request 2026-06-29). Off by default; not verified yet (VERIFICATION STUB
         // — Profile.privatePhoneVerified). When the switch is on, this number
         // replaces the AvaTOK number on the QR card and contact areas.
-        Text('PRIVATE PHONE NUMBER (OPTIONAL)', style: ZineText.kicker()),
+        Text('PRIVATE PHONE NUMBER (OPTIONAL)', style: ADText.sectionLabel()),
         const SizedBox(height: 10),
-        ZineField(
+        AdField(
           controller: _privatePhone,
           label: 'Private phone number',
           hint: 'e.g. +1 302 555 0148',
@@ -642,18 +678,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
         const SizedBox(height: 7),
         Text('Optional and private by default. Not verified yet — verification is '
             'coming later. Only shown to others if you turn on the switch below.',
-            style: ZineText.sub(size: 12.5)),
+            style: ADText.preview()),
         const SizedBox(height: 12),
-        ZineCard(
-          radius: Zine.rSm,
+        AdCard(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          boxShadow: Zine.shadowXs,
           child: Row(children: [
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Show my private number instead of my AvaTOK number', style: ZineText.value(size: 14.5)),
+              Text('Show my private number instead of my AvaTOK number', style: ADText.rowName().copyWith(fontSize: 14.5)),
               const SizedBox(height: 2),
               Text('People see this number on your card and can call it on AvaTOK. '
-                  'Your AvaTOK number is hidden while this is on.', style: ZineText.sub(size: 12)),
+                  'Your AvaTOK number is hidden while this is on.', style: ADText.preview().copyWith(fontSize: 12)),
             ])),
             const SizedBox(width: 10),
             ZineToggle(
@@ -665,44 +699,43 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ]),
         ),
         const SizedBox(height: 16),
-        Text('ACCOUNT & SECURITY', style: ZineText.kicker()),
+        Text('ACCOUNT & SECURITY', style: ADText.sectionLabel()),
         const SizedBox(height: 10),
-        _securityRow(PhosphorIcons.envelope(PhosphorIconsStyle.bold), Zine.blue,
+        _securityRow(PhosphorIcons.envelope(PhosphorIconsStyle.bold), AD.iconSearch,
             'Change email', 'Verify the new address with a 6-digit code', _changeEmail),
-        _securityRow(PhosphorIcons.lockSimple(PhosphorIconsStyle.bold), Zine.lilac,
+        _securityRow(PhosphorIcons.lockSimple(PhosphorIconsStyle.bold), AD.iconVideo,
             'Password', 'Set or change your sign-in password', _changePassword),
         const SizedBox(height: 6),
-        if (id != null) ZineCard(
-          radius: Zine.rSm,
+        if (id != null) AdCard(
           padding: const EdgeInsets.all(16),
-          boxShadow: Zine.shadowXs,
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              ZineIconBadge(icon: PhosphorIcons.qrCode(PhosphorIconsStyle.bold), color: Zine.blue, size: 28),
+              ZineIconBadge(icon: PhosphorIcons.qrCode(PhosphorIconsStyle.bold), color: AD.iconSearch, size: 28),
               const SizedBox(width: 9),
-              Expanded(child: Text('ADD ME ON AVATOK', style: ZineText.kicker())),
+              Expanded(child: Text('ADD ME ON AVATOK', style: ADText.sectionLabel())),
             ]),
             const SizedBox(height: 12),
             if (_shareLink.isNotEmpty)
               Center(child: Container(
                 padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(color: Zine.card, borderRadius: BorderRadius.circular(14), border: Zine.border),
-                child: QrImageView(data: _shareLink, size: 150, backgroundColor: Zine.card),
+                // QR stays dark-on-white so it remains scannable.
+                decoration: BoxDecoration(color: AD.inputField, borderRadius: BorderRadius.circular(14), border: Border.all(color: AD.borderControl, width: 1)),
+                child: QrImageView(data: _shareLink, size: 150, backgroundColor: AD.inputField),
               ))
             else
-              const Center(child: Padding(padding: EdgeInsets.all(28), child: CircularProgressIndicator())),
+              const Center(child: Padding(padding: EdgeInsets.all(28), child: CircularProgressIndicator(color: AD.primaryBadge))),
             const SizedBox(height: 10),
             Center(child: Text(
               _cardNumber.isNotEmpty ? _cardNumber : 'Scan to add me on AvaTOK',
-              style: ZineText.value(size: 15, color: Zine.blueInk))),
+              style: ADText.rowName(c: AD.iconSearch).copyWith(fontSize: 15))),
             if (_cardNumber.isEmpty && _myNum != null && !_myNum!.hasNumber)
               Padding(padding: const EdgeInsets.only(top: 4), child: Center(child:
                 Text('Generate your AvaTOK number in Settings → Your number to share it, '
                     'or add a private number above and choose to show it.',
-                    textAlign: TextAlign.center, style: ZineText.sub(size: 11.5)))),
+                    textAlign: TextAlign.center, style: ADText.preview().copyWith(fontSize: 11.5)))),
             const SizedBox(height: 14),
             Row(children: [
-              Expanded(child: ZineButton(
+              Expanded(child: AdButton(
                 label: 'Share', icon: PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold), trailingIcon: false,
                 fullWidth: true, fontSize: 15,
                 onPressed: _shareLink.isEmpty ? null : () async {
@@ -714,8 +747,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   }
                 })),
               const SizedBox(width: 10),
-              Expanded(child: ZineButton(
-                label: 'Copy', variant: ZineButtonVariant.ghost, icon: PhosphorIcons.copy(PhosphorIconsStyle.bold), trailingIcon: false,
+              Expanded(child: AdButton(
+                label: 'Copy', variant: AdButtonVariant.ghost, icon: PhosphorIcons.copy(PhosphorIconsStyle.bold), trailingIcon: false,
                 fullWidth: true, fontSize: 15,
                 onPressed: _shareLink.isEmpty ? null : () {
                   Analytics.capture('qr_card_action', {'action': 'copy'});
@@ -727,8 +760,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             // Owner request 2026-06-29: Download a JPEG of the card, or Print it to
             // post at a business — both use the identical QrShare layout.
             Row(children: [
-              Expanded(child: ZineButton(
-                label: 'Download', variant: ZineButtonVariant.ghost, icon: PhosphorIcons.downloadSimple(PhosphorIconsStyle.bold), trailingIcon: false,
+              Expanded(child: AdButton(
+                label: 'Download', variant: AdButtonVariant.ghost, icon: PhosphorIcons.downloadSimple(PhosphorIconsStyle.bold), trailingIcon: false,
                 fullWidth: true, fontSize: 15,
                 onPressed: _shareLink.isEmpty ? null : () async {
                   try {
@@ -741,8 +774,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   }
                 })),
               const SizedBox(width: 10),
-              Expanded(child: ZineButton(
-                label: 'Print', variant: ZineButtonVariant.ghost, icon: PhosphorIcons.printer(PhosphorIconsStyle.bold), trailingIcon: false,
+              Expanded(child: AdButton(
+                label: 'Print', variant: AdButtonVariant.ghost, icon: PhosphorIcons.printer(PhosphorIconsStyle.bold), trailingIcon: false,
                 fullWidth: true, fontSize: 15,
                 onPressed: _shareLink.isEmpty ? null : () async {
                   try {
@@ -756,7 +789,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ]),
         ),
         const SizedBox(height: 22),
-        ZineButton(
+        AdButton(
           label: _listed ? 'Update profile' : 'Save & get discoverable',
           fullWidth: true,
           fontSize: 19,
@@ -768,7 +801,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         if (!_canSave) ...[
           const SizedBox(height: 8),
           Center(child: Text('First name, last name, birth year and "about you" are all required.',
-              style: ZineText.sub(size: 12, color: Zine.coral))),
+              style: ADText.preview(c: AD.danger).copyWith(fontSize: 12))),
         ],
       ]),
     );

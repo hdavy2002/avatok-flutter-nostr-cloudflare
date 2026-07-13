@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/analytics.dart';
 import '../../core/cached_image.dart';
 import '../../core/listings_api.dart';
+import '../../core/ui/avatok_dark.dart';
 import 'edit_listing_screen.dart';
 
 /// Friendly status label (the raw 'published' shows as 'live' to owners).
@@ -39,7 +40,13 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('My listings')),
+      backgroundColor: AD.bg,
+      appBar: AppBar(
+        backgroundColor: AD.headerFooter,
+        foregroundColor: AD.textPrimary,
+        elevation: 0,
+        title: Text('My listings', style: ADText.appTitle()),
+      ),
       body: RefreshIndicator(
         onRefresh: () async => _reload(),
         child: FutureBuilder<List<ListingCard>>(
@@ -54,9 +61,10 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
                 .where((c) => c.status != 'cancelled' && !c.isExpired)
                 .toList();
             if (items.isEmpty) {
-              return ListView(children: const [
-                SizedBox(height: 120),
-                Center(child: Text('You have no active listings yet.')),
+              return ListView(children: [
+                const SizedBox(height: 120),
+                Center(child: Text('You have no active listings yet.',
+                    style: ADText.preview())),
               ]);
             }
             return ListView.separated(
@@ -100,14 +108,19 @@ class _MyListingRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sold = card.status == 'completed' || card.status == 'sold';
-    return Card(
+    return AdCard(
+      padding: EdgeInsets.zero,
       child: ListTile(
         leading: card.coverUrl != null
             ? CachedImage(card.coverUrl!, width: 48, height: 48, radius: BorderRadius.circular(6))
-            : const Icon(Icons.inventory_2_outlined, size: 32),
-        title: Text(card.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-        subtitle: Text('${card.displayPrice} · ${_statusLabel(card.status)}'),
+            : Icon(Icons.inventory_2_outlined, size: 32, color: AD.textTertiary),
+        title: Text(card.title, maxLines: 1, overflow: TextOverflow.ellipsis,
+            style: ADText.rowName()),
+        subtitle: Text('${card.displayPrice} · ${_statusLabel(card.status)}',
+            style: ADText.preview()),
         trailing: PopupMenuButton<String>(
+          color: AD.menu,
+          iconColor: AD.textSecondary,
           onSelected: (v) {
             switch (v) {
               case 'edit': _edit(context); break;
@@ -117,10 +130,10 @@ class _MyListingRow extends StatelessWidget {
             }
           },
           itemBuilder: (_) => [
-            const PopupMenuItem(value: 'edit', child: Text('Edit')),
-            if (!sold) const PopupMenuItem(value: 'sold', child: Text('Mark sold')),
-            const PopupMenuItem(value: 'renew', child: Text('Renew')),
-            const PopupMenuItem(value: 'delete', child: Text('Delete')),
+            PopupMenuItem(value: 'edit', child: Text('Edit', style: ADText.rowName())),
+            if (!sold) PopupMenuItem(value: 'sold', child: Text('Mark sold', style: ADText.rowName())),
+            PopupMenuItem(value: 'renew', child: Text('Renew', style: ADText.rowName())),
+            PopupMenuItem(value: 'delete', child: Text('Delete', style: ADText.rowName(c: AD.danger))),
           ],
         ),
       ),

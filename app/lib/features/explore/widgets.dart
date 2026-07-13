@@ -5,7 +5,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/avatar_cache.dart';
 import '../../core/listings_api.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
 
 /// Country code → flag emoji ("IN" → 🇮🇳).
 String flagEmoji(String? cc) {
@@ -26,9 +26,14 @@ String fmtWhen(int? ms) {
   return '${months[d.month - 1]} ${d.day}, $hh:$mm ${d.hour >= 12 ? 'PM' : 'AM'}';
 }
 
+/// Dark-v2 accent rotation for cover fallbacks (multicolor glyph fills).
+const List<Color> _adAccents = [
+  AD.iconSearch, AD.primaryBadge, AD.online, AD.iconVideo, AD.danger,
+];
+
 /// Cover image via the standard CF-AVIF + on-device cache pipeline.
-/// Zine treatment: ink-bordered rounded container; fallback = flat poster
-/// accent fill (no gradients, ever).
+/// Dark-v2 treatment: hairline-bordered rounded container; fallback = flat
+/// accent fill with a white glyph.
 class CoverImage extends StatelessWidget {
   final String? url;
   final int seed;
@@ -38,18 +43,22 @@ class CoverImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final r = radius ?? BorderRadius.circular(Zine.rSm);
-    final accent = Zine.accents[seed.abs() % Zine.accents.length];
+    final r = radius ?? BorderRadius.circular(AD.rListCard);
+    final accent = _adAccents[seed.abs() % _adAccents.length];
     Widget frame(Widget? child, {Color? fill}) => Container(
           width: width, height: height,
           clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(color: fill ?? Zine.card, borderRadius: r, border: Zine.border),
+          decoration: BoxDecoration(
+            color: fill ?? AD.card,
+            borderRadius: r,
+            border: Border.all(color: AD.borderControl, width: 1),
+          ),
           child: child,
         );
     final fallback = frame(
       Center(
         child: PhosphorIcon(PhosphorIcons.image(PhosphorIconsStyle.bold),
-            size: 26, color: accent == Zine.coral ? Colors.white : Zine.ink),
+            size: 26, color: Colors.white),
       ),
       fill: accent,
     );
@@ -77,17 +86,17 @@ class RatingStars extends StatelessWidget {
   Widget build(BuildContext context) {
     if (rating == null || count == 0) return const SizedBox.shrink();
     return Row(mainAxisSize: MainAxisSize.min, children: [
-      PhosphorIcon(PhosphorIcons.star(PhosphorIconsStyle.fill), color: Zine.coral, size: size + 1),
+      PhosphorIcon(PhosphorIcons.star(PhosphorIconsStyle.fill), color: AD.iconStar, size: size + 1),
       const SizedBox(width: 3),
       Text('${rating!.toStringAsFixed(1)} ($count)',
-          style: ZineText.value(size: size - 2, color: Zine.inkSoft, weight: FontWeight.w800)),
+          style: ADText.preview(c: AD.textSecondary)),
     ]);
   }
 }
 
-/// The marketplace card — zine cut-out: card fill, thick ink border, hard
-/// shadow; photo, title, $price, date, country flag, one-liner,
-/// "🔥 400 joined" social proof (spec §Flutter/AvaExplore).
+/// The marketplace card — dark-v2 surface: card fill, hairline border; photo,
+/// title, $price, date, country flag, one-liner, "🔥 400 joined" social proof
+/// (spec §Flutter/AvaExplore).
 class ListingCardTile extends StatelessWidget {
   final ListingCard card;
   final VoidCallback onTap;
@@ -101,10 +110,9 @@ class ListingCardTile extends StatelessWidget {
       child: Container(
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          color: Zine.card,
-          borderRadius: BorderRadius.circular(Zine.rSm),
-          border: Zine.border,
-          boxShadow: Zine.shadowXs,
+          color: AD.card,
+          borderRadius: BorderRadius.circular(AD.rListCard),
+          border: Border.all(color: AD.borderControl, width: 1),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Expanded(
@@ -112,14 +120,13 @@ class ListingCardTile extends StatelessWidget {
               Positioned.fill(
                 child: CoverImage(url: card.coverUrl, seed: card.id.hashCode, radius: BorderRadius.zero),
               ),
-              // LIVE → coral sticker (white text allowed on coral); else category tag.
+              // LIVE → red sticker (white text); else category tag.
               Positioned(left: 8, top: 8, child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
                 decoration: BoxDecoration(
-                  color: live ? Zine.coral : Zine.card,
+                  color: live ? AD.destructiveBg : AD.card,
                   borderRadius: BorderRadius.circular(100),
-                  border: Border.all(color: Zine.ink, width: 2),
-                  boxShadow: Zine.shadowXs,
+                  border: Border.all(color: AD.borderControl, width: 1),
                 ),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   if (live) ...[
@@ -127,45 +134,44 @@ class ListingCardTile extends StatelessWidget {
                     const SizedBox(width: 4),
                   ],
                   Text((live ? 'LIVE' : card.category).toUpperCase(),
-                      style: ZineText.tag(size: 10, color: live ? Colors.white : Zine.ink)),
+                      style: ADText.statCaption(c: live ? Colors.white : AD.textPrimary)),
                 ]),
               )),
               if (card.adultsOnly)
                 Positioned(right: 8, top: 8, child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                   decoration: BoxDecoration(
-                    color: Zine.coral,
+                    color: AD.destructiveBg,
                     borderRadius: BorderRadius.circular(100),
-                    border: Border.all(color: Zine.ink, width: 2),
+                    border: Border.all(color: AD.borderControl, width: 1),
                   ),
-                  child: Text('18+', style: ZineText.tag(size: 9.5, color: Colors.white)),
+                  child: Text('18+', style: ADText.statCaption(c: Colors.white)),
                 )),
             ]),
           ),
-          Container(height: Zine.bw, color: Zine.ink),
+          Container(height: 1, color: AD.borderControl),
           Padding(
             padding: const EdgeInsets.fromLTRB(10, 8, 10, 9),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
               Text(card.title, maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: ZineText.value(size: 13.5, weight: FontWeight.w800)),
+                  style: ADText.rowName()),
               if (card.oneLiner.isNotEmpty) ...[
                 const SizedBox(height: 1),
                 Text(card.oneLiner, maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: ZineText.sub(size: 11)),
+                    style: ADText.preview()),
               ],
               const SizedBox(height: 4),
               Row(children: [
                 if (card.promoPct > 0) ...[
-                  Text(fmtCoins(card.price), style: ZineText.sub(size: 11, color: Zine.inkMute)
+                  Text(fmtCoins(card.price), style: ADText.preview(c: AD.textTertiary)
                       .copyWith(decoration: TextDecoration.lineThrough)),
                   const SizedBox(width: 4),
                 ],
-                // Money = Nunito 900; free → mint ink.
+                // Money — free → online-green ink.
                 Flexible(child: Text(card.priceLabel,
                     maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: ZineText.value(size: 14,
-                        color: card.effectivePrice == 0 ? Zine.mintInk : Zine.ink,
-                        weight: FontWeight.w900))),
+                    style: ADText.rowName(
+                        c: card.effectivePrice == 0 ? AD.online : AD.textPrimary))),
                 const Spacer(),
                 if (card.country != null) Text(flagEmoji(card.country), style: const TextStyle(fontSize: 12)),
                 const SizedBox(width: 4),
@@ -176,9 +182,9 @@ class ListingCardTile extends StatelessWidget {
                 if (card.startsAt != null)
                   Expanded(child: Text(fmtWhen(card.startsAt).toUpperCase(),
                       maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: ZineText.tag(size: 9, color: Zine.inkSoft))),
+                      style: ADText.statCaption(c: AD.textSecondary))),
                 if (card.joinedCount > 0)
-                  Text('🔥 ${card.joinedCount} joined', style: ZineText.sub(size: 10)),
+                  Text('🔥 ${card.joinedCount} joined', style: ADText.statCaption(c: AD.textSecondary)),
               ]),
             ]),
           ),

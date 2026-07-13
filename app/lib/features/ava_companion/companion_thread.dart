@@ -22,6 +22,7 @@ import '../../core/ava_prompt_budget.dart';
 import '../../core/ava_quality.dart';
 import '../../core/library_api.dart';
 import '../../core/rag_service.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ava_ondevice_stt.dart';
@@ -531,7 +532,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       body: SafeArea(
         child: Column(children: [
           _header(),
@@ -556,22 +557,22 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
     return Container(
       padding: const EdgeInsets.fromLTRB(8, 8, 14, 12),
       decoration: const BoxDecoration(
-        color: Zine.paper2,
-        border: Border(bottom: BorderSide(color: Zine.ink, width: Zine.bw)),
+        color: AD.headerFooter,
+        border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
       ),
       child: Row(children: [
-        const ZineBackButton(),
+        const AdBackButton(),
         const SizedBox(width: 4),
         ZineIconBadge(
             icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
-            color: Zine.lilac,
+            color: AD.iconVideo,
             size: 40),
         const SizedBox(width: 10),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Ava', style: ZineText.cardTitle(size: 18)),
+            Text('Ava', style: ADText.threadName(c: AD.textPrimary)),
             Text('${widget.persona.glyph} ${widget.persona.name}',
-                style: ZineText.sub(size: 12)),
+                style: ADText.preview()),
           ]),
         ),
       ]),
@@ -585,12 +586,12 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: Zine.lilac.withValues(alpha: 0.35),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Zine.ink.withValues(alpha: 0.3), width: 2),
+              color: AD.bubbleInBg,
+              borderRadius: AD.bubbleInRadius,
+              border: Border.all(color: AD.borderControl, width: 1),
             ),
             child: Text('Ava is thinking…',
-                style: ZineText.sub(size: 12.5)
+                style: ADText.bubbleBody(c: AD.bubbleInInk)
                     .copyWith(fontStyle: FontStyle.italic)),
           ),
         ),
@@ -639,7 +640,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
           if (isAva)
             Padding(
               padding: const EdgeInsets.only(left: 4, bottom: 3),
-              child: Text('AVA', style: ZineText.tag(size: 9.5, color: Zine.inkSoft)),
+              child: Text('AVA', style: ADText.statCaption(c: AD.textSecondary)),
             ),
           if (m.text.trim().isNotEmpty)
             Container(
@@ -647,14 +648,12 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
                   maxWidth: MediaQuery.of(context).size.width * 0.78),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
-                color: m.me ? Zine.lime : Zine.lilac,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Zine.ink, width: 2),
-                boxShadow: Zine.shadowXs,
+                color: m.me ? AD.bubbleOutBg : AD.bubbleInBg,
+                borderRadius: m.me ? AD.bubbleOutRadius : AD.bubbleInRadius,
               ),
               child: Text(
                 m.reveal >= m.text.length ? m.text : m.text.substring(0, m.reveal),
-                style: ZineText.value(size: 14.5, weight: FontWeight.w600),
+                style: ADText.bubbleBody(c: m.me ? AD.bubbleOutInk : AD.bubbleInInk),
               ),
             ),
           // "Generating image…" placeholder thumbnail (ChatGPT-style) — shown while
@@ -666,21 +665,20 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
                 width: 240,
                 height: 200,
                 decoration: BoxDecoration(
-                  color: Zine.lilac,
+                  color: AD.mediaPlaceholderBg,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: Zine.ink, width: 2),
-                  boxShadow: Zine.shadowXs,
+                  border: Border.all(color: AD.borderControl, width: 1),
                 ),
                 child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                   PhosphorIcon(PhosphorIcons.image(PhosphorIconsStyle.duotone),
-                      size: 34, color: Zine.ink),
+                      size: 34, color: AD.mediaPlaceholderLabel),
                   const SizedBox(height: 14),
                   const SizedBox(
                       width: 20, height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Zine.ink)),
+                      child: CircularProgressIndicator(strokeWidth: 2, color: AD.mediaPlaceholderLabel)),
                   const SizedBox(height: 12),
                   Text('Generating image…',
-                      style: ZineText.sub(size: 12.5, color: Zine.ink)
+                      style: ADText.preview(c: AD.mediaPlaceholderLabel)
                           .copyWith(fontStyle: FontStyle.italic)),
                 ]),
               ),
@@ -706,10 +704,10 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
                           ? PhosphorIcons.stop(PhosphorIconsStyle.fill)
                           : PhosphorIcons.speakerHigh(PhosphorIconsStyle.bold),
                       size: 14,
-                      color: Zine.blueInk),
+                      color: AD.iconSearch),
                   const SizedBox(width: 5),
                   Text(_playingId == m.id ? 'Stop' : 'Listen',
-                      style: ZineText.link(size: 12)),
+                      style: ADText.preview(c: AD.iconSearch)),
                 ]),
               ),
             ),
@@ -724,9 +722,9 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
                     onTap: () => _useInChat(m),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       PhosphorIcon(PhosphorIcons.paperPlaneTilt(PhosphorIconsStyle.bold),
-                          size: 14, color: Zine.blueInk),
+                          size: 14, color: AD.iconSearch),
                       const SizedBox(width: 5),
-                      Text('Use in chat', style: ZineText.link(size: 12)),
+                      Text('Use in chat', style: ADText.preview(c: AD.iconSearch)),
                     ]),
                   ),
                   const SizedBox(width: 16),
@@ -735,9 +733,9 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
                   onTap: () => _copyDraft(m),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     PhosphorIcon(PhosphorIcons.copy(PhosphorIconsStyle.bold),
-                        size: 14, color: Zine.blueInk),
+                        size: 14, color: AD.iconSearch),
                     const SizedBox(width: 5),
-                    Text('Copy', style: ZineText.link(size: 12)),
+                    Text('Copy', style: ADText.preview(c: AD.iconSearch)),
                   ]),
                 ),
               ]),
@@ -750,15 +748,16 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
               child: ZinePressable(
                 onTap: () => AvaWalletHook.instance
                     .openTopUp(context, suggestedUsd: kMinTopUpUsd),
-                color: Zine.mint,
+                color: AD.online,
                 radius: BorderRadius.circular(12),
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   PhosphorIcon(PhosphorIcons.coins(PhosphorIconsStyle.fill),
-                      size: 14, color: Zine.ink),
+                      size: 14, color: Colors.white),
                   const SizedBox(width: 6),
                   Text('Top up to unlock',
-                      style: ZineText.value(size: 13, weight: FontWeight.w600)),
+                      style: TextStyle(fontFamily: ADText.family,
+                          fontWeight: FontWeight.w800, fontSize: 13, color: Colors.white)),
                 ]),
               ),
             ),
@@ -830,8 +829,8 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
       decoration: const BoxDecoration(
-        color: Zine.paper2,
-        border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
+        color: AD.headerFooter,
+        border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
       ),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         // Top icon row — attach + mic sit above the field so the input itself
@@ -841,7 +840,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
           IconButton(
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-            icon: PhosphorIcon(PhosphorIcons.paperclip(PhosphorIconsStyle.bold), color: Zine.ink, size: 24),
+            icon: PhosphorIcon(PhosphorIcons.paperclip(PhosphorIconsStyle.bold), color: AD.textSecondary, size: 24),
             onPressed: _busy ? null : _attachFile,
             tooltip: 'Attach a file (saved to AvaLibrary + indexed for Ava)',
           ),
@@ -855,7 +854,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
                 _sttActive
                     ? PhosphorIcons.stopCircle(PhosphorIconsStyle.fill)
                     : PhosphorIcons.microphone(PhosphorIconsStyle.fill),
-                color: _sttActive ? Zine.coral : Zine.blueInk, size: 24),
+                color: _sttActive ? AD.danger : AD.iconSearch, size: 24),
             onPressed: _sttActive ? _stopVoiceToText : _startVoiceToText,
             tooltip: _sttActive ? 'Stop voice-to-text' : 'Voice call or dictate',
           ),
@@ -866,9 +865,9 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
           Expanded(
             child: Container(
               decoration: BoxDecoration(
-                color: Zine.card,
-                borderRadius: BorderRadius.circular(2),
-                border: Border.all(color: Zine.ink, width: 2),
+                color: AD.inputField,
+                borderRadius: BorderRadius.circular(AD.rInput),
+                border: Border.all(color: AD.borderControl, width: 1),
               ),
               padding: const EdgeInsets.symmetric(horizontal: 14),
               child: TextField(
@@ -877,13 +876,15 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
                 maxLines: 4,
                 textInputAction: TextInputAction.send,
                 onSubmitted: (_) => _send(),
-                style: ZineText.input(size: 15),
+                style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w700,
+                    fontSize: 15, color: AD.textOnInput),
                 decoration: InputDecoration(
                   border: InputBorder.none,
                   isDense: true,
                   contentPadding: const EdgeInsets.symmetric(vertical: 12),
                   hintText: 'Message Ava…',
-                  hintStyle: ZineText.sub(size: 14, color: Zine.placeholder),
+                  hintStyle: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600,
+                      fontSize: 14, color: AD.placeholderOnWhite),
                 ),
               ),
             ),
@@ -891,14 +892,14 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
           const SizedBox(width: 8),
           ZinePressable(
             onTap: _busy ? null : _send,
-            color: Zine.lime,
+            color: AD.sendActiveBg,
             radius: BorderRadius.circular(100),
             child: SizedBox(
               width: 48,
               height: 48,
               child: Center(
                 child: PhosphorIcon(PhosphorIcons.paperPlaneRight(PhosphorIconsStyle.fill),
-                    size: 20, color: Zine.ink),
+                    size: 20, color: AD.sendActiveInk),
               ),
             ),
           ),

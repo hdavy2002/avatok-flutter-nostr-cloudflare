@@ -192,14 +192,14 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
       backgroundColor: PhoneTheme.bg,
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: PhoneTheme.accent,
-        foregroundColor: const Color(0xFF0E1116),
+        foregroundColor: Colors.white,
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
           side: const BorderSide(color: PhoneTheme.border, width: 2)),
         onPressed: _add,
         icon: PhosphorIcon(PhosphorIcons.userPlus(PhosphorIconsStyle.bold), size: 18),
-        label: Text('Add', style: PhoneTheme.tag(size: 11.5, color: const Color(0xFF0E1116))),
+        label: Text('Add', style: PhoneTheme.tag(size: 11.5, color: Colors.white)),
       ),
       body: SafeArea(
         bottom: false,
@@ -408,7 +408,7 @@ class _AddAvatokSheetState extends State<_AddAvatokSheet> {
             width: double.infinity,
             child: ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
-                backgroundColor: PhoneTheme.accent, foregroundColor: const Color(0xFF0E1116),
+                backgroundColor: PhoneTheme.accent, foregroundColor: Colors.white,
                 elevation: 0, padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
@@ -416,9 +416,9 @@ class _AddAvatokSheetState extends State<_AddAvatokSheet> {
               ),
               onPressed: _resolving ? null : _resolve,
               icon: _resolving
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2.4, color: Color(0xFF0E1116)))
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white))
                   : PhosphorIcon(PhosphorIcons.userPlus(PhosphorIconsStyle.bold), size: 18),
-              label: Text(_resolving ? 'Finding…' : 'Find & save', style: PhoneTheme.value(size: 15, color: const Color(0xFF0E1116))),
+              label: Text(_resolving ? 'Finding…' : 'Find & save', style: PhoneTheme.value(size: 15, color: Colors.white)),
             ),
           ),
           const SizedBox(height: 10),

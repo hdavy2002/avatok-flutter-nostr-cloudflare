@@ -8,7 +8,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/account_storage.dart';
 import '../../core/analytics.dart';
 import '../../core/listings_api.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'listing_detail.dart';
 import 'widgets.dart';
@@ -95,21 +95,21 @@ class _ExploreSearchScreenState extends State<ExploreSearchScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       body: SafeArea(
         child: Column(children: [
-          // Search band: paper-2 fill + ink bottom border (§8).
+          // Search band: header surface + hairline bottom border.
           Container(
             decoration: const BoxDecoration(
-              color: Zine.paper2,
-              border: Border(bottom: BorderSide(color: Zine.ink, width: Zine.bw)),
+              color: AD.headerFooter,
+              border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
             ),
             padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
             child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-              const ZineBackButton(),
+              const AdBackButton(),
               const SizedBox(width: 12),
               Expanded(
-                child: ZineField(
+                child: AdField(
                   controller: _q,
                   autofocus: true,
                   hint: 'Search the marketplace…',
@@ -120,7 +120,7 @@ class _ExploreSearchScreenState extends State<ExploreSearchScreen> {
               ),
               const SizedBox(width: 12),
               Stack(clipBehavior: Clip.none, children: [
-                ZineBackButton(
+                AdBackButton(
                   onTap: _openFilters,
                   icon: PhosphorIcons.faders(PhosphorIconsStyle.bold),
                 ),
@@ -128,8 +128,8 @@ class _ExploreSearchScreenState extends State<ExploreSearchScreen> {
                   Positioned(right: -2, top: -2, child: Container(
                     width: 13, height: 13,
                     decoration: BoxDecoration(
-                      color: Zine.coral, shape: BoxShape.circle,
-                      border: Border.all(color: Zine.ink, width: 2),
+                      color: AD.unreadAccent, shape: BoxShape.circle,
+                      border: Border.all(color: AD.borderControl, width: 1),
                     ),
                   )),
               ]),
@@ -141,7 +141,7 @@ class _ExploreSearchScreenState extends State<ExploreSearchScreen> {
               for (final s in const [['soonest', 'Soonest'], ['cheapest', 'Cheapest'], ['popular', 'Popular'], ['rating', 'Top rated']])
                 Padding(
                   padding: const EdgeInsets.only(right: 9),
-                  child: ZineChip(
+                  child: AdChip(
                     label: s[1],
                     active: _sort == s[0],
                     onTap: () { setState(() => _sort = s[0]); _run(); },
@@ -156,7 +156,7 @@ class _ExploreSearchScreenState extends State<ExploreSearchScreen> {
   }
 
   Widget _bodyContent() {
-    if (_searching) return const Center(child: CircularProgressIndicator(color: Zine.blueInk));
+    if (_searching) return const Center(child: CircularProgressIndicator(color: AD.iconSearch));
     if (!_ran) {
       if (_recent.isEmpty) {
         return Center(child: ZineEmptyState(
@@ -164,7 +164,7 @@ class _ExploreSearchScreenState extends State<ExploreSearchScreen> {
             text: 'Search the marketplace — events, sessions, creators.'));
       }
       return ListView(padding: const EdgeInsets.all(18), children: [
-        Text('RECENT SEARCHES', style: ZineText.kicker()),
+        Text('RECENT SEARCHES', style: ADText.sectionLabel()),
         const SizedBox(height: 10),
         for (final r in _recent)
           GestureDetector(
@@ -173,11 +173,11 @@ class _ExploreSearchScreenState extends State<ExploreSearchScreen> {
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 9),
               child: Row(children: [
-                PhosphorIcon(PhosphorIcons.clockCounterClockwise(PhosphorIconsStyle.bold), size: 18, color: Zine.inkSoft),
+                PhosphorIcon(PhosphorIcons.clockCounterClockwise(PhosphorIconsStyle.bold), size: 18, color: AD.textSecondary),
                 const SizedBox(width: 10),
                 Expanded(child: Text(r, maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: ZineText.value(size: 14.5, weight: FontWeight.w700))),
-                PhosphorIcon(PhosphorIcons.arrowUpLeft(PhosphorIconsStyle.bold), size: 15, color: Zine.inkMute),
+                    style: ADText.rowName())),
+                PhosphorIcon(PhosphorIcons.arrowUpLeft(PhosphorIconsStyle.bold), size: 15, color: AD.textTertiary),
               ]),
             ),
           ),
@@ -232,41 +232,43 @@ class _FilterSheetState extends State<_FilterSheet> {
 
   Widget _dateBtn(String label, VoidCallback onTap) => ZinePressable(
         onTap: onTap,
+        color: AD.card,
+        borderColor: AD.borderControl,
         radius: BorderRadius.circular(100),
-        boxShadow: Zine.shadowXs,
+        boxShadow: const [],
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         child: Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.max, children: [
-          PhosphorIcon(PhosphorIcons.calendarBlank(PhosphorIconsStyle.bold), size: 15, color: Zine.ink),
+          PhosphorIcon(PhosphorIcons.calendarBlank(PhosphorIconsStyle.bold), size: 15, color: AD.textPrimary),
           const SizedBox(width: 7),
           Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: ZineText.tag(size: 11.5))),
+              style: ADText.preview(c: AD.textPrimary))),
         ]),
       );
 
   @override
   Widget build(BuildContext context) => Container(
         decoration: const BoxDecoration(
-          color: Zine.paper,
+          color: AD.overlaySheet,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          border: Border(top: BorderSide(color: Zine.ink, width: Zine.bwLg)),
+          border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
         ),
         padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).viewPadding.bottom),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('Filters', style: ZineText.cardTitle(size: 20)),
+          Text('Filters', style: ADText.appTitle()),
           const SizedBox(height: 12),
           Text('PRICE: \$${_price.start.round()} – \$${_price.end.round()}${_price.end >= 500 ? '+' : ''}',
-              style: ZineText.kicker()),
+              style: ADText.sectionLabel()),
           RangeSlider(
             values: _price, min: 0, max: 500, divisions: 50,
-            activeColor: Zine.blueInk,
-            inactiveColor: Zine.paper2,
+            activeColor: AD.iconSearch,
+            inactiveColor: AD.borderControl,
             onChanged: (v) => setState(() => _price = v),
           ),
-          Text('MINIMUM RATING', style: ZineText.kicker()),
+          Text('MINIMUM RATING', style: ADText.sectionLabel()),
           const SizedBox(height: 9),
           Wrap(spacing: 9, runSpacing: 8, children: [
             for (final r in const [null, 3.0, 4.0, 4.5])
-              ZineChip(
+              AdChip(
                 label: r == null ? 'Any' : '★ $r+',
                 active: _minRating == r,
                 onTap: () => setState(() => _minRating = r),
@@ -287,7 +289,7 @@ class _FilterSheetState extends State<_FilterSheet> {
             })),
           ]),
           const SizedBox(height: 16),
-          ZineField(
+          AdField(
             controller: _country,
             label: 'Country code (e.g. IN, US)',
             hint: 'Anywhere',
@@ -297,14 +299,14 @@ class _FilterSheetState extends State<_FilterSheet> {
           ),
           const SizedBox(height: 18),
           Row(children: [
-            Expanded(child: ZineButton(
+            Expanded(child: AdButton(
               label: 'Clear all',
-              variant: ZineButtonVariant.ghost,
+              variant: AdButtonVariant.ghost,
               fontSize: 16,
               onPressed: () { widget.onApply(null, null, null, '', null, null); Navigator.pop(context); },
             )),
             const SizedBox(width: 10),
-            Expanded(flex: 2, child: ZineButton(
+            Expanded(flex: 2, child: AdButton(
               label: 'Apply filters',
               fontSize: 17,
               onPressed: () {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine.dart';
 import '../avatok/contact_actions.dart';
 import '../avatok/contacts.dart' show Contact;
@@ -32,7 +33,7 @@ Future<void> showAvaDialRowMenu(
     context: context,
     backgroundColor: AvaDialTheme.surface,
     shape: const RoundedRectangleBorder(
-      side: BorderSide(color: AvaDialTheme.border, width: Zine.bw),
+      side: BorderSide(color: AvaDialTheme.border, width: 1),
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
     builder: (sheetCtx) => SafeArea(
@@ -53,7 +54,7 @@ Future<void> showAvaDialRowMenu(
         const Divider(color: AvaDialTheme.border, height: 1),
         _row(
           icon: PhosphorIcons.phone(PhosphorIconsStyle.bold),
-          color: Zine.mint,
+          color: AD.incomingCall,
           label: 'Call',
           onTap: () async {
             Navigator.pop(sheetCtx);
@@ -66,7 +67,7 @@ Future<void> showAvaDialRowMenu(
         ),
         _row(
           icon: PhosphorIcons.chatCircle(PhosphorIconsStyle.bold),
-          color: Zine.lilac,
+          color: AD.iconVideo,
           label: 'Send SMS',
           onTap: () {
             Navigator.pop(sheetCtx);
@@ -76,7 +77,7 @@ Future<void> showAvaDialRowMenu(
         ),
         _row(
           icon: PhosphorIcons.userPlus(PhosphorIconsStyle.bold),
-          color: Zine.blue,
+          color: AD.iconSearch,
           label: 'Save contact',
           onTap: () async {
             Navigator.pop(sheetCtx);
@@ -88,7 +89,7 @@ Future<void> showAvaDialRowMenu(
         ),
         _row(
           icon: PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold),
-          color: Zine.blue,
+          color: AD.iconSearch,
           label: 'Edit contact',
           onTap: () async {
             Navigator.pop(sheetCtx);
@@ -99,7 +100,7 @@ Future<void> showAvaDialRowMenu(
         ),
         _row(
           icon: PhosphorIcons.clockCounterClockwise(PhosphorIconsStyle.bold),
-          color: Zine.mint,
+          color: AD.incomingCall,
           label: 'Call history',
           onTap: () {
             Navigator.pop(sheetCtx);
@@ -109,7 +110,7 @@ Future<void> showAvaDialRowMenu(
         ),
         _row(
           icon: PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold),
-          color: Zine.lilac,
+          color: AD.iconVideo,
           label: 'Forward to messenger',
           onTap: () {
             Navigator.pop(sheetCtx);
@@ -118,7 +119,7 @@ Future<void> showAvaDialRowMenu(
         ),
         _row(
           icon: PhosphorIcons.prohibit(PhosphorIconsStyle.bold),
-          color: Zine.coral,
+          color: AD.danger,
           label: alreadyBlocked ? 'Unblock' : 'Block this number',
           onTap: () async {
             Navigator.pop(sheetCtx);
@@ -132,7 +133,7 @@ Future<void> showAvaDialRowMenu(
         ),
         _row(
           icon: PhosphorIcons.shieldWarning(PhosphorIconsStyle.bold),
-          color: Zine.coral,
+          color: AD.danger,
           label: 'Report spam',
           onTap: () async {
             Navigator.pop(sheetCtx);
@@ -142,7 +143,7 @@ Future<void> showAvaDialRowMenu(
         ),
         _row(
           icon: PhosphorIcons.user(PhosphorIconsStyle.bold),
-          color: Zine.coral,
+          color: AD.danger,
           label: 'Remove contact',
           onTap: () async {
             Navigator.pop(sheetCtx);
@@ -153,7 +154,7 @@ Future<void> showAvaDialRowMenu(
         ),
         _row(
           icon: PhosphorIcons.trash(PhosphorIconsStyle.bold),
-          color: Zine.coral,
+          color: AD.danger,
           label: 'Delete this contact',
           danger: true,
           onTap: () async {
@@ -182,8 +183,8 @@ Future<bool?> _confirmDelete(BuildContext context, String label) => showDialog<b
       builder: (ctx) => AlertDialog(
         backgroundColor: AvaDialTheme.surface2,
         shape: RoundedRectangleBorder(
-          side: const BorderSide(color: AvaDialTheme.border, width: Zine.bw),
-          borderRadius: BorderRadius.circular(Zine.rSm),
+          side: const BorderSide(color: AvaDialTheme.border, width: 1),
+          borderRadius: BorderRadius.circular(AD.rListCard),
         ),
         title: Text('Delete $label?', style: ZineText.cardTitle(size: 17, color: AvaDialTheme.text)),
         content: Text(
@@ -198,7 +199,7 @@ Future<bool?> _confirmDelete(BuildContext context, String label) => showDialog<b
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Delete', style: ZineText.value(size: 14, color: Zine.coral)),
+            child: Text('Delete', style: ZineText.value(size: 14, color: AD.danger)),
           ),
         ],
       ),
@@ -214,7 +215,7 @@ Widget _row({
   return ListTile(
     leading: PhosphorIcon(icon, color: color),
     title: Text(label,
-        style: ZineText.value(size: 15, color: danger ? Zine.coral : AvaDialTheme.text)),
+        style: ZineText.value(size: 15, color: danger ? AD.danger : AvaDialTheme.text)),
     onTap: onTap,
   );
 }

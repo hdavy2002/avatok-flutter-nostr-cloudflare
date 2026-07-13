@@ -9,6 +9,7 @@ import '../../core/cached_image.dart';
 import '../../core/config.dart';
 import '../../core/listings_api.dart';
 import '../../core/marketplace_api.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../identity/listing_liveness_gate.dart';
 
 /// AvaMarketplace P2 — buy/sell/social listing pipeline with the agent-mandate
@@ -120,19 +121,20 @@ class _SellListingFlowState extends State<SellListingFlow> {
   /// ABOVE each field at a readable size (the floating-label form was tiny).
   InputDecoration _box({String? hint}) => InputDecoration(
         hintText: hint,
+        hintStyle: TextStyle(color: AD.placeholderOnWhite),
         filled: true,
-        fillColor: Colors.white,
+        fillColor: AD.inputField,
         isDense: true,
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.black, width: 2)),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.black, width: 2)),
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.black, width: 2)),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AD.rInput), borderSide: BorderSide(color: AD.borderControl, width: 1)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AD.rInput), borderSide: BorderSide(color: AD.borderControl, width: 1)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AD.rInput), borderSide: BorderSide(color: AD.iconSearch, width: 1)),
       );
 
   /// A big, readable field label sitting above its input.
   Widget _label(String text) => Padding(
         padding: const EdgeInsets.only(bottom: 6, top: 2),
-        child: Text(text, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.black)),
+        child: Text(text, style: TextStyle(fontFamily: ADText.family, fontSize: 15, fontWeight: FontWeight.w700, color: AD.textPrimary)),
       );
 
   /// Label + field stacked — replaces the tiny floating labels (pic 1).
@@ -271,8 +273,18 @@ class _SellListingFlowState extends State<SellListingFlow> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Create listing')),
-      body: Stepper(
+      backgroundColor: AD.bg,
+      appBar: AppBar(
+        backgroundColor: AD.headerFooter,
+        foregroundColor: AD.textPrimary,
+        elevation: 0,
+        title: Text('Create listing', style: ADText.appTitle()),
+      ),
+      body: Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: Theme.of(context).colorScheme.copyWith(primary: AD.primaryBadge),
+        ),
+        child: Stepper(
         currentStep: _step,
         onStepContinue: () {
           if (_step < 5) {
@@ -288,27 +300,37 @@ class _SellListingFlowState extends State<SellListingFlow> {
             padding: const EdgeInsets.only(top: 12),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
-                FilledButton(
+                AdButton(
+                  label: _step < 5 ? 'Continue' : (_busy ? 'Submitting…' : 'Submit listing'),
+                  loading: _busy && _step >= 5,
                   onPressed: (_busy || !complete) ? null : details.onStepContinue,
-                  child: Text(_step < 5 ? 'Continue' : (_busy ? 'Submitting…' : 'Submit listing')),
                 ),
                 const SizedBox(width: 8),
-                if (_step > 0) TextButton(onPressed: details.onStepCancel, child: const Text('Back')),
+                if (_step > 0) TextButton(onPressed: details.onStepCancel,
+                    child: Text('Back', style: TextStyle(color: AD.textSecondary, fontFamily: ADText.family, fontWeight: FontWeight.w800))),
               ]),
               if (!complete && _stepHint(_step).isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
-                  child: Text(_stepHint(_step), style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                  child: Text(_stepHint(_step), style: TextStyle(fontFamily: ADText.family, fontSize: 12, color: AD.textTertiary)),
                 ),
             ]),
           );
         },
         steps: [
           Step(
-            title: const Text('Type'),
+            title: Text('Type', style: ADText.rowName()),
             isActive: _step >= 0,
             content: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               SegmentedButton<String>(
+                style: SegmentedButton.styleFrom(
+                  backgroundColor: AD.card,
+                  foregroundColor: AD.textSecondary,
+                  selectedBackgroundColor: AD.primaryBadge,
+                  selectedForegroundColor: Colors.white,
+                  side: BorderSide(color: AD.borderControl, width: 1),
+                  textStyle: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w800),
+                ),
                 segments: const [
                   ButtonSegment(value: 'sell', label: Text('Selling')),
                   ButtonSegment(value: 'buy', label: Text('Buying')),
@@ -335,7 +357,7 @@ class _SellListingFlowState extends State<SellListingFlow> {
             ]),
           ),
           Step(
-            title: const Text('Details'),
+            title: Text('Details', style: ADText.rowName()),
             isActive: _step >= 1,
             content: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               _field('Title', TextField(controller: _title, onChanged: (_) => setState(() {}), decoration: _box(hint: 'What are you listing?'))),
@@ -365,7 +387,7 @@ class _SellListingFlowState extends State<SellListingFlow> {
             ]),
           ),
           Step(
-            title: const Text('Price'),
+            title: Text('Price', style: ADText.rowName()),
             isActive: _step >= 2,
             content: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Expanded(
@@ -390,7 +412,7 @@ class _SellListingFlowState extends State<SellListingFlow> {
             ]),
           ),
           Step(
-            title: const Text('Your agent'),
+            title: Text('Your agent', style: ADText.rowName()),
             isActive: _step >= 3,
             content: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               _label('Tell your agent how to negotiate for you'),
@@ -399,14 +421,15 @@ class _SellListingFlowState extends State<SellListingFlow> {
               Row(children: [
                 TextButton.icon(
                   onPressed: _aiBusy ? null : () => _helpMeWrite('instructions', _agentInstr),
-                  icon: const Icon(Icons.auto_awesome, size: 18),
-                  label: Text(_aiBusy ? 'Writing…' : 'Help me write'),
+                  icon: Icon(Icons.auto_awesome, size: 18, color: AD.iconVideo),
+                  label: Text(_aiBusy ? 'Writing…' : 'Help me write',
+                      style: TextStyle(color: AD.iconVideo, fontFamily: ADText.family, fontWeight: FontWeight.w800)),
                 ),
               ]),
               Container(
                 padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(color: const Color(0x0A000000), borderRadius: BorderRadius.circular(6)),
-                child: Text('Example: $_exampleInstruction', style: const TextStyle(fontSize: 12)),
+                decoration: BoxDecoration(color: AD.card, borderRadius: BorderRadius.circular(AD.rStatCard)),
+                child: Text('Example: $_exampleInstruction', style: TextStyle(fontFamily: ADText.family, fontSize: 12, color: AD.textSecondary)),
               ),
               const SizedBox(height: 14),
               _field('Agent language', DropdownButtonFormField<String>(
@@ -420,15 +443,15 @@ class _SellListingFlowState extends State<SellListingFlow> {
               _field('Accent / persona (optional)', TextField(controller: _accent,
                   decoration: _box(hint: 'e.g. warm, Punjabi accent'))),
               const SizedBox(height: 4),
-              const Text('If the other agent doesn’t speak your language, both fall back to English with your accent.',
-                  style: TextStyle(fontSize: 11, color: Colors.black54)),
+              Text('If the other agent doesn’t speak your language, both fall back to English with your accent.',
+                  style: TextStyle(fontFamily: ADText.family, fontSize: 11, color: AD.textTertiary)),
             ]),
           ),
           Step(
-            title: const Text('Photos'),
+            title: Text('Photos', style: ADText.rowName()),
             isActive: _step >= 4,
             content: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('Add photos — max 5', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87)),
+              Text('Add photos — max 5', style: TextStyle(fontFamily: ADText.family, fontSize: 14, fontWeight: FontWeight.w600, color: AD.textPrimary)),
               const SizedBox(height: 8),
               Wrap(spacing: 8, runSpacing: 8, children: [
                 for (var i = 0; i < _coverUrls.length; i++)
@@ -451,42 +474,47 @@ class _SellListingFlowState extends State<SellListingFlow> {
                     child: Container(
                       width: 84, height: 84,
                       decoration: BoxDecoration(
-                          border: Border.all(color: Colors.black26), borderRadius: BorderRadius.circular(8)),
+                          color: AD.card,
+                          border: Border.all(color: AD.borderControl), borderRadius: BorderRadius.circular(8)),
                       child: Center(
                         child: _uploading
                             ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                            : const Icon(Icons.add_a_photo_outlined)),
+                            : Icon(Icons.add_a_photo_outlined, color: AD.textSecondary)),
                     ),
                   ),
               ]),
             ]),
           ),
           Step(
-            title: const Text('Review'),
+            title: Text('Review', style: ADText.rowName()),
             isActive: _step >= 5,
             content: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('Listing expires in:', style: TextStyle(fontWeight: FontWeight.w600)),
+              Text('Listing expires in:', style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600, color: AD.textPrimary)),
               const SizedBox(height: 8),
               Wrap(spacing: 8, runSpacing: 8, children: [
                 for (final d in const [1, 5, 10, 20, 30])
                   ChoiceChip(
                     label: Text('$d day${d == 1 ? '' : 's'}'),
+                    labelStyle: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w800,
+                        color: _expiryDays == d ? Colors.white : AD.textSecondary),
                     selected: _expiryDays == d,
+                    showCheckmark: false,
                     onSelected: (_) => setState(() => _expiryDays = d),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(100),
-                        side: const BorderSide(color: Colors.black, width: 2)),
-                    backgroundColor: Colors.white,
-                    selectedColor: const Color(0xFFC4F24D),
+                        side: BorderSide(color: AD.borderControl, width: 1)),
+                    backgroundColor: AD.card,
+                    selectedColor: AD.primaryBadge,
                   ),
               ]),
               const SizedBox(height: 12),
               if (_error != null)
                 Padding(padding: const EdgeInsets.only(top: 8),
-                    child: Text(_error!, style: const TextStyle(color: Colors.red))),
+                    child: AdErrorMsg(_error!)),
             ]),
           ),
         ],
+        ),
       ),
     );
   }
