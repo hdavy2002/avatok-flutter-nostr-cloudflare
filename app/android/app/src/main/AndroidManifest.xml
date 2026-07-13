@@ -284,6 +284,13 @@
             </intent-filter>
         </receiver>
 
+        <!-- [AVADIAL-OTP-1] Handles the "Copy code" action on the OTP heads-up
+             pop-up (AvaSmsReceiver.notifyOtp). NOT exported — only our own
+             notification action fires it. -->
+        <receiver
+            android:name="ai.avatok.avadial.AvaOtpCopyReceiver"
+            android:exported="false" />
+
         <!-- (2) Inbound MMS (WAP push). BROADCAST_WAP_PUSH-protected. -->
         <receiver
             android:name="ai.avatok.avadial.AvaMmsReceiver"

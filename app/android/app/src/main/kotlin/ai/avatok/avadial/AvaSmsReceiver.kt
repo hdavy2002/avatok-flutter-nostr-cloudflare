@@ -62,6 +62,15 @@ class AvaSmsReceiver : BroadcastReceiver() {
                 "onSmsReceived",
                 mapOf("address" to address, "body" to text, "date" to ts, "spam" to spam)
             )
+            // OTP fast-path: if the message carries a one-time code, surface a
+            // high-priority heads-up pop-up with a one-tap "Copy code" button — the
+            // AvaTOK equivalent of Truecaller's OTP card. Only fires when the body
+            // both mentions a code and contains a 4–8 digit run, to avoid false
+            // positives on ordinary texts. Spam messages are skipped (never invite a
+            // one-tap copy from a suspected-spam sender).
+            if (!spam) {
+                extractOtp(text)?.let { code -> notifyOtp(context, address, code) }
+            }
             notify(context, address, text, spam)
         } catch (_: Throwable) {
             // Never crash the SMS pipeline — a parse/store failure just drops our
@@ -115,6 +124,70 @@ class AvaSmsReceiver : BroadcastReceiver() {
             sb.append(Integer.toHexString(v))
         }
         return sb.toString()
+    }
+
+    /**
+     * Pull a one-time passcode out of an SMS body, or null if it isn't an OTP
+     * message. Requires BOTH an OTP-ish keyword AND a standalone 4–8 digit run, so
+     * ordinary texts that merely contain numbers don't trigger the copy pop-up.
+     */
+    private fun extractOtp(body: String): String? {
+        val lower = body.lowercase()
+        val keyword = listOf(
+            "otp", "one-time", "one time", "verification", "verify", "code",
+            "passcode", "password", "pin", "2fa", "auth", "confirm",
+        ).any { lower.contains(it) }
+        if (!keyword) return null
+        // A 4–8 digit run not glued to more digits (avoids grabbing phone numbers /
+        // order ids). Prefer the first such run — OTPs lead the message in practice.
+        val match = Regex("(?<![0-9])[0-9]{4,8}(?![0-9])").find(body) ?: return null
+        return match.value
+    }
+
+    /**
+     * High-priority heads-up OTP pop-up with a one-tap "Copy code" action. The copy
+     * runs in [AvaOtpCopyReceiver] (a background broadcast) so the code lands on the
+     * clipboard WITHOUT opening the app, then the pop-up dismisses itself.
+     */
+    private fun notifyOtp(ctx: Context, address: String?, code: String) {
+        val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
+        val channelId = "avadial_otp"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            nm.createNotificationChannel(
+                NotificationChannel(channelId, "OTP codes", NotificationManager.IMPORTANCE_HIGH)
+            )
+        }
+        // Offset by 0x10000 so OTP ids never collide with the per-sender message
+        // notification ids (NOTIF_BASE + a 16-bit sender hash).
+        val id = NOTIF_BASE + 0x10000 + (code.hashCode() and 0x0000ffff)
+        val copyIntent = Intent(ctx, AvaOtpCopyReceiver::class.java).apply {
+            action = AvaOtpCopyReceiver.ACTION_COPY_OTP
+            putExtra(AvaOtpCopyReceiver.EXTRA_CODE, code)
+            putExtra(AvaOtpCopyReceiver.EXTRA_NOTIF_ID, id)
+        }
+        val copyPending = PendingIntent.getBroadcast(
+            ctx, id, copyIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(ctx, channelId)
+        } else {
+            @Suppress("DEPRECATION")
+            Notification.Builder(ctx)
+        }
+        @Suppress("DEPRECATION")
+        val notif = builder
+            .setSmallIcon(ctx.applicationInfo.icon)
+            .setContentTitle("Your code: $code")
+            .setContentText(if (!address.isNullOrEmpty()) "From $address · tap Copy code" else "Tap Copy code")
+            .setCategory(Notification.CATEGORY_MESSAGE)
+            .setAutoCancel(true)
+            .setPriority(Notification.PRIORITY_HIGH) // heads-up on API < 26
+            .addAction(0, "Copy code", copyPending)
+            .build()
+        try {
+            nm.notify(id, notif)
+        } catch (_: Throwable) { /* POST_NOTIFICATIONS may be denied — best-effort */ }
     }
 
     private fun notify(ctx: Context, address: String?, body: String, spam: Boolean) {
