@@ -253,6 +253,12 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
                 "canBlockNumbers" -> result.success(canBlockNumbers(ctx))
                 "openDefaultAppsSettings" -> { openDefaultAppsSettings(ctx); result.success(null) }
 
+                // ---- rival detection (setup sheet: name the current holders + deep-link) ----
+                "defaultDialerLabel" -> result.success(defaultHandlerLabel(ctx, "dialer"))
+                "defaultSmsLabel" -> result.success(defaultHandlerLabel(ctx, "sms"))
+                "detectRivalCallerApps" -> result.success(detectRivalCallerApps(ctx))
+                "openAppDetails" -> { openAppDetails(ctx, call.argument<String>("package")); result.success(null) }
+
                 // ---- SMS (default-SMS-app layer, AVA-SMS) ----
                 "smsSend" -> result.success(
                     smsSend(
@@ -612,6 +618,78 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
         BlockedNumberContract.canCurrentUserBlockNumbers(ctx)
     } catch (_: Throwable) {
         false
+    }
+
+    // ── Rival detection (setup sheet) ─────────────────────────────────────────
+    // Android forbids one app from disabling / blocking / silencing another, so
+    // "take over" means: (1) CLAIM the dialer/SMS/caller-ID roles (the OS evicts
+    // the previous holder for us), and (2) for a rival's overlay we can't suppress,
+    // NAME it and deep-link STRAIGHT to its settings. These helpers power that.
+
+    /** Known third-party caller-ID / dialer apps that draw their OWN incoming-call
+     *  or after-call overlay via SYSTEM_ALERT_WINDOW — which Android does NOT let us
+     *  suppress. Declared in <queries> so they stay visible on Android 11+. */
+    private val knownRivalPackages = listOf(
+        "com.truecaller",          // Truecaller
+        "mobi.drupe.app",          // Drupe
+        "com.callapp.contacts",    // CallApp
+        "com.eyecon.global",       // Eyecon
+        "com.hiya.star",           // Hiya
+        "gogolook.callgogolook2",  // Whoscall
+    )
+
+    /** Human-readable label of the app currently holding the default dialer / SMS
+     *  slot, or null when it is US (or none / unresolvable). Lets the setup sheet
+     *  say "Currently: Truecaller" instead of a generic line. */
+    private fun defaultHandlerLabel(ctx: Context, which: String): String? = try {
+        val pkg = when (which) {
+            "dialer" -> (ctx.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager)?.defaultDialerPackage
+            "sms" -> Telephony.Sms.getDefaultSmsPackage(ctx)
+            else -> null
+        }
+        when {
+            pkg.isNullOrEmpty() -> null
+            pkg == ctx.packageName -> null // already us
+            else -> labelFor(ctx, pkg) ?: pkg
+        }
+    } catch (_: Throwable) {
+        null
+    }
+
+    /** Installed rival caller-ID/dialer apps → [{package,label}] so the sheet can
+     *  name them and deep-link to each one's settings. */
+    private fun detectRivalCallerApps(ctx: Context): List<Map<String, String>> {
+        val out = ArrayList<Map<String, String>>()
+        val self = ctx.packageName
+        for (pkg in knownRivalPackages) {
+            if (pkg == self) continue
+            try {
+                ctx.packageManager.getApplicationInfo(pkg, 0) // throws if not installed / not visible
+                out.add(mapOf("package" to pkg, "label" to (labelFor(ctx, pkg) ?: pkg)))
+            } catch (_: Throwable) { /* not installed */ }
+        }
+        return out
+    }
+
+    private fun labelFor(ctx: Context, pkg: String): String? = try {
+        val pm = ctx.packageManager
+        pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
+    } catch (_: Throwable) {
+        null
+    }
+
+    /** Deep-link to a SPECIFIC app's system "App info" page, where the user can
+     *  revoke its "appear on top" permission or disable it. We can only OPEN this
+     *  screen — Android never lets one app disable/revoke another. */
+    private fun openAppDetails(ctx: Context, pkg: String?) {
+        if (pkg.isNullOrEmpty()) return
+        try {
+            val intent = Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.fromParts("package", pkg, null),
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            (activityBinding?.activity ?: ctx).startActivity(intent)
+        } catch (_: Throwable) { /* best-effort */ }
     }
 
     /**

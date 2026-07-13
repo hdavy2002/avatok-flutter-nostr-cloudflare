@@ -240,6 +240,25 @@ class AvaDialChannel {
   /// unsupported platforms.
   Future<void> openDefaultAppsSettings() => _invokeVoid('openDefaultAppsSettings');
 
+  // ── Rival detection (setup sheet) ─────────────────────────────────────────
+  /// Label of the app currently holding the default PHONE slot (e.g. "Truecaller"),
+  /// or null when it's already AvaTOK / none / unresolvable.
+  Future<String?> defaultDialerLabel() => _invokeString('defaultDialerLabel');
+
+  /// Label of the app currently holding the default SMS slot, or null when it's us.
+  Future<String?> defaultSmsLabel() => _invokeString('defaultSmsLabel');
+
+  /// Installed third-party caller-ID / dialer apps that draw their own overlay
+  /// (Truecaller etc.) → each `{package, label}`. Android forbids disabling them,
+  /// so the setup sheet names them and deep-links to each one via [openAppDetails].
+  Future<List<Map<String, dynamic>>> detectRivalCallerApps() =>
+      _invokeList('detectRivalCallerApps', null);
+
+  /// Deep-link to a specific app's system "App info" page so the user can revoke
+  /// its "appear on top" permission or disable it (we can only open the screen).
+  Future<void> openAppDetails(String package) =>
+      _invokeVoid('openAppDetails', {'package': package});
+
   // ── SMS (default-SMS-app layer, AVA-SMS) ──────────────────────────────────
   /// Send an SMS to [dest]. [ref] correlates the send with its
   /// [smsSendStatus] events; pass a stable id per outgoing message. Returns true
@@ -420,6 +439,15 @@ class AvaDialChannel {
       await _ch.invokeMethod<void>(method, args);
     } catch (e) {
       AvaLog.I.log('avadial', '$method failed: $e');
+    }
+  }
+
+  Future<String?> _invokeString(String method, [Map<String, dynamic>? args]) async {
+    try {
+      return await _ch.invokeMethod<String>(method, args);
+    } catch (e) {
+      AvaLog.I.log('avadial', '$method failed: $e');
+      return null;
     }
   }
 

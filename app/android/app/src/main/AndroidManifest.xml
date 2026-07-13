@@ -356,5 +356,22 @@
             <action android:name="android.intent.action.DIAL"/>
             <data android:scheme="tel"/>
         </intent>
+        <!-- AvaDial: resolve SMS send intents so we can detect other messaging apps. -->
+        <intent>
+            <action android:name="android.intent.action.SENDTO"/>
+            <data android:scheme="smsto"/>
+        </intent>
+        <!-- [AVADIAL-SETUP-1] Explicit package visibility (Android 11+) for known
+             third-party caller-ID / dialer apps that draw their own overlay, so the
+             setup sheet can DETECT the installed ones (getApplicationInfo) and
+             deep-link straight to each one's settings. We can only detect + link —
+             Android never lets one app disable or revoke another. Keep this list in
+             sync with knownRivalPackages in AvaDialPlugin.kt. -->
+        <package android:name="com.truecaller" />
+        <package android:name="mobi.drupe.app" />
+        <package android:name="com.callapp.contacts" />
+        <package android:name="com.eyecon.global" />
+        <package android:name="com.hiya.star" />
+        <package android:name="gogolook.callgogolook2" />
     </queries>
 </manifest>

@@ -60,7 +60,14 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
   bool _battery = false; // ignore battery optimisation (reliable delivery)
   bool _dialer = false; // default phone app
   bool _screening = false; // Caller ID & spam role (replaces Truecaller)
+  bool _sms = false; // default SMS app
   bool _loading = true;
+
+  // Auto-detected rivals: who currently holds the phone/SMS slots, and which
+  // known overlay apps (Truecaller etc.) are installed so we can deep-link to them.
+  String? _dialerLabel; // current default phone app (null when it's us)
+  String? _smsLabel; // current default SMS app (null when it's us)
+  List<Map<String, dynamic>> _rivals = const [];
 
   @override
   void initState() {
@@ -83,7 +90,14 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
   }
 
   Future<void> _refresh() async {
-    var fsi = _fsi, battery = _battery, dialer = _dialer, screening = _screening;
+    var fsi = _fsi,
+        battery = _battery,
+        dialer = _dialer,
+        screening = _screening,
+        sms = _sms;
+    String? dialerLabel;
+    String? smsLabel;
+    var rivals = _rivals;
     try {
       fsi = await NativeVoiceAudio.instance.canUseFullScreenIntent();
     } catch (_) {}
@@ -96,12 +110,28 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
     try {
       screening = await AvaDialChannel.I.isScreeningRoleHeld();
     } catch (_) {}
+    try {
+      sms = await AvaDialChannel.I.isSmsRoleHeld();
+    } catch (_) {}
+    try {
+      dialerLabel = await AvaDialChannel.I.defaultDialerLabel();
+    } catch (_) {}
+    try {
+      smsLabel = await AvaDialChannel.I.defaultSmsLabel();
+    } catch (_) {}
+    try {
+      rivals = await AvaDialChannel.I.detectRivalCallerApps();
+    } catch (_) {}
     if (!mounted) return;
     setState(() {
       _fsi = fsi;
       _battery = battery;
       _dialer = dialer;
       _screening = screening;
+      _sms = sms;
+      _dialerLabel = dialerLabel;
+      _smsLabel = smsLabel;
+      _rivals = rivals;
       _loading = false;
     });
   }
@@ -137,10 +167,21 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
     _refresh();
   }
 
-  Future<void> _openDefaultApps() async {
-    Analytics.capture('avadial_setup_tap', <String, Object>{'step': 'truecaller'});
+  Future<void> _openSms() async {
+    Analytics.capture('avadial_setup_tap', <String, Object>{'step': 'sms'});
     try {
-      await AvaDialChannel.I.openDefaultAppsSettings();
+      await AvaDialChannel.I.requestSmsRole();
+    } catch (_) {}
+    _refresh();
+  }
+
+  /// Deep-link straight to a detected rival's own "App info" page so the user can
+  /// turn off its "appear on top" or disable it in one hop — no hunting.
+  Future<void> _openRival(String package) async {
+    Analytics.capture('avadial_setup_tap',
+        <String, Object>{'step': 'rival', 'package': package});
+    try {
+      await AvaDialChannel.I.openAppDetails(package);
     } catch (_) {}
   }
 
@@ -149,7 +190,8 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-        child: Column(
+        child: SingleChildScrollView(
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -199,24 +241,44 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
               _StepRow(
                 done: _dialer,
                 title: 'Make AvaDialer your phone app',
-                subtitle: 'Handle your calls through AvaDialer.',
+                subtitle: _dialer
+                    ? 'AvaDialer handles your calls.'
+                    : _dialerLabel != null
+                        ? 'Now: $_dialerLabel. Switching removes it from calls.'
+                        : 'Handle every call through AvaDialer.',
                 onTap: _openDialer,
               ),
               _StepRow(
                 done: _screening,
                 title: 'Set AvaDialer as Caller ID & spam',
-                subtitle: 'Takes the caller-ID slot from Truecaller.',
+                subtitle: _screening
+                    ? 'AvaDialer is your Caller ID app.'
+                    : 'Takes the caller-ID slot from the current app in one tap.',
                 onTap: _openScreening,
               ),
               _StepRow(
-                done: false,
-                title: 'Turn off Truecaller',
-                subtitle: 'In system settings, remove Truecaller as Caller ID and '
-                    'turn off its "appear on top" — or disable the app — so it '
-                    'stops overlaying your calls.',
-                actionLabel: 'Open settings',
-                onTap: _openDefaultApps,
+                done: _sms,
+                title: 'Make AvaDialer your messages app',
+                subtitle: _sms
+                    ? 'AvaDialer sends & receives your texts.'
+                    : _smsLabel != null
+                        ? 'Now: $_smsLabel. Switching moves texts to AvaDialer.'
+                        : 'Send and receive SMS in AvaDialer.',
+                onTap: _openSms,
               ),
+              // Auto-detected rival overlay apps. Android won't let us disable them,
+              // so each row deep-links STRAIGHT to that app's settings — the user
+              // turns off its "appear on top" or disables it there.
+              for (final r in _rivals)
+                _StepRow(
+                  done: false,
+                  title: 'Stop ${r['label'] ?? 'another app'} overlaying calls',
+                  subtitle:
+                      'It draws its own call pop-up that no app can block. Open it '
+                      'and turn off "appear on top", or disable it.',
+                  actionLabel: 'Open',
+                  onTap: () => _openRival('${r['package']}'),
+                ),
             ],
             const SizedBox(height: 4),
             Align(
@@ -231,6 +293,7 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
               ),
             ),
           ],
+        ),
         ),
       ),
     );
