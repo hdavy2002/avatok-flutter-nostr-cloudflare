@@ -10,10 +10,55 @@ import '../../core/db.dart';
 import '../../core/money_api.dart';
 import '../../core/remote_config.dart';
 import '../../core/wallet_topup_billing.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../payout/payout_screen.dart';
 import 'admin_money_screen.dart';
+
+/// Inline dark v2 header band (replaces the light ZineAppBar): header/footer
+/// surface, hairline bottom border, back button + Nunito title + optional tag.
+PreferredSizeWidget _darkHeader({
+  required String title,
+  String? tag,
+  List<Widget> actions = const [],
+  bool showBack = true,
+}) {
+  return PreferredSize(
+    preferredSize: Size.fromHeight(tag == null ? 76 : 92),
+    child: Container(
+      decoration: const BoxDecoration(
+        color: AD.headerFooter,
+        border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+          child: Row(children: [
+            if (showBack) ...[
+              const AdBackButton(),
+              const SizedBox(width: 8),
+            ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(title, style: ADText.appTitle(), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  if (tag != null) ...[
+                    const SizedBox(height: 2),
+                    Text(tag.toUpperCase(), style: ADText.sectionLabel()),
+                  ],
+                ],
+              ),
+            ),
+            ...actions,
+          ]),
+        ),
+      ),
+    ),
+  );
+}
 
 // ── AvaWallet (Phase 2) ───────────────────────────────────────────────────────
 // Balance cards + the double-entry ledger trail: infinite scroll on the server's
@@ -358,8 +403,8 @@ class _WalletScreenState extends State<WalletScreen> {
     return showModalBottomSheet<int>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Zine.paper,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      backgroundColor: AD.overlaySheet,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(AD.rSheet))),
       builder: (c) => StatefulBuilder(
         builder: (c, setSheet) {
           final d = double.tryParse(ctrl.text.trim());
@@ -368,11 +413,11 @@ class _WalletScreenState extends State<WalletScreen> {
           return Padding(
             padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(c).viewInsets.bottom + 20),
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Top up wallet', style: ZineText.cardTitle(size: 21)),
+              Text('Top up wallet', style: ADText.appTitle()),
               const SizedBox(height: 4),
-              Text('Pay securely in-app. \$1 = ${_coins(kCoinsPerUsd)} Tokens.', style: ZineText.sub(size: 14)),
+              Text('Pay securely in-app. \$1 = ${_coins(kCoinsPerUsd)} Tokens.', style: ADText.preview()),
               const SizedBox(height: 16),
-              ZineField(
+              AdField(
                 controller: ctrl,
                 autofocus: true,
                 leadText: '\$',
@@ -383,19 +428,18 @@ class _WalletScreenState extends State<WalletScreen> {
               const SizedBox(height: 8),
               Text(
                 valid ? '= ${_coins(previewCoins)} Tokens' : 'Enter \$10 – \$500',
-                style: ZineText.value(size: 14, weight: FontWeight.w900,
-                    color: valid ? Zine.mintInk : Zine.inkMute),
+                style: ADText.rowName(c: valid ? AD.online : AD.textTertiary),
               ),
               const SizedBox(height: 12),
               Wrap(spacing: 8, runSpacing: 8, children: [
                 for (final v in [10, 25, 50, 100])
-                  ZineSticker('\$$v', onTap: () {
+                  AdSticker('\$$v', onTap: () {
                     Analytics.capture('wallet_topup_preset', {'usd': v});
                     setSheet(() => ctrl.text = v.toStringAsFixed(2));
                   }),
               ]),
               const SizedBox(height: 18),
-              ZineButton(
+              AdButton(
                 label: 'Continue to payment',
                 fullWidth: true,
                 icon: PhosphorIcons.arrowRight(PhosphorIconsStyle.bold),
@@ -420,17 +464,17 @@ class _WalletScreenState extends State<WalletScreen> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Zine.paper,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      backgroundColor: AD.overlaySheet,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(AD.rSheet))),
       builder: (c) => Padding(
         padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(c).viewInsets.bottom + 24),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Top up wallet', style: ZineText.cardTitle(size: 21)),
+          Text('Top up wallet', style: ADText.appTitle()),
           const SizedBox(height: 4),
-          Text('Pay securely with Google Play. \$1 = ${_coins(kCoinsPerUsd)} Tokens.', style: ZineText.sub(size: 14)),
+          Text('Pay securely with Google Play. \$1 = ${_coins(kCoinsPerUsd)} Tokens.', style: ADText.preview()),
           const SizedBox(height: 16),
           for (final t in kTopupTiers) ...[
-            ZineButton(
+            AdButton(
               label: '\$${t.usd}   ·   ${_coins(t.tokens)} Tokens',
               fullWidth: true,
               trailingIcon: false,
@@ -444,7 +488,7 @@ class _WalletScreenState extends State<WalletScreen> {
             const SizedBox(height: 10),
           ],
           const SizedBox(height: 4),
-          Text('Charged in your local currency at Google Play’s rate.', style: ZineText.sub(size: 12)),
+          Text('Charged in your local currency at Google Play’s rate.', style: ADText.preview(c: AD.textTertiary)),
         ]),
       ),
     );
@@ -516,8 +560,8 @@ class _WalletScreenState extends State<WalletScreen> {
 
     await showModalBottomSheet<void>(
       context: context,
-      backgroundColor: Zine.paper,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      backgroundColor: AD.overlaySheet,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(AD.rSheet))),
       builder: (c) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
@@ -525,23 +569,22 @@ class _WalletScreenState extends State<WalletScreen> {
             Row(children: [
               ZineIconBadge(
                 icon: t?.icon ?? PhosphorIcons.swap(PhosphorIconsStyle.bold),
-                color: amount >= 0 ? Zine.mint : Zine.coral,
+                color: amount >= 0 ? AD.online : AD.danger,
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text('${entry['title'] ?? t?.label ?? entry['type']}',
-                      style: ZineText.value(size: 16), maxLines: 2, overflow: TextOverflow.ellipsis),
+                      style: ADText.rowName(), maxLines: 2, overflow: TextOverflow.ellipsis),
                   Text(_fullDate(((entry['created_at'] as num?) ?? 0).toInt()).toUpperCase(),
-                      style: ZineText.kicker(size: 10, color: Zine.inkMute)),
+                      style: ADText.statCaption(c: AD.textTertiary)),
                 ]),
               ),
               Text('${amount >= 0 ? '+' : '−'}${_coins(amount)}',
-                  style: ZineText.value(size: 18, weight: FontWeight.w900,
-                      color: amount >= 0 ? Zine.mintInk : Zine.coral)),
+                  style: ADText.appTitle(c: amount >= 0 ? AD.online : AD.danger)),
             ]),
             const SizedBox(height: 16),
-            Container(height: Zine.bw, color: Zine.ink),
+            Container(height: 1, color: AD.borderHairline),
             const SizedBox(height: 12),
             _kv('Date', _fullDate(createdMs)),
             if (isTopup && usdCents != null) _kv('Amount paid', '${_usdFromCents(usdCents)} USD'),
@@ -556,9 +599,9 @@ class _WalletScreenState extends State<WalletScreen> {
             if (meta['reason'] != null) _kv('Reason', '${meta['reason']}'),
             if (entry['ref'] != null) _kv('Reference', '${entry['ref']}'),
             const SizedBox(height: 16),
-            ZineButton(
+            AdButton(
               label: 'Email me this receipt',
-              variant: ZineButtonVariant.ghost,
+              variant: AdButtonVariant.ghost,
               fullWidth: true,
               fontSize: 16,
               trailingIcon: false,
@@ -586,15 +629,15 @@ class _WalletScreenState extends State<WalletScreen> {
   Widget _kv(String k, String v) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
-          Text(k, style: ZineText.sub(size: 13.5)),
+          Text(k, style: ADText.preview()),
           const SizedBox(width: 6),
           Expanded(
             child: Text('·' * 80, maxLines: 1, overflow: TextOverflow.clip,
-                style: ZineText.sub(size: 13, color: Zine.inkMute)),
+                style: ADText.preview(c: AD.textTertiary)),
           ),
           const SizedBox(width: 6),
           Flexible(child: Text(v, maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: ZineText.value(size: 14, weight: FontWeight.w900))),
+              style: ADText.rowName())),
         ]),
       );
 
@@ -603,14 +646,14 @@ class _WalletScreenState extends State<WalletScreen> {
   Widget build(BuildContext context) {
     final (inn, out) = _monthInOut();
     return Scaffold(
-      backgroundColor: Zine.paper,
-      appBar: ZineAppBar(
+      backgroundColor: AD.bg,
+      appBar: _darkHeader(
         title: 'AvaWallet',
-        markWord: 'Wallet',
         tag: 'your avacoins',
+        showBack: false,
         actions: [
           if (_admin)
-            ZineBackButton(
+            AdBackButton(
               icon: PhosphorIcons.shieldStar(PhosphorIconsStyle.bold),
               onTap: () {
                 Analytics.capture('wallet_admin_opened');
@@ -621,7 +664,7 @@ class _WalletScreenState extends State<WalletScreen> {
       ),
       body: RefreshIndicator(
         onRefresh: () { Analytics.capture('wallet_pull_refresh'); return _refresh(); },
-        color: Zine.blueInk,
+        color: AD.iconSearch,
         child: CustomScrollView(
           controller: _scroll,
           physics: const AlwaysScrollableScrollPhysics(),
@@ -632,9 +675,9 @@ class _WalletScreenState extends State<WalletScreen> {
               SliverFillRemaining(
                 hasScrollBody: false,
                 child: Center(
-                  child: ZineEmptyState(
-                    icon: PhosphorIcons.receipt(PhosphorIconsStyle.bold),
-                    text: 'No transactions yet — top up to get rolling.',
+                  child: _emptyState(
+                    PhosphorIcons.receipt(PhosphorIconsStyle.bold),
+                    'No transactions yet — top up to get rolling.',
                   ),
                 ),
               )
@@ -650,7 +693,7 @@ class _WalletScreenState extends State<WalletScreen> {
                       return const Padding(
                           padding: EdgeInsets.all(16),
                           child: Center(child: SizedBox(width: 20, height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Zine.blueInk))));
+                              child: CircularProgressIndicator(strokeWidth: 2, color: AD.iconSearch))));
                     }
                     return _row(_entries[i]);
                   },
@@ -662,22 +705,43 @@ class _WalletScreenState extends State<WalletScreen> {
     );
   }
 
+  /// Dark v2 empty state (dashed glyph tile + one reassuring line).
+  Widget _emptyState(IconData icon, String text) => Column(mainAxisSize: MainAxisSize.min, children: [
+        Container(
+          width: 64, height: 64,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AD.rListCard),
+            border: Border.all(color: AD.borderControl, width: 1),
+          ),
+          child: Icon(icon, size: 30, color: AD.textTertiary),
+        ),
+        const SizedBox(height: 12),
+        Text(text, style: ADText.preview(), textAlign: TextAlign.center),
+      ]);
+
   Widget _header(int inn, int out) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 4),
       child: Column(children: [
-        // Hero balance — MINT money card (§7.10 reference: Earnings leans mint).
-        ZineCard(
-          color: Zine.mint,
+        // Hero balance — vivid green money card (kept as a colored hero surface
+        // with dark-legible ink on the dark v2 skin).
+        AdCard(
+          color: AD.online,
           padding: const EdgeInsets.all(20),
-          boxShadow: Zine.shadow,
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            ZineCardHead(
-              icon: PhosphorIcons.wallet(PhosphorIconsStyle.bold),
-              accent: Zine.card,
-              title: 'Balance',
-              tag: 'avacoins',
-            ),
+            Row(children: [
+              Container(
+                width: 34, height: 34,
+                decoration: BoxDecoration(
+                  color: AD.bg,
+                  borderRadius: BorderRadius.circular(AD.rBadge),
+                ),
+                child: Icon(PhosphorIcons.wallet(PhosphorIconsStyle.bold), size: 18, color: AD.online),
+              ),
+              const SizedBox(width: 11),
+              Expanded(child: Text('Balance', style: ADText.threadName(c: AD.textOnInput))),
+              Text('AVACOINS', style: ADText.statCaption(c: AD.textOnInput)),
+            ]),
             const SizedBox(height: 14),
             // Hero is the Token count — coins are the wallet's native unit.
             // USD never shows on the wallet face; it only appears inside a
@@ -685,12 +749,12 @@ class _WalletScreenState extends State<WalletScreen> {
             FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
-              child: Text(_coins(_balance), style: ZineText.stat(size: 48)),
+              child: Text(_coins(_balance), style: ADText.appTitle(c: AD.textOnInput)),
             ),
             const SizedBox(height: 4),
             Text(
               'Tokens${_held > 0 ? '  ·  ${_coins(_held)} pending (7-day hold)' : ''}',
-              style: ZineText.value(size: 14, weight: FontWeight.w900),
+              style: ADText.rowName(c: AD.textOnInput),
             ),
             const SizedBox(height: 16),
             // Withdraw/payout is HIDDEN for now — no marketplace/payout flow yet.
@@ -705,17 +769,17 @@ class _WalletScreenState extends State<WalletScreen> {
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 decoration: BoxDecoration(
-                  color: Zine.mint,
-                  borderRadius: BorderRadius.circular(Zine.rSm),
-                  border: Border.all(color: Zine.ink, width: Zine.bw),
+                  color: AD.bg,
+                  borderRadius: BorderRadius.circular(AD.rStatCard),
+                  border: Border.all(color: AD.borderControl, width: 1),
                 ),
                 child: Text('Everything is free right now — no top-ups needed.',
-                    style: ZineText.value(size: 14, color: Zine.mintInk)),
+                    style: ADText.rowName(c: AD.online)),
               )
             else
             Row(children: [
               Expanded(
-                child: ZineButton(
+                child: AdButton(
                   label: 'Top up',
                   fontSize: 17,
                   trailingIcon: false,
@@ -726,9 +790,9 @@ class _WalletScreenState extends State<WalletScreen> {
               if (_kShowWithdraw) ...[
                 const SizedBox(width: 10),
                 Expanded(
-                  child: ZineButton(
+                  child: AdButton(
                     label: 'Withdraw',
-                    variant: ZineButtonVariant.blue,
+                    variant: AdButtonVariant.teal,
                     fontSize: 17,
                     trailingIcon: false,
                     icon: PhosphorIcons.bank(PhosphorIconsStyle.bold),
@@ -745,30 +809,29 @@ class _WalletScreenState extends State<WalletScreen> {
         const SizedBox(height: 14),
         Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Expanded(child: _miniCard('This month in', '+${_coins(inn)}',
-              PhosphorIcons.arrowDownLeft(PhosphorIconsStyle.bold), Zine.mint, Zine.mintInk)),
+              PhosphorIcons.arrowDownLeft(PhosphorIconsStyle.bold), AD.online, AD.online)),
           const SizedBox(width: 10),
           Expanded(child: _miniCard('This month out', '−${_coins(out)}',
-              PhosphorIcons.arrowUpRight(PhosphorIconsStyle.bold), Zine.coral, Zine.coral)),
+              PhosphorIcons.arrowUpRight(PhosphorIconsStyle.bold), AD.danger, AD.danger)),
         ]),
       ]),
     );
   }
 
-  /// Metric card (§7.11): icon badge + Nunito number + mono caption.
-  Widget _miniCard(String label, String value, IconData icon, Color accent, Color valueColor) => ZineCard(
-        radius: Zine.rSm,
+  /// Metric card (§7.11): icon badge + Nunito number + caption.
+  Widget _miniCard(String label, String value, IconData icon, Color accent, Color valueColor) => AdCard(
+        radius: AD.rStatCard,
         padding: const EdgeInsets.all(14),
-        boxShadow: Zine.shadowXs,
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           ZineIconBadge(icon: icon, color: accent, size: 30),
           const SizedBox(height: 10),
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
-            child: Text(value, style: ZineText.stat(size: 24, color: valueColor)),
+            child: Text(value, style: ADText.appTitle(c: valueColor)),
           ),
           const SizedBox(height: 3),
-          Text(label.toUpperCase(), style: ZineText.kicker(size: 9.5)),
+          Text(label.toUpperCase(), style: ADText.statCaption()),
         ]),
       );
 
@@ -776,7 +839,7 @@ class _WalletScreenState extends State<WalletScreen> {
     return Column(children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(18, 10, 18, 0),
-        child: ZineField(
+        child: AdField(
           controller: _searchCtrl,
           hint: 'Search by event or consult name',
           leadIcon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
@@ -784,7 +847,7 @@ class _WalletScreenState extends State<WalletScreen> {
               ? null
               : GestureDetector(
                   onTap: () { _searchCtrl.clear(); setState(() => _query = ''); _applyFilters(); },
-                  child: PhosphorIcon(PhosphorIcons.x(PhosphorIconsStyle.bold), size: 18, color: Zine.ink),
+                  child: PhosphorIcon(PhosphorIcons.x(PhosphorIconsStyle.bold), size: 18, color: AD.textOnInput),
                 ),
           onSubmitted: (v) { setState(() => _query = v.trim()); _applyFilters(); },
         ),
@@ -795,7 +858,7 @@ class _WalletScreenState extends State<WalletScreen> {
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
           children: [
-            ZineChip(
+            AdChip(
               label: _range == null
                   ? 'Dates'
                   : '${_dateShort(_range!.start.millisecondsSinceEpoch)} – ${_dateShort(_range!.end.millisecondsSinceEpoch)}',
@@ -804,14 +867,14 @@ class _WalletScreenState extends State<WalletScreen> {
             ),
             if (_range != null) ...[
               const SizedBox(width: 8),
-              ZineChip(
+              AdChip(
                 label: 'Clear dates',
                 onTap: () { setState(() => _range = null); _applyFilters(); },
               ),
             ],
             const SizedBox(width: 8),
             for (final t in _kTypes.entries.where((e) => e.key != 'storage_charge')) ...[
-              ZineChip(
+              AdChip(
                 label: t.value.label,
                 active: _typeFilter.contains(t.key),
                 onTap: () {
@@ -843,21 +906,20 @@ class _WalletScreenState extends State<WalletScreen> {
             Flexible(
               child: Text('${e['title'] ?? t?.label ?? e['type']}',
                   maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: ZineText.value(size: 14, weight: FontWeight.w800)),
+                  style: ADText.rowName()),
             ),
             const SizedBox(width: 6),
             Expanded(
               child: Text('·' * 80, maxLines: 1, overflow: TextOverflow.clip,
-                  style: ZineText.sub(size: 13, color: Zine.inkMute)),
+                  style: ADText.preview(c: AD.textTertiary)),
             ),
             const SizedBox(width: 6),
             Text('${positive ? '+' : '−'}${_coins(amount)}',
-                style: ZineText.value(size: 14.5, weight: FontWeight.w900,
-                    color: positive ? Zine.mintInk : Zine.coral)),
+                style: ADText.rowName(c: positive ? AD.online : AD.danger)),
           ]),
           const SizedBox(height: 2),
           Text('${t?.label ?? e['type']} · ${_dateShort(((e['created_at'] as num?) ?? 0).toInt())}'.toUpperCase(),
-              style: ZineText.kicker(size: 9.5, color: Zine.inkMute)),
+              style: ADText.statCaption()),
         ]),
       ),
     );

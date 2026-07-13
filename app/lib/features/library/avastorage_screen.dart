@@ -13,8 +13,8 @@ import '../../core/api_auth.dart';
 import '../../core/ava_log.dart';
 import '../../core/config.dart';
 import '../../core/drive_service.dart';
-import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../sync/sync_hub.dart';
 import '../ava_backup/backup_service.dart';
 import '../wallet/wallet_screen.dart';
@@ -26,11 +26,11 @@ class _CatStyle {
 }
 
 const _catStyles = <String, _CatStyle>{
-  'image': _CatStyle('Images', Zine.blue),
-  'video': _CatStyle('Videos', Zine.coral),
-  'document': _CatStyle('Documents', Zine.lime),
-  'audio': _CatStyle('Music', Zine.lilac),
-  'other': _CatStyle('Other', Zine.mint),
+  'image': _CatStyle('Images', AD.iconSearch),
+  'video': _CatStyle('Videos', AD.danger),
+  'document': _CatStyle('Documents', AD.primaryBadge),
+  'audio': _CatStyle('Music', AD.iconVideo),
+  'other': _CatStyle('Other', AD.online),
 };
 
 String _fmt(num b) {
@@ -40,6 +40,50 @@ String _fmt(num b) {
   var i = 0;
   while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
   return '${v.toStringAsFixed(v >= 10 || i == 0 ? 0 : 1)} ${u[i]}';
+}
+
+/// Inline dark v2 page header (AD.headerFooter bar + back button + title/tag).
+/// Replaces the light ZineAppBar — the AdBackButton's white glyph would be
+/// invisible on a light bar.
+class _DarkHeader extends StatelessWidget implements PreferredSizeWidget {
+  final String title;
+  final String? tag;
+  const _DarkHeader({required this.title, this.tag});
+  @override
+  Size get preferredSize => Size.fromHeight(tag == null ? 60 : 74);
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: AD.headerFooter,
+        border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 6, 18, 10),
+          child: Row(children: [
+            const AdBackButton(),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(title, style: ADText.appTitle(),
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                  if (tag != null) ...[
+                    const SizedBox(height: 2),
+                    Text(tag!.toUpperCase(), style: ADText.sectionLabel()),
+                  ],
+                ],
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
 }
 
 /// AvaStorage — the universal per-account storage pool (Phase 4). One quota
@@ -109,16 +153,15 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
     final gbOver = total > quota ? ((total - quota) / (1024 * 1024 * 1024)).ceil() : 0;
 
     return Scaffold(
-      backgroundColor: Zine.paper,
-      appBar: const ZineAppBar(
+      backgroundColor: AD.bg,
+      appBar: const _DarkHeader(
         title: 'Backup',
-        markWord: 'Backup',
         tag: 'Back up & restore',
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: Zine.blueInk))
+          ? const Center(child: CircularProgressIndicator(color: AD.iconSearch))
           : RefreshIndicator(
-              color: Zine.blueInk,
+              color: AD.iconSearch,
               onRefresh: _load,
               // Bottom padding includes the device safe-area inset + extra so the
               // last ledger row (e.g. "Other") isn't chopped by the gesture nav bar.
@@ -132,7 +175,7 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
                 _meterBar(frac, state),
                 const SizedBox(height: 10),
                 Text('${(frac * 100).toStringAsFixed(frac >= 0.1 ? 0 : 1)}% OF YOUR PLAN USED',
-                    style: ZineText.kicker()),
+                    style: ADText.sectionLabel()),
                 if (state == 'read_only') _readOnlyCard()
                 else if (state == 'over_quota_paying') _warnCard(
                   sticker: 'Over quota',
@@ -143,14 +186,14 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
                   text: 'You\'ve used ${(frac * 100).toStringAsFixed(0)}% of your free ${_fmt(quota)}. Past it, storage costs $coinsPerGb Tokens/GB per month.',
                 ),
                 const SizedBox(height: 24),
-                Text('BY TYPE', style: ZineText.kicker()),
+                Text('BY TYPE', style: ADText.sectionLabel()),
                 const SizedBox(height: 10),
                 _stackedBar(total, quota, byCat),
                 const SizedBox(height: 14),
                 for (final e in _catStyles.entries) _ledgerRow(e.key, e.value, byCat, total),
                 if (_trend.isNotEmpty) ...[
                   const SizedBox(height: 22),
-                  Text('LAST 6 MONTHS', style: ZineText.kicker()),
+                  Text('LAST 6 MONTHS', style: ADText.sectionLabel()),
                   const SizedBox(height: 12),
                   _trendBars(quota),
                 ],
@@ -164,50 +207,49 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
     final left = (quota - total).clamp(0, quota).toDouble();
     return Row(children: [
       Expanded(
-        child: ZineCard(
+        child: AdCard(
           padding: const EdgeInsets.all(16),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            ZineIconBadge(icon: PhosphorIcons.database(PhosphorIconsStyle.bold), color: Zine.blue),
+            ZineIconBadge(icon: PhosphorIcons.database(PhosphorIconsStyle.bold), color: AD.iconSearch),
             const SizedBox(height: 12),
             FittedBox(
               fit: BoxFit.scaleDown,
-              child: Text(_fmt(total), style: ZineText.stat(size: 30)),
+              child: Text(_fmt(total), style: ADText.appTitle().copyWith(fontSize: 30)),
             ),
             const SizedBox(height: 6),
-            Text('USED OF ${_fmt(quota).toUpperCase()}', style: ZineText.kicker(size: 10.5)),
+            Text('USED OF ${_fmt(quota).toUpperCase()}', style: ADText.sectionLabel()),
           ]),
         ),
       ),
       const SizedBox(width: 14),
       Expanded(
-        child: ZineCard(
+        child: AdCard(
           padding: const EdgeInsets.all(16),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            ZineIconBadge(icon: PhosphorIcons.cloudCheck(PhosphorIconsStyle.bold), color: Zine.mint),
+            ZineIconBadge(icon: PhosphorIcons.cloudCheck(PhosphorIconsStyle.bold), color: AD.online),
             const SizedBox(height: 12),
             FittedBox(
               fit: BoxFit.scaleDown,
-              child: Text(_fmt(left), style: ZineText.stat(size: 30, color: Zine.mintInk)),
+              child: Text(_fmt(left), style: ADText.appTitle(c: AD.online).copyWith(fontSize: 30)),
             ),
             const SizedBox(height: 6),
-            Text('STILL FREE', style: ZineText.kicker(size: 10.5)),
+            Text('STILL FREE', style: ADText.sectionLabel()),
           ]),
         ),
       ),
     ]);
   }
 
-  // -- flat fill bar inside an ink-bordered track (no gradients, no donut) -----
+  // -- flat fill bar inside a bordered track (no gradients, no donut) ----------
   Widget _meterBar(double frac, String state) {
-    final fill = state == 'read_only' ? Zine.coral : Zine.mint;
+    final fill = state == 'read_only' ? AD.danger : AD.online;
     return Container(
       height: 24,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: Zine.paper2,
+        color: AD.card,
         borderRadius: BorderRadius.circular(100),
-        border: Zine.border,
-        boxShadow: Zine.shadowXs,
+        border: Border.all(color: AD.borderControl, width: 1),
       ),
       child: TweenAnimationBuilder<double>(
         tween: Tween(begin: 0, end: frac),
@@ -222,7 +264,7 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
               decoration: BoxDecoration(
                 color: fill,
                 border: v > 0.02
-                    ? const Border(right: BorderSide(color: Zine.ink, width: 2))
+                    ? const Border(right: BorderSide(color: AD.borderHairline, width: 1))
                     : null,
               ),
             ),
@@ -232,25 +274,25 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
     );
   }
 
-  // -- read-only: coral card + the one lime CTA (top up wallet) ----------------
+  // -- read-only: danger card + the one primary CTA (top up wallet) ------------
   Widget _readOnlyCard() => Padding(
         padding: const EdgeInsets.only(top: 16),
-        child: ZineCard(
-          color: Zine.coral,
+        child: AdCard(
+          color: AD.danger,
           padding: const EdgeInsets.all(16),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               PhosphorIcon(PhosphorIcons.lock(PhosphorIconsStyle.bold), size: 18, color: Colors.white),
               const SizedBox(width: 8),
-              Text('READ-ONLY', style: ZineText.tag(size: 12, color: Colors.white)),
+              Text('READ-ONLY', style: ADText.sectionLabel(c: Colors.white)),
             ]),
             const SizedBox(height: 8),
             Text(
               'Over your free quota with an empty AvaWallet. Your files are safe and read-only — top up Tokens to add more.',
-              style: ZineText.sub(size: 14, color: Colors.white),
+              style: ADText.preview(c: Colors.white),
             ),
             const SizedBox(height: 14),
-            ZineButton(
+            AdButton(
               label: 'Top up wallet',
               fullWidth: true,
               fontSize: 17,
@@ -262,15 +304,15 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
         ),
       );
 
-  // -- soft warnings: coral sticker + short line --------------------------------
+  // -- soft warnings: danger sticker + short line -------------------------------
   Widget _warnCard({required String sticker, required String text}) => Padding(
         padding: const EdgeInsets.only(top: 16),
-        child: ZineCard(
+        child: AdCard(
           padding: const EdgeInsets.all(16),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            ZineSticker(sticker, kind: ZineStickerKind.no),
+            AdSticker(sticker, kind: AdStickerKind.no),
             const SizedBox(height: 10),
-            Text(text, style: ZineText.sub(size: 14)),
+            Text(text, style: ADText.preview()),
           ]),
         ),
       );
@@ -283,15 +325,15 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
       segments.add(Expanded(flex: (v / quota * 10000).round().clamp(1, 10000), child: Container(color: e.value.color)));
     }
     final remaining = (quota - total).clamp(0, quota);
-    if (remaining > 0) segments.add(Expanded(flex: (remaining / quota * 10000).round().clamp(1, 10000), child: Container(color: Zine.paper2)));
+    if (remaining > 0) segments.add(Expanded(flex: (remaining / quota * 10000).round().clamp(1, 10000), child: Container(color: AD.card)));
     return Container(
       height: 20,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(100),
-        border: Zine.border,
+        border: Border.all(color: AD.borderControl, width: 1),
       ),
-      child: Row(children: segments.isEmpty ? [Expanded(child: Container(color: Zine.paper2))] : segments),
+      child: Row(children: segments.isEmpty ? [Expanded(child: Container(color: AD.card))] : segments),
     );
   }
 
@@ -309,11 +351,11 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
           decoration: BoxDecoration(
             color: style.color,
             borderRadius: BorderRadius.circular(4),
-            border: Border.all(color: Zine.ink, width: 2),
+            border: Border.all(color: AD.borderControl, width: 1),
           ),
         ),
         const SizedBox(width: 10),
-        Text('${style.label} · $count', style: ZineText.sub(size: 14.5)),
+        Text('${style.label} · $count', style: ADText.preview()),
         Expanded(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -321,7 +363,7 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
           ),
         ),
         Text('${_fmt(bytes)} · ${(pct * 100).toStringAsFixed(0)}%',
-            style: ZineText.value(size: 14, weight: FontWeight.w900)),
+            style: ADText.rowName().copyWith(fontWeight: FontWeight.w900)),
       ]),
     );
   }
@@ -339,21 +381,21 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
             Expanded(
               child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
                 Text(_fmt((s['used_bytes'] as num?) ?? 0),
-                    style: ZineText.tag(size: 8.5, color: Zine.inkSoft)),
+                    style: ADText.statCaption(c: AD.textSecondary)),
                 const SizedBox(height: 4),
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 400),
                   height: (54 * (((s['used_bytes'] as num?) ?? 0) / maxV)).clamp(4, 54).toDouble(),
                   margin: const EdgeInsets.symmetric(horizontal: 6),
                   decoration: BoxDecoration(
-                    color: Zine.mint,
+                    color: AD.online,
                     borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: Zine.ink, width: 2),
+                    border: Border.all(color: AD.borderControl, width: 1),
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(_monthLabel((s['month'] ?? '').toString()).toUpperCase(),
-                    style: ZineText.tag(size: 9.5, color: Zine.inkSoft)),
+                    style: ADText.statCaption(c: AD.textSecondary)),
               ]),
             ),
         ],
@@ -372,7 +414,7 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
 class _DotLeaderPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final p = Paint()..color = Zine.inkMute;
+    final p = Paint()..color = AD.textTertiary;
     for (double x = 0; x < size.width; x += 7) {
       canvas.drawCircle(Offset(x, size.height / 2), 1.1, p);
     }
@@ -525,48 +567,47 @@ class _DriveSectionState extends State<_DriveSection> {
 
   @override
   Widget build(BuildContext context) {
-    return ZineCard(
-      radius: Zine.rSm,
+    return AdCard(
+      radius: AD.rListCard,
       padding: const EdgeInsets.all(14),
-      boxShadow: Zine.shadowXs,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          ZineIconBadge(icon: PhosphorIcons.googleDriveLogo(PhosphorIconsStyle.fill), color: Zine.mint, size: 34),
+          ZineIconBadge(icon: PhosphorIcons.googleDriveLogo(PhosphorIconsStyle.fill), color: AD.online, size: 34),
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Google Drive · AvaTOK', style: ZineText.value(size: 15)),
+            Text('Google Drive · AvaTOK', style: ADText.rowName()),
             const SizedBox(height: 2),
             Text(_s.connected ? '${_fmt(_s.avatokBytes)} in your AvaTOK folder' : 'Store your own files in your Drive',
-                style: ZineText.sub(size: 12)),
+                style: ADText.preview()),
           ])),
           if (_s.connected)
-            ZineSticker('ON', kind: ZineStickerKind.ok, icon: PhosphorIcons.check(PhosphorIconsStyle.bold)),
+            AdSticker('ON', kind: AdStickerKind.ok, icon: PhosphorIcons.check(PhosphorIconsStyle.bold)),
         ]),
         if (_loading) ...[
           const SizedBox(height: 12),
-          const Center(child: SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Zine.blueInk))),
+          const Center(child: SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: AD.iconSearch))),
         ] else if (!_s.connected) ...[
           const SizedBox(height: 12),
-          ZineButton(
+          AdButton(
             label: 'Connect Google Drive', onPressed: _connect, fullWidth: true, fontSize: 15,
             loading: _connecting, icon: PhosphorIcons.plugsConnected(PhosphorIconsStyle.bold), trailingIcon: false,
           ),
         ] else ...[
           if (_s.totalLimit > 0) ...[
             const SizedBox(height: 10),
-            Text('Drive: ${_fmt(_s.totalUsage)} of ${_fmt(_s.totalLimit)} used', style: ZineText.sub(size: 11.5, color: Zine.inkMute)),
+            Text('Drive: ${_fmt(_s.totalUsage)} of ${_fmt(_s.totalLimit)} used', style: ADText.preview(c: AD.textTertiary)),
           ],
           const SizedBox(height: 8),
           if (_files.isEmpty)
-            Text('No AvaTOK files yet — anything you save to Drive appears here.', style: ZineText.sub(size: 12))
+            Text('No AvaTOK files yet — anything you save to Drive appears here.', style: ADText.preview())
           else
             ...(_files.take(12).map((f) => Padding(
                   padding: const EdgeInsets.symmetric(vertical: 5),
                   child: Row(children: [
-                    PhosphorIcon(PhosphorIcons.file(PhosphorIconsStyle.bold), size: 16, color: Zine.inkSoft),
+                    PhosphorIcon(PhosphorIcons.file(PhosphorIconsStyle.bold), size: 16, color: AD.textSecondary),
                     const SizedBox(width: 8),
-                    Expanded(child: Text(f.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.value(size: 13))),
-                    Text(_fmt(f.size), style: ZineText.sub(size: 11, color: Zine.inkMute)),
+                    Expanded(child: Text(f.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.rowName())),
+                    Text(_fmt(f.size), style: ADText.preview(c: AD.textTertiary)),
                   ]),
                 ))),
           const SizedBox(height: 6),
@@ -671,26 +712,26 @@ class _BackupRestoreSectionState extends State<_BackupRestoreSection> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: Zine.card,
+        backgroundColor: AD.popover,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(Zine.r),
-          side: const BorderSide(color: Zine.ink, width: Zine.bw),
+          borderRadius: BorderRadius.circular(AD.rDialog),
+          side: const BorderSide(color: AD.borderControl, width: 1),
         ),
-        title: Text('Restore from Google Drive?', style: ZineText.cardTitle()),
+        title: Text('Restore from Google Drive?', style: ADText.threadName()),
         content: Text(
           'This replaces the data on this device with your latest Drive backup '
           '(chats, history and media). Anything newer on this device that has '
           'not been backed up will be overwritten.',
-          style: ZineText.sub(size: 14),
+          style: ADText.preview(),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel', style: ZineText.link(size: 14, color: Zine.inkSoft)),
+            child: Text('Cancel', style: ADText.rowName(c: AD.textSecondary)),
           ),
-          ZineButton(
+          AdButton(
             label: 'Restore',
-            variant: ZineButtonVariant.blue,
+            variant: AdButtonVariant.teal,
             fontSize: 15,
             onPressed: () => Navigator.pop(ctx, true),
           ),
@@ -717,25 +758,24 @@ class _BackupRestoreSectionState extends State<_BackupRestoreSection> {
 
   @override
   Widget build(BuildContext context) {
-    return ZineCard(
-      radius: Zine.rSm,
+    return AdCard(
+      radius: AD.rListCard,
       padding: const EdgeInsets.all(14),
-      boxShadow: Zine.shadowXs,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          ZineIconBadge(icon: PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.fill), color: Zine.lime, size: 34),
+          ZineIconBadge(icon: PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.fill), color: AD.primaryBadge, size: 34),
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Back up & restore', style: ZineText.value(size: 15)),
+            Text('Back up & restore', style: ADText.rowName()),
             const SizedBox(height: 2),
-            Text('Encrypted backup to your Google Drive', style: ZineText.sub(size: 12)),
+            Text('Encrypted backup to your Google Drive', style: ADText.preview()),
           ])),
         ]),
         const SizedBox(height: 10),
         Text(
           'Your chats are encrypted on this device before upload, so neither '
           'AvaTOK nor Google can read them. Survives reinstalling the app.',
-          style: ZineText.sub(size: 12),
+          style: ADText.preview(),
         ),
         const SizedBox(height: 12),
         _actions(),
@@ -745,12 +785,12 @@ class _BackupRestoreSectionState extends State<_BackupRestoreSection> {
 
   Widget _actions() {
     if (_connected == null) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 6),
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
         child: Row(children: [
-          SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2.2, color: Zine.blueInk)),
-          SizedBox(width: 10),
-          Text('Checking Google Drive…'),
+          const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2.2, color: AD.iconSearch)),
+          const SizedBox(width: 10),
+          Text('Checking Google Drive…', style: ADText.preview()),
         ]),
       );
     }
@@ -760,7 +800,7 @@ class _BackupRestoreSectionState extends State<_BackupRestoreSection> {
         Text(
           'Connect Google Drive in the panel above, then come back here to back '
           'up or restore.',
-          style: ZineText.sub(size: 12.5, color: Zine.inkMute),
+          style: ADText.preview(c: AD.textTertiary),
         ),
         const SizedBox(height: 8),
         Center(child: ZineLink("I've connected — refresh", fontSize: 13, onTap: _refresh)),
@@ -768,9 +808,9 @@ class _BackupRestoreSectionState extends State<_BackupRestoreSection> {
     }
     return Row(children: [
       Expanded(
-        child: ZineButton(
+        child: AdButton(
           label: 'Back up now',
-          variant: ZineButtonVariant.lime,
+          variant: AdButtonVariant.primary,
           fullWidth: true,
           fontSize: 14,
           icon: PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.bold),
@@ -781,9 +821,9 @@ class _BackupRestoreSectionState extends State<_BackupRestoreSection> {
       ),
       const SizedBox(width: 10),
       Expanded(
-        child: ZineButton(
+        child: AdButton(
           label: 'Restore',
-          variant: ZineButtonVariant.ghost,
+          variant: AdButtonVariant.ghost,
           fullWidth: true,
           fontSize: 14,
           icon: PhosphorIcons.cloudArrowDown(PhosphorIconsStyle.bold),

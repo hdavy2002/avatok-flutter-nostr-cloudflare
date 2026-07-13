@@ -54,12 +54,15 @@ class _AvaDialRootState extends State<AvaDialRoot> {
   // Each sub-section gets its OWN color (owner request — "give each tab header a
   // different color, so users can recognise it"), reusing the same accents the
   // empty states already used for these tabs so the palette stays consistent.
+  // Tab order (owner request 2026-07-13): Dialpad · Messages · Contacts ·
+  // Block list · Call logs. The IndexedStack bodies below MUST stay in this same
+  // order (index maps positionally).
   static const _items = [
     _CallsTabItem(Icons.dialpad_outlined, Icons.dialpad, 'Dialpad', AD.primaryBadge),
-    _CallsTabItem(Icons.person_outline, Icons.person, 'Contacts', AD.iconSearch),
-    _CallsTabItem(Icons.history_outlined, Icons.history, 'Logs', AD.online),
     _CallsTabItem(Icons.sms_outlined, Icons.sms, 'Messages', AD.iconVideo),
-    _CallsTabItem(Icons.block_outlined, Icons.block, 'Block Lists', AD.danger),
+    _CallsTabItem(Icons.person_outline, Icons.person, 'Contacts', AD.iconSearch),
+    _CallsTabItem(Icons.block_outlined, Icons.block, 'Block list', AD.danger),
+    _CallsTabItem(Icons.history_outlined, Icons.history, 'Call logs', AD.online),
   ];
 
   @override
@@ -135,28 +138,13 @@ class _AvaDialRootState extends State<AvaDialRoot> {
               builder: (context, _, __) {
                 final on = RemoteConfig.avaDialer;
                 if (on) AvaDialChannel.I.ensureWired();
+                // Bodies MUST match the _items tab order:
+                // Dialpad · Messages · Contacts · Block list · Call logs.
                 return IndexedStack(index: _tab, children: [
               // Dialpad — the Calls app's OWN PSTN dialer: live contact search
               // above a real keypad (2026-07-12 redesign; previously reused the
               // in-network AvaPhone dialer, which had its own nested chrome).
               const DialpadSearchTab(),
-              on
-                  ? const _ContactsTab()
-                  : const ShellEmptyState(
-                      icon: Icons.person_outline,
-                      title: 'Contacts',
-                      subtitle: 'Your phone book, spam-labelled — coming with AvaDial.',
-                      color: AD.iconSearch,
-                    ),
-              on
-                  ? const _LogsTab()
-                  : const ShellEmptyState(
-                      icon: Icons.history_outlined,
-                      title: 'Call logs',
-                      subtitle:
-                          'Your device call history with friend/spam labels — coming with AvaDial.',
-                      color: AD.online,
-                    ),
               // Messages tab — gated INDEPENDENTLY on `avaSms` (the SMS role is
               // separate from the dialer role). While the flag is off it keeps the
               // Phase-1 placeholder; when on it shows the role banner until ROLE_SMS
@@ -170,12 +158,29 @@ class _AvaDialRootState extends State<AvaDialRoot> {
                       color: AD.iconVideo,
                     ),
               on
+                  ? const _ContactsTab()
+                  : const ShellEmptyState(
+                      icon: Icons.person_outline,
+                      title: 'Contacts',
+                      subtitle: 'Your phone book, spam-labelled — coming with AvaDial.',
+                      color: AD.iconSearch,
+                    ),
+              on
                   ? const _BlockTab()
                   : const ShellEmptyState(
                       icon: Icons.block_outlined,
                       title: 'Block list',
                       subtitle: 'Blocked numbers and one-tap spam reports — coming with AvaDial.',
                       color: AD.danger,
+                    ),
+              on
+                  ? const _LogsTab()
+                  : const ShellEmptyState(
+                      icon: Icons.history_outlined,
+                      title: 'Call logs',
+                      subtitle:
+                          'Your device call history with friend/spam labels — coming with AvaDial.',
+                      color: AD.online,
                     ),
                 ]);
               },

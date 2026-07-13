@@ -103,7 +103,7 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
       ),
       body: Column(children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 14),
           child: TextField(
             controller: _search,
             textInputAction: TextInputAction.search,
@@ -164,6 +164,7 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
             ],
           ]),
         ),
+        const SizedBox(height: 10),
         Divider(height: 1, color: AD.borderHairline),
         Expanded(
           child: RefreshIndicator(

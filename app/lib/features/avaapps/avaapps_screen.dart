@@ -11,8 +11,41 @@ import '../../core/apps_service.dart';
 import '../../core/avaapps_cache.dart';
 import '../../core/money_api.dart';
 import '../../core/paid_feature.dart';
-import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/avatok_dark.dart';
+
+/// Inline dark v2 page header (AD.headerFooter bar + back button + title).
+/// Replaces the light ZineAppBar — the AdBackButton's white glyph would be
+/// invisible on a light bar.
+class _DarkHeader extends StatelessWidget implements PreferredSizeWidget {
+  final String title;
+  const _DarkHeader({required this.title});
+  @override
+  Size get preferredSize => const Size.fromHeight(60);
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: AD.headerFooter,
+        border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 6, 18, 10),
+          child: Row(children: [
+            const AdBackButton(),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(title, style: ADText.appTitle(),
+                  maxLines: 1, overflow: TextOverflow.ellipsis),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+}
 
 /// AvaApps (PREMIUM · Powered by Composio) — browse the full Composio app
 /// catalog, connect/disconnect each app with one tap (green dot = connected),
@@ -175,18 +208,18 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
       final yes = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          backgroundColor: Zine.card,
+          backgroundColor: AD.popover,
           shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(Zine.rSm),
-              side: const BorderSide(color: Zine.ink, width: Zine.bw)),
-          title: Text('Disconnect ${app.name}?', style: ZineText.cardTitle()),
+              borderRadius: BorderRadius.circular(AD.rDialog),
+              side: const BorderSide(color: AD.borderControl, width: 1)),
+          title: Text('Disconnect ${app.name}?', style: ADText.threadName()),
           content: Text('Ava will no longer be able to act on your ${app.name}. '
-              'You can reconnect anytime.', style: ZineText.sub(size: 13.5)),
+              'You can reconnect anytime.', style: ADText.preview()),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false),
-                child: Text('Cancel', style: ZineText.value(size: 14))),
+                child: Text('Cancel', style: ADText.rowName(c: AD.textSecondary))),
             TextButton(onPressed: () => Navigator.pop(ctx, true),
-                child: Text('Disconnect', style: ZineText.value(size: 14, color: Zine.coral))),
+                child: Text('Disconnect', style: ADText.rowName(c: AD.danger))),
           ],
         ),
       );
@@ -351,17 +384,17 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
     final yes = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: Zine.card,
+        backgroundColor: AD.popover,
         shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(Zine.rSm),
-            side: const BorderSide(color: Zine.ink, width: Zine.bw)),
-        title: Text('Confirm', style: ZineText.cardTitle()),
-        content: Text(summary, style: ZineText.sub(size: 13.5)),
+            borderRadius: BorderRadius.circular(AD.rDialog),
+            side: const BorderSide(color: AD.borderControl, width: 1)),
+        title: Text('Confirm', style: ADText.threadName()),
+        content: Text(summary, style: ADText.preview()),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false),
-              child: Text('Cancel', style: ZineText.value(size: 14))),
+              child: Text('Cancel', style: ADText.rowName(c: AD.textSecondary))),
           TextButton(onPressed: () => Navigator.pop(ctx, true),
-              child: Text('Confirm', style: ZineText.value(size: 14, color: Zine.blueInk))),
+              child: Text('Confirm', style: ADText.rowName(c: AD.iconSearch))),
         ],
       ),
     );
@@ -374,9 +407,10 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Zine.paper,
-      appBar: const ZineAppBar(title: 'AvaApps', markWord: 'Apps'),
+      backgroundColor: AD.bg,
+      appBar: const _DarkHeader(title: 'AvaApps'),
       body: RefreshIndicator(
+        color: AD.iconSearch,
         onRefresh: _load,
         child: CustomScrollView(
           // Always scrollable so pull-to-refresh works even when content is short.
@@ -389,37 +423,40 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
           Row(children: [
             Expanded(child: Text('Connect your apps and let Ava act across them — read '
                 'email, find a file, create a doc, check your calendar.',
-                style: ZineText.sub(size: 13.5))),
+                style: ADText.preview())),
             const SizedBox(width: 8),
             _premiumBadge(),
           ]),
           const SizedBox(height: 6),
           Row(mainAxisSize: MainAxisSize.min, children: [
-            PhosphorIcon(PhosphorIcons.lightning(PhosphorIconsStyle.fill), size: 12, color: Zine.inkMute),
+            PhosphorIcon(PhosphorIcons.lightning(PhosphorIconsStyle.fill), size: 12, color: AD.textTertiary),
             const SizedBox(width: 4),
-            Text('Powered by Composio', style: ZineText.sub(size: 11.5, color: Zine.inkMute)),
+            Text('Powered by Composio', style: ADText.statCaption(c: AD.textTertiary)),
           ]),
           const SizedBox(height: 14),
-          // Search filter on top.
+          // Search filter on top — white dark-v2 search dock.
           Container(
             decoration: BoxDecoration(
-              color: Zine.card,
-              borderRadius: BorderRadius.circular(Zine.rField),
-              border: Border.all(color: Zine.ink, width: 2),
+              color: AD.inputField,
+              borderRadius: BorderRadius.circular(AD.rInput),
+              border: Border.all(color: AD.borderControl, width: 1),
             ),
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Row(children: [
-              PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold), size: 18, color: Zine.inkSoft),
+              PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold), size: 18, color: AD.iconSearch),
               const SizedBox(width: 8),
               Expanded(
                 child: TextField(
                   controller: _q,
-                  style: ZineText.input(size: 15),
+                  cursorColor: AD.iconSearch,
+                  style: const TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w700,
+                      fontSize: 15, color: AD.textOnInput),
                   onChanged: (v) => setState(() => _filter = v.trim()),
-                  decoration: InputDecoration(
+                  decoration: const InputDecoration(
                     border: InputBorder.none, isDense: true,
                     hintText: 'Search apps…',
-                    hintStyle: ZineText.sub(size: 14, color: Zine.placeholder),
+                    hintStyle: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600,
+                        fontSize: 14, color: AD.placeholderOnWhite),
                   ),
                 ),
               ),
@@ -427,10 +464,10 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
           ),
           const SizedBox(height: 14),
           if (_loading)
-            const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator())),
+            const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator(color: AD.iconSearch))),
           if (!_loading && _visible.isEmpty)
             Padding(padding: const EdgeInsets.all(20),
-                child: Center(child: Text('No apps found.', style: ZineText.sub(size: 13)))),
+                child: Center(child: Text('No apps found.', style: ADText.preview(c: AD.textTertiary)))),
               ])),
             ),
             // The icon grid — a LAZY SliverGrid so only the on-screen tiles build.
@@ -459,25 +496,28 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
               sliver: SliverList(delegate: SliverChildListDelegate([
-          Text('ASK AVA', style: ZineText.kicker()),
+          Text('ASK AVA', style: ADText.sectionLabel()),
           const SizedBox(height: 10),
-          ZineCard(
-            radius: Zine.rSm, padding: const EdgeInsets.all(12), boxShadow: Zine.shadowXs,
+          AdCard(
+            radius: AD.rListCard, padding: const EdgeInsets.all(12),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               TextField(
                 controller: _ask, minLines: 2, maxLines: 4,
-                style: ZineText.input(size: 15), cursorColor: Zine.blueInk,
-                decoration: InputDecoration(
+                cursorColor: AD.iconSearch,
+                style: const TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600,
+                    fontSize: 15, color: AD.textPrimary),
+                decoration: const InputDecoration(
                   hintText: 'e.g. "Find me my latest email" · "Create a doc with my notes"',
-                  hintStyle: ZineText.input(size: 14).copyWith(color: Zine.placeholder),
+                  hintStyle: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600,
+                      fontSize: 14, color: AD.textTertiary),
                   border: InputBorder.none, isDense: true,
                 ),
               ),
               const SizedBox(height: 8),
-              ZineButton(
+              AdButton(
                 label: 'Run', onPressed: _running ? null : _run,
                 fullWidth: true, fontSize: 15, loading: _running,
-                variant: ZineButtonVariant.blue,
+                variant: AdButtonVariant.teal,
                 icon: PhosphorIcons.sparkle(PhosphorIconsStyle.bold), trailingIcon: false,
               ),
             ]),
@@ -485,35 +525,35 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
           if (_status != null && (_answer == null || _answer!.isEmpty)) ...[
             const SizedBox(height: 14),
             Row(children: [
-              const SizedBox(width: 13, height: 13, child: CircularProgressIndicator(strokeWidth: 1.8)),
+              const SizedBox(width: 13, height: 13, child: CircularProgressIndicator(strokeWidth: 1.8, color: AD.iconSearch)),
               const SizedBox(width: 8),
-              Text(_status!, style: ZineText.sub(size: 12.5, color: Zine.inkMute)),
+              Text(_status!, style: ADText.preview(c: AD.textTertiary)),
             ]),
           ],
           if (_answer != null) ...[
             const SizedBox(height: 14),
-            ZineCard(
-              radius: Zine.rSm, padding: const EdgeInsets.all(14), boxShadow: Zine.shadowXs,
+            AdCard(
+              radius: AD.rListCard, padding: const EdgeInsets.all(14),
               child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                ZineIconBadge(icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill), color: Zine.lilac, size: 30),
+                ZineIconBadge(icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill), color: AD.iconVideo, size: 30),
                 const SizedBox(width: 12),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   if (_answerAsOf != null) ...[
                     Row(mainAxisSize: MainAxisSize.min, children: [
-                      SizedBox(width: 11, height: 11, child: CircularProgressIndicator(strokeWidth: 1.6, color: Zine.inkMute)),
+                      const SizedBox(width: 11, height: 11, child: CircularProgressIndicator(strokeWidth: 1.6, color: AD.textTertiary)),
                       const SizedBox(width: 6),
-                      Text('as of $_answerAsOf · refreshing…', style: ZineText.sub(size: 11, color: Zine.inkMute)),
+                      Text('as of $_answerAsOf · refreshing…', style: ADText.preview(c: AD.textTertiary)),
                     ]),
                     const SizedBox(height: 6),
                   ],
-                  SelectableText(_answer!, style: ZineText.value(size: 14.5)),
+                  SelectableText(_answer!, style: ADText.rowName()),
                 ])),
               ]),
             ),
           ],
           const SizedBox(height: 16),
           Center(child: Text('Tip: from any chat, type "@ava …" to use your apps inline',
-              style: ZineText.sub(size: 11.5, color: Zine.inkMute))),
+              style: ADText.statCaption(c: AD.textTertiary))),
               ])),
             ),
           ],
@@ -539,8 +579,7 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
               decoration: BoxDecoration(
                 color: Colors.white, // white plate makes brand colors pop
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Zine.ink, width: 2),
-                boxShadow: Zine.shadowXs,
+                border: Border.all(color: AD.borderControl, width: 1),
               ),
               clipBehavior: Clip.antiAlias,
               padding: const EdgeInsets.all(11),
@@ -553,9 +592,9 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
               child: Container(
                 width: 18, height: 18,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF22C55E), // green = connected
+                  color: AD.online, // green = connected
                   shape: BoxShape.circle,
-                  border: Border.all(color: Zine.ink, width: 2),
+                  border: Border.all(color: AD.bg, width: 2),
                 ),
                 child: const Icon(Icons.check, size: 10, color: Colors.white),
               ),
@@ -566,19 +605,19 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: Zine.inkMute,
+                  color: AD.card,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Zine.ink, width: 1.5),
+                  border: Border.all(color: AD.borderControl, width: 1),
                 ),
                 child: Text('Soon',
-                    style: ZineText.sub(size: 8.5, color: Colors.white)),
+                    style: ADText.statCaption(c: AD.textSecondary)),
               ),
             ),
         ]),
         const SizedBox(height: 6),
         Text(app.name, maxLines: 1, overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
-            style: ZineText.sub(size: 11, color: enabled ? Zine.ink : Zine.inkMute)),
+            style: ADText.preview(c: enabled ? AD.textSecondary : AD.textTertiary)),
       ]),
     );
     return tile;
@@ -627,7 +666,7 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
 
   /// Colored first-letter tile — the always-on, never-grey fallback.
   Widget _monogram(AvaCatalogApp app) {
-    const palette = [Zine.blue, Zine.lilac, Zine.coral, Zine.mint, Zine.lime];
+    const palette = [AD.iconSearch, AD.iconVideo, AD.danger, AD.online, AD.primaryBadge];
     final c = palette[app.slug.hashCode.abs() % palette.length];
     final src = app.name.isNotEmpty ? app.name : app.slug;
     final letter = (src.isNotEmpty ? src.substring(0, 1) : '?').toUpperCase();
@@ -635,7 +674,8 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
       decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(8)),
       alignment: Alignment.center,
       child: Text(letter,
-          style: ZineText.cardTitle(size: 20, color: Zine.ink)),
+          style: const TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w900,
+              fontSize: 20, color: AD.textOnInput)),
     );
   }
 
@@ -644,21 +684,20 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
   /// the topped-up green pill / ghost "PREMIUM" crown upsell automatically.
   Widget _premiumBadge() {
     if (!_premium) {
-      return ZineSticker('PREMIUM', kind: ZineStickerKind.hint,
+      return AdSticker('PREMIUM', kind: AdStickerKind.hint,
           icon: PhosphorIcons.crown(PhosphorIconsStyle.fill));
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
       decoration: BoxDecoration(
-        color: Zine.mint, // money/success green
+        color: AD.online, // money/success green
         borderRadius: BorderRadius.circular(100),
-        border: Border.all(color: Zine.ink, width: Zine.bw),
-        boxShadow: Zine.shadowXs,
+        border: Border.all(color: AD.borderControl, width: 1),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(PhosphorIcons.sealCheck(PhosphorIconsStyle.fill), size: 14, color: Zine.mintInk),
+        Icon(PhosphorIcons.sealCheck(PhosphorIconsStyle.fill), size: 14, color: Colors.white),
         const SizedBox(width: 6),
-        Text('BETA-FREE', style: ZineText.tag(size: 12, color: Zine.mintInk)),
+        Text('BETA-FREE', style: ADText.sectionLabel(c: Colors.white)),
       ]),
     );
   }

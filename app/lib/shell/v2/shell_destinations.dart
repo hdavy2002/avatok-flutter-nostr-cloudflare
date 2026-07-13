@@ -4,6 +4,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/app_registry.dart';
 import '../../core/remote_config.dart';
 import '../../core/ui/zine.dart';
+import '../../features/avaapps/avaapps_screen.dart';
 import '../../features/identity/identity_screen.dart';
 import '../../features/library/avalibrary_screen.dart';
 import '../../features/library/avastorage_screen.dart';
@@ -60,6 +61,14 @@ void openShellDestination(BuildContext context, String dest) {
     case 'wallet':
     case 'avawallet':
       push(const WalletScreen());
+      return;
+    // [FIX 2026-07-13] Connectors (Composio apps hub). ShellV2 dropped the old
+    // shell's `avaapps` case, so the sidebar "Connectors" tap fell through to the
+    // "coming soon" placeholder instead of the real AvaApps grid — this restores it.
+    case 'avaapps':
+    case 'apps':
+    case 'connectors':
+      push(const AvaAppsScreen());
       return;
     case 'payout':
     case 'avapayout':
