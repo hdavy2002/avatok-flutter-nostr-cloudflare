@@ -308,6 +308,11 @@ class CallSession {
   bool _ringAckHandled = false;
   bool? _pendingAckResult;
   bool _callUnreachable = false;
+  // [CALL-TELEMETRY-1 2026-07-14] Setup-stage markers threaded onto call_ended /
+  // never_connected so a failed setup names the stage it died at without logs:
+  // ring ack outcome (null = never arrived), and whether an SDP answer landed.
+  bool? _ringAckOk;
+  bool _gotSdpAnswer = false;
   final List<RTCIceCandidate> _pendingCandidates = [];
   bool _remoteSet = false;
   late final CallTelemetry _telemetry;
@@ -1426,6 +1431,9 @@ class CallSession {
         } catch (_) {}
         break;
       case 'answer':
+        // [CALL-TELEMETRY-1] Mark that SDP answer arrived — never_connected
+        // failures split into "ring never landed" vs "answered but ICE failed".
+        _gotSdpAnswer = true;
         try {
           await _pc?.setRemoteDescription(RTCSessionDescription(d['sdp']['sdp'], d['sdp']['type']));
           await _flushCandidates();
@@ -2068,6 +2076,7 @@ class CallSession {
   }
 
   void _applyRingAck(bool ok) {
+    _ringAckOk = ok; // [CALL-TELEMETRY-1] recorded even if already handled
     if (_ringAckHandled) return;
     if (ok) {
       // [CALL-RINGACK-EXTEND-1] (2026-07-08 "everyone gets Ava" incident) Push sent
@@ -2482,6 +2491,10 @@ class CallSession {
       hudDownKbps: ns.downKbps,
       hudRttMs: ns.rttMs,
       hudLossPct: ns.lossPct,
+      // [CALL-TELEMETRY-1] setup-stage markers → call_ended + never_connected.
+      deviceRinging: _deviceRinging,
+      ringAckOk: _ringAckOk,
+      gotSdpAnswer: _gotSdpAnswer,
     );
     _telemetry.ended(reason ?? (_connected ? 'ended' : _phase));
     if (config.outgoing && !_connected) _notifyCalleeCanceled();

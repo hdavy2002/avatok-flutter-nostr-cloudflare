@@ -10,23 +10,61 @@ import { sendApns } from "./apns";
 // account switch is never delivered to; falls back to the legacy uid-keyed
 // push_tokens_v2 table when the new tables aren't migrated/populated yet. De-dups
 // by token so a device present in both stores is only tried once.
-async function resolveTokens(env: Env, uid: string): Promise<Array<{ platform: string; token: string }>> {
+//
+// [CALL-TELEMETRY-1 2026-07-14] Returns a RESOLUTION REPORT, not just the token
+// list, so every downstream push event can say WHICH store the tokens came from
+// and what the account's device mappings looked like at send time. Motivation:
+// the 2026-07-11 "user is not available" incident (PostHog, caller
+// hdavy2005@gmail.com) — push_no_device reason=all_tokens_pruned told us every
+// token was dead, but NOT whether they were stale legacy push_tokens_v2 rows, an
+// inactive account_devices mapping (account switched out on a shared phone), or
+// a rotated FCM token after an app reinstall. This report closes that gap.
+type TokenResolution = {
+  tokens: Array<{ platform: string; token: string; source: "device_join" | "legacy" }>;
+  deviceJoinCount: number;   // tokens from account_devices(active=1) ⨝ device_tokens
+  legacyCount: number;       // tokens from push_tokens_v2 (only consulted when join = 0)
+  mappedInactive: number;    // account_devices rows with active=0 (switched-out devices)
+  mappedActiveNoToken: number; // active mappings whose device has NO token row (rotated/never registered)
+};
+async function resolveTokens(env: Env, uid: string): Promise<TokenResolution> {
   const seen = new Set<string>();
-  const out: Array<{ platform: string; token: string }> = [];
+  const out: TokenResolution = {
+    tokens: [], deviceJoinCount: 0, legacyCount: 0, mappedInactive: 0, mappedActiveNoToken: 0,
+  };
   try {
     const rs = await env.DB_META.prepare(
       "SELECT dt.platform AS platform, dt.token AS token FROM account_devices ad " +
       "JOIN device_tokens dt ON dt.device_id=ad.device_id WHERE ad.account_id=?1 AND ad.active=1",
     ).bind(uid).all();
     for (const r of (rs.results ?? []) as Array<{ platform: string; token: string }>) {
-      if (r.token && !seen.has(r.token)) { seen.add(r.token); out.push(r); }
+      if (r.token && !seen.has(r.token)) {
+        seen.add(r.token);
+        out.tokens.push({ platform: r.platform, token: r.token, source: "device_join" });
+      }
     }
+    out.deviceJoinCount = out.tokens.length;
+    // [CALL-TELEMETRY-1] Mapping diagnostics (best-effort, one cheap query):
+    // inactive mappings = "this account was switched out on N devices";
+    // active-but-tokenless = "a device this account is active on has no token row"
+    // (FCM token rotated/pruned and the app hasn't re-registered yet).
+    const diag = await env.DB_META.prepare(
+      "SELECT sum(CASE WHEN ad.active=0 THEN 1 ELSE 0 END) AS inactive, " +
+      "sum(CASE WHEN ad.active=1 AND dt.token IS NULL THEN 1 ELSE 0 END) AS active_no_token " +
+      "FROM account_devices ad LEFT JOIN device_tokens dt ON dt.device_id=ad.device_id " +
+      "WHERE ad.account_id=?1",
+    ).bind(uid).first<{ inactive: number | null; active_no_token: number | null }>();
+    out.mappedInactive = diag?.inactive ?? 0;
+    out.mappedActiveNoToken = diag?.active_no_token ?? 0;
   } catch { /* tables missing → legacy only */ }
-  if (out.length) return out;
+  if (out.tokens.length) return out;
   const rs = await env.DB_META.prepare("SELECT platform, token FROM push_tokens_v2 WHERE uid=?1").bind(uid).all();
   for (const r of (rs.results ?? []) as Array<{ platform: string; token: string }>) {
-    if (r.token && !seen.has(r.token)) { seen.add(r.token); out.push(r); }
+    if (r.token && !seen.has(r.token)) {
+      seen.add(r.token);
+      out.tokens.push({ platform: r.platform, token: r.token, source: "legacy" });
+    }
   }
+  out.legacyCount = out.tokens.length;
   return out;
 }
 
@@ -34,13 +72,25 @@ export async function handlePush(msg: PushMsg, env: Env): Promise<void> {
   if (msg.kind === "fanout") return handleFanout(msg, env);
   const uid = msg.to_uid || msg.to;
   if (!uid) return;
-  const tokens = await resolveTokens(env, uid);
+  const res = await resolveTokens(env, uid);
+  const tokens = res.tokens;
+  // [CALL-TELEMETRY-1] Token-resolution context threaded into every push event
+  // below, so a single PostHog row explains the callee's device state.
+  const resolutionProps = {
+    token_source: res.deviceJoinCount > 0 ? "device_join" : (res.legacyCount > 0 ? "legacy" : "none"),
+    device_join_tokens: res.deviceJoinCount,
+    legacy_tokens: res.legacyCount,
+    mapped_inactive: res.mappedInactive,
+    mapped_active_no_token: res.mappedActiveNoToken,
+  };
   if (!tokens.length) {
     // SEND-side visibility: a push (call/notify/…) that can't be delivered because
     // the recipient has NO registered device. Previously a silent return — the
     // same blind spot behind the "no device registered" incident, seen from the
     // delivery side. Now queryable per recipient.
-    await capturePush(env, "push_no_device", uid, { kind: msg.kind, call_id: msg.callId ?? null });
+    await capturePush(env, "push_no_device", uid, {
+      kind: msg.kind, call_id: msg.callId ?? null, reason: "zero_tokens", ...resolutionProps,
+    });
     // P1: a call to a device-less callee can never ring — tell the caller so the
     // Ava takeover fires immediately instead of waiting out the ring window.
     if (msg.kind === "call" && msg.callId) {
@@ -87,7 +137,9 @@ export async function handlePush(msg: PushMsg, env: Env): Promise<void> {
   let anyOk = false, firstMsgId = "", lastErr = "", delivered = 0, pruned = 0;
   for (const t of tokens) {
     if (t.platform === "apns") { await sendApns(env, t.token, payload); continue; }
-    const r = await sendFcm(env, t.token, payload, uid); // 'fcm' (Android) — default
+    // [CALL-TELEMETRY-1] Thread call_id + token source so push_token_pruned /
+    // push_send_failed rows stitch to the call and name the store they came from.
+    const r = await sendFcm(env, t.token, payload, uid, { callId: callId || null, source: t.source });
     if (r.ok) { anyOk = true; delivered++; if (!firstMsgId && r.messageId) firstMsgId = r.messageId; }
     else {
       if (r.error) lastErr = r.error;
@@ -102,6 +154,7 @@ export async function handlePush(msg: PushMsg, env: Env): Promise<void> {
     kind: msg.kind, call_id: callId || null, to_uid: uid,
     tokens_tried: tokensTried, delivered, pruned,
     ok: anyOk, error: anyOk ? null : (lastErr || "no_delivery"),
+    ...resolutionProps, // [CALL-TELEMETRY-1]
   });
   // [MULTIACCT-1] If we entered with tokens but NONE delivered AND every failure
   // was a prune (all tokens were dead — the stale-token-after-relogin case), this
@@ -110,6 +163,7 @@ export async function handlePush(msg: PushMsg, env: Env): Promise<void> {
   if (delivered === 0 && tokensTried > 0 && pruned === tokensTried) {
     await capturePush(env, "push_no_device", uid, {
       kind: msg.kind, call_id: callId || null, reason: "all_tokens_pruned", pruned,
+      ...resolutionProps, // [CALL-TELEMETRY-1] which store held the dead tokens
     });
   }
   if (isCall) {
@@ -120,6 +174,7 @@ export async function handlePush(msg: PushMsg, env: Env): Promise<void> {
       fcm_message_id: firstMsgId || null, ok: anyOk,
       error: anyOk ? null : (lastErr || "no_delivery"),
       devices: tokensTried, delivered, pruned,
+      ...resolutionProps, // [CALL-TELEMETRY-1]
     });
     // receptTakeoverGuard: tell the caller (the only peer in the room during ring)
     // whether the callee's phone could ring. Best-effort; never blocks delivery.
@@ -298,7 +353,12 @@ function buildPayload(msg: PushMsg): { data: Record<string, string>; highPriorit
 // Returns the per-token send outcome so the caller can aggregate call-push results
 // (P1). Existing failure telemetry is preserved (additive) — this only adds a
 // return value and a success-path message-id parse.
-async function sendFcm(env: Env, token: string, payload: { data: Record<string, string>; highPriority: boolean }, uid: string): Promise<{ ok: boolean; messageId?: string; error?: string; pruned?: boolean }> {
+async function sendFcm(
+  env: Env, token: string, payload: { data: Record<string, string>; highPriority: boolean }, uid: string,
+  // [CALL-TELEMETRY-1] optional send context — call_id + which store the token
+  // came from — so prune/fail events are self-explanatory in PostHog.
+  ctx?: { callId?: string | null; source?: string },
+): Promise<{ ok: boolean; messageId?: string; error?: string; pruned?: boolean }> {
   if (!env.FCM_SERVICE_ACCOUNT) {
     console.warn("FCM_SERVICE_ACCOUNT unset; cannot send");
     await capturePush(env, "push_send_failed", uid, { reason: "no_service_account" });
@@ -344,14 +404,24 @@ async function sendFcm(env: Env, token: string, payload: { data: Record<string, 
       try { await env.DB_META.prepare("DELETE FROM device_tokens WHERE token=?1").bind(token).run(); } catch { /* pre-migration */ }
       console.warn("FCM: pruned dead token", token.slice(0, 12));
       // [MULTIACCT-1] carry account context so prune events are queryable per user.
-      await capturePush(env, "push_token_pruned", uid, { status: res.status, account_id: uid });
+      // [CALL-TELEMETRY-1] + call_id, token source, token prefix, and FCM's error
+      // text so a prune row alone answers: which call, which store, which token,
+      // and what FCM actually said (UNREGISTERED vs NOT_FOUND vs 404).
+      await capturePush(env, "push_token_pruned", uid, {
+        status: res.status, account_id: uid,
+        call_id: ctx?.callId ?? null, token_source: ctx?.source ?? null,
+        token_prefix: token.slice(0, 12), fcm_error: txt.slice(0, 180),
+      });
       return { ok: false, error: `http_${res.status}`, pruned: true };
     } else {
       // Keep the token; surface the error in logs (visible via `wrangler tail`)
       // AND in PostHog so a project/credential/payload break is queryable, not
       // just a log line nobody is tailing.
       console.error("FCM send failed (token KEPT):", res.status, txt.slice(0, 300));
-      await capturePush(env, "push_send_failed", uid, { status: res.status, error: txt.slice(0, 180) });
+      await capturePush(env, "push_send_failed", uid, {
+        status: res.status, error: txt.slice(0, 180),
+        call_id: ctx?.callId ?? null, token_source: ctx?.source ?? null, // [CALL-TELEMETRY-1]
+      });
     }
     return { ok: false, error: `http_${res.status}` };
   }

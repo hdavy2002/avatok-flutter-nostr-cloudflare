@@ -56,6 +56,10 @@ class CallTelemetry {
   int _mediaStalls = 0;       // distinct media-stall episodes
   bool _relayForced = false;  // TURN/relay was forced
   bool _unreachable = false;  // callee had no reachable device (push failure)
+  // [CALL-TELEMETRY-1] setup-stage markers (see setReliabilityInputs).
+  bool _deviceRinging = false; // callee device confirmed ringing
+  bool? _ringAckOk;            // server ring-ack outcome (null = never arrived)
+  bool _gotSdpAnswer = false;  // SDP answer received (callee accepted)
   // [CALL-NETHUD-1] Last HUD snapshot the session observed (up/down kbps, rtt,
   // loss %) — surfaced on call_ended so the network HUD's own numbers land in
   // the reliability payload. -1 means "not captured".
@@ -82,6 +86,13 @@ class CallTelemetry {
     int hudDownKbps = -1,
     int hudRttMs = -1,
     double hudLossPct = -1,
+    // [CALL-TELEMETRY-1 2026-07-14] Setup-stage markers so never_connected
+    // failures name the stage the call died at (motivated by the 2026-07-11
+    // "user is not available" incident: never_connected rows carried no signal
+    // about whether the ring ever reached the callee).
+    bool deviceRinging = false,
+    bool? ringAckOk,
+    bool gotSdpAnswer = false,
   }) {
     _reconnectAttempts = reconnectAttempts;
     _mediaStalls = mediaStalls;
@@ -91,6 +102,9 @@ class CallTelemetry {
     _hudDownKbps = hudDownKbps;
     _hudRttMs = hudRttMs;
     _hudLossPct = hudLossPct;
+    _deviceRinging = deviceRinging;
+    _ringAckOk = ringAckOk;
+    _gotSdpAnswer = gotSdpAnswer;
   }
 
   // ── peer geo + ICE/STUN/TURN topology ──────────────────────────────────────
@@ -489,6 +503,11 @@ class CallTelemetry {
       'net_changes': netChanges,
       // reconnected = we had to restart ICE but still ended while connected.
       'reconnected': iceRestarts > 0 && _tConnected != null,
+      // [CALL-TELEMETRY-1] setup-stage markers on EVERY call_ended (not just
+      // failures) so ring/ack/answer rates are trendable per release.
+      'setup_device_ringing': _deviceRinging,
+      'setup_ring_ack_ok': _ringAckOk?.toString() ?? 'none',
+      'setup_got_sdp_answer': _gotSdpAnswer,
       // ── [CALL-RELSCORE-1] Reliability Score + its components ──────────────
       // 100 minus weighted penalties, clamped 0–100. "Worst 100 calls today" =
       // sort call_ended by reliability_score ascending — triage without logs.
@@ -535,11 +554,41 @@ class CallTelemetry {
     });
     // A call that never connected is a setup failure unless the human declined/was busy.
     if (_tConnected == null && reason != 'declined' && reason != 'busy' && reason != 'no-answer') {
+      // [CALL-TELEMETRY-1] setup_stage classifies WHERE the setup died, so a
+      // never_connected row is self-diagnosing without pulling logs:
+      //   no_ring_ack     → server never acked the ring push (worker/queue issue)
+      //   ring_not_landed → server said the push could not be delivered
+      //                     (dead/pruned tokens — see push_no_device / the
+      //                     call_callee_reachability snapshot for that call_id)
+      //   rang_no_answer  → device rang, callee never accepted
+      //   answered_no_ice → callee ACCEPTED (SDP answer) but ICE never connected
+      //                     (NAT/TURN problem — check relay_used, ice_restarts)
+      final setupStage = _gotSdpAnswer
+          ? 'answered_no_ice'
+          : _deviceRinging
+              ? 'rang_no_answer'
+              : _ringAckOk == false
+                  ? 'ring_not_landed'
+                  : _ringAckOk == null
+                      ? 'no_ring_ack'
+                      : 'ring_acked_no_device_ring';
       Analytics.error(domain: 'call_setup', code: 'never_connected', action: reason, extra: {
         'call_id': callId,
         'setup_ms': now - _t0,
         'ice_restarts': iceRestarts,
         'relay_used': _iceType == 'relay',
+        'setup_stage': setupStage,
+        'device_ringing': _deviceRinging,
+        'ring_ack_ok': _ringAckOk?.toString() ?? 'none',
+        'got_sdp_answer': _gotSdpAnswer,
+        'unreachable': _unreachable,
+        'video': video,
+        'outgoing': outgoing,
+        'transport_mode': transportMode,
+        'host_cands': _hostCands,
+        'srflx_cands': _srflxCands,
+        'relay_cands': _relayCands,
+        if (_iceGatherMs > 0) 'ice_gather_ms': _iceGatherMs,
       });
     }
   }

@@ -91,6 +91,41 @@ async function tokenCount(db: D1Database | D1DatabaseSession, uid: string): Prom
   return tokenCountObj(db, uid);
 }
 
+// [CALL-TELEMETRY-1 2026-07-14] Full callee device/token snapshot for the
+// call_callee_reachability event. Mirrors the consumer's resolveTokens diagnostics
+// (consumers/src/fcm.ts) so the dial-time snapshot and the send-time fan-out
+// result use the same vocabulary: device_join_tokens (active mapping ⨝ token),
+// legacy_tokens (push_tokens_v2), mapped_inactive (switched-out devices),
+// mapped_active_no_token (active device whose FCM token rotated away).
+async function calleeReachabilitySnapshot(
+  db: D1Database | D1DatabaseSession, uid: string,
+): Promise<Record<string, number | string>> {
+  let deviceJoin = 0, mappedInactive = 0, mappedActiveNoToken = 0, legacy = 0;
+  try {
+    const d = await db.prepare(
+      "SELECT sum(CASE WHEN ad.active=1 AND dt.token IS NOT NULL THEN 1 ELSE 0 END) AS joined, " +
+      "sum(CASE WHEN ad.active=0 THEN 1 ELSE 0 END) AS inactive, " +
+      "sum(CASE WHEN ad.active=1 AND dt.token IS NULL THEN 1 ELSE 0 END) AS active_no_token " +
+      "FROM account_devices ad LEFT JOIN device_tokens dt ON dt.device_id=ad.device_id " +
+      "WHERE ad.account_id=?1",
+    ).bind(uid).first<{ joined: number | null; inactive: number | null; active_no_token: number | null }>();
+    deviceJoin = d?.joined ?? 0;
+    mappedInactive = d?.inactive ?? 0;
+    mappedActiveNoToken = d?.active_no_token ?? 0;
+  } catch { /* pre-migration */ }
+  try {
+    const l = await db.prepare("SELECT count(*) AS n FROM push_tokens_v2 WHERE uid=?1").bind(uid).first<{ n: number }>();
+    legacy = l?.n ?? 0;
+  } catch { /* pre-migration */ }
+  return {
+    device_join_tokens: deviceJoin,
+    legacy_tokens: legacy,
+    mapped_inactive: mappedInactive,
+    mapped_active_no_token: mappedActiveNoToken,
+    token_source: deviceJoin > 0 ? "device_join" : (legacy > 0 ? "legacy" : "none"),
+  };
+}
+
 // [MULTIACCT-2] POST /api/account/device  { device_id, active?: boolean }
 // Flip THIS account's mapping on the given device without touching the shared
 // device token. Called by the client's AccountSwitcher: on switch-IN / login the
@@ -153,6 +188,24 @@ export async function call(req: Request, env: Env): Promise<Response> {
   // Read the callee's device count from the PRIMARY (plain prepare), not an
   // unconstrained replica — avoids a stale 0-token false-404 on a registered device.
   const n = await tokenCount(env.DB_META, b.to);
+  // [CALL-TELEMETRY-1 2026-07-14] Always-on callee reachability snapshot at dial
+  // time — one event per call attempt that says exactly what the callee's device/
+  // token state looked like WHEN the caller dialed. Motivation: the 2026-07-11
+  // "user is not available" incident (caller hdavy2005@gmail.com) — the ring died
+  // in the consumer with all_tokens_pruned, and nothing recorded whether the
+  // callee had an active device mapping, a switched-out mapping, or only stale
+  // legacy tokens at dial time. Best-effort; never blocks the call.
+  try {
+    const snap = await calleeReachabilitySnapshot(env.DB_META, b.to);
+    void env.Q_ANALYTICS.send({
+      event: "call_callee_reachability", uid: ctx.uid, ts: Date.now(),
+      props: {
+        to: b.to, call_id: b.callId, call_type: b.kind ?? "audio", trace_id: traceId,
+        token_count: n, ...snap,
+        app_name: "avatok", service_name: "avatok-api", worker: true, account_id: ctx.uid,
+      },
+    });
+  } catch { /* telemetry must never block the call */ }
   if (n === 0) {
     // Visibility: the caller reached someone with 0 registered devices — the
     // exact "no device registered" failure. Emit telemetry (best-effort) keyed
