@@ -165,6 +165,14 @@ class ShellV2 extends StatefulWidget {
 class _ShellV2State extends State<ShellV2> {
   RootId _root = RootId.avaTalk;
 
+  // True while the universal Ask Ava overlay is on screen. Ask Ava is a GLOBAL
+  // action pushed onto the active root's navigator (not a root), so `_root` never
+  // changes when it opens — without this flag the footer would keep the active
+  // indicator on the previous root (AvaDialer, etc.) instead of moving it to the
+  // "Ava" icon. Set true on push, reset when the route pops (owner bug 2026-07-14:
+  // "Ava icon stays white, orange highlight stuck on another icon").
+  bool _askAvaOpen = false;
+
   // User-chosen app-switcher order (AVA-SHELL-8). Drives BOTH the Home footer
   // rendering and the cold-open landing decision (order.first = landing app).
   // Loaded per-account in initState; defaults until then.
@@ -325,12 +333,22 @@ class _ShellV2State extends State<ShellV2> {
 
   void _askAva([String hint = 'root']) {
     Analytics.capture('shellv2_askava_opened', {'root': _root.key, 'hint': hint});
+    // Reflect the open overlay in the footer: move the active indicator to the
+    // "Ava" icon (and off the current root) while Ask Ava is showing.
+    setState(() => _askAvaOpen = true);
     // Global action: push the assistant onto the ACTIVE root's navigator so it
     // overlays the current app and Android back returns the user where they were.
     final nav = _navKeys[_root]?.currentState ?? Navigator.of(context);
-    nav.push(MaterialPageRoute<void>(
-      builder: (_) => AskAvaScreen(contextHint: hint),
-    ));
+    nav
+        .push(MaterialPageRoute<void>(
+          builder: (_) => AskAvaScreen(contextHint: hint),
+        ))
+        // Restore the indicator to the underlying root once the overlay is
+        // dismissed (Android back, swipe, or in-screen close).
+        .whenComplete(() {
+      Analytics.capture('shellv2_askava_closed', {'root': _root.key});
+      if (mounted) setState(() => _askAvaOpen = false);
+    });
   }
 
   Widget _rootScreen(RootId r) {
@@ -401,6 +419,7 @@ class _ShellV2State extends State<ShellV2> {
           bottomNavigationBar: AppSwitcherBar(
             order: _order,
             activeRoot: _root,
+            askAvaActive: _askAvaOpen,
             onSelect: _switchRoot,
             onReorder: _setRootOrder,
             onAskAva: _askAva,

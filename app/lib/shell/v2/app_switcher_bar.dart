@@ -21,6 +21,14 @@ import '../shell_v2.dart';
 class AppSwitcherBar extends StatefulWidget {
   final List<RootId> order;
   final RootId activeRoot;
+
+  /// True while the universal Ask Ava overlay is open. When set, the active
+  /// indicator moves to the fixed "Ava" action and NO root is shown as selected
+  /// (Ask Ava overlays the active root but is not itself a root). Fixes the bug
+  /// where tapping Ava left its icon white and the orange pill stuck on the
+  /// previously-active root (owner bug 2026-07-14).
+  final bool askAvaActive;
+
   final void Function(RootId) onSelect;
   final void Function(List<RootId>) onReorder;
   final VoidCallback onAskAva;
@@ -32,6 +40,7 @@ class AppSwitcherBar extends StatefulWidget {
     super.key,
     required this.order,
     required this.activeRoot,
+    this.askAvaActive = false,
     required this.onSelect,
     required this.onReorder,
     required this.onAskAva,
@@ -98,7 +107,10 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
 
   Widget _draggableSlot(int index) {
     final root = widget.order[index];
-    final item = _rootItem(root, selected: root == widget.activeRoot);
+    // While Ask Ava is open, no root is "active" — the indicator lives on the
+    // Ava action instead.
+    final item = _rootItem(root,
+        selected: !widget.askAvaActive && root == widget.activeRoot);
 
     // DragTarget lets any OTHER root be dropped onto this slot; the whole row of
     // three roots is a reorder surface.
@@ -154,7 +166,7 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
         icon: Icons.auto_awesome_outlined,
         selectedIcon: Icons.auto_awesome,
         label: 'Ava',
-        selected: false,
+        selected: widget.askAvaActive,
       ),
     );
   }
