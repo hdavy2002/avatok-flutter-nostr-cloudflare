@@ -9,6 +9,13 @@
 //   GET  /api/contacts/book?offset&limit → contactBookGet     — one PAGE (new clients)
 //   GET  /api/contacts/book/status       → contactBookStatus  — metadata only (count/updated/paged)
 //
+// GROUPS (2026-07-15, "circles") — POST also accepts an optional `groups` array
+// of the caller's CUSTOM colour-group definitions ({id, name, color}). Each
+// contact already carries an opaque groupId inline in the contacts blob (no work
+// needed there); the small list of group DEFINITIONS has nowhere else to live, so
+// it's stored as its OWN encrypted R2 object (same key/format, separate from the
+// chunked contacts array) and returned alongside `contacts` on every GET.
+//
 // MODEL — server-side encrypted, NOT zero-knowledge (owner decision 2026-07-13:
 // "easy restore with just an AvaTOK login"). The plaintext JSON arrives over TLS;
 // we encrypt it at rest with AES-256-GCM under a per-account key derived from the
@@ -57,6 +64,10 @@ function r2Key(uid: string): string {
 // R2 object key for one encrypted PAGE of a uid's book.
 function chunkKey(uid: string, page: number): string {
   return `contacts-book/${uid}/p/${page}`;
+}
+// R2 object key for a uid's encrypted CUSTOM colour-group definitions.
+function groupsKey(uid: string): string {
+  return `contacts-book/${uid}/groups`;
 }
 
 // Metadata only in D1; the ciphertext blob lives in R2. `wrapped` is kept nullable
@@ -178,6 +189,20 @@ async function loadFullBook(env: Env, uid: string, inlineWrapped: string | null)
   }
 }
 
+/** Read + decrypt the caller's custom colour groups (or [] when none/decrypt-fail). */
+async function loadGroups(env: Env, uid: string): Promise<unknown[]> {
+  try {
+    const obj = await env.BACKUP_R2.get(groupsKey(uid));
+    if (!obj) return [];
+    const clear = await decryptJson(env, uid, await obj.text());
+    if (clear === null) return [];
+    const arr = JSON.parse(clear);
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+
 /**
  * CHUNK JOB — split the caller's current book into fixed-size encrypted R2 pages
  * plus a D1 manifest. Idempotent (latest-wins), safe to re-run, and cheap enough
@@ -262,6 +287,13 @@ export async function contactBookPut(req: Request, env: Env, ctx: ExecutionConte
   try { body = await req.json(); } catch { return json({ error: "bad json" }, 400); }
   const contacts = Array.isArray(body?.contacts) ? body.contacts : null;
   if (!contacts) return json({ error: "contacts array required" }, 400);
+  // Custom colour-group definitions are optional and stored separately (a small
+  // list, not the contacts array). null means "client didn't send any" — leave
+  // whatever is already stored untouched (old-client compat).
+  const groups = Array.isArray(body?.groups) ? body.groups : null;
+  if (groups !== null && groups.length > 200) {
+    return json({ error: "too many groups" }, 400);
+  }
 
   const plaintext = JSON.stringify(contacts);
   if (enc.encode(plaintext).byteLength > MAX_BYTES) {
@@ -275,6 +307,13 @@ export async function contactBookPut(req: Request, env: Env, ctx: ExecutionConte
     httpMetadata: { contentType: "text/plain" },
     customMetadata: { uid: ctxUser.uid, count: String(contacts.length), updated: String(now) },
   });
+  if (groups !== null) {
+    const groupsWrapped = await encryptJson(env, ctxUser.uid, JSON.stringify(groups));
+    await env.BACKUP_R2.put(groupsKey(ctxUser.uid), groupsWrapped, {
+      httpMetadata: { contentType: "text/plain" },
+      customMetadata: { uid: ctxUser.uid, count: String(groups.length), updated: String(now) },
+    });
+  }
   await ensureTable(env);
   await env.DB_META
     .prepare(
@@ -291,8 +330,8 @@ export async function contactBookPut(req: Request, env: Env, ctx: ExecutionConte
   const ms = Date.now() - t0;
   metric(env, "put", ctxUser.uid, contacts.length, ms);
   track(env, ctxUser.uid, "contacts_backup_stored",
-    { count: contacts.length, bytes: enc.encode(plaintext).byteLength, ms });
-  return json({ ok: true, count: contacts.length, updatedAt: now });
+    { count: contacts.length, bytes: enc.encode(plaintext).byteLength, groups: groups?.length ?? -1, ms });
+  return json({ ok: true, count: contacts.length, groups: groups?.length ?? 0, updatedAt: now });
 }
 
 /**
@@ -314,7 +353,11 @@ export async function contactBookGet(req: Request, env: Env): Promise<Response> 
     .prepare("SELECT wrapped, count, updated_at FROM contact_book_backup WHERE uid=?1")
     .bind(uid)
     .first<{ wrapped: string | null; count: number; updated_at: number }>();
-  if (!row) return json({ found: false, contacts: [] });
+  if (!row) return json({ found: false, contacts: [], groups: [] });
+
+  // Custom colour-group definitions are tiny — load once and hand them back on
+  // every page/response so a paginated restore can pick them up from any page.
+  const groups = await loadGroups(env, uid);
 
   const sp = new URL(req.url).searchParams;
   const hasPaging = sp.has("offset") || sp.has("limit");
@@ -334,7 +377,7 @@ export async function contactBookGet(req: Request, env: Env): Promise<Response> 
       const total = man.total;
       if (offset >= total) {
         metric(env, "get_page", uid, 0, Date.now() - t0);
-        return json({ found: true, contacts: [], count: 0, total, offset, nextOffset: null, updatedAt: row.updated_at });
+        return json({ found: true, contacts: [], count: 0, total, offset, nextOffset: null, updatedAt: row.updated_at, groups });
       }
       const startChunk = Math.floor(offset / man.page_size);
       const endChunk = Math.floor((offset + limit - 1) / man.page_size);
@@ -353,7 +396,7 @@ export async function contactBookGet(req: Request, env: Env): Promise<Response> 
         const ms = Date.now() - t0;
         metric(env, "get_page", uid, page.length, ms);
         track(env, uid, "contacts_book_page", { count: page.length, total, offset, source: "chunks", ms });
-        return json({ found: true, contacts: page, count: page.length, total, offset, nextOffset, updatedAt: row.updated_at });
+        return json({ found: true, contacts: page, count: page.length, total, offset, nextOffset, updatedAt: row.updated_at, groups });
       }
       // else: chunks not usable yet → decrypt-and-slice fallback below.
     }
@@ -370,7 +413,7 @@ export async function contactBookGet(req: Request, env: Env): Promise<Response> 
     const ms = Date.now() - t0;
     metric(env, "get_page_fallback", uid, page.length, ms);
     track(env, uid, "contacts_book_page", { count: page.length, total, offset, source: "blob_fallback", ms });
-    return json({ found: true, contacts: page, count: page.length, total, offset, nextOffset, updatedAt: row.updated_at });
+    return json({ found: true, contacts: page, count: page.length, total, offset, nextOffset, updatedAt: row.updated_at, groups });
   }
 
   // Legacy: full book in one response.
@@ -382,7 +425,7 @@ export async function contactBookGet(req: Request, env: Env): Promise<Response> 
   const ms = Date.now() - t0;
   metric(env, "get_full", uid, all.length, ms);
   track(env, uid, "contacts_book_full", { count: all.length, ms });
-  return json({ found: true, contacts: all, count: row.count, updatedAt: row.updated_at });
+  return json({ found: true, contacts: all, count: row.count, updatedAt: row.updated_at, groups });
 }
 
 /** GET /api/contacts/book/status — metadata only (no contact data). */
@@ -405,5 +448,12 @@ export async function contactBookStatus(req: Request, env: Env): Promise<Respons
       .first<{ page_size: number }>();
     if (man) { paged = true; pageSize = man.page_size; }
   } catch { /* manifest optional */ }
-  return json({ found: true, count: row.count, updatedAt: row.updated_at, paged, pageSize });
+  return json({
+    found: true,
+    count: row.count,
+    updatedAt: row.updated_at,
+    paged,
+    pageSize,
+    groups: (await loadGroups(env, ctxUser.uid)).length,
+  });
 }

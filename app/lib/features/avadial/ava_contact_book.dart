@@ -7,6 +7,7 @@ import '../../core/api_auth.dart';
 import '../../core/ava_log.dart';
 import '../../core/config.dart';
 import '../../core/disk_cache.dart';
+import 'contact_groups.dart';
 import 'contact_overrides.dart';
 import 'device_contacts.dart';
 
@@ -27,6 +28,11 @@ class AvaBookContact {
   final List<ContactField> customFields;
   final String source; // 'device' | 'avatok'
 
+  /// [AVADIAL-GROUPS-3] The colour-group marker (see [ContactGroup]) this
+  /// contact is filed under, if any. The server stores each contact as opaque
+  /// JSON inside the encrypted blob, so this round-trips with no server work.
+  final String? groupId;
+
   const AvaBookContact({
     required this.name,
     required this.number,
@@ -36,6 +42,7 @@ class AvaBookContact {
     this.linkedin,
     this.customFields = const [],
     this.source = 'device',
+    this.groupId,
   });
 
   Map<String, dynamic> toJson() => {
@@ -48,6 +55,7 @@ class AvaBookContact {
         if (customFields.isNotEmpty)
           'customFields': customFields.map((f) => f.toJson()).toList(),
         'source': source,
+        if (groupId != null) 'groupId': groupId,
       };
 
   factory AvaBookContact.fromJson(Map<String, dynamic> j) => AvaBookContact(
@@ -62,6 +70,7 @@ class AvaBookContact {
             .map((m) => ContactField.fromJson(m.map((k, v) => MapEntry('$k', v))))
             .toList(),
         source: '${j['source'] ?? 'device'}',
+        groupId: j['groupId'] as String?,
       );
 }
 
@@ -95,6 +104,7 @@ class AvaContactBook {
           linkedin: o?.linkedin,
           customFields: o?.customFields ?? const [],
           source: (o?.local ?? false) ? 'avatok' : 'device',
+          groupId: o?.groupId,
         ));
       }
       // Any AvaTOK-only overrides not represented by a device row.
@@ -110,6 +120,7 @@ class AvaContactBook {
           linkedin: o.linkedin,
           customFields: o.customFields,
           source: 'avatok',
+          groupId: o.groupId,
         ));
       }
       await DiskCache.write(_kCache, jsonEncode(out.map((e) => e.toJson()).toList()));
@@ -134,9 +145,13 @@ class AvaContactBook {
 
   Future<int> count() async => (await load()).length;
 
-  /// Serialized book (uploaded to AvaTOK's backup endpoint).
-  Future<String> exportJson() async =>
-      jsonEncode((await load()).map((e) => e.toJson()).toList());
+  /// Serialized backup payload (uploaded to AvaTOK's backup endpoint). Includes
+  /// the custom colour groups so a group-only edit still changes the signature
+  /// and triggers an auto-sync. [AVADIAL-GROUPS-3]
+  Future<String> exportJson() async => jsonEncode({
+        'contacts': (await load()).map((e) => e.toJson()).toList(),
+        'groups': (await ContactGroups.I.customGroups()).map((g) => g.toJson()).toList(),
+      });
 
   /// Upload the local book to AvaTOK's servers (server-side encrypted). Returns
   /// the count on success, or null on failure. Callers gate on user consent.
@@ -146,19 +161,26 @@ class AvaContactBook {
     try {
       final contacts = await load();
       final payload = contacts.map((e) => e.toJson()).toList();
-      final body = jsonEncode(payload);
+      final groups = await ContactGroups.I.customGroups();
+      // Signature MUST come from the same string exportJson() produces (contacts
+      // + groups), or auto-sync would think this upload never happened and
+      // re-upload forever. [AVADIAL-GROUPS-3]
+      final sigBody = await exportJson();
       // Larger books need a longer window than the 8s default (a 4.5k-contact
       // book is a few MB over TLS on a slow cell link).
-      final resp = await ApiAuth.postJson(kContactBookUrl, {'contacts': payload},
-          timeout: const Duration(seconds: 30));
+      final resp = await ApiAuth.postJson(kContactBookUrl, {
+        'contacts': payload,
+        'groups': groups.map((g) => g.toJson()).toList(),
+      }, timeout: const Duration(seconds: 30));
       final ms = DateTime.now().difference(t0).inMilliseconds;
       if (resp.statusCode == 200) {
         await ContactBackupPrefs.I.markServerSync();
         // Remember what we uploaded so auto-sync won't re-send identical data.
-        await ContactBackupPrefs.I.setSyncedSig(_sig(body));
+        await ContactBackupPrefs.I.setSyncedSig(_sig(sigBody));
         Analytics.capture('avadial_contact_backup_uploaded', {
           'count': contacts.length,
-          'bytes': body.length,
+          'groups': groups.length,
+          'bytes': sigBody.length,
           'ms': ms,
           'trace_id': trace,
         });
@@ -260,6 +282,7 @@ class AvaContactBook {
     } catch (_) {/* permission denied / unsupported — treat as empty */}
 
     final doneKeys = <String>{}; // guards intra-run cross-page duplicates
+    var groupsImported = false; // guards the one-time custom-groups import below
     final job = await _loadRestoreJob();
     var offset = job?.offset ?? 0;
     var restored = job?.restored ?? 0;
@@ -307,6 +330,24 @@ class AvaContactBook {
         } else {
           serverPaged = false; // old worker returned the whole book at once
         }
+
+        // [AVADIAL-GROUPS-3] Import the custom colour groups ONCE, from the
+        // first successful page (every successful page carries them, so no
+        // need to repeat it per page).
+        if (!groupsImported) {
+          groupsImported = true;
+          try {
+            final n = await ContactGroups.I.importCustom(page.groups);
+            if (n > 0) {
+              Analytics.capture(
+                  'avadial_contact_groups_restored', {'count': n, 'trace_id': trace});
+            }
+          } catch (e) {
+            Analytics.error(
+                domain: 'contacts', code: 'restore_groups', message: '$e');
+          }
+        }
+
         final list = page.contacts;
         if (list.isEmpty) break;
 
@@ -331,6 +372,7 @@ class AvaContactBook {
             businessEmail: c.businessEmail,
             linkedin: c.linkedin,
             customFields: c.customFields,
+            groupId: c.groupId,
           ));
         }
 
@@ -415,11 +457,17 @@ class AvaContactBook {
               .whereType<Map>()
               .map((m) => AvaBookContact.fromJson(m.map((k, v) => MapEntry('$k', v))))
               .toList();
+          // [AVADIAL-GROUPS-3] Custom groups, present on every successful page.
+          final groups = (body['groups'] as List<dynamic>? ?? const [])
+              .whereType<Map>()
+              .map((m) => ContactGroup.fromJson(m.map((k, v) => MapEntry('$k', v))))
+              .toList();
           return _RestorePage(
             found: true,
             contacts: list,
             total: (body['total'] as num?)?.toInt() ?? -1,
             nextOffset: (body['nextOffset'] as num?)?.toInt(),
+            groups: groups,
           );
         }
         AvaLog.I.log('avadial', 'contact book restore page http ${resp.statusCode}');
@@ -508,17 +556,22 @@ class _RestorePage {
   final List<AvaBookContact> contacts;
   final int total;
   final int? nextOffset;
+  // [AVADIAL-GROUPS-3] Custom colour groups the server sent alongside this
+  // page (top-level 'groups' in the response body), possibly empty.
+  final List<ContactGroup> groups;
   const _RestorePage({
     required this.found,
     required this.contacts,
     required this.total,
     required this.nextOffset,
+    required this.groups,
   });
   const _RestorePage.notFound()
       : found = false,
         contacts = const [],
         total = 0,
-        nextOffset = null;
+        nextOffset = null,
+        groups = const [];
 }
 
 /// Persisted restore progress so a killed/backgrounded restore resumes instead of

@@ -122,4 +122,27 @@ class ContactGroups {
     }
     return null;
   }
+
+  /// [AVADIAL-GROUPS-3] The user-created groups ONLY (built-ins are constants on
+  /// every device and are never backed up).
+  Future<List<ContactGroup>> customGroups() => _loadCustom();
+
+  /// [AVADIAL-GROUPS-3] Merge restored custom groups in from a contact-book
+  /// restore. Existing ids win (never clobber a local edit); built-in ids are
+  /// ignored. Returns the number actually added.
+  Future<int> importCustom(List<ContactGroup> incoming) async {
+    final custom = await _loadCustom();
+    final existingIds = custom.map((g) => g.id).toSet();
+    final toAdd = incoming.where((g) =>
+        !builtIns.any((b) => b.id == g.id) && !existingIds.contains(g.id));
+    final added = <ContactGroup>[];
+    for (final g in toAdd) {
+      if (added.any((a) => a.id == g.id)) continue; // de-dupe within incoming
+      added.add(g);
+    }
+    if (added.isEmpty) return 0;
+    custom.addAll(added);
+    await _saveCustom(custom);
+    return added.length;
+  }
 }
