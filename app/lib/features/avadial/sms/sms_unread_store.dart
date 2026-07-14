@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
+import '../../../core/badge_service.dart'; // [ISSUE-BADGE-UNREAD-1]
 import '../../../core/remote_config.dart';
 import '../avadial_channel.dart';
 import '../device_contacts.dart';
@@ -44,7 +45,15 @@ class SmsUnreadStore with WidgetsBindingObserver {
     _started = true;
     AvaDialChannel.I.ensureWired();
     WidgetsBinding.instance.addObserver(this);
-    _sub = AvaDialChannel.I.smsIncoming.listen((_) => refresh());
+    // [ISSUE-BADGE-UNREAD-1] An inbound SMS/OTP must raise the LAUNCHER badge as
+    // well as the in-app chips — it's half of the owner's "SMS/OTP arriving inside
+    // AvaDialer AND chat messages in AvaTOK" total. Recompute AFTER refresh so the
+    // new count is already in [total]. No loop risk: recompute→refresh never emits
+    // on smsIncoming.
+    _sub = AvaDialChannel.I.smsIncoming.listen((_) async {
+      await refresh();
+      unawaited(BadgeService.recompute(source: 'sms_incoming'));
+    });
     refresh();
   }
 
@@ -93,6 +102,14 @@ class SmsUnreadStore with WidgetsBindingObserver {
       await AvaDialChannel.I.smsMarkRead(address);
     } catch (_) {}
     await refresh();
+    // [ISSUE-BADGE-UNREAD-1] "every badge" includes the LAUNCHER icon: the owner's
+    // badge is (AvaTOK chat unread + AvaDialer SMS/OTP unread), so reading an SMS
+    // thread must walk it down too. Runs after [refresh] so BadgeService reads the
+    // already-decremented total. Fire-and-forget — never block the thread open.
+    // The `sms_thread_marked_read` source tells BadgeService this refresh already
+    // happened, so it reuses [total] instead of running a SECOND full OS
+    // content-provider scan for the same mark-read.
+    unawaited(BadgeService.recompute(source: 'sms_thread_marked_read'));
   }
 
   void _set(Map<String, int> m, int sum) {

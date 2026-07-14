@@ -26,6 +26,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../core/account_storage.dart';
 import '../../core/api_auth.dart';
 import '../../core/avatar_cache.dart';
+import '../../core/badge_service.dart'; // [ISSUE-BADGE-UNREAD-1]
 import '../../core/ava_ai_client.dart';
 import '../../core/composer_ai.dart';
 import '../translation/ondevice_translate.dart';
@@ -385,13 +386,29 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   ComposerLang get _transLang => ComposerAi.langByCode(_transLangCode);
 
   Timer? _markReadTimer;
+  // [ISSUE-BADGE-UNREAD-1] Separate debounce for the launcher-badge recompute —
+  // _markRead fires on init, on every incoming message and on each Ava stream
+  // frame, and the badge recompute touches the DB + the OS SMS provider, so it
+  // must not run per-call.
+  Timer? _badgeTimer;
 
   void _markRead() {
     final key = _convKey;
     if (key == null) return;
     final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     // Local: drives unread badges on THIS device (instant).
-    ReadStateStore().setRead(key, nowSec);
+    //
+    // [ISSUE-BADGE-UNREAD-1] Reading a thread must walk the launcher badge DOWN
+    // (owner: "this number should ... reduce with the number of messages read").
+    // BadgeService counts messages newer than this conversation's read high-water
+    // mark, so the recompute is CHAINED OFF the setRead write — kicking it off in
+    // parallel would race and re-read the pre-write mark, leaving the badge stuck
+    // one beat behind.
+    ReadStateStore().setRead(key, nowSec).then((_) {
+      _badgeTimer?.cancel();
+      _badgeTimer = Timer(const Duration(milliseconds: 800),
+          () => BadgeService.recompute(source: 'thread_marked_read'));
+    }, onError: (Object _) {});
     // Server: persist MY read position in my own InboxDO so a fresh login or a
     // second device (e.g. desktop) restores it and stops recounting already-read
     // messages as new. Best-effort — never blocks the UI.
@@ -1666,6 +1683,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _pruneTimer?.cancel();
     _persistTimer?.cancel();
     _markReadTimer?.cancel();
+    // [ISSUE-BADGE-UNREAD-1] The debounce above dies with the widget, so a user
+    // who reads a thread and immediately backs out would leave the badge stale
+    // (and under ShellV2 no chat-list resume hook is guaranteed to fix it). Fire
+    // one final, widget-independent reconcile; the short delay lets the last
+    // setRead write land first. BadgeService is static, so this is safe here.
+    _badgeTimer?.cancel();
+    unawaited(Future<void>.delayed(const Duration(milliseconds: 300),
+        () => BadgeService.recompute(source: 'thread_closed')));
     _smartReplyDebounce?.cancel(); // STREAM G smart replies
     _composeUnfurlDebounce?.cancel(); // compose-time link preview
     LinkViewer.close(); // tear down the in-app video/article viewer overlay

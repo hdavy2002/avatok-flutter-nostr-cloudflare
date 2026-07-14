@@ -2,13 +2,11 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:app_badge_plus/app_badge_plus.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:uuid/uuid.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -16,6 +14,7 @@ import '../core/account_storage.dart';
 import '../core/analytics.dart';
 import '../core/api_auth.dart';
 import '../core/ava_log.dart';
+import '../core/badge_service.dart';
 import '../core/call_log_store.dart';
 import '../core/calls/call_overlay.dart' show returnToActiveCall;
 import '../core/calls/callkit_params.dart' show incomingCallAndroidParams;
@@ -114,27 +113,23 @@ Future<void> _bgTrack(String event, Map<String, dynamic> props) async {
 }
 
 // --- Unread app-icon badge (red dot + count, WhatsApp-style) ----------------
-// Device-level (NOT per-account): the launcher badge is one OS-level affordance
-// for the whole phone, and it's a transient count cleared the moment the app is
-// opened — not durable per-user data — so a device key is correct here (the
-// account-scoping rule's explicit exception for device-level values). Stored in
-// secure storage so the BACKGROUND isolate (no app state) can read + bump it.
-const _kBadgeKey = 'avatok_badge_count';
-const _badgeStore = FlutterSecureStorage(mOptions: MacOsOptions(useDataProtectionKeyChain: false), );
+// [ISSUE-BADGE-UNREAD-1] The badge is owned END-TO-END by [BadgeService] now.
+// This file used to hold the whole thing, and it was a PUSH COUNTER: +1 per
+// banner, never decremented per-read, only ever reset to 0 by a tap that reached
+// the chat list — which under ShellV2 often never mounts. Hence the owner's
+// stuck number with an empty inbox. The badge is now derived from real unread
+// state (chat DB + read-state, plus AvaDialer SMS); these two shims stay only so
+// the call sites below read unchanged.
+//
+// `_bumpBadge` is the value the BANNER prints in `number:`; the authoritative
+// reconcile is scheduled by BadgeService.bump (foreground) or deferred to the
+// next foreground recompute (background isolate).
+Future<int> _bumpBadge([String source = 'push']) => BadgeService.bump(source);
 
-Future<int> _bumpBadge() async {
-  final cur = int.tryParse(await _badgeStore.read(key: _kBadgeKey) ?? '0') ?? 0;
-  final next = cur + 1;
-  await _badgeStore.write(key: _kBadgeKey, value: '$next');
-  try { await AppBadgePlus.updateBadge(next); } catch (_) {}
-  return next;
-}
-
-Future<void> _clearBadge() async {
-  await _badgeStore.write(key: _kBadgeKey, value: '0');
-  try { await AppBadgePlus.updateBadge(0); } catch (_) {}
-  try { await _local.cancel(8000); } catch (_) {}
-}
+/// Reconcile the badge against reality. NOT a blind clear: if messages really
+/// are unread the badge must survive opening the app and show the true count.
+Future<void> _clearBadge([String source = 'notif_tap']) =>
+    BadgeService.recompute(source: source);
 
 /// [MULTIACCT-2] Stable per-DEVICE id. The FCM token belongs to the device, not
 /// to an account (rulebook: device-level values like the Clerk client token stay
@@ -164,7 +159,7 @@ Future<void> _handleMissedCallCallback(String? payload) async {
   final peerId = await DiskCache.read('last_missed_call_peer_id');
   if (peerId != null && peerId.isNotEmpty) {
     Analytics.capture('missed_call_callback_tapped', {'peer_id': peerId});
-    _clearBadge();
+    _clearBadge('missed_call_callback_tap');
     navigatorKey.currentState?.popUntil((r) => r.isFirst);
     // TODO: navigate to chat with peerId and trigger dial flow
   }
@@ -178,7 +173,7 @@ void _onNotifTap(String? payload) {
   // Group-invite tap → open the app; the Groups tab + notification bell surface
   // the pending invite (opening the exact thread from a cold tap is a refinement).
   if (payload.startsWith('group')) {
-    _clearBadge();
+    _clearBadge('group_notif_tap');
     navigatorKey.currentState?.popUntil((r) => r.isFirst);
     return;
   }
@@ -190,7 +185,7 @@ void _onNotifTap(String? payload) {
   // CALLFIX-R7: 'chat' payload opens inbox (main notification tap on missed-call or message).
   // Callback action is handled separately in _handleMissedCallCallback.
   if (payload != 'chat') return;
-  _clearBadge();
+  _clearBadge('chat_notif_tap');
   navigatorKey.currentState?.popUntil((r) => r.isFirst); // back to shell/chat list
 }
 
@@ -200,7 +195,7 @@ Future<void> _showGroupInviteNotif(Map<String, dynamic> d) async {
   final who = (d['fromName'] ?? 'Someone').toString();
   final group = (d['groupName'] ?? 'a group').toString();
   final conv = (d['conv'] ?? '').toString();
-  final count = await _bumpBadge();
+  final count = await _bumpBadge('group_invite');
   await _ensureLocalInit(); // bg isolate: plugin isn't init'd here otherwise → crash
   await _local.show(
     8001,
@@ -223,7 +218,21 @@ Future<void> _showGroupInviteNotif(Map<String, dynamic> d) async {
 
 /// Background/terminated FCM handler — must be a top-level entry point.
 @pragma('vm:entry-point')
-Future<void> firebaseBackgroundHandler(RemoteMessage message) async {
+Future<void> firebaseBackgroundHandler(RemoteMessage message) =>
+    // [ISSUE-BADGE-UNREAD-1] Mark the isolate FOR THE DURATION OF THIS HANDLER
+    // ONLY: it has no app state, no AccountScope and no open drift DB, so the
+    // badge cannot be recomputed from real unread state here. BadgeService falls
+    // back to a provisional +1 and the next foreground recompute (app resume /
+    // chat list / thread marked read) corrects it.
+    //
+    // This was a one-way latch (`inBackgroundIsolate = true`, never reset). If
+    // this top-level entry point ever ran on the MAIN isolate, every subsequent
+    // recompute short-circuited to the last persisted value and the badge froze
+    // for the process lifetime — the very bug we're fixing. runInBackgroundIsolate
+    // clears the flag in a `finally`, throw or not.
+    BadgeService.runInBackgroundIsolate(() => _handleBackgroundMessage(message));
+
+Future<void> _handleBackgroundMessage(RemoteMessage message) async {
   final d = message.data;
   final type = (d['type'] ?? '').toString();
   // Record EVERY background push the instant it arrives (durably — the main
@@ -390,7 +399,7 @@ Future<void> _showMessageNotif(Map<String, dynamic> d) async {
     return;
   }
   final who = (d['fromName'] ?? 'AvaTOK').toString();
-  final count = await _bumpBadge();
+  final count = await _bumpBadge('message');
   // Server-readable arch (owner request 2026-06-27, WhatsApp-style shade): when
   // the push carries a short message PREVIEW, render an EXPANDABLE banner so the
   // user can pull down the shade and read the message without opening AvaTOK.
@@ -458,7 +467,7 @@ Future<void> _showMissedCallNotif(Map<String, dynamic> d) async {
   final who = (d['callerName'] ?? d['caller_phone'] ?? d['fromName'] ?? 'a caller')
       .toString();
   final preview = (d['preview'] ?? d['body'] ?? '').toString().trim();
-  final count = await _bumpBadge();
+  final count = await _bumpBadge('missed_call');
   final title = 'Missed call — Ava took a message from $who';
   final body = preview.isNotEmpty ? preview : 'Tap to hear the message';
   final styleInfo = preview.isNotEmpty
@@ -516,7 +525,7 @@ Future<void> _showNowFreeNotif(Map<String, dynamic> d) async {
   final peerId = (d['fromPub'] ?? d['callee_uid'] ?? '').toString();
   final title = '$who is now free';
   final body = 'Tap to call';
-  final count = await _bumpBadge();
+  final count = await _bumpBadge('now_free');
   if (peerId.isNotEmpty) {
     // Reuse the existing callback plumbing: the tap handler reads this key.
     await DiskCache.write('last_missed_call_peer_id', peerId);
@@ -561,7 +570,7 @@ Future<void> _handleNowFreeCallback(String? payload) async {
   Analytics.capture('now_free_callback_started', {
     'peer_id': peerId ?? '',
   });
-  _clearBadge();
+  _clearBadge('now_free_callback_tap');
   navigatorKey.currentState?.popUntil((r) => r.isFirst);
   // The redial itself is driven by the chat/dial flow the missed-call callback
   // already routes to (peerId stored above); wiring a cold-start auto-dial is a
@@ -1255,9 +1264,16 @@ class PushService {
     ApiAuth.postJson(kNotifyUrl, body).ignore();
   }
 
-  /// Clear the unread app-icon badge + collapse the message notification. Call
-  /// when the user opens the app or views the chat list.
-  static Future<void> clearMessageBadge() => _clearBadge();
+  /// [ISSUE-BADGE-UNREAD-1] Reconcile the app-icon badge against real unread
+  /// state (AvaTOK chat + AvaDialer SMS/OTP) and collapse the notifications when
+  /// nothing is unread. Call when the user opens the app or views the chat list.
+  ///
+  /// Kept as the public API, but it is NO LONGER a blind clear: if messages
+  /// genuinely are unread the badge survives opening the app and shows the true
+  /// count. Delegates to [BadgeService.recompute] — see that class for why the
+  /// old "reset to 0 on tap" model left the owner with a stuck number.
+  static Future<void> clearMessageBadge() =>
+      BadgeService.recompute(source: 'clear_message_badge');
 
   /// Tell the caller a call was declined / busy — over the WS room (fast path)
   /// AND via the server push (works even if the socket can't be held).

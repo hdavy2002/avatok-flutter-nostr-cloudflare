@@ -23,6 +23,23 @@ class Messages extends Table {
   BoolColumn get mine => boolean()();
   TextColumn get payload => text()(); // the app envelope JSON (text/media/etc.)
   IntColumn get createdAt => integer()(); // epoch seconds
+  /// [ISSUE-BADGE-UNREAD-1] The envelope's `t` discriminator, denormalised out of
+  /// [payload] at write time so "is this a real MESSAGE?" is an indexed-ish SQL
+  /// predicate instead of a JSON decode per row.
+  ///
+  /// WHY THIS EXISTS: [Messages] is NOT a message table — SyncHub stores every
+  /// non-`receipt` frame here, so `status` (story posts), `del`/`gdel`
+  /// tombstones, reactions and any future control payload all land as rows with
+  /// `mine = false`. The launcher badge counted them and a contact merely posting
+  /// a status permanently bumped it with no row anywhere to clear — exactly the
+  /// "stuck on 1 with an empty inbox" symptom. [kCountableKinds] is now the ONE
+  /// definition of countable, matching `ChatListScreen`'s in-memory `_unread`.
+  ///
+  /// NULLABLE on purpose: rows written before schema v7 have no kind, and the
+  /// v7 migration backfills them best-effort from [payload]. Anything still NULL
+  /// is treated as NOT countable — the badge may under-count ancient rows, but it
+  /// can never get stuck above zero, which is the failure that matters.
+  TextColumn get kind => text().nullable()();
   @override
   Set<Column> get primaryKey => {rumorId};
 }
@@ -121,11 +138,13 @@ class AppDb extends _$AppDb {
   AppDb() : super(_open());
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   // v2: Chats gained [json]. v3: WalletLedgerCache (Phase 2 wallet). v4:
   // DeviceContactsCache (instant add-contact + on-AvaTOK match). v5: contact
   // email + hasWhatsapp columns and the InviteSends table (AvaInvite screen).
+  // v6: the npub → uid column rename. v7: Messages gained [kind] (the badge's
+  // countable-frame filter).
   // All added in-place so an existing on-device DB upgrades without wiping data.
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -167,8 +186,44 @@ class AppDb extends _$AppDb {
             await renameIfExists(contacts, 'npub', contacts.uid);
             await renameIfExists(deviceContactsCache, 'npub', deviceContactsCache.uid);
           }
+          if (from < 7) {
+            // [ISSUE-BADGE-UNREAD-1] Messages.kind — the badge's countable-frame
+            // filter. Added nullable so existing rows upgrade in place.
+            await m.addColumn(messages, messages.kind);
+            // Best-effort backfill so a phone that already HAS unread history
+            // keeps a truthful badge after the update instead of dropping to 0
+            // until the next inbound message. [payload] is jsonEncode output, so
+            // the discriminator is the literal substring `"t":"<kind>"` — no
+            // whitespace, position-independent, and no JSON1 dependency. Guarded:
+            // a failed backfill must never brick the DB open (the column itself
+            // is already there, and NULL simply means "not counted").
+            try {
+              for (final k in kCountableKinds) {
+                await customUpdate(
+                  'UPDATE messages SET kind = ? WHERE kind IS NULL AND payload LIKE ?',
+                  variables: [Variable.withString(k), Variable.withString('%"t":"$k"%')],
+                  updates: {messages},
+                );
+              }
+            } catch (_) {/* NULL kind just means "not counted" — never fatal */}
+          }
         },
       );
+
+  /// [ISSUE-BADGE-UNREAD-1] THE definition of "an unread thing", and the ONLY
+  /// one. It must stay byte-for-byte in step with `ChatListScreen`'s inbound
+  /// handler (`chat_list.dart`), which bumps its in-memory `_unread` for exactly
+  /// these `t` values — `recept` (AI receptionist took a message),
+  /// `marketplace_deal` (agent negotiation result) and the four real message
+  /// frames. Everything else SyncHub persists here (`status`, `del`/`gdel`,
+  /// reactions, future control payloads) is NOT a message the user can go and
+  /// read, so counting it produces a badge with no row to clear it.
+  ///
+  /// If you add a countable frame to the chat list, add it here in the same
+  /// commit — a mismatch is invisible until the owner's badge sticks again.
+  static const List<String> kCountableKinds = <String>[
+    'text', 'media', 'gtext', 'gmedia', 'recept', 'marketplace_deal',
+  ];
 
   // ── invite-sends (AvaInvite "Sent" state, per-account) ──
   /// Reactive set of every invite we've sent — the Invite screen watches this so
@@ -329,6 +384,76 @@ class AppDb extends _$AppDb {
       for (final r in rows)
         (convKey: r.read(messages.convKey) ?? '', lastTs: r.read(maxTs) ?? 0),
     ];
+  }
+
+  /// [ISSUE-BADGE-UNREAD-1] Unread count per conversation, for EVERY thread that
+  /// has any, in ONE query. This lets [BadgeService] total the unread across all
+  /// threads WITHOUT [ChatListScreen] being mounted — the chat list's in-memory
+  /// `_unread` map only exists while that widget lives, which is exactly why the
+  /// launcher badge used to get stuck when ShellV2 landed on AvaDial instead.
+  ///
+  /// Unread = rows that are NOT [Messages.mine], whose [Messages.kind] is in
+  /// [kCountableKinds], and whose [Messages.createdAt] is newer than that
+  /// conversation's read high-water mark. Both [readMarks] (a [ReadStateStore]
+  /// map) and [Messages.createdAt] are epoch SECONDS — see
+  /// `ChatThreadScreen._markRead`, which writes `now ~/ 1000` — so they compare
+  /// directly with no conversion.
+  ///
+  /// The per-conversation threshold is inlined as a `CASE conv_key WHEN … THEN …`
+  /// so this stays ONE round-trip. It replaced a `distinctConvKeys()` + one COUNT
+  /// per conversation N+1 that ran on every resume / cold start / thread close /
+  /// SMS arrival. Conversations with no read mark fall to `ELSE 0` (everything
+  /// inbound is unread), which is the same default the old `lastRead[k] ?? 0` had.
+  /// Only conversations with a non-zero count appear in the result.
+  Future<Map<String, int>> unreadByConv(Map<String, int> readMarks) async {
+    final vars = <Variable>[
+      for (final k in kCountableKinds) Variable.withString(k),
+    ];
+    final kindPlaceholders = List<String>.filled(kCountableKinds.length, '?').join(', ');
+    // Order matters: these variables bind AFTER the kind list, matching the SQL.
+    final threshold = StringBuffer();
+    if (readMarks.isEmpty) {
+      threshold.write('0');
+    } else {
+      threshold.write('CASE conv_key');
+      for (final e in readMarks.entries) {
+        threshold.write(' WHEN ? THEN ?');
+        vars.add(Variable.withString(e.key));
+        vars.add(Variable.withInt(e.value));
+      }
+      threshold.write(' ELSE 0 END');
+    }
+    final rows = await customSelect(
+      'SELECT conv_key AS ck, COUNT(*) AS c FROM messages '
+      'WHERE mine = 0 AND kind IN ($kindPlaceholders) '
+      'AND created_at > $threshold '
+      'GROUP BY conv_key',
+      variables: vars,
+      readsFrom: {messages},
+    ).get();
+    return {
+      for (final r in rows)
+        if (r.read<String>('ck').isNotEmpty && (r.read<int>('c')) > 0)
+          r.read<String>('ck'): r.read<int>('c'),
+    };
+  }
+
+  /// [ISSUE-BADGE-UNREAD-1] Newest message timestamp (epoch SECONDS) per
+  /// conversation, including my own sends — the same "last activity" the chat
+  /// list's preview row carries. [BadgeService] needs it to apply the
+  /// hidden-thread rule: a hide is undone by any NEWER message, so a hidden
+  /// thread only stops counting while its newest message predates the hide.
+  Future<Map<String, int>> lastTsByConv() async {
+    final maxTs = messages.createdAt.max();
+    final q = selectOnly(messages)
+      ..addColumns([messages.convKey, maxTs])
+      ..groupBy([messages.convKey]);
+    final rows = await q.get();
+    return {
+      for (final r in rows)
+        if ((r.read(messages.convKey) ?? '').isNotEmpty)
+          r.read(messages.convKey)!: r.read(maxTs) ?? 0,
+    };
   }
 
   /// How many messages we already have for a conversation (cheap count).

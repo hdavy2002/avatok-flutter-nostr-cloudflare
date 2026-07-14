@@ -18,6 +18,7 @@ import 'core/app_registry.dart';
 import 'core/apps.dart';
 import 'core/ava_bootstrap.dart';
 import 'core/ava_log.dart';
+import 'core/badge_service.dart';
 import 'core/calls/call_overlay.dart';
 import 'core/calls/call_session_manager.dart';
 import 'core/voice/native_voice_audio.dart';
@@ -441,6 +442,19 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
       // the message still wasn't there" report.
       SyncHub.I.onAppResumed();
     }
+    // [ISSUE-BADGE-UNREAD-1] Reconcile the launcher badge on EVERY resume, from
+    // here rather than from a screen. This is the fix for "the number is stuck
+    // on the icon": clearing used to live only in ChatListScreen (initState +
+    // its own resume hook), but with RemoteConfig.shellV2 ON, ShellV2 builds its
+    // roots lazily and lands on order.first — often RootId.avaDial — so the chat
+    // list may never be constructed and the badge never got reconciled at all.
+    // Sitting on the app-level observer, this runs regardless of which shell root
+    // the user lands on. It is a RECOMPUTE, not a clear: a genuinely unread
+    // inbox keeps its true count; an empty one goes to 0 and cancels the
+    // badge-bearing notifications.
+    if (state == AppLifecycleState.resumed) {
+      unawaited(BadgeService.recompute(source: 'app_resumed'));
+    }
     // [CALL-RESUME-UI-1] Returning to the app with a LIVE call but no CallScreen
     // mounted (user went to WhatsApp mid-call, came back, and couldn't find the
     // call to hang up). Re-present the full call UI. `onRequestPop` is non-null
@@ -593,6 +607,13 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
       setState(() => _stage = s);
       if (s == _Stage.shell) {
         _checkBatteryOptimizations();
+        // [ISSUE-BADGE-UNREAD-1] COLD START. didChangeAppLifecycleState only
+        // fires on a resume, so a launch straight into the shell would otherwise
+        // never reconcile a badge left stuck by a swiped-away notification. This
+        // is the single chokepoint for entering the shell and every path sets
+        // AccountScope.id before it, so the per-account chat DB + read-state are
+        // readable by the time this runs.
+        unawaited(BadgeService.recompute(source: 'shell_entered'));
       }
     }
   }

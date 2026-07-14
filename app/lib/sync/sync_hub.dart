@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show InternetAddress;
 
+import 'package:drift/drift.dart' show Value; // [ISSUE-BADGE-UNREAD-1] Messages.kind
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/io.dart';
@@ -730,9 +731,17 @@ class SyncHub {
         : 'g:$conv';
 
     var isReceipt = false;
+    // [ISSUE-BADGE-UNREAD-1] The envelope discriminator, denormalised onto the
+    // stored row. Messages is a frame log, not a message table — `status`, `del`,
+    // reactions and future control payloads all land here — so the launcher badge
+    // needs a cheap way to count only frames the user can actually go and READ.
+    // Null when the body isn't decodable JSON or carries no `t` (never countable).
+    String? kind;
     try {
       final env = jsonDecode(body);
       if (env is Map) {
+        final t = env['t'];
+        if (t is String && t.isNotEmpty) kind = t;
         if (env['t'] == 'receipt') isReceipt = true;
         // Delete-for-everyone from a peer: record the tombstone DURABLY the instant
         // it's ingested — independent of whether the target chat is open — so it
@@ -762,12 +771,28 @@ class SyncHub {
         list.add(DmMessage(rumorId: rumorId, mine: mine, payload: body, createdAt: createdSec));
         try {
           Db.I.upsertMessage(MessagesCompanion.insert(
-              rumorId: rumorId, convKey: convKey, mine: mine, payload: body, createdAt: createdSec));
+              rumorId: rumorId, convKey: convKey, mine: mine, payload: body,
+              createdAt: createdSec, kind: Value(kind)));
           if (!_dbLogged) { _dbLogged = true; AvaLog.I.log('db', 'sqlite: storing messages locally ✓'); }
         } catch (_) {}
       }
     }
     _incoming.add(HubEvent(convKey, sender, myUid, mine, rumorId, body, createdSec));
+  }
+
+  /// [ISSUE-BADGE-UNREAD-1] The envelope's `t` discriminator, or null when the
+  /// payload isn't decodable JSON / carries no `t`. Persisted on the row so the
+  /// launcher badge can count only frames the user can actually go and read
+  /// (see `Messages.kind` / `AppDb.kCountableKinds`).
+  static String? _kindOf(String payload) {
+    try {
+      final env = jsonDecode(payload);
+      if (env is Map) {
+        final t = env['t'];
+        if (t is String && t.isNotEmpty) return t;
+      }
+    } catch (_) {}
+    return null;
   }
 
   /// Inject a LOCALLY-created message (e.g. the optimistic "your agent is
@@ -793,7 +818,8 @@ class SyncHub {
       list.add(DmMessage(rumorId: rid, mine: false, payload: payload, createdAt: ts));
       try {
         Db.I.upsertMessage(MessagesCompanion.insert(
-            rumorId: rid, convKey: convKey, mine: false, payload: payload, createdAt: ts));
+            rumorId: rid, convKey: convKey, mine: false, payload: payload, createdAt: ts,
+            kind: Value(_kindOf(payload)))); // [ISSUE-BADGE-UNREAD-1]
       } catch (_) {}
     }
     _incoming.add(HubEvent(convKey, peerUid, myUid, false, rid, payload, ts));
