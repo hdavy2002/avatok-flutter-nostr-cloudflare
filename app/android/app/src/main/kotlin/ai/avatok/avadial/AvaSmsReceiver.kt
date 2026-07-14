@@ -55,13 +55,36 @@ class AvaSmsReceiver : BroadcastReceiver() {
             val text = body.toString()
             val ts = messages[0].timestampMillis.takeIf { it > 0 } ?: System.currentTimeMillis()
 
-            persistToInbox(context, address, text, ts)
+            val persisted = persistToInbox(context, address, text, ts)
             val spam = isSpam(context, address)
 
             AvaDialPlugin.emit(
                 "onSmsReceived",
                 mapOf("address" to address, "body" to text, "date" to ts, "spam" to spam)
             )
+            // [AVADIAL-SMS-TELEMETRY-1] The single most important event in the SMS
+            // feature: it is the ONLY proof that inbound delivery works at all. The
+            // owner's 2026-07-14 report was literally "I am still not getting any
+            // messages" — with this event, zero rows answers that in one query
+            // instead of a code read.
+            //
+            // This runs in a BroadcastReceiver that the OS may have cold-started, so
+            // the Flutter engine is usually DEAD here — hence track() (queued, drained
+            // later) rather than an emit Dart would have to catch live.
+            //
+            // `persisted` is load-bearing: under SMS_DELIVER *we* own the provider
+            // write, so persisted=false means the message reached us but never entered
+            // the user's inbox — it would be silently missing from every thread view
+            // while this event still proves it arrived. That is the difference between
+            // "the radio isn't delivering" and "we're dropping it ourselves".
+            AvaDialPlugin.track("avadial_sms_received", mapOf(
+                "sender_hash" to AvaDialPlugin.hashE164Native(address),
+                "body_len" to text.length,
+                "parts" to messages.size,
+                "spam" to spam,
+                "persisted" to persisted,
+                "engine_cold" to !AvaDialPlugin.engineAlive(),
+            ))
             // OTP fast-path: if the message carries a one-time code, surface a
             // high-priority heads-up pop-up with a one-tap "Copy code" button — the
             // AvaTOK equivalent of Truecaller's OTP card. Only fires when the body
@@ -70,7 +93,8 @@ class AvaSmsReceiver : BroadcastReceiver() {
             // one-tap copy from a suspected-spam sender).
             if (!spam) {
                 extractOtp(text)?.let { code ->
-                    if (AvaOtpOverlay.canDraw(context)) {
+                    val canDraw = AvaOtpOverlay.canDraw(context)
+                    if (canDraw) {
                         // Primary: the Truecaller-style floating card over all apps.
                         AvaOtpOverlay.show(context, code, address)
                     } else {
@@ -79,6 +103,30 @@ class AvaSmsReceiver : BroadcastReceiver() {
                         // is never lost in the meantime.
                         notifyOtp(context, address, code)
                     }
+                    // [AVADIAL-OTP-TELEMETRY-1] OTP had NO telemetry of any kind before
+                    // this — the whole flow (detect → surface → copy) ran natively and
+                    // never reached Dart, so it was completely unobservable in PostHog.
+                    //
+                    // `surface` is the one that matters commercially: the overlay is
+                    // the Truecaller-parity experience, the notification is the
+                    // degraded fallback, and the split between them is purely whether
+                    // "appear on top" was granted. A fleet skewed to `notification`
+                    // means the setup sheet is failing to win that permission — which
+                    // is a funnel problem, not an SMS problem, and looks like nothing
+                    // at all without this event.
+                    //
+                    // NEVER the code itself, and never the body: `code_len` only. The
+                    // code is a live credential — putting it in PostHog would turn
+                    // analytics into a 2FA-bypass oracle. body_len is safe and lets us
+                    // spot detector false-positives (long marketing texts matching the
+                    // keyword list) without reading anyone's messages.
+                    AvaDialPlugin.track("avadial_otp_detected", mapOf(
+                        "sender_hash" to AvaDialPlugin.hashE164Native(address),
+                        "code_len" to code.length,
+                        "body_len" to text.length,
+                        "surface" to if (canDraw) "overlay" else "notification",
+                        "can_draw_overlay" to canDraw,
+                    ))
                 }
             }
             notify(context, address, text, spam)
@@ -88,9 +136,13 @@ class AvaSmsReceiver : BroadcastReceiver() {
         }
     }
 
-    /** Write the inbound message into the OS SMS provider (default-app duty). */
-    private fun persistToInbox(ctx: Context, address: String?, body: String, ts: Long) {
-        try {
+    /**
+     * Write the inbound message into the OS SMS provider (default-app duty).
+     * Returns true when the row actually landed — the caller reports that as
+     * `persisted` telemetry, so a denied provider write stops being invisible.
+     */
+    private fun persistToInbox(ctx: Context, address: String?, body: String, ts: Long): Boolean {
+        return try {
             val values = ContentValues().apply {
                 put(Telephony.Sms.ADDRESS, address)
                 put(Telephony.Sms.BODY, body)
@@ -99,8 +151,10 @@ class AvaSmsReceiver : BroadcastReceiver() {
                 put(Telephony.Sms.SEEN, 0)
                 put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_INBOX)
             }
-            ctx.contentResolver.insert(Telephony.Sms.Inbox.CONTENT_URI, values)
-        } catch (_: Throwable) { /* not default SMS app → provider write denied */ }
+            ctx.contentResolver.insert(Telephony.Sms.Inbox.CONTENT_URI, values) != null
+        } catch (_: Throwable) {
+            false // not default SMS app → provider write denied
+        }
     }
 
     /**

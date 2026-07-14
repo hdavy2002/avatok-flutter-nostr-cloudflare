@@ -36,6 +36,15 @@ class AvaMmsReceiver : BroadcastReceiver() {
         try {
             // Best-effort telemetry hop to Flutter (full parse is out of scope).
             AvaDialPlugin.emit("onMmsReceived", mapOf("acknowledged" to true))
+            // [AVADIAL-SMS-TELEMETRY-1] MMS is acknowledged but NOT parsed yet
+            // (deferred — see the class doc). This event measures how much real MMS
+            // traffic the fleet actually receives, which is the input to deciding
+            // whether full MMS retrieval is worth building. Nothing about the message
+            // is knowable here anyway: we deliberately do not decode the WAP push, so
+            // there is no sender and no content to leak.
+            AvaDialPlugin.track("avadial_mms_received", mapOf(
+                "engine_cold" to !AvaDialPlugin.engineAlive(),
+            ))
             notify(context)
         } catch (_: Throwable) {
             // Never crash the MMS pipeline.

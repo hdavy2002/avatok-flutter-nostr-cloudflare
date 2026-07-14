@@ -37,6 +37,13 @@ object AvaOtpOverlay {
     private var current: View? = null
     private var pendingDismiss: Runnable? = null
 
+    // [AVADIAL-OTP-TELEMETRY-1] Dismissal attribution. `dismissReason` is set by
+    // whichever path is about to tear the card down and read once in removeCurrent —
+    // it defaults to "auto" at show() time so the 60s timeout needs no callback of its
+    // own. Main-thread only (every mutation is inside main.post), so no locking.
+    private var shownAt: Long = 0L
+    private var dismissReason: String = "auto"
+
     /** True when we may draw over other apps (always true pre-Android 6). */
     fun canDraw(ctx: Context): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(ctx)
@@ -47,6 +54,12 @@ object AvaOtpOverlay {
         main.post {
             try {
                 val wm = app.getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return@post
+                // A second OTP arriving while the first card is still up replaces it.
+                // Attribute that teardown honestly: without this the outgoing card
+                // logs reason=auto, which is the exact signal the dismissed event
+                // exists to measure ("timed out untouched") — a back-to-back OTP pair
+                // would otherwise read as the user ignoring the overlay.
+                dismissReason = "superseded"
                 removeCurrent(wm)
                 val card = buildCard(
                     app, code, sender,
@@ -54,9 +67,22 @@ object AvaOtpOverlay {
                         val cm = app.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
                         cm?.setPrimaryClip(ClipData.newPlainText("OTP", code))
                         Toast.makeText(app, "Code $code copied", Toast.LENGTH_SHORT).show()
+                        // [AVADIAL-OTP-TELEMETRY-1] Overlay-surface copy — the mirror of
+                        // AvaOtpCopyReceiver's notification-surface event. Same name and
+                        // shape so `avadial_otp_copied` can be counted whole and broken
+                        // down by `surface`, and so detected→copied conversion is one
+                        // funnel rather than two. Code value never included.
+                        AvaDialPlugin.track("avadial_otp_copied", mapOf(
+                            "surface" to "overlay",
+                            "code_len" to code.length,
+                        ))
+                        dismissReason = "copy"
                         removeCurrent(wm)
                     },
-                    onClose = { removeCurrent(wm) },
+                    onClose = {
+                        dismissReason = "close"
+                        removeCurrent(wm)
+                    },
                 )
                 val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -77,10 +103,22 @@ object AvaOtpOverlay {
                 lp.width = screenWidth(wm) - dp(app, 24)
                 wm.addView(card, lp)
                 current = card
+                shownAt = System.currentTimeMillis()
+                dismissReason = "auto"
                 pendingDismiss = Runnable { removeCurrent(wm) }
                 main.postDelayed(pendingDismiss!!, AUTO_DISMISS_MS)
-            } catch (_: Throwable) {
+                AvaDialPlugin.track("avadial_otp_overlay_shown", mapOf("code_len" to code.length))
+            } catch (t: Throwable) {
                 // Overlay add can fail on some OEMs / race conditions — best-effort.
+                // [AVADIAL-OTP-TELEMETRY-1] But NOT silently: canDraw() said yes, so
+                // AvaSmsReceiver already took the overlay branch and skipped the
+                // notification fallback. A throw here means the user gets NOTHING —
+                // the OTP is simply lost. This is the one OEM failure mode that costs
+                // a real login, so it must be visible rather than swallowed.
+                AvaDialPlugin.track("avadial_otp_overlay_failed", mapOf(
+                    "reason" to (t::class.java.simpleName ?: "unknown"),
+                    "sdk" to Build.VERSION.SDK_INT,
+                ))
             }
         }
     }
@@ -90,6 +128,20 @@ object AvaOtpOverlay {
         pendingDismiss = null
         val v = current ?: return
         current = null
+        // [AVADIAL-OTP-TELEMETRY-1] Closes the funnel: shown → (copy | close | auto).
+        // `auto` means the card timed out untouched after 60s — at scale that reads as
+        // the overlay not being noticed or not being useful, which is a product signal
+        // the copy event alone cannot give (a non-copy is otherwise indistinguishable
+        // from no OTP arriving). `visible_ms` separates "dismissed instantly as an
+        // annoyance" from "read, then left alone".
+        val reason = dismissReason
+        val visibleMs = if (shownAt > 0L) System.currentTimeMillis() - shownAt else -1L
+        shownAt = 0L
+        dismissReason = "auto"
+        AvaDialPlugin.track("avadial_otp_overlay_dismissed", mapOf(
+            "reason" to reason,
+            "visible_ms" to visibleMs,
+        ))
         try {
             wm.removeView(v)
         } catch (_: Throwable) { /* already gone */ }

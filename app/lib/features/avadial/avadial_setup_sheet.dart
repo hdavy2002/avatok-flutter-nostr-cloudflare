@@ -128,7 +128,24 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
     _smsAskedAt = null;
     if (r.granted || askedAt == null || !mounted) return;
     if (isInstantDenial(askedAt)) {
-      Analytics.capture('avadial_setup_sms_autodenied', const {});
+      // [AVADIAL-SMS-ROLE-1] An instant denial has TWO causes that look identical
+      // from here, and we shipped a build that guessed wrong:
+      //   (a) the app doesn't QUALIFY as a default-SMS candidate — our manifest bug;
+      //   (b) Android 15+ hard-restricts SMS for sideloads — the user can unlock it.
+      // This sheet has always assumed (b) and shown the restricted-settings help.
+      // On 2026-07-14 the real cause was (a) (SEND_RESPOND_VIA_MESSAGE_SERVICE — no
+      // such permission), so the owner was sent to a ⋮ menu his device never showed,
+      // for a lock that was never engaged. Attach the qualification verdict to the
+      // event so the two are separable in PostHog from now on: `qualified: false`
+      // here means the help dialog is lying and the fix is a build, not a tap.
+      unawaited(() async {
+        final diag = await AvaDialChannel.I.smsRoleDiagnostics();
+        final props = <String, Object>{};
+        diag.forEach((k, v) {
+          if (v != null) props[k] = v as Object;
+        });
+        Analytics.capture('avadial_setup_sms_autodenied', props);
+      }());
       showSmsRoleRestrictedHelp(context);
     }
   }

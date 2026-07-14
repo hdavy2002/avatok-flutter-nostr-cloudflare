@@ -88,6 +88,7 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
   }
 
   Future<void> _load() async {
+    final startedAt = DateTime.now();
     final raw = await AvaDialChannel.I.smsQueryThreads();
     final list = <_Thread>[];
     for (final r in raw) {
@@ -105,6 +106,30 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
       _threads = list;
       _loading = false;
     });
+    // [AVADIAL-SMS-TELEMETRY-1] The "I'm still not getting any messages" event.
+    // This is the READ side of the SMS feature — the provider query behind the
+    // Messages tab — and it had no telemetry at all, so an empty inbox was
+    // indistinguishable from a healthy one with no texts.
+    //
+    // `threads == 0` alone means nothing; paired with `role_held` it is decisive:
+    //   role_held=false, threads=0  → expected, we can't read the provider yet
+    //   role_held=true,  threads=0  → BROKEN, we own the inbox and it's empty
+    // The second combination is the fleet-wide version of the owner's report, and
+    // it's a PostHog query rather than a bug report. Counts and timings only — no
+    // addresses, no snippets.
+    // Flush any SMS/OTP telemetry native buffered while the engine was down.
+    // ensureWired() drains once at cold start; this catches everything that
+    // arrived with the app merely backgrounded — which for SMS is most of it.
+    unawaited(AvaDialChannel.I.drainNativeTelemetry());
+    unawaited(() async {
+      final roleHeld = await AvaDialChannel.I.isSmsRoleHeld();
+      Analytics.capture('avadial_sms_threads_loaded', <String, Object>{
+        'threads': list.length,
+        'unread_threads': list.where((t) => t.unread).length,
+        'role_held': roleHeld,
+        'elapsed_ms': DateTime.now().difference(startedAt).inMilliseconds,
+      });
+    }());
     _resolveVerdicts(list);
   }
 

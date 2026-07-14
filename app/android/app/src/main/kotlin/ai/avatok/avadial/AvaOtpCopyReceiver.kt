@@ -30,6 +30,19 @@ class AvaOtpCopyReceiver : BroadcastReceiver() {
             val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
             cm?.setPrimaryClip(ClipData.newPlainText("OTP", code))
             Toast.makeText(context, "Code $code copied", Toast.LENGTH_SHORT).show()
+            // [AVADIAL-OTP-TELEMETRY-1] Copy = the OTP feature paying off; paired with
+            // avadial_otp_detected this is the conversion rate of the whole flow
+            // (detected → copied), split by surface. Runs with the app closed and the
+            // engine dead by design — the entire point of this receiver is that the
+            // code reaches the clipboard WITHOUT opening AvaTOK — so it must be
+            // track()'d, never emit()'d. `surface=notification` is hard-coded because
+            // only the fallback notification's action can reach this receiver; the
+            // overlay copies in-process and reports itself.
+            // The code value never leaves the device: length only.
+            AvaDialPlugin.track("avadial_otp_copied", mapOf(
+                "surface" to "notification",
+                "code_len" to code.length,
+            ))
             val nid = intent.getIntExtra(EXTRA_NOTIF_ID, -1)
             if (nid != -1) {
                 (context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager)

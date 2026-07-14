@@ -184,6 +184,99 @@ class AvaDialChannel {
     if (_wired) return;
     _wired = true;
     _ch.setMethodCallHandler(_onNative);
+    // [AVADIAL-SMS-TELEMETRY-1] Flush anything native recorded while Dart was down.
+    // Unawaited: wiring the channel must not block on a PostHog round-trip, and a
+    // failed drain is never worth delaying the SMS UI for.
+    unawaited(drainNativeTelemetry());
+  }
+
+  // ── [AVADIAL-SMS-TELEMETRY-1] Native telemetry sink ───────────────────────
+  // Native records SMS/OTP events into a bounded queue AND emits them live (see
+  // AvaDialPlugin.track). Both paths land here, so the same entry can arrive
+  // twice — once live, once on the next drain. `seq` is a process-monotonic id
+  // from native; we dedupe on it.
+  //
+  // A high-water mark would be WRONG: drain returns entries in FIFO order, so a
+  // queue holding 3,4,5 where 5 already arrived live would see 3 and 4 rejected
+  // as "older than 5" — silently dropping exactly the engine-dead events the
+  // queue exists to preserve. Hence a set.
+  final Set<int> _seenTelemetry = <int>{};
+
+  /// True if [seq] is new (and records it). Native restarts reset the sequence to
+  /// 0, but so does the process — and this set dies with it — so they can't
+  /// disagree. Bounded: keep the newest 100 once we pass 200, which is far more
+  /// than native's 50-entry queue can ever replay.
+  bool _markTelemetrySeen(int seq) {
+    if (seq == 0) return true; // no id → can't dedupe; capture rather than lose.
+    if (!_seenTelemetry.add(seq)) return false;
+    if (_seenTelemetry.length > 200) {
+      final sorted = _seenTelemetry.toList()..sort();
+      _seenTelemetry.removeAll(sorted.take(sorted.length - 100));
+    }
+    return true;
+  }
+
+  /// Forward one native telemetry entry to PostHog. The props map is built
+  /// native-side and is already PII-free (hashes and lengths only) — this just
+  /// coerces it across the platform-channel boundary, where every value arrives
+  /// as `dynamic` and nulls are legal, into the non-null `Map<String, Object>`
+  /// [Analytics.capture] demands. Null-valued keys (e.g. an absent sender_hash)
+  /// are DROPPED, matching the `if (x != null)` idiom used elsewhere.
+  void _captureNativeTelemetry(Map<dynamic, dynamic> entry) {
+    final seq = (entry['seq'] as num?)?.toInt() ?? 0;
+    if (!_markTelemetrySeen(seq)) return;
+    final event = '${entry['event'] ?? ''}';
+    if (event.isEmpty) return;
+    final props = <String, Object>{};
+    final raw = entry['props'];
+    if (raw is Map) {
+      raw.forEach((k, v) {
+        if (v != null) props['$k'] = v as Object;
+      });
+    }
+    // Native stamps wall-clock at record time. When this arrives via a drain it
+    // may be minutes stale (SMS received with the app closed), so pass the age
+    // rather than let PostHog imply the event happened at ingest.
+    final ts = (entry['ts'] as num?)?.toInt();
+    if (ts != null && ts > 0) {
+      final age = DateTime.now().millisecondsSinceEpoch - ts;
+      if (age > 0) props['recorded_ago_ms'] = age;
+    }
+    Analytics.capture(event, props);
+  }
+
+  /// Drain and capture every telemetry entry native buffered while the Flutter
+  /// engine was dead (cold-started SMS receiver, OTP copy with the app closed).
+  /// Idempotent — already-captured entries are dropped by the `seq` dedupe.
+  Future<void> drainNativeTelemetry() async {
+    try {
+      final raw = await _ch.invokeMethod<List<dynamic>>('drainTelemetry');
+      if (raw == null || raw.isEmpty) return;
+      for (final e in raw.whereType<Map>()) {
+        _captureNativeTelemetry(e);
+      }
+    } catch (e) {
+      AvaLog.I.log('avadial', 'drainTelemetry failed: $e');
+    }
+  }
+
+  /// [AVADIAL-SMS-ROLE-1] Whether this build QUALIFIES as a default-SMS candidate:
+  /// `{sms_deliver_ok, wap_push_ok, respond_via_ok, sendto_ok, qualified,
+  /// role_held, is_default_sms, has_other_default, sdk}`.
+  ///
+  /// `qualified == false` means the OS will refuse ROLE_SMS no matter what the
+  /// user does — it is ALWAYS a manifest bug on our side, never a user choice.
+  /// Empty map on non-Android / older plugin builds; callers must treat a missing
+  /// key as unknown rather than false.
+  Future<Map<String, dynamic>> smsRoleDiagnostics() async {
+    try {
+      final raw = await _ch.invokeMethod<Map<dynamic, dynamic>>('smsRoleDiagnostics');
+      if (raw == null) return const {};
+      return raw.map((k, v) => MapEntry('$k', v));
+    } catch (e) {
+      AvaLog.I.log('avadial', 'smsRoleDiagnostics failed: $e');
+      return const {};
+    }
   }
 
   Future<dynamic> _onNative(MethodCall call) async {
@@ -245,8 +338,17 @@ class AvaDialChannel {
             a['ok'] == true,
           ));
           break;
+        case 'onTelemetry':
+          // [AVADIAL-SMS-TELEMETRY-1] Live leg of the native telemetry spine; the
+          // drain covers the engine-dead leg. Deliberately NOT captured in the
+          // onSmsReceived / onSmsSendStatus cases above — those only fire when the
+          // engine is alive, which is exactly the population the SMS surfaces skew
+          // away from. One path, one count.
+          _captureNativeTelemetry(a);
+          break;
         case 'onMmsReceived':
-          // Minimal: no MMS parsing yet (documented). Nothing to surface.
+          // Minimal: no MMS parsing yet (documented). Telemetry rides the native
+          // spine (avadial_mms_received) — nothing to surface in the UI.
           break;
         case 'onLaunchCompose':
           _compose.add(AvaComposeLaunch(a['number'] as String?));

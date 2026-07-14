@@ -31,6 +31,9 @@ import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.PluginRegistry
 import org.json.JSONObject
 import java.io.File
+import java.security.MessageDigest
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * AvaDial native bridge (Specs/SPIKE-2026-07-12-avadial-telecom.md).
@@ -108,6 +111,83 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
         }
 
         /**
+         * True when a Flutter engine is attached, i.e. [emit] will actually deliver.
+         * Telemetry tags cold (engine-dead) events with this so we can tell a real
+         * "no inbound SMS" from "the event was recorded but never drained".
+         */
+        fun engineAlive(): Boolean = instance?.channel != null
+
+        // ── [AVADIAL-SMS-TELEMETRY-1] Native telemetry spine ─────────────────────
+        // WHY THIS EXISTS: the SMS/OTP surfaces are the ONLY AvaDial paths that
+        // routinely run with NO Flutter engine. SMS_DELIVER cold-starts the process
+        // into a bare BroadcastReceiver; the OTP overlay and the "Copy code" action
+        // both complete without ever opening the app. `emit()` silently drops on a
+        // dead engine, so an Analytics.capture() reached only from Dart's _onNative
+        // would systematically under-count exactly the background cases we most need
+        // to see (an inbound text that never arrives is invisible by construction).
+        //
+        // So: native records into a bounded in-memory queue AND emits live. Dart
+        // captures on the live `onTelemetry` event when it's up, and drains the queue
+        // on wire-up for everything that happened while it was down. `seq` is a
+        // process-monotonic id — Dart dedupes on it, because a live-emitted entry is
+        // ALSO still sitting in the queue and would otherwise double-count.
+        //
+        // Bounded at TELEMETRY_CAP (oldest dropped): this is best-effort diagnostics,
+        // never a durable log. The queue dies with the process — if the user never
+        // opens the app, the entries are lost, and that is an accepted trade.
+        //
+        // PRIVACY (hard rule, matches the rest of avadial): NO raw phone number and
+        // NO message body ever enters a props map. Numbers go through
+        // [hashE164Native]; bodies and OTP codes contribute LENGTHS ONLY, never text.
+        private const val TELEMETRY_CAP = 50
+        private val telemetrySeq = AtomicLong(0)
+        private val pendingTelemetry = ConcurrentLinkedQueue<Map<String, Any?>>()
+
+        /**
+         * Record one native telemetry event. Safe from any thread and from a receiver
+         * with no engine attached. [event] is the PostHog event name (snake_case,
+         * `avadial_`-prefixed); [props] must already be PII-free.
+         */
+        fun track(event: String, props: Map<String, Any?> = emptyMap()) {
+            val entry = mapOf(
+                "seq" to telemetrySeq.incrementAndGet(),
+                "event" to event,
+                "ts" to System.currentTimeMillis(),
+                "props" to props,
+            )
+            pendingTelemetry.offer(entry)
+            while (pendingTelemetry.size > TELEMETRY_CAP) pendingTelemetry.poll()
+            emit("onTelemetry", entry)
+        }
+
+        /**
+         * SHA-256 hex of [s] exactly as given — same ALGORITHM as Dart's
+         * `AvaDialChannel.hashE164` (lowercase hex of UTF-8 bytes), so a number
+         * identifies itself in PostHog without ever being sent.
+         *
+         * CAUTION — the algorithm matches but the INPUT does not, so these hashes do
+         * NOT join with Dart's. Dart hashes a normalised E.164 string
+         * (`+919876543210`); the SMS surfaces hash the raw provider/PDU address,
+         * which is whatever the carrier sent — often national format (`9876543210`)
+         * and sometimes not a number at all (alphanumeric sender IDs like
+         * `VM-HDFCBK`). The same person therefore hashes differently here than in the
+         * call-screening snapshot or the community spam pool. SMS-origin hashes join
+         * with EACH OTHER (`sender_hash` ↔ `dest_hash` are both raw provider format),
+         * which is all the SMS funnels need. Do not attempt a cross-surface join on
+         * these without normalising to E.164 first.
+         */
+        fun hashE164Native(s: String?): String? {
+            if (s.isNullOrEmpty()) return null
+            return try {
+                val md = MessageDigest.getInstance("SHA-256")
+                md.digest(s.toByteArray(Charsets.UTF_8))
+                    .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+            } catch (_: Throwable) {
+                null
+            }
+        }
+
+        /**
          * Called by MainActivity when it is (re)launched with the AvaDial incoming
          * route extra. Records the pending call for a cold-start drain AND emits
          * `onLaunchIncoming` for the already-running case.
@@ -161,6 +241,16 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
         fun notifyComposeLaunch(number: String?) {
             pendingComposeNumber = number ?: ""
             emit("onLaunchCompose", mapOf("number" to number))
+            // [AVADIAL-SMS-TELEMETRY-1] Proves the ACTION_SENDTO leg — component (4)
+            // of the default-SMS gate — actually resolves to us on this device. If
+            // this event never appears in the wild, the alias is not being routed and
+            // the SMS role is silently unobtainable. `cold` = the launch beat Dart's
+            // channel handler, so this compose will arrive via getPendingCompose
+            // rather than the live event.
+            track("avadial_sms_compose_launched", mapOf(
+                "has_number" to !number.isNullOrEmpty(),
+                "cold" to (instance == null),
+            ))
         }
 
         /**
@@ -239,6 +329,14 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
     private var activityBinding: ActivityPluginBinding? = null
     private var smsResultReceiver: BroadcastReceiver? = null
 
+    /**
+     * [AVADIAL-SMS-ROLE-1] Wall-clock at which the ROLE_SMS system prompt was
+     * launched, or 0 when none is in flight. Read once in onActivityResult to derive
+     * `elapsed_ms` — the instant-denial detector. Plain field, not @Volatile: both
+     * the write (requestRole) and the read (onActivityResult) are main-thread only.
+     */
+    private var smsRoleRequestedAt: Long = 0L
+
     // ── FlutterPlugin ──────────────────────────────────────────────────────────
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         appContext = binding.applicationContext
@@ -290,6 +388,20 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
                     if (rowId >= 0L) finalizeSmsRow(ctx, rowId, ok)
                 }
                 emit("onSmsSendStatus", mapOf("ref" to ref, "phase" to phase, "ok" to ok))
+                // [AVADIAL-SMS-TELEMETRY-1] The carrier's verdict. This fires long
+                // after the user left the composer (delivery receipts can land minutes
+                // later, engine dead), which is precisely why it goes through track()
+                // and not a Dart-side capture. `phase=sent` is the radio accepting the
+                // message; `phase=delivered` is the handset receipt — a send can be
+                // sent=true, delivered=false forever and that is a normal carrier
+                // outcome, not a failure. `result_code` is the raw SmsManager RESULT_*
+                // int on failure (1=GENERIC, 2=RADIO_OFF, 3=NULL_PDU, 4=NO_SERVICE),
+                // which is the only thing that tells us WHY a send died.
+                track("avadial_sms_send_status", mapOf(
+                    "phase" to phase,
+                    "ok" to ok,
+                    "result_code" to resultCode,
+                ))
             }
         }
         val filter = IntentFilter().apply {
@@ -389,6 +501,20 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
                     pendingComposeNumber = null
                     result.success(out)
                 }
+
+                // ---- [AVADIAL-SMS-TELEMETRY-1] ----
+                // Drain everything native recorded while Dart was down. Dart dedupes
+                // on `seq`, so draining entries it already captured live is harmless.
+                "drainTelemetry" -> {
+                    // poll() in a loop, NOT copy-then-clear: a track() landing from a
+                    // receiver thread between the copy and the clear would be wiped
+                    // uncaptured. poll() is atomic per entry, so a concurrent offer
+                    // either makes this drain or stays queued for the next one.
+                    val out = ArrayList<Map<String, Any?>>()
+                    while (true) out.add(pendingTelemetry.poll() ?: break)
+                    result.success(out)
+                }
+                "smsRoleDiagnostics" -> result.success(smsRoleDiagnostics(ctx))
 
                 // ---- live device reads (no persistence) ----
                 "readContacts" -> result.success(readContacts(ctx))
@@ -561,6 +687,15 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
             result.error("no_activity", "Role request needs a foreground Activity", null); return
         }
         val ok = AvaDialRoleHelper.requestRole(activity, roleName)
+        // [AVADIAL-SMS-ROLE-1] Stamp the request so onActivityResult can measure how
+        // long the system role UI actually stayed up. A verdict that returns in
+        // milliseconds was never shown to a human — see the instant-denial note there.
+        if (roleName == RoleManager.ROLE_SMS) {
+            smsRoleRequestedAt = if (ok) System.currentTimeMillis() else 0L
+            // Snapshot qualification at request time, so a denial is attributable
+            // immediately rather than needing a second round-trip to explain itself.
+            if (ok) track("avadial_sms_role_requested", smsRoleDiagnostics(activity))
+        }
         // `ok == false` means already-held or unavailable — resolve immediately;
         // otherwise the real verdict arrives via onActivityResult below.
         if (!ok) result.success(AvaDialRoleHelper.isRoleHeld(activity, roleName))
@@ -577,6 +712,33 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
         }
         val granted = resultCode == android.app.Activity.RESULT_OK
         emit("onRoleResult", mapOf("role" to role, "granted" to granted))
+        if (role == RoleManager.ROLE_SMS) {
+            // [AVADIAL-SMS-ROLE-1] THE event this whole investigation exists to
+            // produce. On the broken build the verdict came back denied in a few ms
+            // with no dialog ever drawn, because the role controller rejected us for
+            // not qualifying. From the outside that is identical to a user tapping
+            // "Don't allow" — which is why the app misread it as a permissions/
+            // restricted-settings problem and shipped copy telling the owner to open
+            // menus his device does not have.
+            //
+            // `elapsed_ms` + `qualified` together make the two cases separable for
+            // good: qualified=false is ALWAYS our bug (no prompt can help), and a
+            // sub-second elapsed_ms on a denial means no human was involved. Watch
+            // `qualified=false` — it should be zero across the whole fleet, and any
+            // non-zero rate is a shipped manifest regression.
+            val startedAt = smsRoleRequestedAt
+            smsRoleRequestedAt = 0L
+            val elapsed = if (startedAt > 0L) System.currentTimeMillis() - startedAt else -1L
+            val ctx = appContext
+            val diag = if (ctx != null) smsRoleDiagnostics(ctx) else emptyMap()
+            track("avadial_sms_role_result", diag + mapOf(
+                "granted" to granted,
+                "elapsed_ms" to elapsed,
+                // Long vs Int range: compare explicitly rather than `in 0..1500`,
+                // which would be an IntRange and not accept a Long.
+                "instant_denial" to (!granted && elapsed >= 0L && elapsed <= 1500L),
+            ))
+        }
         return true
     }
 
@@ -1327,6 +1489,102 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
      * Device-data boundary: message bodies live ONLY in the OS SMS provider; our
      * scoped store keeps spam labels/metadata, never the text.
      */
+    /**
+     * [AVADIAL-SMS-ROLE-1] Default-SMS-app QUALIFICATION probe — the regression guard
+     * for the bug that shipped on 2026-07-12 and was found on 2026-07-14.
+     *
+     * THE BUG THIS EXISTS TO CATCH: the manifest declared AvaSmsSendService with
+     * `SEND_RESPOND_VIA_MESSAGE_SERVICE`. No such permission exists (the real one is
+     * `SEND_RESPOND_VIA_MESSAGE`). AOSP `SmsApplication.getApplicationCollectionInternal()`
+     * skips any RESPOND_VIA_MESSAGE service whose `serviceInfo.permission` is not that
+     * EXACT string, which drops the whole package from the default-SMS candidate set:
+     * AvaTOK vanished from Settings → Default apps → SMS app and every ROLE_SMS request
+     * returned RESULT_CANCELED with no prompt at all. An invented permission name is
+     * not a build error, trips no lint, and logs nothing — so it was invisible from the
+     * inside. The user-visible symptom was indistinguishable from a permission problem,
+     * and the app's own error copy blamed restricted settings, sending the owner to
+     * menus that did not exist on his device.
+     *
+     * WHAT THIS DOES: re-runs the SAME four resolution queries AOSP runs, against our
+     * own package, and reports each leg independently. Any `false` here means the role
+     * is unobtainable NO MATTER what the user taps — the app does not qualify, so there
+     * is nothing to grant. `qualified` is the AND of all four: it is the single boolean
+     * that separates "we are not eligible" (our bug) from "the user declined" (their
+     * choice) — the exact distinction we could not make on 2026-07-14.
+     *
+     * Cheap (four PackageManager queries, no I/O), non-throwing, and PII-free.
+     */
+    private fun smsRoleDiagnostics(ctx: Context): Map<String, Any?> {
+        val pm = ctx.packageManager
+        val pkg = ctx.packageName
+
+        // These are STRING LITERALS on purpose, not Manifest.permission.* constants:
+        // BROADCAST_SMS and BROADCAST_WAP_PUSH are signature-level and @hide, so they
+        // are not exposed on the public android.Manifest.permission class and would
+        // not compile. The literals below must stay byte-identical to the
+        // `android:permission` values in AndroidManifest.xml — that string equality
+        // IS the check (AOSP compares the same way).
+        val permBroadcastSms = "android.permission.BROADCAST_SMS"
+        val permBroadcastWapPush = "android.permission.BROADCAST_WAP_PUSH"
+        val permRespondViaMessage = "android.permission.SEND_RESPOND_VIA_MESSAGE"
+        val actionRespondViaMessage = "android.intent.action.RESPOND_VIA_MESSAGE"
+
+        // (1) SMS_DELIVER receiver guarded by BROADCAST_SMS.
+        val smsDeliverOk = try {
+            pm.queryBroadcastReceivers(Intent(Telephony.Sms.Intents.SMS_DELIVER_ACTION), 0)
+                .any {
+                    it.activityInfo?.packageName == pkg &&
+                        it.activityInfo?.permission == permBroadcastSms
+                }
+        } catch (_: Throwable) { false }
+
+        // (2) WAP_PUSH_DELIVER receiver for the MMS mime type, guarded by
+        //     BROADCAST_WAP_PUSH. setDataAndType(null, …) mirrors AOSP's own query.
+        val wapPushOk = try {
+            val i = Intent(Telephony.Sms.Intents.WAP_PUSH_DELIVER_ACTION)
+                .setDataAndType(null, "application/vnd.wap.mms-message")
+            pm.queryBroadcastReceivers(i, 0).any {
+                it.activityInfo?.packageName == pkg &&
+                    it.activityInfo?.permission == permBroadcastWapPush
+            }
+        } catch (_: Throwable) { false }
+
+        // (3) RESPOND_VIA_MESSAGE service guarded by SEND_RESPOND_VIA_MESSAGE.
+        //     THIS is the leg that was false on the broken build.
+        val respondViaOk = try {
+            val i = Intent(actionRespondViaMessage, Uri.fromParts("smsto", "", null))
+            pm.queryIntentServices(i, 0).any {
+                it.serviceInfo?.packageName == pkg &&
+                    it.serviceInfo?.permission == permRespondViaMessage
+            }
+        } catch (_: Throwable) { false }
+
+        // (4) ACTION_SENDTO activity on smsto:.
+        val sendToOk = try {
+            pm.queryIntentActivities(
+                Intent(Intent.ACTION_SENDTO, Uri.fromParts("smsto", "", null)), 0
+            ).any { it.activityInfo?.packageName == pkg }
+        } catch (_: Throwable) { false }
+
+        val defaultPkg = try { Telephony.Sms.getDefaultSmsPackage(ctx) } catch (_: Throwable) { null }
+        val roleHeld = AvaDialRoleHelper.isRoleHeld(ctx, RoleManager.ROLE_SMS)
+
+        return mapOf(
+            "sms_deliver_ok" to smsDeliverOk,
+            "wap_push_ok" to wapPushOk,
+            "respond_via_ok" to respondViaOk,
+            "sendto_ok" to sendToOk,
+            "qualified" to (smsDeliverOk && wapPushOk && respondViaOk && sendToOk),
+            "role_held" to roleHeld,
+            "is_default_sms" to (defaultPkg == pkg),
+            // Whether ANOTHER app holds the slot — distinguishes "nobody is default"
+            // from "Messages/Truecaller has it". Never the rival's package name here;
+            // defaultSmsLabel() already covers the user-facing case.
+            "has_other_default" to (defaultPkg != null && defaultPkg != pkg),
+            "sdk" to Build.VERSION.SDK_INT,
+        )
+    }
+
     private fun smsSend(ctx: Context, dest: String?, body: String?, ref: String?): Boolean {
         if (dest.isNullOrEmpty() || body == null) return false
         val r = ref ?: System.currentTimeMillis().toString()
@@ -1349,6 +1607,21 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
 
             val sms = smsManager(ctx)
             val parts = sms.divideMessage(body)
+            // [AVADIAL-SMS-TELEMETRY-1] Dispatch breadcrumb. `row_inserted` is the
+            // ground truth for "are we ACTUALLY the default SMS app" — the provider
+            // write above is denied for every non-default app, so a send with
+            // ok=true + row_inserted=false means the radio took the message but the
+            // OS does not consider us default. That pair is unfakeable and catches
+            // role loss (user switched back to Messages) that isRoleHeld may still
+            // report stale. `parts` > 1 means the body was split — multipart sends
+            // fan out one sent/delivered status PER PART, so downstream event counts
+            // will exceed send counts and that is expected, not a bug.
+            track("avadial_sms_send_dispatch", mapOf(
+                "dest_hash" to hashE164Native(dest),
+                "body_len" to body.length,
+                "parts" to parts.size,
+                "row_inserted" to (rowId >= 0L),
+            ))
             val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             val sentIntents = ArrayList<PendingIntent>(parts.size)
             val deliveredIntents = ArrayList<PendingIntent>(parts.size)
@@ -1373,7 +1646,16 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
                 sms.sendMultipartTextMessage(dest, null, parts, sentIntents, deliveredIntents)
             }
             true
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            // [AVADIAL-SMS-TELEMETRY-1] A throw here means the message never reached
+            // the radio at all — no sent/delivered status will EVER follow, so without
+            // this event the send is simply invisible. Class name only: exception
+            // messages from SmsManager can echo the destination number back.
+            track("avadial_sms_send_failed", mapOf(
+                "dest_hash" to hashE164Native(dest),
+                "body_len" to body.length,
+                "reason" to (t::class.java.simpleName ?: "unknown"),
+            ))
             false
         }
     }
