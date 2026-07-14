@@ -7,10 +7,21 @@ import android.os.IBinder
 /**
  * "Respond via message" service (AVA-SMS). Registered for
  * `android.intent.action.RESPOND_VIA_MESSAGE` and protected by
- * `SEND_RESPOND_VIA_MESSAGE_SERVICE`. This is the third of the four mandatory
- * default-SMS components: the platform's incoming-call UI ("reject with a quick
- * text") starts THIS service on the current default SMS app. WITHOUT it declared,
- * the ROLE_SMS request silently fails (see Specs/SPIKE-2026-07-12-avadial-telecom.md).
+ * `android.permission.SEND_RESPOND_VIA_MESSAGE` — that EXACT string. This is the
+ * third of the four mandatory default-SMS components: the platform's incoming-call
+ * UI ("reject with a quick text") starts THIS service on the current default SMS app.
+ *
+ * [AVADIAL-SMS-ROLE-1] The guarding permission name is load-bearing, not decorative.
+ * AOSP `SmsApplication.getApplicationCollectionInternal()` enumerates
+ * RESPOND_VIA_MESSAGE services and SKIPS any whose `serviceInfo.permission` is not
+ * literally `SEND_RESPOND_VIA_MESSAGE`, leaving `mRespondViaMessageClass` null, which
+ * drops the whole package from the default-SMS candidate set. The app then never
+ * appears under Settings → Default apps → SMS app, and `createRequestRoleIntent(
+ * ROLE_SMS)` returns RESULT_CANCELED instantly with no user prompt. A wrong name is
+ * silent: it is not a real permission, so it fails no build and logs nothing.
+ * We shipped `SEND_RESPOND_VIA_MESSAGE_SERVICE` (invented suffix) and that is exactly
+ * what happened. Do not "tidy" this string.
+ * See Specs/SPIKE-2026-07-12-avadial-telecom.md.
  *
  * SCOPE (minimal, spec-compliant): the OS delivers the quick-reply text via the
  * start intent (EXTRA_TEXT + the recipient in the intent data). We hand it to the

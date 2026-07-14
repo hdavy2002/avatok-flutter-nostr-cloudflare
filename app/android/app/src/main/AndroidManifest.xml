@@ -351,7 +351,7 @@
         <service
             android:name="ai.avatok.avadial.AvaSmsSendService"
             android:exported="true"
-            android:permission="android.permission.SEND_RESPOND_VIA_MESSAGE_SERVICE">
+            android:permission="android.permission.SEND_RESPOND_VIA_MESSAGE">
             <intent-filter>
                 <action android:name="android.intent.action.RESPOND_VIA_MESSAGE" />
                 <category android:name="android.intent.category.DEFAULT" />

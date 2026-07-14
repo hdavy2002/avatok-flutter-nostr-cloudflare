@@ -353,8 +353,18 @@ manifest at https://developer.android.com/reference/android/provider/Telephony :
   `android.provider.Telephony.WAP_PUSH_DELIVER` + `data mimeType
   application/vnd.wap.mms-message`.
 - [x] **(3) RESPOND_VIA_MESSAGE service** — `AvaSmsSendService`, `exported=true`,
-  `permission=android.permission.SEND_RESPOND_VIA_MESSAGE_SERVICE`, intent-filter
-  `android.intent.action.RESPOND_VIA_MESSAGE` on `sms/smsto/mms/mmsto`.
+  `permission=android.permission.SEND_RESPOND_VIA_MESSAGE` — that EXACT string, no
+  `_SERVICE` suffix — intent-filter `android.intent.action.RESPOND_VIA_MESSAGE` on
+  `sms/smsto/mms/mmsto`.
+  > **[AVADIAL-SMS-ROLE-1] 2026-07-14 — this spec was WRONG and shipped the bug.**
+  > It said `SEND_RESPOND_VIA_MESSAGE_SERVICE`; no such permission exists. AOSP
+  > `SmsApplication.getApplicationCollectionInternal()` skips any RESPOND_VIA_MESSAGE
+  > service whose `serviceInfo.permission` != `SEND_RESPOND_VIA_MESSAGE`, so AvaTOK
+  > was dropped from the default-SMS candidate set entirely: absent from Settings →
+  > Default apps → SMS app, and `createRequestRoleIntent(ROLE_SMS)` returned
+  > RESULT_CANCELED with no prompt. An invented permission name is not a build error
+  > and logs nothing, which is why it survived review. The four components are an
+  > all-or-nothing gate — a typo in any one of them fails the whole role silently.
 - [x] **(4) ACTION_SENDTO activity** — `SmsComposeAlias` (activity-alias →
   `MainActivity`), `exported=true`, intent-filter `android.intent.action.SENDTO` on
   `sms/smsto/mms/mmsto`.
