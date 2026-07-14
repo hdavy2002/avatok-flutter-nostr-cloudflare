@@ -73,6 +73,12 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
         private var pendingCallId: String? = null
         @Volatile
         private var pendingNumber: String? = null
+        // [AVADIAL-HARDEN-2] Whether the pending incoming launch was already answered
+        // (notification "answer" action fired before Flutter/MainActivity came up) —
+        // drained/emitted alongside pendingCallId/pendingNumber so the shell opens
+        // InCallScreen instead of the ringing PstnCallScreen for this launch.
+        @Volatile
+        private var pendingAnswered: Boolean = false
 
         // Cold-start / background SMS-compose launch (ACTION_SENDTO on sms:/smsto:/
         // mms:/mmsto:, route extra "avadial/compose"). Stored so Dart can DRAIN it on
@@ -98,11 +104,12 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
          * route extra. Records the pending call for a cold-start drain AND emits
          * `onLaunchIncoming` for the already-running case.
          */
-        fun notifyIncomingLaunch(callId: String?, number: String?) {
+        fun notifyIncomingLaunch(callId: String?, number: String?, answered: Boolean = false) {
             if (callId.isNullOrEmpty()) return
             pendingCallId = callId
             pendingNumber = number
-            emit("onLaunchIncoming", mapOf("call_id" to callId, "number" to number))
+            pendingAnswered = answered
+            emit("onLaunchIncoming", mapOf("call_id" to callId, "number" to number, "answered" to answered))
         }
 
         /**
@@ -386,10 +393,11 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
                 // ---- cold-start incoming-call drain (route extra "avadial/incoming") ----
                 "getPendingIncoming" -> {
                     val out: Map<String, Any?>? = pendingCallId?.let {
-                        mapOf("call_id" to it, "number" to pendingNumber)
+                        mapOf("call_id" to it, "number" to pendingNumber, "answered" to pendingAnswered)
                     }
                     pendingCallId = null
                     pendingNumber = null
+                    pendingAnswered = false
                     result.success(out)
                 }
 
@@ -626,7 +634,44 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
         if (note.isNotEmpty()) ops.add(noteOp(ref, note))
     }
 
-    /** Update the managed fields of an existing contact (by aggregated CONTACT_ID). */
+    /**
+     * [AVADIAL-HARDEN-2] Find the FIRST Data row id for (rawId, mimetype[, extra
+     * selection]), ordered by Data._ID ASC. Used by [updateContact] to update a
+     * single existing row in place instead of bulk-deleting every row of that
+     * mimetype (which used to wipe extra phone numbers/emails/websites/notes on
+     * Google-synced contacts that have more rows than AvaTOK's edit screen knows
+     * about).
+     */
+    private fun firstDataRowId(
+        ctx: Context,
+        rawId: Long,
+        mimetype: String,
+        extraSelection: String? = null,
+        extraArgs: Array<String> = emptyArray(),
+    ): Long? {
+        var selection = "${ContactsContract.Data.RAW_CONTACT_ID}=? AND ${ContactsContract.Data.MIMETYPE}=?"
+        val args = arrayOf(rawId.toString(), mimetype, *extraArgs)
+        if (extraSelection != null) selection += " AND $extraSelection"
+        ctx.contentResolver.query(
+            ContactsContract.Data.CONTENT_URI,
+            arrayOf(ContactsContract.Data._ID),
+            selection, args,
+            "${ContactsContract.Data._ID} ASC",
+        )?.use { c -> if (c.moveToFirst()) return c.getLong(0) }
+        return null
+    }
+
+    /** Update the managed fields of an existing contact (by aggregated CONTACT_ID).
+     *
+     * [AVADIAL-HARDEN-2] Rewritten to update-in-place instead of bulk-deleting all
+     * Data rows of the 5 managed mimetypes and re-inserting single rows — that used
+     * to silently wipe extra phone numbers/emails/websites/notes on Google-synced
+     * contacts. Now, for each field: if a value is present we update the FIRST
+     * matching row (or insert one if none exists) and leave every other row of that
+     * mimetype untouched; if a value is empty we do NOTHING (clearing a field via
+     * the edit screen is deliberately a no-op — we never know if a blank means
+     * "clear this" or "the edit screen didn't load this field").
+     */
     private fun updateContact(ctx: Context, call: MethodCall): Boolean {
         val id = call.argument<String>("id")?.toLongOrNull() ?: return false
         val rawId = rawContactIdForContact(ctx, id) ?: return false
@@ -638,43 +683,112 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
         val note = call.argument<String>("note")?.trim().orEmpty()
 
         val ops = ArrayList<ContentProviderOperation>()
-        // Managed mimetypes get replaced (delete-then-insert) so an edit is idempotent.
-        val managed = listOf(
-            ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE,
-            ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE,
-            ContactsContract.CommonDataKinds.Email.CONTENT_ITEM_TYPE,
-            ContactsContract.CommonDataKinds.Website.CONTENT_ITEM_TYPE,
-            ContactsContract.CommonDataKinds.Note.CONTENT_ITEM_TYPE,
-        )
-        for (mt in managed) {
-            ops.add(
-                ContentProviderOperation.newDelete(ContactsContract.Data.CONTENT_URI)
-                    .withSelection(
-                        "${ContactsContract.Data.RAW_CONTACT_ID}=? AND ${ContactsContract.Data.MIMETYPE}=?",
-                        arrayOf(rawId.toString(), mt))
-                    .build())
-        }
-        if (name.isNotEmpty()) ops.add(dataInsertRaw(rawId)
-            .withValue(ContactsContract.Data.MIMETYPE,
-                ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
-            .withValue(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, name)
-            .build())
-        if (number.isNotEmpty()) ops.add(dataInsertRaw(rawId)
-            .withValue(ContactsContract.Data.MIMETYPE,
-                ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE)
-            .withValue(ContactsContract.CommonDataKinds.Phone.NUMBER, number)
-            .withValue(ContactsContract.CommonDataKinds.Phone.TYPE,
-                ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE)
-            .build())
-        if (personalEmail.isNotEmpty()) ops.add(emailOpRaw(rawId, personalEmail,
-            ContactsContract.CommonDataKinds.Email.TYPE_HOME))
-        if (businessEmail.isNotEmpty()) ops.add(emailOpRaw(rawId, businessEmail,
-            ContactsContract.CommonDataKinds.Email.TYPE_WORK))
-        if (linkedin.isNotEmpty()) ops.add(websiteOpRaw(rawId, linkedin))
-        if (note.isNotEmpty()) ops.add(noteOpRaw(rawId, note))
 
+        if (name.isNotEmpty()) {
+            val rowId = firstDataRowId(ctx, rawId,
+                ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
+            ops.add(
+                if (rowId != null) {
+                    ContentProviderOperation.newUpdate(ContactsContract.Data.CONTENT_URI)
+                        .withSelection("${ContactsContract.Data._ID}=?", arrayOf(rowId.toString()))
+                        .withValue(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, name)
+                        .build()
+                } else {
+                    dataInsertRaw(rawId)
+                        .withValue(ContactsContract.Data.MIMETYPE,
+                            ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
+                        .withValue(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, name)
+                        .build()
+                }
+            )
+        }
+
+        if (number.isNotEmpty()) {
+            // First phone row only — never touch any other phone row, and never
+            // change its TYPE on update (only set on insert of a brand-new row).
+            val rowId = firstDataRowId(ctx, rawId,
+                ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE)
+            ops.add(
+                if (rowId != null) {
+                    ContentProviderOperation.newUpdate(ContactsContract.Data.CONTENT_URI)
+                        .withSelection("${ContactsContract.Data._ID}=?", arrayOf(rowId.toString()))
+                        .withValue(ContactsContract.CommonDataKinds.Phone.NUMBER, number)
+                        .build()
+                } else {
+                    dataInsertRaw(rawId)
+                        .withValue(ContactsContract.Data.MIMETYPE,
+                            ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE)
+                        .withValue(ContactsContract.CommonDataKinds.Phone.NUMBER, number)
+                        .withValue(ContactsContract.CommonDataKinds.Phone.TYPE,
+                            ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE)
+                        .build()
+                }
+            )
+        }
+
+        if (personalEmail.isNotEmpty()) {
+            ops.add(updateOrInsertEmail(ctx, rawId, personalEmail,
+                ContactsContract.CommonDataKinds.Email.TYPE_HOME))
+        }
+        if (businessEmail.isNotEmpty()) {
+            ops.add(updateOrInsertEmail(ctx, rawId, businessEmail,
+                ContactsContract.CommonDataKinds.Email.TYPE_WORK))
+        }
+
+        if (linkedin.isNotEmpty()) {
+            val rowId = firstDataRowId(ctx, rawId,
+                ContactsContract.CommonDataKinds.Website.CONTENT_ITEM_TYPE)
+            ops.add(
+                if (rowId != null) {
+                    ContentProviderOperation.newUpdate(ContactsContract.Data.CONTENT_URI)
+                        .withSelection("${ContactsContract.Data._ID}=?", arrayOf(rowId.toString()))
+                        .withValue(ContactsContract.CommonDataKinds.Website.URL, linkedin)
+                        .build()
+                } else {
+                    websiteOpRaw(rawId, linkedin)
+                }
+            )
+        }
+
+        if (note.isNotEmpty()) {
+            val rowId = firstDataRowId(ctx, rawId,
+                ContactsContract.CommonDataKinds.Note.CONTENT_ITEM_TYPE)
+            ops.add(
+                if (rowId != null) {
+                    ContentProviderOperation.newUpdate(ContactsContract.Data.CONTENT_URI)
+                        .withSelection("${ContactsContract.Data._ID}=?", arrayOf(rowId.toString()))
+                        .withValue(ContactsContract.CommonDataKinds.Note.NOTE, note)
+                        .build()
+                } else {
+                    noteOpRaw(rawId, note)
+                }
+            )
+        }
+
+        if (ops.isEmpty()) return true // nothing to change — not a failure
         val results = ctx.contentResolver.applyBatch(ContactsContract.AUTHORITY, ops)
         return results.isNotEmpty()
+    }
+
+    /** Update the FIRST Data row for [type] (Email.TYPE=HOME/WORK) if one exists,
+     *  else insert a new one. Only touches the row matching this specific TYPE, so
+     *  the personal-email update never clobbers the business-email row (and vice
+     *  versa) or any other email rows the contact might have. */
+    private fun updateOrInsertEmail(ctx: Context, rawId: Long, address: String, type: Int): ContentProviderOperation {
+        val rowId = firstDataRowId(
+            ctx, rawId,
+            ContactsContract.CommonDataKinds.Email.CONTENT_ITEM_TYPE,
+            extraSelection = "${ContactsContract.CommonDataKinds.Email.TYPE}=?",
+            extraArgs = arrayOf(type.toString()),
+        )
+        return if (rowId != null) {
+            ContentProviderOperation.newUpdate(ContactsContract.Data.CONTENT_URI)
+                .withSelection("${ContactsContract.Data._ID}=?", arrayOf(rowId.toString()))
+                .withValue(ContactsContract.CommonDataKinds.Email.ADDRESS, address)
+                .build()
+        } else {
+            emailOpRaw(rawId, address, type)
+        }
     }
 
     /** Delete a contact (and its raw rows) by aggregated CONTACT_ID. */

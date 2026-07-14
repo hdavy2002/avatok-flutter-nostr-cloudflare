@@ -79,9 +79,14 @@ class MainActivity : FlutterFragmentActivity() {
         // both cold start (drained via getPendingIncoming) and the app-already-running
         // case (onLaunchIncoming event). DARK unless the dialer role fired this.
         if (intent?.getStringExtra("route") == "avadial/incoming") {
+            // [AVADIAL-HARDEN-2] "answered" (set by AvaCallActionReceiver's "answer"
+            // notification action) tells Dart the call is already answered/active by
+            // the time it boots, so the shell opens InCallScreen instead of the
+            // (stuck) ringing PstnCallScreen.
             ai.avatok.avadial.AvaDialPlugin.notifyIncomingLaunch(
                 intent.getStringExtra("call_id"),
                 intent.getStringExtra("number"),
+                intent.getBooleanExtra("answered", false),
             )
         }
 

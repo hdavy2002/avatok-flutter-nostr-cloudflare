@@ -87,7 +87,13 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
   // navigating; any other event (or a remove) just tracks/auto-closes.
   void _onCallEvent(AvaCallEvent e) {
     if (widget.callId == null || e.id != widget.callId) return;
-    if (_answering && e.state == 'active') {
+    // [AVADIAL-HARDEN-2] Transition to the in-call UI on a real native 'active'
+    // event regardless of _answering — the call can be answered from the
+    // notification action (or another surface) while this ringing screen is
+    // still visible, not just via this screen's own Answer button. The
+    // failed-answer 10s timeout below is unaffected: it only resets
+    // _answering, it never fires navigation itself.
+    if (e.state == 'active') {
       _answerTimeout?.cancel();
       _goActive();
       return;

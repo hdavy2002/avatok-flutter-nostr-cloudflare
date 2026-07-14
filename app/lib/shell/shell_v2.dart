@@ -12,6 +12,7 @@ import '../core/ui/avatok_dark.dart';
 import '../features/askava/askava_screen.dart';
 import '../features/avadial/avadial_channel.dart';
 import '../features/avadial/contact_detail_screen.dart';
+import '../features/avadial/in_call_screen.dart';
 import '../features/avadial/missed_call_service.dart';
 import '../features/avadial/pstn_call_screen.dart';
 import '../features/avadial/sms/sms_thread_screen.dart';
@@ -224,10 +225,11 @@ class _ShellV2State extends State<ShellV2> {
   void _wireIncomingCalls() {
     if (!RemoteConfig.avaDialer) return;
     AvaDialChannel.I.ensureWired();
-    _incomingSub = AvaDialChannel.I.incomingLaunch.listen((l) => _openIncoming(l.callId, l.number));
+    _incomingSub = AvaDialChannel.I.incomingLaunch
+        .listen((l) => _openIncoming(l.callId, l.number, l.answered));
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final l = await AvaDialChannel.I.consumePendingIncoming();
-      if (l != null) _openIncoming(l.callId, l.number);
+      if (l != null) _openIncoming(l.callId, l.number, l.answered);
     });
   }
 
@@ -283,7 +285,12 @@ class _ShellV2State extends State<ShellV2> {
     }
   }
 
-  void _openIncoming(String callId, String? number) {
+  // [AVADIAL-HARDEN-2] [answered] means the call was already answered/active
+  // by the time this launch arrived (notification "answer" action fired
+  // before Flutter/MainActivity came up) — open the active-call UI directly
+  // instead of the ringing screen, which would otherwise be stuck (its
+  // Answer/Decline do nothing once the call is already connected).
+  void _openIncoming(String callId, String? number, [bool answered = false]) {
     if (!mounted) return;
     final n = number ?? '';
     if (n.isEmpty) return;
@@ -305,7 +312,9 @@ class _ShellV2State extends State<ShellV2> {
     nav
         .push(MaterialPageRoute<void>(
           fullscreenDialog: true,
-          builder: (_) => PstnCallScreen(callId: callId, number: n),
+          builder: (_) => answered
+              ? InCallScreen(callId: callId, number: n, initialState: 'active')
+              : PstnCallScreen(callId: callId, number: n),
         ))
         .whenComplete(() => AvaDialChannel.I.incomingScreenOpen = false);
   }

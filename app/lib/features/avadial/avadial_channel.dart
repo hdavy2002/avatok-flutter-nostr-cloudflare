@@ -37,7 +37,11 @@ class AvaRoleResult {
 class AvaIncomingLaunch {
   final String callId;
   final String? number;
-  const AvaIncomingLaunch(this.callId, this.number);
+  // [AVADIAL-HARDEN-2] True when the call was already answered (native
+  // "answer" notification action fired before Flutter/MainActivity came up) —
+  // the shell then opens the active-call UI instead of the ringing screen.
+  final bool answered;
+  const AvaIncomingLaunch(this.callId, this.number, {this.answered = false});
 }
 
 /// Live audio-route + mute state for the in-call UI, mirrored from
@@ -209,7 +213,8 @@ class AvaDialChannel {
         case 'onLaunchIncoming':
           final id = '${a['call_id']}';
           if (id.isNotEmpty && id != 'null') {
-            _incoming.add(AvaIncomingLaunch(id, a['number'] as String?));
+            _incoming.add(AvaIncomingLaunch(id, a['number'] as String?,
+                answered: a['answered'] == true));
           }
           break;
         case 'onAudioRoute':
@@ -372,7 +377,8 @@ class AvaDialChannel {
       if (raw == null) return null;
       final id = raw['call_id']?.toString();
       if (id == null || id.isEmpty) return null;
-      return AvaIncomingLaunch(id, raw['number']?.toString());
+      return AvaIncomingLaunch(id, raw['number']?.toString(),
+          answered: raw['answered'] == true);
     } catch (e) {
       AvaLog.I.log('avadial', 'getPendingIncoming failed: $e');
       return null;
