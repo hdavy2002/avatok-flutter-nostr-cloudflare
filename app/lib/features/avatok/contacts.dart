@@ -124,7 +124,10 @@ class ContactsStore {
   Future<List<Contact>?> addIfNotDeleted(Contact c) async {
     final deleted = await deletedContacts();
     if (deleted.containsKey(c.uid)) {
-      Analytics.capture('contact_resurrect_blocked', const {});
+      // Same event name + property shape as the mergeTel guard, so PostHog can
+      // segment which automated path tried to resurrect a tombstoned contact.
+      Analytics.capture(
+          'contact_resurrect_blocked', const {'source': 'add_if_not_deleted'});
       return null; // tombstoned — stays deleted
     }
     final cs = await load();
@@ -239,7 +242,29 @@ class ContactsStore {
   /// the real one, carrying the phone number across if the resolved profile
   /// didn't include it. The conv key derives from the number either way, so the
   /// thread and its receptionist cards stay intact through the merge.
-  Future<List<Contact>> mergeTel(String e164, Contact real) async {
+  /// Returns null when the promotion was REFUSED because the real account is
+  /// tombstoned — callers must skip their follow-up work (see
+  /// `_reconcileTelContacts`, which otherwise rekeys the thread to a contact
+  /// that doesn't exist).
+  Future<List<Contact>?> mergeTel(String e164, Contact real) async {
+    // [ISSUE-CONTACT-RESURRECT-1] AUTOMATED path (the device-contacts match sync
+    // promotes tel: provisionals when it discovers the number is on AvaTOK), so
+    // it must respect tombstones — same rule as _ensureContact. Without this it
+    // re-inserted a deleted contact; pullAndMerge would drop the row again on
+    // the next merge, but the user still saw it flash back.
+    //
+    // ONLY a tombstone on `real.uid` blocks: that's the identity being
+    // materialised, and it's the only one pullAndMerge filters on
+    // (`!deleted.containsKey(c.uid)`), so it's the only one that actually
+    // sticks. A tel:-only tombstone must NOT block — the user deleted the
+    // provisional row, not the person, and refusing would strand the promotion
+    // forever (add() only ever clears the tombstone for the uid it was given,
+    // so a stale `tel:$e164` tombstone would survive every future merge).
+    final deleted = await deletedContacts();
+    if (deleted.containsKey(real.uid)) {
+      Analytics.capture('contact_resurrect_blocked', const {'source': 'merge_tel'});
+      return null; // refused — caller must NOT rekey the thread
+    }
     final cs = await load();
     cs.removeWhere((x) => x.uid == 'tel:$e164');
     cs.removeWhere((x) => x.uid == real.uid);

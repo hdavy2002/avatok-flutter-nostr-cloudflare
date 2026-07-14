@@ -1247,6 +1247,13 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       final real = Contact(uid: d.uid, name: name, handle: d.handle,
           avatarUrl: d.avatarUrl, phone: e164);
       final list = await _contactsStore.mergeTel(e164, real);
+      // [ISSUE-CONTACT-RESURRECT-1] null = the real account is tombstoned, so
+      // mergeTel refused to materialise it. SKIP — do not fall through to the
+      // rekey below. Rekeying to `1:<uid>` when that contact row doesn't exist
+      // would strand the receptionist voicemail cards in a thread nothing
+      // renders: the provisional row is gone and the destination never appears.
+      // A cosmetic flash-back would become permanent data loss.
+      if (list == null) continue;
       // Move the voicemail cards into the real DM thread.
       final from = receptTelConvKey(myUid, e164);
       final to = '1:${d.uid}';
