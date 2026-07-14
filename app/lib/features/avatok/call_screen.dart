@@ -788,34 +788,13 @@ class _CallScreenState extends State<CallScreen> {
                   // Renders instead of the busy card / plain sticker; with the
                   // flag off it never constructs and everything below is legacy.
                   if (s.showOutcomeMenu)
-                    CallOutcomeMenu(
-                      session: s,
-                      name: widget.title,
-                      peerUid: widget.seed,
-                      onClosed: _popIfMounted,
-                      // [VM-IN-MENU-1 2026-07-14] Classic voicemail from the
-                      // outcome menu. Gated ONLY on the voicemailBot flag —
-                      // never on the routing probe or the callee's device
-                      // reachability: /api/voicemail/start needs nothing but
-                      // {to, call_id, trace_id}, and _leaveVoicemail's start-map
-                      // defaults (widget.seed/room/traceId) cover the case where
-                      // no routing info ever arrived (unreachable / pruned-token
-                      // callees — the exact case that used to dead-end).
-                      voicemailInProgress: _vmInProgress,
-                      onLeaveVoicemail: RemoteConfig.voicemailBot
-                          ? () {
-                              Analytics.capture('call_menu_option_selected', {
-                                'call_id': widget.room,
-                                'option': 'voicemail',
-                              });
-                              final start = _routingInfo?['start'];
-                              // ignore: unawaited_futures
-                              _leaveVoicemail(start is Map
-                                  ? start.cast<String, dynamic>()
-                                  : const <String, dynamic>{});
-                            }
-                          : null,
-                    )
+                    // [ISSUE-VIDEO-OUTCOME-MENU-1] AUDIO path — unchanged. The menu
+                    // still renders right here, in the same slot and stacking order
+                    // as before, so the paper screen is pixel-identical. The SAME
+                    // widget is now ALSO rendered as a top-level overlay for VIDEO
+                    // calls (last child of this Stack); both call sites go through
+                    // _outcomeMenu() so their arguments can never drift apart.
+                    _outcomeMenu()
                   // [BUSY-CARD-1] Personalized busy card — replaces the cold
                   // "User is busy" sticker when the server told us WHY the callee
                   // is busy (Specs §3.1). Only on the terminal 'busy' phase and
@@ -1022,6 +1001,33 @@ class _CallScreenState extends State<CallScreen> {
             ]),
           ),
         ),
+
+        // [ISSUE-VIDEO-OUTCOME-MENU-1] VIDEO path — the outcome menu used to live
+        // ONLY inside the `if (light)` audio subtree, so on a video call
+        // (showVideo == true → light == false) it was never built and the caller
+        // got nothing but the header text + a snackbar when the callee was
+        // unreachable. call_session already drives showOutcomeMenu for video
+        // (no gate), and CallOutcomeMenu already hides "Talk to Ava" on video, so
+        // the fix is purely to render it outside that layout branch. Last child of
+        // the Stack → paints above the remote video surface and the control row;
+        // `bottom` keeps it clear of the control row so hang-up stays tappable.
+        // The scrim is only for video: the menu relied on the light zine paper
+        // backdrop for contrast, which doesn't exist over a live video feed.
+        if (showVideo && s.showOutcomeMenu)
+          Positioned(
+            left: 0, right: 0, top: 0,
+            // NB: both operands must be double — `112 + <num>` infers `num`,
+            // which won't assign to Positioned.bottom (double?).
+            bottom: 112.0 + (bottomInset > 0 ? bottomInset : 16.0),
+            child: Container(
+              color: AD.scrim,
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(
+                    24, MediaQuery.of(context).padding.top + 72, 24, 16),
+                child: _outcomeMenu(),
+              ),
+            ),
+          ),
       ],
     );
     // PopScope: intercept the system back gesture so it MINIMIZES the call
@@ -1040,6 +1046,43 @@ class _CallScreenState extends State<CallScreen> {
             ? Container(color: PhoneTheme.bg, child: stack)
             : Container(color: AD.bg, child: stack),
       ),
+    );
+  }
+
+  // [CALL-OUTCOME-MENU-1] Unified call outcome menu — ONE surface for
+  // declined / no-answer / unreachable / busy while callMenuEnabled
+  // (Specs/CALL-OUTCOME-MENU-SPEC-2026-07-09.md). Renders instead of the busy
+  // card / plain sticker; with the flag off it never constructs and the legacy
+  // branches take over.
+  // [ISSUE-VIDEO-OUTCOME-MENU-1] Extracted from the inline audio-column build so
+  // the audio slot and the new video overlay share ONE definition of the args.
+  Widget _outcomeMenu() {
+    return CallOutcomeMenu(
+      session: _session,
+      name: widget.title,
+      peerUid: widget.seed,
+      onClosed: _popIfMounted,
+      // [VM-IN-MENU-1 2026-07-14] Classic voicemail from the outcome menu.
+      // Gated ONLY on the voicemailBot flag — never on the routing probe or the
+      // callee's device reachability: /api/voicemail/start needs nothing but
+      // {to, call_id, trace_id}, and _leaveVoicemail's start-map defaults
+      // (widget.seed/room/traceId) cover the case where no routing info ever
+      // arrived (unreachable / pruned-token callees — the exact case that used
+      // to dead-end).
+      voicemailInProgress: _vmInProgress,
+      onLeaveVoicemail: RemoteConfig.voicemailBot
+          ? () {
+              Analytics.capture('call_menu_option_selected', {
+                'call_id': widget.room,
+                'option': 'voicemail',
+              });
+              final start = _routingInfo?['start'];
+              // ignore: unawaited_futures
+              _leaveVoicemail(start is Map
+                  ? start.cast<String, dynamic>()
+                  : const <String, dynamic>{});
+            }
+          : null,
     );
   }
 
