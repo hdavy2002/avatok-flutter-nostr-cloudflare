@@ -296,6 +296,13 @@
             android:name="ai.avatok.avadial.AvaOtpCopyReceiver"
             android:exported="false" />
 
+        <!-- [AVADIAL-HARDEN-1] Handles the Answer/Decline actions on the incoming-call
+             notification (AvaInCallService.launchIncoming). Not exported — only our
+             own notification actions trigger it. -->
+        <receiver
+            android:name="ai.avatok.avadial.AvaCallActionReceiver"
+            android:exported="false" />
+
         <!-- [AVA-MISSEDCALL-1] Truecaller-style missed-call detector. Listens for the
              system PHONE_STATE broadcast (RINGING→IDLE without OFFHOOK = missed) and
              raises AvaMissedCallOverlay. exported=true because the OS is the broadcaster;

@@ -28,7 +28,9 @@ class AvaInCallService : InCallService() {
 
     companion object {
         private const val CHANNEL_ID = "avadial_incoming"
-        private const val NOTIF_ID = 42110
+        // [AVADIAL-HARDEN-1] Internal (not private) — AvaCallActionReceiver cancels
+        // this same notification id when the user taps "Decline".
+        internal const val NOTIF_ID = 42110
 
         @Volatile
         private var instance: AvaInCallService? = null
@@ -189,6 +191,28 @@ class AvaInCallService : InCallService() {
             @Suppress("DEPRECATION")
             Notification.Builder(this)
         }
+
+        // [AVADIAL-HARDEN-1] Answer/Decline actions — the fallback for when Android
+        // 14+/OEM skins demote the full-screen intent to a plain heads-up banner,
+        // which otherwise leaves the user nothing to tap. Distinct request codes
+        // (NOTIF_ID+1/+2) so the two PendingIntents never collide/overwrite each other.
+        fun actionIntent(action: String, requestCode: Int): PendingIntent {
+            val i = Intent(this, AvaCallActionReceiver::class.java).apply {
+                setAction(AvaCallActionReceiver.ACTION_CALL_ACTION)
+                putExtra(AvaCallActionReceiver.EXTRA_CALL_ID, id)
+                putExtra(AvaCallActionReceiver.EXTRA_NUMBER, number)
+                putExtra(AvaCallActionReceiver.EXTRA_ACTION, action)
+            }
+            return PendingIntent.getBroadcast(this, requestCode, i, flags)
+        }
+        val actionIcon = android.graphics.drawable.Icon.createWithResource(this, applicationInfo.icon)
+        val answerAction = Notification.Action.Builder(
+            actionIcon, "Answer", actionIntent("answer", NOTIF_ID + 1)
+        ).build()
+        val declineAction = Notification.Action.Builder(
+            actionIcon, "Decline", actionIntent("reject", NOTIF_ID + 2)
+        ).build()
+
         val notif = builder
             .setSmallIcon(applicationInfo.icon)
             .setContentTitle("Incoming call")
@@ -197,6 +221,8 @@ class AvaInCallService : InCallService() {
             .setOngoing(true)
             .setFullScreenIntent(pending, true)
             .setContentIntent(pending)
+            .addAction(answerAction)
+            .addAction(declineAction)
             .build()
         try {
             nm.notify(NOTIF_ID, notif)

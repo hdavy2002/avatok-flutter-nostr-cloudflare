@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -51,12 +53,73 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
   DeviceContact? _contact;
   late PstnColor _color;
 
+  // [AVADIAL-HARDEN-1] Guards against a caller hanging up while this screen is
+  // still showing live Answer/Decline buttons, and against navigating to the
+  // active-call UI before native confirms the call actually connected.
+  StreamSubscription<AvaCallEvent>? _callSub;
+  StreamSubscription<String>? _removedSub;
+  bool _closed = false;
+  bool _answering = false;
+  Timer? _answerTimeout;
+
   @override
   void initState() {
     super.initState();
     _contact = DeviceContacts.I.lookup(widget.number);
     _color = _resolveColor();
     Analytics.capture('pstn_call_screen_shown', {'color': _color.name});
+
+    // [AVADIAL-HARDEN-1] Mirror InCallScreen's subscription pattern so this
+    // screen reacts to the call dying (or connecting) while it's up.
+    _callSub = AvaDialChannel.I.calls.listen(_onCallEvent);
+    _removedSub = AvaDialChannel.I.removedCalls.listen(_onCallRemoved);
+  }
+
+  @override
+  void dispose() {
+    _callSub?.cancel();
+    _removedSub?.cancel();
+    _answerTimeout?.cancel();
+    super.dispose();
+  }
+
+  // [AVADIAL-HARDEN-1] Answer waits here for the native 'active' state before
+  // navigating; any other event (or a remove) just tracks/auto-closes.
+  void _onCallEvent(AvaCallEvent e) {
+    if (widget.callId == null || e.id != widget.callId) return;
+    if (_answering && e.state == 'active') {
+      _answerTimeout?.cancel();
+      _goActive();
+      return;
+    }
+    if (e.state == 'disconnected' || e.state == 'disconnecting') {
+      _autoClose(e.state);
+    }
+  }
+
+  void _onCallRemoved(String id) {
+    if (widget.callId == null || id != widget.callId) return;
+    _autoClose('removed');
+  }
+
+  void _goActive() {
+    if (_closed || !mounted) return;
+    _closed = true;
+    final id = widget.callId!;
+    Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
+      fullscreenDialog: true,
+      builder: (_) => InCallScreen(callId: id, number: widget.number, initialState: 'active'),
+    ));
+  }
+
+  // [AVADIAL-HARDEN-1] Pops the screen once (guarded by _closed) when the call
+  // dies out from under it — most commonly the caller hanging up while ringing.
+  void _autoClose(String state) {
+    if (_closed || !mounted) return;
+    _closed = true;
+    _answerTimeout?.cancel();
+    Analytics.capture('pstn_call_missed_closed', {'state': state});
+    if (Navigator.of(context).canPop()) Navigator.of(context).pop();
   }
 
   PstnColor _resolveColor() {
@@ -72,20 +135,25 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
         PstnColor.blue => AD.iconSearch,
       };
 
+  // [AVADIAL-HARDEN-1] Don't navigate on tap — wait for native to actually
+  // confirm the call is 'active' (see _onCallEvent) so a failed/late answer()
+  // never strands the user on a blank InCallScreen. 10s timeout falls back to
+  // re-showing this screen as ringing rather than crashing/hanging.
   Future<void> _answer() async {
     final id = widget.callId;
-    if (id != null) {
-      await AvaDialChannel.I.answer(id);
-      // Hand off to the shared active-call UI (timer, mute, speaker, keypad).
-      if (mounted) {
-        Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
-          fullscreenDialog: true,
-          builder: (_) => InCallScreen(callId: id, number: widget.number, initialState: 'active'),
-        ));
-        return;
-      }
+    if (id == null) {
+      _close();
+      return;
     }
-    _close();
+    if (_answering) return;
+    setState(() => _answering = true);
+    await AvaDialChannel.I.answer(id);
+    if (!mounted || _closed) return;
+    _answerTimeout?.cancel();
+    _answerTimeout = Timer(const Duration(seconds: 10), () {
+      if (!mounted || _closed || !_answering) return;
+      setState(() => _answering = false);
+    });
   }
 
   Future<void> _decline() async {
@@ -105,7 +173,10 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
   }
 
   void _close() {
-    if (mounted && Navigator.of(context).canPop()) Navigator.of(context).pop();
+    if (_closed || !mounted) return;
+    _closed = true;
+    _answerTimeout?.cancel();
+    if (Navigator.of(context).canPop()) Navigator.of(context).pop();
   }
 
   @override
@@ -216,10 +287,11 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
             const SizedBox(width: 12),
             Expanded(
               child: AdButton(
-                label: 'Answer anyway',
+                // [AVADIAL-HARDEN-1] Disabled + relabeled while waiting on native 'active'.
+                label: _answering ? 'Answering…' : 'Answer anyway',
                 variant: AdButtonVariant.ghost,
                 fullWidth: true,
-                onPressed: _answer,
+                onPressed: _answering ? null : _answer,
               ),
             ),
           ]),
@@ -237,10 +309,11 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
           const SizedBox(width: 12),
           Expanded(
             child: AdButton(
-              label: 'Answer',
+              // [AVADIAL-HARDEN-1] Disabled + relabeled while waiting on native 'active'.
+              label: _answering ? 'Answering…' : 'Answer',
               variant: AdButtonVariant.primary,
               fullWidth: true,
-              onPressed: _answer,
+              onPressed: _answering ? null : _answer,
             ),
           ),
         ]);
@@ -258,10 +331,11 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
             const SizedBox(width: 12),
             Expanded(
               child: AdButton(
-                label: 'Answer',
+                // [AVADIAL-HARDEN-1] Disabled + relabeled while waiting on native 'active'.
+                label: _answering ? 'Answering…' : 'Answer',
                 variant: AdButtonVariant.primary,
                 fullWidth: true,
-                onPressed: _answer,
+                onPressed: _answering ? null : _answer,
               ),
             ),
           ]),
