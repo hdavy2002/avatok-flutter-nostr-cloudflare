@@ -430,13 +430,20 @@ class ClerkClient {
 
   /// Sign in with email + password.
   ///
-  /// [AVA-AUTH-OTP] Emailing a code is now OPT-IN via [emailCodeRequested], which ONLY
-  /// the "Sign in with an email code instead" action passes. It used to be an implicit
+  /// [AVA-AUTH-OTP] Sending an email code is OPT-IN via [emailCodeRequested], passed
+  /// ONLY by the "Sign in with an email code instead" action. It used to be an implicit
   /// fall-through: any password attempt that neither completed nor produced a tidy
-  /// "wrong password" error silently asked Clerk to email a 6-digit code. Users never
-  /// requested it and (on the Google path) never saw a code field — they just got a
-  /// mailbox full of "Avatok verification code". Every re-auth cycle sent another.
-  /// A code now leaves Clerk only when a human deliberately asked for one.
+  /// "wrong password" error asked Clerk to email a 6-digit code, unprompted.
+  ///
+  /// Scope, honestly: this is hygiene, NOT a proven fix for the July 2026 OTP flood.
+  /// The old fall-through always DID show a code field afterwards (via _handleStep),
+  /// and email_otp_sent telemetry was near-zero for the affected account — so it very
+  /// likely wasn't the flood's source. What it did do was mail codes to people who
+  /// never asked (e.g. a blank password), which is worth closing regardless.
+  ///
+  /// The one case that MUST still send a code is Client Trust — see below. Gating that
+  /// by mistake would lock out every new-device password sign-in, since this instance
+  /// runs Client Trust with no MFA configured.
   Future<ClerkStep> signIn(String email, String password,
       {bool emailCodeRequested = false}) async {
     _sx('started', provider: emailCodeRequested ? 'email_code' : 'password');
@@ -456,6 +463,22 @@ class ClerkClient {
         _sx('completed', provider: 'password');
         await _attachIdentity();
         return ClerkStep.complete();
+      }
+      // CLIENT TRUST — this instance has it ON with no MFA configured, so a correct
+      // password on an unrecognised device returns status `needs_client_trust` with
+      // email_code in `supported_second_factors`. The password WAS accepted; Clerk
+      // just wants to verify the device, and it does NOT send the code itself — we
+      // must prepare_second_factor. This is exempt from the emailCodeRequested gate:
+      // the user's own password attempt asked for it, and we put a code field on
+      // screen immediately. (The old identifier-only fall-through was accidentally
+      // covering this case by sending a FIRST-factor code instead — which worked,
+      // but sent a second, unnecessary email.)
+      if (su?['status'] == 'needs_client_trust') {
+        final trust = await _prepareClientTrustEmailCode(su);
+        if (trust != null) {
+          _sx('needs_client_trust', provider: 'password');
+          return trust;
+        }
       }
       final err = _firstError(body);
       if (err != null &&
@@ -485,6 +508,31 @@ class ClerkClient {
     final err2 = _firstError(body2) ?? 'Sign-in is not available for this account';
     _sx('failed', provider: 'email_code', reason: 'signin_unavailable', detail: err2);
     return ClerkStep.error(err2);
+  }
+
+  /// Client Trust device check: prepare the SECOND-factor email code for a sign-in
+  /// whose password already succeeded (`needs_client_trust`).
+  ///
+  /// Note the asymmetry with [_prepareSignInEmailCode]: that one reads
+  /// `supported_first_factors` and posts to prepare_first_factor; this reads
+  /// `supported_second_factors` and posts to prepare_second_factor. Verification
+  /// likewise goes to attempt_second_factor — see [verifyCode]'s 'client_trust' kind.
+  /// Returns a needsCode('client_trust') step, or null if email_code isn't offered.
+  Future<ClerkStep?> _prepareClientTrustEmailCode(Map<String, dynamic>? su) async {
+    if (su == null) return null;
+    final id = su['id']?.toString();
+    final factors = (su['supported_second_factors'] as List?) ?? const [];
+    Map<String, dynamic>? email;
+    for (final f in factors) {
+      if ((f as Map)['strategy'] == 'email_code') { email = f.cast<String, dynamic>(); break; }
+    }
+    if (id == null || email == null) return null;
+    await _send('/client/sign_ins/$id/prepare_second_factor', body: {
+      'strategy': 'email_code',
+      if (email['email_address_id'] != null)
+        'email_address_id': email['email_address_id'].toString(),
+    });
+    return ClerkStep.needsCode('client_trust', id);
   }
 
   Future<ClerkStep?> _prepareSignInEmailCode(Map<String, dynamic>? su) async {
@@ -538,11 +586,20 @@ class ClerkClient {
     return ClerkStep.needsCode('signup', id);
   }
 
-  /// Verify an emailed code (kind = 'signin' or 'signup'). Null on success.
+  /// Verify an emailed code. Null on success.
+  ///
+  /// [kind] selects the endpoint — they are NOT interchangeable, and posting a
+  /// Client Trust code to attempt_first_factor just fails:
+  ///   'signup'       → sign_ups/{id}/attempt_verification
+  ///   'client_trust' → sign_ins/{id}/attempt_second_factor  (device check after a
+  ///                    valid password; see [_prepareClientTrustEmailCode])
+  ///   'signin'       → sign_ins/{id}/attempt_first_factor   (passwordless email code)
   Future<String?> verifyCode(String kind, String id, String code) async {
-    final path = kind == 'signup'
-        ? '/client/sign_ups/$id/attempt_verification'
-        : '/client/sign_ins/$id/attempt_first_factor';
+    final path = switch (kind) {
+      'signup' => '/client/sign_ups/$id/attempt_verification',
+      'client_trust' => '/client/sign_ins/$id/attempt_second_factor',
+      _ => '/client/sign_ins/$id/attempt_first_factor',
+    };
     final body = await _send(path, body: {'strategy': 'email_code', 'code': code.trim()});
     final err = _firstError(body);
     if (err != null) {
