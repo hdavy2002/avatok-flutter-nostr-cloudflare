@@ -9,6 +9,7 @@ import '../../../core/remote_config.dart';
 import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../../avadial/avadial_channel.dart';
+import '../../avadial/avadial_setup_sheet.dart';
 import '../../avadial/sms_role_help.dart';
 import '../settings_registry.dart';
 
@@ -252,6 +253,35 @@ class _DefaultDialerCardState extends State<_DefaultDialerCard>
                   onChanged: _onSmsChanged,
                 ),
               ],
+              // [AVADIAL-SETUP-3] The guided setup checklist moved HERE from the
+              // AvaDial auto-pop sheet (owner request 2026-07-14, pic 1). Walks
+              // through every role/permission — dialer, SMS, screening, contacts,
+              // lock-screen calls, battery, overlays — one highlighted task at a time.
+              const Divider(height: 22, thickness: 1, color: AD.borderHairline),
+              GestureDetector(
+                onTap: () {
+                  Analytics.capture('settings_dialer_checklist_opened');
+                  showAvaDialSetupSheet(context);
+                },
+                behavior: HitTestBehavior.opaque,
+                child: Row(children: [
+                  Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Phone setup checklist', style: ADText.rowName()),
+                          const SizedBox(height: 3),
+                          Text(
+                            'Roles & permissions for calls, SMS, spam screening, '
+                            'lock-screen ringing and pop-ups — step by step.',
+                            style: ADText.preview(),
+                          ),
+                        ]),
+                  ),
+                  const SizedBox(width: 10),
+                  const Icon(Icons.chevron_right, color: AD.textSecondary),
+                ]),
+              ),
             ]),
     );
   }

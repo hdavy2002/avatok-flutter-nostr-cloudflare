@@ -50,6 +50,13 @@ Future<void> maybeShowAvaDialSetup(BuildContext context) async {
   }
   _shownThisSession = true;
   if (!context.mounted) return;
+  await showAvaDialSetupSheet(context);
+}
+
+/// [AVADIAL-SETUP-3] Explicitly open the setup checklist (owner request
+/// 2026-07-14: the sheet no longer auto-pops inside AvaDial — it lives in
+/// Account & Settings → Settings → "Default phone & messages").
+Future<void> showAvaDialSetupSheet(BuildContext context) async {
   Analytics.capture('avadial_setup_sheet_shown');
   await showModalBottomSheet<void>(
     context: context,

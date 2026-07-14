@@ -28,6 +28,9 @@ class AvaInCallService : InCallService() {
 
     companion object {
         private const val CHANNEL_ID = "avadial_incoming"
+        // [AVADIAL-NAME-1] Named missed-call notifications.
+        private const val MISSED_CHANNEL_ID = "avadial_missed"
+        private const val MISSED_NOTIF_TAG = "avadial_missed"
         // [AVADIAL-HARDEN-1] Internal (not private) — AvaCallActionReceiver cancels
         // this same notification id when the user taps "Decline".
         internal const val NOTIF_ID = 42110
@@ -35,6 +38,12 @@ class AvaInCallService : InCallService() {
         @Volatile
         private var instance: AvaInCallService? = null
         private val callMap = LinkedHashMap<String, Call>()
+
+        // [AVADIAL-NAME-1] Calls that reached ACTIVE — an incoming call removed
+        // WITHOUT ever going active is a missed call (drives the named missed-call
+        // notification). Keyed by our stable call id.
+        private val sawActive = HashSet<String>()
+        private val incomingIds = HashSet<String>()
 
         private fun idFor(call: Call): String = System.identityHashCode(call).toString()
 
@@ -123,6 +132,7 @@ class AvaInCallService : InCallService() {
             )
         )
         if (call.state == Call.STATE_RINGING || direction == "incoming") {
+            incomingIds.add(id)
             launchIncoming(id, number, verdict?.score, verdict?.bucket)
         }
     }
@@ -134,7 +144,20 @@ class AvaInCallService : InCallService() {
         // [AVADIAL-STUCK-1] The call is dead — a pending incoming launch for it must
         // never be drained by a later app open (ghost ringing screen).
         AvaDialPlugin.clearPendingIncoming(id)
+        // [AVADIAL-NATIVE-RING-1] Tear down the native ringing screen the moment the
+        // call dies — no ghost screens, ever.
+        IncomingCallActivity.closeFor(id)
         AvaDialPlugin.emit("onCallRemoved", mapOf("id" to id))
+
+        // [AVADIAL-NAME-1] Incoming call that never went active = missed call. Post a
+        // notification that says WHO called, not just "missed call" (owner request
+        // 2026-07-14, pic 3). Best-effort; the OS/Telecom one may appear alongside.
+        val wasIncoming = incomingIds.remove(id)
+        val wasActive = sawActive.remove(id)
+        if (wasIncoming && !wasActive) {
+            postMissedCallNotification(call.details?.handle?.schemeSpecificPart)
+        }
+
         if (callMap.isEmpty()) {
             try {
                 (getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager)?.cancel(NOTIF_ID)
@@ -144,8 +167,83 @@ class AvaInCallService : InCallService() {
 
     private fun callbackFor(id: String) = object : Call.Callback() {
         override fun onStateChanged(call: Call, state: Int) {
+            if (state == Call.STATE_ACTIVE) {
+                sawActive.add(id)
+                // [AVADIAL-NATIVE-RING-1] Answered (here, from the notification, or
+                // from Flutter) — swap the native ringing screen for the in-call UI.
+                IncomingCallActivity.onCallActive(id)
+            }
             AvaDialPlugin.emit("onCallState", mapOf("id" to id, "state" to stateName(state)))
         }
+    }
+
+    /**
+     * [AVADIAL-NAME-1] Contact display name for [number] via ContactsContract
+     * PhoneLookup. Null when unknown / READ_CONTACTS not granted / lookup fails.
+     */
+    private fun displayNameFor(number: String?): String? {
+        if (number.isNullOrEmpty()) return null
+        return try {
+            val uri = android.net.Uri.withAppendedPath(
+                android.provider.ContactsContract.PhoneLookup.CONTENT_FILTER_URI,
+                android.net.Uri.encode(number),
+            )
+            contentResolver.query(
+                uri,
+                arrayOf(android.provider.ContactsContract.PhoneLookup.DISPLAY_NAME),
+                null, null, null,
+            )?.use { c -> if (c.moveToFirst()) c.getString(0)?.takeIf { it.isNotBlank() } else null }
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    /**
+     * [AVADIAL-NAME-1] "Missed call · <name>" notification with the caller's contact
+     * name and number. Tapping it opens the app on the caller (avadial/openDial route,
+     * same path the missed-call overlay uses). One notification per number.
+     */
+    private fun postMissedCallNotification(number: String?) {
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            nm.createNotificationChannel(
+                NotificationChannel(
+                    MISSED_CHANNEL_ID, "Missed calls", NotificationManager.IMPORTANCE_DEFAULT
+                )
+            )
+        }
+        val name = displayNameFor(number)
+        val who = name ?: number ?: "Unknown number"
+        val tapIntent = try {
+            Intent(this, Class.forName("ai.avatok.avatok_call.MainActivity")).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                putExtra("route", "avadial/openDial")
+                putExtra("number", number)
+            }
+        } catch (_: Throwable) { null } ?: return
+        val pending = PendingIntent.getActivity(
+            this,
+            (number ?: who).hashCode(),
+            tapIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val b = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, MISSED_CHANNEL_ID)
+        } else {
+            @Suppress("DEPRECATION")
+            Notification.Builder(this)
+        }
+        val notif = b
+            .setSmallIcon(applicationInfo.icon)
+            .setContentTitle("Missed call · $who")
+            .setContentText(if (name != null && number != null) number else "Tap to call back or message")
+            .setCategory(Notification.CATEGORY_MISSED_CALL)
+            .setAutoCancel(true)
+            .setContentIntent(pending)
+            .build()
+        try {
+            nm.notify(MISSED_NOTIF_TAG, (number ?: who).hashCode(), notif)
+        } catch (_: Throwable) { /* POST_NOTIFICATIONS denied — best-effort */ }
     }
 
     /**
@@ -190,14 +288,19 @@ class AvaInCallService : InCallService() {
             )
             nm.createNotificationChannel(channel)
         }
-        val intent = Intent(this, Class.forName("ai.avatok.avatok_call.MainActivity")).apply {
+        // [AVADIAL-NATIVE-RING-1] The ringing UI is now the dedicated native
+        // IncomingCallActivity — NOT MainActivity/Flutter. Opening the whole app
+        // meant landing on the messenger root with the setup sheet popping over the
+        // call (owner bug 2026-07-14). The native screen needs no engine, shows the
+        // caller's contact name, and finishes itself when the call dies. MainActivity
+        // is only involved AFTER answer (in-call UI, answered=true).
+        val callerName = displayNameFor(number)
+        val intent = Intent(this, IncomingCallActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            putExtra("route", "avadial/incoming")
             putExtra("call_id", id)
             putExtra("number", number)
-            // [AVADIAL-HARDEN-3] Carry the screening verdict through the cold-start
-            // intent extras too, so PstnCallScreen can paint red even when Dart wasn't
-            // alive to receive the onCallAdded event.
+            if (callerName != null) putExtra("name", callerName)
+            // [AVADIAL-HARDEN-3] Screening verdict → red spam paint on the native screen.
             if (spamScore != null) putExtra("spam_score", spamScore)
             if (spamBucket != null) putExtra("spam_bucket", spamBucket)
         }
@@ -273,7 +376,7 @@ class AvaInCallService : InCallService() {
         builder
             .setSmallIcon(applicationInfo.icon)
             .setContentTitle("Incoming call")
-            .setContentText(number ?: "Unknown number")
+            .setContentText(callerName ?: number ?: "Unknown number")
             .setCategory(Notification.CATEGORY_CALL)
             .setOngoing(true)
             .setFullScreenIntent(pending, true)
@@ -285,8 +388,10 @@ class AvaInCallService : InCallService() {
         // WhatsApp-style incoming banner). Falls back to plain Answer/Decline actions
         // on older releases.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // [AVADIAL-NAME-1] Show WHO is calling on the banner — contact name when
+            // we have one, the number otherwise (owner bug 2026-07-14, pic 2).
             val caller = android.app.Person.Builder()
-                .setName(number ?: "Unknown number")
+                .setName(callerName ?: number ?: "Unknown number")
                 .setImportant(true)
                 .build()
             builder.setStyle(

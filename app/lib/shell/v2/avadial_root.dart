@@ -10,7 +10,6 @@ import '../../core/ui/avatok_dark.dart';
 import '../../features/avadial/ava_contact_book.dart';
 import '../../features/avadial/avadial_channel.dart';
 import '../../features/avadial/avadial_refresh.dart';
-import '../../features/avadial/avadial_setup_sheet.dart';
 import '../../features/avadial/avadial_theme.dart';
 import '../../features/avadial/block_list.dart';
 import '../../features/avadial/contact_detail_screen.dart';
@@ -21,7 +20,6 @@ import '../../features/avadial/contact_row_menu.dart';
 import '../../features/avadial/device_call_log.dart';
 import '../../features/avadial/device_contacts.dart';
 import '../../features/avadial/dialpad_search_tab.dart';
-import '../../features/avadial/pstn_call_screen.dart';
 import '../../features/avadial/sms/sms_threads_screen.dart';
 import '../../features/avadial/sms/sms_unread_store.dart';
 import '../../features/avadial/sms_role_help.dart';
@@ -50,8 +48,6 @@ class AvaDialRoot extends StatefulWidget {
 
 class _AvaDialRootState extends State<AvaDialRoot> {
   int _tab = 0;
-  StreamSubscription<AvaCallEvent>? _callSub;
-  bool _screenOpen = false;
 
   // Each sub-section gets its OWN color (owner request — "give each tab header a
   // different color, so users can recognise it"), reusing the same accents the
@@ -76,48 +72,23 @@ class _AvaDialRootState extends State<AvaDialRoot> {
     // channel handler is never installed on a dark build.
     if (RemoteConfig.avaDialer) {
       AvaDialChannel.I.ensureWired();
-      // Foreground incoming-call route. (Background/cold-start uses the native
-      // full-screen-intent notification, whose MainActivity route extra is wired by
-      // the shell's notification handler — TODO(phase2) in shell_v2.dart.)
-      _callSub = AvaDialChannel.I.calls.listen(_onCall);
-      // [AVADIAL-SETUP-1] First-run device setup. Calls only ring full-screen on
-      // the lock screen once the user grants OS permissions no app can grant itself
-      // (full-screen notifications, battery/background) and hands AvaDialer the
-      // phone + Caller-ID roles (replacing Truecaller). Surface a one-tap setup
-      // sheet the first time AvaDialer opens with anything essential still missing.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        // [AVADIAL-INCOMING-HIDDEN-1] Never pop the setup sheet over a live
-        // incoming/ringing call screen (it fired right on top of PstnCallScreen
-        // when an incoming call cold-started the app — PostHog 2026-07-14).
-        if (mounted && !AvaDialChannel.I.incomingScreenOpen) {
-          maybeShowAvaDialSetup(context);
-        }
-      });
+      // [AVADIAL-NATIVE-RING-1] Ringing UI is now the dedicated NATIVE
+      // IncomingCallActivity launched by AvaInCallService — independent of the
+      // app, over any app / the lock screen, self-closing when the call dies.
+      // The old in-app PstnCallScreen push on 'ringing' is gone (it opened the
+      // whole app and raced the landing page + setup sheet — owner bug
+      // 2026-07-14). Dart only handles the ANSWERED hand-off (shell_v2
+      // _openIncoming → InCallScreen).
+      //
+      // [AVADIAL-SETUP-3] The setup sheet no longer auto-pops here either —
+      // it lives in Account & Settings → Settings → "Default phone & messages"
+      // (owner request 2026-07-14, pic 1).
     }
   }
 
   @override
   void dispose() {
-    _callSub?.cancel();
     super.dispose();
-  }
-
-  void _onCall(AvaCallEvent e) {
-    if (!mounted || _screenOpen || AvaDialChannel.I.incomingScreenOpen) return;
-    if (e.state != 'ringing' || e.direction != 'incoming') return;
-    final number = e.number;
-    if (number == null || number.isEmpty) return;
-    _screenOpen = true;
-    AvaDialChannel.I.incomingScreenOpen = true; // shared guard vs. the shell path
-    Navigator.of(context)
-        .push(MaterialPageRoute<void>(
-          fullscreenDialog: true,
-          builder: (_) => PstnCallScreen(callId: e.id, number: number, spamScore: e.spamScore),
-        ))
-        .whenComplete(() {
-      _screenOpen = false;
-      AvaDialChannel.I.incomingScreenOpen = false;
-    });
   }
 
   @override

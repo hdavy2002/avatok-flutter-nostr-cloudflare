@@ -11,6 +11,7 @@ import '../core/remote_config.dart';
 import '../core/ui/avatok_dark.dart';
 import '../features/askava/askava_screen.dart';
 import '../features/avadial/avadial_channel.dart';
+import '../features/avadial/block_list.dart';
 import '../features/avadial/contact_detail_screen.dart';
 import '../features/avadial/in_call_screen.dart';
 import '../features/avadial/missed_call_service.dart';
@@ -230,6 +231,20 @@ class _ShellV2State extends State<ShellV2> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final l = await AvaDialChannel.I.consumePendingIncoming();
       if (l != null) _openIncoming(l.callId, l.number, l.answered, l.spamScore);
+      // [AVADIAL-NATIVE-RING-1] Sync Block/Report actions taken on the native
+      // incoming-call screen while the app was dead into the in-app BlockList.
+      for (final a in await AvaDialChannel.I.drainPendingCallActions()) {
+        final number = '${a['number'] ?? ''}';
+        if (number.isEmpty) continue;
+        try {
+          if (a['action'] == 'report_spam') {
+            await BlockList.I.reportSpam(number);
+          } else {
+            await BlockList.I.block(number, reportedSpam: false);
+          }
+          Analytics.capture('pstn_native_action_synced', {'action': '${a['action']}'});
+        } catch (_) {/* best-effort */}
+      }
     });
   }
 

@@ -500,6 +500,22 @@ class AvaDialChannel {
   Future<void> setMuted(bool on) => _invokeVoid('setMuted', {'on': on});
   Future<void> setSpeaker(bool on) => _invokeVoid('setSpeaker', {'on': on});
 
+  /// [AVADIAL-NATIVE-RING-1] Block / Report-spam actions taken on the NATIVE
+  /// incoming-call screen while Dart was dead. Each entry is
+  /// `{number, action ('block'|'report_spam'), ts}`; the native file is cleared
+  /// on read. The shell drains this on startup into [BlockList].
+  Future<List<Map<String, dynamic>>> drainPendingCallActions() async {
+    try {
+      final raw = await _ch.invokeMethod<List<dynamic>>('drainPendingCallActions');
+      return (raw ?? const [])
+          .whereType<Map>()
+          .map((m) => m.map((k, v) => MapEntry('$k', v)))
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
   /// [AVADIAL-STUCK-1] Live native state of call [id], or null when the call no
   /// longer exists. PstnCallScreen probes this on mount so a stale launch (call
   /// already ended) closes itself instead of showing a ghost ringing screen.

@@ -484,6 +484,28 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
                 "systemBlock" -> result.success(systemBlock(ctx, call.argument<String>("number")))
                 "systemUnblock" -> result.success(systemUnblock(ctx, call.argument<String>("number")))
 
+                // ---- [AVADIAL-NATIVE-RING-1] drain Block/Report actions taken on the
+                // native IncomingCallActivity while Dart was dead, so the in-app
+                // BlockList stays in sync. Returns [{number, action, ts}] and clears.
+                "drainPendingCallActions" -> {
+                    val out = try {
+                        val f = File(File(ctx.filesDir, "avadial"), "pending_call_actions.json")
+                        if (f.exists() && f.length() > 0L) {
+                            val arr = org.json.JSONArray(f.readText())
+                            f.delete()
+                            (0 until arr.length()).map { i ->
+                                val o = arr.getJSONObject(i)
+                                mapOf(
+                                    "number" to o.optString("number"),
+                                    "action" to o.optString("action"),
+                                    "ts" to o.optLong("ts"),
+                                )
+                            }
+                        } else emptyList()
+                    } catch (_: Throwable) { emptyList() }
+                    result.success(out)
+                }
+
                 // ---- [AVADIAL-STUCK-1] live call-state probe (PstnCallScreen guard) ----
                 "callState" ->
                     result.success(call.argument<String>("id")?.let { AvaInCallService.stateOf(it) })

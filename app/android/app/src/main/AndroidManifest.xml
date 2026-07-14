@@ -148,6 +148,23 @@
                 <data android:scheme="avatok"/>
             </intent-filter>
         </activity>
+        <!-- [AVADIAL-NATIVE-RING-1] Dedicated native incoming-PSTN-call screen.
+             Lives in its OWN task (taskAffinity) so ringing NEVER opens the app's
+             task/landing page/setup sheet; excludeFromRecents + autoRemoveFromRecents
+             so no ghost card lingers after the call; showWhenLocked + turnScreenOn so
+             it rings over the lock screen. Launched only by AvaInCallService / the
+             full-screen-intent notification — never exported. -->
+        <activity
+            android:name="ai.avatok.avadial.IncomingCallActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:taskAffinity="ai.avatok.avadial.incoming"
+            android:excludeFromRecents="true"
+            android:autoRemoveFromRecents="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|density|uiMode"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
         <!-- [ISSUE-DUPTASK] Merge-override of flutter_callkit_incoming's ring
              activity. We do NOT change its launchMode or taskAffinity (singleInstance
              on a dedicated affinity is what lets it show over the lock screen), we
