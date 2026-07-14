@@ -33,12 +33,35 @@ class DeviceContacts {
   // number-suffix → contact, for O(1) incoming-call GREEN lookup.
   Map<String, DeviceContact> _index = const {};
 
+  /// Shortest suffix we trust as a phone identity. Below this, two unrelated
+  /// numbers collide far too easily, so callers treat the key as "no match".
+  static const int _minDigitKey = 6;
+
   /// Reduce any dialed/stored number to a comparable key: trailing digits only.
   /// (Full E.164 normalisation needs libphonenumber — [verify on device]; the
   /// suffix match is a pragmatic stand-in that tolerates +/spacing/country-code.)
+  ///
+  /// [AVA-SMS-SENDERID-1] Alphanumeric sender IDs (`VM-HDFCBK`, `AD-ICICIB`, …)
+  /// contain NO digits, so the digits-only rule used to reduce every one of them
+  /// to `''` — one shared key. That single collision caused two bugs: every
+  /// bank/OTP thread rendered whichever contact happened to sit at `_index['']`,
+  /// and SmsUnreadStore summed all their unread counts into one bucket that no
+  /// single thread could ever clear. Digit-less addresses now key on the address
+  /// itself, so each sender ID is its own identity.
   static String normKey(String raw) {
     final digits = raw.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) return raw.trim().toUpperCase();
     return digits.length <= 9 ? digits : digits.substring(digits.length - 9);
+  }
+
+  /// Is [key] specific enough to identify one party? Guards the contact index
+  /// against matching on a stub like `''` or a 3-digit fragment.
+  static bool _usableKey(String key) {
+    if (key.isEmpty) return false;
+    final digits = key.replaceAll(RegExp(r'[^0-9]'), '');
+    // Alphanumeric sender IDs are exact strings — trust them as-is.
+    if (digits.isEmpty) return true;
+    return digits.length >= _minDigitKey;
   }
 
   /// Drop any cache belonging to a different account (called on every access and
@@ -184,7 +207,11 @@ class DeviceContacts {
         id: r['id'] as String?,
       );
       list.add(c);
-      index[normKey(number)] = c;
+      // [AVA-SMS-SENDERID-1] Never index a contact under a key too vague to
+      // identify it — that entry would otherwise become the answer for every
+      // unmatched address.
+      final key = normKey(number);
+      if (_usableKey(key)) index[key] = c;
     }
     // Re-guard: an account switch may have raced the async read; only commit the
     // cache if we're still on the same account it was read for.
@@ -200,6 +227,9 @@ class DeviceContacts {
   /// contacts haven't been loaded for this account yet.
   DeviceContact? lookup(String number) {
     _guardScope();
-    return _index[normKey(number)];
+    final key = normKey(number);
+    // [AVA-SMS-SENDERID-1] An unusable key means "unknown", not "match anything".
+    if (!_usableKey(key)) return null;
+    return _index[key];
   }
 }
