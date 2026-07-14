@@ -692,9 +692,13 @@ class _ContactsTabState extends State<_ContactsTab> {
                       final groupId = overrides[key]?.groupId;
                       final group = groupId != null ? groupsById[groupId] : null;
                       final rowColor = group?.colorValue ?? AvaDialTheme.surface2;
-                      final titleColor = group != null ? const Color(0xFF12301F) : AvaDialTheme.text;
-                      final subColor = group != null ? const Color(0xFF2F5D45) : AvaDialTheme.textSoft;
-                      final iconColor = group != null ? const Color(0xFF12301F) : AvaDialTheme.textSoft;
+                      // [AVADIAL-GROUPS-2] Owner feedback: text on a coloured row is
+                      // WHITE (not dark ink), so a row reads the same whichever colour
+                      // the user picks.
+                      final titleColor = group != null ? Colors.white : AvaDialTheme.text;
+                      final subColor =
+                          group != null ? Colors.white.withValues(alpha: 0.9) : AvaDialTheme.textSoft;
+                      final iconColor = group != null ? Colors.white : AvaDialTheme.textSoft;
                       void openMenu() => showAvaDialRowMenu(
                             context,
                             number: c.number,
@@ -711,12 +715,16 @@ class _ContactsTabState extends State<_ContactsTab> {
                             color: rowColor,
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                             child: Row(children: [
-                              // [AVADIAL-GROUPS-1] On a grouped (bright) row the badge
-                              // must NOT reuse the group colour — it would be the same
-                              // fill as the card and vanish. Use the dark ink instead.
+                              // [AVADIAL-GROUPS-2] The badge must never be the group
+                              // colour (it would vanish into the card) NOR a dark fill:
+                              // ZineIconBadge hard-codes a DARK ink glyph for every
+                              // colour except coral, so a dark badge = dark-on-dark mush
+                              // (owner: "the icon goes dark / looks distorted"). WHITE
+                              // keeps the glyph crisp and reads cleanly against every
+                              // group colour the user can pick.
                               ZineIconBadge(
                                   icon: PhosphorIcons.user(PhosphorIconsStyle.bold),
-                                  color: group != null ? const Color(0xFF12301F) : AD.iconSearch),
+                                  color: group != null ? Colors.white : AD.iconSearch),
                               const SizedBox(width: 12),
                               Expanded(
                                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

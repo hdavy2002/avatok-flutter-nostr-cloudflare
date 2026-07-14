@@ -31,6 +31,12 @@ Future<void> showAvaDialRowMenu(
   VoidCallback? onChanged,
 }) async {
   final navContext = Navigator.of(context, rootNavigator: true).context;
+  // [AVADIAL-GROUPS-2] Resolve the contact's colour group up front so the menu can
+  // offer a one-tap "Remove from colour group" only when the row is actually
+  // coloured (owner request). Read here rather than threading it through every
+  // call site, so the Logs/Block tabs get the same behaviour for free.
+  final currentGroupId = (await ContactOverrides.I.forNumber(number))?.groupId;
+  if (!context.mounted) return;
   await showModalBottomSheet<void>(
     context: context,
     backgroundColor: AvaDialTheme.surface,
@@ -114,13 +120,26 @@ Future<void> showAvaDialRowMenu(
         _row(
           icon: PhosphorIcons.tag(PhosphorIconsStyle.bold),
           color: AD.iconVideo,
-          label: 'Add to group',
+          label: 'Add to color group',
           onTap: () async {
             Navigator.pop(sheetCtx);
             await _pickGroup(navContext, number);
             onChanged?.call();
           },
         ),
+        // [AVADIAL-GROUPS-2] Only offered when this contact IS coloured — a
+        // one-tap un-colour without going through the picker (owner request).
+        if (currentGroupId != null)
+          _row(
+            icon: PhosphorIcons.prohibit(PhosphorIconsStyle.bold),
+            color: AD.danger,
+            label: 'Remove from color group',
+            onTap: () async {
+              Navigator.pop(sheetCtx);
+              await ContactOverrides.I.setGroup(number, null);
+              onChanged?.call();
+            },
+          ),
         _row(
           icon: PhosphorIcons.clockCounterClockwise(PhosphorIconsStyle.bold),
           color: AD.incomingCall,
@@ -250,7 +269,8 @@ Future<void> _pickGroup(BuildContext context, String number) async {
           decoration: BoxDecoration(color: AvaDialTheme.textMute, borderRadius: BorderRadius.circular(100)),
         ),
         ListTile(
-          title: Text('Add to group', style: ZineText.cardTitle(size: 15.5, color: AvaDialTheme.text)),
+          title: Text('Add to color group',
+              style: ZineText.cardTitle(size: 15.5, color: AvaDialTheme.text)),
         ),
         const Divider(color: AvaDialTheme.border, height: 1),
         Flexible(
@@ -277,7 +297,7 @@ Future<void> _pickGroup(BuildContext context, String number) async {
                 ListTile(
                   leading: PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.bold),
                       color: AvaDialTheme.textSoft),
-                  title: Text('Remove from group',
+                  title: Text('Remove from color group',
                       style: ZineText.value(size: 15, color: AvaDialTheme.textSoft)),
                   // [AVADIAL-GROUPS-1] Write before popping — see note above.
                   onTap: () async {
