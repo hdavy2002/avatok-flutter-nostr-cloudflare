@@ -267,6 +267,17 @@ class AvaContactBook {
     var pages = 0;
     var serverPaged = true;
 
+    // Resuming a job left behind by a previous (killed/backgrounded) run.
+    if (job != null && (offset > 0 || restored > 0)) {
+      Analytics.capture('avadial_contact_restore_resumed',
+          {'offset': offset, 'restored': restored, 'total': total, 'trace_id': trace});
+    }
+    // Device-contacts (and thus write) permission is what lets restore rebuild the
+    // phone book; record when it's absent so a "restored nothing" report is explained.
+    if (onDevice.isEmpty && !await DeviceContacts.I.ensureWritePermission()) {
+      Analytics.capture('avadial_contact_restore_no_permission', {'trace_id': trace});
+    }
+
     try {
       while (true) {
         if (DateTime.now().isAfter(deadline)) {

@@ -35,6 +35,7 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
   @override
   void initState() {
     super.initState();
+    Analytics.screenViewed('avatok', 'contacts_backup');
     _load();
   }
 

@@ -145,6 +145,21 @@ function metric(env: Env, op: string, uid: string, count: number, ms: number): v
   } catch { /* best-effort */ }
 }
 
+// Rich PostHog event (batched via Q_ANALYTICS → avatok-consumers). uid-keyed so a
+// user's contact-book journey is pullable by their account (and joins the client's
+// avadial_contact_* events by clerk_uid). Never load-bearing. Mirrors the
+// conversations2.ts/spam.ts server-analytics style.
+function track(env: Env, uid: string, event: string, props: Record<string, unknown>): void {
+  try {
+    void env.Q_ANALYTICS?.send({
+      event,
+      uid,
+      ts: Date.now(),
+      props: { ...props, account_id: uid, app_name: "avatok", service_name: "avatok-api", worker: true, feature: "contacts_book" },
+    });
+  } catch { /* telemetry is never load-bearing */ }
+}
+
 /** Read + decrypt the caller's FULL book into an array (or null if none/decrypt-fail). */
 async function loadFullBook(env: Env, uid: string, inlineWrapped: string | null): Promise<unknown[] | null> {
   let blob = inlineWrapped;
@@ -207,9 +222,12 @@ export async function buildContactChunks(env: Env, uid: string): Promise<void> {
       )
       .bind(uid, total, CHUNK_SIZE, pages, now)
       .run();
-    metric(env, "chunk", uid, total, Date.now() - t0);
+    const ms = Date.now() - t0;
+    metric(env, "chunk", uid, total, ms);
+    track(env, uid, "contacts_chunks_built", { total, pages, page_size: CHUNK_SIZE, ms });
   } catch (e) {
     console.error("[contacts] buildContactChunks failed:", String(e));
+    track(env, uid, "contacts_chunks_failed", { error: String(e).slice(0, 160) });
   }
 }
 
@@ -270,7 +288,10 @@ export async function contactBookPut(req: Request, env: Env, ctx: ExecutionConte
   // Background: (re)build the paginated chunks so restore can stream pages.
   if (cfg.contactsBookPaged !== false) scheduleChunk(env, ctx, ctxUser.uid);
 
-  metric(env, "put", ctxUser.uid, contacts.length, Date.now() - t0);
+  const ms = Date.now() - t0;
+  metric(env, "put", ctxUser.uid, contacts.length, ms);
+  track(env, ctxUser.uid, "contacts_backup_stored",
+    { count: contacts.length, bytes: enc.encode(plaintext).byteLength, ms });
   return json({ ok: true, count: contacts.length, updatedAt: now });
 }
 
@@ -329,7 +350,9 @@ export async function contactBookGet(req: Request, env: Env): Promise<Response> 
         const localStart = offset - startChunk * man.page_size;
         const page = acc.slice(localStart, localStart + limit);
         const nextOffset = offset + page.length < total ? offset + page.length : null;
-        metric(env, "get_page", uid, page.length, Date.now() - t0);
+        const ms = Date.now() - t0;
+        metric(env, "get_page", uid, page.length, ms);
+        track(env, uid, "contacts_book_page", { count: page.length, total, offset, source: "chunks", ms });
         return json({ found: true, contacts: page, count: page.length, total, offset, nextOffset, updatedAt: row.updated_at });
       }
       // else: chunks not usable yet → decrypt-and-slice fallback below.
@@ -337,18 +360,28 @@ export async function contactBookGet(req: Request, env: Env): Promise<Response> 
 
     // Fallback: decrypt the full blob and slice (correct, just not as cheap).
     const all = await loadFullBook(env, uid, row.wrapped);
-    if (all === null) return json({ found: false, error: "decrypt_failed" }, 500);
+    if (all === null) {
+      track(env, uid, "contacts_decrypt_failed", { where: "get_page_fallback", offset });
+      return json({ found: false, error: "decrypt_failed" }, 500);
+    }
     const total = all.length;
     const page = all.slice(offset, offset + limit);
     const nextOffset = offset + page.length < total ? offset + page.length : null;
-    metric(env, "get_page_fallback", uid, page.length, Date.now() - t0);
+    const ms = Date.now() - t0;
+    metric(env, "get_page_fallback", uid, page.length, ms);
+    track(env, uid, "contacts_book_page", { count: page.length, total, offset, source: "blob_fallback", ms });
     return json({ found: true, contacts: page, count: page.length, total, offset, nextOffset, updatedAt: row.updated_at });
   }
 
   // Legacy: full book in one response.
   const all = await loadFullBook(env, uid, row.wrapped);
-  if (all === null) return json({ found: false, error: "decrypt_failed" }, 500);
-  metric(env, "get_full", uid, all.length, Date.now() - t0);
+  if (all === null) {
+    track(env, uid, "contacts_decrypt_failed", { where: "get_full" });
+    return json({ found: false, error: "decrypt_failed" }, 500);
+  }
+  const ms = Date.now() - t0;
+  metric(env, "get_full", uid, all.length, ms);
+  track(env, uid, "contacts_book_full", { count: all.length, ms });
   return json({ found: true, contacts: all, count: row.count, updatedAt: row.updated_at });
 }
 
