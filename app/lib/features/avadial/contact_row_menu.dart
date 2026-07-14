@@ -10,7 +10,9 @@ import 'avadial_channel.dart';
 import 'avadial_theme.dart';
 import 'block_list.dart';
 import 'contact_call_history_screen.dart';
+import 'contact_detail_screen.dart';
 import 'contact_edit_screen.dart';
+import 'contact_groups.dart';
 import 'contact_overrides.dart';
 import 'device_contacts.dart';
 import 'outgoing_call_screen.dart';
@@ -52,6 +54,17 @@ Future<void> showAvaDialRowMenu(
               : null,
         ),
         const Divider(color: AvaDialTheme.border, height: 1),
+        _row(
+          icon: PhosphorIcons.identificationCard(PhosphorIconsStyle.bold),
+          color: AD.iconSearch,
+          label: 'Open contact',
+          onTap: () async {
+            Navigator.pop(sheetCtx);
+            await Navigator.push<void>(navContext,
+                MaterialPageRoute<void>(builder: (_) => ContactDetailScreen(number: number, name: name)));
+            onChanged?.call();
+          },
+        ),
         _row(
           icon: PhosphorIcons.phone(PhosphorIconsStyle.bold),
           color: AD.incomingCall,
@@ -95,6 +108,16 @@ Future<void> showAvaDialRowMenu(
             Navigator.pop(sheetCtx);
             await Navigator.push<bool>(navContext, MaterialPageRoute<bool>(
                 builder: (_) => ContactEditScreen(number: number, initialName: name)));
+            onChanged?.call();
+          },
+        ),
+        _row(
+          icon: PhosphorIcons.tag(PhosphorIconsStyle.bold),
+          color: AD.iconVideo,
+          label: 'Add to group',
+          onTap: () async {
+            Navigator.pop(sheetCtx);
+            await _pickGroup(navContext, number);
             onChanged?.call();
           },
         ),
@@ -204,6 +227,72 @@ Future<bool?> _confirmDelete(BuildContext context, String label) => showDialog<b
         ],
       ),
     );
+
+/// [AVADIAL-GROUPS-1] Sub-sheet listing every colour group so the owner can
+/// file this contact into one (or clear it), launched from the "Add to
+/// group" row above. Styled to match the parent menu sheet.
+Future<void> _pickGroup(BuildContext context, String number) async {
+  final groups = await ContactGroups.I.load();
+  final current = (await ContactOverrides.I.forNumber(number))?.groupId;
+  if (!context.mounted) return;
+  await showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: AvaDialTheme.surface,
+    shape: const RoundedRectangleBorder(
+      side: BorderSide(color: AvaDialTheme.border, width: 1),
+      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+    ),
+    builder: (ctx) => SafeArea(
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const SizedBox(height: 10),
+        Container(
+          width: 40, height: 4,
+          decoration: BoxDecoration(color: AvaDialTheme.textMute, borderRadius: BorderRadius.circular(100)),
+        ),
+        ListTile(
+          title: Text('Add to group', style: ZineText.cardTitle(size: 15.5, color: AvaDialTheme.text)),
+        ),
+        const Divider(color: AvaDialTheme.border, height: 1),
+        Flexible(
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              for (final g in groups)
+                ListTile(
+                  leading: Container(
+                    width: 22, height: 22,
+                    decoration: BoxDecoration(color: g.colorValue, shape: BoxShape.circle),
+                  ),
+                  title: Text(g.name, style: ZineText.value(size: 15, color: AvaDialTheme.text)),
+                  trailing: g.id == current ? const Icon(Icons.check, color: AD.online) : null,
+                  // [AVADIAL-GROUPS-1] Write BEFORE popping: popping completes the
+                  // sheet's future, so _pickGroup returns and the caller's
+                  // onChanged/_reload can run before the assignment has landed.
+                  onTap: () async {
+                    await ContactOverrides.I.setGroup(number, g.id);
+                    if (ctx.mounted) Navigator.pop(ctx);
+                  },
+                ),
+              if (current != null)
+                ListTile(
+                  leading: PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.bold),
+                      color: AvaDialTheme.textSoft),
+                  title: Text('Remove from group',
+                      style: ZineText.value(size: 15, color: AvaDialTheme.textSoft)),
+                  // [AVADIAL-GROUPS-1] Write before popping — see note above.
+                  onTap: () async {
+                    await ContactOverrides.I.setGroup(number, null);
+                    if (ctx.mounted) Navigator.pop(ctx);
+                  },
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+      ]),
+    ),
+  );
+}
 
 Widget _row({
   required IconData icon,

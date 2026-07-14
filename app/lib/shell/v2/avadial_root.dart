@@ -12,14 +12,15 @@ import '../../features/avadial/avadial_channel.dart';
 import '../../features/avadial/avadial_refresh.dart';
 import '../../features/avadial/avadial_theme.dart';
 import '../../features/avadial/block_list.dart';
-import '../../features/avadial/contact_detail_screen.dart';
 import '../../features/avadial/contact_edit_screen.dart';
+import '../../features/avadial/contact_groups.dart';
 import '../../features/avadial/contacts_backup_screen.dart';
 import '../../features/avadial/contact_overrides.dart';
 import '../../features/avadial/contact_row_menu.dart';
 import '../../features/avadial/device_call_log.dart';
 import '../../features/avadial/device_contacts.dart';
 import '../../features/avadial/dialpad_search_tab.dart';
+import '../../features/avadial/outgoing_call_screen.dart';
 import '../../features/avadial/sms/sms_threads_screen.dart';
 import '../../features/avadial/sms/sms_unread_store.dart';
 import '../../features/avadial/sms_role_help.dart';
@@ -27,7 +28,7 @@ import '../shell_v2.dart';
 import 'shell_chrome.dart';
 
 /// AvaDial ("Calls") root — the PSTN phone world (plan §4). 2026-07-12 redesign:
-/// the five sub-sections (Dialpad · Contacts · Logs · Messages · Block) are now a
+/// the five sub-sections (Contacts · Messages · Dialpad · Block · Logs) are now a
 /// row of COLOR-CODED tabs BELOW the app bar (see [_CallsTabStrip]) instead of a
 /// bottom nav bar — the bottom of the screen is reserved for the shell-wide
 /// [AppSwitcherBar] (AvaTOK · Calls · Marketplace · Ava), which stays in the same
@@ -52,15 +53,15 @@ class _AvaDialRootState extends State<AvaDialRoot> {
   // Each sub-section gets its OWN color (owner request — "give each tab header a
   // different color, so users can recognise it"), reusing the same accents the
   // empty states already used for these tabs so the palette stays consistent.
-  // Tab order (owner request 2026-07-13): Dialpad · Messages · Contacts ·
+  // Tab order (owner request 2026-07-14): Contacts · Messages · Dialpad ·
   // Block list · Call logs. The IndexedStack bodies below MUST stay in this same
   // order (index maps positionally).
   static const _items = [
-    _CallsTabItem(Icons.dialpad_outlined, Icons.dialpad, 'Dialpad', AD.primaryBadge),
+    _CallsTabItem(Icons.person_outline, Icons.person, 'Contacts', AD.iconSearch),
     // [AVA-SMS-BADGE-1] Messages carries the unread-SMS count in ORANGE.
     _CallsTabItem(Icons.sms_outlined, Icons.sms, 'Messages', AD.iconVideo,
         unreadBadge: true),
-    _CallsTabItem(Icons.person_outline, Icons.person, 'Contacts', AD.iconSearch),
+    _CallsTabItem(Icons.dialpad_outlined, Icons.dialpad, 'Dialpad', AD.primaryBadge),
     _CallsTabItem(Icons.block_outlined, Icons.block, 'Block list', AD.danger),
     _CallsTabItem(Icons.history_outlined, Icons.history, 'Call logs', AD.online),
   ];
@@ -119,12 +120,16 @@ class _AvaDialRootState extends State<AvaDialRoot> {
                 final on = RemoteConfig.avaDialer;
                 if (on) AvaDialChannel.I.ensureWired();
                 // Bodies MUST match the _items tab order:
-                // Dialpad · Messages · Contacts · Block list · Call logs.
+                // Contacts · Messages · Dialpad · Block list · Call logs.
                 return IndexedStack(index: _tab, children: [
-              // Dialpad — the Calls app's OWN PSTN dialer: live contact search
-              // above a real keypad (2026-07-12 redesign; previously reused the
-              // in-network AvaPhone dialer, which had its own nested chrome).
-              const DialpadSearchTab(),
+              on
+                  ? const _ContactsTab()
+                  : const ShellEmptyState(
+                      icon: Icons.person_outline,
+                      title: 'Contacts',
+                      subtitle: 'Your phone book, spam-labelled — coming with AvaDial.',
+                      color: AD.iconSearch,
+                    ),
               // Messages tab — gated INDEPENDENTLY on `avaSms` (the SMS role is
               // separate from the dialer role). While the flag is off it keeps the
               // Phase-1 placeholder; when on it shows the role banner until ROLE_SMS
@@ -137,14 +142,10 @@ class _AvaDialRootState extends State<AvaDialRoot> {
                       subtitle: 'Carrier SMS lands here once Ava is your SMS app — coming with AvaDial.',
                       color: AD.iconVideo,
                     ),
-              on
-                  ? const _ContactsTab()
-                  : const ShellEmptyState(
-                      icon: Icons.person_outline,
-                      title: 'Contacts',
-                      subtitle: 'Your phone book, spam-labelled — coming with AvaDial.',
-                      color: AD.iconSearch,
-                    ),
+              // Dialpad — the Calls app's OWN PSTN dialer: live contact search
+              // above a real keypad (2026-07-12 redesign; previously reused the
+              // in-network AvaPhone dialer, which had its own nested chrome).
+              const DialpadSearchTab(),
               on
                   ? const _BlockTab()
                   : const ShellEmptyState(
@@ -388,7 +389,13 @@ class _ContactsTab extends StatefulWidget {
 }
 
 class _ContactsTabState extends State<_ContactsTab> {
-  late Future<(List<DeviceContact>, Map<String, ContactOverride>, Set<String>)> _future;
+  late Future<(List<DeviceContact>, Map<String, ContactOverride>, Set<String>, List<ContactGroup>)> _future;
+
+  // [AVADIAL-CONTACTS-UX-1] Live search over the Contacts list (owner spec
+  // 2026-07-14) — instant, no debounce/submit.
+  String _query = '';
+  // Selected colour-group circle filter; null = show every contact.
+  String? _selectedGroupId;
 
   @override
   void initState() {
@@ -409,10 +416,11 @@ class _ContactsTabState extends State<_ContactsTab> {
     if (mounted) setState(() => _future = _loadAll());
   }
 
-  Future<(List<DeviceContact>, Map<String, ContactOverride>, Set<String>)> _loadAll({bool force = false}) async {
+  Future<(List<DeviceContact>, Map<String, ContactOverride>, Set<String>, List<ContactGroup>)> _loadAll({bool force = false}) async {
     final contacts = List<DeviceContact>.of(await DeviceContacts.I.load(force: force));
     final overrides = {for (final o in await ContactOverrides.I.load()) DeviceContacts.normKey(o.number): o};
     final blocked = {for (final b in await BlockList.I.load()) DeviceContacts.normKey(b.number)};
+    final groups = await ContactGroups.I.load();
     // Inject AvaTOK-only contacts the user created here (no device row) so they
     // show up in the Contacts tab (owner spec, pic 1 — add contact).
     final present = {for (final c in contacts) DeviceContacts.normKey(c.number)};
@@ -429,7 +437,7 @@ class _ContactsTabState extends State<_ContactsTab> {
     // (debounced + change-detected inside). Every add/edit/delete funnels through
     // here via the avaDialRev listener, so edits are backed up without a tap.
     unawaited(AvaContactBook.I.autoSyncIfNeeded());
-    return (contacts, overrides, blocked);
+    return (contacts, overrides, blocked, groups);
   }
 
   Future<void> _openBackup() async {
@@ -439,6 +447,10 @@ class _ContactsTabState extends State<_ContactsTab> {
   }
 
   Future<void> _reload() async {
+    // [AVADIAL-GROUPS-1] Every caller reaches here AFTER an await (block, group
+    // create/delete, backup/add-contact routes), so the tab may already be gone.
+    // Guard once here rather than at each call site.
+    if (!mounted) return;
     setState(() => _future = _loadAll(force: true));
   }
 
@@ -448,109 +460,297 @@ class _ContactsTabState extends State<_ContactsTab> {
     _reload();
   }
 
+  void _selectGroup(String id) {
+    setState(() => _selectedGroupId = _selectedGroupId == id ? null : id);
+  }
+
+  Future<void> _createGroup() async {
+    final created = await showDialog<bool>(
+      context: context,
+      builder: (_) => const _CreateGroupDialog(),
+    );
+    if (created == true) _reload();
+  }
+
+  Future<void> _deleteGroup(ContactGroup group) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AvaDialTheme.surface2,
+        shape: RoundedRectangleBorder(
+          side: const BorderSide(color: AvaDialTheme.border, width: 1),
+          borderRadius: BorderRadius.circular(AD.rDialog),
+        ),
+        title: Text('Delete "${group.name}"?', style: ADText.threadName(c: AvaDialTheme.text)),
+        content: Text(
+          'Contacts filed under this group become ungrouped. This can\'t be undone.',
+          style: ADText.preview(c: AvaDialTheme.textSoft).copyWith(fontSize: 13.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel', style: ADText.rowName(c: AvaDialTheme.textSoft)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Delete', style: ADText.rowName(c: AD.danger)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await ContactGroups.I.delete(group.id);
+    if (_selectedGroupId == group.id && mounted) {
+      setState(() => _selectedGroupId = null);
+    }
+    _reload();
+  }
+
+  /// [AVADIAL-CONTACTS-UX-1] Row tap now opens a centred Dial/Block popup
+  /// instead of the old contact-detail screen (detail moved into the 3-dot menu).
+  Future<void> _openDialOrBlock(String number, String displayName) async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: AvaDialTheme.surface2,
+        shape: RoundedRectangleBorder(
+          side: const BorderSide(color: AvaDialTheme.border, width: 1),
+          borderRadius: BorderRadius.circular(AD.rDialog),
+        ),
+        title: Text(displayName, style: ADText.threadName(c: AvaDialTheme.text)),
+        content: Text(number, style: ADText.preview(c: AvaDialTheme.textSoft)),
+        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+        actions: [
+          Row(children: [
+            Expanded(
+              child: _DialogActionButton(
+                label: 'Dial',
+                icon: Icons.phone,
+                color: AD.incomingCall,
+                onPressed: () async {
+                  Navigator.pop(dialogCtx);
+                  final placed = await AvaDialChannel.I.placeCall(number);
+                  if (placed && context.mounted) {
+                    Navigator.push(context, MaterialPageRoute<void>(
+                        builder: (_) => OutgoingCallScreen(number: number)));
+                  }
+                },
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _DialogActionButton(
+                label: 'Block',
+                icon: Icons.block,
+                color: AD.danger,
+                onPressed: () async {
+                  Navigator.pop(dialogCtx);
+                  await BlockList.I.block(number, label: displayName);
+                  _reload();
+                },
+              ),
+            ),
+          ]),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Stack(children: [
       Column(children: [
       const _RoleBanner(),
+      // Search bar — instant, case-insensitive name/number filter.
+      Padding(
+        padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: AvaDialTheme.surface2,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: AvaDialTheme.border, width: 1),
+          ),
+          child: Row(children: [
+            const Icon(Icons.search, color: AvaDialTheme.textSoft, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: TextField(
+                onChanged: (v) => setState(() => _query = v),
+                style: TextStyle(color: AvaDialTheme.text, fontSize: 14.5),
+                decoration: InputDecoration(
+                  hintText: 'Search name or number',
+                  hintStyle: TextStyle(color: AvaDialTheme.textSoft, fontSize: 14.5),
+                  border: InputBorder.none,
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+          ]),
+        ),
+      ),
       GestureDetector(
         onTap: _openBackup,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
           child: AdCard(
-            color: AvaDialTheme.surface2,
+            // [AVADIAL-CONTACTS-UX-1] Light-green fill (owner spec) — text/icon
+            // colours flip to dark ink below so the card stays readable.
+            color: const Color(0xFFB8EFC9),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Row(children: [
               ZineIconBadge(
-                  icon: PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.bold), color: AD.iconSearch),
+                  icon: PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.bold),
+                  color: const Color(0xFF1B7F4D)),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text('Contacts backup',
-                      style: ADText.rowName(c: AvaDialTheme.text)),
+                      style: ADText.rowName(c: const Color(0xFF12301F))),
                   Text('Back up to AvaTOK — no Gmail needed',
-                      style: ADText.preview(c: AvaDialTheme.textSoft)),
+                      style: ADText.preview(c: const Color(0xFF2F5D45))),
                 ]),
               ),
-              const Icon(Icons.chevron_right, color: AvaDialTheme.textSoft),
+              const Icon(Icons.chevron_right, color: Color(0xFF2F5D45)),
             ]),
           ),
         ),
       ),
       Expanded(
-        child: FutureBuilder<(List<DeviceContact>, Map<String, ContactOverride>, Set<String>)>(
+        child: FutureBuilder<(List<DeviceContact>, Map<String, ContactOverride>, Set<String>, List<ContactGroup>)>(
           future: _future,
           builder: (context, snap) {
-            if (snap.connectionState != ConnectionState.done) {
+            // [AVADIAL-GROUPS-1] Spinner ONLY on the very first load. A _reload()
+            // (assign/delete a group, block a contact) swaps in a new future —
+            // FutureBuilder keeps the old `data` and just flips connectionState to
+            // waiting, so gating on hasData keeps the group circles + list on screen
+            // instead of flickering the whole area to a spinner on every mutation.
+            if (!snap.hasData) {
               return const Center(child: CircularProgressIndicator(color: AvaDialTheme.accent));
             }
-            final (all, overrides, blocked) = snap.data ?? (const <DeviceContact>[], const <String, ContactOverride>{}, const <String>{});
+            final (all, overrides, blocked, groups) = snap.data ??
+                (const <DeviceContact>[], const <String, ContactOverride>{}, const <String>{}, const <ContactGroup>[]);
+            final groupsById = {for (final g in groups) g.id: g};
             // Hide numbers the user "removed"/"deleted" (AVA-side override only —
             // the device contact itself is never touched, see contact_overrides.dart).
-            final contacts = all.where((c) => overrides[DeviceContacts.normKey(c.number)]?.hidden != true).toList();
-            if (contacts.isEmpty) {
-              return _PermState(
+            final baseContacts = all.where((c) => overrides[DeviceContacts.normKey(c.number)]?.hidden != true).toList();
+
+            Widget listArea;
+            if (baseContacts.isEmpty) {
+              listArea = _PermState(
                 icon: Icons.person_outline,
                 title: 'No contacts yet',
                 subtitle: 'Grant contacts access to see your phone book here.',
                 color: AD.iconSearch,
                 onRetry: _reload,
               );
-            }
-            return RefreshIndicator(
-              onRefresh: _reload,
-              child: ListView.builder(
-                padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
-                itemCount: contacts.length,
-                itemBuilder: (context, i) {
-                  final c = contacts[i];
+            } else {
+              var contacts = baseContacts;
+              if (_selectedGroupId != null) {
+                contacts = contacts
+                    .where((c) => overrides[DeviceContacts.normKey(c.number)]?.groupId == _selectedGroupId)
+                    .toList();
+              }
+              final query = _query.trim();
+              if (query.isNotEmpty) {
+                final qLower = query.toLowerCase();
+                // [AVADIAL-GROUPS-1] Match numbers through the SAME normalisation the
+                // rest of the Calls app keys on, so a query of '2079460958' still finds
+                // a contact stored as '+44 (20) 7946-0958' (stripping spaces alone
+                // leaves brackets/dashes behind and silently misses).
+                final qKey = DeviceContacts.normKey(query);
+                final qHasDigits = RegExp(r'\d').hasMatch(query);
+                contacts = contacts.where((c) {
                   final key = DeviceContacts.normKey(c.number);
-                  final displayName = overrides[key]?.displayName ?? c.name;
-                  final isBlocked = blocked.contains(key);
-                  void openMenu() => showAvaDialRowMenu(
-                        context,
-                        number: c.number,
-                        name: displayName,
-                        alreadyBlocked: isBlocked,
-                        onChanged: _reload,
-                      );
-                  Future<void> openDetail() async {
-                    await Navigator.of(context).push<void>(MaterialPageRoute<void>(
-                        builder: (_) =>
-                            ContactDetailScreen(number: c.number, name: displayName)));
-                    _reload();
-                  }
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: GestureDetector(
-                      onTap: openDetail,
-                      onLongPress: openMenu,
-                      child: AdCard(
-                        color: AvaDialTheme.surface2,
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        child: Row(children: [
-                          ZineIconBadge(
-                              icon: PhosphorIcons.user(PhosphorIconsStyle.bold), color: AD.iconSearch),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              Text(displayName ?? c.number,
-                                  style: ADText.threadName(c: AvaDialTheme.text)),
-                              if (displayName != null)
-                                Text(c.number, style: ADText.preview(c: AvaDialTheme.textSoft)),
+                  final displayName = overrides[key]?.displayName ?? c.name ?? '';
+                  final nameMatch = displayName.toLowerCase().contains(qLower);
+                  final numberMatch =
+                      qHasDigits && qKey.isNotEmpty && key.contains(qKey);
+                  return nameMatch || numberMatch;
+                }).toList();
+              }
+              if (contacts.isEmpty) {
+                listArea = Center(
+                  child: Text('No matches', style: ADText.preview(c: AvaDialTheme.textSoft)),
+                );
+              } else {
+                listArea = RefreshIndicator(
+                  onRefresh: _reload,
+                  child: ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
+                    itemCount: contacts.length,
+                    itemBuilder: (context, i) {
+                      final c = contacts[i];
+                      final key = DeviceContacts.normKey(c.number);
+                      final displayName = overrides[key]?.displayName ?? c.name;
+                      final isBlocked = blocked.contains(key);
+                      final groupId = overrides[key]?.groupId;
+                      final group = groupId != null ? groupsById[groupId] : null;
+                      final rowColor = group?.colorValue ?? AvaDialTheme.surface2;
+                      final titleColor = group != null ? const Color(0xFF12301F) : AvaDialTheme.text;
+                      final subColor = group != null ? const Color(0xFF2F5D45) : AvaDialTheme.textSoft;
+                      final iconColor = group != null ? const Color(0xFF12301F) : AvaDialTheme.textSoft;
+                      void openMenu() => showAvaDialRowMenu(
+                            context,
+                            number: c.number,
+                            name: displayName,
+                            alreadyBlocked: isBlocked,
+                            onChanged: _reload,
+                          );
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: GestureDetector(
+                          onTap: () => _openDialOrBlock(c.number, displayName ?? c.number),
+                          onLongPress: openMenu,
+                          child: AdCard(
+                            color: rowColor,
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            child: Row(children: [
+                              // [AVADIAL-GROUPS-1] On a grouped (bright) row the badge
+                              // must NOT reuse the group colour — it would be the same
+                              // fill as the card and vanish. Use the dark ink instead.
+                              ZineIconBadge(
+                                  icon: PhosphorIcons.user(PhosphorIconsStyle.bold),
+                                  color: group != null ? const Color(0xFF12301F) : AD.iconSearch),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                  Text(displayName ?? c.number,
+                                      style: ADText.threadName(c: titleColor)),
+                                  if (displayName != null)
+                                    Text(c.number, style: ADText.preview(c: subColor)),
+                                ]),
+                              ),
+                              IconButton(
+                                icon: Icon(Icons.more_vert, color: iconColor),
+                                onPressed: openMenu,
+                              ),
                             ]),
                           ),
-                          IconButton(
-                            icon: const Icon(Icons.more_vert, color: AvaDialTheme.textSoft),
-                            onPressed: openMenu,
-                          ),
-                        ]),
-                      ),
-                    ),
-                  );
-                },
+                        ),
+                      );
+                    },
+                  ),
+                );
+              }
+            }
+
+            return Column(children: [
+              // Colour-group circles — filed directly below the backup card.
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+                child: _GroupsCard(
+                  groups: groups,
+                  selectedGroupId: _selectedGroupId,
+                  onSelect: _selectGroup,
+                  onDeleteGroup: _deleteGroup,
+                  onCreateGroup: _createGroup,
+                ),
               ),
-            );
+              Expanded(child: listArea),
+            ]);
           },
         ),
       ),
@@ -569,6 +769,263 @@ class _ContactsTabState extends State<_ContactsTab> {
         ),
       ),
     ]);
+  }
+}
+
+/// A big colored pill action for the Dial/Block popup — [AdButton]'s fixed
+/// variants don't cover the exact accent colors this popup needs
+/// (AD.incomingCall / AD.danger), so this is a small local variant.
+class _DialogActionButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onPressed;
+  const _DialogActionButton({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onPressed,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 13),
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(100),
+        ),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Icon(icon, size: 18, color: Colors.white),
+          const SizedBox(width: 8),
+          Text(label,
+              style: const TextStyle(
+                  color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
+        ]),
+      ),
+    );
+  }
+}
+
+/// [AVADIAL-CONTACTS-UX-1] Horizontally-scrollable row of colour-group
+/// "circles" below the backup card — tap to filter the Contacts list, long-press
+/// a custom circle to delete it, tap "New" to create one.
+class _GroupsCard extends StatelessWidget {
+  final List<ContactGroup> groups;
+  final String? selectedGroupId;
+  final ValueChanged<String> onSelect;
+  final ValueChanged<ContactGroup> onDeleteGroup;
+  final VoidCallback onCreateGroup;
+  const _GroupsCard({
+    required this.groups,
+    required this.selectedGroupId,
+    required this.onSelect,
+    required this.onDeleteGroup,
+    required this.onCreateGroup,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AdCard(
+      color: AvaDialTheme.surface2,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(children: [
+          for (final g in groups) ...[
+            _GroupCircle(
+              group: g,
+              selected: selectedGroupId == g.id,
+              onTap: () => onSelect(g.id),
+              onLongPress: g.isBuiltIn ? null : () => onDeleteGroup(g),
+            ),
+            const SizedBox(width: 14),
+          ],
+          _AddGroupCircle(onTap: onCreateGroup),
+        ]),
+      ),
+    );
+  }
+}
+
+class _GroupCircle extends StatelessWidget {
+  final ContactGroup group;
+  final bool selected;
+  final VoidCallback onTap;
+  final VoidCallback? onLongPress;
+  const _GroupCircle({
+    required this.group,
+    required this.selected,
+    required this.onTap,
+    this.onLongPress,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final initial = group.name.trim().isNotEmpty ? group.name.trim().characters.first.toUpperCase() : '?';
+    return GestureDetector(
+      onTap: onTap,
+      onLongPress: onLongPress,
+      child: SizedBox(
+        width: 54,
+        child: Column(children: [
+          Container(
+            width: 46,
+            height: 46,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: group.colorValue,
+              shape: BoxShape.circle,
+              border: selected ? Border.all(color: AvaDialTheme.text, width: 2) : null,
+            ),
+            child: Text(initial,
+                style: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w800, fontSize: 17)),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            group.shortName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: ADText.statCaption(c: AvaDialTheme.textSoft),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+class _AddGroupCircle extends StatelessWidget {
+  final VoidCallback onTap;
+  const _AddGroupCircle({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: SizedBox(
+        width: 54,
+        child: Column(children: [
+          Container(
+            width: 46,
+            height: 46,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Colors.transparent,
+              shape: BoxShape.circle,
+              border: Border.all(color: AvaDialTheme.textMute, width: 1.5),
+            ),
+            child: const Icon(Icons.add, color: AvaDialTheme.textMute, size: 22),
+          ),
+          const SizedBox(height: 4),
+          Text('New', style: ADText.statCaption(c: AvaDialTheme.textSoft)),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Create-a-custom-group dialog — name + colour swatch picker. Mirrors the
+/// AlertDialog styling used elsewhere in this file (see `_clearHistory`).
+class _CreateGroupDialog extends StatefulWidget {
+  const _CreateGroupDialog();
+
+  @override
+  State<_CreateGroupDialog> createState() => _CreateGroupDialogState();
+}
+
+class _CreateGroupDialogState extends State<_CreateGroupDialog> {
+  static const _palette = [
+    0xFF6FB6FF,
+    0xFFFF7B7B,
+    0xFFFFA23E,
+    0xFFFF8FC8,
+    0xFF7ED9A0,
+    0xFFB98BFF,
+    0xFF5ED3D3,
+    0xFFFFD34E,
+  ];
+
+  final _nameCtrl = TextEditingController();
+  int _color = _palette.first;
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _create() async {
+    final name = _nameCtrl.text.trim();
+    if (name.isEmpty || _busy) return;
+    setState(() => _busy = true);
+    await ContactGroups.I.create(name, _color);
+    if (mounted) Navigator.pop(context, true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AvaDialTheme.surface2,
+      shape: RoundedRectangleBorder(
+        side: const BorderSide(color: AvaDialTheme.border, width: 1),
+        borderRadius: BorderRadius.circular(AD.rDialog),
+      ),
+      title: Text('New group', style: ADText.threadName(c: AvaDialTheme.text)),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        TextField(
+          controller: _nameCtrl,
+          autofocus: true,
+          style: TextStyle(color: AvaDialTheme.text),
+          decoration: InputDecoration(
+            hintText: 'Group name',
+            hintStyle: TextStyle(color: AvaDialTheme.textSoft),
+            enabledBorder: const UnderlineInputBorder(
+                borderSide: BorderSide(color: AvaDialTheme.border)),
+            focusedBorder: const UnderlineInputBorder(
+                borderSide: BorderSide(color: AvaDialTheme.accent)),
+          ),
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 16),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(children: [
+            for (final c in _palette) ...[
+              GestureDetector(
+                onTap: () => setState(() => _color = c),
+                child: Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: Color(c),
+                    shape: BoxShape.circle,
+                    border: _color == c
+                        ? Border.all(color: AvaDialTheme.text, width: 2)
+                        : null,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+            ],
+          ]),
+        ),
+      ]),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: Text('Cancel', style: ADText.rowName(c: AvaDialTheme.textSoft)),
+        ),
+        TextButton(
+          onPressed: _nameCtrl.text.trim().isEmpty || _busy ? null : _create,
+          child: Text('Create', style: ADText.rowName(c: AvaDialTheme.accent)),
+        ),
+      ],
+    );
   }
 }
 

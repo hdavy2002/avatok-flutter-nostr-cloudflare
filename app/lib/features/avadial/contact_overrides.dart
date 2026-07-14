@@ -48,6 +48,9 @@ class ContactOverride {
   // single-value pattern; round-trips through the native StructuredPostal row).
   final String? address;
   final List<ContactField> customFields;
+  // [AVADIAL-GROUPS-1] Points at a ContactGroup.id (see contact_groups.dart) —
+  // colours this contact's row with that group's circle. null = ungrouped.
+  final String? groupId;
 
   const ContactOverride({
     required this.number,
@@ -60,6 +63,7 @@ class ContactOverride {
     this.linkedin,
     this.address,
     this.customFields = const [],
+    this.groupId,
   });
 
   /// True when this override carries anything worth showing on the detail screen
@@ -83,6 +87,8 @@ class ContactOverride {
     String? linkedin,
     String? address,
     List<ContactField>? customFields,
+    String? groupId,
+    bool clearGroup = false,
   }) =>
       ContactOverride(
         number: number ?? this.number,
@@ -95,6 +101,7 @@ class ContactOverride {
         linkedin: linkedin ?? this.linkedin,
         address: address ?? this.address,
         customFields: customFields ?? this.customFields,
+        groupId: clearGroup ? null : (groupId ?? this.groupId),
       );
 
   Map<String, dynamic> toJson() => {
@@ -109,6 +116,7 @@ class ContactOverride {
         if (address != null) 'address': address,
         if (customFields.isNotEmpty)
           'customFields': customFields.map((f) => f.toJson()).toList(),
+        if (groupId != null) 'groupId': groupId,
       };
 
   factory ContactOverride.fromJson(Map<String, dynamic> j) => ContactOverride(
@@ -125,6 +133,7 @@ class ContactOverride {
             .whereType<Map>()
             .map((m) => ContactField.fromJson(m.map((k, v) => MapEntry('$k', v))))
             .toList(),
+        groupId: j['groupId'] as String?,
       );
 }
 
@@ -221,6 +230,33 @@ class ContactOverrides {
     final existing = m[key];
     if (existing == null) return;
     m[key] = existing.copyWith(hidden: false);
+    await _saveMap(m);
+  }
+
+  /// [AVADIAL-GROUPS-1] Assign this number to a colour group (null clears it).
+  Future<void> setGroup(String number, String? groupId) async {
+    final m = await _loadMap();
+    final key = DeviceContacts.normKey(number);
+    final existing = m[key] ?? ContactOverride(number: number);
+    m[key] = groupId == null
+        ? existing.copyWith(clearGroup: true)
+        : existing.copyWith(groupId: groupId);
+    await _saveMap(m);
+  }
+
+  /// [AVADIAL-GROUPS-1] Clear [groupId] from every contact that referenced it —
+  /// used when a custom group is deleted so no row points at a dead group.
+  Future<void> clearGroup(String groupId) async {
+    final m = await _loadMap();
+    var changed = false;
+    for (final key in m.keys.toList()) {
+      final existing = m[key]!;
+      if (existing.groupId == groupId) {
+        m[key] = existing.copyWith(clearGroup: true);
+        changed = true;
+      }
+    }
+    if (!changed) return;
     await _saveMap(m);
   }
 }
