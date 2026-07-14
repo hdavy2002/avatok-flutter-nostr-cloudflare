@@ -240,16 +240,40 @@ building. It governs ALL AvaVerse apps. The two client rules that bite hardest:
   (no `gh workflow run`, no `workflow_dispatch` via API, and never re-enable a `push:`
   trigger) unless the owner EXPLICITLY asks. Do NOT re-add push triggers to the
   workflows on your own initiative.
-- **Pushing commits is now allowed** (it's safe — no build fires). Still `git fetch`
-  first, keep history clean, and never force-push shared branches.
-- **A local `pre-push` hook still BLOCKS pushes by default** as a safety net. Push using
-  the override flag (this is fine now that builds are manual):
+- **Pushing commits is allowed** (it's safe — no build fires), but it MUST go through
+  the push wrapper, which enforces that you only publish YOUR OWN commits:
 
   ```bash
-  ALLOW_PUSH=1 git push <remote> <branch>
+  python3 scripts/git_safe_push.py AVA-AUTH-401 AVA-AUTH-OTP     # the issue ids you own
+  python3 scripts/git_safe_push.py AVA-AUTH-401 --dry-run        # preview, touches nothing
   ```
 
-  Do NOT use `--no-verify` and do NOT remove/disable the hook.
+  **Never run `git push` (or `ALLOW_PUSH=1 git push`) directly.** The wrapper sets
+  `ALLOW_PUSH=1` for you — it IS the deliberate push path the pre-push hook asks for.
+  Do NOT use `--no-verify`, do NOT force-push a shared branch, and do NOT remove or
+  disable the hook.
+
+- **Why the wrapper exists (the cross-agent push-sweeping bug).** `git_safe_commit.py`
+  keeps other agents' FILES out of your commit; `git_safe_push.py` keeps other agents'
+  COMMITS out of your push. Git pushes a BRANCH, not a set of commits — so if another
+  agent has an unpushed commit sitting BELOW yours on `main`, it is an ANCESTOR and
+  goes to origin with yours whether anyone decided to or not. That is exactly what
+  happened on 2026-07-14: an agent pushed `[AVADIAL-GROUPS-1]` and silently carried two
+  unrelated `[AVA-AUTH-*]` commits along. No tool can push your commit without its
+  ancestors, so the wrapper does the only correct thing — it **refuses** and tells you
+  whose work is in the way, instead of publishing it for them.
+
+  Ownership is read from the `[ISSUE-ID]` prefix (every agent commits as the same git
+  user, so the author field cannot tell agents apart) — which is another reason the
+  one-issue-per-commit rule below is mandatory. A commit with no `[ISSUE]` prefix is
+  unattributable and also blocks the push.
+
+  If you're blocked, the fix is to let the owning agent push their own work first, then
+  re-run. `--allow-foreign` bypasses the check and is for the OWNER's deliberate merge
+  push only — an agent should never reach for it to get unstuck.
+
+  The wrapper also refuses to push if any workflow has an **active `push:` trigger**, so
+  a re-enabled trigger can't silently ship a build.
 - **One issue per commit.** Each commit fixes a single issue, and the message must start
   with the issue ID, e.g. `[ISSUE-123] Fix null check in payout handler`. This keeps the
   history bisectable if the final merge build fails.
