@@ -287,7 +287,18 @@ class _ShellV2State extends State<ShellV2> {
     if (!mounted) return;
     final n = number ?? '';
     if (n.isEmpty) return;
-    if (AvaDialChannel.I.incomingScreenOpen) return; // AvaDialRoot may already have it
+    if (AvaDialChannel.I.incomingScreenOpen) {
+      // [AVADIAL-INCOMING-HIDDEN-1] The screen already exists — this path re-fires
+      // on a notification tap / relaunch after the _initRootState landing race hid
+      // the (still ringing) PstnCallScreen behind another root. Re-surface the
+      // AvaDial root instead of silently swallowing the tap, so the user can
+      // always get back to Answer/Decline.
+      if (_root != RootId.avaDial) {
+        setState(() => _root = RootId.avaDial);
+        Analytics.capture('pstn_incoming_resurfaced', {'from': 'relaunch'});
+      }
+      return;
+    }
     AvaDialChannel.I.incomingScreenOpen = true;
     setState(() => _root = RootId.avaDial);
     final nav = _navKeys[RootId.avaDial]?.currentState ?? Navigator.of(context);
@@ -310,11 +321,21 @@ class _ShellV2State extends State<ShellV2> {
       order = List<RootId>.from(RootOrderPrefs.defaultOrder);
     }
     if (!mounted || order.isEmpty) return;
+    // [AVADIAL-INCOMING-HIDDEN-1] An incoming PSTN call may have cold-started us and
+    // already switched the shell to the AvaDial root with PstnCallScreen ringing
+    // (the incoming drain wins this async race — proven by PostHog: shellv2_landing_root
+    // fired 1.5s AFTER pstn_call_screen_shown and hid the answer UI behind the chat
+    // list). Never stomp the visible root while that screen is up; still adopt the
+    // loaded order so the footer stays correct.
+    final suppressLanding = AvaDialChannel.I.incomingScreenOpen;
     setState(() {
       _order = order;
-      _root = order.first; // landing rule
+      if (!suppressLanding) _root = order.first; // landing rule
     });
-    Analytics.capture('shellv2_landing_root', {'root': order.first.key});
+    Analytics.capture('shellv2_landing_root', {
+      'root': (suppressLanding ? _root : order.first).key,
+      'landing_suppressed': suppressLanding,
+    });
   }
 
   /// Persist a reordered app switcher (from the Home footer drag or the "App order"

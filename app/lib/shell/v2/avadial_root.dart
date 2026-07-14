@@ -86,7 +86,12 @@ class _AvaDialRootState extends State<AvaDialRoot> {
       // phone + Caller-ID roles (replacing Truecaller). Surface a one-tap setup
       // sheet the first time AvaDialer opens with anything essential still missing.
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) maybeShowAvaDialSetup(context);
+        // [AVADIAL-INCOMING-HIDDEN-1] Never pop the setup sheet over a live
+        // incoming/ringing call screen (it fired right on top of PstnCallScreen
+        // when an incoming call cold-started the app — PostHog 2026-07-14).
+        if (mounted && !AvaDialChannel.I.incomingScreenOpen) {
+          maybeShowAvaDialSetup(context);
+        }
       });
     }
   }
