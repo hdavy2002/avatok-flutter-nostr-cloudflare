@@ -22,8 +22,17 @@ class _CallsScreenState extends State<CallsScreen> {
   final _store = CallLogStore();
   List<CallEntry> _calls = [];
   Map<String, String> _avatars = {}; // uid → photo URL (from contacts)
+  // [ISSUE-CALLS-SEARCH-1] uid → digits of that contact's AvaTOK number + phone.
+  // CallEntry itself stores NO number (only name/seed/dir/ts), so number search
+  // is resolved through the contact book, which _load() already reads for avatars.
+  Map<String, String> _numberDigits = {};
   bool _loaded = false;
   StreamSubscription<void>? _changeSub;
+
+  // [ISSUE-CALLS-SEARCH-1] Instant call-log filter (no debounce, filters from
+  // the very first character typed).
+  final _searchCtl = TextEditingController();
+  String _query = '';
 
   @override
   void initState() {
@@ -37,6 +46,7 @@ class _CallsScreenState extends State<CallsScreen> {
   @override
   void dispose() {
     _changeSub?.cancel();
+    _searchCtl.dispose(); // [ISSUE-CALLS-SEARCH-1]
     super.dispose();
   }
 
@@ -44,7 +54,40 @@ class _CallsScreenState extends State<CallsScreen> {
     final c = await _store.load();
     final contacts = await ContactsStore().load();
     final avatars = {for (final x in contacts) if (x.avatarUrl.isNotEmpty) x.uid: x.avatarUrl};
-    if (mounted) setState(() { _calls = c; _avatars = avatars; _loaded = true; });
+    // [ISSUE-CALLS-SEARCH-1] Pre-digest each contact's number+phone to digits once
+    // per load, so typing stays O(rows) with no per-keystroke string scrubbing.
+    final numbers = {
+      for (final x in contacts)
+        if (x.number.isNotEmpty || x.phone.isNotEmpty)
+          x.uid: _digits('${x.number} ${x.phone}'),
+    };
+    if (mounted) {
+      setState(() { _calls = c; _avatars = avatars; _numberDigits = numbers; _loaded = true; });
+    }
+  }
+
+  /// [ISSUE-CALLS-SEARCH-1] Strip every non-digit so a typed "4042" matches a
+  /// stored "+1 404 269 4747" regardless of spacing/punctuation.
+  static String _digits(String s) => s.replaceAll(RegExp(r'[^0-9]'), '');
+
+  /// [ISSUE-CALLS-SEARCH-1] Case-insensitive match on contact NAME, plus a
+  /// digits-only substring match on their number. Substring (not prefix) so a
+  /// middle fragment of a number still hits.
+  bool _matches(CallEntry c, String q) {
+    if (q.isEmpty) return true;
+    if (c.name.toLowerCase().contains(q.toLowerCase())) return true;
+    final qd = _digits(q);
+    if (qd.isEmpty) return false;
+    // The seed doubles as the contact uid; fall back to it ONLY when the caller
+    // is phone-only ('tel:+1404…'), where the number IS the identity.
+    //
+    // [ISSUE-CALLS-SEARCH-1] The fallback is gated on the `tel:` prefix on
+    // purpose. A Clerk uid like `user_2xK4fQ8` contains digits ("248"), so an
+    // ungated fallback made typing "2" surface unrelated rows — a number search
+    // matching on the noise in an opaque account id.
+    final nd = _numberDigits[c.seed] ??
+        (c.seed.startsWith('tel:') ? _digits(c.seed) : '');
+    return nd.isNotEmpty && nd.contains(qd);
   }
 
   void _callBack(CallEntry c) {
@@ -56,6 +99,11 @@ class _CallsScreenState extends State<CallsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // [ISSUE-CALLS-SEARCH-1] Derived view of the log. Cheap enough to recompute
+    // per build; the call log is a short, already-in-memory list.
+    final visible = _query.isEmpty
+        ? _calls
+        : _calls.where((c) => _matches(c, _query)).toList();
     return SafeArea(
       bottom: false,
       child: Column(children: [
@@ -87,6 +135,19 @@ class _CallsScreenState extends State<CallsScreen> {
               ),
           ]),
         ),
+        // [ISSUE-CALLS-SEARCH-1] Search dock, pinned directly under the tabs and
+        // OUTSIDE the scrollable so it never scrolls away. Hidden while the log is
+        // empty (nothing to search) and never autofocused — opening the tab must
+        // not pop the keyboard.
+        if (_loaded && _calls.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 2),
+            child: AdSearchDock(
+              controller: _searchCtl,
+              hint: 'Search name or number',
+              onChanged: (v) => setState(() => _query = v),
+            ),
+          ),
         Expanded(
           child: !_loaded
               ? const Center(child: CircularProgressIndicator(color: AD.iconSearch))
@@ -105,12 +166,30 @@ class _CallsScreenState extends State<CallsScreen> {
                   : RefreshIndicator(
                       onRefresh: _load,
                       color: AD.iconSearch,
-                      child: ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
-                        itemCount: _calls.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 10),
-                        itemBuilder: (_, i) => _row(_calls[i], i),
-                      ),
+                      // [ISSUE-CALLS-SEARCH-1] Distinct "no results" state, kept
+                      // scrollable so pull-to-refresh still works while filtered.
+                      child: visible.isEmpty
+                          ? ListView(
+                              padding: const EdgeInsets.fromLTRB(24, 60, 24, 24),
+                              children: [
+                                PhosphorIcon(
+                                    PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
+                                    size: 40, color: AD.textFaint),
+                                const SizedBox(height: 14),
+                                Text('No calls match "$_query"',
+                                    textAlign: TextAlign.center,
+                                    style: ADText.preview(c: AD.textTertiary)),
+                              ],
+                            )
+                          : ListView.separated(
+                              padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+                              itemCount: visible.length,
+                              separatorBuilder: (_, __) => const SizedBox(height: 10),
+                              // [ISSUE-CALLS-SEARCH-1] _row no longer takes an
+                              // index: deletion is by STABLE ID, so a filtered
+                              // view can't misaddress the backing log.
+                              itemBuilder: (_, i) => _row(visible[i]),
+                            ),
                     ),
         ),
       ]),
@@ -119,7 +198,7 @@ class _CallsScreenState extends State<CallsScreen> {
 
   // Call-history row — zine card: ink border, bordered avatar, mono timestamp,
   // coral for missed, mint for incoming, call-back circle button.
-  Widget _row(CallEntry c, int index) {
+  Widget _row(CallEntry c) {
     final missed = c.dir == CallDir.missed;
     final dirColor = switch (c.dir) {
       CallDir.missed => AD.missedCall,
@@ -127,8 +206,8 @@ class _CallsScreenState extends State<CallsScreen> {
       CallDir.outgoing => AD.outgoingCall,
     };
     return GestureDetector(
-      onLongPress: () => _confirmDelete(c, index),
-      onSecondaryTap: () => _confirmDelete(c, index), // desktop right-click
+      onLongPress: () => _confirmDelete(c),
+      onSecondaryTap: () => _confirmDelete(c), // desktop right-click
       child: Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
@@ -183,7 +262,14 @@ class _CallsScreenState extends State<CallsScreen> {
   }
 
   // Confirm + delete a single call-log entry (long-press / right-click).
-  Future<void> _confirmDelete(CallEntry c, int index) async {
+  //
+  // [ISSUE-CALLS-SEARCH-1] Deletes by STABLE ID, not by list position. The old
+  // `removeAt(index)` re-`load()`ed the log from disk and sliced THAT list, so
+  // any drift between the widget's `_calls` and disk (a call landing, a server
+  // sync merging) deleted the wrong entry — and once the list was filtered by a
+  // search query, a view index would have been wrong every time. `removeById`
+  // is addressed by content, so neither can happen.
+  Future<void> _confirmDelete(CallEntry c) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -202,7 +288,15 @@ class _CallsScreenState extends State<CallsScreen> {
       ),
     );
     if (ok == true) {
-      await _store.removeAt(index);
+      // Legacy entries written before CallEntry.id existed have an empty id —
+      // fall back to the positional delete for those, resolving the index
+      // against the backing list (never the filtered view).
+      if (c.id.isNotEmpty) {
+        await _store.removeById(c.id);
+      } else {
+        final i = _calls.indexOf(c);
+        if (i >= 0) await _store.removeAt(i);
+      }
       await _load();
     }
   }
