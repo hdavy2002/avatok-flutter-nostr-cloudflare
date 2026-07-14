@@ -94,6 +94,11 @@ class AD {
   static const danger = Color(0xFFE5735C);
   static const unreadAccent = Color(0xFFF2A65A);
 
+  /// Muted-thread bell-slash glyph. Deliberately a BRIGHT red — not the softer
+  /// coral `danger` — so a muted thread is unmissable in the list
+  /// (owner request 2026-07-14, [ISSUE-MUTE-ICON-RED-1]).
+  static const iconMuted = Color(0xFFFF3B30);
+
   // ------------------------------------------------------------------ brand
   static const brandYoutube = Color(0xFFC7523F);
   static const brandInstagram = Color(0xFFA94F6F);
@@ -632,5 +637,130 @@ class _AdFieldState extends State<AdField> {
         ),
       ),
     ]);
+  }
+}
+
+/// White search dock — dark ink on white, the dark-v2 search idiom.
+///
+/// Modelled on `search_screen.dart`'s private `_searchDock`, so the inline
+/// search bars on Chats / Groups / Calls all share ONE implementation
+/// ([ISSUE-INLINE-SEARCH-1], owner request 2026-07-14). Use this rather than
+/// hand-rolling another dock.
+///
+/// NOTE: `search_screen.dart` and `invite_screen.dart` still carry their own
+/// private `_searchDock` copies — they predate this widget and were left alone
+/// to keep this change scoped. Migrating them here is a clean follow-up.
+///
+/// Filtering is expected to be INSTANT — wire [onChanged] straight to a
+/// `setState` filter, no debounce. (Debounce belongs only on the full
+/// `SearchScreen`, which hits the network.)
+class AdSearchDock extends StatefulWidget {
+  final TextEditingController controller;
+  final String hint;
+  final ValueChanged<String> onChanged;
+  final bool autofocus;
+
+  /// Extra trailing widget, shown left of the built-in clear button.
+  final Widget? trailing;
+
+  /// Show the built-in "x" clear button once there is text.
+  final bool showClear;
+
+  const AdSearchDock({
+    super.key,
+    required this.controller,
+    required this.hint,
+    required this.onChanged,
+    this.autofocus = false,
+    this.trailing,
+    this.showClear = true,
+  });
+
+  @override
+  State<AdSearchDock> createState() => _AdSearchDockState();
+}
+
+class _AdSearchDockState extends State<AdSearchDock> {
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_onText);
+  }
+
+  @override
+  void didUpdateWidget(covariant AdSearchDock old) {
+    super.didUpdateWidget(old);
+    if (old.controller != widget.controller) {
+      old.controller.removeListener(_onText);
+      widget.controller.addListener(_onText);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onText);
+    super.dispose();
+  }
+
+  // Rebuilds only this dock so the clear button appears/disappears; the host
+  // screen's own filtering is driven by widget.onChanged, not by this.
+  void _onText() {
+    if (mounted) setState(() {});
+  }
+
+  void _clear() {
+    widget.controller.clear();
+    widget.onChanged('');
+    FocusScope.of(context).unfocus();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasText = widget.controller.text.isNotEmpty;
+    return Container(
+      decoration: BoxDecoration(
+        color: AD.inputField,
+        borderRadius: BorderRadius.circular(AD.rInput),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Row(children: [
+        PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
+            size: 18, color: AD.iconSearch),
+        const SizedBox(width: 8),
+        Expanded(
+          child: TextField(
+            controller: widget.controller,
+            autofocus: widget.autofocus,
+            onChanged: widget.onChanged,
+            textInputAction: TextInputAction.search,
+            cursorColor: AD.iconSearch,
+            style: ADText.rowName(c: AD.textOnInput),
+            decoration: InputDecoration(
+              isDense: true,
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(vertical: 13),
+              hintText: widget.hint,
+              hintStyle: ADText.preview(c: AD.placeholderOnWhite),
+            ),
+          ),
+        ),
+        if (widget.trailing != null) ...[
+          const SizedBox(width: 6),
+          widget.trailing!,
+        ],
+        if (widget.showClear && hasText) ...[
+          const SizedBox(width: 6),
+          InkWell(
+            onTap: _clear,
+            borderRadius: BorderRadius.circular(AD.rIconButton),
+            child: Padding(
+              padding: const EdgeInsets.all(3),
+              child: PhosphorIcon(PhosphorIcons.x(PhosphorIconsStyle.bold),
+                  size: 16, color: AD.placeholderOnWhite),
+            ),
+          ),
+        ],
+      ]),
+    );
   }
 }
