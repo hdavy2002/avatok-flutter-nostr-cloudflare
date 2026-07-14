@@ -1030,6 +1030,106 @@ class _CreateGroupDialogState extends State<_CreateGroupDialog> {
 }
 
 // ── Logs tab ─────────────────────────────────────────────────────────────────
+// ── Shared search ────────────────────────────────────────────────────────────
+/// [AVADIAL-SEARCH-1] Instant-search field for the Calls tabs. Filtering runs on
+/// every keystroke via [onChanged] — no submit, no debounce: these lists are
+/// already in memory, so filtering is a cheap synchronous pass.
+///
+/// The Contacts tab keeps its own inline copy of this bar (it predates this
+/// widget and sits inside a bespoke layout with the group circles) — do not
+/// refactor it into this one without re-testing the group filter.
+class _AvaDialSearchBar extends StatefulWidget {
+  const _AvaDialSearchBar({required this.hint, required this.onChanged});
+
+  final String hint;
+  final ValueChanged<String> onChanged;
+
+  @override
+  State<_AvaDialSearchBar> createState() => _AvaDialSearchBarState();
+}
+
+class _AvaDialSearchBarState extends State<_AvaDialSearchBar> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _emit(String v) {
+    // setState only drives the clear "×" showing/hiding; the parent owns the query.
+    setState(() {});
+    widget.onChanged(v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(
+          color: AvaDialTheme.surface2,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: AvaDialTheme.border, width: 1),
+        ),
+        child: Row(children: [
+          const Icon(Icons.search, color: AvaDialTheme.textSoft, size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              controller: _controller,
+              onChanged: _emit,
+              textInputAction: TextInputAction.search,
+              style: TextStyle(color: AvaDialTheme.text, fontSize: 14.5),
+              decoration: InputDecoration(
+                hintText: widget.hint,
+                hintStyle: TextStyle(color: AvaDialTheme.textSoft, fontSize: 14.5),
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+          ),
+          if (_controller.text.isNotEmpty)
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                _controller.clear();
+                _emit('');
+              },
+              child: const Padding(
+                padding: EdgeInsets.only(left: 6),
+                child: Icon(Icons.close, color: AvaDialTheme.textSoft, size: 18),
+              ),
+            ),
+        ]),
+      ),
+    );
+  }
+}
+
+/// [AVADIAL-SEARCH-1] Shared match test for the Calls search bars: case-insensitive
+/// substring on any of [texts], OR a number match through [DeviceContacts.normKey]
+/// — the same normalisation the rest of the Calls app keys on, so a query of
+/// '2079460958' still finds a row stored as '+44 (20) 7946-0958'. (Stripping spaces
+/// alone leaves brackets/dashes behind and silently misses.) An empty query matches
+/// everything, so callers can pass it through unguarded.
+bool _avaDialMatches(String query, {String? number, List<String?> texts = const []}) {
+  final q = query.trim();
+  if (q.isEmpty) return true;
+  final qLower = q.toLowerCase();
+  for (final t in texts) {
+    if (t != null && t.toLowerCase().contains(qLower)) return true;
+  }
+  if (number != null && RegExp(r'\d').hasMatch(q)) {
+    final qKey = DeviceContacts.normKey(q);
+    if (qKey.isNotEmpty && DeviceContacts.normKey(number).contains(qKey)) return true;
+  }
+  return false;
+}
+
 class _LogsTab extends StatefulWidget {
   const _LogsTab();
 
@@ -1039,6 +1139,7 @@ class _LogsTab extends StatefulWidget {
 
 class _LogsTabState extends State<_LogsTab> {
   late Future<(List<DeviceCall>, Map<String, ContactOverride>, Set<String>, Set<String>)> _future;
+  String _query = '';
 
   @override
   void initState() {
@@ -1123,6 +1224,17 @@ class _LogsTabState extends State<_LogsTab> {
   Widget build(BuildContext context) {
     return Column(children: [
       const _RoleBanner(),
+      // [AVADIAL-SEARCH-1] Instant name/number filter over the call log.
+      _AvaDialSearchBar(
+        hint: 'Search calls by name or number',
+        onChanged: (v) {
+          // Fire once per search session (empty → typing), never per keystroke.
+          if (_query.trim().isEmpty && v.trim().isNotEmpty) {
+            Analytics.capture('avadial_search_started', const {'tab': 'call_logs'});
+          }
+          setState(() => _query = v);
+        },
+      ),
       Expanded(
         child: FutureBuilder<(List<DeviceCall>, Map<String, ContactOverride>, Set<String>, Set<String>)>(
           future: _future,
@@ -1142,22 +1254,38 @@ class _LogsTabState extends State<_LogsTab> {
                 onRetry: _reload,
               );
             }
+            // [AVADIAL-SEARCH-1] Match on the SAME display name the row renders
+            // (override first, then the OS cached name) so what you see is what
+            // you can search for, plus the number.
+            final visible = logs.where((e) {
+              final key = DeviceContacts.normKey(e.number);
+              final displayName = overrides[key]?.displayName ?? e.cachedName;
+              return _avaDialMatches(_query, number: e.number, texts: [displayName]);
+            }).toList();
+            if (visible.isEmpty) {
+              return Center(
+                child: Text('No matches', style: ADText.preview(c: AvaDialTheme.textSoft)),
+              );
+            }
             return RefreshIndicator(
               onRefresh: _reload,
               child: ListView.builder(
                 padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
-                itemCount: logs.length + 1,
+                itemCount: visible.length + 1,
                 itemBuilder: (context, idx) {
                   if (idx == 0) {
-                    // Toolbar: count + "Clear history".
+                    // Toolbar: count + "Clear history". Both follow the SEARCH
+                    // results on purpose — "Clear history" is documented as hiding
+                    // every currently-visible call, so with a query active it must
+                    // not silently wipe rows the user can't see.
                     return Padding(
                       padding: const EdgeInsets.fromLTRB(2, 4, 2, 6),
                       child: Row(children: [
-                        Text('${logs.length} call${logs.length == 1 ? '' : 's'}',
+                        Text('${visible.length} call${visible.length == 1 ? '' : 's'}',
                             style: ADText.statCaption(c: AvaDialTheme.textMute)),
                         const Spacer(),
                         TextButton.icon(
-                          onPressed: () => _clearHistory(logs),
+                          onPressed: () => _clearHistory(visible),
                           icon: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.bold),
                               color: AD.danger, size: 17),
                           label: Text('Clear history',
@@ -1166,7 +1294,7 @@ class _LogsTabState extends State<_LogsTab> {
                       ]),
                     );
                   }
-                  final e = logs[idx - 1];
+                  final e = visible[idx - 1];
                   final key = DeviceContacts.normKey(e.number);
                   final displayName = overrides[key]?.displayName ?? e.cachedName;
                   final isBlocked = blocked.contains(key);
@@ -1245,6 +1373,7 @@ class _BlockTab extends StatefulWidget {
 
 class _BlockTabState extends State<_BlockTab> {
   late Future<List<BlockEntry>> _future;
+  String _query = '';
 
   @override
   void initState() {
@@ -1274,19 +1403,41 @@ class _BlockTabState extends State<_BlockTab> {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<List<BlockEntry>>(
+    // [AVADIAL-SEARCH-1] The bar lives OUTSIDE the FutureBuilder on purpose: an
+    // unblock swaps in a new future and flips this to a spinner, which would
+    // unmount an inner bar and silently drop the user's query mid-search.
+    return Column(children: [
+      _AvaDialSearchBar(
+        hint: 'Search blocked numbers',
+        onChanged: (v) {
+          if (_query.trim().isEmpty && v.trim().isNotEmpty) {
+            Analytics.capture('avadial_search_started', const {'tab': 'block_list'});
+          }
+          setState(() => _query = v);
+        },
+      ),
+      Expanded(
+        child: FutureBuilder<List<BlockEntry>>(
       future: _future,
       builder: (context, snap) {
         if (snap.connectionState != ConnectionState.done) {
           return const Center(child: CircularProgressIndicator(color: AvaDialTheme.accent));
         }
-        final entries = snap.data ?? const [];
-        if (entries.isEmpty) {
+        final all = snap.data ?? const <BlockEntry>[];
+        if (all.isEmpty) {
           return const ShellEmptyState(
             icon: Icons.block_outlined,
             title: 'Nothing blocked',
             subtitle: 'Numbers you block or report as spam show up here.',
             color: AD.danger,
+          );
+        }
+        final entries = all
+            .where((e) => _avaDialMatches(_query, number: e.number, texts: [e.label]))
+            .toList();
+        if (entries.isEmpty) {
+          return Center(
+            child: Text('No matches', style: ADText.preview(c: AvaDialTheme.textSoft)),
           );
         }
         return ListView.builder(
@@ -1342,7 +1493,9 @@ class _BlockTabState extends State<_BlockTab> {
           },
         );
       },
-    );
+        ),
+      ),
+    ]);
   }
 }
 

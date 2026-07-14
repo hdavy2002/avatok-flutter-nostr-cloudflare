@@ -55,6 +55,11 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
   List<_Thread> _threads = const [];
   bool _loading = true;
 
+  // [AVADIAL-SEARCH-1] Instant free-text search, applied on top of the Inbox/Spam
+  // bucket (the two compose, they don't replace each other).
+  final _searchController = TextEditingController();
+  String _query = '';
+
   // Resolved verdicts per normalised number (user label OR community lookup).
   final Map<String, bool> _isSpam = {}; // normKey → spam?
   StreamSubscription<AvaSmsMessage>? _inSub;
@@ -78,6 +83,7 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
   void dispose() {
     SmsUnreadStore.I.revision.removeListener(_onUnreadChanged);
     _inSub?.cancel();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -189,16 +195,24 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final visible = _threads.where((t) =>
-        _filter == _Filter.spam ? _threadIsSpam(t) : !_threadIsSpam(t)).toList();
+    final visible = _threads
+        .where((t) => _filter == _Filter.spam ? _threadIsSpam(t) : !_threadIsSpam(t))
+        .where(_matchesQuery)
+        .toList();
     return Stack(children: [
       Column(children: [
         _segmented(),
+        _searchBar(),
         Expanded(
           child: _loading
               ? const Center(child: CircularProgressIndicator(color: AD.textPrimary))
               : visible.isEmpty
-                  ? ShellEmptyStateFallback(filter: _filter)
+                  ? (_query.trim().isEmpty
+                      ? ShellEmptyStateFallback(filter: _filter)
+                      : Center(
+                          child: Text('No matches',
+                              style: ADText.preview(c: AD.textSecondary)),
+                        ))
                   : RefreshIndicator(
                       onRefresh: _load,
                       child: ListView.builder(
@@ -224,6 +238,80 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
         ),
       ),
     ]);
+  }
+
+  /// [AVADIAL-SEARCH-1] Does this thread match the current query? Case-insensitive
+  /// on the contact name (the same name [_row] renders) and the message snippet,
+  /// plus a number match through [DeviceContacts.normKey] — the normalisation the
+  /// rest of the Calls app keys on, so '2079460958' still finds a thread stored as
+  /// '+44 (20) 7946-0958'. Empty query matches everything.
+  bool _matchesQuery(_Thread t) {
+    final q = _query.trim();
+    if (q.isEmpty) return true;
+    final qLower = q.toLowerCase();
+    final name = DeviceContacts.I.lookup(t.address)?.name ?? '';
+    if (name.toLowerCase().contains(qLower)) return true;
+    if (t.snippet.toLowerCase().contains(qLower)) return true;
+    if (t.address.toLowerCase().contains(qLower)) return true;
+    if (RegExp(r'\d').hasMatch(q)) {
+      final qKey = DeviceContacts.normKey(q);
+      if (qKey.isNotEmpty && DeviceContacts.normKey(t.address).contains(qKey)) return true;
+    }
+    return false;
+  }
+
+  /// Instant search over the conversation list — filters on every keystroke, no
+  /// submit and no debounce (threads are already in memory).
+  Widget _searchBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 6, 14, 2),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(
+          color: AD.card,
+          borderRadius: BorderRadius.circular(100),
+          border: Border.all(color: AD.borderControl, width: 1),
+        ),
+        child: Row(children: [
+          Icon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
+              size: 18, color: AD.textSecondary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              controller: _searchController,
+              onChanged: (v) {
+                // Fire once per search session (empty → typing), not per keystroke.
+                if (_query.trim().isEmpty && v.trim().isNotEmpty) {
+                  Analytics.capture('avadial_search_started', const {'tab': 'messages'});
+                }
+                setState(() => _query = v);
+              },
+              textInputAction: TextInputAction.search,
+              style: const TextStyle(color: AD.textPrimary, fontSize: 14.5),
+              decoration: const InputDecoration(
+                hintText: 'Search messages, names or numbers',
+                hintStyle: TextStyle(color: AD.textSecondary, fontSize: 14.5),
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+          ),
+          if (_query.isNotEmpty)
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                _searchController.clear();
+                setState(() => _query = '');
+              },
+              child: const Padding(
+                padding: EdgeInsets.only(left: 6),
+                child: Icon(Icons.close, size: 18, color: AD.textSecondary),
+              ),
+            ),
+        ]),
+      ),
+    );
   }
 
   Widget _segmented() {
