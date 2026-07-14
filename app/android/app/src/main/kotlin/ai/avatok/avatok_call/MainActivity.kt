@@ -83,10 +83,16 @@ class MainActivity : FlutterFragmentActivity() {
             // notification action) tells Dart the call is already answered/active by
             // the time it boots, so the shell opens InCallScreen instead of the
             // (stuck) ringing PstnCallScreen.
+            // [AVADIAL-HARDEN-3] spam_score/spam_bucket ride the same cold-start intent
+            // extras (set by AvaInCallService.launchIncoming) so PstnCallScreen can
+            // paint red even when Dart wasn't alive to receive onCallAdded.
+            val hasSpamScore = intent.hasExtra("spam_score")
             ai.avatok.avadial.AvaDialPlugin.notifyIncomingLaunch(
                 intent.getStringExtra("call_id"),
                 intent.getStringExtra("number"),
                 intent.getBooleanExtra("answered", false),
+                if (hasSpamScore) intent.getIntExtra("spam_score", 0) else null,
+                intent.getStringExtra("spam_bucket"),
             )
         }
 

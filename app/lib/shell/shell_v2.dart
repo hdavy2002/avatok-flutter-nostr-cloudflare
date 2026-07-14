@@ -226,10 +226,10 @@ class _ShellV2State extends State<ShellV2> {
     if (!RemoteConfig.avaDialer) return;
     AvaDialChannel.I.ensureWired();
     _incomingSub = AvaDialChannel.I.incomingLaunch
-        .listen((l) => _openIncoming(l.callId, l.number, l.answered));
+        .listen((l) => _openIncoming(l.callId, l.number, l.answered, l.spamScore));
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final l = await AvaDialChannel.I.consumePendingIncoming();
-      if (l != null) _openIncoming(l.callId, l.number, l.answered);
+      if (l != null) _openIncoming(l.callId, l.number, l.answered, l.spamScore);
     });
   }
 
@@ -290,7 +290,7 @@ class _ShellV2State extends State<ShellV2> {
   // before Flutter/MainActivity came up) — open the active-call UI directly
   // instead of the ringing screen, which would otherwise be stuck (its
   // Answer/Decline do nothing once the call is already connected).
-  void _openIncoming(String callId, String? number, [bool answered = false]) {
+  void _openIncoming(String callId, String? number, [bool answered = false, int? spamScore]) {
     if (!mounted) return;
     final n = number ?? '';
     if (n.isEmpty) return;
@@ -314,7 +314,7 @@ class _ShellV2State extends State<ShellV2> {
           fullscreenDialog: true,
           builder: (_) => answered
               ? InCallScreen(callId: callId, number: n, initialState: 'active')
-              : PstnCallScreen(callId: callId, number: n),
+              : PstnCallScreen(callId: callId, number: n, spamScore: spamScore),
         ))
         .whenComplete(() => AvaDialChannel.I.incomingScreenOpen = false);
   }

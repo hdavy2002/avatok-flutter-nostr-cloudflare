@@ -112,7 +112,7 @@ class _AvaDialRootState extends State<AvaDialRoot> {
     Navigator.of(context)
         .push(MaterialPageRoute<void>(
           fullscreenDialog: true,
-          builder: (_) => PstnCallScreen(callId: e.id, number: number),
+          builder: (_) => PstnCallScreen(callId: e.id, number: number, spamScore: e.spamScore),
         ))
         .whenComplete(() {
       _screenOpen = false;

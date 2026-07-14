@@ -79,6 +79,14 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
         // InCallScreen instead of the ringing PstnCallScreen for this launch.
         @Volatile
         private var pendingAnswered: Boolean = false
+        // [AVADIAL-HARDEN-3] Screening verdict for the pending incoming launch (see
+        // AvaCallScreeningService.stashVerdict / AvaInCallService.launchIncoming) —
+        // carried through both the cold-start drain (getPendingIncoming) and the
+        // already-running event (onLaunchIncoming) so PstnCallScreen can paint red.
+        @Volatile
+        private var pendingSpamScore: Int? = null
+        @Volatile
+        private var pendingSpamBucket: String? = null
 
         // Cold-start / background SMS-compose launch (ACTION_SENDTO on sms:/smsto:/
         // mms:/mmsto:, route extra "avadial/compose"). Stored so Dart can DRAIN it on
@@ -104,12 +112,26 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
          * route extra. Records the pending call for a cold-start drain AND emits
          * `onLaunchIncoming` for the already-running case.
          */
-        fun notifyIncomingLaunch(callId: String?, number: String?, answered: Boolean = false) {
+        fun notifyIncomingLaunch(
+            callId: String?,
+            number: String?,
+            answered: Boolean = false,
+            spamScore: Int? = null,
+            spamBucket: String? = null,
+        ) {
             if (callId.isNullOrEmpty()) return
             pendingCallId = callId
             pendingNumber = number
             pendingAnswered = answered
-            emit("onLaunchIncoming", mapOf("call_id" to callId, "number" to number, "answered" to answered))
+            pendingSpamScore = spamScore
+            pendingSpamBucket = spamBucket
+            emit(
+                "onLaunchIncoming",
+                mapOf(
+                    "call_id" to callId, "number" to number, "answered" to answered,
+                    "spam_score" to spamScore, "spam_bucket" to spamBucket,
+                ),
+            )
         }
 
         /**
@@ -239,6 +261,17 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
                 // For "sent" the result code lives in getResultCode(); for "delivered"
                 // a non-null resultCode is likewise success (Activity.RESULT_OK == -1).
                 val ok = resultCode == android.app.Activity.RESULT_OK
+                // [AVADIAL-HARDEN-3] The message was inserted as MESSAGE_TYPE_OUTBOX
+                // (pending) by smsSend BEFORE dispatch — now that the radio has
+                // actually replied, move that same row to SENT on success or FAILED on
+                // failure so a failed send never permanently shows as "sent". Only the
+                // "sent" phase (radio-dispatch result) resolves the row; "delivered" is
+                // a carrier-level receipt for an already-sent message and doesn't
+                // change the row's send/fail status.
+                if (phase == "sent") {
+                    val rowId = intent.getLongExtra("row_id", -1L)
+                    if (rowId >= 0L) finalizeSmsRow(ctx, rowId, ok)
+                }
                 emit("onSmsSendStatus", mapOf("ref" to ref, "phase" to phase, "ok" to ok))
             }
         }
@@ -255,6 +288,24 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
             }
             smsResultReceiver = receiver
         } catch (_: Throwable) { /* best-effort — send still works without status */ }
+    }
+
+    /** [AVADIAL-HARDEN-3] Move the OUTBOX row [rowId] (inserted by [smsSend] before
+     *  dispatch) to SENT or FAILED once the radio actually replies. Best-effort: the
+     *  provider write only succeeds while we hold ROLE_SMS (default SMS app). */
+    private fun finalizeSmsRow(ctx: Context, rowId: Long, ok: Boolean) {
+        try {
+            val values = ContentValues().apply {
+                put(
+                    Telephony.Sms.TYPE,
+                    if (ok) Telephony.Sms.MESSAGE_TYPE_SENT else Telephony.Sms.MESSAGE_TYPE_FAILED,
+                )
+            }
+            ctx.contentResolver.update(
+                Telephony.Sms.CONTENT_URI, values,
+                "${Telephony.Sms._ID} = ?", arrayOf(rowId.toString()),
+            )
+        } catch (_: Throwable) { /* not default SMS app → provider write denied */ }
     }
 
     // ── ActivityAware (role requests need an Activity) ───────────────────────────
@@ -393,11 +444,16 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
                 // ---- cold-start incoming-call drain (route extra "avadial/incoming") ----
                 "getPendingIncoming" -> {
                     val out: Map<String, Any?>? = pendingCallId?.let {
-                        mapOf("call_id" to it, "number" to pendingNumber, "answered" to pendingAnswered)
+                        mapOf(
+                            "call_id" to it, "number" to pendingNumber, "answered" to pendingAnswered,
+                            "spam_score" to pendingSpamScore, "spam_bucket" to pendingSpamBucket,
+                        )
                     }
                     pendingCallId = null
                     pendingNumber = null
                     pendingAnswered = false
+                    pendingSpamScore = null
+                    pendingSpamBucket = null
                     result.success(out)
                 }
 
@@ -495,6 +551,9 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
         val businessEmail = call.argument<String>("businessEmail")?.trim().orEmpty()
         val linkedin = call.argument<String>("linkedin")?.trim().orEmpty()
         val note = call.argument<String>("note")?.trim().orEmpty()
+        // [AVADIAL-HARDEN-3] Single formatted postal address (StructuredPostal),
+        // following exactly the note/linkedin single-value pattern.
+        val address = call.argument<String>("address")?.trim().orEmpty()
 
         val ops = ArrayList<ContentProviderOperation>()
         // Raw contact under the local ("device") account — no Google sync account.
@@ -526,6 +585,7 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
             ContactsContract.CommonDataKinds.Email.TYPE_WORK))
         if (linkedin.isNotEmpty()) ops.add(websiteOp(0, linkedin))
         if (note.isNotEmpty()) ops.add(noteOp(0, note))
+        if (address.isNotEmpty()) ops.add(postalOp(0, address))
 
         val results = ctx.contentResolver.applyBatch(ContactsContract.AUTHORITY, ops)
         val rawUri = results.firstOrNull()?.uri ?: return null
@@ -614,6 +674,7 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
         val businessEmail = (c["businessEmail"] as? String)?.trim().orEmpty()
         val linkedin = (c["linkedin"] as? String)?.trim().orEmpty()
         val note = (c["note"] as? String)?.trim().orEmpty()
+        val address = (c["address"] as? String)?.trim().orEmpty()
         if (name.isNotEmpty()) ops.add(dataInsert(ref)
             .withValue(ContactsContract.Data.MIMETYPE,
                 ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
@@ -632,6 +693,7 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
             ContactsContract.CommonDataKinds.Email.TYPE_WORK))
         if (linkedin.isNotEmpty()) ops.add(websiteOp(ref, linkedin))
         if (note.isNotEmpty()) ops.add(noteOp(ref, note))
+        if (address.isNotEmpty()) ops.add(postalOp(ref, address))
     }
 
     /**
@@ -668,9 +730,18 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
      * to silently wipe extra phone numbers/emails/websites/notes on Google-synced
      * contacts. Now, for each field: if a value is present we update the FIRST
      * matching row (or insert one if none exists) and leave every other row of that
-     * mimetype untouched; if a value is empty we do NOTHING (clearing a field via
-     * the edit screen is deliberately a no-op — we never know if a blank means
+     * mimetype untouched; if a value is empty we do NOTHING BY DEFAULT (clearing a
+     * field via the edit screen used to be a no-op — we never know if a blank means
      * "clear this" or "the edit screen didn't load this field").
+     *
+     * [AVADIAL-HARDEN-3] [clearFields] makes clearing intentional: the Dart side now
+     * tracks which managed fields had a non-empty INITIAL value and are blank at
+     * save time, and sends just those keys. For a field named in [clearFields]
+     * (name/number/personalEmail/businessEmail/linkedin/note/address) whose value is
+     * empty, we delete ONLY the single first matching Data row — the exact same row
+     * the update-in-place path above would have targeted (reusing [firstDataRowId],
+     * including the Email TYPE selection) — never a bulk mimetype delete. A field
+     * present in [clearFields] with a non-empty value is ignored; the value wins.
      */
     private fun updateContact(ctx: Context, call: MethodCall): Boolean {
         val id = call.argument<String>("id")?.toLongOrNull() ?: return false
@@ -681,8 +752,30 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
         val businessEmail = call.argument<String>("businessEmail")?.trim().orEmpty()
         val linkedin = call.argument<String>("linkedin")?.trim().orEmpty()
         val note = call.argument<String>("note")?.trim().orEmpty()
+        // [AVADIAL-HARDEN-3] Single formatted postal address (StructuredPostal).
+        val address = call.argument<String>("address")?.trim().orEmpty()
+        @Suppress("UNCHECKED_CAST")
+        val clearFields = (call.argument<List<Any?>>("clearFields") ?: emptyList<Any?>())
+            .filterIsInstance<String>()
+            .toSet()
 
         val ops = ArrayList<ContentProviderOperation>()
+
+        /** Delete the single first Data row for [mimetype] (+ optional TYPE
+         *  selection), if one exists. Used for the [clearFields] path only — never
+         *  a bulk mimetype delete. */
+        fun deleteFirstRow(
+            mimetype: String,
+            extraSelection: String? = null,
+            extraArgs: Array<String> = emptyArray(),
+        ) {
+            val rowId = firstDataRowId(ctx, rawId, mimetype, extraSelection, extraArgs) ?: return
+            ops.add(
+                ContentProviderOperation.newDelete(ContactsContract.Data.CONTENT_URI)
+                    .withSelection("${ContactsContract.Data._ID}=?", arrayOf(rowId.toString()))
+                    .build()
+            )
+        }
 
         if (name.isNotEmpty()) {
             val rowId = firstDataRowId(ctx, rawId,
@@ -701,6 +794,8 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
                         .build()
                 }
             )
+        } else if ("name" in clearFields) {
+            deleteFirstRow(ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
         }
 
         if (number.isNotEmpty()) {
@@ -724,15 +819,29 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
                         .build()
                 }
             )
+        } else if ("number" in clearFields) {
+            deleteFirstRow(ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE)
         }
 
         if (personalEmail.isNotEmpty()) {
             ops.add(updateOrInsertEmail(ctx, rawId, personalEmail,
                 ContactsContract.CommonDataKinds.Email.TYPE_HOME))
+        } else if ("personalEmail" in clearFields) {
+            deleteFirstRow(
+                ContactsContract.CommonDataKinds.Email.CONTENT_ITEM_TYPE,
+                extraSelection = "${ContactsContract.CommonDataKinds.Email.TYPE}=?",
+                extraArgs = arrayOf(ContactsContract.CommonDataKinds.Email.TYPE_HOME.toString()),
+            )
         }
         if (businessEmail.isNotEmpty()) {
             ops.add(updateOrInsertEmail(ctx, rawId, businessEmail,
                 ContactsContract.CommonDataKinds.Email.TYPE_WORK))
+        } else if ("businessEmail" in clearFields) {
+            deleteFirstRow(
+                ContactsContract.CommonDataKinds.Email.CONTENT_ITEM_TYPE,
+                extraSelection = "${ContactsContract.CommonDataKinds.Email.TYPE}=?",
+                extraArgs = arrayOf(ContactsContract.CommonDataKinds.Email.TYPE_WORK.toString()),
+            )
         }
 
         if (linkedin.isNotEmpty()) {
@@ -748,6 +857,8 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
                     websiteOpRaw(rawId, linkedin)
                 }
             )
+        } else if ("linkedin" in clearFields) {
+            deleteFirstRow(ContactsContract.CommonDataKinds.Website.CONTENT_ITEM_TYPE)
         }
 
         if (note.isNotEmpty()) {
@@ -763,6 +874,25 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
                     noteOpRaw(rawId, note)
                 }
             )
+        } else if ("note" in clearFields) {
+            deleteFirstRow(ContactsContract.CommonDataKinds.Note.CONTENT_ITEM_TYPE)
+        }
+
+        if (address.isNotEmpty()) {
+            val rowId = firstDataRowId(ctx, rawId,
+                ContactsContract.CommonDataKinds.StructuredPostal.CONTENT_ITEM_TYPE)
+            ops.add(
+                if (rowId != null) {
+                    ContentProviderOperation.newUpdate(ContactsContract.Data.CONTENT_URI)
+                        .withSelection("${ContactsContract.Data._ID}=?", arrayOf(rowId.toString()))
+                        .withValue(ContactsContract.CommonDataKinds.StructuredPostal.FORMATTED_ADDRESS, address)
+                        .build()
+                } else {
+                    postalOpRaw(rawId, address)
+                }
+            )
+        } else if ("address" in clearFields) {
+            deleteFirstRow(ContactsContract.CommonDataKinds.StructuredPostal.CONTENT_ITEM_TYPE)
         }
 
         if (ops.isEmpty()) return true // nothing to change — not a failure
@@ -837,6 +967,20 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
     private fun noteOpRaw(rawId: Long, text: String) = dataInsertRaw(rawId)
         .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Note.CONTENT_ITEM_TYPE)
         .withValue(ContactsContract.CommonDataKinds.Note.NOTE, text)
+        .build()
+
+    // [AVADIAL-HARDEN-3] Single formatted postal address (StructuredPostal),
+    // mirroring the note/linkedin single-value field pattern above.
+    private fun postalOp(ref: Int, address: String) = dataInsert(ref)
+        .withValue(ContactsContract.Data.MIMETYPE,
+            ContactsContract.CommonDataKinds.StructuredPostal.CONTENT_ITEM_TYPE)
+        .withValue(ContactsContract.CommonDataKinds.StructuredPostal.FORMATTED_ADDRESS, address)
+        .build()
+
+    private fun postalOpRaw(rawId: Long, address: String) = dataInsertRaw(rawId)
+        .withValue(ContactsContract.Data.MIMETYPE,
+            ContactsContract.CommonDataKinds.StructuredPostal.CONTENT_ITEM_TYPE)
+        .withValue(ContactsContract.CommonDataKinds.StructuredPostal.FORMATTED_ADDRESS, address)
         .build()
 
     private fun contactIdForRaw(ctx: Context, rawId: Long): Long? {
@@ -1091,10 +1235,20 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
     /**
      * Send an SMS via [SmsManager], splitting long bodies into multipart. Registers a
      * sent + delivered PendingIntent per part keyed by [ref]; the dynamic receiver
-     * forwards status to Dart as `onSmsSendStatus {ref, phase, ok}`. The default SMS
-     * app writes the outgoing message into the SMS provider (content://sms) itself, so
-     * we insert it into Telephony.Sms.Sent after handing it to the radio. Returns true
+     * forwards status to Dart as `onSmsSendStatus {ref, phase, ok}`. Returns true
      * when the send was dispatched (NOT when delivered — that arrives on the channel).
+     *
+     * [AVADIAL-HARDEN-3] The provider write used to insert straight into
+     * Telephony.Sms.Sent right after handing the message to the radio — BEFORE the
+     * sent-result PendingIntent fired — so a message that the radio later reported
+     * as failed still permanently showed as "sent" in the thread. Now we insert the
+     * row as MESSAGE_TYPE_OUTBOX (pending) first, hand its row id to the sent
+     * PendingIntent via a "row_id" extra, and [finalizeSmsRow] (called from the
+     * registered receiver once the radio actually replies) moves that same row to
+     * SENT on success or FAILED on failure. A multipart message is still ONE row —
+     * every part's sent-intent carries the same row id, so whichever part's result
+     * lands first settles it (a genuine partial failure is rare enough that we
+     * don't special-case per-part status here).
      *
      * Device-data boundary: message bodies live ONLY in the OS SMS provider; our
      * scoped store keeps spam labels/metadata, never the text.
@@ -1103,6 +1257,22 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
         if (dest.isNullOrEmpty() || body == null) return false
         val r = ref ?: System.currentTimeMillis().toString()
         return try {
+            // Insert the OUTBOX/pending row BEFORE dispatch (only meaningful while we
+            // hold ROLE_SMS — provider write is a no-op/denied otherwise, matching the
+            // previous best-effort behaviour).
+            var rowId = -1L
+            try {
+                val values = ContentValues().apply {
+                    put(Telephony.Sms.ADDRESS, dest)
+                    put(Telephony.Sms.BODY, body)
+                    put(Telephony.Sms.DATE, System.currentTimeMillis())
+                    put(Telephony.Sms.READ, 1)
+                    put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_OUTBOX)
+                }
+                val uri = ctx.contentResolver.insert(Telephony.Sms.CONTENT_URI, values)
+                rowId = uri?.let { ContentUris.parseId(it) } ?: -1L
+            } catch (_: Throwable) { /* not default SMS app → provider write denied */ }
+
             val sms = smsManager(ctx)
             val parts = sms.divideMessage(body)
             val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
@@ -1111,7 +1281,10 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
             for (i in parts.indices) {
                 val sentPi = PendingIntent.getBroadcast(
                     ctx, r.hashCode() + i,
-                    Intent(ACTION_SMS_SENT).setPackage(ctx.packageName).putExtra("ref", r), flags
+                    Intent(ACTION_SMS_SENT).setPackage(ctx.packageName)
+                        .putExtra("ref", r)
+                        .putExtra("row_id", rowId),
+                    flags
                 )
                 val delPi = PendingIntent.getBroadcast(
                     ctx, (r.hashCode() + i) xor 0x7fffffff,
@@ -1125,18 +1298,6 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
             } else {
                 sms.sendMultipartTextMessage(dest, null, parts, sentIntents, deliveredIntents)
             }
-            // Mirror the sent message into the OS SMS provider so the thread reads back
-            // consistently (only meaningful while we hold ROLE_SMS).
-            try {
-                val values = android.content.ContentValues().apply {
-                    put(Telephony.Sms.ADDRESS, dest)
-                    put(Telephony.Sms.BODY, body)
-                    put(Telephony.Sms.DATE, System.currentTimeMillis())
-                    put(Telephony.Sms.READ, 1)
-                    put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_SENT)
-                }
-                ctx.contentResolver.insert(Telephony.Sms.Sent.CONTENT_URI, values)
-            } catch (_: Throwable) { /* not default SMS app → provider write denied */ }
             true
         } catch (_: Throwable) {
             false

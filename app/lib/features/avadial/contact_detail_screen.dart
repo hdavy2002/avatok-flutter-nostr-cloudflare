@@ -217,6 +217,13 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
                     label: 'LinkedIn',
                     value: _o!.linkedin!,
                   ),
+                if (_o?.address?.isNotEmpty ?? false)
+                  _fieldTile(
+                    icon: PhosphorIcons.mapPin(PhosphorIconsStyle.bold),
+                    color: AD.iconSearch,
+                    label: 'Address',
+                    value: _o!.address!,
+                  ),
                 for (final f in _o?.customFields ?? const <ContactField>[])
                   if (f.value.isNotEmpty)
                     _fieldTile(

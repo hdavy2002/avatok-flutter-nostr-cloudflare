@@ -44,6 +44,9 @@ class ContactOverride {
   final String? personalEmail;
   final String? businessEmail;
   final String? linkedin;
+  // [AVADIAL-HARDEN-3] Single formatted postal address (mirrors linkedin's
+  // single-value pattern; round-trips through the native StructuredPostal row).
+  final String? address;
   final List<ContactField> customFields;
 
   const ContactOverride({
@@ -55,6 +58,7 @@ class ContactOverride {
     this.personalEmail,
     this.businessEmail,
     this.linkedin,
+    this.address,
     this.customFields = const [],
   });
 
@@ -65,6 +69,7 @@ class ContactOverride {
       (personalEmail?.isNotEmpty ?? false) ||
       (businessEmail?.isNotEmpty ?? false) ||
       (linkedin?.isNotEmpty ?? false) ||
+      (address?.isNotEmpty ?? false) ||
       customFields.isNotEmpty;
 
   ContactOverride copyWith({
@@ -76,6 +81,7 @@ class ContactOverride {
     String? personalEmail,
     String? businessEmail,
     String? linkedin,
+    String? address,
     List<ContactField>? customFields,
   }) =>
       ContactOverride(
@@ -87,6 +93,7 @@ class ContactOverride {
         personalEmail: personalEmail ?? this.personalEmail,
         businessEmail: businessEmail ?? this.businessEmail,
         linkedin: linkedin ?? this.linkedin,
+        address: address ?? this.address,
         customFields: customFields ?? this.customFields,
       );
 
@@ -99,6 +106,7 @@ class ContactOverride {
         if (personalEmail != null) 'personalEmail': personalEmail,
         if (businessEmail != null) 'businessEmail': businessEmail,
         if (linkedin != null) 'linkedin': linkedin,
+        if (address != null) 'address': address,
         if (customFields.isNotEmpty)
           'customFields': customFields.map((f) => f.toJson()).toList(),
       };
@@ -112,6 +120,7 @@ class ContactOverride {
         personalEmail: j['personalEmail'] as String?,
         businessEmail: j['businessEmail'] as String?,
         linkedin: j['linkedin'] as String?,
+        address: j['address'] as String?,
         customFields: (j['customFields'] as List<dynamic>? ?? const [])
             .whereType<Map>()
             .map((m) => ContactField.fromJson(m.map((k, v) => MapEntry('$k', v))))

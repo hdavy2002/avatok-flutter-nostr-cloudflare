@@ -23,13 +23,63 @@ import java.security.MessageDigest
  */
 class AvaCallScreeningService : CallScreeningService() {
 
+    companion object {
+        // [AVADIAL-HARDEN-3] The screening verdict (score/bucket) computed here never
+        // reached PstnCallScreen — AvaInCallService.onCallAdded fires moments later
+        // for the SAME incoming number but has no way to see what this service just
+        // decided. Stash it in a tiny shared, capped, self-expiring map so
+        // AvaInCallService (and MainActivity's cold-start intent extras) can look it
+        // up by number. Capacity ~8 + a 2-minute TTL keeps this from ever growing
+        // unbounded — a call is answered/declined/expires long before either limit
+        // matters in practice.
+        private const val MAX_ENTRIES = 8
+        private const val TTL_MS = 2 * 60 * 1000L
+
+        data class Verdict(val score: Int?, val bucket: String, val atMs: Long)
+
+        // LinkedHashMap preserves insertion order, which is all we need to evict the
+        // oldest entry once we're over MAX_ENTRIES.
+        private val recentVerdicts = LinkedHashMap<String, Verdict>()
+
+        /** Record the verdict for [rawNumber] (the tel: scheme-specific part) so
+         *  [AvaInCallService] can pick it up for the same incoming call. */
+        @Synchronized
+        fun stashVerdict(rawNumber: String, score: Int?, bucket: String) {
+            pruneLocked()
+            recentVerdicts.remove(rawNumber) // re-insert at the end (freshest)
+            recentVerdicts[rawNumber] = Verdict(score, bucket, System.currentTimeMillis())
+            while (recentVerdicts.size > MAX_ENTRIES) {
+                val oldest = recentVerdicts.keys.firstOrNull() ?: break
+                recentVerdicts.remove(oldest)
+            }
+        }
+
+        /** Look up (and consume-in-place, i.e. leave for any other reader) the
+         *  stashed verdict for [rawNumber]. Null if never screened, expired, or the
+         *  number format didn't match exactly. */
+        @Synchronized
+        fun takeVerdict(rawNumber: String): Verdict? {
+            pruneLocked()
+            return recentVerdicts[rawNumber]
+        }
+
+        private fun pruneLocked() {
+            val cutoff = System.currentTimeMillis() - TTL_MS
+            val it = recentVerdicts.entries.iterator()
+            while (it.hasNext()) {
+                if (it.next().value.atMs < cutoff) it.remove()
+            }
+        }
+    }
+
     override fun onScreenCall(callDetails: Call.Details) {
         val response = CallResponse.Builder()
         var bucket = "unknown"
+        var score: Int? = null
+        val raw = callDetails.handle?.schemeSpecificPart // the tel: number
         try {
-            val raw = callDetails.handle?.schemeSpecificPart // the tel: number
             if (!raw.isNullOrEmpty()) {
-                val score = lookup(raw)
+                score = lookup(raw)
                 if (score != null) {
                     val warn = warnThreshold
                     bucket = if (score >= warn) "red" else "reported"
@@ -43,6 +93,8 @@ class AvaCallScreeningService : CallScreeningService() {
         response.setDisallowCall(false)
         response.setRejectCall(false)
         respondToCall(callDetails, response.build())
+
+        if (!raw.isNullOrEmpty()) stashVerdict(raw, score, bucket)
 
         // Best-effort telemetry hop to Dart when the engine is alive.
         AvaDialPlugin.emit("onScreeningVerdict", mapOf("bucket" to bucket))

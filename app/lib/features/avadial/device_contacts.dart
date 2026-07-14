@@ -82,6 +82,7 @@ class DeviceContacts {
     String? businessEmail,
     String? linkedin,
     String? note,
+    String? address,
   }) async {
     if (!await ensureWritePermission()) return null;
     final id = await AvaDialChannel.I.writeContact(
@@ -91,6 +92,7 @@ class DeviceContacts {
       businessEmail: businessEmail,
       linkedin: linkedin,
       note: note,
+      address: address,
     );
     if (id != null) clear(); // in-memory cache is stale after a write
     return id;
@@ -136,6 +138,8 @@ class DeviceContacts {
     String? businessEmail,
     String? linkedin,
     String? note,
+    String? address,
+    List<String>? clearFields,
   }) async {
     if (!await ensureWritePermission()) return false;
     final ok = await AvaDialChannel.I.updateContact(
@@ -146,6 +150,8 @@ class DeviceContacts {
       businessEmail: businessEmail,
       linkedin: linkedin,
       note: note,
+      address: address,
+      clearFields: clearFields,
     );
     if (ok) clear();
     return ok;

@@ -41,6 +41,10 @@ class AvaMissedCallReceiver : BroadcastReceiver() {
         @Volatile private var incomingNumber: String? = null
         @Volatile private var ringStartMs = 0L
         @Volatile private var lastState: String? = null
+
+        // [AVADIAL-HARDEN-3] Slack window for correlating a call-log-fallback MISSED
+        // row to the ringing session that just ended.
+        private const val MISSED_MATCH_SLACK_MS = 5_000L
     }
 
     override fun onReceive(context: Context?, intent: Intent?) {
@@ -71,24 +75,59 @@ class AvaMissedCallReceiver : BroadcastReceiver() {
                     ((System.currentTimeMillis() - ringStartMs) / 1000L).toInt().coerceIn(0, 600)
                 } else 0
                 val number = incomingNumber
+                val ringStartAtCall = ringStartMs
                 // Reset before any heavy work so a re-entrant broadcast can't double-fire.
                 sawRinging = false
                 wasOffhook = false
                 incomingNumber = null
                 ringStartMs = 0L
-                if (missed) handleMissed(ctx, number, ringSecs)
+                if (missed) handleMissed(ctx, number, ringSecs, ringStartAtCall)
             }
         }
     }
 
-    private fun handleMissed(ctx: Context, ringNumber: String?, ringSecs: Int) {
+    private fun handleMissed(ctx: Context, ringNumber: String?, ringSecs: Int, ringStartAtCall: Long) {
         if (!isEnabled(ctx)) return
         if (!AvaMissedCallOverlay.canDraw(ctx)) return
 
-        // The OS often withholds the ring number; fall back to the newest MISSED row.
-        val number = ringNumber ?: latestMissedNumber(ctx)
-        if (number.isNullOrBlank()) return
+        // Fast path — the OS handed us the ring number directly (READ_CALL_LOG held),
+        // so there is nothing to correlate against.
+        if (!ringNumber.isNullOrBlank()) {
+            showForNumber(ctx, ringNumber, ringSecs)
+            return
+        }
 
+        // [AVADIAL-HARDEN-3] The OS withheld the ring number. We used to fall back to
+        // whatever the newest MISSED call-log row was, with NO check that it actually
+        // belongs to the call that just ended — on a phone with back-to-back missed
+        // calls that could paint the overlay with a PREVIOUS caller's name. Now we only
+        // accept a call-log row that is TYPE == MISSED_TYPE AND DATE >= (ringStartAtCall
+        // - 5s slack); anything older is rejected and we skip the overlay rather than
+        // show a wrong name. The call-log write can lag the RINGING→IDLE transition by a
+        // moment, so this runs off the main thread with a short retry/delay before
+        // giving up.
+        Thread {
+            var resolved: String? = null
+            var attempt = 0
+            while (attempt < 4 && resolved == null) {
+                resolved = latestMissedNumberSince(ctx, ringStartAtCall)
+                if (resolved == null) {
+                    try { Thread.sleep(300L) } catch (_: InterruptedException) { return@Thread }
+                }
+                attempt++
+            }
+            if (!resolved.isNullOrBlank()) {
+                showForNumber(ctx, resolved, ringSecs)
+            }
+            // else: caller unknown (no verifiably-matching call-log row) — skip the
+            // overlay entirely rather than risk naming the wrong caller.
+        }.start()
+    }
+
+    /** Look up + paint the overlay for a confirmed [number], then fire telemetry +
+     *  the best-effort backend confirm. Safe to call from a background thread — both
+     *  [AvaMissedCallOverlay.show] and [AvaDialPlugin.emit] post to the main thread. */
+    private fun showForNumber(ctx: Context, number: String, ringSecs: Int) {
         val entry = lookupDirectory(ctx, number)
         val info = AvaMissedCallOverlay.Info(
             number = number,
@@ -177,14 +216,22 @@ class AvaMissedCallReceiver : BroadcastReceiver() {
         }.start()
     }
 
-    /** Newest MISSED_TYPE call-log number (READ_CALL_LOG). Null if unreadable. */
-    private fun latestMissedNumber(ctx: Context): String? {
+    /**
+     * [AVADIAL-HARDEN-3] Newest MISSED_TYPE call-log number, but ONLY if its DATE is
+     * at or after (ringStartAtCall - [MISSED_MATCH_SLACK_MS]) — i.e. it plausibly
+     * belongs to the ringing session that just ended, not some earlier missed call.
+     * `ringStartAtCall <= 0` (state tracking never saw RINGING, shouldn't happen on
+     * this path) is treated as "no lower bound" so we don't reject everything.
+     * Null if unreadable or nothing matches.
+     */
+    private fun latestMissedNumberSince(ctx: Context, ringStartAtCall: Long): String? {
+        val minDate = if (ringStartAtCall > 0) ringStartAtCall - MISSED_MATCH_SLACK_MS else 0L
         return try {
             ctx.contentResolver.query(
                 CallLog.Calls.CONTENT_URI,
-                arrayOf(CallLog.Calls.NUMBER, CallLog.Calls.TYPE),
-                "${CallLog.Calls.TYPE} = ?",
-                arrayOf(CallLog.Calls.MISSED_TYPE.toString()),
+                arrayOf(CallLog.Calls.NUMBER, CallLog.Calls.TYPE, CallLog.Calls.DATE),
+                "${CallLog.Calls.TYPE} = ? AND ${CallLog.Calls.DATE} >= ?",
+                arrayOf(CallLog.Calls.MISSED_TYPE.toString(), minDate.toString()),
                 "${CallLog.Calls.DATE} DESC",
             )?.use { c ->
                 if (c.moveToFirst()) c.getString(0) else null

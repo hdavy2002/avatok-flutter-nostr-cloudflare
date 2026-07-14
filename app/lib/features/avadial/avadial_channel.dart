@@ -16,11 +16,16 @@ class AvaCallEvent {
   final String? number;
   final String state; // ringing|dialing|active|holding|disconnected|…
   final String direction; // incoming|outgoing|unknown
+  // [AVADIAL-HARDEN-3] Community spam score 0..100 stashed by
+  // AvaCallScreeningService for this same number, or null when the number was
+  // never screened / had no snapshot hit.
+  final int? spamScore;
   const AvaCallEvent({
     required this.id,
     required this.number,
     required this.state,
     required this.direction,
+    this.spamScore,
   });
 }
 
@@ -41,7 +46,10 @@ class AvaIncomingLaunch {
   // "answer" notification action fired before Flutter/MainActivity came up) —
   // the shell then opens the active-call UI instead of the ringing screen.
   final bool answered;
-  const AvaIncomingLaunch(this.callId, this.number, {this.answered = false});
+  // [AVADIAL-HARDEN-3] Screening verdict carried through the cold-start /
+  // relaunch launch so PstnCallScreen can paint red without a live onCallAdded.
+  final int? spamScore;
+  const AvaIncomingLaunch(this.callId, this.number, {this.answered = false, this.spamScore});
 }
 
 /// Live audio-route + mute state for the in-call UI, mirrored from
@@ -188,6 +196,7 @@ class AvaDialChannel {
             number: a['number'] as String?,
             state: '${a['state']}',
             direction: '${a['direction'] ?? 'unknown'}',
+            spamScore: (a['spam_score'] as num?)?.toInt(),
           ));
           break;
         case 'onCallState':
@@ -214,7 +223,8 @@ class AvaDialChannel {
           final id = '${a['call_id']}';
           if (id.isNotEmpty && id != 'null') {
             _incoming.add(AvaIncomingLaunch(id, a['number'] as String?,
-                answered: a['answered'] == true));
+                answered: a['answered'] == true,
+                spamScore: (a['spam_score'] as num?)?.toInt()));
           }
           break;
         case 'onAudioRoute':
@@ -378,7 +388,8 @@ class AvaDialChannel {
       final id = raw['call_id']?.toString();
       if (id == null || id.isEmpty) return null;
       return AvaIncomingLaunch(id, raw['number']?.toString(),
-          answered: raw['answered'] == true);
+          answered: raw['answered'] == true,
+          spamScore: (raw['spam_score'] as num?)?.toInt());
     } catch (e) {
       AvaLog.I.log('avadial', 'getPendingIncoming failed: $e');
       return null;
@@ -400,6 +411,7 @@ class AvaDialChannel {
     String? businessEmail,
     String? linkedin,
     String? note,
+    String? address,
   }) async {
     try {
       return await _ch.invokeMethod<String>('writeContact', {
@@ -409,6 +421,7 @@ class AvaDialChannel {
         'businessEmail': businessEmail,
         'linkedin': linkedin,
         'note': note,
+        'address': address,
       });
     } catch (e) {
       AvaLog.I.log('avadial', 'writeContact failed: $e');
@@ -433,7 +446,11 @@ class AvaDialChannel {
   }
 
   /// Update an existing device contact (by aggregated [id]). Managed fields (name,
-  /// phone, emails, website, note) are replaced. Returns true on success.
+  /// phone, emails, website, note, address) are replaced. [clearFields] names the
+  /// managed field keys (name/number/personalEmail/businessEmail/linkedin/note/
+  /// address) whose value the caller explicitly wants CLEARED — an empty string for
+  /// a field NOT in [clearFields] is otherwise left untouched on the device
+  /// (owner data-loss guard, [AVADIAL-HARDEN-2]). Returns true on success.
   Future<bool> updateContact({
     required String id,
     required String name,
@@ -442,6 +459,8 @@ class AvaDialChannel {
     String? businessEmail,
     String? linkedin,
     String? note,
+    String? address,
+    List<String>? clearFields,
   }) =>
       _invokeBool('updateContact', {
         'id': id,
@@ -451,6 +470,8 @@ class AvaDialChannel {
         'businessEmail': businessEmail,
         'linkedin': linkedin,
         'note': note,
+        'address': address,
+        'clearFields': clearFields,
       });
 
   /// Delete a device contact (and its raw rows) by aggregated [id].

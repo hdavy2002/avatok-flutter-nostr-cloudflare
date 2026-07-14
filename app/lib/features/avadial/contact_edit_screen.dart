@@ -42,12 +42,27 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
   final _avatokCtrl = TextEditingController();
   final _personalEmailCtrl = TextEditingController();
   final _businessEmailCtrl = TextEditingController();
+  final _addressCtrl = TextEditingController();
   final _linkedinCtrl = TextEditingController();
   // Custom fields: each a (label, value) controller pair.
   final List<(TextEditingController, TextEditingController)> _custom = [];
 
   bool _loading = true;
   bool _saving = false;
+
+  // [AVADIAL-HARDEN-3] INITIAL values of the managed fields as loaded, so _save
+  // can tell "was cleared" (initial non-empty, now empty) from "was always empty"
+  // — only the former is an intentional clear (see _computeClearFields). _initNote
+  // is the initial COMPUTED note blob (see _buildNote) since there's no raw
+  // free-text "note" control on this screen — it's synthesized from the AvaTOK
+  // number + custom fields for the device's Note row.
+  String _initName = '';
+  String _initNumber = '';
+  String _initPersonalEmail = '';
+  String _initBusinessEmail = '';
+  String _initLinkedin = '';
+  String _initAddress = '';
+  String _initNote = '';
 
   @override
   void initState() {
@@ -65,6 +80,7 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
         _avatokCtrl.text = o.avatokNumber ?? '';
         _personalEmailCtrl.text = o.personalEmail ?? '';
         _businessEmailCtrl.text = o.businessEmail ?? '';
+        _addressCtrl.text = o.address ?? '';
         _linkedinCtrl.text = o.linkedin ?? '';
         for (final f in o.customFields) {
           _custom.add((
@@ -74,6 +90,22 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
         }
       }
     }
+    // Snapshot the INITIAL values (post-prefill) for the clear-field diff on save.
+    _initName = _nameCtrl.text.trim();
+    _initNumber = _numberCtrl.text.trim();
+    _initPersonalEmail = _personalEmailCtrl.text.trim();
+    _initBusinessEmail = _businessEmailCtrl.text.trim();
+    _initLinkedin = _linkedinCtrl.text.trim();
+    _initAddress = _addressCtrl.text.trim();
+    _initNote = _buildNote(
+          _trimOrNull(_avatokCtrl),
+          [
+            for (final (l, v) in _custom)
+              if (l.text.trim().isNotEmpty || v.text.trim().isNotEmpty)
+                ContactField(label: l.text.trim(), value: v.text.trim()),
+          ],
+        ) ??
+        '';
     if (mounted) setState(() => _loading = false);
   }
 
@@ -85,6 +117,7 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
       _avatokCtrl,
       _personalEmailCtrl,
       _businessEmailCtrl,
+      _addressCtrl,
       _linkedinCtrl,
     ]) {
       c.dispose();
@@ -138,11 +171,25 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
     final name = _trimOrNull(_nameCtrl);
     final personalEmail = _trimOrNull(_personalEmailCtrl);
     final businessEmail = _trimOrNull(_businessEmailCtrl);
+    final address = _trimOrNull(_addressCtrl);
     final linkedin = _trimOrNull(_linkedinCtrl);
     final avatok = _trimOrNull(_avatokCtrl);
     // Fold the AvaTOK-specific extras into the OS contact's Note so they survive in
     // the phone's own address book too (the rich fields still live in the override).
     final note = _buildNote(avatok, fields);
+
+    // [AVADIAL-HARDEN-3] A managed field that HAD a value when the form loaded and
+    // is blank now is an intentional clear — everything else (always-empty, or
+    // simply untouched) stays a no-op, same as before. See _initName etc.
+    final clearFields = <String>[
+      if (_initName.isNotEmpty && (name ?? '').isEmpty) 'name',
+      if (_initNumber.isNotEmpty && number.isEmpty) 'number',
+      if (_initPersonalEmail.isNotEmpty && (personalEmail ?? '').isEmpty) 'personalEmail',
+      if (_initBusinessEmail.isNotEmpty && (businessEmail ?? '').isEmpty) 'businessEmail',
+      if (_initLinkedin.isNotEmpty && (linkedin ?? '').isEmpty) 'linkedin',
+      if (_initAddress.isNotEmpty && (address ?? '').isEmpty) 'address',
+      if (_initNote.isNotEmpty && (note ?? '').isEmpty) 'note',
+    ];
 
     // Write to the REAL phone address book (owner request 2026-07-13). We resolve
     // the device contact id for an edit; on create we insert. If the device write
@@ -159,6 +206,7 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
         businessEmail: businessEmail,
         linkedin: linkedin,
         note: note,
+        address: address,
       );
       onDevice = id != null;
     } else if (deviceId != null) {
@@ -170,6 +218,8 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
         businessEmail: businessEmail,
         linkedin: linkedin,
         note: note,
+        address: address,
+        clearFields: clearFields,
       );
     }
 
@@ -181,6 +231,7 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
       personalEmail: personalEmail,
       businessEmail: businessEmail,
       linkedin: linkedin,
+      address: address,
       customFields: fields,
     ));
     Analytics.capture(widget.create ? 'avadial_contact_added' : 'avadial_contact_edited', {
@@ -247,6 +298,12 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
                     icon: PhosphorIcons.briefcase(PhosphorIconsStyle.bold),
                     keyboard: TextInputType.emailAddress),
                 const SizedBox(height: 16),
+                _label('ADDRESS'),
+                _field(_addressCtrl, 'Street, city, postal code…',
+                    icon: PhosphorIcons.mapPin(PhosphorIconsStyle.bold),
+                    keyboard: TextInputType.streetAddress,
+                    maxLines: 3),
+                const SizedBox(height: 16),
                 _label('LINKEDIN'),
                 _field(_linkedinCtrl, 'linkedin.com/in/…',
                     icon: PhosphorIcons.linkedinLogo(PhosphorIconsStyle.bold),
@@ -308,7 +365,7 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
       );
 
   Widget _field(TextEditingController c, String hint,
-      {IconData? icon, Color? accent, TextInputType? keyboard}) {
+      {IconData? icon, Color? accent, TextInputType? keyboard, int maxLines = 1}) {
     final border = OutlineInputBorder(
       borderRadius: BorderRadius.circular(AD.rInput),
       borderSide: const BorderSide(color: AvaDialTheme.border, width: 1),
@@ -316,6 +373,7 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
     return TextField(
       controller: c,
       keyboardType: keyboard,
+      maxLines: maxLines,
       style: ZineText.value(size: 16, color: AvaDialTheme.text),
       decoration: InputDecoration(
         hintText: hint,

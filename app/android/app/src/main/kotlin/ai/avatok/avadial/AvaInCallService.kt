@@ -90,12 +90,20 @@ class AvaInCallService : InCallService() {
         } catch (_: Throwable) {
             "unknown"
         }
+        // [AVADIAL-HARDEN-3] Pick up the screening verdict AvaCallScreeningService
+        // stashed for this same number (moments earlier, in the OS's pre-answer
+        // screening window) so PstnCallScreen can paint the red spam UI instead of
+        // it being unreachable.
+        val verdict = number?.let { AvaCallScreeningService.takeVerdict(it) }
         AvaDialPlugin.emit(
             "onCallAdded",
-            mapOf("id" to id, "number" to number, "state" to stateName(call.state), "direction" to direction)
+            mapOf(
+                "id" to id, "number" to number, "state" to stateName(call.state), "direction" to direction,
+                "spam_score" to verdict?.score, "spam_bucket" to verdict?.bucket,
+            )
         )
         if (call.state == Call.STATE_RINGING || direction == "incoming") {
-            launchIncoming(id, number)
+            launchIncoming(id, number, verdict?.score, verdict?.bucket)
         }
     }
 
@@ -151,7 +159,7 @@ class AvaInCallService : InCallService() {
      * (the reliable path on OEMs with aggressive battery management — spike §7) that
      * relaunches [MainActivity] with a route extra the shell reads.
      */
-    private fun launchIncoming(id: String, number: String?) {
+    private fun launchIncoming(id: String, number: String?, spamScore: Int? = null, spamBucket: String? = null) {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
@@ -164,6 +172,11 @@ class AvaInCallService : InCallService() {
             putExtra("route", "avadial/incoming")
             putExtra("call_id", id)
             putExtra("number", number)
+            // [AVADIAL-HARDEN-3] Carry the screening verdict through the cold-start
+            // intent extras too, so PstnCallScreen can paint red even when Dart wasn't
+            // alive to receive the onCallAdded event.
+            if (spamScore != null) putExtra("spam_score", spamScore)
+            if (spamBucket != null) putExtra("spam_bucket", spamBucket)
         }
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         val pending = PendingIntent.getActivity(this, NOTIF_ID, intent, flags)
