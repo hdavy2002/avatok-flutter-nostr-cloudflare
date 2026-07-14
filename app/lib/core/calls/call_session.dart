@@ -2571,8 +2571,15 @@ class CallSession {
         },
         // [CALL-DIAL-FAIL-1]
         'network-error' => "Can't reach the network — check your connection",
-        'ava-countdown' => "$_peerFirst isn't picking up — Ava is taking your call…",
-        'receptionist-connecting' => 'Connecting you to Ava…',
+        // [AVA-COUNTDOWN-COPY-1] Warm, honest connecting lines while the 3-2-1
+        // ring settles — no cold "isn't picking up" framing, and no premature
+        // "taking your call" claim (that stays gated to the confirmed phase).
+        'ava-countdown' => switch (_avaCount) {
+          3 => 'Getting hold of Ava…',
+          2 => 'She’ll be online any second…',
+          _ => 'Almost there — connecting you…',
+        },
+        'receptionist-connecting' => 'Ava is picking up…',
         'receptionist' => 'Ava is taking a message',
         'receptionist-wrapup' => 'Ava is wrapping up…',
         // [AVA-CLIENT-1] honest fallback when Ava never went live (ack timeout /
