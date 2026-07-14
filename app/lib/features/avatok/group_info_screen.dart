@@ -240,10 +240,38 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     }
   }
 
+  // [ISSUE-GROUP-ADDED-FLAT-1] Flat, non-interactive green "Added" pill shown on
+  // rows for contacts already in the group. Deliberately NOT AdChip: AdChip's
+  // active state is hard-wired to AD.primaryBadge (orange) and it wraps a
+  // GestureDetector. This is a plain Container -> no elevation, no ripple, no tap.
+  Widget _addedPill() => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: AD.newGroup,
+          borderRadius: BorderRadius.circular(AD.rChip),
+        ),
+        child: const Text('Added',
+            style: TextStyle(
+                fontFamily: ADText.family,
+                fontWeight: FontWeight.w800,
+                fontSize: 12.5,
+                color: Colors.white)),
+      );
+
   void _pickToAdd() {
-    final candidates = _contacts.where((c) =>
-        !c.isPhoneOnly && c.uid.isNotEmpty && !_group.members.contains(c.uid)).toList();
-    Analytics.capture('group_add_picker_opened', {'gid': _group.id, 'candidate_count': candidates.length});
+    // [ISSUE-GROUP-ADDED-FLAT-1] List ALL eligible contacts (phone-only / uid-less
+    // still excluded), addable first, already-in-group after them.
+    final eligible = _contacts.where((c) => !c.isPhoneOnly && c.uid.isNotEmpty).toList();
+    final candidates = <Contact>[
+      ...eligible.where((c) => !_group.members.contains(c.uid)),
+      ...eligible.where((c) => _group.members.contains(c.uid)),
+    ];
+    final addableCount = eligible.where((c) => !_group.members.contains(c.uid)).length;
+    Analytics.capture('group_add_picker_opened', {
+      'gid': _group.id,
+      'candidate_count': addableCount,
+      'listed_count': candidates.length,
+    });
     showModalBottomSheet(
       context: context,
       backgroundColor: AD.overlaySheet,
@@ -255,26 +283,46 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('Add members', style: ADText.threadName()),
           const SizedBox(height: 8),
+          // [ISSUE-GROUP-ADDED-FLAT-1] Empty state now only fires when there are no
+          // eligible contacts at all — existing members are listed, not filtered out.
           if (candidates.isEmpty)
             Padding(padding: const EdgeInsets.symmetric(vertical: 20),
-                child: Text('All your contacts are already in this group',
+                child: Text('No contacts available to add',
                     style: ADText.preview(c: AD.textSecondary)))
           else
             ConstrainedBox(constraints: const BoxConstraints(maxHeight: 340), child: ListView(shrinkWrap: true, children: [
               for (final c in candidates)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Container(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: AD.borderAvatar, width: 2),
+                // [ISSUE-GROUP-ADDED-FLAT-1] Already a member -> listed but inert:
+                // onTap null (no ripple, no re-add). `enabled` stays true so the
+                // green pill keeps its full colour instead of the disabled grey tint.
+                if (_group.members.contains(c.uid))
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: AD.borderAvatar, width: 2),
+                      ),
+                      child: Avatar(seed: c.seed, name: c.name, size: 40, avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl),
                     ),
-                    child: Avatar(seed: c.seed, name: c.name, size: 40, avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl),
+                    title: Text(c.name, style: ADText.rowName(c: AD.textSecondary)),
+                    trailing: _addedPill(),
+                    onTap: null,
+                  )
+                else
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: AD.borderAvatar, width: 2),
+                      ),
+                      child: Avatar(seed: c.seed, name: c.name, size: 40, avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl),
+                    ),
+                    title: Text(c.name, style: ADText.rowName()),
+                    trailing: PhosphorIcon(PhosphorIcons.plusCircle(PhosphorIconsStyle.fill), color: AD.newGroup),
+                    onTap: () { Navigator.pop(ctx); _addMember(c.uid); },
                   ),
-                  title: Text(c.name, style: ADText.rowName()),
-                  trailing: PhosphorIcon(PhosphorIcons.plusCircle(PhosphorIconsStyle.fill), color: AD.newGroup),
-                  onTap: () { Navigator.pop(ctx); _addMember(c.uid); },
-                ),
             ])),
         ]),
       )),
@@ -350,10 +398,13 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                       border: Border.all(color: AD.borderCard, width: 1),
                     ),
                     child: Row(children: [
+                      // [ISSUE-GROUP-DESC-WHITE-1] Real description renders bright
+                      // white (textPrimary); the empty placeholder stays dimmer so it
+                      // still reads as a placeholder, but lifted tertiary -> secondary.
                       Expanded(child: Text(
                           _group.description.isEmpty ? (_amAdmin ? 'Add a group description' : 'No description') : _group.description,
                           style: ADText.preview(
-                              c: _group.description.isEmpty ? AD.textTertiary : AD.textSecondary))),
+                              c: _group.description.isEmpty ? AD.textSecondary : AD.textPrimary))),
                       if (_amAdmin)
                         PhosphorIcon(PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold), size: 16, color: AD.textSecondary),
                     ]),
