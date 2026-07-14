@@ -81,7 +81,12 @@ class ContactsStore {
   Future<void> _save(List<Contact> cs) =>
       DiskCache.write(_key, jsonEncode(cs.map((c) => c.toJson()).toList()));
 
-  /// Add (or update) a contact; de-dupes on uid. Returns the new list.
+  /// EXPLICIT user add (or update); de-dupes on uid. Returns the new list.
+  ///
+  /// ⚠️ This UN-DELETES: it clears any tombstone for `c.uid`. Only call it when
+  /// the USER deliberately added this contact. Automated/background paths that
+  /// re-create contacts from restored data MUST use [addIfNotDeleted] instead —
+  /// see [ISSUE-CONTACT-RESURRECT-1].
   Future<List<Contact>> add(Contact c) async {
     final cs = await load();
     cs.removeWhere((x) => x.uid == c.uid);
@@ -96,6 +101,57 @@ class ContactsStore {
     _changes.add(cs); // live-refresh any open chat list
     _syncUp(cs); // push encrypted copy to the cross-device vault (best-effort)
     return cs;
+  }
+
+  // ── [ISSUE-CONTACT-RESURRECT-1] (owner report 2026-07-14) ──────────────────
+  // Deleted test contacts came back on EVERY reinstall, forever, no matter how
+  // many times the owner deleted them. Root cause: thread resurrection
+  // (`_resurrectThreadsFromMessages`) re-created peers by calling `add()` — the
+  // *explicit user add* entry point — which by contract clears the tombstone and
+  // then `_syncUp`s a blob whose `deleted` map no longer contains the uid. So an
+  // automated resurrection was indistinguishable from "the user re-added them",
+  // and it destroyed the tombstone ON THE SERVER. First reinstall resurrected
+  // them; that same resurrection poisoned the vault, so every later reinstall
+  // resurrected them again.
+  //
+  // This is the restore-safe entry point: it REFUSES to re-create a tombstoned
+  // contact and never touches the deleted/hidden maps. Returns the resulting
+  // list, or null if the uid is tombstoned (caller should skip the row).
+  //
+  // NOTE the tombstone is re-read here, not passed in by the caller: the vault
+  // hydrates asynchronously, so any snapshot the caller took before its own
+  // network round-trips is likely stale. Read late, decide late.
+  Future<List<Contact>?> addIfNotDeleted(Contact c) async {
+    final deleted = await deletedContacts();
+    if (deleted.containsKey(c.uid)) {
+      Analytics.capture('contact_resurrect_blocked', const {});
+      return null; // tombstoned — stays deleted
+    }
+    final cs = await load();
+    cs.removeWhere((x) => x.uid == c.uid);
+    cs.insert(0, c);
+    await _save(cs);
+    _changes.add(cs);
+    _syncUp(cs);
+    return cs;
+  }
+
+  /// Whether this account's vault has been pulled+decrypted (or authoritatively
+  /// confirmed empty) during this process lifetime. Until this is true, the
+  /// local tombstone map may simply not have arrived yet — so any code that
+  /// decides "is this uid deleted?" must not treat a miss as authoritative.
+  static bool get vaultHydrated => _vaultHydratedFor == _scopeKey;
+
+  /// Await vault hydration (bounded). Resolves as soon as the vault has landed,
+  /// or after [timeout] regardless. [ISSUE-CONTACT-RESURRECT-1]: resurrection
+  /// awaits this so it can never race ahead of the tombstones meant to stop it.
+  Future<bool> ensureHydrated(
+      {Duration timeout = const Duration(seconds: 12)}) async {
+    if (vaultHydrated) return true;
+    try {
+      await pullAndMerge().timeout(timeout);
+    } catch (_) {/* best-effort — fall through to the flag */}
+    return vaultHydrated;
   }
 
   // ── [ISSUE-CONTACT-SEMANTICS-1] (owner decision 2026-07-10) ────────────────
@@ -126,6 +182,17 @@ class ContactsStore {
   Future<void> _saveMapKey(String key, Map<String, int> m) =>
       DiskCache.write(key, jsonEncode(m));
 
+  /// Key-set + value equality for the tombstone / hidden maps.
+  /// [ISSUE-CONTACT-RESURRECT-1] — used to decide whether the local maps have
+  /// drifted from the vault's copy and therefore need pushing.
+  static bool _sameMap(Map<String, int> a, Map<String, int> b) {
+    if (a.length != b.length) return false;
+    for (final e in a.entries) {
+      if (b[e.key] != e.value) return false;
+    }
+    return true;
+  }
+
   /// Tombstoned (deleted) contact uids → deleted-at ms.
   Future<Map<String, int>> deletedContacts() => _loadMapKey(_kDeletedKey);
 
@@ -155,16 +222,17 @@ class ContactsStore {
     _syncUp(await load());
   }
 
-  /// LEGACY removal — kept for callers outside the chat-list menu. Now maps to
-  /// the hard delete (tombstoned) since that matches the old visible effect.
-  Future<List<Contact>> remove(String uid) async {
-    final cs = await load();
-    cs.removeWhere((x) => x.uid == uid);
-    await _save(cs);
-    _changes.add(cs);
-    _syncUp(cs);
-    return cs;
-  }
+  /// LEGACY removal — kept for callers outside the chat-list menu. Maps to the
+  /// hard delete (tombstoned) since that matches the old visible effect.
+  ///
+  /// [ISSUE-CONTACT-RESURRECT-1] The docstring has claimed "now maps to the hard
+  /// delete (tombstoned)" since 2026-07-10, but the body did NOT tombstone — it
+  /// just dropped the row and pushed. AvaPhone's user-facing Delete
+  /// (`ava_phone_contacts.dart`) calls this, so deleting a contact THERE
+  /// resurrected on the next pullAndMerge while deleting the same contact in the
+  /// chat list stayed gone. Two delete buttons, two semantics. Now it genuinely
+  /// delegates, so both tombstone.
+  Future<List<Contact>> remove(String uid) => deleteContact(uid);
 
   /// Promote a phone-only `tel:<e164>` contact to a real AvaTOK account once
   /// that caller is discovered to have joined. Drops the synthetic row and adds
@@ -230,7 +298,31 @@ class ContactsStore {
   /// Pull the encrypted contact list from the vault (on login / new device) and
   /// merge it with anything saved locally (union by uid). On any failure the
   /// local list is left untouched. Returns the resulting list.
-  Future<List<Contact>> pullAndMerge() async {
+  // [ISSUE-CONTACT-RESURRECT-1] In-flight guard. main.dart fires pullAndMerge()
+  // unawaited from FIVE places on startup, and ensureHydrated() adds a sixth —
+  // so up to six concurrent runs performed the same load-modify-write over the
+  // `deleted` map and the contact list, and lost each other's updates. (This
+  // codebase already documents the identical hazard for the sibling store: see
+  // chat_state.dart — "calling setRead in a loop would race on the shared file".)
+  // The concrete loss: the user taps Delete, and an in-flight pullAndMerge that
+  // read `deleted` BEFORE that write re-saves the contact and streams it back
+  // into the list — the row reappears in the user's face.
+  //
+  // Collapsing to one shared future also turns the five-way startup stampede
+  // into a single network round-trip.
+  static Future<List<Contact>>? _pullInFlight;
+
+  Future<List<Contact>> pullAndMerge() {
+    final existing = _pullInFlight;
+    if (existing != null) return existing;
+    final fut = _pullAndMergeOnce();
+    _pullInFlight = fut;
+    return fut.whenComplete(() {
+      if (identical(_pullInFlight, fut)) _pullInFlight = null;
+    });
+  }
+
+  Future<List<Contact>> _pullAndMergeOnce() async {
     final id = ApiAuth.identity;
     final local = await load();
     if (id == null) return local;
@@ -332,7 +424,19 @@ class ContactsStore {
       'hidden_count': hidden.length,
     });
     // If the merge differs from the server copy, push the superset back.
-    if (merged.length != remote.length) _syncUp(merged);
+    //
+    // [ISSUE-CONTACT-RESURRECT-1] This used to be `merged.length != remote.length`
+    // — a CONTACT-COUNT-ONLY test. It ignored the deleted/hidden maps entirely,
+    // so any tombstone-only or hide-only mutation whose counts happened to match
+    // was never uploaded. `hideThread` never changes the list length at all, so
+    // on a non-hydrated session it was effectively never synced. Compare the
+    // maps too: a tombstone that doesn't reach the vault is a tombstone that
+    // dies at the next reinstall.
+    final tombstonesDiffer = !_sameMap(deleted, remoteDeleted);
+    final hiddenDiffer = !_sameMap(hidden, remoteHidden);
+    if (merged.length != remote.length || tombstonesDiffer || hiddenDiffer) {
+      _syncUp(merged);
+    }
     return merged;
   }
 
