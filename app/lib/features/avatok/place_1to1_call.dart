@@ -54,23 +54,16 @@ Future<void> place1to1Call(
 }) async {
   if (uid.isEmpty) return;
   final room = 'avatok-$uid';
-  // Caller display name for the callee's incoming-call push (cosmetic; 'AvaTOK' is
-  // the same fallback chat_thread uses).
-  String myName = 'AvaTOK';
-  try {
-    final p = await ProfileStore().load();
-    if (p.displayName.isNotEmpty) myName = p.displayName;
-  } catch (_) {/* fall back to 'AvaTOK' */}
-
-  // [INSTANT-CALL-MOUNT-1] Optimistic mount for NORMAL (non-paid) dialer calls:
-  // open the CallScreen the instant the user taps and run POST /api/call in the
-  // BACKGROUND (mirrors chat_thread._call). PAID (Mode B) calls are deliberately
-  // EXCLUDED — their POST response gates the busy card + escrow-hold lifecycle
-  // (routed:'busy', hold cancellation on 403) and MUST resolve before any UI is
-  // committed, so they keep the awaited path below. The optimistic session runs
-  // the honest guard flow (deferRing → connecting + searching tone, no fake
-  // ringback); _dialerPlaceInBackground feeds the reachability/glare/failure
-  // outcome back into it. Kill switch: RemoteConfig.instantCallMountEnabled.
+  // [INSTANT-CALL-MOUNT-1] Optimistic mount FIRST — BEFORE any `await` — so the
+  // CallScreen appears the instant the user taps, for NORMAL (non-paid) dialer
+  // calls. POST /api/call (and even the local profile-name load for the ring
+  // push) run in the BACKGROUND inside _dialerPlaceInBackground. PAID (Mode B)
+  // calls are deliberately EXCLUDED — their POST response gates the busy card +
+  // escrow-hold lifecycle (routed:'busy', hold cancellation on 403) and MUST
+  // resolve before any UI is committed, so they keep the awaited path below. The
+  // optimistic session runs the honest guard flow (deferRing → connecting +
+  // searching tone, no fake ringback); the helper feeds the reachability/glare/
+  // failure outcome back into it. Kill switch: RemoteConfig.instantCallMountEnabled.
   if (paidHoldId.isEmpty && RemoteConfig.instantCallMountEnabled) {
     if (!context.mounted) return;
     Analytics.capture('call_mount_optimistic',
@@ -88,13 +81,24 @@ Future<void> place1to1Call(
         deferRing: true, // [INSTANT-CALL-MOUNT-1] honest guard flow until placed
       ),
     ));
-    // Place the call off the critical path, then keep this function alive until
-    // the call screen pops (same await semantics as the classic path below).
+    // Place the call (and load the caller name) off the critical path, then keep
+    // this function alive until the call screen pops (same await semantics as the
+    // classic path below).
     // ignore: unawaited_futures
-    _dialerPlaceInBackground(context, uid: uid, name: name, room: room, myName: myName, video: video, avatarUrl: avatarUrl, dialer: dialer);
+    _dialerPlaceInBackground(context, uid: uid, name: name, room: room, video: video, avatarUrl: avatarUrl, dialer: dialer);
     await nav;
     return;
   }
+
+  // Caller display name for the callee's incoming-call push (cosmetic; 'AvaTOK'
+  // is the same fallback chat_thread uses). Awaited path only — the optimistic
+  // path above loads this inside _dialerPlaceInBackground so the mount isn't
+  // blocked on it.
+  String myName = 'AvaTOK';
+  try {
+    final p = await ProfileStore().load();
+    if (p.displayName.isNotEmpty) myName = p.displayName;
+  } catch (_) {/* fall back to 'AvaTOK' */}
 
   // [WP3-ACT-1] Pre-seeded from the initial /api/call response when the server
   // decided 'voicemail'/'agent' and skipped ringing entirely (offline/busy/
@@ -238,12 +242,18 @@ Future<void> _dialerPlaceInBackground(
   required String uid,
   required String name,
   required String room,
-  required String myName,
   required bool video,
   required String avatarUrl,
   required bool dialer,
 }) async {
   final callKind = video ? 'video' : 'audio';
+  // Caller display name for the callee's incoming-call push (cosmetic). Loaded
+  // HERE, off the mount critical path, so the CallScreen already appeared.
+  String myName = 'AvaTOK';
+  try {
+    final p = await ProfileStore().load();
+    if (p.displayName.isNotEmpty) myName = p.displayName;
+  } catch (_) {/* fall back to 'AvaTOK' */}
   try {
     final res = await ApiAuth.postJsonH(kCallUrl, {
       'to': uid,
