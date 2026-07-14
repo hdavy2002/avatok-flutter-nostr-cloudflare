@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -21,6 +22,15 @@ class ClerkClient {
   String? _sessionJwt;            // short-lived Clerk session JWT (verifiable via JWKS)
   int _sessionJwtSoftExpiry = 0;  // epoch s: refresh proactively after this (~TTL-15s)
   int _sessionJwtHardExpiry = 0;  // epoch s: token still genuinely valid until this
+
+  // [AVA-AUTH-401] Session-mint state. sessionToken() runs on EVERY authed request
+  // (ApiAuth._headers → clerkBearer), so anything unguarded here multiplies by the
+  // number of in-flight calls. See _mintOnce/_resolveSessionId for the three fixes:
+  // single-flight, a cached session id, and a failure backoff.
+  String? _sessionId;              // active session id — stable, so cache it
+  Future<String?>? _mintInFlight;  // concurrent callers share ONE mint
+  int _mintBackoffUntil = 0;       // epoch s: don't re-attempt a mint before this
+  int _mintFailures = 0;           // consecutive mint failures → backoff length
 
   ClerkClient([FlutterSecureStorage? s])
       : _storage = s ??
@@ -132,16 +142,34 @@ class ClerkClient {
   /// the cached JWT until its true (HARD) expiry, giving up only once it is
   /// genuinely expired.
   Future<String?> sessionToken() async {
-    await _loadToken();
-    if (_clientToken == null) return null;
-    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    if (_sessionJwt != null && now < _sessionJwtSoftExpiry) return _sessionJwt;
-    final minted = await _mintSessionJwt();
-    if (minted != null) return minted;
-    // Mint failed — serve a still-genuinely-valid cached token instead of nulling
-    // auth and triggering 401s.
-    if (_sessionJwt != null && now < _sessionJwtHardExpiry) return _sessionJwt;
-    return null;
+    // [AVA-AUTH-401] This method must NEVER throw. ApiAuth._headers wraps the
+    // clerkBearer call in `catch (_) {}`, so any exception escaping here silently
+    // drops the Authorization header and the request goes out unauthenticated →
+    // a guaranteed 401 → auth_session_lost → repair → repeat. That swallowed
+    // throw was the 401 loop's ignition source, so everything below is guarded.
+    try {
+      await _loadToken();
+      if (_clientToken == null) return null;
+      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      if (_sessionJwt != null && now < _sessionJwtSoftExpiry) return _sessionJwt;
+      // Minting is failing (Clerk 429/outage/no network). Keep serving the cached
+      // JWT while it is genuinely valid rather than re-hammering FAPI — and hence
+      // re-triggering Clerk's rate limiter — on every single authed request.
+      if (now < _mintBackoffUntil && _sessionJwt != null && now < _sessionJwtHardExpiry) {
+        return _sessionJwt;
+      }
+      final minted = await _mintOnce();
+      if (minted != null) return minted;
+      // Mint failed — serve a still-genuinely-valid cached token instead of nulling
+      // auth and triggering 401s.
+      if (_sessionJwt != null && now < _sessionJwtHardExpiry) return _sessionJwt;
+      return null;
+    } catch (e) {
+      _sx('jwt_guard_tripped', provider: 'clerk', reason: e.runtimeType.toString());
+      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      if (_sessionJwt != null && now < _sessionJwtHardExpiry) return _sessionJwt;
+      return null;
+    }
   }
 
   /// Force a fresh session-JWT mint, bypassing the soft cache. Call on app RESUME
@@ -149,7 +177,24 @@ class ClerkClient {
   /// read/poll loops resume with a valid token instead of 401-storming.
   Future<void> warmSession() async {
     _sessionJwtSoftExpiry = 0; // invalidate the soft cache so we re-mint
+    _mintBackoffUntil = 0;     // an explicit warm is a deliberate retry — clear backoff
+    _mintFailures = 0;
     try { await sessionToken(); } catch (_) {/* best-effort warm-up */}
+  }
+
+  /// Single-flight mint: every concurrent caller awaits ONE in-flight mint.
+  ///
+  /// [AVA-AUTH-401] Previously each authed request minted independently. Once the
+  /// soft cache lapsed, a screenful of concurrent calls (chat read/poll loops, media,
+  /// presence) each fired their own mint — 2 FAPI round-trips apiece. That burst is
+  /// what tripped Clerk's rate limiter; the 429s failed the mints, auth went out with
+  /// no Bearer, and the resulting 401s drove the re-auth churn behind the OTP flood.
+  Future<String?> _mintOnce() {
+    final inFlight = _mintInFlight;
+    if (inFlight != null) return inFlight;
+    final f = _mintSessionJwt().whenComplete(() { _mintInFlight = null; });
+    _mintInFlight = f;
+    return f;
   }
 
   /// One mint attempt with a single retry (network on resume is often briefly
@@ -157,34 +202,93 @@ class ClerkClient {
   Future<String?> _mintSessionJwt() async {
     for (var attempt = 0; attempt < 2; attempt++) {
       try {
-        final sid = await _activeSessionId();
-        if (sid == null) return null;
+        // force on the retry: a stale cached id is the likeliest reason attempt 0 failed.
+        final sid = await _resolveSessionId(force: attempt > 0);
+        if (sid == null) break; // signed out or /client unreadable — no point retrying
         // POST /v1/client/sessions/{sid}/tokens → { jwt: "<RS256 session token>" }
         final body = await _send('/client/sessions/$sid/tokens', body: {});
         final jwt = (body['jwt'] ?? (body['response'] as Map<String, dynamic>?)?['jwt'])?.toString();
         if (jwt != null && jwt.isNotEmpty) {
-          final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-          _sessionJwt = jwt;
-          _sessionJwtSoftExpiry = now + 45; // refresh proactively before the ~60s TTL
-          _sessionJwtHardExpiry = now + 58; // ...but keep serving until truly expired
+          _adoptJwt(jwt);
+          _mintFailures = 0;
+          _mintBackoffUntil = 0;
           return jwt;
         }
-      } on TimeoutException {
-        // Each attempt now fails fast (≤8s via _send). Treat a timeout as a
-        // failed mint so sessionToken() can fall back to the still-valid cached
-        // JWT instead of the exception nulling auth for every in-flight call.
+        _sessionId = null; // rotated/stale session id → re-resolve on the retry
+      } catch (e) {
+        // Catch EVERYTHING, not just TimeoutException. A SocketException here (carrier
+        // DNS, resume flakiness) used to escape sessionToken() → ApiAuth._headers
+        // swallowed it → the request went out with NO Bearer → guaranteed 401.
+        _sx('jwt_mint_failed',
+            provider: 'clerk', reason: e.runtimeType.toString(), detail: e.toString());
       }
     }
+    _noteMintFailure();
     return null;
   }
 
-  Future<String?> _activeSessionId() async {
+  /// Escalating backoff so a persistently failing mint (Clerk 429/outage) degrades
+  /// to the cached JWT instead of one FAPI round-trip per request forever.
+  void _noteMintFailure() {
+    _mintFailures++;
+    const ladder = [2, 5, 15, 30]; // seconds
+    final step = ladder[min(_mintFailures - 1, ladder.length - 1)];
+    _mintBackoffUntil = DateTime.now().millisecondsSinceEpoch ~/ 1000 + step;
+  }
+
+  /// Adopt a freshly minted JWT, deriving the refresh windows from the token's REAL
+  /// `exp` claim instead of assuming a 60s TTL.
+  ///
+  /// [AVA-AUTH-401] The old hard-coded 45s/58s was a guess. Clerk's session-token TTL
+  /// is configurable in the dashboard: if it is SHORTER than 58s the client happily
+  /// served an already-expired JWT (→ 401 storm); if LONGER, we re-minted every 45s
+  /// for no reason and inflated FAPI load. Reading `exp` makes both cases correct.
+  void _adoptJwt(String jwt) {
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    _sessionJwt = jwt;
+    final exp = _jwtExp(jwt);
+    if (exp != null && exp > now) {
+      final ttl = exp - now;
+      _sessionJwtHardExpiry = exp - 2; // 2s clock-skew margin
+      // Refresh at ~75% of life, but NEVER past the hard expiry: on a very short
+      // TTL the 5s floor would otherwise overshoot it, and the soft branch in
+      // sessionToken() would keep serving an already-expired JWT — reintroducing
+      // the exact 401 storm this fix exists to remove.
+      _sessionJwtSoftExpiry = min(now + max(5, (ttl * 3) ~/ 4), _sessionJwtHardExpiry);
+    } else {
+      _sessionJwtSoftExpiry = now + 45; // unparseable exp → previous conservative default
+      _sessionJwtHardExpiry = now + 58;
+    }
+  }
+
+  /// `exp` (epoch seconds) from a JWT payload, or null if unparseable.
+  static int? _jwtExp(String jwt) {
+    try {
+      final parts = jwt.split('.');
+      if (parts.length < 2) return null;
+      final payload = jsonDecode(utf8.decode(base64.decode(base64.normalize(parts[1]))));
+      final exp = (payload as Map<String, dynamic>)['exp'];
+      return exp is int ? exp : int.tryParse(exp.toString());
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// The active session id, cached.
+  ///
+  /// [AVA-AUTH-401] The id is stable for the life of the session, but the old code
+  /// re-fetched `/client` on EVERY mint — doubling FAPI round-trips per mint and, with
+  /// no single-flight, multiplying that by every in-flight request. Cache it; re-resolve
+  /// only when a mint proves it stale.
+  Future<String?> _resolveSessionId({bool force = false}) async {
+    if (!force && _sessionId != null) return _sessionId;
     final body = await _send('/client', get: true);
     final client = body['response'] as Map<String, dynamic>?;
     for (final s in (client?['sessions'] as List?) ?? const []) {
       final m = s as Map<String, dynamic>;
-      if (m['status'] == 'active') return m['id']?.toString();
+      if (m['status'] == 'active') return _sessionId = m['id']?.toString();
     }
+    _sessionId = null;
     return null;
   }
 
@@ -324,10 +428,25 @@ class ClerkClient {
   // (the same setting Google needs). Flow uses Clerk FAPI: /client/sign_ins and
   // /client/sign_ups. Each terminal state emits provider='password' telemetry.
 
-  /// Sign in with email + password; falls back to an emailed code if the
-  /// account has no usable password factor.
-  Future<ClerkStep> signIn(String email, String password) async {
-    _sx('started', provider: 'password');
+  /// Sign in with email + password.
+  ///
+  /// [AVA-AUTH-OTP] Emailing a code is now OPT-IN via [emailCodeRequested], which ONLY
+  /// the "Sign in with an email code instead" action passes. It used to be an implicit
+  /// fall-through: any password attempt that neither completed nor produced a tidy
+  /// "wrong password" error silently asked Clerk to email a 6-digit code. Users never
+  /// requested it and (on the Google path) never saw a code field — they just got a
+  /// mailbox full of "Avatok verification code". Every re-auth cycle sent another.
+  /// A code now leaves Clerk only when a human deliberately asked for one.
+  Future<ClerkStep> signIn(String email, String password,
+      {bool emailCodeRequested = false}) async {
+    _sx('started', provider: emailCodeRequested ? 'email_code' : 'password');
+    if (password.isEmpty && !emailCodeRequested) {
+      // Empty password on the PASSWORD form. Previously this fell straight through
+      // and emailed a code; now it asks, rather than mailing something unrequested.
+      _sx('failed', provider: 'password', reason: 'empty_password_no_fallback');
+      return ClerkStep.error(
+          'Enter your password — or use “Sign in with an email code instead”.');
+    }
     await _send('/client', body: {});
     if (password.isNotEmpty) {
       final body = await _send('/client/sign_ins',
@@ -345,17 +464,26 @@ class ClerkClient {
         _sx('failed', provider: 'password', reason: 'wrong_password', detail: err);
         return ClerkStep.error(err); // genuinely wrong password
       }
-      // otherwise fall through to email-code
+      if (!emailCodeRequested) {
+        // The account has no usable password factor (typically: it was created via
+        // Google). Tell the user which door to use instead of quietly mailing a code.
+        _sx('failed',
+            provider: 'password', reason: 'no_password_factor_no_fallback', detail: err);
+        return ClerkStep.error(err ??
+            'That didn’t work. Try “Continue with Google”, or use “Sign in with an '
+            'email code instead”.');
+      }
     }
     // Identifier-only sign-in → discover email_code factor → email a code.
+    // Only reachable when the user explicitly chose the email-code route.
     final body2 = await _send('/client/sign_ins', body: {'identifier': email.trim()});
     final step = await _prepareSignInEmailCode(body2['response'] as Map<String, dynamic>?);
     if (step != null) {
-      _sx('needs_email_code', provider: 'password', reason: 'signin');
+      _sx('needs_email_code', provider: 'email_code', reason: 'signin');
       return step;
     }
     final err2 = _firstError(body2) ?? 'Sign-in is not available for this account';
-    _sx('failed', provider: 'password', reason: 'signin_unavailable', detail: err2);
+    _sx('failed', provider: 'email_code', reason: 'signin_unavailable', detail: err2);
     return ClerkStep.error(err2);
   }
 
@@ -482,20 +610,28 @@ class ClerkClient {
 
   Future<void> signOut() async {
     await _send('/client'); // DELETE /client → sign out all sessions
-    _clientToken = null;
-    _sessionJwt = null;
-    _sessionJwtSoftExpiry = 0;
-    _sessionJwtHardExpiry = 0;
+    _resetSessionState();
     await _storage.delete(key: 'clerk_client_token');
   }
 
   Future<void> deleteAccount() async {
     await _send('/me'); // DELETE /me → delete the current user
+    _resetSessionState();
+    await _storage.delete(key: 'clerk_client_token');
+  }
+
+  /// [AVA-AUTH-401] Clear every scrap of session state. The cached `_sessionId` and
+  /// mint backoff MUST die with the session too — a stale id surviving a sign-out
+  /// would make the next account's first mint fail and re-enter the 401 loop.
+  void _resetSessionState() {
     _clientToken = null;
     _sessionJwt = null;
     _sessionJwtSoftExpiry = 0;
     _sessionJwtHardExpiry = 0;
-    await _storage.delete(key: 'clerk_client_token');
+    _sessionId = null;
+    _mintInFlight = null;
+    _mintBackoffUntil = 0;
+    _mintFailures = 0;
   }
 
   // ---- helpers ----

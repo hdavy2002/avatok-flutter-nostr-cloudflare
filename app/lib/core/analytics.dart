@@ -216,8 +216,17 @@ class Analytics {
   /// The Clerk session lapsed and an authed call 401'd (e.g. after a backgrounded
   /// app-connect OAuth round-trip). This is the signal that precedes a blank
   /// thread — emitted once per cooldown by the HTTP wrapper, not per failed call.
-  static Future<void> authSessionLost({required String endpoint}) =>
-      capture('auth_session_lost', {'endpoint': endpoint});
+  ///
+  /// [attempt] is the count of CONSECUTIVE unrepaired 401s ([AVA-AUTH-401]); it
+  /// resets on the next successful authed call. attempt==1 is an ordinary lapse;
+  /// a climbing attempt means repair is not working and the client is in the
+  /// re-auth loop that drove the July 2026 OTP-email flood — that distinction was
+  /// previously invisible, since every 401 looked identical in telemetry.
+  static Future<void> authSessionLost({required String endpoint, int? attempt}) =>
+      capture('auth_session_lost', {
+        'endpoint': endpoint,
+        if (attempt != null) 'attempt': attempt,
+      });
 
   /// A connected-apps / Composio call (status, catalog, run) failed — the chat
   /// couldn't reach the user's Google apps (Drive/Gmail/Calendar/…).

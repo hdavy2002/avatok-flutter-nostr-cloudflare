@@ -79,8 +79,10 @@ class _SignInScreenState extends State<SignInScreen> {
 
   // ── Passwordless: email me a sign-in code ────────────────────────────────────
   // Owner decision 2026-06-27: email + email-OTP is the primary sign-in/recovery
-  // path (no phone). signIn() with an empty password triggers Clerk's
-  // identifier-only flow, which emails a 6-digit code → _Mode.verify.
+  // path (no phone). This is the ONLY caller that passes emailCodeRequested:true —
+  // i.e. the only path in the app that can cause Clerk to email a code
+  // ([AVA-AUTH-OTP]). It is a deliberate user tap, and it lands on _Mode.verify,
+  // so a code is never sent without a code field on screen to receive it.
   Future<void> _emailCode() async {
     if (_email.text.trim().isEmpty) {
       setState(() => _error = 'Enter your email');
@@ -90,7 +92,7 @@ class _SignInScreenState extends State<SignInScreen> {
     _provider = 'email_code';
     unawaited(Analytics.capture('email_otp_requested', {'mode': 'signin'}));
     unawaited(Analytics.capture('signup_attempt', {'provider': 'email_code', 'mode': 'signin'}));
-    _handleStep(await widget.clerk.signIn(_email.text, ''));
+    _handleStep(await widget.clerk.signIn(_email.text, '', emailCodeRequested: true));
   }
 
   // ── Email + password ─────────────────────────────────────────────────────────
@@ -100,6 +102,16 @@ class _SignInScreenState extends State<SignInScreen> {
       case _Mode.signIn:
         if (_email.text.trim().isEmpty) {
           setState(() { _busy = false; _error = 'Enter your email'; });
+          return;
+        }
+        // [AVA-AUTH-OTP] Guard here too, so an empty password never even reaches
+        // Clerk. Tapping "Log in" with a blank password used to silently email a
+        // code; the email-code route is now the explicit link below the field.
+        if (_pass.text.isEmpty) {
+          setState(() {
+            _busy = false;
+            _error = 'Enter your password — or use “Sign in with an email code instead”.';
+          });
           return;
         }
         _provider = 'password';

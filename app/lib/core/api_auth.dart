@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
@@ -28,6 +29,15 @@ class ApiAuth {
   static DateTime _lastAuthRepair = DateTime.fromMillisecondsSinceEpoch(0);
   static const Duration _authRepairCooldown = Duration(seconds: 10);
 
+  /// [AVA-AUTH-401] A repair is an authenticated round-trip to Clerk FAPI. Left
+  /// ungoverned it becomes the very storm it is meant to fix: repairs stack, FAPI
+  /// rate-limits us, mints fail, more 401s arrive, more repairs fire. These two
+  /// hold the line — one repair at a time, and an escalating gap when it isn't
+  /// helping. [_consecutiveAuthFailures] resets the moment any authed call succeeds.
+  static bool _repairInFlight = false;
+  static int _consecutiveAuthFailures = 0;
+  static const Duration _authRepairCooldownMax = Duration(seconds: 60);
+
   /// [AVA-IDGATE-1] Invoked (at most once per [_identityPromptCooldown]) when a
   /// PUBLIC action comes back `403 {error:'identity_required', action:...}`. Wired
   /// in main.dart to open the consent + Didit liveness flow, so a gated action pops
@@ -52,9 +62,30 @@ class ApiAuth {
     h['X-Trace-Id'] = explicit ?? Analytics.currentTraceId ?? _traceId();
     try {
       final b = await clerkBearer?.call();
-      if (b != null && b.isNotEmpty) h['Authorization'] = 'Bearer $b';
-    } catch (_) {/* Clerk optional */}
+      if (b != null && b.isNotEmpty) {
+        h['Authorization'] = 'Bearer $b';
+      } else if (clerkBearer != null) {
+        // [AVA-AUTH-401] A null/empty bearer means this request is about to go out
+        // unauthenticated and WILL come back 401. That was previously invisible: we
+        // saw the resulting auth_session_lost but never that the token was simply
+        // absent, so the 401 loop looked like a server problem. Name it at source.
+        _bearerMissing(url, 'empty');
+      }
+    } catch (e) {
+      // Clerk is optional, so we still send the request — but an exception here is
+      // NOT benign: it strips auth and guarantees the 401. Never swallow it silently.
+      _bearerMissing(url, e.runtimeType.toString());
+    }
     return h;
+  }
+
+  static void _bearerMissing(String url, String reason) {
+    try {
+      Analytics.capture('auth_bearer_missing', {
+        'endpoint': Uri.parse(url).path,
+        'reason': reason,
+      });
+    } catch (_) {/* telemetry must never break an outbound request */}
   }
 
   /// Public signed headers for a manual request (e.g. an SSE streaming POST that
@@ -77,6 +108,9 @@ class ApiAuth {
     final uri = Uri.parse(url);
     try {
       final res = await run();
+      // [AVA-AUTH-401] Auth is demonstrably working again — clear the escalating
+      // repair backoff so a later, unrelated 401 gets a prompt first repair.
+      if (res.statusCode < 400) _consecutiveAuthFailures = 0;
       if (res.statusCode >= 400) {
         // Carry host + a short body snippet + content-type so api_error can tell
         // an EDGE rejection (Cloudflare, non-JSON body) from a genuine WORKER 400
@@ -127,14 +161,33 @@ class ApiAuth {
   /// blanked the thread after an app-connect OAuth round-trip.
   static void _onUnauthorized(String endpoint) {
     final now = DateTime.now();
-    if (now.difference(_lastAuthRepair) < _authRepairCooldown) return;
+    if (now.difference(_lastAuthRepair) < _currentAuthCooldown()) return;
+    // A repair already running will refresh the session for everyone; a second one
+    // only adds FAPI load. Concurrent 401s from a screenful of calls must collapse
+    // into ONE repair, not one each.
+    if (_repairInFlight) return;
     _lastAuthRepair = now;
-    Analytics.authSessionLost(endpoint: endpoint);
+    _consecutiveAuthFailures++;
+    Analytics.authSessionLost(
+        endpoint: endpoint, attempt: _consecutiveAuthFailures);
     final hook = onAuthExpired;
-    if (hook != null) {
-      // ignore: unawaited_futures
-      hook();
-    }
+    if (hook == null) return;
+    _repairInFlight = true;
+    unawaited(Future(() async {
+      try {
+        await hook();
+      } catch (_) {/* repair is best-effort — a failure just means the next 401 retries */}
+    }).whenComplete(() => _repairInFlight = false));
+  }
+
+  /// Escalating gap between repairs: 10s → 20s → 40s → 60s (cap). A repair that
+  /// isn't working must not be retried at the same rate indefinitely — each attempt
+  /// re-mints against Clerk FAPI, and that storm is what earns the rate limiting
+  /// that produces still more 401s. Reset by any successful authed response.
+  static Duration _currentAuthCooldown() {
+    if (_consecutiveAuthFailures <= 1) return _authRepairCooldown;
+    final secs = _authRepairCooldown.inSeconds * (1 << min(_consecutiveAuthFailures - 1, 3));
+    return Duration(seconds: min(secs, _authRepairCooldownMax.inSeconds));
   }
 
   /// [AVA-IDGATE-1] Coordinated, rate-limited reaction to a 403 identity_required.
