@@ -141,6 +141,12 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
 
   // Chat-list filter chips: 'all' | 'fav' | 'unread' | 'groups' | 'c:<keyword>'.
   String _filter = 'all';
+
+  // [ISSUE-CHAT-SEARCH-1] Inline thread-search query (owner request 2026-07-14).
+  // Composes with _filter — the chip narrows, then the query narrows again.
+  String _query = '';
+  final _searchCtl = TextEditingController();
+
   final _filterStore = FilterStore();
   List<ChatFilter> _customFilters = [];
   String? _clerkName; // real name from Clerk → drawer header
@@ -717,17 +723,37 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       if (mounted) setState(() {});
       final convs = await Db.I.distinctDmConvs();
       if (convs.isEmpty) return;
+      // [ISSUE-CONTACT-RESURRECT-1] (owner report 2026-07-14) WAIT for the vault
+      // before resurrecting anything. On a fresh install local storage is wiped,
+      // so the tombstone map starts EMPTY and only fills in when pullAndMerge
+      // lands — which main.dart fires unawaited. We used to read `deleted` once,
+      // up front, then spend seconds in per-peer Directory.resolve() calls; by
+      // the time we re-added a peer the tombstones had arrived but our snapshot
+      // still said "nothing is deleted". Hydrating first closes that race.
+      final hydrated = await _contactsStore.ensureHydrated();
+      if (!hydrated) {
+        // [ISSUE-CONTACT-RESURRECT-1] ABORT rather than guess. An un-hydrated
+        // tombstone map is empty-because-unknown, not empty-because-nothing-is-
+        // deleted, so proceeding would resurrect every deleted contact and then
+        // _syncUp them the moment connectivity returns. The trade is asymmetric:
+        // skipping costs a thread not appearing until the next launch (self-
+        // healing, invisible); running costs permanent cross-device data loss.
+        Analytics.capture('threads_resurrect_skipped_unhydrated',
+            {'convs_scanned': convs.length});
+        return;
+      }
       final myUid = _id?.uid ?? '';
       final known = {for (final c in await _contactsStore.load()) c.uid};
-      // [ISSUE-CONTACT-SEMANTICS-1] Deleted contacts are tombstoned — never
-      // resurrect them from message history.
-      final deleted = await _contactsStore.deletedContacts();
       var restored = 0;
+      var blocked = 0;
       for (final conv in convs) {
         final uid = conv.convKey.startsWith('1:') ? conv.convKey.substring(2) : '';
         if (uid.isEmpty || uid == myUid || known.contains(uid)) continue;
-        if (deleted.containsKey(uid)) continue;
         if (uid.startsWith('tel:')) continue; // receptionist threads have their own lane
+        // Re-read the tombstones per candidate — cheap (a DiskCache read) and
+        // correct even if the vault lands mid-loop. Never hoist this out.
+        final deleted = await _contactsStore.deletedContacts();
+        if (deleted.containsKey(uid)) { blocked++; continue; }
         Contact? c;
         try { c = await Directory.resolve(uid); } catch (_) {}
         // [ISSUE-CONTACT-SEMANTICS-1] Peer no longer resolvable (deleted/test
@@ -736,15 +762,24 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         // can reply to.
         if (c == null) continue;
         try {
-          await _contactsStore.add(c); // streams _changes → list refreshes live
+          // [ISSUE-CONTACT-RESURRECT-1] MUST be addIfNotDeleted, never add().
+          // add() is the *explicit user add* path: it clears the tombstone and
+          // pushes a tombstone-free blob to the vault, which is exactly how the
+          // owner's deleted test accounts kept coming back after every
+          // reinstall. addIfNotDeleted re-checks the tombstone at write time and
+          // leaves the deleted/hidden maps alone.
+          final res = await _contactsStore.addIfNotDeleted(c);
+          if (res == null) { blocked++; continue; } // tombstoned — stays gone
           known.add(uid);
           restored++;
         } catch (_) {/* best-effort per peer */}
       }
-      if (restored > 0) {
+      if (restored > 0 || blocked > 0) {
         Analytics.capture('threads_resurrected', {
           'count': restored,
+          'blocked_tombstoned': blocked,
           'convs_scanned': convs.length,
+          'vault_hydrated': hydrated,
         });
       }
     } catch (_) {/* best-effort — never disturb the list */} finally {
@@ -796,6 +831,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _searchCtl.dispose(); // [ISSUE-CHAT-SEARCH-1]
     _inboxSub?.cancel(); // stop listening, but leave the shared SyncHub socket alive
     _contactsSub?.cancel();
     super.dispose();
@@ -1034,6 +1070,12 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
               _ensureContact(u.senderPub);
             }
           }
+          // [ISSUE-BADGE-UNREAD-1] ⚠️ The set of frame kinds counted as unread
+          // here is mirrored in `AppDb.kCountableKinds` (core/db.dart), which the
+          // launcher badge counts from. The two MUST move in lockstep — if you
+          // add a countable `t` below, add it there in the SAME commit, or the
+          // badge will disagree with the list (a badge counting something the
+          // list doesn't show is unclearable: that was the 2026-07-14 bug).
         } else if (t == 'text' || t == 'media' || t == 'gtext' || t == 'gmedia') {
           if (u.senderPub == id.uid) return; // my own message
           final key = env['gid'] != null ? 'g:${env['gid']}' : '1:${u.senderPub}';
@@ -1118,19 +1160,35 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   }
 
   final Set<String> _autoAdding = {}; // uids currently being auto-added (dedupe)
+
+  /// Materialise a contact for the sender of an inbound message.
+  ///
+  /// [ISSUE-CONTACT-RESURRECT-1] THIS is the hot resurrection path — it fires on
+  /// every inbound text/media/gtext/gmedia frame, and SyncHub replays the full
+  /// history (cursor=0) on every launch, so after a reinstall every historical
+  /// sender flows through here. It used to call `add()` (the explicit-user-add
+  /// path), which clears the tombstone and pushes a tombstone-free blob to the
+  /// vault — destroying the tombstone server-side. That is why the owner's
+  /// deleted test accounts came back on every reinstall, forever.
+  ///
+  /// It must therefore be tombstone-aware. `addIfNotDeleted` re-reads the
+  /// tombstone at write time and refuses; a deleted contact stays deleted even
+  /// if their old messages replay.
   Future<void> _ensureContact(String uid) async {
     if (uid.isEmpty || uid == _id?.uid) return;
     if (_contacts.any((c) => c.uid == uid) || !_autoAdding.add(uid)) return;
     final placeholder = Contact(
         uid: uid,
         name: uid.length > 14 ? '${uid.substring(0, 10)}…${uid.substring(uid.length - 4)}' : uid);
-    var list = await _contactsStore.add(placeholder);
-    if (mounted) setState(() => _contacts = list);
+    var list = await _contactsStore.addIfNotDeleted(placeholder);
+    if (list == null) return; // tombstoned — do not resurrect
+    if (mounted) setState(() => _contacts = list!);
     try {
       final resolved = await Directory.resolve(uid);
       if (resolved != null && resolved.uid == uid) {
-        list = await _contactsStore.add(resolved); // de-dupes on uid
-        if (mounted) setState(() => _contacts = list);
+        list = await _contactsStore.addIfNotDeleted(resolved); // de-dupes on uid
+        if (list == null) return;
+        if (mounted) setState(() => _contacts = list!);
       }
     } catch (_) {/* placeholder stands */}
   }
@@ -1147,8 +1205,11 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     final name = (callerName != null && callerName.trim().isNotEmpty)
         ? callerName.trim()
         : formatTelDisplay(e164);
-    final list = await _contactsStore.add(
+    // [ISSUE-CONTACT-RESURRECT-1] Automated (fires off a `recept` frame), so it
+    // must respect tombstones — see _ensureContact.
+    final list = await _contactsStore.addIfNotDeleted(
         Contact(uid: uid, name: name, phone: e164, handle: kProvisionalContactHandle));
+    if (list == null) return; // tombstoned — do not resurrect
     if (mounted) setState(() => _contacts = list);
   }
 
@@ -1326,6 +1387,10 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       if (tel != null) return receptTelConvKey(_id?.uid ?? '', tel);
       return '1:${c.uid}';
     }
+    // [ISSUE-CHAT-SEARCH-1] Hoisted above the row build: an active query changes
+    // which rows are even ELIGIBLE (archived ones become reachable, below).
+    final q = _query.trim().toLowerCase();
+    final searching = q.isNotEmpty;
     final contactChats = _contacts.where((c) {
       final k = contactKey(c);
       // [ISSUE-CONTACT-SEMANTICS-1] "Remove contact" hides the THREAD but keeps
@@ -1337,7 +1402,13 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         final tsMs = ts > 0 && ts < 100000000000 ? ts * 1000 : ts; // s → ms
         if (tsMs <= hiddenAt) return false;
       }
-      return !blocked.contains(k) && (_showArchived || !archived.contains(k));
+      // [ISSUE-CHAT-SEARCH-1] While searching, archived threads ARE eligible.
+      // Otherwise searching an archived contact returned "no chats match" AND
+      // the Archived toggle that would reveal them is hidden — a dead end that
+      // confidently lies about a thread that exists. Matched archived rows are
+      // tagged in the row itself so it's obvious why they showed up.
+      return !blocked.contains(k) &&
+          (searching || _showArchived || !archived.contains(k));
     }).map((c) {
       final k = contactKey(c);
       // Phone-only callers can't be greeted with "Say hi" — their thread is a
@@ -1376,7 +1447,26 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
           return true;
       }
     }
-    final rows = realRows.where(keep).toList();
+    // [ISSUE-CHAT-SEARCH-1] (owner request 2026-07-14) Inline thread search,
+    // applied AFTER the filter chip so the two compose. Instant — no debounce,
+    // no minimum length: this is a pure in-memory match over rows already built.
+    // (The full-screen SearchScreen still exists for global/online message
+    // search; this bar only narrows the visible thread list.)
+    final rows = realRows.where(keep).where((c) {
+      if (q.isEmpty) return true;
+      if (c.name.toLowerCase().contains(q)) return true;
+      // Also match the last-message preview, so he can find a thread by
+      // something that was said in it.
+      if (c.last.toLowerCase().contains(q)) return true;
+      // Number match: strip non-digits from both sides so "4042" finds
+      // "+1 404 269 4747".
+      final qd = q.replaceAll(RegExp(r'[^0-9]'), '');
+      if (qd.isNotEmpty) {
+        final sd = c.seed.replaceAll(RegExp(r'[^0-9]'), '');
+        if (sd.isNotEmpty && sd.contains(qd)) return true;
+      }
+      return false;
+    }).toList();
 
     return Scaffold(
       key: _scaffoldKey,
@@ -1461,9 +1551,10 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                 const SizedBox(width: 10),
                 // (Header "Chat with Ava" sparkle icon removed — owner request
                 // 2026-06-28. Ava is reachable via the shell-wide "Ava" action.)
-                _hdrIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold), _openSearch,
-                    color: AD.iconSearch),
-                const SizedBox(width: 2),
+                // [ISSUE-CHAT-SEARCH-1] Header magnifier removed — owner request
+                // 2026-07-14. Search is now the inline dock under the tab strip.
+                // The full SearchScreen is still reachable from the overflow menu
+                // (_openSearch, kept for that call site).
                 // Notification bell + orange unread count → the notification center.
                 _badged(
                   _hdrIcon(PhosphorIcons.bell(PhosphorIconsStyle.bold), _openNotifications,
@@ -1482,14 +1573,32 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
           ),
           Expanded(
             child: IndexedStack(index: _tab, children: [
-              // Chat tab body — just the list now; the header lives above,
+              // Chat tab body — search dock + the list; the header lives above,
               // shared with Community/Call log.
-              ListView(
-                children: [
+              Column(children: [
+                // [ISSUE-CHAT-SEARCH-1] Inline thread search, pinned directly
+                // under the tab strip so it never scrolls away. Groups and Calls
+                // each carry their own dock (same AdSearchDock widget).
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+                  child: AdSearchDock(
+                    controller: _searchCtl,
+                    hint: 'Search chats',
+                    onChanged: (v) => setState(() => _query = v),
+                  ),
+                ),
+                Expanded(
+                  child: ListView(
+                    children: [
                   // [SAFE-GATE-2] "Message requests (N)" — pending stranger-gate
                   // threads, collapsed at the very top (only on the All filter).
+                  // [ISSUE-CHAT-SEARCH-1] Deliberately NOT suppressed while
+                  // searching. Requests live outside `realRows`, so the query
+                  // can't match them; hiding the section too would let the
+                  // "No chats match" state confidently deny a thread that
+                  // exists. The collapsed header stays put as the affordance.
                   if (_filter == 'all') ..._messageRequestsSection(),
-                  if (archivedCount > 0)
+                  if (archivedCount > 0 && !searching)
                     InkWell(
                       onTap: () => setState(() => _showArchived = !_showArchived),
                       child: Container(
@@ -1523,11 +1632,18 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                       padding: const EdgeInsets.only(top: 80),
                       child: Center(
                         child: Column(mainAxisSize: MainAxisSize.min, children: [
-                          PhosphorIcon(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold),
+                          PhosphorIcon(
+                              searching
+                                  ? PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold)
+                                  : PhosphorIcons.chatCircle(PhosphorIconsStyle.bold),
                               size: 40, color: AD.textFaint),
                           const SizedBox(height: 14),
                           Text(
-                              _filter == 'all' ? 'No chats yet — tap + to start one' : 'Nothing here',
+                              searching
+                                  ? 'No chats match "${_query.trim()}"'
+                                  : _filter == 'all'
+                                      ? 'No chats yet — tap + to start one'
+                                      : 'Nothing here',
                               textAlign: TextAlign.center,
                               style: ADText.preview(c: AD.textTertiary)),
                         ]),
@@ -1541,8 +1657,10 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                       onTap: () => _openChat(c),
                       onLongPress: () => _chatRowFlags(c),
                     ),
-                ],
-              ),
+                    ],
+                  ),
+                ),
+              ]),
               GroupsTab(
                   identity: _id,
                   contacts: _contacts,
@@ -1860,9 +1978,12 @@ class _ChatRow extends StatelessWidget {
                     Flexible(child: Text(chat.name,
                         maxLines: 1, overflow: TextOverflow.ellipsis,
                         style: ADText.rowName())),
+                    // [ISSUE-MUTE-ICON-RED-1] Bright red, not the dim
+                    // textTertiary it used to be — owner request 2026-07-14.
+                    // Filled (not outline) so the colour actually reads at 14px.
                     if (muted) Padding(padding: const EdgeInsets.only(left: 4),
-                        child: PhosphorIcon(PhosphorIcons.bellSlash(PhosphorIconsStyle.bold),
-                            size: 13, color: AD.textTertiary)),
+                        child: PhosphorIcon(PhosphorIcons.bellSlash(PhosphorIconsStyle.fill),
+                            size: 14, color: AD.iconMuted)),
                     if (pinned) Padding(padding: const EdgeInsets.only(left: 4),
                         child: PhosphorIcon(PhosphorIcons.pushPin(PhosphorIconsStyle.fill),
                             size: 13, color: AD.textTertiary)),
