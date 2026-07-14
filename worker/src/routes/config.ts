@@ -327,6 +327,15 @@ export interface PlatformConfig {
   // after the SMS role qualification + device test matrix passes and the Play Store
   // default-SMS-handler declaration is approved. Client mirror: RemoteConfig.avaSms.
   avaSms: boolean;
+  // AvaDial contact-book backup/restore (owner request 2026-07-13; scaled 2026-07-14).
+  // `contactsBookEnabled` is the master kill switch for /api/contacts/book* — when
+  // false every route 503s (panic off). Default ON (the feature is live + free).
+  // `contactsBookPaged` gates the paginated GET + background R2 chunking job; when
+  // false the endpoint still serves the full book in one response (older behaviour)
+  // and no chunks are built. Client mirror: RemoteConfig honours pagination purely
+  // from the response shape, so these flags are server-authoritative.
+  contactsBookEnabled: boolean;
+  contactsBookPaged: boolean;
   // §11/§15 money + timing constants — flag-overridable via KV so a value tweak
   // never needs a redeploy. These are VALUES, not design; see plan §11.
   minServiceRate: number;          // MIN_SERVICE_RATE — floor for a caller-paid rate/min (owner proposed 20)
@@ -507,6 +516,10 @@ const DEFAULTS: PlatformConfig = {
   // and Play's default-SMS-handler declaration is approved. Client mirror:
   // RemoteConfig.avaSms.
   avaSms: false,
+  // Contact-book backup/restore — LIVE + free. Paged download + R2 chunking ON so
+  // large books restore a page at a time. Panic-off via contactsBookEnabled=false.
+  contactsBookEnabled: true,
+  contactsBookPaged: true,
   // §11/§15 constants — flag-overridable values, not design. Defaults per plan.
   minServiceRate: 20,
   agentRateAPerMin: 6,

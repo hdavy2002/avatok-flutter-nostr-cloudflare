@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' show min;
 
+import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
 import '../../core/ava_log.dart';
 import '../../core/config.dart';
@@ -139,21 +141,48 @@ class AvaContactBook {
   /// Upload the local book to AvaTOK's servers (server-side encrypted). Returns
   /// the count on success, or null on failure. Callers gate on user consent.
   Future<int?> uploadBackup() async {
+    final t0 = DateTime.now();
+    final trace = TraceContext.mint();
     try {
       final contacts = await load();
       final payload = contacts.map((e) => e.toJson()).toList();
       final body = jsonEncode(payload);
-      final resp = await ApiAuth.postJson(kContactBookUrl, {'contacts': payload});
+      // Larger books need a longer window than the 8s default (a 4.5k-contact
+      // book is a few MB over TLS on a slow cell link).
+      final resp = await ApiAuth.postJson(kContactBookUrl, {'contacts': payload},
+          timeout: const Duration(seconds: 30));
+      final ms = DateTime.now().difference(t0).inMilliseconds;
       if (resp.statusCode == 200) {
         await ContactBackupPrefs.I.markServerSync();
         // Remember what we uploaded so auto-sync won't re-send identical data.
         await ContactBackupPrefs.I.setSyncedSig(_sig(body));
+        Analytics.capture('avadial_contact_backup_uploaded', {
+          'count': contacts.length,
+          'bytes': body.length,
+          'ms': ms,
+          'trace_id': trace,
+        });
         return contacts.length;
       }
       AvaLog.I.log('avadial', 'contact book upload http ${resp.statusCode}');
+      Analytics.capture('avadial_contact_backup_failed', {
+        'reason': 'http',
+        'status': resp.statusCode,
+        'count': contacts.length,
+        'ms': ms,
+        'trace_id': trace,
+      });
       return null;
-    } catch (e) {
+    } catch (e, st) {
       AvaLog.I.log('avadial', 'contact book upload failed: $e');
+      Analytics.error(
+          domain: 'contacts', code: 'backup_upload', message: '$e', action: 'uploadBackup');
+      Analytics.captureException(e, st, screen: 'contacts_backup');
+      Analytics.capture('avadial_contact_backup_failed', {
+        'reason': 'exception',
+        'ms': DateTime.now().difference(t0).inMilliseconds,
+        'trace_id': trace,
+      });
       return null;
     }
   }
@@ -192,56 +221,245 @@ class AvaContactBook {
     return h.toRadixString(16);
   }
 
-  /// Restore the book from AvaTOK's servers onto THIS device: rebuilds any missing
-  /// device contacts (new phone / lost SIM) and re-applies the AvaTOK extras.
-  /// Returns the number of contacts restored, or null on failure. Existing device
-  /// contacts (matched by number) are left untouched — no duplicates.
-  Future<int?> restoreBackup() async {
+  // ── Restore queue tunables ────────────────────────────────────────────────
+  static const _kPageLimit = 200;       // contacts fetched per server page
+  static const _kWriteBatch = 60;       // device writes per native transaction / yield
+  static const _kJobKey = 'ava_contact_restore_job'; // resume state (account-scoped)
+  static const _kPageTimeout = Duration(seconds: 25);
+  static const _kBatchTimeout = Duration(seconds: 45);
+  static const _kOverallDeadline = Duration(minutes: 10);
+  static const _kMaxPageRetries = 3;
+
+  /// Restore the book from AvaTOK's servers onto THIS device as a ROBUST,
+  /// RESUMABLE, BATCHED job (owner request 2026-07-14) — the old version fetched
+  /// the whole book and wrote 1000s of contacts one-by-one with no yields, no
+  /// timeouts and an O(n²) override save, which froze the app ("contacts stuck").
+  ///
+  /// Now: paginate the download (a few hundred at a time), apply each page to the
+  /// device in small batches that YIELD to the UI between them, guard every network
+  /// page and every write batch with a TIMEOUT so a single stall can't hang the
+  /// flow, bulk-save overrides once per page, and persist progress so a kill /
+  /// backgrounding resumes instead of restarting. Existing device contacts (matched
+  /// by number) are never duplicated. [onProgress] reports (done, total); total is
+  /// 0 until the server reports it. Returns contacts restored this run, or null on a
+  /// hard failure (a partial count is returned when it made progress but was cut
+  /// short — tapping Restore again resumes).
+  Future<int?> restoreBackup({void Function(int done, int total)? onProgress}) async {
+    final t0 = DateTime.now();
+    final trace = TraceContext.mint();
+    final deadline = t0.add(_kOverallDeadline);
+    Analytics.capture('avadial_contact_restore_started', {'trace_id': trace});
+
+    // Warm the on-device dedupe set ONCE (the old code relied on lookup(), which
+    // write() wiped after the first contact — so it treated everyone as missing).
+    final onDevice = <String>{};
     try {
-      final resp = await ApiAuth.getSigned(kContactBookUrl);
-      if (resp.statusCode != 200) {
-        AvaLog.I.log('avadial', 'contact book restore http ${resp.statusCode}');
-        return null;
+      for (final c in await DeviceContacts.I.load(force: true)) {
+        onDevice.add(DeviceContacts.normKey(c.number));
       }
-      final body = jsonDecode(resp.body) as Map<String, dynamic>;
-      if (body['found'] != true) return 0;
-      final list = (body['contacts'] as List<dynamic>? ?? const [])
-          .whereType<Map>()
-          .map((m) => AvaBookContact.fromJson(m.map((k, v) => MapEntry('$k', v))))
-          .toList();
-      await DeviceContacts.I.load(); // warm the dedupe index
-      var restored = 0;
-      for (final c in list) {
-        if (c.number.isEmpty) continue;
-        final onDevice = DeviceContacts.I.lookup(c.number) != null;
-        String? id;
-        if (!onDevice) {
-          id = await DeviceContacts.I.write(
-            name: c.name.isEmpty ? c.number : c.name,
+    } catch (_) {/* permission denied / unsupported — treat as empty */}
+
+    final doneKeys = <String>{}; // guards intra-run cross-page duplicates
+    final job = await _loadRestoreJob();
+    var offset = job?.offset ?? 0;
+    var restored = job?.restored ?? 0;
+    var total = job?.total ?? -1;
+    var pages = 0;
+    var serverPaged = true;
+
+    try {
+      while (true) {
+        if (DateTime.now().isAfter(deadline)) {
+          await _saveRestoreJob(offset, restored, total);
+          Analytics.capture('avadial_contact_restore_failed',
+              {'reason': 'deadline', 'restored': restored, 'offset': offset, 'trace_id': trace});
+          return restored; // resumable
+        }
+
+        final page = await _fetchPage(offset, _kPageLimit, trace);
+        if (page == null) {
+          await _saveRestoreJob(offset, restored, total);
+          Analytics.capture('avadial_contact_restore_failed',
+              {'reason': 'fetch', 'restored': restored, 'offset': offset, 'trace_id': trace});
+          return restored > 0 ? restored : null;
+        }
+        if (!page.found) {
+          await _clearRestoreJob();
+          Analytics.capture('avadial_contact_restore_completed', {
+            'restored': restored, 'total': 0, 'found': false,
+            'ms': DateTime.now().difference(t0).inMilliseconds, 'trace_id': trace,
+          });
+          return restored; // 0 when there was never a backup
+        }
+        if (page.total >= 0) {
+          total = page.total;
+        } else {
+          serverPaged = false; // old worker returned the whole book at once
+        }
+        final list = page.contacts;
+        if (list.isEmpty) break;
+
+        // Partition this page: brand-new (write to device) vs already-present
+        // (just re-apply AVA extras). Overrides are collected and saved in ONE
+        // bulk write per page (kills the O(n²) per-contact save).
+        final toWrite = <Map<String, dynamic>>[];
+        final overrides = <ContactOverride>[];
+        for (final c in list) {
+          if (c.number.isEmpty) continue;
+          final key = DeviceContacts.normKey(c.number);
+          if (doneKeys.contains(key)) continue;
+          doneKeys.add(key);
+          final already = onDevice.contains(key);
+          if (!already) toWrite.add(_writeMapFor(c));
+          overrides.add(ContactOverride(
             number: c.number,
+            displayName: c.name.isEmpty ? null : c.name,
+            local: !already, // ensure it stays visible even if a device write missed
+            avatokNumber: c.avatokNumber,
             personalEmail: c.personalEmail,
             businessEmail: c.businessEmail,
             linkedin: c.linkedin,
-            note: _noteFor(c),
+            customFields: c.customFields,
+          ));
+        }
+
+        // Apply device writes in sub-batches, yielding to the UI between each so
+        // the spinner animates and the app never appears frozen.
+        var pageWritten = 0;
+        for (var i = 0; i < toWrite.length; i += _kWriteBatch) {
+          final slice = toWrite.sublist(i, min(i + _kWriteBatch, toWrite.length));
+          var w = 0;
+          try {
+            w = await DeviceContacts.I.writeBatch(slice).timeout(_kBatchTimeout, onTimeout: () {
+              Analytics.capture('avadial_contact_restore_batch_timeout',
+                  {'size': slice.length, 'offset': offset, 'trace_id': trace});
+              return 0;
+            });
+          } catch (e) {
+            Analytics.error(
+                domain: 'contacts', code: 'restore_batch', message: '$e', action: 'writeBatch');
+            w = 0;
+          }
+          pageWritten += w;
+          restored += w;
+          onProgress?.call(
+              (offset + i + slice.length), total < 0 ? 0 : total);
+          await Future<void>.delayed(Duration.zero); // let the UI breathe
+        }
+
+        // One bulk override save for the whole page.
+        try {
+          await ContactOverrides.I.saveMany(overrides);
+        } catch (e) {
+          Analytics.error(domain: 'contacts', code: 'restore_overrides', message: '$e');
+        }
+
+        pages++;
+        offset += list.length;
+        await _saveRestoreJob(offset, restored, total);
+        Analytics.capture('avadial_contact_restore_progress', {
+          'page': pages, 'offset': offset, 'page_count': list.length,
+          'written': pageWritten, 'restored': restored, 'total': total, 'trace_id': trace,
+        });
+        onProgress?.call(offset, total < 0 ? 0 : total);
+
+        // Termination: old (unpaged) worker gives everything in one page; a paged
+        // worker signals the end via nextOffset==null or offset>=total.
+        if (!serverPaged) break;
+        if (page.nextOffset == null) break;
+        if (total >= 0 && offset >= total) break;
+        if (list.length < _kPageLimit) break;
+      }
+
+      await _clearRestoreJob();
+      final ms = DateTime.now().difference(t0).inMilliseconds;
+      Analytics.capture('avadial_contact_restore_completed', {
+        'restored': restored, 'total': total < 0 ? restored : total,
+        'pages': pages, 'ms': ms, 'found': true, 'trace_id': trace,
+      });
+      return restored;
+    } catch (e, st) {
+      AvaLog.I.log('avadial', 'contact book restore failed: $e');
+      Analytics.captureException(e, st, screen: 'contacts_backup');
+      Analytics.capture('avadial_contact_restore_failed',
+          {'reason': 'exception', 'restored': restored, 'trace_id': trace});
+      await _saveRestoreJob(offset, restored, total);
+      return restored > 0 ? restored : null;
+    }
+  }
+
+  /// Fetch one restore page with retry + backoff. Sends `?offset&limit`; a paged
+  /// worker returns {total, nextOffset}, an older one ignores the params and
+  /// returns the whole book (handled by the caller via [_RestorePage.total] == -1).
+  /// Returns null only after exhausting retries (hard network failure).
+  Future<_RestorePage?> _fetchPage(int offset, int limit, String trace) async {
+    for (var attempt = 0; attempt < _kMaxPageRetries; attempt++) {
+      try {
+        final url = '$kContactBookUrl?offset=$offset&limit=$limit';
+        final resp = await ApiAuth.getSigned(url, timeout: _kPageTimeout);
+        if (resp.statusCode == 200) {
+          final body = jsonDecode(resp.body) as Map<String, dynamic>;
+          if (body['found'] != true) return const _RestorePage.notFound();
+          final list = (body['contacts'] as List<dynamic>? ?? const [])
+              .whereType<Map>()
+              .map((m) => AvaBookContact.fromJson(m.map((k, v) => MapEntry('$k', v))))
+              .toList();
+          return _RestorePage(
+            found: true,
+            contacts: list,
+            total: (body['total'] as num?)?.toInt() ?? -1,
+            nextOffset: (body['nextOffset'] as num?)?.toInt(),
           );
         }
-        await ContactOverrides.I.save(ContactOverride(
-          number: c.number,
-          displayName: c.name.isEmpty ? null : c.name,
-          local: !onDevice && id == null,
-          avatokNumber: c.avatokNumber,
-          personalEmail: c.personalEmail,
-          businessEmail: c.businessEmail,
-          linkedin: c.linkedin,
-          customFields: c.customFields,
-        ));
-        restored++;
+        AvaLog.I.log('avadial', 'contact book restore page http ${resp.statusCode}');
+        Analytics.capture('avadial_contact_restore_page_error',
+            {'status': resp.statusCode, 'offset': offset, 'attempt': attempt, 'trace_id': trace});
+      } catch (e) {
+        AvaLog.I.log('avadial', 'contact book restore page failed: $e');
+        Analytics.capture('avadial_contact_restore_page_error',
+            {'status': 0, 'offset': offset, 'attempt': attempt, 'trace_id': trace});
       }
-      return restored;
-    } catch (e) {
-      AvaLog.I.log('avadial', 'contact book restore failed: $e');
+      // Backoff before the next attempt (0.5s, 1s, 2s…), never blocking forever.
+      await Future<void>.delayed(Duration(milliseconds: 500 * (1 << attempt)));
+    }
+    return null;
+  }
+
+  Map<String, dynamic> _writeMapFor(AvaBookContact c) => {
+        'name': c.name.isEmpty ? c.number : c.name,
+        'number': c.number,
+        if (c.personalEmail != null) 'personalEmail': c.personalEmail,
+        if (c.businessEmail != null) 'businessEmail': c.businessEmail,
+        if (c.linkedin != null) 'linkedin': c.linkedin,
+        'note': _noteFor(c),
+      };
+
+  Future<_RestoreJob?> _loadRestoreJob() async {
+    try {
+      final raw = await DiskCache.read(_kJobKey);
+      if (raw == null || raw.isEmpty) return null;
+      final j = jsonDecode(raw) as Map<String, dynamic>;
+      return _RestoreJob(
+        offset: (j['offset'] as num?)?.toInt() ?? 0,
+        restored: (j['restored'] as num?)?.toInt() ?? 0,
+        total: (j['total'] as num?)?.toInt() ?? -1,
+      );
+    } catch (_) {
       return null;
     }
+  }
+
+  Future<void> _saveRestoreJob(int offset, int restored, int total) async {
+    try {
+      await DiskCache.write(
+          _kJobKey, jsonEncode({'offset': offset, 'restored': restored, 'total': total}));
+    } catch (_) {/* best-effort */}
+  }
+
+  Future<void> _clearRestoreJob() async {
+    try {
+      await DiskCache.delete(_kJobKey);
+    } catch (_) {}
   }
 
   String? _noteFor(AvaBookContact c) {
@@ -269,6 +487,36 @@ class AvaContactBook {
       return null;
     }
   }
+}
+
+/// One page of a paginated restore. [total] is -1 when the server did not report
+/// it (an older, unpaged worker that returned the whole book at once); [nextOffset]
+/// is null when there are no more pages.
+class _RestorePage {
+  final bool found;
+  final List<AvaBookContact> contacts;
+  final int total;
+  final int? nextOffset;
+  const _RestorePage({
+    required this.found,
+    required this.contacts,
+    required this.total,
+    required this.nextOffset,
+  });
+  const _RestorePage.notFound()
+      : found = false,
+        contacts = const [],
+        total = 0,
+        nextOffset = null;
+}
+
+/// Persisted restore progress so a killed/backgrounded restore resumes instead of
+/// starting over. Stored account-scoped via [DiskCache].
+class _RestoreJob {
+  final int offset;
+  final int restored;
+  final int total;
+  const _RestoreJob({required this.offset, required this.restored, required this.total});
 }
 
 /// User consent + status for backing the contact book up to AvaTOK's servers

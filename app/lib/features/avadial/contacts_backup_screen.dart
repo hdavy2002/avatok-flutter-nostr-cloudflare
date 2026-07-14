@@ -12,9 +12,9 @@ import 'avadial_theme.dart';
 /// backing their AvaTOK contact book up to AvaTOK's own servers — independent of
 /// Google/Gmail, so a lost account or SIM never loses their contacts.
 ///
-/// Phase 1 (this build): consent switch + a local snapshot of the contact book,
-/// server-side-encrypted backup chosen (owner decision). The actual upload/restore
-/// to AvaTOK's servers ships in the next update; the UI says so plainly.
+/// Upload AND restore are LIVE (server-side encrypted, R2-backed). Restore runs as
+/// a resumable, batched, paginated job (see [AvaContactBook.restoreBackup]) with
+/// live progress, so restoring thousands of contacts never freezes the app.
 class ContactsBackupScreen extends StatefulWidget {
   const ContactsBackupScreen({super.key});
 
@@ -29,6 +29,8 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
   bool _loading = true;
   bool _busy = false;
   bool _restoring = false;
+  int _rDone = 0; // restore progress: contacts processed
+  int _rTotal = 0; // restore progress: total (0 until the server reports it)
 
   @override
   void initState() {
@@ -105,8 +107,17 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
       ),
     );
     if (ok != true) return;
-    setState(() => _restoring = true);
-    final n = await AvaContactBook.I.restoreBackup();
+    setState(() {
+      _restoring = true;
+      _rDone = 0;
+      _rTotal = 0;
+    });
+    final n = await AvaContactBook.I.restoreBackup(onProgress: (done, total) {
+      if (mounted) setState(() {
+        _rDone = done;
+        _rTotal = total;
+      });
+    });
     Analytics.capture('avadial_contact_restore', {'restored': n ?? -1});
     await _load();
     if (mounted) {
@@ -184,6 +195,18 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
                   loading: _restoring,
                   onPressed: (_busy || _restoring) ? null : _restore,
                 ),
+                if (_restoring)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Text(
+                      _rTotal > 0
+                          ? 'Restoring… $_rDone of $_rTotal contacts'
+                          : (_rDone > 0
+                              ? 'Restoring… $_rDone contacts'
+                              : 'Preparing your backup…'),
+                      style: ZineText.sub(size: 12.5, color: AvaDialTheme.textSoft),
+                    ),
+                  ),
                 const SizedBox(height: 20),
                 Text('HOW IT WORKS', style: ZineText.kicker(color: AvaDialTheme.textMute)),
                 const SizedBox(height: 8),

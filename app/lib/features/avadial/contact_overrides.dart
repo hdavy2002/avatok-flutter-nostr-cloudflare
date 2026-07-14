@@ -178,6 +178,24 @@ class ContactOverrides {
     await _saveMap(m);
   }
 
+  /// Bulk upsert — used by contact-book RESTORE, which applies thousands of
+  /// overrides at once. Calling [save] per contact re-reads + rewrites the WHOLE
+  /// overrides file every time (O(n²) — a primary cause of the restore hang on
+  /// large books). This loads the map ONCE, merges every record, and writes ONCE.
+  /// Preserves any existing [hidden] flag per number, same as [save].
+  Future<int> saveMany(Iterable<ContactOverride> items) async {
+    final list = items.toList();
+    if (list.isEmpty) return 0;
+    final m = await _loadMap();
+    for (final o in list) {
+      final key = DeviceContacts.normKey(o.number);
+      final existing = m[key];
+      m[key] = o.copyWith(hidden: o.hidden || (existing?.hidden ?? false));
+    }
+    await _saveMap(m);
+    return list.length;
+  }
+
   /// Hide a number from the Contacts tab ("Remove contact" / "Delete contact").
   /// Never deletes the underlying device contact — just Ava's own view of it.
   Future<void> hide(String number) async {

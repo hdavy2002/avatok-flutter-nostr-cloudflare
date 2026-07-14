@@ -213,6 +213,10 @@ export default {
       try {
         if (batch.queue.startsWith("money-dlq")) {
           await moneyDlq(env, msg.body);
+        } else if (batch.queue.startsWith("contacts-chunk")) {
+          // Contact-book chunking (dormant until a CONTACTS queue is bound; today
+          // the chunk job runs inline via ctx.waitUntil in contacts_backup.ts).
+          await cbook.contactsChunkConsume(env, msg.body);
         } else if (batch.queue.startsWith("liveness-verify")) {
           // [LIVENESS-V3] the shared liveness-verify queue now carries BOTH V2
           // ({uid,sid}) and V3 ({v3:true,uid,sid}) messages. Discriminate on the
@@ -610,7 +614,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // needed, server-side encrypted, free). See routes/contacts_backup.ts.
       if (p === "/api/contacts/book/status" && req.method === "GET") return await cbook.contactBookStatus(req, env);
       if (p === "/api/contacts/book" && req.method === "GET") return await cbook.contactBookGet(req, env);
-      if (p === "/api/contacts/book" && req.method === "POST") return await cbook.contactBookPut(req, env);
+      if (p === "/api/contacts/book" && req.method === "POST") return await cbook.contactBookPut(req, env, ctx);
 
       // --- communities ---
       if (p === "/api/community" && req.method === "POST") return await api.communityUpsert(req, env);

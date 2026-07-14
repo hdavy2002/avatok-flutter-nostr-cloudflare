@@ -96,6 +96,37 @@ class DeviceContacts {
     return id;
   }
 
+  /// BULK-create device contacts (contact-book RESTORE fast path). Each entry is a
+  /// map with keys name/number/personalEmail/businessEmail/linkedin/note. Uses the
+  /// native multi-contact batch when available (one provider transaction per ~60),
+  /// and falls back to per-contact [write] on older builds / iOS. Clears the
+  /// in-memory cache ONCE at the end (not per contact — the per-write clear() is a
+  /// correctness+perf trap during a large restore). Returns the number written.
+  Future<int> writeBatch(List<Map<String, dynamic>> contacts) async {
+    if (contacts.isEmpty) return 0;
+    if (!await ensureWritePermission()) return 0;
+    final n = await AvaDialChannel.I.writeContactsBatch(contacts);
+    if (n >= 0) {
+      clear(); // invalidate stale in-memory cache once
+      return n;
+    }
+    // Native batch unavailable — write one at a time, but DON'T clear per write.
+    var ok = 0;
+    for (final c in contacts) {
+      final id = await AvaDialChannel.I.writeContact(
+        name: (c['name'] as String?) ?? (c['number'] as String? ?? ''),
+        number: (c['number'] as String?) ?? '',
+        personalEmail: c['personalEmail'] as String?,
+        businessEmail: c['businessEmail'] as String?,
+        linkedin: c['linkedin'] as String?,
+        note: c['note'] as String?,
+      );
+      if (id != null) ok++;
+    }
+    clear();
+    return ok;
+  }
+
   /// Update an existing device contact by [id]. Returns true on success.
   Future<bool> update({
     required String id,

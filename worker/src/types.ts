@@ -36,6 +36,11 @@ export interface Env {
   // binding resolves at deploy time; livenessVerify() falls back to ctx.waitUntil
   // when .send() throws (binding missing or queue not yet created).
   LIVENESS_QUEUE?: Queue;
+  // Contact-book chunking (2026-07-14). Optional: the queue is not yet provisioned,
+  // so scheduleChunk() falls back to ctx.waitUntil (same pattern as LIVENESS_QUEUE).
+  // Bind "contacts-chunk" (producer + self-consumer) once created to move the
+  // chunk job off the request lifecycle for very large books at 1M-user scale.
+  Q_CONTACTS?: Queue;
 
   // Workers AI — image moderation (public uploads)
   AI: Ai;

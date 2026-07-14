@@ -1,20 +1,31 @@
-// Contact-book backup/restore (owner request 2026-07-13) — the "don't rely on
-// Gmail" lane. A user's AvaTOK contact book (their phone contacts merged with the
-// extra details they add in AvaTOK — AvaTOK number, emails, LinkedIn, custom
-// fields) is stored on AvaTOK's OWN servers so a lost Google account or SIM can
-// never lock them out of their contacts.
+// Contact-book backup/restore (owner request 2026-07-13; scaled 2026-07-14) — the
+// "don't rely on Gmail" lane. A user's AvaTOK contact book (their phone contacts
+// merged with the extra details they add in AvaTOK — AvaTOK number, emails,
+// LinkedIn, custom fields) is stored on AvaTOK's OWN servers so a lost Google
+// account or SIM can never lock them out of their contacts.
 //
-//   POST /api/contacts/book         → contactBookPut     — store the caller's book
-//   GET  /api/contacts/book         → contactBookGet     — return the caller's book
-//   GET  /api/contacts/book/status  → contactBookStatus  — metadata only (count/updated)
+//   POST /api/contacts/book              → contactBookPut     — store the caller's book
+//   GET  /api/contacts/book              → contactBookGet     — full book (legacy) OR
+//   GET  /api/contacts/book?offset&limit → contactBookGet     — one PAGE (new clients)
+//   GET  /api/contacts/book/status       → contactBookStatus  — metadata only (count/updated/paged)
 //
 // MODEL — server-side encrypted, NOT zero-knowledge (owner decision 2026-07-13:
 // "easy restore with just an AvaTOK login"). The plaintext JSON arrives over TLS;
 // we encrypt it at rest with AES-256-GCM under a per-account key derived from the
 // KEY_WRAP_MASTER secret via HKDF-SHA256 (same scheme as routes/keybackup.ts), so
-// a raw D1 dump never exposes contacts. On restore the authed account just signs
+// a raw D1/R2 dump never exposes contacts. On restore the authed account just signs
 // in and pulls its book back — no recovery passphrase to forget. All access is
 // Clerk-session gated (`requireUser`), uid-scoped, and rate-limited.
+//
+// SCALE (2026-07-14, owner: "1M users, thousands of contacts each — robust queue").
+// The single encrypted blob still lives in R2 (latest-wins). On write we ALSO kick
+// a background CHUNKING job — via the CONTACTS queue when bound, else ctx.waitUntil
+// (same "queue-first, waitUntil-fallback" pattern as liveness) — that splits the
+// book into fixed-size ENCRYPTED PAGES in R2 plus a small D1 manifest. Paginated
+// GET then serves a page by reading only the chunks it needs (no decrypting the
+// whole 25MB per page), so restore streams "a few hundred at a time" and scales.
+// Until the chunk job finishes (or when the paged flag is off) paged GET falls back
+// to decrypt-and-slice of the full blob, so it is always correct, just less cheap.
 //
 // FREE on purpose: this is a safety/lock-out-prevention feature, so unlike the
 // premium R2 device-sync lane (routes/backup.ts) there is NO entitlement gate.
@@ -22,6 +33,7 @@ import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, isFail } from "../authz";
 import { rateLimit } from "../money";
+import { readConfig } from "./config";
 
 const WRAP_INFO = "avatok-contacts-book-v1";
 const enc = new TextEncoder();
@@ -32,14 +44,24 @@ const dec = new TextDecoder();
 // only exists to keep a single request sane; R2 itself would take far more.
 const MAX_BYTES = 25 * 1024 * 1024;
 
-// R2 object key for a uid's encrypted contact book (single latest-wins object).
+// Contacts per on-disk chunk. GET's ?limit can differ; we read whichever chunks
+// cover the requested [offset, offset+limit) window and slice.
+const CHUNK_SIZE = 200;
+// Safety cap on a single paged response so a giant ?limit can't blow memory.
+const MAX_PAGE = 1000;
+
+// R2 object key for a uid's full (latest-wins) encrypted contact book.
 function r2Key(uid: string): string {
   return `contacts-book/${uid}`;
 }
+// R2 object key for one encrypted PAGE of a uid's book.
+function chunkKey(uid: string, page: number): string {
+  return `contacts-book/${uid}/p/${page}`;
+}
 
-// Metadata only in D1; the ciphertext blob lives in R2. `wrapped` is kept
-// nullable for backward-compat with the earlier inline-blob shape (if a row was
-// ever written before this migration, GET still reads it).
+// Metadata only in D1; the ciphertext blob lives in R2. `wrapped` is kept nullable
+// for backward-compat with the earlier inline-blob shape (if a row was ever written
+// before this migration, GET still reads it).
 async function ensureTable(env: Env): Promise<void> {
   await env.DB_META.prepare(
     `CREATE TABLE IF NOT EXISTS contact_book_backup (
@@ -48,6 +70,19 @@ async function ensureTable(env: Env): Promise<void> {
        count      INTEGER NOT NULL,
        alg        TEXT NOT NULL,
        created_at INTEGER NOT NULL,
+       updated_at INTEGER NOT NULL
+     )`,
+  ).run();
+}
+
+// Manifest for the chunked layout — one row per uid, written by the chunk job.
+async function ensureManifest(env: Env): Promise<void> {
+  await env.DB_META.prepare(
+    `CREATE TABLE IF NOT EXISTS contact_book_manifest (
+       uid        TEXT PRIMARY KEY,
+       total      INTEGER NOT NULL,
+       page_size  INTEGER NOT NULL,
+       pages      INTEGER NOT NULL,
        updated_at INTEGER NOT NULL
      )`,
   ).run();
@@ -102,13 +137,109 @@ async function decryptJson(env: Env, uid: string, blob: string): Promise<string 
   }
 }
 
+// Best-effort operational metric (Analytics Engine) — same sink index the fetch
+// handler uses. Never throws into the request path.
+function metric(env: Env, op: string, uid: string, count: number, ms: number): void {
+  try {
+    env.ANALYTICS?.writeDataPoint({ blobs: [`contacts_${op}`, uid], doubles: [count, ms], indexes: ["contacts"] });
+  } catch { /* best-effort */ }
+}
+
+/** Read + decrypt the caller's FULL book into an array (or null if none/decrypt-fail). */
+async function loadFullBook(env: Env, uid: string, inlineWrapped: string | null): Promise<unknown[] | null> {
+  let blob = inlineWrapped;
+  if (!blob) {
+    const obj = await env.BACKUP_R2.get(r2Key(uid));
+    if (!obj) return null;
+    blob = await obj.text();
+  }
+  const clear = await decryptJson(env, uid, blob);
+  if (clear === null) return null;
+  try {
+    const arr = JSON.parse(clear);
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * CHUNK JOB — split the caller's current book into fixed-size encrypted R2 pages
+ * plus a D1 manifest. Idempotent (latest-wins), safe to re-run, and cheap enough
+ * to run inline in ctx.waitUntil OR from a queue consumer. Never throws to callers.
+ */
+export async function buildContactChunks(env: Env, uid: string): Promise<void> {
+  const t0 = Date.now();
+  try {
+    const obj = await env.BACKUP_R2.get(r2Key(uid));
+    if (!obj) return;
+    const clear = await decryptJson(env, uid, await obj.text());
+    if (clear === null) return;
+    let arr: unknown[] = [];
+    try { const p = JSON.parse(clear); arr = Array.isArray(p) ? p : []; } catch { arr = []; }
+
+    const total = arr.length;
+    const pages = Math.ceil(total / CHUNK_SIZE);
+    for (let i = 0; i < pages; i++) {
+      const slice = arr.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+      const wrapped = await encryptJson(env, uid, JSON.stringify(slice));
+      await env.BACKUP_R2.put(chunkKey(uid, i), wrapped, { httpMetadata: { contentType: "text/plain" } });
+    }
+
+    // Drop stale chunks left over from a previously larger book.
+    await ensureManifest(env);
+    const prev = await env.DB_META
+      .prepare("SELECT pages FROM contact_book_manifest WHERE uid=?1")
+      .bind(uid)
+      .first<{ pages: number }>();
+    if (prev && prev.pages > pages) {
+      for (let i = pages; i < prev.pages; i++) {
+        try { await env.BACKUP_R2.delete(chunkKey(uid, i)); } catch { /* best-effort */ }
+      }
+    }
+
+    const now = Date.now();
+    await env.DB_META
+      .prepare(
+        `INSERT INTO contact_book_manifest (uid, total, page_size, pages, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT(uid) DO UPDATE SET total=?2, page_size=?3, pages=?4, updated_at=?5`,
+      )
+      .bind(uid, total, CHUNK_SIZE, pages, now)
+      .run();
+    metric(env, "chunk", uid, total, Date.now() - t0);
+  } catch (e) {
+    console.error("[contacts] buildContactChunks failed:", String(e));
+  }
+}
+
+/** Queue consumer entry (dormant until a CONTACTS queue is bound). */
+export async function contactsChunkConsume(env: Env, body: unknown): Promise<void> {
+  const uid = (body as { uid?: string })?.uid;
+  if (uid) await buildContactChunks(env, uid);
+}
+
+/** Kick the chunk job: prefer the queue when bound, else run inline via waitUntil. */
+function scheduleChunk(env: Env, ctx: ExecutionContext, uid: string): void {
+  const run = (async () => {
+    if (env.Q_CONTACTS) {
+      try { await env.Q_CONTACTS.send({ uid, updated: Date.now() }); return; } catch { /* fall through */ }
+    }
+    await buildContactChunks(env, uid);
+  })();
+  try { ctx.waitUntil(run); } catch { /* ctx absent → fire-and-forget */ void run; }
+}
+
 /** POST /api/contacts/book { contacts:[...] } — store the caller's contact book. */
-export async function contactBookPut(req: Request, env: Env): Promise<Response> {
-  const ctx = await requireUser(req, env);
-  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
-  const limited = await rateLimit(env, `cbook_put:${ctx.uid}`, 60, 3600);
+export async function contactBookPut(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  const ctxUser = await requireUser(req, env);
+  if (isFail(ctxUser)) return json({ error: ctxUser.error }, ctxUser.status);
+  const cfg = await readConfig(env);
+  if (cfg.contactsBookEnabled === false) return json({ error: "disabled", flag: "contactsBookEnabled" }, 503);
+  const limited = await rateLimit(env, `cbook_put:${ctxUser.uid}`, 60, 3600);
   if (limited) return limited;
 
+  const t0 = Date.now();
   let body: any;
   try { body = await req.json(); } catch { return json({ error: "bad json" }, 400); }
   const contacts = Array.isArray(body?.contacts) ? body.contacts : null;
@@ -120,11 +251,11 @@ export async function contactBookPut(req: Request, env: Env): Promise<Response> 
   }
 
   const now = Date.now();
-  const wrapped = await encryptJson(env, ctx.uid, plaintext);
+  const wrapped = await encryptJson(env, ctxUser.uid, plaintext);
   // Store the (already-encrypted) blob in R2; keep only metadata in D1.
-  await env.BACKUP_R2.put(r2Key(ctx.uid), wrapped, {
+  await env.BACKUP_R2.put(r2Key(ctxUser.uid), wrapped, {
     httpMetadata: { contentType: "text/plain" },
-    customMetadata: { uid: ctx.uid, count: String(contacts.length), updated: String(now) },
+    customMetadata: { uid: ctxUser.uid, count: String(contacts.length), updated: String(now) },
   });
   await ensureTable(env);
   await env.DB_META
@@ -133,46 +264,113 @@ export async function contactBookPut(req: Request, env: Env): Promise<Response> 
        VALUES (?1, NULL, ?2, 'v1r2', ?3, ?3)
        ON CONFLICT(uid) DO UPDATE SET wrapped=NULL, count=?2, alg='v1r2', updated_at=?3`,
     )
-    .bind(ctx.uid, contacts.length, now)
+    .bind(ctxUser.uid, contacts.length, now)
     .run();
+
+  // Background: (re)build the paginated chunks so restore can stream pages.
+  if (cfg.contactsBookPaged !== false) scheduleChunk(env, ctx, ctxUser.uid);
+
+  metric(env, "put", ctxUser.uid, contacts.length, Date.now() - t0);
   return json({ ok: true, count: contacts.length, updatedAt: now });
 }
 
-/** GET /api/contacts/book — return the caller's decrypted contact book. */
+/**
+ * GET /api/contacts/book — return the caller's decrypted contact book.
+ *  • no params → the FULL book (legacy clients).
+ *  • ?offset&limit → one PAGE + {total, offset, nextOffset} (new clients).
+ */
 export async function contactBookGet(req: Request, env: Env): Promise<Response> {
-  const ctx = await requireUser(req, env);
-  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
-  const limited = await rateLimit(env, `cbook_get:${ctx.uid}`, 60, 3600);
+  const ctxUser = await requireUser(req, env);
+  if (isFail(ctxUser)) return json({ error: ctxUser.error }, ctxUser.status);
+  const cfg = await readConfig(env);
+  if (cfg.contactsBookEnabled === false) return json({ error: "disabled", flag: "contactsBookEnabled" }, 503);
+  const limited = await rateLimit(env, `cbook_get:${ctxUser.uid}`, 120, 3600);
   if (limited) return limited;
+  const t0 = Date.now();
   await ensureTable(env);
+  const uid = ctxUser.uid;
   const row = await env.DB_META
     .prepare("SELECT wrapped, count, updated_at FROM contact_book_backup WHERE uid=?1")
-    .bind(ctx.uid)
+    .bind(uid)
     .first<{ wrapped: string | null; count: number; updated_at: number }>();
   if (!row) return json({ found: false, contacts: [] });
-  // Blob lives in R2 (current); fall back to the legacy inline column if present.
-  let blob = row.wrapped;
-  if (!blob) {
-    const obj = await env.BACKUP_R2.get(r2Key(ctx.uid));
-    if (!obj) return json({ found: false, error: "blob_missing" }, 410);
-    blob = await obj.text();
+
+  const sp = new URL(req.url).searchParams;
+  const hasPaging = sp.has("offset") || sp.has("limit");
+
+  if (hasPaging && cfg.contactsBookPaged !== false) {
+    const offset = Math.max(0, parseInt(sp.get("offset") || "0", 10) || 0);
+    const limit = Math.min(MAX_PAGE, Math.max(1, parseInt(sp.get("limit") || "200", 10) || 200));
+
+    // Fast path: serve from pre-built chunks when the manifest is ready.
+    await ensureManifest(env);
+    const man = await env.DB_META
+      .prepare("SELECT total, page_size, pages FROM contact_book_manifest WHERE uid=?1")
+      .bind(uid)
+      .first<{ total: number; page_size: number; pages: number }>();
+
+    if (man && man.page_size > 0) {
+      const total = man.total;
+      if (offset >= total) {
+        metric(env, "get_page", uid, 0, Date.now() - t0);
+        return json({ found: true, contacts: [], count: 0, total, offset, nextOffset: null, updatedAt: row.updated_at });
+      }
+      const startChunk = Math.floor(offset / man.page_size);
+      const endChunk = Math.floor((offset + limit - 1) / man.page_size);
+      const acc: unknown[] = [];
+      for (let i = startChunk; i <= endChunk && i < man.pages; i++) {
+        const obj = await env.BACKUP_R2.get(chunkKey(uid, i));
+        if (!obj) { acc.length = 0; break; } // a chunk is missing → fall back below
+        const clear = await decryptJson(env, uid, await obj.text());
+        if (clear === null) { acc.length = 0; break; }
+        try { const p = JSON.parse(clear); if (Array.isArray(p)) acc.push(...p); } catch { /* skip */ }
+      }
+      if (acc.length > 0) {
+        const localStart = offset - startChunk * man.page_size;
+        const page = acc.slice(localStart, localStart + limit);
+        const nextOffset = offset + page.length < total ? offset + page.length : null;
+        metric(env, "get_page", uid, page.length, Date.now() - t0);
+        return json({ found: true, contacts: page, count: page.length, total, offset, nextOffset, updatedAt: row.updated_at });
+      }
+      // else: chunks not usable yet → decrypt-and-slice fallback below.
+    }
+
+    // Fallback: decrypt the full blob and slice (correct, just not as cheap).
+    const all = await loadFullBook(env, uid, row.wrapped);
+    if (all === null) return json({ found: false, error: "decrypt_failed" }, 500);
+    const total = all.length;
+    const page = all.slice(offset, offset + limit);
+    const nextOffset = offset + page.length < total ? offset + page.length : null;
+    metric(env, "get_page_fallback", uid, page.length, Date.now() - t0);
+    return json({ found: true, contacts: page, count: page.length, total, offset, nextOffset, updatedAt: row.updated_at });
   }
-  const clear = await decryptJson(env, ctx.uid, blob);
-  if (clear === null) return json({ found: false, error: "decrypt_failed" }, 500);
-  let contacts: unknown = [];
-  try { contacts = JSON.parse(clear); } catch { contacts = []; }
-  return json({ found: true, contacts, count: row.count, updatedAt: row.updated_at });
+
+  // Legacy: full book in one response.
+  const all = await loadFullBook(env, uid, row.wrapped);
+  if (all === null) return json({ found: false, error: "decrypt_failed" }, 500);
+  metric(env, "get_full", uid, all.length, Date.now() - t0);
+  return json({ found: true, contacts: all, count: row.count, updatedAt: row.updated_at });
 }
 
 /** GET /api/contacts/book/status — metadata only (no contact data). */
 export async function contactBookStatus(req: Request, env: Env): Promise<Response> {
-  const ctx = await requireUser(req, env);
-  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const ctxUser = await requireUser(req, env);
+  if (isFail(ctxUser)) return json({ error: ctxUser.error }, ctxUser.status);
   await ensureTable(env);
   const row = await env.DB_META
     .prepare("SELECT count, updated_at FROM contact_book_backup WHERE uid=?1")
-    .bind(ctx.uid)
+    .bind(ctxUser.uid)
     .first<{ count: number; updated_at: number }>();
   if (!row) return json({ found: false });
-  return json({ found: true, count: row.count, updatedAt: row.updated_at });
+  let paged = false;
+  let pageSize = CHUNK_SIZE;
+  try {
+    await ensureManifest(env);
+    const man = await env.DB_META
+      .prepare("SELECT page_size FROM contact_book_manifest WHERE uid=?1")
+      .bind(ctxUser.uid)
+      .first<{ page_size: number }>();
+    if (man) { paged = true; pageSize = man.page_size; }
+  } catch { /* manifest optional */ }
+  return json({ found: true, count: row.count, updatedAt: row.updated_at, paged, pageSize });
 }
