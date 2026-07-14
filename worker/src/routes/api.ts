@@ -994,10 +994,103 @@ export async function contactsSync(req: Request, env: Env): Promise<Response> {
   return json({ stored: 0, matched: [] });
 }
 
+// [AVA-MISSEDCALL-1] Phone-presence match RE-ENABLED (owner instruction 2026-07-14),
+// deliberately REVERSING the 2026-06-27 privacy lock documented above: AvaTOK
+// membership is now resolved from the caller's real phone number so the missed-call
+// overlay can light the AvaTOK icon. Matches ALL accounts by phone_hash regardless of
+// phone_discoverable — the owner's instruction is explicitly to identify AvaTOK users
+// by their private number.
+//
+// GATED by the `missedCallOverlay` platform flag (master kill switch): while that flag
+// is false this endpoint still returns nothing, preserving the old privacy behaviour
+// until the feature is switched on in KV. Flipping the flag back to false instantly
+// restores the lock.
+//
+// Contract: POST { hashes?: string[], numbers?: string[] }.
+//   - `hashes` = sha256 hex of the E.164 number (preferred — the raw number never
+//     leaves the device).
+//   - `numbers` = raw numbers we normalize + hash server-side (convenience fallback).
+// Capped at 500 per call. Returns { matched: [{ hash, uid, name, avatar_url,
+// avatok_number }] } for the subset that map to an AvaTOK account.
+export type AvatokPhoneMatch = {
+  hash: string;
+  uid: string;
+  name: string | null;
+  avatar_url: string | null;
+  avatok_number: string | null;
+};
+
+/**
+ * [AVA-MISSEDCALL-1] Shared phone-presence match core, used by both /api/contacts/match
+ * (Clerk-auth) and /api/missedcall/lookup (device-token-auth). Accepts sha256(E.164)
+ * hashes and/or raw numbers (normalized + hashed here), caps at 500, and returns the
+ * subset that map to an AvaTOK account. Matches ALL accounts by phone_hash regardless of
+ * phone_discoverable — the owner's 2026-07-14 instruction is to identify AvaTOK users by
+ * their private number. Callers are responsible for the `missedCallOverlay` flag gate.
+ */
+export async function matchAvatokPhones(
+  env: Env,
+  input: { hashes?: unknown; numbers?: unknown },
+): Promise<AvatokPhoneMatch[]> {
+  const hashes = new Set<string>();
+  if (Array.isArray(input.hashes)) {
+    for (const h of input.hashes) {
+      if (typeof h === "string" && /^[0-9a-f]{64}$/.test(h)) hashes.add(h);
+    }
+  }
+  if (Array.isArray(input.numbers)) {
+    for (const n of input.numbers) {
+      if (typeof n === "string") {
+        const e164 = normalizePhone(n);
+        if (e164.replace(/\D/g, "").length >= 6) hashes.add(await sha256Hex(e164));
+      }
+    }
+  }
+  const list = Array.from(hashes).slice(0, 500);
+  if (list.length === 0) return [];
+
+  const db = metaSession(env);
+  const matched: AvatokPhoneMatch[] = [];
+  // Chunk the IN(...) to stay under D1's bind-var ceiling.
+  const CHUNK = 90;
+  for (let i = 0; i < list.length; i += CHUNK) {
+    const slice = list.slice(i, i + CHUNK);
+    const placeholders = slice.map((_, k) => "?" + (k + 1)).join(",");
+    const rows = await db
+      .prepare(
+        `SELECT phone_hash, uid, display_name, avatar_url, avatok_number_display
+           FROM users WHERE phone_hash IN (${placeholders})`,
+      )
+      .bind(...slice)
+      .all<{
+        phone_hash: string;
+        uid: string;
+        display_name: string | null;
+        avatar_url: string | null;
+        avatok_number_display: string | null;
+      }>();
+    for (const r of rows.results ?? []) {
+      matched.push({
+        hash: r.phone_hash,
+        uid: r.uid,
+        name: r.display_name,
+        avatar_url: r.avatar_url,
+        avatok_number: r.avatok_number_display,
+      });
+    }
+  }
+  return matched;
+}
+
 export async function contactsMatch(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
-  return json({ matched: [] });
+
+  const cfg = await readConfig(env);
+  if (!cfg.missedCallOverlay) return json({ matched: [] });
+
+  const b = (await req.json().catch(() => ({}))) as { hashes?: unknown; numbers?: unknown };
+  return json({ matched: await matchAvatokPhones(env, b) });
 }
 
 export function contactsList(): Response {

@@ -89,6 +89,16 @@ class MainActivity : FlutterFragmentActivity() {
         //   1. The SMS notification tap sets route="avadial/compose" + number.
         //   2. An ACTION_SENDTO on sms:/smsto:/mms:/mmsto: (SmsComposeAlias) — parse
         //      the recipient from the intent data URI (scheme-specific part before '?').
+        // [AVA-MISSEDCALL-1] "Open in AvaTOK" from the missed-call overlay (View profile /
+        // AvaTOK action). Route extra "avadial/openDial" + number/avatok_number → forward
+        // so the shell opens the caller's contact / dialer. DARK unless the overlay fired it.
+        if (intent?.getStringExtra("route") == "avadial/openDial") {
+            ai.avatok.avadial.AvaDialPlugin.notifyOpenDial(
+                intent.getStringExtra("number"),
+                intent.getStringExtra("avatok_number"),
+            )
+        }
+
         if (intent?.getStringExtra("route") == "avadial/compose") {
             ai.avatok.avadial.AvaDialPlugin.notifyComposeLaunch(intent.getStringExtra("number"))
         } else if (intent?.action == Intent.ACTION_SENDTO) {

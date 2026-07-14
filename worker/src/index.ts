@@ -151,6 +151,7 @@ import { avaTriggersGet, avaLedgerGet, avaMomentOutcome } from "./routes/ava_odl
 import { backupGet, backupPut, backupStatus } from "./routes/backup"; // P10
 import { ringtone } from "./routes/ringtone"; // AI ringback tones + busy tone
 import { spamReport, spamLookup, spamBloom, spamRescore } from "./routes/spam"; // AvaDial spam shield (Phase 2a, dark behind spamShield)
+import { missedCallToken, missedCallLookup } from "./routes/missedcall"; // [AVA-MISSEDCALL-1] device-token lane (dark behind missedCallOverlay)
 import { homeCards } from "./routes/homecards"; // Home dashboard card aggregates (Phase 3, dark behind shellV2)
 import { delegateHandler } from "./routes/ava_delegate"; // P7 (Phase 11 route wiring)
 // --- AI Messenger Batch 2026-07-03 (Streams A/B/C/E/F/G/I) ---
@@ -609,6 +610,10 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // --- contacts ---
       if (p === "/api/contacts/sync" && req.method === "POST") return await api.contactsSync(req, env);
       if (p === "/api/contacts/match" && req.method === "POST") return await api.contactsMatch(req, env);
+      // [AVA-MISSEDCALL-1] device-token lane so the overlay can confirm AvaTOK membership
+      // while the app is dead (no Clerk JWT). Dark behind missedCallOverlay.
+      if (p === "/api/missedcall/token" && req.method === "POST") return await missedCallToken(req, env);
+      if (p === "/api/missedcall/lookup" && req.method === "POST") return await missedCallLookup(req, env);
       if (p === "/api/contacts/list" && req.method === "GET") return api.contactsList();
       // Contact-book backup/restore — AvaTOK's own encrypted backup lane (no Gmail
       // needed, server-side encrypted, free). See routes/contacts_backup.ts.

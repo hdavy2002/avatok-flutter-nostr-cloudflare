@@ -203,6 +203,11 @@ export interface Env {
   GCAL_TOKEN_KEY?: string;         // AES-GCM key material for gcal refresh tokens
   JOIN_LINK_SECRET?: string;       // HMAC for https://avatok.ai/j/<token>
 
+  // [AVA-MISSEDCALL-1] HMAC secret for the long-lived device token the missed-call
+  // overlay's native receiver uses to look up AvaTOK membership while the app is dead
+  // (no Clerk JWT available cold-start). Falls back to JOIN_LINK_SECRET.
+  MISSEDCALL_TOKEN_SECRET?: string;
+
   // Progressive Identity ladder (PROPOSAL-PROGRESSIVE-IDENTITY.md).
   GUEST_TOKEN_SECRET?: string;     // HMAC for L0 guest tokens (falls back to JOIN_LINK_SECRET)
   TWILIO_ACCOUNT_SID?: string;     // Twilio Lookup v2 — SIM-only phone enforcement

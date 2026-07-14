@@ -11,6 +11,8 @@ import '../core/remote_config.dart';
 import '../core/ui/avatok_dark.dart';
 import '../features/askava/askava_screen.dart';
 import '../features/avadial/avadial_channel.dart';
+import '../features/avadial/contact_detail_screen.dart';
+import '../features/avadial/missed_call_service.dart';
 import '../features/avadial/pstn_call_screen.dart';
 import '../features/avadial/sms/sms_thread_screen.dart';
 import '../identity/identity.dart';
@@ -194,6 +196,7 @@ class _ShellV2State extends State<ShellV2> {
 
   StreamSubscription<AvaIncomingLaunch>? _incomingSub;
   StreamSubscription<AvaComposeLaunch>? _composeSub;
+  StreamSubscription<AvaOpenDialLaunch>? _openDialSub;
 
   @override
   void initState() {
@@ -201,12 +204,14 @@ class _ShellV2State extends State<ShellV2> {
     _initRootState();
     _wireIncomingCalls();
     _wireCompose();
+    _wireMissedCall();
   }
 
   @override
   void dispose() {
     _incomingSub?.cancel();
     _composeSub?.cancel();
+    _openDialSub?.cancel();
     super.dispose();
   }
 
@@ -239,6 +244,31 @@ class _ShellV2State extends State<ShellV2> {
       final c = await AvaDialChannel.I.consumePendingCompose();
       if (c != null) _openCompose(c.number);
     });
+  }
+
+  /// [AVA-MISSEDCALL-1] Truecaller-style missed-call overlay. Boots [MissedCallService]
+  /// (which arms the native PHONE_STATE receiver + keeps the caller directory fresh) and
+  /// routes the overlay's "View profile" / AvaTOK action back into the app — both for a
+  /// launch that beat us (drained via consumePendingOpenDial) and one arriving while
+  /// running (the openDialLaunch stream). All DARK behind `missedCallOverlay`.
+  void _wireMissedCall() {
+    if (!RemoteConfig.missedCallOverlay) return;
+    AvaDialChannel.I.ensureWired();
+    unawaited(MissedCallService.I.init());
+    _openDialSub = AvaDialChannel.I.openDialLaunch.listen((l) => _openDialContact(l.number));
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final l = await AvaDialChannel.I.consumePendingOpenDial();
+      if (l != null) _openDialContact(l.number);
+    });
+  }
+
+  void _openDialContact(String? number) {
+    if (!mounted) return;
+    final n = (number ?? '').trim();
+    if (n.isEmpty) return;
+    setState(() => _root = RootId.avaDial);
+    final nav = _navKeys[RootId.avaDial]?.currentState ?? Navigator.of(context);
+    nav.push(MaterialPageRoute<void>(builder: (_) => ContactDetailScreen(number: n)));
   }
 
   void _openCompose(String? number) {

@@ -7,6 +7,7 @@ import '../../core/analytics.dart';
 import '../../core/remote_config.dart';
 import '../../core/voice/native_voice_audio.dart';
 import 'avadial_channel.dart';
+import 'missed_call_service.dart';
 import 'sms_role_help.dart';
 
 /// [AVADIAL-SETUP-1] + [AVADIAL-SETUP-2] AvaDialer guided device-setup sheet.
@@ -163,6 +164,18 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
             'Appear on top, so one-time codes float over any app with a '
             'one-tap Copy — no need to open AvaTOK.',
             _openOverlay),
+        // [AVA-MISSEDCALL-1] Truecaller-style missed-call pop-up. Uses the SAME
+        // "appear on top" permission as the OTP card, so _overlay/_openOverlay are
+        // reused; granting either lights this task too.
+        if (RemoteConfig.missedCallOverlay)
+          _SetupStep('missedcall', 'See who called (missed-call pop-up)', _overlay,
+              _overlay
+                  ? 'On — you\'ll see who called over any app, with one-tap call '
+                      'back, message, and whether they\'re on AvaTOK.'
+                  : 'Show a pop-up over any app when you miss a call: who it was, '
+                      'call back or reply in a tap, and a bright AvaTOK icon if '
+                      'they\'re on AvaTOK.',
+              _openOverlay),
       ];
 
   Future<void> _refresh() async {
@@ -227,6 +240,13 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
       _rivals = rivals;
       _loading = false;
     });
+
+    // [AVA-MISSEDCALL-1] Arm/disarm the missed-call receiver in step with the "appear
+    // on top" grant (the user may have just returned from granting it). No-op unless the
+    // `missedCallOverlay` flag is on.
+    if (RemoteConfig.missedCallOverlay) {
+      unawaited(MissedCallService.I.ensureEnabled());
+    }
 
     // Announce the freshly completed task and prompt the next one.
     if (firstLoad) return;

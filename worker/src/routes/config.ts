@@ -315,6 +315,15 @@ export interface PlatformConfig {
   // `platform_config` (staging first) after the §9 device test matrix passes.
   // Client mirror: RemoteConfig.avaDialer.
   avaDialer: boolean;
+  // [AVA-MISSEDCALL-1] Truecaller-style missed-call overlay (owner request 2026-07-14).
+  // Master kill switch for the after-call popup that draws OVER other apps naming who
+  // called + quick actions, AND for the phone-presence lookup that lights the AvaTOK
+  // icon. IMPORTANT: turning this ON deliberately REVERSES the 2026-06-27 privacy lock
+  // — /api/contacts/match resolves AvaTOK membership from the caller's real phone
+  // number (private or not), per the owner's explicit 2026-07-14 instruction. While
+  // false the match endpoint returns nothing (old privacy behaviour) and the native
+  // receiver/overlay stay inert. Client mirror: RemoteConfig.missedCallOverlay.
+  missedCallOverlay: boolean;
   // AvaDial default-SMS-app layer (Specs/PLAN-2026-07-12-home-ava-tok-services-shell
   // .md, AVA-SMS; owner decision 2026-07-12). Master kill switch for the AvaDial
   // SMS surfaces in the app: the "Make AvaTOK your messages app" onboarding banner,
@@ -510,6 +519,11 @@ const DEFAULTS: PlatformConfig = {
   // its Phase-1 placeholders. Flip ON in KV (staging first) after the telecom
   // spike's device test matrix passes. Client mirror: RemoteConfig.avaDialer.
   avaDialer: false,
+  // [AVA-MISSEDCALL-1] Missed-call overlay + phone-presence lookup — DARK by default.
+  // While false, /api/contacts/match returns nothing (privacy lock intact) and the
+  // native missed-call receiver/overlay never fire. Flip ON in KV (staging first)
+  // once the overlay is device-verified. Client mirror: RemoteConfig.missedCallOverlay.
+  missedCallOverlay: false,
   // AvaDial default-SMS-app surfaces — DARK. While false the Messages tab keeps its
   // Phase-1 placeholder, NO SMS role is requested and the native SMS receivers stay
   // inert. Flip ON in KV (staging first) after the SMS role + device matrix passes

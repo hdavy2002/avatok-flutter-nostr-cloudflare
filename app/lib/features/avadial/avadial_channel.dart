@@ -83,6 +83,25 @@ class AvaComposeLaunch {
   const AvaComposeLaunch(this.number);
 }
 
+/// [AVA-MISSEDCALL-1] A missed incoming call detected by the native
+/// [AvaMissedCallReceiver]. Raised AFTER the overlay is already on screen (painted
+/// from the on-device cache); [isAvatokCached] is the cache verdict, which
+/// [MissedCallService] may upgrade via a live backend confirm.
+class AvaMissedCall {
+  final String number;
+  final int ringSecs;
+  final bool isAvatokCached;
+  const AvaMissedCall(this.number, this.ringSecs, this.isAvatokCached);
+}
+
+/// A cold-start / background "open this caller in AvaTOK" launch, from the missed-call
+/// overlay's View-profile / AvaTOK action (MainActivity route `avadial/openDial`).
+class AvaOpenDialLaunch {
+  final String? number;
+  final String? avatokNumber;
+  const AvaOpenDialLaunch(this.number, this.avatokNumber);
+}
+
 /// Dart bridge to the AvaDial native telecom layer
 /// (Specs/SPIKE-2026-07-12-avadial-telecom.md). Thin + best-effort: every method
 /// tolerates the platform side being absent (e.g. iOS, or the plugin not attached)
@@ -103,6 +122,8 @@ class AvaDialChannel {
   final _smsIn = StreamController<AvaSmsMessage>.broadcast();
   final _smsStatus = StreamController<AvaSmsSendStatus>.broadcast();
   final _compose = StreamController<AvaComposeLaunch>.broadcast();
+  final _missed = StreamController<AvaMissedCall>.broadcast();
+  final _openDial = StreamController<AvaOpenDialLaunch>.broadcast();
 
   /// Shared guard so the incoming-call screen never double-opens: the shell
   /// (cold-start/relaunch path) and [AvaDialRoot] (foreground ringing path) both
@@ -136,6 +157,12 @@ class AvaDialChannel {
 
   /// SMS-compose launches from a cold start / notification tap / ACTION_SENDTO.
   Stream<AvaComposeLaunch> get composeLaunch => _compose.stream;
+
+  /// [AVA-MISSEDCALL-1] Missed-call events from the native PHONE_STATE receiver.
+  Stream<AvaMissedCall> get missedCalls => _missed.stream;
+
+  /// "Open in AvaTOK" launches from the missed-call overlay (already-running case).
+  Stream<AvaOpenDialLaunch> get openDialLaunch => _openDial.stream;
 
   bool _wired = false;
 
@@ -208,6 +235,27 @@ class AvaDialChannel {
           break;
         case 'onLaunchCompose':
           _compose.add(AvaComposeLaunch(a['number'] as String?));
+          break;
+        case 'onMissedCall':
+          final num = a['number'] as String?;
+          if (num != null && num.isNotEmpty) {
+            _missed.add(AvaMissedCall(
+              num,
+              (a['ring_secs'] as num?)?.toInt() ?? 0,
+              a['is_avatok_cached'] == true,
+            ));
+          }
+          // Telemetry carries NO raw number — only the ring duration + cache verdict.
+          Analytics.capture('missed_call_overlay_shown', {
+            'ring_secs': (a['ring_secs'] as num?)?.toInt() ?? 0,
+            'avatok_cached': a['is_avatok_cached'] == true,
+          });
+          break;
+        case 'onLaunchOpenDial':
+          _openDial.add(AvaOpenDialLaunch(
+            a['number'] as String?,
+            a['avatok_number'] as String?,
+          ));
           break;
       }
     } catch (e) {
@@ -454,6 +502,84 @@ class AvaDialChannel {
     } catch (e) {
       AvaLog.I.log('avadial', 'writeScreeningSnapshot failed: $e');
     }
+  }
+
+  // ── [AVA-MISSEDCALL-1] Missed-call overlay ────────────────────────────────
+  /// True when AvaTOK may draw over other apps ("appear on top"). The overlay
+  /// cannot show without it.
+  Future<bool> canDrawOverlay() => _invokeBool('canDrawOverlay');
+
+  /// Open the system "Display over other apps" settings page for AvaTOK.
+  Future<void> requestOverlayPermission() => _invokeVoid('requestOverlayPermission');
+
+  /// Arm/disarm the native PHONE_STATE receiver by writing `{enabled, token, base}`
+  /// into the native config file. The receiver early-returns until `enabled` is true;
+  /// [token] + [base] let it confirm AvaTOK membership over the device-token lane while
+  /// the app is dead (both null → keep any previously-stored values).
+  Future<void> setMissedCallEnabled(bool enabled, {String? token, String? base}) =>
+      _invokeVoid('setMissedCallEnabled', {
+        'enabled': enabled,
+        'token': token,
+        'base': base,
+      });
+
+  /// Atomically write the on-device AvaTOK directory the overlay reads for caller
+  /// name + AvaTOK status. [entries] maps `hashLast10(number) → {name, ava,
+  /// avatar_url, avatok_number}`.
+  Future<void> writeAvatokDirectory(Map<String, Map<String, dynamic>> entries) =>
+      _invokeVoid('writeAvatokDirectory', {
+        'json': jsonEncode({
+          'v': 1,
+          'updated': DateTime.now().millisecondsSinceEpoch ~/ 1000,
+          'entries': entries,
+        }),
+      });
+
+  /// Re-paint the currently-shown overlay after a late backend confirm (the
+  /// "cache then backend" upgrade). No-op if a different card is now showing.
+  Future<void> missedCallResolved(String number, bool avatok, String? name) =>
+      _invokeVoid('missedCallResolved', {
+        'number': number,
+        'avatok': avatok,
+        'name': name,
+      });
+
+  /// Debug/QA: show the overlay directly without a real call.
+  Future<void> showMissedCallPreview({
+    required String number,
+    String? name,
+    int ringSecs = 24,
+    bool isAvatok = true,
+    String? avatokNumber,
+  }) =>
+      _invokeVoid('showMissedCallPreview', {
+        'number': number,
+        'name': name,
+        'ring_secs': ringSecs,
+        'is_avatok': isAvatok,
+        'avatok_number': avatokNumber,
+      });
+
+  /// Drain a pending "open in AvaTOK" launch queued by the overlay before the
+  /// engine was ready (cold start).
+  Future<AvaOpenDialLaunch?> consumePendingOpenDial() async {
+    try {
+      final raw = await _ch.invokeMethod<Map<dynamic, dynamic>>('getPendingOpenDial');
+      if (raw == null) return null;
+      return AvaOpenDialLaunch(raw['number'] as String?, raw['avatok_number'] as String?);
+    } catch (e) {
+      AvaLog.I.log('avadial', 'getPendingOpenDial failed: $e');
+      return null;
+    }
+  }
+
+  /// SHA-256 of the last 10 digits of [number], lowercase hex — the directory key
+  /// the native overlay/receiver compute. Formatting-independent so a contact and a
+  /// call-log entry for the same person collide.
+  static String hashLast10(String number) {
+    final digits = number.replaceAll(RegExp(r'\D'), '');
+    final last10 = digits.length > 10 ? digits.substring(digits.length - 10) : digits;
+    return sha256.convert(utf8.encode(last10)).toString();
   }
 
   // ── Invoke helpers (all swallow MissingPluginException on unsupported OS) ──

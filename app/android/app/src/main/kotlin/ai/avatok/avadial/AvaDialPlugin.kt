@@ -29,6 +29,7 @@ import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.PluginRegistry
+import org.json.JSONObject
 import java.io.File
 
 /**
@@ -152,6 +153,38 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
             val dir = File(context.filesDir, SNAPSHOT_DIR)
             if (!dir.exists()) dir.mkdirs()
             return File(dir, SNAPSHOT_FILE)
+        }
+
+        // ── [AVA-MISSEDCALL-1] Missed-call overlay snapshot + config ────────────────
+        const val MISSEDCALL_CONFIG_FILE = "missedcall_config.json"
+        const val AVATOK_DIR_FILE = "avatok_directory.json"
+
+        /** `{enabled:bool}` gate the [AvaMissedCallReceiver] reads before firing. */
+        fun missedCallConfigFile(context: Context): File {
+            val dir = File(context.filesDir, SNAPSHOT_DIR)
+            if (!dir.exists()) dir.mkdirs()
+            return File(dir, MISSEDCALL_CONFIG_FILE)
+        }
+
+        /** On-device AvaTOK directory the overlay reads for caller name + AvaTOK status.
+         *  Keyed by sha256(last-10-digits) → {name, ava, avatar_url, avatok_number}. */
+        fun avatokDirFile(context: Context): File {
+            val dir = File(context.filesDir, SNAPSHOT_DIR)
+            if (!dir.exists()) dir.mkdirs()
+            return File(dir, AVATOK_DIR_FILE)
+        }
+
+        // Cold-start / background "open this caller in AvaTOK" launch (overlay
+        // View-profile / AvaTOK action). Stored so Dart can DRAIN it on startup via
+        // getPendingOpenDial even when the launch beat the channel handler; also emitted
+        // for the already-running case.
+        @Volatile private var pendingOpenNumber: String? = null
+        @Volatile private var pendingOpenAvatok: String? = null
+
+        fun notifyOpenDial(number: String?, avatokNumber: String?) {
+            pendingOpenNumber = number
+            pendingOpenAvatok = avatokNumber
+            emit("onLaunchOpenDial", mapOf("number" to number, "avatok_number" to avatokNumber))
         }
     }
 
@@ -294,6 +327,61 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
 
                 // ---- screening snapshot handshake ----
                 "snapshotPath" -> result.success(snapshotFile(ctx).absolutePath)
+
+                // ---- [AVA-MISSEDCALL-1] missed-call overlay ----
+                "canDrawOverlay" -> result.success(AvaMissedCallOverlay.canDraw(ctx))
+                "requestOverlayPermission" -> { requestOverlayPermission(ctx); result.success(null) }
+                "setMissedCallEnabled" -> {
+                    val obj = JSONObject().put("enabled", call.argument<Boolean>("enabled") == true)
+                    // Device token + host for the receiver's cold-start membership lookup.
+                    // Preserve any previously-stored token if Dart couldn't mint a fresh one.
+                    val token = call.argument<String>("token")
+                    val base = call.argument<String>("base")
+                    val prev = try {
+                        val f = missedCallConfigFile(ctx)
+                        if (f.exists() && f.length() > 0L) JSONObject(f.readText()) else null
+                    } catch (_: Throwable) { null }
+                    (token ?: prev?.optString("token")?.takeIf { it.isNotEmpty() })
+                        ?.let { obj.put("token", it) }
+                    (base ?: prev?.optString("base")?.takeIf { it.isNotEmpty() })
+                        ?.let { obj.put("base", it) }
+                    writeFileAtomic(missedCallConfigFile(ctx), obj.toString())
+                    result.success(true)
+                }
+                "writeAvatokDirectory" -> {
+                    val jsonStr = call.argument<String>("json") ?: "{}"
+                    writeFileAtomic(avatokDirFile(ctx), jsonStr)
+                    result.success(true)
+                }
+                "missedCallResolved" -> {
+                    AvaMissedCallOverlay.update(
+                        call.argument<String>("number"),
+                        call.argument<Boolean>("avatok") == true,
+                        call.argument<String>("name"),
+                    )
+                    result.success(null)
+                }
+                "showMissedCallPreview" -> {
+                    AvaMissedCallOverlay.show(
+                        ctx,
+                        AvaMissedCallOverlay.Info(
+                            number = call.argument<String>("number"),
+                            name = call.argument<String>("name"),
+                            ringSecs = call.argument<Int>("ring_secs") ?: 0,
+                            isAvatok = call.argument<Boolean>("is_avatok") == true,
+                            avatokNumber = call.argument<String>("avatok_number"),
+                        ),
+                    )
+                    result.success(null)
+                }
+                "getPendingOpenDial" -> {
+                    val out: Map<String, Any?>? = pendingOpenNumber?.let {
+                        mapOf("number" to it, "avatok_number" to pendingOpenAvatok)
+                    }
+                    pendingOpenNumber = null
+                    pendingOpenAvatok = null
+                    result.success(out)
+                }
 
                 // ---- cold-start incoming-call drain (route extra "avadial/incoming") ----
                 "getPendingIncoming" -> {
@@ -810,6 +898,38 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
      * fall back to an ACTION_DIAL intent for this attempt; the next tap (post-grant)
      * places the call directly.
      */
+    // ── [AVA-MISSEDCALL-1] helpers ──────────────────────────────────────────────
+    /** Open the system "Display over other apps" settings page for AvaTOK. */
+    private fun requestOverlayPermission(ctx: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+        try {
+            val intent = Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:" + ctx.packageName),
+            )
+            val act = activityBinding?.activity
+            if (act != null) {
+                act.startActivity(intent)
+            } else {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                ctx.startActivity(intent)
+            }
+        } catch (_: Throwable) { /* settings page unavailable — best-effort */ }
+    }
+
+    /** Write [content] to [file] atomically (temp + rename), mirroring how Dart writes
+     *  the screening snapshot — a half-written directory must never be read. */
+    private fun writeFileAtomic(file: File, content: String) {
+        try {
+            val tmp = File(file.parentFile, file.name + ".tmp")
+            tmp.writeText(content, Charsets.UTF_8)
+            if (!tmp.renameTo(file)) {
+                file.writeText(content, Charsets.UTF_8)
+                tmp.delete()
+            }
+        } catch (_: Throwable) { /* best-effort */ }
+    }
+
     private fun placeCall(ctx: Context, number: String?): Boolean {
         if (number.isNullOrEmpty()) return false
         val granted = ctx.checkSelfPermission(Manifest.permission.CALL_PHONE) ==

@@ -296,6 +296,22 @@
             android:name="ai.avatok.avadial.AvaOtpCopyReceiver"
             android:exported="false" />
 
+        <!-- [AVA-MISSEDCALL-1] Truecaller-style missed-call detector. Listens for the
+             system PHONE_STATE broadcast (RINGING→IDLE without OFFHOOK = missed) and
+             raises AvaMissedCallOverlay. exported=true because the OS is the broadcaster;
+             READ_PHONE_STATE (declared above) is what authorises delivery. Fully DARK
+             until Dart writes {enabled:true} into missedcall_config.json, which it only
+             does when the `missedCallOverlay` flag is on AND "appear on top" is granted —
+             so onReceive early-returns on every device until the owner ships the feature.
+             Uses SYSTEM_ALERT_WINDOW + READ_CALL_LOG (both already declared). -->
+        <receiver
+            android:name="ai.avatok.avadial.AvaMissedCallReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.PHONE_STATE" />
+            </intent-filter>
+        </receiver>
+
         <!-- (2) Inbound MMS (WAP push). BROADCAST_WAP_PUSH-protected. -->
         <receiver
             android:name="ai.avatok.avadial.AvaMmsReceiver"

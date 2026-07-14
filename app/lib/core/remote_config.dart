@@ -280,6 +280,14 @@ class RemoteConfig {
   /// by the worker). Default false so a config-fetch failure keeps AvaDial inert.
   static bool get avaDialer => _b('avaDialer', false);
 
+  /// [AVA-MISSEDCALL-1] Truecaller-style missed-call overlay (owner request
+  /// 2026-07-14). Master kill switch, mirrors config.ts `missedCallOverlay`. While
+  /// false the native PHONE_STATE receiver/overlay stay inert and /api/contacts/match
+  /// returns nothing (the 2026-06-27 phone-presence privacy lock stays intact). Turning
+  /// it ON deliberately reverses that lock so AvaTOK membership is resolved from the
+  /// caller's real number. Default OFF.
+  static bool get missedCallOverlay => _b('missedCallOverlay', false);
+
   /// AvaDial default-SMS-app layer (Specs/PLAN-2026-07-12-home-ava-tok-services-shell
   /// .md, AVA-SMS; owner decision 2026-07-12). Ships DARK (default false): while off
   /// the AvaDial Messages tab renders its Phase-1 placeholder, NO SMS role is ever
