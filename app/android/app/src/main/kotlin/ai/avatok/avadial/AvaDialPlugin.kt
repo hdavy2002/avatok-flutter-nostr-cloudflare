@@ -135,6 +135,23 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
         }
 
         /**
+         * [AVADIAL-STUCK-1] Clear a pending incoming launch when its call dies before
+         * Dart drained it. Without this, a missed call left `pendingCallId` set forever:
+         * the NEXT app open drained the stale launch and pushed a ghost ringing
+         * PstnCallScreen for a call that ended minutes earlier (owner bug 2026-07-14 —
+         * "the incoming screen was sitting inside AvaDial after the missed call").
+         * Called from AvaInCallService.onCallRemoved.
+         */
+        fun clearPendingIncoming(callId: String) {
+            if (pendingCallId != callId) return
+            pendingCallId = null
+            pendingNumber = null
+            pendingAnswered = false
+            pendingSpamScore = null
+            pendingSpamBucket = null
+        }
+
+        /**
          * Called by MainActivity when it is (re)launched with the AvaDial SMS-compose
          * route extra (ACTION_SENDTO on an sms:/mms: URI). Records the pending compose
          * for a cold-start drain AND emits `onLaunchCompose` for the already-running
@@ -443,12 +460,18 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
 
                 // ---- cold-start incoming-call drain (route extra "avadial/incoming") ----
                 "getPendingIncoming" -> {
-                    val out: Map<String, Any?>? = pendingCallId?.let {
-                        mapOf(
-                            "call_id" to it, "number" to pendingNumber, "answered" to pendingAnswered,
-                            "spam_score" to pendingSpamScore, "spam_bucket" to pendingSpamBucket,
-                        )
-                    }
+                    // [AVADIAL-STUCK-1] Validate the pending call is still LIVE in the
+                    // InCallService before handing it to Dart. A launch recorded while
+                    // the app was backgrounded, whose call ended before Dart booted,
+                    // must never open a ghost ringing screen.
+                    val out: Map<String, Any?>? = pendingCallId
+                        ?.takeIf { AvaInCallService.stateOf(it) != null }
+                        ?.let {
+                            mapOf(
+                                "call_id" to it, "number" to pendingNumber, "answered" to pendingAnswered,
+                                "spam_score" to pendingSpamScore, "spam_bucket" to pendingSpamBucket,
+                            )
+                        }
                     pendingCallId = null
                     pendingNumber = null
                     pendingAnswered = false
@@ -460,6 +483,35 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
                 // ---- system block-list write-through (default dialer only) ----
                 "systemBlock" -> result.success(systemBlock(ctx, call.argument<String>("number")))
                 "systemUnblock" -> result.success(systemUnblock(ctx, call.argument<String>("number")))
+
+                // ---- [AVADIAL-STUCK-1] live call-state probe (PstnCallScreen guard) ----
+                "callState" ->
+                    result.success(call.argument<String>("id")?.let { AvaInCallService.stateOf(it) })
+
+                // ---- [AVADIAL-POPUP-1] Android 14+ full-screen-intent grant ----
+                "canUseFullScreenIntent" -> {
+                    val ok = if (Build.VERSION.SDK_INT >= 34) {
+                        try {
+                            (ctx.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager)
+                                .canUseFullScreenIntent()
+                        } catch (_: Throwable) { true }
+                    } else true
+                    result.success(ok)
+                }
+                "requestFullScreenIntent" -> {
+                    if (Build.VERSION.SDK_INT >= 34) {
+                        try {
+                            val intent = Intent(
+                                Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
+                                Uri.parse("package:" + ctx.packageName),
+                            )
+                            val act = activityBinding?.activity
+                            if (act != null) act.startActivity(intent)
+                            else { intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); ctx.startActivity(intent) }
+                        } catch (_: Throwable) { /* settings page unavailable — best-effort */ }
+                    }
+                    result.success(null)
+                }
 
                 // ---- in-call actions (delegate to InCallService) ----
                 "answer", "reject", "disconnect" ->

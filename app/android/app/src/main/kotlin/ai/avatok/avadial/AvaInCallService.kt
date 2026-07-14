@@ -39,6 +39,26 @@ class AvaInCallService : InCallService() {
         private fun idFor(call: Call): String = System.identityHashCode(call).toString()
 
         /**
+         * [AVADIAL-STUCK-1] Live state of a cached call, or null when the call is gone
+         * (removed / never existed). Lets the plugin drop a stale pending incoming
+         * launch and lets PstnCallScreen verify its call on mount instead of trusting
+         * a possibly-minutes-old launch extra.
+         */
+        fun stateOf(id: String): String? {
+            val call = callMap[id] ?: return null
+            return when (call.state) {
+                Call.STATE_RINGING -> "ringing"
+                Call.STATE_ACTIVE -> "active"
+                Call.STATE_DIALING -> "dialing"
+                Call.STATE_HOLDING -> "holding"
+                Call.STATE_CONNECTING -> "connecting"
+                Call.STATE_DISCONNECTING -> "disconnecting"
+                Call.STATE_DISCONNECTED -> "disconnected"
+                else -> "unknown"
+            }
+        }
+
+        /**
          * Relay an in-call action from Flutter. [id] targets a specific call
          * (answer/reject/disconnect); mute/speaker are service-wide. Returns true
          * when the action was dispatched.
@@ -111,6 +131,9 @@ class AvaInCallService : InCallService() {
         super.onCallRemoved(call)
         val id = idFor(call)
         callMap.remove(id)
+        // [AVADIAL-STUCK-1] The call is dead — a pending incoming launch for it must
+        // never be drained by a later app open (ghost ringing screen).
+        AvaDialPlugin.clearPendingIncoming(id)
         AvaDialPlugin.emit("onCallRemoved", mapOf("id" to id))
         if (callMap.isEmpty()) {
             try {
@@ -192,11 +215,32 @@ class AvaInCallService : InCallService() {
         // banner unless USE_FULL_SCREEN_INTENT is granted — which is why the screen
         // only showed once the app was opened manually. The FSI notification stays
         // as the OEM-safe fallback for the cases where a background launch is blocked.
+        var startedActivity = true
         try {
             startActivity(intent)
         } catch (_: Throwable) {
             /* background-activity-launch blocked on this OEM — FSI notification below is the fallback */
+            startedActivity = false
         }
+
+        // [AVADIAL-POPUP-1] Android 14+ gates full-screen intents behind a per-app
+        // grant (Settings > Apps > Special access > Full-screen notifications). When
+        // it's missing, the FSI silently degrades to a plain banner — record it so
+        // telemetry can prove which leg failed on a given device, and so the setup
+        // sheet can prompt the user to grant it.
+        val fsiAllowed = if (Build.VERSION.SDK_INT >= 34) {
+            try { nm.canUseFullScreenIntent() } catch (_: Throwable) { true }
+        } else true
+        AvaDialPlugin.emit(
+            "onIncomingLaunchDiag",
+            mapOf(
+                "call_id" to id,
+                "start_activity" to startedActivity,
+                "fsi_allowed" to fsiAllowed,
+                "notifs_enabled" to nm.areNotificationsEnabled(),
+                "sdk" to Build.VERSION.SDK_INT,
+            ),
+        )
 
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, CHANNEL_ID)
@@ -226,7 +270,7 @@ class AvaInCallService : InCallService() {
             actionIcon, "Decline", actionIntent("reject", NOTIF_ID + 2)
         ).build()
 
-        val notif = builder
+        builder
             .setSmallIcon(applicationInfo.icon)
             .setContentTitle("Incoming call")
             .setContentText(number ?: "Unknown number")
@@ -234,9 +278,28 @@ class AvaInCallService : InCallService() {
             .setOngoing(true)
             .setFullScreenIntent(pending, true)
             .setContentIntent(pending)
-            .addAction(answerAction)
-            .addAction(declineAction)
-            .build()
+
+        // [AVADIAL-POPUP-1] On Android 12+ use the system CallStyle template — it is
+        // ranked at the very top of the shade, always heads-up, and is the ONLY
+        // notification style OEM skins reliably surface over a foreground app (the
+        // WhatsApp-style incoming banner). Falls back to plain Answer/Decline actions
+        // on older releases.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val caller = android.app.Person.Builder()
+                .setName(number ?: "Unknown number")
+                .setImportant(true)
+                .build()
+            builder.setStyle(
+                Notification.CallStyle.forIncomingCall(
+                    caller,
+                    actionIntent("reject", NOTIF_ID + 2),
+                    actionIntent("answer", NOTIF_ID + 1),
+                )
+            )
+        } else {
+            builder.addAction(answerAction).addAction(declineAction)
+        }
+        val notif = builder.build()
         try {
             nm.notify(NOTIF_ID, notif)
         } catch (_: Throwable) { /* POST_NOTIFICATIONS may be denied — best-effort */ }

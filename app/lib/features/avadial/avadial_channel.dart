@@ -266,6 +266,18 @@ class AvaDialChannel {
             'avatok_cached': a['is_avatok_cached'] == true,
           });
           break;
+        case 'onIncomingLaunchDiag':
+          // [AVADIAL-POPUP-1] Native breadcrumb for every incoming-call launch:
+          // proves which leg surfaced (or failed to surface) the call UI on this
+          // device — direct activity start vs full-screen-intent vs nothing.
+          // No raw phone number crosses this boundary.
+          Analytics.capture('pstn_incoming_launch_diag', {
+            'start_activity': a['start_activity'] == true,
+            'fsi_allowed': a['fsi_allowed'] == true,
+            'notifs_enabled': a['notifs_enabled'] == true,
+            'sdk': (a['sdk'] as num?)?.toInt(),
+          });
+          break;
         case 'onLaunchOpenDial':
           _openDial.add(AvaOpenDialLaunch(
             a['number'] as String?,
@@ -487,6 +499,31 @@ class AvaDialChannel {
   Future<void> disconnect(String id) => _invokeVoid('disconnect', {'id': id});
   Future<void> setMuted(bool on) => _invokeVoid('setMuted', {'on': on});
   Future<void> setSpeaker(bool on) => _invokeVoid('setSpeaker', {'on': on});
+
+  /// [AVADIAL-STUCK-1] Live native state of call [id], or null when the call no
+  /// longer exists. PstnCallScreen probes this on mount so a stale launch (call
+  /// already ended) closes itself instead of showing a ghost ringing screen.
+  Future<String?> callState(String id) async {
+    try {
+      return await _ch.invokeMethod<String>('callState', {'id': id});
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // ── [AVADIAL-POPUP-1] Android 14+ full-screen-intent grant ────────────────
+  /// True when the OS will honour our full-screen incoming-call intent (always
+  /// true below Android 14). False = the incoming call degrades to a banner.
+  Future<bool> canUseFullScreenIntent() async {
+    try {
+      return await _ch.invokeMethod<bool>('canUseFullScreenIntent') ?? true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// Open the system "Full-screen notifications" settings page for AvaTOK.
+  Future<void> requestFullScreenIntent() => _invokeVoid('requestFullScreenIntent');
 
   /// Play a DTMF tone for [digit] ("0".."9","*","#") on the call [id] (keypad overlay).
   Future<void> sendDtmf(String id, String digit) => _invokeVoid('dtmf', {'id': id, 'digit': digit});

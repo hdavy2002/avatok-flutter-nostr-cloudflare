@@ -73,6 +73,21 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
     // screen reacts to the call dying (or connecting) while it's up.
     _callSub = AvaDialChannel.I.calls.listen(_onCallEvent);
     _removedSub = AvaDialChannel.I.removedCalls.listen(_onCallRemoved);
+
+    // [AVADIAL-STUCK-1] Stale-launch guard: this screen can be pushed from a
+    // pending launch extra recorded while the app was backgrounded/dead. If the
+    // call already ended, no onCallRemoved will EVER arrive (the removal predates
+    // our listeners) — probe native once and self-close instead of sitting on a
+    // ghost ringing screen (owner bug 2026-07-14).
+    final id = widget.callId;
+    if (id != null) {
+      AvaDialChannel.I.callState(id).then((state) {
+        if (!mounted || _closed) return;
+        if (state == null || state == 'disconnected' || state == 'disconnecting') {
+          _autoClose('stale_launch');
+        }
+      });
+    }
   }
 
   @override
