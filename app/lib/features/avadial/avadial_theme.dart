@@ -32,10 +32,11 @@ class AvaDialTheme {
   // as tappable/active against the near-black tabs. These are the ONLY light
   // tokens in Calls; do not reuse them for anything but the search bars.
   //
-  // There are four search bars (Contacts and Messages keep their own inline
-  // copies alongside the shared `_AvaDialSearchBar` used by Call logs + Block
-  // list) — they all style off these three, so keep them here rather than
-  // hardcoding Colors.white in four places and letting them drift.
+  // There are five search inputs: the shared `_AvaDialSearchBar` (Call logs +
+  // Block list), Contacts' and Messages' own inline pills, and the dialpad's
+  // outlined field (dialpad_search_tab.dart — different shape, same colours).
+  // They all style off these three, so keep them here rather than hardcoding
+  // Colors.white in five places and letting them drift.
   static const searchFill = Colors.white;
   static const searchText = Colors.black;
   static const searchHint = Colors.black54;

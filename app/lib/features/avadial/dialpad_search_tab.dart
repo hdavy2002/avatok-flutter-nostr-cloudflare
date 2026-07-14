@@ -116,25 +116,32 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
     return Column(children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+        // [AVADIAL-SEARCH-2] White box, black text (owner spec) — same
+        // AvaDialTheme.search* tokens as the four tab search bars. This field
+        // keeps its own outlined/prefixIcon shape rather than the pill used
+        // there; only the colours are shared.
         child: TextField(
           controller: _searchCtrl,
           onChanged: _onSearchChanged,
-          style: ZineText.value(size: 15, color: AvaDialTheme.text),
+          // The app-wide cursor colour is tuned for the dark surface and
+          // vanishes on white — pin it to the input's own ink.
+          cursorColor: AvaDialTheme.searchText,
+          style: ZineText.value(size: 15, color: AvaDialTheme.searchText),
           decoration: InputDecoration(
             hintText: 'Search name or number…',
-            hintStyle: ZineText.sub(size: 14, color: AvaDialTheme.textMute),
-            prefixIcon: const Icon(Icons.search, color: AvaDialTheme.textSoft),
+            hintStyle: ZineText.sub(size: 14, color: AvaDialTheme.searchHint),
+            prefixIcon: const Icon(Icons.search, color: AvaDialTheme.searchHint),
             suffixIcon: _searchCtrl.text.isEmpty
                 ? null
                 : IconButton(
-                    icon: const Icon(Icons.close, color: AvaDialTheme.textSoft),
+                    icon: const Icon(Icons.close, color: AvaDialTheme.searchHint),
                     onPressed: () {
                       _searchCtrl.clear();
                       _onSearchChanged('');
                     },
                   ),
             filled: true,
-            fillColor: AvaDialTheme.surface2,
+            fillColor: AvaDialTheme.searchFill,
             contentPadding: const EdgeInsets.symmetric(vertical: 10),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(AD.rInput),
