@@ -17,6 +17,7 @@ import '../device_contacts.dart';
 import 'sms_compose_screen.dart';
 import 'sms_spam_store.dart';
 import 'sms_thread_screen.dart';
+import 'sms_unread_store.dart';
 
 /// One SMS conversation row (LIVE from the OS provider).
 class _Thread {
@@ -63,10 +64,19 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
     super.initState();
     _load();
     _inSub = AvaDialChannel.I.smsIncoming.listen((_) => _load());
+    // [AVA-SMS-BADGE-1] Repaint the per-thread orange counts whenever the
+    // unread store re-reads the provider (inbound SMS / thread opened / resume).
+    SmsUnreadStore.I.start();
+    SmsUnreadStore.I.revision.addListener(_onUnreadChanged);
+  }
+
+  void _onUnreadChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
+    SmsUnreadStore.I.revision.removeListener(_onUnreadChanged);
     _inSub?.cancel();
     super.dispose();
   }
@@ -157,9 +167,15 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
   }
 
   void _openThread(_Thread t) {
-    Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => SmsThreadScreen(address: t.address),
-    ));
+    Navigator.of(context)
+        .push(MaterialPageRoute<void>(
+          builder: (_) => SmsThreadScreen(address: t.address),
+        ))
+        .then((_) => _load()); // re-read snippets/read-flags on return
+    // [AVA-SMS-BADGE-1] Opening the thread = reading it. Mark its messages
+    // read in the OS provider so the red AvaDialer count, the orange Messages
+    // tab count and this row's badge all walk down together.
+    unawaited(SmsUnreadStore.I.markThreadRead(t.address));
   }
 
   void _compose() {
@@ -244,6 +260,11 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
   Widget _row(_Thread t) {
     final name = DeviceContacts.I.lookup(t.address)?.name;
     final spam = _threadIsSpam(t);
+    // [AVA-SMS-BADGE-1] Live unread count for THIS conversation (orange badge;
+    // unread threads also get a brighter snippet). Falls back to the provider's
+    // read-flag when the store hasn't resolved yet.
+    final unread = SmsUnreadStore.I.countFor(t.address);
+    final isUnread = unread > 0 || t.unread;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: AdCard(
@@ -267,9 +288,32 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
               Text(t.snippet,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: ZineText.sub(size: 12.5, color: AD.textSecondary)),
+                  style: ZineText.sub(
+                      size: 12.5,
+                      color: isUnread ? AD.textPrimary : AD.textSecondary)),
             ]),
           ),
+          if (unread > 0)
+            Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AD.primaryBadge, // orange — owner spec 2026-07-14
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                child: Text(
+                  unread > 99 ? '99+' : '$unread',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    height: 1.2,
+                  ),
+                ),
+              ),
+            ),
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert, color: AD.textSecondary),
             color: AD.menu,

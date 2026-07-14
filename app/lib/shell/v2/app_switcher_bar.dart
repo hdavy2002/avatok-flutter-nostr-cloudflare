@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/ui/avatok_dark.dart';
+import '../../features/avadial/sms/sms_unread_store.dart';
 import '../shell_v2.dart';
 
 /// The persistent, shell-level app switcher (2026-07-12 nav rebrand — supersedes
@@ -56,6 +57,16 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
   // a drop target — both drive the lift/shift animations.
   int? _dragging;
   int? _hoverTarget;
+
+  @override
+  void initState() {
+    super.initState();
+    // [AVA-SMS-BADGE-1] The bar is rendered once by ShellV2 and lives for the
+    // whole session — the natural place to boot the unread-SMS counter that
+    // feeds the red count on the AvaDialer icon. Idempotent + cheap when the
+    // avaSms flag is off or ROLE_SMS isn't held (count stays 0, no badge).
+    SmsUnreadStore.I.start();
+  }
 
   // icon · selectedIcon · label per root (2026-07-12 rebrand: AvaDial → "Calls",
   // AvaTalk → "AvaTOK", Services → "Marketplace"; Home root retired).
@@ -173,6 +184,20 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
 
   Widget _rootItem(RootId root, {required bool selected}) {
     final m = _meta[root]!;
+    // [AVA-SMS-BADGE-1] AvaDialer carries the unread-SMS count in RED (owner
+    // spec 2026-07-14) so "you have a message" is visible from every app.
+    if (root == RootId.avaDial) {
+      return ValueListenableBuilder<int>(
+        valueListenable: SmsUnreadStore.I.total,
+        builder: (_, n, __) => _labelledIcon(
+          icon: m.$1,
+          selectedIcon: m.$2,
+          label: m.$3,
+          selected: selected,
+          badge: n,
+        ),
+      );
+    }
     return _labelledIcon(
       icon: m.$1,
       selectedIcon: m.$2,
@@ -182,31 +207,63 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
   }
 
   /// A single footer cell: an accent indicator pill behind the icon when selected,
-  /// then a label — mirroring NavigationDestination's look.
+  /// then a label — mirroring NavigationDestination's look. [badge] > 0 draws a
+  /// RED unread count on the icon's shoulder ([AVA-SMS-BADGE-1]).
   Widget _labelledIcon({
     required IconData icon,
     required IconData selectedIcon,
     required String label,
     required bool selected,
+    int badge = 0,
   }) {
+    final iconCell = AnimatedContainer(
+      duration: const Duration(milliseconds: 160),
+      width: 46,
+      height: 28,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: selected ? _indicator : Colors.transparent,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      // Active icon sits on the orange pill (white glyph); inactive icons are
+      // white too (owner request 2026-07-13, pic 5) — not greyed.
+      child:
+          Icon(selected ? selectedIcon : icon, size: 22, color: AD.textPrimary),
+    );
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       mainAxisSize: MainAxisSize.min,
       children: [
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          width: 46,
-          height: 28,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: selected ? _indicator : Colors.transparent,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          // Active icon sits on the orange pill (white glyph); inactive icons are
-          // white too (owner request 2026-07-13, pic 5) — not greyed.
-          child: Icon(selected ? selectedIcon : icon, size: 22,
-              color: AD.textPrimary),
-        ),
+        if (badge <= 0)
+          iconCell
+        else
+          Stack(clipBehavior: Clip.none, children: [
+            iconCell,
+            Positioned(
+              right: -6,
+              top: -5,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                decoration: BoxDecoration(
+                  // Dark backing keeps the red digits readable over the orange
+                  // active pill and the dark bar alike.
+                  color: AD.headerFooter,
+                  borderRadius: BorderRadius.circular(9),
+                  border: Border.all(
+                      color: const Color(0xFFFF453A), width: 1),
+                ),
+                child: Text(
+                  badge > 99 ? '99+' : '$badge',
+                  style: const TextStyle(
+                    color: Color(0xFFFF453A), // RED count — owner spec
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w800,
+                    height: 1.2,
+                  ),
+                ),
+              ),
+            ),
+          ]),
         const SizedBox(height: 3),
         Text(
           label,

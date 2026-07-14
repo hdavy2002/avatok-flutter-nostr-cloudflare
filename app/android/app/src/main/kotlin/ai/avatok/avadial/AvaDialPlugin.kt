@@ -19,6 +19,7 @@ import android.provider.BlockedNumberContract
 import android.provider.CallLog
 import android.provider.ContactsContract
 import android.provider.Settings
+import android.content.ContentValues
 import android.provider.Telephony
 import android.telecom.TelecomManager
 import android.telephony.SmsManager
@@ -272,6 +273,9 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
                 "smsQueryMessages" -> result.success(
                     smsQueryMessages(ctx, call.argument<String>("address"), call.argument<Int>("limit") ?: 500)
                 )
+                // [AVA-SMS-BADGE-1] unread counters for the AvaDialer / Messages badges
+                "smsUnreadCounts" -> result.success(smsUnreadCounts(ctx))
+                "smsMarkRead" -> result.success(smsMarkRead(ctx, call.argument<String>("address")))
                 "getPendingCompose" -> {
                     val out: Map<String, Any?>? = pendingComposeNumber?.let { mapOf("number" to it) }
                     pendingComposeNumber = null
@@ -284,6 +288,7 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
 
                 // ---- device contact WRITES (WRITE_CONTACTS) ----
                 "writeContact" -> result.success(writeContact(ctx, call))
+                "writeContactsBatch" -> result.success(writeContactsBatch(ctx, call))
                 "updateContact" -> result.success(updateContact(ctx, call))
                 "deleteContact" -> result.success(deleteContact(ctx, call.argument<String>("id")))
 
@@ -430,6 +435,107 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
         val rawUri = results.firstOrNull()?.uri ?: return null
         val rawContactId = ContentUris.parseId(rawUri)
         return contactIdForRaw(ctx, rawContactId)?.toString()
+    }
+
+    /**
+     * BULK insert of many device contacts in as few provider transactions as
+     * possible — the fast path for contact-book RESTORE (owner request 2026-07-14).
+     *
+     * Writing N contacts by calling [writeContact] N times means N platform-channel
+     * round-trips AND N separate `applyBatch` transactions, which is what made a
+     * 4.5k-contact restore hang. Here we pack many contacts into one
+     * `ContentProviderOperation` list (each contact's data rows back-reference its
+     * OWN RawContacts insert via the running op index) and flush in sub-batches that
+     * stay well under the provider's ~500-op-per-apply ceiling. If a sub-batch
+     * throws (one bad row can fail the whole transaction), we fall back to writing
+     * that sub-batch one contact at a time so a single bad contact can't sink the
+     * rest. Returns the number of contacts successfully written.
+     */
+    private fun writeContactsBatch(ctx: Context, call: MethodCall): Int {
+        @Suppress("UNCHECKED_CAST")
+        val rows = (call.argument<List<Any?>>("contacts") ?: return 0)
+            .filterIsInstance<Map<String, Any?>>()
+        if (rows.isEmpty()) return 0
+
+        // Keep each transaction well under the ContentProvider batch ceiling (~500).
+        // A contact is up to 6 ops (raw + name + phone + 2 emails + site + note),
+        // so ~60 contacts ≈ 360 ops leaves comfortable headroom.
+        val chunk = 60
+        var written = 0
+        var i = 0
+        while (i < rows.size) {
+            val slice = rows.subList(i, minOf(i + chunk, rows.size))
+            written += applyContactsSlice(ctx, slice)
+            i += chunk
+        }
+        return written
+    }
+
+    /** Build + apply one transaction for a slice of contacts; per-contact fallback on failure. */
+    private fun applyContactsSlice(ctx: Context, slice: List<Map<String, Any?>>): Int {
+        val ops = ArrayList<ContentProviderOperation>()
+        for (c in slice) {
+            val ref = ops.size // index of THIS contact's RawContacts insert
+            ops.add(
+                ContentProviderOperation.newInsert(ContactsContract.RawContacts.CONTENT_URI)
+                    .withValue(ContactsContract.RawContacts.ACCOUNT_TYPE, null)
+                    .withValue(ContactsContract.RawContacts.ACCOUNT_NAME, null)
+                    .build()
+            )
+            appendContactDataOps(ops, ref, c)
+        }
+        return try {
+            val results = ctx.contentResolver.applyBatch(ContactsContract.AUTHORITY, ops)
+            // Count the RawContacts inserts that came back with a uri.
+            results.count { it.uri != null }.coerceAtMost(slice.size)
+        } catch (e: Exception) {
+            // One malformed contact fails the whole transaction — retry per contact
+            // so the rest still land.
+            var ok = 0
+            for (c in slice) {
+                try {
+                    val one = ArrayList<ContentProviderOperation>()
+                    one.add(
+                        ContentProviderOperation.newInsert(ContactsContract.RawContacts.CONTENT_URI)
+                            .withValue(ContactsContract.RawContacts.ACCOUNT_TYPE, null)
+                            .withValue(ContactsContract.RawContacts.ACCOUNT_NAME, null)
+                            .build()
+                    )
+                    appendContactDataOps(one, 0, c)
+                    val r = ctx.contentResolver.applyBatch(ContactsContract.AUTHORITY, one)
+                    if (r.firstOrNull()?.uri != null) ok++
+                } catch (_: Exception) { /* skip this contact, keep going */ }
+            }
+            ok
+        }
+    }
+
+    /** Append the managed data rows for one contact, back-referencing raw op [ref]. */
+    private fun appendContactDataOps(ops: ArrayList<ContentProviderOperation>, ref: Int, c: Map<String, Any?>) {
+        val name = (c["name"] as? String)?.trim().orEmpty()
+        val number = (c["number"] as? String)?.trim().orEmpty()
+        val personalEmail = (c["personalEmail"] as? String)?.trim().orEmpty()
+        val businessEmail = (c["businessEmail"] as? String)?.trim().orEmpty()
+        val linkedin = (c["linkedin"] as? String)?.trim().orEmpty()
+        val note = (c["note"] as? String)?.trim().orEmpty()
+        if (name.isNotEmpty()) ops.add(dataInsert(ref)
+            .withValue(ContactsContract.Data.MIMETYPE,
+                ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
+            .withValue(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, name)
+            .build())
+        if (number.isNotEmpty()) ops.add(dataInsert(ref)
+            .withValue(ContactsContract.Data.MIMETYPE,
+                ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE)
+            .withValue(ContactsContract.CommonDataKinds.Phone.NUMBER, number)
+            .withValue(ContactsContract.CommonDataKinds.Phone.TYPE,
+                ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE)
+            .build())
+        if (personalEmail.isNotEmpty()) ops.add(emailOp(ref, personalEmail,
+            ContactsContract.CommonDataKinds.Email.TYPE_HOME))
+        if (businessEmail.isNotEmpty()) ops.add(emailOp(ref, businessEmail,
+            ContactsContract.CommonDataKinds.Email.TYPE_WORK))
+        if (linkedin.isNotEmpty()) ops.add(websiteOp(ref, linkedin))
+        if (note.isNotEmpty()) ops.add(noteOp(ref, note))
     }
 
     /** Update the managed fields of an existing contact (by aggregated CONTACT_ID). */
@@ -851,6 +957,50 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
             }
         }
         return out
+    }
+
+    /**
+     * [AVA-SMS-BADGE-1] Per-address UNREAD counts from the SMS inbox (read = 0).
+     * Drives the red count on the AvaDialer app icon and the orange counts on the
+     * Messages tab / thread rows. Returns [{address, count}]; live read, nothing
+     * persisted.
+     */
+    private fun smsUnreadCounts(ctx: Context): List<Map<String, Any?>> {
+        val counts = LinkedHashMap<String, Int>()
+        try {
+            ctx.contentResolver.query(
+                Telephony.Sms.Inbox.CONTENT_URI,
+                arrayOf(Telephony.Sms.ADDRESS),
+                Telephony.Sms.READ + " = 0", null, null
+            )?.use { c ->
+                val iAddr = c.getColumnIndex(Telephony.Sms.ADDRESS)
+                while (c.moveToNext()) {
+                    val addr = (if (iAddr >= 0) c.getString(iAddr) else null) ?: continue
+                    counts[addr] = (counts[addr] ?: 0) + 1
+                }
+            }
+        } catch (_: Throwable) { /* no READ_SMS yet → empty */ }
+        return counts.map { (addr, n) -> mapOf<String, Any?>("address" to addr, "count" to n) }
+    }
+
+    /**
+     * [AVA-SMS-BADGE-1] Mark every unread message from [address] as read — called
+     * when the user opens that thread, which is what walks the badge counters
+     * down. The provider write only succeeds while we hold ROLE_SMS (default SMS
+     * app); otherwise this is a safe no-op. Returns rows updated.
+     */
+    private fun smsMarkRead(ctx: Context, address: String?): Int {
+        if (address.isNullOrEmpty()) return 0
+        return try {
+            val v = ContentValues().apply { put(Telephony.Sms.READ, 1) }
+            ctx.contentResolver.update(
+                Telephony.Sms.CONTENT_URI, v,
+                Telephony.Sms.ADDRESS + " = ? AND " + Telephony.Sms.READ + " = 0",
+                arrayOf(address),
+            )
+        } catch (_: Throwable) {
+            0
+        }
     }
 
     /**

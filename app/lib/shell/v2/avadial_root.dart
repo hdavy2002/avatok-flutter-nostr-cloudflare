@@ -23,6 +23,7 @@ import '../../features/avadial/device_contacts.dart';
 import '../../features/avadial/dialpad_search_tab.dart';
 import '../../features/avadial/pstn_call_screen.dart';
 import '../../features/avadial/sms/sms_threads_screen.dart';
+import '../../features/avadial/sms/sms_unread_store.dart';
 import '../../features/avadial/sms_role_help.dart';
 import '../shell_v2.dart';
 import 'shell_chrome.dart';
@@ -60,7 +61,9 @@ class _AvaDialRootState extends State<AvaDialRoot> {
   // order (index maps positionally).
   static const _items = [
     _CallsTabItem(Icons.dialpad_outlined, Icons.dialpad, 'Dialpad', AD.primaryBadge),
-    _CallsTabItem(Icons.sms_outlined, Icons.sms, 'Messages', AD.iconVideo),
+    // [AVA-SMS-BADGE-1] Messages carries the unread-SMS count in ORANGE.
+    _CallsTabItem(Icons.sms_outlined, Icons.sms, 'Messages', AD.iconVideo,
+        unreadBadge: true),
     _CallsTabItem(Icons.person_outline, Icons.person, 'Contacts', AD.iconSearch),
     _CallsTabItem(Icons.block_outlined, Icons.block, 'Block list', AD.danger),
     _CallsTabItem(Icons.history_outlined, Icons.history, 'Call logs', AD.online),
@@ -213,7 +216,12 @@ class _CallsTabItem {
   final IconData selectedIcon;
   final String label;
   final Color color;
-  const _CallsTabItem(this.icon, this.selectedIcon, this.label, this.color);
+
+  /// [AVA-SMS-BADGE-1] True on the Messages tab: renders the live unread-SMS
+  /// count (orange) from [SmsUnreadStore] next to the label.
+  final bool unreadBadge;
+  const _CallsTabItem(this.icon, this.selectedIcon, this.label, this.color,
+      {this.unreadBadge = false});
 }
 
 /// The Calls app's own colored tab strip (2026-07-12 redesign), rendered BELOW
@@ -273,6 +281,36 @@ class _CallsTabStrip extends StatelessWidget {
           Icon(selected ? item.selectedIcon : item.icon, size: 17, color: fg),
           const SizedBox(width: 6),
           Text(item.label, style: ADText.tabLabel(c: fg)),
+          // [AVA-SMS-BADGE-1] Live unread count in ORANGE on the Messages tab —
+          // "he knows message has new message". Walks down as threads are read.
+          if (item.unreadBadge)
+            ValueListenableBuilder<int>(
+              valueListenable: SmsUnreadStore.I.total,
+              builder: (_, n, __) => n <= 0
+                  ? const SizedBox.shrink()
+                  : Padding(
+                      padding: const EdgeInsets.only(left: 6),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: selected
+                              ? Colors.white
+                              : AD.primaryBadge.withValues(alpha: 0.16),
+                          borderRadius: BorderRadius.circular(9),
+                        ),
+                        child: Text(
+                          n > 99 ? '99+' : '$n',
+                          style: const TextStyle(
+                            color: AD.primaryBadge, // orange
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            height: 1.2,
+                          ),
+                        ),
+                      ),
+                    ),
+            ),
         ]),
       ),
     );

@@ -282,6 +282,23 @@ class AvaDialChannel {
   Future<List<Map<String, dynamic>>> smsQueryMessages(String address, {int limit = 500}) =>
       _invokeList('smsQueryMessages', {'address': address, 'limit': limit});
 
+  /// [AVA-SMS-BADGE-1] Per-address UNREAD message counts from the OS inbox
+  /// (`read = 0`) → `[{address, count}]`. Empty until READ_SMS/ROLE_SMS is held.
+  Future<List<Map<String, dynamic>>> smsUnreadCounts() =>
+      _invokeList('smsUnreadCounts', null);
+
+  /// [AVA-SMS-BADGE-1] Mark every unread message from [address] as read (the
+  /// user opened that thread). Provider write needs ROLE_SMS; safe no-op
+  /// otherwise. Returns rows updated (0 on failure/unsupported platform).
+  Future<int> smsMarkRead(String address) async {
+    try {
+      return await _ch.invokeMethod<int>('smsMarkRead', {'address': address}) ?? 0;
+    } catch (e) {
+      AvaLog.I.log('avadial', 'smsMarkRead failed: $e');
+      return 0;
+    }
+  }
+
   /// Drain any pending SMS-compose launch the native side stored before Dart was
   /// ready (route extra `avadial/compose` / ACTION_SENDTO). Null when there is none.
   Future<AvaComposeLaunch?> consumePendingCompose() async {
@@ -342,6 +359,22 @@ class AvaDialChannel {
     } catch (e) {
       AvaLog.I.log('avadial', 'writeContact failed: $e');
       return null;
+    }
+  }
+
+  /// BULK-write many device contacts in as few provider transactions as possible
+  /// (the fast path for contact-book RESTORE). Each entry is a map with keys
+  /// name/number/personalEmail/businessEmail/linkedin/note. Returns the number
+  /// written, or -1 when the native side is unavailable (older build / iOS) so the
+  /// caller can fall back to per-contact [writeContact].
+  Future<int> writeContactsBatch(List<Map<String, dynamic>> contacts) async {
+    if (contacts.isEmpty) return 0;
+    try {
+      final n = await _ch.invokeMethod<int>('writeContactsBatch', {'contacts': contacts});
+      return n ?? -1;
+    } catch (e) {
+      AvaLog.I.log('avadial', 'writeContactsBatch failed: $e');
+      return -1; // signal: fall back to per-contact writes
     }
   }
 
