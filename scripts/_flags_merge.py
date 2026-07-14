@@ -36,7 +36,20 @@ def main() -> None:
     args = sys.argv[3:]
 
     raw = sys.stdin.read().strip()
-    blob = json.loads(raw) if raw else {}
+    # Empty stdin is NOT "no overrides" — it's an upstream read that produced
+    # nothing, and deriving a blob from it means writing a near-empty
+    # platform_config over the real one (every override silently reverting to
+    # the code default for live users). The caller must pass a literal "{}" to
+    # mean "genuinely empty". This is a backstop: flags.sh materialises the read
+    # before the pipeline so `set -e` catches it first, but a pipeline is
+    # concurrent — kv_put would already have written by the time bash noticed —
+    # so refusing here protects every future caller too.
+    if not raw:
+        sys.exit(
+            "_flags_merge: empty stdin — refusing to derive a flag blob from "
+            "nothing (a failed read is not an empty blob; pass '{}' explicitly)"
+        )
+    blob = json.loads(raw)
     if not isinstance(blob, dict):
         sys.exit("stored platform_config is not a JSON object")
 
