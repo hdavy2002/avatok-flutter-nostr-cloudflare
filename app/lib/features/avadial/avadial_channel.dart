@@ -275,7 +275,7 @@ class AvaDialChannel {
             'start_activity': a['start_activity'] == true,
             'fsi_allowed': a['fsi_allowed'] == true,
             'notifs_enabled': a['notifs_enabled'] == true,
-            'sdk': (a['sdk'] as num?)?.toInt(),
+            'sdk': (a['sdk'] as num?)?.toInt() ?? 0,
           });
           break;
         case 'onLaunchOpenDial':
