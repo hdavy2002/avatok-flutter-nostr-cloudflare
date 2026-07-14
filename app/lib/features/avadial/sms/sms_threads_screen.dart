@@ -13,6 +13,7 @@ import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/zine.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../avadial_channel.dart';
+import '../avadial_theme.dart';
 import '../device_contacts.dart';
 import 'sms_compose_screen.dart';
 import 'sms_spam_store.dart';
@@ -293,17 +294,20 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14),
         decoration: BoxDecoration(
-          color: AD.card,
+          // [AVADIAL-SEARCH-2] White pill, black text (owner spec) — same tokens
+          // as the other three Calls search bars, see AvaDialTheme.search*.
+          color: AvaDialTheme.searchFill,
           borderRadius: BorderRadius.circular(100),
           border: Border.all(color: AD.borderControl, width: 1),
         ),
         child: Row(children: [
           Icon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
-              size: 18, color: AD.textSecondary),
+              size: 18, color: AvaDialTheme.searchHint),
           const SizedBox(width: 8),
           Expanded(
             child: TextField(
               controller: _searchController,
+              cursorColor: AvaDialTheme.searchText,
               onChanged: (v) {
                 // Fire once per search session (empty → typing), not per keystroke.
                 if (_query.trim().isEmpty && v.trim().isNotEmpty) {
@@ -312,10 +316,10 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
                 setState(() => _query = v);
               },
               textInputAction: TextInputAction.search,
-              style: const TextStyle(color: AD.textPrimary, fontSize: 14.5),
+              style: const TextStyle(color: AvaDialTheme.searchText, fontSize: 14.5),
               decoration: const InputDecoration(
                 hintText: 'Search messages, names or numbers',
-                hintStyle: TextStyle(color: AD.textSecondary, fontSize: 14.5),
+                hintStyle: TextStyle(color: AvaDialTheme.searchHint, fontSize: 14.5),
                 border: InputBorder.none,
                 isDense: true,
                 contentPadding: EdgeInsets.symmetric(vertical: 12),
@@ -331,7 +335,7 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
               },
               child: const Padding(
                 padding: EdgeInsets.only(left: 6),
-                child: Icon(Icons.close, size: 18, color: AD.textSecondary),
+                child: Icon(Icons.close, size: 18, color: AvaDialTheme.searchHint),
               ),
             ),
         ]),

@@ -27,6 +27,19 @@ class AvaDialTheme {
   static const textSoft = AD.textSecondary;
   static const textMute = AD.textTertiary;
 
+  // [AVADIAL-SEARCH-2] Search input — owner spec 2026-07-14: a WHITE pill with
+  // black text, deliberately breaking the dark palette above so the input reads
+  // as tappable/active against the near-black tabs. These are the ONLY light
+  // tokens in Calls; do not reuse them for anything but the search bars.
+  //
+  // There are four search bars (Contacts and Messages keep their own inline
+  // copies alongside the shared `_AvaDialSearchBar` used by Call logs + Block
+  // list) — they all style off these three, so keep them here rather than
+  // hardcoding Colors.white in four places and letting them drift.
+  static const searchFill = Colors.white;
+  static const searchText = Colors.black;
+  static const searchHint = Colors.black54;
+
   // Accents reuse the AD dark v2 glyph/status tokens (contact/log row colors,
   // tab strip fills, PSTN caller-id colors) so Calls stays on-brand.
   static const contact = AD.online;      // known contact / outgoing

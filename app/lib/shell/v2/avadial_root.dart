@@ -568,23 +568,26 @@ class _ContactsTabState extends State<_ContactsTab> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14),
           decoration: BoxDecoration(
-            color: AvaDialTheme.surface2,
+            // [AVADIAL-SEARCH-2] White pill, black text (owner spec) — matches
+            // the shared _AvaDialSearchBar used by Call logs + Block list.
+            color: AvaDialTheme.searchFill,
             borderRadius: BorderRadius.circular(999),
             border: Border.all(color: AvaDialTheme.border, width: 1),
           ),
           child: Row(children: [
-            const Icon(Icons.search, color: AvaDialTheme.textSoft, size: 20),
+            const Icon(Icons.search, color: AvaDialTheme.searchHint, size: 20),
             const SizedBox(width: 8),
             Expanded(
               child: TextField(
                 onChanged: (v) => setState(() => _query = v),
-                style: TextStyle(color: AvaDialTheme.text, fontSize: 14.5),
-                decoration: InputDecoration(
+                cursorColor: AvaDialTheme.searchText,
+                style: const TextStyle(color: AvaDialTheme.searchText, fontSize: 14.5),
+                decoration: const InputDecoration(
                   hintText: 'Search name or number',
-                  hintStyle: TextStyle(color: AvaDialTheme.textSoft, fontSize: 14.5),
+                  hintStyle: TextStyle(color: AvaDialTheme.searchHint, fontSize: 14.5),
                   border: InputBorder.none,
                   isDense: true,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                  contentPadding: EdgeInsets.symmetric(vertical: 12),
                 ),
               ),
             ),
@@ -1070,22 +1073,26 @@ class _AvaDialSearchBarState extends State<_AvaDialSearchBar> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14),
         decoration: BoxDecoration(
-          color: AvaDialTheme.surface2,
+          // [AVADIAL-SEARCH-2] White pill, black text (owner spec).
+          color: AvaDialTheme.searchFill,
           borderRadius: BorderRadius.circular(999),
           border: Border.all(color: AvaDialTheme.border, width: 1),
         ),
         child: Row(children: [
-          const Icon(Icons.search, color: AvaDialTheme.textSoft, size: 20),
+          const Icon(Icons.search, color: AvaDialTheme.searchHint, size: 20),
           const SizedBox(width: 8),
           Expanded(
             child: TextField(
               controller: _controller,
               onChanged: _emit,
               textInputAction: TextInputAction.search,
-              style: TextStyle(color: AvaDialTheme.text, fontSize: 14.5),
+              // The app-wide cursor/selection colours are tuned for the dark
+              // surface and vanish on white — pin them to the input's own ink.
+              cursorColor: AvaDialTheme.searchText,
+              style: const TextStyle(color: AvaDialTheme.searchText, fontSize: 14.5),
               decoration: InputDecoration(
                 hintText: widget.hint,
-                hintStyle: TextStyle(color: AvaDialTheme.textSoft, fontSize: 14.5),
+                hintStyle: const TextStyle(color: AvaDialTheme.searchHint, fontSize: 14.5),
                 border: InputBorder.none,
                 isDense: true,
                 contentPadding: const EdgeInsets.symmetric(vertical: 12),
@@ -1101,7 +1108,7 @@ class _AvaDialSearchBarState extends State<_AvaDialSearchBar> {
               },
               child: const Padding(
                 padding: EdgeInsets.only(left: 6),
-                child: Icon(Icons.close, color: AvaDialTheme.textSoft, size: 18),
+                child: Icon(Icons.close, color: AvaDialTheme.searchHint, size: 18),
               ),
             ),
         ]),
