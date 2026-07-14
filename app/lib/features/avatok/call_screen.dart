@@ -164,6 +164,13 @@ class CallScreen extends StatefulWidget {
   // confirm on connect). >0 arms the in-call countdown + end-of-time beeps
   // (CallCountdown) once the call connects. 0 = not a paid call.
   final int paidMinutes;
+  // [INSTANT-CALL-MOUNT-1] true = this screen was mounted OPTIMISTICALLY (the
+  // instant the user tapped the call icon), BEFORE POST /api/call resolved. The
+  // session then runs the honest guard flow (connecting + searching tone, no
+  // fake ringback) and the launch site feeds the placement outcome back via
+  // CallSession.notePlaceResult / notePlaceFailed. Default false = the classic
+  // awaited path (screen mounts after the POST).
+  final bool deferRing;
   const CallScreen({
     super.key,
     required this.room,
@@ -182,6 +189,7 @@ class CallScreen extends StatefulWidget {
     this.business = false,
     this.dialer = false,
     this.paidMinutes = 0,
+    this.deferRing = false,
   });
   @override
   State<CallScreen> createState() => _CallScreenState();
@@ -476,6 +484,7 @@ class _CallScreenState extends State<CallScreen> {
       teamSlot: widget.teamSlot,
       traceId: widget.traceId, // [TRACE-ID-1]
       business: widget.business, // [DIALPAD-BIZ-CALLS Phase C]
+      deferRing: widget.deferRing, // [INSTANT-CALL-MOUNT-1]
     ));
     // The session asks us to pop when a call ends (busy/decline/hangup, after
     // the ringback grace delay). Guarded so it fires once.

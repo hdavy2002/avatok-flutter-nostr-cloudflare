@@ -64,6 +64,17 @@ class CallSessionConfig {
   /// of the generic call-outcome menu — otherwise the menu pre-empts the
   /// 'no-answer' phase and the WP3 routing probe never runs.
   final bool business;
+  /// [INSTANT-CALL-MOUNT-1] true = the launch site mounted the call screen
+  /// OPTIMISTICALLY (the instant the user tapped), BEFORE the POST /api/call
+  /// round-trip resolved, so tapping the call icon feels instant. In this mode
+  /// the session MUST behave honestly like ring-ack guard mode: start in
+  /// 'connecting' with a searching tone (NEVER a fake ringback), and gate the
+  /// ring window on the placement result the launch site feeds back via
+  /// [CallSession.notePlaceResult] / [CallSession.notePlaceFailed]. This reuses
+  /// the exact `_takeoverGuard` machinery so an unreachable/failed callee never
+  /// hears ringback into the void ([MULTIACCT-4] guarantee is preserved even
+  /// when RemoteConfig.receptTakeoverGuard is off).
+  final bool deferRing;
   const CallSessionConfig({
     required this.room,
     required this.title,
@@ -76,6 +87,7 @@ class CallSessionConfig {
     this.teamSlot,
     this.traceId = '',
     this.business = false,
+    this.deferRing = false,
   });
 }
 
@@ -617,7 +629,12 @@ class CallSession {
     });
     // Keep the device awake for the whole call (released in _teardown).
     try { WakelockPlus.enable(); } catch (_) {}
-    _takeoverGuard = RemoteConfig.receptTakeoverGuard;
+    // [INSTANT-CALL-MOUNT-1] An optimistically-mounted call (screen shown before
+    // the place-call POST resolved) MUST run the honest guard flow regardless of
+    // the server flag: 'connecting' + searching tone, no fake ringback, ring
+    // window gated on the placement result. Otherwise a guard-off prod would play
+    // ringback into a callee we haven't even confirmed is reachable yet.
+    _takeoverGuard = RemoteConfig.receptTakeoverGuard || config.deferRing;
     _telemetry = CallTelemetry(callId: config.room, video: config.video, outgoing: config.outgoing);
     _telemetry.started();
     // My own profile (best-effort) for the receptionist duo's "You" icon.
@@ -2110,6 +2127,34 @@ class CallSession {
       _unreachableNotice?.call();
       _onNoAnswer();
     }
+  }
+
+  // ── [INSTANT-CALL-MOUNT-1] Placement-result feedback ──────────────────────
+  //
+  // When a call screen is mounted OPTIMISTICALLY (config.deferRing — the screen
+  // is shown the instant the user taps, before POST /api/call resolves), the
+  // launch site runs that POST in the BACKGROUND and feeds the outcome back
+  // here. This maps 1:1 onto the ring-ack machinery the guard flow already uses:
+  //   reachable == true  → the wake push verifiably left the building → give the
+  //                        callee the full ring window (the device-ringing
+  //                        receipt still refines phase/ringback when it lands).
+  //   reachable == false → no reachable device → honest unreachable → Ava, with
+  //                        NO fake ringback ever having played.
+  // Safe to call at most once; extra/late calls are absorbed by the ring-ack
+  // guards (_ringAckHandled / _pendingAckResult). A no-op unless this session is
+  // in guard/deferRing mode (_onRingAck early-returns when !_takeoverGuard).
+  void notePlaceResult(bool reachable) {
+    if (_ended || _connected) return;
+    _onRingAck(reachable);
+  }
+
+  /// [INSTANT-CALL-MOUNT-1] The place-call POST itself failed hard (network/DNS
+  /// error) — drive the honest 'network-error' terminal (carrying the launch
+  /// site's Retry affordance) instead of a silent hang or a fake ring. Mirrors
+  /// the pre-mount abort the old awaited path performed before it ever mounted.
+  void notePlaceFailed() {
+    if (_ended || _connected) return;
+    _endWith('network-error', reason: 'place-call-failed');
   }
 
   void _onDeviceRinging() {

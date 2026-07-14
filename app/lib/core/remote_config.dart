@@ -115,6 +115,15 @@ class RemoteConfig {
   static bool get billingEnabled => _b('billingEnabled', false);
   /// AI receptionist (Gemini Live) — ON for the free launch. Mirrors KV.
   static bool get receptionistEnabled => _b('receptionistEnabled', true);
+  /// [INSTANT-CALL-MOUNT-1] When ON, tapping the audio/video call icon in a 1:1
+  /// chat thread opens the CallScreen IMMEDIATELY and runs POST /api/call in the
+  /// BACKGROUND (instead of awaiting the ~server round-trip before showing any
+  /// UI, which made the call screen take seconds to appear). The optimistically-
+  /// mounted session runs the honest guard flow (connecting + searching tone, no
+  /// fake ringback) and the reachability/glare outcome is fed back once the POST
+  /// resolves. Kill switch: flip to false in KV to restore the awaited path
+  /// everywhere with no rebuild. Mirrors config.ts.
+  static bool get instantCallMountEnabled => _b('instantCallMountEnabled', true);
   /// [BUSY-CARD-1] Personalized busy card (Cancel / Notify me / Leave a message
   /// for Ava) shown when a call resolves to 'busy'. Client kill switch mirroring
   /// the server's busy-card flag. The card ALSO requires the server to send a

@@ -38,6 +38,7 @@ export interface PlatformConfig {
   // + PROPOSAL-RECEPTIONIST-V2.md). First real AvaVoice deployment. Gemini Live via CF AI
   // Gateway, 2-min cap.
   receptionistEnabled: boolean;      // master switch for /api/receptionist/* (default OFF until tested)
+  instantCallMountEnabled: boolean;  // [INSTANT-CALL-MOUNT-1] open 1:1 CallScreen instantly, POST /api/call in background (default ON; kill switch)
   receptionistRings: number;         // v2 Mode A: rings before auto-handoff (default 5)
   // Receptionist ENGINE switch (Specs/RECEPTIONIST-CF-PIPELINE.md). false (default)
   // = Gemini Live (do/reception_room.ts — untouched). true = the SEPARATE
@@ -386,6 +387,7 @@ const DEFAULTS: PlatformConfig = {
   avavoiceEnabled: false,          // FREE LAUNCH: agent builder hidden
   avavisionEnabled: false,         // FREE LAUNCH: agent builder hidden
   receptionistEnabled: true,       // FREE LAUNCH: AI receptionist ON (Gemini Live)
+  instantCallMountEnabled: true,   // [INSTANT-CALL-MOUNT-1] instant 1:1 call screen; POST /api/call runs in background. Kill switch (flip false to restore awaited path)
   receptionistRings: 4,            // [ONE-FLOW-1] owner 2026-07-09: 4 rings (20s) GLOBAL — one flow for everyone; KV can override
   receptionistUseCf: false,        // engine switch: false = Gemini Live (default), true = Cloudflare Workers AI engine
   receptTakeoverGuard: false,      // P1: gate Ava takeover on FCM ring-ack — ships dark, flip after device test

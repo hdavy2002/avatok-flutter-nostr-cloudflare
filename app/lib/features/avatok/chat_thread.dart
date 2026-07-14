@@ -2135,6 +2135,43 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     final traceId = TraceContext.mint();
     // (`to` already declared above in the CALLFIX-14 glare block)
     AvaLog.I.log('call', 'placing ${video ? "video" : "audio"} call callId=$room to=${to.length > 12 ? to.substring(0, 12) : to}…');
+    // [INSTANT-CALL-MOUNT-1] Optimistic mount: show the CallScreen the INSTANT
+    // the user tapped, then run POST /api/call in the BACKGROUND. The old flow
+    // AWAITED that POST (Worker + FCM fan-out — routinely seconds, up to the ~8s
+    // timeout on a flaky link) BEFORE Navigator.push, so the call screen took
+    // seconds to appear (PostHog: call_place_ok → call_started was only ~30ms, so
+    // the wait was entirely the POST, not the render). The optimistic session
+    // runs the HONEST guard flow (deferRing → connecting + searching tone, never
+    // a fake ringback) and _placeCallInBackground feeds the reachability/glare/
+    // failure outcome back into it via notePlaceResult / notePlaceFailed — so an
+    // unreachable callee still never hears ringback into the void ([MULTIACCT-4]
+    // guarantee preserved). Kill switch: RemoteConfig.instantCallMountEnabled.
+    // Only for real uid contacts (the ones a POST actually rings).
+    if (RemoteConfig.instantCallMountEnabled && to.startsWith('user_')) {
+      if (!mounted) { _dialing = false; return; }
+      Analytics.capture('call_mount_optimistic', {'call_id': room, 'kind': kind});
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => CallScreen(
+            room: room, title: widget.chat.name, seed: to, video: video,
+            avatarUrl: widget.chat.avatarUrl,
+            traceId: traceId, // [TRACE-ID-1]
+            deferRing: true,  // [INSTANT-CALL-MOUNT-1] honest guard flow until placed
+            onRetry: () {
+              Analytics.capture('call_retry_pressed', {'call_id': room, 'kind': kind});
+              // ignore: unawaited_futures
+              _call(kind);
+            },
+          ),
+        ),
+      );
+      // The screen is mounted; start() will bump gLiveCallScreens to guard re-entry.
+      _dialing = false;
+      // ignore: unawaited_futures
+      _placeCallInBackground(room: room, to: to, video: video, traceId: traceId, kind: kind);
+      return;
+    }
     // The callee's default ringtone (AI Ringback) — comes back on the /api/call
     // response so the caller hears it locally while ringing.
     String ringbackUrl = '';
@@ -2279,6 +2316,115 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         ),
       ),
     );
+  }
+
+  // [INSTANT-CALL-MOUNT-1] Runs POST /api/call AFTER the CallScreen is already on
+  // screen (optimistic mount) and feeds the outcome to the live session. This is
+  // the same POST the awaited path did — just off the critical path — so the ring
+  // push still fires immediately; only the UI no longer waits on it. Outcomes:
+  //   • reachable        → notePlaceResult(true)  → full ring window (honest)
+  //   • unreachable/404  → notePlaceResult(false) → Ava, no fake ringback shown
+  //   • server folded a mutual dial (glare) into a different room → supersede the
+  //     optimistic room and open the deterministic winner
+  //   • identity gate    → interceptor opened liveness → tear the screen down
+  //   • hard network fail → notePlaceFailed() → 'network-error' + Retry
+  Future<void> _placeCallInBackground({
+    required String room,
+    required String to,
+    required bool video,
+    required String traceId,
+    required String kind,
+  }) async {
+    final callKind = video ? 'video' : 'audio';
+    try {
+      final res = await ApiAuth.postJsonH(kCallUrl, {
+        'to': to,
+        'fromName': _myName ?? 'AvaTOK',
+        'callId': room,
+        'kind': callKind,
+      }, {'x-trace-id': traceId}); // [TRACE-ID-1] propagate to Worker + push
+      AvaLog.I.log('call', 'POST /api/call (bg) -> HTTP ${res.statusCode}${res.statusCode != 200 ? " body=${res.body.length > 120 ? res.body.substring(0, 120) : res.body}" : ""}');
+
+      // [CALL-GLARE-2] Server folded a simultaneous mutual dial into one winning
+      // room. Both devices compute the same winner. If it isn't our optimistic
+      // room, supersede: end this room's (peer-less) session and open the winner.
+      String glareJoin = '';
+      try {
+        final jb = jsonDecode(res.body);
+        if (jb is Map && jb['glare'] == true) glareJoin = (jb['join_call_id'] ?? '').toString();
+      } catch (_) {}
+      if (glareJoin.isNotEmpty && glareJoin != room) {
+        Analytics.capture('call_glare_autoconnect', {
+          'winner_call_id': glareJoin, 'my_call_id': room, 'kind': callKind, 'mount': 'optimistic',
+        });
+        CallSessionManager.instance.liveSessionFor(room)?.hangup('glare-superseded');
+        if (!mounted) return;
+        // Push the winner AFTER the superseded screen has popped (post-frame) so
+        // the pop can never remove the winner route instead.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => CallScreen(
+                room: glareJoin, title: widget.chat.name, seed: to, video: video,
+                avatarUrl: widget.chat.avatarUrl,
+                // We lost the glare (our room != winner) → join as the answering side.
+                outgoing: false,
+                traceId: traceId,
+              ),
+            ),
+          );
+        });
+        return;
+      }
+
+      bool reachableFalse = false;
+      try { reachableFalse = jsonDecode(res.body)['reachable'] == false; } catch (_) {}
+
+      final session = CallSessionManager.instance.liveSessionFor(room);
+      if (res.statusCode == 200 && !reachableFalse) {
+        bool hasRingback = false;
+        try { hasRingback = (jsonDecode(res.body)['ringbackUrl'] ?? '').toString().isNotEmpty; } catch (_) {}
+        Analytics.capture('call_place_ok', {'kind': callKind, 'has_ringback': hasRingback, 'mount': 'optimistic'});
+        // Reachable — release the honest guard flow into the full ring window.
+        session?.notePlaceResult(true);
+      } else if (res.statusCode == 404 || reachableFalse) {
+        Analytics.capture('call_no_device', {
+          'to': to.length > 40 ? to.substring(0, 40) : to,
+          'kind': callKind,
+          'reason': res.statusCode == 404 ? 'http_404' : 'reachable_false',
+          'mount': 'optimistic',
+        });
+        // No reachable device → honest unreachable → Ava. No fake ringback ever
+        // played (guard flow only showed connecting + searching tone).
+        session?.notePlaceResult(false);
+      } else if (res.statusCode == 403 && res.body.contains('identity_required')) {
+        // The global 403 interceptor already opened the consent/liveness flow —
+        // tear down the optimistic call screen so it isn't stuck behind the gate.
+        Analytics.capture('call_blocked_identity', {'kind': callKind, 'mount': 'optimistic'});
+        session?.hangup('identity-gate');
+      } else {
+        // Auth/5xx/rate-limit that isn't a reachability signal — let the guard
+        // flow run; it self-heals via the 12s device-ring timeout → Ava if no
+        // peer ever joins. Captured so it isn't silent.
+        Analytics.capture('call_place_failed', {'status': res.statusCode, 'kind': callKind, 'mount': 'optimistic'});
+        session?.notePlaceResult(true);
+      }
+    } catch (e) {
+      // The place-call POST threw (network/DNS error or timeout). Drive the honest
+      // 'network-error' terminal + Retry instead of a hung screen — same outcome
+      // the old awaited path gave, just applied to the already-mounted screen.
+      AvaLog.I.log('call', 'POST /api/call (bg) FAILED: $e');
+      final err = e.toString();
+      Analytics.capture('call_place_failed', {
+        'call_id': room,
+        'kind': callKind,
+        'error': err.length > 160 ? err.substring(0, 160) : err,
+        'mount': 'optimistic',
+      });
+      CallSessionManager.instance.liveSessionFor(room)?.notePlaceFailed();
+    }
   }
 
   // ---- group conferencing (Phase 10 — LiveKit, ≤25 participants) ----
