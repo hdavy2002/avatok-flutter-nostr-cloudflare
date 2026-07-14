@@ -653,6 +653,17 @@ class _CallScreenState extends State<CallScreen> {
     final bottomInset = MediaQuery.of(context).padding.bottom;
     final stack = Stack(
       children: [
+        // [CALL-UI-STACK-FIX 2026-07-14] Anchor the Stack to the full body size.
+        // Scaffold lays its body out with LOOSE constraints, and since
+        // CALL-UI-FIXES-2026-07-12 (008644c) turned the audio content into a
+        // Positioned.fill, the only NON-positioned child left here was the
+        // SafeArea header row — so the whole Stack collapsed to ~header height:
+        // the bottom-pinned control row rendered at the TOP of the screen and
+        // the hero avatar clipped to an arc (owner screenshot 2026-07-14).
+        // Positioned/Positioned.fill children never size a Stack; this
+        // non-positioned SizedBox.expand() does, restoring the full-screen
+        // canvas for BOTH the audio and video layouts.
+        const SizedBox.expand(),
         if (showVideo) ...[
           Positioned.fill(
             child: connected
