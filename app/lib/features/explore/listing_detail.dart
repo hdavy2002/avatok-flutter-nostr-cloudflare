@@ -119,7 +119,31 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
       // appears (and surfaces the result even if it syncs while the app is elsewhere).
       final c = d.listing.creator;
       if (c.uid.isNotEmpty) {
-        await ContactsStore().add(Contact(
+        // [ISSUE-CONTACT-RESURRECT-1] DELIBERATELY the explicit `add()` — the
+        // tombstone-clearing path — NOT `addIfNotDeleted()`. Do not "fix" this
+        // to match the automated call sites (_ensureContact / mergeTel /
+        // resurrection); it is the opposite case and the distinction is the
+        // whole point of the two entry points.
+        //
+        // Tapping "Contact agent" IS the user choosing to open a conversation
+        // with this seller — semantically identical to tapping Add contact, so
+        // un-deleting them is CORRECT and intended. Refusing here would be
+        // actively harmful: the buyer has already started (and possibly paid
+        // for) a negotiation, the result lands in this thread ~30s later, and
+        // with no contact row there is nowhere for it to land — the injectLocal
+        // bubble below and the eventual voice note would both be swallowed. The
+        // user would get silence for something they asked for.
+        //
+        // It is still worth SEEING when this un-deletes someone, so it's
+        // instrumented rather than blocked.
+        final store = ContactsStore();
+        if ((await store.deletedContacts()).containsKey(c.uid)) {
+          Analytics.capture('contact_undeleted', const {
+            'source': 'listing_contact_agent',
+            'reason': 'explicit_user_action',
+          });
+        }
+        await store.add(Contact(
           uid: c.uid,
           name: c.name ?? c.handle ?? 'Seller',
           avatarUrl: c.avatarUrl ?? '',
