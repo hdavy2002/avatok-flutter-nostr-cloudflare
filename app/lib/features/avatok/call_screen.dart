@@ -660,6 +660,9 @@ class _CallScreenState extends State<CallScreen> {
     final failed = phase == 'declined' || phase == 'busy' || phase == 'no-answer' ||
         phase == 'network-error';
     final bottomInset = MediaQuery.of(context).padding.bottom;
+    // [ISSUE-VIDEO-TEXTNOTE-KEYBOARD-1] Keyboard height (0 when closed) — the
+    // video outcome-menu overlay bottoms out at its top edge while typing.
+    final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
     final stack = Stack(
       children: [
         // [CALL-UI-STACK-FIX 2026-07-14] Anchor the Stack to the full body size.
@@ -1013,17 +1016,43 @@ class _CallScreenState extends State<CallScreen> {
         // `bottom` keeps it clear of the control row so hang-up stays tappable.
         // The scrim is only for video: the menu relied on the light zine paper
         // backdrop for contrast, which doesn't exist over a live video feed.
+        // [ISSUE-VIDEO-TEXTNOTE-KEYBOARD-1] (2026-07-14) "Leave a text note"
+        // opens a composer INSIDE the menu, and on video the keyboard could
+        // cover it — the audio path has a deliberate keyboard-aware layout
+        // ([NOTE-COMPOSER-LAYOUT 2026-07-12]) but this overlay had none.
+        //
+        // Do NOT subtract keyboardInset from `bottom` here. This Scaffold leaves
+        // resizeToAvoidBottomInset at its default (true), so the body — and
+        // therefore this whole Stack — is ALREADY shrunk to sit above the
+        // keyboard. Subtracting the inset again would double-count it and float
+        // the menu a full keyboard-height too high, stranding the composer
+        // mid-screen. (Compare the audio path, which uses viewInsets to
+        // RECONSTRUCT the resized body height for minHeight — not as an offset.)
+        // The real fix is the bottom anchor: `reverse: true` pins a menu taller
+        // than the shrunk region to its bottom edge, keeping the composer
+        // visible; `bottom: 0` reclaims the control-row gap, since those buttons
+        // are behind the keyboard while typing anyway.
         if (showVideo && s.showOutcomeMenu)
           Positioned(
             left: 0, right: 0, top: 0,
             // NB: both operands must be double — `112 + <num>` infers `num`,
             // which won't assign to Positioned.bottom (double?).
-            bottom: 112.0 + (bottomInset > 0 ? bottomInset : 16.0),
+            bottom: keyboardInset > 0
+                ? 0.0
+                : 112.0 + (bottomInset > 0 ? bottomInset : 16.0),
             child: Container(
               color: AD.scrim,
+              // Bottom-align while typing so the composer sits just above the
+              // keyboard rather than floating under the header padding.
               child: SingleChildScrollView(
+                reverse: keyboardInset > 0,
                 padding: EdgeInsets.fromLTRB(
-                    24, MediaQuery.of(context).padding.top + 72, 24, 16),
+                    24,
+                    keyboardInset > 0
+                        ? 16
+                        : MediaQuery.of(context).padding.top + 72,
+                    24,
+                    16),
                 child: _outcomeMenu(),
               ),
             ),
