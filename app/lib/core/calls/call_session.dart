@@ -2088,6 +2088,32 @@ class CallSession {
 
   void _onRingAck(bool ok) {
     if (!_takeoverGuard || _connected || _ended) return;
+    // [ISSUE-VIDEO-RINGACK-1] (2026-07-14) VIDEO never runs _probeReceptionist
+    // (there is no receptionist on video), so _armNoAnswerWindow is never
+    // reached and _pendingRingWindow stays null FOREVER on a video call. The
+    // ack therefore parked in _pendingAckResult and was never applied by
+    // anyone: video ignored the server's verdict entirely and just waited out
+    // the 12s _deviceRingingTimer. Two consequences, both fixed by applying it
+    // directly (_applyRingAck already defaults the window to 25s):
+    //   ok=false → the server KNOWS there's no reachable device; say so now
+    //              instead of stalling the caller for 12s.
+    //   ok=true  → the wake push verifiably left the building, so cancel the
+    //              12s timer and give the callee the full window. Without this,
+    //              a reachable-but-slow-to-ring phone (FCM routinely takes
+    //              8-15s — see [CALL-RINGACK-EXTEND-1]) was declared
+    //              "unreachable" on video at 12s. That's the audio bug from the
+    //              2026-07-08 "everyone gets Ava" incident, still live on video.
+    // AUDIO is deliberately untouched: it must keep parking the ack until
+    // _probeReceptionist resolves the receptionist-derived window, otherwise
+    // _armNoAnswerWindow would double-arm against _startRingWindow here.
+    //
+    // KNOWN, INTENDED BEHAVIOUR CHANGE: on video where the server accepts the
+    // push (ok=true) but the phone never actually rings, the caller now waits
+    // the 25s window and sees "no answer" instead of bailing at 12s with
+    // "unreachable" (_callUnreachable is never set on the ok=true path). That
+    // is the honest label — the push WAS accepted, so we don't know the device
+    // is off — and it matches what audio already does.
+    if (_pendingRingWindow == null && config.video) { _applyRingAck(ok); return; }
     if (_pendingRingWindow == null) { _pendingAckResult = ok; return; }
     _applyRingAck(ok);
   }
