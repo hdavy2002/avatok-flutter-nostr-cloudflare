@@ -237,10 +237,10 @@ class AvaDialChannel {
           _compose.add(AvaComposeLaunch(a['number'] as String?));
           break;
         case 'onMissedCall':
-          final num = a['number'] as String?;
-          if (num != null && num.isNotEmpty) {
+          final missedNumber = a['number'] as String?;
+          if (missedNumber != null && missedNumber.isNotEmpty) {
             _missed.add(AvaMissedCall(
-              num,
+              missedNumber,
               (a['ring_secs'] as num?)?.toInt() ?? 0,
               a['is_avatok_cached'] == true,
             ));
