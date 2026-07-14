@@ -37,11 +37,26 @@ class _GroupsTabState extends State<GroupsTab> {
   List<GroupInvite> _invites = []; // pending group invites (Accept/Decline)
   bool _loading = true;
 
+  // [ISSUE-GROUPS-SEARCH-1] Instant name filter over groups + pending invites.
+  // No debounce; filters from the first character typed.
+  final _searchCtl = TextEditingController();
+  String _query = '';
+
   @override
   void initState() {
     super.initState();
     _load();
   }
+
+  @override
+  void dispose() {
+    _searchCtl.dispose(); // [ISSUE-GROUPS-SEARCH-1]
+    super.dispose();
+  }
+
+  /// [ISSUE-GROUPS-SEARCH-1] Case-insensitive substring match on a group name.
+  bool _nameMatches(String name) =>
+      _query.isEmpty || name.toLowerCase().contains(_query.toLowerCase());
 
   Future<void> _load() async {
     // Paint the local list first, then reconcile with the server so groups the
@@ -102,6 +117,11 @@ class _GroupsTabState extends State<GroupsTab> {
   @override
   Widget build(BuildContext context) {
     final canPop = Navigator.of(context).canPop();
+    // [ISSUE-GROUPS-SEARCH-1] Derived views; both sections narrow under a query.
+    final visibleGroups = _groups.where((g) => _nameMatches(g.name)).toList();
+    final visibleInvites = _invites.where((i) => _nameMatches(i.groupName)).toList();
+    final noResults =
+        _query.isNotEmpty && visibleGroups.isEmpty && visibleInvites.isEmpty;
     return Scaffold(
       backgroundColor: AD.bg,
       floatingActionButton: _fab(
@@ -143,26 +163,48 @@ class _GroupsTabState extends State<GroupsTab> {
             ),
           ),
         ),
+        // [ISSUE-GROUPS-SEARCH-1] Search dock, pinned under the header and outside
+        // the ListView so it stays put while the list scrolls. Hidden when there is
+        // nothing to search; never autofocused (would pop the keyboard on tab open).
+        if (!_loading && (_groups.isNotEmpty || _invites.isNotEmpty))
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 2),
+            child: AdSearchDock(
+              controller: _searchCtl,
+              hint: 'Search groups',
+              onChanged: (v) => setState(() => _query = v),
+            ),
+          ),
         Expanded(
           child: _loading
               ? const Center(
                   child: CircularProgressIndicator(color: AD.iconSearch))
               : (_groups.isEmpty && _invites.isEmpty)
                   ? _empty()
-                  : ListView(
+                  : noResults
+                      ? _noResults()
+                      : ListView(
                       padding: const EdgeInsets.fromLTRB(16, 14, 16, 110),
                       children: [
-                        if (_invites.isNotEmpty) ...[
+                        // Section headers are tied to their FILTERED section, so a
+                        // header never survives alone when its rows are filtered out.
+                        if (visibleInvites.isNotEmpty) ...[
                           Text('PENDING INVITES', style: ADText.sectionLabel()),
                           const SizedBox(height: 10),
-                          for (final inv in _invites)
+                          for (final inv in visibleInvites)
                             Padding(padding: const EdgeInsets.only(bottom: 12), child: _inviteCard(inv)),
                           const SizedBox(height: 4),
-                          if (_groups.isNotEmpty) Text('YOUR GROUPS', style: ADText.sectionLabel()),
-                          if (_groups.isNotEmpty) const SizedBox(height: 10),
+                          if (visibleGroups.isNotEmpty) Text('YOUR GROUPS', style: ADText.sectionLabel()),
+                          if (visibleGroups.isNotEmpty) const SizedBox(height: 10),
                         ],
-                        for (int i = 0; i < _groups.length; i++)
-                          Padding(padding: const EdgeInsets.only(bottom: 12), child: _groupCard(_groups[i], i)),
+                        // NOTE: _groupCard's index seeds its badge colour
+                        // (AD.family('${g.id}$i')). Pass the index in _groups, not in
+                        // the filtered list, or every badge would change colour as
+                        // the user types.
+                        for (final g in visibleGroups)
+                          Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: _groupCard(g, _groups.indexOf(g))),
                       ],
                     ),
         ),
@@ -306,6 +348,31 @@ class _GroupsTabState extends State<GroupsTab> {
             ),
             child: Text(label, style: ADText.rowName(c: labelColor)),
           ),
+        ),
+      );
+
+  /// [ISSUE-GROUPS-SEARCH-1] Shown when a query matches no group/invite — distinct
+  /// from _empty(), which means "you have no groups at all".
+  Widget _noResults() => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+              width: 72, height: 72,
+              decoration: BoxDecoration(
+                color: AD.card,
+                borderRadius: BorderRadius.circular(AD.rListCard),
+                border: Border.all(color: AD.borderControl, width: 1),
+              ),
+              child: Center(child: PhosphorIcon(
+                  PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
+                  size: 32, color: AD.textTertiary)),
+            ),
+            const SizedBox(height: 14),
+            Text('No groups match "$_query"',
+                textAlign: TextAlign.center,
+                style: ADText.preview(c: AD.textSecondary)),
+          ]),
         ),
       );
 
