@@ -42,11 +42,41 @@ Then do the whole thing yourself. Do **not** hand him commands:
 
 ```bash
 # staging build  (staging code, staging backend)
-gh workflow run android.yml --ref staging -f environment=staging -f artifact=apk
+gh workflow run android.yml --ref staging -f environment=staging -f artifact=apk -f play_track=none
 
 # production build (main code, prod backend) — only on an explicit request
-gh workflow run android.yml --ref main    -f environment=prod    -f artifact=apk
+gh workflow run android.yml --ref main    -f environment=prod    -f artifact=apk -f play_track=none
 ```
+
+#### 🚀 THE MAGIC WORD: **"ship it"**
+
+The owner asked (2026-07-15) for one phrase that means *do the whole thing*. **"ship
+it"** — or "ship a build", "ship to my phone" — is an EXPLICIT build request and is
+the one case where you skip the two widget questions above, because the phrase
+already answers them. Run exactly:
+
+```bash
+gh workflow run android.yml --ref main -f environment=prod -f artifact=both -f play_track=internal
+```
+
+Then tell him the run URL and that it needs his approval (prod pauses on the
+`production` Environment gate). CI does the rest with no further input:
+
+1. builds the `.aab` **and** the side-loadable arm64 `.apk`
+2. publishes the `.aab` to the Play **internal testing** track
+3. sets `latestAppBuild` in prod KV to that build number
+4. verifies the flag landed (cache-busted)
+
+Then he opens AvaTOK, hits Update, and it updates. **Nothing is manual — he never
+downloads an .aab and never touches the Play Console.** If you find yourself telling
+him to upload something by hand, the automation has broken; fix it rather than
+routing around it.
+
+"ship it" ONLY means the internal track. Closed testing (`alpha`) is a different
+request and needs Google review, so `latestAppBuild` is NOT auto-bumped there (a
+build users can't download yet + an update prompt = a popup leading nowhere).
+
+Still true: **never** trigger a build he didn't ask for. "ship it" is the ask.
 
 `android.yml` has a **guard step**: prod must be built from `main`, staging from
 `staging`. A mismatched dispatch fails fast instead of shipping the wrong code.

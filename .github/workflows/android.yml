@@ -32,27 +32,45 @@ on:
         type: choice
         options: [staging, prod]
       artifact:
-        description: 'Artifact format (APK is the default — owner decision 2026-07-04)'
+        # [AVA-UPDATE-AUTO] Was `apk` (owner decision 2026-07-04: "for all builds
+        # going forward I need an APK and not AAB"). Now `both`, because that
+        # decision predates Play publishing and the two defaults contradicted each
+        # other: Play accepts ONLY an .aab, so `apk` + `play_track=internal` — the
+        # combination you get by touching nothing — failed the Play guard outright.
+        #
+        # `both` honours the original decision (the side-loadable arm64 APK is still
+        # built and still attached to the GitHub Release) while also producing the
+        # .aab that Play needs. Costs one extra Gradle task. Pick `apk` explicitly
+        # for a side-load-only build; `apk` + a Play track is refused by the guard.
+        description: 'Artifact format (both = side-load APK + the .aab Play needs)'
         required: true
-        default: apk
+        default: both
         type: choice
-        options: [apk, aab, both]
+        options: [both, apk, aab]
       play_track:
         # [AVA-UPDATE-AUTO] Publishing to Play is what makes automatic updates
         # possible AT ALL: Play only auto-updates (and only serves the in-app
         # updater) for installs IT owns. A side-loaded APK can never be updated by
         # either mechanism, no matter what the app code does.
         #
-        # Defaults to `none` — this input does nothing unless the owner picks a
-        # track. The `production` track is deliberately NOT an option here: pushing
-        # to it makes the build live for real users the moment Play finishes review,
-        # and that decision should be a deliberate click in the Play Console, not a
-        # dropdown on a build. Promote from a testing track by hand.
-        description: 'Upload the .aab to a Play track? (needs artifact=aab/both + prod)'
+        # DEFAULT IS `internal`, and that default is the feature. It shipped as
+        # `none` for one day and the owner immediately hit the thing it causes: he
+        # ran a build, the publish step silently skipped because he'd left the
+        # dropdown alone, and he was back to downloading the .aab and uploading it
+        # to Play by hand — the exact manual work this automation exists to remove.
+        # A safe-looking default that makes the common path fail silently is not
+        # safe. Internal testing is testers-only and needs no Google review, so
+        # auto-publishing there is cheap and reversible; pick `none` explicitly if
+        # you want a build artifact without touching Play.
+        #
+        # `production` is deliberately NOT an option: it makes a build live for real
+        # users once review passes, and that belongs to a deliberate click in the
+        # Play Console, not a dropdown on a build. Promote from a testing track.
+        description: 'Publish the .aab to a Play track (internal = auto-publish + update prompt)'
         required: false
-        default: none
+        default: internal
         type: choice
-        options: [none, internal, alpha, beta]
+        options: [internal, alpha, beta, none]
 
 env:
   # [BUILD-WIDGET-1] The environment is now an explicit dispatch INPUT, not an
@@ -109,7 +127,7 @@ jobs:
         run: |
           ENV="${AVATOK_ENV}"
           REF="${GITHUB_REF_NAME}"
-          echo "environment=$ENV  branch=$REF  artifact=${{ inputs.artifact || 'apk' }}"
+          echo "environment=$ENV  branch=$REF  artifact=${{ inputs.artifact || 'both' }}  play_track=${PLAY_TRACK}"
           if [ "$ENV" = "prod" ] && [ "$REF" != "main" ]; then
             echo "::error::PROD build requested from branch '$REF'. Production is built from 'main' only."
             exit 1
@@ -117,6 +135,19 @@ jobs:
           if [ "$ENV" = "staging" ] && [ "$REF" != "staging" ]; then
             echo "::error::STAGING build requested from branch '$REF'. Re-run this workflow with the 'staging' branch selected."
             exit 1
+          fi
+          # [AVA-UPDATE-AUTO] Validate the Play combination HERE, not 15 minutes
+          # later next to the upload. The old late-only guard meant a bad pairing
+          # burned a full Gradle build before saying so.
+          if [ "$PLAY_TRACK" != "none" ]; then
+            if [ "$ENV" != "prod" ]; then
+              echo "::error::play_track=$PLAY_TRACK needs environment=prod. Staging and prod share the applicationId ai.avatok.avatok_call, so publishing a staging build would ride the SAME Play listing every real user auto-updates from and silently repoint them at the staging backend. Re-run with environment=prod (from main), or set play_track=none for a staging artifact."
+              exit 1
+            fi
+            if [ "$BUILD_AAB" != "true" ]; then
+              echo "::error::play_track=$PLAY_TRACK needs an .aab — Play does not accept the side-load APK. Re-run with artifact=both (default) or artifact=aab."
+              exit 1
+            fi
           fi
           echo "OK: $ENV build from '$REF'."
 
