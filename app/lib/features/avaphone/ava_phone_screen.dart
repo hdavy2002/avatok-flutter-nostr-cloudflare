@@ -7,6 +7,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/call_log_store.dart';
+import '../../core/calls/call_room_id.dart'; // [CALL-ROOM-ID-1]
 import '../../core/ice_cache.dart';
 import '../../core/paid_call_api.dart';
 import '../../core/remote_config.dart';
@@ -735,6 +736,14 @@ class _DialpadSheetState extends State<_DialpadSheet> with WidgetsBindingObserve
     // number, so this is a no-op until a callee actually turns paid calls on.
     String paidHoldId = '';
     int paidMinutes = 0;
+    // [CALL-ROOM-ID-1 2026-07-14] Mint the call id ONCE, here, and hand the same
+    // one to both the escrow prompt and place1to1Call. Previously both sides
+    // independently derived `'avatok-${hit.uid}'`, which "agreed" only because
+    // it was a stable function of the callee — the very bug that made the
+    // callee's dedup cache drop every repeat call. They must still agree (the
+    // escrow hold + billing ticker are keyed to the CallRoom id), so agreement
+    // is now achieved by passing one value instead of by two identical guesses.
+    final dialRoom = CallRoomId.newRoomId();
     if (RemoteConfig.paidCalls) {
       // Offer lookup by the RESOLVED uid (the server route also accepts raw
       // numbers, but the uid is unambiguous — hit.uid is already in hand).
@@ -747,8 +756,9 @@ class _DialpadSheetState extends State<_DialpadSheet> with WidgetsBindingObserve
           to: qDigits,
           calleeUid: offer.calleeUid.isNotEmpty ? offer.calleeUid : hit.uid,
           // Must match place1to1Call's room id — the escrow hold + billing
-          // ticker are keyed to this exact CallRoom id.
-          callId: 'avatok-${hit.uid}',
+          // ticker are keyed to this exact CallRoom id. Guaranteed by passing
+          // `roomOverride: dialRoom` below rather than re-deriving it.
+          callId: dialRoom,
         );
         if (result == null) {
           // Caller backed out at the price/length prompt (§11 — hold never taken).
@@ -774,7 +784,8 @@ class _DialpadSheetState extends State<_DialpadSheet> with WidgetsBindingObserve
     await place1to1Call(navContext, uid: c.uid,
         name: c.name.isNotEmpty ? c.name : (c.number.isNotEmpty ? c.number : q),
         avatarUrl: c.avatarUrl, dialer: true,
-        paidHoldId: paidHoldId, paidMinutes: paidMinutes);
+        paidHoldId: paidHoldId, paidMinutes: paidMinutes,
+        roomOverride: dialRoom); // [CALL-ROOM-ID-1] same id as the escrow hold
   }
 
   @override

@@ -5,6 +5,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/avatar.dart';
 import '../../core/call_log_store.dart';
+import '../../core/calls/call_room_id.dart'; // [CALL-ROOM-ID-1]
 import '../../core/ice_cache.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/avatok_dark.dart';
@@ -92,8 +93,12 @@ class _CallsScreenState extends State<CallsScreen> {
 
   void _callBack(CallEntry c) {
     IceCache.prefetch(); // warm TURN creds before the call screen opens
+    // [CALL-ROOM-ID-1 2026-07-14] Was `'avatok-${c.seed}'` — the call-log seed
+    // is the PEER's id, so calling the same person back twice from Recents
+    // reused one call id and the callee's untimed dedup cache silently swallowed
+    // the second one. `seed:` still carries the peer id; the room must not.
     Navigator.push(context, MaterialPageRoute(
-      builder: (_) => CallScreen(room: 'avatok-${c.seed}', title: c.name, seed: c.seed, video: c.video, avatarUrl: _avatars[c.seed] ?? ''),
+      builder: (_) => CallScreen(room: CallRoomId.newRoomId(), title: c.name, seed: c.seed, video: c.video, avatarUrl: _avatars[c.seed] ?? ''),
     )).then((_) => _load());
   }
 

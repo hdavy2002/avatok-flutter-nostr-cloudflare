@@ -215,7 +215,36 @@ class CallTelemetry {
       'video': video,
       'outgoing': outgoing,
       'turn_only': CallDiag.turnOnly, // diagnostics: forced-relay run
+      // [CALL-ID-SHAPE-OBS-1] Which call_id CONVENTION this attempt used.
+      //
+      // The codebase mints room ids two incompatible ways: chat_thread.dart uses
+      // 'avatok-<uuid8>' (unique per call, correct), while place_1to1_call.dart /
+      // calls_screen.dart / ava_phone_screen.dart use 'avatok-<userId>' — a
+      // STABLE, PERMANENT room id per callee. That reuses one CallRoom DO for
+      // every call ever placed to that person (stale hibernated sockets vs the
+      // 2-peer cap) and, worse, trips the callee's `_processedCallIds` cache,
+      // which is disk-persisted with NO TTL — so the 2nd+ call to that person is
+      // silently dropped client-side. That is the 2026-07-14 "she never heard a
+      // ring" callback.
+      //
+      // `call_id_shape` makes this a one-query breakdown: compare setup-failure
+      // rate for shape='uid' vs shape='uuid' and the bug proves itself, instead
+      // of needing someone to eyeball a call_id and recognise a user id.
+      'call_id_shape': _callIdShape(callId),
     });
+  }
+
+  /// Classify the room-id convention behind [callId] — see `started()`.
+  /// 'uid'     → 'avatok-user_…' (stable per callee; the buggy convention)
+  /// 'uuid'    → 'avatok-<8 hex>' (unique per call; the correct convention)
+  /// 'numeric' → 'avatok-<digits>' (team IVR / PSTN number rooms)
+  /// 'other'   → anything unrecognised, so a new convention can't hide.
+  static String _callIdShape(String id) {
+    final suffix = id.startsWith('avatok-') ? id.substring(7) : id;
+    if (suffix.startsWith('user_')) return 'uid';
+    if (RegExp(r'^[0-9a-f]{8}$').hasMatch(suffix)) return 'uuid';
+    if (RegExp(r'^\+?[0-9]+$').hasMatch(suffix)) return 'numeric';
+    return 'other';
   }
 
   /// Call when the first remote track arrives (the user-perceived "connected").
@@ -465,6 +494,10 @@ class CallTelemetry {
     Analytics.capture('call_ended', {
       'call_id': callId,
       'call_id_hash': callId.hashCode.toString(),
+      // [CALL-ID-SHAPE-OBS-1] Repeated on the OUTCOME event (not just
+      // `call_started`) so "setup-failure rate by call_id convention" is a
+      // single-event breakdown with no join. See `started()` for the why.
+      'call_id_shape': _callIdShape(callId),
       'reason': reason,
       'connected': _tConnected != null,
       'setup_ms': (_tConnected ?? now) - _t0,

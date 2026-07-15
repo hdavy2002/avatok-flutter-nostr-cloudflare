@@ -368,12 +368,40 @@ class BadgeService {
 
   static Future<void> _apply(int total) async {
     final n = total < 0 ? 0 : total;
+    Object? storeErr;
+    Object? launcherErr;
     try {
       await _store.write(key: kBadgeKey, value: '$n');
-    } catch (_) {}
+    } catch (e) {
+      storeErr = e;
+    }
     try {
       await AppBadgePlus.updateBadge(n);
-    } catch (_) {}
+    } catch (e) {
+      launcherErr = e;
+    }
+    // [BADGE-APPLY-OBS-1] Both writes above used to be `catch (_) {}` — totally
+    // silent. That is why the 2026-07-14 "no red count on the app icon" report
+    // was unfalsifiable: `badge_recomputed` proved we COMPUTED 16, and nothing
+    // at all proved whether the launcher ever accepted it.
+    //
+    // Worth knowing when reading this event: on stock Android/AOSP there is no
+    // launcher badge API — `AppBadgePlus` is an OEM broadcast shim (Samsung /
+    // Xiaomi / Huawei / Sony), and the dot is otherwise derived purely from
+    // ACTIVE NOTIFICATIONS. So `launcher_ok:true` still does not guarantee a
+    // visible count; correlate with `push_shown`. If `push_shown` never fires,
+    // there is no notification for the dot to hang on and the badge cannot
+    // appear no matter what this returns — the badge failure is downstream of
+    // the notification failure, not independent of it.
+    Analytics.capture('badge_applied', {
+      'total': n,
+      'launcher_ok': launcherErr == null,
+      if (launcherErr != null) 'launcher_error': launcherErr.toString(),
+      'store_ok': storeErr == null,
+      if (storeErr != null) 'store_error': storeErr.toString(),
+      'cancelled_notifs': n == 0,
+      'bg_isolate': _inBackgroundIsolate,
+    });
     // Nothing unread ⇒ no banner may keep re-asserting a count via `number:`.
     if (n == 0) await _cancelAllNotifs();
   }

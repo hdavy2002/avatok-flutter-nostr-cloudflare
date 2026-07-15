@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:crypto/crypto.dart' show sha1; // [CALL-RESTORE-1] stable peer id
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
@@ -169,7 +170,60 @@ class CallSession {
   // ── Renderers (owned; survive view detach — disposed only in hangup) ────────
   final RTCVideoRenderer localRenderer = RTCVideoRenderer();
   final RTCVideoRenderer remoteRenderer = RTCVideoRenderer();
-  final String _myId = 'app-${const Uuid().v4().substring(0, 6)}';
+  /// Our peer id in the CallRoom DO (the `?id=` on the signalling socket, which
+  /// the DO stores as the hibernation tag).
+  ///
+  /// [CALL-RESTORE-1 2026-07-14] Seeded random, then UPGRADED to a value that is
+  /// STABLE for (this device, this room) by [_adoptStablePeerId] before the first
+  /// connect. Why that matters:
+  ///
+  /// `call_room.ts` already knows how to survive an app relaunch. On join it
+  /// looks for existing sockets carrying the SAME peer id, closes them, and
+  /// adopts the new one ("server_adopt_same_peer") — explicitly so a reconnect
+  /// never counts against the strict 2-peer cap. That machinery was dead code
+  /// across a restart: this id was a fresh uuid every session, so the relaunched
+  /// app looked like a THIRD, unrelated peer. Its own zombie socket kept a cap
+  /// slot, the peer kept signalling at the dead id, no SDP answer could arrive,
+  /// and the call sat on "Connecting…" forever (2026-07-14, call avatok-622e0df2:
+  /// got_sdp_answer:false, host/srflx/relay candidates all 0).
+  ///
+  /// Making the id reproducible turns a relaunch into an ordinary reconnect and
+  /// costs no new server code.
+  ///
+  /// The random seed is kept as the FALLBACK rather than being removed: if the
+  /// device id can't be read, a random id is merely the old behaviour, whereas a
+  /// collision would be a live call hijacking another. Fail towards the old bug,
+  /// never towards a worse one.
+  String _myId = 'app-${const Uuid().v4().substring(0, 6)}';
+
+  /// [CALL-RESTORE-1] Derive a per-(device, room) peer id. Must be called before
+  /// the first `_connect()`; safe to call repeatedly (idempotent).
+  ///
+  /// Inputs deliberately chosen:
+  ///  · `DeviceId` — makes the id UNIQUE PER DEVICE. Without it, two devices
+  ///    signed into the same account ringing for one call would derive the same
+  ///    id and adopt-and-close each other's sockets.
+  ///  · `config.room` — scopes the id to ONE call, so the id cannot leak between
+  ///    concurrent or consecutive calls.
+  ///  · `config.outgoing` — the two ends of a call are on the same room but
+  ///    opposite directions; including it guarantees caller and callee differ
+  ///    even in the impossible case of one device calling itself.
+  Future<void> _adoptStablePeerId() async {
+    if (_stablePeerIdAdopted) return;
+    _stablePeerIdAdopted = true;
+    try {
+      final deviceId = await DeviceId.get();
+      if (deviceId.isEmpty) return; // keep the random fallback
+      final seed = '$deviceId|${config.room}|${config.outgoing ? 'c' : 'r'}';
+      // Truncated SHA-1 → 10 hex chars. Not security-sensitive (the DO trusts the
+      // room id, not this tag); it only needs to be stable and collision-free
+      // within a room.
+      final digest = sha1.convert(utf8.encode(seed)).toString().substring(0, 10);
+      _myId = 'app-$digest';
+    } catch (_) {/* keep the random fallback — see the doc above */}
+  }
+
+  bool _stablePeerIdAdopted = false;
 
   // ── Public notifiers (listen; never dispose from a view) ────────────────────
   final ValueNotifier<CallPhase> phase = ValueNotifier<CallPhase>(CallPhase.connecting);
@@ -258,6 +312,9 @@ class CallSession {
   bool _connected = false;
   String _phase = 'connecting';
   Timer? _ringTimeout;
+  /// [CALL-CONNECT-WATCHDOG-1] Direction-agnostic backstop against an infinite
+  /// "Connecting…". Armed in [start], cancelled on connect and in [_teardown].
+  Timer? _connectWatchdog;
   final RingbackPlayer _ringback = RingbackPlayer();
   ReceptionistCall? _receptionist;
   bool _receptionistActive = false;
@@ -611,6 +668,13 @@ class CallSession {
   Future<void> start() async {
     if (_started) return;
     _started = true;
+    // [CALL-RESTORE-1] Derive the stable per-(device, room) peer id BEFORE any
+    // code path can open the signalling socket — the id is baked into the `?id=`
+    // query and becomes the DO's hibernation tag, so upgrading it afterwards
+    // would just create the extra zombie peer we're trying to eliminate.
+    // `_bootMedia()` (which connects) is awaited at the END of this method, so
+    // doing it first here is sufficient and race-free.
+    await _adoptStablePeerId();
     gLiveCallScreens++;
     gInCall = true;
     gActiveCallId = config.room;
@@ -659,6 +723,64 @@ class CallSession {
     cameraOn.value = _camOn;
     speakerOn.value = _speaker;
     _setPhase((config.outgoing && !_takeoverGuard) ? 'ringing' : 'connecting');
+    // [CALL-CONNECT-WATCHDOG-1 2026-07-14] Never sit on "Connecting…" forever.
+    //
+    // Every existing timeout — `_deviceRingingTimer` (12s), `_ringTimeout` (35s),
+    // `_placeCallTimeout` (8s) — lives inside the `if (config.outgoing)` branch
+    // below. An INCOMING call that was accepted but never established media had
+    // NO deadline whatsoever: it painted 'connecting' and stayed there until the
+    // user gave up and hung up by hand. That is precisely what the owner hit on
+    // 2026-07-14 ("when I found it, it said connecting but took too long — I
+    // disconnected it"), and the `call_ended` row proves the session was still
+    // in setup: connected:false, got_sdp_answer:false, all ICE candidate counts 0.
+    //
+    // The trigger there was a mid-call app relaunch (see [CALL-RESTORE-1] in
+    // `call_session_manager.dart`): the new process built a fresh peer connection
+    // into a room whose peer was still talking to the DEAD session's `_myId`, so
+    // no answer could ever arrive. But the hang is not specific to that cause —
+    // ANY setup that stalls (dropped WS, peer gone, glare) produced the same
+    // infinite spinner. So the watchdog is unconditional and direction-agnostic:
+    // if we are not connected 45s after start, the call is not happening, and
+    // saying so is strictly better than lying.
+    //
+    // 45s is deliberately > the 35s outgoing `_ringTimeout`, so this never
+    // pre-empts the richer outgoing no-answer flow (which has its own outcome
+    // menu, receptionist hand-off, etc.). It is the backstop of last resort.
+    _connectWatchdog = Timer(const Duration(seconds: 45), () {
+      if (_ended || _connected) return;
+      // A call can legitimately live for a long time WITHOUT being connected —
+      // these are outcomes, not hangs, and killing them would be a regression.
+      // Mirrors `_onNoAnswer`'s guards (see [AVA-RING-BLEED-1]) plus the outcome
+      // menu, which runs its own 180s timeout:
+      //  · Ava receptionist is taking a message
+      //  · the caller is looking at the declined/no-answer/busy outcome menu
+      //  · a live agent hand-off is in progress
+      final avaOwnsIt =
+          _receptionistActive || _receptionist != null || _avaCountingDown;
+      // `_showOutcomeMenu` parks the session in phase 'outcome-menu' with its own
+      // 180s `_menuTimeout`; 'agent-handoff' is the live business hand-off.
+      final menuOwnsIt = _phase == 'outcome-menu';
+      if (avaOwnsIt || menuOwnsIt || _phase == 'agent-handoff') {
+        Analytics.capture('call_connect_watchdog_skipped', {
+          'call_id': config.room,
+          'reason': avaOwnsIt
+              ? 'ava_active'
+              : (menuOwnsIt ? 'outcome_menu' : 'agent_handoff'),
+          'phase': _phase,
+        });
+        return;
+      }
+      Analytics.capture('call_connect_watchdog_fired', {
+        'call_id': config.room,
+        'outgoing': config.outgoing,
+        'phase': _phase,
+        'device_ringing': _deviceRinging,
+        'got_welcome': _gotWelcome,
+        // The 2026-07-14 signature: a session that never saw its peer at all.
+        'peer_seen': _peerGens.isNotEmpty,
+      });
+      _endWith('network-error', reason: 'connect-timeout');
+    });
     if (config.outgoing) {
       // CALL-GLARE-1: publish our pending outgoing dial for the incoming-push
       // handler's glare detection. Cleared on connect + on teardown.
@@ -699,7 +821,10 @@ class CallSession {
 
       if (RemoteConfig.ringbackEnabled && !_takeoverGuard) {
         // ignore: unawaited_futures
-        _ringback.playRingback(config.ringbackUrl);
+        // [CALL-ECHO-FIX-1] Pass the live route — RingbackPlayer applies
+        // isSpeakerphoneOn to the DEVICE, so a hardcoded false would force a
+        // speakerphone call back to the earpiece.
+        _ringback.playRingback(config.ringbackUrl, speakerOn: _speaker);
         Analytics.capture('ringback_played', {
           'source': config.ringbackUrl.isEmpty ? 'default' : 'custom',
           'video': config.video,
@@ -711,7 +836,7 @@ class CallSession {
         // the callee. _onDeviceRinging swaps in the real ringback; every existing
         // stop() path (connect / unreachable / busy / no-answer) kills it too.
         // ignore: unawaited_futures
-        _ringback.playSearchingTone();
+        _ringback.playSearchingTone(speakerOn: _speaker);
         Analytics.capture('searching_tone_played', {
           'call_id': config.room,
           'video': config.video,
@@ -831,7 +956,7 @@ class CallSession {
     final busy = phase == 'busy' && config.outgoing && RemoteConfig.ringbackEnabled;
     if (busy) {
       // ignore: unawaited_futures
-      _ringback.playBusyTone();
+      _ringback.playBusyTone(speakerOn: _speaker);
       Analytics.capture('busy_tone_played', const {});
     }
     // Release mic/cam IMMEDIATELY on every end path — this is the ONE teardown.
@@ -1292,6 +1417,10 @@ class CallSession {
       if (e.streams.isNotEmpty) {
         remoteRenderer.srcObject = e.streams[0];
         _ringTimeout?.cancel();
+        // [CALL-CONNECT-WATCHDOG-1] Media is flowing — disarm the backstop. This
+        // runs BEFORE `_telemetry.connected()` sets `_connected`, hence cancel
+        // rather than relying on the timer's own `_connected` guard.
+        _connectWatchdog?.cancel();
         _failTimer?.cancel();
         _relayFallbackTimer?.cancel();
         _ringback.stop();
@@ -1401,7 +1530,23 @@ class CallSession {
       // frames from the SAME sender are rejected (monotonic per sender).
       if (known == null || fg > known) _peerGens[frameFrom] = fg;
     }
-    if (frameFrom.isNotEmpty) {
+    // [CALL-ECHO-FIX-2 2026-07-14] `config.outgoing` guard — do NOT remove.
+    //
+    // `_onDeviceRinging()` means "the CALLEE's phone is ringing, start playing
+    // the ringback to the CALLER". It is meaningless on the answering side.
+    // This used to fire for ANY frame carrying a `from` — offer, answer,
+    // candidate, welcome — with no direction check. On the callee, the caller's
+    // `offer` lands ~200ms before the first remote track flips `_connected`, so
+    // `_connected || _ended` did not guard it either: the ANSWERING device
+    // started playing a ringback at itself.
+    //
+    // That was not merely a cosmetic wrong-sound bug. RingbackPlayer's audio
+    // context is applied device-wide (see ringback_player.dart
+    // [CALL-ECHO-FIX-1]), so firing it here dragged the MODE_NORMAL / AEC-off
+    // regression onto the callee too. Proof in prod telemetry 2026-07-14:
+    // `ringback_played_on_receipt` at 15:14:52.543 on an INCOMING call
+    // (direction:"incoming"), 200ms before `call_connected` at 15:14:52.746.
+    if (config.outgoing && frameFrom.isNotEmpty) {
       _onDeviceRinging();
     }
     if (d['country'] is String) _telemetry.setPeerCountry(d['country'] as String);
@@ -2184,6 +2329,19 @@ class CallSession {
   }
 
   void _onDeviceRinging() {
+    // [CALL-ECHO-FIX-2] Belt-and-braces. The `_onSignal` caller is now guarded
+    // on `config.outgoing`, but this method has several call sites (the ring-ack
+    // handler, the 5s fallback timer) and "the callee's phone is ringing" is
+    // never a meaningful event on the callee's OWN device. Enforce the invariant
+    // where it belongs rather than trusting every caller to remember it.
+    if (!config.outgoing) {
+      Analytics.capture('invariant_protected', {
+        'kind': 'device_ringing_on_incoming',
+        'side': 'client',
+        'call_id': config.room,
+      });
+      return;
+    }
     if (_connected || _ended) return;
     if (_deviceRinging) return;
     // [AVA-RING-BLEED-1] (2026-07-08): the device-ringing receipt can straggle in
@@ -2217,11 +2375,14 @@ class CallSession {
 
     if (RemoteConfig.ringbackEnabled) {
       // ignore: unawaited_futures
-      _ringback.playRingback(config.ringbackUrl);
+      _ringback.playRingback(config.ringbackUrl, speakerOn: _speaker);
       Analytics.capture('ringback_played_on_receipt', {
         'source': config.ringbackUrl.isEmpty ? 'default' : 'custom',
         'video': config.video,
         'call_id': config.room,
+        // [CALL-ECHO-FIX-2] Always true now. Kept on the event so the fix is
+        // verifiable in prod: any 'outgoing': false row means the guard leaked.
+        'outgoing': config.outgoing,
       });
     }
 
@@ -2512,6 +2673,11 @@ class CallSession {
     // [AVA-CLIENT-1] cancel the ava-live watchdog + detach the avaLevel listener
     // so nothing keeps firing after teardown (no leaked timers/listeners).
     _clearAvaLiveGate();
+    // [CALL-CONNECT-WATCHDOG-1] The backstop must die with the call. `_endWith`
+    // → `_teardown` runs on every terminal path, and `_ended` is set below, but
+    // an un-cancelled 45s timer would still hold a reference to this session.
+    _connectWatchdog?.cancel();
+    _connectWatchdog = null;
     // [BUSY-CARD-1] cancel the abandoned-busy-card safety timer.
     _busyCardTimeout?.cancel();
     _busyCardTimeout = null;

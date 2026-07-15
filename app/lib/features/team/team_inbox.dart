@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/api_auth.dart';
+import '../../core/calls/call_room_id.dart'; // [CALL-ROOM-ID-1]
 import '../../core/config.dart';
 import '../../core/team_api.dart';
 import '../../core/ui/zine.dart';
@@ -66,13 +67,19 @@ class _TeamInboxScreenState extends State<TeamInboxScreen> {
 
   void _callBack(TeamMessage m) {
     final title = m.callerName ?? (m.callerPhone != null ? '+${m.callerPhone}' : 'Caller');
-    // In-network caller → place a real 1:1 call (calls are keyed by uid). Stop any
-    // voicemail playback first so it doesn't bleed into the call screen.
+    // In-network caller → place a real 1:1 call. Stop any voicemail playback
+    // first so it doesn't bleed into the call screen.
+    //
+    // [CALL-ROOM-ID-1 2026-07-14] Was `room: 'avatok-${m.callerUid}'`, under the
+    // comment "calls are keyed by uid" — that assumption was the bug. A call id
+    // keys a CALL, not a person: a per-callee id reuses one CallRoom DO forever
+    // and gets permanently swallowed by the callee's untimed `_isCallIdProcessed`
+    // dedup cache from the second call onward. `seed:` carries the peer id.
     if (m.callerUid != null && m.callerUid!.isNotEmpty) {
       _player.stop();
       Navigator.push(context, MaterialPageRoute(
         builder: (_) => CallScreen(
-          room: 'avatok-${m.callerUid}', title: title, seed: m.callerUid!,
+          room: CallRoomId.newRoomId(), title: title, seed: m.callerUid!,
           video: false, outgoing: true, avatarUrl: ''),
       ));
       return;

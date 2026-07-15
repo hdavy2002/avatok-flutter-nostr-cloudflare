@@ -6,6 +6,7 @@ import 'package:flutter/services.dart' show SystemSound, SystemSoundType;
 
 import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
+import '../../core/calls/call_room_id.dart'; // [CALL-ROOM-ID-1]
 import '../../core/calls/call_session_manager.dart'; // [INSTANT-CALL-MOUNT-1]
 import '../../core/config.dart';
 import '../../core/paid_call_api.dart';
@@ -51,9 +52,24 @@ Future<void> place1to1Call(
   // thread. Only themes CallScreen with the dialer's PhoneTheme palette so the
   // dialer feels like its own app; the call engine/logic is identical.
   bool dialer = false,
+  // [CALL-ROOM-ID-1] Pre-minted room id, for callers that must know the call id
+  // BEFORE dialing. Today that is only the PAID (Mode B) flow: `showPaidCallPrompt`
+  // takes the escrow hold keyed to the CallRoom id, so the prompt and the call
+  // MUST agree on it. Such callers mint once via `CallRoomId.newRoomId()` and
+  // pass it here. Everyone else omits it and gets a fresh id.
+  //
+  // Deliberately nullable with no `'avatok-$uid'` fallback — the whole point of
+  // this parameter is that no caller can reintroduce a per-callee id by accident.
+  String? roomOverride,
 }) async {
   if (uid.isEmpty) return;
-  final room = 'avatok-$uid';
+  // [CALL-ROOM-ID-1 2026-07-14] Was `'avatok-$uid'` — a STABLE room id per
+  // callee, so every dialer call to the same person reused one call id and one
+  // CallRoom DO. The callee's `_isCallIdProcessed` cache (disk-persisted, no
+  // TTL) then dropped the 2nd and every later call as a duplicate: "she never
+  // heard a ring". The callee's identity already travels via `seed:`/`to:`, so
+  // the room id never needed to carry it. See core/calls/call_room_id.dart.
+  final room = roomOverride ?? CallRoomId.newRoomId();
   // [INSTANT-CALL-MOUNT-1] Optimistic mount FIRST — BEFORE any `await` — so the
   // CallScreen appears the instant the user taps, for NORMAL (non-paid) dialer
   // calls. POST /api/call (and even the local profile-name load for the ring
