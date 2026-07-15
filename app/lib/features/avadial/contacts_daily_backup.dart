@@ -1,17 +1,3 @@
-import 'dart:io' show Platform;
-import 'dart:ui' show DartPluginRegistrant;
-
-import 'package:flutter/widgets.dart';
-import 'package:workmanager/workmanager.dart';
-
-import '../../auth/clerk_client.dart';
-import '../../core/api_auth.dart';
-import '../../core/ava_log.dart';
-import '../../core/disk_cache.dart';
-import '../../core/remote_config.dart';
-import '../../identity/identity.dart';
-import 'ava_contact_book.dart';
-
 /// DAILY CONTACT-BOOK BACKUP (owner decision 2026-07-15).
 ///
 /// The owner's rule: **"this backup should run regardless of toggle … users might
@@ -48,6 +34,20 @@ import 'ava_contact_book.dart';
 /// WorkManager task gets the job retried/penalised by the OS, and a contacts
 /// backup is never worth that.
 library;
+
+import 'dart:io' show Platform;
+import 'dart:ui' show DartPluginRegistrant;
+
+import 'package:flutter/widgets.dart';
+import 'package:workmanager/workmanager.dart';
+
+import '../../auth/clerk_client.dart';
+import '../../core/api_auth.dart';
+import '../../core/ava_log.dart';
+import '../../core/disk_cache.dart';
+import '../../core/remote_config.dart';
+import '../../identity/identity.dart';
+import 'ava_contact_book.dart';
 
 /// Task name reported back to [Workmanager.executeTask].
 const String kContactsDailyBackupTask = 'ai.avatok.contacts.daily_backup';
