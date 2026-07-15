@@ -27,6 +27,23 @@ class Contact {
   final String number; // AvaTOK number display, e.g. '+233 24 555 0148' — '' if none
   const Contact({required this.uid, required this.name, this.handle = '', this.email = '', this.avatarUrl = '', this.phone = '', this.number = ''});
 
+  /// [ISSUE-CONTACT-AVATAR-1] Field-preserving copy. Rebuilding a Contact with the
+  /// positional-ish `Contact(uid:…, name:…, avatarUrl:…)` form silently DROPS every
+  /// field the caller forgot — `phone` and `number` both default to ''. That is how
+  /// the avatar backfill was erasing AvaTOK numbers (see refreshMissingAvatars).
+  /// Always copyWith when you mean "same contact, one field changed".
+  Contact copyWith({String? uid, String? name, String? handle, String? email,
+          String? avatarUrl, String? phone, String? number}) =>
+      Contact(
+        uid: uid ?? this.uid,
+        name: name ?? this.name,
+        handle: handle ?? this.handle,
+        email: email ?? this.email,
+        avatarUrl: avatarUrl ?? this.avatarUrl,
+        phone: phone ?? this.phone,
+        number: number ?? this.number,
+      );
+
   String get seed => uid; // deterministic avatar seed
   String get atHandle => handle.isEmpty ? '' : '@$handle';
   /// A phone-only caller saved from the AI Receptionist — keyed by a synthetic
@@ -471,16 +488,47 @@ class ContactsStore {
   Future<List<Contact>> refreshMissingAvatars() async {
     final cs = await load();
     var changed = false;
+    var skippedUnresolvable = 0;
+    var resolved = 0;
     for (var i = 0; i < cs.length; i++) {
       final c = cs[i];
       if (c.avatarUrl.isNotEmpty || c.uid.isEmpty) continue;
+      // [ISSUE-CONTACT-AVATAR-1] Only a real AvaTOK account can HAVE a directory
+      // photo. `tel:` ids are receptionist/PSTN-only callers with no account, so
+      // resolving them is a guaranteed 404 — and we re-ran it on every launch.
+      // Telemetry 2026-07-12..15: 630 of 790 contact_resolve calls 404'd, all from
+      // root ('/'), i.e. this loop. Skipping them removes ~80% of the calls and
+      // the pointless per-launch latency.
+      if (!c.uid.startsWith('user_')) { skippedUnresolvable++; continue; }
       final r = await Directory.resolve(c.uid);
       if (r != null && r.avatarUrl.isNotEmpty) {
-        cs[i] = Contact(uid: c.uid, name: c.name, handle: c.handle, email: c.email, avatarUrl: r.avatarUrl);
+        // [ISSUE-CONTACT-AVATAR-1] (owner report 2026-07-15, pic4 "some contacts
+        // have no details" / pic6 "profile pictures don't show")
+        //
+        // This USED to rebuild the contact as
+        //   Contact(uid:…, name:…, handle:…, email:…, avatarUrl:…)
+        // which omits `phone` and `number` — both default to '' — so backfilling a
+        // photo silently ERASED the contact's AvaTOK number and phone. `subtitle`
+        // reads number → phone → email, so the row then rendered with no detail
+        // line at all, and the contact card said "hasn't shared an AvaTOK number
+        // yet" about someone who had one. The photo write was destroying the very
+        // details it sat next to. copyWith touches ONLY the avatar.
+        cs[i] = c.copyWith(avatarUrl: r.avatarUrl);
         changed = true;
+        resolved++;
       }
     }
     if (changed) await _save(cs);
+    // Proves the backfill is doing useful work rather than burning 404s, and that
+    // numbers survive it (number_kept vs the old silent wipe). The owner's email is
+    // auto-stamped onto every event by Analytics._base, so it stays pullable by
+    // tester without being passed here.
+    Analytics.capture('contact_avatar_backfill', {
+      'scanned': cs.length,
+      'resolved': resolved,
+      'skipped_unresolvable': skippedUnresolvable,
+      'number_kept': cs.where((c) => c.number.isNotEmpty).length,
+    });
     return cs;
   }
 }
