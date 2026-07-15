@@ -165,17 +165,25 @@ class AvaContactBook {
   /// then simply never contains the phone book, so there is nothing for a restore —
   /// or a future bug in one — to leak. Filtering on the way out would leave the
   /// data sitting on the server waiting for a mistake.
-  /// Returns an EMPTY list when the role can't be decided yet (server unreachable
-  /// on a phone someone else already claimed). Empty flows into [uploadBackup]'s
-  /// existing "never overwrite the server copy" guard, so an undecided run backs up
-  /// nothing and retries later — instead of guessing and deleting someone's book.
   Future<List<AvaBookContact>> backupContacts() async {
     final role = await backupRole();
-    if (role == null) return const [];
     final all = await load();
     if (role == ContactBackupRole.master) return all;
     return all.where((c) => c.source == 'avatok').toList();
   }
+
+  /// [AVADIAL-BACKUP-OWNER] Match keys for the contacts that came from THIS
+  /// handset's address book. Sent only with `prune_device`, where it bounds the
+  /// deletion to contacts we can actually see on this phone right now.
+  ///
+  /// Same normalisation the server merges by ([DeviceContacts.normKey] ⇔ the
+  /// worker's `mergeKey`), so the two agree on identity.
+  Future<List<String>> _deviceKeys() async => (await load())
+      .where((c) => c.source == 'device')
+      .map((c) => DeviceContacts.normKey(c.number))
+      .where((k) => k.isNotEmpty)
+      .toSet()
+      .toList();
 
   /// Serialized backup payload (uploaded to AvaTOK's backup endpoint). Includes
   /// the custom colour groups so a group-only edit still changes the signature
@@ -216,12 +224,16 @@ class AvaContactBook {
   /// loses nothing by us declining to back up zero contacts; restore only ever
   /// ADDS to a device, so an out-of-date backup is harmless where a destroyed one
   /// is not. Returns 0 (not null) — declining to upload isn't a failure.
-  /// [AVADIAL-BACKUP-MERGE] [replace] asks the server to DISCARD everything it holds
-  /// and store only what we send. Default false — every automatic path merges, so an
-  /// upload can no longer delete anything. Only the warned "Replace your backup"
-  /// action passes true, so that a book polluted by a borrowed handset can be
-  /// deliberately cleaned. Never set this anywhere else.
-  Future<int?> uploadBackup({String source = 'manual', bool replace = false}) async {
+  /// [AVADIAL-BACKUP-MERGE] [mode] is the ONLY way an upload can remove anything.
+  /// Default `merge` — every automatic path merges, so a routine upload can never
+  /// delete. The two destructive modes are reachable only from a warned, explicit
+  /// tap on the backup screen; never set them anywhere else:
+  ///   • `replace`      — discard everything stored, keep only what we send.
+  ///   • `prune_device` — drop only the contacts that came from a handset's address
+  ///     book, keeping this account's own AvaTOK contacts (including any from an
+  ///     older phone, which a blunt `replace` would throw away). This is the
+  ///     "I was borrowing that phone, get its contacts out of my backup" action.
+  Future<int?> uploadBackup({String source = 'manual', String mode = 'merge'}) async {
     final t0 = DateTime.now();
     final trace = TraceContext.mint();
     try {
@@ -229,7 +241,11 @@ class AvaContactBook {
       // whole book. Resolved here so EVERY caller (manual, auto-sync, daily) obeys
       // the same rule.
       final contacts = await backupContacts();
-      if (contacts.isEmpty) {
+      // [AVADIAL-BACKUP-OWNER] prune_device legitimately sends LESS than it removes
+      // — a borrower with no AvaTOK contacts of their own sends nothing at all — so
+      // the empty guard must not veto it. Without this the prune button silently
+      // does nothing for the most typical sub, and then reports success.
+      if (contacts.isEmpty && mode != 'prune_device') {
         AvaLog.I.log('avadial',
             'contact book upload SKIPPED: nothing to back up (never overwrite the server copy)');
         Analytics.capture('avadial_contact_backup_skipped_empty', {
@@ -239,7 +255,7 @@ class AvaContactBook {
           // couldn't reach the server to establish whether this account owns the
           // phone book, so we refused to guess) reads nothing like an empty book
           // or a sub with nothing of their own yet.
-          'role': (await backupRole())?.name ?? 'undecided',
+          'role': (await backupRole()).name,
           'trace_id': trace,
         });
         return 0;
@@ -256,9 +272,22 @@ class AvaContactBook {
         'contacts': payload,
         'groups': groups.map((g) => g.toJson()).toList(),
         'source': source,
-        // Only ever 'replace' from the warned manual action; the server defaults to
-        // merge, so an older build that omits this field also merges. [AVADIAL-BACKUP-MERGE]
-        if (replace) 'mode': 'replace',
+        // Omitted for the default, so the server's own default (merge) applies and
+        // an older build that never sends this field also merges — i.e. the safe
+        // behaviour is what you get by saying nothing. [AVADIAL-BACKUP-MERGE]
+        if (mode != 'merge') 'mode': mode,
+        // [AVADIAL-BACKUP-OWNER] Which contacts are on THIS handset. Required by
+        // prune_device, and it is the whole safety of that mode.
+        //
+        // `source` records only that a contact came from AN address book — never
+        // WHICH one. Pruning on `source` alone would therefore delete every
+        // device-origin contact the account has ever stored, from any phone. The
+        // person most likely to tap prune is precisely the one that ruins: someone
+        // with 2,000 contacts backed up from their OWN phone who is now a sub on a
+        // borrowed one. They'd be told "this phone's contacts will be removed" and
+        // lose their personal address book instead. Sending the keys turns
+        // "device-origin" into "demonstrably sitting on the handset in my hand".
+        if (mode == 'prune_device') 'deviceKeys': await _deviceKeys(),
       }, timeout: const Duration(seconds: 30));
       final ms = DateTime.now().difference(t0).inMilliseconds;
       if (resp.statusCode == 200) {
@@ -281,7 +310,7 @@ class AvaContactBook {
           'count': stored,
           'sent': contacts.length,
           'kept': kept,
-          'mode': replace ? 'replace' : 'merge',
+          'mode': mode,
           'groups': groups.length,
           'bytes': sigBody.length,
           'ms': ms,
@@ -289,7 +318,7 @@ class AvaContactBook {
           // [AVADIAL-BACKUP-OWNER] Without this, a sub's legitimately smaller book
           // looks identical to a master silently losing contacts. Tells them apart.
           // Memoised by now (backupContacts resolved it above), so no extra call.
-          'role': (await backupRole())?.name ?? 'undecided',
+          'role': (await backupRole()).name,
           'trace_id': trace,
         });
         // The account's total after merging — what the screen reports to the user.
@@ -704,44 +733,13 @@ class AvaContactBook {
     return lines.isEmpty ? null : lines.join('\n');
   }
 
-  /// [AVADIAL-BACKUP-OWNER] Tri-state "does this account already have a backup, and
-  /// does it hold phone-book contacts?".
-  ///
-  /// [serverStatus] cannot answer this: it returns null BOTH for "no backup" and
-  /// for "the call failed", and conflating those is a data-loss bug — an offline
-  /// phone would look exactly like a brand-new account, get classed a sub, and
-  /// delete a real backup on the next upload. So this reports `unknown` separately
-  /// and lets the caller decline to decide. A 200 with `found:false` is the ONLY
-  /// definitive "absent"; everything else (non-200, 503 kill switch, timeout,
-  /// malformed body, throw) is `unknown`.
-  ///
-  /// `deviceCount` stays NULLABLE all the way through — do NOT `?? 0` it. Null is
-  /// the server saying "written before the master/sub rule", i.e. a full phone book,
-  /// i.e. never shrink. Defaulting it to 0 would silently invert that into
-  /// permission to delete the book. An OLD worker that doesn't send the field at all
-  /// also lands on null, which is exactly right for the same reason.
-  Future<ContactBackupProbeResult> serverBackupProbe() async {
-    try {
-      final resp = await ApiAuth.getSigned(kContactBookStatusUrl);
-      if (resp.statusCode != 200) {
-        return (state: ContactBackupProbe.unknown, deviceCount: null);
-      }
-      final b = jsonDecode(resp.body) as Map<String, dynamic>;
-      if (b['found'] != true) return (state: ContactBackupProbe.absent, deviceCount: null);
-      return (
-        state: ContactBackupProbe.present,
-        deviceCount: (b['deviceCount'] as num?)?.toInt(),
-      );
-    } catch (e) {
-      AvaLog.I.log('avadial', 'contact backup probe failed: $e');
-      return (state: ContactBackupProbe.unknown, deviceCount: null);
-    }
-  }
+  // [AVADIAL-BACKUP-MERGE] `serverBackupProbe()` is GONE with the grandfathering it
+  // served. It answered "does this account already own a full phone book that a
+  // sub-sized upload would delete?" — a question that only existed while uploads
+  // replaced. Merge retired it: no role decision can delete a stored contact.
 
-  /// This account's backup role, or null while it can't be decided safely.
-  /// See [ContactBackupRoles] — null means "back up nothing this run".
-  Future<ContactBackupRole?> backupRole() =>
-      ContactBackupRoles.I.resolve(probe: serverBackupProbe);
+  /// This account's backup role. Local, cheap, never null. See [ContactBackupRoles].
+  Future<ContactBackupRole> backupRole() => ContactBackupRoles.I.resolve();
 
   /// Server-side backup metadata (count + last-updated ms), or null when there is
   /// no backup / the call failed.

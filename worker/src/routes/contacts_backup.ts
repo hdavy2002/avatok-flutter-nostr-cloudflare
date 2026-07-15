@@ -476,13 +476,31 @@ export async function contactBookPut(req: Request, env: Env, ctx: ExecutionConte
   // inert, so THIS server event is the only evidence those runs happened at all.
   const source = typeof body?.source === "string" ? body.source.slice(0, 24) : "unknown";
 
-  // [AVADIAL-BACKUP-MERGE] MERGE is the default and REPLACE must be asked for by
-  // name (owner decision 2026-07-15). Defaulting this way round is the entire
-  // safety property: an upload from a client that has never heard of `mode` — an
-  // old build still in the wild, a retry, anything — merges, and therefore cannot
-  // delete. `replace` is only ever sent by the warned "Replace your backup" action,
-  // which exists purely so a polluted book can be cleaned up deliberately.
-  const replace = body?.mode === "replace";
+  // [AVADIAL-BACKUP-MERGE] MERGE is the default and the destructive modes must be
+  // asked for BY NAME (owner decision 2026-07-15). Defaulting this way round is the
+  // entire safety property: an upload from a client that has never heard of `mode`
+  // — an old build still in the wild, a retry, a replayed request — merges, and so
+  // cannot delete. Anything unrecognised also falls through to merge.
+  //   • replace      — throw away the stored book, keep only what was sent.
+  //   • prune_device — drop ONLY contacts that came from a handset's address book,
+  //     keeping this account's own AvaTOK contacts (including ones from an older
+  //     phone, which `replace` would discard). This is the retrofit for a shared
+  //     handset: "I was borrowing that phone, get its contacts out of my backup."
+  //     NEVER inferred from a sub role — pruning an account we merely GUESSED was a
+  //     sub would delete a real owner's address book. Only an explicit tap sends it.
+  const mode: "merge" | "replace" | "prune_device" =
+    body?.mode === "replace" ? "replace" : body?.mode === "prune_device" ? "prune_device" : "merge";
+  const replace = mode === "replace";
+
+  // [AVADIAL-BACKUP-OWNER] Keys of the contacts on the caller's handset RIGHT NOW,
+  // sent only with prune_device. This is what bounds the prune to "this phone" —
+  // see the filter below. Absent/garbage ⇒ empty set ⇒ nothing is pruned, so a
+  // client that doesn't send it cannot delete anything.
+  const deviceKeys = new Set<string>(
+    Array.isArray(body?.deviceKeys)
+      ? (body.deviceKeys as unknown[]).filter((k): k is string => typeof k === "string")
+      : [],
+  );
 
   const plaintextIn = JSON.stringify(contacts);
   if (enc.encode(plaintextIn).byteLength > MAX_BYTES) {
@@ -493,6 +511,7 @@ export async function contactBookPut(req: Request, env: Env, ctx: ExecutionConte
   // BEFORE the size check below, since merging can only grow the book.
   let merged: unknown[] = contacts;
   let mergedIn = 0;
+  let pruned = 0;
   if (!replace) {
     // `row.wrapped` MUST be passed, exactly as both GET paths do. It holds the
     // pre-R2 INLINE ciphertext for any row written before the R2 migration (see the
@@ -518,7 +537,31 @@ export async function contactBookPut(req: Request, env: Env, ctx: ExecutionConte
       return json({ error: "stored backup unreadable — not overwriting", retryable: false }, 409);
     }
     if (stored !== null && stored.length > 0) {
-      const r = mergeBooks(stored, contacts);
+      // prune_device: drop THIS HANDSET's contacts from what we already hold, then
+      // merge the caller's own book back over the remainder.
+      //
+      // TWO conditions, and the second is the one that matters. `source` says a
+      // contact came from AN address book, never WHICH one — so filtering on it
+      // alone would delete every device-origin contact the account has ever stored,
+      // from ANY phone. The person most likely to tap prune is exactly who that
+      // ruins: someone with thousands of contacts backed up from their OWN phone
+      // who is now a sub on a borrowed one. So a contact is pruned only if it is
+      // device-origin AND its key is in `deviceKeys` — i.e. it is demonstrably
+      // sitting on the handset the user is holding as they tap. Anything from
+      // another phone is untouchable here.
+      //
+      // No deviceKeys (an older client, a hand-rolled request) ⇒ empty set ⇒
+      // nothing is pruned. Fails closed.
+      const base =
+        mode === "prune_device"
+          ? stored.filter((c: unknown) => {
+              const o = c as { source?: string; number?: unknown } | null;
+              if (o?.source === "avatok") return true; // the caller's own — always keep
+              return !deviceKeys.has(mergeKey(o?.number)); // keep unless on THIS handset
+            })
+          : stored;
+      pruned = stored.length - base.length;
+      const r = mergeBooks(base, contacts);
       merged = r.book;
       mergedIn = r.kept;
     }
@@ -588,7 +631,8 @@ export async function contactBookPut(req: Request, env: Env, ctx: ExecutionConte
     // Under the old replace semantics every one of these was a silent deletion, so
     // this is the number that shows the feature working.
     kept: mergedIn,
-    mode: replace ? "replace" : "merge",
+    mode,
+    pruned,
     bytes: enc.encode(plaintext).byteLength,
     groups: groups?.length ?? -1,
     source,
@@ -599,7 +643,8 @@ export async function contactBookPut(req: Request, env: Env, ctx: ExecutionConte
     count: merged.length,
     sent: contacts.length,
     kept: mergedIn,
-    mode: replace ? "replace" : "merge",
+    pruned,
+    mode,
     groups: groups?.length ?? 0,
     updatedAt: now,
   });

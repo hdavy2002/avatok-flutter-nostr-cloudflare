@@ -28,74 +28,37 @@ import '../../identity/identity.dart';
 /// to go ask the stranger who sold it to them, forever. Role affects BACKUP only.
 /// It never gates sign-in and never restricts what anyone can do on the device.
 ///
-/// ══ THE DANGEROUS PART: never shrink an existing backup ══════════════════════
-/// Reclassifying a live user as a sub is DESTRUCTIVE. The server is latest-wins, so
-/// the moment a sub uploads, its book replaces what's stored — and a sub's book
-/// excludes the phone book. Call a real phone-owner a "sub" by mistake and their
-/// backup of thousands of contacts is deleted on the next daily run. That is worse
-/// than every problem this feature solves, so the whole design bends toward it:
+/// ══ WHY THIS IS NOW SIMPLE (and was not, until 2026-07-15) ═══════════════════
+/// This class used to carry an elaborate "grandfathering" system: any account whose
+/// stored backup already held phone-book contacts was FORCED to stay a master, a
+/// tri-state server probe decided it, and an unreachable server meant "undecided —
+/// back up nothing". All of that existed for ONE reason: the server was
+/// latest-wins, so a sub's smaller upload REPLACED its stored book and deleted the
+/// phone book inside it. Mislabel a real owner and you destroyed their contacts.
 ///
-///  1. **The grandfather test asks the SERVER, not this device.** The obvious
-///     signal — "has this account uploaded before?" — is a local DiskCache value,
-///     and it is wiped exactly when it matters most: [DiskCache.purgeAllCaches]
-///     (the BAD_DECRYPT self-heal in main.dart, which fires after an OS restore or
-///     device transfer — precisely the "everyone signs in again on one handset"
-///     event) deletes every scope AND `_global`. Local memory would answer "no
-///     prior backup" for someone who has thousands of contacts stored, and we'd
-///     delete them. So we ASK the server.
-///  2. **"Don't know" is not "no".** The probe is tri-state. A failed network call
-///     must never read as "this account has no backup" — that is the same mistake
-///     with extra steps. On [ContactBackupProbe.unknown] we return null, meaning
-///     *undecided*, and the caller backs up NOTHING this run and retries later. A
-///     skipped backup costs a day of freshness; a wrong "sub" costs the contacts.
-///  3. **Grandfathering asks WHAT IS IN the backup, never WHEN it was made.** The
-///     server reports `deviceCount` — how many stored contacts came from a
-///     handset's address book. Own a full book (`deviceCount > 0`) and you are a
-///     master, full stop. A timestamp test was tried first and is a trap, twice
-///     over: (i) the epoch would be a LOCAL clock compared against the SERVER's,
-///     and a device a few minutes slow would read a real owner's fresh backup as
-///     "newer than the rule" → sub → deleted; (ii) it breaks anyone with TWO
-///     phones — back up on your own phone in the morning, sign into a company
-///     phone at noon, and your backup looks brand new, so you'd be called a sub
-///     and your real book destroyed. Contents answer the question the rule is
-///     actually asking; clocks only correlate with it.
-///  4. **`deviceCount == null` means MASTER.** Null is what the server returns for
-///     a book written before this rule shipped — and every such book contains the
-///     whole phone book, because sub filtering did not exist when it was written.
-///     Null is emphatically not zero: zero authorises a shrink, null forbids it.
-///  5. **Every failure path returns master.** Master re-uploads what it already
-///     had; sub deletes. The risk is not symmetric, so never guess "sub".
+/// [AVADIAL-BACKUP-MERGE] removed that: uploads now MERGE, so an account that stops
+/// uploading the phone book simply stops ADDING it — whatever is stored stays put.
+/// Being wrong about a role can no longer delete anything, so the machinery that
+/// existed to be right about it is gone. The rule is now just: **you are the master
+/// iff you claimed this handset.**
 ///
-/// The whole rule in one line: **if your stored backup already contains phone-book
-/// contacts, nothing about your backup changes; only an account with no phone-book
-/// contacts of its own can be made a sub.** An account classed sub therefore has,
-/// by construction, nothing to lose.
+/// The cost of being wrong is now much smaller, but not zero: a real owner
+/// mis-identified as a sub silently stops backing up NEW phone contacts (the ones
+/// already stored are safe). That is why [claimMaster] exists — the "This is my
+/// phone" button on the backup screen. Owner decision 2026-07-15: assignment is
+/// automatic and silent (first claimer wins, no prompt — an earlier "Is this your
+/// phone?" question was declined), so this button is the only escape, and on an
+/// ALREADY-SHARED handset the claim genuinely is arbitrary: whoever opens the app
+/// first after the update wins, and it may well be the child rather than the parent.
 ///
-/// ══ SCOPE — what this does NOT fix ═══════════════════════════════════════════
-/// Read the rule above literally: EVERY account that has ever backed up a phone
-/// book, from any handset, is a master everywhere, forever. So on a shared phone
-/// that is already in use, this changes NOTHING — all twenty existing users remain
-/// masters, each still uploading the whole company address book, and a leaver still
-/// restores it. Only accounts with NO prior backup are ever made subs. That is not
-/// an edge case, it is the majority case for the existing install base, and it is
-/// the deliberate price of rule #1: the only way to retrofit sub status onto an
-/// established account is to shrink its stored book, which is a deletion.
-///
-/// So this closes the leak GOING FORWARD (new accounts on already-owned phones)
-/// and leaves existing accounts exactly as they are. Genuinely fixing the existing
-/// population needs a non-destructive server-side migration — splitting each stored
-/// book into "device-owned" and "account-owned" halves so a shrink isn't a loss —
-/// which is a much larger change and is not attempted here.
-///
-/// KNOWN LIMITATION (rare, not data loss): [DiskCache.purgeAllCaches] — the
-/// BAD_DECRYPT self-heal in main.dart — wipes `_kMasterUid` AND every cached role.
-/// If another account then reaches the shell first and claims the handset, a real
-/// owner whose last upload happened to contain no device contacts (READ_CONTACTS
-/// not granted at the time) probes `present, deviceCount == 0` → sub, cached
-/// permanently, with no re-evaluation path. Their stored book has no device
-/// contacts either, so nothing is deleted — but if they later grant contacts
-/// permission, their address book silently never backs up. Recovering needs the
-/// role cache cleared (reinstall today).
+/// ══ What this does and does not fix for EXISTING shared phones ═══════════════
+/// Stops the bleeding, automatically: a sub adds no more phone-book contacts.
+/// Does NOT clean up what is already there — those months of uploads sit in the
+/// backup, and removing them is a DELETION. That only ever happens on an explicit
+/// tap (`mode:'prune_device'`, the "Remove the contacts that came from this shared
+/// phone" action). Never automatically: silently pruning device contacts from an
+/// account we merely GUESSED was a sub would delete a real owner's address book —
+/// the precise disaster merge was introduced to end.
 enum ContactBackupRole {
   /// Owns the phone book: backs up device contacts + their own additions.
   master,
@@ -104,17 +67,11 @@ enum ContactBackupRole {
   sub,
 }
 
-/// Tri-state answer to "does this account already have a server-side backup?".
-/// [unknown] is load-bearing — see the class docs on [ContactBackupRoles].
-enum ContactBackupProbe { unknown, absent, present }
-
-/// What the server knows about an account's stored book.
-///
-/// [deviceCount] is nullable and the null is meaningful: it means the stored book
-/// predates the master/sub rule and therefore contains the full phone book. Only a
-/// definite `0` — the server telling us the book holds no handset contacts at all —
-/// permits this account to be made a sub.
-typedef ContactBackupProbeResult = ({ContactBackupProbe state, int? deviceCount});
+// [AVADIAL-BACKUP-MERGE] `ContactBackupProbe` / `ContactBackupProbeResult` are GONE.
+// They existed so grandfathering could ask the server "does this account already own
+// a full phone book that a sub-sized upload would delete?" — a question that only
+// mattered while uploads replaced. Merge answered it permanently: nothing a role
+// decision does can delete a stored contact, so there is nothing to ask.
 
 /// Resolves and remembers whether the ACTIVE account owns this phone's book.
 class ContactBackupRoles {
@@ -128,41 +85,35 @@ class ContactBackupRoles {
   /// second-hand phone behave like a new one: the next person to sign in claims it.
   static const String _kMasterUid = 'contacts_backup_master_uid';
 
-  /// Per-account, account-scoped: the decision, cached so the common path costs no
-  /// network. Losing this cache is safe — the server's `deviceCount` re-derives the
-  /// same answer (a sub's own uploads never contain device contacts, so it stays a
-  /// sub; a master's book always does, so it stays a master).
-  static const String _kRole = 'contacts_backup_role';
+  // [AVADIAL-BACKUP-MERGE] The per-account `_kRole` cache is GONE. It existed to
+  // freeze a grandfathering verdict that was expensive (a network probe) and
+  // point-in-time. The role is now a one-line function of `_kMasterUid`, so caching
+  // it would only create a second source of truth that could disagree with the
+  // first — and that disagreement is what pins the wrong role onto an account.
 
   ContactBackupRole? _memo;
   String? _memoScope;
 
-  /// The active account's role, claiming master for this handset if unclaimed.
+  /// The active account's role, claiming this handset if nobody has.
   ///
-  /// Returns NULL when it cannot safely decide (the server is unreachable and this
-  /// account might have a pre-existing backup). A null role means **back up
-  /// nothing this run** — never "assume sub". Callers must treat it that way.
-  ///
-  /// [probe] answers "does this account already have a server backup, and does it
-  /// contain phone-book contacts?". Injected rather than imported so this file
-  /// stays free of a dependency cycle with ava_contact_book.dart.
-  Future<ContactBackupRole?> resolve({
-    required Future<ContactBackupProbeResult> Function() probe,
-  }) async {
+  /// Cheap and local: no network, and no "undecided" state to handle — being wrong
+  /// can no longer delete anything now that uploads merge (see the class docs).
+  Future<ContactBackupRole> resolve() async {
     final scope = AccountScope.id ?? '';
     if (_memo != null && _memoScope == scope) return _memo!;
 
-    final role = await _resolve(probe: probe);
-    if (role != null) {
+    final role = await _resolve();
+    // Only memoise once we're sure the scope didn't shift under us mid-resolve;
+    // memoising the departing account's role under the arriving one's scope is how
+    // a master starts behaving like a sub.
+    if ((AccountScope.id ?? '') == scope) {
       _memo = role;
       _memoScope = scope;
     }
     return role;
   }
 
-  Future<ContactBackupRole?> _resolve({
-    required Future<ContactBackupProbeResult> Function() probe,
-  }) async {
+  Future<ContactBackupRole> _resolve() async {
     try {
       final uid = AccountScope.id;
       // No signed-in account (guest): nothing is uploaded in this state anyway.
@@ -170,74 +121,60 @@ class ContactBackupRoles {
       // it — a guest claiming the handset would make the actual owner a sub.
       if (uid == null || uid.isEmpty) return ContactBackupRole.master;
 
-      final cached = await DiskCache.read(_kRole);
-      // DiskCache resolves its scope AT AWAIT TIME, so a switch landing during that
-      // read returns the ARRIVING account's role. Returning it to a caller acting
-      // for `uid` is how a master ends up behaving like a sub. Same guard as before
-      // the write below.
-      if (AccountScope.id != uid) return null;
-      if (cached == 'sub') return ContactBackupRole.sub;
-      if (cached == 'master') return ContactBackupRole.master;
-
       final master = await DiskCache.readGlobal(_kMasterUid);
-
-      ContactBackupRole role;
-      bool grandfathered = false;
       if (master == null || master.isEmpty) {
-        // Unclaimed handset — first account in wins.
+        // Unclaimed handset — first account in wins. Re-check the scope first: the
+        // await above is long enough for an account switch to land, and claiming
+        // the handset for whoever is NO LONGER active would hand it to the wrong
+        // person permanently.
+        if (AccountScope.id != uid) return ContactBackupRole.master;
         await DiskCache.writeGlobal(_kMasterUid, uid);
-        role = ContactBackupRole.master;
-      } else if (master == uid) {
-        role = ContactBackupRole.master;
-      } else {
-        // Someone else owns this handset's phone book. Before we dare call this
-        // account a sub, the SERVER must confirm it has nothing to lose.
-        final p = await probe();
-        if (p.state == ContactBackupProbe.unknown) {
-          AvaLog.I.log('avadial',
-              'contact backup role UNDECIDED (server unreachable) — backing up nothing this run');
-          Analytics.capture('avadial_contact_backup_role_undecided', const {});
-          return null;
-        }
-        // Grandfather on CONTENTS: a stored book with phone-book contacts (or one
-        // whose deviceCount is null — written before this rule existed, so it holds
-        // the full book) belongs to a master and must never shrink. Only a definite
-        // 0, or no backup at all, permits sub.
-        grandfathered = p.state == ContactBackupProbe.present &&
-            (p.deviceCount == null || p.deviceCount! > 0);
-        role = grandfathered ? ContactBackupRole.master : ContactBackupRole.sub;
+        AvaLog.I.log('avadial', 'contact backup: handset claimed by $uid');
+        Analytics.capture('avadial_contact_backup_role_resolved',
+            {'role': 'master', 'claimed_master': true});
+        return ContactBackupRole.master;
       }
 
-      // The awaits above (DiskCache + a network probe) are long enough for an
-      // account switch to land underneath us. DiskCache resolves its scope AT AWAIT
-      // TIME, so writing now would stamp THIS decision into the ARRIVING account's
-      // store — and pinning 'sub' onto a master deletes their backup. Bail; the
-      // next call re-derives cleanly for whoever is actually active.
-      if (AccountScope.id != uid) {
-        AvaLog.I.log('avadial', 'contact backup role: account switched mid-resolve — discarding');
-        return null;
-      }
-
-      await DiskCache.write(_kRole, role == ContactBackupRole.sub ? 'sub' : 'master');
-      AvaLog.I.log('avadial',
-          'contact backup role resolved: ${role.name} (masterClaimed=${master != null}, grandfathered=$grandfathered)');
-      Analytics.capture('avadial_contact_backup_role_resolved', {
-        'role': role.name,
-        'grandfathered': grandfathered,
-        'claimed_master': master == null || master.isEmpty,
-      });
+      final role = master == uid ? ContactBackupRole.master : ContactBackupRole.sub;
+      Analytics.capture('avadial_contact_backup_role_resolved',
+          {'role': role.name, 'claimed_master': false});
       return role;
     } catch (e) {
-      // Fail to MASTER, never to sub: a sub uploads a reduced book, and on a
-      // latest-wins server a reduced book is a deletion. An error must never be
-      // able to shrink somebody's backup. Not cached — we'll retry next time.
+      // Fail to MASTER. The stakes are far lower than they were (merge means a sub
+      // can't delete), but a wrong "sub" still silently stops backing up someone's
+      // phone book, while a wrong "master" only backs up more than it strictly
+      // should. Still asymmetric, still err the same way.
       AvaLog.I.log('avadial', 'contact backup role resolve failed ($e) — defaulting to master');
       return ContactBackupRole.master;
     }
   }
 
+  /// Take ownership of this handset for the ACTIVE account — the "This is my phone"
+  /// button.
+  ///
+  /// The escape hatch for the one thing automatic assignment gets wrong: on a phone
+  /// that was already shared before this shipped, the handset goes to whoever opens
+  /// the app first, which may not be its owner. Without this they'd silently stop
+  /// backing up new phone contacts with no way to say otherwise (the owner declined
+  /// a prompt, so a button it is).
+  ///
+  /// Deliberately unguarded — anyone signed in on the handset may claim it. There is
+  /// nothing to protect: the previous master's stored contacts are untouched (merge
+  /// never deletes), they simply stop adding new device contacts, and they can claim
+  /// it straight back with the same button.
+  Future<void> claimMaster() async {
+    final uid = AccountScope.id;
+    if (uid == null || uid.isEmpty) return;
+    final prev = await DiskCache.readGlobal(_kMasterUid);
+    if (AccountScope.id != uid) return; // switched mid-call
+    await DiskCache.writeGlobal(_kMasterUid, uid);
+    _memo = ContactBackupRole.master;
+    _memoScope = uid;
+    AvaLog.I.log('avadial', 'contact backup: handset re-claimed by $uid (was $prev)');
+    Analytics.capture('avadial_contact_backup_master_claimed', {'had_master': prev != null});
+  }
+
   /// Drop the in-memory memo so the next read re-derives for the new account.
-  /// Called on account switch; the persisted decision itself is untouched.
   void onAccountSwitched() {
     _memo = null;
     _memoScope = null;

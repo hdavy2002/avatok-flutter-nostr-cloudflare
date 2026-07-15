@@ -95,9 +95,8 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
   /// [_replaceBackup], which is the only thing that can still remove anything.
   Future<void> _backupNow() async {
     setState(() => _busy = true);
-    // Capture the role for the message below. Null = we couldn't reach the server
-    // to establish who owns this phone's book, which is a DIFFERENT failure from
-    // "you have no contacts" and must not be reported as one.
+    // The role decides the wording when there's nothing to send: for a sub that's
+    // normal, for a master it means we can't see their contacts.
     final role = await AvaContactBook.I.backupRole();
     final n = await AvaContactBook.I.uploadBackup(source: 'manual');
     Analytics.capture('avadial_contact_backup_now', {'count': _count, 'ok': n != null});
@@ -115,22 +114,84 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
           content: Text(n == null
               ? "Couldn't back up — check your connection and try again"
               : n == 0
-                  ? (role == null
-                      // Undecided: we couldn't reach the server, so we refused to
-                      // guess whether this phone's contacts are this account's to
-                      // back up. Telling a user with 1,200 contacts to "open
-                      // Contacts first" would send them to fix a permission that
-                      // is perfectly fine.
-                      ? "Couldn't check your account just now — try again when "
-                          "you're back online"
-                      : role == ContactBackupRole.sub
-                          // A sub with nothing of their own isn't broken — there
-                          // is genuinely nothing of theirs to save yet.
-                          ? 'Nothing to back up yet — contacts you add in AvaTOK '
-                              'will be saved to your account'
-                          : 'Nothing to back up yet — open Contacts first so '
-                              'AvaTOK can see your contact book')
+                  ? (role == ContactBackupRole.sub
+                      // A sub with nothing of their own isn't broken — there is
+                      // genuinely nothing of theirs to save yet.
+                      ? 'Nothing to back up yet — contacts you add in AvaTOK '
+                          'will be saved to your account'
+                      : 'Nothing to back up yet — open Contacts first so '
+                          'AvaTOK can see your contact book')
                   : 'Backed up $n contacts to AvaTOK')));
+    }
+  }
+
+  /// [AVADIAL-BACKUP-OWNER] "This is my phone" — take ownership of the handset.
+  ///
+  /// The escape hatch for automatic, silent role assignment (owner decision: no
+  /// prompt). On a phone that was already shared before this shipped, the handset
+  /// goes to whoever opens the app first — which may be the child, not the parent.
+  /// Without this the real owner would just silently stop backing up new phone
+  /// contacts. Safe to hand to anyone: it deletes nothing, and the previous owner
+  /// can take it straight back.
+  Future<void> _claimPhone() async {
+    await ContactBackupRoles.I.claimMaster();
+    await _load();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text("This phone is now yours — all its contacts will be backed up "
+            'to your account')));
+  }
+
+  /// [AVADIAL-BACKUP-OWNER] Remove the shared handset's contacts from THIS account's
+  /// backup — the retrofit for someone who was using a phone that isn't theirs.
+  ///
+  /// Surgical, unlike [_replaceBackup]: it drops only the contacts that came from a
+  /// phone's address book and keeps this account's own AvaTOK contacts, including
+  /// any saved from an older handset that this phone never had. It is still a
+  /// DELETION, so it only ever runs from this explicit, warned tap — never inferred
+  /// from a sub role, because a role we merely guessed would take a real owner's
+  /// address book with it.
+  Future<void> _pruneBorrowed() async {
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AvaDialTheme.surface2,
+        shape: RoundedRectangleBorder(
+          side: const BorderSide(color: AvaDialTheme.border, width: 1),
+          borderRadius: BorderRadius.circular(AD.rListCard),
+        ),
+        title: Text("Remove this phone's contacts from your backup?",
+            style: ZineText.cardTitle(size: 17, color: AvaDialTheme.text)),
+        content: Text(
+          'Your backup keeps the $_backedUp contacts you added in AvaTOK. Anything '
+          "that came from this phone's address book is removed from your account — "
+          "you'll still see them here on this phone, they just stop following you "
+          'to a new one.\n\nThis cannot be undone.',
+          style: ZineText.sub(size: 13.5, color: AvaDialTheme.textSoft),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel', style: ZineText.value(size: 14, color: AD.iconSearch)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Remove', style: ZineText.value(size: 14, color: AD.danger)),
+          ),
+        ],
+      ),
+    );
+    if (go != true || !mounted) return;
+    setState(() => _busy = true);
+    final n = await AvaContactBook.I.uploadBackup(source: 'manual_prune', mode: 'prune_device');
+    Analytics.capture('avadial_contact_backup_pruned', {'was': _stored, 'ok': n != null});
+    await _load();
+    if (mounted) {
+      setState(() => _busy = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(n == null
+              ? "Couldn't update your backup — try again"
+              : 'Your backup now holds only your own $n contacts')));
     }
   }
 
@@ -181,7 +242,7 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
     );
     if (go != true || !mounted) return;
     setState(() => _busy = true);
-    final n = await AvaContactBook.I.uploadBackup(source: 'manual_replace', replace: true);
+    final n = await AvaContactBook.I.uploadBackup(source: 'manual_replace', mode: 'replace');
     Analytics.capture('avadial_contact_backup_replaced',
         {'count': _backedUp, 'was': _stored, 'ok': n != null});
     await _load();
@@ -312,6 +373,25 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
                         'follow you to a new phone.',
                         style: ZineText.sub(size: 12.5, color: AvaDialTheme.textSoft),
                       ),
+                      // Both escape hatches live here, on the one card a
+                      // wrongly-classed owner would actually be looking at.
+                      const SizedBox(height: 4),
+                      Row(children: [
+                        TextButton(
+                          onPressed: _busy ? null : _claimPhone,
+                          style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                          child: Text('This is my phone',
+                              style: ZineText.value(size: 13, color: AD.iconSearch)),
+                        ),
+                        const SizedBox(width: 12),
+                        if (_stored > _backedUp)
+                          TextButton(
+                            onPressed: _busy ? null : _pruneBorrowed,
+                            style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                            child: Text('Remove its contacts from my backup',
+                                style: ZineText.value(size: 13, color: AD.iconSearch)),
+                          ),
+                      ]),
                     ]),
                   ),
                 ],
