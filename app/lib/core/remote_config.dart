@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../identity/identity.dart';
 import '../sync/party/party_hub.dart';
@@ -333,8 +334,33 @@ class RemoteConfig {
 
   static int get minAppBuild => (_asNum(_cfg['minAppBuild'])?.toInt()) ?? 0;
 
+  /// The versionCode this install ACTUALLY carries, resolved once at [start]
+  /// from PackageInfo. Falls back to the compile-time [kAppBuild] until then.
+  ///
+  /// [AVA-UPDATE-AUTO] This exists because comparing against `kAppBuild` was a
+  /// live footgun. CI stamps the real versionCode with
+  /// `--build-number=$((10000 + run_number))`, so every shipped build is ~10000+
+  /// while the constant sits frozen at 28. That made [updateRequired] not merely
+  /// wrong but DANGEROUS: the moment the owner set `minAppBuild` to a real CI
+  /// build number to force an upgrade, `minAppBuild > 28` would be true on every
+  /// device INCLUDING ones already running the newest build — bricking the whole
+  /// user base behind an un-passable "please update" wall, with the only exit
+  /// being a KV edit. Resolving the real number removes that trap.
+  static int _installedBuild = kAppBuild;
+  static int get installedBuild => _installedBuild;
+
+  static Future<void> _resolveInstalledBuild() async {
+    try {
+      final n = int.tryParse((await PackageInfo.fromPlatform()).buildNumber);
+      if (n != null && n > 0) {
+        _installedBuild = n;
+        revision.value++; // re-evaluate the gate with the true number
+      }
+    } catch (_) {/* keep the kAppBuild fallback */}
+  }
+
   /// Installed build too old? → callers show the blocking "please update" screen.
-  static bool get updateRequired => minAppBuild > kAppBuild;
+  static bool get updateRequired => minAppBuild > _installedBuild;
 
   /// Newest build published to the store (KV `latestAppBuild`). When it is
   /// greater than the build the user actually has installed, [UpdateService]
@@ -353,6 +379,9 @@ class RemoteConfig {
     // Paint the active account's cached admin flag first so admin-only surfaces
     // (Marketplace) render correctly on cold boot before the network probe lands.
     await _loadAdminCache();
+    // [AVA-UPDATE-AUTO] Resolve the real versionCode BEFORE the first refresh, so
+    // the minAppBuild gate never evaluates against the stale kAppBuild constant.
+    await _resolveInstalledBuild();
     await refresh();
     // Resolve admin status alongside config so admin-only surfaces (Marketplace)
     // appear on this launch. Fire-and-forget: never blocks app start.

@@ -29,8 +29,13 @@ const bool kSocialLinkedInEnabled = false;
 /// Build environment, baked at compile time: --dart-define=AVATOK_ENV=staging.
 const String kAvatokEnv = String.fromEnvironment('AVATOK_ENV', defaultValue: 'prod');
 
-/// Numeric build number — keep in sync with pubspec `version` (after the +)
-/// and Analytics.appVersion. Compared against RemoteConfig.minAppBuild.
+/// Numeric build number — keep in sync with pubspec `version` (after the +).
+///
+/// [AVA-UPDATE-AUTO] DO NOT compare this against RemoteConfig.minAppBuild (it
+/// used to be, and that was a trap). CI overrides the real versionCode with
+/// `--build-number=$((10000 + run_number))`, so no shipped build has ever
+/// carried this number — it is a compile-time fallback only. Use
+/// `RemoteConfig.installedBuild`, which reads the true value from PackageInfo.
 const int kAppBuild = 28;
 
 /// Human-readable app version — keep in sync with pubspec `version` (before the

@@ -63,6 +63,13 @@ class Analytics {
   // event lie about which build it came from (root cause of a wrong "phone is
   // on an old build" diagnosis, 2026-07-09). Never hardcode this again.
   static String appVersion = 'unresolved';
+  /// [AVA-UPDATE-AUTO] The numeric versionCode, resolved alongside [appVersion].
+  /// APPVER-RUNTIME-1 fixed the string but left this field reading the frozen
+  /// `kAppBuild` constant, so every event has been reporting `build: 28` while
+  /// `app_version` correctly said `+12363` — the two disagreed on the same event.
+  /// Any PostHog query or funnel filtered on `build` has been filtering on a
+  /// number no shipped build carries. -1 = not yet resolved (honest unknown).
+  static int appBuild = -1;
   // Git commit SHA stamped at build time (CI: --dart-define=GIT_SHA=<sha>);
   // 'dev' for local/unstamped builds. Sent on every event as `release` so PostHog
   // ties errors/metrics to the exact commit — CI also posts a matching annotation.
@@ -269,6 +276,7 @@ class Analytics {
     try {
       final info = await PackageInfo.fromPlatform();
       appVersion = '${info.version}+${info.buildNumber}';
+      appBuild = int.tryParse(info.buildNumber) ?? -1;
     } catch (_) {/* keep 'unresolved' — better an honest unknown than a stale lie */}
     try {
       Connectivity().checkConnectivity().then(_applyNet).catchError((_) {});
@@ -331,7 +339,7 @@ class Analytics {
         // [TRACE-ID-1] Correlation id on every event when an action is in flight;
         // explicit `trace_id` in props always wins (via `...?p` below).
         if (currentTraceId != null) 'trace_id': currentTraceId!,
-        'build': kAppBuild,
+        'build': appBuild, // real versionCode from PackageInfo — never kAppBuild
         'env': kAvatokEnv,
         'net': _net,
         if (_deviceCountry.isNotEmpty) 'device_country': _deviceCountry,

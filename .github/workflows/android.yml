@@ -37,6 +37,22 @@ on:
         default: apk
         type: choice
         options: [apk, aab, both]
+      play_track:
+        # [AVA-UPDATE-AUTO] Publishing to Play is what makes automatic updates
+        # possible AT ALL: Play only auto-updates (and only serves the in-app
+        # updater) for installs IT owns. A side-loaded APK can never be updated by
+        # either mechanism, no matter what the app code does.
+        #
+        # Defaults to `none` — this input does nothing unless the owner picks a
+        # track. The `production` track is deliberately NOT an option here: pushing
+        # to it makes the build live for real users the moment Play finishes review,
+        # and that decision should be a deliberate click in the Play Console, not a
+        # dropdown on a build. Promote from a testing track by hand.
+        description: 'Upload the .aab to a Play track? (needs artifact=aab/both + prod)'
+        required: false
+        default: none
+        type: choice
+        options: [none, internal, alpha, beta]
 
 env:
   # [BUILD-WIDGET-1] The environment is now an explicit dispatch INPUT, not an
@@ -49,6 +65,9 @@ env:
   # Empty inputs (push trigger) => apk only, exactly as before.
   BUILD_APK: ${{ (inputs.artifact == 'aab') && 'false' || 'true' }}
   BUILD_AAB: ${{ (inputs.artifact == 'aab' || inputs.artifact == 'both') && 'true' || 'false' }}
+  # [AVA-UPDATE-AUTO] '' / 'none' => no Play upload. Empty inputs (push trigger)
+  # therefore publish nothing, exactly as before.
+  PLAY_TRACK: ${{ inputs.play_track || 'none' }}
 
 permissions:
   contents: write
@@ -72,6 +91,9 @@ jobs:
       # [AAB-AUTO-1] Hoisted to JOB level so `if:` conditions can test it. Secrets
       # cannot be referenced directly in `if:`; an env var derived from one can.
       HAS_UPLOAD_KEYSTORE: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 != '' && 'true' || 'false' }}
+      # [AVA-UPDATE-AUTO] Same trick as HAS_UPLOAD_KEYSTORE — secrets can't be read
+      # in an `if:`, but an env var derived from one can.
+      HAS_PLAY_SA: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' && 'true' || 'false' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -254,6 +276,48 @@ jobs:
         with:
           name: avatok-call-aab
           path: dist/avatok-call.aab
+
+      # ── Play Store publishing [AVA-UPDATE-AUTO] ──────────────────────────────
+      # Guard FIRST, upload second. Every failure below is one that would be
+      # discovered by a tester, not by CI, so it fails loud and early instead.
+      - name: Guard the Play upload
+        if: env.PLAY_TRACK != 'none'
+        run: |
+          # A staging build MUST NEVER reach Play. postcreate.py sets no
+          # applicationIdSuffix, so staging and prod share ai.avatok.avatok_call —
+          # uploading a staging build (which talks to api-staging.avatok.ai) would
+          # push it down the SAME listing every real user auto-updates from, and
+          # silently repoint the whole user base at the staging backend. This is the
+          # single worst thing this workflow could do, so it is checked first.
+          if [ "$AVATOK_ENV" != "prod" ]; then
+            echo "::error::Refusing to publish a '$AVATOK_ENV' build to Play. Staging and prod share the applicationId, so this would overwrite the live listing. Build with environment=prod to publish."
+            exit 1
+          fi
+          if [ "$BUILD_AAB" != "true" ]; then
+            echo "::error::play_track=$PLAY_TRACK needs an .aab — Play does not accept the side-load APK. Re-run with artifact=aab or artifact=both."
+            exit 1
+          fi
+          if [ "$HAS_PLAY_SA" != "true" ]; then
+            echo "::error::Secret PLAY_SERVICE_ACCOUNT_JSON is not set. Create a Play Console service account, grant it 'Release to testing tracks', and paste the JSON key into the repo secret."
+            exit 1
+          fi
+          echo "Publishing to Play track: $PLAY_TRACK"
+
+      - name: Publish .aab to Play track
+        if: env.PLAY_TRACK != 'none'
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          # Matches `flutter create --org ai.avatok --project-name avatok_call`
+          # in the Prepare step above. If that ever changes, change this too.
+          packageName: ai.avatok.avatok_call
+          releaseFiles: dist/avatok-call.aab
+          track: ${{ env.PLAY_TRACK }}
+          status: completed
+          # Play rejects a bundle whose versionCode it has already seen. CI's
+          # $((10000 + run_number)) is strictly increasing, so this holds — but if
+          # a re-run ever collides, bump the run number rather than editing this.
+          changesNotSentForReview: false
 
       # Side-loadable APK, SPLIT PER ABI. A universal (fat) APK bundles every
       # native lib and grows to ~220MB, which Android's installer rejects as
