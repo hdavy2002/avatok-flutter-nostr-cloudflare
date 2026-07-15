@@ -40,12 +40,32 @@ Future<void> showAvaDialRowMenu(
   await showModalBottomSheet<void>(
     context: context,
     backgroundColor: AvaDialTheme.surface,
+    // [AVADIAL-ROWMENU-SCROLL-1] (owner report 2026-07-15, pic5 "need option to
+    // delete contact and block contact")
+    //
+    // Those options were ALREADY here — Block/Unblock, Report spam, Remove
+    // contact and Delete this contact are all built below. They were simply
+    // UNREACHABLE: this menu is 12 rows, laid out in a non-scrollable Column,
+    // and without `isScrollControlled` a modal bottom sheet is capped at 9/16 of
+    // the screen height. ~12 ListTiles overflow that cap, so the sheet clipped
+    // dead at "Call history" (row 7) and every destructive action sat below the
+    // fold with no way to scroll to it. The owner reasonably concluded the
+    // features didn't exist.
+    //
+    // isScrollControlled lifts the cap; the ConstrainedBox + scroll view below
+    // keep it from swallowing the whole screen when the row count grows again.
+    isScrollControlled: true,
     shape: const RoundedRectangleBorder(
       side: BorderSide(color: AvaDialTheme.border, width: 1),
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
     builder: (sheetCtx) => SafeArea(
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(sheetCtx).size.height * 0.85,
+        ),
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
         const SizedBox(height: 10),
         Container(
           width: 40, height: 4,
@@ -215,7 +235,9 @@ Future<void> showAvaDialRowMenu(
           },
         ),
         const SizedBox(height: 8),
-      ]),
+          ]),
+        ),
+      ),
     ),
   );
 }
