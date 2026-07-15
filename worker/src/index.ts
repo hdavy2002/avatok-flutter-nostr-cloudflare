@@ -13,6 +13,9 @@ import { getStorageSummary } from "./storage";
 import { streamWebhook } from "./routes/stream";
 import { brain } from "./routes/brain";
 import { deleteAccount, cancelDeletion, deletionStatus } from "./routes/account";
+// [AVADIAL-CALL-INTEL-1] Call-intelligence ingest. The ONLY place raw E.164 and the
+// HMAC secret meet — the device never holds the key. See routes/telemetry_calls.ts.
+import { ingestCallTelemetry } from "./routes/telemetry_calls";
 // [AVA-IDGATE-1] idSession / idResult / idPhoneConfirm are NO LONGER ROUTED — they
 // minted verification without a Didit check. See LEGACY_GONE in the router.
 import { idStatus, idEmailStart, idEmailVerify, idPasswordStart, idPasswordSet } from "./routes/id";
@@ -829,6 +832,9 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // --- account deletion (right-to-erasure; 30-day grace → queue cascade) ---
       if (p === "/api/account/delete" && (req.method === "POST" || req.method === "DELETE")) return await deleteAccount(req, env);
       if (p === "/api/account/delete/cancel" && req.method === "POST") return await cancelDeletion(req, env);
+      // [AVADIAL-CALL-INTEL-1] Batched call records from the native dialer, uploaded
+      // after each call ends (or on next app boot when the user never opened it).
+      if (p === "/api/telemetry/calls" && req.method === "POST") return await ingestCallTelemetry(req, env);
       if (p === "/api/account/deletion-status" && (req.method === "POST" || req.method === "GET")) return await deletionStatus(req, env);
 
       // --- Phase 8: AvaVerse dashboard (aggregation only, no new stores) ---

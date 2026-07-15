@@ -165,6 +165,26 @@
             android:turnScreenOn="true"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|density|uiMode"
             android:theme="@android:style/Theme.Material.NoActionBar" />
+        <!-- [AVADIAL-NATIVE-INCALL-1] Native ACTIVE-call screen (owner decision
+             2026-07-15). Takes Flutter out of the call path entirely: answering no
+             longer cold-boots the Dart VM + every pubspec plugin just to draw
+             mute/keypad/speaker/end over native functions that already exist.
+             Shares IncomingCallActivity's task affinity so ring -> in-call is a swap
+             WITHIN one task rather than a jump between tasks, and so the call never
+             drags the app's task (chat, marketplace, landing page) into view.
+             excludeFromRecents: a live call belongs in the call UI, not the recents
+             list. Ships dark behind the `nativeInCallUi` flag. -->
+        <activity
+            android:name="ai.avatok.avadial.InCallActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:taskAffinity="ai.avatok.avadial.incoming"
+            android:excludeFromRecents="true"
+            android:autoRemoveFromRecents="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|density|uiMode"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
         <!-- [ISSUE-DUPTASK] Merge-override of flutter_callkit_incoming's ring
              activity. We do NOT change its launchMode or taskAffinity (singleInstance
              on a dedicated affinity is what lets it show over the lock screen), we

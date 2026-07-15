@@ -8,6 +8,7 @@ import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -15,11 +16,21 @@ import android.os.Looper
 import android.provider.BlockedNumberContract
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
+import android.view.animation.Animation
+import android.view.animation.ScaleAnimation
+import android.view.animation.AlphaAnimation
+import android.view.animation.AnimationSet
+import android.view.animation.LinearInterpolator
+import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.Space
 import android.widget.TextView
+// R is generated under the module namespace (ai.avatok.avatok_call), not this package.
+import ai.avatok.avatok_call.R
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -31,36 +42,35 @@ import java.io.File
  *
  * This is a pure-native activity in its OWN task: no Flutter engine, no shell,
  * no landing page, no setup sheet. AvaInCallService launches it directly (and
- * points the full-screen-intent notification here). It:
- *   • shows caller name (ContactsContract lookup), number, and the spam paint
- *     (red = community-reported spammer, green = contact, blue = unknown) —
- *     mirroring the Flutter PstnCallScreen's buckets;
- *   • Answer → answers via the live Call, then hands off to MainActivity's
- *     in-call UI (route avadial/incoming, answered=true);
- *   • Decline / Block / Report spam → act natively (BlockedNumberContract for
- *     the system block list; a pending-actions file the Dart side drains later
- *     so the in-app Block tab stays in sync);
- *   • finishes itself the moment the call dies (missed / caller hung up /
- *     answered elsewhere) via [closeFor]/[onCallActive] hooks fired by
- *     AvaInCallService — no ghost ringing screens.
+ * points the full-screen-intent notification here).
  *
- * Styling mirrors AvaMissedCallOverlay's dark palette (built programmatically,
- * no XML resources).
+ * [AVADIAL-NATIVE-INCALL-1] (2026-07-15) Rebuilt to the owner-approved iOS-style
+ * mockup, and now hands off to the NATIVE [InCallActivity] instead of cold-booting
+ * Flutter. Three things changed and each fixes a real defect:
+ *
+ *  1. ANSWER FEEDBACK. Tapping Answer used to do NOTHING on screen — the frame sat
+ *     frozen until Telecom reported ACTIVE (typically sub-second, but up to the 10s
+ *     fallback on a bad network), then hard-swapped. The buttons were TextViews with
+ *     click listeners, so they didn't even ripple. Now: haptic on touch, an explicit
+ *     ANSWERING state (buttons fade, spinner, "Connecting…"), and re-taps are
+ *     swallowed. Multi-tapping was always harmless — Telecom drops answer() on a
+ *     non-RINGING call — but it looked broken, which is its own bug.
+ *
+ *  2. SHARED PALETTE. Colours come from [AvaCallTheme], the same file the in-call
+ *     screen reads, so answering no longer shifts the palette mid-flow.
+ *
+ *  3. CONFIGURED SPAM THRESHOLD. Reads `warn_threshold` from the screening snapshot
+ *     instead of a hardcoded 70, so the paint matches what the screening service
+ *     actually scored against.
+ *
+ * Still true: finishes itself the moment the call dies (missed / hung up / answered
+ * elsewhere) via [closeFor]/[onCallActive] — no ghost ringing screens.
  */
 class IncomingCallActivity : Activity() {
 
     companion object {
-        private const val BG = "#141416"
-        private const val CARD_BG = "#1B1B1D"
-        private const val CARD_STROKE = "#2E2E31"
-        private const val TEXT_PRIMARY = "#FFFFFF"
-        private const val TEXT_SOFT = "#B5B5B8"
-        private const val DANGER = "#D9534F"
-        private const val ANSWER_ORANGE = "#E8883A"
-        private const val CONTACT_GREEN = "#11A37F"
-        private const val UNKNOWN_BLUE = "#7BA7D9"
-        private const val CHIP_BG = "#2A2A2D"
-        private const val WARN_THRESHOLD = 70
+        /** Fallback only — the live value comes from the snapshot. See [AvaCallTheme]. */
+        private const val ANSWER_TIMEOUT_MS = 10_000L
 
         @Volatile
         private var live: IncomingCallActivity? = null
@@ -76,7 +86,7 @@ class IncomingCallActivity : Activity() {
 
         /**
          * The call went ACTIVE (answered here, from the notification, or from the
-         * Flutter UI) — hand off to the app's in-call screen and tear down.
+         * Flutter UI) — hand off to the in-call screen and tear down.
          */
         fun onCallActive(callId: String) {
             main.post {
@@ -109,6 +119,19 @@ class IncomingCallActivity : Activity() {
     private var callId: String? = null
     private var number: String? = null
     private var closed = false
+    private var answering = false
+
+    /**
+     * True once we've launched the NATIVE [InCallActivity], which shares this
+     * activity's taskAffinity — see [finishQuiet] for why that matters.
+     */
+    private var handedOffToNative = false
+
+    // Views we mutate when entering the ANSWERING state.
+    private var actionsHost: LinearLayout? = null
+    private var kickerView: TextView? = null
+    private var avatarView: ImageView? = null
+    private var pulseView: View? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -132,8 +155,8 @@ class IncomingCallActivity : Activity() {
                     WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
             )
         }
-        window.statusBarColor = Color.parseColor(BG)
-        window.navigationBarColor = Color.parseColor(BG)
+        window.statusBarColor = AvaCallTheme.c(AvaCallTheme.BG)
+        window.navigationBarColor = AvaCallTheme.c(AvaCallTheme.BG)
 
         // If the call already died before we got here (race), bail immediately.
         val id = callId
@@ -164,11 +187,29 @@ class IncomingCallActivity : Activity() {
 
     // ── actions ────────────────────────────────────────────────────────────────
 
+    /**
+     * Answer, and IMMEDIATELY acknowledge it on screen.
+     *
+     * The tap→ACTIVE gap is usually short but is never zero, and on a bad network it
+     * can run to [ANSWER_TIMEOUT_MS]. Previously that whole window was silent, so the
+     * user tapped again, and again. Now the UI commits to ANSWERING on the first tap
+     * and re-taps are ignored.
+     */
     private fun answer() {
         val id = callId ?: return
+        if (answering) return
+        answering = true
+        enterAnsweringState()
         AvaInCallService.action(id, "answer", null)
-        // The ACTIVE state callback fires [onCallActive] → in-call UI + finish.
-        // Fallback: if no state change lands in 10s the screen stays (still ringing).
+        // The ACTIVE callback fires [onCallActive] → in-call UI + finish.
+        // If nothing lands in time, restore the buttons rather than stranding the
+        // user on a spinner for a call that is somehow still ringing.
+        main.postDelayed({
+            if (!closed && answering && AvaInCallService.stateOf(id) == "ringing") {
+                answering = false
+                recreateActions()
+            }
+        }, ANSWER_TIMEOUT_MS)
     }
 
     private fun decline() {
@@ -180,6 +221,7 @@ class IncomingCallActivity : Activity() {
 
     private fun block(reportSpam: Boolean) {
         val n = number
+        val id = callId
         if (!n.isNullOrEmpty()) {
             try {
                 val values = android.content.ContentValues()
@@ -188,10 +230,39 @@ class IncomingCallActivity : Activity() {
             } catch (_: Throwable) { /* not default dialer / OEM quirk — best-effort */ }
             stashPendingAction(this, n, if (reportSpam) "report_spam" else "block")
         }
+        // [AVADIAL-CALL-INTEL-1] Record the disposition BEFORE decline() tears the
+        // call down — onCallRemoved reads finalState to write the completed row.
+        if (id != null) {
+            AvaInCallService.noteAction(id, if (reportSpam) "reported_spam" else "blocked_number")
+            AvaInCallService.recordFor(id)?.finalState = "blocked"
+        }
         decline()
     }
 
+    /** Open the SMS composer for this caller (quick reply instead of answering). */
+    private fun message() {
+        val n = number ?: return
+        callId?.let { AvaInCallService.noteAction(it, "sent_sms") }
+        try {
+            startActivity(Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:$n")).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            })
+        } catch (_: Throwable) { /* no SMS app — best-effort */ }
+    }
+
     private fun launchInCallUi() {
+        val id = callId
+        // [AVADIAL-NATIVE-INCALL-1] Native in-call screen when the flag is on; the old
+        // Flutter path otherwise. Read fresh from disk on every answer so a config flip
+        // takes effect without a restart, and fail-closed so any doubt keeps the
+        // known-good Flutter path.
+        if (id != null && AvaDialPlugin.nativeInCallEnabled(this)) {
+            try {
+                startActivity(InCallActivity.intentFor(this, id, number))
+                handedOffToNative = true
+                return
+            } catch (_: Throwable) { /* fall through to the Flutter path below */ }
+        }
         try {
             val i = Intent(this, Class.forName("ai.avatok.avatok_call.MainActivity")).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
@@ -211,58 +282,81 @@ class IncomingCallActivity : Activity() {
         } catch (_: Throwable) { /* best-effort */ }
     }
 
+    /**
+     * Dismiss this screen.
+     *
+     * CAREFUL — [finishAndRemoveTask] finishes EVERY activity in this task, not just
+     * this one. That was always the intent (kill the whole `avadial.incoming` task so
+     * no ghost card lingers in recents), and it was safe while the handoff target was
+     * MainActivity, which lives on the app's own default affinity in a DIFFERENT task.
+     *
+     * The native [InCallActivity] deliberately shares this task's affinity — so
+     * calling finishAndRemoveTask() after launching it would destroy the in-call
+     * screen we just created, one line later. When we've handed off natively we must
+     * finish ONLY ourselves and let InCallActivity own the task's lifetime.
+     */
     private fun finishQuiet() {
         if (closed) return
         closed = true
         try {
-            finishAndRemoveTask()
+            if (handedOffToNative) finish() else finishAndRemoveTask()
         } catch (_: Throwable) {
             finish()
         }
     }
 
-    // ── UI (programmatic, mirrors PstnCallScreen's red/green/blue buckets) ─────
+    // ── UI ────────────────────────────────────────────────────────────────────
 
-    private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
+    private fun dp(v: Int): Int = AvaCallTheme.dp(this, v)
+
+    private enum class Bucket { CONTACT, UNKNOWN, SPAM }
 
     private fun buildUi(name: String?, spamScore: Int?): View {
-        val isSpam = spamScore != null && spamScore >= WARN_THRESHOLD
-        val isContact = !isSpam && !name.isNullOrEmpty()
-        val accent = Color.parseColor(if (isSpam) DANGER else if (isContact) CONTACT_GREEN else UNKNOWN_BLUE)
+        // [AVADIAL-NATIVE-INCALL-1] The CONFIGURED threshold, not a hardcoded 70.
+        val warn = AvaCallScreeningService.warnThresholdOf(this)
+        val bucket = when {
+            spamScore != null && spamScore >= warn -> Bucket.SPAM
+            !name.isNullOrEmpty() -> Bucket.CONTACT
+            else -> Bucket.UNKNOWN
+        }
+        val accent = AvaCallTheme.c(
+            when (bucket) {
+                Bucket.SPAM -> AvaCallTheme.DANGER
+                Bucket.CONTACT -> AvaCallTheme.CONTACT_GREEN
+                Bucket.UNKNOWN -> AvaCallTheme.UNKNOWN_BLUE
+            }
+        )
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor(BG))
-            setPadding(dp(24), dp(48), dp(24), dp(28))
+            setBackgroundColor(AvaCallTheme.c(AvaCallTheme.BG))
+            setPadding(dp(24), dp(44), dp(24), dp(28))
             gravity = Gravity.CENTER_HORIZONTAL
         }
 
         root.addView(Space(this), LinearLayout.LayoutParams(0, 0, 1f))
 
-        // Avatar circle
-        root.addView(TextView(this).apply {
-            text = if (isSpam) "!" else "↙"
-            textSize = 40f
-            setTextColor(Color.WHITE)
-            typeface = Typeface.DEFAULT_BOLD
-            gravity = Gravity.CENTER
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(accent)
-                setStroke(dp(2), Color.parseColor(CARD_STROKE))
-            }
-        }, LinearLayout.LayoutParams(dp(108), dp(108)))
+        // Avatar with a pulsing halo — a ringing phone should look alive. The old
+        // screen was a completely static frame with no motion anywhere.
+        root.addView(buildAvatar(bucket, accent))
 
-        root.addView(Space(this), LinearLayout.LayoutParams(1, dp(20)))
+        root.addView(Space(this), LinearLayout.LayoutParams(1, dp(18)))
 
         // Kicker
-        root.addView(TextView(this).apply {
-            text = if (isSpam) "SUSPECTED SPAM" else if (isContact) "INCOMING CALL" else "UNKNOWN NUMBER"
+        kickerView = TextView(this).apply {
+            text = when (bucket) {
+                Bucket.SPAM -> "Suspected spam"
+                Bucket.CONTACT -> "Incoming call"
+                Bucket.UNKNOWN -> "Unknown number"
+            }
             textSize = 13f
-            letterSpacing = 0.12f
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(if (isSpam) Color.parseColor(DANGER) else Color.parseColor(TEXT_SOFT))
-        })
+            letterSpacing = 0.1f
+            setTextColor(
+                if (bucket == Bucket.SPAM) AvaCallTheme.c(AvaCallTheme.DANGER)
+                else AvaCallTheme.c(AvaCallTheme.TEXT_SOFT)
+            )
+        }
+        root.addView(kickerView)
 
         root.addView(Space(this), LinearLayout.LayoutParams(1, dp(6)))
 
@@ -272,84 +366,219 @@ class IncomingCallActivity : Activity() {
             textSize = 30f
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
-            setTextColor(Color.parseColor(TEXT_PRIMARY))
+            setTextColor(AvaCallTheme.c(AvaCallTheme.TEXT_PRIMARY))
         })
         if (!name.isNullOrEmpty() && !number.isNullOrEmpty()) {
             root.addView(Space(this), LinearLayout.LayoutParams(1, dp(4)))
             root.addView(TextView(this).apply {
                 text = number
                 textSize = 15f
-                setTextColor(Color.parseColor(TEXT_SOFT))
+                setTextColor(AvaCallTheme.c(AvaCallTheme.TEXT_SOFT))
             })
         }
 
         // Spam banner
-        if (isSpam) {
-            root.addView(Space(this), LinearLayout.LayoutParams(1, dp(20)))
+        if (bucket == Bucket.SPAM) {
+            root.addView(Space(this), LinearLayout.LayoutParams(1, dp(18)))
             root.addView(TextView(this).apply {
                 text = "Reported by the community (score $spamScore). We recommend declining."
-                textSize = 13.5f
-                setTextColor(Color.parseColor(TEXT_PRIMARY))
+                textSize = 13f
+                gravity = Gravity.CENTER
+                setTextColor(AvaCallTheme.c(AvaCallTheme.TEXT_SOFT))
                 setPadding(dp(14), dp(12), dp(14), dp(12))
-                background = GradientDrawable().apply {
-                    cornerRadius = dp(14).toFloat()
-                    setColor(Color.parseColor(CARD_BG))
-                    setStroke(dp(1), Color.parseColor(CARD_STROKE))
-                }
-            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+                background = AvaCallTheme.card(this@IncomingCallActivity)
+            }, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ))
         }
 
         root.addView(Space(this), LinearLayout.LayoutParams(0, 0, 1f))
 
-        // Primary row: Decline · Answer  (spam: Decline is the full-width primary)
-        val primaryRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        primaryRow.addView(
-            pillButton("Decline", Color.parseColor(DANGER), Color.WHITE) { decline() },
-            LinearLayout.LayoutParams(0, dp(52), 1f).apply { rightMargin = dp(6) },
-        )
-        primaryRow.addView(
-            pillButton(
-                if (isSpam) "Answer anyway" else "Answer",
-                if (isSpam) Color.parseColor(CHIP_BG) else Color.parseColor(ANSWER_ORANGE),
-                Color.WHITE,
-            ) { answer() },
-            LinearLayout.LayoutParams(0, dp(52), 1f).apply { leftMargin = dp(6) },
-        )
-        root.addView(primaryRow, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-
-        root.addView(Space(this), LinearLayout.LayoutParams(1, dp(12)))
-
-        // Secondary row: Block · Report spam
-        val secondaryRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        secondaryRow.addView(
-            pillButton("Block", Color.parseColor(CHIP_BG), Color.parseColor(TEXT_PRIMARY)) { block(reportSpam = false) },
-            LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(6) },
-        )
-        secondaryRow.addView(
-            pillButton("Report spam", Color.parseColor(CHIP_BG), Color.parseColor(TEXT_PRIMARY)) { block(reportSpam = true) },
-            LinearLayout.LayoutParams(0, dp(48), 1f).apply { leftMargin = dp(6) },
-        )
-        root.addView(secondaryRow, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        // Everything below the fold swaps wholesale when we enter ANSWERING.
+        actionsHost = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+        }
+        buildActions(actionsHost!!, bucket)
+        root.addView(actionsHost, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ))
 
         // ScrollView so small screens / landscape never clip the buttons.
         return ScrollView(this).apply {
             isFillViewport = true
-            addView(root, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT))
+            addView(root, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT
+            ))
         }
     }
 
-    private fun pillButton(label: String, bg: Int, fg: Int, onTap: () -> Unit): TextView =
-        TextView(this).apply {
-            text = label
-            textSize = 16f
-            typeface = Typeface.DEFAULT_BOLD
-            gravity = Gravity.CENTER
-            setTextColor(fg)
+    /** Avatar circle + the pulsing ring behind it. */
+    private fun buildAvatar(bucket: Bucket, accent: Int): View {
+        val size = dp(108)
+        val host = android.widget.FrameLayout(this)
+
+        // The halo: a stroked circle that scales up and fades out, forever.
+        val pulse = View(this).apply {
             background = GradientDrawable().apply {
-                cornerRadius = dp(26).toFloat()
-                setColor(bg)
-                setStroke(dp(1), Color.parseColor(CARD_STROKE))
+                shape = GradientDrawable.OVAL
+                setStroke(dp(2), accent)
+                setColor(Color.TRANSPARENT)
             }
-            setOnClickListener { onTap() }
         }
+        host.addView(pulse, android.widget.FrameLayout.LayoutParams(size, size, Gravity.CENTER))
+        pulseView = pulse
+
+        val icon = when (bucket) {
+            Bucket.SPAM -> R.drawable.ic_avadial_warning
+            Bucket.CONTACT -> R.drawable.ic_avadial_person
+            Bucket.UNKNOWN -> R.drawable.ic_avadial_call_received
+        }
+        // NOTE: no contact photo yet. Phone.PHOTO_URI is one extra projection column on
+        // the lookup AvaInCallService already runs — worth doing, but it is a separate
+        // change and the glyph is the honest fallback state either way.
+        val avatar = AvaCallTheme.avatar(this, icon, accent, 108, 46)
+        host.addView(avatar, android.widget.FrameLayout.LayoutParams(size, size, Gravity.CENTER))
+        avatarView = avatar
+
+        startPulse(pulse)
+        return host
+    }
+
+    /**
+     * Breathing halo. Kept deliberately cheap (view animation, two properties, no
+     * layout passes) because this runs on a locked phone with a cold CPU.
+     */
+    private fun startPulse(v: View) {
+        val set = AnimationSet(false).apply {
+            addAnimation(ScaleAnimation(
+                1f, 1.35f, 1f, 1.35f,
+                Animation.RELATIVE_TO_SELF, 0.5f,
+                Animation.RELATIVE_TO_SELF, 0.5f,
+            ).apply { duration = 1500; repeatCount = Animation.INFINITE; interpolator = LinearInterpolator() })
+            addAnimation(AlphaAnimation(0.55f, 0f).apply {
+                duration = 1500; repeatCount = Animation.INFINITE; interpolator = LinearInterpolator()
+            })
+        }
+        v.startAnimation(set)
+    }
+
+    private fun stopPulse() {
+        try { pulseView?.clearAnimation(); pulseView?.visibility = View.INVISIBLE } catch (_: Throwable) { }
+    }
+
+    /**
+     * The action stack: a secondary icon row, then the big Decline/Accept circles.
+     * Matches the owner-approved mockup (2026-07-15).
+     */
+    private fun buildActions(host: LinearLayout, bucket: Bucket) {
+        host.removeAllViews()
+
+        // ── secondary row ──
+        val secondary = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        val chip = AvaCallTheme.c(AvaCallTheme.CHIP)
+        fun addSecondary(iconRes: Int, label: String, onTap: (View) -> Unit) {
+            secondary.addView(
+                AvaCallTheme.circleButton(this, iconRes, label, chip, diameterDp = 48, iconDp = 21, onTap = onTap),
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+            )
+        }
+
+        if (bucket == Bucket.CONTACT) {
+            addSecondary(R.drawable.ic_avadial_message, "Message") { message() }
+        } else {
+            addSecondary(R.drawable.ic_avadial_block, "Block") { block(reportSpam = false) }
+            addSecondary(R.drawable.ic_avadial_flag, "Report") { block(reportSpam = true) }
+        }
+
+        // [AVADIAL-NATIVE-INCALL-1] Owner request 2026-07-15: both of these are
+        // announced-but-unbuilt products. They are on screen deliberately — the shape
+        // of the flow is being set now — but they must say so rather than silently do
+        // nothing, which reads as a bug.
+        addSecondary(R.drawable.ic_avadial_voicemail, "Voicemail") { v ->
+            AvaCallTheme.comingSoon(this, v, "Voicemail — coming soon")
+        }
+        addSecondary(R.drawable.ic_avadial_ava, "Ava") { v ->
+            AvaCallTheme.comingSoon(this, v, "Chat with Ava — coming soon")
+        }
+
+        if (bucket == Bucket.CONTACT) {
+            addSecondary(R.drawable.ic_avadial_block, "Block") { block(reportSpam = false) }
+        }
+
+        host.addView(secondary, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ))
+
+        host.addView(Space(this), LinearLayout.LayoutParams(1, dp(24)))
+
+        // ── primary row ──
+        val primary = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        primary.addView(
+            AvaCallTheme.circleButton(
+                this, R.drawable.ic_avadial_phone_end, "Decline",
+                AvaCallTheme.c(AvaCallTheme.DANGER), diameterDp = 64, iconDp = 28,
+            ) { decline() },
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+        )
+        // On a suspected spammer, Accept keeps its POSITION (muscle memory) but loses
+        // its colour and gains a warning label — demoted, not hidden.
+        primary.addView(
+            AvaCallTheme.circleButton(
+                this, R.drawable.ic_avadial_phone,
+                if (bucket == Bucket.SPAM) "Answer anyway" else "Accept",
+                if (bucket == Bucket.SPAM) AvaCallTheme.c(AvaCallTheme.CHIP)
+                else AvaCallTheme.c(AvaCallTheme.CONTACT_GREEN),
+                iconTint = if (bucket == Bucket.SPAM) AvaCallTheme.c(AvaCallTheme.TEXT_DIM) else Color.WHITE,
+                labelColor = if (bucket == Bucket.SPAM) AvaCallTheme.c(AvaCallTheme.TEXT_DIM)
+                else AvaCallTheme.c(AvaCallTheme.TEXT_SOFT),
+                diameterDp = 64, iconDp = 28,
+            ) { answer() },
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+        )
+        host.addView(primary, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ))
+    }
+
+    /** Swap the buttons for a spinner. THE fix for the dead-tap gap. */
+    private fun enterAnsweringState() {
+        stopPulse()
+        kickerView?.text = "Connecting…"
+        kickerView?.setTextColor(AvaCallTheme.c(AvaCallTheme.TEXT_SOFT))
+        val host = actionsHost ?: return
+        host.removeAllViews()
+        host.addView(ProgressBar(this).apply {
+            isIndeterminate = true
+            indeterminateTintList = android.content.res.ColorStateList.valueOf(
+                AvaCallTheme.c(AvaCallTheme.CONTACT_GREEN)
+            )
+        }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { gravity = Gravity.CENTER_HORIZONTAL })
+    }
+
+    /** Answer timed out and the call is somehow still ringing — give the buttons back. */
+    private fun recreateActions() {
+        val name = intent.getStringExtra("name")
+        val spamScore = if (intent.hasExtra("spam_score")) intent.getIntExtra("spam_score", 0) else null
+        val warn = AvaCallScreeningService.warnThresholdOf(this)
+        val bucket = when {
+            spamScore != null && spamScore >= warn -> Bucket.SPAM
+            !name.isNullOrEmpty() -> Bucket.CONTACT
+            else -> Bucket.UNKNOWN
+        }
+        kickerView?.text = when (bucket) {
+            Bucket.SPAM -> "Suspected spam"
+            Bucket.CONTACT -> "Incoming call"
+            Bucket.UNKNOWN -> "Unknown number"
+        }
+        pulseView?.visibility = View.VISIBLE
+        pulseView?.let { startPulse(it) }
+        actionsHost?.let { buildActions(it, bucket) }
+    }
 }

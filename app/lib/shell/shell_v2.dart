@@ -7,6 +7,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../auth/clerk_client.dart';
 import '../core/account_storage.dart';
 import '../core/analytics.dart';
+import '../core/profile_store.dart';
 import '../core/remote_config.dart';
 import '../core/ui/avatok_dark.dart';
 import '../features/askava/askava_screen.dart';
@@ -226,6 +227,15 @@ class _ShellV2State extends State<ShellV2> {
   void _wireIncomingCalls() {
     if (!RemoteConfig.avaDialer) return;
     AvaDialChannel.I.ensureWired();
+    // [AVADIAL-NATIVE-INCALL-1] Mirror the native-in-call kill switch to disk. The
+    // native call screens run with NO Flutter engine, so they cannot read
+    // RemoteConfig — this file IS how they learn the flag. Written on every wire-up
+    // so a KV flip takes effect on the next app open. Absent/corrupt reads as OFF.
+    unawaited(AvaDialChannel.I.setNativeInCallEnabled(RemoteConfig.nativeInCallUi));
+    // [AVADIAL-CALL-INTEL-1] Tell native who is signed in, so calls that happen with
+    // the app closed still carry the user's email — the only way to work out whose
+    // device a call problem was on once there are many testers.
+    unawaited(_syncNativeIdentity());
     _incomingSub = AvaDialChannel.I.incomingLaunch
         .listen((l) => _openIncoming(l.callId, l.number, l.answered, l.spamScore));
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -246,6 +256,31 @@ class _ShellV2State extends State<ShellV2> {
         } catch (_) {/* best-effort */}
       }
     });
+  }
+
+  /// [AVADIAL-CALL-INTEL-1] Hand the signed-in user's identity to native.
+  ///
+  /// Native owns the call but has no Clerk, no IdentityStore and (by design) no
+  /// Flutter engine at call time — so Dart writes an identity snapshot to disk and
+  /// native reads it. Exactly the handshake spam_snapshot.json / avatok_directory
+  /// .json already use, and the one AvaMissedCallOverlay already reads with no
+  /// engine attached.
+  ///
+  /// Per-account scoping is mandatory here (one phone, parent + child accounts):
+  /// [ProfileStore.load] reads through `readScoped`, so this always reflects the
+  /// CURRENT account, and a sign-out must clear it rather than leave the previous
+  /// user's email stamped on the next account's calls.
+  Future<void> _syncNativeIdentity() async {
+    try {
+      final p = await ProfileStore().load();
+      await AvaDialChannel.I.writeIdentity(
+        distinctId: AccountScope.id,
+        email: p.email.isEmpty ? null : p.email,
+        phoneE164: p.phone.isEmpty ? null : p.phone,
+        name: p.displayName.isEmpty ? null : p.displayName,
+        accountId: AccountScope.id,
+      );
+    } catch (_) {/* best-effort — telemetry identity is never worth an exception */}
   }
 
   /// Cold-start / background SMS-compose route (AVA-SMS). The native SMS notification

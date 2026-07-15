@@ -290,6 +290,19 @@ class RemoteConfig {
   /// by the worker). Default false so a config-fetch failure keeps AvaDial inert.
   static bool get avaDialer => _b('avaDialer', false);
 
+  /// [AVADIAL-NATIVE-INCALL-1] Native in-call screen (owner decision 2026-07-15).
+  /// Mirrors config.ts `nativeInCallUi`. While FALSE, answering a PSTN call hands
+  /// off to MainActivity and [InCallScreen] exactly as today. While TRUE the native
+  /// InCallActivity takes over and Flutter never enters the call path — no engine
+  /// boot, no Keystore, no Firebase/PostHog init, no 3s shell gate.
+  ///
+  /// Native cannot read this class (it runs with no engine), so ShellV2 mirrors the
+  /// resolved value to <filesDir>/avadial/native_ui.json via
+  /// [AvaDialChannel.setNativeInCallEnabled]. A missing mirror reads as OFF.
+  ///
+  /// Default OFF: this is the answer path that broke prod testers on 2026-07-14.
+  static bool get nativeInCallUi => _b('nativeInCallUi', false);
+
   /// [AVA-MISSEDCALL-1] Truecaller-style missed-call overlay (owner request
   /// 2026-07-14). Master kill switch, mirrors config.ts `missedCallOverlay`. While
   /// false the native PHONE_STATE receiver/overlay stay inert and /api/contacts/match

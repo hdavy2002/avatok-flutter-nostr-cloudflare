@@ -7,7 +7,9 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/analytics.dart';
+import '../../core/api_auth.dart';
 import '../../core/ava_log.dart';
+import '../../core/config.dart';
 
 /// Direction/state of a live PSTN call, mirrored from the native
 /// [AvaInCallService] over the `avatok/avadial` channel.
@@ -188,6 +190,10 @@ class AvaDialChannel {
     // Unawaited: wiring the channel must not block on a PostHog round-trip, and a
     // failed drain is never worth delaying the SMS UI for.
     unawaited(drainNativeTelemetry());
+    // [AVADIAL-CALL-INTEL-1] Ship any calls that happened while the app was closed.
+    // This is the whole point of the disk buffer: the calls we most want to learn
+    // from are the ones where the user never opened the app afterwards.
+    unawaited(uploadCallTelemetry());
   }
 
   // ── [AVADIAL-SMS-TELEMETRY-1] Native telemetry sink ───────────────────────
@@ -260,6 +266,110 @@ class AvaDialChannel {
     }
   }
 
+  // ── [AVADIAL-NATIVE-INCALL-1] identity + native-UI gate ─────────────────────
+
+  /// Tell native who is signed in, so the call screens (which run with NO Flutter
+  /// engine) can stamp every call-intelligence event with the user's identity.
+  ///
+  /// The email matters most: with many testers on many devices it is the ONLY way
+  /// to work out whose phone a call problem happened on. Call this on login, on
+  /// account switch, and on any profile change.
+  Future<void> writeIdentity({
+    String? distinctId,
+    String? email,
+    String? phoneE164,
+    String? name,
+    String? accountId,
+  }) async {
+    try {
+      await _ch.invokeMethod('writeIdentity', {
+        'distinct_id': distinctId,
+        'email': email,
+        'phone_e164': phoneE164,
+        'name': name,
+        'account_id': accountId,
+      });
+    } catch (e) {
+      AvaLog.I.log('avadial', 'writeIdentity failed: $e');
+    }
+  }
+
+  /// Wipe the native identity snapshot on logout. Per-account scoping is
+  /// mandatory (one phone, parent + child accounts) — a stale identity here would
+  /// stamp the NEXT account's calls with the previous user's email.
+  Future<void> clearIdentity() async {
+    try {
+      await _ch.invokeMethod('clearIdentity');
+    } catch (e) {
+      AvaLog.I.log('avadial', 'clearIdentity failed: $e');
+    }
+  }
+
+  /// Mirror the `nativeInCallUi` kill switch to disk for the native call screens.
+  ///
+  /// They cannot read RemoteConfig — that lives in Dart, and the whole point of
+  /// the native path is that Dart isn't running. So Dart mirrors the resolved
+  /// value on every config refresh and native reads the file. Absent => OFF.
+  Future<void> setNativeInCallEnabled(bool enabled) async {
+    try {
+      await _ch.invokeMethod('setNativeInCallEnabled', {'enabled': enabled});
+    } catch (e) {
+      AvaLog.I.log('avadial', 'setNativeInCallEnabled failed: $e');
+    }
+  }
+
+  // ── [AVADIAL-CALL-INTEL-1] call-intelligence upload ─────────────────────────
+
+  /// Upload buffered call records to the Worker, which HMACs the phone number
+  /// with a server-held secret before anything reaches PostHog.
+  ///
+  /// WHY THE WORKER AND NOT POSTHOG DIRECTLY: if the device computed the HMAC, the
+  /// device would hold the key — and a key inside an APK is not a secret. Anyone
+  /// who unpacks the app could dictionary-attack the whole number space, which is
+  /// exactly what the HMAC is meant to prevent. The Worker's secret never leaves
+  /// Cloudflare. This costs nothing on the call path because the buffer is only
+  /// ever uploaded AFTER the call has ended.
+  ///
+  /// Read-then-clear-on-success: a failed upload retries on the next drain rather
+  /// than silently binning the data. At-least-once; the Worker dedupes on
+  /// `call_uuid`.
+  Future<void> uploadCallTelemetry() async {
+    try {
+      final raw = await _ch.invokeMethod<List<dynamic>>('readCallTelemetry');
+      if (raw == null || raw.isEmpty) return;
+      final events = raw
+          .whereType<Map>()
+          .map((e) => e.map((k, v) => MapEntry('$k', v)))
+          .toList();
+      if (events.isEmpty) return;
+
+      final res = await ApiAuth.postJson(
+        '$kApiBase/telemetry/calls',
+        {'events': events},
+      );
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        await _ch.invokeMethod('clearCallTelemetry');
+        Analytics.capture('avadial_call_telemetry_uploaded', {
+          'count': events.length,
+        });
+      } else {
+        // Leave the buffer alone — next drain retries it.
+        AvaLog.I.log('avadial', 'call telemetry upload HTTP ${res.statusCode}');
+      }
+    } catch (e) {
+      AvaLog.I.log('avadial', 'uploadCallTelemetry failed: $e');
+    }
+  }
+
+  /// How many call records are waiting on disk (diagnostics only).
+  Future<int> callTelemetryPending() async {
+    try {
+      return await _ch.invokeMethod<int>('callTelemetryPending') ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
   /// [AVADIAL-SMS-ROLE-1] Whether this build QUALIFIES as a default-SMS candidate:
   /// `{sms_deliver_ok, wap_push_ok, respond_via_ok, sendto_ok, qualified,
   /// role_held, is_default_sms, has_other_default, sdk}`.
@@ -302,6 +412,13 @@ class AvaDialChannel {
           break;
         case 'onCallRemoved':
           _removed.add('${a['id']}');
+          break;
+        // [AVADIAL-CALL-INTEL-1] A call just finished and native flushed its record
+        // to the durable buffer. Upload now while the app happens to be alive; when
+        // it isn't, the buffer simply waits on disk for the next boot — which is
+        // precisely the case (caller never opens the app) this pipeline exists for.
+        case 'onCallTelemetryReady':
+          unawaited(uploadCallTelemetry());
           break;
         case 'onRoleResult':
           _roles.add(AvaRoleResult('${a['role']}', a['granted'] == true));

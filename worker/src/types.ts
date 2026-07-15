@@ -202,6 +202,16 @@ export interface Env {
   GOOGLE_CLIENT_SECRET?: string;
   GCAL_TOKEN_KEY?: string;         // AES-GCM key material for gcal refresh tokens
   JOIN_LINK_SECRET?: string;       // HMAC for https://avatok.ai/j/<token>
+  // [AVADIAL-CALL-INTEL-1] HMAC key for the call-intelligence phone identifier
+  // (routes/telemetry_calls.ts). phone_id = HMAC-SHA256(this, E.164), and it is the
+  // ONLY form of a caller's number that ever reaches PostHog.
+  //
+  // MUST stay server-side. The whole reason the Worker does the hashing instead of
+  // the dialer is that a key shipped in an APK is not a key — anyone who unpacks the
+  // app could hash every number in a range and reverse the ids. Set per environment
+  // with `wrangler secret put CALL_ID_HMAC_SECRET`; until it is set, the ingest route
+  // returns 503 (fail-loud) and devices keep their buffer and retry.
+  CALL_ID_HMAC_SECRET?: string;
 
   // [AVA-MISSEDCALL-1] HMAC secret for the long-lived device token the missed-call
   // overlay's native receiver uses to look up AvaTOK membership while the app is dead

@@ -70,6 +70,27 @@ class AvaCallScreeningService : CallScreeningService() {
                 if (it.next().value.atMs < cutoff) it.remove()
             }
         }
+
+        /**
+         * [AVADIAL-NATIVE-INCALL-1] The CONFIGURED warn threshold from the snapshot
+         * Dart maintains — the same `warn_threshold` this service screens against.
+         *
+         * WHY: IncomingCallActivity used to hardcode `WARN_THRESHOLD = 70` and never
+         * read the snapshot, so the screening service and the UI could disagree, and
+         * tuning the threshold server-side changed the scoring but NOT the red paint
+         * the user actually sees. Now both read the same number.
+         *
+         * Falls back to [AvaCallTheme.WARN_THRESHOLD_FALLBACK] when the snapshot is
+         * missing/corrupt (same fail-open posture as [lookup]).
+         */
+        fun warnThresholdOf(context: android.content.Context): Int = try {
+            val f = AvaDialPlugin.snapshotFile(context)
+            if (!f.exists() || f.length() == 0L) AvaCallTheme.WARN_THRESHOLD_FALLBACK
+            else JSONObject(f.readText())
+                .optInt("warn_threshold", AvaCallTheme.WARN_THRESHOLD_FALLBACK)
+        } catch (_: Throwable) {
+            AvaCallTheme.WARN_THRESHOLD_FALLBACK
+        }
     }
 
     override fun onScreenCall(callDetails: Call.Details) {

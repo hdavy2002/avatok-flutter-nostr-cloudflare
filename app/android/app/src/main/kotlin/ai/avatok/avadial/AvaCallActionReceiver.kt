@@ -36,6 +36,17 @@ class AvaCallActionReceiver : BroadcastReceiver() {
 
             when (action) {
                 "answer" -> {
+                    // [AVADIAL-NATIVE-INCALL-1] Prefer the native in-call screen when the
+                    // flag is on — same handoff IncomingCallActivity makes, and the same
+                    // reason: answering from the notification should not cold-boot the
+                    // whole Flutter app to draw four buttons over native functions.
+                    // Fail-closed to the Flutter path on any doubt.
+                    if (callId != null && AvaDialPlugin.nativeInCallEnabled(context)) {
+                        try {
+                            context.startActivity(InCallActivity.intentFor(context, callId, number))
+                            return
+                        } catch (_: Throwable) { /* fall through to Flutter below */ }
+                    }
                     // Bring the in-call UI up the same way AvaInCallService.launchIncoming
                     // does, in case Flutter/MainActivity isn't already on screen.
                     // [AVADIAL-HARDEN-2] "answered" tells the Dart side the call was already

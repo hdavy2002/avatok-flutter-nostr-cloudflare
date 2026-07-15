@@ -45,7 +45,33 @@ class AvaInCallService : InCallService() {
         private val sawActive = HashSet<String>()
         private val incomingIds = HashSet<String>()
 
+        /**
+         * [AVADIAL-CALL-INTEL-1] Per-call intelligence record, keyed by the same local
+         * id as [callMap]. Holds the REAL uuid, the timings, and the actions taken.
+         *
+         * The local id below stays `System.identityHashCode(call)` because every
+         * existing caller (plugin, activities, notification receiver) is built on it —
+         * but that is a memory-address hash: it can collide and means nothing once the
+         * process dies. So it is a map key ONLY. Anything durable uses [CallRecord.uuid].
+         */
+        private val records = LinkedHashMap<String, CallRecord>()
+
         private fun idFor(call: Call): String = System.identityHashCode(call).toString()
+
+        internal fun recordFor(id: String): CallRecord? = records[id]
+
+        /**
+         * [AVADIAL-CALL-INTEL-1] Note that the user physically tapped Answer, so we can
+         * measure tap → STATE_ACTIVE. That gap is the entire reason the answer path was
+         * rearchitected: it used to be dead, silent time with no feedback.
+         */
+        internal fun noteAnswerTapped(id: String) {
+            records[id]?.let { if (it.answerTappedAt == null) it.answerTappedAt = System.currentTimeMillis() }
+        }
+
+        internal fun noteAction(id: String, action: String) {
+            records[id]?.addAction(action)
+        }
 
         /**
          * [AVADIAL-STUCK-1] Live state of a cached call, or null when the call is gone
@@ -75,8 +101,22 @@ class AvaInCallService : InCallService() {
         fun action(id: String?, action: String, arg: Any?): Boolean {
             val svc = instance ?: return false
             return when (action) {
-                "answer" -> id?.let { callMap[it]?.answer(android.telecom.VideoProfile.STATE_AUDIO_ONLY); true } ?: false
-                "reject" -> id?.let { callMap[it]?.reject(false, null); true } ?: false
+                "answer" -> id?.let {
+                    noteAnswerTapped(it)
+                    noteAction(it, "answered")
+                    callMap[it]?.answer(android.telecom.VideoProfile.STATE_AUDIO_ONLY); true
+                } ?: false
+                "reject" -> id?.let {
+                    noteAction(it, "rejected")
+                    // NON-DESTRUCTIVE on purpose. Block/Report call decline() to hang
+                    // up, so they route through here — and if this overwrote the state
+                    // unconditionally, a blocked call would always be recorded as a
+                    // plain "rejected" one. That would silently starve the
+                    // idx_call_intel_bucket training slice: zero blocked calls, forever.
+                    // First writer wins; the caller sets the more specific value first.
+                    records[it]?.let { r -> if (r.finalState == null) r.finalState = "rejected" }
+                    callMap[it]?.reject(false, null); true
+                } ?: false
                 "disconnect" -> id?.let { callMap[it]?.disconnect(); true } ?: false
                 "setMuted" -> { svc.setMuted(arg == true); true }
                 "setSpeaker" -> {
@@ -85,6 +125,34 @@ class AvaInCallService : InCallService() {
                     svc.setAudioRoute(
                         if (arg == true) CallAudioState.ROUTE_SPEAKER else CallAudioState.ROUTE_EARPIECE
                     )
+                    true
+                }
+                // [AVADIAL-NATIVE-INCALL-1] Hold/unhold. The state was already READ and
+                // surfaced ("holding"), but nothing could ever trigger it — the Flutter
+                // in-call screen showed an "On hold" status the user had no way to reach.
+                "hold" -> id?.let {
+                    noteAction(it, "held")
+                    callMap[it]?.hold(); true
+                } ?: false
+                "unhold" -> id?.let {
+                    noteAction(it, "unheld")
+                    callMap[it]?.unhold(); true
+                } ?: false
+                /**
+                 * [AVADIAL-NATIVE-INCALL-1] Explicit route selection, replacing the
+                 * speaker-only toggle. `setSpeaker` could only ever pick
+                 * SPEAKER↔EARPIECE, so a call on AirPods rendered identically to one
+                 * on the earpiece and the user had no way to see or change it.
+                 * [arg] is "earpiece" | "speaker" | "bluetooth" | "headset".
+                 */
+                "setAudioRoute" -> {
+                    val route = when (arg as? String) {
+                        "speaker" -> CallAudioState.ROUTE_SPEAKER
+                        "bluetooth" -> CallAudioState.ROUTE_BLUETOOTH
+                        "headset" -> CallAudioState.ROUTE_WIRED_HEADSET
+                        else -> CallAudioState.ROUTE_EARPIECE
+                    }
+                    svc.setAudioRoute(route)
                     true
                 }
                 // DTMF keypad: play the tone for the digit then stop it. [arg] is the
@@ -99,6 +167,38 @@ class AvaInCallService : InCallService() {
                 }
                 else -> false
             }
+        }
+
+        /**
+         * [AVADIAL-NATIVE-INCALL-1] Routes this device/call actually supports right
+         * now, so the in-call screen can cycle only through real options instead of
+         * offering bluetooth on a phone with nothing paired.
+         */
+        fun supportedRoutes(): List<String> {
+            val mask = instance?.callAudioState?.supportedRouteMask ?: return listOf("earpiece", "speaker")
+            val out = ArrayList<String>()
+            if (mask and CallAudioState.ROUTE_EARPIECE != 0) out.add("earpiece")
+            if (mask and CallAudioState.ROUTE_SPEAKER != 0) out.add("speaker")
+            if (mask and CallAudioState.ROUTE_WIRED_HEADSET != 0) out.add("headset")
+            if (mask and CallAudioState.ROUTE_BLUETOOTH != 0) out.add("bluetooth")
+            return if (out.isEmpty()) listOf("earpiece", "speaker") else out
+        }
+
+        fun currentRoute(): String = when (instance?.callAudioState?.route) {
+            CallAudioState.ROUTE_SPEAKER -> "speaker"
+            CallAudioState.ROUTE_BLUETOOTH -> "bluetooth"
+            CallAudioState.ROUTE_WIRED_HEADSET -> "headset"
+            else -> "earpiece"
+        }
+
+        fun isMuted(): Boolean = instance?.callAudioState?.isMuted == true
+
+        /** Human label for the active route — drives the in-call route chip. */
+        fun routeLabel(route: String): String = when (route) {
+            "speaker" -> "Speaker"
+            "bluetooth" -> "Bluetooth"
+            "headset" -> "Headset"
+            else -> "Earpiece"
         }
     }
 
@@ -124,11 +224,25 @@ class AvaInCallService : InCallService() {
         // screening window) so PstnCallScreen can paint the red spam UI instead of
         // it being unreachable.
         val verdict = number?.let { AvaCallScreeningService.takeVerdict(it) }
+
+        // [AVADIAL-CALL-INTEL-1] Open the intelligence record for this call. Everything
+        // below is a local read — no network, no engine — because the OS is holding a
+        // ringing call and the Flutter side may not exist.
+        val callerName = displayNameFor(number)
+        records[id] = CallRecord(localId = id, number = number, direction = direction).apply {
+            contactName = callerName
+            contactExists = callerName != null
+            spamScore = verdict?.score
+            spamBucket = verdict?.bucket
+            captureTelephony(this@AvaInCallService)
+        }
+
         AvaDialPlugin.emit(
             "onCallAdded",
             mapOf(
                 "id" to id, "number" to number, "state" to stateName(call.state), "direction" to direction,
                 "spam_score" to verdict?.score, "spam_bucket" to verdict?.bucket,
+                "call_uuid" to records[id]?.uuid,
             )
         )
         if (call.state == Call.STATE_RINGING || direction == "incoming") {
@@ -147,6 +261,8 @@ class AvaInCallService : InCallService() {
         // [AVADIAL-NATIVE-RING-1] Tear down the native ringing screen the moment the
         // call dies — no ghost screens, ever.
         IncomingCallActivity.closeFor(id)
+        // [AVADIAL-NATIVE-INCALL-1] Same for the native in-call screen.
+        InCallActivity.closeFor(id)
         AvaDialPlugin.emit("onCallRemoved", mapOf("id" to id))
 
         // [AVADIAL-NAME-1] Incoming call that never went active = missed call. Post a
@@ -156,6 +272,35 @@ class AvaInCallService : InCallService() {
         val wasActive = sawActive.remove(id)
         if (wasIncoming && !wasActive) {
             postMissedCallNotification(call.details?.handle?.schemeSpecificPart)
+        }
+
+        // [AVADIAL-CALL-INTEL-1] Close the record and flush it to the durable buffer.
+        // This is the ONLY place a call_completed row is produced, so every call —
+        // answered, missed, rejected, blocked — lands exactly once.
+        records.remove(id)?.let { rec ->
+            rec.endedAt = System.currentTimeMillis()
+            if (rec.finalState == null) {
+                rec.finalState = when {
+                    wasActive -> "answered"
+                    // NOTE: "voicemail" is deliberately absent. PSTN voicemail is
+                    // carrier-side — Telecom never tells us it happened, so the dialer
+                    // cannot observe it. It has to be inferred server-side or dropped.
+                    wasIncoming -> "missed"
+                    else -> "failed"
+                }
+            }
+            try {
+                val json = rec.toCompletedJson(applicationContext)
+                AvaDialPlugin.identityOf(applicationContext).forEach { (k, v) ->
+                    if (v != null) json.put(k, v)
+                }
+                CallTelemetryBuffer.append(applicationContext, json)
+            } catch (_: Throwable) { /* telemetry must never break call teardown */ }
+
+            // Live nudge so Dart uploads promptly when the app happens to be open.
+            // When it isn't, the buffer just waits on disk for the next boot — which
+            // is exactly the case this pipeline exists to capture.
+            AvaDialPlugin.emit("onCallTelemetryReady", mapOf("call_uuid" to rec.uuid))
         }
 
         if (callMap.isEmpty()) {
@@ -169,10 +314,16 @@ class AvaInCallService : InCallService() {
         override fun onStateChanged(call: Call, state: Int) {
             if (state == Call.STATE_ACTIVE) {
                 sawActive.add(id)
+                // [AVADIAL-CALL-INTEL-1] Stamp the moment the call actually connected —
+                // this closes the answer_delay_ms measurement started at the Answer tap.
+                records[id]?.let { if (it.activeAt == null) it.activeAt = System.currentTimeMillis() }
                 // [AVADIAL-NATIVE-RING-1] Answered (here, from the notification, or
                 // from Flutter) — swap the native ringing screen for the in-call UI.
                 IncomingCallActivity.onCallActive(id)
             }
+            // [AVADIAL-NATIVE-INCALL-1] Keep the native in-call screen in step with
+            // Telecom (hold/unhold, remote hangup). No-op when it isn't showing.
+            InCallActivity.onCallState(id, stateName(state))
             AvaDialPlugin.emit("onCallState", mapOf("id" to id, "state" to stateName(state)))
         }
     }
@@ -260,6 +411,9 @@ class AvaInCallService : InCallService() {
             CallAudioState.ROUTE_WIRED_HEADSET -> "headset"
             else -> "earpiece"
         }
+        // [AVADIAL-NATIVE-INCALL-1] Repaint the native in-call controls. No-op when the
+        // screen isn't up.
+        InCallActivity.onAudioRoute(route, state.isMuted)
         AvaDialPlugin.emit("onAudioRoute", mapOf("route" to route, "muted" to state.isMuted))
     }
 

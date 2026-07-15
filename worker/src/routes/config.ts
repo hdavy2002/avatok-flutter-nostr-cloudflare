@@ -251,14 +251,14 @@ export interface PlatformConfig {
   // (app/lib/core/update_service.dart): the on-launch Play check, the background
   // flexible download, the auto-install, and the fallback popup. Default TRUE.
   //
-  // THIS EXISTS BECAUSE IT DIDN'T. Both CLAUDE.md and remote_config.dart's own
-  // docstring claimed you could "flip inAppUpdateEnabled: false in KV" to silence
-  // the update checks — but the key was never declared here, and the PUT handler
-  // below rejects any key not in DEFAULTS (`unknown key`, 400). So the documented
-  // brake was unusable: the client defaulted it true and nothing could turn it
-  // off. That is a bad shape for a feature that installs itself without asking —
-  // if a build ever ships an update loop, this switch is the only thing between a
-  // bad release and every device retrying it. Declaring it makes the brake real.
+  // THIS EXISTS BECAUSE IT DIDN'T. remote_config.dart's own docstring claimed you
+  // could "flip inAppUpdateEnabled: false in KV" to silence the update checks —
+  // but the key was never declared here, and the PUT handler below rejects any key
+  // not in DEFAULTS (`unknown key`, 400). So the documented brake was unusable:
+  // the client defaulted it true and nothing could turn it off. That is a bad
+  // shape for a feature that installs itself without asking — if a build ever
+  // ships an update loop, this switch is the only thing between a bad release and
+  // every device retrying it. Declaring it makes the brake real.
   inAppUpdateEnabled: boolean;
   // Call-state control-plane authority (Specs/CALL-CONTROL-PLANE-UNIFIED-PLAN.md
   // §5 — protocol-v1/v2 shadow rollout). All default OFF/legacy: CallStateAuthorityDO
@@ -329,6 +329,21 @@ export interface PlatformConfig {
   // `platform_config` (staging first) after the §9 device test matrix passes.
   // Client mirror: RemoteConfig.avaDialer.
   avaDialer: boolean;
+  // [AVADIAL-NATIVE-INCALL-1] Native in-call screen (owner decision 2026-07-15).
+  // While FALSE, answering a PSTN call hands off to MainActivity and the Flutter
+  // in_call_screen.dart exactly as before. While TRUE, the native InCallActivity
+  // takes over and Flutter never enters the call path at all — no engine boot, no
+  // Keystore, no Firebase/PostHog init, no 3s shell gate.
+  //
+  // This is the ONE flag that matters most on this feature: the answer path is the
+  // same one that broke prod testers on 2026-07-14. Default OFF; flip it only after
+  // device testing, and revert instantly if anything looks wrong.
+  //
+  // Native cannot read RemoteConfig (it runs with no engine), so Dart mirrors the
+  // resolved value to <filesDir>/avadial/native_ui.json on every config refresh —
+  // see AvaDialChannel.setNativeInCallEnabled / AvaDialPlugin.nativeInCallEnabled.
+  // A missing/corrupt mirror reads as OFF (fail-closed).
+  nativeInCallUi: boolean;
   // [AVA-MISSEDCALL-1] Truecaller-style missed-call overlay (owner request 2026-07-14).
   // Master kill switch for the after-call popup that draws OVER other apps naming who
   // called + quick actions, AND for the phone-presence lookup that lights the AvaTOK
@@ -545,6 +560,10 @@ const DEFAULTS: PlatformConfig = {
   // its Phase-1 placeholders. Flip ON in KV (staging first) after the telecom
   // spike's device test matrix passes. Client mirror: RemoteConfig.avaDialer.
   avaDialer: false,
+  // [AVADIAL-NATIVE-INCALL-1] Native in-call screen — DARK. While false, the answer
+  // path is byte-for-byte the current Flutter one. Flip ON only after the device
+  // matrix passes (mute/keypad/speaker/hold/bluetooth/end + lock-screen answer).
+  nativeInCallUi: false,
   // [AVA-MISSEDCALL-1] Missed-call overlay + phone-presence lookup — DARK by default.
   // While false, /api/contacts/match returns nothing (privacy lock intact) and the
   // native missed-call receiver/overlay never fire. Flip ON in KV (staging first)

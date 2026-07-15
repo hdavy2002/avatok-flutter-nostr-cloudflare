@@ -61,6 +61,21 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
         // Runtime CALL_PHONE request code for TelecomManager.placeCall.
         const val REQ_CALL_PHONE = 42120
 
+        // [AVADIAL-NATIVE-INCALL-1] Who the signed-in user is, written by Dart and
+        // read natively. Native has no Clerk and no IdentityStore, but every call
+        // event must carry the user's email so telemetry is retrievable per-tester
+        // later. Same on-disk handshake as spam_snapshot.json / avatok_directory.json
+        // — the pattern AvaMissedCallOverlay already uses with no engine attached.
+        const val IDENTITY_FILE = "identity.json"
+
+        // [AVADIAL-NATIVE-INCALL-1] Native mirror of the `nativeInCallUi` kill switch.
+        // The flag itself lives in the Worker's DEFAULTS/KV and is read by Dart's
+        // RemoteConfig — but the native call screens run with NO engine, so they
+        // cannot read RemoteConfig. Dart mirrors the resolved value to disk on every
+        // config refresh; native reads this file. Absent/unreadable => OFF (the old
+        // Flutter in-call path), which is the safe default.
+        const val NATIVE_UI_FILE = "native_ui.json"
+
         // Single live instance so the InCallService / CallScreeningService can push
         // events up to Flutter when the engine is attached (best-effort).
         @Volatile
@@ -310,6 +325,63 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
             return File(dir, AVATOK_DIR_FILE)
         }
 
+        // ── [AVADIAL-NATIVE-INCALL-1] Identity + native-UI gate ────────────────────
+
+        /** `{distinct_id, email, phone_e164, name, account_id}` — written by Dart. */
+        fun identityFile(context: Context): File {
+            val dir = File(context.filesDir, SNAPSHOT_DIR)
+            if (!dir.exists()) dir.mkdirs()
+            return File(dir, IDENTITY_FILE)
+        }
+
+        /** `{native_in_call:bool}` — Dart's mirror of the RemoteConfig kill switch. */
+        fun nativeUiFile(context: Context): File {
+            val dir = File(context.filesDir, SNAPSHOT_DIR)
+            if (!dir.exists()) dir.mkdirs()
+            return File(dir, NATIVE_UI_FILE)
+        }
+
+        /**
+         * Is the native in-call screen enabled? Read fresh from disk every time — this
+         * is on the answer path and must reflect a config flip without a restart.
+         *
+         * Fail-CLOSED: any doubt (no file, corrupt JSON, IO error) returns false and we
+         * keep the existing Flutter in-call path. The whole point of the flag is that
+         * the new screen can be turned off instantly if it misbehaves in prod; a
+         * missing file must never mean "on".
+         */
+        fun nativeInCallEnabled(context: Context): Boolean = try {
+            val f = nativeUiFile(context)
+            if (!f.exists() || f.length() == 0L) false
+            else JSONObject(f.readText()).optBoolean("native_in_call", false)
+        } catch (_: Throwable) {
+            false
+        }
+
+        /**
+         * The signed-in user, for stamping call-intelligence events natively. Empty map
+         * when nobody is signed in or the snapshot has never been written.
+         *
+         * The email is what makes a future PostHog pull possible: with many testers on
+         * many devices it is the ONLY way to tell whose phone a call problem is on.
+         */
+        fun identityOf(context: Context): Map<String, Any?> = try {
+            val f = identityFile(context)
+            if (!f.exists() || f.length() == 0L) emptyMap()
+            else {
+                val o = JSONObject(f.readText())
+                mapOf(
+                    "distinct_id" to o.optString("distinct_id").takeIf { it.isNotEmpty() },
+                    "email" to o.optString("email").takeIf { it.isNotEmpty() },
+                    "user_phone_e164" to o.optString("phone_e164").takeIf { it.isNotEmpty() },
+                    "user_name" to o.optString("name").takeIf { it.isNotEmpty() },
+                    "account_id" to o.optString("account_id").takeIf { it.isNotEmpty() },
+                )
+            }
+        } catch (_: Throwable) {
+            emptyMap()
+        }
+
         // Cold-start / background "open this caller in AvaTOK" launch (overlay
         // View-profile / AvaTOK action). Stored so Dart can DRAIN it on startup via
         // getPendingOpenDial even when the launch beat the channel handler; also emitted
@@ -528,6 +600,44 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
 
                 // ---- screening snapshot handshake ----
                 "snapshotPath" -> result.success(snapshotFile(ctx).absolutePath)
+
+                // ---- [AVADIAL-NATIVE-INCALL-1] identity + native-UI gate ----
+                // Dart owns Clerk/IdentityStore; native owns the call. This is the
+                // handshake between them, over disk, so the native screens work with
+                // no engine attached.
+                "writeIdentity" -> {
+                    val obj = JSONObject()
+                        .put("v", 1)
+                        .put("updated", System.currentTimeMillis())
+                    call.argument<String>("distinct_id")?.let { obj.put("distinct_id", it) }
+                    call.argument<String>("email")?.let { obj.put("email", it) }
+                    call.argument<String>("phone_e164")?.let { obj.put("phone_e164", it) }
+                    call.argument<String>("name")?.let { obj.put("name", it) }
+                    call.argument<String>("account_id")?.let { obj.put("account_id", it) }
+                    writeFileAtomic(identityFile(ctx), obj.toString())
+                    result.success(true)
+                }
+                "clearIdentity" -> {
+                    try { identityFile(ctx).delete() } catch (_: Throwable) { }
+                    result.success(true)
+                }
+                "setNativeInCallEnabled" -> {
+                    val obj = JSONObject()
+                        .put("native_in_call", call.argument<Boolean>("enabled") == true)
+                        .put("updated", System.currentTimeMillis())
+                    writeFileAtomic(nativeUiFile(ctx), obj.toString())
+                    result.success(true)
+                }
+                "nativeInCallEnabled" -> result.success(nativeInCallEnabled(ctx))
+
+                // ---- [AVADIAL-CALL-INTEL-1] durable call-intelligence buffer ----
+                // Read and clear are SEPARATE on purpose: Dart uploads to the Worker
+                // first and only clears on a 2xx, so a failed upload retries on the
+                // next drain instead of binning the data. At-least-once — the Worker
+                // dedupes on call_uuid.
+                "readCallTelemetry" -> result.success(CallTelemetryBuffer.readAll(ctx))
+                "clearCallTelemetry" -> { CallTelemetryBuffer.clear(ctx); result.success(true) }
+                "callTelemetryPending" -> result.success(CallTelemetryBuffer.pendingCount(ctx))
 
                 // ---- [AVA-MISSEDCALL-1] missed-call overlay ----
                 "canDrawOverlay" -> result.success(AvaMissedCallOverlay.canDraw(ctx))
