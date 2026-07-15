@@ -171,6 +171,12 @@ class IncomingCallActivity : Activity() {
         }
 
         setContentView(buildUi(name, spamScore))
+        // [AVADIAL-INCALL-DIAG-1] uiReady handshake (Fix 4), phase "ring" — the
+        // native ringing screen never acked at all before this change, which meant
+        // the "ring" watchdog armed in AvaInCallService.launchIncoming fired on
+        // every call that simply rang longer than 3s (false-positive noise) and
+        // there was no honest per-call signal that the ring screen ever rendered.
+        AvaInCallService.uiReady(id, "ring")
     }
 
     override fun onDestroy() {
@@ -200,6 +206,9 @@ class IncomingCallActivity : Activity() {
         if (answering) return
         answering = true
         enterAnsweringState()
+        // [AVADIAL-INCALL-DIAG-1] Stamp the honest answer source BEFORE answering —
+        // this IS the native ring screen's Accept tap.
+        AvaInCallService.noteAnswerSource(id, "ring_screen")
         AvaInCallService.action(id, "answer", null)
         // The ACTIVE callback fires [onCallActive] → in-call UI + finish.
         // If nothing lands in time, restore the buttons rather than stranding the

@@ -182,6 +182,11 @@ class InCallActivity : Activity() {
                     // before any view inflation so a slow/crashing inflate can never
                     // leave the call unanswered; the service-owned notification
                     // (Fix 2) covers the call either way once it's live.
+                    // [AVADIAL-INCALL-DIAG-1] Stamp the honest answer source BEFORE
+                    // answering — this launch IS the notification Answer
+                    // PendingIntent (an activity intent, SystemUI-launched), never
+                    // AvaCallActionReceiver on this path.
+                    AvaInCallService.noteAnswerSource(id, "notification_activity_pi")
                     AvaInCallService.action(id, "answer", null)
                 }
                 else -> {
@@ -202,7 +207,9 @@ class InCallActivity : Activity() {
         // [AVADIAL-INCALL-ANSWER-1] uiReady handshake (Fix 4) — the honest signal
         // that a screen actually rendered, not just that we asked Android to show
         // one. Fired on every launch path, not just answer.
-        AvaInCallService.uiReady(id)
+        // [AVADIAL-INCALL-DIAG-1] phase "incall" — this is the in-call screen, kept
+        // separate from IncomingCallActivity's "ring" phase ack.
+        AvaInCallService.uiReady(id, "incall")
         startTimer()
     }
 
@@ -230,7 +237,8 @@ class InCallActivity : Activity() {
         setContentView(buildUi())
         // [AVADIAL-INCALL-ANSWER-1] Same handshake as onCreate — this is a launch
         // path too (call waiting reusing the singleTop instance).
-        AvaInCallService.uiReady(id)
+        // [AVADIAL-INCALL-DIAG-1] phase "incall".
+        AvaInCallService.uiReady(id, "incall")
     }
 
     override fun onDestroy() {

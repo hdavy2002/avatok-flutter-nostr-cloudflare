@@ -75,49 +75,88 @@ class AvaInCallService : InCallService() {
             records[id]?.addAction(action)
         }
 
+        /**
+         * [AVADIAL-INCALL-DIAG-1] Stamp WHO actually triggered the answer, before
+         * calling [action] "answer" — first writer wins (see [CallRecord.answerSource]
+         * doc). Native call sites (InCallActivity's notification-answer handoff,
+         * IncomingCallActivity's Accept button) call this immediately before
+         * answering; a Flutter-driven answer never calls it, so [action]'s "answer"
+         * branch below fills in "flutter" as the honest default.
+         */
+        internal fun noteAnswerSource(id: String, source: String) {
+            records[id]?.let { if (it.answerSource == null) it.answerSource = source }
+        }
+
         // [AVADIAL-INCALL-ANSWER-1] uiReady handshake (Fix 4). InCallActivity is a
         // disposable VIEW; this is the honest signal that a screen actually
         // rendered, not just that we asked Android to show one — the old
         // `start_activity: true` diagnostic proved nothing (spike: SystemUI/Android
-        // silently drops background launches with no exception). Keyed by callId.
+        // silently drops background launches with no exception).
+        //
+        // [AVADIAL-INCALL-DIAG-1] Keyed by "$callId:$phase" — NOT just callId. A
+        // single ack set keyed by callId conflated the RINGING screen and the
+        // IN-CALL screen: once the ring screen acked, a failed in-call screen could
+        // never be observed (the shared key was already consumed), and conversely
+        // the ring screen never acked at all before this change, so its 3s watchdog
+        // fired noisily on every call that simply rang longer than 3s. "ring" and
+        // "incall" are two independently-failable launches and need independent
+        // acks/watchdogs.
         private val main = Handler(Looper.getMainLooper())
         private val ackedCallIds = HashSet<String>()
         private val watchdogRunnables = HashMap<String, Runnable>()
 
+        private fun ackKey(callId: String, phase: String) = "$callId:$phase"
+
         /**
-         * InCallActivity calls this once its content view is set, on every launch
-         * path (answer, viewer attach, call-waiting re-launch, rotation). ONE-SHOT
-         * per callId — the first ack wins; duplicates (rotation, config change,
+         * IncomingCallActivity/InCallActivity call this once their content view is
+         * set, on every launch path (ring, answer, viewer attach, call-waiting
+         * re-launch, rotation). [phase] is "ring" or "incall". ONE-SHOT per
+         * (callId, phase) — the first ack wins; duplicates (rotation, config change,
          * process recreation) are ignored so they can't re-arm anything or double
          * count in telemetry.
          */
-        fun uiReady(callId: String) {
-            if (!ackedCallIds.add(callId)) return
-            cancelWatchdog(callId)
+        fun uiReady(callId: String, phase: String) {
+            if (!ackedCallIds.add(ackKey(callId, phase))) return
+            cancelWatchdog(callId, phase)
+            records[callId]?.let { r ->
+                when (phase) {
+                    "ring" -> r.uiSurfacedRing = true
+                    "incall" -> r.uiSurfacedIncall = true
+                }
+            }
         }
 
         /**
-         * Arm a 3s watchdog for [callId] on launch path [path]. If [uiReady] has not
-         * landed by the time it fires, the UI that was supposed to surface silently
-         * failed to render — telemetry only (`ui_watchdog_fired`), no behavioral
-         * change; the service-owned notification already covers the call either way.
-         * Cancelled immediately by [uiReady] and by [onCallRemoved] — must never
-         * fire after a successful ack or after the call is gone.
+         * Arm a 3s watchdog for [callId]'s [phase] ("ring" or "incall"). If
+         * [uiReady] has not landed for that phase by the time it fires, the UI that
+         * was supposed to surface silently failed to render — telemetry only
+         * (`ui_watchdog_fired`, plus an explicit `false` stamped onto the matching
+         * [CallRecord] outcome field), no behavioral change; the service-owned
+         * notification already covers the call either way. Cancelled immediately by
+         * [uiReady] and by [onCallRemoved] — must never fire after a successful ack
+         * or after the call is gone.
          */
-        private fun armWatchdog(callId: String, path: String) {
-            cancelWatchdog(callId)
+        private fun armWatchdog(callId: String, phase: String) {
+            cancelWatchdog(callId, phase)
+            val key = ackKey(callId, phase)
             val r = Runnable {
-                watchdogRunnables.remove(callId)
-                if (ackedCallIds.contains(callId)) return@Runnable // acked in the meantime
+                watchdogRunnables.remove(key)
+                if (ackedCallIds.contains(key)) return@Runnable // acked in the meantime
                 val state = stateOf(callId) ?: "gone"
-                noteAction(callId, "ui_watchdog_fired:$path:$state:${Build.MANUFACTURER}/${Build.MODEL}")
+                noteAction(callId, "ui_watchdog_fired:$phase:$state:${Build.MANUFACTURER}/${Build.MODEL}")
+                records[callId]?.let { r2 ->
+                    when (phase) {
+                        "ring" -> if (r2.uiSurfacedRing == null) r2.uiSurfacedRing = false
+                        "incall" -> if (r2.uiSurfacedIncall == null) r2.uiSurfacedIncall = false
+                    }
+                }
             }
-            watchdogRunnables[callId] = r
+            watchdogRunnables[key] = r
             main.postDelayed(r, 3000L)
         }
 
-        private fun cancelWatchdog(callId: String) {
-            watchdogRunnables.remove(callId)?.let { main.removeCallbacks(it) }
+        private fun cancelWatchdog(callId: String, phase: String) {
+            watchdogRunnables.remove(ackKey(callId, phase))?.let { main.removeCallbacks(it) }
         }
 
         /**
@@ -151,6 +190,12 @@ class AvaInCallService : InCallService() {
                 "answer" -> id?.let {
                     noteAnswerTapped(it)
                     noteAction(it, "answered")
+                    // [AVADIAL-INCALL-DIAG-1] Honest default: native call sites stamp
+                    // a specific answerSource via noteAnswerSource() BEFORE reaching
+                    // here (first-writer-wins), so any call still unset at this point
+                    // came straight from Flutter/AvaDialChannel with no native leg in
+                    // between.
+                    records[it]?.let { r -> if (r.answerSource == null) r.answerSource = "flutter" }
                     callMap[it]?.answer(android.telecom.VideoProfile.STATE_AUDIO_ONLY); true
                 } ?: false
                 // [AVADIAL-INCALL-NOTIF-1] FIX 3 — the semantic vocabulary. UI
@@ -382,8 +427,12 @@ class AvaInCallService : InCallService() {
         InCallActivity.closeFor(id)
         // [AVADIAL-INCALL-ANSWER-1] Never let a watchdog fire after the call is
         // gone, and don't let a stale ack linger past the call it belonged to.
-        cancelWatchdog(id)
-        ackedCallIds.remove(id)
+        // [AVADIAL-INCALL-DIAG-1] Both phases — "ring" and "incall" are tracked
+        // independently now, so both must be torn down here.
+        cancelWatchdog(id, "ring")
+        cancelWatchdog(id, "incall")
+        ackedCallIds.remove(ackKey(id, "ring"))
+        ackedCallIds.remove(ackKey(id, "incall"))
         AvaDialPlugin.emit("onCallRemoved", mapOf("id" to id))
 
         // [AVADIAL-NAME-1] Incoming call that never went active = missed call. Post a
@@ -444,8 +493,8 @@ class AvaInCallService : InCallService() {
                 // [AVADIAL-INCALL-ANSWER-1] A UI is now expected to surface (the
                 // in-call screen taking over from the ringing one). Arm the 3s
                 // watchdog; uiReady() cancels it the moment InCallActivity actually
-                // renders.
-                armWatchdog(id, "call_active")
+                // renders. [AVADIAL-INCALL-DIAG-1] phase "incall".
+                armWatchdog(id, "incall")
                 // [AVADIAL-INCALL-NOTIF-1] FIX 2 — the guaranteed floor. Post/replace
                 // the ongoing CallStyle notification on the SAME NOTIF_ID as the
                 // ringing notification, so this atomically replaces it — there is no
@@ -564,6 +613,11 @@ class AvaInCallService : InCallService() {
             }
 
             nm.notify(NOTIF_ID, builder.build())
+            // [AVADIAL-INCALL-DIAG-1] Only stamped on the success path — if notify()
+            // throws below we never reach here, so this is the honest "did the
+            // ongoing CallStyle notification actually post" signal, not just "did we
+            // attempt to build one."
+            rec?.ongoingNotifPosted = true
         } catch (_: Throwable) { /* best-effort — a notification failure must never affect call handling */ }
     }
 
@@ -826,6 +880,9 @@ class AvaInCallService : InCallService() {
         // [AVADIAL-INCALL-ANSWER-1] A UI (the ringing screen, via startActivity or
         // the FSI notification above) is now expected to surface. Arm the 3s
         // watchdog; uiReady() cancels it the moment a screen actually renders.
-        armWatchdog(id, "fsi_notification")
+        // [AVADIAL-INCALL-DIAG-1] phase "ring" — previously the ring screen never
+        // acked at all (see IncomingCallActivity.onCreate), so this watchdog fired
+        // noisily on every call that simply rang longer than 3s.
+        armWatchdog(id, "ring")
     }
 }

@@ -51,6 +51,20 @@ internal class CallRecord(
     /** Terminal disposition: answered | missed | rejected | blocked | busy | failed. */
     var finalState: String? = null
 
+    // [AVADIAL-INCALL-DIAG-1] FIX 6 — honest diagnostics. These replace the old
+    // "start_activity: true" lie (that only proved an API was CALLED, not that a
+    // screen ever rendered) with the outcome truth from the uiReady handshake
+    // (Fix 4), keyed per phase since the ring screen and the in-call screen are
+    // two separate, independently-failable launches. Null means "never resolved
+    // either way" (e.g. the watchdog for that phase never armed); the watchdog
+    // stamps an explicit `false` if it fires without an ack.
+    var uiSurfacedRing: Boolean? = null
+    var uiSurfacedIncall: Boolean? = null
+    /** "notification_activity_pi" | "ring_screen" | "flutter" — first writer wins. */
+    var answerSource: String? = null
+    /** Did the service's ongoing CallStyle notification (Fix 2) actually post? */
+    var ongoingNotifPosted: Boolean? = null
+
     /** User actions taken during this call, in order. */
     private val actions = ArrayList<Pair<String, Long>>()
 
@@ -169,6 +183,15 @@ internal class CallRecord(
         put("carrier", carrier)
         put("country_code", countryCode)
         put("network_type", networkType)
+
+        // [AVADIAL-INCALL-DIAG-1] FIX 6 — outcome truth, not intention. Every
+        // call_completed row (identity-tagged by the caller in onCallRemoved)
+        // now carries whether a screen actually surfaced, not just whether we
+        // asked Android to show one.
+        put("ui_surfaced_ring", uiSurfacedRing)
+        put("ui_surfaced_incall", uiSurfacedIncall)
+        put("answer_source", answerSource)
+        put("ongoing_notif_posted", ongoingNotifPosted)
 
         put("actions", JSONArray().apply {
             synchronized(actions) {
