@@ -7,11 +7,37 @@
   with it — a restored ciphertext then fails with BadPaddingException/BAD_DECRYPT.
   The app re-provisions these keys from the server on next launch instead.
 -->
+
+<!--
+  [AVADIAL-BACKUP-RESTOREFIRST 2026-07-15] `cache/` (DiskCache — getFilesDir()/cache)
+  is excluded too, and it is NOT a tidy-up: carrying it across devices actively
+  destroys contacts.
+
+  DiskCache is, by its own contract, "everything here is a cache re-fetched from the
+  server". Auto Backup did not know that and restored it onto the new handset, which
+  made two device-LOCAL facts lie about the new phone:
+
+    • `ava_contact_backup_server_ts` ("this device has already uploaded") — the
+      restore-first hold reads this to decide whether an automatic upload is safe.
+      Restored onto a new phone it says "yes, we've synced here before", so the
+      hold opens and the ~4s auto-sync replaces the user's cloud backup with the new
+      handset's book BEFORE they ever tap Restore. The backup is destroyed by the
+      backup feature, on the "I lost my phone" path it exists to serve.
+    • `contacts_backup_master_uid` ("who owns this handset's phone book") — restored
+      onto a new phone it names the OLD phone's owner, so someone who was a sub on a
+      shared phone stays a sub on the phone they just bought, and their own address
+      book silently never backs up.
+
+  Both are statements about a HANDSET. They must not survive a change of handset.
+  Excluding the cache costs a re-fetch on first launch, which is what a cache is for.
+-->
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="sharedpref" path="FlutterSecureStorage.xml"/>
+        <exclude domain="file" path="cache/"/>
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="FlutterSecureStorage.xml"/>
+        <exclude domain="file" path="cache/"/>
     </device-transfer>
 </data-extraction-rules>

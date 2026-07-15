@@ -314,11 +314,61 @@ class AvaContactBook {
 
   Future<void> _runAutoSync() async {
     try {
+      if (!await autoUploadAllowed()) return;
       final body = await exportJson();
       if (_sig(body) == await ContactBackupPrefs.I.syncedSig()) return; // no change
       await uploadBackup(source: 'auto_sync');
     } catch (e) {
       AvaLog.I.log('avadial', 'contact book auto-sync failed: $e');
+    }
+  }
+
+  /// [AVADIAL-BACKUP-RESTOREFIRST] May we upload AUTOMATICALLY from this device?
+  ///
+  /// THE BUG THIS EXISTS FOR — a new phone silently eating the backup you came to
+  /// restore. The server is latest-wins, and an automatic upload fires ~4s after
+  /// the Contacts tab first paints. So: user loses their phone, buys a new one,
+  /// signs in, glances at Contacts — and before they ever reach the Restore button
+  /// we have replaced their cloud backup with whatever happens to be on the NEW
+  /// handset. Their old contacts are gone, destroyed by the backup feature, at the
+  /// exact moment it was supposed to save them.
+  ///
+  /// The old opt-in switch was hiding this: a fresh device defaulted to OFF, so
+  /// nothing auto-uploaded until the user turned it on (by which time they'd have
+  /// restored). Making backup unconditional — the whole point of
+  /// [AVADIAL-BACKUP-DAILY] — armed it for every user.
+  ///
+  /// So an automatic upload is allowed only when this device's book is ESTABLISHED
+  /// for this account, meaning one of:
+  ///   • we have already uploaded from this device (`lastServerSync != null`) —
+  ///     the steady state, and the answer for ~every run after the first;
+  ///   • a restore has completed here, so the local book already contains whatever
+  ///     the cloud had — nothing left to lose;
+  ///   • the server definitively has NO backup for this account, so there is
+  ///     nothing an upload could destroy.
+  /// Anything else — including "couldn't reach the server" — holds off and retries.
+  /// Waiting costs a day of freshness; not waiting costs the contacts.
+  ///
+  /// Manual "Back up now" deliberately does NOT consult this: the user is standing
+  /// there choosing. The screen warns them first instead.
+  Future<bool> autoUploadAllowed() async {
+    try {
+      if (await ContactBackupPrefs.I.lastServerSync() != null) return true;
+      if (await ContactBackupPrefs.I.restoredHere()) return true;
+      final p = await serverBackupProbe();
+      if (p.state == ContactBackupProbe.absent) return true;
+      AvaLog.I.log('avadial',
+          'auto-backup held: a cloud backup exists that this device has not restored yet');
+      // Held means this user's contacts are NOT being backed up right now — this is
+      // the event to pull when someone reports "my contacts stopped backing up".
+      // account_id/email/phone are added to every event by Analytics._base(), so it
+      // is already pullable per-tester; no need to re-stamp them here.
+      Analytics.capture('avadial_contact_backup_held_for_restore', {'probe': p.state.name});
+      return false;
+    } catch (e) {
+      // Unknown → hold. Never upload on a guess from a device that has never synced.
+      AvaLog.I.log('avadial', 'auto-backup gate failed ($e) — holding off');
+      return false;
     }
   }
 
@@ -349,6 +399,12 @@ class AvaContactBook {
       }
 
       if (!force) {
+        // [AVADIAL-BACKUP-RESTOREFIRST] The daily job is automatic by definition,
+        // and it runs headless where the user can't intervene — so it must respect
+        // the restore-first hold too. Otherwise a new phone left overnight wakes up
+        // and overwrites the backup its owner hasn't restored yet.
+        if (!await autoUploadAllowed()) return false;
+
         final last = await ContactBackupPrefs.I.lastServerSync();
         if (last != null && DateTime.now().difference(last) < kDailyInterval) return false;
 
@@ -455,6 +511,11 @@ class AvaContactBook {
         }
         if (!page.found) {
           await _clearRestoreJob();
+          // [AVADIAL-BACKUP-RESTOREFIRST] "No backup exists" is a definitive answer
+          // from the server, so this device has nothing left to lose and automatic
+          // backup can start. Without this, a brand-new user who tapped Restore out
+          // of curiosity would be held back from backing up forever.
+          await ContactBackupPrefs.I.markRestoredHere();
           Analytics.capture('avadial_contact_restore_completed', {
             'restored': restored, 'total': 0, 'found': false,
             'ms': DateTime.now().difference(t0).inMilliseconds, 'trace_id': trace,
@@ -561,6 +622,20 @@ class AvaContactBook {
       }
 
       await _clearRestoreJob();
+      // [AVADIAL-BACKUP-RESTOREFIRST] A COMPLETE restore — the local book now holds
+      // everything the cloud had, so automatic backup is safe from here and takes
+      // over. Deliberately only on the full-completion path: a restore cut short
+      // (deadline/fetch failure above) returns early WITHOUT this, leaving the hold
+      // in place, because the local book is still missing pages and uploading it
+      // would replace the cloud copy with a partial one.
+      //
+      // `restored > 0` guards the case where the loop ran to the end but nothing
+      // actually landed — every device write denied by permission (logged, then
+      // skipped) or every batch timing out. That reaches here as a "success" while
+      // the local book absorbed nothing, and opening the hold on it would let the
+      // next auto-sync overwrite the cloud copy with a book that never received it.
+      // `total == 0` still marks: an empty-but-present backup is genuinely absorbed.
+      if (restored > 0 || total == 0) await ContactBackupPrefs.I.markRestoredHere();
       final ms = DateTime.now().difference(t0).inMilliseconds;
       Analytics.capture('avadial_contact_restore_completed', {
         'restored': restored, 'total': total < 0 ? restored : total,
@@ -782,9 +857,18 @@ class ContactBackupPrefs {
   static const _kServerTs = 'ava_contact_backup_server_ts';
   static const _kSyncedSig = 'ava_contact_backup_sig';
 
+  /// [AVADIAL-BACKUP-RESTOREFIRST] Set once a restore has completed on THIS device
+  /// for this account: the local book has absorbed whatever the cloud held, so an
+  /// automatic upload can no longer destroy something the user never saw. See
+  /// [AvaContactBook.autoUploadAllowed].
+  static const _kRestoredHere = 'ava_contact_backup_restored_here';
+
   /// Content signature of the last successfully-uploaded book (change detection).
   Future<String> syncedSig() async => (await DiskCache.read(_kSyncedSig)) ?? '';
   Future<void> setSyncedSig(String sig) async => DiskCache.write(_kSyncedSig, sig);
+
+  Future<bool> restoredHere() async => (await DiskCache.read(_kRestoredHere)) == 'true';
+  Future<void> markRestoredHere() async => DiskCache.write(_kRestoredHere, 'true');
 
   /// Last successful upload to AvaTOK's servers.
   Future<DateTime?> lastServerSync() async => _readTs(_kServerTs);

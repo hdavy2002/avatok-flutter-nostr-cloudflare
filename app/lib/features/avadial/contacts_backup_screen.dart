@@ -43,6 +43,13 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
   /// their backup and won't be there when they restore on a new phone.
   int _backedUp = 0;
   bool _isSub = false;
+
+  /// [AVADIAL-BACKUP-RESTOREFIRST] True while automatic backup is deliberately
+  /// PAUSED because this device has a cloud backup it hasn't restored yet. The
+  /// screen must say this out loud: otherwise "Backed up automatically every day"
+  /// sits there next to a Last-backed-up date that never moves, and the user is
+  /// told they're safe while nothing is being saved.
+  bool _held = false;
   DateTime? _lastCloud;
   bool _loading = true;
   bool _busy = false;
@@ -67,6 +74,7 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
     // have established that it isn't.
     final isSub = (await AvaContactBook.I.backupRole()) == ContactBackupRole.sub;
     final backedUp = (await AvaContactBook.I.backupContacts()).length;
+    final held = !await AvaContactBook.I.autoUploadAllowed();
     // Prefer the server's own timestamp when we can reach it (authoritative).
     final status = await AvaContactBook.I.serverStatus();
     if (status != null && status.updatedAt > 0) {
@@ -77,12 +85,70 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
       _count = count;
       _backedUp = backedUp;
       _isSub = isSub;
+      _held = held;
       _lastCloud = lastCloud;
       _loading = false;
     });
   }
 
   Future<void> _backupNow() async {
+    // [AVADIAL-BACKUP-RESTOREFIRST] Manual backup bypasses the automatic hold — the
+    // user is standing right here choosing. But on a device that has never synced,
+    // "Back up now" REPLACES a cloud backup they haven't restored yet: exactly the
+    // new-phone case where their old contacts are still only in the cloud. So say
+    // so, plainly, and offer the thing they almost certainly meant.
+    if (!await AvaContactBook.I.autoUploadAllowed()) {
+      final status = await AvaContactBook.I.serverStatus();
+      // Warn whenever we're held — INCLUDING when we couldn't read the status.
+      // Requiring `status != null` here would fail OPEN: a transient failure on
+      // this second call (serverStatus collapses timeouts, 503s and bad bodies all
+      // to null) would skip the warning and replace a real backup without a word.
+      // Being held already means a backup probably exists; not knowing its size is
+      // no reason to stay quiet about overwriting it.
+      if (mounted) {
+        final n = status?.count;
+        final go = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: AvaDialTheme.surface2,
+            shape: RoundedRectangleBorder(
+              side: const BorderSide(color: AvaDialTheme.border, width: 1),
+              borderRadius: BorderRadius.circular(AD.rListCard),
+            ),
+            title: Text('Replace your backup?',
+                style: ZineText.cardTitle(size: 17, color: AvaDialTheme.text)),
+            content: Text(
+              // $_backedUp, not $_count: a sub only ever uploads their OWN
+              // contacts, so quoting the full local book would overstate what is
+              // about to be written — and understate what is about to be lost.
+              (n != null
+                      ? 'Your AvaTOK account has a backup of $n contacts that '
+                          "hasn't been restored to this phone yet."
+                      : "Your AvaTOK account has a backup that hasn't been restored "
+                          'to this phone yet.') +
+                  ' Backing up now replaces it with this phone\'s $_backedUp '
+                      'contacts, and the others will be lost.\n\n'
+                      'Restore first if you want to keep them.',
+              style: ZineText.sub(size: 13.5, color: AvaDialTheme.textSoft),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text('Cancel',
+                    style: ZineText.value(size: 14, color: AD.iconSearch)),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text('Replace',
+                    style: ZineText.value(size: 14, color: AD.danger)),
+              ),
+            ],
+          ),
+        );
+        if (go != true) return;
+      }
+    }
+    if (!mounted) return;
     setState(() => _busy = true);
     // Capture the role for the message below. Null = we couldn't reach the server
     // to establish who owns this phone's book, which is a DIFFERENT failure from
@@ -204,11 +270,20 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text('Backed up automatically',
+                        Text(_held ? 'Restore first' : 'Backed up automatically',
                             style: ZineText.cardTitle(size: 15.5, color: AvaDialTheme.text)),
                         const SizedBox(height: 2),
-                        Text('AvaTOK backs your contacts up every day, on its own — '
-                            'no Gmail needed, nothing to switch on.',
+                        Text(
+                            _held
+                                // Never claim we're backing up while we're holding
+                                // off — that's the one message that would stop a
+                                // user restoring before their old contacts are
+                                // overwritten.
+                                ? 'You have contacts saved in AvaTOK that this phone '
+                                    "hasn't restored yet. Daily backup starts once "
+                                    'you restore, so nothing gets overwritten.'
+                                : 'AvaTOK backs your contacts up every day, on its own — '
+                                    'no Gmail needed, nothing to switch on.',
                             style: ZineText.sub(size: 12.5, color: AvaDialTheme.textSoft)),
                       ]),
                     ),

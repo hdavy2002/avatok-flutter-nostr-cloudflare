@@ -11,6 +11,19 @@
   Excluding the secure-storage prefs from backup stops the corruption at source;
   the app re-provisions those keys from the server on next launch.
 -->
+
+<!--
+  [AVADIAL-BACKUP-RESTOREFIRST 2026-07-15] `cache/` (DiskCache) is excluded for the
+  same reason as in data_extraction_rules.xml — keep the two files in step.
+
+  It holds device-LOCAL facts: "this device has already uploaded a contact backup"
+  and "this account owns this handset's phone book". Restored onto a NEW phone, both
+  are false but believed: the first opens the restore-first hold so the automatic
+  upload overwrites the user's cloud backup before they can restore it, and the
+  second leaves a former sub marked as a sub on the phone they just bought. A cache
+  that describes a handset must not follow the user to a different handset.
+-->
 <full-backup-content>
     <exclude domain="sharedpref" path="FlutterSecureStorage.xml"/>
+    <exclude domain="file" path="cache/"/>
 </full-backup-content>
