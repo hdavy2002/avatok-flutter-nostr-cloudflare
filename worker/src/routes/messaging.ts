@@ -1409,14 +1409,19 @@ export async function convMembers(req: Request, env: Env): Promise<Response> {
   const conv = new URL(req.url).searchParams.get("conv") || "";
   if (!conv) return json({ error: "conv required" }, 400);
   if (!(await convRoleOf(env, conv, ctx.uid))) return json({ error: "not a member" }, 403);
+  // [GROUP-AVATAR-1] avatar_url added: this endpoint is what GroupApi.refresh()
+  // reads, and refresh() is the ONLY thing that upserts the local Group. If the
+  // photo weren't returned here, every refresh would rebuild the group without it
+  // and silently wipe the avatar the user just set.
   const c = await env.DB_META
-    .prepare("SELECT title, kind, created_by FROM conversations WHERE id=?1")
-    .bind(conv).first<{ title: string | null; kind: string; created_by: string }>();
+    .prepare("SELECT title, kind, created_by, avatar_url FROM conversations WHERE id=?1")
+    .bind(conv).first<{ title: string | null; kind: string; created_by: string; avatar_url: string | null }>();
   const rows = await env.DB_META
     .prepare("SELECT uid, role FROM conversation_members WHERE conv_id=?1")
     .bind(conv).all<{ uid: string; role: string }>();
   return json({
     conv, title: c?.title ?? null, kind: c?.kind ?? null, created_by: c?.created_by ?? null,
+    avatar_url: c?.avatar_url ?? null,
     members: rows.results || [],
   });
 }
@@ -1557,6 +1562,51 @@ export async function convSetRole(req: Request, env: Env): Promise<Response> {
   await env.DB_META.prepare("UPDATE conversation_members SET role=?3 WHERE conv_id=?1 AND uid=?2").bind(conv, target, role).run();
   trackGroup(env, ctx.uid, "group_role_changed", { conv, target, role });
   return json({ ok: true, role });
+}
+
+// ---- POST /api/conversations/avatar  { conv, avatar_url } ------------------
+// [GROUP-AVATAR-1] (owner request 2026-07-15) Set or clear a group's photo.
+//
+// `conversations.avatar_url` already existed and convList already SELECTs it —
+// there was simply no way to write it, so every group rendered the generated
+// initials tile forever. No migration needed.
+//
+// The URL must be one WE issued via /upload/public (the same public-R2 pipeline
+// as user avatars, so the CDN transform + on-device AvatarCache work unchanged).
+// Accepting an arbitrary string here would let any admin point a group photo at
+// any third-party URL — a tracking pixel served to every member, and an SSRF
+// vector for the moderation fetch below.
+export async function convSetAvatar(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
+  const conv = String(b.conv || "");
+  if (!conv) return json({ error: "conv required" }, 400);
+  // '' clears the photo (owner request: "remove a group profile image").
+  const raw = typeof b.avatar_url === "string" ? b.avatar_url.trim() : "";
+  if (raw && !isOwnPublicUrl(env, raw)) return json({ error: "bad_avatar_url" }, 400);
+  // Admins/owner only — same rule as rename/role changes.
+  const myRole = await convRoleOf(env, conv, ctx.uid);
+  if (myRole !== "owner" && myRole !== "admin") return json({ error: "forbidden" }, 403);
+  await env.DB_META.prepare(
+    "UPDATE conversations SET avatar_url=?2, updated_at=?3 WHERE id=?1 AND kind='group'",
+  ).bind(conv, raw || null, Date.now()).run();
+  trackGroup(env, ctx.uid, raw ? "group_avatar_set" : "group_avatar_removed", { conv });
+  return json({ ok: true, avatar_url: raw || null });
+}
+
+/// [GROUP-AVATAR-1] True only for a URL on our OWN public blob host — i.e. one
+/// that came back from /upload/public. Compared on the parsed origin, never with
+/// startsWith: "https://blossom.avatok.ai.evil.com/x" passes a naive prefix test.
+function isOwnPublicUrl(env: Env, u: string): boolean {
+  try {
+    const url = new URL(u);
+    if (url.protocol !== "https:") return false;
+    const base = new URL((env as any).BLOSSOM_BASE_URL || "https://blossom.avatok.ai");
+    return url.host === base.host;
+  } catch {
+    return false;
+  }
 }
 
 // ---- POST /api/conversations/leave  { conv } -------------------------------

@@ -14,21 +14,30 @@ class Group {
   final List<String> members; // x-only hex pubkeys (incl. me)
   final List<String> admins;  // subset of members who can manage
   final String description;
-  const Group({required this.id, required this.name, required this.members, this.admins = const [], this.description = ''});
+  /// [GROUP-AVATAR-1] Canonical public (blossom) URL of the group photo — '' means
+  /// none, and the UI falls back to the generated initials tile. Server-backed:
+  /// `conversations.avatar_url`, returned by convList and set via
+  /// POST /api/conversations/avatar (admins only).
+  final String avatarUrl;
+  const Group({required this.id, required this.name, required this.members, this.admins = const [], this.description = '', this.avatarUrl = ''});
 
   bool isAdmin(String hex) => admins.contains(hex);
 
-  Group copyWith({String? name, List<String>? members, List<String>? admins, String? description}) =>
+  Group copyWith({String? name, List<String>? members, List<String>? admins, String? description, String? avatarUrl}) =>
       Group(id: id, name: name ?? this.name, members: members ?? this.members,
-          admins: admins ?? this.admins, description: description ?? this.description);
+          admins: admins ?? this.admins, description: description ?? this.description,
+          avatarUrl: avatarUrl ?? this.avatarUrl);
 
-  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'members': members, 'admins': admins, 'description': description};
+  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'members': members, 'admins': admins, 'description': description, 'avatarUrl': avatarUrl};
   factory Group.fromJson(Map<String, dynamic> j) => Group(
         id: j['id'].toString(),
         name: (j['name'] ?? 'Group').toString(),
         members: ((j['members'] as List?) ?? []).map((e) => e.toString()).toList(),
         admins: ((j['admins'] as List?) ?? []).map((e) => e.toString()).toList(),
         description: (j['description'] ?? '').toString(),
+        // Accept BOTH shapes: the local cache writes 'avatarUrl', the server's
+        // conversation row carries 'avatar_url'. One parser, both sources.
+        avatarUrl: (j['avatarUrl'] ?? j['avatar_url'] ?? '').toString(),
       );
 
   static String newId() {

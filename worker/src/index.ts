@@ -59,7 +59,7 @@ import { olxCreate, olxBrowse, olxGet, olxUpdate, olxDelete, olxUploadFile, olxB
 import { listPersonas, upsertPersona, converse, getInbox, getInboxItem, approveInbox, agentTask } from "./routes/agent";
 import { agentTts, agentAudio } from "./routes/agent_tts";
 import { listNotifications, unreadCount, markRead, clearNotifications } from "./routes/notifications";
-import { wsInbox, wsParty, sendMsg, syncMsg, receiptMsg, readMsg, hideMsg, reactMsg, stateMsg, pollVote, pollState, convList, convCreate, convAdopt, convMembers, convAddMembers, convRemoveMember, convSetRole, convLeave, convDelete, convInvites, convInviteRespond, callLogAppend, callLogDelete, callLogClear } from "./routes/messaging";
+import { wsInbox, wsParty, sendMsg, syncMsg, receiptMsg, readMsg, hideMsg, reactMsg, stateMsg, pollVote, pollState, convList, convCreate, convAdopt, convMembers, convAddMembers, convRemoveMember, convSetRole, convSetAvatar, convLeave, convDelete, convInvites, convInviteRespond, callLogAppend, callLogDelete, callLogClear } from "./routes/messaging";
 import { archiveList, archivePage } from "./routes/archive";
 import { getAutoResponder, putAutoResponder } from "./routes/auto_responder"; // STREAM F — away auto-responder settings
 import { getConfig, putConfig, readConfig } from "./routes/config";
@@ -407,6 +407,8 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/conversations/invite/respond" && req.method === "POST") return await convInviteRespond(req, env);
       if (p === "/api/conversations/members/remove" && req.method === "POST") return await convRemoveMember(req, env);
       if (p === "/api/conversations/members/role" && req.method === "POST") return await convSetRole(req, env);
+      // [GROUP-AVATAR-1] Set/clear a group photo (admins only; '' clears).
+      if (p === "/api/conversations/avatar" && req.method === "POST") return await convSetAvatar(req, env);
       if (p === "/api/conversations/leave" && req.method === "POST") return await convLeave(req, env);
       if (p === "/api/conversations/delete" && req.method === "POST") return await convDelete(req, env);
       // --- AI Messenger Batch 2026-07-03 route mounts ---

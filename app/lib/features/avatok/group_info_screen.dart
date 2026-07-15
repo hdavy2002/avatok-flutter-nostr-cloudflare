@@ -1,14 +1,19 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/avatar.dart';
+import '../../core/avatar_cache.dart';
 import '../../core/chat_state.dart';
 import '../../core/group_store.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../identity/identity.dart';
 import '../../sync/group_api.dart';
+import '../profile/avatar_crop_screen.dart';
 import 'contacts.dart';
 
 /// Group details + member management: add from contacts, remove, promote/demote
@@ -29,6 +34,9 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
   Map<String, String> _roles = {};         // uid → owner|admin|member (server truth)
   List<Contact> _contacts = [];
   bool _busy = false;
+  // [GROUP-AVATAR-1] Separate from _busy: _busy gates member-management controls,
+  // and a photo upload must not disable them (or vice versa).
+  bool _photoBusy = false;
 
   @override
   void initState() {
@@ -123,6 +131,81 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     final ok = await GroupApi.setRole(_group.id, uid, makeAdmin ? 'admin' : 'member');
     if (!ok) _toast('Could not update admin'); // telemetry emitted in GroupApi
     await _refresh();
+  }
+
+  /// [GROUP-AVATAR-1] Change / remove the group photo. Mirrors the USER avatar
+  /// pipeline exactly (profile_screen.dart `_pickAndCrop`): pick → AvatarCropScreen
+  /// → /upload/public → AvatarCache.putBytes → persist. Same crop screen, same
+  /// public-R2 bucket, so the Cloudflare image transform and the on-device cache
+  /// in the Avatar widget work for group photos with no extra plumbing.
+  Future<void> _editGroupPhoto() async {
+    final has = _group.avatarUrl.isNotEmpty;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AD.menu,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const SizedBox(height: 8),
+          ListTile(
+            leading: const Icon(Icons.photo_camera_outlined, color: AD.textPrimary),
+            title: Text('Take photo', style: ADText.rowName()),
+            onTap: () { Navigator.pop(ctx); _pickCropUpload(ImageSource.camera); },
+          ),
+          ListTile(
+            leading: const Icon(Icons.photo_library_outlined, color: AD.textPrimary),
+            title: Text('Choose from gallery', style: ADText.rowName()),
+            onTap: () { Navigator.pop(ctx); _pickCropUpload(ImageSource.gallery); },
+          ),
+          if (has)
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: AD.danger),
+              title: Text('Remove photo', style: ADText.rowName(c: AD.danger)),
+              onTap: () { Navigator.pop(ctx); _removeGroupPhoto(); },
+            ),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _pickCropUpload(ImageSource source) async {
+    try {
+      final x = await ImagePicker().pickImage(source: source, maxWidth: 1600, imageQuality: 92);
+      if (x == null) return;
+      final bytes = await x.readAsBytes();
+      if (!mounted) return;
+      final cropped = await Navigator.push<Uint8List?>(
+          context, MaterialPageRoute(builder: (_) => AvatarCropScreen(imageBytes: bytes)));
+      if (cropped == null || !mounted) return;
+      setState(() => _photoBusy = true);
+      final url = await Directory.uploadAvatar(cropped);
+      if (url == null) {
+        if (mounted) setState(() => _photoBusy = false);
+        _toast('Upload failed — please try again.');
+        return;
+      }
+      // Seed the cache with the bytes we already hold so the photo paints
+      // immediately instead of round-tripping the CDN (Avatar requests ~192px).
+      await AvatarCache.putBytes(url, 192, cropped);
+      final g = await GroupApi.setAvatar(_group.id, url);
+      if (!mounted) return;
+      setState(() { _photoBusy = false; if (g != null) _group = g; });
+      _toast(g == null ? 'Could not save the group photo.' : 'Group photo updated');
+    } catch (_) {
+      if (mounted) setState(() => _photoBusy = false);
+      _toast("Couldn't open that image — try another.");
+    }
+  }
+
+  Future<void> _removeGroupPhoto() async {
+    setState(() => _photoBusy = true);
+    // '' is the documented clear signal on POST /api/conversations/avatar.
+    final g = await GroupApi.setAvatar(_group.id, '');
+    if (!mounted) return;
+    setState(() { _photoBusy = false; if (g != null) _group = g; });
+    if (g == null) _toast('Could not remove the group photo.');
   }
 
   Future<void> _editDescription() async {
@@ -368,14 +451,47 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
         Expanded(
           child: ListView(children: [
             const SizedBox(height: 16),
+            // [GROUP-AVATAR-1] Admins tap the photo to change or remove it
+            // (owner request 2026-07-15). Non-admins just see it — the server
+            // enforces the same rule, so this is presentation, not security.
             Center(
-              child: Container(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: AD.borderAvatar, width: 2),
-                  boxShadow: AD.overlayShadow,
-                ),
-                child: Avatar(seed: 'group-${_group.id}', name: _group.name, size: 84),
+              child: GestureDetector(
+                onTap: _amAdmin && !_photoBusy ? _editGroupPhoto : null,
+                child: Stack(clipBehavior: Clip.none, children: [
+                  Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AD.borderAvatar, width: 2),
+                      boxShadow: AD.overlayShadow,
+                    ),
+                    child: _photoBusy
+                        ? const SizedBox(
+                            width: 84, height: 84,
+                            child: Center(
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: AD.primaryBadge)),
+                          )
+                        : Avatar(
+                            seed: 'group-${_group.id}',
+                            name: _group.name,
+                            size: 84,
+                            avatarUrl: _group.avatarUrl.isEmpty ? null : _group.avatarUrl,
+                          ),
+                  ),
+                  if (_amAdmin && !_photoBusy)
+                    Positioned(
+                      right: -2, bottom: -2,
+                      child: Container(
+                        padding: const EdgeInsets.all(5),
+                        decoration: BoxDecoration(
+                          color: AD.primaryBadge,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: AD.bg, width: 2),
+                        ),
+                        child: const Icon(Icons.edit, size: 13, color: Colors.white),
+                      ),
+                    ),
+                ]),
               ),
             ),
             const SizedBox(height: 12),

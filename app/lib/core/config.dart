@@ -168,6 +168,9 @@ const String kConversationsUrl = 'https://$kSignalingHost/api/conversations';
 const String kUnfurlUrl = 'https://$kSignalingHost/api/unfurl';
 // Group membership management (Group Info screen).
 const String kConvMembersUrl = 'https://$kSignalingHost/api/conversations/members';
+// [GROUP-AVATAR-1] POST { conv, avatar_url } — set/clear a group photo (admins
+// only; '' clears). The URL must be one issued by /upload/public.
+const String kConvAvatarUrl = 'https://$kSignalingHost/api/conversations/avatar';
 const String kConvAddMembersUrl = 'https://$kSignalingHost/api/conversations/members/add';
 const String kConvInvitesUrl = 'https://$kSignalingHost/api/conversations/invites'; // GET my pending group invites
 const String kConvInviteRespondUrl = 'https://$kSignalingHost/api/conversations/invite/respond'; // POST {conv, accept, block?}

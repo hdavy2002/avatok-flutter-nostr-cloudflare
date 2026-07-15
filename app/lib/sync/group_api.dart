@@ -18,8 +18,18 @@ import '../identity/identity.dart';
 class GroupApi {
   static String? get _myUid => AccountScope.id;
 
+  /// Locally-stored copy of [conv], or null. Deliberately NOT `firstOrNull`:
+  /// that's a package:collection extension and this library doesn't import it.
+  static Future<Group?> _local(String conv) async {
+    for (final g in await GroupStore().load()) {
+      if (g.id == conv) return g;
+    }
+    return null;
+  }
+
   /// Members → admins/members split for a local [Group]. owner+admin → admins.
-  static Group _groupFrom(String id, String title, List<Map<String, dynamic>> members) {
+  static Group _groupFrom(String id, String title, List<Map<String, dynamic>> members,
+      {String avatarUrl = '', String description = ''}) {
     final mem = <String>[];
     final admins = <String>[];
     for (final m in members) {
@@ -29,7 +39,8 @@ class GroupApi {
       final role = (m['role'] ?? 'member').toString();
       if (role == 'owner' || role == 'admin') admins.add(uid);
     }
-    return Group(id: id, name: title.isEmpty ? 'Group' : title, members: mem, admins: admins);
+    return Group(id: id, name: title.isEmpty ? 'Group' : title, members: mem, admins: admins,
+        avatarUrl: avatarUrl, description: description);
   }
 
   /// Create a group server-side with [memberUids] (Clerk uids, excluding me).
@@ -63,6 +74,30 @@ class GroupApi {
     }
   }
 
+  /// [GROUP-AVATAR-1] Set (or, with an empty [url], clear) the group photo.
+  /// Admins only — the server enforces it; the UI just hides the control.
+  /// Returns the updated [Group], or null on failure.
+  static Future<Group?> setAvatar(String conv, String url) async {
+    try {
+      final r = await ApiAuth.postJson(kConvAvatarUrl, {'conv': conv, 'avatar_url': url});
+      if (r.statusCode != 200) {
+        Analytics.capture('group_avatar_failed', {'status': r.statusCode, 'clearing': url.isEmpty});
+        return null;
+      }
+      // Update the local copy immediately rather than waiting for a refresh, so
+      // the photo appears the moment the sheet closes.
+      final prev = await _local(conv);
+      if (prev == null) return null;
+      final g = prev.copyWith(avatarUrl: url);
+      await GroupStore().upsert(g);
+      Analytics.capture(url.isEmpty ? 'group_avatar_removed' : 'group_avatar_set', {'gid': conv});
+      return g;
+    } catch (e) {
+      Analytics.capture('group_avatar_failed', {'error': e.toString(), 'clearing': url.isEmpty});
+      return null;
+    }
+  }
+
   /// Fetch the authoritative member list for [conv] and refresh the local [Group].
   /// Returns the refreshed group, or null if not a member / failure.
   static Future<Group?> refresh(String conv) async {
@@ -73,7 +108,16 @@ class GroupApi {
       final members = ((j['members'] as List?) ?? const [])
           .map((e) => (e as Map).cast<String, dynamic>())
           .toList();
-      final g = _groupFrom(conv, (j['title'] ?? 'Group').toString(), members);
+      // [GROUP-AVATAR-1] `description` is LOCAL-ONLY — the server has no column
+      // for it and never returns it. _groupFrom builds a fresh Group, and upsert
+      // REPLACES the stored row wholesale, so rebuilding from the server payload
+      // alone silently erased the group description on every refresh (the same
+      // shape of bug as the contact avatar backfill wiping AvaTOK numbers,
+      // ISSUE-CONTACT-AVATAR-1). Carry local-only fields across explicitly.
+      final prev = await _local(conv);
+      final g = _groupFrom(conv, (j['title'] ?? 'Group').toString(), members,
+          avatarUrl: (j['avatar_url'] ?? '').toString(),
+          description: prev?.description ?? '');
       await GroupStore().upsert(g);
       return g;
     } catch (_) {
@@ -97,7 +141,11 @@ class GroupApi {
         final uid = (m['uid'] ?? '').toString();
         if (uid.isNotEmpty) roles[uid] = (m['role'] ?? 'member').toString();
       }
-      await GroupStore().upsert(_groupFrom(conv, title, list));
+      // [GROUP-AVATAR-1] Same local-only-field preservation as refresh() above.
+      final prev = await _local(conv);
+      await GroupStore().upsert(_groupFrom(conv, title, list,
+          avatarUrl: (j['avatar_url'] ?? '').toString(),
+          description: prev?.description ?? ''));
       return (title: title, roles: roles);
     } catch (_) {
       return null;
