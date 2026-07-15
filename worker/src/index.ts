@@ -58,7 +58,7 @@ import { payoutSetup, payoutAccounts, payoutRequest, payoutStatus, wiseWebhook }
 import { olxCreate, olxBrowse, olxGet, olxUpdate, olxDelete, olxUploadFile, olxBuy, olxRefund, olxDownloads, olxDownloadFile } from "./routes/olx";
 import { listPersonas, upsertPersona, converse, getInbox, getInboxItem, approveInbox, agentTask } from "./routes/agent";
 import { agentTts, agentAudio } from "./routes/agent_tts";
-import { listNotifications, unreadCount, markRead } from "./routes/notifications";
+import { listNotifications, unreadCount, markRead, clearNotifications } from "./routes/notifications";
 import { wsInbox, wsParty, sendMsg, syncMsg, receiptMsg, readMsg, hideMsg, reactMsg, stateMsg, pollVote, pollState, convList, convCreate, convAdopt, convMembers, convAddMembers, convRemoveMember, convSetRole, convLeave, convDelete, convInvites, convInviteRespond, callLogAppend, callLogDelete, callLogClear } from "./routes/messaging";
 import { archiveList, archivePage } from "./routes/archive";
 import { getAutoResponder, putAutoResponder } from "./routes/auto_responder"; // STREAM F — away auto-responder settings
@@ -850,6 +850,8 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/notifications" && req.method === "GET") return await listNotifications(req, env);
       if (p === "/api/notifications/unread" && req.method === "GET") return await unreadCount(req, env);
       if (p === "/api/notifications/read" && req.method === "POST") return await markRead(req, env);
+      // [NOTIF-CLEAR-1] "Clear all" — destructive, so DELETE (never GET).
+      if (p === "/api/notifications" && req.method === "DELETE") return await clearNotifications(req, env);
 
       // --- AvaBrain (dual auth; routes to the caller's UserBrain DO) ---
       const bm = p.match(/^\/api\/brain\/([a-z]+)$/);

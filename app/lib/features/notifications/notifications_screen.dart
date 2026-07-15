@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../core/analytics.dart';
 import '../../core/notifications_api.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine_widgets.dart';
@@ -22,27 +23,114 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   final List<AppNotification> _items = [];
   StreamSubscription? _sub;
   bool _loading = true;
+  // [NOTIF-LAZY-1] Pagination state. The API has always accepted a `cursor` (the
+  // last item's created_at) and returned 30 rows a page — this screen just never
+  // used it, so it only ever showed the newest 30 and silently pretended that was
+  // the whole feed. `_end` latches when a short page comes back.
+  final _scroll = ScrollController();
+  bool _paging = false;
+  bool _end = false;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _boot();
+    _scroll.addListener(_maybePage);
     _sub = widget.realtime?.listen((m) {
       if (!mounted) return;
       setState(() => _items.insert(0, AppNotification.fromJson(m)));
     });
   }
 
+  /// [NOTIF-CACHE-1] Paint the cached page FIRST, then refresh from the network.
+  /// The feed used to open on a spinner every single time, even though its
+  /// contents rarely change between opens (owner report 2026-07-15).
+  Future<void> _boot() async {
+    final cached = await NotificationsApi.cached();
+    if (!mounted) return;
+    if (cached.isNotEmpty) {
+      setState(() { _items..clear()..addAll(cached); _loading = false; });
+    }
+    await _load();
+  }
+
   Future<void> _load() async {
     final list = await NotificationsApi.list();
     if (!mounted) return;
-    setState(() { _items..clear()..addAll(list); _loading = false; });
+    setState(() {
+      _items..clear()..addAll(list);
+      _loading = false;
+      // A fresh first page invalidates any paging we'd already done.
+      _end = list.length < 30;
+    });
     // Opening the feed clears the unread badge.
     NotificationsApi.markRead(all: true);
   }
 
+  /// [NOTIF-LAZY-1] Fetch the next page when the user nears the bottom.
+  void _maybePage() {
+    if (!_scroll.hasClients || _paging || _end || _loading) return;
+    if (_scroll.position.pixels < _scroll.position.maxScrollExtent - 400) return;
+    _pageIn();
+  }
+
+  Future<void> _pageIn() async {
+    if (_paging || _end || _items.isEmpty) return;
+    _paging = true;
+    try {
+      final next = await NotificationsApi.list(cursor: _items.last.createdAt);
+      if (!mounted) return;
+      setState(() {
+        // De-dupe on id: a realtime insert or a row landing exactly on the cursor
+        // boundary can otherwise appear twice.
+        final seen = _items.map((e) => e.id).toSet();
+        _items.addAll(next.where((n) => !seen.contains(n.id)));
+        if (next.length < 30) _end = true;
+      });
+    } finally {
+      _paging = false;
+    }
+  }
+
+  /// [NOTIF-CLEAR-1] "Clear all" — deletes server-side + drops the local cache.
+  Future<void> _clearAll() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AD.card,
+        title: Text('Clear all notifications?',
+            style: ADText.rowName().copyWith(fontSize: 16.5)),
+        content: Text('This removes every notification from this feed. It can\'t be undone.',
+            style: ADText.preview(c: AD.textSecondary)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel', style: ADText.rowName(c: AD.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Clear all', style: ADText.rowName(c: AD.danger)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final n = _items.length;
+    setState(() { _items.clear(); _end = true; });
+    final done = await NotificationsApi.clearAll();
+    Analytics.capture('notifications_cleared', {'count': n, 'server_ok': done});
+    if (!done && mounted) {
+      // Be honest: the list is empty locally, but the server still holds them and
+      // the next refresh will bring them back. Silently "succeeding" here is how
+      // you get a bug report that says "clear all doesn't work".
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Couldn't reach the server — pull to refresh to retry.")),
+      );
+    }
+  }
+
   @override
-  void dispose() { _sub?.cancel(); super.dispose(); }
+  void dispose() { _scroll.dispose(); _sub?.cancel(); super.dispose(); }
 
   /// Phosphor icon + zine accent per notification type (accent rotation §6).
   (IconData, Color) _meta(String type) {
@@ -94,6 +182,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     ],
                   ),
                 ),
+                // [NOTIF-CLEAR-1] Only offered when there's something to clear.
+                if (_items.isNotEmpty)
+                  TextButton(
+                    onPressed: _clearAll,
+                    child: Text('Clear all', style: ADText.rowName(c: AD.danger)),
+                  ),
               ]),
             ),
           ),
@@ -126,10 +220,25 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     ),
                   ])
                 : ListView.separated(
+                    controller: _scroll,
                     padding: const EdgeInsets.fromLTRB(18, 14, 18, 28),
-                    itemCount: _items.length,
+                    // [NOTIF-LAZY-1] +1 for the paging spinner / end-of-feed cap.
+                    itemCount: _items.length + 1,
                     separatorBuilder: (_, __) => const SizedBox(height: 10),
                     itemBuilder: (_, i) {
+                      if (i == _items.length) {
+                        if (_end) return const SizedBox(height: 8);
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 18),
+                          child: Center(
+                            child: SizedBox(
+                              width: 18, height: 18,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: AD.iconSearch),
+                            ),
+                          ),
+                        );
+                      }
                       final n = _items[i];
                       final (icon, accent) = _meta(n.type);
                       return AdCard(
