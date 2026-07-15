@@ -160,7 +160,11 @@ class RingbackPlayer {
         // Catalog id → play the matching app-bundled tone (instant, offline).
         final item = ringtoneById(value);
         if (item == null) {
-          await _playDefaultRingback();
+          // [CALL-ECHO-FIX-1 follow-up] `speakerOn` became REQUIRED on
+          // _playDefaultRingback (it must carry the call's LIVE audio route — a
+          // hardcoded default is what caused the echo), but this call site was
+          // missed and broke the build. Forward the route like the catch below.
+          await _playDefaultRingback(speakerOn: speakerOn);
           return;
         }
         src = AssetSource(_assetRel(item.asset));
