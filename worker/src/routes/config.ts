@@ -247,6 +247,19 @@ export interface PlatformConfig {
   // KV each time a new release is published. 0 = never prompt. Distinct from
   // minAppBuild, which is the HARD floor that shows a blocking update screen.
   latestAppBuild: number;
+  // [AVA-UPDATE-AUTO] Kill switch for the automatic in-app update flow
+  // (app/lib/core/update_service.dart): the on-launch Play check, the background
+  // flexible download, the auto-install, and the fallback popup. Default TRUE.
+  //
+  // THIS EXISTS BECAUSE IT DIDN'T. Both CLAUDE.md and remote_config.dart's own
+  // docstring claimed you could "flip inAppUpdateEnabled: false in KV" to silence
+  // the update checks — but the key was never declared here, and the PUT handler
+  // below rejects any key not in DEFAULTS (`unknown key`, 400). So the documented
+  // brake was unusable: the client defaulted it true and nothing could turn it
+  // off. That is a bad shape for a feature that installs itself without asking —
+  // if a build ever ships an update loop, this switch is the only thing between a
+  // bad release and every device retrying it. Declaring it makes the brake real.
+  inAppUpdateEnabled: boolean;
   // Call-state control-plane authority (Specs/CALL-CONTROL-PLANE-UNIFIED-PLAN.md
   // §5 — protocol-v1/v2 shadow rollout). All default OFF/legacy: CallStateAuthorityDO
   // is wired (wrangler binding + v13 migration) but fully dormant until these flip.
@@ -490,6 +503,7 @@ const DEFAULTS: PlatformConfig = {
   guardianGateEnabled: false,            // U1-lite manual "Require verification" gate — DARK; server modes 403 + client control hidden
   minAppBuild: 0,
   latestAppBuild: 0,                     // newest published build; >installed → soft "update available" popup (opens Play Store). Owner bumps in KV per release. 0 = never prompt.
+  inAppUpdateEnabled: true,              // [AVA-UPDATE-AUTO] emergency brake for the auto-updater. TRUE (matches the client's own fallback default, so declaring it changes nothing today) — set false in KV to stop every device update-checking.
   // Call-state control-plane authority (Specs/CALL-CONTROL-PLANE-UNIFIED-PLAN.md §5)
   // — Phase A plumbing only. All OFF/legacy: CallStateAuthorityDO is bound but dark.
   authorityShadowEnabled: true,   // CALL-AUTH-LIVE-1: authority observes + records vs legacy

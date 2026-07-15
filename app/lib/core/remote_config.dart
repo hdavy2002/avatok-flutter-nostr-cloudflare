@@ -369,9 +369,18 @@ class RemoteConfig {
   /// release. Distinct from [minAppBuild] (the hard, blocking floor).
   static int get latestAppBuild => (_asNum(_cfg['latestAppBuild'])?.toInt()) ?? 0;
 
-  /// Kill switch for the Google Play in-app update flow (the "Update" sidebar row
-  /// + the on-launch "new version available" popup). Default ON; flip to false in
-  /// KV to silence all Play update checks (e.g. if they ever get noisy).
+  /// Kill switch for the automatic in-app update flow (the on-launch Play check,
+  /// the background flexible download + auto-install, the "Update" sidebar row and
+  /// the fallback popup — see core/update_service.dart). Default ON; set
+  /// `inAppUpdateEnabled: false` in KV to stop every device update-checking.
+  ///
+  /// [AVA-UPDATE-AUTO] That KV flip only actually works as of 2026-07-15. This
+  /// docstring previously promised it while the key was NOT declared in the
+  /// Worker's `config.ts` DEFAULTS — and the PUT handler rejects any undeclared
+  /// key with `unknown key` / 400. So the brake was documented but unusable: the
+  /// client defaulted true and nothing could turn it off. The key is now declared
+  /// server-side (default true), so the switch is real. If this ever regresses,
+  /// the symptom is a 400 from `scripts/flags.sh set inAppUpdateEnabled=false`.
   static bool get inAppUpdateEnabled => _b('inAppUpdateEnabled', true);
 
   /// Fetch now + poll every 15 min. Never throws.
