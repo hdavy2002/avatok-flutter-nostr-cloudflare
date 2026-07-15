@@ -213,13 +213,38 @@ building. It governs ALL AvaVerse apps. The two client rules that bite hardest:
 
 ### Telemetry (PostHog)
 
-- At the start of work, pull up the PostHog telemetry for the test user
-  `hdavy2005@gmail.com`. If it exists, review it. If it doesn't, build rich telemetry
-  data for future retrievals.
+- **ALWAYS ASK WHOSE EMAIL FIRST — never assume `hdavy2005@gmail.com`.** There are now
+  many testers on different emails, and a bug is often a CONVERSATION BETWEEN TWO PEOPLE
+  (a call, a chat thread, an SMS), so the owner may need to give you two or more emails
+  to pull both sides. Pulling the wrong person's telemetry means diagnosing the wrong
+  device.
+
+  Before touching PostHog, call **AskUserQuestion**:
+
+  > **header:** `Telemetry`
+  > **question:** "Whose PostHog telemetry should I pull for this?"
+  > **options:** `hdavy2005@gmail.com` · `Two people (I'll give both)` · `Skip telemetry`
+  >
+  > (the tool always offers "Other" automatically, for a different tester's email)
+
+  - Answer names one person → pull that person's events.
+  - Answer is two-sided → get BOTH emails, pull each, and line the two timelines up
+    against each other; a call/message bug usually only makes sense from both ends.
+  - If the owner already named the tester(s) in his message, skip the widget and use
+    those.
+  - Skip the widget only when the task provably has no telemetry surface (e.g. a pure
+    static code read with no device behaviour) — and say so in one line rather than
+    silently skipping.
+
+- If telemetry exists for the named user(s), review it. If it doesn't, build rich
+  telemetry data for future retrievals.
 - After completing your work, generate rich telemetry and send it to PostHog. It MUST
   include the user's email (and phone number, if available) so error/info/telemetry data
-  can be pulled to fix or identify issues. Leave any pre-existing telemetry in place;
-  where possible, ADD new telemetry for the new work done.
+  can be pulled to fix or identify issues — the email is what makes a future pull
+  possible, and with many testers it is the ONLY way to tell whose device a problem is
+  on. For two-sided features (calls, chats, SMS), tag BOTH parties where the event has
+  them, so either email retrieves the interaction. Leave any pre-existing telemetry in
+  place; where possible, ADD new telemetry for the new work done.
 - Once a task/fix is finished, **update Graphiti** with what you did
   (`add_memory(..., group_id="proj_avaflutterapp")`).
 
