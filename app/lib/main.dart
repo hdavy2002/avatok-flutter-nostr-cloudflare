@@ -37,6 +37,7 @@ import 'firebase_options.dart';
 import 'identity/identity.dart';
 import 'features/auth/sign_in_screen.dart';
 import 'features/auth/restore_screen.dart';
+import 'features/avadial/ava_contact_book.dart' show AvaContactBook;
 import 'features/avadial/contacts_daily_backup.dart';
 import 'features/avatok/contacts.dart';
 import 'features/identity/liveness_v3/voice_packs.dart';
@@ -623,6 +624,18 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
         // already-queued job is left alone, so re-registering on every launch
         // can't push its next run 24h out for an active user.
         unawaited(scheduleDailyContactsBackup());
+        // [AVADIAL-BACKUP-OWNER] Settle who owns this phone's address book NOW,
+        // on entering the shell, rather than lazily on the first backup.
+        //
+        // The rule is "the first account to use AvaTOK on this phone is the
+        // owner". Resolving lazily quietly broke that: the claim would land on
+        // whoever first opened the Contacts tab or first ran the daily job. On a
+        // family phone the parent could sign in, never open Contacts, and lose the
+        // handset to the child — who would then back up the parent's whole address
+        // book while the parent, having no prior backup, became a sub on their own
+        // phone. Every signed-in account passes through here, so claiming here
+        // makes the order match what the owner actually asked for.
+        unawaited(AvaContactBook.I.backupRole());
       }
     }
   }

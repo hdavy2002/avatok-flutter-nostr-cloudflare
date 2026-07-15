@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '../features/avadial/contact_backup_role.dart' show ContactBackupRoles;
 import '../features/avadial/device_call_log.dart' show DeviceCallLog;
 import '../features/avadial/device_contacts.dart' show DeviceContacts;
 import '../features/avatok/call_screen.dart' show clearCallState;
@@ -109,6 +110,15 @@ class AccountSwitcher {
     //     operator to a non-admin child on the same phone briefly showed
     //     admin-only surfaces (e.g. the Marketplace menu) to the child.
     try { await RemoteConfig.onAccountSwitched(); } catch (e) { failed.add('admin:$e'); }
+
+    // 5c. [AVADIAL-BACKUP-OWNER] Drop the cached contact-backup role. It is
+    //     per-account (master owns this phone's address book, subs back up only
+    //     their own contacts) and memoised in memory, so carrying the departing
+    //     account's role into the arriving one would let a sub upload the full
+    //     phone book — or, far worse, make a master upload a sub-sized book, which
+    //     on a latest-wins server DELETES their phone-book backup. Same class of
+    //     bug as the admin-flag leak above, with data loss instead of a stray menu.
+    try { ContactBackupRoles.I.onAccountSwitched(); } catch (e) { failed.add('cbrole:$e'); }
 
     // 6. Persist / clear the cold-boot pointer.
     try {

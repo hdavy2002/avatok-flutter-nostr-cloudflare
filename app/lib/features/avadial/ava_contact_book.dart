@@ -7,6 +7,7 @@ import '../../core/api_auth.dart';
 import '../../core/ava_log.dart';
 import '../../core/config.dart';
 import '../../core/disk_cache.dart';
+import 'contact_backup_role.dart';
 import 'contact_groups.dart';
 import 'contact_overrides.dart';
 import 'device_contacts.dart';
@@ -145,11 +146,47 @@ class AvaContactBook {
 
   Future<int> count() async => (await load()).length;
 
+  /// [AVADIAL-BACKUP-OWNER] The contacts THIS account is entitled to back up —
+  /// the single place the master/sub rule is applied.
+  ///
+  /// A MASTER (this phone's first account, or anyone grandfathered) backs up the
+  /// whole book. A SUB backs up only what they created in AvaTOK: the device phone
+  /// book belongs to the phone's owner, so a sub who leaves and restores on their
+  /// own device gets their own contacts and nothing else. See
+  /// [ContactBackupRoles] for why sub status can never be applied to an account
+  /// that already has a backup.
+  ///
+  /// The filter is `source == 'avatok'`, which [capture] already sets for exactly
+  /// the right rows: a contact the user created in AvaTOK (an override with
+  /// `local: true`, or an AvaTOK-only entry with no device row). Contacts read out
+  /// of the Android address book are `'device'` and belong to the handset.
+  ///
+  /// Applied at BACKUP time on purpose, not at restore time: a sub's stored book
+  /// then simply never contains the phone book, so there is nothing for a restore —
+  /// or a future bug in one — to leak. Filtering on the way out would leave the
+  /// data sitting on the server waiting for a mistake.
+  /// Returns an EMPTY list when the role can't be decided yet (server unreachable
+  /// on a phone someone else already claimed). Empty flows into [uploadBackup]'s
+  /// existing "never overwrite the server copy" guard, so an undecided run backs up
+  /// nothing and retries later — instead of guessing and deleting someone's book.
+  Future<List<AvaBookContact>> backupContacts() async {
+    final role = await backupRole();
+    if (role == null) return const [];
+    final all = await load();
+    if (role == ContactBackupRole.master) return all;
+    return all.where((c) => c.source == 'avatok').toList();
+  }
+
   /// Serialized backup payload (uploaded to AvaTOK's backup endpoint). Includes
   /// the custom colour groups so a group-only edit still changes the signature
   /// and triggers an auto-sync. [AVADIAL-GROUPS-3]
+  ///
+  /// Built from [backupContacts], NOT the full book — the change signature MUST be
+  /// computed over exactly the bytes we upload. If it covered the full book, a sub
+  /// would re-upload every time an unrelated device contact changed (data they
+  /// don't even back up), and the "nothing changed" check would never hold.
   Future<String> exportJson() async => jsonEncode({
-        'contacts': (await load()).map((e) => e.toJson()).toList(),
+        'contacts': (await backupContacts()).map((e) => e.toJson()).toList(),
         'groups': (await ContactGroups.I.customGroups()).map((g) => g.toJson()).toList(),
       });
 
@@ -183,12 +220,21 @@ class AvaContactBook {
     final t0 = DateTime.now();
     final trace = TraceContext.mint();
     try {
-      final contacts = await load();
+      // [AVADIAL-BACKUP-OWNER] A sub uploads only its own contacts; a master the
+      // whole book. Resolved here so EVERY caller (manual, auto-sync, daily) obeys
+      // the same rule.
+      final contacts = await backupContacts();
       if (contacts.isEmpty) {
         AvaLog.I.log('avadial',
-            'contact book upload SKIPPED: local book empty (never overwrite the server copy)');
+            'contact book upload SKIPPED: nothing to back up (never overwrite the server copy)');
         Analytics.capture('avadial_contact_backup_skipped_empty', {
           'source': source,
+          // This is THE event to pull when someone reports "my contacts stopped
+          // backing up", so it has to say WHICH skip happened: 'undecided' (we
+          // couldn't reach the server to establish whether this account owns the
+          // phone book, so we refused to guess) reads nothing like an empty book
+          // or a sub with nothing of their own yet.
+          'role': (await backupRole())?.name ?? 'undecided',
           'trace_id': trace,
         });
         return 0;
@@ -217,6 +263,10 @@ class AvaContactBook {
           'bytes': sigBody.length,
           'ms': ms,
           'source': source,
+          // [AVADIAL-BACKUP-OWNER] Without this, a sub's legitimately smaller book
+          // looks identical to a master silently losing contacts. Tells them apart.
+          // Memoised by now (backupContacts resolved it above), so no extra call.
+          'role': (await backupRole())?.name ?? 'undecided',
           'trace_id': trace,
         });
         return contacts.length;
@@ -290,9 +340,11 @@ class AvaContactBook {
   ///     round-trip would be pure waste. Cheap to re-check tomorrow.
   Future<bool> dailyBackupIfDue({String source = 'daily_bg', bool force = false}) async {
     try {
-      final contacts = await load();
+      // backupContacts(), not load(): for a SUB an all-device book is legitimately
+      // nothing-to-back-up, and we shouldn't do the work below to discover that.
+      final contacts = await backupContacts();
       if (contacts.isEmpty) {
-        AvaLog.I.log('avadial', 'daily backup skipped: local book empty (never overwrite)');
+        AvaLog.I.log('avadial', 'daily backup skipped: nothing to back up (never overwrite)');
         return false;
       }
 
@@ -613,6 +665,45 @@ class AvaContactBook {
     ];
     return lines.isEmpty ? null : lines.join('\n');
   }
+
+  /// [AVADIAL-BACKUP-OWNER] Tri-state "does this account already have a backup, and
+  /// does it hold phone-book contacts?".
+  ///
+  /// [serverStatus] cannot answer this: it returns null BOTH for "no backup" and
+  /// for "the call failed", and conflating those is a data-loss bug — an offline
+  /// phone would look exactly like a brand-new account, get classed a sub, and
+  /// delete a real backup on the next upload. So this reports `unknown` separately
+  /// and lets the caller decline to decide. A 200 with `found:false` is the ONLY
+  /// definitive "absent"; everything else (non-200, 503 kill switch, timeout,
+  /// malformed body, throw) is `unknown`.
+  ///
+  /// `deviceCount` stays NULLABLE all the way through — do NOT `?? 0` it. Null is
+  /// the server saying "written before the master/sub rule", i.e. a full phone book,
+  /// i.e. never shrink. Defaulting it to 0 would silently invert that into
+  /// permission to delete the book. An OLD worker that doesn't send the field at all
+  /// also lands on null, which is exactly right for the same reason.
+  Future<ContactBackupProbeResult> serverBackupProbe() async {
+    try {
+      final resp = await ApiAuth.getSigned(kContactBookStatusUrl);
+      if (resp.statusCode != 200) {
+        return (state: ContactBackupProbe.unknown, deviceCount: null);
+      }
+      final b = jsonDecode(resp.body) as Map<String, dynamic>;
+      if (b['found'] != true) return (state: ContactBackupProbe.absent, deviceCount: null);
+      return (
+        state: ContactBackupProbe.present,
+        deviceCount: (b['deviceCount'] as num?)?.toInt(),
+      );
+    } catch (e) {
+      AvaLog.I.log('avadial', 'contact backup probe failed: $e');
+      return (state: ContactBackupProbe.unknown, deviceCount: null);
+    }
+  }
+
+  /// This account's backup role, or null while it can't be decided safely.
+  /// See [ContactBackupRoles] — null means "back up nothing this run".
+  Future<ContactBackupRole?> backupRole() =>
+      ContactBackupRoles.I.resolve(probe: serverBackupProbe);
 
   /// Server-side backup metadata (count + last-updated ms), or null when there is
   /// no backup / the call failed.

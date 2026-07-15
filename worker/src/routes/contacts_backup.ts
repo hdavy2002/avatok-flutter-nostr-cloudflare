@@ -84,17 +84,49 @@ function groupsKey(uid: string): string {
 // Metadata only in D1; the ciphertext blob lives in R2. `wrapped` is kept nullable
 // for backward-compat with the earlier inline-blob shape (if a row was ever written
 // before this migration, GET still reads it).
+// [AVADIAL-BACKUP-OWNER] Set once the device_count column is known to exist on this
+// isolate. Not persisted: a fresh isolate re-checks once, which costs one call per
+// isolate instead of one per request.
+let deviceCountMigrated = false;
+
 async function ensureTable(env: Env): Promise<void> {
   await env.DB_META.prepare(
     `CREATE TABLE IF NOT EXISTS contact_book_backup (
-       uid        TEXT PRIMARY KEY,
-       wrapped    TEXT,
-       count      INTEGER NOT NULL,
-       alg        TEXT NOT NULL,
-       created_at INTEGER NOT NULL,
-       updated_at INTEGER NOT NULL
+       uid          TEXT PRIMARY KEY,
+       wrapped      TEXT,
+       count        INTEGER NOT NULL,
+       alg          TEXT NOT NULL,
+       created_at   INTEGER NOT NULL,
+       updated_at   INTEGER NOT NULL,
+       device_count INTEGER
      )`,
   ).run();
+  // [AVADIAL-BACKUP-OWNER] Additive migration for tables created before
+  // device_count existed. NULLABLE on purpose, and the NULL is meaningful: it
+  // marks a book written by a client that predates the master/sub rule, which by
+  // definition contained the WHOLE phone book. The client reads NULL as "this
+  // account owns a full book — never shrink it". Getting that backwards would
+  // delete real backups, so the column must never be given a 0 default.
+  // Isolate-level latch: without it this ALTER runs — and throws "duplicate column
+  // name", and swallows it — on EVERY put/get/status call forever, which is a
+  // wasted D1 round-trip per request on a hot endpoint plus permanent error noise
+  // that would bury a real DB fault.
+  if (deviceCountMigrated) return;
+  try {
+    await env.DB_META.prepare(
+      `ALTER TABLE contact_book_backup ADD COLUMN device_count INTEGER`,
+    ).run();
+    deviceCountMigrated = true;
+  } catch (e) {
+    // The expected error on every deployment after the first. Anything else is a
+    // real fault and must stay visible — the SELECT that needs this column would
+    // otherwise fail with no clue why.
+    if (String(e).includes("duplicate column")) {
+      deviceCountMigrated = true;
+    } else {
+      console.error("[contacts] device_count migration failed:", String(e));
+    }
+  }
 }
 
 // Manifest for the chunked layout — one row per uid, written by the chunk job.
@@ -313,6 +345,19 @@ export async function contactBookPut(req: Request, env: Env, ctx: ExecutionConte
   // inert, so THIS server event is the only evidence those runs happened at all.
   const source = typeof body?.source === "string" ? body.source.slice(0, 24) : "unknown";
 
+  // [AVADIAL-BACKUP-OWNER] How many of these contacts came from the handset's own
+  // address book. This is the ONLY thing that tells a client whether an account
+  // already owns a full phone-book backup that must never be shrunk — see the
+  // header. Counted here, at write time, because the alternative (decrypting the
+  // whole book on every status call) is far too expensive for a metadata endpoint.
+  // `source` is set by the client on every contact (AvaBookContact.toJson always
+  // emits it); anything not explicitly 'avatok' is treated as device-owned, so an
+  // unknown/missing value errs toward "this book has device contacts" — the safe
+  // direction, since that only ever protects a backup from shrinking.
+  const deviceCount = contacts.filter(
+    (c: unknown) => (c as { source?: string } | null)?.source !== "avatok",
+  ).length;
+
   const plaintext = JSON.stringify(contacts);
   if (enc.encode(plaintext).byteLength > MAX_BYTES) {
     return json({ error: "contact book too large" }, 413);
@@ -335,11 +380,11 @@ export async function contactBookPut(req: Request, env: Env, ctx: ExecutionConte
   await ensureTable(env);
   await env.DB_META
     .prepare(
-      `INSERT INTO contact_book_backup (uid, wrapped, count, alg, created_at, updated_at)
-       VALUES (?1, NULL, ?2, 'v1r2', ?3, ?3)
-       ON CONFLICT(uid) DO UPDATE SET wrapped=NULL, count=?2, alg='v1r2', updated_at=?3`,
+      `INSERT INTO contact_book_backup (uid, wrapped, count, alg, created_at, updated_at, device_count)
+       VALUES (?1, NULL, ?2, 'v1r2', ?3, ?3, ?4)
+       ON CONFLICT(uid) DO UPDATE SET wrapped=NULL, count=?2, alg='v1r2', updated_at=?3, device_count=?4`,
     )
-    .bind(ctxUser.uid, contacts.length, now)
+    .bind(ctxUser.uid, contacts.length, now, deviceCount)
     .run();
 
   // Background: (re)build the paginated chunks so restore can stream pages.
@@ -452,9 +497,9 @@ export async function contactBookStatus(req: Request, env: Env): Promise<Respons
   if (isFail(ctxUser)) return json({ error: ctxUser.error }, ctxUser.status);
   await ensureTable(env);
   const row = await env.DB_META
-    .prepare("SELECT count, updated_at FROM contact_book_backup WHERE uid=?1")
+    .prepare("SELECT count, updated_at, device_count FROM contact_book_backup WHERE uid=?1")
     .bind(ctxUser.uid)
-    .first<{ count: number; updated_at: number }>();
+    .first<{ count: number; updated_at: number; device_count: number | null }>();
   if (!row) return json({ found: false });
   let paged = false;
   let pageSize = CHUNK_SIZE;
@@ -473,5 +518,13 @@ export async function contactBookStatus(req: Request, env: Env): Promise<Respons
     paged,
     pageSize,
     groups: (await loadGroups(env, ctxUser.uid)).length,
+    // [AVADIAL-BACKUP-OWNER] How many stored contacts came from a handset's own
+    // address book. The client uses this — and ONLY this — to decide whether an
+    // account already owns a full phone-book backup that must never be shrunk.
+    // NULL (absent field) means "written before this rule existed", which the
+    // client MUST read as "yes, full book". Sent explicitly rather than coerced to
+    // 0, because 0 and null mean opposite things here: 0 authorises the client to
+    // replace the stored book with a smaller one, null forbids it.
+    deviceCount: row.device_count,
   });
 }

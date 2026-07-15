@@ -7,6 +7,7 @@ import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'ava_contact_book.dart';
 import 'avadial_theme.dart';
+import 'contact_backup_role.dart';
 
 /// "Contacts backup" screen (owner request 2026-07-13). Shows the state of the
 /// user's AvaTOK contact-book backup — held on AvaTOK's own servers, independent
@@ -33,6 +34,15 @@ class ContactsBackupScreen extends StatefulWidget {
 
 class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
   int _count = 0;
+
+  /// [AVADIAL-BACKUP-OWNER] How many of [_count] this account actually backs up.
+  /// For a MASTER the two are equal. For a SUB (a second account on a shared
+  /// phone) only their own AvaTOK contacts are theirs to back up, so this is
+  /// smaller — and the screen must SAY so. Showing a sub "1,240 contacts" next to
+  /// "backed up automatically" would be a straight lie: the phone book isn't in
+  /// their backup and won't be there when they restore on a new phone.
+  int _backedUp = 0;
+  bool _isSub = false;
   DateTime? _lastCloud;
   bool _loading = true;
   bool _busy = false;
@@ -50,6 +60,13 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
   Future<void> _load() async {
     final count = await AvaContactBook.I.count();
     var lastCloud = await ContactBackupPrefs.I.lastServerSync();
+    // Resolve the role FIRST: it may probe the server, and once it has, the result
+    // is memoised so backupContacts() below costs nothing extra. Only claim "shared
+    // phone" when we KNOW — an undecided role (null) must not render as sub, or an
+    // offline second account would be told the phone book isn't theirs before we
+    // have established that it isn't.
+    final isSub = (await AvaContactBook.I.backupRole()) == ContactBackupRole.sub;
+    final backedUp = (await AvaContactBook.I.backupContacts()).length;
     // Prefer the server's own timestamp when we can reach it (authoritative).
     final status = await AvaContactBook.I.serverStatus();
     if (status != null && status.updatedAt > 0) {
@@ -58,6 +75,8 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
     if (!mounted) return;
     setState(() {
       _count = count;
+      _backedUp = backedUp;
+      _isSub = isSub;
       _lastCloud = lastCloud;
       _loading = false;
     });
@@ -65,6 +84,10 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
 
   Future<void> _backupNow() async {
     setState(() => _busy = true);
+    // Capture the role for the message below. Null = we couldn't reach the server
+    // to establish who owns this phone's book, which is a DIFFERENT failure from
+    // "you have no contacts" and must not be reported as one.
+    final role = await AvaContactBook.I.backupRole();
     final n = await AvaContactBook.I.uploadBackup(source: 'manual');
     Analytics.capture('avadial_contact_backup_now', {'count': _count, 'ok': n != null});
     await _load();
@@ -80,8 +103,21 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
           content: Text(n == null
               ? "Couldn't back up — check your connection and try again"
               : n == 0
-                  ? 'Nothing to back up yet — open Contacts first so AvaTOK can '
-                      'see your contact book'
+                  ? (role == null
+                      // Undecided: we couldn't reach the server, so we refused to
+                      // guess whether this phone's contacts are this account's to
+                      // back up. Telling a user with 1,200 contacts to "open
+                      // Contacts first" would send them to fix a permission that
+                      // is perfectly fine.
+                      ? "Couldn't check your account just now — try again when "
+                          "you're back online"
+                      : role == ContactBackupRole.sub
+                          // A sub with nothing of their own isn't broken — there
+                          // is genuinely nothing of theirs to save yet.
+                          ? 'Nothing to back up yet — contacts you add in AvaTOK '
+                              'will be saved to your account'
+                          : 'Nothing to back up yet — open Contacts first so '
+                              'AvaTOK can see your contact book')
                   : 'Backed up $n contacts to AvaTOK')));
     }
   }
@@ -180,7 +216,26 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
                 ),
                 const SizedBox(height: 16),
                 _stat('Contacts in your AvaTOK book', '$_count'),
+                if (_isSub) _stat('Backed up under your account', '$_backedUp'),
                 _stat('Last backed up to AvaTOK', _lastLabel()),
+                if (_isSub) ...[
+                  const SizedBox(height: 12),
+                  AdCard(
+                    color: AvaDialTheme.surface2,
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('Shared phone',
+                          style: ZineText.cardTitle(size: 14, color: AvaDialTheme.text)),
+                      const SizedBox(height: 4),
+                      Text(
+                        "This phone's contacts belong to the account that set it up. "
+                        'You can use them here, but only the contacts YOU add in '
+                        'AvaTOK are saved to your account — those are the ones that '
+                        'follow you to a new phone.',
+                        style: ZineText.sub(size: 12.5, color: AvaDialTheme.textSoft),
+                      ),
+                    ]),
+                  ),
+                ],
                 const SizedBox(height: 16),
                 AdButton(
                   label: 'Back up now',
