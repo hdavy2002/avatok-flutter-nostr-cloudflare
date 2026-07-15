@@ -365,6 +365,18 @@ export interface PlatformConfig {
   // after the SMS role qualification + device test matrix passes and the Play Store
   // default-SMS-handler declaration is approved. Client mirror: RemoteConfig.avaSms.
   avaSms: boolean;
+  // [DEFAULT-APPS-REPROMPT-1] (owner request 2026-07-15) One-time re-prompt that
+  // sends EXISTING users who never took the onboarding "make AvaTOK your phone"
+  // step to Settings → "Default phone & messages" on their next app open. Shows
+  // AT MOST ONCE per account, ever (a persistent account-scoped key on device
+  // records it), and never at all for users who already hold the roles.
+  //
+  // This is a kill switch on an INTERRUPTION, which is exactly the kind of thing
+  // that needs one: on 2026-07-14 the owner had the old setup sheet stopped from
+  // auto-popping because it nagged. If this one misbehaves, flip it false and it
+  // is gone without a build. Default ON — it's the point of the feature.
+  // Client mirror: RemoteConfig.defaultAppsReprompt.
+  defaultAppsReprompt: boolean;
   // AvaDial contact-book backup/restore (owner request 2026-07-13; scaled 2026-07-14).
   // `contactsBookEnabled` is the master kill switch for /api/contacts/book* — when
   // false every route 503s (panic off). Default ON (the feature is live + free).
@@ -575,6 +587,10 @@ const DEFAULTS: PlatformConfig = {
   // and Play's default-SMS-handler declaration is approved. Client mirror:
   // RemoteConfig.avaSms.
   avaSms: false,
+  // [DEFAULT-APPS-REPROMPT-1] One-time "make AvaTOK your phone" re-prompt for
+  // existing users — ON. Self-limiting: at most once per account, and only for
+  // users missing the roles. Flip false in KV to kill it without a build.
+  defaultAppsReprompt: true,
   // Contact-book backup/restore — LIVE + free. Paged download + R2 chunking ON so
   // large books restore a page at a time. Panic-off via contactsBookEnabled=false.
   contactsBookEnabled: true,

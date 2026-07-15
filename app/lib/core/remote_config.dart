@@ -323,6 +323,18 @@ class RemoteConfig {
   /// inert.
   static bool get avaSms => _b('avaSms', false);
 
+  /// [DEFAULT-APPS-REPROMPT-1] One-time re-prompt sending existing users who never
+  /// onboarded to Settings → "Default phone & messages" (owner request
+  /// 2026-07-15). Mirrors config.ts `defaultAppsReprompt`, which DECLARES this key
+  /// in both PlatformConfig and DEFAULTS — without that declaration putConfig
+  /// would 400 `unknown key` and this kill switch could never actually be pulled
+  /// (the inAppUpdateEnabled trap, CLAUDE.md 2026-07-15).
+  ///
+  /// Defaults TRUE here to match the server default: unlike avaDialer/avaSms this
+  /// gates a prompt, not a capability, so a config-fetch failure falling back to
+  /// "show it" is safe — the once-per-account key still bounds it.
+  static bool get defaultAppsReprompt => _b('defaultAppsReprompt', true);
+
   /// [AVADIAL-BACKUP-DAILY] Client mirror of config.ts `contactsDailyBackup` —
   /// the kill switch for the ~24h WorkManager contact-book backup
   /// (features/avadial/contacts_daily_backup.dart), re-read on every wake.
