@@ -83,6 +83,41 @@ class AvaDm {
     return clientId;
   }
 
+  /// [STATUS-FANOUT-1] (owner request 2026-07-15) Fan a status envelope out to
+  /// [contactUids] over the ordinary message transport.
+  ///
+  /// WHY THIS EXISTS: posting a status only ever wrote to the local DiskCache —
+  /// the Nostr fan-out was deleted in the Cloudflare pivot and never replaced (the
+  /// NOTE at status_screen.dart). The RECEIVE half was still wired the whole time
+  /// (chat_list._startInbox picks `t == 'status'` off SyncHub and adds it to
+  /// StatusStore), so nothing arrived purely because nothing was ever sent. This
+  /// closes that loop: no new endpoint, no new transport — the same durable
+  /// outbox + InboxDO the DMs already use.
+  ///
+  /// NOT [send]: that writes the payload into the local DM thread as a message
+  /// (`Db.I.upsertMessage`), which would drop a junk bubble in every contact's
+  /// chat. A status is a control envelope — it must ride the wire without ever
+  /// becoming a message. It's enqueued (not fire-and-forget POSTed) so a status
+  /// posted on a flaky link still lands, exactly like a message.
+  ///
+  /// Callers must pass real AvaTOK account uids only; `tel:` ids have no inbox.
+  static void fanOutStatus(Map<String, dynamic> envelope, List<String> contactUids) {
+    final payload = jsonEncode(envelope);
+    for (final uid in contactUids) {
+      if (uid.isEmpty || !uid.startsWith('user_')) continue;
+      unawaited(Outbox.I.enqueue(
+        clientId: _randId(),
+        to: uid,
+        payload: payload,
+        // The recipient's inbox routes on convKey; '1:<me>' is how a DM from me
+        // is addressed on THEIR device. The envelope is intercepted before render
+        // on both sides (see chat_thread `t == 'status'`), so it never surfaces.
+        convKey: '1:${AccountScope.id ?? ''}',
+        kind: 'status',
+      ));
+    }
+  }
+
   /// Send a delivery/read receipt to the peer. [status] is 'delivered' or 'read';
   /// [ts] is the high-water mark this acknowledges.
   void sendReceipt(String status, int ts) {

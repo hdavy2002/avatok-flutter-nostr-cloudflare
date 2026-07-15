@@ -730,7 +730,11 @@ class SyncHub {
         ? '1:${dmPeer(conv, myUid) ?? sender}'
         : 'g:$conv';
 
-    var isReceipt = false;
+    // Control frames: delivered to listeners via [_incoming], but NEVER persisted
+    // as a message (see `if (!isControlFrame)` below). Was `isReceipt` back when
+    // receipts were the only frame of this class; renamed when status fan-out
+    // joined them ([STATUS-FANOUT-1]).
+    var isControlFrame = false;
     // [ISSUE-BADGE-UNREAD-1] The envelope discriminator, denormalised onto the
     // stored row. Messages is a frame log, not a message table — `status`, `del`,
     // reactions and future control payloads all land here — so the launcher badge
@@ -742,7 +746,20 @@ class SyncHub {
       if (env is Map) {
         final t = env['t'];
         if (t is String && t.isNotEmpty) kind = t;
-        if (env['t'] == 'receipt') isReceipt = true;
+        if (env['t'] == 'receipt') isControlFrame = true;
+        // [STATUS-FANOUT-1] A status is fanned out to every contact over the DM
+        // transport (AvaDm.fanOutStatus), because that is the only delivery path
+        // the app has — the Nostr fan-out died in the Cloudflare pivot. It is NOT
+        // a message: chat_list._startInbox picks it off [_incoming] and files it
+        // into StatusStore.
+        //
+        // Intercepted HERE, at the single ingest point, rather than in each UI
+        // that renders messages. Persisting it would put a junk bubble in every
+        // contact's thread on every story post, bump the thread to the top of the
+        // chat list with a garbage preview, and leave the frame in the message log
+        // forever. Suppressing the row means there is nothing for any UI to render
+        // wrongly — the receipt precedent, applied to the same class of frame.
+        if (env['t'] == 'status') isControlFrame = true;
         // Delete-for-everyone from a peer: record the tombstone DURABLY the instant
         // it's ingested — independent of whether the target chat is open — so it
         // survives and re-applies on the next cold open. (My own delete echoes back
@@ -765,7 +782,7 @@ class SyncHub {
       }
     } catch (_) {}
 
-    if (!isReceipt) {
+    if (!isControlFrame) {
       final list = _byConv.putIfAbsent(convKey, () => []);
       if (!list.any((x) => x.rumorId == rumorId)) {
         list.add(DmMessage(rumorId: rumorId, mine: mine, payload: body, createdAt: createdSec));

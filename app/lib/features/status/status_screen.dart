@@ -4,12 +4,15 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/profile_store.dart';
 import '../../core/status_store.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../identity/identity.dart';
+import '../../sync/dm.dart';
 import '../avatok/contacts.dart';
+import 'status_viewer_screen.dart';
 import '../avatok/media.dart';
 import '../avatok/video_player_screen.dart';
 
@@ -21,7 +24,10 @@ import '../avatok/video_player_screen.dart';
 class StatusScreen extends StatefulWidget {
   final Identity? identity;
   final List<Contact> contacts;
-  const StatusScreen({super.key, this.identity, this.contacts = const []});
+  /// [STATUS-FANOUT-1] When set (a contact's uid), skip the list and open that
+  /// author's status full-screen immediately — the ring-tap path from a chat row.
+  final String? focusAuthor;
+  const StatusScreen({super.key, this.identity, this.contacts = const [], this.focusAuthor});
   @override
   State<StatusScreen> createState() => _StatusScreenState();
 }
@@ -33,20 +39,72 @@ class _StatusScreenState extends State<StatusScreen> {
   @override
   void initState() {
     super.initState();
-    StatusStore().load().then((l) { if (mounted) setState(() => _posts = l); });
+    StatusStore().load().then((l) {
+      if (!mounted) return;
+      setState(() => _posts = l);
+      _maybeOpenFocused(l);
+    });
     ProfileStore().load().then((p) {
       if (mounted && p.displayName.isNotEmpty) setState(() => _myName = p.displayName);
     });
   }
 
-  // NOTE: status currently persists locally only. The previous Nostr fan-out was a
-  // dead no-op (relay removed in the Cloudflare pivot) and has been removed; a real
-  // status transport will replace it. [payload] is kept for that future wiring.
+  /// [STATUS-FANOUT-1] Ring-tap entry: push the viewer for [focusAuthor] over this
+  /// list, then pop the list too when it closes — so "back" from the status lands
+  /// on the chat threads, exactly as the owner specced, rather than dumping the
+  /// user on a status list they never asked to see.
+  void _maybeOpenFocused(List<StatusPost> all) {
+    final who = widget.focusAuthor;
+    if (who == null || who.isEmpty) return;
+    final mine = all.where((p) => p.authorPub == who && !p.expired).toList()
+      ..sort((a, b) => b.ts.compareTo(a.ts));
+    if (mine.isEmpty) return; // expired between the tap and the push — show the list
+    final c = widget.contacts.where((x) => x.uid == who);
+    final contact = c.isEmpty ? null : c.first;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Navigator.push<void>(
+        context,
+        MaterialPageRoute<void>(
+          builder: (_) => StatusViewerScreen(
+            posts: mine,
+            authorName: contact?.name ?? mine.first.authorName,
+            authorUid: who,
+            authorAvatarUrl: contact?.avatarUrl,
+            me: widget.identity,
+          ),
+        ),
+      ).then((_) { if (mounted) Navigator.of(context).maybePop(); });
+    });
+  }
+
+  /// [STATUS-FANOUT-1] (owner request 2026-07-15) Persist my status locally AND
+  /// fan it out to my contacts.
+  ///
+  /// This used to be local-only. The old comment here read: "the previous Nostr
+  /// fan-out was a dead no-op (relay removed in the Cloudflare pivot) and has been
+  /// removed; a real status transport will replace it" — and nothing ever did. The
+  /// result was a feature that looked fine on your own phone and was invisible to
+  /// everyone else: a status could never reach another user, so the status ring
+  /// could never light up for anyone but yourself.
+  ///
+  /// The receive half never went away (chat_list._startInbox handles `t == 'status'`
+  /// off SyncHub), so this needed no new transport — just an actual send, over the
+  /// same durable outbox the DMs use.
   Future<void> _post(Map<String, dynamic> payload, StatusPost mine) async {
     final id = widget.identity;
     if (id == null) return;
     final list = await StatusStore().add(mine);
     if (mounted) setState(() => _posts = list);
+    // Only real AvaTOK accounts have an inbox — `tel:` ids are receptionist/PSTN
+    // placeholders and are filtered out inside fanOutStatus.
+    final uids = widget.contacts.map((c) => c.uid).toSet().toList();
+    AvaDm.fanOutStatus(payload, uids);
+    Analytics.capture('status_posted', {
+      'kind': mine.kind,
+      'contact_count': uids.length,
+      'fanout_targets': uids.where((u) => u.startsWith('user_')).length,
+    });
   }
 
   Future<void> _addImage(ImageSource source) async {
