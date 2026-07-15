@@ -214,7 +214,15 @@ class IncomingCallActivity : Activity() {
 
     private fun decline() {
         val id = callId ?: return
-        AvaInCallService.action(id, "reject", null)
+        // [AVADIAL-INCALL-NOTIF-1] FIX 3 — semantic verb, not the raw Telecom API.
+        // block() (below) stamps finalState = "blocked" BEFORE calling decline(), and
+        // action()'s "end_call" ringing branch only sets finalState when it is still
+        // null — first-writer-wins is preserved, so a blocked call still lands as
+        // "blocked", not demoted to "rejected". This call is only ever reached while
+        // the call is still ringing (the native ring screen has already handed off to
+        // InCallActivity by the time the call goes active), so "end_call" maps to
+        // reject() here exactly like the old "reject" verb did.
+        AvaInCallService.action(id, "end_call", null)
         cancelNotif()
         finishQuiet()
     }

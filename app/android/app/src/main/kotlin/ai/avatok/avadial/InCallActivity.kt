@@ -292,7 +292,11 @@ class InCallActivity : Activity() {
 
     private fun endCall() {
         val id = callId ?: return
-        AvaInCallService.action(id, "disconnect", null)
+        // [AVADIAL-INCALL-NOTIF-1] FIX 3 — semantic verb. The UI never chooses a
+        // Telecom API; "end_call" lets the service pick reject()/disconnect() by the
+        // call's actual state (a raw "disconnect" here would be wrong for a call this
+        // screen shouldn't normally see while ringing, e.g. call-waiting hand-off).
+        AvaInCallService.action(id, "end_call", null)
         finishQuiet()
     }
 

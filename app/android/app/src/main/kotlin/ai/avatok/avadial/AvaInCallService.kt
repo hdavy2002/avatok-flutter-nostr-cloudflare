@@ -153,7 +153,58 @@ class AvaInCallService : InCallService() {
                     noteAction(it, "answered")
                     callMap[it]?.answer(android.telecom.VideoProfile.STATE_AUDIO_ONLY); true
                 } ?: false
+                // [AVADIAL-INCALL-NOTIF-1] FIX 3 — the semantic vocabulary. UI
+                // components (notification, native screens, Flutter) never choose a
+                // Telecom API directly; they send "end_call" and the service maps
+                // state → API. reject() is only valid while ringing — wired to any
+                // other state it is a silent no-op, which is exactly how a live call
+                // ended up with no working Hang Up button. IDEMPOTENT: a missing/gone
+                // call (double-tap after the call already tore down) is ignored, not
+                // thrown.
+                "end_call" -> {
+                    if (id == null) {
+                        false
+                    } else {
+                        val callState = stateOf(id)
+                        when (callState) {
+                            "ringing" -> {
+                                // Same first-writer-wins guard as the "reject" alias
+                                // below — IncomingCallActivity.block() may already have
+                                // stamped finalState = "blocked" before relaying here;
+                                // never overwrite a more specific disposition.
+                                records[id]?.let { r -> if (r.finalState == null) r.finalState = "rejected" }
+                                noteAction(id, "end_call")
+                                callMap[id]?.reject(false, null)
+                                true
+                            }
+                            null -> {
+                                // Call already gone — most likely a double-tap on a
+                                // notification/UI button that already fired once, or a
+                                // race with the remote hanging up. Never throw.
+                                noteAction(id, "end_call_ignored_no_call")
+                                true
+                            }
+                            else -> {
+                                // dialing / active / holding / connecting / etc.
+                                noteAction(id, "end_call")
+                                callMap[id]?.disconnect()
+                                true
+                            }
+                        }
+                    }
+                }
+                // DEPRECATED — internal aliases only, kept for migration safety. New
+                // callers (notification actions, native screens, Flutter) must send
+                // "end_call"; the service alone decides reject() vs disconnect() by
+                // state. Made state-defensive so a missed/future call site that still
+                // sends the raw verb cannot regress into the reject()-on-active no-op
+                // that originally made "Hang Up" do nothing.
                 "reject" -> id?.let {
+                    if (stateOf(it) != "ringing") {
+                        noteAction(it, "disconnect_via_reject_alias")
+                        callMap[it]?.disconnect()
+                        return@let true
+                    }
                     noteAction(it, "rejected")
                     // NON-DESTRUCTIVE on purpose. Block/Report call decline() to hang
                     // up, so they route through here — and if this overwrote the state
@@ -164,6 +215,8 @@ class AvaInCallService : InCallService() {
                     records[it]?.let { r -> if (r.finalState == null) r.finalState = "rejected" }
                     callMap[it]?.reject(false, null); true
                 } ?: false
+                // DEPRECATED — internal alias only, see "reject" above. New callers
+                // must send "end_call".
                 "disconnect" -> id?.let { callMap[it]?.disconnect(); true } ?: false
                 "setMuted" -> { svc.setMuted(arg == true); true }
                 "setSpeaker" -> {
@@ -200,6 +253,23 @@ class AvaInCallService : InCallService() {
                         else -> CallAudioState.ROUTE_EARPIECE
                     }
                     svc.setAudioRoute(route)
+                    true
+                }
+                // [AVADIAL-INCALL-NOTIF-1] FIX 2/3 — notification Mute/Speaker buttons.
+                // Read the CURRENT OS-reported state and flip it, rather than trusting
+                // any UI's cached idea of it — the notification can outlive the
+                // activity that would otherwise track this locally. Idempotent by
+                // construction (reads fresh each call) and never throws even with no
+                // live call (setMuted/setAudioRoute are service-wide, not call-keyed).
+                "mute_toggle" -> {
+                    svc.setMuted(!(svc.callAudioState?.isMuted == true))
+                    true
+                }
+                "speaker_toggle" -> {
+                    val onSpeaker = svc.callAudioState?.route == CallAudioState.ROUTE_SPEAKER
+                    svc.setAudioRoute(
+                        if (onSpeaker) CallAudioState.ROUTE_EARPIECE else CallAudioState.ROUTE_SPEAKER
+                    )
                     true
                 }
                 // DTMF keypad: play the tone for the digit then stop it. [arg] is the
@@ -376,12 +446,125 @@ class AvaInCallService : InCallService() {
                 // watchdog; uiReady() cancels it the moment InCallActivity actually
                 // renders.
                 armWatchdog(id, "call_active")
+                // [AVADIAL-INCALL-NOTIF-1] FIX 2 — the guaranteed floor. Post/replace
+                // the ongoing CallStyle notification on the SAME NOTIF_ID as the
+                // ringing notification, so this atomically replaces it — there is no
+                // window where the stale *ringing* notification (whose Decline maps
+                // to a no-op reject() once active) is the only control surface. Also
+                // fires again here when a held call returns to ACTIVE (the "unhold"
+                // refresh case).
+                postOngoingNotification(id)
+            } else if (state == Call.STATE_HOLDING) {
+                // [AVADIAL-INCALL-NOTIF-1] Refresh the notification so it reflects
+                // hold instead of silently ticking on as if nothing changed.
+                postOngoingNotification(id)
             }
             // [AVADIAL-NATIVE-INCALL-1] Keep the native in-call screen in step with
             // Telecom (hold/unhold, remote hangup). No-op when it isn't showing.
             InCallActivity.onCallState(id, stateName(state))
             AvaDialPlugin.emit("onCallState", mapOf("id" to id, "state" to stateName(state)))
         }
+    }
+
+    /**
+     * [AVADIAL-INCALL-NOTIF-1] FIX 2 — the guaranteed floor. Builds and posts the
+     * ongoing-call notification on [NOTIF_ID] so it atomically replaces whatever
+     * ringing notification was there. UNCONDITIONAL — not gated on
+     * [AvaDialPlugin.nativeInCallEnabled]: even with the native screen flag off, and
+     * even if every UI surface (Flutter, native screen) crashes or is swiped away,
+     * this notification is the one thing that survives for the entire life of the
+     * call and every action on it is idempotent (see [action]'s "end_call" branch).
+     *
+     * Every action routed through here sends a SEMANTIC verb ("end_call",
+     * "mute_toggle", "speaker_toggle") — never "disconnect"/"reject" — because this
+     * notification has no idea what Telecom state the call is in; only the service
+     * does (Fix 3).
+     */
+    private fun postOngoingNotification(id: String) {
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
+        try {
+            val call = callMap[id]
+            val number = call?.details?.handle?.schemeSpecificPart
+            val rec = records[id]
+            val callerName = rec?.contactName ?: displayNameFor(number)
+            val who = callerName ?: number ?: "Unknown number"
+            val holding = call?.state == Call.STATE_HOLDING
+
+            val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            fun actionIntent(action: String, requestCode: Int): PendingIntent {
+                val i = Intent(this, AvaCallActionReceiver::class.java).apply {
+                    setAction(AvaCallActionReceiver.ACTION_CALL_ACTION)
+                    putExtra(AvaCallActionReceiver.EXTRA_CALL_ID, id)
+                    putExtra(AvaCallActionReceiver.EXTRA_NUMBER, number)
+                    putExtra(AvaCallActionReceiver.EXTRA_ACTION, action)
+                }
+                return PendingIntent.getBroadcast(this, requestCode, i, flags)
+            }
+            // Distinct request codes from the ringing notification's Answer/Decline
+            // (NOTIF_ID+1/+2, see launchIncoming) so none of these PendingIntents
+            // collide or overwrite each other.
+            val hangupPending = actionIntent("end_call", NOTIF_ID + 3)
+            val mutePending = actionIntent("mute_toggle", NOTIF_ID + 4)
+            val speakerPending = actionIntent("speaker_toggle", NOTIF_ID + 5)
+
+            // Tapping the body (or the full-screen intent auto-raising over a locked
+            // device) opens the in-call screen WITHOUT re-answering — no EXTRA_ANSWER
+            // here, unlike the ringing notification's Answer action.
+            val bodyPending = PendingIntent.getActivity(
+                this, NOTIF_ID + 6, InCallActivity.intentFor(this, id, number), flags,
+            )
+
+            val actionIcon = android.graphics.drawable.Icon.createWithResource(this, applicationInfo.icon)
+            val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Notification.Builder(this, CHANNEL_ID)
+            } else {
+                @Suppress("DEPRECATION")
+                Notification.Builder(this)
+            }
+
+            builder
+                .setSmallIcon(applicationInfo.icon)
+                .setContentTitle(who)
+                .setContentText(
+                    when {
+                        holding -> "On hold"
+                        callerName != null && number != null -> number
+                        else -> "Ongoing call"
+                    }
+                )
+                .setCategory(Notification.CATEGORY_CALL)
+                .setOngoing(true)
+                // [AVADIAL-INCALL-NOTIF-1] This notification is re-posted on every
+                // hold/unhold refresh on the same NOTIF_ID/channel — without this,
+                // each refresh re-alerts (sound/heads-up) mid-call.
+                .setOnlyAlertOnce(true)
+                .setWhen(rec?.activeAt ?: System.currentTimeMillis())
+                .setUsesChronometer(true)
+                .setShowWhen(true)
+                // Auto-raises the screen when the device is locked; tapping the body
+                // opens the same screen when it's not.
+                .setFullScreenIntent(bodyPending, true)
+                .setContentIntent(bodyPending)
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val caller = android.app.Person.Builder()
+                    .setName(who)
+                    .setImportant(true)
+                    .build()
+                builder.setStyle(Notification.CallStyle.forOngoingCall(caller, hangupPending))
+                builder.addAction(Notification.Action.Builder(actionIcon, "Mute", mutePending).build())
+                builder.addAction(Notification.Action.Builder(actionIcon, "Speaker", speakerPending).build())
+            } else {
+                // < Android 12: no CallStyle template — plain notification, same
+                // three actions.
+                builder
+                    .addAction(Notification.Action.Builder(actionIcon, "Hang Up", hangupPending).build())
+                    .addAction(Notification.Action.Builder(actionIcon, "Mute", mutePending).build())
+                    .addAction(Notification.Action.Builder(actionIcon, "Speaker", speakerPending).build())
+            }
+
+            nm.notify(NOTIF_ID, builder.build())
+        } catch (_: Throwable) { /* best-effort — a notification failure must never affect call handling */ }
     }
 
     /**

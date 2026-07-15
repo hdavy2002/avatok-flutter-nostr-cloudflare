@@ -31,7 +31,16 @@ class AvaCallActionReceiver : BroadcastReceiver() {
             val action = intent.getStringExtra(EXTRA_ACTION) ?: return
 
             // Relay to the live Call via AvaInCallService's static call map — same
-            // path Flutter's answer()/reject() use.
+            // path Flutter's answer()/reject() use. This is the ONLY line that talks
+            // to Telecom; the when-block below exists purely for UI side effects
+            // (bringing up an activity, cancelling a notification) on TOP of the
+            // relay, never instead of it. [AVADIAL-INCALL-NOTIF-1] "end_call",
+            // "mute_toggle", "speaker_toggle" (sent by the ongoing CallStyle
+            // notification's Hang Up/Mute/Speaker actions) are fully handled by this
+            // one relay call — AvaInCallService.action() does all the state mapping
+            // and idempotency guarding — so they deliberately fall through the
+            // when-block below with no matching branch (a Kotlin `when` used as a
+            // statement, not an expression, does not require exhaustiveness).
             AvaInCallService.action(callId, action, null)
 
             when (action) {
@@ -70,6 +79,21 @@ class AvaCallActionReceiver : BroadcastReceiver() {
                             ?.cancel(AvaInCallService.NOTIF_ID)
                     } catch (_: Throwable) { /* best-effort */ }
                 }
+                // [AVADIAL-INCALL-NOTIF-1] The ongoing CallStyle notification's Hang
+                // Up action. Explicit no-op branch on purpose: unlike "reject" above
+                // (a still-RINGING call whose notification should disappear), an
+                // "end_call" on an ACTIVE/HOLDING call must NOT cancel NOTIF_ID here —
+                // that same id is the ongoing notification, and cancelling it early
+                // would blank the control surface before onCallRemoved's normal
+                // teardown. The relay call above already told the service to
+                // reject()/disconnect() by state; nothing else to do, and definitely
+                // must never fall into the "answer" branch's MainActivity launch.
+                "end_call" -> { /* no UI side effect — service + notification own this */ }
+                // [AVADIAL-INCALL-NOTIF-1] Ongoing-notification Mute/Speaker actions.
+                // Fully handled by the relay call above (toggles the live
+                // CallAudioState); no activity to launch, nothing to cancel.
+                "mute_toggle" -> { /* no-op here — handled by the relay above */ }
+                "speaker_toggle" -> { /* no-op here — handled by the relay above */ }
             }
         } catch (_: Throwable) {
             // Best-effort — never crash on a notification-action hiccup.
