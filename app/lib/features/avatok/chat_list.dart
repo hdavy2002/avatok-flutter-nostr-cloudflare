@@ -39,6 +39,7 @@ import '../ava_companion/companion_home.dart';
 import '../../core/notifications_api.dart';
 import '../notifications/notifications_screen.dart';
 import 'groups_tab.dart';
+import '../status/status_ring.dart';
 import '../status/status_screen.dart';
 import 'add_contact_sheet.dart';
 import 'calls_screen.dart';
@@ -885,6 +886,28 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       if (mounted) Future.delayed(const Duration(milliseconds: 300), _bootstrap);
       return; // network refresh (GroupApi.sync etc.) waits for a real scope too
     }
+    // [UNREAD-FROM-DB-1 2026-07-14] Seed the unread counts from SQLite — the
+    // SAME authoritative source BadgeService uses (`Db.I.unreadByConv`).
+    //
+    // THIS IS THE FIX for "Amy's thread wasn't highlighted". `_unread` was NEVER
+    // populated here. It was incremented ONLY by live socket frames this widget
+    // personally witnessed while mounted (see `_onFrame`), and the projection
+    // paint that might otherwise have restored it bails out on
+    // `_authoritativeLoaded`, which this method sets to true a few lines below
+    // WITHOUT ever having filled `_unread` in. Net effect: every message that
+    // arrived while the chat list wasn't mounted — i.e. every message that
+    // actually needed a highlight — was invisible to the list forever, while
+    // BadgeService (which does query SQLite) correctly reported 16 unread across
+    // 4 conversations. Two sources of truth, one of them empty.
+    //
+    // Assign rather than merge: `unreadByConv(lastRead)` already accounts for
+    // read marks, so a stale in-memory count for a since-read thread must not
+    // survive. A frame racing this read is re-counted by `_onFrame` on top and,
+    // failing that, corrected by the next bootstrap.
+    Map<String, int> dbUnreadByConv = const {};
+    try {
+      dbUnreadByConv = await Db.I.unreadByConv(lastRead);
+    } catch (_) {/* DB not ready — keep whatever frames gave us */}
     if (mounted) {
       setState(() {
         _id = id; _contacts = contacts; _groups = groups;
@@ -892,15 +915,44 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         _lastRead = lastRead; _flags = flags; _setStatuses(status); _drafts = drafts;
         _previews = previews;
         _enabledApps = enabled; _accountKind = kind; _customFilters = customFilters;
+        if (dbUnreadByConv.isNotEmpty || _unread.isEmpty) {
+          _unread
+            ..clear()
+            ..addAll(dbUnreadByConv);
+        }
         _booted = true; // loading done → safe to show the empty state if truly empty
         _authoritativeLoaded = true; // store data wins over the projection paint
       });
     } else {
+      if (dbUnreadByConv.isNotEmpty || _unread.isEmpty) {
+        _unread
+          ..clear()
+          ..addAll(dbUnreadByConv);
+      }
       _authoritativeLoaded = true;
     }
     // Rich load telemetry (email auto-stamped) so blank-list regressions are
     // visible in PostHog: how many contacts/previews we painted, whether the
     // scope was ready, and how many retries it took to get here.
+    // [UNREAD-DIVERGENCE-OBS-1] The chat list's `_unread` map and the launcher
+    // badge read from TWO DIFFERENT SOURCES: BadgeService queries SQLite
+    // (`Db.I.unreadByConv`), while `_unread` only counts socket frames this
+    // widget personally witnessed WHILE MOUNTED. Messages that land while the
+    // list isn't mounted are invisible to it forever — which is exactly the
+    // 2026-07-14 report: badge telemetry said chat_unread:16 / convs_with_unread:4
+    // while Amy's thread showed no highlight at all.
+    //
+    // Emitting BOTH numbers on the same row makes the divergence a one-query
+    // alert (`db_unread > 0 AND list_unread = 0`) instead of something only a
+    // human staring at two unrelated events can spot.
+    //
+    // [UNREAD-FROM-DB-1] `_unread` is now SEEDED from `dbUnreadByConv` above, so
+    // these two should agree from here on. The check is kept precisely BECAUSE
+    // they should agree: it is now a regression alarm rather than a diagnostic.
+    // Reuses the map read above — no second query.
+    final dbUnread = dbUnreadByConv.values.fold<int>(0, (a, b) => a + b);
+    final dbConvsWithUnread = dbUnreadByConv.values.where((v) => v > 0).length;
+    final listUnread = _unread.values.fold<int>(0, (a, b) => a + b);
     Analytics.capture('chat_list_loaded', {
       'contacts': contacts.length,
       'groups': groups.length,
@@ -908,6 +960,17 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       'scope_ready': _scopeReady,
       'retries': _emptyBootRetries,
       'scope': AccountScope.id ?? 'null',
+      // What the LIST will actually render.
+      'list_unread': listUnread,
+      'list_convs_with_unread': _unread.values.where((v) => v > 0).length,
+      // What the DB — and therefore the badge — believes.
+      'db_unread': dbUnread,
+      'db_convs_with_unread': dbConvsWithUnread,
+      // [UNREAD-FROM-DB-1] Post-fix this must always be false. Any true row is a
+      // regression: the list and the badge have drifted apart again.
+      'unread_source_diverged': dbUnread > 0 && listUnread == 0,
+      'unread_seeded_from_db': dbUnreadByConv.isNotEmpty,
+      'authoritative_loaded': _authoritativeLoaded,
     });
     // Refresh the shared snapshot so the next open (or a recreated screen) paints
     // instantly from memory.
@@ -1546,8 +1609,10 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                   ),
                 ),
                 const SizedBox(width: 6),
-                // AvaTOK wordmark (dark v2 header title).
-                Text('AvaTOK', style: ADText.appTitle()),
+                // AvaTalk wordmark (dark v2 header title).
+                // 2026-07-14 owner rename: 'AvaTOK' → 'AvaTalk', matching the
+                // shell root label. Display-only.
+                Text('AvaTalk', style: ADText.appTitle()),
                 const Spacer(),
                 // Status avatar — opens the status viewer; shows my latest photo
                 // status as a thumbnail (glows when I have a live status).
@@ -1822,6 +1887,10 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
 
   /// Avatar in a green glowing story ring — shown when the person has a live
   /// (unexpired) status. Tapping it opens the status viewer.
+  ///
+  /// [_glowRing] is the STATIC glow used on the header (my own status). For a
+  /// contact's row we use the ANIMATED [StatusRing] below (owner spec 2026-07-15:
+  /// "display a round animated circle around a users profile icon").
   Widget _glowRing(Widget avatar) => Container(
         padding: const EdgeInsets.all(2.5),
         decoration: BoxDecoration(
@@ -1835,10 +1904,19 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         child: avatar,
       );
 
-  void _openStatuses() {
-    Analytics.capture('messenger_status_opened', {'has_photo': _myStatusMedia != null});
-    Navigator.push(context,
-            MaterialPageRoute(builder: (_) => StatusScreen(identity: _id, contacts: _contacts)))
+  /// [STATUS-FANOUT-1] [focusAuthor] (a contact's uid) opens straight into that
+  /// person's status as full-screen playback — the ring-tap path from a chat row.
+  /// Null keeps the old behaviour: the status list, from the header button.
+  void _openStatuses({String? focusAuthor}) {
+    Analytics.capture('messenger_status_opened', {
+      'has_photo': _myStatusMedia != null,
+      'focused': focusAuthor != null,
+    });
+    Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (_) => StatusScreen(
+                    identity: _id, contacts: _contacts, focusAuthor: focusAuthor)))
         .then((_) => _statusStore.load().then((l) { if (mounted) setState(() => _setStatuses(l)); }));
   }
 
@@ -1952,19 +2030,36 @@ class _ChatRow extends StatelessWidget {
             Stack(children: [
               // White-bordered circle avatar (dark v2 sticker rim). Tapping the
               // photo opens the enlarged, screenshot-guarded viewer (not the chat).
-              GestureDetector(
-                onTap: () => showAvatarViewer(context,
-                    seed: chat.seed, name: chat.name,
-                    avatarUrl: chat.avatarUrl.isEmpty ? null : chat.avatarUrl),
-                child: Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AD.borderAvatar, width: 2),
-                  ),
-                  child: Avatar(seed: chat.seed, name: chat.name, size: 50,
-                      avatarUrl: chat.avatarUrl.isEmpty ? null : chat.avatarUrl),
-                ),
-              ),
+              // [STATUS-FANOUT-1] A contact with a live status gets the animated
+              // ring, and tapping the photo opens THEIR status instead of the
+              // enlarged-avatar viewer (owner spec 2026-07-15). Without a status
+              // the tap keeps its existing meaning.
+              Builder(builder: (_) {
+                final hasStatus = _hasStatus(chat.seed);
+                final avatar = Avatar(seed: chat.seed, name: chat.name, size: 50,
+                    avatarUrl: chat.avatarUrl.isEmpty ? null : chat.avatarUrl);
+                return GestureDetector(
+                  onTap: () {
+                    if (hasStatus) {
+                      Analytics.capture('status_ring_tapped', {'author': chat.seed});
+                      _openStatuses(focusAuthor: chat.seed);
+                    } else {
+                      showAvatarViewer(context,
+                          seed: chat.seed, name: chat.name,
+                          avatarUrl: chat.avatarUrl.isEmpty ? null : chat.avatarUrl);
+                    }
+                  },
+                  child: hasStatus
+                      ? StatusRing(size: 50, child: avatar)
+                      : Container(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(color: AD.borderAvatar, width: 2),
+                          ),
+                          child: avatar,
+                        ),
+                );
+              }),
               if (chat.online)
                 Positioned(
                   bottom: 1, right: 1,
