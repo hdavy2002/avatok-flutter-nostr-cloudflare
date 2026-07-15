@@ -36,6 +36,17 @@
 //
 // FREE on purpose: this is a safety/lock-out-prevention feature, so unlike the
 // premium R2 device-sync lane (routes/backup.ts) there is NO entitlement gate.
+//
+// DAILY (2026-07-15, owner: "we need an auto backup everyday and manual backup as
+// per users demand… it should run regardless of toggle"). The SERVER is unchanged
+// in shape — it can't pull a book, only receive one, since the device is the
+// source of truth. So "daily" is a CLIENT WorkManager job that POSTs here on its
+// own ~24h (app/lib/features/avadial/contacts_daily_backup.dart); the opt-in
+// switch was removed from the app in the same change. Server side that means two
+// things: writes now carry a `source` tag ('manual' | 'auto_sync' | 'daily_bg')
+// for telemetry, and `contactsDailyBackup` in routes/config.ts is the kill switch
+// those background jobs poll before uploading. Note the rate limit below (60
+// PUT/hour) already comfortably absorbs one extra write per user per day.
 import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, isFail } from "../authz";
@@ -294,6 +305,13 @@ export async function contactBookPut(req: Request, env: Env, ctx: ExecutionConte
   if (groups !== null && groups.length > 200) {
     return json({ error: "too many groups" }, 400);
   }
+  // [AVADIAL-BACKUP-DAILY] Which client surface produced this write: 'manual' (the
+  // user tapped Back up now), 'auto_sync' (an edit on the Contacts tab), or
+  // 'daily_bg' (the ~24h WorkManager job). Telemetry only — never trusted, never
+  // load-bearing, and clamped since it lands in PostHog. It matters because the
+  // daily job runs in a headless Flutter isolate where the client's own PostHog is
+  // inert, so THIS server event is the only evidence those runs happened at all.
+  const source = typeof body?.source === "string" ? body.source.slice(0, 24) : "unknown";
 
   const plaintext = JSON.stringify(contacts);
   if (enc.encode(plaintext).byteLength > MAX_BYTES) {
@@ -330,7 +348,7 @@ export async function contactBookPut(req: Request, env: Env, ctx: ExecutionConte
   const ms = Date.now() - t0;
   metric(env, "put", ctxUser.uid, contacts.length, ms);
   track(env, ctxUser.uid, "contacts_backup_stored",
-    { count: contacts.length, bytes: enc.encode(plaintext).byteLength, groups: groups?.length ?? -1, ms });
+    { count: contacts.length, bytes: enc.encode(plaintext).byteLength, groups: groups?.length ?? -1, source, ms });
   return json({ ok: true, count: contacts.length, groups: groups?.length ?? 0, updatedAt: now });
 }
 

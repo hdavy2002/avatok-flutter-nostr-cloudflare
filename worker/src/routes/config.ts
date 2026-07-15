@@ -346,6 +346,16 @@ export interface PlatformConfig {
   // from the response shape, so these flags are server-authoritative.
   contactsBookEnabled: boolean;
   contactsBookPaged: boolean;
+  // [AVADIAL-BACKUP-DAILY] Kill switch for the CLIENT's ~24h WorkManager
+  // background backup (app/lib/features/avadial/contacts_daily_backup.dart). The
+  // job re-reads this flag on every wake and does nothing when it's false, so a
+  // misbehaving daily lane (e.g. an upload storm from a bad build) can be stopped
+  // for the entire install base from KV WITHOUT shipping an APK — which matters
+  // precisely because these clients are un-updatable in the moment. Distinct from
+  // contactsBookEnabled, which 503s the ROUTES (and would take manual backup and
+  // restore down with them). Default ON: the whole point is that a user who never
+  // opens AvaTOK is still covered.
+  contactsDailyBackup: boolean;
   // §11/§15 money + timing constants — flag-overridable via KV so a value tweak
   // never needs a redeploy. These are VALUES, not design; see plan §11.
   minServiceRate: number;          // MIN_SERVICE_RATE — floor for a caller-paid rate/min (owner proposed 20)
@@ -536,6 +546,10 @@ const DEFAULTS: PlatformConfig = {
   // large books restore a page at a time. Panic-off via contactsBookEnabled=false.
   contactsBookEnabled: true,
   contactsBookPaged: true,
+  // [AVADIAL-BACKUP-DAILY] Daily background backup ON by default (owner decision
+  // 2026-07-15: backup is a default app behaviour, not an opt-in). Set false in KV
+  // to stop every client's daily job without a build.
+  contactsDailyBackup: true,
   // §11/§15 constants — flag-overridable values, not design. Defaults per plan.
   minServiceRate: 20,
   agentRateAPerMin: 6,

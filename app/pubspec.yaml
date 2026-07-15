@@ -190,6 +190,24 @@ dependencies:
   flutter_callkit_incoming: ^2.5.8
   # Read the device address book (name / emails / phones) to find & invite friends.
   flutter_contacts: ^1.1.9+2
+  # [AVADIAL-BACKUP-DAILY] OS-scheduled background work — the ~24h contact-book
+  # backup (features/avadial/contacts_daily_backup.dart). Owner decision
+  # 2026-07-15: contacts must be backed up even for a user who doesn't OPEN the
+  # app for a week, which an app-lifecycle check by definition can't do; only the
+  # OS can wake us. Wraps androidx.work.WorkManager. Adds NO runtime permission
+  # and NO new user prompt (its manifest bits are merged by the plugin). NATIVE —
+  # must be validated by a CI APK build (can't compile headless). Note WorkManager
+  # guarantees eventual, not punctual, execution and OEM battery savers can defer
+  # it further; the job is written to be idempotent + change-detected so a late or
+  # doubled run is a no-op.
+  #
+  # Pinned to 0.9.x, NOT the long-familiar 0.5.2: that release predates AGP 8's
+  # mandatory `namespace` and would fail this module's build outright (AGP 8.7 /
+  # Gradle 8.10.2 / compileSdk 36). 0.9.x is also federated (workmanager_android
+  # + workmanager_apple), and its API differs from 0.5.x — periodic work takes
+  # `ExistingPeriodicWorkPolicy` (not `ExistingWorkPolicy`) and `isInDebugMode` on
+  # initialize() is deprecated in favour of WorkmanagerDebug handlers.
+  workmanager: ^0.9.0+3
   # Native share sheet for the "invite a friend" message + download link.
   share_plus: ^10.1.2
   # Copy a chat IMAGE to the system clipboard (paste into any app) — Flutter's

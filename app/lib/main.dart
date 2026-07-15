@@ -37,6 +37,7 @@ import 'firebase_options.dart';
 import 'identity/identity.dart';
 import 'features/auth/sign_in_screen.dart';
 import 'features/auth/restore_screen.dart';
+import 'features/avadial/contacts_daily_backup.dart';
 import 'features/avatok/contacts.dart';
 import 'features/identity/liveness_v3/voice_packs.dart';
 import 'features/identity/public_action_gate.dart'; // [AVA-IDGATE-1] 403→consent flow
@@ -614,6 +615,14 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
         // AccountScope.id before it, so the per-account chat DB + read-state are
         // readable by the time this runs.
         unawaited(BadgeService.recompute(source: 'shell_entered'));
+        // [AVADIAL-BACKUP-DAILY] Register the OS-scheduled ~24h contact-book
+        // backup. Piggybacks on this chokepoint for the same reason the badge
+        // does: every path here has already set AccountScope.id, and the job's
+        // headless isolate needs the account id to have been persisted globally
+        // at least once. ExistingWorkPolicy.keep makes this idempotent — an
+        // already-queued job is left alone, so re-registering on every launch
+        // can't push its next run 24h out for an active user.
+        unawaited(scheduleDailyContactsBackup());
       }
     }
   }

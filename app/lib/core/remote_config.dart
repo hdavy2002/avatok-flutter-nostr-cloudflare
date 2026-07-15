@@ -309,6 +309,22 @@ class RemoteConfig {
   /// inert.
   static bool get avaSms => _b('avaSms', false);
 
+  /// [AVADIAL-BACKUP-DAILY] Client mirror of config.ts `contactsDailyBackup` —
+  /// the kill switch for the ~24h WorkManager contact-book backup
+  /// (features/avadial/contacts_daily_backup.dart), re-read on every wake.
+  ///
+  /// Defaults TRUE, unlike every other flag here. That is deliberate and it cuts
+  /// against the usual "fail dark" instinct: the daily job runs in a headless
+  /// isolate where a config fetch can fail for boring reasons (no network yet,
+  /// DNS still cold), and defaulting false would mean a flaky fetch silently
+  /// stops backing up the contacts of the exact users this feature exists for.
+  /// The failure modes are not symmetric — a redundant upload of an unchanged
+  /// book costs a round-trip the change-detector usually skips anyway; a skipped
+  /// backup costs someone their contacts. To truly stop the lane, set the KV flag
+  /// false: clients that CAN reach config (the only ones that can upload at all)
+  /// will honour it.
+  static bool get contactsDailyBackup => _b('contactsDailyBackup', true);
+
   /// AvaDial community spam shield (client mirror of config.ts `spamShield`).
   /// Gates community lookups/reports from the SMS + call surfaces; while false
   /// those degrade to local-only labels (the worker also 403s every /api/spam/*

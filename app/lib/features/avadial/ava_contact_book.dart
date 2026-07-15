@@ -154,12 +154,45 @@ class AvaContactBook {
       });
 
   /// Upload the local book to AvaTOK's servers (server-side encrypted). Returns
-  /// the count on success, or null on failure. Callers gate on user consent.
-  Future<int?> uploadBackup() async {
+  /// the count on success, or null on failure.
+  ///
+  /// [source] is echoed to the server and stamped onto BOTH the client and the
+  /// server-side PostHog event, so a backup can be attributed to the surface that
+  /// produced it: `manual` (the user tapped "Back up now"), `auto_sync` (an edit
+  /// on the Contacts tab), or `daily_bg` (the WorkManager daily job — which runs
+  /// in a headless isolate where client-side PostHog is inert, so the SERVER event
+  /// is the only place those runs are visible). See contacts_daily_backup.dart.
+  ///
+  /// ── NEVER UPLOADS AN EMPTY BOOK ───────────────────────────────────────────
+  /// The server is latest-wins, so POSTing `[]` DELETES a good backup of
+  /// thousands of contacts. The local book is `[]` for entirely routine reasons
+  /// that have nothing to do with the user having no contacts:
+  ///   • READ_CONTACTS denied/revoked → `DeviceContacts.load()` returns `const []`
+  ///     → `capture()` persists an empty book, and
+  ///   • a fresh install before the Contacts tab has ever loaded.
+  /// So empty means "we don't know", not "the user has none", and the only safe
+  /// reading of "we don't know" is to leave the server's copy alone. This guard
+  /// lives HERE, at the single chokepoint every caller funnels through, rather
+  /// than in each of them — [AVADIAL-BACKUP-DAILY] made autoSyncIfNeeded()
+  /// unconditional, and a guard sitting in only one caller would have quietly
+  /// become the exception instead of the rule. A user who truly has zero contacts
+  /// loses nothing by us declining to back up zero contacts; restore only ever
+  /// ADDS to a device, so an out-of-date backup is harmless where a destroyed one
+  /// is not. Returns 0 (not null) — declining to upload isn't a failure.
+  Future<int?> uploadBackup({String source = 'manual'}) async {
     final t0 = DateTime.now();
     final trace = TraceContext.mint();
     try {
       final contacts = await load();
+      if (contacts.isEmpty) {
+        AvaLog.I.log('avadial',
+            'contact book upload SKIPPED: local book empty (never overwrite the server copy)');
+        Analytics.capture('avadial_contact_backup_skipped_empty', {
+          'source': source,
+          'trace_id': trace,
+        });
+        return 0;
+      }
       final payload = contacts.map((e) => e.toJson()).toList();
       final groups = await ContactGroups.I.customGroups();
       // Signature MUST come from the same string exportJson() produces (contacts
@@ -171,6 +204,7 @@ class AvaContactBook {
       final resp = await ApiAuth.postJson(kContactBookUrl, {
         'contacts': payload,
         'groups': groups.map((g) => g.toJson()).toList(),
+        'source': source,
       }, timeout: const Duration(seconds: 30));
       final ms = DateTime.now().difference(t0).inMilliseconds;
       if (resp.statusCode == 200) {
@@ -182,6 +216,7 @@ class AvaContactBook {
           'groups': groups.length,
           'bytes': sigBody.length,
           'ms': ms,
+          'source': source,
           'trace_id': trace,
         });
         return contacts.length;
@@ -192,6 +227,7 @@ class AvaContactBook {
         'status': resp.statusCode,
         'count': contacts.length,
         'ms': ms,
+        'source': source,
         'trace_id': trace,
       });
       return null;
@@ -203,6 +239,7 @@ class AvaContactBook {
       Analytics.capture('avadial_contact_backup_failed', {
         'reason': 'exception',
         'ms': DateTime.now().difference(t0).inMilliseconds,
+        'source': source,
         'trace_id': trace,
       });
       return null;
@@ -212,22 +249,69 @@ class AvaContactBook {
   Timer? _debounce;
 
   /// Auto-backup hook — called after the contact book is (re)captured. When the
-  /// user has backup ON and the book has actually CHANGED since the last upload,
-  /// it uploads in the background, debounced so a burst of edits sends once.
+  /// book has actually CHANGED since the last upload it uploads in the background,
+  /// debounced so a burst of edits sends once.
+  ///
+  /// [AVADIAL-BACKUP-DAILY] No longer gated on the old opt-in switch (owner
+  /// decision 2026-07-15: backup is a default app behaviour, not a toggle —
+  /// users were switching it off and then losing their contacts). This is the
+  /// real-time lane; the ~24h WorkManager job in contacts_daily_backup.dart is
+  /// the floor for users who never open the Contacts tab.
   Future<void> autoSyncIfNeeded() async {
-    if (!await ContactBackupPrefs.I.enabled()) return;
     _debounce?.cancel();
     _debounce = Timer(const Duration(seconds: 4), _runAutoSync);
   }
 
   Future<void> _runAutoSync() async {
     try {
-      if (!await ContactBackupPrefs.I.enabled()) return;
       final body = await exportJson();
       if (_sig(body) == await ContactBackupPrefs.I.syncedSig()) return; // no change
-      await uploadBackup();
+      await uploadBackup(source: 'auto_sync');
     } catch (e) {
       AvaLog.I.log('avadial', 'contact book auto-sync failed: $e');
+    }
+  }
+
+  /// How stale a backup may get before the daily job re-uploads.
+  static const Duration kDailyInterval = Duration(hours: 24);
+
+  /// [AVADIAL-BACKUP-DAILY] The once-a-day upload, driven by the WorkManager job
+  /// (contacts_daily_backup.dart) and safe to call from anywhere — it decides for
+  /// itself whether anything is actually due. Returns true only when it uploaded.
+  ///
+  /// Three guards, in order of how badly each would hurt if it were missing:
+  ///
+  ///  1. **Empty book** — skip. [uploadBackup] enforces this for every caller (see
+  ///     its docs: an empty local book means "we don't know", and uploading `[]`
+  ///     to a latest-wins server destroys a real backup). Re-checked here purely
+  ///     to skip the pointless `exportJson()` work below.
+  ///  2. **Not due yet** — a successful upload inside the last [kDailyInterval].
+  ///  3. **Nothing changed** — same content signature as the last upload, so the
+  ///     round-trip would be pure waste. Cheap to re-check tomorrow.
+  Future<bool> dailyBackupIfDue({String source = 'daily_bg', bool force = false}) async {
+    try {
+      final contacts = await load();
+      if (contacts.isEmpty) {
+        AvaLog.I.log('avadial', 'daily backup skipped: local book empty (never overwrite)');
+        return false;
+      }
+
+      if (!force) {
+        final last = await ContactBackupPrefs.I.lastServerSync();
+        if (last != null && DateTime.now().difference(last) < kDailyInterval) return false;
+
+        final body = await exportJson();
+        if (_sig(body) == await ContactBackupPrefs.I.syncedSig()) {
+          AvaLog.I.log('avadial', 'daily backup skipped: book unchanged');
+          return false;
+        }
+      }
+
+      // > 0, not != null: uploadBackup returns 0 when it declines an empty book.
+      return (await uploadBackup(source: source) ?? 0) > 0;
+    } catch (e) {
+      AvaLog.I.log('avadial', 'daily backup failed: $e');
+      return false;
     }
   }
 
@@ -583,31 +667,33 @@ class _RestoreJob {
   const _RestoreJob({required this.offset, required this.restored, required this.total});
 }
 
-/// User consent + status for backing the contact book up to AvaTOK's servers
-/// (owner request 2026-07-13 — opt-in, "take permission to back up"). The actual
-/// server sync lands in Phase 2; Phase 1 records consent and the local snapshot so
-/// the switch is honest and the data is ready to upload.
+/// Status of the contact book's backup to AvaTOK's servers. All keys go through
+/// [DiskCache], which is account-scoped by `AccountScope.id` — so on a shared
+/// phone each account tracks its OWN last-backup time and signature.
+///
+/// [AVADIAL-BACKUP-DAILY 2026-07-15] This used to hold the user's opt-in CONSENT
+/// (`ava_contact_backup_enabled`, owner request 2026-07-13 — "take permission to
+/// back up"). The owner reversed that: backup is now a default app behaviour that
+/// runs regardless, because users were switching it off and then finding their
+/// contacts gone on a new device. The switch is gone from the UI and `enabled()`/
+/// `setEnabled()` are gone with it — a pref nothing reads is just a trap for the
+/// next reader. The stale `ava_contact_backup_enabled` file is harmlessly ignored
+/// (DiskCache reads return null for keys nobody asks for); it is deliberately NOT
+/// migrated, since an old `false` must not disable anything any more.
+///
+/// `markSnapshot`/`lastSnapshot` went the same way: `_kLastTs` was only ever
+/// written by the button and never read back — [lastServerSync] (the timestamp of
+/// a real, confirmed server write) is what the screen shows.
 class ContactBackupPrefs {
   ContactBackupPrefs._();
   static final ContactBackupPrefs I = ContactBackupPrefs._();
 
-  static const _kEnabled = 'ava_contact_backup_enabled';
-  static const _kLastTs = 'ava_contact_backup_last_ts';
   static const _kServerTs = 'ava_contact_backup_server_ts';
   static const _kSyncedSig = 'ava_contact_backup_sig';
-
-  Future<bool> enabled() async => (await DiskCache.read(_kEnabled)) == 'true';
 
   /// Content signature of the last successfully-uploaded book (change detection).
   Future<String> syncedSig() async => (await DiskCache.read(_kSyncedSig)) ?? '';
   Future<void> setSyncedSig(String sig) async => DiskCache.write(_kSyncedSig, sig);
-
-  Future<void> setEnabled(bool on) async {
-    await DiskCache.write(_kEnabled, on ? 'true' : 'false');
-  }
-
-  Future<DateTime?> lastSnapshot() async => _readTs(_kLastTs);
-  Future<void> markSnapshot() async => _writeNow(_kLastTs);
 
   /// Last successful upload to AvaTOK's servers.
   Future<DateTime?> lastServerSync() async => _readTs(_kServerTs);

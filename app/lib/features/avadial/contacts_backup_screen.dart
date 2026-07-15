@@ -8,13 +8,22 @@ import '../../core/ui/zine_widgets.dart';
 import 'ava_contact_book.dart';
 import 'avadial_theme.dart';
 
-/// "Contacts backup" screen (owner request 2026-07-13). Lets the user opt IN to
-/// backing their AvaTOK contact book up to AvaTOK's own servers — independent of
-/// Google/Gmail, so a lost account or SIM never loses their contacts.
+/// "Contacts backup" screen (owner request 2026-07-13). Shows the state of the
+/// user's AvaTOK contact-book backup — held on AvaTOK's own servers, independent
+/// of Google/Gmail, so a lost account or SIM never loses their contacts.
 ///
 /// Upload AND restore are LIVE (server-side encrypted, R2-backed). Restore runs as
 /// a resumable, batched, paginated job (see [AvaContactBook.restoreBackup]) with
 /// live progress, so restoring thousands of contacts never freezes the app.
+///
+/// [AVADIAL-BACKUP-DAILY 2026-07-15] The opt-in SWITCH IS GONE. Backup now runs
+/// automatically — a ~24h WorkManager job (contacts_daily_backup.dart) plus the
+/// change-triggered sync on the Contacts tab — regardless of any user setting
+/// (owner decision: people turned it off, then couldn't get their contacts back on
+/// a new device). Leaving a dead switch on screen would have told the user they
+/// controlled something they no longer control, so this screen now simply STATES
+/// what happens. Manual "Back up now" stays: automatic ≠ on demand, and a user
+/// about to wipe their phone wants a fresh backup this second, not tonight.
 class ContactsBackupScreen extends StatefulWidget {
   const ContactsBackupScreen({super.key});
 
@@ -23,7 +32,6 @@ class ContactsBackupScreen extends StatefulWidget {
 }
 
 class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
-  bool _enabled = false;
   int _count = 0;
   DateTime? _lastCloud;
   bool _loading = true;
@@ -40,7 +48,6 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
   }
 
   Future<void> _load() async {
-    final enabled = await ContactBackupPrefs.I.enabled();
     final count = await AvaContactBook.I.count();
     var lastCloud = await ContactBackupPrefs.I.lastServerSync();
     // Prefer the server's own timestamp when we can reach it (authoritative).
@@ -50,33 +57,32 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
     }
     if (!mounted) return;
     setState(() {
-      _enabled = enabled;
       _count = count;
       _lastCloud = lastCloud;
       _loading = false;
     });
   }
 
-  Future<void> _toggle(bool on) async {
-    setState(() => _enabled = on);
-    await ContactBackupPrefs.I.setEnabled(on);
-    Analytics.capture('avadial_contact_backup_toggled', {'enabled': on});
-    // Turning it on does an immediate first upload so the user is covered.
-    if (on) await _backupNow();
-  }
-
   Future<void> _backupNow() async {
     setState(() => _busy = true);
-    await ContactBackupPrefs.I.markSnapshot();
-    final n = await AvaContactBook.I.uploadBackup();
+    final n = await AvaContactBook.I.uploadBackup(source: 'manual');
     Analytics.capture('avadial_contact_backup_now', {'count': _count, 'ok': n != null});
     await _load();
     if (mounted) {
       setState(() => _busy = false);
+      // n == 0 means the upload was DECLINED, not that it backed up nothing:
+      // [AvaContactBook.uploadBackup] refuses to send an empty book because the
+      // server is latest-wins and `[]` would wipe a real backup. The honest thing
+      // to say is that there was nothing to send — never "Backed up 0 contacts",
+      // which reads as success and is the one message that would make a user with
+      // a revoked contacts permission stop worrying.
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(n != null
-              ? 'Backed up $n contacts to AvaTOK'
-              : "Couldn't back up — check your connection and try again")));
+          content: Text(n == null
+              ? "Couldn't back up — check your connection and try again"
+              : n == 0
+                  ? 'Nothing to back up yet — open Contacts first so AvaTOK can '
+                      'see your contact book'
+                  : 'Backed up $n contacts to AvaTOK')));
     }
   }
 
@@ -162,17 +168,13 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text('Back up to AvaTOK',
+                        Text('Backed up automatically',
                             style: ZineText.cardTitle(size: 15.5, color: AvaDialTheme.text)),
                         const SizedBox(height: 2),
-                        Text('Keep your contacts safe on AvaTOK — no Gmail needed.',
+                        Text('AvaTOK backs your contacts up every day, on its own — '
+                            'no Gmail needed, nothing to switch on.',
                             style: ZineText.sub(size: 12.5, color: AvaDialTheme.textSoft)),
                       ]),
-                    ),
-                    Switch(
-                      value: _enabled,
-                      activeColor: AD.iconSearch,
-                      onChanged: _toggle,
                     ),
                   ]),
                 ),
@@ -180,14 +182,13 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
                 _stat('Contacts in your AvaTOK book', '$_count'),
                 _stat('Last backed up to AvaTOK', _lastLabel()),
                 const SizedBox(height: 16),
-                if (_enabled)
-                  AdButton(
-                    label: 'Back up now',
-                    variant: AdButtonVariant.teal,
-                    trailingIcon: false,
-                    loading: _busy,
-                    onPressed: (_busy || _restoring) ? null : _backupNow,
-                  ),
+                AdButton(
+                  label: 'Back up now',
+                  variant: AdButtonVariant.teal,
+                  trailingIcon: false,
+                  loading: _busy,
+                  onPressed: (_busy || _restoring) ? null : _backupNow,
+                ),
                 const SizedBox(height: 10),
                 AdButton(
                   label: 'Restore from AvaTOK',
@@ -211,6 +212,9 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
                 const SizedBox(height: 20),
                 Text('HOW IT WORKS', style: ZineText.kicker(color: AvaDialTheme.textMute)),
                 const SizedBox(height: 8),
+                _bullet('AvaTOK backs your contacts up once a day by itself, and again '
+                    'whenever you change one. Tap Back up now if you want it done '
+                    'this second.'),
                 _bullet('Your AvaTOK contact book merges your phone contacts with the '
                     'extra details you add in AvaTOK (AvaTOK number, emails, LinkedIn).'),
                 _bullet('Backups are encrypted on AvaTOK\'s servers and restored with '
