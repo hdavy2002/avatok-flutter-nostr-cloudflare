@@ -1728,6 +1728,11 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                       muted: _flags['muted']!.contains(_keyOf(c)),
                       onTap: () => _openChat(c),
                       onLongPress: () => _chatRowFlags(c),
+                      // [STATUS-FANOUT-1] The state owns the live-status set and
+                      // the navigation; _ChatRow is a StatelessWidget and can't
+                      // reach either, so both are handed in here.
+                      hasStatus: _hasStatus(c.seed),
+                      onStatusTap: () => _openStatuses(focusAuthor: c.seed),
                     ),
                     ],
                   ),
@@ -2015,7 +2020,17 @@ class _ChatRow extends StatelessWidget {
   final VoidCallback? onLongPress;
   final bool pinned;
   final bool muted;
-  const _ChatRow({required this.chat, this.onTap, this.onLongPress, this.pinned = false, this.muted = false});
+  /// [STATUS-FANOUT-1] Whether this contact has a live status (drives the animated
+  /// ring), and what to do when the photo is tapped because of it.
+  ///
+  /// Passed IN rather than read here: _ChatRow is a StatelessWidget outside
+  /// _ChatListState, so it has no access to _hasStatus / _openStatuses — the state
+  /// owns the status set and the navigation.
+  final bool hasStatus;
+  final VoidCallback? onStatusTap;
+  const _ChatRow({required this.chat, this.onTap, this.onLongPress,
+      this.pinned = false, this.muted = false,
+      this.hasStatus = false, this.onStatusTap});
 
   @override
   Widget build(BuildContext context) {
@@ -2035,14 +2050,13 @@ class _ChatRow extends StatelessWidget {
               // enlarged-avatar viewer (owner spec 2026-07-15). Without a status
               // the tap keeps its existing meaning.
               Builder(builder: (_) {
-                final hasStatus = _hasStatus(chat.seed);
                 final avatar = Avatar(seed: chat.seed, name: chat.name, size: 50,
                     avatarUrl: chat.avatarUrl.isEmpty ? null : chat.avatarUrl);
                 return GestureDetector(
                   onTap: () {
-                    if (hasStatus) {
+                    if (hasStatus && onStatusTap != null) {
                       Analytics.capture('status_ring_tapped', {'author': chat.seed});
-                      _openStatuses(focusAuthor: chat.seed);
+                      onStatusTap!();
                     } else {
                       showAvatarViewer(context,
                           seed: chat.seed, name: chat.name,
