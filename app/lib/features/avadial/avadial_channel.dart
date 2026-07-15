@@ -503,6 +503,17 @@ class AvaDialChannel {
             a['avatok_number'] as String?,
           ));
           break;
+        case 'onCallDetails':
+          // [AVADIAL-CNAP-1] A network (CNAP) caller name arrived after ring
+          // start. The native screens already repainted; this is the live
+          // telemetry leg. NO name and NO raw number cross this boundary —
+          // presence only (the name is third-party PII, same rule as
+          // contact_name). Per-carrier coverage lives on the native
+          // call_completed row (`cnap_available` + `carrier`).
+          Analytics.capture('pstn_cnap_name_received', {
+            'late': true,
+          });
+          break;
       }
     } catch (e) {
       AvaLog.I.log('avadial', 'native event error: $e');

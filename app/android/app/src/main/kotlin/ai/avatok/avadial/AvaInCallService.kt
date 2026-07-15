@@ -391,13 +391,18 @@ class AvaInCallService : InCallService() {
         // below is a local read — no network, no engine — because the OS is holding a
         // ringing call and the Flutter side may not exist.
         val callerName = displayNameFor(number)
+        // [AVADIAL-CNAP-1] Network caller name (India CNAP), when the carrier already
+        // delivered it at add time. Often it lands LATER via onDetailsChanged.
+        val cnap = cnapNameOf(call)
         records[id] = CallRecord(localId = id, number = number, direction = direction).apply {
             contactName = callerName
             contactExists = callerName != null
+            cnapName = cnap
             spamScore = verdict?.score
             spamBucket = verdict?.bucket
             captureTelephony(this@AvaInCallService)
         }
+        if (cnap != null) noteAction(id, "cnap_name_at_add")
 
         AvaDialPlugin.emit(
             "onCallAdded",
@@ -405,12 +410,35 @@ class AvaInCallService : InCallService() {
                 "id" to id, "number" to number, "state" to stateName(call.state), "direction" to direction,
                 "spam_score" to verdict?.score, "spam_bucket" to verdict?.bucket,
                 "call_uuid" to records[id]?.uuid,
+                "cnap_name" to cnap,
             )
         )
         if (call.state == Call.STATE_RINGING || direction == "incoming") {
             incomingIds.add(id)
-            launchIncoming(id, number, verdict?.score, verdict?.bucket)
+            launchIncoming(id, number, verdict?.score, verdict?.bucket, cnap)
         }
+    }
+
+    /**
+     * [AVADIAL-CNAP-1] The network-provided caller name (India's CNAP rollout /
+     * classic CNAM elsewhere), or null. Delivered by the carrier inside the IMS/SIP
+     * signalling on VoLTE and surfaced by Telecom as `callerDisplayName`. Honoured
+     * ONLY when presentation is ALLOWED — RESTRICTED means the caller suppressed
+     * their identity (CLIR) and showing it anyway would leak what the network told
+     * us in confidence. A name equal to the raw number is carrier filler, not a
+     * name. Never throws: a malformed Details object must not take down ring flow.
+     */
+    private fun cnapNameOf(call: Call): String? = try {
+        val d = call.details ?: return null
+        val name = d.callerDisplayName?.trim()
+        when {
+            name.isNullOrEmpty() -> null
+            d.callerDisplayNamePresentation != android.telecom.TelecomManager.PRESENTATION_ALLOWED -> null
+            name == d.handle?.schemeSpecificPart -> null
+            else -> name
+        }
+    } catch (_: Throwable) {
+        null
     }
 
     override fun onCallRemoved(call: Call) {
@@ -441,7 +469,12 @@ class AvaInCallService : InCallService() {
         val wasIncoming = incomingIds.remove(id)
         val wasActive = sawActive.remove(id)
         if (wasIncoming && !wasActive) {
-            postMissedCallNotification(call.details?.handle?.schemeSpecificPart)
+            // [AVADIAL-CNAP-1] Missed-call notification names the caller via the
+            // CNAP name too — records[id] is still live here (removed just below).
+            postMissedCallNotification(
+                call.details?.handle?.schemeSpecificPart,
+                records[id]?.cnapName,
+            )
         }
 
         // [AVADIAL-CALL-INTEL-1] Close the record and flush it to the durable buffer.
@@ -513,6 +546,24 @@ class AvaInCallService : InCallService() {
             InCallActivity.onCallState(id, stateName(state))
             AvaDialPlugin.emit("onCallState", mapOf("id" to id, "state" to stateName(state)))
         }
+
+        // [AVADIAL-CNAP-1] The CNAP name routinely arrives AFTER onCallAdded — the
+        // IMS layer updates the call mid-ring once the terminating network delivers
+        // the name. Without this hook a name that missed the add window would never
+        // be shown at all, which on Indian carriers is the COMMON case, not the edge.
+        override fun onDetailsChanged(call: Call, details: Call.Details) {
+            val fresh = cnapNameOf(call) ?: return
+            val rec = records[id]
+            if (rec?.cnapName == fresh) return // no change — don't repaint
+            rec?.cnapName = fresh
+            noteAction(id, "cnap_name_late")
+            // Contact name still wins everywhere; only surfaces where the caller is
+            // otherwise a bare number pick this up.
+            if (rec?.contactName == null) {
+                IncomingCallActivity.onCnapName(id, fresh)
+            }
+            AvaDialPlugin.emit("onCallDetails", mapOf("id" to id, "cnap_name" to fresh))
+        }
     }
 
     /**
@@ -535,7 +586,9 @@ class AvaInCallService : InCallService() {
             val call = callMap[id]
             val number = call?.details?.handle?.schemeSpecificPart
             val rec = records[id]
-            val callerName = rec?.contactName ?: displayNameFor(number)
+            // [AVADIAL-CNAP-1] Precedence: the user's own contact label, then the
+            // network-verified CNAP name, then the bare number.
+            val callerName = rec?.contactName ?: displayNameFor(number) ?: rec?.cnapName
             val who = callerName ?: number ?: "Unknown number"
             val holding = call?.state == Call.STATE_HOLDING
 
@@ -647,7 +700,7 @@ class AvaInCallService : InCallService() {
      * name and number. Tapping it opens the app on the caller (avadial/openDial route,
      * same path the missed-call overlay uses). One notification per number.
      */
-    private fun postMissedCallNotification(number: String?) {
+    private fun postMissedCallNotification(number: String?, cnapName: String? = null) {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             nm.createNotificationChannel(
@@ -656,7 +709,8 @@ class AvaInCallService : InCallService() {
                 )
             )
         }
-        val name = displayNameFor(number)
+        // [AVADIAL-CNAP-1] Contact label > network CNAP name > number.
+        val name = displayNameFor(number) ?: cnapName
         val who = name ?: number ?: "Unknown number"
         val tapIntent = try {
             Intent(this, Class.forName("ai.avatok.avatok_call.MainActivity")).apply {
@@ -727,7 +781,13 @@ class AvaInCallService : InCallService() {
      * (the reliable path on OEMs with aggressive battery management — spike §7) that
      * relaunches [MainActivity] with a route extra the shell reads.
      */
-    private fun launchIncoming(id: String, number: String?, spamScore: Int? = null, spamBucket: String? = null) {
+    private fun launchIncoming(
+        id: String,
+        number: String?,
+        spamScore: Int? = null,
+        spamBucket: String? = null,
+        cnapName: String? = null,
+    ) {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
@@ -747,6 +807,9 @@ class AvaInCallService : InCallService() {
             putExtra("call_id", id)
             putExtra("number", number)
             if (callerName != null) putExtra("name", callerName)
+            // [AVADIAL-CNAP-1] Network caller name — the ring screen shows it (with a
+            // "network verified" kicker) when there is no local contact match.
+            if (cnapName != null) putExtra("cnap_name", cnapName)
             // [AVADIAL-HARDEN-3] Screening verdict → red spam paint on the native screen.
             if (spamScore != null) putExtra("spam_score", spamScore)
             if (spamBucket != null) putExtra("spam_bucket", spamBucket)
@@ -844,7 +907,8 @@ class AvaInCallService : InCallService() {
         builder
             .setSmallIcon(applicationInfo.icon)
             .setContentTitle("Incoming call")
-            .setContentText(callerName ?: number ?: "Unknown number")
+            // [AVADIAL-CNAP-1] Contact label > network CNAP name > number.
+            .setContentText(callerName ?: cnapName ?: number ?: "Unknown number")
             .setCategory(Notification.CATEGORY_CALL)
             .setOngoing(true)
             .setFullScreenIntent(pending, true)
@@ -858,8 +922,9 @@ class AvaInCallService : InCallService() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             // [AVADIAL-NAME-1] Show WHO is calling on the banner — contact name when
             // we have one, the number otherwise (owner bug 2026-07-14, pic 2).
+            // [AVADIAL-CNAP-1] The network CNAP name slots between the two.
             val caller = android.app.Person.Builder()
-                .setName(callerName ?: number ?: "Unknown number")
+                .setName(callerName ?: cnapName ?: number ?: "Unknown number")
                 .setImportant(true)
                 .build()
             builder.setStyle(

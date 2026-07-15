@@ -36,6 +36,14 @@ internal class CallRecord(
     var spamScore: Int? = null
     var spamBucket: String? = null
 
+    // [AVADIAL-CNAP-1] Network-provided caller name (India CNAP / carrier CNAM),
+    // read from Call.Details.callerDisplayName when presentation is ALLOWED. May
+    // land AFTER ring start (IMS updates the call mid-ring) — see the
+    // onDetailsChanged hook in AvaInCallService. Display precedence everywhere:
+    // contactName > cnapName > number. Like contactName, the NAME ITSELF never
+    // leaves the device in telemetry (third-party PII) — only cnap_available.
+    var cnapName: String? = null
+
     // Telephony context, captured once at ring time.
     var simSlot: Int? = null
     var carrier: String? = null
@@ -178,6 +186,11 @@ internal class CallRecord(
         // consented. Ship contact_exists; add the name only with a disclosure.
         put("spam_score", spamScore)
         put("spam_bucket", spamBucket)
+        // [AVADIAL-CNAP-1] Did the network deliver a CNAP name for this call?
+        // Boolean only — the name is third-party PII (same rule as contact_name
+        // above). This is the per-carrier CNAP coverage signal: segment by
+        // `carrier` to see which networks actually deliver names in the wild.
+        put("cnap_available", cnapName != null)
 
         put("sim_slot", simSlot)
         put("carrier", carrier)

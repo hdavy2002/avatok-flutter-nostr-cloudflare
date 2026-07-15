@@ -97,6 +97,22 @@ class IncomingCallActivity : Activity() {
             }
         }
 
+        /**
+         * [AVADIAL-CNAP-1] The network delivered the caller's CNAP name AFTER this
+         * screen launched (the common case on Indian VoLTE — the IMS layer updates
+         * the call mid-ring). Repaint the name + kicker live, but only when there is
+         * no local contact match: the user's own label always wins, and the spam
+         * paint is never overridden by a name. Also stashed onto the intent so the
+         * answer-timeout rebuild path ([recreateActions]) keeps the name.
+         */
+        fun onCnapName(callId: String, name: String) {
+            main.post {
+                val act = live ?: return@post
+                if (act.callId != callId || act.closed || act.answering) return@post
+                act.applyCnapName(name)
+            }
+        }
+
         /** Append a native action for the Dart side to drain into BlockList later. */
         internal fun stashPendingAction(ctx: Context, number: String, action: String) {
             try {
@@ -132,6 +148,9 @@ class IncomingCallActivity : Activity() {
     private var kickerView: TextView? = null
     private var avatarView: ImageView? = null
     private var pulseView: View? = null
+    // [AVADIAL-CNAP-1] Mutated live when a late CNAP name lands mid-ring.
+    private var nameView: TextView? = null
+    private var subtitleView: TextView? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -256,6 +275,29 @@ class IncomingCallActivity : Activity() {
         decline()
     }
 
+    /**
+     * [AVADIAL-CNAP-1] A late network name landed mid-ring. Guards (companion
+     * [onCnapName]) already ensured this call is live, un-answered, and the guard
+     * here keeps contact and spam paints untouched: only the anonymous-number case
+     * upgrades. Stashed on the intent so [recreateActions]' rebuild keeps it.
+     */
+    private fun applyCnapName(cnap: String) {
+        if (!intent.getStringExtra("name").isNullOrEmpty()) return // contact label wins
+        if (intent.hasExtra("spam_score")) {
+            val warn = AvaCallScreeningService.warnThresholdOf(this)
+            if (intent.getIntExtra("spam_score", 0) >= warn) return // spam paint wins
+        }
+        intent.putExtra("cnap_name", cnap)
+        nameView?.text = cnap
+        kickerView?.text = "✓ Network verified"
+        subtitleView?.let {
+            if (!number.isNullOrEmpty()) {
+                it.text = number
+                it.visibility = View.VISIBLE
+            }
+        }
+    }
+
     /** Open the SMS composer for this caller (quick reply instead of answering). */
     private fun message() {
         val n = number ?: return
@@ -336,6 +378,10 @@ class IncomingCallActivity : Activity() {
             !name.isNullOrEmpty() -> Bucket.CONTACT
             else -> Bucket.UNKNOWN
         }
+        // [AVADIAL-CNAP-1] Network caller name — display only (bucket stays UNKNOWN:
+        // a network name is identity, not trust, so the visuals keep the unknown
+        // blue and the Block/Report actions stay available).
+        val cnap = intent.getStringExtra("cnap_name")?.takeIf { bucket == Bucket.UNKNOWN }
         val accent = AvaCallTheme.c(
             when (bucket) {
                 Bucket.SPAM -> AvaCallTheme.DANGER
@@ -361,10 +407,13 @@ class IncomingCallActivity : Activity() {
 
         // Kicker
         kickerView = TextView(this).apply {
-            text = when (bucket) {
-                Bucket.SPAM -> "Suspected spam"
-                Bucket.CONTACT -> "Incoming call"
-                Bucket.UNKNOWN -> "Unknown number"
+            text = when {
+                bucket == Bucket.SPAM -> "Suspected spam"
+                bucket == Bucket.CONTACT -> "Incoming call"
+                // [AVADIAL-CNAP-1] The carrier vouches for this name (SIM-KYC
+                // sourced) — say so instead of "Unknown number".
+                cnap != null -> "✓ Network verified"
+                else -> "Unknown number"
             }
             textSize = 13f
             letterSpacing = 0.1f
@@ -377,21 +426,31 @@ class IncomingCallActivity : Activity() {
 
         root.addView(Space(this), LinearLayout.LayoutParams(1, dp(6)))
 
-        // Name (or number when no contact match)
-        root.addView(TextView(this).apply {
-            text = name ?: number ?: "Unknown"
+        // Name — contact label > network CNAP name > number ([AVADIAL-CNAP-1]).
+        nameView = TextView(this).apply {
+            text = name ?: cnap ?: number ?: "Unknown"
             textSize = 30f
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
             setTextColor(AvaCallTheme.c(AvaCallTheme.TEXT_PRIMARY))
-        })
-        if (!name.isNullOrEmpty() && !number.isNullOrEmpty()) {
+        }
+        root.addView(nameView)
+        subtitleView = if ((!name.isNullOrEmpty() || cnap != null) && !number.isNullOrEmpty()) {
             root.addView(Space(this), LinearLayout.LayoutParams(1, dp(4)))
-            root.addView(TextView(this).apply {
+            TextView(this).apply {
                 text = number
                 textSize = 15f
                 setTextColor(AvaCallTheme.c(AvaCallTheme.TEXT_SOFT))
-            })
+            }.also { root.addView(it) }
+        } else {
+            // Placeholder so a LATE CNAP name can add the number subtitle without
+            // rebuilding the layout — hidden until it has something to say.
+            TextView(this).apply {
+                text = number ?: ""
+                textSize = 15f
+                setTextColor(AvaCallTheme.c(AvaCallTheme.TEXT_SOFT))
+                visibility = View.GONE
+            }.also { root.addView(it) }
         }
 
         // Spam banner
@@ -589,10 +648,12 @@ class IncomingCallActivity : Activity() {
             !name.isNullOrEmpty() -> Bucket.CONTACT
             else -> Bucket.UNKNOWN
         }
-        kickerView?.text = when (bucket) {
-            Bucket.SPAM -> "Suspected spam"
-            Bucket.CONTACT -> "Incoming call"
-            Bucket.UNKNOWN -> "Unknown number"
+        kickerView?.text = when {
+            bucket == Bucket.SPAM -> "Suspected spam"
+            bucket == Bucket.CONTACT -> "Incoming call"
+            // [AVADIAL-CNAP-1] Keep the verified kicker across the rebuild.
+            intent.getStringExtra("cnap_name") != null -> "✓ Network verified"
+            else -> "Unknown number"
         }
         pulseView?.visibility = View.VISIBLE
         pulseView?.let { startPulse(it) }

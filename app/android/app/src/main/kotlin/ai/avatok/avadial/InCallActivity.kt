@@ -381,7 +381,10 @@ class InCallActivity : Activity() {
     private fun buildUi(): View {
         val id = callId
         val rec = id?.let { AvaInCallService.recordFor(it) }
-        val name = rec?.contactName
+        // [AVADIAL-CNAP-1] Contact label > network CNAP name > number. `known`
+        // (the green contact accent) stays contact-only — a network name is
+        // identity, not trust.
+        val name = rec?.contactName ?: rec?.cnapName
         val known = rec?.contactExists == true
         val accent = AvaCallTheme.c(
             if (known) AvaCallTheme.CONTACT_GREEN else AvaCallTheme.UNKNOWN_BLUE
