@@ -77,8 +77,53 @@ to deploy to prod. KV holds **overrides only**; `DEFAULTS` in
 underneath. Never re-materialize all flags into the blob (`{...DEFAULTS, ...current}`)
 — that pins stale values forever and makes one flag flip rewrite all ~76.
 
+**A flag the client reads but `config.ts` does not declare is a FAKE flag.** A
+client-side `_b('someFlag', true)` compiles and looks like a working kill switch,
+but `putConfig` rejects any key not in `DEFAULTS` (`unknown key`, 400) — so it can
+never be flipped, and the client's fallback is its permanent value. `inAppUpdateEnabled`
+shipped this way and was discovered on 2026-07-15: the documented brake on a feature
+that auto-installs updates without user consent could not actually be pulled. When
+you add a `RemoteConfig` getter, declare the key in the `PlatformConfig` interface
+**and** in `DEFAULTS` in the same change (numbers also need a `numericKeys` entry;
+booleans don't), then prove it: `ALLOW_PROD=1 scripts/flags.sh set <key>=false`
+must not 400, and the cache-busted `/api/config` must reflect it.
+
 Builds themselves are `workflow_dispatch` only and **you never trigger one unless
 the owner explicitly asks** (see the Git protocol section below).
+
+### Four ways flags and deploys will lie to you (learned the hard way 2026-07-15)
+
+**1. NEVER state an effective flag value from `config.ts`. Go and read prod.**
+`DEFAULTS` in `config.ts` is only the bottom layer; KV overrides sit on top. On
+2026-07-15 an agent read `avaSms: false` / `avaDialer: false` in DEFAULTS and told
+the owner his shipped dialer and SMS features were off and his Play permissions
+were unjustified — while prod KV had **both overridden to `true`** and real users
+on them. The advice that followed (strip the permissions) would have deleted live
+functionality. The DEFAULTS block tells you what happens when KV is silent; it
+tells you *nothing* about production. Before any claim about a live flag:
+
+```bash
+ALLOW_PROD=1 scripts/flags.sh get          # raw KV overrides
+curl -s -H 'Cache-Control: no-cache' "https://api.avatok.ai/api/config?cb=$RANDOM"
+```
+
+**2. `GET /api/config` is edge-cached for 60s — a plain curl will show you a stale
+value right after a KV write.** `getConfig` sets `cache-control: public, max-age=60`.
+Always cache-bust (`-H 'Cache-Control: no-cache'` **and** a random query param), or
+you will "confirm" a write that hasn't landed, or think one failed when it worked.
+
+**3. A worker deploy takes ~30–60s to reach every colo.** During that window probes
+flap between the old and new version — the same cache-busted URL will return the new
+value, then the old, then the new. That is propagation, **not** a failed deploy and
+not a gradual-deployment split (check `wrangler deployments list` — a normal deploy
+is one version at 100%). Wait a minute and re-probe several times before concluding
+anything. An agent burned a chunk of a session chasing a phantom rollback here.
+
+**4. COMMIT worker source BEFORE `cf.sh worker deploy`.** The tree is shared by
+several agents. On 2026-07-15 an agent deployed an uncommitted `config.ts` edit;
+another agent's deploy landed **49 seconds later** from a tree without that change
+and silently reverted it in production. Deploying uncommitted code means the next
+agent's deploy erases yours, and nothing records that it ever existed.
 
 ### Promotion to production is CODE + MIGRATIONS ONLY
 
