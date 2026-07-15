@@ -2154,11 +2154,32 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     // call tore down and video never rendered ("audio worked, no video came
     // through"). One dial in flight, and none while already on a call.
     if (_dialing || gLiveCallScreens > 0) {
-      Analytics.capture('call_dial_suppressed', {
-        'reason': _dialing ? 'already_dialing' : 'already_in_call',
-        'kind': kind,
-      });
-      return;
+      // [AVATOK-DIAL-GUARD-1] gLiveCallScreens has no staleness bound like its
+      // siblings gInCallSince/gOutgoingSince, so a leaked CallSession teardown
+      // sticks it >0 forever and every future dial silently no-ops (13
+      // suppressed call-back taps in the 2026-07-15 incident). Give it a
+      // chance to self-heal before trusting it — never touches `_dialing`,
+      // only `gLiveCallScreens` (see selfHealStaleLiveCallScreens in
+      // call_screen.dart; interim fix, Specs/FIXPLAN-2026-07-15-avadial-incoming-call-ui.md FIX 5).
+      if (!_dialing && gLiveCallScreens > 0 && selfHealStaleLiveCallScreens()) {
+        // Healed: the counter was stale and no session is genuinely live.
+        // Fall through and place the call normally instead of suppressing it.
+      } else {
+        final reason = _dialing ? 'already_dialing' : 'already_in_call';
+        Analytics.capture('call_dial_suppressed', {
+          'reason': reason,
+          'kind': kind,
+          'user_notified': reason == 'already_in_call',
+        });
+        // [AVATOK-DIAL-GUARD-1] Never silent: a suppressed dial used to be a
+        // dead call button with zero feedback. Tell the user so they have an
+        // escape hatch (force-close) if the guard is wrong.
+        if (reason == 'already_in_call' && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Already on a call — force-close the app if this is wrong')));
+        }
+        return;
+      }
     }
     // CALLFIX-14: glare detection — if an incoming call from the same peer is
     // currently ringing, accept it instead of dialing (resolves simultaneous dials).

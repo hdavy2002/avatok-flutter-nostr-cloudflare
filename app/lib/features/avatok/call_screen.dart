@@ -69,11 +69,53 @@ const int kMaxCallLifeMs = 2 * 60 * 60 * 1000; // 2 h ceiling
 /// hard kill resets it to 0, and every teardown path runs the single hangup.
 int gLiveCallScreens = 0;
 
+/// [AVATOK-DIAL-GUARD-1] Epoch-ms when [gLiveCallScreens] last went from 0 to
+/// >0 — the staleness anchor unlike its siblings [gInCallSince] (2h ceiling)
+/// and [gOutgoingSince] (60s ceiling) had until now. Zeroed the moment the
+/// counter returns to 0. If [CallSession._teardown] never runs (the exact bug
+/// behind the 13 suppressed call-back taps in the 2026-07-15 incident),
+/// [gLiveCallScreens] sticks >0 forever and every future dial from this device
+/// silently no-ops — see [selfHealStaleLiveCallScreens] below. Interim fix;
+/// Phase 2 replaces the raw counter with an explicit session state machine
+/// (Specs/FIXPLAN-2026-07-15-avadial-incoming-call-ui.md FIX 5).
+int gLiveCallScreensSince = 0;
+
 /// Ground truth for "the user is genuinely on a call right now", checked before
 /// auto-replying busy so a leftover [gInCall] flag can never silently block
 /// every future call. Backed by [gLiveCallScreens] (a real live-session count),
-/// NOT a time-windowed flag.
-bool callIsGenuinelyActive() => gLiveCallScreens > 0;
+/// NOT a time-windowed flag. [AVATOK-DIAL-GUARD-1]: self-heals a stale counter
+/// first, so a leaked teardown can't make this permanently return true either.
+bool callIsGenuinelyActive() {
+  selfHealStaleLiveCallScreens();
+  return gLiveCallScreens > 0;
+}
+
+/// [AVATOK-DIAL-GUARD-1] Interim self-heal for a stuck [gLiveCallScreens].
+/// Mirrors [gInCallSince]'s 2h ceiling ([kMaxCallLifeMs]): if the counter is
+/// >0, has been so for longer than that ceiling, AND [CallSessionManager]
+/// reports no genuinely live session (belt-and-suspenders so a real 2h+ call
+/// is never reset out from under itself), reset the counter and the paired
+/// [gInCall]/[gInCallSince] globals (mirrors what [CallSession._teardown]
+/// itself clears) and log `call_guard_self_healed`. Returns true if it healed
+/// — callers should then treat the device as not-in-call. Cheap/no-op when the
+/// counter is healthy, so it's safe to call from every guard read.
+bool selfHealStaleLiveCallScreens() {
+  if (gLiveCallScreens <= 0) return false;
+  if (gLiveCallScreensSince == 0) return false; // shouldn't happen, but never heal blind
+  final ageMs = DateTime.now().millisecondsSinceEpoch - gLiveCallScreensSince;
+  if (ageMs <= kMaxCallLifeMs) return false;
+  if (CallSessionManager.instance.current != null) return false; // genuinely live — leave it alone
+  final counterWas = gLiveCallScreens;
+  gLiveCallScreens = 0;
+  gLiveCallScreensSince = 0;
+  gInCall = false;
+  gInCallSince = 0;
+  Analytics.capture('call_guard_self_healed', {
+    'stale_ms': ageMs,
+    'counter_was': counterWas,
+  });
+  return true;
+}
 
 /// CALL-GLARE-1: our PENDING OUTGOING call, if any — the peer we're DIALING and
 /// its call_id, set when an outgoing dial is placed and CLEARED the moment that
@@ -110,6 +152,7 @@ Future<void> clearCallState() async {
   gActiveCallId = null;
   gInCallSince = 0;
   gLiveCallScreens = 0;
+  gLiveCallScreensSince = 0; // [AVATOK-DIAL-GUARD-1]
   gOutgoingCallTo = null;
   gOutgoingCallId = null;
   gOutgoingSince = 0;

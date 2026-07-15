@@ -675,6 +675,12 @@ class CallSession {
     // `_bootMedia()` (which connects) is awaited at the END of this method, so
     // doing it first here is sufficient and race-free.
     await _adoptStablePeerId();
+    // [AVATOK-DIAL-GUARD-1] Stamp the staleness anchor the instant the counter
+    // goes 0 -> >0 (not on every start(), since re-entry into an already-live
+    // session must not push the anchor forward and mask real staleness).
+    if (gLiveCallScreens == 0) {
+      gLiveCallScreensSince = DateTime.now().millisecondsSinceEpoch;
+    }
     gLiveCallScreens++;
     gInCall = true;
     gActiveCallId = config.room;
@@ -2699,6 +2705,9 @@ class CallSession {
     }
     _ended = true;
     if (gLiveCallScreens > 0) gLiveCallScreens--;
+    // [AVATOK-DIAL-GUARD-1] Clear the staleness anchor the instant the counter
+    // returns to 0, mirroring gInCallSince's own clear just below.
+    if (gLiveCallScreens == 0) gLiveCallScreensSince = 0;
     gInCall = gLiveCallScreens > 0;
     if (gActiveCallId == config.room) {
       gActiveCallId = null;
