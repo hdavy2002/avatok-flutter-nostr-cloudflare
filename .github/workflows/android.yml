@@ -317,7 +317,61 @@ jobs:
           # Play rejects a bundle whose versionCode it has already seen. CI's
           # $((10000 + run_number)) is strictly increasing, so this holds — but if
           # a re-run ever collides, bump the run number rather than editing this.
+          #
+          # A versionCode is burned APP-WIDE, not per track: once 10420 lands on
+          # internal, no track will ever accept it again. So a build goes to ONE
+          # track; putting the same code on closed testing later means a new run.
           changesNotSentForReview: false
+
+      # ── Close the loop: tell the running app a newer build exists ────────────
+      # [AVA-UPDATE-AUTO] Without this the release is on Play but every installed
+      # app still believes it is current, because UpdateService's fallback popup
+      # only fires when latestAppBuild > installedBuild. That KV value used to be
+      # bumped by hand and therefore wasn't: it sat at 28 for months while builds
+      # shipped at 10000+, so the "new version available" popup NEVER fired for
+      # anyone. Doing it here makes the release and the update signal atomic.
+      #
+      # INTERNAL TRACK ONLY, and that restriction is the whole point. Internal
+      # testing serves a release immediately, so "published" == "installable" and
+      # the bump is honest. Closed/open/production go through Google review first
+      # — bumping there would tell every device a build exists that they cannot
+      # download yet, which is a popup leading nowhere: precisely the dead end
+      # this feature was built to kill. For those tracks, bump by hand once the
+      # release is actually live:
+      #     ALLOW_PROD=1 scripts/flags.sh set latestAppBuild=<build>
+      #
+      # Reuses scripts/flags.sh rather than calling wrangler directly, so the CI
+      # write gets the same protections as a human one: KV holds OVERRIDES ONLY
+      # (it merges, never re-materializes the blob) and it refuses to write an
+      # empty/invalid config over live flags.
+      - name: Point the update check at this build (internal track only)
+        if: env.PLAY_TRACK == 'internal'
+        env:
+          # Prod is fail-closed behind ALLOW_PROD=1 to stop a human writing live
+          # flags by accident. Setting it here is deliberate, not a bypass: a prod
+          # run already passed the `production` Environment's required-reviewer
+          # gate, so the owner has explicitly approved this exact release.
+          ALLOW_PROD: '1'
+          AVATOK_TARGET: ${{ env.AVATOK_ENV }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          BUILD_NO=$((10000 + GITHUB_RUN_NUMBER))
+          echo "Pointing $AVATOK_ENV latestAppBuild at $BUILD_NO"
+          # cf.sh runs `npx wrangler`. Without worker/node_modules present, npx
+          # would silently fetch whatever wrangler is newest instead of the
+          # ^4.0.0 this repo pins — so install first and keep CI deterministic.
+          # Only runs on publishing builds, so it costs nothing on a normal one.
+          ( cd worker && npm ci --no-audit --no-fund --silent )
+          scripts/flags.sh set "latestAppBuild=$BUILD_NO"
+          # Prove it landed. /api/config is edge-cached for 60s, so a plain curl
+          # here would happily echo the OLD value and turn this check into a lie.
+          if [ "$AVATOK_ENV" = "prod" ]; then API=https://api.avatok.ai; else API=https://api-staging.avatok.ai; fi
+          sleep 5
+          GOT=$(curl -s -H 'Cache-Control: no-cache' "$API/api/config?cb=$RANDOM$$" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("latestAppBuild"))')
+          echo "live latestAppBuild = $GOT (expected $BUILD_NO)"
+          [ "$GOT" = "$BUILD_NO" ] || echo "::warning::latestAppBuild reads $GOT, expected $BUILD_NO — likely the 60s edge cache or colo propagation. Re-check with: curl -H 'Cache-Control: no-cache' \"$API/api/config?cb=\$RANDOM\""
 
       # Side-loadable APK, SPLIT PER ABI. A universal (fat) APK bundles every
       # native lib and grows to ~220MB, which Android's installer rejects as
