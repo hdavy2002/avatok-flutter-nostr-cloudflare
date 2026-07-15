@@ -11,19 +11,23 @@ import 'package:uuid/uuid.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../core/account_storage.dart';
+import '../core/active_thread.dart'; // [PUSH-FG-BANNER-1]
 import '../core/analytics.dart';
 import '../core/api_auth.dart';
 import '../core/ava_log.dart';
 import '../core/badge_service.dart';
 import '../core/call_log_store.dart';
 import '../core/calls/call_overlay.dart' show returnToActiveCall;
+import '../core/calls/call_room_id.dart' show CallRoomId; // [CALL-DEDUP-TTL-1]
 import '../core/calls/callkit_params.dart' show incomingCallAndroidParams;
 import '../core/calls/call_session_manager.dart';
+import '../core/calls/call_telemetry_events.dart' show CallEvents;
 import '../core/config.dart';
 import '../core/disk_cache.dart';
 import '../core/ice_cache.dart';
 import '../core/onboarding_store.dart';
 import '../core/remote_config.dart';
+import '../core/voice/native_voice_audio.dart';
 import '../features/avatok/call_screen.dart';
 import '../features/avatok/incoming_business_call_screen.dart';
 import '../sync/sync_hub.dart';
@@ -110,6 +114,29 @@ Future<void> _bgTrack(String event, Map<String, dynamic> props) async {
     if (list.length > 60) list.removeRange(0, list.length - 60); // cap the queue
     await DiskCache.writeGlobal(_kPendingBgTelemetry, jsonEncode(list));
   } catch (_) {/* best-effort; telemetry must never itself crash the handler */}
+}
+
+/// [CALL-RING-OBS-1] Isolate-agnostic capture.
+///
+/// `_showIncoming` is reached from BOTH the main isolate (WS ring, foreground
+/// FCM) and the FCM background isolate. `Analytics.capture` is a no-op-ish in
+/// the bg isolate (no PostHog client, no account scope), and `_bgTrack` in the
+/// main isolate would delay the event until the next foreground drain. Route to
+/// whichever is honest for the isolate we're actually on, so ring telemetry is
+/// never silently lost — which is exactly why "was the incoming screen shown?"
+/// was unanswerable during the 2026-07-14 missed-incoming-screen incident.
+/// NOTE: `Map<String, Object>`, not `Map<String, dynamic>` — [Analytics.capture]
+/// takes `Map<String, Object>?`, so a null VALUE here would blow up on the
+/// implicit generic downcast at runtime. Callers must use a sentinel
+/// ('unknown', -1) or a conditional entry rather than a null.
+Future<void> _track(String event, Map<String, Object> props) async {
+  if (BadgeService.inBackgroundIsolate) {
+    await _bgTrack(event, props);
+    return;
+  }
+  try {
+    await Analytics.capture(event, props);
+  } catch (_) {/* telemetry must never break the ring path */}
 }
 
 // --- Unread app-icon badge (red dot + count, WhatsApp-style) ----------------
@@ -279,7 +306,7 @@ Future<void> _handleBackgroundMessage(RemoteMessage message) async {
           PushService.reportRinging(callId, token);
         }
       }
-      await _showIncoming(d);
+      await _showIncoming(d, route: 'fcm_bg');
     }
     await _bgTrack('fcm_bg_handled', {'type': type});
   } catch (e, st) {
@@ -436,10 +463,20 @@ Future<void> _showMessageNotif(Map<String, dynamic> d) async {
     ),
     payload: 'chat',
   );
-  // Reachable from BOTH the bg isolate (firebaseBackgroundHandler) and the
-  // foreground path, so use _bgTrack — Analytics isn't available in the bg
-  // isolate; _bgTrack durably queues and the main isolate ships it to PostHog.
-  await _bgTrack('push_shown', {'channel': 'messages', 'type': 'message'});
+  // Reachable from BOTH the bg isolate (firebaseBackgroundHandler) and — since
+  // [PUSH-FG-BANNER-1] — the foreground path. `_track` routes per-isolate:
+  // `_bgTrack`'s durable queue in the bg isolate (no Analytics there), straight
+  // to PostHog in the main one.
+  await _track('push_shown', {
+    'channel': 'messages',
+    'type': 'message',
+    // [PUSH-FG-BANNER-1] Which isolate actually drew the banner. Before this
+    // fix, foreground messages drew NOTHING and `push_shown` could therefore
+    // only ever come from the bg isolate — so a `path:'foreground'` row is the
+    // direct proof that the silent-with-screen-off bug is fixed.
+    'path': BadgeService.inBackgroundIsolate ? 'background' : 'foreground',
+    'has_preview': (d['preview'] ?? d['body'] ?? '').toString().trim().isNotEmpty,
+  });
 }
 
 /// True when a type=='message' push is actually the receptionist's "Ava took a
@@ -579,8 +616,20 @@ Future<void> _handleNowFreeCallback(String? payload) async {
 
 /// Show the native full-screen incoming-call UI (CallKit / ConnectionService),
 /// which rings and wakes the screen even when locked or the app is killed.
-Future<void> _showIncoming(Map<String, dynamic> d) async {
-  if (d['type'] != 'call') { AvaLog.I.log('call', 'incoming skipped (type=${d['type']})'); return; }
+Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) async {
+  if (d['type'] != 'call') {
+    AvaLog.I.log('call', 'incoming skipped (type=${d['type']})');
+    // [CALL-RING-OBS-1] Even the skip is worth a row — a ring that never
+    // reaches CallKit because of a payload shape change is otherwise invisible.
+    await _track(CallEvents.callIncomingShown, {
+      'call_id': (d['callId'] ?? '').toString(),
+      'route': route,
+      'shown': false,
+      'skip_reason': 'wrong_type',
+      'payload_type': (d['type'] ?? '').toString(),
+    });
+    return;
+  }
   AvaLog.I.log('call', 'showing incoming-call UI callId=${d['callId']} kind=${d['kind']} from=${d['fromName']}');
   IceCache.prefetch(); // warm TURN creds while the phone is still ringing
   final params = CallKitParams(
@@ -604,7 +653,65 @@ Future<void> _showIncoming(Map<String, dynamic> d) async {
     android: incomingCallAndroidParams,
     ios: const IOSParams(handleType: 'generic', supportsVideo: true),
   );
-  await FlutterCallkitIncoming.showCallkitIncoming(params);
+  // [CALL-RING-OBS-1] The single most important missing row in the 2026-07-14
+  // incident: `call_incoming_shown` was DECLARED in call_telemetry_events.dart
+  // and never emitted anywhere, so "the phone rang but no call screen appeared"
+  // could not be confirmed, localised to a route, or attributed to FSI policy.
+  //
+  // What each field buys us:
+  //  · route           — 'ws' | 'fcm_bg' | 'fcm_fg'. The WS path wins the race
+  //                      for ONLINE-but-backgrounded callees by design, so if
+  //                      the screen only fails on route='ws' that is the answer.
+  //  · lifecycle       — Android only launches a full-screen intent instead of a
+  //                      heads-up banner in specific states; 'resumed' vs
+  //                      'paused' vs null (bg isolate) is the discriminator.
+  //  · fsi_granted     — measured AT RING TIME. `call_fsi_permission` is a
+  //                      once-per-app-start probe, which proves nothing about
+  //                      the moment that matters.
+  //  · shown           — did showCallkitIncoming actually return without error.
+  //  · latency_ms      — ring frame → CallKit handed the UI over.
+  bool fsiGranted = false;
+  try {
+    if (NativeVoiceAudio.isSupported) {
+      fsiGranted = await NativeVoiceAudio.instance.canUseFullScreenIntent();
+    }
+  } catch (_) {/* probe must never block the ring */}
+  // `WidgetsBinding.instance` throws if the binding isn't initialised, which is
+  // exactly the case in the FCM background isolate — read it defensively so ring
+  // telemetry can never be the thing that kills the ring.
+  // 'no_binding' (bg isolate) and 'none' (binding up, state not yet reported)
+  // are distinct and both meaningful — keep them as sentinels, not nulls.
+  String lifecycle = 'no_binding';
+  try {
+    lifecycle = WidgetsBinding.instance.lifecycleState?.name ?? 'none';
+  } catch (_) {/* bg isolate: no binding — keep the sentinel */}
+  final swShown = DateTime.now();
+  Object? showErr;
+  try {
+    await FlutterCallkitIncoming.showCallkitIncoming(params);
+  } catch (e) {
+    showErr = e;
+  }
+  await _track(CallEvents.callIncomingShown, {
+    'call_id': (d['callId'] ?? '').toString(),
+    'kind': (d['kind'] ?? 'audio').toString(),
+    'route': route,
+    'shown': showErr == null,
+    if (showErr != null) 'error': showErr.toString(),
+    'fsi_granted': fsiGranted,
+    'bg_isolate': BadgeService.inBackgroundIsolate,
+    'lifecycle': lifecycle,
+    // `AndroidParams.isShowFullLockedScreen` is `bool?` (every field on that
+    // plugin class is nullable), and `_track` takes Map<String, Object> — so the
+    // raw value would not compile. Coalesce to the plugin's own effective
+    // default when unset.
+    'locked_screen_param':
+        incomingCallAndroidParams.isShowFullLockedScreen ?? false,
+    'latency_ms': DateTime.now().difference(swShown).inMilliseconds,
+    'trace_id': (d['trace_id'] ?? '').toString(),
+  });
+  // Preserve the pre-instrumentation contract: a CallKit failure still throws.
+  if (showErr != null) throw showErr;
   // [DIALPAD-BIZ-CALLS] Named business-call screen (Accept · Decline · Send to
   // Ava AI Agent · Block) shown IN-APP, on top of the native CallKit ring, when
   // the app is foregrounded for a call that originated on the dialpad
@@ -696,7 +803,7 @@ class PushService {
     }
     gIncomingRingingFrom = fromPub;
     gIncomingRingingCallId = incomingId;
-    await _showIncoming(d);
+    await _showIncoming(d, route: 'ws');
   }
 
   // ── Incoming-call de-dup ────────────────────────────────────────────────────
@@ -725,42 +832,108 @@ class PushService {
   static String? _openedCallId;
   static int _openedAt = 0;
 
-  // CALLFIX-15: idempotent accept/start handling per call_id. In-memory set of
-  // recently-processed call_ids (both accept and start paths). Persisted in
-  // DiskCache with last ~20 for recovery after app restart.
-  static final Set<String> _processedCallIds = {};
-  static const int _maxTrackedIds = 20;
-  static const String _pKey = 'processed_call_ids';
+  // CALLFIX-15: idempotent accept/start handling per call_id. Recently-processed
+  // call ids (both accept and start paths), persisted in DiskCache so the
+  // cold-start `_recoverAcceptedCall` path stays idempotent across a restart.
+  //
+  // ── [CALL-DEDUP-TTL-1 2026-07-14] Why this is now a Map, not a Set ──────────
+  // This was `Set<String>`, persisted with NO TTL and only trimmed to the last
+  // 20 ids. An id that landed here was therefore suppressed FOREVER — until 20
+  // other calls happened to evict it.
+  //
+  // On its own that was survivable, because call ids were supposed to be unique
+  // per call. But `place_1to1_call.dart` (and Recents / dialpad / team inbox)
+  // minted `'avatok-<calleeUid>'` — a STABLE id per person. Combine the two and
+  // you get the 2026-07-14 prod bug: the FIRST dialer call to someone was
+  // handled and its id remembered permanently; the SECOND and every later call
+  // reused that same id, matched here, and was dropped before it ever rang.
+  // "She never heard a ring."
+  //
+  // Both halves are fixed — ids are unique now (core/calls/call_room_id.dart) —
+  // but this half is fixed INDEPENDENTLY and on purpose. A dedup cache with no
+  // TTL is a latent trap: it converts any future id-uniqueness regression into
+  // silent, permanent, un-debuggable call loss. With a TTL the worst case
+  // degrades to "duplicate rings for a while", which is noisy but visible.
+  //
+  // TTL is generous (6h) because its only job is de-duplicating the accept
+  // events of ONE live call (CallKit can deliver actionCallAccept twice; the
+  // cold-start recovery can re-enter minutes later). No real call outlives it,
+  // and an 8-hex-char id colliding after 6h is not a thing that happens.
+  //
+  // The `_v2` key bump is deliberate and doubles as the migration. The old
+  // `processed_call_ids` blob is a JSON List; this is a JSON Map, so they can't
+  // be parsed interchangeably — but more importantly, every device currently in
+  // the field has poisoned `avatok-user_…` entries in the old blob that are
+  // suppressing real calls RIGHT NOW. Reading the old key would faithfully
+  // restore that poison. Starting from a clean key drops it. The stale old blob
+  // is left on disk (a few hundred bytes, never read again).
+  static final Map<String, int> _processedCallIds = {};
+  static const int _maxTrackedIds = 50;
+  static const Duration _processedTtl = Duration(hours: 6);
+  static const String _pKey = 'processed_call_ids_v2';
   static bool _processedIdsLoaded = false;
+
+  /// Drop entries older than [_processedTtl]; keep the newest [_maxTrackedIds].
+  static void _pruneProcessedIds() {
+    final cutoff =
+        DateTime.now().millisecondsSinceEpoch - _processedTtl.inMilliseconds;
+    _processedCallIds.removeWhere((_, ts) => ts < cutoff);
+    if (_processedCallIds.length > _maxTrackedIds) {
+      // Evict OLDEST first. The old Set-based code trimmed by insertion order of
+      // an unordered Set, i.e. it evicted essentially at random.
+      final byAge = _processedCallIds.entries.toList()
+        ..sort((a, b) => a.value.compareTo(b.value));
+      for (final e in byAge.take(_processedCallIds.length - _maxTrackedIds)) {
+        _processedCallIds.remove(e.key);
+      }
+    }
+  }
 
   /// Check if a call_id was already processed (accept or start). Returns false
   /// if new, marks it as processed, and returns true on duplicates.
   static Future<bool> _isCallIdProcessed(String callId) async {
     if (callId.isEmpty) return false;
-    if (_processedCallIds.contains(callId)) return true;
-    // Load persisted list on first use
+    // Load persisted map on first use, BEFORE the membership check — the old
+    // code checked the in-memory set first, so a cold start could miss a
+    // persisted id on the very first query.
     if (!_processedIdsLoaded) {
+      _processedIdsLoaded = true;
       try {
-        final key = scopedKey(_pKey);
-        final raw = await DiskCache.read(key);
+        final raw = await DiskCache.read(scopedKey(_pKey));
         if (raw != null && raw.isNotEmpty) {
-          final list = (jsonDecode(raw) as List).cast<String>();
-          _processedCallIds.addAll(list);
+          final m = jsonDecode(raw) as Map<String, dynamic>;
+          m.forEach((k, v) {
+            final ts = v is int ? v : int.tryParse('$v');
+            if (ts != null) _processedCallIds[k] = ts;
+          });
         }
       } catch (_) {/* best-effort */}
-      _processedIdsLoaded = true;
     }
-    _processedCallIds.add(callId);
-    // Trim to last N entries
-    if (_processedCallIds.length > _maxTrackedIds) {
-      final sorted = _processedCallIds.toList();
-      _processedCallIds.clear();
-      _processedCallIds.addAll(sorted.skip(sorted.length - _maxTrackedIds));
+    _pruneProcessedIds();
+    final seenAt = _processedCallIds[callId];
+    if (seenAt != null) {
+      final ageMs = DateTime.now().millisecondsSinceEpoch - seenAt;
+      // [CALL-DEDUP-TTL-1] A suppression is only legitimate when it happens
+      // SECONDS after the original — that's a duplicate delivery of one call.
+      // A suppression minutes or hours later means we just silently killed what
+      // was almost certainly a real, separate call. Surface it loudly rather
+      // than letting it be invisible the way it was on 2026-07-14.
+      Analytics.capture('call_dedup_suppressed', {
+        'call_id': callId,
+        'age_ms': ageMs,
+        'call_id_shape': CallRoomId.isPerCallee(callId)
+            ? 'uid'
+            : (CallRoomId.isPerCall(callId) ? 'uuid' : 'other'),
+        // The alert condition: true = we probably dropped a genuine new call.
+        'suspicious': ageMs > 120000,
+        'tracked_ids': _processedCallIds.length,
+      });
+      return true;
     }
-    // Persist the list
+    _processedCallIds[callId] = DateTime.now().millisecondsSinceEpoch;
+    _pruneProcessedIds();
     try {
-      final key = scopedKey(_pKey);
-      await DiskCache.write(key, jsonEncode(_processedCallIds.toList()));
+      await DiskCache.write(scopedKey(_pKey), jsonEncode(_processedCallIds));
     } catch (_) {/* best-effort */}
     return false;
   }
@@ -1059,6 +1232,62 @@ class PushService {
         if (_isReceptionistPush(d)) {
           _showMissedCallNotif(d);
           Analytics.capture('push_shown', {'channel': 'calls', 'type': 'missed'});
+        } else {
+          // [PUSH-FG-BANNER-1 2026-07-14] Show a banner unless the user is
+          // DEMONSTRABLY looking at this exact thread.
+          //
+          // This branch used to do nothing but `syncFromPush()`, on the comment
+          // "App is open: the live InboxDO socket should already have it." The
+          // message did arrive — but the user was never TOLD. That is the
+          // 2026-07-14 report: "she replied while I was walking about with my
+          // screen off and I never heard any beep or ping."
+          //
+          // The bug is the word "foreground". FCM routes to `onMessage` whenever
+          // the app PROCESS is foreground, which is NOT the same as the user
+          // looking at the screen. All of these hit this path and got silence:
+          //   · screen off, phone in a pocket, AvaTalk still the top activity
+          //     ← the reported case
+          //   · user in AvaDialer / Marketplace / AvaBrain, not AvaTalk
+          //   · user in AvaTalk but reading a DIFFERENT thread
+          //
+          // Proof it was never a delivery problem: EVERY `push_fanout_result`
+          // (kind:notify) was followed by `fcm_fg_received` within ~300ms, and
+          // `push_shown` never fired even once. The push worked perfectly; the
+          // app simply chose not to tell anyone.
+          //
+          // Suppress ONLY when both hold:
+          //   1. lifecycle == resumed  → screen on AND app visible. `paused` /
+          //      `inactive` / `hidden` all mean the user cannot see us.
+          //   2. the push's `conv` matches the thread currently on screen. When
+          //      `conv` is absent (older senders, forwards, contact shares) we
+          //      fail SAFE and show the banner — a redundant banner is a far
+          //      smaller sin than a silent phone.
+          final lifecycle = WidgetsBinding.instance.lifecycleState;
+          final resumed = lifecycle == AppLifecycleState.resumed;
+          final conv = (d['conv'] ?? '').toString();
+          final onThisThread =
+              conv.isNotEmpty && conv == ActiveThread.convKey;
+          final suppress = resumed && onThisThread;
+          if (suppress) {
+            Analytics.capture('push_fg_banner_suppressed', {
+              'reason': 'thread_open',
+              'conv': conv,
+              'lifecycle': lifecycle?.name ?? 'unknown',
+            });
+          } else {
+            // ignore: unawaited_futures
+            _showMessageNotif(d);
+            Analytics.capture('push_fg_banner_shown', {
+              'lifecycle': lifecycle?.name ?? 'unknown',
+              'has_conv': conv.isNotEmpty,
+              'on_this_thread': onThisThread,
+              // Why we decided to ring. 'not_resumed' is the reported bug's
+              // signature: app "foreground" to FCM, invisible to the human.
+              'reason': !resumed
+                  ? 'not_resumed'
+                  : (conv.isEmpty ? 'no_conv_in_payload' : 'other_thread'),
+            });
+          }
         }
         // App is open: the live InboxDO socket should already have it. But the
         // socket may be half-open (mobile DNS) and lying. P13-B: the push PROVES
@@ -1201,10 +1430,10 @@ class PushService {
         // CALLFIX-14: track the ringing incoming call for glare detection
         gIncomingRingingFrom = (d['from'] ?? '').toString();
         gIncomingRingingCallId = incomingId;
-        _showIncoming(d);
+        _showIncoming(d, route: 'fcm_fg');
         return;
       }
-      _showIncoming(d);
+      _showIncoming(d, route: 'fcm_fg');
     });
     // The FCM token rotates (reinstall, restore, periodic refresh). Always
     // re-register the new one so the device never silently stops receiving
@@ -1254,13 +1483,27 @@ class PushService {
   }
 
   /// Best-effort: nudge recipients that a new message arrived (content-less).
-  static void notifyMessage(List<String> uids, String fromName, {String? preview}) {
+  ///
+  /// [conv] is the conversation key AS THE RECIPIENT SEES IT — NOT as the sender
+  /// does. Conv keys are device-relative: a DM thread is `'1:<theOtherPerson>'`,
+  /// so the recipient's key for this thread is `'1:<MY uid>'`, not `'1:<their
+  /// uid>'`. Groups are symmetric (`'g:<gid>'`), so either side computes the same
+  /// value. Get this backwards and the recipient's foreground handler simply
+  /// never matches, falling back to "always show a banner" — noisy, but never
+  /// silent. See [PUSH-FG-BANNER-1].
+  ///
+  /// Omit [conv] and the recipient shows a banner for every foreground message
+  /// in that push. That is the deliberate fail-safe direction.
+  static void notifyMessage(List<String> uids, String fromName,
+      {String? preview, String? conv}) {
     if (uids.isEmpty) return;
     final body = <String, dynamic>{'to': uids, 'fromName': fromName};
     final p = (preview ?? '').trim();
     // Include a short preview so the recipient can read the message from the
     // notification shade (WhatsApp-style). Capped server-side too.
     if (p.isNotEmpty) body['preview'] = p.length > 140 ? p.substring(0, 140) : p;
+    final c = (conv ?? '').trim();
+    if (c.isNotEmpty) body['conv'] = c;
     ApiAuth.postJson(kNotifyUrl, body).ignore();
   }
 
@@ -1484,7 +1727,16 @@ class PushService {
     try {
       final deviceId = await DeviceId.get();
       await ApiAuth.postJson(kAccountDeviceUrl, {'device_id': deviceId, 'active': active});
-      Analytics.capture('account_device_mapped', {'active': active});
+      // [PUSH-DEVICE-OBS-1] Emit `device_id` so this row JOINS against D1
+      // `account_devices` / `device_tokens` and against the consumer's
+      // `push_fanout_result`. Without it, `mapped_active_no_token:2` /
+      // `mapped_inactive:3` (2026-07-14 incident) is an unattributable number:
+      // we could see that N device rows had no token, but not WHICH device the
+      // live phone was — i.e. we could not prove the push went to a dead token.
+      Analytics.capture('account_device_mapped', {
+        'active': active,
+        'device_id': deviceId,
+      });
     } catch (e) {
       AvaLog.I.log('push', 'mapDevice(active=$active) failed: $e');
     }
@@ -1506,9 +1758,17 @@ class PushService {
     // failure (401/5xx). A non-200 here also means the device ends up with no
     // usable token row, so don't log it as "ok" — that masked the problem before.
     final ok = res.statusCode == 200;
+    // [PUSH-DEVICE-OBS-1] `device_id` + `token_prefix` are the join keys that
+    // let us ask "is the token the consumer actually sent to the one THIS live
+    // device registered?" — the question the 2026-07-14 silent-notification
+    // incident could not answer. token_prefix only (never the whole token):
+    // an FCM token is a sending credential and must not land in analytics.
+    final tokenPrefix = token.length >= 12 ? token.substring(0, 12) : token;
     Analytics.capture(ok ? 'push_register_ok' : 'push_register_failed', {
       'reason': ok ? 'registered' : 'http_error',
       'status': res.statusCode,
+      'device_id': deviceId,
+      'token_prefix': tokenPrefix,
     });
     // Additional, explicit "token registered" event (kept ALONGSIDE
     // push_register_ok, not replacing it) so a successful FCM-token registration
@@ -1517,6 +1777,8 @@ class PushService {
       Analytics.capture('push_token_registered', {
         'platform': 'fcm',
         'status': res.statusCode,
+        'device_id': deviceId,
+        'token_prefix': tokenPrefix,
       });
     }
   }

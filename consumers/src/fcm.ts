@@ -20,7 +20,11 @@ import { sendApns } from "./apns";
 // inactive account_devices mapping (account switched out on a shared phone), or
 // a rotated FCM token after an app reinstall. This report closes that gap.
 type TokenResolution = {
-  tokens: Array<{ platform: string; token: string; source: "device_join" | "legacy" }>;
+  // [PUSH-DEVICE-OBS-1] deviceId is present for "device_join" tokens and absent
+  // for "legacy" ones (push_tokens_v2 is uid-keyed and has no device column) —
+  // which is itself a useful signal: a legacy-sourced send is by definition
+  // un-attributable to a device.
+  tokens: Array<{ platform: string; token: string; source: "device_join" | "legacy"; deviceId?: string }>;
   deviceJoinCount: number;   // tokens from account_devices(active=1) ⨝ device_tokens
   legacyCount: number;       // tokens from push_tokens_v2 (only consulted when join = 0)
   mappedInactive: number;    // account_devices rows with active=0 (switched-out devices)
@@ -32,14 +36,21 @@ async function resolveTokens(env: Env, uid: string): Promise<TokenResolution> {
     tokens: [], deviceJoinCount: 0, legacyCount: 0, mappedInactive: 0, mappedActiveNoToken: 0,
   };
   try {
+    // [PUSH-DEVICE-OBS-1] Also select ad.device_id. It costs nothing (already in
+    // the join) and it is the ONLY way to answer "did we send to the device the
+    // user is actually holding?" — during the 2026-07-14 silent-notification
+    // incident this account had 6 device rows, 1 usable token, and a
+    // `delivered:1 / error:null` fanout, while the live phone got nothing.
+    // `delivered` is FCM ACCEPTANCE, never device receipt, so without device_id
+    // the success row and the total-failure reality are indistinguishable.
     const rs = await env.DB_META.prepare(
-      "SELECT dt.platform AS platform, dt.token AS token FROM account_devices ad " +
+      "SELECT dt.platform AS platform, dt.token AS token, ad.device_id AS device_id FROM account_devices ad " +
       "JOIN device_tokens dt ON dt.device_id=ad.device_id WHERE ad.account_id=?1 AND ad.active=1",
     ).bind(uid).all();
-    for (const r of (rs.results ?? []) as Array<{ platform: string; token: string }>) {
+    for (const r of (rs.results ?? []) as Array<{ platform: string; token: string; device_id: string }>) {
       if (r.token && !seen.has(r.token)) {
         seen.add(r.token);
-        out.tokens.push({ platform: r.platform, token: r.token, source: "device_join" });
+        out.tokens.push({ platform: r.platform, token: r.token, source: "device_join", deviceId: r.device_id });
       }
     }
     out.deviceJoinCount = out.tokens.length;
@@ -135,12 +146,25 @@ export async function handlePush(msg: PushMsg, env: Env): Promise<void> {
   // ring-ack tells the caller "unreachable" instead of ringing into the void.
   const tokensTried = tokens.length;
   let anyOk = false, firstMsgId = "", lastErr = "", delivered = 0, pruned = 0;
+  // [PUSH-DEVICE-OBS-1] Record WHICH devices/tokens we actually accepted a send
+  // for. Cross-referenced with the client's `push_token_registered.device_id` +
+  // `token_prefix`, this turns "delivered:1, live phone silent" from a theory
+  // into a one-query fact: if delivered_device_ids does not contain the live
+  // device's id, the push went somewhere else. Only 12-char token prefixes are
+  // emitted — a full FCM token is a sending credential, never analytics data.
+  const deliveredDeviceIds: string[] = [];
+  const deliveredTokenPrefixes: string[] = [];
   for (const t of tokens) {
     if (t.platform === "apns") { await sendApns(env, t.token, payload); continue; }
     // [CALL-TELEMETRY-1] Thread call_id + token source so push_token_pruned /
     // push_send_failed rows stitch to the call and name the store they came from.
     const r = await sendFcm(env, t.token, payload, uid, { callId: callId || null, source: t.source });
-    if (r.ok) { anyOk = true; delivered++; if (!firstMsgId && r.messageId) firstMsgId = r.messageId; }
+    if (r.ok) {
+      anyOk = true; delivered++;
+      if (!firstMsgId && r.messageId) firstMsgId = r.messageId;
+      deliveredDeviceIds.push(t.deviceId ?? "legacy_no_device");
+      deliveredTokenPrefixes.push(t.token.slice(0, 12));
+    }
     else {
       if (r.error) lastErr = r.error;
       if (r.pruned) pruned++;
@@ -154,6 +178,13 @@ export async function handlePush(msg: PushMsg, env: Env): Promise<void> {
     kind: msg.kind, call_id: callId || null, to_uid: uid,
     tokens_tried: tokensTried, delivered, pruned,
     ok: anyOk, error: anyOk ? null : (lastErr || "no_delivery"),
+    // [PUSH-DEVICE-OBS-1] join keys — see deliveredDeviceIds above.
+    delivered_device_ids: deliveredDeviceIds,
+    delivered_token_prefixes: deliveredTokenPrefixes,
+    // Restated explicitly: `delivered` counts FCM 200s, NOT device receipt.
+    // Pair with the client's `fcm_bg_received` / `push_shown` to measure the
+    // real gap. This label exists so nobody reads `delivered:1` as "user pinged".
+    delivered_semantics: "fcm_accepted_not_device_receipt",
     ...resolutionProps, // [CALL-TELEMETRY-1]
   });
   // [MULTIACCT-1] If we entered with tokens but NONE delivered AND every failure
@@ -318,6 +349,20 @@ function buildPayload(msg: PushMsg): { data: Record<string, string>; highPriorit
       // expandable banner so the message reads from the shade without opening.
       ...(msg.preview ? { preview: msg.preview } : {}),
       ...(isRecept ? { recept: "1" } : {}),
+      // [PUSH-FG-BANNER-1 2026-07-14] Forward the conversation key. `del`, `hide`
+      // and `group_invite` already carry `conv`; `notify` — the one kind that
+      // actually shows a banner — did not, purely by omission.
+      //
+      // The client's FOREGROUND handler needs it. It used to show NO banner for
+      // any foreground message, on the assumption "app is open ⇒ the user is
+      // looking at it". False: FCM calls a message "foreground" whenever the app
+      // PROCESS is foreground, which includes the phone being in a pocket with
+      // the screen off, and the user being on a different thread or a different
+      // app tab entirely. That is why the 2026-07-14 report — "she replied while
+      // I was walking with my screen off and I never heard a ping" — produced
+      // `fcm_fg_received` and no `push_shown`. With `conv` the client can
+      // suppress the banner ONLY for the exact thread being read.
+      ...(msg.conv ? { conv: String(msg.conv) } : {}),
     } };
   }
   if (msg.kind === "del") {
@@ -397,11 +442,46 @@ async function sendFcm(
     if (dead) {
       await env.DB_META.prepare("DELETE FROM push_tokens_v2 WHERE token=?1").bind(token).run();
       // [MULTIACCT-2] also drop the device-level row so the device-mapped join
-      // stops resolving this dead token for EVERY account on that device. Its
-      // account_devices mapping rows are left (harmless — they resolve to nothing
-      // until the device re-registers a fresh token). Best-effort: table may not
-      // exist pre-migration.
-      try { await env.DB_META.prepare("DELETE FROM device_tokens WHERE token=?1").bind(token).run(); } catch { /* pre-migration */ }
+      // stops resolving this dead token for EVERY account on that device.
+      //
+      // [DEVICE-ROW-GC-1 2026-07-14] …and now ALSO drop that device's
+      // account_devices mappings.
+      //
+      // The old comment claimed the leftover mappings were "harmless — they
+      // resolve to nothing". They are not harmless; they are exactly what
+      // manufactures `mapped_active_no_token`. This prune deleted device_tokens
+      // while leaving account_devices(active=1), i.e. it CREATED an active
+      // mapping with no token, by construction, every single time it ran. On
+      // 2026-07-14 the reporting account had accumulated 6 device rows —
+      // `mapped_active_no_token:2`, `mapped_inactive:3` — with exactly ONE
+      // usable token between them. `DeviceId` re-mints on every reinstall/data
+      // clear, so rows accrue forever and nothing ever collected them.
+      //
+      // Safe to delete: a device whose only token FCM just declared UNREGISTERED
+      // is unreachable by definition, so the mapping addresses nothing. If that
+      // device is still alive it re-registers on next launch (`_postToken` →
+      // /api/register writes both rows back). Worst case we cost one live device
+      // one push before it re-registers — versus permanently polluting every
+      // fan-out decision and every diagnostic for that account.
+      //
+      // Scoped by device_id (NOT by uid): the mapping is device-owned, so this
+      // correctly clears the dead device for every account on a shared phone,
+      // and touches no other device.
+      let mappingsDropped = -1;
+      try {
+        const row = await env.DB_META
+          .prepare("SELECT device_id FROM device_tokens WHERE token=?1")
+          .bind(token)
+          .first<{ device_id: string }>();
+        await env.DB_META.prepare("DELETE FROM device_tokens WHERE token=?1").bind(token).run();
+        if (row?.device_id) {
+          const r = await env.DB_META
+            .prepare("DELETE FROM account_devices WHERE device_id=?1")
+            .bind(row.device_id)
+            .run();
+          mappingsDropped = (r.meta?.changes as number | undefined) ?? -1;
+        }
+      } catch { /* pre-migration / table missing — never block delivery */ }
       console.warn("FCM: pruned dead token", token.slice(0, 12));
       // [MULTIACCT-1] carry account context so prune events are queryable per user.
       // [CALL-TELEMETRY-1] + call_id, token source, token prefix, and FCM's error
@@ -411,6 +491,10 @@ async function sendFcm(
         status: res.status, account_id: uid,
         call_id: ctx?.callId ?? null, token_source: ctx?.source ?? null,
         token_prefix: token.slice(0, 12), fcm_error: txt.slice(0, 180),
+        // [DEVICE-ROW-GC-1] How many account_devices rows this prune collected.
+        // Should trend to ~1. A persistent 0 means the GC isn't firing; a large
+        // number means a shared device is being cleared for many accounts.
+        mappings_dropped: mappingsDropped,
       });
       return { ok: false, error: `http_${res.status}`, pruned: true };
     } else {

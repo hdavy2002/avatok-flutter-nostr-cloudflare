@@ -24,6 +24,7 @@ import 'package:uuid/uuid.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../core/account_storage.dart';
+import '../../core/active_thread.dart'; // [PUSH-FG-BANNER-1]
 import '../../core/api_auth.dart';
 import '../../core/avatar_cache.dart';
 import '../../core/badge_service.dart'; // [ISSUE-BADGE-UNREAD-1]
@@ -395,6 +396,15 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   void _markRead() {
     final key = _convKey;
     if (key == null) return;
+    // [PUSH-FG-BANNER-1 2026-07-14] Claim this thread as the one on screen, so
+    // the foreground FCM handler suppresses the banner for THIS conversation and
+    // only this one. Hooked here rather than at each `_convKey = …` assignment
+    // because `_markRead` is already the single point every thread flavour (DM,
+    // group, tel/voicemail) reaches once its key is known, and it re-fires on
+    // every incoming message — so the claim self-heals if anything clears it.
+    // `ActiveThread` is only consulted together with `lifecycleState == resumed`,
+    // so a claim left standing while the screen is off cannot silence anything.
+    ActiveThread.enter(key);
     final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     // Local: drives unread badges on THIS device (instant).
     //
@@ -1647,6 +1657,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
 
   @override
   void dispose() {
+    // [PUSH-FG-BANNER-1] Release the on-screen-thread claim. Guarded by key
+    // inside `leave` — pushing thread B over A runs B's enter BEFORE A's dispose,
+    // so an unconditional clear here would wipe B's claim and B would then get
+    // banners for the thread the user is actually reading.
+    ActiveThread.leave(_convKey);
     _localAvaSub?.cancel();
     _avaStreamSub?.cancel();
     _safetySub?.cancel();              // F6: live safety_flag frames
@@ -2059,9 +2074,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         'has_reply': replyMeta != null, 'expiring': expire != null,
         'has_preview': preview != null,
       });
-      PushService.notifyMessage(_memberUids, _myName ?? 'AvaTOK', preview: t);
+      // [PUSH-FG-BANNER-1] Group conv keys are symmetric ('g:<gid>' — line 804),
+      // so my key is also every member's key.
+      PushService.notifyMessage(_memberUids, _myName ?? 'AvaTOK',
+          preview: t, conv: 'g:${_group!.id}');
     } else if (_peerNpub != null) {
-      PushService.notifyMessage([_peerNpub!], _myName ?? 'AvaTOK', preview: t);
+      // [PUSH-FG-BANNER-1] DM conv keys are device-RELATIVE ('1:<the other
+      // person>' — line 644). My key for this thread is '1:$_peerNpub', but the
+      // recipient's key for it is '1:<MY uid>'. Send theirs, not mine.
+      final meUid = _meId?.uid ?? '';
+      PushService.notifyMessage([_peerNpub!], _myName ?? 'AvaTOK',
+          preview: t, conv: meUid.isNotEmpty ? '1:$meUid' : null);
     }
     _schedulePersist();
   }
