@@ -499,16 +499,26 @@ export async function call(req: Request, env: Env): Promise<Response> {
 export async function notify(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
-  const b = (await req.json().catch(() => ({}))) as { to?: string[]; fromName?: string; preview?: string };
+  const b = (await req.json().catch(() => ({}))) as { to?: string[]; fromName?: string; preview?: string; conv?: string };
   if (!Array.isArray(b.to) || !b.to.length) return json({ error: "to[] required" }, 400);
   // Optional short message PREVIEW so the recipient's banner is readable straight
   // from the shade (WhatsApp-style). The sender's client holds the plaintext and
   // chooses what to reveal; we collapse whitespace and cap length. Omitted → the
   // privacy-safe content-less banner (just the sender name).
   const preview = String(b.preview ?? "").replace(/\s+/g, " ").trim().slice(0, 140);
+  // [PUSH-FG-BANNER-1 2026-07-14] Optional conversation key, forwarded to the
+  // recipient's device so its FOREGROUND handler can suppress the banner for the
+  // ONE thread they're actually reading — instead of suppressing every
+  // foreground message, which is what silenced a phone with the screen off.
+  //
+  // Privacy note: `conv` is the sender-derived thread key the recipient's device
+  // already knows ('1:<peerHex>' / 'g:<gid>'); it reveals nothing beyond who is
+  // messaging whom, which the push already implies via `to` + `fromName`.
+  // Capped defensively — it is echoed into an FCM data field.
+  const conv = String(b.conv ?? "").trim().slice(0, 80);
   let queued = 0;
   for (const uid of b.to.slice(0, 64)) {
-    await env.Q_PUSH.send({ kind: "notify", to: uid, fromName: (b.fromName || "AvaTOK").slice(0, 60), preview: preview || undefined, ts: Date.now() });
+    await env.Q_PUSH.send({ kind: "notify", to: uid, fromName: (b.fromName || "AvaTOK").slice(0, 60), preview: preview || undefined, conv: conv || undefined, ts: Date.now() });
     queued++;
   }
   return json({ sent: queued });
@@ -690,29 +700,71 @@ export async function profileUpsert(req: Request, env: Env): Promise<Response> {
   try { gateOn = (await readConfig(env)).profileCompletionGate === true; } catch { gateOn = false; }
   if (gateOn) {
     track(env, ctx.uid, "profile_vet_started", "profile", {});
+    // [ISSUE-PROFILE-GATE-1] (2026-07-15) Judge completeness on the RESULTING
+    // profile, NOT on this request body.
+    //
+    // Every field parsed above is `null` when its key is simply ABSENT from the
+    // request — these are PATCH semantics, and the upsert below COALESCEs each
+    // value onto the stored row. The gate used to test those same locals, so a
+    // PARTIAL publish (the launch publish sends only name/email/phone) reported
+    // all six fields missing and 400'd — even when the stored profile was
+    // complete. Telemetry 2026-07-12..15: every profile_publish_rejected on prod
+    // carried missing=[photo,first_name,last_name,birth_year,gender,about], for
+    // three testers who all have complete rows in D1. The gate was reading the
+    // envelope, not the letter. Merge first, then judge.
+    const prevRow = await db.prepare(
+      "SELECT avatar_url, first_name, last_name, birth_year, gender, bio FROM users WHERE uid=?1",
+    ).bind(ctx.uid).first<{
+      avatar_url: string | null; first_name: string | null; last_name: string | null;
+      birth_year: number | null; gender: string | null; bio: string | null;
+    }>().catch(() => null);
+    // Effective value = this request's value when the key was PROVIDED, else the
+    // stored one. `??` (not `||`) is deliberate: an explicit "" clears a field and
+    // must stay falsy here, exactly as COALESCE would persist it below.
+    const effAvatar = avatarUrl ?? prevRow?.avatar_url ?? null;
+    const effFirst = firstName ?? prevRow?.first_name ?? null;
+    const effLast = lastName ?? prevRow?.last_name ?? null;
+    const effBirth = birthYear ?? prevRow?.birth_year ?? null;
+    const effGender = gender ?? prevRow?.gender ?? null;
+    const effBio = bio ?? prevRow?.bio ?? null;
     // Completeness: photo, first, last, birth year, gender, About all required.
     const missing: string[] = [];
-    if (!avatarUrl) missing.push("photo");
-    if (!firstName) missing.push("first_name");
-    if (!lastName) missing.push("last_name");
-    if (!birthYear) missing.push("birth_year");
-    if (!gender) missing.push("gender");
-    if (!bio) missing.push("about");
+    if (!effAvatar) missing.push("photo");
+    if (!effFirst) missing.push("first_name");
+    if (!effLast) missing.push("last_name");
+    if (!effBirth) missing.push("birth_year");
+    if (!effGender) missing.push("gender");
+    if (!effBio) missing.push("about");
     if (missing.length) {
-      track(env, ctx.uid, "profile_vet_rejected", "profile", { reason_class: "incomplete", field: missing[0] });
+      track(env, ctx.uid, "profile_vet_rejected", "profile", {
+        reason_class: "incomplete", field: missing[0], missing_count: missing.length,
+        // Distinguishes a genuinely new/blank account from a partial patch onto a
+        // stored profile — the two were indistinguishable in the old telemetry.
+        had_stored_profile: prevRow ? 1 : 0,
+      });
       return json({ error: "profile_incomplete", missing, message: "Please complete every field (only your phone number is optional)." }, 400);
     }
     // Real-name plausibility (gemini-2.5-flash-lite). FAIL OPEN: if the model is
     // unavailable we log it but let the save through (never block a real user on an
     // AI outage / depleted key); we only reject when the model actively says the
     // name is implausible.
-    const nm = await vetRealName(env, firstName!, lastName!);
-    if (nm.unavailable) {
-      track(env, ctx.uid, "profile_vet_error", "profile", { stage: "realname_model" });
-    }
-    if (!nm.plausible) {
-      track(env, ctx.uid, "profile_vet_rejected", "profile", { reason_class: "realname", field: "first_name" });
-      return json({ error: "implausible_name", field: "first_name", message: nm.reason }, 400);
+    //
+    // Only vet a name that actually CHANGED. Vetting every publish would fire a
+    // Gemini call on every app launch (the launch publish re-sends the profile),
+    // and the old `vetRealName(firstName!, lastName!)` passed this request's nulls
+    // straight through — vetting the literal string "null null" and rejecting a
+    // perfectly good stored profile the moment the gate stopped short-circuiting.
+    const nameChanged = (firstName !== null && firstName !== (prevRow?.first_name ?? null))
+      || (lastName !== null && lastName !== (prevRow?.last_name ?? null));
+    if (nameChanged) {
+      const nm = await vetRealName(env, effFirst!, effLast!);
+      if (nm.unavailable) {
+        track(env, ctx.uid, "profile_vet_error", "profile", { stage: "realname_model" });
+      }
+      if (!nm.plausible) {
+        track(env, ctx.uid, "profile_vet_rejected", "profile", { reason_class: "realname", field: "first_name" });
+        return json({ error: "implausible_name", field: "first_name", message: nm.reason }, 400);
+      }
     }
     // Avatar nudity moderation (Rekognition DetectModerationLabels). Only run on a
     // NEW/changed photo (skip re-moderating an unchanged avatar on later saves) and
