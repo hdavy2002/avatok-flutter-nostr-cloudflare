@@ -44,12 +44,11 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
   int _backedUp = 0;
   bool _isSub = false;
 
-  /// [AVADIAL-BACKUP-RESTOREFIRST] True while automatic backup is deliberately
-  /// PAUSED because this device has a cloud backup it hasn't restored yet. The
-  /// screen must say this out loud: otherwise "Backed up automatically every day"
-  /// sits there next to a Last-backed-up date that never moves, and the user is
-  /// told they're safe while nothing is being saved.
-  bool _held = false;
+  /// [AVADIAL-BACKUP-MERGE] How many contacts are saved in the account right now,
+  /// per the server. Since backups MERGE, this can legitimately exceed the number on
+  /// this phone — e.g. contacts from an old handset that this one never had. Showing
+  /// it is the honest way to explain why "Replace" would lose something.
+  int _stored = 0;
   DateTime? _lastCloud;
   bool _loading = true;
   bool _busy = false;
@@ -74,7 +73,6 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
     // have established that it isn't.
     final isSub = (await AvaContactBook.I.backupRole()) == ContactBackupRole.sub;
     final backedUp = (await AvaContactBook.I.backupContacts()).length;
-    final held = !await AvaContactBook.I.autoUploadAllowed();
     // Prefer the server's own timestamp when we can reach it (authoritative).
     final status = await AvaContactBook.I.serverStatus();
     if (status != null && status.updatedAt > 0) {
@@ -85,70 +83,17 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
       _count = count;
       _backedUp = backedUp;
       _isSub = isSub;
-      _held = held;
+      _stored = status?.count ?? 0;
       _lastCloud = lastCloud;
       _loading = false;
     });
   }
 
+  /// [AVADIAL-BACKUP-MERGE] Plain manual backup. No warning, no confirmation, and
+  /// nothing to be careful about: the server MERGES, so this can only ever add. The
+  /// scary "Replace your backup?" dialog that used to guard this path moved to
+  /// [_replaceBackup], which is the only thing that can still remove anything.
   Future<void> _backupNow() async {
-    // [AVADIAL-BACKUP-RESTOREFIRST] Manual backup bypasses the automatic hold — the
-    // user is standing right here choosing. But on a device that has never synced,
-    // "Back up now" REPLACES a cloud backup they haven't restored yet: exactly the
-    // new-phone case where their old contacts are still only in the cloud. So say
-    // so, plainly, and offer the thing they almost certainly meant.
-    if (!await AvaContactBook.I.autoUploadAllowed()) {
-      final status = await AvaContactBook.I.serverStatus();
-      // Warn whenever we're held — INCLUDING when we couldn't read the status.
-      // Requiring `status != null` here would fail OPEN: a transient failure on
-      // this second call (serverStatus collapses timeouts, 503s and bad bodies all
-      // to null) would skip the warning and replace a real backup without a word.
-      // Being held already means a backup probably exists; not knowing its size is
-      // no reason to stay quiet about overwriting it.
-      if (mounted) {
-        final n = status?.count;
-        final go = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            backgroundColor: AvaDialTheme.surface2,
-            shape: RoundedRectangleBorder(
-              side: const BorderSide(color: AvaDialTheme.border, width: 1),
-              borderRadius: BorderRadius.circular(AD.rListCard),
-            ),
-            title: Text('Replace your backup?',
-                style: ZineText.cardTitle(size: 17, color: AvaDialTheme.text)),
-            content: Text(
-              // $_backedUp, not $_count: a sub only ever uploads their OWN
-              // contacts, so quoting the full local book would overstate what is
-              // about to be written — and understate what is about to be lost.
-              (n != null
-                      ? 'Your AvaTOK account has a backup of $n contacts that '
-                          "hasn't been restored to this phone yet."
-                      : "Your AvaTOK account has a backup that hasn't been restored "
-                          'to this phone yet.') +
-                  ' Backing up now replaces it with this phone\'s $_backedUp '
-                      'contacts, and the others will be lost.\n\n'
-                      'Restore first if you want to keep them.',
-              style: ZineText.sub(size: 13.5, color: AvaDialTheme.textSoft),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: Text('Cancel',
-                    style: ZineText.value(size: 14, color: AD.iconSearch)),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: Text('Replace',
-                    style: ZineText.value(size: 14, color: AD.danger)),
-              ),
-            ],
-          ),
-        );
-        if (go != true) return;
-      }
-    }
-    if (!mounted) return;
     setState(() => _busy = true);
     // Capture the role for the message below. Null = we couldn't reach the server
     // to establish who owns this phone's book, which is a DIFFERENT failure from
@@ -160,11 +105,12 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
     if (mounted) {
       setState(() => _busy = false);
       // n == 0 means the upload was DECLINED, not that it backed up nothing:
-      // [AvaContactBook.uploadBackup] refuses to send an empty book because the
-      // server is latest-wins and `[]` would wipe a real backup. The honest thing
-      // to say is that there was nothing to send — never "Backed up 0 contacts",
-      // which reads as success and is the one message that would make a user with
-      // a revoked contacts permission stop worrying.
+      // [AvaContactBook.uploadBackup] still refuses to SEND an empty book. That
+      // guard is now belt-and-braces rather than load-bearing (merge means an empty
+      // upload couldn't delete anything anyway), but sending nothing and reporting
+      // success would still be a lie. Never "Backed up 0 contacts" — that reads as
+      // success and is the one message that would make a user with a revoked
+      // contacts permission stop worrying.
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(n == null
               ? "Couldn't back up — check your connection and try again"
@@ -185,6 +131,66 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
                           : 'Nothing to back up yet — open Contacts first so '
                               'AvaTOK can see your contact book')
                   : 'Backed up $n contacts to AvaTOK')));
+    }
+  }
+
+  /// [AVADIAL-BACKUP-MERGE] The ONLY path that can remove anything from a backup.
+  ///
+  /// Merge means a backup can only grow — which is what the owner asked for, but it
+  /// has a sharp edge: be the first to sign in on a borrowed or work handset and
+  /// that phone's contacts merge into YOUR account permanently, with no way back.
+  /// This is the way back. It is deliberately not a headline action — it sits below
+  /// Restore, states exactly what will be lost, and defaults to Cancel.
+  Future<void> _replaceBackup() async {
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AvaDialTheme.surface2,
+        shape: RoundedRectangleBorder(
+          side: const BorderSide(color: AvaDialTheme.border, width: 1),
+          borderRadius: BorderRadius.circular(AD.rListCard),
+        ),
+        title: Text('Replace your backup?',
+            style: ZineText.cardTitle(size: 17, color: AvaDialTheme.text)),
+        content: Text(
+          // $_backedUp, not $_count: a sub only ever uploads their OWN contacts, so
+          // quoting the full local book would overstate what is about to be written
+          // — and understate what is about to be lost. `_stored` is 0 when the
+          // status call failed, so don't assert a number we don't have.
+          (_stored > 0
+                  ? 'Your AvaTOK account has $_stored contacts saved. This throws all '
+                      'of them away'
+                  : 'This throws away everything saved in your AvaTOK account') +
+              " and saves this phone's $_backedUp instead.\n\n"
+                  'Anything saved from another phone will be lost, and this cannot '
+                  'be undone. Normal backups only ever add — you never need this '
+                  'unless you want a clean start.',
+          style: ZineText.sub(size: 13.5, color: AvaDialTheme.textSoft),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel', style: ZineText.value(size: 14, color: AD.iconSearch)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Replace', style: ZineText.value(size: 14, color: AD.danger)),
+          ),
+        ],
+      ),
+    );
+    if (go != true || !mounted) return;
+    setState(() => _busy = true);
+    final n = await AvaContactBook.I.uploadBackup(source: 'manual_replace', replace: true);
+    Analytics.capture('avadial_contact_backup_replaced',
+        {'count': _backedUp, 'was': _stored, 'ok': n != null});
+    await _load();
+    if (mounted) {
+      setState(() => _busy = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(n == null || n == 0
+              ? "Couldn't replace your backup — try again"
+              : 'Your backup now holds $n contacts')));
     }
   }
 
@@ -270,20 +276,13 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(_held ? 'Restore first' : 'Backed up automatically',
+                        Text('Backed up automatically',
                             style: ZineText.cardTitle(size: 15.5, color: AvaDialTheme.text)),
                         const SizedBox(height: 2),
                         Text(
-                            _held
-                                // Never claim we're backing up while we're holding
-                                // off — that's the one message that would stop a
-                                // user restoring before their old contacts are
-                                // overwritten.
-                                ? 'You have contacts saved in AvaTOK that this phone '
-                                    "hasn't restored yet. Daily backup starts once "
-                                    'you restore, so nothing gets overwritten.'
-                                : 'AvaTOK backs your contacts up every day, on its own — '
-                                    'no Gmail needed, nothing to switch on.',
+                            'AvaTOK backs your contacts up every day, on its own — '
+                            'no Gmail needed, nothing to switch on. Backups only '
+                            'ever add, so nothing you saved is overwritten.',
                             style: ZineText.sub(size: 12.5, color: AvaDialTheme.textSoft)),
                       ]),
                     ),
@@ -292,6 +291,11 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
                 const SizedBox(height: 16),
                 _stat('Contacts in your AvaTOK book', '$_count'),
                 if (_isSub) _stat('Backed up under your account', '$_backedUp'),
+                // Since backups merge, the saved total can exceed what's on this
+                // phone (contacts from an old handset it never had). Only shown
+                // when it actually differs, so it explains itself rather than
+                // raising a question nobody asked.
+                if (_stored > _backedUp) _stat('Saved in your account', '$_stored'),
                 _stat('Last backed up to AvaTOK', _lastLabel()),
                 if (_isSub) ...[
                   const SizedBox(height: 12),
@@ -345,6 +349,9 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
                 _bullet('AvaTOK backs your contacts up once a day by itself, and again '
                     'whenever you change one. Tap Back up now if you want it done '
                     'this second.'),
+                _bullet('Backing up only ever ADDS. Your phone keeps its own copy, and '
+                    'your saved copy keeps everything it already had — so a backup '
+                    'from one phone can never wipe out another.'),
                 _bullet('Your AvaTOK contact book merges your phone contacts with the '
                     'extra details you add in AvaTOK (AvaTOK number, emails, LinkedIn).'),
                 _bullet('Backups are encrypted on AvaTOK\'s servers and restored with '
@@ -352,6 +359,24 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
                     'you out.'),
                 _bullet('On a new phone, sign in and tap Restore — AvaTOK rebuilds the '
                     'contacts that aren\'t already there. Nothing is ever duplicated.'),
+                // The escape hatch from merge-only: a backup can otherwise only
+                // grow, so someone who was first to sign in on a borrowed handset
+                // would carry its contacts forever. Kept plain text at the very
+                // bottom — findable when wanted, never mistaken for "Back up now".
+                // Always shown, never gated on `_stored > 0`: this is the ONLY way
+                // out of a backup that can't be merged into (a blob that won't
+                // decrypt → 409, or a merged book over the size cap → 413), and
+                // `_stored` reads 0 whenever the status call fails — i.e. the escape
+                // hatch would disappear in exactly the situations that need it.
+                // Harmless when there's no backup: it just writes one.
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: (_busy || _restoring) ? null : _replaceBackup,
+                  child: Text(
+                    "Replace my backup with this phone's contacts",
+                    style: ZineText.sub(size: 12.5, color: AvaDialTheme.textMute),
+                  ),
+                ),
               ],
             ),
     );
