@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../core/analytics.dart';
 import '../../core/remote_config.dart';
@@ -1155,22 +1158,74 @@ class _LogsTab extends StatefulWidget {
 class _LogsTabState extends State<_LogsTab> {
   late Future<(List<DeviceCall>, Map<String, ContactOverride>, Set<String>, Set<String>)> _future;
   String _query = '';
+  // [AVADIAL-LOG-LIVE-1] Live call-end subscriptions — see initState.
+  StreamSubscription<String>? _endedSub;
+  StreamSubscription<AvaCallEvent>? _stateSub;
+  // Coalesces the refresh: one hangup can raise BOTH 'disconnected' and
+  // 'onCallRemoved' (and 'disconnected' can repeat), which would otherwise stack
+  // several overlapping re-read passes for a single call.
+  bool _refreshingAfterCall = false;
 
   @override
   void initState() {
     super.initState();
     _future = _loadAll();
     avaDialRev.addListener(_onRev);
+    // [AVADIAL-LOG-LIVE-1] (owner report 2026-07-15, pic2 "call log does not
+    // update automatically, I have to pull to refresh")
+    //
+    // Nothing told this tab a call had happened. It lives inside an IndexedStack,
+    // so it is built ONCE and stays alive forever; `_future` was resolved in
+    // initState and then never re-run except by the user's pull-to-refresh. Hang
+    // up, walk back to Logs, and you were looking at a snapshot from whenever the
+    // tab first mounted.
+    //
+    // `onCallRemoved` fires the moment a PSTN call leaves the connection list, and
+    // `onCallState` -> 'disconnected' covers the paths that never produce a removal
+    // (rejected/failed dials). Either one means "the OS call log just gained a row".
+    _endedSub = AvaDialChannel.I.removedCalls.listen((_) => _refreshAfterCall('removed'));
+    _stateSub = AvaDialChannel.I.calls.listen((e) {
+      if (e.state == 'disconnected') _refreshAfterCall('disconnected');
+    });
   }
 
   @override
   void dispose() {
+    _endedSub?.cancel();
+    _stateSub?.cancel();
     avaDialRev.removeListener(_onRev);
     super.dispose();
   }
 
   void _onRev() {
     if (mounted) setState(() => _future = _loadAll());
+  }
+
+  /// [AVADIAL-LOG-LIVE-1] Re-read the OS call log once a call finishes.
+  ///
+  /// MUST be `force: true`: [DeviceCallLog] holds an in-memory cache and a plain
+  /// `load()` returns it verbatim, so a non-forced reload would rebuild the list
+  /// from the very snapshot we're trying to replace and change nothing on screen.
+  ///
+  /// The delay is not superstition. Android's CallLog provider is written by the
+  /// telephony stack ASYNCHRONOUSLY, shortly AFTER the call is torn down — query it
+  /// the instant `onCallRemoved` lands and the new row frequently isn't there yet,
+  /// which would leave the tab looking exactly as broken as before. We re-read
+  /// twice: once quickly for the common case, once ~1.2s later as the backstop.
+  /// Both are cheap content-resolver reads, and both are no-ops if nothing changed.
+  Future<void> _refreshAfterCall(String reason) async {
+    if (!mounted || _refreshingAfterCall) return;
+    _refreshingAfterCall = true;
+    try {
+      for (final wait in const [Duration(milliseconds: 350), Duration(milliseconds: 1200)]) {
+        await Future<void>.delayed(wait);
+        if (!mounted) return;
+        setState(() => _future = _loadAll(force: true));
+      }
+      Analytics.capture('avadial_calllog_auto_refresh', {'reason': reason});
+    } finally {
+      _refreshingAfterCall = false;
+    }
   }
 
   Future<(List<DeviceCall>, Map<String, ContactOverride>, Set<String>, Set<String>)> _loadAll({bool force = false}) async {
@@ -1219,6 +1274,54 @@ class _LogsTabState extends State<_LogsTab> {
     await HiddenCallLog.I.hideAll(logs.map((e) => HiddenCallLog.keyFor(e.number, e.date)));
     Analytics.capture('avadial_call_history_cleared', {'count': logs.length});
     _reload();
+  }
+
+  /// [AVADIAL-LOG-EXPORT-1] Write the visible call log to a .txt and hand it to
+  /// the OS share sheet (Files, Gmail, WhatsApp, Drive — the user's choice).
+  ///
+  /// Uses the SAME display name the row renders (override first, then the OS
+  /// cached name), so the file reads like the screen it came from.
+  Future<void> _exportLogs(
+      List<DeviceCall> logs, Map<String, ContactOverride> overrides) async {
+    try {
+      final b = StringBuffer()
+        ..writeln('AvaTOK call log')
+        ..writeln('Exported ${_stamp(DateTime.now())}')
+        ..writeln('${logs.length} call${logs.length == 1 ? '' : 's'}')
+        ..writeln();
+      for (final e in logs) {
+        final name = overrides[DeviceContacts.normKey(e.number)]?.displayName ??
+            e.cachedName;
+        final who = (name == null || name.trim().isEmpty) ? e.number : '$name (${e.number})';
+        final dur = e.duration.inSeconds > 0 ? ' · ${_dur(e.duration)}' : '';
+        b.writeln('${_stamp(e.date)} · ${e.type.name}$dur · $who');
+      }
+      final dir = await getTemporaryDirectory();
+      final f = File('${dir.path}/avatok_call_log.txt');
+      await f.writeAsString(b.toString(), flush: true);
+      await Share.shareXFiles([XFile(f.path, mimeType: 'text/plain')],
+          subject: 'AvaTOK call log');
+      Analytics.capture('avadial_calllog_exported', {'count': logs.length});
+    } catch (e) {
+      if (!mounted) return;
+      // Export is user-initiated, so a silent failure would just look broken.
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Couldn't export the call log.")),
+      );
+      Analytics.capture('avadial_calllog_export_failed', {'error': e.toString()});
+    }
+  }
+
+  /// Local, unambiguous timestamp for the export file — deliberately not the
+  /// relative "15/7 10:58" the list shows, which is useless in a saved document.
+  static String _stamp(DateTime d) {
+    String p(int v) => v.toString().padLeft(2, '0');
+    return '${d.year}-${p(d.month)}-${p(d.day)} ${p(d.hour)}:${p(d.minute)}';
+  }
+
+  static String _dur(Duration d) {
+    final m = d.inMinutes, s = d.inSeconds % 60;
+    return m > 0 ? '${m}m ${s}s' : '${s}s';
   }
 
   IconData _iconFor(DeviceCallType t) => switch (t) {
@@ -1299,6 +1402,22 @@ class _LogsTabState extends State<_LogsTab> {
                         Text('${visible.length} call${visible.length == 1 ? '' : 's'}',
                             style: ADText.statCaption(c: AvaDialTheme.textMute)),
                         const Spacer(),
+                        // [AVADIAL-LOG-EXPORT-1] (owner request 2026-07-15) Export
+                        // the log as a plain .txt and hand it to the OS share sheet
+                        // — the user picks Files / Gmail / WhatsApp / anything.
+                        // Deliberately client-side: unlike the chat export there's
+                        // no media and no size to speak of, so a backend queue and
+                        // an email round-trip would be pure overhead.
+                        //
+                        // Exports `visible`, matching "Clear history" — with a
+                        // search active, both act on exactly the rows on screen.
+                        TextButton.icon(
+                          onPressed: () => _exportLogs(visible, overrides),
+                          icon: PhosphorIcon(PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold),
+                              color: AvaDialTheme.accent, size: 17),
+                          label: Text('Export',
+                              style: ADText.rowName(c: AvaDialTheme.accent)),
+                        ),
                         TextButton.icon(
                           onPressed: () => _clearHistory(visible),
                           icon: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.bold),
