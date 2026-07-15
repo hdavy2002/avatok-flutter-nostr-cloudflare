@@ -19,7 +19,9 @@ class AppOrderScreen extends StatelessWidget {
 
   static const Map<RootId, (IconData, String, String, Color)> _meta = {
     RootId.avaDial: (Icons.phone, 'AvaDialer', 'Phone, spam shield & device contacts', AD.iconSearch),
-    RootId.avaTalk: (Icons.chat_bubble, 'AvaTOK', 'Messages & in-network calls', AD.online),
+    // 2026-07-14 owner rename: 'AvaTOK' → 'AvaTalk' (display-only; RootId.key
+    // stays 'avatalk'). Mirror of shell/v2/app_switcher_bar.dart `_meta`.
+    RootId.avaTalk: (Icons.chat_bubble, 'AvaTalk', 'Messages & in-network calls', AD.online),
     RootId.services: (Icons.storefront, 'Marketplace', 'Browse & wallet', AD.danger),
   };
 
@@ -57,7 +59,7 @@ class AppOrderScreen extends StatelessWidget {
           child: Align(
             alignment: Alignment.centerLeft,
             child: Text(
-              'Drag to reorder your apps. The first app opens automatically when you launch AvaTOK.',
+              'Drag to reorder your apps. The first app opens automatically when you launch AvaTalk.',
               style: ADText.preview(),
             ),
           ),

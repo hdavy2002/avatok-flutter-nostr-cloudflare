@@ -153,7 +153,9 @@ class ShellSidebar extends StatelessWidget {
               Padding(
                   padding: const EdgeInsets.fromLTRB(6, 6, 6, 8),
                   child: Text('APPS', style: ADText.sectionLabel(c: AD.textTertiary))),
-              appRow(RootId.avaTalk, 'AvaTOK', 'Messages & in-network calls',
+              // 2026-07-14 owner rename: 'AvaTOK' → 'AvaTalk' (display-only;
+              // RootId.key stays 'avatalk'). Mirror of app_switcher_bar `_meta`.
+              appRow(RootId.avaTalk, 'AvaTalk', 'Messages & in-network calls',
                   PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), AD.online),
               appRow(RootId.avaDial, 'AvaDialer', 'Phone, spam shield & device contacts',
                   PhosphorIcons.phone(PhosphorIconsStyle.bold), AD.iconSearch),
@@ -162,7 +164,10 @@ class ShellSidebar extends StatelessWidget {
               _SidebarRow(
                 icon: PhosphorIcons.sparkle(PhosphorIconsStyle.bold),
                 color: AD.iconVideo,
-                title: 'Ask Ava',
+                // 2026-07-14 owner rename: 'Ask Ava' → 'AvaBrain', matching the
+                // fixed AI action label in app_switcher_bar. Display-only — the
+                // analytics key stays `askava`.
+                title: 'AvaBrain',
                 subtitle: 'Universal assistant',
                 onTap: () {
                   Navigator.of(context).maybePop();

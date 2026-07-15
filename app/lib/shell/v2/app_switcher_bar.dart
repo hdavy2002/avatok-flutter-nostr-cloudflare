@@ -68,11 +68,18 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
     SmsUnreadStore.I.start();
   }
 
-  // icon · selectedIcon · label per root (2026-07-12 rebrand: AvaDial → "Calls",
-  // AvaTalk → "AvaTOK", Services → "Marketplace"; Home root retired).
+  // icon · selectedIcon · label per root.
+  // 2026-07-12 rebrand: AvaDial → "Calls", AvaTalk → "AvaTOK", Services →
+  // "Marketplace"; Home root retired.
+  // 2026-07-14 rebrand (owner): AvaTalk label "AvaTOK" → "AvaTalk", and the
+  // fixed AI action "Ava" → "AvaBrain". AvaDialer + Marketplace unchanged.
+  // These are DISPLAY-ONLY — `RootId.key` ('avatalk'/'avadial'/'services') still
+  // drives analytics, persisted order and restoration IDs, so the rename is safe.
+  // NOTE: this map is duplicated in shell/v2/app_order_screen.dart and
+  // shell/v2/shell_chrome.dart — all three must be kept in sync.
   static const Map<RootId, (IconData, IconData, String)> _meta = {
     RootId.avaDial: (Icons.phone_outlined, Icons.phone, 'AvaDialer'),
-    RootId.avaTalk: (Icons.chat_bubble_outline, Icons.chat_bubble, 'AvaTOK'),
+    RootId.avaTalk: (Icons.chat_bubble_outline, Icons.chat_bubble, 'AvaTalk'),
     RootId.services: (Icons.storefront_outlined, Icons.storefront, 'Marketplace'),
   };
 
@@ -107,7 +114,7 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
             children: [
               for (var i = 0; i < widget.order.length; i++)
                 Expanded(child: _draggableSlot(i)),
-              // FIXED "Ava" action — far right, not draggable / not a drop target.
+              // FIXED "AvaBrain" action — far right, not draggable / not a drop target.
               Expanded(child: _aiSlot()),
             ],
           ),
@@ -176,7 +183,9 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
       child: _labelledIcon(
         icon: Icons.auto_awesome_outlined,
         selectedIcon: Icons.auto_awesome,
-        label: 'Ava',
+        // 2026-07-14 owner rename: "Ava" → "AvaBrain". Display-only; the
+        // analytics key stays `askava` (see shell_v2.dart:410,424).
+        label: 'AvaBrain',
         selected: widget.askAvaActive,
       ),
     );
@@ -184,20 +193,15 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
 
   Widget _rootItem(RootId root, {required bool selected}) {
     final m = _meta[root]!;
-    // [AVA-SMS-BADGE-1] AvaDialer carries the unread-SMS count in RED (owner
-    // spec 2026-07-14) so "you have a message" is visible from every app.
-    if (root == RootId.avaDial) {
-      return ValueListenableBuilder<int>(
-        valueListenable: SmsUnreadStore.I.total,
-        builder: (_, n, __) => _labelledIcon(
-          icon: m.$1,
-          selectedIcon: m.$2,
-          label: m.$3,
-          selected: selected,
-          badge: n,
-        ),
-      );
-    }
+    // [AVADIAL-BADGE-OFF-1] (owner request 2026-07-15, pic6 "remove the numbers
+    // in the avadial icon") The AvaDialer icon USED to carry the unread-SMS count
+    // in red (AVA-SMS-BADGE-1, 2026-07-14). It pinned "99+" permanently — the
+    // count is dominated by bulk/spam SMS, so it never dropped and stopped meaning
+    // anything. Removed from the nav bar ONLY.
+    //
+    // SmsUnreadStore stays running (started in initState): the OS app-icon badge
+    // (core/badge_service.dart) and the Messages tab chip inside AvaDialer
+    // (shell/v2/avadial_root.dart) both still read it. Do not delete the store.
     return _labelledIcon(
       icon: m.$1,
       selectedIcon: m.$2,
