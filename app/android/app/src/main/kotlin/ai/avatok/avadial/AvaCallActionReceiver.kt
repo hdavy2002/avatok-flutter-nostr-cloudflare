@@ -36,19 +36,17 @@ class AvaCallActionReceiver : BroadcastReceiver() {
 
             when (action) {
                 "answer" -> {
-                    // [AVADIAL-NATIVE-INCALL-1] Prefer the native in-call screen when the
-                    // flag is on — same handoff IncomingCallActivity makes, and the same
-                    // reason: answering from the notification should not cold-boot the
-                    // whole Flutter app to draw four buttons over native functions.
-                    // Fail-closed to the Flutter path on any doubt.
-                    if (callId != null && AvaDialPlugin.nativeInCallEnabled(context)) {
-                        try {
-                            context.startActivity(InCallActivity.intentFor(context, callId, number))
-                            return
-                        } catch (_: Throwable) { /* fall through to Flutter below */ }
-                    }
-                    // Bring the in-call UI up the same way AvaInCallService.launchIncoming
-                    // does, in case Flutter/MainActivity isn't already on screen.
+                    // [AVADIAL-INCALL-ANSWER-1] With the native in-call flag ON, the
+                    // notification's Answer action is now an ACTIVITY PendingIntent
+                    // straight to InCallActivity (see AvaInCallService.launchIncoming) —
+                    // SystemUI launches it directly, so this receiver is never reached
+                    // for that tap at all, and InCallActivity.onCreate is the one that
+                    // calls answer() (after validating the call is still ringing).
+                    // What follows is the flag-OFF fallback only: the call was already
+                    // answered above via AvaInCallService.action(callId, action, null),
+                    // and we bring up the legacy Flutter in-call UI the same way
+                    // AvaInCallService.launchIncoming does, in case Flutter/MainActivity
+                    // isn't already on screen.
                     // [AVADIAL-HARDEN-2] "answered" tells the Dart side the call was already
                     // answered from this notification action — so it lands on the ACTIVE
                     // call UI instead of the ringing screen (which would be stuck: the call

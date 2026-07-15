@@ -66,16 +66,21 @@ class InCallActivity : Activity() {
     companion object {
         private const val EXTRA_CALL_ID = "call_id"
         private const val EXTRA_NUMBER = "number"
+        // [AVADIAL-INCALL-ANSWER-1] Set only on the notification Answer PendingIntent
+        // (see AvaInCallService.launchIncoming) — tells onCreate this launch IS the
+        // user's answer tap, so it must validate + answer BEFORE inflating any view.
+        private const val EXTRA_ANSWER = "answer"
 
         @Volatile
         private var live: InCallActivity? = null
         private val main = Handler(Looper.getMainLooper())
 
-        fun intentFor(ctx: Context, callId: String, number: String?): Intent =
+        fun intentFor(ctx: Context, callId: String, number: String?, answer: Boolean = false): Intent =
             Intent(ctx, InCallActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 putExtra(EXTRA_CALL_ID, callId)
                 putExtra(EXTRA_NUMBER, number)
+                if (answer) putExtra(EXTRA_ANSWER, true)
             }
 
         /** The call ended (either side hung up) — tear the screen down. */
@@ -158,6 +163,35 @@ class InCallActivity : Activity() {
             return
         }
 
+        // [AVADIAL-INCALL-ANSWER-1] This launch IS the notification Answer tap — the
+        // PendingIntent is now an activity intent (SystemUI-launched), so we own
+        // firing answer(), not AvaCallActionReceiver. Validate BEFORE touching
+        // Telecom: the tap happened in the past (however briefly) and the call may
+        // have been hung up or answered elsewhere in the gap. Never blind-answer.
+        if (intent.getBooleanExtra(EXTRA_ANSWER, false)) {
+            when (val callState = AvaInCallService.stateOf(id)) {
+                null, "unknown" -> {
+                    // Call gone — do not answer. No transient UI; the service's own
+                    // onCallRemoved cleanup (notification cancel, etc.) already
+                    // covers teardown.
+                    finishQuiet()
+                    return
+                }
+                "ringing" -> {
+                    // Valid and still ringing — this tap IS the answer. Fire it
+                    // before any view inflation so a slow/crashing inflate can never
+                    // leave the call unanswered; the service-owned notification
+                    // (Fix 2) covers the call either way once it's live.
+                    AvaInCallService.action(id, "answer", null)
+                }
+                else -> {
+                    // Already active — answered elsewhere (Flutter, Bluetooth,
+                    // another surface) between tap and launch. Do not re-answer;
+                    // fall through and attach as a viewer rendering live state.
+                }
+            }
+        }
+
         state = AvaInCallService.stateOf(id) ?: "active"
         held = state == "holding"
         muted = AvaInCallService.isMuted()
@@ -165,6 +199,10 @@ class InCallActivity : Activity() {
         startedAtMs = AvaInCallService.recordFor(id)?.activeAt ?: System.currentTimeMillis()
 
         setContentView(buildUi())
+        // [AVADIAL-INCALL-ANSWER-1] uiReady handshake (Fix 4) — the honest signal
+        // that a screen actually rendered, not just that we asked Android to show
+        // one. Fired on every launch path, not just answer.
+        AvaInCallService.uiReady(id)
         startTimer()
     }
 
@@ -190,6 +228,9 @@ class InCallActivity : Activity() {
         keypadOpen = false
         startedAtMs = AvaInCallService.recordFor(id)?.activeAt ?: System.currentTimeMillis()
         setContentView(buildUi())
+        // [AVADIAL-INCALL-ANSWER-1] Same handshake as onCreate — this is a launch
+        // path too (call waiting reusing the singleTop instance).
+        AvaInCallService.uiReady(id)
     }
 
     override fun onDestroy() {

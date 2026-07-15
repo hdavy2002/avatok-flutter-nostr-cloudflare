@@ -7,6 +7,8 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.telecom.Call
 import android.telecom.CallAudioState
 import android.telecom.InCallService
@@ -71,6 +73,51 @@ class AvaInCallService : InCallService() {
 
         internal fun noteAction(id: String, action: String) {
             records[id]?.addAction(action)
+        }
+
+        // [AVADIAL-INCALL-ANSWER-1] uiReady handshake (Fix 4). InCallActivity is a
+        // disposable VIEW; this is the honest signal that a screen actually
+        // rendered, not just that we asked Android to show one — the old
+        // `start_activity: true` diagnostic proved nothing (spike: SystemUI/Android
+        // silently drops background launches with no exception). Keyed by callId.
+        private val main = Handler(Looper.getMainLooper())
+        private val ackedCallIds = HashSet<String>()
+        private val watchdogRunnables = HashMap<String, Runnable>()
+
+        /**
+         * InCallActivity calls this once its content view is set, on every launch
+         * path (answer, viewer attach, call-waiting re-launch, rotation). ONE-SHOT
+         * per callId — the first ack wins; duplicates (rotation, config change,
+         * process recreation) are ignored so they can't re-arm anything or double
+         * count in telemetry.
+         */
+        fun uiReady(callId: String) {
+            if (!ackedCallIds.add(callId)) return
+            cancelWatchdog(callId)
+        }
+
+        /**
+         * Arm a 3s watchdog for [callId] on launch path [path]. If [uiReady] has not
+         * landed by the time it fires, the UI that was supposed to surface silently
+         * failed to render — telemetry only (`ui_watchdog_fired`), no behavioral
+         * change; the service-owned notification already covers the call either way.
+         * Cancelled immediately by [uiReady] and by [onCallRemoved] — must never
+         * fire after a successful ack or after the call is gone.
+         */
+        private fun armWatchdog(callId: String, path: String) {
+            cancelWatchdog(callId)
+            val r = Runnable {
+                watchdogRunnables.remove(callId)
+                if (ackedCallIds.contains(callId)) return@Runnable // acked in the meantime
+                val state = stateOf(callId) ?: "gone"
+                noteAction(callId, "ui_watchdog_fired:$path:$state:${Build.MANUFACTURER}/${Build.MODEL}")
+            }
+            watchdogRunnables[callId] = r
+            main.postDelayed(r, 3000L)
+        }
+
+        private fun cancelWatchdog(callId: String) {
+            watchdogRunnables.remove(callId)?.let { main.removeCallbacks(it) }
         }
 
         /**
@@ -263,6 +310,10 @@ class AvaInCallService : InCallService() {
         IncomingCallActivity.closeFor(id)
         // [AVADIAL-NATIVE-INCALL-1] Same for the native in-call screen.
         InCallActivity.closeFor(id)
+        // [AVADIAL-INCALL-ANSWER-1] Never let a watchdog fire after the call is
+        // gone, and don't let a stale ack linger past the call it belonged to.
+        cancelWatchdog(id)
+        ackedCallIds.remove(id)
         AvaDialPlugin.emit("onCallRemoved", mapOf("id" to id))
 
         // [AVADIAL-NAME-1] Incoming call that never went active = missed call. Post a
@@ -320,6 +371,11 @@ class AvaInCallService : InCallService() {
                 // [AVADIAL-NATIVE-RING-1] Answered (here, from the notification, or
                 // from Flutter) — swap the native ringing screen for the in-call UI.
                 IncomingCallActivity.onCallActive(id)
+                // [AVADIAL-INCALL-ANSWER-1] A UI is now expected to surface (the
+                // in-call screen taking over from the ringing one). Arm the 3s
+                // watchdog; uiReady() cancels it the moment InCallActivity actually
+                // renders.
+                armWatchdog(id, "call_active")
             }
             // [AVADIAL-NATIVE-INCALL-1] Keep the native in-call screen in step with
             // Telecom (hold/unhold, remote hangup). No-op when it isn't showing.
@@ -520,8 +576,29 @@ class AvaInCallService : InCallService() {
             return PendingIntent.getBroadcast(this, requestCode, i, flags)
         }
         val actionIcon = android.graphics.drawable.Icon.createWithResource(this, applicationInfo.icon)
+
+        // [AVADIAL-INCALL-ANSWER-1] The guaranteed screen. When the native in-call
+        // UI is enabled, the Answer action must be an ACTIVITY PendingIntent, not a
+        // broadcast: SystemUI launches a notification action's activity directly, so
+        // the background-activity-launch restrictions that silently swallowed
+        // AvaCallActionReceiver's startActivity (no exception, unconditional return,
+        // dead call with no screen) do not apply here. answer() itself now fires
+        // from inside InCallActivity.onCreate AFTER validating the call is still
+        // ringing (never a blind answer) — this receiver no longer answers on this
+        // path at all. Flag OFF keeps today's broadcast→receiver path byte-for-byte
+        // (kill switch preserved).
+        val answerPending: PendingIntent = if (AvaDialPlugin.nativeInCallEnabled(this)) {
+            PendingIntent.getActivity(
+                this,
+                NOTIF_ID + 1,
+                InCallActivity.intentFor(this, id, number, answer = true),
+                flags,
+            )
+        } else {
+            actionIntent("answer", NOTIF_ID + 1)
+        }
         val answerAction = Notification.Action.Builder(
-            actionIcon, "Answer", actionIntent("answer", NOTIF_ID + 1)
+            actionIcon, "Answer", answerPending
         ).build()
         val declineAction = Notification.Action.Builder(
             actionIcon, "Decline", actionIntent("reject", NOTIF_ID + 2)
@@ -552,7 +629,7 @@ class AvaInCallService : InCallService() {
                 Notification.CallStyle.forIncomingCall(
                     caller,
                     actionIntent("reject", NOTIF_ID + 2),
-                    actionIntent("answer", NOTIF_ID + 1),
+                    answerPending,
                 )
             )
         } else {
@@ -562,5 +639,10 @@ class AvaInCallService : InCallService() {
         try {
             nm.notify(NOTIF_ID, notif)
         } catch (_: Throwable) { /* POST_NOTIFICATIONS may be denied — best-effort */ }
+
+        // [AVADIAL-INCALL-ANSWER-1] A UI (the ringing screen, via startActivity or
+        // the FSI notification above) is now expected to surface. Arm the 3s
+        // watchdog; uiReady() cancels it the moment a screen actually renders.
+        armWatchdog(id, "fsi_notification")
     }
 }
