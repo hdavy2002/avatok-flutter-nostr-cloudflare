@@ -78,6 +78,42 @@ class InboxCard {
   /// sync-cursor row [id] for any legacy row that somehow lacks one.
   String get stableId => (clientId != null && clientId!.isNotEmpty) ? clientId! : id;
 
+  /// [AVA-INBOX-READSTATE] Compact JSON for the on-disk, per-account inbox
+  /// thread cache (inbox_thread_cache.dart) — NOT the wire shape; this is our
+  /// own serialization of the already-parsed card, used only to render the
+  /// list instantly from disk on open before the network refresh lands.
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'conv': conv,
+        'kind': kind,
+        'createdAtMs': createdAtMs,
+        if (sessionId != null) 'sessionId': sessionId,
+        if (callerName != null) 'callerName': callerName,
+        if (callerPhone != null) 'callerPhone': callerPhone,
+        if (transcript != null) 'transcript': transcript,
+        if (summaryText != null) 'summaryText': summaryText,
+        'durationSec': durationSec,
+        if (mediaRef != null) 'mediaRef': mediaRef,
+        'hasRecording': hasRecording,
+        if (clientId != null) 'clientId': clientId,
+      };
+
+  factory InboxCard.fromJson(Map<String, dynamic> j) => InboxCard(
+        id: (j['id'] ?? '').toString(),
+        conv: (j['conv'] ?? '').toString(),
+        kind: (j['kind'] ?? '').toString(),
+        createdAtMs: (j['createdAtMs'] as num?)?.toInt() ?? 0,
+        sessionId: j['sessionId'] as String?,
+        callerName: j['callerName'] as String?,
+        callerPhone: j['callerPhone'] as String?,
+        transcript: j['transcript'] as String?,
+        summaryText: j['summaryText'] as String?,
+        durationSec: (j['durationSec'] as num?)?.toInt() ?? 0,
+        mediaRef: j['mediaRef'] as String?,
+        hasRecording: j['hasRecording'] == true,
+        clientId: j['clientId'] as String?,
+      );
+
   /// Parses one `messages` row from `/api/msg/sync`. Returns null for any row
   /// that isn't a voicemail/receptionist kind (the caller should already have
   /// filtered by `conv` prefix, but this is a second, cheap guard).
@@ -186,6 +222,26 @@ class InboxThread {
 
   /// The bare E.164 number for a [isTel] thread, else null.
   String? get telPhone => isTel ? callerKey!.substring(4) : null;
+
+  /// [AVA-INBOX-READSTATE] JSON for the per-account inbox thread cache
+  /// (inbox_thread_cache.dart). Serializes every card so the cached paint is
+  /// identical to a fresh fetch (unread badge, preview text, timestamps).
+  Map<String, dynamic> toJson() => {
+        'conv': conv,
+        if (callerKey != null) 'callerKey': callerKey,
+        'unread': unread,
+        'cards': cards.map((c) => c.toJson()).toList(),
+      };
+
+  factory InboxThread.fromJson(Map<String, dynamic> j) => InboxThread(
+        conv: (j['conv'] ?? '').toString(),
+        callerKey: j['callerKey'] as String?,
+        unread: j['unread'] == true,
+        cards: ((j['cards'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((m) => InboxCard.fromJson(m.cast<String, dynamic>()))
+            .toList(),
+      );
 }
 
 class InboxApi {

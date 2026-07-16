@@ -16,6 +16,7 @@ import '../device_contacts.dart';
 import 'inbox_api.dart';
 import 'inbox_caller_name.dart';
 import 'inbox_heard_store.dart';
+import 'inbox_thread_cache.dart';
 import 'inbox_thread_screen.dart';
 
 /// AvaDial Inbox — the Ava Receptionist / voicemail thread list (Specs/PLAN-
@@ -42,7 +43,15 @@ class InboxListScreen extends StatefulWidget {
 }
 
 class _InboxListScreenState extends State<InboxListScreen> {
-  late Future<List<InboxThread>> _future;
+  // [AVA-INBOX-READSTATE] Cache-first rendering. `_threads` is the currently
+  // painted list (seeded from the on-disk per-account cache the instant the
+  // screen opens, then replaced by the network result). A full-screen spinner
+  // shows ONLY while `_threads == null` — i.e. the very first load on a device
+  // with no cache yet. Every subsequent open / the 176-times-in-3-days
+  // resume-reconnect refresh paints the cached list immediately and refreshes
+  // silently underneath, so the Inbox never blanks or spins on reconnect.
+  List<InboxThread>? _threads;
+  bool _hasError = false; // last network fetch failed AND there's nothing to show
 
   // [INBOX-SEARCH-1] Client-side filter over the already-loaded threads —
   // matches caller display name, PSTN number, and transcript text. Instant
@@ -76,7 +85,7 @@ class _InboxListScreenState extends State<InboxListScreen> {
     // Best-effort warm of the contact-name index so the FIRST paint already
     // resolves known callers instead of flashing raw numbers then relabeling.
     DeviceContacts.I.load();
-    _future = _loadThreads();
+    _bootstrap();
     // [AVAINBOX-1] A contact renamed/added/removed elsewhere (chat list, the
     // Calls Contacts tab) should immediately re-resolve every row here — this
     // is the "Rebuild on ContactsStore.changes" requirement, so a save in the
@@ -112,18 +121,59 @@ class _InboxListScreenState extends State<InboxListScreen> {
     super.dispose();
   }
 
-  Future<void> _reload() async {
-    final f = _loadThreads();
-    setState(() => _future = f);
-    await f;
+  /// [AVA-INBOX-READSTATE] Cache-first open: paint the last-persisted thread
+  /// list from disk immediately (no spinner), then refresh from the network in
+  /// the background. The cached paint also warms [_heardIds] so the read/unread
+  /// colouring is right on the very first frame, not only after the refresh.
+  Future<void> _bootstrap() async {
+    final t0 = DateTime.now().millisecondsSinceEpoch;
+    List<InboxThread>? cached;
+    try {
+      cached = await InboxThreadCache.I.load();
+    } catch (_) {/* fall through to a normal network-first load */}
+    Analytics.capture('inbox_cache_hit', {
+      'hit': cached != null && cached.isNotEmpty,
+      'threads': cached?.length ?? 0,
+    });
+    if (cached != null && cached.isNotEmpty && mounted && _threads == null) {
+      try {
+        _heardIds = await InboxHeardStore.I.loadAll();
+      } catch (_) {/* every card just reads as unheard until the refresh */}
+      setState(() {
+        _threads = cached;
+        _hasError = false;
+      });
+      Analytics.capture('inbox_rendered_from_cache', {
+        'threads': cached.length,
+        'ms': DateTime.now().millisecondsSinceEpoch - t0,
+      });
+    }
+    await _loadThreads();
   }
 
-  /// Fetches threads, then side-loads [_heardIds] (heard-card store) and
-  /// [_overrideNames] (rename-caller overrides, contact_overrides.dart) for
-  /// every `tel:` thread. Both are best-effort — a failure just leaves the
-  /// prior/default state, it never blocks the thread list itself.
-  Future<List<InboxThread>> _loadThreads() async {
-    final threads = await InboxApi.threads();
+  Future<void> _reload() => _loadThreads();
+
+  /// Fetches threads from the network, then side-loads [_heardIds] (heard-card
+  /// store) and [_overrideNames] (rename-caller overrides, contact_overrides
+  /// .dart) for every `tel:` thread, and persists the result to the per-account
+  /// cache for the next instant open. Both side-loads are best-effort — a
+  /// failure just leaves the prior/default state, it never blocks the list. A
+  /// network failure keeps whatever is already on screen (the cached list),
+  /// surfacing an error state ONLY when there was nothing cached to show.
+  Future<void> _loadThreads() async {
+    final t0 = DateTime.now().millisecondsSinceEpoch;
+    final List<InboxThread> threads;
+    try {
+      threads = await InboxApi.threads();
+    } catch (_) {
+      if (mounted && _threads == null) setState(() => _hasError = true);
+      Analytics.capture('inbox_network_refresh', {
+        'ok': false,
+        'had_cache': _threads != null,
+        'ms': DateTime.now().millisecondsSinceEpoch - t0,
+      });
+      return;
+    }
     try {
       _heardIds = await InboxHeardStore.I.loadAll();
     } catch (_) {/* keep prior state */}
@@ -164,8 +214,20 @@ class _InboxListScreenState extends State<InboxListScreen> {
         ...tierCounts.map((k, v) => MapEntry('tier_$k', v)),
       });
     }
-    if (mounted) setState(() {}); // repaint with the side-loaded state
-    return threads;
+    // Persist for the next instant (cache-first) open — best-effort.
+    unawaited(InboxThreadCache.I.save(threads));
+    Analytics.capture('inbox_network_refresh', {
+      'ok': true,
+      'threads': threads.length,
+      'had_cache': _threads != null,
+      'ms': DateTime.now().millisecondsSinceEpoch - t0,
+    });
+    if (mounted) {
+      setState(() {
+        _threads = threads;
+        _hasError = false;
+      });
+    }
   }
 
   /// Filters [threads] by caller display name, PSTN number, or any card's
@@ -235,55 +297,57 @@ class _InboxListScreenState extends State<InboxListScreen> {
   }
 
   Widget _list(BuildContext context) {
-    return FutureBuilder<List<InboxThread>>(
-      future: _future,
-      builder: (context, snap) {
-        if (snap.connectionState != ConnectionState.done) {
-          return const Center(child: CircularProgressIndicator(color: AvaDialTheme.accent));
-        }
-        if (snap.hasError) return _errorState();
-        final allThreads = snap.data ?? const <InboxThread>[];
-        final threads = _filtered(allThreads);
-        if (allThreads.isEmpty) {
-          return RefreshIndicator(
-            onRefresh: _reload,
-            child: ListView(children: const [
-              SizedBox(height: 100),
-              ShellEmptyState(
-                icon: Icons.voicemail_outlined,
-                title: 'No messages yet',
-                subtitle: 'Missed calls Ava answers for you will show up here.',
-                color: AD.iconShield,
-              ),
-            ]),
-          );
-        }
-        if (threads.isEmpty) {
-          return RefreshIndicator(
-            onRefresh: _reload,
-            child: ListView(children: const [
-              SizedBox(height: 100),
-              ShellEmptyState(
-                icon: Icons.search_off,
-                title: 'No matches',
-                subtitle: 'No calls match your search.',
-                color: AD.iconSearch,
-              ),
-            ]),
-          );
-        }
-        return RefreshIndicator(
-          onRefresh: _reload,
-          child: ListView.builder(
-            padding: const EdgeInsets.fromLTRB(14, 10, 14, 24),
-            itemCount: threads.length,
-            itemBuilder: (context, i) => Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: _row(threads[i]),
-            ),
+    // [AVA-INBOX-READSTATE] `_threads == null` ONLY on the very first load of a
+    // device with no cache — that's the one time a spinner is acceptable. Once
+    // the cache (or a network result) has seeded `_threads`, every reconnect/
+    // refresh keeps the existing list painted and refreshes underneath.
+    final allThreads = _threads;
+    if (allThreads == null) {
+      if (_hasError) return _errorState();
+      return const Center(child: CircularProgressIndicator(color: AvaDialTheme.accent));
+    }
+    final threads = _filtered(allThreads);
+    if (allThreads.isEmpty) {
+      // Nothing at all — if the (only) network attempt errored with no cache,
+      // show the retry error; otherwise the genuine "no messages" empty state.
+      if (_hasError) return _errorState();
+      return RefreshIndicator(
+        onRefresh: _reload,
+        child: ListView(children: const [
+          SizedBox(height: 100),
+          ShellEmptyState(
+            icon: Icons.voicemail_outlined,
+            title: 'No messages yet',
+            subtitle: 'Missed calls Ava answers for you will show up here.',
+            color: AD.iconShield,
           ),
-        );
-      },
+        ]),
+      );
+    }
+    if (threads.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: _reload,
+        child: ListView(children: const [
+          SizedBox(height: 100),
+          ShellEmptyState(
+            icon: Icons.search_off,
+            title: 'No matches',
+            subtitle: 'No calls match your search.',
+            color: AD.iconSearch,
+          ),
+        ]),
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _reload,
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 24),
+        itemCount: threads.length,
+        itemBuilder: (context, i) => Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: _row(threads[i]),
+        ),
+      ),
     );
   }
 
@@ -344,33 +408,34 @@ class _InboxListScreenState extends State<InboxListScreen> {
 
   String _formatTel(String e164) => e164; // kept simple; the number is already E.164
 
-  // [AVAINBOX-2] Owner spec pic3, restated 2026-07-16 after AVAINBOX-1 shipped
-  // a dark tint instead: "light green with red numbers" — literal, not a
-  // desaturated dark-green wash. The owner said he'd asked for this before and
-  // will look for a real light-green card, so this ships exactly that: a
-  // genuinely LIGHT green surface that pops out of the near-black list.
-  // `AD.bubbleOutBg`/`AD.bubbleOutInk`/`AD.bubbleOutPlay` already ARE this
-  // "light green card, dark ink" pairing (the outgoing chat-bubble tokens in
-  // avatok_dark.dart) — reused here rather than inventing new hex, per the
-  // "use AD.* tokens where suitable ones exist" convention.
+  // [AVA-INBOX-READSTATE] Owner-spec read/unread card states (2026-07-17),
+  // superseding the earlier "light green + red count" AVAINBOX-2 treatment:
+  //   • NEW / unread  → pale-green card + a LARGE orange dot indicator.
+  //   • Fully read    → light-grey card, BLACK font, 2 blue tick marks.
+  // Both surfaces are deliberately LIGHT (dark ink) so they pop out of the
+  // near-black list — the owner has repeatedly asked for genuinely light cards
+  // here, not a desaturated dark wash. `ZineIconBadge` is unaffected: it paints
+  // its own coloured fill + near-black glyph, so it reads on both states.
   //
-  // Because the card is now LIGHT, every child (title/preview/timestamp) that
-  // was styled for the dark theme would go invisible on it — each is given an
-  // explicit dark-on-light color below instead of the row's normal
-  // AvaDialTheme.text/textSoft/textMute (those are near-white, made for the
-  // dark surface2 card). `ZineIconBadge` is unaffected: it paints its own
-  // colored fill + `Zine.ink` (near-black) glyph regardless of the row's
-  // background, so it already reads fine on both card states.
-  static const _unreadCardBg = AD.bubbleOutBg; // 0xFFCDEBD3 — light mint-green
+  // Every child (title/preview/timestamp) is given an explicit dark-on-light
+  // colour below instead of the dark-theme AvaDialTheme.text/textSoft/textMute
+  // (near-white, which would vanish on these light cards).
+  static const _unreadCardBg = AD.bubbleOutBg; // 0xFFCDEBD3 — pale mint-green
   static const _unreadCardBorder = AD.bubbleOutPlay; // 0xFF3E8E5A — deeper green edge
-  static const _unreadTitleInk = AD.bubbleOutInk; // 0xFF1C3324 — dark ink, paired w/ bubbleOutBg
-  static const _unreadSecondaryInk = Color(0xFF2A4436); // dark forest green — preview + timestamp
-  static const _unreadBadgeRed = Color(0xFFB71C1C); // deep red — the "red numbers" themselves
+  static const _unreadTitleInk = AD.bubbleOutInk; // 0xFF1C3324 — dark ink on green
+  static const _unreadSecondaryInk = Color(0xFF2A4436); // dark forest green
+  static const _readCardBg = Color(0xFFE7E8EB); // light grey (read cards)
+  static const _readCardBorder = Color(0xFFCED0D6); // slightly darker grey edge
+  static const _readTitleInk = Color(0xFF000000); // BLACK font — owner spec
+  static const _readSecondaryInk = Color(0xFF3B3D45); // dark grey preview/timestamp
+  static const _unreadDot = AD.unreadAccent; // 0xFFF2A65A — the LARGE orange dot
+  static const _readTick = AD.iconSearch; // 0xFF6FA8E8 — the 2 blue read ticks
 
   Widget _row(InboxThread t) {
     final label = _labelFor(t);
-    final unreadCount = _unreadCount(t);
-    final hasUnread = unreadCount > 0;
+    final hasUnread = _unreadCount(t) > 0;
+    final titleInk = hasUnread ? _unreadTitleInk : _readTitleInk;
+    final secondaryInk = hasUnread ? _unreadSecondaryInk : _readSecondaryInk;
     final preview = t.latest.summaryText ??
         (t.latest.transcript != null && t.latest.transcript!.length > 60
             ? '${t.latest.transcript!.substring(0, 60)}…'
@@ -382,10 +447,10 @@ class _InboxListScreenState extends State<InboxListScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: hasUnread ? _unreadCardBg : AvaDialTheme.surface2,
+          color: hasUnread ? _unreadCardBg : _readCardBg,
           borderRadius: BorderRadius.circular(AD.rListCard),
           border: Border.all(
-            color: hasUnread ? _unreadCardBorder : AD.borderControl,
+            color: hasUnread ? _unreadCardBorder : _readCardBorder,
             width: hasUnread ? 1.5 : 1,
           ),
         ),
@@ -398,33 +463,32 @@ class _InboxListScreenState extends State<InboxListScreen> {
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('Missed call from ${label.title}',
-                  style: ADText.threadName(c: hasUnread ? _unreadTitleInk : AvaDialTheme.text),
+                  style: ADText.threadName(c: titleInk),
                   maxLines: 1, overflow: TextOverflow.ellipsis),
               const SizedBox(height: 2),
               Text(preview,
-                  style: ADText.preview(c: hasUnread ? _unreadSecondaryInk : AvaDialTheme.textSoft),
+                  style: ADText.preview(c: secondaryInk),
                   maxLines: 1, overflow: TextOverflow.ellipsis),
             ]),
           ),
           const SizedBox(width: 8),
           Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
             Text(_relativeTime(t.latest.createdAtMs),
-                style: ADText.statCaption(c: hasUnread ? _unreadSecondaryInk : AvaDialTheme.textMute)),
-            const SizedBox(height: 6),
+                style: ADText.statCaption(c: secondaryInk)),
+            const SizedBox(height: 8),
             if (hasUnread)
+              // LARGE orange dot — the single unread indicator (owner spec).
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                constraints: const BoxConstraints(minWidth: 20),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(100),
-                  border: Border.all(color: _unreadBadgeRed, width: 1.4),
+                width: 16,
+                height: 16,
+                decoration: const BoxDecoration(
+                  color: _unreadDot,
+                  shape: BoxShape.circle,
                 ),
-                child: Text(
-                  unreadCount > 99 ? '99+' : '$unreadCount',
-                  textAlign: TextAlign.center,
-                  style: ADText.statCaption(c: _unreadBadgeRed).copyWith(fontWeight: FontWeight.w900),
-                ),
-              ),
+              )
+            else
+              // 2 blue tick marks — read.
+              const Icon(Icons.done_all, size: 18, color: _readTick),
           ]),
         ]),
       ),
@@ -550,9 +614,9 @@ class _InboxListScreenState extends State<InboxListScreen> {
     Analytics.capture('inbox_thread_deleted', {'ok': allOk, 'cards': t.cards.length});
     if (!mounted) return;
     if (allOk) {
-      setState(() {
-        _future = _future.then((list) => list.where((x) => x.conv != t.conv).toList());
-      });
+      final next = (_threads ?? const <InboxThread>[]).where((x) => x.conv != t.conv).toList();
+      setState(() => _threads = next);
+      unawaited(InboxThreadCache.I.save(next)); // keep the cache in step
     } else {
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('Some voicemails couldn’t be deleted — try again.')));

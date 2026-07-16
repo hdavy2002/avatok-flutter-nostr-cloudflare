@@ -643,6 +643,21 @@ class _VoicemailCardState extends State<_VoicemailCard> {
     } catch (_) {/* leave unheard */}
   }
 
+  /// [AVA-INBOX-READSTATE] Persist the "heard" marker the FIRST time playback
+  /// starts (never on thread open) and fire telemetry. Idempotent — a card
+  /// already heard is a no-op. The store is per-account (DiskCache scoped to
+  /// AccountScope.id), so a shared phone keeps each account's heard-state
+  /// separate. Email rides the event automatically (Analytics._base).
+  void _markHeardOnce() {
+    if (_heard) return;
+    unawaited(InboxHeardStore.I.markHeard(_c.stableId));
+    Analytics.capture('voicemail_heard_marked', {
+      'conv_hash': _c.conv.hashCode,
+      'duration_s': _c.durationSec,
+      'has_recording': _c.hasRecording,
+    });
+  }
+
   Future<void> _loadMeta() async {
     try {
       final m = await InboxCardMetaStore.I.forCard(_c.stableId);
@@ -684,7 +699,7 @@ class _VoicemailCardState extends State<_VoicemailCard> {
     if (isThisTrack && cur != null && !cur.playing) {
       // Paused on THIS track — resume in place rather than re-fetching bytes.
       await AudioPlaybackService.I.resume();
-      if (!_heard) unawaited(InboxHeardStore.I.markHeard(_c.stableId));
+      _markHeardOnce();
       if (mounted) setState(() => _heard = true);
       return;
     }
@@ -730,9 +745,7 @@ class _VoicemailCardState extends State<_VoicemailCard> {
       // [INBOX-HEARD-1] Mark heard the first time PLAY is pressed — NOT on
       // thread open (owner spec). Best-effort; a write failure just leaves
       // the card looking unheard next time, which is safe (never loses data).
-      if (!_heard) {
-        unawaited(InboxHeardStore.I.markHeard(_c.stableId));
-      }
+      _markHeardOnce();
       if (mounted) setState(() { _loading = false; _heard = true; });
     } catch (e) {
       Analytics.capture('inbox_voicemail_playback', {'ok': false, 'cached': false});
@@ -1071,68 +1084,78 @@ class _VoicemailCardState extends State<_VoicemailCard> {
     );
   }
 
-  // [AVAINBOX-1] Owner spec ("bubbles inside the VM thread do not have all
-  // the right click menu items ... new/unplayed = colored, old = greyed
-  // out"): the ORIGINAL treatment (a 3px left border + Opacity(0.72) on the
-  // whole bubble) was too subtle to read at a glance — the brief explicitly
-  // asked to "sharpen" it. Unheard now gets a visibly brighter/greener-tinted
-  // surface, a full-strength accent border on ALL four sides (not just the
-  // left edge), and a small "NEW" pill; heard drops to a flatly grey surface,
-  // a much lower opacity (0.5, down from 0.72), and a "Played" check pill —
-  // so the two states are unmistakable even scrolled past at speed.
-  static const _newBubbleBg = Color(0xFF1B2A20);
-  static const _playedBubbleBg = Color(0xFF141417);
+  // [AVA-INBOX-READSTATE] Owner-spec bubble states (2026-07-17), replacing the
+  // earlier dark-tint + opacity treatment:
+  //   • NEW / unheard → PALE-GREEN bubble, dark ink, 1 BLUE tick + "Not heard yet".
+  //   • Heard/read    → very-light-GREY bubble, near-black ink, 2 PALE-GREEN
+  //                     ticks + "Heard".
+  // Bubbles are now LIGHT (like the list cards), so every child text is given
+  // an explicit dark-on-light colour below instead of the dark-theme
+  // AvaDialTheme.text/textMute/textSoft (near-white, invisible on a light
+  // bubble). The play control uses AD.bubbleOutPlay — the deep-green "play on a
+  // light bubble" token — so it reads on both surfaces. The old Opacity(0.5)
+  // dimming is gone: on a light bubble it just muddied the colour; the grey vs
+  // green surface already tells the two states apart at a glance.
+  static const _newBubbleBg = Color(0xFFCDEBD3); // pale green (unheard)
+  static const _newBubbleBorder = Color(0xFF3E8E5A); // deeper green edge
+  static const _readBubbleBg = Color(0xFFE7E8EB); // very light grey (heard)
+  static const _readBubbleBorder = Color(0xFFCED0D6); // slightly darker grey edge
+  static const _heardTick = Color(0xFF3E8E5A); // pale/mid green — the 2 heard ticks
+  static const _unheardTick = AD.iconSearch; // 0xFF6FA8E8 — the 1 "not heard" blue tick
 
   @override
   Widget build(BuildContext context) {
     final unheard = _c.hasRecording && !_heard;
+    // Dark-on-light ink pair for whichever surface is showing.
+    final ink = unheard ? const Color(0xFF1C3324) : const Color(0xFF14161A);
+    final subInk = unheard ? const Color(0xFF2A4436) : const Color(0xFF3B3D45);
     return GestureDetector(
       onLongPress: () => _showCardMenu(context),
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: unheard ? _newBubbleBg : _playedBubbleBg,
+          color: unheard ? _newBubbleBg : _readBubbleBg,
           borderRadius: BorderRadius.circular(AD.rListCard),
           border: Border.all(
-            color: unheard ? AD.unreadAccent : AvaDialTheme.border,
+            color: unheard ? _newBubbleBorder : _readBubbleBorder,
             width: unheard ? 1.5 : 1,
           ),
         ),
-        child: Opacity(
-          opacity: unheard ? 1 : 0.5,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            // ---- Caller metadata + new/played state pill ----
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            // ---- Caller metadata + heard/not-heard tick indicator ----
             Row(children: [
               Expanded(
-                child: Text(widget.callerName, style: ADText.threadName(c: AvaDialTheme.text)),
+                child: Text(widget.callerName, style: ADText.threadName(c: ink)),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                decoration: BoxDecoration(
-                  color: (unheard ? AD.unreadAccent : AD.iconShield).withValues(alpha: 0.16),
-                  borderRadius: BorderRadius.circular(100),
-                ),
-                child: Text(
-                  unheard ? 'NEW' : 'Played',
-                  style: ADText.statCaption(c: unheard ? AD.unreadAccent : AD.iconShield)
-                      .copyWith(fontWeight: FontWeight.w800, fontSize: 9.5, letterSpacing: 0.4),
-                ),
-              ),
+              // [AVA-INBOX-READSTATE] Heard state (only for cards with a
+              // recording): 2 pale-green ticks + "Heard" once played; 1 blue
+              // tick + "Not heard yet" before that.
+              if (_c.hasRecording)
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(_heard ? Icons.done_all : Icons.check,
+                      size: 15, color: _heard ? _heardTick : _unheardTick),
+                  const SizedBox(width: 3),
+                  Text(
+                    _heard ? 'Heard' : 'Not heard yet',
+                    style: ADText.statCaption(c: _heard ? _heardTick : _unheardTick)
+                        .copyWith(fontWeight: FontWeight.w700),
+                  ),
+                ]),
             ]),
             if (widget.callerNumber != null && widget.callerNumber != widget.callerName) ...[
               const SizedBox(height: 1),
-              Text(widget.callerNumber!, style: ADText.statCaption(c: AvaDialTheme.textMute)),
+              Text(widget.callerNumber!, style: ADText.statCaption(c: subInk)),
             ],
             // [AVAINBOX-1] User-set voicemail title ("Edit voicemail title")
             // — distinct row so it's never confused with the caller name.
             if (_meta?.title != null && _meta!.title!.isNotEmpty) ...[
               const SizedBox(height: 3),
               Text('“${_meta!.title}”',
-                  style: ADText.preview(c: AvaDialTheme.text).copyWith(fontStyle: FontStyle.italic)),
+                  style: ADText.preview(c: ink).copyWith(fontStyle: FontStyle.italic)),
             ],
             const SizedBox(height: 6),
             if (_c.summaryText != null) ...[
-              Text(_c.summaryText!, style: ADText.bubbleBody(c: AvaDialTheme.text)),
+              Text(_c.summaryText!, style: ADText.bubbleBody(c: ink)),
               const SizedBox(height: 8),
             ],
             // ---- Audio player — driven by the SHARED AudioPlaybackService
@@ -1152,19 +1175,19 @@ class _VoicemailCardState extends State<_VoicemailCard> {
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       _loading
                           ? const SizedBox(width: 22, height: 22,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: AD.iconShield))
+                              child: CircularProgressIndicator(strokeWidth: 2, color: AD.bubbleOutPlay))
                           : Icon(
                               playing
                                   ? PhosphorIcons.pauseCircle(PhosphorIconsStyle.fill)
                                   : PhosphorIcons.playCircle(PhosphorIconsStyle.fill),
-                              size: 30, color: AD.iconShield,
+                              size: 30, color: AD.bubbleOutPlay,
                             ),
                       const SizedBox(width: 8),
                       Text(
                         _durationLabel(dur).isNotEmpty
                             ? 'Voicemail · ${_durationLabel(dur)}'
                             : 'Play voicemail',
-                        style: ADText.rowName(c: AD.iconShield),
+                        style: ADText.rowName(c: AD.bubbleOutPlay),
                       ),
                     ]),
                   );
@@ -1176,12 +1199,12 @@ class _VoicemailCardState extends State<_VoicemailCard> {
               GestureDetector(
                 onTap: () => setState(() => _expanded = !_expanded),
                 child: Text(_expanded ? 'Hide transcript ▲' : 'Show transcript ▼',
-                    style: ADText.statCaption(c: AvaDialTheme.textMute)),
+                    style: ADText.statCaption(c: subInk)),
               ),
               if (_expanded)
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
-                  child: Text(_c.transcript!, style: ADText.preview(c: AvaDialTheme.textSoft)),
+                  child: Text(_c.transcript!, style: ADText.preview(c: subInk)),
                 ),
             ],
             // ---- Tags ("Tag" menu item) ----
@@ -1192,23 +1215,22 @@ class _VoicemailCardState extends State<_VoicemailCard> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
-                      color: AD.iconVideo.withValues(alpha: 0.16),
+                      color: AD.bubbleInPlay.withValues(alpha: 0.14),
                       borderRadius: BorderRadius.circular(100),
-                      border: Border.all(color: AD.iconVideo.withValues(alpha: 0.5), width: 1),
+                      border: Border.all(color: AD.bubbleInPlay.withValues(alpha: 0.55), width: 1),
                     ),
-                    child: Text(tag, style: ADText.statCaption(c: AD.iconVideo)),
+                    child: Text(tag, style: ADText.statCaption(c: AD.bubbleInPlay)),
                   ),
               ]),
             ],
             const SizedBox(height: 8),
             Align(
               alignment: Alignment.centerRight,
-              child: Text(_timeLabel, style: ADText.statCaption(c: AvaDialTheme.textMute)),
+              child: Text(_timeLabel, style: ADText.statCaption(c: subInk)),
             ),
           ]),
         ),
-      ),
-    );
+      );
   }
 }
 
