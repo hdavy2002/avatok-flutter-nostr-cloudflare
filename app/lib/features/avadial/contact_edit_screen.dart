@@ -347,14 +347,34 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
                   'number, custom fields) are kept in AvaTOK.',
                   style: ZineText.sub(size: 12.5, color: AvaDialTheme.textSoft),
                 ),
-                const SizedBox(height: 20),
-                AdButton(
+                // Bottom breathing room so the last field can scroll clear of the
+                // pinned action bar below (which is OUTSIDE this list).
+                const SizedBox(height: 12),
+              ],
+            ),
+      // [AVADIAL-CONTACT-CTA-1] (owner report 2026-07-16, pic 1): the primary
+      // CTA used to be the last child of the ListView, so on a tall form with
+      // the keyboard up it sat under the system gesture bar and read as
+      // "hidden below". Pin it to the bottom instead, inside a SafeArea, so
+      // "Add contact" is always reachable without scrolling and never collides
+      // with the nav bar or the keyboard.
+      bottomNavigationBar: _loading
+          ? null
+          : Container(
+              decoration: const BoxDecoration(
+                color: AvaDialTheme.surface,
+                border: Border(top: BorderSide(color: AvaDialTheme.border, width: 1)),
+              ),
+              child: SafeArea(
+                top: false,
+                minimum: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                child: AdButton(
                   label: widget.create ? 'Add contact' : 'Save',
                   variant: AdButtonVariant.primary,
                   loading: _saving,
                   onPressed: _saving ? null : _save,
                 ),
-              ],
+              ),
             ),
     );
   }
