@@ -27,6 +27,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../core/account_storage.dart';
 import '../../core/active_thread.dart'; // [PUSH-FG-BANNER-1]
 import '../../core/api_auth.dart';
+import '../../core/audio_playback_service.dart'; // [AVAVM-PLAYER-1]
 import '../../core/avatar_cache.dart';
 import '../../core/badge_service.dart'; // [ISSUE-BADGE-UNREAD-1]
 import '../../core/ava_ai_client.dart';
@@ -149,6 +150,15 @@ class _Msg {
   Map<String, int> reactCounts = {}; // Phase 4: aggregate live reactions (emoji → count)
   Map<String, Set<String>> reactBy = {}; // Phase 5: who reacted (emoji → set of uids) for the "reacted by" sheet
   ChatMedia? media;
+  // [AVAVM-PLAYER-1] The REAL media kind, stamped at optimistic-bubble
+  // creation (`_sendMedia`) — BEFORE `media` exists. `_mediaContent` used to
+  // guess the kind from `localBytes != null` alone while a message was
+  // uploading, which always guessed `image` (the audio-bubble-renders-blank
+  // bug: `Image.memory()` on raw .m4a bytes fails to decode and the
+  // `errorBuilder` returned nothing). Once `media` arrives post-upload, ITS
+  // kind is authoritative again; this field only matters for the in-flight
+  // window.
+  MediaKind? pendingKind;
   String mediaCaption; // caption shown UNDER the photo in the SAME bubble (WhatsApp-style)
   Uint8List? localBytes; // instant preview of self-sent media
   bool uploading;
@@ -170,10 +180,46 @@ class _Msg {
   Map<int, Set<String>> pollBy = {}; // option index → set of voter uids (who-voted)
   Set<int> pollMine = {}; // option indices I currently voted for (drives highlight)
   _Msg(this.id, this.me, this.text, this.time,
-      {this.ts = 0, this.evId, this.senderLabel, this.reaction, this.media, this.mediaCaption = '', this.localBytes,
+      {this.ts = 0, this.evId, this.senderLabel, this.reaction, this.media, this.pendingKind, this.mediaCaption = '', this.localBytes,
        this.uploading = false, this.failed = false, this.sent = false, this.replyTo, this.edited = false,
        this.starred = false, this.forwarded = false, this.hidden = false, this.expireAt, this.special, this.extra,
        this.aiLocal = false});
+}
+
+/// [AVAVM-PLAYER-1] Best-effort, in-memory registry of the [Chat] behind every
+/// conversation key opened THIS app session, so the app-wide
+/// [MiniAudioPlayerBar] (mounted at the shell root) can reopen the right
+/// thread when its "now playing" bar is tapped for a voice note whose
+/// `AudioTrack.originRoute` is that thread's `convKey`.
+///
+/// Not persisted — deliberately: it only needs to answer "have we been here
+/// this session", and the bar can only ever be showing a track for a thread
+/// that WAS opened this session (playback has to have started somewhere).
+/// Installs itself once as [AudioPlaybackService.onTapOrigin]; other surfaces
+/// (e.g. the AvaDial voicemail inbox) can compose with or override that hook
+/// for their own `originRoute` scheme without needing anything from this file.
+abstract class ChatThreadRegistry {
+  static final Map<String, Chat> _byConvKey = {};
+  static bool _installed = false;
+
+  static void remember(String convKey, Chat chat) {
+    _byConvKey[convKey] = chat;
+    _ensureNavHook();
+  }
+
+  static void _ensureNavHook() {
+    if (_installed) return;
+    _installed = true;
+    AudioPlaybackService.onTapOrigin = (context, track) async {
+      final route = track.originRoute;
+      if (route == null) return;
+      final chat = _byConvKey[route];
+      if (chat == null) return; // not a chat-thread track (or not opened this session)
+      await Navigator.of(context, rootNavigator: true).push(
+        MaterialPageRoute(builder: (_) => ChatThreadScreen(chat: chat)),
+      );
+    };
+  }
 }
 
 /// One semantic ("smart search") hit returned by /api/brain/thread-search and
@@ -211,7 +257,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   final _composerFocus = FocusNode(); // keep the keyboard up after each send
   final _scroll = ScrollController();
   final _picker = ImagePicker();
-  final _audio = AudioPlayer();
+  // [AVAVM-PLAYER-1] Voice-note playback now goes through the shared,
+  // app-wide `AudioPlaybackService` (survives navigation + backgrounding)
+  // instead of a per-thread `AudioPlayer()` that died with this widget — see
+  // `_playAudio`/`_seekAudio`/`_cycleAudioSpeed` and `_onAudioStateChanged`
+  // below. `_sfx` is unrelated (UI sound effects) and is untouched.
   final _sfx = AudioPlayer();
   final _recorder = AudioRecorder();
   final _idStore = IdentityStore();
@@ -294,8 +344,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   // renders at zero.
   Duration _audioPos = Duration.zero;
   Duration? _audioDur;
-  StreamSubscription<Duration>? _audioPosSub;
-  StreamSubscription<Duration>? _audioDurSub;
+  // [AVAVM-PLAYER-1] Bridges the shared `AudioPlaybackService.state` back onto
+  // the local `_playingAudioId`/`_openAudioId`/`_audioPos`/`_audioDur` fields
+  // above so every existing `_mediaContent`/`VoiceNoteBubble` call site below
+  // keeps working unchanged — only WHERE the bytes actually play moved (to the
+  // app-wide service), not how this screen tracks/repaints it.
+  VoidCallback? _audioStateListener;
 
   // Presence: typing + read receipts (ephemeral, over the signaling WS).
   PresenceChannel? _presence;
@@ -429,6 +483,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     // `ActiveThread` is only consulted together with `lifecycleState == resumed`,
     // so a claim left standing while the screen is off cannot silence anything.
     ActiveThread.enter(key);
+    // [AVAVM-PLAYER-1] Same "single point every thread flavour reaches" logic
+    // as the ActiveThread claim above — remember this convKey's Chat so the
+    // shell-level mini-player can reopen this exact thread on tap.
+    ChatThreadRegistry.remember(key, widget.chat);
     final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     // Local: drives unread badges on THIS device (instant).
     //
@@ -585,25 +643,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     MoneyApi.balance().then((b) {
       if (mounted) setState(() => _premium = b['premium'] == 1 || b['premium'] == true);
     }).catchError((_) {});
-    _audio.onPlayerComplete.listen((_) {
-      // [VOICE-SCRUB-1] Park the playhead at the END on completion rather than
-      // snapping it back to 0. The clip you just finished should look finished.
-      if (mounted) {
-        setState(() {
-          _playingAudioId = null;
-          _audioPos = _audioDur ?? Duration.zero;
-        });
-      }
-    });
-    // [VOICE-SCRUB-1] The player's own truth, replacing the bubble's invented
-    // 1s counter. `onDurationChanged` fires once the m4a header is decoded;
-    // `onPositionChanged` drives both the progress tint and the red playhead.
-    _audioPosSub = _audio.onPositionChanged.listen((p) {
-      if (mounted && _playingAudioId != null) setState(() => _audioPos = p);
-    });
-    _audioDurSub = _audio.onDurationChanged.listen((d) {
-      if (mounted && d > Duration.zero) setState(() => _audioDur = d);
-    });
+    // [AVAVM-PLAYER-1] Bridge the shared AudioPlaybackService's state back
+    // onto this thread's local voice-note fields (see `_onAudioStateChanged`)
+    // — replaces the old per-thread `_audio.onPlayerComplete` /
+    // `onPositionChanged` / `onDurationChanged` listeners now that playback
+    // itself lives at the service layer, not on a player owned by this widget.
+    _audioStateListener = _onAudioStateChanged;
+    AudioPlaybackService.I.state.addListener(_audioStateListener!);
+    _onAudioStateChanged(); // pick up an already-playing track on reopen
     // Load cross-device soft-delete flags, then re-apply to anything already shown.
     HiddenStore().load().then((m) {
       if (!mounted || m.isEmpty) return;
@@ -1846,8 +1893,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     _recAmpSub?.cancel();
     _recTick?.cancel();
     if (_recording) { try { WakelockPlus.disable(); } catch (_) {} }
-    _audioPosSub?.cancel(); // [VOICE-SCRUB-1]
-    _audioDurSub?.cancel();
+    // [AVAVM-PLAYER-1] Unhook from the shared service — playback itself must
+    // NOT stop here (that's the whole point: it survives this dispose).
+    if (_audioStateListener != null) {
+      AudioPlaybackService.I.state.removeListener(_audioStateListener!);
+    }
     // [PUSH-FG-BANNER-1] Release the on-screen-thread claim. Guarded by key
     // inside `leave` — pushing thread B over A runs B's enter BEFORE A's dispose,
     // so an unconditional clear here would wipe B's claim and B would then get
@@ -1866,7 +1916,6 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     _searchCtrl.dispose();
     _composerFocus.dispose();
     _scroll.dispose();
-    _audio.dispose();
     _sfx.dispose();
     _recorder.dispose();
     _sttSession?.cancel();
@@ -3960,7 +4009,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       }
       if (bytes == null) { _capNote('Could not load this attachment to share.'); return; }
       final ct = m.media?.contentType ?? '';
-      final kind = m.media?.kind ??
+      // [AVAVM-PLAYER-1] Same guessing bug as `_mediaContent` — prefer the
+      // real `pendingKind` stamped at send time over inferring `image` from
+      // `localBytes != null` alone (wrong for an in-flight voice note/video).
+      final kind = m.media?.kind ?? m.pendingKind ??
           (m.localBytes != null ? MediaKind.image : MediaKind.file);
       final ext = _extFor(ct, kind);
       final base = (m.media?.name ?? '').trim();
@@ -4014,7 +4066,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     // appeared to "disappear" from the bottom where it was just added.
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final msg = _Msg(_seq++, true, _caption(kind, name), _fmtTime(now),
-        ts: now, localBytes: bytes, uploading: true, mediaCaption: caption);
+        ts: now, localBytes: bytes, uploading: true, mediaCaption: caption,
+        pendingKind: kind); // [AVAVM-PLAYER-1] real kind, known before `media` exists
     setState(() => _msgs.add(msg));
     _jump();
     // Index shared docs/images into the user's own RAG store (content extraction
@@ -4878,6 +4931,63 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         if (_myName case final n?) 'from_name': n,
       };
 
+  /// [AVAVM-PLAYER-1] Stable, globally-unique id for a voice note's playback
+  /// track: the server media id once uploaded (content-addressed, matches the
+  /// contract's "stable, content-addressed where possible"), else a
+  /// conv-scoped fallback for the brief window before upload finishes (that
+  /// note is scrubbable/playable locally but not yet resumable across a cold
+  /// start under a DIFFERENT id — it gets a real one the moment the upload
+  /// completes and `m.media` is set).
+  String _audioTrackId(_Msg m) => m.media?.id ?? 'local_${_convKey ?? 'x'}_${m.id}';
+
+  /// Reverse lookup: which (if any) message in THIS thread the shared
+  /// service's currently-loaded track belongs to. A linear scan is fine here
+  /// — it only runs on a playback-state change, not per frame, and thread
+  /// message lists are not large enough for this to matter.
+  int? _msgIdForTrackId(String trackId) {
+    for (final m in _msgs) {
+      if (_audioTrackId(m) == trackId) return m.id;
+    }
+    return null;
+  }
+
+  /// [AVAVM-PLAYER-1] Fired whenever `AudioPlaybackService.I.state` changes —
+  /// on play/pause/resume/seek/complete/stop, AND on THIS listener's own
+  /// installation (so reopening a thread whose voice note is already playing
+  /// in the background — via the mini-player — immediately shows it playing
+  /// here too, instead of looking idle until the next tick).
+  void _onAudioStateChanged() {
+    if (!mounted) return;
+    final st = AudioPlaybackService.I.state.value;
+    if (st == null) {
+      if (_playingAudioId != null || _openAudioId != null) {
+        setState(() {
+          _playingAudioId = null;
+          _openAudioId = null;
+        });
+      }
+      return;
+    }
+    final msgId = _msgIdForTrackId(st.track.trackId);
+    if (msgId == null) {
+      // The loaded/playing track belongs to a different thread — nothing of
+      // OURS is open, even if something elsewhere is playing.
+      if (_playingAudioId != null || _openAudioId != null) {
+        setState(() {
+          _playingAudioId = null;
+          _openAudioId = null;
+        });
+      }
+      return;
+    }
+    setState(() {
+      _openAudioId = msgId;
+      _playingAudioId = st.playing ? msgId : null;
+      _audioPos = st.position;
+      _audioDur = st.duration;
+    });
+  }
+
   /// [VOICE-SCRUB-1] Seek the currently-open note. Driven by a tap or drag on
   /// the bubble's waveform — this is the "I only want to hear the end" case the
   /// owner asked for, which was previously impossible: the only gesture on a
@@ -4888,69 +4998,57 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     // playhead around is the natural gesture, and refusing to seek while paused
     // would make the timeline feel broken exactly when you're using it most.
     if (_openAudioId != m.id) return;
-    try {
-      await _audio.seek(to);
-      // Paint the new position immediately rather than waiting for the next
-      // position callback, so the red playhead lands under the finger.
-      if (mounted) setState(() => _audioPos = to);
-    } catch (e) {
-      AvaLog.I.log('media', 'voice seek failed: $e');
-    }
+    // Paint the new position immediately rather than waiting for the next
+    // position callback, so the red playhead lands under the finger.
+    if (mounted) setState(() => _audioPos = to);
+    await AudioPlaybackService.I.seek(to);
   }
 
+  /// [AVAVM-PLAYER-1] Voice-note play/pause, now routed through the shared
+  /// `AudioPlaybackService` so playback (and the app-wide mini-player) keeps
+  /// going after the user navigates away from this thread — previously this
+  /// used a per-thread `AudioPlayer()` that died the instant the widget was
+  /// disposed, which is exactly the "player stops when I leave the chat"
+  /// report this issue fixes.
   Future<void> _playAudio(_Msg m) async {
+    final trackId = _audioTrackId(m);
     if (_playingAudioId == m.id) {
-      // [VOICE-SCRUB-1] Pause rather than stop. `stop()` resets the position to
-      // zero, so pausing a note silently threw away where you were — including
-      // any point you had just scrubbed to. Pause holds it.
-      await _audio.pause();
-      if (mounted) setState(() => _playingAudioId = null);
-      return;
+      // [VOICE-SCRUB-1] Pause rather than stop — pausing holds the position
+      // (including anywhere the user just scrubbed to); `stop()` would zero it.
+      await AudioPlaybackService.I.pause();
+      return; // _onAudioStateChanged updates _playingAudioId
     }
-    // [VOICE-SCRUB-1] Resume the note that's already loaded (paused, or parked
-    // at a position the user scrubbed to) instead of re-downloading, re-writing
+    // Resume the note that's already loaded in the shared player (paused, or
+    // parked where the user scrubbed to) instead of re-downloading, rewriting
     // the temp file and restarting it from 0:00.
-    if (_openAudioId == m.id) {
-      try {
-        await _audio.resume();
-        try { await _audio.setPlaybackRate(_audioSpeed); } catch (_) {}
-        if (mounted) setState(() => _playingAudioId = m.id);
-        return;
-      } catch (_) { /* fall through to a full reload */ }
+    if (_openAudioId == m.id && AudioPlaybackService.I.isCurrent(trackId)) {
+      await AudioPlaybackService.I.play(
+        track: AudioTrack(
+          trackId: trackId,
+          title: widget.chat.name,
+          subtitle: 'Voice note',
+          originRoute: _convKey,
+        ),
+        bytes: m.localBytes ?? Uint8List(0), // ignored on the resume-in-place path
+        startAt: _audioPos,
+      );
+      await AudioPlaybackService.I.setSpeed(_audioSpeed);
+      return;
     }
     try {
       final bytes = m.localBytes ?? (m.media != null ? await MediaService.downloadAndDecrypt(m.media!) : null);
       if (bytes == null) return;
-      await _audio.stop();
-      // audioplayers can't reliably decode an .m4a/AAC clip from an in-memory
-      // BytesSource on Android (no container/mime hint) — it silently no-ops,
-      // which is exactly why the play button "did nothing". Write the decrypted
-      // bytes to a real temp file and play that, so the OS media stack reads the
-      // m4a header.
-      final dir = await getTemporaryDirectory();
-      final f = File('${dir.path}/play_${m.id}.m4a');
-      await f.writeAsBytes(bytes, flush: true);
-      // [VOICE-SCRUB-1] Reset the playhead BEFORE play(), never after.
-      //
-      // `onDurationChanged` fires once per source, from inside play() when the
-      // platform decodes the m4a header. Clearing `_audioDur` afterwards would
-      // race that event and usually WIN — nulling the duration we'd just been
-      // told and never being told again, which silently disables the whole
-      // timeline (no length label, no red playhead, no seeking) in a way that
-      // depends on device timing and would pass a casual test on one handset.
-      if (mounted) {
-        setState(() {
-          // A different note is now loaded — forget the previous clip's length
-          // so the timeline can't render this note against the last one's.
-          _openAudioId = m.id;
-          _audioPos = Duration.zero;
-          _audioDur = null;
-        });
-      }
-      await _audio.play(DeviceFileSource(f.path));
+      await AudioPlaybackService.I.play(
+        track: AudioTrack(
+          trackId: trackId,
+          title: widget.chat.name,
+          subtitle: 'Voice note',
+          originRoute: _convKey,
+        ),
+        bytes: bytes,
+      );
       // [UI-BUBBLE-3] honour the chosen playback speed for this note.
-      try { await _audio.setPlaybackRate(_audioSpeed); } catch (_) {/* not supported on all platforms */}
-      if (mounted) setState(() => _playingAudioId = m.id);
+      await AudioPlaybackService.I.setSpeed(_audioSpeed);
       Analytics.capture('voice_note_played', {..._voiceTelemetry(), 'speed': _audioSpeed});
     } catch (e) {
       AvaLog.I.log('media', 'voice play failed: $e');
@@ -4968,7 +5066,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     final next = steps[(steps.indexOf(_audioSpeed) + 1) % steps.length];
     setState(() => _audioSpeed = next);
     if (_playingAudioId != null) {
-      _audio.setPlaybackRate(next).catchError((_) {});
+      AudioPlaybackService.I.setSpeed(next);
     }
     Analytics.capture('voice_note_speed', {'speed': next});
   }
@@ -9158,7 +9256,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                         return GestureDetector(
                           onTap: () {
                             if (m.localBytes != null) {
-                              final kind = m.media?.kind ?? MediaKind.file;
+                              // [AVAVM-PLAYER-1] Prefer the real `pendingKind`
+                              // over a blind `MediaKind.file` fallback — a
+                              // failed voice-note retry was re-uploading as a
+                              // generic file, which upload-succeeds but then
+                              // renders wrong on the recipient's side too.
+                              final kind = m.pendingKind ?? m.media?.kind ?? MediaKind.file;
                               _upload(m, m.localBytes!, kind, 'application/octet-stream', m.text);
                             } else if (_realMode && _dm != null && m.media == null && m.special == null) {
                               // Resend a failed text message; track the new wrap.
@@ -9550,8 +9653,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         );
       }
     }
-    final kind = m.media?.kind ??
-        (m.localBytes != null ? MediaKind.image : MediaKind.file); // best guess pre-upload
+    // [AVAVM-PLAYER-1] Prefer the real `pendingKind` stamped at send time
+    // (`_sendMedia`) over guessing `image` from `localBytes != null` alone —
+    // that guess was ALWAYS wrong for an in-flight voice note (and video),
+    // routing raw non-image bytes into `Image.memory()`, whose decode failure
+    // fell through `errorBuilder` to a blank `SizedBox.shrink()`. `media?.kind`
+    // stays authoritative once the upload completes.
+    final kind = m.media?.kind ?? m.pendingKind ??
+        (m.localBytes != null ? MediaKind.image : MediaKind.file);
     switch (kind) {
       case MediaKind.image:
         if (m.localBytes != null) {
@@ -9620,6 +9729,25 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         }
         return _fileChip(m, PhosphorIcons.image(PhosphorIconsStyle.bold), 'Photo');
       case MediaKind.audio:
+        // [AVAVM-PLAYER-1] Explicit posting feedback while `media` is still
+        // null and the upload is in flight — this is the fix for the "empty
+        // bubble, is my voice note gone?" report. Checked BEFORE the
+        // auto-fetch placeholder below (which is only for ALREADY-uploaded,
+        // not-yet-downloaded notes) and before the playable bubble.
+        if (m.media == null && m.uploading) {
+          return PendingVoiceNoteBubble(onRight: m.me && !_isAvaBubble(m));
+        }
+        // Upload FAILED — an explicit error beats a bubble that spins
+        // forever. Retry re-runs the exact same upload the status-row "tap to
+        // retry" affordance uses (both now honour `m.pendingKind`).
+        if (m.media == null && m.failed) {
+          return FailedVoiceNoteBubble(
+            onRight: m.me && !_isAvaBubble(m),
+            onRetry: m.localBytes == null
+                ? null
+                : () => _upload(m, m.localBytes!, MediaKind.audio, 'audio/mp4', 'voice.m4a'),
+          );
+        }
         // STREAM J (D17): auto-download off + nothing cached -> small download
         // button. Tapping fetches (manual = allowed) and repaints into play control.
         if (!_mediaAutoFetch && m.localBytes == null && m.media != null) {
@@ -9640,6 +9768,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         // voice bubble gets zero/null, so they render idle instead of all
         // mirroring the playhead of whichever note happens to be playing.
         final isOpen = _openAudioId == m.id;
+        // [AVAVM-PLAYER-1] "Resume where you left off": for a note that ISN'T
+        // the currently-open one, fall back to its persisted saved
+        // position/duration (per-account, survives navigating away and a
+        // cold start) so the bubble renders already parked where the user
+        // paused it, instead of looking untouched until re-opened.
+        final trackId = _audioTrackId(m);
+        final savedPos = isOpen ? null : AudioPlaybackService.I.savedPosition(trackId);
+        final savedDur = isOpen ? null : AudioPlaybackService.I.knownDuration(trackId);
         return VoiceNoteBubble(
           key: ValueKey('voice_${m.media?.id ?? m.id}'),
           playing: _playingAudioId == m.id,
@@ -9647,8 +9783,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
           onRight: m.me && !_isAvaBubble(m),
           onPlayPause: () => _playAudio(m),
           onCycleSpeed: _cycleAudioSpeed,
-          position: isOpen ? _audioPos : Duration.zero,
-          duration: isOpen ? _audioDur : null,
+          position: isOpen ? _audioPos : (savedPos ?? Duration.zero),
+          duration: isOpen ? _audioDur : savedDur,
           onSeek: isOpen ? (to) => _seekAudio(m, to) : null,
         );
       case MediaKind.video:

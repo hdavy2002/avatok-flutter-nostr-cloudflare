@@ -398,6 +398,88 @@ class _VoiceNoteBubbleState extends State<VoiceNoteBubble> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// [AVAVM-PLAYER-1] Posting feedback for a voice note.
+//
+// Root cause (owner report, 2026-07-16, pic2 point 2): while a voice note
+// uploads, `m.media` is null and only `m.localBytes` (the raw .m4a) is set.
+// `_mediaContent` used to GUESS the kind from that state alone —
+// `m.localBytes != null ? MediaKind.image : MediaKind.file` — so a
+// mid-upload voice note was rendered as `Image.memory()` on raw audio bytes,
+// which fails to decode and falls through `errorBuilder` to
+// `SizedBox.shrink()`: an EMPTY bubble next to the sender's avatar, with
+// nothing to tell the owner his note was even sent. `_Msg.pendingKind`
+// (stamped at optimistic-bubble creation, see `_sendMedia`) fixes the
+// guessing bug at the source; these two widgets give the audio case
+// something honest to show instead of trying to play/preview bytes that
+// aren't a real bubble yet.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Shown in place of [VoiceNoteBubble] while a voice note is still uploading.
+/// An indeterminate ring in the same 44dp play-button slot + a plain "posting"
+/// label reads as "this is on its way", not "did it disappear?".
+class PendingVoiceNoteBubble extends StatelessWidget {
+  final bool onRight;
+  const PendingVoiceNoteBubble({super.key, this.onRight = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final metaC = onRight ? AD.bubbleOutMeta : AD.bubbleInMeta;
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: (onRight ? AD.bubbleOutPlay : AD.bubbleInPlay).withValues(alpha: 0.5),
+          shape: BoxShape.circle,
+          border: Border.all(color: AD.borderControl, width: 1),
+        ),
+        child: const Center(
+          child: SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+          ),
+        ),
+      ),
+      const SizedBox(width: 10),
+      Text('Posting your voice note…', style: ADText.bubbleMeta(c: metaC)),
+    ]);
+  }
+}
+
+/// Shown in place of [VoiceNoteBubble] when the upload FAILED — an explicit
+/// error beats a bubble that spins forever. The message's own status row
+/// ("Not sent · tap to retry") already re-runs the upload for any media kind;
+/// [onRetry] is an extra, more discoverable tap target on the bubble itself.
+class FailedVoiceNoteBubble extends StatelessWidget {
+  final bool onRight;
+  final VoidCallback? onRetry;
+  const FailedVoiceNoteBubble({super.key, this.onRight = false, this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onRetry,
+      behavior: HitTestBehavior.opaque,
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: AD.danger.withValues(alpha: 0.16),
+            shape: BoxShape.circle,
+            border: Border.all(color: AD.danger, width: 1),
+          ),
+          child: Icon(PhosphorIcons.arrowClockwise(PhosphorIconsStyle.bold), size: 20, color: AD.danger),
+        ),
+        const SizedBox(width: 10),
+        Text("Couldn't send · tap to retry", style: ADText.bubbleMeta(c: AD.danger)),
+      ]),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // [UI-BUBBLE-2] Shared overlay pieces so media (image/video) can be THE bubble:
 // a bottom gradient scrim carrying the timestamp/status bottom-right, and a
 // "↪ Forwarded" label top-left. Compose these over any edge-to-edge media clip.

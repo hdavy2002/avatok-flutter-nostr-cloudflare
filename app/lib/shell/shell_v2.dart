@@ -8,6 +8,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../auth/clerk_client.dart';
 import '../core/account_storage.dart';
 import '../core/analytics.dart';
+import '../core/mini_audio_player_bar.dart'; // [AVAVM-PLAYER-1]
 import '../core/config.dart';
 import '../core/profile_store.dart';
 import '../core/remote_config.dart';
@@ -691,9 +692,21 @@ class _ShellV2State extends State<ShellV2> {
         },
         child: Scaffold(
           backgroundColor: AD.bg,
-          body: IndexedStack(
-            index: _root.index,
-            children: [for (final r in RootId.values) _navigatorFor(r)],
+          body: Stack(
+            children: [
+              IndexedStack(
+                index: _root.index,
+                children: [for (final r in RootId.values) _navigatorFor(r)],
+              ),
+              // [AVAVM-PLAYER-1] Mounted ONCE here, above the per-root
+              // IndexedStack, so a voice note / voicemail keeps playing (and
+              // stays visible) as the user moves between AvaTalk, AvaDial and
+              // Marketplace — instead of dying with whichever screen started
+              // it. Deliberately NOT mounted inside `v2/avadial_root.dart`
+              // (owned by a different agent) — it belongs at this shell-root
+              // level so it overlays every app, not just one.
+              const Positioned(top: 0, left: 0, right: 0, child: MiniAudioPlayerBar()),
+            ],
           ),
           // The app switcher is rendered ONCE here, at the shell level — so the
           // same icons stay in the same place as the user moves between AvaTOK,

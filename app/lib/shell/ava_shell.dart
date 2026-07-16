@@ -11,6 +11,7 @@ import '../core/analytics.dart';
 import '../core/app_registry.dart';
 import '../core/apps.dart';
 import '../core/disk_cache.dart';
+import '../core/mini_audio_player_bar.dart'; // [AVAVM-PLAYER-1]
 import '../core/remote_config.dart';
 import '../core/profile_store.dart';
 import '../core/ui/zine_widgets.dart';
@@ -539,10 +540,17 @@ class _AvaShellState extends State<AvaShell> {
     // contacts. ChatListScreen carries its own sidebar drawer + bottom nav, so
     // it IS the home surface. Other apps push on top via _switchFromChild and
     // pop back here. (Marketplace/ExploreHome de-emphasised for this release.)
-    return ChatListScreen(
-      clerk: widget.clerk,
-      onSignOut: widget.onSignOut,
-      onSwitchApp: _switchFromChild,
-    );
+    // [AVAVM-PLAYER-1] Overlaid here too (not just inside ShellV2) so a voice
+    // note kept playing while the shellV2 flag is off still surfaces the
+    // mini-player as the user navigates this legacy shell's pushed screens —
+    // no gating logic changed, purely an overlay.
+    return Stack(children: [
+      ChatListScreen(
+        clerk: widget.clerk,
+        onSignOut: widget.onSignOut,
+        onSwitchApp: _switchFromChild,
+      ),
+      const Positioned(top: 0, left: 0, right: 0, child: MiniAudioPlayerBar()),
+    ]);
   }
 }
