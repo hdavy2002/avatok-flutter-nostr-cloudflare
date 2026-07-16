@@ -183,6 +183,15 @@ export interface PushMsg {
   // kind === "notify": optional short message preview (WhatsApp-style expandable
   // banner). Omitted → content-less banner (sender name only).
   preview?: string;
+  // [AVANOTIF-VM-1] The RECIPIENT's device resolves a display name from its OWN
+  // contact book instead of trusting the sender-declared `fromName` (which was
+  // the root cause of a raw phone number showing in the shade — see fcm.ts
+  // buildPayload's "notify" branch). `fromUid` is normally just `from` (the
+  // Worker-authenticated sender uid); optional here only so a producer can set
+  // it explicitly when `from` isn't the right identity (e.g. a PSTN caller_uid).
+  // `fromPhone` is an optional E.164 hint for phone-only callers.
+  fromUid?: string;
+  fromPhone?: string;
   // kind === "del" (delete-for-everyone → silent realtime redaction on the device):
   conv?: string; target?: string;
   // kind === "hide" (delete-for-me / undo on another of MY devices → silent wake so

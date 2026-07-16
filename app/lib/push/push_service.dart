@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:uuid/uuid.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -28,7 +29,10 @@ import '../core/ice_cache.dart';
 import '../core/onboarding_store.dart';
 import '../core/remote_config.dart';
 import '../core/voice/native_voice_audio.dart';
+import '../features/avadial/contact_overrides.dart' show ContactOverrides;
+import '../features/avadial/device_contacts.dart' show DeviceContacts;
 import '../features/avatok/call_screen.dart';
+import '../features/avatok/contacts.dart' show ContactsStore;
 import '../features/avatok/incoming_business_call_screen.dart';
 import '../sync/sync_hub.dart';
 
@@ -183,7 +187,9 @@ class DeviceId {
 /// CALLFIX-R7: Handle missed-call callback action (Call back button tapped).
 /// Reads the stored peerId and routes to dial that peer.
 Future<void> _handleMissedCallCallback(String? payload) async {
-  final peerId = await DiskCache.read('last_missed_call_peer_id');
+  // [AVANOTIF-VM-1] GLOBAL, not scoped — see the write site in
+  // _showMissedCallNotif for why (the bg isolate has no AccountScope).
+  final peerId = await DiskCache.readGlobal('last_missed_call_peer_id');
   if (peerId != null && peerId.isNotEmpty) {
     Analytics.capture('missed_call_callback_tapped', {'peer_id': peerId});
     _clearBadge('missed_call_callback_tap');
@@ -197,6 +203,10 @@ Future<void> _handleMissedCallCallback(String? payload) async {
 /// the app on whatever screen it was last on — e.g. the Diagnostics page.)
 void _onNotifTap(String? payload) {
   if (payload == null) return; // call taps are handled by CallKit, not here
+  // [AVANOTIF-VM-1] Notification-tap telemetry — always fires on the main
+  // isolate (a tap resumes/launches the app), so a plain Analytics.capture is
+  // safe here (no bg-isolate routing needed, unlike _track elsewhere in this file).
+  Analytics.capture('push_notif_tapped', {'payload_kind': payload});
   // Group-invite tap → open the app; the Groups tab + notification bell surface
   // the pending invite (opening the exact thread from a cold tap is a refinement).
   if (payload.startsWith('group')) {
@@ -404,6 +414,239 @@ Future<void> _queuePendingCallOp(Map<String, dynamic> d) async {
 bool _terminalCallStatus(String s) =>
     s == 'cancel' || s == 'ended' || s == 'missed' || s == 'no-answer';
 
+// ── [AVANOTIF-VM-1] Recipient-side contact-name resolution for push banners ──
+//
+// The push payload's `fromName` is the SENDER's own self-declared display name
+// (see chat_thread.dart's `_myName`, falling back to Identity.shortId when the
+// sender never set a profile name), sent FROM the sender's device. It is never
+// checked against the RECIPIENT's own contact book, so a caller with no profile
+// name — or one the recipient has renamed/overridden locally — showed up as a
+// raw phone number / uid fragment in the shade (owner report 2026-07-16:
+// "919820436843" / "New message"). The fix resolves the name HERE, on the
+// recipient's device, from the recipient's OWN contacts — the way a normal
+// phone dialer would.
+//
+// [BG-ISOLATE-1] The FCM BACKGROUND isolate (`firebaseBackgroundHandler`) has no
+// `AccountScope`, no live Clerk session and no guarantee any plugin beyond what
+// firebase_messaging itself registers is safe to call. `AccountScope.id` is an
+// in-memory static that is simply UNSET in a fresh isolate — so a normal scoped
+// `DiskCache.read`/`ContactsStore().load()` would silently resolve to the WRONG
+// ("default") on-disk folder instead of throwing, which would have made this
+// fix look like it worked while quietly resolving nothing. Rather than fake
+// scoping in the bg isolate, the MAIN isolate periodically flattens all three
+// name sources (contact overrides, the AvaTOK contact book, the device phone
+// book) into one small GLOBAL (device-level) JSON file, namespaced internally by
+// account id, that the bg isolate reads with a plain `DiskCache.readGlobal` —
+// no plugin channel, no `AccountScope` required. Priority is baked in at WRITE
+// time: device phone book < AvaTOK contacts < contact-override rename (see
+// [_rebuildNameCache]). This was verified against the existing, already-shipped
+// `_bgTrack`/`_queuePendingDelete` pattern, which proves `DiskCache.readGlobal`
+// (path_provider under the hood) already works from this isolate; the SCOPED
+// variant does not, for the `AccountScope.id`-unset reason above — that is
+// exactly why those existing helpers use `readGlobal`, never `read`.
+const String _kNameCacheKey = 'push_name_cache_v1';
+// Mirrors main.dart's private `_kAcct` constant — the GLOBAL key it already
+// persists the signed-in Clerk account id under (for local-first boot). Kept as
+// a literal here (main.dart's constant is private) — the two must never diverge.
+const String _kActiveAccountKey = 'clerk_account_id';
+
+/// Rebuild the flat, background-isolate-readable name cache from the recipient's
+/// OWN contact sources. MAIN ISOLATE ONLY (guarded) — the bg isolate has none of
+/// these stores loaded correctly (see [BG-ISOLATE-1] above), so calling this
+/// there would just persist an empty/wrong cache over a good one.
+Future<void> _rebuildNameCache() async {
+  if (BadgeService.inBackgroundIsolate) return;
+  try {
+    final acctId = AccountScope.id;
+    if (acctId == null || acctId.isEmpty) return; // no account yet — nothing to cache
+    final byUid = <String, String>{};
+    final byPhone = <String, Map<String, String>>{}; // normKey -> {name, tier}
+
+    // Lowest priority first — later writers below overwrite on key collision.
+    try {
+      final permStatus = await Permission.contacts.status; // READ-ONLY — never prompts
+      if (permStatus.isGranted) {
+        final device = await DeviceContacts.I.load(); // cached in-memory if already loaded
+        for (final c in device) {
+          final name = (c.name ?? '').trim();
+          if (name.isEmpty) continue;
+          final key = DeviceContacts.normKey(c.number);
+          if (key.isEmpty) continue;
+          byPhone[key] = {'name': name, 'tier': 'device_contact'};
+        }
+      }
+    } catch (_) {/* best-effort — lowest-priority tier anyway */}
+
+    try {
+      final contacts = await ContactsStore().load();
+      for (final c in contacts) {
+        if (c.name.trim().isEmpty) continue;
+        if (c.uid.isNotEmpty && !c.isPhoneOnly) byUid[c.uid] = c.name;
+        final phoneLike = c.phone.isNotEmpty ? c.phone : c.number;
+        if (phoneLike.isNotEmpty) {
+          final key = DeviceContacts.normKey(phoneLike);
+          if (key.isNotEmpty) byPhone[key] = {'name': c.name, 'tier': 'contact'};
+        }
+      }
+    } catch (_) {/* best-effort */}
+
+    try {
+      final overrides = await ContactOverrides.I.load();
+      for (final o in overrides) {
+        final name = (o.displayName ?? '').trim();
+        if (name.isEmpty || o.hidden) continue;
+        final key = DeviceContacts.normKey(o.number);
+        if (key.isEmpty) continue;
+        byPhone[key] = {'name': name, 'tier': 'override'}; // highest priority — always wins
+      }
+    } catch (_) {/* best-effort */}
+
+    final raw = await DiskCache.readGlobal(_kNameCacheKey);
+    Map<String, dynamic> all = {};
+    if (raw != null && raw.isNotEmpty) {
+      try { all = jsonDecode(raw) as Map<String, dynamic>; } catch (_) {/* start fresh */}
+    }
+    all[acctId] = {'uid': byUid, 'phone': byPhone};
+    await DiskCache.writeGlobal(_kNameCacheKey, jsonEncode(all));
+  } catch (_) {/* best-effort — a failed rebuild just leaves the last-good cache in place */}
+}
+
+/// Resolve a display name + which fallback TIER won (for telemetry — proves in
+/// PostHog which stage of the chain is actually firing in prod). Safe to call
+/// from EITHER isolate: reads only via `DiskCache.readGlobal`, no `AccountScope`,
+/// no plugin channel.
+///
+/// Priority: (1) recipient's own contact-override rename, by phone/number →
+/// (2) recipient's AvaTOK contact match, by uid then phone/number →
+/// (3) recipient's device phone book, by phone/number →
+/// [(1)-(3) all live inside the flattened cache — see [_rebuildNameCache]] →
+/// (4) the payload's own `fromPhone`, formatted → (5) the payload's `fromName` →
+/// (6) [unknownFallback].
+Future<({String name, String tier})> _resolveDisplayName({
+  String? fromUid,
+  String? fromPhone,
+  String? fromName,
+  String unknownFallback = 'Unknown caller',
+}) async {
+  try {
+    final acctId = await DiskCache.readGlobal(_kActiveAccountKey);
+    if (acctId != null && acctId.isNotEmpty) {
+      final raw = await DiskCache.readGlobal(_kNameCacheKey);
+      if (raw != null && raw.isNotEmpty) {
+        final all = jsonDecode(raw) as Map<String, dynamic>;
+        final mine = all[acctId] as Map<String, dynamic>?;
+        if (mine != null) {
+          if (fromPhone != null && fromPhone.isNotEmpty) {
+            final key = DeviceContacts.normKey(fromPhone);
+            final byPhone = (mine['phone'] as Map?)?.cast<String, dynamic>();
+            final hit = byPhone?[key];
+            if (hit is Map) {
+              final name = (hit['name'] ?? '').toString();
+              if (name.isNotEmpty) {
+                return (name: name, tier: (hit['tier'] ?? 'contact').toString());
+              }
+            }
+          }
+          if (fromUid != null && fromUid.isNotEmpty) {
+            final byUid = (mine['uid'] as Map?)?.cast<String, dynamic>();
+            final name = (byUid?[fromUid] ?? '').toString();
+            if (name.isNotEmpty) return (name: name, tier: 'contact_uid');
+          }
+        }
+      }
+    }
+  } catch (_) {/* fall through to the payload/formatted fallbacks below */}
+  // No local match. A raw phone is more useful FORMATTED than a sender's own
+  // fromName when one is available — for PSTN/receptionist pushes, fromName is
+  // often just the same raw number as a label, not a chosen human name.
+  if (fromPhone != null && fromPhone.trim().isNotEmpty) {
+    return (name: _formatPhoneDisplay(fromPhone), tier: 'formatted_phone');
+  }
+  final fn = (fromName ?? '').trim();
+  if (fn.isNotEmpty) return (name: fn, tier: 'from_name');
+  return (name: unknownFallback, tier: 'unknown');
+}
+
+/// Best-effort E.164-ish pretty-printer: '919820436843' -> '+91 98204 36843'.
+/// Not full libphonenumber formatting — just enough that an unresolved caller
+/// reads as a phone number, not a digit dump (owner report 2026-07-16).
+String _formatPhoneDisplay(String raw) {
+  final trimmed = raw.trim();
+  if (trimmed.isEmpty) return 'Unknown number';
+  final digits = trimmed.replaceAll(RegExp(r'[^0-9]'), '');
+  if (digits.isEmpty) return trimmed; // alphanumeric sender id (e.g. 'VM-HDFCBK') — show as-is
+  if (digits.length <= 6) return '+$digits';
+  var cc = '';
+  var rest = digits;
+  if (digits.length > 10) {
+    cc = digits.substring(0, digits.length - 10);
+    rest = digits.substring(digits.length - 10);
+  }
+  final g1 = rest.length > 5 ? rest.substring(0, rest.length - 5) : rest;
+  final g2 = rest.length > 5 ? rest.substring(rest.length - 5) : '';
+  final parts = [if (cc.isNotEmpty) cc, g1, if (g2.isNotEmpty) g2];
+  return '+${parts.join(' ')}';
+}
+
+// ── [AVANOTIF-VM-1] Missed-call per-caller grouping ─────────────────────────
+// Notification id 8002 used to be reused verbatim for EVERY missed caller, so a
+// second missed call (from anyone) silently overwrote the first caller's banner
+// in place rather than the two coexisting — the opposite of a proper per-caller
+// group. Each caller now gets a STABLE id derived from their phone/uid, tagged
+// with a shared `groupKey`, plus a summary notification (kept on the original
+// 8002 id for continuity) that Android collapses the group under.
+const String _kMissedCallsGroupKey = 'avatok_calls_missed';
+const int _kMissedCallsSummaryId = 8002;
+const String _kMissedCallsLogKey = 'push_missed_calls_log_v1'; // GLOBAL, keyed by account id
+
+int _missedCallNotifId(String key) {
+  if (key.isEmpty) return 8010;
+  // 8100..8899 — clear of the other fixed ids (8000-8003).
+  return 8100 + (key.hashCode.abs() % 800);
+}
+
+/// Append one missed-call line to the (capped) per-account log and (re)post the
+/// group summary notification. Best-effort — grouping is cosmetic; a failure
+/// here never prevents the per-caller banner itself from showing.
+Future<void> _updateMissedCallsSummary(String line) async {
+  try {
+    var acctId = AccountScope.id ?? '';
+    if (acctId.isEmpty) acctId = (await DiskCache.readGlobal(_kActiveAccountKey)) ?? '';
+    if (acctId.isEmpty) return;
+    final raw = await DiskCache.readGlobal(_kMissedCallsLogKey);
+    Map<String, dynamic> all = {};
+    if (raw != null && raw.isNotEmpty) {
+      try { all = jsonDecode(raw) as Map<String, dynamic>; } catch (_) {/* start fresh */}
+    }
+    final list = ((all[acctId] as List?) ?? const []).map((e) => e.toString()).toList();
+    list.insert(0, line);
+    if (list.length > 8) list.removeRange(8, list.length);
+    all[acctId] = list;
+    await DiskCache.writeGlobal(_kMissedCallsLogKey, jsonEncode(all));
+    await _ensureLocalInit();
+    final n = list.length;
+    await _local.show(
+      _kMissedCallsSummaryId,
+      n > 1 ? '$n missed calls' : line,
+      n > 1 ? list.first : '',
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          _callsChannel.id, _callsChannel.name,
+          channelDescription: _callsChannel.description,
+          importance: Importance.high, priority: Priority.high,
+          groupKey: _kMissedCallsGroupKey,
+          setAsGroupSummary: true,
+          category: AndroidNotificationCategory.missedCall,
+          styleInformation: InboxStyleInformation(
+            list, contentTitle: n > 1 ? '$n missed calls' : line, summaryText: 'AvaTOK',
+          ),
+        ),
+      ),
+      payload: 'chat',
+    );
+  } catch (_) {/* best-effort — grouping is cosmetic, the per-caller banner already shown */}
+}
+
 /// Local notification for a new (E2E) message. Content-less by design — only the
 /// sender's display name travels; the message body never leaves the devices.
 Future<void> _showMessageNotif(Map<String, dynamic> d) async {
@@ -425,7 +668,24 @@ Future<void> _showMessageNotif(Map<String, dynamic> d) async {
     await _showMissedCallNotif(d);
     return;
   }
-  final who = (d['fromName'] ?? 'AvaTOK').toString();
+  // [AVANOTIF-VM-1] Resolve the RECIPIENT's own name for this sender before
+  // falling back to the sender's self-declared fromName. See _resolveDisplayName.
+  final rawFromUid = (d['fromUid'] ?? '').toString();
+  final rawFromPhone = (d['fromPhone'] ?? '').toString();
+  final rawFromName = (d['fromName'] ?? '').toString();
+  final resolved = await _resolveDisplayName(
+    fromUid: rawFromUid.isEmpty ? null : rawFromUid,
+    fromPhone: rawFromPhone.isEmpty ? null : rawFromPhone,
+    fromName: rawFromName.isEmpty ? null : rawFromName,
+    unknownFallback: 'AvaTOK', // unchanged historical fallback for chat messages
+  );
+  final who = resolved.name;
+  await _track('name_resolution', {
+    'surface': 'message',
+    'tier': resolved.tier,
+    'had_from_uid': rawFromUid.isNotEmpty,
+    'had_from_phone': rawFromPhone.isNotEmpty,
+  });
   final count = await _bumpBadge('message');
   // Server-readable arch (owner request 2026-06-27, WhatsApp-style shade): when
   // the push carries a short message PREVIEW, render an EXPANDABLE banner so the
@@ -489,24 +749,70 @@ bool _isReceptionistPush(Map<String, dynamic> d) {
   final kind = (d['kind'] ?? '').toString().toLowerCase();
   final type = (d['type'] ?? '').toString().toLowerCase();
   final category = (d['category'] ?? '').toString().toLowerCase();
+  final subKind = (d['subKind'] ?? '').toString().toLowerCase();
   if (d['recept']?.toString() == '1') return true;
   if (kind == 'receptionist' || type == 'receptionist') return true;
   if (category == 'missed' || type == 'missed') return true;
-  // Fallback while the server tag is stripped by the consumer: the reception DO
-  // posts the voicemail as fromName='Ava'.
+  // [AVANOTIF-VM-1] The consumer now forwards the missed-call/voicemail DOs'
+  // `data.type` as `subKind` (consumers/fcm.ts buildPayload). This is the
+  // reliable signal the fromName=='Ava' sniffing below was standing in for —
+  // and, importantly, it ALSO catches the PSTN missed-call/voicemail case,
+  // which fromName=='Ava' never did: a PSTN caller's `fromName` is their own
+  // raw phone number, not 'Ava', so those pushes fell through to the plain
+  // chat-message banner (title = a raw phone number, body = "New message") —
+  // exactly the owner's reported screenshot. Additive, does not replace the
+  // checks above or below.
+  if (subKind == 'receptionist' || subKind == 'voicemail') return true;
+  // Fallback while any path still strips the tag: the reception DO posts the
+  // voicemail as fromName='Ava'. Kept per spec — do not delete on an assumption.
   return (d['fromName'] ?? '').toString() == 'Ava';
 }
 
 /// Missed-call / receptionist ("Ava took a message") banner on the dedicated
-/// Calls channel. Distinct notification id (8002) from the message banner (8000)
-/// so both can coexist. High importance + sound + vibration wakes the screen.
+/// Calls channel. Each caller gets its OWN notification id (see
+/// [_missedCallNotifId]) grouped under [_kMissedCallsGroupKey], with a summary
+/// notification kept on the original fixed id (8002) for continuity — see
+/// [AVANOTIF-VM-1] above. High importance + sound + vibration wakes the screen.
 Future<void> _showMissedCallNotif(Map<String, dynamic> d) async {
-  final who = (d['callerName'] ?? d['caller_phone'] ?? d['fromName'] ?? 'a caller')
-      .toString();
+  // [AVANOTIF-VM-1] Resolve the RECIPIENT's own name for this caller. `fromPub`
+  // (present on both PSTN and in-app receptionist pushes) is the caller's uid
+  // when known; `caller_phone`/`fromPhone` the E.164 number. Deliberately do NOT
+  // feed the payload's own `fromName` into the resolver here: for receptionist
+  // pushes it is literally 'Ava' (the assistant, not the caller — the OLD title
+  // could read "Ava took a message from Ava" when no other field was set), and
+  // for PSTN it is just the same raw phone number `fromPhone` already covers via
+  // the formatted-phone fallback tier.
+  final fromUid = (d['fromPub'] ?? d['fromUid'] ?? '').toString();
+  final fromPhone = (d['fromPhone'] ?? d['caller_phone'] ?? '').toString();
+  final rawCallerName = (d['callerName'] ?? '').toString();
+  final resolved = await _resolveDisplayName(
+    fromUid: fromUid.isEmpty ? null : fromUid,
+    fromPhone: fromPhone.isEmpty ? null : fromPhone,
+    fromName: rawCallerName.isEmpty ? null : rawCallerName,
+  );
+  final who = resolved.name;
+  await _track('name_resolution', {
+    'surface': 'missed_call',
+    'tier': resolved.tier,
+    'had_from_uid': fromUid.isNotEmpty,
+    'had_from_phone': fromPhone.isNotEmpty,
+  });
+
   final preview = (d['preview'] ?? d['body'] ?? '').toString().trim();
   final count = await _bumpBadge('missed_call');
-  final title = 'Missed call — Ava took a message from $who';
-  final body = preview.isNotEmpty ? preview : 'Tap to hear the message';
+  // [AVANOTIF-VM-1] Whether this missed-call surface actually carries (or will
+  // carry) a voicemail/receptionist message, vs a plain unanswered call with
+  // nothing left. Drives the body copy (owner's own phrasing: "Check your
+  // AvaTOK inbox for a voice message" / spec's "Left you a voice message").
+  final subKind = (d['subKind'] ?? '').toString().toLowerCase();
+  final hasVoicemail = subKind == 'voicemail' || subKind == 'receptionist' ||
+      d['recept']?.toString() == '1' || (d['fromName'] ?? '') == 'Ava';
+  final title = 'Missed call from $who';
+  final body = preview.isNotEmpty
+      ? preview // e.g. a transcript snippet — WhatsApp-style preview
+      : (hasVoicemail
+          ? 'Left you a voice message · tap to listen'
+          : 'Tap to call back');
   final styleInfo = preview.isNotEmpty
       ? BigTextStyleInformation(preview, contentTitle: title)
       : null;
@@ -514,11 +820,21 @@ Future<void> _showMissedCallNotif(Map<String, dynamic> d) async {
   // the data (fromPub is the caller's public ID used to dial them back).
   final peerId = (d['fromPub'] ?? '').toString();
   final hasCallbackAction = peerId.isNotEmpty;
-  // CALLFIX-R7: Store the peerId so the callback action handler can access it
+  // CALLFIX-R7 / [AVANOTIF-VM-1]: store the peerId so the callback action
+  // handler can access it. GLOBAL (device-level), not scoped: this banner is
+  // routinely shown from the bg isolate, where `AccountScope.id` is unset — a
+  // SCOPED write there used to land in the wrong ("default") on-disk folder
+  // while the tap (main isolate, real AccountScope.id) read the real one, so
+  // "Call back" on a backgrounded missed call could silently read nothing.
   if (hasCallbackAction) {
-    await DiskCache.write('last_missed_call_peer_id', peerId);
+    await DiskCache.writeGlobal('last_missed_call_peer_id', peerId);
   }
   await _ensureLocalInit(); // bg isolate: plugin isn't init'd here otherwise → crash
+  // [AVANOTIF-VM-1] Stable per-caller id (phone, else uid, else the resolved
+  // name) so a second missed call from a DIFFERENT person gets its OWN banner
+  // instead of silently overwriting the first — grouped under one summary.
+  final callerKey = fromPhone.isNotEmpty ? fromPhone : (fromUid.isNotEmpty ? fromUid : who);
+  final notifId = _missedCallNotifId(callerKey);
   final androidDetails = AndroidNotificationDetails(
     _callsChannel.id, _callsChannel.name,
     channelDescription: _callsChannel.description,
@@ -527,6 +843,7 @@ Future<void> _showMissedCallNotif(Map<String, dynamic> d) async {
     ticker: title,
     category: AndroidNotificationCategory.missedCall,
     styleInformation: styleInfo,
+    groupKey: _kMissedCallsGroupKey,
     actions: hasCallbackAction ? [
       AndroidNotificationAction(
         'callback',
@@ -539,13 +856,17 @@ Future<void> _showMissedCallNotif(Map<String, dynamic> d) async {
   // CALLFIX-R7: Main payload is always 'chat' (to open inbox on tap).
   // The callback action is handled separately via actionId='callback' in onDidReceiveNotificationResponse.
   await _local.show(
-    8002, // fixed id → updates in place (one missed-call banner)
+    notifId,
     title,
     body,
     NotificationDetails(android: androidDetails),
     payload: 'chat',
   );
-  await _bgTrack('push_shown', {'channel': 'calls', 'type': 'missed', 'has_callback': hasCallbackAction});
+  await _updateMissedCallsSummary('$title — ${hasVoicemail ? "voicemail" : "no voicemail"}');
+  await _bgTrack('push_shown', {
+    'channel': 'calls', 'type': 'missed', 'has_callback': hasCallbackAction,
+    'has_voicemail': hasVoicemail, 'name_tier': resolved.tier,
+  });
 }
 
 /// [BUSY-CARD-1] "Now free" banner — the callee the caller asked to be notified
@@ -565,7 +886,8 @@ Future<void> _showNowFreeNotif(Map<String, dynamic> d) async {
   final count = await _bumpBadge('now_free');
   if (peerId.isNotEmpty) {
     // Reuse the existing callback plumbing: the tap handler reads this key.
-    await DiskCache.write('last_missed_call_peer_id', peerId);
+    // GLOBAL — this banner routinely fires from the bg isolate (no AccountScope).
+    await DiskCache.writeGlobal('last_missed_call_peer_id', peerId);
   }
   await _ensureLocalInit();
   final androidDetails = AndroidNotificationDetails(
@@ -603,7 +925,7 @@ Future<void> _showNowFreeNotif(Map<String, dynamic> d) async {
 /// caller wants to redial the now-free callee. Emits now_free_callback_started
 /// and routes to the dial flow, reusing the missed-call callback plumbing.
 Future<void> _handleNowFreeCallback(String? payload) async {
-  final peerId = await DiskCache.read('last_missed_call_peer_id');
+  final peerId = await DiskCache.readGlobal('last_missed_call_peer_id');
   Analytics.capture('now_free_callback_started', {
     'peer_id': peerId ?? '',
   });
@@ -1159,6 +1481,13 @@ class PushService {
     // Ship any telemetry the BACKGROUND isolate parked (incl. bg crashes) now that
     // Analytics is live — so background failures stop being invisible.
     await drainPendingBgTelemetry();
+    // [AVANOTIF-VM-1] Build the bg-isolate-readable name cache now (main isolate,
+    // account is scoped by this point) and keep it fresh whenever the recipient's
+    // own AvaTOK contact book changes. Contact-override renames have no change
+    // stream, so they ride the same rebuild cadence (init + every foreground FCM
+    // below) — a short staleness window, not a correctness gap.
+    unawaited(_rebuildNameCache());
+    ContactsStore.changes.listen((_) => unawaited(_rebuildNameCache()));
     // Cold-started by tapping a message notification? Route to the inbox.
     final launch = await _local.getNotificationAppLaunchDetails();
     if (launch?.didNotificationLaunchApp ?? false) {
@@ -1171,6 +1500,9 @@ class PushService {
         'type': (d['type'] ?? '').toString(),
         'callId': (d['callId'] ?? '').toString(),
       });
+      // [AVANOTIF-VM-1] Cheap opportunistic refresh — keeps contact-override
+      // renames (no change stream of their own) from going stale for long.
+      unawaited(_rebuildNameCache());
       // Any background pushes that arrived (and any bg crash) just before we came
       // to the foreground get shipped now too.
       drainPendingBgTelemetry();

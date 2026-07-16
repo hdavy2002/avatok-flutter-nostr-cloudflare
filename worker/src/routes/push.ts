@@ -38,9 +38,16 @@ export async function postNotify(req: Request, env: Env): Promise<Response> {
   if (!recipients.length) return json({ error: "to (uid) required" }, 400);
   const fromName = b.fromName ?? b.title ?? null;
   const preview = b.preview ?? b.body ?? null;
+  // [AVANOTIF-VM-1] `from: ctx.uid` below is ALREADY the trustworthy sender
+  // identity (Worker-authenticated via requireUser, unlike the client-supplied
+  // `fromName`) — the consumer forwards it to the recipient's device as
+  // `fromUid` so the RECIPIENT can resolve a name from their OWN contact book
+  // instead of trusting the sender's self-declared display name. `fromPhone` is
+  // an optional client hint (E.164) for phone-only flows; capped defensively.
+  const fromPhone = typeof b.fromPhone === "string" ? b.fromPhone.slice(0, 32) : null;
   await Promise.all(recipients.map((to: string) => env.Q_PUSH.send({
     kind: "notify", to, from: ctx.uid,
-    fromName, preview, data: b.data ?? null, ts: Date.now(),
+    fromName, preview, ...(fromPhone ? { fromPhone } : {}), data: b.data ?? null, ts: Date.now(),
   })));
   return json({ ok: true, queued: recipients.length });
 }

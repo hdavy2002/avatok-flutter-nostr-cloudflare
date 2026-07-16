@@ -273,6 +273,11 @@ async function handleFanout(msg: PushMsg, env: Env): Promise<void> {
         if (!r.live) await handlePush({
           kind: "notify", to: uid,
           fromName: msg.fromName || "AvaTOK",
+          // [AVANOTIF-VM-1] Forward the sender uid when the fanout carried one so
+          // the recipient can resolve a name from their own contacts. Today's
+          // messaging.ts fanout producer does not set `msg.from` on this PushMsg —
+          // this is future-proofing + best-effort; flagged separately as a gap.
+          ...(msg.from ? { fromUid: msg.from } : {}),
           ...(msg.preview ? { preview: msg.preview } : {}),
         }, env);
       } catch (e) {
@@ -343,11 +348,34 @@ function buildPayload(msg: PushMsg): { data: Record<string, string>; highPriorit
     // fragile fromName=='Ava' sniffing. `recept:"1"` lets the app post a
     // "Missed call — Ava took a message from <name>" banner on the calls channel.
     const isRecept = (msg.data as any)?.type === "receptionist";
+    // [AVANOTIF-VM-1] Forward the SENDER's identity so the RECIPIENT resolves a
+    // display name from THEIR OWN contact book, instead of trusting the
+    // sender-declared `fromName` (root cause of the "919820436843 / New message"
+    // report: fromName is whatever the SENDER's own device had set as its local
+    // display name — un-verified against the recipient's contacts). Priority:
+    // a missed-call/voicemail DO's `caller_uid`/`caller_phone` (pstn.ts,
+    // reception_room*.ts put these on `msg.data`) > `msg.from` (the Worker-
+    // authenticated sender uid set by postNotify) > an optional client-supplied
+    // `msg.fromUid`/`msg.fromPhone` hint.
+    const fromUid = (msg.data as any)?.caller_uid || msg.from || msg.fromUid || "";
+    const fromPhone = (msg.data as any)?.caller_phone || msg.fromPhone || "";
+    // Sub-kind of a "notify" push (e.g. "receptionist" | "voicemail"). Lets the
+    // client route PSTN missed-call/voicemail pushes to the Calls channel even
+    // though their `fromName` is the caller's raw phone number, not 'Ava' — the
+    // old fromName=='Ava' heuristic never matched these, so a PSTN missed call
+    // rendered as a plain chat-message banner titled with a raw number (the
+    // reported bug). Additive: does not replace the existing recept/fromName checks.
+    const subKind = (msg.data as any)?.type ? String((msg.data as any).type) : "";
     return { highPriority: true, data: {
       type: "message", fromName: msg.fromName ?? "AvaTOK",
-      // Short preview (when the sender included one) → the app renders an
-      // expandable banner so the message reads from the shade without opening.
-      ...(msg.preview ? { preview: msg.preview } : {}),
+      ...(fromUid ? { fromUid: String(fromUid) } : {}),
+      ...(fromPhone ? { fromPhone: String(fromPhone) } : {}),
+      ...(subKind ? { subKind } : {}),
+      // Short preview — the sender's own `preview`, or (fallback) the internal
+      // DO senders' `body` field (e.g. a voicemail transcript snippet), so those
+      // pushes stop arriving content-less. The app renders an expandable banner
+      // so the message/voicemail reads from the shade without opening.
+      ...(msg.preview ?? msg.body ? { preview: String(msg.preview ?? msg.body) } : {}),
       ...(isRecept ? { recept: "1" } : {}),
       // [PUSH-FG-BANNER-1 2026-07-14] Forward the conversation key. `del`, `hide`
       // and `group_invite` already carry `conv`; `notify` — the one kind that
