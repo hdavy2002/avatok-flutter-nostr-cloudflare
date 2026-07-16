@@ -120,6 +120,20 @@ async function resolveOwner(env: Env, forwardedFrom: string, callerFrom: string)
       if (pending?.owner_uid) return { owner_uid: pending.owner_uid, owner_name: null };
     } catch { /* fall through to ORPHAN */ }
   }
+  // DIRECT-DIAL SELF-MAILBOX (2026-07-16, from live debugging): a call that
+  // reaches the DID with NO ForwardedFrom and NO expectation is usually
+  // someone dialing the voicemail line directly. If the CALLER's own number
+  // maps to an AvaTOK account, deliver to THEIR inbox — i.e. "call your own
+  // voicemail number" behaves like every carrier voicemail line, and owner
+  // testing works without carrier forwarding. (Owner's 09:55 test call landed
+  // ORPHAN for exactly this reason: direct call → no ForwardedFrom → nobody
+  // to deliver to.)
+  if (callerFrom) {
+    try {
+      const matches = await matchAvatokPhones(env, { numbers: [callerFrom] });
+      if (matches.length > 0) return { owner_uid: matches[0].uid, owner_name: matches[0].name };
+    } catch { /* fall through to ORPHAN */ }
+  }
   // NOTE: hidden/withheld-caller anonymous expectation matching
   // (`pstn_expect:anon:<owner_uid>`) needs the owner already known to check —
   // which is circular for a truly anonymous incoming leg without
@@ -272,6 +286,16 @@ async function handleRecordCb(req: Request, env: Env, secret: string): Promise<R
           });
         } catch { /* best-effort */ }
       }
+      // Orphans must be VISIBLE in telemetry (2026-07-16 debugging: an owner
+      // test call vanished silently because only successful deliveries emitted
+      // an event — PostHog had nothing to investigate with).
+      try {
+        const callerHash = session?.caller ? await sha256Hex(normalizePhone(session.caller)) : null;
+        await env.Q_ANALYTICS.send({
+          event: "pstn_orphan", uid: "unattributed", ts: Date.now(),
+          props: { call_uuid: callUuid, caller_hash: callerHash, trace_id: session?.trace_id ?? null, state: CallState.ORPHAN },
+        });
+      } catch { /* best-effort */ }
       return xml(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`);
     }
 
