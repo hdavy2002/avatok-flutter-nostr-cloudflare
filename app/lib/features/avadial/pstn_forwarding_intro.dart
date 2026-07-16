@@ -108,8 +108,12 @@ class _PstnForwardingIntroBodyState extends State<PstnForwardingIntroBody> {
         // Per-code progress + carrier response/error, shown live as each
         // code lands — see class doc: a failure never stops the sequence.
         Analytics.capture('pstn_forward_enable_result', {
-          'code': kind.analyticsKind,
+          'code': result.dialedCode ?? kind.analyticsKind,
+          'kind': kind.analyticsKind,
           'ok': result.ok,
+          'codes_source': result.codesSource ?? 'default',
+          if (result.carrier != null) 'carrier': result.carrier!,
+          if (result.mccmnc != null) 'mccmnc': result.mccmnc!,
         });
         if (!mounted) return;
         setState(() {

@@ -1,11 +1,14 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:http/http.dart' as http;
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/account_storage.dart';
 import '../../core/analytics.dart';
+import '../../core/config.dart';
 import '../../core/remote_config.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine.dart';
@@ -118,14 +121,223 @@ extension PstnForwardKindX on PstnForwardKind {
   }
 }
 
+/// [server-driven carrier codes] Per-carrier MMI code templates, resolved
+/// from GET `$kApiBase/pstn/carrier-codes` (worker/src/routes/pstn.ts) with
+/// [PstnCarrierCodes.defaults] as the ALWAYS-AVAILABLE fallback — those
+/// defaults are byte-for-byte the GSM-standard literals this engine hardcoded
+/// before this feature existed, so an unreachable endpoint, a timeout, a bad
+/// response, or a device with no resolvable SIM operator all degrade to
+/// EXACTLY today's behavior. `{did}` in an `*_enable` template is substituted
+/// with [kPstnVoicemailDid] at dial time; disable/status templates take no
+/// substitution. `cfb` = call-forward-busy (declined/busy), `cfnry` =
+/// call-forward-no-reply (missed), `cfnrc` = call-forward-not-reachable
+/// (unreachable) — GSM 3GPP TS 22.004 condition names.
+class PstnCarrierCodes {
+  final String cfbEnable;
+  final String cfnryEnable;
+  final String cfnrcEnable;
+  final String cfbDisable;
+  final String cfnryDisable;
+  final String cfnrcDisable;
+  final String cfbStatus;
+  final String cfnryStatus;
+  final String cfnrcStatus;
+  /// `'default'` (server had no matching override, or the lookup failed
+  /// locally) or `'override'` (a KV `pstn_carrier_codes` entry matched this
+  /// device's mccmnc) — carried into analytics as `codes_source`.
+  final String source;
+  final String? mccmnc;
+  final String? carrier;
+
+  const PstnCarrierCodes({
+    required this.cfbEnable,
+    required this.cfnryEnable,
+    required this.cfnrcEnable,
+    required this.cfbDisable,
+    required this.cfnryDisable,
+    required this.cfnrcDisable,
+    required this.cfbStatus,
+    required this.cfnryStatus,
+    required this.cfnrcStatus,
+    required this.source,
+    this.mccmnc,
+    this.carrier,
+  });
+
+  /// The exact GSM-standard literals [PstnForwardKindX.enableCode]/
+  /// [PstnForwardKindX.disableCode] hardcoded before this feature existed.
+  /// This is the fallback at EVERY layer — server unreachable, malformed
+  /// response, missing SIM info, whatever.
+  static const PstnCarrierCodes defaults = PstnCarrierCodes(
+    cfbEnable: '*67*{did}#',
+    cfnryEnable: '*61*{did}#',
+    cfnrcEnable: '*62*{did}#',
+    cfbDisable: '##67#',
+    cfnryDisable: '##61#',
+    cfnrcDisable: '##62#',
+    cfbStatus: '*#67#',
+    cfnryStatus: '*#61#',
+    cfnrcStatus: '*#62#',
+    source: 'default',
+  );
+
+  PstnCarrierCodes copyWith({String? mccmnc, String? carrier}) => PstnCarrierCodes(
+        cfbEnable: cfbEnable,
+        cfnryEnable: cfnryEnable,
+        cfnrcEnable: cfnrcEnable,
+        cfbDisable: cfbDisable,
+        cfnryDisable: cfnryDisable,
+        cfnrcDisable: cfnrcDisable,
+        cfbStatus: cfbStatus,
+        cfnryStatus: cfnryStatus,
+        cfnrcStatus: cfnrcStatus,
+        source: source,
+        mccmnc: mccmnc ?? this.mccmnc,
+        carrier: carrier ?? this.carrier,
+      );
+
+  String enableTemplate(PstnForwardKind kind) {
+    switch (kind) {
+      case PstnForwardKind.missed:
+        return cfnryEnable;
+      case PstnForwardKind.declined:
+        return cfbEnable;
+      case PstnForwardKind.unreachable:
+        return cfnrcEnable;
+    }
+  }
+
+  String disableTemplate(PstnForwardKind kind) {
+    switch (kind) {
+      case PstnForwardKind.missed:
+        return cfnryDisable;
+      case PstnForwardKind.declined:
+        return cfbDisable;
+      case PstnForwardKind.unreachable:
+        return cfnrcDisable;
+    }
+  }
+
+  String statusTemplate(PstnForwardKind kind) {
+    switch (kind) {
+      case PstnForwardKind.missed:
+        return cfnryStatus;
+      case PstnForwardKind.declined:
+        return cfbStatus;
+      case PstnForwardKind.unreachable:
+        return cfnrcStatus;
+    }
+  }
+}
+
+/// In-memory cache for the lifetime of the app process — the SIM/carrier
+/// can't change without a restart in any case AvaTOK cares about, so there is
+/// no reason to re-hit the network on every toggle. [_carrierCodesInFlight]
+/// coalesces concurrent callers (e.g. [pstnEnableAllForwarding]'s three
+/// sequential dials) onto one request instead of firing three.
+PstnCarrierCodes? _cachedCarrierCodes;
+Future<PstnCarrierCodes>? _carrierCodesInFlight;
+
+/// Resolve this device's per-carrier MMI code templates from the server.
+/// Null-tolerant end to end: [AvaDialChannel.simOperatorCode] returning an
+/// empty/partial map, no network, a slow carrier, a non-2xx response, or
+/// malformed JSON all fall back to [PstnCarrierCodes.defaults] — the SAME
+/// literals this engine dialed before this feature existed. Existing users
+/// mid-flow must be unaffected by this endpoint's existence, so failure here
+/// is never surfaced as an error to the caller.
+Future<PstnCarrierCodes> pstnResolveCarrierCodes() {
+  final cached = _cachedCarrierCodes;
+  if (cached != null) return Future.value(cached);
+  final inFlight = _carrierCodesInFlight;
+  if (inFlight != null) return inFlight;
+  final fut = _resolveCarrierCodesUncached().then((v) {
+    _cachedCarrierCodes = v;
+    _carrierCodesInFlight = null;
+    return v;
+  });
+  _carrierCodesInFlight = fut;
+  return fut;
+}
+
+Future<PstnCarrierCodes> _resolveCarrierCodesUncached() async {
+  String? mccmnc;
+  String? carrier;
+  try {
+    final sim = await AvaDialChannel.I.simOperatorCode();
+    mccmnc = (sim['mccmnc'] as String?)?.trim();
+    if (mccmnc != null && mccmnc.isEmpty) mccmnc = null;
+    carrier = (sim['name'] as String?)?.trim();
+    if (carrier != null && carrier.isEmpty) carrier = null;
+  } catch (_) {/* sim lookup is best-effort — proceed with nulls */}
+
+  try {
+    final params = <String, String>{
+      if (mccmnc != null) 'mccmnc': mccmnc,
+      if (carrier != null) 'carrier': carrier,
+    };
+    final uri = Uri.parse('$kApiBase/pstn/carrier-codes')
+        .replace(queryParameters: params.isEmpty ? null : params);
+    final res = await http.get(uri).timeout(const Duration(seconds: 3));
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      return PstnCarrierCodes.defaults.copyWith(mccmnc: mccmnc, carrier: carrier);
+    }
+    final decoded = jsonDecode(res.body);
+    if (decoded is! Map) {
+      return PstnCarrierCodes.defaults.copyWith(mccmnc: mccmnc, carrier: carrier);
+    }
+    final body = decoded;
+    final codes = body['codes'];
+    if (codes is! Map) {
+      return PstnCarrierCodes.defaults.copyWith(mccmnc: mccmnc, carrier: carrier);
+    }
+    String pick(String key, String fallback) {
+      final v = codes[key];
+      return (v is String && v.trim().isNotEmpty) ? v : fallback;
+    }
+
+    return PstnCarrierCodes(
+      cfbEnable: pick('cfb_enable', PstnCarrierCodes.defaults.cfbEnable),
+      cfnryEnable: pick('cfnry_enable', PstnCarrierCodes.defaults.cfnryEnable),
+      cfnrcEnable: pick('cfnrc_enable', PstnCarrierCodes.defaults.cfnrcEnable),
+      cfbDisable: pick('cfb_disable', PstnCarrierCodes.defaults.cfbDisable),
+      cfnryDisable: pick('cfnry_disable', PstnCarrierCodes.defaults.cfnryDisable),
+      cfnrcDisable: pick('cfnrc_disable', PstnCarrierCodes.defaults.cfnrcDisable),
+      cfbStatus: pick('cfb_status', PstnCarrierCodes.defaults.cfbStatus),
+      cfnryStatus: pick('cfnry_status', PstnCarrierCodes.defaults.cfnryStatus),
+      cfnrcStatus: pick('cfnrc_status', PstnCarrierCodes.defaults.cfnrcStatus),
+      source: body['source'] == 'override' ? 'override' : 'default',
+      mccmnc: mccmnc,
+      carrier: carrier,
+    );
+  } catch (_) {
+    // ANY failure — offline, timeout, malformed JSON, unexpected shape — is
+    // the exact GSM-standard defaults this engine has always dialed.
+    return PstnCarrierCodes.defaults.copyWith(mccmnc: mccmnc, carrier: carrier);
+  }
+}
+
 /// Result of dialing one enable/disable MMI code — shared shape so both call
 /// sites (settings screen, intro screen) render the same carrier-response /
-/// error text.
+/// error text, and now also carry the carrier-matrix analytics fields
+/// ([carrier], [mccmnc], [codesSource], [dialedCode]) so callers can enrich
+/// their own analytics events without re-deriving them.
 class PstnDialResult {
   final bool ok;
   final String? response; // raw carrier response text, when present
   final String? error;    // user-facing error text, when !ok
-  const PstnDialResult({required this.ok, this.response, this.error});
+  final String? carrier;
+  final String? mccmnc;
+  final String? codesSource; // 'default' | 'override'
+  final String? dialedCode;  // the actual code sent to the carrier
+  const PstnDialResult({
+    required this.ok,
+    this.response,
+    this.error,
+    this.carrier,
+    this.mccmnc,
+    this.codesSource,
+    this.dialedCode,
+  });
 }
 
 /// User-facing text for a failed [AvaDialChannel.dialMmiCode] call. Shared by
@@ -158,8 +370,14 @@ Future<PstnDialResult> pstnDialAndPersist({
   required String did,
   required FlutterSecureStorage storage,
   bool isInitialDefault = false,
+  // Caller may pass an already-resolved [PstnCarrierCodes] (e.g.
+  // [pstnEnableAllForwarding] resolving once for all three dials); when
+  // omitted this resolves (and caches) it itself.
+  PstnCarrierCodes? codes,
 }) async {
-  final code = wantOn ? kind.enableCode(did) : kind.disableCode;
+  final resolved = codes ?? await pstnResolveCarrierCodes();
+  final template = wantOn ? resolved.enableTemplate(kind) : resolved.disableTemplate(kind);
+  final code = wantOn ? template.replaceAll('{did}', did) : template;
   Analytics.capture('avadial_pstn_voicemail_toggle_tapped', {
     'kind': kind.analyticsKind,
     'want_on': wantOn,
@@ -178,13 +396,25 @@ Future<PstnDialResult> pstnDialAndPersist({
     'want_on': wantOn,
     'ok': ok,
     'initial_default': isInitialDefault,
+    'codes_source': resolved.source,
+    'code': code,
+    if (resolved.carrier != null) 'carrier': resolved.carrier!,
+    if (resolved.mccmnc != null) 'mccmnc': resolved.mccmnc!,
   });
   if (ok) {
     try {
       await storage.write(key: scopedKey(kind.storageKey), value: wantOn ? '1' : '0');
     } catch (_) {/* best-effort */}
   }
-  return PstnDialResult(ok: ok, response: response, error: error);
+  return PstnDialResult(
+    ok: ok,
+    response: response,
+    error: error,
+    carrier: resolved.carrier,
+    mccmnc: resolved.mccmnc,
+    codesSource: resolved.source,
+    dialedCode: code,
+  );
 }
 
 /// Dials all three enable codes (missed → declined → unreachable), in that
@@ -200,6 +430,11 @@ Future<List<PstnDialResult>> pstnEnableAllForwarding({
   required FlutterSecureStorage storage,
   void Function(PstnForwardKind kind, PstnDialResult result)? onEach,
 }) async {
+  // Resolve once for all three dials — [pstnDialAndPersist] would otherwise
+  // resolve independently per call, but they'd share the same in-flight
+  // future anyway via [pstnResolveCarrierCodes]'s cache; passing it
+  // explicitly just avoids the redundant lookups being sequential.
+  final codes = await pstnResolveCarrierCodes();
   final results = <PstnDialResult>[];
   for (final kind in const [
     PstnForwardKind.missed,
@@ -212,6 +447,7 @@ Future<List<PstnDialResult>> pstnEnableAllForwarding({
       did: did,
       storage: storage,
       isInitialDefault: true,
+      codes: codes,
     );
     results.add(result);
     onEach?.call(kind, result);

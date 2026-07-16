@@ -938,6 +938,24 @@ class AvaDialChannel {
     }
   }
 
+  /// [AVA-RCPT-CARRIER-CODES-1] MCC+MNC + carrier display name for the
+  /// default VOICE SIM (same per-SIM targeting as [defaultVoiceSim]/
+  /// [dialMmiCode]) — `{mccmnc, name}` (values null when unresolvable).
+  /// Feeds GET /api/pstn/carrier-codes so the server can look up a
+  /// per-carrier MMI code override. Empty map on an unsupported platform or
+  /// any plugin failure — callers treat that exactly like an all-null result
+  /// (fall back to the GSM-standard defaults).
+  Future<Map<String, dynamic>> simOperatorCode() async {
+    try {
+      final raw = await _ch.invokeMethod<Map<dynamic, dynamic>>('simOperatorCode');
+      if (raw == null) return {};
+      return raw.map((k, v) => MapEntry('$k', v));
+    } catch (e) {
+      AvaLog.I.log('avadial', 'simOperatorCode failed: $e');
+      return {};
+    }
+  }
+
   // ── [INBOX-DOWNLOAD-2] AvaDial Inbox — real "save to Downloads" ────────────
   /// Copies the file at [path] (a private/temp source the caller already
   /// wrote) into the PUBLIC Downloads folder under `Download/AvaTok/`, via the

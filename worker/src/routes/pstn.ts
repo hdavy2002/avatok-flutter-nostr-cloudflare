@@ -429,6 +429,105 @@ async function handleRecordCb(req: Request, env: Env, secret: string): Promise<R
 }
 
 // ---------------------------------------------------------------------------
+// GET /api/pstn/carrier-codes — public, no auth (dialing codes only, no
+// secrets). Server-driven per-carrier MMI code table for the voicemail
+// call-forwarding enable engine (app/lib/features/avadial/
+// pstn_forwarding_setup.dart). ADDITIVE — the GSM-standard codes the client
+// hardcodes today are the DEFAULTS below, so this endpoint's absence/failure
+// changes nothing (the client falls back to those same literals byte-for-
+// byte). Overrides live in KV TOKENS key `pstn_carrier_codes`, edited
+// directly by ops via `scripts/cf.sh`-style deliberate KV writes — never a
+// worker deploy — and matched by LONGEST mccmnc PREFIX so a broad entry
+// ("405" — all of a country's operators on that MCC) and a narrow one
+// ("405861" — one specific operator) can coexist; the narrower one wins.
+// Missing/corrupt KV → pure defaults, never a thrown error (matches this
+// file's "never break the caller" posture elsewhere).
+// ---------------------------------------------------------------------------
+interface PstnCarrierCodeSet {
+  cfb_enable: string;
+  cfnry_enable: string;
+  cfnrc_enable: string;
+  cfb_disable: string;
+  cfnry_disable: string;
+  cfnrc_disable: string;
+  cfb_status: string;
+  cfnry_status: string;
+  cfnrc_status: string;
+}
+
+// GSM-standard call-forwarding MMI codes — EXACTLY what
+// pstn_forwarding_setup.dart hardcodes today (PstnForwardKindX.enableCode/
+// disableCode): *67*/*61*/*62* to enable (busy/no-reply/not-reachable),
+// ##67#/##61#/##62# to disable. `{did}` is substituted with
+// kPstnVoicemailDid client-side. *_status codes are the standard "check
+// current forwarding number" USSD queries (not yet dialed by the client, but
+// published for the settings screen's future status-check use).
+const DEFAULT_CARRIER_CODES: PstnCarrierCodeSet = {
+  cfb_enable: "*67*{did}#",
+  cfnry_enable: "*61*{did}#",
+  cfnrc_enable: "*62*{did}#",
+  cfb_disable: "##67#",
+  cfnry_disable: "##61#",
+  cfnrc_disable: "##62#",
+  cfb_status: "*#67#",
+  cfnry_status: "*#61#",
+  cfnrc_status: "*#62#",
+};
+
+const CARRIER_CODES_KV_KEY = "pstn_carrier_codes";
+const CARRIER_CODES_TABLE_VERSION = 1;
+
+async function handleCarrierCodes(req: Request, env: Env): Promise<Response> {
+  const url = new URL(req.url);
+  const mccmnc = (url.searchParams.get("mccmnc") || "").replace(/[^0-9]/g, "").slice(0, 15);
+  const carrier = (url.searchParams.get("carrier") || "").slice(0, 100);
+
+  let codes: PstnCarrierCodeSet = { ...DEFAULT_CARRIER_CODES };
+  let source: "default" | "override" = "default";
+
+  if (mccmnc) {
+    try {
+      const table = (await env.TOKENS.get(CARRIER_CODES_KV_KEY, "json")) as Record<
+        string,
+        Partial<PstnCarrierCodeSet>
+      > | null;
+      if (table && typeof table === "object") {
+        // Longest-prefix match — a specific operator entry (e.g. "40586")
+        // wins over a broader country/MCC entry (e.g. "405").
+        let bestPrefix = "";
+        for (const prefix of Object.keys(table)) {
+          if (prefix && mccmnc.startsWith(prefix) && prefix.length > bestPrefix.length) {
+            bestPrefix = prefix;
+          }
+        }
+        if (bestPrefix) {
+          const override = table[bestPrefix];
+          if (override && typeof override === "object") {
+            codes = { ...codes, ...override };
+            source = "override";
+          }
+        }
+      }
+    } catch { /* corrupt/missing KV → pure defaults, never an error */ }
+  }
+
+  try {
+    await env.Q_ANALYTICS.send({
+      event: "pstn_carrier_codes_served",
+      uid: "unattributed",
+      ts: Date.now(),
+      props: { mccmnc: mccmnc || null, carrier: carrier || null, source },
+    });
+  } catch { /* best-effort — telemetry never blocks the response */ }
+
+  return json(
+    { v: CARRIER_CODES_TABLE_VERSION, source, codes },
+    200,
+    { "cache-control": "public, max-age=300" },
+  );
+}
+
+// ---------------------------------------------------------------------------
 // GET /api/pstn/greeting/<lang> — public, no auth (just an audio file)
 // ---------------------------------------------------------------------------
 async function handleGreeting(env: Env, lang: string): Promise<Response> {
@@ -538,6 +637,7 @@ export async function pstnRoute(req: Request, env: Env, path: string): Promise<R
     if (kind === "hangup" && req.method === "POST") return await handleHangup(req, env, decodeURIComponent(parts[1] || ""));
     if (kind === "record-cb" && req.method === "POST") return await handleRecordCb(req, env, decodeURIComponent(parts[1] || ""));
     if (kind === "greeting" && req.method === "GET") return await handleGreeting(env, decodeURIComponent(parts[1] || ""));
+    if (kind === "carrier-codes" && req.method === "GET") return await handleCarrierCodes(req, env);
     if (kind === "expect" && req.method === "POST") return await handleExpect(req, env);
     if (kind === "expect-native" && req.method === "POST") return await handleExpectNative(req, env);
     if (kind === "dump" && req.method === "GET") return await handleDump(env, decodeURIComponent(parts[1] || ""));

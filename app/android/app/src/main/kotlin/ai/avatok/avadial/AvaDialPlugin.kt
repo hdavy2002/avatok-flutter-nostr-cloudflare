@@ -778,6 +778,7 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
                 }
                 "dialMmiCode" -> dialMmiCode(ctx, call.argument<String>("code"), result)
                 "defaultVoiceSim" -> result.success(defaultVoiceSimLabel(ctx))
+                "simOperatorCode" -> result.success(simOperatorCode(ctx))
 
                 // ---- [INBOX-DOWNLOAD-2] real public-Downloads save ----
                 "saveToDownloads" -> saveToDownloads(ctx, call, result)
@@ -1897,6 +1898,36 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
         }
     } catch (_: Throwable) {
         mapOf("sim" to null, "sub_id" to null, "slot_index" to null)
+    }
+
+    /** [AVA-RCPT-CARRIER-CODES-1] MCC+MNC (`getSimOperator`) + display carrier
+     *  name (`getSimOperatorName`) for the DEFAULT VOICE subscription — same
+     *  per-SIM targeting as [dialMmiCode]/[defaultVoiceSimLabel], so on a
+     *  dual-SIM phone this reports the SIM that will actually carry the MMI
+     *  codes, not whichever slot happens to be "SIM 1". Feeds the client's
+     *  GET /api/pstn/carrier-codes lookup (routes/pstn.ts) so the server can
+     *  pick a per-carrier code override; empty/null `mccmnc` on the Dart side
+     *  just means "use the GSM-standard defaults", so failures here are safe
+     *  to surface as null rather than throw. */
+    private fun simOperatorCode(ctx: Context): Map<String, Any?> = try {
+        val tm = ctx.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+        if (tm == null) {
+            mapOf("mccmnc" to null, "name" to null)
+        } else {
+            val targetTm = try {
+                val subId = SubscriptionManager.getDefaultVoiceSubscriptionId()
+                if (subId != SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+                    tm.createForSubscriptionId(subId)
+                } else tm
+            } catch (_: Throwable) {
+                tm
+            }
+            val mccmnc = targetTm.simOperator?.takeIf { it.isNotBlank() }
+            val name = targetTm.simOperatorName?.takeIf { it.isNotBlank() }
+            mapOf("mccmnc" to mccmnc, "name" to name)
+        }
+    } catch (_: Throwable) {
+        mapOf("mccmnc" to null, "name" to null)
     }
 
     private fun systemBlock(ctx: Context, number: String?): Boolean {
