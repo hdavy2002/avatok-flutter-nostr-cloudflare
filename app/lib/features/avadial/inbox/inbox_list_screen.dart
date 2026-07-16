@@ -8,8 +8,10 @@ import '../../../core/ui/zine_widgets.dart';
 import '../../../shell/v2/shell_chrome.dart';
 import '../../../sync/sync_hub.dart';
 import '../avadial_theme.dart';
+import '../contact_overrides.dart';
 import '../device_contacts.dart';
 import 'inbox_api.dart';
+import 'inbox_heard_store.dart';
 import 'inbox_thread_screen.dart';
 
 /// AvaDial Inbox — the Ava Receptionist / voicemail thread list (Specs/PLAN-
@@ -47,13 +49,21 @@ class _InboxListScreenState extends State<InboxListScreen> {
   StreamSubscription<HubEvent>? _liveSub;
   Timer? _liveDebounce;
 
+  // [INBOX-HEARD-1] Heard-card ids (per-account, see inbox_heard_store.dart)
+  // and rename overrides (contact_overrides.dart), side-loaded alongside the
+  // thread fetch so `_row`/`_labelFor` can read them synchronously at build
+  // time. Populated by [_loadThreads]; best-effort — an empty map/set just
+  // means every card reads as unheard / unrenamed, never a crash.
+  Set<String> _heardIds = {};
+  Map<String, String> _overrideNames = {}; // normalized phone → display name
+
   @override
   void initState() {
     super.initState();
     // Best-effort warm of the contact-name index so the FIRST paint already
     // resolves known callers instead of flashing raw numbers then relabeling.
     DeviceContacts.I.load();
-    _future = InboxApi.threads();
+    _future = _loadThreads();
     // [INBOX-LIVE-1, owner bug 2026-07-16] Voicemails only appeared after a
     // manual pull-to-refresh. InboxDO broadcasts every append over the live
     // sync WS, and SyncHub surfaces it on `incoming` — subscribe to voicemail/
@@ -83,10 +93,41 @@ class _InboxListScreenState extends State<InboxListScreen> {
   }
 
   Future<void> _reload() async {
-    final f = InboxApi.threads();
+    final f = _loadThreads();
     setState(() => _future = f);
     await f;
   }
+
+  /// Fetches threads, then side-loads [_heardIds] (heard-card store) and
+  /// [_overrideNames] (rename-caller overrides, contact_overrides.dart) for
+  /// every `tel:` thread. Both are best-effort — a failure just leaves the
+  /// prior/default state, it never blocks the thread list itself.
+  Future<List<InboxThread>> _loadThreads() async {
+    final threads = await InboxApi.threads();
+    try {
+      _heardIds = await InboxHeardStore.I.loadAll();
+    } catch (_) {/* keep prior state */}
+    final overrides = <String, String>{};
+    for (final t in threads) {
+      final phone = t.telPhone;
+      if (phone == null || overrides.containsKey(phone)) continue;
+      try {
+        final o = await ContactOverrides.I.forNumber(phone);
+        final name = o?.displayName;
+        if (name != null && name.trim().isNotEmpty) overrides[phone] = name;
+      } catch (_) {/* leave unrenamed */}
+    }
+    _overrideNames = overrides;
+    if (mounted) setState(() {}); // repaint with the side-loaded state
+    return threads;
+  }
+
+  /// True when any card in [t] has a recording that hasn't been marked heard
+  /// yet — keeps the list row's accent/dot lit even after the server-side
+  /// read-cursor has advanced (owner spec: "thread with any unheard card
+  /// keeps the dot/accent").
+  bool _hasUnheardAudio(InboxThread t) =>
+      t.cards.any((c) => c.hasRecording && !_heardIds.contains(c.stableId));
 
   /// Filters [threads] by caller display name, PSTN number, or any card's
   /// transcript text (case-insensitive substring match).
@@ -225,6 +266,13 @@ class _InboxListScreenState extends State<InboxListScreen> {
     if (t.isAnonymous) return (title: 'Hidden number', subtitleNumber: null);
     final phone = t.telPhone;
     if (phone != null) {
+      // [INBOX-RENAME-1] A rename-caller override (long-press menu, thread
+      // screen) wins over the device contact name — same precedence
+      // ava_contact_book.dart uses elsewhere in this feature.
+      final override = _overrideNames[phone];
+      if (override != null && override.trim().isNotEmpty) {
+        return (title: override, subtitleNumber: _formatTel(phone));
+      }
       final contact = DeviceContacts.I.lookup(phone);
       final name = contact?.name;
       if (name != null && name.trim().isNotEmpty) {
@@ -242,6 +290,7 @@ class _InboxListScreenState extends State<InboxListScreen> {
 
   Widget _row(InboxThread t) {
     final label = _labelFor(t);
+    final showAccent = t.unread || _hasUnheardAudio(t);
     final preview = t.latest.summaryText ??
         (t.latest.transcript != null && t.latest.transcript!.length > 60
             ? '${t.latest.transcript!.substring(0, 60)}…'
@@ -273,7 +322,7 @@ class _InboxListScreenState extends State<InboxListScreen> {
           Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
             Text(_relativeTime(t.latest.createdAtMs), style: ADText.statCaption(c: AvaDialTheme.textMute)),
             const SizedBox(height: 6),
-            if (t.unread)
+            if (showAccent)
               Container(
                 width: 9, height: 9,
                 decoration: const BoxDecoration(color: AD.unreadAccent, shape: BoxShape.circle),

@@ -50,6 +50,12 @@ class InboxCard {
   final int durationSec;
   final String? mediaRef; // R2 recording key
   final bool hasRecording;
+  // The raw `messages.client_id` column (distinct from [sessionId], which
+  // falls back through session_id/sid/client_id in that order — this is
+  // ALWAYS the literal column, needed as the exact `target` the server's
+  // `hide` RPC expects: `UPDATE messages SET hidden=?1 WHERE conv=?2 AND
+  // client_id=?3` (worker/src/do/inbox.ts `hide()`).
+  final String? clientId;
 
   const InboxCard({
     required this.id,
@@ -64,7 +70,13 @@ class InboxCard {
     this.durationSec = 0,
     this.mediaRef,
     this.hasRecording = false,
+    this.clientId,
   });
+
+  /// The stable per-card id used for the heard/unheard store and as the
+  /// `hide` target — prefers the real `client_id` column, falls back to the
+  /// sync-cursor row [id] for any legacy row that somehow lacks one.
+  String get stableId => (clientId != null && clientId!.isNotEmpty) ? clientId! : id;
 
   /// Parses one `messages` row from `/api/msg/sync`. Returns null for any row
   /// that isn't a voicemail/receptionist kind (the caller should already have
@@ -107,6 +119,7 @@ class InboxCard {
       durationSec: (e['duration_s'] as num?)?.toInt() ?? 0,
       mediaRef: (mediaRef != null && mediaRef.trim().isNotEmpty) ? mediaRef : null,
       hasRecording: hasRecording,
+      clientId: (row['client_id'] ?? '').toString().isEmpty ? null : row['client_id'].toString(),
     );
   }
 }
@@ -267,6 +280,26 @@ class InboxApi {
       });
     } catch (e) {
       AvaLog.I.log('avadial', 'inbox mark-read failed: $e');
+    }
+  }
+
+  /// Owner soft-delete for ONE voicemail card — the EXACT client path
+  /// `chat_thread.dart`'s `_syncHidden` already uses for "delete for me"
+  /// (`POST kMsgHideUrl` → `worker/src/do/inbox.ts` `hide()`, which flips the
+  /// row's `hidden` column and broadcasts a `{type:'hide'}` frame to the
+  /// owner's other devices). `_fetchAll()` above already filters out
+  /// `hidden == true` rows, so once this call succeeds the next `threads()`/
+  /// `cardsFor()` read simply stops returning the card — no separate local
+  /// hidden-ids store needed. Returns true on a 200 so the caller can decide
+  /// whether to also drop it from any in-memory list immediately.
+  static Future<bool> hideCard(String conv, String clientId) async {
+    try {
+      final res = await ApiAuth.postJson(
+          kMsgHideUrl, {'conv': conv, 'target': clientId, 'hidden': true});
+      return res.statusCode == 200;
+    } catch (e) {
+      AvaLog.I.log('avadial', 'inbox hide failed: $e');
+      return false;
     }
   }
 }
