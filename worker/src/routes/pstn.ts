@@ -165,10 +165,21 @@ async function handleAnswer(req: Request, env: Env, secret: string): Promise<Res
       try { await env.TOKENS.put(`pstn_session:${callUuid}`, JSON.stringify(session), { expirationTtl: SESSION_TTL_SEC }); } catch { /* best-effort */ }
     }
 
+    // Vobiz (Plivo-lineage) caches <Play> media BY URL STRING indefinitely —
+    // re-uploading the same R2 key changes nothing for callers (learned
+    // 2026-07-16: a re-mastered louder greeting kept playing as the original
+    // quiet take). Version the URL with the R2 object's etag so every new
+    // upload is a brand-new URL to Vobiz, while an unchanged file stays fully
+    // cacheable on their side.
     let hasGreeting = false;
-    try { hasGreeting = !!(await env.BLOBS.head(GREETING_KEY)); } catch { /* fall back to Speak */ }
+    let greetingVersion = "";
+    try {
+      const head = await env.BLOBS.head(GREETING_KEY);
+      hasGreeting = !!head;
+      greetingVersion = head?.httpEtag ? head.httpEtag.replace(/[^A-Za-z0-9]/g, "").slice(0, 16) : "";
+    } catch { /* fall back to Speak */ }
 
-    const greetingUrl = `${PUBLIC_BASE}/api/pstn/greeting/hi-en`;
+    const greetingUrl = `${PUBLIC_BASE}/api/pstn/greeting/hi-en${greetingVersion ? `?v=${greetingVersion}` : ""}`;
     const recordCbUrl = `${PUBLIC_BASE}/api/pstn/record-cb/${encodeURIComponent(secret)}`;
 
     const introBlock = hasGreeting
