@@ -249,7 +249,18 @@ export class VoicemailRoom {
 
     try {
       await this.postVoicemail(init, transcript, recordingKey, durationS);
-      this.ev("voicemail_posted", { has_recording: !!recordingKey, has_transcript: !!transcript, duration_s: durationS });
+      // [AVAVM-TRANSCRIPT-1] transcript_source is ALWAYS 'whisper'|'none' on this
+      // path — VoicemailRoom is the in-app AvaTOK business-call voicemail, Vobiz
+      // is never involved, so there is no free/alternate transcript source to
+      // skip Whisper for here (see pstn.ts for the Vobiz-facing lane, where the
+      // same question was investigated and answered: Vobiz transcription is a
+      // separately METERED add-on, not free, so it stays on Whisper too).
+      this.ev("voicemail_posted", {
+        has_recording: !!recordingKey, has_transcript: !!transcript, duration_s: durationS,
+        transcript_source: transcript ? "whisper" : "none",
+        whisper_skipped: false,
+        transcript_length: transcript.length,
+      });
     } catch (e) {
       this.ev("voicemail_delivery_failed", { stage: "post", error: String(e).slice(0, 200) });
     }
@@ -261,9 +272,17 @@ export class VoicemailRoom {
   private async postVoicemail(init: InitBlob, transcript: string, recordingKey: string | null, durationS: number): Promise<void> {
     const callerLabel = init.caller_name || init.caller_phone || "Unknown caller";
     const conv = `voicemail_${init.owner_uid}__${init.caller_uid}`;
+    // [AVAVM-TRANSCRIPT-1] SUMMARY LINE ONLY — the raw transcript lives solely in
+    // envelope.transcript (below). Previously this concatenated the FULL
+    // transcript into `text` too, and the client rendered both `summaryText`
+    // (== text) AND the expandable `_c.transcript` block — the same words
+    // twice in one card. Do NOT re-add the transcript here; see
+    // inbox_api.dart's InboxCard.fromRow for the client-side defensive strip
+    // that also stops ALREADY-DELIVERED envelopes (pre-fix, transcript baked
+    // into `text`) from double-rendering.
     const bodyText = transcript
-      ? `📞 Voicemail from ${callerLabel}: ${transcript}`
-      : `📞 Voicemail from ${callerLabel} (no transcript available).`;
+      ? `📞 Voicemail from ${callerLabel} (${durationS}s)`
+      : `📞 Voicemail from ${callerLabel} (no transcript available)`;
     const envelope = JSON.stringify({
       t: "voicemail", text: bodyText, session_id: init.sid,
       caller_uid: init.caller_uid, caller_name: init.caller_name, caller_phone: init.caller_phone,

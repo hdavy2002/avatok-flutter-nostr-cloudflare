@@ -101,7 +101,32 @@ class InboxCard {
     final callerPhone = (e['caller_phone'] ?? e['caller_number'])?.toString();
     final transcript = (e['transcript'] ?? '').toString().trim();
     final reasonFromSummary = summary is Map ? (summary['reason'] ?? '').toString() : '';
-    final reason = reasonFromSummary.isNotEmpty ? reasonFromSummary : (e['text'] ?? '').toString();
+    var reason = reasonFromSummary.isNotEmpty ? reasonFromSummary : (e['text'] ?? '').toString();
+    reason = reason.trim();
+    // [AVAVM-TRANSCRIPT-1] Defensive strip for ALREADY-DELIVERED envelopes.
+    // Before this fix, the worker baked the full transcript into `text` too
+    // ("📞 Voicemail from X: <transcript>"), and this screen (and
+    // inbox_thread_screen.dart) also renders the expandable transcript block
+    // from [transcript] separately — so those historical rows would render
+    // the same words twice forever, since past messages are never rewritten
+    // server-side. Voicemail envelopes never carry `summary.reason`, so this
+    // only ever touches the `e['text']` fallback path. Whitespace-normalized
+    // substring match (not exact-equality) because `text` may have collapsed
+    // newlines differently than `transcript`, and a long-prefix fallback
+    // covers the case where `text` truncated the transcript.
+    if (transcript.isNotEmpty && reasonFromSummary.isEmpty && reason.isNotEmpty) {
+      final normReason = reason.replaceAll(RegExp(r'\s+'), ' ');
+      final normTranscript = transcript.replaceAll(RegExp(r'\s+'), ' ');
+      int idx = normTranscript.isNotEmpty ? normReason.indexOf(normTranscript) : -1;
+      if (idx < 0 && normTranscript.length > 40) {
+        idx = normReason.indexOf(normTranscript.substring(0, 40));
+      }
+      if (idx > 0) {
+        var head = normReason.substring(0, idx).trimRight();
+        if (head.endsWith(':')) head = head.substring(0, head.length - 1).trimRight();
+        reason = head;
+      }
+    }
     final mediaRef = (row['media_ref'] ?? e['media_ref'])?.toString();
     final hasRecording = e['has_recording'] == true ||
         (mediaRef != null && mediaRef.trim().isNotEmpty) ||

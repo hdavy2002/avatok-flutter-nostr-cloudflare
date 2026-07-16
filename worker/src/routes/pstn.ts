@@ -27,6 +27,8 @@ import { matchAvatokPhones } from "./api";
 import { verifyMissedcallDeviceToken } from "./missedcall";
 import { metaDb } from "../db/shard";
 import { CallState, ExecutionMode, PlatformEvent } from "../lib/platform_types";
+import { contactFor } from "../lib/identity";
+import { trackUserContact } from "../hooks";
 
 // Probe-grade fallback — production deployments should `wrangler secret put
 // VOBIZ_WEBHOOK_SECRET` and never rely on this constant being unknown.
@@ -204,6 +206,21 @@ async function handleAnswer(req: Request, env: Env, secret: string): Promise<Res
             : `The person you are calling is not available. Please leave a message after the beep. You have ${recordSec} seconds.`,
         )}</Speak>`;
 
+    // [AVAVM-TRANSCRIPT-1, investigated 2026-07-16] Deliberately NOT setting
+    // `transcriptionType`/`transcriptionUrl` here. Vobiz docs (xml/record
+    // attributes) are explicit: "Transcription is available at an additional
+    // cost" — it is a separately METERED add-on (see xml/record/start-
+    // recording's transcription_charge/transcription_rate callback fields and
+    // the dashboard Cost Analysis "Transcription" line item), not something
+    // bundled free into the recording. The owner's ask was "if we're getting
+    // it free from Vobiz, stop re-transcribing" — we are NOT getting it free,
+    // so switching would trade one metered cost (Workers AI Whisper) for
+    // another metered cost (Vobiz ASR) with no established rate comparison,
+    // and would NOT satisfy the stated condition. We are also not currently
+    // double-paying for the SAME transcript today: Vobiz is never asked to
+    // transcribe, so only Whisper (below) ever runs. Keep Whisper as the sole
+    // transcription source unless the owner explicitly signs off on a Vobiz
+    // transcription cost comparison.
     const responseXml =
       `<?xml version="1.0" encoding="UTF-8"?><Response>${introBlock}` +
       `<Record maxLength="${recordSec}" timeout="3" playBeep="true" fileFormat="wav" ` +
@@ -317,6 +334,28 @@ async function handleRecordCb(req: Request, env: Env, secret: string): Promise<R
 
     if (!recordUrl) return xml(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`);
 
+    // [AVAVM-TRANSCRIPT-1] Idempotency guard — Vobiz callbacks can be retried.
+    // `pstn_delivered:<CallUUID>` is set below once a voicemail card has been
+    // posted for this call (the SAME marker the hangup handler already reads
+    // for its missed-call fallback). Without this check, a retried record-cb
+    // would re-fetch the WAV from Vobiz's media host AND re-run Whisper on the
+    // identical recording — the InboxDO append is idempotent on client_id so no
+    // duplicate CARD would appear, but we'd still pay for a second Whisper
+    // transcription for nothing. Bail out before either the fetch or the STT
+    // call.
+    if (!isOrphan && callUuid) {
+      const already = await env.TOKENS.get(`pstn_delivered:${callUuid}`).catch(() => null);
+      if (already) {
+        try {
+          await env.Q_ANALYTICS.send({
+            event: "pstn_voicemail_recordcb_dup_skipped", uid: session?.owner_uid ?? "unattributed", ts: Date.now(),
+            props: { call_uuid: callUuid, trace_id: session?.trace_id ?? null },
+          });
+        } catch { /* best-effort */ }
+        return xml(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`);
+      }
+    }
+
     // Vobiz's media host REQUIRES the account's X-Auth headers — an
     // unauthenticated fetch 401s (verified live 2026-07-16: the owner's first
     // delivered voicemail card had no audio AND no transcript because this
@@ -384,9 +423,15 @@ async function handleRecordCb(req: Request, env: Env, secret: string): Promise<R
     try {
       const callerLabel = session!.caller || "Unknown caller";
       const conv = `voicemail_${ownerUid}__${callerKey}`;
+      // [AVAVM-TRANSCRIPT-1] SUMMARY LINE ONLY — mirrors do/voicemail_room.ts's
+      // postVoicemail() fix. The raw transcript lives ONLY in envelope.transcript
+      // below; `text` used to embed the full transcript too, which the client
+      // rendered a second time as the expandable transcript block (the reported
+      // double-transcript bug). See inbox_api.dart's InboxCard.fromRow for the
+      // client-side defensive strip covering already-delivered envelopes.
       const bodyText = transcript
-        ? `📞 Voicemail from ${callerLabel}: ${transcript}`
-        : `📞 Voicemail from ${callerLabel} (no transcript available).`;
+        ? `📞 Voicemail from ${callerLabel}`
+        : `📞 Voicemail from ${callerLabel} (no transcript available)`;
       const envelope = JSON.stringify({
         t: "voicemail", text: bodyText, session_id: callId,
         caller_uid: null, caller_name: null, caller_phone: session!.caller,
@@ -414,6 +459,26 @@ async function handleRecordCb(req: Request, env: Env, secret: string): Promise<R
           data: { type: "voicemail", conv, caller_uid: null },
         });
       } catch { /* best-effort — push is an accelerator, InboxDO append is the record of truth */ }
+
+      // [AVAVM-TRANSCRIPT-1] Cost-saving telemetry — proves whether Whisper ran
+      // and what it cost us. transcript_source is always 'whisper'|'none' today
+      // (Vobiz's native ASR is a paid add-on we deliberately don't request —
+      // see the comment on the <Record> XML in handleAnswer); whisper_skipped
+      // is always false on this path since the ONLY way to reach here is
+      // having just run Whisper above. Tagged with the owner's email/phone
+      // (via contactFor) so this is pullable from PostHog by contact, same as
+      // voicemail_room.ts's telemetry.
+      try {
+        const contact = await contactFor(env, ownerUid).catch(() => ({ email: null, phone: null }));
+        await trackUserContact(env, ownerUid, contact.email, contact.phone, "pstn_voicemail_transcribed", "pstn", {
+          transcript_source: transcript ? "whisper" : "none",
+          whisper_skipped: false,
+          transcript_length: transcript.length,
+          has_recording: !!recordingKey,
+          call_id: callId,
+          trace_id: traceId,
+        }, traceId);
+      } catch { /* best-effort */ }
 
       try {
         const callerHash = session!.caller ? await sha256Hex(normalizePhone(session!.caller)) : null;
