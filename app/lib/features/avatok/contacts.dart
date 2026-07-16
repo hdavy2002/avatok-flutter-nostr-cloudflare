@@ -187,6 +187,14 @@ class ContactsStore {
   //     plumbing is needed.
   static const _kDeletedKey = 'avatok_contacts_deleted'; // JSON {uid: ms}
   static const _kHiddenKey = 'avatok_threads_hidden';    // JSON {uid: ms}
+  // [CONTACT-RESOLVE-TTL] (AVA-UI-CACHE) uid → last avatar-backfill resolve
+  // attempt (ms), per account. refreshMissingAvatars re-ran a directory resolve
+  // for EVERY avatar-less contact on EVERY cold start, which is most of the 951
+  // contact_resolve events/3d for one user. We now remember when we last tried and
+  // skip a contact still inside the TTL, so a photoless contact is retried at most
+  // once a day instead of once per launch.
+  static const _kAvatarResolveAttemptKey = 'avatok_avatar_resolve_attempt'; // JSON {uid: ms}
+  static const _avatarResolveTtlMs = 24 * 60 * 60 * 1000; // 24h
 
   Future<Map<String, int>> _loadMapKey(String key) async {
     try {
@@ -489,7 +497,13 @@ class ContactsStore {
     final cs = await load();
     var changed = false;
     var skippedUnresolvable = 0;
+    var skippedRecent = 0;
     var resolved = 0;
+    // [CONTACT-RESOLVE-TTL] Remember which avatar-less contacts we already tried
+    // recently so relaunches don't re-resolve the same ones every time.
+    final attempts = await _loadMapKey(_kAvatarResolveAttemptKey);
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    var attemptsChanged = false;
     for (var i = 0; i < cs.length; i++) {
       final c = cs[i];
       if (c.avatarUrl.isNotEmpty || c.uid.isEmpty) continue;
@@ -500,6 +514,13 @@ class ContactsStore {
       // root ('/'), i.e. this loop. Skipping them removes ~80% of the calls and
       // the pointless per-launch latency.
       if (!c.uid.startsWith('user_')) { skippedUnresolvable++; continue; }
+      // [CONTACT-RESOLVE-TTL] Skip a contact we resolved (or tried to) within the
+      // TTL — a photoless account rarely gains a photo mid-day, so re-hitting the
+      // directory on every launch is pure noise.
+      final last = attempts[c.uid] ?? 0;
+      if (nowMs - last < _avatarResolveTtlMs) { skippedRecent++; continue; }
+      attempts[c.uid] = nowMs;
+      attemptsChanged = true;
       final r = await Directory.resolve(c.uid);
       if (r != null && r.avatarUrl.isNotEmpty) {
         // [ISSUE-CONTACT-AVATAR-1] (owner report 2026-07-15, pic4 "some contacts
@@ -519,6 +540,9 @@ class ContactsStore {
       }
     }
     if (changed) await _save(cs);
+    // [CONTACT-RESOLVE-TTL] Persist the attempt timestamps so the TTL survives a
+    // relaunch (this is the whole point — stop re-resolving every cold start).
+    if (attemptsChanged) await _saveMapKey(_kAvatarResolveAttemptKey, attempts);
     // Proves the backfill is doing useful work rather than burning 404s, and that
     // numbers survive it (number_kept vs the old silent wipe). The owner's email is
     // auto-stamped onto every event by Analytics._base, so it stays pullable by
@@ -527,6 +551,7 @@ class ContactsStore {
       'scanned': cs.length,
       'resolved': resolved,
       'skipped_unresolvable': skippedUnresolvable,
+      'skipped_recent': skippedRecent, // [CONTACT-RESOLVE-TTL] re-resolves avoided
       'number_kept': cs.where((c) => c.number.isNotEmpty).length,
     });
     return cs;

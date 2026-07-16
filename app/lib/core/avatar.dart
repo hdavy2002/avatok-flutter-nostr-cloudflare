@@ -59,6 +59,15 @@ class Avatar extends StatelessWidget {
     if (url == null || url.isEmpty) return _initialsCircle();
     // Request roughly 2x the display size for crisp rendering on hi-dpi screens.
     final px = (size * 2).round().clamp(64, 512);
+    // [AVATAR-MEM-CACHE] (AVA-UI-CACHE) If this URL+size was already resolved this
+    // session, render the photo SYNCHRONOUSLY on the first frame — no FutureBuilder
+    // waiting state, no initials-then-photo pop-in as a chat list paints. Falls
+    // back to the async disk/network path only on a genuinely cold avatar.
+    final warm = AvatarCache.peek(url, px);
+    if (warm != null) {
+      return ClipOval(child: Image.file(warm, width: size, height: size, fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _initialsCircle()));
+    }
     return FutureBuilder<File?>(
       future: AvatarCache.get(url, px),
       builder: (context, snap) {

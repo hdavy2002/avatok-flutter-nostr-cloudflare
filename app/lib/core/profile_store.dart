@@ -112,6 +112,14 @@ class ProfileStore {
   // Set once a fresh device has recovered an existing account from the server,
   // so we don't re-hit /api/me on every cold start (account-scoped).
   static const _recoveredKey = 'account_recovered_v1';
+  // [PROFILE-400-LOOP-2] (AVA-UI-CACHE) Fingerprint of the last name|email|phone
+  // payload the cold-start launch-publish sent to /api/profile, per account. The
+  // launch publish only carries those three fields, so re-POSTing an IDENTICAL
+  // payload can never change the server's completeness verdict — yet the
+  // in-memory ApiBackoffState resets every cold start, so an incomplete profile
+  // re-fired `400 profile_incomplete` on EVERY launch (84×/3d for one tester).
+  // We persist the payload fingerprint here and skip an unchanged re-publish.
+  static const _launchPubFpKey = 'profile_launch_pub_fp_v1';
   final FlutterSecureStorage _s;
   ProfileStore([FlutterSecureStorage? s])
       : _s = s ??
@@ -150,6 +158,17 @@ class ProfileStore {
   Future<void> save(Profile p) => _s.write(
       key: scopedKey(_key),
       value: jsonEncode({'name': p.displayName, 'handle': p.handle, 'phone': p.phone, 'email': p.email, 'avatarUrl': p.avatarUrl, 'bio': p.bio, 'sharePresence': p.sharePresence, 'birthYear': p.birthYear, 'birthDate': p.birthDate, 'birthTime': p.birthTime, 'privatePhone': p.privatePhone, 'showPrivateNumber': p.showPrivateNumber, 'privatePhoneVerified': p.privatePhoneVerified, 'gender': p.gender}));
+
+  /// [PROFILE-400-LOOP-2] Fingerprint of the last launch-publish payload sent for
+  /// THIS account (scoped). Null when we've never published on this device/account.
+  Future<String?> lastLaunchPublishFingerprint() => readScoped(_s, _launchPubFpKey);
+
+  /// Record the fingerprint of the launch-publish payload we just sent, so an
+  /// identical (and therefore identically-rejected) payload isn't re-POSTed on the
+  /// next cold start. Best-effort — a write failure just means we retry next launch.
+  Future<void> setLaunchPublishFingerprint(String fp) async {
+    try { await _s.write(key: scopedKey(_launchPubFpKey), value: fp); } catch (_) {/* best-effort */}
+  }
 
   /// Persist just the phone (merging with any existing profile fields).
   Future<void> setPhone(String phone) async {

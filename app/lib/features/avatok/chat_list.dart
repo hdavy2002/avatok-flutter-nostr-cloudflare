@@ -531,6 +531,10 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     });
     // Paint the last-known list immediately (no blank "No chats yet" flash when
     // returning to AvaTok); _bootstrap then refreshes from disk + relay.
+    // [CHAT-LIST-CACHE-METRIC] (AVA-UI-CACHE) Time how fast the CACHED list paints
+    // so the "redraws one by one, not instant like WhatsApp" complaint is queryable
+    // by email (auto-stamped) — the in-session snapshot path should be ~0ms.
+    final renderSw = Stopwatch()..start();
     if (ChatListSnapshot.has) {
       _contacts = ChatListSnapshot.contacts;
       _groups = ChatListSnapshot.groups;
@@ -538,6 +542,12 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       _lastRead = ChatListSnapshot.lastRead;
       if (ChatListSnapshot.flags.isNotEmpty) _flags = ChatListSnapshot.flags;
       _booted = true;
+      renderSw.stop();
+      Analytics.capture('chat_list_cache_render_ms', {
+        'source': 'snapshot',
+        'ms': renderSw.elapsedMicroseconds / 1000.0,
+        'rows': _contacts.length,
+      });
     } else {
       // True cold start (no in-session snapshot): paint from the local DB with
       // one query before the slower store reads in _bootstrap finish.
@@ -621,6 +631,9 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   /// for build() to render; _bootstrap then overwrites them with the
   /// authoritative store data and rewrites the projection.
   Future<void> _paintFromProjection() async {
+    // [CHAT-LIST-CACHE-METRIC] Time the single indexed projection query so the
+    // cold-start render cost is queryable per user (email auto-stamped).
+    final sw = Stopwatch()..start();
     List<ChatRow> rows;
     try {
       rows = await Db.I.chatsOnce();
@@ -628,6 +641,12 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       return; // no projection yet → _bootstrap will load + paint as usual
     }
     if (rows.isEmpty || _authoritativeLoaded || !mounted) return;
+    sw.stop();
+    Analytics.capture('chat_list_cache_render_ms', {
+      'source': 'projection',
+      'ms': sw.elapsedMicroseconds / 1000.0,
+      'rows': rows.length,
+    });
     final contacts = <Contact>[];
     final groups = <Group>[];
     final previews = <String, ({String text, int ts, bool me})>{};
@@ -1040,8 +1059,38 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
           // The server COALESCEs and keeps its stored fields anyway, so an empty
           // publish can never contribute anything.
           if (dirName.isNotEmpty || prof.phone.trim().isNotEmpty) {
-            await Directory.registerProfile(
-                uid: id!.uid, email: cu.email!, name: dirName, phone: prof.phone);
+            // [PROFILE-400-LOOP-2] (AVA-UI-CACHE) The launch publish sends only
+            // name/email/phone. When the account's SERVER profile is still
+            // incomplete (no photo/gender/birth_year) the completeness gate 400s
+            // `profile_incomplete` — and because ApiBackoffState is in-memory and
+            // resets each cold start, this re-fired on EVERY launch (PostHog:
+            // /api/profile 400 profile_incomplete ×84/3d for one tester). Re-POSTing
+            // an IDENTICAL payload can never change the verdict, so fingerprint it
+            // per account and skip an unchanged re-publish. A real edit (name/email/
+            // phone change, or the full complete publish from ProfileSetupScreen)
+            // changes the fingerprint and republishes exactly once.
+            final store = ProfileStore();
+            final fp = '${dirName.trim()}|${cu.email!.trim()}|${prof.phone.trim()}';
+            final lastFp = await store.lastLaunchPublishFingerprint();
+            if (fp == lastFp) {
+              Analytics.capture('profile_post_suppressed',
+                  {'reason': 'unchanged_payload', 'endpoint': '/api/profile'});
+            } else {
+              final r = await Directory.registerProfile(
+                  uid: id!.uid, email: cu.email!, name: dirName, phone: prof.phone);
+              // Persist the fingerprint on any DEFINITIVE server verdict (2xx or
+              // 4xx) so the same payload isn't re-POSTed next launch. On a transient
+              // failure (status 0 / network) leave it unset so the next launch retries.
+              if (r.status == 200 || (r.status >= 400 && r.status < 500)) {
+                await store.setLaunchPublishFingerprint(fp);
+              }
+              if (!r.ok) {
+                Analytics.capture('profile_launch_publish_result', {
+                  'status': r.status,
+                  if (r.error != null) 'error': r.error!,
+                });
+              }
+            }
           }
         }
       } catch (_) {/* not signed in / offline */}

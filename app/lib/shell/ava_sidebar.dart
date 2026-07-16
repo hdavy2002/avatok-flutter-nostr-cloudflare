@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../core/account_storage.dart';
 import '../core/admin_tools.dart';
+import '../core/analytics.dart';
 import '../core/app_registry.dart';
 import '../core/avatar.dart';
 import '../core/remote_config.dart';
@@ -14,7 +17,47 @@ import '../core/ui/zine_widgets.dart';
 import '../core/ui/avatok_dark.dart';
 import '../features/diagnostics/log_page.dart';
 import '../features/settings/about_screen.dart';
+import '../identity/identity.dart' show AccountScope;
 import 'focus_mode.dart';
+
+/// [SIDEBAR-ENTITLEMENT-CACHE] (AVA-UI-CACHE) Per-account cache of the premium /
+/// beta-free entitlement that drives the sidebar plan pill. Two layers so the pill
+/// renders with zero delay: an in-memory map keyed by account id (instant across
+/// drawer opens within a session) over scoped secure storage (survives cold
+/// starts). MANDATORY per-account scoping — one phone is shared by parent + child
+/// accounts, so a raw global key would leak one account's entitlement onto another.
+class _EntitlementCache {
+  static const _s = FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+  );
+  static const _key = 'sidebar_premium_v1';
+  static final Map<String, bool> _mem = {};
+
+  static String get _scopeId =>
+      (AccountScope.id == null || AccountScope.id!.isEmpty) ? kGuestScope : AccountScope.id!;
+
+  /// Instant, synchronous last-known value for the CURRENT account (null = cold).
+  static bool? peek() => _mem[_scopeId];
+
+  /// Load the persisted value for the current account into memory (async, local).
+  static Future<bool?> load() async {
+    try {
+      final v = await readScoped(_s, _key);
+      if (v == null || v.isEmpty) return null;
+      final b = v == '1';
+      _mem[_scopeId] = b;
+      return b;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Persist the freshly-fetched value for the current account (both layers).
+  static Future<void> store(bool premium) async {
+    _mem[_scopeId] = premium;
+    try { await _s.write(key: scopedKey(_key), value: premium ? '1' : '0'); } catch (_) {/* best-effort */}
+  }
+}
 
 /// The AvaTOK sidebar drawer. `onSelect` receives a destination key:
 /// 'explore' | 'verse' | 'library' | 'settings' | 'wallet' | 'profile' |
@@ -64,9 +107,29 @@ class _AvaSidebarState extends State<AvaSidebar> {
     ProfileStore().load().then((p) {
       if (mounted) setState(() { _displayName = p.displayName; _handle = p.handle; _avatarUrl = p.avatarUrl; });
     });
-    // Reflect premium status in the sidebar (green PREMIUM pill once topped up).
+    // Reflect premium status in the sidebar (the green BETA-FREE / PREMIUM pill).
+    // [SIDEBAR-ENTITLEMENT-CACHE] (AVA-UI-CACHE) The pill used to wait on a
+    // MoneyApi.balance() network round-trip EVERY time the drawer opened, so the
+    // "BETA-FREE" button took ~1s to appear. We now render the last-known value
+    // instantly from a per-account cache (in-memory this session, scoped secure
+    // storage across cold starts) and refresh from the network in the background.
+    final cachedPremium = _EntitlementCache.peek();
+    if (cachedPremium != null) {
+      _premium = cachedPremium; // pre-first-frame → no setState needed
+      Analytics.capture('sidebar_entitlement_cache_hit', {'source': 'memory', 'premium': cachedPremium});
+    } else {
+      _EntitlementCache.load().then((v) {
+        if (v != null && mounted) {
+          setState(() => _premium = v);
+          Analytics.capture('sidebar_entitlement_cache_hit', {'source': 'disk', 'premium': v});
+        }
+      });
+    }
     MoneyApi.balance().then((b) {
-      if (mounted) setState(() => _premium = b['premium'] == 1 || b['premium'] == true);
+      if (!mounted) return;
+      final premium = b['premium'] == 1 || b['premium'] == true;
+      setState(() => _premium = premium);
+      _EntitlementCache.store(premium); // warm the cache for the next drawer open / launch
     }).catchError((_) {});
     // Team plan status — once the user owns or belongs to a paid team, the Team
     // row drops its PAID badge (their staff seat / team plan already covers it).
