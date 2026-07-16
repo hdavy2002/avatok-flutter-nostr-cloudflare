@@ -182,12 +182,15 @@ export class InboxDO {
        -- [AVAGRP-SEENBY-1] Per-MESSAGE receipts, living in the ORIGINAL SENDER's
        -- own InboxDO (never a peer's, never a central store) — the same "owner
        -- state lives in the owner's DO" idiom as read_state/call_log/safety_flags.
-       -- This is deliberately a SEPARATE table from `receipts` above: `receipts` is
-       -- a per-(conv,peer) HIGH-WATER pair that 1:1 ticks depend on unchanged; a
-       -- group message can be authored by ANY member, so the reader must be able
-       -- to name a msg_id (the canonical, cross-device `mid` on messages.mid — NOT
+       -- This is deliberately a SEPARATE table from 'receipts' above: 'receipts'
+       -- is a per-(conv,peer) HIGH-WATER pair that 1:1 ticks depend on unchanged;
+       -- a group message can be authored by ANY member, so the reader must be able
+       -- to name a msg_id (the canonical, cross-device 'mid' on messages.mid — NOT
        -- the local autoincrement id, which differs per-DO) without touching that
-       -- 1:1 table at all. `msg_id` is TEXT (a mid, e.g. "<13-digit-ms>.<8hex>").
+       -- 1:1 table at all. msg_id is TEXT (a mid, e.g. "<13-digit-ms>.<8hex>").
+       -- NB: no backticks in this comment — it lives inside a template literal,
+       -- and a stray backtick silently terminates the SQL string (cost us a
+       -- failed prod deploy on 2026-07-17).
        -- WRITE AMPLIFICATION: one row per (message, reader) that has actually
        -- crossed it — NOT one row per member per historical message on every
        -- catch-up (see msgReceipt() below, which upserts only the mids the
