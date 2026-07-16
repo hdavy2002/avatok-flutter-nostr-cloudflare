@@ -143,10 +143,24 @@ async function appendTo(env: Env, owner: string, body: Record<string, unknown>):
 // expandable banner). The consumer's notify branch already renders both — the old
 // bug was the PRODUCER sending a bare "AvaTOK" with no preview (regression noted
 // 2026-06-28). We now forward the real name + preview here and in the fanout path.
-async function pushOffline(env: Env, toUid: string, fromName: string, preview: string): Promise<void> {
+//
+// [AVANOTIF-VM-2] `fromUid` is the Worker-AUTHENTICATED sender (ctx.uid at the
+// call site — never client-supplied), threaded through as PushMsg.from so the
+// consumer's buildPayload("notify") forwards it to the RECIPIENT device as
+// `data.fromUid`. Without this, EVERY regular chat-message push (the owner's
+// reported path — a raw phone number title, "New message" body) carried no
+// sender identity at all, so push_service.dart's _resolveDisplayName() had
+// nothing to resolve against and fell straight to the payload fromName (the
+// SENDER's own self-declared name, unverified against the recipient's own
+// contacts) — the exact bug AVANOTIF-VM-1 shipped a resolver for but could not
+// close from this file. No raw E.164 phone is available at this call site
+// (users.phone_hash is a one-way hash, not reversible to a real number) — only
+// `fromUid` travels here; see the report for why fromPhone is deliberately NOT
+// fabricated from this path.
+async function pushOffline(env: Env, toUid: string, fromUid: string, fromName: string, preview: string): Promise<void> {
   try {
     await env.Q_PUSH.send({
-      kind: "notify", to: toUid, fromName: fromName || "AvaTOK",
+      kind: "notify", to: toUid, from: fromUid, fromName: fromName || "AvaTOK",
       ...(preview ? { preview } : {}),
     });
   } catch { /* best-effort; never block the send */ }
@@ -543,7 +557,7 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
         // pushed slow-network senders past their client timeout (PostHog
         // /api/msg/send TimeoutException x57). Same fire-and-forget pattern as
         // maybeEnqueueAutoReply / the brain scans below.
-        void pushOffline(env, m, fromName, preview).catch(() => {});
+        void pushOffline(env, m, ctx.uid, fromName, preview).catch(() => {});
       }
       // STREAM F — auto-responder hook. DM-only (isDm), regular messages only (not a
       // delete-for-everyone control). Fires independent of socket liveness because
@@ -580,7 +594,11 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
     const sends: Promise<unknown>[] = [];
     for (let i = 0; i < recipients.length; i += FANOUT_QUEUE_CHUNK) {
       sends.push(env.Q_PUSH.send({
-        kind: "fanout", payload, fromName, preview,
+        // [AVANOTIF-VM-2] `from: ctx.uid` — see pushOffline above. handleFanout
+        // (consumers/src/fcm.ts) already forwards msg.from as data.fromUid on
+        // the per-recipient notify it re-enqueues; it just never had a value to
+        // forward from THIS producer before now.
+        kind: "fanout", payload, fromName, preview, from: ctx.uid,
         recipients: recipients.slice(i, i + FANOUT_QUEUE_CHUNK),
       }));
     }
@@ -773,12 +791,13 @@ export async function forwardMsg(req: Request, env: Env): Promise<Response> {
     if (job.recipients.length <= FANOUT_SYNC_MAX) {
       await Promise.all(job.recipients.map(async (m) => {
         const r = await appendTo(env, m, payload);
-        if (!r.live) await pushOffline(env, m, fromName, preview);
+        if (!r.live) await pushOffline(env, m, ctx.uid, fromName, preview);
       }));
     } else {
       const sends: Promise<unknown>[] = [];
       for (let i = 0; i < job.recipients.length; i += FANOUT_QUEUE_CHUNK) {
-        sends.push(env.Q_PUSH.send({ kind: "fanout", payload, fromName, preview,
+        // [AVANOTIF-VM-2] from: ctx.uid — same fix as the send() fanout path above.
+        sends.push(env.Q_PUSH.send({ kind: "fanout", payload, fromName, preview, from: ctx.uid,
           recipients: job.recipients.slice(i, i + FANOUT_QUEUE_CHUNK) }));
       }
       await Promise.all(sends);

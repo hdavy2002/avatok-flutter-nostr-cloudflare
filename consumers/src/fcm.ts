@@ -115,6 +115,16 @@ export async function handlePush(msg: PushMsg, env: Env): Promise<void> {
   }
 
   const payload = buildPayload(msg);
+  // [AVANOTIF-VM-2] Proof-in-prod: does this "message" push actually carry the
+  // sender identity the client's _resolveDisplayName() needs, or did it fall
+  // through empty (the exact class of bug this issue closes — messaging.ts's
+  // fanout/pushOffline producers used to enqueue with NO `from` at all)? Cheap
+  // boolean derived from the already-built FCM data payload, not re-derived —
+  // so this can never drift from what actually ships to the device.
+  const notifIdentityProps = payload.data.type === "message" ? {
+    has_from_uid: !!payload.data.fromUid,
+    has_from_phone: !!payload.data.fromPhone,
+  } : {};
   // DEMO KILL-SWITCH (owner request 2026-07-01, demo): when DEMO_MUTE_NONCALL_PUSH="1",
   // suppress EVERY push except incoming calls + call-status, so a live demo isn't
   // interrupted by message / voicemail / reminder banners or silent sync wakes. We
@@ -186,6 +196,7 @@ export async function handlePush(msg: PushMsg, env: Env): Promise<void> {
     // real gap. This label exists so nobody reads `delivered:1` as "user pinged".
     delivered_semantics: "fcm_accepted_not_device_receipt",
     ...resolutionProps, // [CALL-TELEMETRY-1]
+    ...notifIdentityProps, // [AVANOTIF-VM-2]
   });
   // [MULTIACCT-1] If we entered with tokens but NONE delivered AND every failure
   // was a prune (all tokens were dead — the stale-token-after-relogin case), this
@@ -273,11 +284,15 @@ async function handleFanout(msg: PushMsg, env: Env): Promise<void> {
         if (!r.live) await handlePush({
           kind: "notify", to: uid,
           fromName: msg.fromName || "AvaTOK",
-          // [AVANOTIF-VM-1] Forward the sender uid when the fanout carried one so
-          // the recipient can resolve a name from their own contacts. Today's
-          // messaging.ts fanout producer does not set `msg.from` on this PushMsg —
-          // this is future-proofing + best-effort; flagged separately as a gap.
+          // [AVANOTIF-VM-1 / AVANOTIF-VM-2] Forward the sender uid when the fanout
+          // carried one so the recipient can resolve a name from their own
+          // contacts. GAP CLOSED 2026-07-16: messaging.ts's large-group fanout
+          // producers (send() + forwardMsg()) now set `from: ctx.uid` on every
+          // "fanout" enqueue — see [AVANOTIF-VM-2] there. Also forward `fromPhone`
+          // for parity, for any future producer that supplies one (no current
+          // messaging.ts path has an unhashed phone to send).
           ...(msg.from ? { fromUid: msg.from } : {}),
+          ...(msg.fromPhone ? { fromPhone: msg.fromPhone } : {}),
           ...(msg.preview ? { preview: msg.preview } : {}),
         }, env);
       } catch (e) {

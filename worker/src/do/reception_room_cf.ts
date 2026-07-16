@@ -862,7 +862,16 @@ export class ReceptionRoomCf {
     const stub = this.env.INBOX.get(this.env.INBOX.idFromName(init.owner_uid));
     await stub.fetch("https://inbox/append", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...payload, owner: init.owner_uid }) });
     try {
-      await this.env.Q_PUSH.send({ kind: "notify", to: init.owner_uid, fromName: "Ava", title: "Ava took a message", body: bodyText.replace(/^📞\s*/, ""), data: { type: "receptionist", conv, caller_phone: init.caller_phone } });
+      // [AVANOTIF-VM-2] `caller_uid` added alongside the existing `caller_phone`.
+      // consumers/src/fcm.ts buildPayload's "notify" branch reads
+      // `msg.data.caller_uid` FIRST (highest priority) to resolve `data.fromUid`
+      // for the recipient's push_service.dart resolver — without it, an in-app
+      // AvaTOK caller who reaches this owner's receptionist could only ever be
+      // matched by phone, never by the owner's own AvaTOK-contact-by-uid entry
+      // (priority tier 2 in _resolveDisplayName), even when the caller IS an
+      // AvaTOK contact. PSTN callers legitimately have no uid — `caller_uid` is
+      // simply omitted for them, same as `caller_phone` today for uid-only paths.
+      await this.env.Q_PUSH.send({ kind: "notify", to: init.owner_uid, fromName: "Ava", title: "Ava took a message", body: bodyText.replace(/^📞\s*/, ""), data: { type: "receptionist", conv, caller_uid: init.caller_uid || undefined, caller_phone: init.caller_phone } });
       this.ev("ava_recept_push_sent", { ok: true });
     } catch (e) {
       this.ev("ava_recept_delivery_failed", { stage: "push", error_scrubbed: scrubSecrets(String(e)).slice(0, 200) });
@@ -879,7 +888,13 @@ export class ReceptionRoomCf {
           method: "POST", headers: { "content-type": "application/json" },
           body: JSON.stringify({ conv, sender: init.owner_uid, kind: "text", body: JSON.stringify({ t: "text", body: ackText }), scope: `to:${init.caller_uid}`, created_at: Date.now(), owner: init.caller_uid }),
         });
-        await this.env.Q_PUSH.send({ kind: "notify", to: init.caller_uid, fromName: ownerLabel });
+        // [AVANOTIF-VM-2] `from: init.owner_uid` — the caller-ack push had no
+        // sender identity at all, same gap class as the messaging.ts producers.
+        // Lets the caller's device resolve the OWNER's name from the caller's
+        // own contacts instead of trusting `fromName` (which here is already the
+        // owner's server-resolved name, so this is a belt-and-suspenders forward
+        // for consistency with every other notify producer, not a behavior fix).
+        await this.env.Q_PUSH.send({ kind: "notify", to: init.caller_uid, from: init.owner_uid, fromName: ownerLabel });
         this.ev("ava_recept_caller_ack_sent", { ok: true });
       } catch (e) {
         this.ev("ava_recept_caller_ack_sent", { ok: false, error_scrubbed: scrubSecrets(String(e)).slice(0, 200) });
