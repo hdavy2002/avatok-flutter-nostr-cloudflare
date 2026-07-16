@@ -15,7 +15,11 @@ import '../../../core/brain_consent.dart';
 import '../../../core/config.dart';
 import '../../../core/rag_service.dart';
 import '../../../core/ui/avatok_dark.dart';
-import '../../avatok/contacts.dart';
+// [AVAINBOX-3] `show` is REQUIRED, not tidiness: contacts.dart declares its own
+// `Directory` (the AvaTOK user directory), which collides with dart:io's
+// `Directory` used by the download fallback below. An unqualified import here
+// breaks the build.
+import '../../avatok/contacts.dart' show Contact, ContactsStore;
 import '../../avatok/media.dart' show MediaService;
 import '../avadial_channel.dart';
 import '../avadial_theme.dart';
