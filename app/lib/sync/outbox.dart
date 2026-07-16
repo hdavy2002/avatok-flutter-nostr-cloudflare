@@ -328,6 +328,21 @@ class Outbox {
           // durability confirmation, so it must not wait for the echo.
           _emit(OutboxStatus(clientId: entry.clientId, convKey: entry.convKey, ok: true));
         }
+      } else if (res.statusCode == 403 && _isControlOp(entry)) {
+        // [AVA-CHAT-INSTANT] A del/gdel unsend is an author-verified, NON-idempotent
+        // server op: once the FIRST POST tombstones the target, every retry returns
+        // 403 not_author. Such controls now use AvaDm/AvaGroupDm.sendControl and
+        // never enter this queue — but a device may still hold a del enqueued BEFORE
+        // this fix. Treat its 403 as terminal completion (target already gone) so it
+        // self-heals instead of looping the 403 up to the 50-attempt / 24h give-up
+        // cap (the production bug this fixes). Any OTHER non-200 falls through to the
+        // normal retry/give-up path below so real failures (5xx, identity_required)
+        // still surface.
+        _q.remove(entry.clientId);
+        Analytics.capture('msg_outbox_control_dropped', {
+          'status': 403, 'attempt': entry.attempt,
+          'conv_kind': entry.convKey.startsWith('g:') ? 'group' : 'dm',
+        });
       } else {
         entry.lastError = 'http ${res.statusCode}';
         AvaLog.I.log('outbox', 'send FAILED ${res.statusCode} (attempt ${entry.attempt}) cid=${entry.clientId}');
@@ -346,6 +361,12 @@ class Outbox {
       _rearm();
     }
   }
+
+  /// [AVA-CHAT-INSTANT] True when this entry's body is a non-idempotent, author-
+  /// verified unsend control (`{"t":"del"...}` / `{"t":"gdel"...}`). Such ops must
+  /// never loop on a `403 not_author` (see the 403 branch in [_attempt]).
+  bool _isControlOp(OutboxEntry entry) =>
+      entry.payload.contains('"t":"del"') || entry.payload.contains('"t":"gdel"');
 
   bool _shouldGiveUp(OutboxEntry entry) {
     // [MSG-ECHO-COMPLETE-1] An acked entry is already durably stored server-side;

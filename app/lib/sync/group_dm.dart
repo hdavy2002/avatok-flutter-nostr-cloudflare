@@ -16,6 +16,9 @@ import 'sync_hub.dart';
 /// this change) — built here from the shared `kApiBase` the same way every
 /// other endpoint constant in that file is.
 const String _kMsgReceiptsBatchUrl = '$kApiBase/msg/receipts';
+// [AVA-CHAT-INSTANT] Built here from `kApiBase` (config.dart's `show` clause is
+// owned by another change) for [AvaGroupDm.sendControl]'s one-shot unsend POST.
+const String _kMsgSendUrl = '$kApiBase/msg/send';
 
 class GroupMessage {
   final String rumorId;
@@ -75,6 +78,26 @@ class AvaGroupDm {
       clientId: clientId, conv: group.id, payload: payload, convKey: convKey, kind: 'text',
     ));
     return clientId;
+  }
+
+  /// [AVA-CHAT-INSTANT] One-shot, NON-IDEMPOTENT group control envelope — an
+  /// unsend/delete-for-everyone (`{"t":"gdel",...}`). MUST NOT ride the durable
+  /// [Outbox]: `/api/msg/send` author-verifies a `"t":"gdel"` body, so an
+  /// at-least-once retry after the first POST tombstones the target loops
+  /// `403 not_author` (the 1:1 `AvaDm.sendControl` doc explains the production
+  /// bug in full). Best-effort POST, retried only on transient network / 5xx, with
+  /// both 200 and 403 terminal.
+  Future<void> sendControl(String payload, {String kind = 'text'}) async {
+    final clientId = _randId();
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        final res = await ApiAuth.postJson(_kMsgSendUrl, {
+          'conv': group.id, 'kind': kind, 'body': payload, 'client_id': clientId,
+        }, timeout: const Duration(seconds: 20));
+        if (res.statusCode == 200 || res.statusCode == 403) return; // done / already gone
+      } catch (_) {/* transient — retry */}
+      await Future.delayed(Duration(milliseconds: 400 * (attempt + 1)));
+    }
   }
 
   /// [AVAGRP-SEENBY-1] Batch per-message delivered/read receipt for THIS group.

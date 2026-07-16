@@ -83,6 +83,39 @@ class AvaDm {
     return clientId;
   }
 
+  /// [AVA-CHAT-INSTANT] Send a ONE-SHOT, NON-IDEMPOTENT control envelope — an
+  /// unsend/delete-for-everyone (`{"t":"del",...}`) — to the peer. These MUST NOT
+  /// ride the durable [Outbox] like a normal message.
+  ///
+  /// WHY (production bug, 50× `403 not_author` in 3 days for one tester): the
+  /// server treats a `/api/msg/send` body containing `"t":"del"`/`"t":"gdel"` as
+  /// an AUTHOR-VERIFIED retract (messaging.ts verifyAuthor). Routing it through the
+  /// at-least-once Outbox meant that after the FIRST POST tombstoned the target
+  /// message, every retry (the 60s ack-reverify re-POST, or a give-up + tap-retry)
+  /// re-ran verifyAuthor against a now-tombstoned target, got `403 not_author`, and
+  /// — because a 403 is never an ACK — kept re-POSTing up to the 50-attempt / 24h
+  /// give-up cap. A retract is idempotent from the user's view (the bubble is
+  /// already hidden locally), so a best-effort POST — retried ONLY on transient
+  /// network / 5xx errors, and treating BOTH 200 and 403 as terminal (done, or the
+  /// target is already gone / not ours) — is the correct transport. Not durable
+  /// across restart: a retract that never lands just stays hidden on this device,
+  /// which is strictly better than a 403 storm.
+  Future<void> sendControl(String payload, {String kind = 'text'}) async {
+    if (peerPub.isEmpty) return;
+    final clientId = _randId();
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        final res = await ApiAuth.postJson(kMsgSendUrl, {
+          'to': peerPub, 'kind': kind, 'body': payload, 'client_id': clientId,
+        }, timeout: const Duration(seconds: 20));
+        // 200 = applied; 403 = already tombstoned / not author → nothing to retry.
+        if (res.statusCode == 200 || res.statusCode == 403) return;
+        // Any other status (5xx / transient) → bounded retry below.
+      } catch (_) {/* transient network error — retry */}
+      await Future.delayed(Duration(milliseconds: 400 * (attempt + 1)));
+    }
+  }
+
   /// [STATUS-FANOUT-1] (owner request 2026-07-15) Fan a status envelope out to
   /// [contactUids] over the ordinary message transport.
   ///

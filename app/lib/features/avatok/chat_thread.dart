@@ -205,6 +205,10 @@ class _Msg {
   // a centered pill (`_systemBubble`) with NO avatar, NO sender-name header,
   // and NO per-sender tint — never routed through the normal `_bubble` path.
   final bool system;
+  // [AVA-CHAT-INSTANT] Epoch ms when this optimistic outgoing bubble was created,
+  // so the send→server-ACK round-trip can be reported (msg_send_confirmed). Null
+  // for received/system/AI-local bubbles that never go through the send pipeline.
+  int? sendStartedMs;
   _Msg(this.id, this.me, this.text, this.time,
       {this.ts = 0, this.evId, this.senderLabel, this.senderPub, this.reaction, this.media, this.pendingKind, this.mediaCaption = '', this.localBytes,
        this.uploading = false, this.failed = false, this.sent = false, this.replyTo, this.edited = false,
@@ -306,6 +310,15 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   final _searchCtrl = TextEditingController(); // in-thread search box (literal + AI)
   final _composerFocus = FocusNode(); // keep the keyboard up after each send
   final _scroll = ScrollController();
+  // [AVA-CHAT-INSTANT] The message list is laid out but kept invisible until the
+  // first jump-to-end lands, so a thread OPENS already pinned to the newest
+  // message instead of painting at the top and then visibly snapping down through
+  // history (owner: "it scrolls from the top to the last message"). Flipped true by
+  // [_jumpToEndSettled]'s first post-frame jump, with a hard safety-net in
+  // initState so a thread that never calls it (demo / edge paths) can never stay
+  // blank. jumpTo needs a laid-out viewport, so we gate VISIBILITY (Opacity), not
+  // layout (Offstage) — the extent is measurable while hidden.
+  bool _openReveal = false;
   final _picker = ImagePicker();
   // [AVAVM-PLAYER-1] Voice-note playback now goes through the shared,
   // app-wide `AudioPlaybackService` (survives navigation + backgrounding)
@@ -672,6 +685,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this); // [VOICE-REC-1] recorder auto-pause
+    // [AVA-CHAT-INSTANT] Safety net for the open-at-bottom reveal gate: normally
+    // _jumpToEndSettled reveals the list the instant it lands on the newest
+    // message, but a thread that never reaches that path (demo / non-real modes)
+    // must still become visible. Reveal unconditionally after a short beat.
+    Future.delayed(const Duration(milliseconds: 450), () {
+      if (mounted && !_openReveal) setState(() => _openReveal = true);
+    });
     // Opening a thread nudges a catch-up sync: a server-injected message (e.g. a
     // marketplace agent-deal card, or a receptionist card) is appended directly to
     // the InboxDO and only arrives on a fresh sync — if the socket wasn't connected
@@ -1426,7 +1446,25 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     if (!mounted) return;
     final idx = _msgs.indexWhere((m) => m.evId == s.rumorId);
     if (idx < 0) return;
-    setState(() { _msgs[idx].failed = !s.ok; _msgs[idx].sent = s.ok; });
+    final m = _msgs[idx];
+    final alreadySent = m.sent;
+    setState(() { m.failed = !s.ok; m.sent = s.ok; });
+    // [AVA-CHAT-INSTANT] Confirm/fail telemetry (email auto-attached by
+    // Analytics._base). msg_send_confirmed carries the true send→ACK round-trip;
+    // guard on !alreadySent so a re-emitted ACK doesn't double-count.
+    if (s.ok && !alreadySent) {
+      Analytics.capture('msg_send_confirmed', {
+        'conv_kind': _isGroup ? 'group' : 'dm',
+        if (m.sendStartedMs != null)
+          'round_trip_ms': DateTime.now().millisecondsSinceEpoch - m.sendStartedMs!,
+      });
+    } else if (!s.ok) {
+      Analytics.capture('msg_send_failed', {
+        'conv_kind': _isGroup ? 'group' : 'dm',
+        'has_media': m.media != null || m.localBytes != null,
+        if (s.message.isNotEmpty) 'reason': s.message.length > 80 ? s.message.substring(0, 80) : s.message,
+      });
+    }
   }
 
   /// Per-message delivery status for MY 1:1 messages (WhatsApp-style). Returns
@@ -2616,14 +2654,22 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     // account). `_Msg`'s own default is `sent: false` ("Sending…") for exactly this
     // reason; only `_onSendStatus()` — driven by the outbox's real HTTP 200 ACK —
     // may flip this to true. Do not reintroduce an optimistic `sent: true` here.
+    final tShownStart = DateTime.now().millisecondsSinceEpoch;
     final localMsg = _Msg(_seq++, true, t, _fmtTime(now),
         ts: now, replyTo: replyMeta, expireAt: expire,
-        extra: composeHit == null ? null : {'preview': composeHit});
+        extra: composeHit == null ? null : {'preview': composeHit})
+      ..sendStartedMs = tShownStart; // [AVA-CHAT-INSTANT] round-trip anchor
     setState(() {
       _msgs.add(localMsg);
       _ctrl.clear();
       _hasText = false;
       _replyTo = null;
+    });
+    // [AVA-CHAT-INSTANT] Perceived-latency telemetry: how long until the bubble
+    // was on screen (email auto-attached by Analytics._base).
+    Analytics.capture('msg_optimistic_shown', {
+      'kind': 'text', 'conv_kind': isGroup ? 'group' : 'dm',
+      'ms_to_bubble': DateTime.now().millisecondsSinceEpoch - tShownStart,
     });
     _clearComposePreview();
     _composePreviewDismissed.clear();
@@ -2721,7 +2767,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   /// the frame AND again after a short settle so we reliably end at the bottom.
   void _jumpToEndSettled() {
     void toEnd() { if (mounted && _scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent); }
-    WidgetsBinding.instance.addPostFrameCallback((_) => toEnd());
+    // [AVA-CHAT-INSTANT] Jump to the newest message on the first frame, THEN reveal
+    // the (until now invisible) list — so the thread appears already anchored at the
+    // bottom with no visible top-to-bottom scroll-through of history. The later
+    // settle-jumps only nudge the offset if media grows the extent after reveal.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      toEnd();
+      if (mounted && !_openReveal) setState(() => _openReveal = true);
+    });
     Future.delayed(const Duration(milliseconds: 250), toEnd);
     Future.delayed(const Duration(milliseconds: 600), toEnd);
   }
@@ -4401,11 +4454,20 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     // so any list re-sort floated the bubble to the very TOP of the thread and it
     // appeared to "disappear" from the bottom where it was just added.
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final tShownStart = DateTime.now().millisecondsSinceEpoch;
     final msg = _Msg(_seq++, true, _caption(kind, name), _fmtTime(now),
         ts: now, localBytes: bytes, uploading: true, mediaCaption: caption,
-        pendingKind: kind); // [AVAVM-PLAYER-1] real kind, known before `media` exists
+        pendingKind: kind) // [AVAVM-PLAYER-1] real kind, known before `media` exists
+      ..sendStartedMs = tShownStart; // [AVA-CHAT-INSTANT] round-trip anchor
     setState(() => _msgs.add(msg));
     _jump();
+    // [AVA-CHAT-INSTANT] Heavy media shows its bubble (local preview + uploading
+    // clock) instantly, BEFORE the upload — record how fast (email auto-attached).
+    Analytics.capture('msg_optimistic_shown', {
+      'kind': kind.name, 'conv_kind': _isGroup ? 'group' : 'dm',
+      'ms_to_bubble': DateTime.now().millisecondsSinceEpoch - tShownStart,
+      'size': bytes.length,
+    });
     // Index shared docs/images into the user's own RAG store (content extraction
     // supports text/PDF/Office/PNG/JPEG, not audio/video). Fire-and-forget.
     if (kind == MediaKind.image || kind == MediaKind.file) {
@@ -6119,11 +6181,16 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     var channel = 'none';
     if (_realMode && target != null && target.isNotEmpty) {
       try {
+        // [AVA-CHAT-INSTANT] An unsend is an author-verified, NON-idempotent server
+        // op — it MUST NOT ride the durable Outbox (`.send`), whose at-least-once
+        // retry loops `403 not_author` after the first POST tombstones the target
+        // (production bug: 50× in 3 days for one tester). `sendControl` is the
+        // one-shot, 403-terminal transport for these controls.
         if (_group != null && _gdm != null) {
-          _gdm!.send(jsonEncode({'t': 'gdel', 'gid': _group!.id, 'target': target}));
+          unawaited(_gdm!.sendControl(jsonEncode({'t': 'gdel', 'gid': _group!.id, 'target': target})));
           channel = 'gdm';
         } else if (_dm != null) {
-          _dm!.send(jsonEncode({'t': 'del', 'target': target}));
+          unawaited(_dm!.sendControl(jsonEncode({'t': 'del', 'target': target})));
           channel = 'dm';
         }
       } catch (e) {/* best-effort; local hide still applies */
@@ -7228,7 +7295,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                     (_hasArchived || _archiveLoading);
                 final headerCount = showArchiveHeader ? 1 : 0;
                 final footerCount = showAiFooter ? 1 : 0;
-                return ListView.builder(
+                // [AVA-CHAT-INSTANT] Keep the list laid out but invisible + inert
+                // until the first jump-to-end lands, so the thread opens already
+                // anchored on the newest message (no visible scroll-through).
+                return Opacity(
+                  opacity: _openReveal ? 1.0 : 0.0,
+                  child: IgnorePointer(
+                  ignoring: !_openReveal,
+                  child: ListView.builder(
                   controller: _scroll,
                   // [UI-BUBBLE-1] Symmetric 12dp horizontal thread padding for both
                   // incoming & outgoing (bubbles cap at 78% of the thread width).
@@ -7249,7 +7323,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                       children: [_daySeparator(_dayLabel(m.ts)), _bubble(m)],
                     );
                   },
-                );
+                ))); // [AVA-CHAT-INSTANT] close ListView.builder / IgnorePointer / Opacity
               }),
               ),
             ),
@@ -9763,6 +9837,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                         if (!m.failed) return row;
                         return GestureDetector(
                           onTap: () {
+                            // [AVA-CHAT-INSTANT] Manual retry telemetry + fresh
+                            // round-trip anchor (email auto-attached by _base).
+                            m.sendStartedMs = DateTime.now().millisecondsSinceEpoch;
+                            Analytics.capture('msg_send_retry', {
+                              'conv_kind': _isGroup ? 'group' : 'dm',
+                              'has_media': m.localBytes != null || m.media != null,
+                            });
                             if (m.localBytes != null) {
                               // [AVAVM-PLAYER-1] Prefer the real `pendingKind`
                               // over a blind `MediaKind.file` fallback — a
