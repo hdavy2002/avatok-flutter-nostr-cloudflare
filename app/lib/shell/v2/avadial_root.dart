@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../core/analytics.dart';
 import '../../core/avatar.dart';
+import '../../core/call_log_store.dart';
 import '../../core/remote_config.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/avatok_dark.dart';
@@ -15,11 +16,9 @@ import '../../features/avadial/avadial_channel.dart';
 import '../../features/avadial/avadial_refresh.dart';
 import '../../features/avadial/avadial_theme.dart';
 import '../../features/avadial/block_list.dart';
-import '../../features/avadial/contact_overrides.dart';
-import '../../features/avadial/contact_row_menu.dart';
-import '../../features/avadial/device_call_log.dart';
 import '../../features/avadial/device_contacts.dart';
 import '../../features/avadial/dialpad_search_tab.dart';
+import '../../features/avatok/contact_actions.dart';
 import '../../features/avatok/contact_profile_screen.dart';
 import '../../features/avatok/contacts.dart';
 import '../../features/avatok/invite_screen.dart';
@@ -254,91 +253,14 @@ class _CallsTabStrip extends StatelessWidget {
   }
 }
 
-/// Onboarding hook (plan §4.2): "Make Ava your phone app" → ROLE_DIALER request.
-/// Shown at the top of the device tabs until AvaDial holds the dialer role. Only
-/// ever built when the `avaDialer` flag is on.
-class _RoleBanner extends StatefulWidget {
-  const _RoleBanner();
-
-  @override
-  State<_RoleBanner> createState() => _RoleBannerState();
-}
-
-class _RoleBannerState extends State<_RoleBanner> {
-  bool _held = true; // assume held → banner hidden until we learn otherwise
-  bool _busy = false;
-  StreamSubscription<AvaRoleResult>? _sub;
-
-  @override
-  void initState() {
-    super.initState();
-    _refresh();
-    // The verdict arrives asynchronously after the system prompt.
-    _sub = AvaDialChannel.I.roleResults.listen((r) {
-      if (!mounted) return;
-      if (r.role.contains('DIALER')) {
-        Analytics.capture(
-            r.granted ? 'avadial_role_granted' : 'avadial_role_denied', {'role': 'dialer'});
-        _refresh();
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _sub?.cancel();
-    super.dispose();
-  }
-
-  Future<void> _refresh() async {
-    final held = await AvaDialChannel.I.isDialerRoleHeld();
-    if (mounted) setState(() => _held = held);
-  }
-
-  Future<void> _request() async {
-    if (_busy) return;
-    setState(() => _busy = true);
-    final immediate = await AvaDialChannel.I.requestDialerRole();
-    if (immediate == true) {
-      Analytics.capture('avadial_role_granted', {'role': 'dialer', 'via': 'already_held'});
-      await _refresh();
-    }
-    // Otherwise the verdict comes via roleResults; capture there.
-    if (mounted) setState(() => _busy = false);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_held) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
-      child: AdCard(
-        color: AD.card,
-        child: Row(children: [
-          ZineIconBadge(icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold), color: AD.iconShield),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Make Ava your phone app', style: ADText.threadName(c: AvaDialTheme.text)),
-              const SizedBox(height: 2),
-              Text('Screen spam, see your call log and block numbers.',
-                  style: ADText.preview(c: AvaDialTheme.textSoft)),
-            ]),
-          ),
-          const SizedBox(width: 10),
-          AdButton(
-            label: 'Enable',
-            variant: AdButtonVariant.teal,
-            fontSize: 14,
-            trailingIcon: false,
-            loading: _busy,
-            onPressed: _request,
-          ),
-        ]),
-      ),
-    );
-  }
-}
+// [AVADIAL-AVATOK-ONLY-2] 2026-07-16 (owner spec, pic1): the "Make Ava your
+// phone app" / ROLE_DIALER promo card that used to sit above the Logs tab is
+// REMOVED entirely, not just hidden — Call logs is AvaTOK-to-AvaTOK only now,
+// so there is no device-dialer-role framing left on this screen. The onboarding
+// path for the OS default-phone role still lives in Settings → "Default phone &
+// messages" (default_dialer_section.dart), which is untouched — the owner's
+// instruction was scoped to the AvaDialer screen, and that Settings card has no
+// reference to this banner/class.
 
 // ── Contacts tab ─────────────────────────────────────────────────────────────
 // [AVADIAL-AVATOK-ONLY-1] 2026-07-16 pivot: this used to be the DEVICE phone
@@ -361,6 +283,10 @@ class _ContactsTab extends StatefulWidget {
 class _ContactsTabState extends State<_ContactsTab> {
   final _store = ContactsStore();
   List<Contact> _all = const [];
+  // [AVADIAL-AVATOK-ONLY-2] Which AvaTOK numbers are on the block list, so the
+  // Contacts row menu can offer Block/Unblock and reflect the live state — the
+  // SAME [BlockList] the Block tab reads, keyed by the contact's AvaTOK number.
+  Set<String> _blockedNumbers = const {};
   bool _loaded = false;
   String _query = '';
 
@@ -368,12 +294,34 @@ class _ContactsTabState extends State<_ContactsTab> {
   void initState() {
     super.initState();
     _load();
+    // A block/unblock from the Block tab (or this tab, on another row) should
+    // flip this row's menu label immediately — same cross-tab notifier the
+    // Block tab already listens to.
+    avaDialRev.addListener(_onRev);
+  }
+
+  @override
+  void dispose() {
+    avaDialRev.removeListener(_onRev);
+    super.dispose();
+  }
+
+  void _onRev() {
+    if (mounted) _loadBlocked();
   }
 
   Future<void> _load() async {
     final cs = await _store.load();
     if (!mounted) return;
     setState(() { _all = cs; _loaded = true; });
+    Analytics.capture('avadial_contacts_tab_loaded', {'count': cs.length});
+    unawaited(_loadBlocked());
+  }
+
+  Future<void> _loadBlocked() async {
+    final entries = await BlockList.I.load();
+    if (!mounted) return;
+    setState(() => _blockedNumbers = entries.map((e) => e.number).toSet());
   }
 
   /// AvaTOK-network contacts only (a number means a resolved account) —
@@ -430,20 +378,105 @@ class _ContactsTabState extends State<_ContactsTab> {
     if (mounted) setState(() => _all = list);
   }
 
-  /// Long-press menu (owner spec): "Call on AvaTOK" for a saved member. A
-  /// non-member ("Invite") row never reaches this list — [ContactsStore] only
+  /// [AVADIAL-AVATOK-ONLY-2] "Save contact" — exports a vCard and hands it to
+  /// the OS share sheet (Contacts app / Files / anywhere), reusing the SAME
+  /// vCard builder + share flow every other contact surface uses
+  /// ([ContactActions.share]) rather than a second implementation.
+  Future<void> _saveContact(Contact c) async {
+    Analytics.capture('avadial_contact_save_vcard', const {});
+    await ContactActions.share(context, c);
+  }
+
+  /// "Share contact" (owner spec, pic5): share to AvaTOK contacts — forward the
+  /// contact card into an AvaTOK chat/group. Reuses [ContactActions.forward]
+  /// (the SAME forward-to-chat plumbing the chat list / AvaPhone contacts use)
+  /// rather than building a second contact-forward path.
+  Future<void> _shareToAvaTok(Contact c) async {
+    Analytics.capture('avadial_contact_share_to_avatok', const {});
+    await ContactActions.forward(context, c);
+  }
+
+  /// Rename / edit the saved display name for an AvaTOK contact. Writes through
+  /// [ContactsStore.add], which upserts by uid (same store the row list reads).
+  Future<void> _rename(Contact c) async {
+    final ctrl = TextEditingController(text: c.name);
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AvaDialTheme.surface2,
+        shape: RoundedRectangleBorder(
+          side: const BorderSide(color: AvaDialTheme.border, width: 1),
+          borderRadius: BorderRadius.circular(AD.rDialog),
+        ),
+        title: Text('Rename contact', style: ADText.threadName(c: AvaDialTheme.text)),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          style: TextStyle(color: AvaDialTheme.text),
+          decoration: InputDecoration(
+            hintText: 'Name',
+            hintStyle: TextStyle(color: AvaDialTheme.textSoft),
+            enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: AvaDialTheme.border)),
+            focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: AvaDialTheme.accent)),
+          ),
+          onSubmitted: (v) => Navigator.pop(ctx, v),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Cancel', style: ADText.rowName(c: AvaDialTheme.textSoft)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text),
+            child: Text('Save', style: ADText.rowName(c: AvaDialTheme.accent)),
+          ),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    if (newName == null || newName.trim() == c.name) return;
+    final list = await _store.add(c.copyWith(name: newName.trim()));
+    if (!mounted) return;
+    setState(() => _all = list);
+    Analytics.capture('avadial_contact_renamed', const {});
+  }
+
+  /// Block/unblock this contact's AvaTOK number — the SAME account-scoped
+  /// [BlockList] the Block tab reads (which also drives the OS-level
+  /// write-through when AvaTOK holds the dialer role), so blocking here shows
+  /// up there immediately via [avaDialRev].
+  Future<void> _toggleBlock(Contact c) async {
+    if (c.number.isEmpty) return;
+    final blocked = _blockedNumbers.contains(c.number);
+    if (blocked) {
+      await BlockList.I.unblock(c.number);
+    } else {
+      await BlockList.I.block(c.number, label: c.name.isNotEmpty ? c.name : null);
+    }
+    Analytics.capture('avadial_contact_block_toggled', {'blocked': !blocked});
+    await _loadBlocked();
+  }
+
+  /// Full row menu (owner spec, pic5): Call on AvaTOK · View profile · Share
+  /// contact (to AvaTOK chat) · Save contact (vCard) · Rename · Block · Delete.
+  /// A non-member ("Invite") row never reaches this list — [ContactsStore] only
   /// ever stores a resolved uid, so an unresolved number is handled inline at
   /// add-time by [_AddAvaTokContactDialog]'s own "Not on AvaTOK → Invite" state
   /// instead of being persisted as a fake contact.
   void _openMenu(Contact c) {
+    final isBlocked = c.number.isNotEmpty && _blockedNumbers.contains(c.number);
     showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
       backgroundColor: AvaDialTheme.surface2,
       shape: const RoundedRectangleBorder(
         side: BorderSide(color: AvaDialTheme.border, width: 1),
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      builder: (ctx) => SafeArea(child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.85),
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
         const SizedBox(height: 10),
         ListTile(
           leading: Container(
@@ -466,12 +499,36 @@ class _ContactsTabState extends State<_ContactsTab> {
           onTap: () { Navigator.pop(ctx); _openProfile(c); },
         ),
         ListTile(
+          leading: PhosphorIcon(PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold), color: AD.iconVideo),
+          title: Text('Share contact', style: ADText.rowName(c: AvaDialTheme.text)),
+          subtitle: Text('Send to an AvaTOK chat', style: ADText.preview(c: AvaDialTheme.textSoft)),
+          onTap: () { Navigator.pop(ctx); _shareToAvaTok(c); },
+        ),
+        ListTile(
+          leading: PhosphorIcon(PhosphorIcons.floppyDisk(PhosphorIconsStyle.bold), color: AD.iconVideo),
+          title: Text('Save contact', style: ADText.rowName(c: AvaDialTheme.text)),
+          subtitle: Text('vCard — Contacts, email & more', style: ADText.preview(c: AvaDialTheme.textSoft)),
+          onTap: () { Navigator.pop(ctx); _saveContact(c); },
+        ),
+        ListTile(
+          leading: PhosphorIcon(PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold), color: AD.iconVideo),
+          title: Text('Rename', style: ADText.rowName(c: AvaDialTheme.text)),
+          onTap: () { Navigator.pop(ctx); _rename(c); },
+        ),
+        ListTile(
+          leading: PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.bold), color: AD.danger),
+          title: Text(isBlocked ? 'Unblock' : 'Block', style: ADText.rowName(c: AD.danger)),
+          onTap: () { Navigator.pop(ctx); _toggleBlock(c); },
+        ),
+        ListTile(
           leading: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.bold), color: AD.danger),
           title: Text('Delete contact', style: ADText.rowName(c: AD.danger)),
           onTap: () { Navigator.pop(ctx); _deleteContact(c); },
         ),
         const SizedBox(height: 8),
-      ])),
+          ]),
+        ),
+      )),
     );
   }
 
@@ -853,6 +910,18 @@ bool _avaDialMatches(String query, {String? number, List<String?> texts = const 
   return false;
 }
 
+// [AVADIAL-AVATOK-ONLY-2] 2026-07-16: this tab used to read the native DEVICE
+// call log (Truecaller-style, via [DeviceCallLog]/[AvaDialChannel.readCallLog])
+// with the "Make Ava your phone app" role banner above it. Per owner spec, Call
+// logs is now AvaTOK-to-AvaTOK only: it reads [CallLogStore] — the SAME
+// server-backed, multi-device-synced log AvaPhone's `_CallsTab` already uses
+// (app/lib/features/avaphone/ava_phone_screen.dart) — and the whole
+// device-phone-app framing (banner + copy) is gone, not just hidden.
+//
+// The native `AvaDialChannel.readCallLog()` / `AvaDialPlugin.kt` / manifest
+// permissions are UNTOUCHED — this tab simply stops calling them. See the
+// AVADIAL-AVATOK-ONLY-2 report for a READ_CALL_LOG justification note now that
+// this was its only caller in the Calls app.
 class _LogsTab extends StatefulWidget {
   const _LogsTab();
 
@@ -861,94 +930,61 @@ class _LogsTab extends StatefulWidget {
 }
 
 class _LogsTabState extends State<_LogsTab> {
-  late Future<(List<DeviceCall>, Map<String, ContactOverride>, Set<String>, Set<String>)> _future;
+  final _store = CallLogStore();
+  List<CallEntry> _calls = const [];
+  Map<String, Contact> _byUid = const {};
+  bool _loaded = false;
   String _query = '';
-  // [AVADIAL-LOG-LIVE-1] Live call-end subscriptions — see initState.
-  StreamSubscription<String>? _endedSub;
-  StreamSubscription<AvaCallEvent>? _stateSub;
-  // Coalesces the refresh: one hangup can raise BOTH 'disconnected' and
-  // 'onCallRemoved' (and 'disconnected' can repeat), which would otherwise stack
-  // several overlapping re-read passes for a single call.
-  bool _refreshingAfterCall = false;
+  StreamSubscription<void>? _sub;
 
   @override
   void initState() {
     super.initState();
-    _future = _loadAll();
-    avaDialRev.addListener(_onRev);
-    // [AVADIAL-LOG-LIVE-1] (owner report 2026-07-15, pic2 "call log does not
-    // update automatically, I have to pull to refresh")
-    //
-    // Nothing told this tab a call had happened. It lives inside an IndexedStack,
-    // so it is built ONCE and stays alive forever; `_future` was resolved in
-    // initState and then never re-run except by the user's pull-to-refresh. Hang
-    // up, walk back to Logs, and you were looking at a snapshot from whenever the
-    // tab first mounted.
-    //
-    // `onCallRemoved` fires the moment a PSTN call leaves the connection list, and
-    // `onCallState` -> 'disconnected' covers the paths that never produce a removal
-    // (rejected/failed dials). Either one means "the OS call log just gained a row".
-    _endedSub = AvaDialChannel.I.removedCalls.listen((_) => _refreshAfterCall('removed'));
-    _stateSub = AvaDialChannel.I.calls.listen((e) {
-      if (e.state == 'disconnected') _refreshAfterCall('disconnected');
-    });
+    _load();
+    // [CallLogStore] already notifies on every local mutation AND remote sync
+    // (multi-device), so this tab repaints live without any device-call-log
+    // polling/refresh dance.
+    _sub = CallLogStore.changes.listen((_) => _load());
   }
 
   @override
   void dispose() {
-    _endedSub?.cancel();
-    _stateSub?.cancel();
-    avaDialRev.removeListener(_onRev);
+    _sub?.cancel();
     super.dispose();
   }
 
-  void _onRev() {
-    if (mounted) setState(() => _future = _loadAll());
+  Future<void> _load() async {
+    final calls = await _store.load();
+    final contacts = await ContactsStore().load();
+    if (!mounted) return;
+    setState(() {
+      _calls = calls;
+      _byUid = {for (final c in contacts) c.uid: c};
+      _loaded = true;
+    });
+    Analytics.capture('avadial_calllog_tab_loaded', {'count': calls.length});
   }
 
-  /// [AVADIAL-LOG-LIVE-1] Re-read the OS call log once a call finishes.
-  ///
-  /// MUST be `force: true`: [DeviceCallLog] holds an in-memory cache and a plain
-  /// `load()` returns it verbatim, so a non-forced reload would rebuild the list
-  /// from the very snapshot we're trying to replace and change nothing on screen.
-  ///
-  /// The delay is not superstition. Android's CallLog provider is written by the
-  /// telephony stack ASYNCHRONOUSLY, shortly AFTER the call is torn down — query it
-  /// the instant `onCallRemoved` lands and the new row frequently isn't there yet,
-  /// which would leave the tab looking exactly as broken as before. We re-read
-  /// twice: once quickly for the common case, once ~1.2s later as the backstop.
-  /// Both are cheap content-resolver reads, and both are no-ops if nothing changed.
-  Future<void> _refreshAfterCall(String reason) async {
-    if (!mounted || _refreshingAfterCall) return;
-    _refreshingAfterCall = true;
-    try {
-      for (final wait in const [Duration(milliseconds: 350), Duration(milliseconds: 1200)]) {
-        await Future<void>.delayed(wait);
-        if (!mounted) return;
-        setState(() => _future = _loadAll(force: true));
-      }
-      Analytics.capture('avadial_calllog_auto_refresh', {'reason': reason});
-    } finally {
-      _refreshingAfterCall = false;
-    }
+  Future<void> _reload() => _load();
+
+  String? _avatarFor(String seed) {
+    final c = _byUid[seed];
+    return (c != null && c.avatarUrl.isNotEmpty) ? c.avatarUrl : null;
   }
 
-  Future<(List<DeviceCall>, Map<String, ContactOverride>, Set<String>, Set<String>)> _loadAll({bool force = false}) async {
-    final all = await DeviceCallLog.I.load(force: force);
-    final hidden = await HiddenCallLog.I.load();
-    // Drop rows the user deleted from AvaTOK's view (never touches the OS log).
-    final logs = all.where((e) => !hidden.contains(HiddenCallLog.keyFor(e.number, e.date))).toList();
-    final overrides = {for (final o in await ContactOverrides.I.load()) DeviceContacts.normKey(o.number): o};
-    final blocked = {for (final b in await BlockList.I.load()) DeviceContacts.normKey(b.number)};
-    return (logs, overrides, blocked, hidden);
+  Contact _contactOf(CallEntry c) =>
+      _byUid[c.seed] ?? Contact(uid: c.seed, name: c.name, avatarUrl: _avatarFor(c.seed) ?? '');
+
+  Future<void> _call(CallEntry c) async {
+    Analytics.capture('avadial_calllog_call_back', {'dir': c.dir.name, 'video': c.video});
+    await place1to1Call(context, uid: c.seed, name: c.name.isNotEmpty ? c.name : c.seed,
+        avatarUrl: _avatarFor(c.seed) ?? '', dialer: true);
   }
 
-  Future<void> _reload() async {
-    setState(() => _future = _loadAll(force: true));
-  }
-
-  /// "Delete history" — hides every currently-visible call from AvaTOK's view.
-  Future<void> _clearHistory(List<DeviceCall> logs) async {
+  /// "Clear history" — this is the account's OWN AvaTOK call log (server-backed),
+  /// not a device log, so there is nothing to "hide"; clearing wipes it for real
+  /// (and syncs the clear to every device on the account, same as [CallLogStore.clear]).
+  Future<void> _clearHistory() async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -959,8 +995,7 @@ class _LogsTabState extends State<_LogsTab> {
         ),
         title: Text('Clear call history?', style: ADText.threadName(c: AvaDialTheme.text)),
         content: Text(
-          'This hides these calls from AvaTOK. Your phone\'s own call log is not '
-          'touched.',
+          'This clears your AvaTOK call history on every device signed into this account.',
           style: ADText.preview(c: AvaDialTheme.textSoft).copyWith(fontSize: 13.5),
         ),
         actions: [
@@ -976,18 +1011,13 @@ class _LogsTabState extends State<_LogsTab> {
       ),
     );
     if (ok != true) return;
-    await HiddenCallLog.I.hideAll(logs.map((e) => HiddenCallLog.keyFor(e.number, e.date)));
-    Analytics.capture('avadial_call_history_cleared', {'count': logs.length});
-    _reload();
+    await _store.clear();
+    Analytics.capture('avadial_call_history_cleared', {'count': _calls.length});
   }
 
   /// [AVADIAL-LOG-EXPORT-1] Write the visible call log to a .txt and hand it to
   /// the OS share sheet (Files, Gmail, WhatsApp, Drive — the user's choice).
-  ///
-  /// Uses the SAME display name the row renders (override first, then the OS
-  /// cached name), so the file reads like the screen it came from.
-  Future<void> _exportLogs(
-      List<DeviceCall> logs, Map<String, ContactOverride> overrides) async {
+  Future<void> _exportLogs(List<CallEntry> logs) async {
     try {
       final b = StringBuffer()
         ..writeln('AvaTOK call log')
@@ -995,11 +1025,9 @@ class _LogsTabState extends State<_LogsTab> {
         ..writeln('${logs.length} call${logs.length == 1 ? '' : 's'}')
         ..writeln();
       for (final e in logs) {
-        final name = overrides[DeviceContacts.normKey(e.number)]?.displayName ??
-            e.cachedName;
-        final who = (name == null || name.trim().isEmpty) ? e.number : '$name (${e.number})';
-        final dur = e.duration.inSeconds > 0 ? ' · ${_dur(e.duration)}' : '';
-        b.writeln('${_stamp(e.date)} · ${e.type.name}$dur · $who');
+        final name = _byUid[e.seed]?.name ?? e.name;
+        final who = name.trim().isEmpty ? e.seed : name;
+        b.writeln('${_stamp(DateTime.fromMillisecondsSinceEpoch(e.ts * 1000))} · ${e.dir.name} · $who');
       }
       final dir = await getTemporaryDirectory();
       final f = File('${dir.path}/avatok_call_log.txt');
@@ -1009,7 +1037,6 @@ class _LogsTabState extends State<_LogsTab> {
       Analytics.capture('avadial_calllog_exported', {'count': logs.length});
     } catch (e) {
       if (!mounted) return;
-      // Export is user-initiated, so a silent failure would just look broken.
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Couldn't export the call log.")),
       );
@@ -1017,41 +1044,86 @@ class _LogsTabState extends State<_LogsTab> {
     }
   }
 
-  /// Local, unambiguous timestamp for the export file — deliberately not the
-  /// relative "15/7 10:58" the list shows, which is useless in a saved document.
   static String _stamp(DateTime d) {
     String p(int v) => v.toString().padLeft(2, '0');
     return '${d.year}-${p(d.month)}-${p(d.day)} ${p(d.hour)}:${p(d.minute)}';
   }
 
-  static String _dur(Duration d) {
-    final m = d.inMinutes, s = d.inSeconds % 60;
-    return m > 0 ? '${m}m ${s}s' : '${s}s';
+  IconData _iconFor(CallDir d) => switch (d) {
+        CallDir.outgoing => Icons.call_made,
+        CallDir.missed => Icons.call_missed,
+        CallDir.incoming => Icons.call_received,
+      };
+
+  Color _colorFor(CallDir d) => switch (d) {
+        CallDir.missed => AD.danger,
+        CallDir.outgoing => AD.online,
+        CallDir.incoming => AD.iconSearch,
+      };
+
+  /// Per-row options (tap or long-press): Call on AvaTOK · View profile · Share
+  /// contact · Delete this log entry.
+  void _openMenu(CallEntry c) {
+    final contact = _contactOf(c);
+    final displayName = contact.name.isNotEmpty ? contact.name : c.name;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AvaDialTheme.surface2,
+      shape: const RoundedRectangleBorder(
+        side: BorderSide(color: AvaDialTheme.border, width: 1),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const SizedBox(height: 10),
+        ListTile(
+          leading: Container(
+            decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: AD.borderAvatar, width: 2)),
+            child: Avatar(seed: c.seed, name: displayName, size: 44,
+                avatarUrl: _avatarFor(c.seed)),
+          ),
+          title: Text(displayName.isNotEmpty ? displayName : c.seed, style: ADText.rowName(c: AvaDialTheme.text)),
+        ),
+        const Divider(color: AvaDialTheme.border, height: 1),
+        ListTile(
+          leading: const Icon(Icons.call, color: AD.incomingCall),
+          title: Text('Call on AvaTOK', style: ADText.rowName(c: AvaDialTheme.text)),
+          onTap: () { Navigator.pop(ctx); _call(c); },
+        ),
+        ListTile(
+          leading: PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.bold), color: AD.iconSearch),
+          title: Text('View profile', style: ADText.rowName(c: AvaDialTheme.text)),
+          onTap: () {
+            Navigator.pop(ctx);
+            Navigator.push(context, MaterialPageRoute<void>(
+                builder: (_) => ContactProfileScreen(name: displayName, uid: c.seed)));
+          },
+        ),
+        ListTile(
+          leading: PhosphorIcon(PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold), color: AD.iconVideo),
+          title: Text('Share contact', style: ADText.rowName(c: AvaDialTheme.text)),
+          onTap: () { Navigator.pop(ctx); ContactActions.forward(context, contact); },
+        ),
+        ListTile(
+          leading: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.bold), color: AD.danger),
+          title: Text('Delete this log entry', style: ADText.rowName(c: AD.danger)),
+          onTap: () async {
+            Navigator.pop(ctx);
+            if (c.id.isNotEmpty) await _store.removeById(c.id);
+            Analytics.capture('avadial_call_deleted', const {});
+          },
+        ),
+        const SizedBox(height: 8),
+      ])),
+    );
   }
-
-  IconData _iconFor(DeviceCallType t) => switch (t) {
-        DeviceCallType.outgoing => Icons.call_made,
-        DeviceCallType.missed => Icons.call_missed,
-        DeviceCallType.rejected => Icons.call_end,
-        DeviceCallType.blocked => Icons.block,
-        _ => Icons.call_received,
-      };
-
-  Color _colorFor(DeviceCallType t) => switch (t) {
-        DeviceCallType.missed || DeviceCallType.rejected || DeviceCallType.blocked => AD.danger,
-        DeviceCallType.outgoing => AD.online,
-        _ => AD.iconSearch,
-      };
 
   @override
   Widget build(BuildContext context) {
     return Column(children: [
-      const _RoleBanner(),
-      // [AVADIAL-SEARCH-1] Instant name/number filter over the call log.
+      // [AVADIAL-SEARCH-1] Instant name filter over the AvaTOK call log.
       _AvaDialSearchBar(
-        hint: 'Search calls by name or number',
+        hint: 'Search calls by name',
         onChanged: (v) {
-          // Fire once per search session (empty → typing), never per keystroke.
           if (_query.trim().isEmpty && v.trim().isNotEmpty) {
             Analytics.capture('avadial_search_started', const {'tab': 'call_logs'});
           }
@@ -1059,150 +1131,132 @@ class _LogsTabState extends State<_LogsTab> {
         },
       ),
       Expanded(
-        child: FutureBuilder<(List<DeviceCall>, Map<String, ContactOverride>, Set<String>, Set<String>)>(
-          future: _future,
-          builder: (context, snap) {
-            if (snap.connectionState != ConnectionState.done) {
-              return const Center(child: CircularProgressIndicator(color: AvaDialTheme.accent));
-            }
-            final (logs, overrides, blocked, _) = snap.data ??
-                (const <DeviceCall>[], const <String, ContactOverride>{}, const <String>{}, const <String>{});
-            if (logs.isEmpty) {
-              return _PermState(
-                icon: Icons.history_outlined,
-                title: 'No call history',
-                subtitle:
-                    'Make Ava your phone app to see and label your device call log.',
-                color: AD.online,
-                onRetry: _reload,
-              );
-            }
-            // [AVADIAL-SEARCH-1] Match on the SAME display name the row renders
-            // (override first, then the OS cached name) so what you see is what
-            // you can search for, plus the number.
-            final visible = logs.where((e) {
-              final key = DeviceContacts.normKey(e.number);
-              final displayName = overrides[key]?.displayName ?? e.cachedName;
-              return _avaDialMatches(_query, number: e.number, texts: [displayName]);
-            }).toList();
-            if (visible.isEmpty) {
-              return Center(
-                child: Text('No matches', style: ADText.preview(c: AvaDialTheme.textSoft)),
-              );
-            }
-            return RefreshIndicator(
-              onRefresh: _reload,
-              child: ListView.builder(
-                padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
-                itemCount: visible.length + 1,
-                itemBuilder: (context, idx) {
-                  if (idx == 0) {
-                    // Toolbar: count + "Clear history". Both follow the SEARCH
-                    // results on purpose — "Clear history" is documented as hiding
-                    // every currently-visible call, so with a query active it must
-                    // not silently wipe rows the user can't see.
-                    return Padding(
-                      padding: const EdgeInsets.fromLTRB(2, 4, 2, 6),
-                      child: Row(children: [
-                        Text('${visible.length} call${visible.length == 1 ? '' : 's'}',
-                            style: ADText.statCaption(c: AvaDialTheme.textMute)),
-                        const Spacer(),
-                        // [AVADIAL-LOG-EXPORT-1] (owner request 2026-07-15) Export
-                        // the log as a plain .txt and hand it to the OS share sheet
-                        // — the user picks Files / Gmail / WhatsApp / anything.
-                        // Deliberately client-side: unlike the chat export there's
-                        // no media and no size to speak of, so a backend queue and
-                        // an email round-trip would be pure overhead.
-                        //
-                        // Exports `visible`, matching "Clear history" — with a
-                        // search active, both act on exactly the rows on screen.
-                        TextButton.icon(
-                          onPressed: () => _exportLogs(visible, overrides),
-                          icon: PhosphorIcon(PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold),
-                              color: AvaDialTheme.accent, size: 17),
-                          label: Text('Export',
-                              style: ADText.rowName(c: AvaDialTheme.accent)),
-                        ),
-                        TextButton.icon(
-                          onPressed: () => _clearHistory(visible),
-                          icon: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.bold),
-                              color: AD.danger, size: 17),
-                          label: Text('Clear history',
-                              style: ADText.rowName(c: AD.danger)),
-                        ),
-                      ]),
-                    );
-                  }
-                  final e = visible[idx - 1];
-                  final key = DeviceContacts.normKey(e.number);
-                  final displayName = overrides[key]?.displayName ?? e.cachedName;
-                  final isBlocked = blocked.contains(key);
-                  void openMenu() => showAvaDialRowMenu(
-                        context,
-                        number: e.number,
-                        name: displayName,
-                        alreadyBlocked: isBlocked,
-                        onChanged: _reload,
-                      );
-                  return Dismissible(
-                    key: ValueKey(HiddenCallLog.keyFor(e.number, e.date)),
-                    direction: DismissDirection.endToStart,
-                    background: Container(
-                      alignment: Alignment.centerRight,
-                      padding: const EdgeInsets.only(right: 22),
-                      margin: const EdgeInsets.symmetric(vertical: 4),
-                      decoration: BoxDecoration(
-                        color: AD.danger,
-                        borderRadius: BorderRadius.circular(AD.rListCard),
-                      ),
-                      child: const Icon(Icons.delete_outline, color: Colors.white),
-                    ),
-                    onDismissed: (_) async {
-                      await HiddenCallLog.I.hide(e.number, e.date);
-                      Analytics.capture('avadial_call_deleted', const {});
-                    },
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: GestureDetector(
-                        onLongPress: openMenu,
-                        child: AdCard(
-                          color: AvaDialTheme.surface2,
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          child: Row(children: [
-                            ZineIconBadge(icon: _iconFor(e.type), color: _colorFor(e.type)),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                Text(displayName ?? e.number, style: ADText.threadName(c: AvaDialTheme.text)),
-                                Text(_subtitle(e), style: ADText.preview(c: AvaDialTheme.textSoft)),
-                              ]),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.more_vert, color: AvaDialTheme.textSoft),
-                              onPressed: openMenu,
-                            ),
-                          ]),
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            );
-          },
-        ),
+        child: !_loaded
+            ? const Center(child: CircularProgressIndicator(color: AvaDialTheme.accent))
+            : (_calls.isEmpty
+                ? _PermState(
+                    icon: Icons.history_outlined,
+                    title: 'No call history',
+                    subtitle: 'Calls you make and receive on AvaTOK will show up here.',
+                    color: AD.online,
+                    onRetry: _reload,
+                  )
+                : _buildList())
       ),
     ]);
   }
 
-  String _subtitle(DeviceCall e) {
-    final d = e.date;
-    final when = '${d.day}/${d.month} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
-    return '${e.type.name} · $when';
+  Widget _buildList() {
+    // [AVADIAL-SEARCH-1] Match on the SAME display name the row renders
+    // (saved contact first, then the call-log's own recorded name).
+    final visible = _calls.where((e) {
+      final displayName = _byUid[e.seed]?.name ?? e.name;
+      return _avaDialMatches(_query, texts: [displayName, e.seed]);
+    }).toList();
+    if (visible.isEmpty) {
+      return Center(
+        child: Text('No matches', style: ADText.preview(c: AvaDialTheme.textSoft)),
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _reload,
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
+        itemCount: visible.length + 1,
+        itemBuilder: (context, idx) {
+          if (idx == 0) {
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(2, 4, 2, 6),
+              child: Row(children: [
+                Text('${visible.length} call${visible.length == 1 ? '' : 's'}',
+                    style: ADText.statCaption(c: AvaDialTheme.textMute)),
+                const Spacer(),
+                // [AVADIAL-LOG-EXPORT-1] Export as .txt via the OS share sheet.
+                TextButton.icon(
+                  onPressed: () => _exportLogs(visible),
+                  icon: PhosphorIcon(PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold),
+                      color: AvaDialTheme.accent, size: 17),
+                  label: Text('Export', style: ADText.rowName(c: AvaDialTheme.accent)),
+                ),
+                TextButton.icon(
+                  onPressed: _clearHistory,
+                  icon: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.bold),
+                      color: AD.danger, size: 17),
+                  label: Text('Clear history', style: ADText.rowName(c: AD.danger)),
+                ),
+              ]),
+            );
+          }
+          final e = visible[idx - 1];
+          final displayName = _byUid[e.seed]?.name ?? e.name;
+          void openMenu() => _openMenu(e);
+          return Dismissible(
+            key: ValueKey(e.id.isNotEmpty ? e.id : '${e.seed}_${e.ts}'),
+            direction: DismissDirection.endToStart,
+            background: Container(
+              alignment: Alignment.centerRight,
+              padding: const EdgeInsets.only(right: 22),
+              margin: const EdgeInsets.symmetric(vertical: 4),
+              decoration: BoxDecoration(
+                color: AD.danger,
+                borderRadius: BorderRadius.circular(AD.rListCard),
+              ),
+              child: const Icon(Icons.delete_outline, color: Colors.white),
+            ),
+            onDismissed: (_) async {
+              if (e.id.isNotEmpty) await _store.removeById(e.id);
+              Analytics.capture('avadial_call_deleted', const {});
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: GestureDetector(
+                onTap: openMenu,
+                onLongPress: openMenu,
+                child: AdCard(
+                  color: AvaDialTheme.surface2,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  child: Row(children: [
+                    ZineIconBadge(icon: _iconFor(e.dir), color: _colorFor(e.dir)),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(displayName.isNotEmpty ? displayName : e.seed,
+                            style: ADText.threadName(c: AvaDialTheme.text)),
+                        Text(_subtitle(e), style: ADText.preview(c: AvaDialTheme.textSoft)),
+                      ]),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.call, color: AD.incomingCall),
+                      onPressed: () => _call(e),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.more_vert, color: AvaDialTheme.textSoft),
+                      onPressed: openMenu,
+                    ),
+                  ]),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
+
+  String _subtitle(CallEntry e) => '${e.dir.name} · ${e.timeLabel}';
 }
 
 // ── Block tab ────────────────────────────────────────────────────────────────
+// [AVADIAL-AVATOK-ONLY-2] 2026-07-16 (owner spec, pic6): "The block list is
+// about avatok contacts only and not users phone book contacts." [BlockList]
+// itself is a flat number → label store shared with other surfaces (and its
+// numbers can be either an AvaTOK number or, historically, a device number), so
+// this tab now cross-references every entry against [ContactsStore] and only
+// shows the ones that match a saved AvaTOK contact's number — a bare
+// device/phone-book number that was never an AvaTOK contact is dropped from
+// this VIEW (the underlying block/OS write-through is untouched either way).
+// The search bar is scoped to exactly that filtered list, never the device
+// address book.
 class _BlockTab extends StatefulWidget {
   const _BlockTab();
 
@@ -1211,15 +1265,15 @@ class _BlockTab extends StatefulWidget {
 }
 
 class _BlockTabState extends State<_BlockTab> {
-  late Future<List<BlockEntry>> _future;
+  late Future<(List<BlockEntry>, Map<String, Contact>)> _future;
   String _query = '';
 
   @override
   void initState() {
     super.initState();
-    _future = BlockList.I.load();
-    // Reload when a number is blocked/unblocked from another tab (Contacts, Logs,
-    // the contact detail screen) so it appears here immediately (owner bug, pic 6).
+    _future = _loadAll();
+    // Reload when a number is blocked/unblocked from another tab (Contacts, the
+    // contact detail screen) so it appears here immediately (owner bug, pic 6).
     avaDialRev.addListener(_onRev);
   }
 
@@ -1230,10 +1284,19 @@ class _BlockTabState extends State<_BlockTab> {
   }
 
   void _onRev() {
-    if (mounted) setState(() => _future = BlockList.I.load());
+    if (mounted) setState(() => _future = _loadAll());
   }
 
-  void _reload() => setState(() => _future = BlockList.I.load());
+  Future<(List<BlockEntry>, Map<String, Contact>)> _loadAll() async {
+    final blocked = await BlockList.I.load();
+    final contacts = await ContactsStore().load();
+    // AvaTOK contacts only — keyed by their AvaTOK number so a block entry can
+    // be matched back to the contact that owns it.
+    final byNumber = {for (final c in contacts) if (c.number.isNotEmpty) c.number: c};
+    return (blocked, byNumber);
+  }
+
+  void _reload() => setState(() => _future = _loadAll());
 
   Future<void> _unblock(String number) async {
     await BlockList.I.unblock(number);
@@ -1246,8 +1309,25 @@ class _BlockTabState extends State<_BlockTab> {
     // unblock swaps in a new future and flips this to a spinner, which would
     // unmount an inner bar and silently drop the user's query mid-search.
     return Column(children: [
+      // Explicit clarification banner, mirroring the Contacts tab's own copy
+      // (owner spec, pic6): this is the AvaTOK contact block list, never the
+      // phone's address book.
+      Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+        child: AdCard(
+          color: AvaDialTheme.surface2,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          child: Row(children: [
+            PhosphorIcon(PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill), size: 16, color: AD.danger),
+            const SizedBox(width: 8),
+            Expanded(child: Text(
+                'AvaTOK contacts only — not your phone’s address book.',
+                style: ADText.preview(c: AvaDialTheme.textSoft))),
+          ]),
+        ),
+      ),
       _AvaDialSearchBar(
-        hint: 'Search blocked numbers',
+        hint: 'Search blocked contacts',
         onChanged: (v) {
           if (_query.trim().isEmpty && v.trim().isNotEmpty) {
             Analytics.capture('avadial_search_started', const {'tab': 'block_list'});
@@ -1256,23 +1336,33 @@ class _BlockTabState extends State<_BlockTab> {
         },
       ),
       Expanded(
-        child: FutureBuilder<List<BlockEntry>>(
+        child: FutureBuilder<(List<BlockEntry>, Map<String, Contact>)>(
       future: _future,
       builder: (context, snap) {
         if (snap.connectionState != ConnectionState.done) {
           return const Center(child: CircularProgressIndicator(color: AvaDialTheme.accent));
         }
-        final all = snap.data ?? const <BlockEntry>[];
+        final (allBlocked, byNumber) = snap.data ?? (const <BlockEntry>[], const <String, Contact>{});
+        // AvaTOK-contacts-only scope (owner spec, pic6): a bare device/phone-book
+        // number that never resolved to a saved AvaTOK contact never appears here.
+        final all = allBlocked.where((e) => byNumber.containsKey(e.number)).toList();
+        Analytics.capture('avadial_blocklist_scope', {
+          'total_blocked': allBlocked.length,
+          'avatok_scoped': all.length,
+        });
         if (all.isEmpty) {
           return const ShellEmptyState(
             icon: Icons.block_outlined,
             title: 'Nothing blocked',
-            subtitle: 'Numbers you block or report as spam show up here.',
+            subtitle: 'AvaTOK contacts you block or report as spam show up here.',
             color: AD.danger,
           );
         }
+        // Search is scoped to exactly this AvaTOK-only list — never falls
+        // through to the device address book or a global search.
         final entries = all
-            .where((e) => _avaDialMatches(_query, number: e.number, texts: [e.label]))
+            .where((e) => _avaDialMatches(_query,
+                texts: [e.label, byNumber[e.number]?.name, e.number]))
             .toList();
         if (entries.isEmpty) {
           return Center(
@@ -1284,12 +1374,39 @@ class _BlockTabState extends State<_BlockTab> {
           itemCount: entries.length,
           itemBuilder: (context, i) {
             final e = entries[i];
-            void openMenu() => showAvaDialRowMenu(
-                  context,
-                  number: e.number,
-                  name: e.label,
-                  alreadyBlocked: true,
-                  onChanged: _reload,
+            final contact = byNumber[e.number];
+            final label = (contact?.name.isNotEmpty ?? false) ? contact!.name : (e.label ?? e.number);
+            void openMenu() => showModalBottomSheet<void>(
+                  context: context,
+                  backgroundColor: AvaDialTheme.surface2,
+                  shape: const RoundedRectangleBorder(
+                    side: BorderSide(color: AvaDialTheme.border, width: 1),
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                  ),
+                  builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    const SizedBox(height: 10),
+                    ListTile(
+                      title: Text(label, style: ADText.rowName(c: AvaDialTheme.text)),
+                      subtitle: Text(e.number, style: ADText.preview(c: AvaDialTheme.textSoft)),
+                    ),
+                    const Divider(color: AvaDialTheme.border, height: 1),
+                    if (contact != null)
+                      ListTile(
+                        leading: PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.bold), color: AD.iconSearch),
+                        title: Text('View profile', style: ADText.rowName(c: AvaDialTheme.text)),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          Navigator.push(context, MaterialPageRoute<void>(
+                              builder: (_) => ContactProfileScreen(name: contact.name, uid: contact.uid)));
+                        },
+                      ),
+                    ListTile(
+                      leading: PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.bold), color: AD.danger),
+                      title: Text('Unblock', style: ADText.rowName(c: AD.danger)),
+                      onTap: () { Navigator.pop(ctx); _unblock(e.number); },
+                    ),
+                    const SizedBox(height: 8),
+                  ])),
                 );
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
@@ -1307,9 +1424,9 @@ class _BlockTabState extends State<_BlockTab> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(e.number, style: ADText.threadName(c: AvaDialTheme.text)),
+                        Text(label, style: ADText.threadName(c: AvaDialTheme.text)),
                         Text(
-                          e.reportedSpam ? 'Reported as spam${e.label != null ? ' · ${e.label}' : ''}' : 'Blocked',
+                          e.reportedSpam ? 'Reported as spam · ${e.number}' : 'Blocked · ${e.number}',
                           style: ADText.preview(c: AvaDialTheme.textSoft),
                         ),
                       ]),
