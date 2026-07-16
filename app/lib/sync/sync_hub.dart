@@ -791,9 +791,14 @@ class SyncHub {
       if (!list.any((x) => x.rumorId == rumorId)) {
         list.add(DmMessage(rumorId: rumorId, mine: mine, payload: body, createdAt: createdSec));
         try {
+          // [AVAGRP-DBPUB-1] Persist the sender uid so a group thread's DB-replay
+          // path (`Db.I.messagesFor`, consulted on cold open when the JSON disk
+          // cache is absent/evicted) can resolve the same avatar + per-member
+          // tint a live frame gets via `HubEvent.senderPub` — see the doc comment
+          // on `Messages.senderPub`. Harmless for 1:1 DMs, which don't read it.
           Db.I.upsertMessage(MessagesCompanion.insert(
               rumorId: rumorId, convKey: convKey, mine: mine, payload: body,
-              createdAt: createdSec, kind: Value(kind)));
+              createdAt: createdSec, kind: Value(kind), senderPub: Value(sender)));
           if (!_dbLogged) { _dbLogged = true; AvaLog.I.log('db', 'sqlite: storing messages locally ✓'); }
         } catch (_) {}
       }

@@ -989,31 +989,36 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     _loadChatExtras();
     // [AVAGRP-BUBBLE-2 §6] SEQUENCED, not fire-and-forget: the JSON cache below
     // carries a correct `senderPub` per message (persisted since [AVAGRP-BUBBLE-1]
-    // — see `_persistNow`/`fromJson`), but the DB replay two lines down passes
-    // `senderPub: ''` for every row (the local SQLite schema doesn't store the
-    // peer id — see the comment on that call). Both calls dedup via `_seenEv`/
+    // — see `_persistNow`/`fromJson`), and both calls dedup via `_seenEv`/
     // `_onGroupMsg`'s `if (_seenEv.contains(rumorId)) return`, so WHICHEVER ONE
     // RUNS FIRST for a given message wins and the second is silently skipped.
-    // Unsequenced, that was a race: if the DB replay's `.then()` happened to
-    // land before the cache finished its own async reads, its senderPub:''
-    // would "win" and permanently blank that message's avatar/tint for this
-    // session (see the AVAGRP-BUBBLE-2 report for why this can't be fully fixed
-    // without a `senderPub` column in `db.dart`, out of scope for this file).
-    // Awaiting the cache first guarantees it always wins the race for anything
-    // it actually has cached, which is every message received after this fix
-    // landed and persisted at least once.
+    // [AVAGRP-DBPUB-1] The DB replay below now ALSO carries a real `senderPub`
+    // (persisted on `Messages` — see the column doc in `db.dart`), so the race
+    // this comment used to warn about no longer has a losing side: whichever
+    // source wins, the rendered bubble gets the correct avatar/tint. The cache
+    // is still awaited first on purpose — it carries fields the DB doesn't
+    // (readBy/deliveredTo/pending/etc.), not because it's the only correct
+    // source of `senderPub` anymore. Do not remove this sequencing.
     _loadCachedMessages().then((_) {
       if (!mounted) return;
       // Durable group history from local SQLite — the source of truth that
-      // survives restarts WITHOUT re-downloading the backlog (cursor sync). The
-      // row stores `mine` but not the peer id, so senderPub is best-effort here
-      // ('' → no per-sender label); live frames carry the real sender. _onGroupMsg
-      // dedups by rumor id, so this never double-renders what's already shown.
+      // survives restarts WITHOUT re-downloading the backlog (cursor sync).
+      // [AVAGRP-DBPUB-1] `senderPub` now comes from the DB column (populated by
+      // `SyncHub._ingestMsg`); pre-migration rows read back NULL and fall
+      // through to `''`, which every consumer already treats as "unknown
+      // sender" (no avatar/tint, not a crash). _onGroupMsg dedups by rumor id,
+      // so this never double-renders what's already shown by the cache.
       Db.I.messagesFor(_convKey!).then((rows) {
         if (!mounted) return;
         for (final m in rows) {
+          // [AVAGRP-DBPUB-1] Same convention as the live/`_ingestArchiveRow`
+          // paths ([GroupMessage] is always constructed with `senderPub: ''`
+          // for `mine` rows) — the UI already keys "is this my own bubble" off
+          // `mine`, not `senderPub`, so blanking it here just avoids handing a
+          // real uid through a field every downstream reader treats as "not
+          // mine ⇒ look up avatar/tint".
           _onGroupMsg(GroupMessage(
-              rumorId: m.rumorId, senderPub: '', mine: m.mine,
+              rumorId: m.rumorId, senderPub: m.mine ? '' : (m.senderPub ?? ''), mine: m.mine,
               payload: m.payload, createdAt: m.createdAt));
         }
         // [AVAGRP-BUBBLE-2 / AVAGRP-SEENBY-1 §Hydrate] Backfill the Info sheet

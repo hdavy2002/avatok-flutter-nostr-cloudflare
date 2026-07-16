@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:drift/drift.dart' show Value; // [AVAGRP-DBPUB-1] Messages.senderPub
+
 import '../core/api_auth.dart';
 import '../core/config.dart' show kApiBase;
 import '../core/db.dart';
@@ -59,9 +61,15 @@ class AvaGroupDm {
     final clientId = _randId();
     final convKey = 'g:${group.id}';
     try {
+      // [AVAGRP-DBPUB-1] Stamp my own uid too — `_setupGroup`'s DB replay blanks
+      // `senderPub` for `mine` rows regardless (the UI already keys "is this
+      // mine" off the `mine` flag, not `senderPub`), but storing the real value
+      // keeps this row identical to how the same message looks once it echoes
+      // back through `SyncHub._ingestMsg` and gets `insertOrIgnore`d again.
       Db.I.upsertMessage(MessagesCompanion.insert(
           rumorId: clientId, convKey: convKey, mine: true, payload: payload,
-          createdAt: DateTime.now().millisecondsSinceEpoch ~/ 1000));
+          createdAt: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+          senderPub: Value(AccountScope.id ?? '')));
     } catch (_) {}
     unawaited(Outbox.I.enqueue(
       clientId: clientId, conv: group.id, payload: payload, convKey: convKey, kind: 'text',

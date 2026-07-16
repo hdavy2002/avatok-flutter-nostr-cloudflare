@@ -40,6 +40,24 @@ class Messages extends Table {
   /// is treated as NOT countable — the badge may under-count ancient rows, but it
   /// can never get stuck above zero, which is the failure that matters.
   TextColumn get kind => text().nullable()();
+  /// [AVAGRP-DBPUB-1] The sender's stable uid, mirroring `GroupMessage.senderPub`
+  /// / `_Msg.senderPub` (`chat_thread.dart`). Group bubbles resolve their avatar
+  /// and per-member tint from this key (`resolveBubbleTheme`,
+  /// `_memberAvatars[senderPub]`) — before this column existed the DB-replay
+  /// path (`messagesFor`) had nowhere to read it from and always constructed
+  /// `senderPub: ''`, so a cold open with no JSON disk cache (evicted, fresh
+  /// install, cache write raced the DB read) silently regressed every history
+  /// row back to the "?" placeholder / no per-sender colour bug this fixed.
+  /// The disk cache (`_persistNow`/`fromJson`) is still consulted FIRST and
+  /// still wins the `_seenEv` dedup race when present (`_setupGroup`) — this
+  /// column is the second line of defence for when it isn't.
+  ///
+  /// NULLABLE, and left NULL/`''` on migration for pre-existing rows: there is
+  /// no way to recover a historical sender after the fact, and an empty value
+  /// degrades exactly like today (`resolveBubbleTheme`/`_bubbleAvatar` already
+  /// treat empty/null as "unknown sender" and fall back safely) — never a crash.
+  /// For 1:1 DMs the column is unused (the peer is already the whole `convKey`).
+  TextColumn get senderPub => text().nullable()();
   @override
   Set<Column> get primaryKey => {rumorId};
 }
@@ -138,13 +156,14 @@ class AppDb extends _$AppDb {
   AppDb() : super(_open());
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   // v2: Chats gained [json]. v3: WalletLedgerCache (Phase 2 wallet). v4:
   // DeviceContactsCache (instant add-contact + on-AvaTOK match). v5: contact
   // email + hasWhatsapp columns and the InviteSends table (AvaInvite screen).
   // v6: the npub → uid column rename. v7: Messages gained [kind] (the badge's
-  // countable-frame filter).
+  // countable-frame filter). v8: Messages gained [senderPub] (group bubble
+  // avatar/tint survives a cold open with no JSON disk cache — AVAGRP-DBPUB-1).
   // All added in-place so an existing on-device DB upgrades without wiping data.
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -206,6 +225,13 @@ class AppDb extends _$AppDb {
                 );
               }
             } catch (_) {/* NULL kind just means "not counted" — never fatal */}
+          }
+          if (from < 8) {
+            // [AVAGRP-DBPUB-1] Messages.senderPub — added nullable, so existing
+            // rows upgrade in place with NULL (degrades to the "unknown sender"
+            // fallback the UI already handles; there is no historical sender to
+            // backfill from [payload], unlike v7's [kind]).
+            await m.addColumn(messages, messages.senderPub);
           }
         },
       );
