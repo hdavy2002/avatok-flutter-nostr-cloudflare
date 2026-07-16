@@ -103,8 +103,17 @@ Future<void> sendVoicemailToChat(
 /// Cache-first bytes fetch — mirrors `_VoicemailCardState._fetchBytes` in
 /// inbox_thread_screen.dart (same cache key shape, same endpoint), kept as
 /// its own copy since that method is private to that file's State class.
+///
+/// [AVAINBOX-1] Content-addressed by `media_ref` (the R2 recording key) when
+/// available — same scheme inbox_thread_screen.dart moved to, so this picker
+/// and the thread screen share ONE cache entry for the same recording instead
+/// of two independent ones (the confirmed root cause of "it keeps
+/// redownloading" — see inbox_thread_screen.dart's `_cacheKey` doc).
 Future<Uint8List?> _fetchRecordingBytes(InboxCard card) async {
-  final cacheKey = 'inbox_${card.sessionId ?? card.id}';
+  final ref = card.mediaRef;
+  final cacheKey = (ref != null && ref.isNotEmpty)
+      ? 'vm_${ref.replaceAll(RegExp(r'[^a-zA-Z0-9_.-]'), '_')}'
+      : 'inbox_${card.sessionId ?? card.id}';
   try {
     final cached = await MediaService.cachedBlob(cacheKey);
     if (cached != null && cached.isNotEmpty) return cached;

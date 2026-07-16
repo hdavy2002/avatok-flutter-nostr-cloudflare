@@ -8,11 +8,13 @@ import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../../../shell/v2/shell_chrome.dart';
 import '../../../sync/sync_hub.dart';
+import '../../avatok/contacts.dart';
 import '../avadial_theme.dart';
 import '../block_list.dart';
 import '../contact_overrides.dart';
 import '../device_contacts.dart';
 import 'inbox_api.dart';
+import 'inbox_caller_name.dart';
 import 'inbox_heard_store.dart';
 import 'inbox_thread_screen.dart';
 
@@ -59,6 +61,15 @@ class _InboxListScreenState extends State<InboxListScreen> {
   Set<String> _heardIds = {};
   Map<String, String> _overrideNames = {}; // normalized phone → display name
 
+  // [AVAINBOX-1] conv → resolved display name (ContactOverrides → ContactsStore
+  // by uid/phone → DeviceContacts → server callerName → formatted number →
+  // "Unknown caller"; see inbox_caller_name.dart). Side-loaded in
+  // [_loadThreads] alongside [_overrideNames] so `_labelFor` stays a
+  // synchronous read at build time (the same idiom the heard-ids/overrides
+  // side-load already uses here).
+  Map<String, ResolvedCallerName> _resolvedNames = {};
+  StreamSubscription<List<Contact>>? _contactsSub;
+
   @override
   void initState() {
     super.initState();
@@ -66,6 +77,12 @@ class _InboxListScreenState extends State<InboxListScreen> {
     // resolves known callers instead of flashing raw numbers then relabeling.
     DeviceContacts.I.load();
     _future = _loadThreads();
+    // [AVAINBOX-1] A contact renamed/added/removed elsewhere (chat list, the
+    // Calls Contacts tab) should immediately re-resolve every row here — this
+    // is the "Rebuild on ContactsStore.changes" requirement, so a save in the
+    // AvaTOK contact book fixes "Unknown caller" without the user having to
+    // leave and reopen the Inbox tab.
+    _contactsSub = ContactsStore.changes.listen((_) => _reload());
     // [INBOX-LIVE-1, owner bug 2026-07-16] Voicemails only appeared after a
     // manual pull-to-refresh. InboxDO broadcasts every append over the live
     // sync WS, and SyncHub surfaces it on `incoming` — subscribe to voicemail/
@@ -90,6 +107,7 @@ class _InboxListScreenState extends State<InboxListScreen> {
   void dispose() {
     _liveDebounce?.cancel();
     _liveSub?.cancel();
+    _contactsSub?.cancel();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -120,16 +138,35 @@ class _InboxListScreenState extends State<InboxListScreen> {
       } catch (_) {/* leave unrenamed */}
     }
     _overrideNames = overrides;
+    // [AVAINBOX-1] One shared ContactsStore load for every thread in this
+    // batch (not one load per thread — that's O(n) disk reads for a screen
+    // that can hold hundreds of rows).
+    List<Contact> contacts = const [];
+    try {
+      contacts = await ContactsStore().load();
+    } catch (_) {/* resolver falls back gracefully with an empty list */}
+    final resolved = <String, ResolvedCallerName>{};
+    final tierCounts = <String, int>{};
+    for (final t in threads) {
+      final r = await InboxCallerName.resolve(thread: t, contactsCache: contacts);
+      resolved[t.conv] = r;
+      tierCounts[r.tier] = (tierCounts[r.tier] ?? 0) + 1;
+    }
+    _resolvedNames = resolved;
+    if (threads.isNotEmpty) {
+      // [AVAINBOX-1] Proves the "Unknown caller" fix landed in PRODUCTION
+      // (CLAUDE.md Rule 1: never just read the code, go check telemetry) —
+      // which tier wins for how many threads, so a regression that pushes
+      // everything back to 'unknown'/'server' is visible in PostHog rather
+      // than only found by eyeballing a screenshot.
+      Analytics.capture('inbox_name_resolution_summary', {
+        'threads': threads.length,
+        ...tierCounts.map((k, v) => MapEntry('tier_$k', v)),
+      });
+    }
     if (mounted) setState(() {}); // repaint with the side-loaded state
     return threads;
   }
-
-  /// True when any card in [t] has a recording that hasn't been marked heard
-  /// yet — keeps the list row's accent/dot lit even after the server-side
-  /// read-cursor has advanced (owner spec: "thread with any unheard card
-  /// keeps the dot/accent").
-  bool _hasUnheardAudio(InboxThread t) =>
-      t.cards.any((c) => c.hasRecording && !_heardIds.contains(c.stableId));
 
   /// Filters [threads] by caller display name, PSTN number, or any card's
   /// transcript text (case-insensitive substring match).
@@ -263,36 +300,66 @@ class _InboxListScreenState extends State<InboxListScreen> {
         ]),
       );
 
-  /// "Missed call from <name/number>" row content.
+  /// "Missed call from <name/number>" row content. [AVAINBOX-1]: now backed by
+  /// the ONE canonical resolver (inbox_caller_name.dart) side-loaded into
+  /// [_resolvedNames] by [_loadThreads] — replaces the old phone-only
+  /// override/DeviceContacts duplication that never consulted the AvaTOK
+  /// contact book and always said "Unknown caller" for a bare-uid business-
+  /// voicemail thread from a saved contact.
   ({String title, String? subtitleNumber}) _labelFor(InboxThread t) {
     if (t.isAnonymous) return (title: 'Hidden number', subtitleNumber: null);
-    final phone = t.telPhone;
-    if (phone != null) {
-      // [INBOX-RENAME-1] A rename-caller override (long-press menu, thread
-      // screen) wins over the device contact name — same precedence
-      // ava_contact_book.dart uses elsewhere in this feature.
-      final override = _overrideNames[phone];
-      if (override != null && override.trim().isNotEmpty) {
-        return (title: override, subtitleNumber: _formatTel(phone));
-      }
-      final contact = DeviceContacts.I.lookup(phone);
-      final name = contact?.name;
-      if (name != null && name.trim().isNotEmpty) {
-        return (title: name, subtitleNumber: _formatTel(phone));
-      }
-      return (title: _formatTel(phone), subtitleNumber: null);
+    final resolved = _resolvedNames[t.conv];
+    final phone = t.telPhone ?? t.latest.callerPhone;
+    if (resolved == null) {
+      // Resolution hasn't landed yet (first frame before _loadThreads'
+      // side-load completes) — a fast synchronous guess so the row never
+      // flashes empty; _reload()'s setState repaints with the real result.
+      final name = t.latest.callerName;
+      return (
+        title: (name != null && name.isNotEmpty) ? name : (phone ?? 'Unknown caller'),
+        subtitleNumber: null,
+      );
     }
-    // Business-call voicemail: `callerKey` is an AvaTOK uid, not a phone — the
-    // card's own caller_name (server-composed) is the best label we have.
-    final name = t.latest.callerName;
-    return (title: (name != null && name.isNotEmpty) ? name : 'Unknown caller', subtitleNumber: null);
+    // Show the raw number as a subtitle only when the title ISN'T already the
+    // number itself (formatted_number tier) — avoids "+1555…" / "+1555…"
+    // duplicated on two lines.
+    final subtitle = (phone != null && resolved.tier != 'formatted_number' && resolved.tier != 'anonymous')
+        ? phone
+        : null;
+    return (title: resolved.name, subtitleNumber: subtitle);
+  }
+
+  /// How many cards in [t] are unread-or-unplayed — owner spec pic3: "make
+  /// the color light green with red numbers to indicate how many unread or
+  /// unplayed VM you have inside it." Prefers the count of cards with a
+  /// recording that haven't been marked heard yet; falls back to 1 when the
+  /// SERVER says the thread is unread but has no (recording) cards to count
+  /// (e.g. a text-only missed-call-fallback card) so the badge never reads 0
+  /// on a thread the list still flags unread.
+  int _unreadCount(InboxThread t) {
+    final unheard = t.cards.where((c) => c.hasRecording && !_heardIds.contains(c.stableId)).length;
+    if (unheard > 0) return unheard;
+    return t.unread ? 1 : 0;
   }
 
   String _formatTel(String e164) => e164; // kept simple; the number is already E.164
 
+  // [AVAINBOX-1] Owner spec pic3: "light green with red numbers" for a card
+  // with new/unplayed voicemail. A literal pastel light-green would blow out
+  // against this app's near-black dark theme (every other AvaDial surface is
+  // AD dark-v2, see avadial_theme.dart) — so this is a DESATURATED dark green
+  // tint that reads unmistakably as "green" (distinct hue from every other
+  // row) without the low-contrast wash a bright pastel would cause on black.
+  // Kept local to this screen (not promoted to AD.*) since it's a one-off,
+  // owner-specific accent, not a reusable design token.
+  static const _unreadCardBg = Color(0xFF16241B);
+  static const _unreadCardBorder = Color(0xFF2E6B44);
+  static const _unreadBadgeBg = Color(0xFFE5484D); // red — matches AD.danger family
+
   Widget _row(InboxThread t) {
     final label = _labelFor(t);
-    final showAccent = t.unread || _hasUnheardAudio(t);
+    final unreadCount = _unreadCount(t);
+    final hasUnread = unreadCount > 0;
     final preview = t.latest.summaryText ??
         (t.latest.transcript != null && t.latest.transcript!.length > 60
             ? '${t.latest.transcript!.substring(0, 60)}…'
@@ -301,9 +368,16 @@ class _InboxListScreenState extends State<InboxListScreen> {
     return GestureDetector(
       onTap: () => _open(t),
       onLongPress: () => _showThreadMenu(t),
-      child: AdCard(
-        color: AvaDialTheme.surface2,
+      child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: hasUnread ? _unreadCardBg : AvaDialTheme.surface2,
+          borderRadius: BorderRadius.circular(AD.rListCard),
+          border: Border.all(
+            color: hasUnread ? _unreadCardBorder : AD.borderControl,
+            width: hasUnread ? 1.5 : 1,
+          ),
+        ),
         child: Row(children: [
           ZineIconBadge(
             icon: PhosphorIcons.phoneIncoming(PhosphorIconsStyle.fill),
@@ -325,10 +399,16 @@ class _InboxListScreenState extends State<InboxListScreen> {
           Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
             Text(_relativeTime(t.latest.createdAtMs), style: ADText.statCaption(c: AvaDialTheme.textMute)),
             const SizedBox(height: 6),
-            if (showAccent)
+            if (hasUnread)
               Container(
-                width: 9, height: 9,
-                decoration: const BoxDecoration(color: AD.unreadAccent, shape: BoxShape.circle),
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                constraints: const BoxConstraints(minWidth: 20),
+                decoration: BoxDecoration(color: _unreadBadgeBg, borderRadius: BorderRadius.circular(100)),
+                child: Text(
+                  unreadCount > 99 ? '99+' : '$unreadCount',
+                  textAlign: TextAlign.center,
+                  style: ADText.statCaption(c: Colors.white).copyWith(fontWeight: FontWeight.w800),
+                ),
               ),
           ]),
         ]),

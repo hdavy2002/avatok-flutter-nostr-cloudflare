@@ -2,16 +2,20 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../core/active_thread.dart';
 import '../../../core/analytics.dart';
 import '../../../core/api_auth.dart';
+import '../../../core/audio_playback_service.dart';
+import '../../../core/brain_consent.dart';
 import '../../../core/config.dart';
+import '../../../core/rag_service.dart';
 import '../../../core/ui/avatok_dark.dart';
+import '../../avatok/contacts.dart';
 import '../../avatok/media.dart' show MediaService;
 import '../avadial_channel.dart';
 import '../avadial_theme.dart';
@@ -20,6 +24,9 @@ import '../contact_edit_screen.dart';
 import '../contact_overrides.dart';
 import '../device_contacts.dart';
 import 'inbox_api.dart';
+import 'inbox_caller_name.dart';
+import 'inbox_card_meta.dart';
+import 'inbox_forward.dart';
 import 'inbox_heard_store.dart';
 import 'inbox_send_to_chat.dart';
 
@@ -77,6 +84,55 @@ Future<String?> promptRenameCaller(BuildContext context, {String? currentName}) 
   );
 }
 
+/// [AVAINBOX-1] Mirrors `ChatThreadRegistry` (audio_playback_service.dart /
+/// chat_thread.dart) so the app-wide [MiniAudioPlayerBar] can reopen the right
+/// Inbox thread when its "now playing" bar is tapped for a voicemail whose
+/// `AudioTrack.originRoute` is `'inbox:<conv>'` — this lane's own route
+/// namespace, distinct from chat's `convKey` scheme so the two never collide.
+///
+/// COMPOSES rather than clobbers: it captures whatever [AudioPlaybackService
+/// .onTapOrigin] was already installed (e.g. `ChatThreadRegistry`'s hook, if a
+/// chat thread was opened earlier this session) and falls through to it for
+/// any track whose `originRoute` isn't one of this lane's `inbox:` keys.
+///
+/// KNOWN LIMITATION (documented, not silently swallowed): `ChatThreadRegistry
+/// ._ensureNavHook()` does NOT compose — it only guards on its OWN internal
+/// `_installed` flag and unconditionally overwrites `onTapOrigin` the first
+/// time ANY chat thread opens, with no read of the previous hook. So if a
+/// chat thread is opened for the first time AFTER this registry has already
+/// installed itself, chat's hook silently replaces ours and inbox-track taps
+/// stop navigating (they just no-op past that point). This registry protects
+/// the OTHER ordering (inbox installs after chat) perfectly; the reverse
+/// requires a change on chat's side, which is outside this lane's file
+/// ownership (chat_thread.dart is AVAVM-PLAYER-1's) — flagged in the handover
+/// report rather than worked around here.
+abstract class InboxThreadRegistry {
+  static final Map<String, InboxThread> _byRoute = {};
+  static bool _installed = false;
+
+  static void remember(String route, InboxThread thread) {
+    _byRoute[route] = thread;
+    _ensureHook();
+  }
+
+  static void _ensureHook() {
+    if (_installed) return;
+    _installed = true;
+    final previous = AudioPlaybackService.onTapOrigin;
+    AudioPlaybackService.onTapOrigin = (context, track) async {
+      final route = track.originRoute;
+      final thread = route != null ? _byRoute[route] : null;
+      if (thread != null) {
+        await Navigator.of(context, rootNavigator: true).push(
+          MaterialPageRoute(builder: (_) => InboxThreadScreen(thread: thread)),
+        );
+        return;
+      }
+      await previous?.call(context, track);
+    };
+  }
+}
+
 class InboxThreadScreen extends StatefulWidget {
   final InboxThread thread;
   const InboxThreadScreen({super.key, required this.thread});
@@ -89,31 +145,39 @@ class _InboxThreadScreenState extends State<InboxThreadScreen> {
   late Future<List<InboxCard>> _future;
   final _scroll = ScrollController();
 
-  // [INBOX-RENAME-1] Rename-caller override (contact_overrides.dart) for this
-  // thread's number, side-loaded async since ContactOverrides is DiskCache-
-  // backed (no synchronous in-memory index like DeviceContacts). Wins over
-  // the device contact name once loaded — same precedence the list screen
-  // uses (inbox_list_screen.dart `_labelFor`).
-  String? _overrideName;
+  /// [AVAINBOX-1] This lane's `AudioTrack.originRoute` / `ActiveThread` key —
+  /// distinct namespace from chat's plain `convKey` so the shared
+  /// MiniAudioPlayerBar/registry can tell the two apart (see
+  /// `InboxThreadRegistry` above).
+  String get _routeKey => 'inbox:${widget.thread.conv}';
+
+  // [AVAINBOX-1] ONE canonical resolver (inbox_caller_name.dart) replaces the
+  // old phone-only override/DeviceContacts duplication — see inbox_list_
+  // screen.dart's `_labelFor` for the twin fix and why it was needed.
+  ResolvedCallerName? _resolved;
+  StreamSubscription<List<Contact>>? _contactsSub;
 
   String? get _phone => widget.thread.telPhone ??
       (widget.thread.cards.isNotEmpty ? widget.thread.cards.last.callerPhone : null);
 
   String get _title {
     if (widget.thread.isAnonymous) return 'Hidden number';
-    final phone = _phone;
-    if (phone != null) {
-      if (_overrideName != null && _overrideName!.trim().isNotEmpty) return _overrideName!;
-      final name = DeviceContacts.I.lookup(phone)?.name;
-      return (name != null && name.trim().isNotEmpty) ? name : phone;
-    }
+    final r = _resolved;
+    if (r != null) return r.name;
+    // Resolution hasn't landed yet — fast synchronous guess (same fallback
+    // chain as the list screen) so the app bar never flashes empty.
     final name = widget.thread.latest.callerName;
-    return (name != null && name.isNotEmpty) ? name : 'Unknown caller';
+    if (name != null && name.isNotEmpty) return name;
+    return _phone ?? 'Unknown caller';
   }
 
   bool get _isSavedContact {
     final phone = _phone;
     if (phone == null) return true; // no number to save → hide the action
+    final tier = _resolved?.tier;
+    if (tier != null) {
+      return tier == 'override' || tier == 'contacts_uid' || tier == 'contacts_phone' || tier == 'device_contacts';
+    }
     final name = DeviceContacts.I.lookup(phone)?.name;
     return name != null && name.trim().isNotEmpty;
   }
@@ -122,6 +186,12 @@ class _InboxThreadScreenState extends State<InboxThreadScreen> {
   void initState() {
     super.initState();
     DeviceContacts.I.load();
+    // [AVAVM-PLAYER-1 integration] Mark this thread "on screen" so the shared
+    // MiniAudioPlayerBar hides while the user is looking at it, and register
+    // it so a mini-player tap can navigate back here — see InboxThreadRegistry
+    // above. Both MUST happen (per lane brief: "it is not automatic").
+    ActiveThread.enter(_routeKey);
+    InboxThreadRegistry.remember(_routeKey, widget.thread);
     _future = InboxApi.cardsFor(widget.thread.conv);
     Analytics.capture('inbox_thread_opened', {
       'conv_hash': widget.thread.conv.hashCode,
@@ -131,20 +201,72 @@ class _InboxThreadScreenState extends State<InboxThreadScreen> {
     // Mark read immediately — matches every other AvaTOK thread's open-to-read
     // behaviour so the list's unread dot clears on return.
     unawaited(InboxApi.markRead(widget.thread.conv));
-    unawaited(_loadOverrideName());
+    unawaited(_loadResolvedName());
+    _contactsSub = ContactsStore.changes.listen((_) => _loadResolvedName());
+    _future.then((cards) => unawaited(_ingestToBrain(cards)));
     WidgetsBinding.instance.addPostFrameCallback((_) => _jumpToEnd());
   }
 
-  Future<void> _loadOverrideName() async {
-    final phone = _phone;
-    if (phone == null) return;
+  Future<void> _loadResolvedName() async {
     try {
-      final o = await ContactOverrides.I.forNumber(phone);
-      final name = o?.displayName;
-      if (mounted && name != null && name.trim().isNotEmpty) {
-        setState(() => _overrideName = name);
-      }
-    } catch (_) {/* leave unrenamed */}
+      final r = await InboxCallerName.resolve(thread: widget.thread);
+      if (mounted) setState(() => _resolved = r);
+      Analytics.capture('inbox_name_resolution', {'tier': r.tier, 'via': 'thread_screen'});
+    } catch (_) {/* keep the fast synchronous guess */}
+  }
+
+  /// [AVAINBOX-1] Feed voicemail transcripts to AvaBrain (owner spec: "find me
+  /// the voicemail from Sonal 3 days ago"). Gated on the 'receptionist'
+  /// guardrail already registered in the main Settings AvaBrain card
+  /// (core/brain_consent.dart's `kBrainCapabilities` — "Let AvaBrain use your
+  /// call notes and voicemails to answer for you"); this lane does NOT
+  /// register a new toggle, it checks the existing one, exactly per the
+  /// rulebook ("find how an existing app registers its guardrail toggle and
+  /// follow that exact pattern; do not invent a parallel one"). Text +
+  /// metadata only — never raw audio bytes (ingestFileBytes excludes audio
+  /// today; rag_service.dart `_supported`). De-duped per card via
+  /// [InboxBrainIngestStore] so reopening the same thread doesn't re-ingest
+  /// the same transcript every time.
+  Future<void> _ingestToBrain(List<InboxCard> cards) async {
+    bool allowed;
+    try {
+      allowed = await BrainConsent.isOn('receptionist');
+    } catch (_) {
+      allowed = true; // default ON (opt-out model) if the consent read fails
+    }
+    if (!allowed) {
+      Analytics.capture('inbox_brain_ingest', {'ok': false, 'reason': 'guardrail_off', 'cards': cards.length});
+      return;
+    }
+    var attempted = 0, ingested = 0;
+    for (final c in cards) {
+      final transcript = c.transcript?.trim();
+      if (transcript == null || transcript.isEmpty) continue;
+      try {
+        if (await InboxBrainIngestStore.I.isIngested(c.stableId)) continue;
+      } catch (_) {/* best-effort — worst case a card is ingested twice */}
+      attempted++;
+      try {
+        final meta = await InboxCardMetaStore.I.forCard(c.stableId);
+        final dt = c.createdAtMs > 0 ? DateTime.fromMillisecondsSinceEpoch(c.createdAtMs) : DateTime.now();
+        final dateStr = '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+        final descr = StringBuffer()
+          ..writeln('Voicemail from $_title')
+          ..writeln('Date: $dateStr')
+          ..writeln('Duration: ${c.durationSec}s');
+        if (meta != null && meta.tags.isNotEmpty) descr.writeln('Tags: ${meta.tags.join(', ')}');
+        if (meta?.title != null && meta!.title!.isNotEmpty) descr.writeln('Title: ${meta.title}');
+        descr.writeln('Transcript: $transcript');
+        await RagService.I.ingestText(descr.toString(), name: 'voicemail-$_title-$dateStr');
+        await InboxBrainIngestStore.I.markIngested(c.stableId);
+        ingested++;
+      } catch (_) {/* best-effort — never blocks the thread from rendering */}
+    }
+    if (attempted > 0) {
+      Analytics.capture('inbox_brain_ingest', {
+        'ok': ingested > 0, 'attempted': attempted, 'ingested': ingested, 'cards': cards.length,
+      });
+    }
   }
 
   /// "Rename caller / Edit name" — reuses [ContactOverrides.setName], the
@@ -158,12 +280,17 @@ class _InboxThreadScreenState extends State<InboxThreadScreen> {
   Future<void> _renameCaller() async {
     final phone = _phone;
     if (phone == null) return;
-    final result = await promptRenameCaller(context, currentName: _overrideName);
+    final result = await promptRenameCaller(
+        context, currentName: _resolved?.tier == 'override' ? _resolved!.name : null);
     if (result == null) return; // cancelled
     final newName = result.isEmpty ? null : result;
     await ContactOverrides.I.setName(phone, newName);
     Analytics.capture('inbox_rename_caller', {'has_number': true, 'cleared': newName == null});
-    if (mounted) setState(() => _overrideName = newName);
+    // Re-resolve rather than hand-patching local state — the override just
+    // written may not even win anymore once the OTHER tiers (ContactsStore/
+    // DeviceContacts) are consulted, and this keeps ONE source of truth
+    // (inbox_caller_name.dart) instead of two ways to compute the title.
+    unawaited(_loadResolvedName());
   }
 
   /// Owner soft-delete for one card — confirm, call [InboxApi.hideCard] (the
@@ -214,6 +341,8 @@ class _InboxThreadScreenState extends State<InboxThreadScreen> {
 
   @override
   void dispose() {
+    ActiveThread.leave(_routeKey);
+    _contactsSub?.cancel();
     _scroll.dispose();
     super.dispose();
   }
@@ -365,6 +494,7 @@ class _InboxThreadScreenState extends State<InboxThreadScreen> {
                     callerName: _title,
                     callerNumber: card.callerPhone ?? _phone,
                     isTel: widget.thread.isTel,
+                    originRoute: _routeKey,
                     onBlock: () => _block(reportSpam: false),
                     onRename: _renameCaller,
                     onDelete: () => _deleteCard(card),
@@ -427,12 +557,17 @@ class _VoicemailCard extends StatefulWidget {
   /// True when the parent thread is a `tel:` (PSTN) thread — gates the
   /// "Block caller" long-press action (owner spec: only for tel: threads).
   final bool isTel;
+  /// This thread's `AudioTrack.originRoute` / `ActiveThread` key
+  /// (`'inbox:<conv>'`) — lets the shared MiniAudioPlayerBar hide while this
+  /// thread is open and navigate back here on tap (see InboxThreadRegistry).
+  final String originRoute;
   final VoidCallback? onBlock;
   final Future<void> Function()? onRename;
   final Future<void> Function()? onDelete;
   const _VoicemailCard({
     required this.card,
     required this.callerName,
+    required this.originRoute,
     this.callerNumber,
     this.isTel = false,
     this.onBlock,
@@ -445,19 +580,42 @@ class _VoicemailCard extends StatefulWidget {
 }
 
 class _VoicemailCardState extends State<_VoicemailCard> {
-  final AudioPlayer _player = AudioPlayer();
-  bool _playing = false;
   bool _loading = false;
   bool _expanded = true; // transcript shown by default, per the product spec
   bool _heard = false;
+  InboxCardMeta? _meta;
 
   InboxCard get _c => widget.card;
 
-  /// Per-account cache key — content-addressed by session/row id, scoped
-  /// internally by [MediaService] via AccountScope.id (rulebook rule 2: one
-  /// phone shared by parent + child accounts, decrypted/downloaded media MUST
-  /// live under a per-account subdir).
-  String get _cacheKey => 'inbox_${_c.sessionId ?? _c.id}';
+  /// [AVAINBOX-1] CONTENT-ADDRESSED cache key — the true root-cause fix for
+  /// the owner's "it keeps redownloading" report. `_c.mediaRef` is the R2
+  /// recording key (`voicemail/<owner>/<callerKey>/<callId>.wav` /
+  /// `pstn:<CallUUID>` etc. — see worker/src/do/voicemail_room.ts,
+  /// worker/src/routes/pstn.ts) and is the ONE identifier that means "this
+  /// exact recording" regardless of which client-side surface is reading it.
+  /// The previous key, `'inbox_${sessionId ?? id}'`, was a SECOND, INDEPENDENT
+  /// cache namespace from the one `chat_thread.dart`'s `_ReceptionistCard`
+  /// already uses for the SAME kind of recording (`'recept_$sessionId'`,
+  /// chat_thread.dart ~L10142/10185/10237) — confirmed by grep, not assumed.
+  /// Two lanes, two keys, for what can be the identical R2 object: every time
+  /// a recording was viewed through whichever surface DIDN'T already have it
+  /// cached under ITS key, it re-downloaded — even though the bytes were
+  /// sitting on disk under the other lane's name. Falls back to the old
+  /// session/id scheme only for the rare legacy card with no `media_ref` at
+  /// all (nothing to play, so this only matters for the has_recording==false
+  /// case, which never calls `_fetchBytes`/`_prefetch` anyway).
+  String get _cacheKey {
+    final ref = _c.mediaRef;
+    if (ref != null && ref.isNotEmpty) {
+      return 'vm_${ref.replaceAll(RegExp(r'[^a-zA-Z0-9_.-]'), '_')}';
+    }
+    return 'inbox_${_c.sessionId ?? _c.id}';
+  }
+
+  /// [AVAVM-PLAYER-1 integration] Stable, globally-unique track id for the
+  /// shared [AudioPlaybackService] — namespaced `ibx:` so it can never collide
+  /// with a chat-thread voice-note's own trackId scheme.
+  String get _trackId => 'ibx:$_cacheKey';
 
   String? get _recordingUrl {
     final key = _c.mediaRef;
@@ -471,9 +629,7 @@ class _VoicemailCardState extends State<_VoicemailCard> {
     super.initState();
     _prefetch();
     _loadHeard();
-    _player.onPlayerComplete.listen((_) {
-      if (mounted) setState(() => _playing = false);
-    });
+    _loadMeta();
   }
 
   Future<void> _loadHeard() async {
@@ -483,22 +639,31 @@ class _VoicemailCardState extends State<_VoicemailCard> {
     } catch (_) {/* leave unheard */}
   }
 
-  @override
-  void dispose() {
-    _player.dispose();
-    super.dispose();
+  Future<void> _loadMeta() async {
+    try {
+      final m = await InboxCardMetaStore.I.forCard(_c.stableId);
+      if (mounted && m != null) setState(() => _meta = m);
+    } catch (_) {/* leave untagged/untitled */}
   }
 
   Future<void> _prefetch() async {
     if (!_c.hasRecording) return;
     try {
       final cached = await MediaService.cachedBlob(_cacheKey);
-      if (cached != null && cached.isNotEmpty) return;
+      final t0 = DateTime.now().millisecondsSinceEpoch;
+      if (cached != null && cached.isNotEmpty) {
+        Analytics.capture('inbox_voicemail_cache', {'hit': true, 'stage': 'prefetch'});
+        return;
+      }
       final url = _recordingUrl;
       if (url == null) return;
       final r = await ApiAuth.getBytes(url);
       if (r.statusCode == 200 && r.bodyBytes.isNotEmpty) {
         await MediaService.writeBlob(_cacheKey, r.bodyBytes);
+        Analytics.capture('inbox_voicemail_cache', {
+          'hit': false, 'stage': 'prefetch', 'bytes': r.bodyBytes.length,
+          'load_ms': DateTime.now().millisecondsSinceEpoch - t0,
+        });
       }
     } catch (_) {
       // Best-effort — _togglePlay() fetches on demand if this misses.
@@ -506,9 +671,17 @@ class _VoicemailCardState extends State<_VoicemailCard> {
   }
 
   Future<void> _togglePlay() async {
-    if (_playing) {
-      await _player.pause();
-      if (mounted) setState(() => _playing = false);
+    final cur = AudioPlaybackService.I.state.value;
+    final isThisTrack = AudioPlaybackService.I.isCurrent(_trackId);
+    if (isThisTrack && cur != null && cur.playing) {
+      await AudioPlaybackService.I.pause();
+      return;
+    }
+    if (isThisTrack && cur != null && !cur.playing) {
+      // Paused on THIS track — resume in place rather than re-fetching bytes.
+      await AudioPlaybackService.I.resume();
+      if (!_heard) unawaited(InboxHeardStore.I.markHeard(_c.stableId));
+      if (mounted) setState(() => _heard = true);
       return;
     }
     if (!_c.hasRecording) return;
@@ -534,7 +707,18 @@ class _VoicemailCardState extends State<_VoicemailCard> {
         bytes = r.bodyBytes;
         await MediaService.writeBlob(_cacheKey, bytes);
       }
-      await _player.play(BytesSource(bytes, mimeType: 'audio/wav'));
+      // [AVAINBOX-1] Proves the caching fix in production: cache-hit vs miss
+      // on every actual play tap (not just the silent background prefetch).
+      Analytics.capture('inbox_voicemail_cache', {'hit': fromCache, 'stage': 'play'});
+      await AudioPlaybackService.I.play(
+        track: AudioTrack(
+          trackId: _trackId,
+          title: widget.callerName,
+          subtitle: 'Voicemail',
+          originRoute: widget.originRoute,
+        ),
+        bytes: bytes,
+      );
       Analytics.capture('inbox_voicemail_playback', {
         'ok': true, 'cached': fromCache, 'bytes': bytes.length,
         'load_ms': DateTime.now().millisecondsSinceEpoch - t0,
@@ -545,14 +729,21 @@ class _VoicemailCardState extends State<_VoicemailCard> {
       if (!_heard) {
         unawaited(InboxHeardStore.I.markHeard(_c.stableId));
       }
-      if (mounted) setState(() { _loading = false; _playing = true; _heard = true; });
+      if (mounted) setState(() { _loading = false; _heard = true; });
     } catch (e) {
       Analytics.capture('inbox_voicemail_playback', {'ok': false, 'cached': false});
       if (mounted) setState(() => _loading = false);
     }
   }
 
-  String get _durationLabel {
+  /// Prefers the shared player's live/known duration for THIS track (accurate
+  /// once decoded) and falls back to the server-reported `duration_s` — see
+  /// `AudioPlaybackService.knownDuration`.
+  String _durationLabel(Duration? liveDuration) {
+    if (liveDuration != null && liveDuration.inSeconds > 0) {
+      final m = liveDuration.inMinutes, sec = liveDuration.inSeconds % 60;
+      return '$m:${sec.toString().padLeft(2, '0')}';
+    }
     final s = _c.durationSec;
     if (s <= 0) return '';
     final m = s ~/ 60, sec = s % 60;
@@ -690,18 +881,102 @@ class _VoicemailCardState extends State<_VoicemailCard> {
     }
   }
 
+  /// [AVAINBOX-1] Renames the RECORDING itself (a title/note on the card) —
+  /// distinct from "Rename caller" (`widget.onRename`, which renames the
+  /// PERSON via `ContactOverrides`). Labelled "Edit voicemail title" in the
+  /// menu specifically so the two are never confused.
+  Future<void> _editTitle() async {
+    final ctrl = TextEditingController(text: _meta?.title ?? '');
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AvaDialTheme.surface2,
+        shape: RoundedRectangleBorder(
+          side: const BorderSide(color: AvaDialTheme.border, width: 1),
+          borderRadius: BorderRadius.circular(AD.rListCard),
+        ),
+        title: Text('Edit voicemail title', style: ADText.threadName(c: AvaDialTheme.text)),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          style: ADText.rowName(c: AvaDialTheme.text),
+          decoration: InputDecoration(
+            hintText: 'e.g. "Follow up with Sonal"',
+            hintStyle: ADText.preview(c: AvaDialTheme.textMute),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Cancel', style: ADText.preview(c: AvaDialTheme.textSoft)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+            child: Text('Save', style: ADText.preview(c: AvaDialTheme.accent)),
+          ),
+        ],
+      ),
+    );
+    if (result == null) return; // cancelled
+    final title = result.isEmpty ? null : result;
+    await InboxCardMetaStore.I.setTitle(_c.stableId, title);
+    Analytics.capture('inbox_voicemail_title_edited', {'cleared': title == null});
+    if (mounted) setState(() => _meta = (_meta ?? const InboxCardMeta()).copyWith(title: title, clearTitle: title == null));
+  }
+
+  /// [AVAINBOX-1] Free-text tags on ONE voicemail (owner spec: "tag" menu
+  /// item) — comma-separated input, stored via [InboxCardMetaStore] and fed
+  /// into the AvaBrain descriptor (`_ingestToBrain` in the parent State) so
+  /// "find the voicemail I tagged X" can work.
+  Future<void> _editTags() async {
+    final ctrl = TextEditingController(text: (_meta?.tags ?? const []).join(', '));
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AvaDialTheme.surface2,
+        shape: RoundedRectangleBorder(
+          side: const BorderSide(color: AvaDialTheme.border, width: 1),
+          borderRadius: BorderRadius.circular(AD.rListCard),
+        ),
+        title: Text('Tag this voicemail', style: ADText.threadName(c: AvaDialTheme.text)),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          style: ADText.rowName(c: AvaDialTheme.text),
+          decoration: InputDecoration(
+            hintText: 'Comma-separated, e.g. "urgent, follow-up"',
+            hintStyle: ADText.preview(c: AvaDialTheme.textMute),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Cancel', style: ADText.preview(c: AvaDialTheme.textSoft)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+            child: Text('Save', style: ADText.preview(c: AvaDialTheme.accent)),
+          ),
+        ],
+      ),
+    );
+    if (result == null) return; // cancelled
+    final tags = result.split(',').map((t) => t.trim()).where((t) => t.isNotEmpty).toList();
+    await InboxCardMetaStore.I.setTags(_c.stableId, tags);
+    Analytics.capture('inbox_voicemail_tagged', {'tag_count': tags.length});
+    if (mounted) setState(() => _meta = (_meta ?? const InboxCardMeta()).copyWith(tags: tags));
+  }
+
   /// Long-press bottom sheet — same idiom as `contact_row_menu.dart`'s
   /// `showAvaDialRowMenu` (grab handle, `isScrollControlled`, PhosphorIcon
-  /// leading rows). Share/Download/"Send to AvaTOK chat" only offered when
-  /// there's a recording. Block only offered on a `tel:` thread (owner spec).
-  /// [INBOX-SENDCHAT-1] "Send to AvaTOK chat" now wired: picks a contact
-  /// (inbox_send_to_chat.dart's minimal picker), uploads the cached
-  /// recording via `MediaService.encryptAndUpload` (kind: MediaKind.audio —
-  /// the SAME envelope a live-recorded voice note uses,
-  /// `chat_thread.dart._stopAndSendRecording`), and sends it with `AvaDm`
-  /// (sync/dm.dart) so it renders as a normal playable voice note in the
-  /// recipient's chat — reusing the existing send pipeline, not touching
-  /// chat_thread.dart.
+  /// leading rows). Share/Download/Forward/"Send to AvaTOK chat" only offered
+  /// when there's a recording. Block only offered on a `tel:` thread (owner
+  /// spec). [INBOX-SENDCHAT-1] "Send to AvaTOK chat" (single-contact picker,
+  /// inbox_send_to_chat.dart) and [AVAINBOX-1] "Forward" (multi-select
+  /// DM+group picker, inbox_forward.dart, `/api/msg/forward`) are DELIBERATELY
+  /// both kept — they're genuinely different actions (one recipient vs many,
+  /// groups included) sharing the same upload/envelope plumbing. Every item
+  /// here is wired to real, working code — no stubs.
   Future<void> _showCardMenu(BuildContext context) async {
     await showModalBottomSheet<void>(
       context: context,
@@ -729,6 +1004,16 @@ class _VoicemailCardState extends State<_VoicemailCard> {
             ),
           if (_c.hasRecording)
             _CardMenuRow(
+              icon: PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold),
+              color: AD.iconVideo,
+              label: 'Forward',
+              onTap: () {
+                Navigator.pop(sheetCtx);
+                forwardVoicemail(context, card: _c, callerName: widget.callerName, fetchBytes: _fetchBytes);
+              },
+            ),
+          if (_c.hasRecording)
+            _CardMenuRow(
               icon: PhosphorIcons.downloadSimple(PhosphorIconsStyle.bold),
               color: AD.iconSearch,
               label: 'Download',
@@ -744,6 +1029,18 @@ class _VoicemailCardState extends State<_VoicemailCard> {
                 sendVoicemailToChat(context, card: _c, callerName: widget.callerName);
               },
             ),
+          _CardMenuRow(
+            icon: PhosphorIcons.textAa(PhosphorIconsStyle.bold),
+            color: AD.iconSearch,
+            label: 'Edit voicemail title',
+            onTap: () { Navigator.pop(sheetCtx); _editTitle(); },
+          ),
+          _CardMenuRow(
+            icon: PhosphorIcons.tag(PhosphorIconsStyle.bold),
+            color: AD.iconSearch,
+            label: 'Tag',
+            onTap: () { Navigator.pop(sheetCtx); _editTags(); },
+          ),
           _CardMenuRow(
             icon: PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold),
             color: AD.iconSearch,
@@ -770,85 +1067,142 @@ class _VoicemailCardState extends State<_VoicemailCard> {
     );
   }
 
+  // [AVAINBOX-1] Owner spec ("bubbles inside the VM thread do not have all
+  // the right click menu items ... new/unplayed = colored, old = greyed
+  // out"): the ORIGINAL treatment (a 3px left border + Opacity(0.72) on the
+  // whole bubble) was too subtle to read at a glance — the brief explicitly
+  // asked to "sharpen" it. Unheard now gets a visibly brighter/greener-tinted
+  // surface, a full-strength accent border on ALL four sides (not just the
+  // left edge), and a small "NEW" pill; heard drops to a flatly grey surface,
+  // a much lower opacity (0.5, down from 0.72), and a "Played" check pill —
+  // so the two states are unmistakable even scrolled past at speed.
+  static const _newBubbleBg = Color(0xFF1B2A20);
+  static const _playedBubbleBg = Color(0xFF141417);
+
   @override
   Widget build(BuildContext context) {
-    // [INBOX-HEARD-1] Unheard cards with a recording get a coloured left
-    // accent border + brighter surface; heard cards are damped (dimmer
-    // surface, hairline border) — same accent token the list screen's
-    // unread dot uses (AD.unreadAccent) so the two surfaces read as one
-    // system.
     final unheard = _c.hasRecording && !_heard;
     return GestureDetector(
       onLongPress: () => _showCardMenu(context),
       child: Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: _heard ? AvaDialTheme.surface : AvaDialTheme.surface2,
-        borderRadius: BorderRadius.circular(AD.rListCard),
-        border: Border(
-          top: BorderSide(color: AvaDialTheme.border, width: 1),
-          right: BorderSide(color: AvaDialTheme.border, width: 1),
-          bottom: BorderSide(color: AvaDialTheme.border, width: 1),
-          left: BorderSide(
-              color: unheard ? AD.unreadAccent : AvaDialTheme.border, width: unheard ? 3 : 1),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: unheard ? _newBubbleBg : _playedBubbleBg,
+          borderRadius: BorderRadius.circular(AD.rListCard),
+          border: Border.all(
+            color: unheard ? AD.unreadAccent : AvaDialTheme.border,
+            width: unheard ? 1.5 : 1,
+          ),
         ),
-      ),
-      child: Opacity(
-        opacity: _heard ? 0.72 : 1,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-        // ---- Caller metadata: display name + PSTN number (JOB 2 item 4) ----
-        Text(widget.callerName, style: ADText.threadName(c: AvaDialTheme.text)),
-        if (widget.callerNumber != null && widget.callerNumber != widget.callerName) ...[
-          const SizedBox(height: 1),
-          Text(widget.callerNumber!, style: ADText.statCaption(c: AvaDialTheme.textMute)),
-        ],
-        const SizedBox(height: 6),
-        if (_c.summaryText != null) ...[
-          Text(_c.summaryText!, style: ADText.bubbleBody(c: AvaDialTheme.text)),
-          const SizedBox(height: 8),
-        ],
-        // ---- Audio player ----
-        if (_c.hasRecording)
-          GestureDetector(
-            onTap: _togglePlay,
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              _loading
-                  ? const SizedBox(width: 22, height: 22,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: AD.iconShield))
-                  : Icon(
-                      _playing
-                          ? PhosphorIcons.pauseCircle(PhosphorIconsStyle.fill)
-                          : PhosphorIcons.playCircle(PhosphorIconsStyle.fill),
-                      size: 30, color: AD.iconShield,
-                    ),
-              const SizedBox(width: 8),
-              Text(
-                _durationLabel.isNotEmpty ? 'Voicemail · $_durationLabel' : 'Play voicemail',
-                style: ADText.rowName(c: AD.iconShield),
+        child: Opacity(
+          opacity: unheard ? 1 : 0.5,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            // ---- Caller metadata + new/played state pill ----
+            Row(children: [
+              Expanded(
+                child: Text(widget.callerName, style: ADText.threadName(c: AvaDialTheme.text)),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: (unheard ? AD.unreadAccent : AD.iconShield).withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(100),
+                ),
+                child: Text(
+                  unheard ? 'NEW' : 'Played',
+                  style: ADText.statCaption(c: unheard ? AD.unreadAccent : AD.iconShield)
+                      .copyWith(fontWeight: FontWeight.w800, fontSize: 9.5, letterSpacing: 0.4),
+                ),
               ),
             ]),
-          ),
-        // ---- Transcript underneath ----
-        if (_c.transcript != null) ...[
-          const SizedBox(height: 8),
-          GestureDetector(
-            onTap: () => setState(() => _expanded = !_expanded),
-            child: Text(_expanded ? 'Hide transcript ▲' : 'Show transcript ▼',
-                style: ADText.statCaption(c: AvaDialTheme.textMute)),
-          ),
-          if (_expanded)
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Text(_c.transcript!, style: ADText.preview(c: AvaDialTheme.textSoft)),
+            if (widget.callerNumber != null && widget.callerNumber != widget.callerName) ...[
+              const SizedBox(height: 1),
+              Text(widget.callerNumber!, style: ADText.statCaption(c: AvaDialTheme.textMute)),
+            ],
+            // [AVAINBOX-1] User-set voicemail title ("Edit voicemail title")
+            // — distinct row so it's never confused with the caller name.
+            if (_meta?.title != null && _meta!.title!.isNotEmpty) ...[
+              const SizedBox(height: 3),
+              Text('“${_meta!.title}”',
+                  style: ADText.preview(c: AvaDialTheme.text).copyWith(fontStyle: FontStyle.italic)),
+            ],
+            const SizedBox(height: 6),
+            if (_c.summaryText != null) ...[
+              Text(_c.summaryText!, style: ADText.bubbleBody(c: AvaDialTheme.text)),
+              const SizedBox(height: 8),
+            ],
+            // ---- Audio player — driven by the SHARED AudioPlaybackService
+            // (AVAVM-PLAYER-1) so playback survives navigating away from this
+            // thread and resumes where the user left off, instead of a
+            // per-card AudioPlayer that died the instant this widget was
+            // disposed. ----
+            if (_c.hasRecording)
+              ValueListenableBuilder<PlaybackState?>(
+                valueListenable: AudioPlaybackService.I.state,
+                builder: (context, st, _) {
+                  final isThis = st != null && st.track.trackId == _trackId;
+                  final playing = isThis && st.playing;
+                  final dur = (isThis ? st.duration : null) ?? AudioPlaybackService.I.knownDuration(_trackId);
+                  return GestureDetector(
+                    onTap: _togglePlay,
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      _loading
+                          ? const SizedBox(width: 22, height: 22,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: AD.iconShield))
+                          : Icon(
+                              playing
+                                  ? PhosphorIcons.pauseCircle(PhosphorIconsStyle.fill)
+                                  : PhosphorIcons.playCircle(PhosphorIconsStyle.fill),
+                              size: 30, color: AD.iconShield,
+                            ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _durationLabel(dur).isNotEmpty
+                            ? 'Voicemail · ${_durationLabel(dur)}'
+                            : 'Play voicemail',
+                        style: ADText.rowName(c: AD.iconShield),
+                      ),
+                    ]),
+                  );
+                },
+              ),
+            // ---- Transcript underneath ----
+            if (_c.transcript != null) ...[
+              const SizedBox(height: 8),
+              GestureDetector(
+                onTap: () => setState(() => _expanded = !_expanded),
+                child: Text(_expanded ? 'Hide transcript ▲' : 'Show transcript ▼',
+                    style: ADText.statCaption(c: AvaDialTheme.textMute)),
+              ),
+              if (_expanded)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(_c.transcript!, style: ADText.preview(c: AvaDialTheme.textSoft)),
+                ),
+            ],
+            // ---- Tags ("Tag" menu item) ----
+            if (_meta?.tags.isNotEmpty ?? false) ...[
+              const SizedBox(height: 8),
+              Wrap(spacing: 6, runSpacing: 4, children: [
+                for (final tag in _meta!.tags)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: AD.iconVideo.withValues(alpha: 0.16),
+                      borderRadius: BorderRadius.circular(100),
+                      border: Border.all(color: AD.iconVideo.withValues(alpha: 0.5), width: 1),
+                    ),
+                    child: Text(tag, style: ADText.statCaption(c: AD.iconVideo)),
+                  ),
+              ]),
+            ],
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text(_timeLabel, style: ADText.statCaption(c: AvaDialTheme.textMute)),
             ),
-        ],
-        const SizedBox(height: 8),
-        Align(
-          alignment: Alignment.centerRight,
-          child: Text(_timeLabel, style: ADText.statCaption(c: AvaDialTheme.textMute)),
+          ]),
         ),
-        ]),
-      ),
       ),
     );
   }
