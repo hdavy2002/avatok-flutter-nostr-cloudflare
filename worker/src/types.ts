@@ -366,4 +366,9 @@ export interface Env {
   // fixed probe-grade constant in pstn.ts (fine for the Phase-0 wiring probe;
   // production should set this via `wrangler secret put VOBIZ_WEBHOOK_SECRET`).
   VOBIZ_WEBHOOK_SECRET?: string;
+  // Vobiz account API credentials — required to fetch recording files from
+  // media.vobiz.ai (401 without them; verified 2026-07-16). Set via
+  // `wrangler secret put VOBIZ_AUTH_ID` / `VOBIZ_AUTH_TOKEN`.
+  VOBIZ_AUTH_ID?: string;
+  VOBIZ_AUTH_TOKEN?: string;
 }

@@ -271,9 +271,19 @@ async function handleRecordCb(req: Request, env: Env, secret: string): Promise<R
 
     if (!recordUrl) return xml(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`);
 
+    // Vobiz's media host REQUIRES the account's X-Auth headers — an
+    // unauthenticated fetch 401s (verified live 2026-07-16: the owner's first
+    // delivered voicemail card had no audio AND no transcript because this
+    // fetch silently failed). Secrets: `wrangler secret put VOBIZ_AUTH_ID /
+    // VOBIZ_AUTH_TOKEN`.
     let wavBytes: Uint8Array | null = null;
     try {
-      const r = await fetch(recordUrl);
+      const headers: Record<string, string> = {};
+      if (env.VOBIZ_AUTH_ID && env.VOBIZ_AUTH_TOKEN) {
+        headers["X-Auth-ID"] = env.VOBIZ_AUTH_ID;
+        headers["X-Auth-Token"] = env.VOBIZ_AUTH_TOKEN;
+      }
+      const r = await fetch(recordUrl, { headers });
       if (r.ok) wavBytes = new Uint8Array(await r.arrayBuffer());
     } catch { /* best-effort fetch — degraded delivery below */ }
 
