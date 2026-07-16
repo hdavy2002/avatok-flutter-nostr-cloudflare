@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
+import '../../core/avatar.dart';
 import '../../core/chat_state.dart';
 import '../../core/group_store.dart';
 import '../../core/ui/avatok_dark.dart';
@@ -109,8 +110,14 @@ class _GroupsTabState extends State<GroupsTab> {
           group: true,
           members: g.members.length,
           gid: g.id,
+          // [AVAGRP-ICON-1] Without this the thread header (chat_thread.dart,
+          // which DOES render Avatar(avatarUrl: c.avatarUrl)) always fell back to
+          // initials for groups, even when an admin had set a group photo.
+          avatarUrl: g.avatarUrl,
         ),
       ),
+      // Re-run _load() on return so a photo set/changed from Group info (which
+      // mutates GroupStore via GroupApi.setAvatar) is reflected here immediately.
     )).then((_) => _load());
   }
 
@@ -259,6 +266,23 @@ class _GroupsTabState extends State<GroupsTab> {
         child: Center(child: PhosphorIcon(icon, size: size * 0.5, color: Colors.white)),
       );
 
+  /// [AVAGRP-ICON-1] Group icon for a list row: the admin-set group photo (a
+  /// ROUND avatar with a white circular border ring, per owner request 2026-07-17)
+  /// when [avatarUrl] is set, else the existing rounded-square glyph badge.
+  /// `seed`/`name` mirror the convention used by the group-info header
+  /// (group_info_screen.dart: `Avatar(seed: 'group-${_group.id}', name: _group.name, ...)`).
+  Widget _groupIcon({required String id, required String name, required String avatarUrl,
+      required Color fallbackFill, required IconData fallbackIcon, double size = 48}) {
+    if (avatarUrl.isEmpty) return _badge(fallbackIcon, fallbackFill, size: size);
+    return Container(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: AD.borderAvatar, width: 2), // white ring
+      ),
+      child: Avatar(seed: 'group-$id', name: name, size: size, avatarUrl: avatarUrl),
+    );
+  }
+
   /// A dark card surface with an optional tap (replaces ZineCard).
   Widget _card({required Widget child, EdgeInsetsGeometry? padding, VoidCallback? onTap}) {
     final content = Container(
@@ -284,8 +308,14 @@ class _GroupsTabState extends State<GroupsTab> {
   Widget _groupCard(Group g, int i) => _card(
         onTap: () => _openGroup(g),
         child: Row(children: [
-          _badge(PhosphorIcons.usersThree(PhosphorIconsStyle.bold),
-              AD.family('${g.id}$i').solid, size: 48),
+          _groupIcon(
+            id: g.id,
+            name: g.name,
+            avatarUrl: g.avatarUrl,
+            fallbackFill: AD.family('${g.id}$i').solid,
+            fallbackIcon: PhosphorIcons.usersThree(PhosphorIconsStyle.bold),
+            size: 48,
+          ),
           const SizedBox(width: 13),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
             Text(g.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.threadName()),
@@ -300,6 +330,11 @@ class _GroupsTabState extends State<GroupsTab> {
 
   /// A pending group invite with Accept / Decline (Phase D — true pending
   /// membership; only shown when the server flag is on).
+  ///
+  /// [AVAGRP-ICON-1] Still glyph-only, unlike _groupIcon above: `GroupInvite`
+  /// (group_invites_api.dart, not owned by this file) has no `avatarUrl` field —
+  /// `GET /conversations/invites` doesn't return one. Wiring a real photo in here
+  /// needs that payload extended first; out of scope for this fix.
   Widget _inviteCard(GroupInvite inv) => _card(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
