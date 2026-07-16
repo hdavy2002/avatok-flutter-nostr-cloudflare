@@ -52,12 +52,52 @@ class PstnForwardingIntroScreen extends StatelessWidget {
 /// Per-account marker: has this account already been shown (and either
 /// completed or skipped) the voicemail-forwarding intro? Namespaced via
 /// [scopedKey] — never a raw global key (one phone, multiple accounts).
+///
+/// [AVA-RCPT-CONSENT-2 2026-07-17] `encryptedSharedPreferences: true` here —
+/// PostHog showed `pstn_forward_intro_shown` firing again on this device
+/// hours after a completed Continue (`pstn_forward_intro_done` with
+/// `all_ok: true`), with no `account_switch` and no `secure_storage_corrupt`
+/// event in between, i.e. the seen marker didn't survive a real process
+/// restart even though the write never errored. This file's storage instance
+/// (and pstn_forwarding_setup.dart's) was the DEFAULT (legacy, non-
+/// EncryptedSharedPreferences) Android mode — [IdentityStore] deliberately
+/// opted OUT of that same default for the identical reliability reason. Both
+/// now match IdentityStore's option.
 const String _kIntroSeenKey = 'pstn_forwarding_intro_seen';
-final FlutterSecureStorage _introSec = const FlutterSecureStorage();
+final FlutterSecureStorage _introSec = const FlutterSecureStorage(
+  aOptions: AndroidOptions(encryptedSharedPreferences: true),
+);
 
+/// Seen if EITHER the local marker says so, OR the user already has all three
+/// carrier-forwarding conditions confirmed on. The second check is a second,
+/// independent brake — so a user who already granted forwarding is never
+/// re-asked even if some future bug loses the marker again — and directly
+/// answers "if I've allowed it, stop bothering me" regardless of how the
+/// marker itself is doing.
 Future<bool> pstnIntroSeen() async {
   final v = await readScoped(_introSec, _kIntroSeenKey);
-  return v == '1';
+  if (v == '1') return true;
+  final alreadyOn = await _forwardingAlreadyOn();
+  if (alreadyOn) {
+    Analytics.capture('pstn_forward_intro_seen_via_toggle_state');
+    await markPstnIntroSeen(); // heal the marker so the fallback isn't needed again
+  }
+  return alreadyOn;
+}
+
+/// True only when all three carrier-forwarding conditions are CONFIRMED on —
+/// [pstnDialAndPersist] persists a toggle's value only after the carrier
+/// accepts the code, never optimistically — so this can't false-positive on a
+/// forwarding attempt that actually failed.
+Future<bool> _forwardingAlreadyOn() async {
+  try {
+    final missed = await readScoped(_introSec, PstnForwardKind.missed.storageKey);
+    final declined = await readScoped(_introSec, PstnForwardKind.declined.storageKey);
+    final unreachable = await readScoped(_introSec, PstnForwardKind.unreachable.storageKey);
+    return missed == '1' && declined == '1' && unreachable == '1';
+  } catch (_) {
+    return false; // never let a storage error block the caller
+  }
 }
 
 Future<void> markPstnIntroSeen() async {
@@ -84,7 +124,14 @@ class PstnForwardingIntroBody extends StatefulWidget {
 
 class _PstnForwardingIntroBodyState extends State<PstnForwardingIntroBody> {
   static const String _did = kPstnVoicemailDid;
-  static final FlutterSecureStorage _sec = const FlutterSecureStorage();
+  // [AVA-RCPT-CONSENT-2] Same encryptedSharedPreferences option as [_introSec]
+  // above — this is the storage the per-toggle "confirmed on" state
+  // ([_forwardingAlreadyOn]) is persisted to, so it needs the same reliability
+  // fix or the fallback "already granted" check would be reading storage that
+  // can go missing across a real process restart.
+  static final FlutterSecureStorage _sec = const FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+  );
 
   bool _running = false;
   bool _done = false;

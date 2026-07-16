@@ -465,7 +465,17 @@ class PstnForwardingSetupScreen extends StatefulWidget {
 class _PstnForwardingSetupScreenState extends State<PstnForwardingSetupScreen> {
   static const String _did = kPstnVoicemailDid;
 
-  static final FlutterSecureStorage _sec = const FlutterSecureStorage();
+  // [AVA-RCPT-CONSENT-2 2026-07-17] `encryptedSharedPreferences: true` —
+  // matches pstn_forwarding_intro.dart's storage instances (and
+  // [IdentityStore]'s long-standing choice) for the same reason: the default
+  // (legacy) Android mode was observed via PostHog to lose a confirmed toggle
+  // value across a real process restart with no corruption/account-switch
+  // event to explain it. All readers/writers of these `pstn_voicemail_*_on`
+  // keys must use this option so a value written by one screen is reliably
+  // readable by the other.
+  static final FlutterSecureStorage _sec = const FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+  );
 
   bool _loading = true;
   bool? _missedOn;   // null only transiently while loading
