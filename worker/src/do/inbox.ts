@@ -328,10 +328,17 @@ export class InboxDO {
     // (When the archive is off, the device + Drive/R2 blob remain the durable copy,
     // so the original age-only prune stands.)
     const hwGuard = this.archiveOn() ? ` AND id <= ${this.archiveHw()}` : "";
+    // [AVA-RCPT-20, owner rule 2026-07-16] VOICEMAILS ARE DURABLE USER ASSETS,
+    // NOT CHAT FRAMES — a caller's recorded message must NEVER age out with
+    // conversation retention. If INBOX_RETENTION_DAYS is ever enabled for
+    // chats, voicemail/receptionist rows are exempt unconditionally (their R2
+    // audio has no lifecycle rule either; the pair outlives any chat-pruning
+    // policy). Canonical Architecture v1.0 records this as a frozen rule.
     this.sql.exec(
       `DELETE FROM messages
          WHERE ((stored_at IS NOT NULL AND stored_at < ?1)
-            OR (stored_at IS NULL AND created_at > 1000000000000 AND created_at < ?1))${hwGuard}`,
+            OR (stored_at IS NULL AND created_at > 1000000000000 AND created_at < ?1))
+           AND kind NOT IN ('voicemail','receptionist','recept')${hwGuard}`,
       cutoff,
     );
   }
