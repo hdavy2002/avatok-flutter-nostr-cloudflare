@@ -590,6 +590,10 @@ class SyncHub {
       case 'receipt':
         _ingestReceipt(m);
         break;
+      case 'msg_receipt':
+        // [AVAGRP-SEENBY-1] Per-message group receipts — see _ingestMsgReceipt.
+        _ingestMsgReceipt(m);
+        break;
       case 'read':
         _ingestRead(m);
         break;
@@ -996,8 +1000,51 @@ class SyncHub {
     final ts = (readId ?? deliveredId ?? 0);
     final myUid = _myUid ?? '';
     final convKey = conv.startsWith('dm_') ? '1:${dmPeer(conv, myUid) ?? peer}' : 'g:$conv';
-    final payload = jsonEncode({'t': 'receipt', 'status': status, 'ts': ts});
-    _incoming.add(HubEvent(convKey, peer, myUid, false, 'rcpt_${conv}_$ts', payload, ts));
+    // [AVAGRP-SEENBY-1] Key the payload by member uid instead of collapsing every
+    // peer's high-water into the same bare {status,ts} scalar. This conv-level
+    // 'receipt' frame is addressed per-peer at the transport layer (receiptMsg()
+    // unicasts to exactly one peer's inbox), so on a group convKey ('g:$conv') two
+    // different peers' receipts would previously arrive as indistinguishable
+    // {status,ts} payloads on the SAME convKey — a consumer had no way to tell
+    // WHICH member a given event was about, so it could only ever track one
+    // scalar (the last writer wins), which is exactly why group ticks stayed
+    // hard-disabled. `uid` is additive — existing 1:1 consumers that only read
+    // status/ts are unaffected (1:1 only ever has the one peer anyway). The
+    // rumorId now includes peer too, so two different members' receipts landing
+    // at the same ts can no longer collide in the de-dupe set (_seenEv).
+    final payload = jsonEncode({'t': 'receipt', 'status': status, 'ts': ts, 'uid': peer});
+    _incoming.add(HubEvent(convKey, peer, myUid, false, 'rcpt_${conv}_${peer}_$ts', payload, ts));
+  }
+
+  /// [AVAGRP-SEENBY-1] Per-MESSAGE group receipt (the real "Info → seen by" data —
+  /// distinct from the conv-level high-water `_ingestReceipt` above). Server frame:
+  /// {type:'msg_receipt', conv, peer, status, msg_ids:[mid,...], ts}. Emits ONE
+  /// HubEvent per mid so an open group thread updates that SPECIFIC message's
+  /// per-member state, not a thread-wide scalar. THE SEAM: chat_thread.dart reads
+  /// this via its existing `t`-switch in `_onDm`/`_onGroupMsg` — add a branch
+  ///   `if (env['t'] == 'msg_receipt') { ...update _Msg keyed by env['mid']... ; return; }`
+  /// and apply `env['uid']` (the member who read/received) + `env['status']`
+  /// ('read'|'delivered') into that message's `readBy`/`deliveredTo` maps
+  /// (uid -> ts, ts = env['ts'], a unix-SECONDS value like every other frame here).
+  /// Matching message: `_Msg` must be keyed to its own canonical mid to find the
+  /// right bubble — this is the ONE contract detail the two sides must agree on
+  /// (see the AVAGRP-SEENBY-1 handover note for the exact field name in chat_thread.dart).
+  void _ingestMsgReceipt(Map<String, dynamic> r) {
+    final conv = (r['conv'] ?? '').toString();
+    final peer = (r['peer'] ?? '').toString(); // the member who read/received
+    final status = (r['status'] ?? '').toString(); // 'read' | 'delivered'
+    final msgIds = (r['msg_ids'] as List? ?? const []).map((e) => e.toString()).where((s) => s.isNotEmpty).toList();
+    if (conv.isEmpty || peer.isEmpty || msgIds.isEmpty) return;
+    final myUid = _myUid ?? '';
+    // Group-only path today (1:1 keeps the legacy conv-level 'receipt' frame above;
+    // the server-side gate (msgReceiptBatch) never targets a 1:1 conv anyway).
+    final convKey = 'g:$conv';
+    final ts = (r['ts'] as num?)?.toInt() ?? (DateTime.now().millisecondsSinceEpoch ~/ 1000);
+    final tsSec = ts > 2000000000 ? ts ~/ 1000 : ts; // tolerate s/ms like _readKeyTs
+    for (final mid in msgIds) {
+      final payload = jsonEncode({'t': 'msg_receipt', 'mid': mid, 'uid': peer, 'status': status, 'ts': tsSec});
+      _incoming.add(HubEvent(convKey, peer, myUid, false, 'mrcpt_${conv}_${mid}_$peer', payload, tsSec));
+    }
   }
 
   /// Parse a server read row → (convKey, readSec). Null if unusable.

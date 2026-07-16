@@ -1,10 +1,19 @@
 import 'dart:async';
 import 'dart:math';
 
+import '../core/api_auth.dart';
+import '../core/config.dart' show kApiBase;
 import '../core/db.dart';
 import '../core/group_store.dart';
+import '../identity/identity.dart';
 import 'outbox.dart';
 import 'sync_hub.dart';
+
+/// [AVAGRP-SEENBY-1] POST /api/msg/receipts — batch per-message group receipts.
+/// Not a `const String k...Url` in core/config.dart (that file isn't owned by
+/// this change) — built here from the shared `kApiBase` the same way every
+/// other endpoint constant in that file is.
+const String _kMsgReceiptsBatchUrl = '$kApiBase/msg/receipts';
 
 class GroupMessage {
   final String rumorId;
@@ -58,6 +67,35 @@ class AvaGroupDm {
       clientId: clientId, conv: group.id, payload: payload, convKey: convKey, kind: 'text',
     ));
     return clientId;
+  }
+
+  /// [AVAGRP-SEENBY-1] Batch per-message delivered/read receipt for THIS group.
+  /// `bySender` maps ORIGINAL AUTHOR uid -> the mids (canonical `mid`, not a local
+  /// row id) of THAT author's messages the caller has just delivered/read. The
+  /// caller (chat_thread.dart) already has both pieces of data from the rendered
+  /// message list — grouping by sender here (rather than sending one call per
+  /// message) is what keeps this O(distinct senders in the batch) instead of
+  /// O(messages): only the ORIGINAL SENDER's own InboxDO needs to durably learn
+  /// who has seen their message (see msgReceiptBatch in worker/src/routes/
+  /// messaging.ts). `status` is 'delivered' or 'read' for the WHOLE call — call it
+  /// once for newly-rendered messages ('delivered') and again when the thread is
+  /// actually viewed ('read'), same two-step WhatsApp does for 1:1. Best-effort,
+  /// fire-and-forget (mirrors AvaDm.sendReceipt) — a dropped receipt just means
+  /// the sender's seen-by sheet is stale until the next one lands, never a crash.
+  /// Gate on RemoteConfig.groupReceiptsEnabled at the call site — the server also
+  /// enforces the kill switch, so this is defense in depth, not the only gate.
+  void sendMsgReceipt(String status, Map<String, List<String>> bySender) {
+    if (bySender.isEmpty) return;
+    final myUid = AccountScope.id ?? '';
+    for (final entry in bySender.entries) {
+      final sender = entry.key;
+      final mids = entry.value;
+      if (sender.isEmpty || mids.isEmpty) continue;
+      if (sender == myUid) continue; // never receipt my own message
+      unawaited(ApiAuth.postJson(_kMsgReceiptsBatchUrl, {
+        'conv': group.id, 'sender': sender, 'status': status, 'msg_ids': mids,
+      }).then((_) {}, onError: (_) {}));
+    }
   }
 
   void stop() {

@@ -13,6 +13,9 @@
 //                    re-sent client_id — the caller/client treats it as a success)
 //   GET  /sync?cursor=N            → {messages, receipts, convs}
 //   POST /receipt  {conv, peer, delivered_id?, read_id?} → {ok, live}
+//   POST /msg_receipt {conv, peer, status, msg_ids} → {ok, live}   [AVAGRP-SEENBY-1]
+//                  per-message group receipts, called on the ORIGINAL AUTHOR's own
+//                  InboxDO only. GET /msg_receipt?conv=&mids=a,b,c → {conv, receipts}
 // WebSocket framing (client ↔ DO):
 //   client → {type:'hello'|'sync', cursor}     server → {type:'sync', messages, receipts, convs}
 //   client → {type:'ping'}                      server → {type:'pong'}
@@ -40,6 +43,13 @@ const DAY_MS = 86_400_000;
 // R2 PUT ops are the cost driver, not bytes — so we flush on whichever comes first:
 const ARCHIVE_FLUSH_COUNT = 100;      // …every 100 newly-appended messages, or…
 const ARCHIVE_FLUSH_MS = 5 * 60_000;  // …every 5 minutes (the alarm cadence when on).
+// [AVAGRP-SEENBY-1] Retention for msg_receipts (bounded storage requirement). This
+// is ancillary "who saw it" metadata, not the message itself — 30 days comfortably
+// outlives WhatsApp-style relevance (nobody checks "seen by" on a month-old group
+// post) and bounds the per-message × per-member row growth independent of whether
+// INBOX_RETENTION_DAYS (the message-body retention knob) is even enabled. Pruned
+// on the SAME daily alarm as message retention/archive (see constructor + alarm()).
+const MSG_RECEIPT_RETENTION_MS = 30 * DAY_MS;
 const ARCHIVE_BATCH_MAX = 1000;       // rows read per flush (bounds a backfill burst)
 
 export class InboxDO {
@@ -168,7 +178,30 @@ export class InboxDO {
          cleared_through_seq  INTEGER NOT NULL DEFAULT 0,
          op_id                TEXT,
          updated_at           INTEGER NOT NULL DEFAULT 0
-       );`,
+       );
+       -- [AVAGRP-SEENBY-1] Per-MESSAGE receipts, living in the ORIGINAL SENDER's
+       -- own InboxDO (never a peer's, never a central store) — the same "owner
+       -- state lives in the owner's DO" idiom as read_state/call_log/safety_flags.
+       -- This is deliberately a SEPARATE table from `receipts` above: `receipts` is
+       -- a per-(conv,peer) HIGH-WATER pair that 1:1 ticks depend on unchanged; a
+       -- group message can be authored by ANY member, so the reader must be able
+       -- to name a msg_id (the canonical, cross-device `mid` on messages.mid — NOT
+       -- the local autoincrement id, which differs per-DO) without touching that
+       -- 1:1 table at all. `msg_id` is TEXT (a mid, e.g. "<13-digit-ms>.<8hex>").
+       -- WRITE AMPLIFICATION: one row per (message, reader) that has actually
+       -- crossed it — NOT one row per member per historical message on every
+       -- catch-up (see msgReceipt() below, which upserts only the mids the
+       -- client explicitly reports as newly seen, capped per call). Bounded
+       -- further by msgReceiptRetentionCutoff() pruning (see prune()).
+       CREATE TABLE IF NOT EXISTS msg_receipts (
+         conv       TEXT NOT NULL,
+         msg_id     TEXT NOT NULL,
+         peer       TEXT NOT NULL,
+         status     TEXT NOT NULL DEFAULT 'delivered',
+         ts         INTEGER NOT NULL DEFAULT 0,
+         PRIMARY KEY (conv, msg_id, peer)
+       );
+       CREATE INDEX IF NOT EXISTS idx_msg_receipts_conv_msg ON msg_receipts(conv, msg_id);`,
     );
     // Additive migration for the Ava visibility scope. Guarded: on a fresh DO
     // the column is created by the (extended) CREATE above's absence — SQLite has
@@ -238,14 +271,16 @@ export class InboxDO {
     // behavior). When enabled, a daily alarm prunes aged-out messages. We set the
     // alarm once on construction (only if none pending) so enabling the env var and
     // redeploying starts pruning without per-request cost.
-    if (this.retentionMs() > 0 || this.archiveOn()) {
-      this.state.blockConcurrencyWhile(async () => {
-        if ((await this.state.storage.getAlarm()) == null) {
-          // Faster cadence when the batched archive is on (it flushes on the alarm).
-          await this.state.storage.setAlarm(Date.now() + (this.archiveOn() ? ARCHIVE_FLUSH_MS : DAY_MS));
-        }
-      });
-    }
+    // [AVAGRP-SEENBY-1] The daily alarm now ALSO prunes msg_receipts (bounded
+    // storage), so it must fire even when message retention/archive are both off —
+    // previously this branch (and therefore the alarm) was skipped entirely on the
+    // vast majority of DOs. A once-a-day wake per user is a cheap, fixed cost.
+    this.state.blockConcurrencyWhile(async () => {
+      if ((await this.state.storage.getAlarm()) == null) {
+        // Faster cadence when the batched archive is on (it flushes on the alarm).
+        await this.state.storage.setAlarm(Date.now() + (this.archiveOn() ? ARCHIVE_FLUSH_MS : DAY_MS));
+      }
+    });
   }
 
   // ── P8 Stage 1: batched R2 cold archive ────────────────────────────────────
@@ -343,14 +378,23 @@ export class InboxDO {
     );
   }
 
+  /** [AVAGRP-SEENBY-1] Delete msg_receipts rows older than the retention window.
+   *  Best-effort — a pruning failure must never break the alarm cycle. */
+  private pruneMsgReceipts(): void {
+    try {
+      this.sql.exec(`DELETE FROM msg_receipts WHERE ts < ?1`, Date.now() - MSG_RECEIPT_RETENTION_MS);
+    } catch { /* best-effort */ }
+  }
+
   /** Retention/archive alarm — flush the R2 archive (when on) BEFORE pruning so
-   *  the high-water covers everything eligible, then prune, then reschedule. */
+   *  the high-water covers everything eligible, then prune, then reschedule.
+   *  Always reschedules now (see constructor note) so msg_receipts pruning keeps
+   *  running even on DOs with message retention/archive both off. */
   async alarm(): Promise<void> {
     if (this.archiveOn()) { try { await this.flushArchive(); } catch { /* best-effort */ } }
     this.prune();
-    if (this.retentionMs() > 0 || this.archiveOn()) {
-      await this.state.storage.setAlarm(Date.now() + (this.archiveOn() ? ARCHIVE_FLUSH_MS : DAY_MS));
-    }
+    this.pruneMsgReceipts();
+    await this.state.storage.setAlarm(Date.now() + (this.archiveOn() ? ARCHIVE_FLUSH_MS : DAY_MS));
   }
 
   async fetch(req: Request): Promise<Response> {
@@ -380,6 +424,20 @@ export class InboxDO {
         });
       }
       if (url.pathname.endsWith("/receipt")) return this.receipt(await req.json());
+      // [AVAGRP-SEENBY-1] Per-message receipts — this IS the original sender's own
+      // InboxDO (the router only ever addresses this endpoint at env.INBOX.get(
+      // idFromName(<message author>)), never a reader's or a peer's). GET reads back
+      // a batch for the "Info → seen by" sheet; POST records a reader's batch of
+      // newly-seen mids. See msgReceipt()/msgReceiptsFor() below.
+      if (url.pathname.endsWith("/msg_receipt")) {
+        if (req.method === "GET") {
+          const conv = url.searchParams.get("conv") || "";
+          const mids = (url.searchParams.get("mids") || "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, 200);
+          return new Response(JSON.stringify({ conv, receipts: this.msgReceiptsFor(conv, mids) }),
+            { headers: { "content-type": "application/json" } });
+        }
+        return this.msgReceipt(await req.json());
+      }
       // STREAM B: read/write the OWNER's thread-level accept_state.
       if (url.pathname.endsWith("/accept_state")) {
         if (req.method === "POST") return this.setAcceptState(await req.json());
@@ -465,6 +523,7 @@ export class InboxDO {
         try { this.sql.exec("DELETE FROM call_log"); } catch { /* table may predate this migration */ }
         try { this.sql.exec("DELETE FROM safety_flags"); } catch { /* table may predate this migration */ }
         try { this.sql.exec("DELETE FROM thread_clears"); } catch { /* table may predate this migration */ }
+        try { this.sql.exec("DELETE FROM msg_receipts"); } catch { /* table may predate this migration */ }
         return new Response(JSON.stringify({ ok: true }), { headers: { "content-type": "application/json" } });
       }
     } catch (e: any) {
@@ -1056,6 +1115,53 @@ export class InboxDO {
       delivered_id: b.delivered_id ?? null, read_id: b.read_id ?? null,
     }));
     return new Response(JSON.stringify({ ok: true, live }), { headers: { "content-type": "application/json" } });
+  }
+
+  // [AVAGRP-SEENBY-1] Batch upsert of per-message receipts, called ONLY on the
+  // ORIGINAL AUTHOR's own InboxDO (the router resolves that target — see
+  // msgReceiptBatch() in routes/messaging.ts). `status` is 'delivered' | 'read'
+  // for the WHOLE batch (one reader, one status per call — matches how the client
+  // actually acks: "these N messages just rendered" or "I just opened the thread
+  // up to here"). Idempotent + monotonic: 'read' always wins over 'delivered' for
+  // the same (conv,msg_id,peer), and ts only advances forward, so an out-of-order
+  // retry or a stale duplicate can never downgrade or rewind a receipt.
+  private msgReceipt(b: { conv?: string; peer?: string; status?: string; msg_ids?: string[] }): Response {
+    const conv = String(b.conv ?? "");
+    const peer = String(b.peer ?? "");
+    const status = b.status === "read" ? "read" : "delivered";
+    const msgIds = Array.isArray(b.msg_ids) ? b.msg_ids.map(String).filter(Boolean).slice(0, 300) : [];
+    if (!conv || !peer || !msgIds.length) {
+      return new Response(JSON.stringify({ ok: false, error: "conv, peer, msg_ids required" }), { headers: { "content-type": "application/json" } });
+    }
+    const now = Date.now();
+    for (const msgId of msgIds) {
+      this.sql.exec(
+        `INSERT INTO msg_receipts (conv, msg_id, peer, status, ts) VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT(conv, msg_id, peer) DO UPDATE SET
+           status = CASE WHEN status='read' OR ?4='read' THEN 'read' ELSE ?4 END,
+           ts = MAX(ts, ?5)`,
+        conv, msgId, peer, status, now,
+      );
+    }
+    // One live frame for the whole batch — an open thread (the sender's own device)
+    // applies all N message updates from a single broadcast instead of N frames.
+    const live = this.broadcast(JSON.stringify({ type: "msg_receipt", conv, peer, status, msg_ids: msgIds, ts: now }));
+    return new Response(JSON.stringify({ ok: true, live }), { headers: { "content-type": "application/json" } });
+  }
+
+  // [AVAGRP-SEENBY-1] Batch read-back for the "Info → seen by" sheet (on-demand —
+  // NOT part of /sync, to keep the ordinary snapshot payload from growing with
+  // every group's message history). Bounded by the caller's mids list (routes
+  // cap it to 200) and by this DO's own per-conv,msg index.
+  private msgReceiptsFor(conv: string, mids: string[]): unknown[] {
+    if (!conv || !mids.length) return [];
+    const placeholders = mids.map((_, i) => `?${i + 2}`).join(",");
+    try {
+      return this.sql.exec(
+        `SELECT msg_id, peer, status, ts FROM msg_receipts WHERE conv=?1 AND msg_id IN (${placeholders})`,
+        conv, ...mids,
+      ).toArray();
+    } catch { return []; }
   }
 
   // Transient SYSTEM event (Phase 4+: storage summary, booking blips, …) —

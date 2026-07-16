@@ -59,7 +59,7 @@ import { olxCreate, olxBrowse, olxGet, olxUpdate, olxDelete, olxUploadFile, olxB
 import { listPersonas, upsertPersona, converse, getInbox, getInboxItem, approveInbox, agentTask } from "./routes/agent";
 import { agentTts, agentAudio } from "./routes/agent_tts";
 import { listNotifications, unreadCount, markRead, clearNotifications } from "./routes/notifications";
-import { wsInbox, wsParty, sendMsg, syncMsg, receiptMsg, readMsg, hideMsg, reactMsg, stateMsg, pollVote, pollState, convList, convCreate, convAdopt, convMembers, convAddMembers, convRemoveMember, convSetRole, convSetAvatar, convLeave, convDelete, convInvites, convInviteRespond, callLogAppend, callLogDelete, callLogClear } from "./routes/messaging";
+import { wsInbox, wsParty, sendMsg, syncMsg, receiptMsg, msgReceiptBatch, msgSeenState, readMsg, hideMsg, reactMsg, stateMsg, pollVote, pollState, convList, convCreate, convAdopt, convMembers, convAddMembers, convRemoveMember, convSetRole, convSetAvatar, convLeave, convDelete, convInvites, convInviteRespond, callLogAppend, callLogDelete, callLogClear } from "./routes/messaging";
 import { archiveList, archivePage } from "./routes/archive";
 import { getAutoResponder, putAutoResponder } from "./routes/auto_responder"; // STREAM F — away auto-responder settings
 import { getConfig, putConfig, readConfig } from "./routes/config";
@@ -372,6 +372,10 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/msg/archive" && req.method === "GET") return await archiveList(req, env);
       if (p === "/api/archive/page" && req.method === "GET") return await archivePage(req, env); // P8 Stage 2: batched-jsonl pager
       if (p === "/api/msg/receipt" && req.method === "POST") return await receiptMsg(req, env);
+      // [AVAGRP-SEENBY-1] Group "Info → seen by": per-message batch receipts +
+      // on-demand read-back. Dark behind groupReceiptsEnabled (worker/src/routes/config.ts).
+      if (p === "/api/msg/receipts" && req.method === "POST") return await msgReceiptBatch(req, env);
+      if (p === "/api/msg/seen" && req.method === "GET") return await msgSeenState(req, env);
       if (p === "/api/msg/read" && req.method === "POST") return await readMsg(req, env);
       if (p === "/api/msg/hide" && req.method === "POST") return await hideMsg(req, env);
       // Phase 4 (ABLY-R2-4): persist a per-message reaction (live ride is Ably).

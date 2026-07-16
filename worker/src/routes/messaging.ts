@@ -988,6 +988,86 @@ export async function receiptMsg(req: Request, env: Env): Promise<Response> {
   return json({ ok: true });
 }
 
+// ---- POST /api/msg/receipts (batch, per-message; groups) --------------------
+// [AVAGRP-SEENBY-1] WhatsApp-style "Info → seen by": unlike /api/msg/receipt (a
+// single conv+peer HIGH-WATER, addressed to exactly ONE peer's inbox — built for
+// 1:1, where there is only ever one other party), a group message can be authored
+// by ANY member. The reader's client already knows, from the messages it just
+// rendered, which ORIGINAL SENDER each newly-seen mid belongs to — so it calls
+// this once per distinct target sender in the batch (see AvaGroupDm.sendMsgReceipt
+// in app/lib/sync/group_dm.dart), and THIS route does exactly one InboxDO write
+// (to that sender's own inbox) per call — never one write per group member per
+// message. That is the write-amplification bound: O(distinct senders touched by
+// a reader's catch-up), not O(members) or O(unread backlog). Dark behind
+// groupReceiptsEnabled (default false) — disabled short-circuits before any
+// InboxDO fetch, so flipping it back off is a true kill switch, not just a UI hide.
+export async function msgReceiptBatch(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const cfg = await readConfig(env);
+  if (!cfg.groupReceiptsEnabled) return json({ ok: true, disabled: true });
+  let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
+  const conv = String(b.conv || "");
+  const targetSender = String(b.sender || "");
+  const status = b.status === "read" ? "read" : "delivered";
+  const msgIds = Array.isArray(b.msg_ids) ? b.msg_ids.map(String).filter(Boolean).slice(0, 300) : [];
+  if (!conv || !targetSender || !msgIds.length) return json({ error: "conv, sender, msg_ids required" }, 400);
+  const mem = await members(env, conv);
+  if (!mem.includes(ctx.uid)) return json({ error: "not a member" }, 403);
+  if (ctx.uid === targetSender) return json({ ok: true, skipped: "own" }); // never receipt my own message
+
+  // STREAM B parity (same gate receiptMsg already enforces for 1:1): a reader who
+  // has NOT yet accepted this thread must not leak a READ signal to the sender.
+  // Delivered still goes through (mirrors receiptMsg's fail-open, delivery-only
+  // behaviour under suppression). Fails OPEN — never blocks a normal receipt.
+  let effStatus = status;
+  try {
+    const { suppress } = await inboxAcceptState(env, ctx.uid, conv);
+    if (suppress && effStatus === "read") effStatus = "delivered";
+  } catch { /* fail open */ }
+
+  const stub = env.INBOX.get(env.INBOX.idFromName(targetSender));
+  const res = await stub.fetch("https://inbox/msg_receipt", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ conv, peer: ctx.uid, status: effStatus, msg_ids: msgIds }),
+  });
+  const live = await res.json().then((r: any) => r?.live === true).catch(() => false);
+
+  const email = (req.headers.get("x-user-email") || "").toString();
+  // Two-sided telemetry (CLAUDE.md): tag BOTH the reader (this event's `uid`) and
+  // the sender (a second event) so either party's email retrieves the interaction.
+  trackGroup(env, ctx.uid, "group_receipt_sent", {
+    conv, target_sender: targetSender, status: effStatus, count: msgIds.length, live,
+    group: mem.length > 2, email,
+  });
+  trackGroup(env, targetSender, "group_receipt_received", {
+    conv, from: ctx.uid, status: effStatus, count: msgIds.length, group: mem.length > 2,
+  });
+
+  return json({ ok: true, live });
+}
+
+// ---- GET /api/msg/seen?conv=&mids=a,b,c -------------------------------------
+// [AVAGRP-SEENBY-1] On-demand "Info → seen by" fetch for the sheet (chat_thread.dart
+// owns the UI). Reads the CALLER's OWN InboxDO — msg_receipts rows only ever exist
+// on the ORIGINAL SENDER's inbox (see msgReceipt() in inbox.ts), so this route is
+// naturally scoped: nobody can read another member's "who read my message" data
+// through it, membership check or not. Not part of /sync (see the write-side
+// comment) — the sheet fetches this the moment it opens, then rides the live
+// {type:'msg_receipt'} frame (via SyncHub) for anything that changes while open.
+export async function msgSeenState(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const url = new URL(req.url);
+  const conv = url.searchParams.get("conv") || "";
+  const mids = (url.searchParams.get("mids") || "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, 200);
+  if (!conv || !mids.length) return json({ receipts: [] });
+  const stub = env.INBOX.get(env.INBOX.idFromName(ctx.uid));
+  const res = await stub.fetch(`https://inbox/msg_receipt?conv=${encodeURIComponent(conv)}&mids=${encodeURIComponent(mids.join(","))}`);
+  const j = (await res.json().catch(() => ({ receipts: [] }))) as { receipts?: unknown[] };
+  return json({ receipts: j.receipts || [] });
+}
+
 // ---- POST /api/msg/read -----------------------------------------------------
 // The owner marks a conversation read up to `read_ts` (unix seconds) in their
 // OWN InboxDO. Unlike /receipt (which targets the PEER's inbox for ✓✓ ticks),

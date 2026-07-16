@@ -197,6 +197,13 @@ export interface PlatformConfig {
   // [AVA-IDGATE-1] livenessOnboardingGate REMOVED — superseded by identityGatingEnabled
   // (gate at first public action, not at signup). See lib/identity_gate.ts.
   unlimitedForwardEnabled: boolean;          // STREAM I: unlimited forwarding + forward-to-groups
+  // [AVAGRP-SEENBY-1] Group "Info → seen by" (WhatsApp-style per-message read/
+  // delivered receipts for group chats). Master kill switch: OFF drops every
+  // POST /api/msg/receipts write server-side (msgReceiptBatch short-circuits to
+  // {ok:true, disabled:true} before touching any InboxDO) and the sender simply
+  // sees no seen-by data — never a crash. Dark-launch default false; see the
+  // DEFAULTS entry for why this pair MUST ship together in one change.
+  groupReceiptsEnabled: boolean;
   // PERF-DNS-2: client DNS-over-HTTPS fallback (resolve our hosts via 1.1.1.1 when
   // the device resolver fails — carrier-proof). Default ON in the client even
   // without this key; this is a KV kill switch to force pure OS resolution.
@@ -539,6 +546,7 @@ const DEFAULTS: PlatformConfig = {
   // [AVA-IDGATE-1] livenessOnboardingGate removed from DEFAULTS. Liveness is no longer
   // an onboarding gate — it fires at the first public action via identityGatingEnabled.
   unlimitedForwardEnabled: true,         // STREAM I — ships ON
+  groupReceiptsEnabled: false,           // [AVAGRP-SEENBY-1] dark launch — flip in KV once verified (scripts/flags.sh set groupReceiptsEnabled=true)
   dohFallbackEnabled: true,              // PERF-DNS-2 — DoH-to-1.1.1.1 fallback ON
   routingV2Enabled: false,               // [ARCH-ROUTING-V2] v4 routing path — DORMANT until wired + validated; legacy path unaffected
   sentinelEnabled: false,                // Guardian Sentinel S1 — DARK; flip ON in KV platform_config (never code) after telemetry review
