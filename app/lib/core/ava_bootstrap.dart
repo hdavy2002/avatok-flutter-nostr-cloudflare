@@ -15,6 +15,7 @@ library;
 
 import '../features/settings/sections/auto_download_section.dart';
 import '../features/settings/sections/backup_sync_section.dart';
+import '../features/avadial/pstn_forwarding_setup.dart';
 import '../features/settings/sections/default_dialer_section.dart';
 import '../features/settings/sections/delegate_section.dart';
 import '../features/settings/sections/focus_section.dart';
@@ -124,6 +125,13 @@ class AvaBootstrap {
     // onboarding "make AvaTOK your phone" step a later path, and a place to hand a
     // role back if Truecaller/stock took it. Idempotent (registry keys by id).
     registerDefaultDialerSection();
+    // [AVA-RCPT-7] "Voicemail forwarding" settings entry — opens the plain
+    // -language carrier-forwarding setup screen (MMI/USSD codes to AvaTOK's
+    // pool DID). Hidden unless Android + avaDialer + the feature's own
+    // pstnVoicemail flag are all on (v1 ships voicemail-only, dark by
+    // default — Specs/PLAN-2026-07-16-ava-receptionist-guardian-FINAL.md).
+    // Idempotent (registry keys by id).
+    registerPstnForwardingSection();
     // Load the persisted "Activate Ava AI locally" preference; if the user had
     // it on, warm the model in the background so chat surfaces use it.
     // ignore: unawaited_futures

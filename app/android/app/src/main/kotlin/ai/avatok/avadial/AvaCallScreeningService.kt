@@ -1,5 +1,6 @@
 package ai.avatok.avadial
 
+import android.os.Build
 import android.telecom.Call
 import android.telecom.CallScreeningService
 import org.json.JSONObject
@@ -98,6 +99,12 @@ class AvaCallScreeningService : CallScreeningService() {
         var bucket = "unknown"
         var score: Int? = null
         val raw = callDetails.handle?.schemeSpecificPart // the tel: number
+        // [AVA-RCPT-6] Hidden caller ID, routed straight to PSTN voicemail — the
+        // ONLY auto-reject in the system. Flag-mirror-gated on pstn_config.json
+        // (native mirror of RemoteConfig.pstnVoicemail); fail-OPEN (today's
+        // label-only behavior, unchanged) whenever that config is missing/off,
+        // exactly like the community-spam lookup below.
+        var autoRejectHidden = false
         try {
             if (!raw.isNullOrEmpty()) {
                 score = lookup(raw)
@@ -105,17 +112,40 @@ class AvaCallScreeningService : CallScreeningService() {
                     val warn = warnThreshold
                     bucket = if (score >= warn) "red" else "reported"
                 }
+            } else if (AvaDialPlugin.pstnVoicemailEnabled(applicationContext)) {
+                autoRejectHidden = true
             }
         } catch (_: Throwable) {
             // fail-open: any error → allow the call untouched
+            autoRejectHidden = false
         }
-        // Phase 2b: allow every call (label-only). Do not disallow/reject here.
-        // (setSilenceCall is API 33+ and defaults false, so we don't set it.)
-        response.setDisallowCall(false)
-        response.setRejectCall(false)
+        if (autoRejectHidden) {
+            response.setDisallowCall(true)
+            response.setRejectCall(true)
+            // setSkipNotification is API 29+; below that the call is still
+            // rejected/disallowed, just with the platform's own missed-call
+            // notification still showing (acceptable — no crash risk either way).
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                response.setSkipNotification(true)
+            }
+        } else {
+            // Phase 2b: allow every call (label-only). Do not disallow/reject here.
+            // (setSilenceCall is API 33+ and defaults false, so we don't set it.)
+            response.setDisallowCall(false)
+            response.setRejectCall(false)
+        }
         respondToCall(callDetails, response.build())
 
         if (!raw.isNullOrEmpty()) stashVerdict(raw, score, bucket)
+
+        if (autoRejectHidden) {
+            // [AVA-RCPT-5] Pre-register the (anonymous) expectation so the worker's
+            // answer route can attribute the forwarded PSTN leg to this owner even
+            // with no caller number to match on. Fire-and-forget — never delays
+            // respondToCall above, which already ran.
+            AvaDialPlugin.firePstnExpect(applicationContext, null, anonymous = true)
+            AvaDialPlugin.track("avadial_pstn_hidden_autoreject", emptyMap())
+        }
 
         // Best-effort telemetry hop to Dart when the engine is alive.
         AvaDialPlugin.emit("onScreeningVerdict", mapOf("bucket" to bucket))

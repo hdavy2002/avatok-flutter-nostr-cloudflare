@@ -357,6 +357,24 @@ class RemoteConfig {
   /// route, so this mirror is a UX nicety — the server stays the security gate).
   static bool get spamShield => _b('spamShield', false);
 
+  /// [AVA-RCPT-5/6/7] PSTN voicemail forwarding (Specs/PLAN-2026-07-16-ava
+  /// -receptionist-guardian-FINAL.md, v1 = voicemail-only, everything else
+  /// dark). Mirrors config.ts `pstnVoicemail`. While false: no reject/missed
+  /// "expect" ping fires, the hidden-caller-ID auto-route in
+  /// AvaCallScreeningService stays fail-open exactly as today, and the
+  /// forwarding setup screen is hidden. Default false — this is a live-traffic
+  /// PSTN feature and must be opted into per environment.
+  static bool get pstnVoicemail => _b('pstnVoicemail', false);
+
+  /// Max voicemail recording length in seconds (owner UX spec: greeting → beep
+  /// → 25s recording → "Thank you" → hangup). Mirrors config.ts
+  /// `pstnVoicemailRecordSec`. Informational on the device lane today (the
+  /// Vobiz XML template that actually enforces it lives in the worker) — kept
+  /// here so the forwarding setup screen can show the right expectation copy
+  /// without a second flag round-trip.
+  static int get pstnVoicemailRecordSec =>
+      (_asNum(_cfg['pstnVoicemailRecordSec'])?.toInt()) ?? 25;
+
   static int get minAppBuild => (_asNum(_cfg['minAppBuild'])?.toInt()) ?? 0;
 
   /// The versionCode this install ACTUALLY carries, resolved once at [start]

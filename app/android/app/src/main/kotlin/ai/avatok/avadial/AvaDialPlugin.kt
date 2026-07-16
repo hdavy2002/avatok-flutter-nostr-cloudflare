@@ -23,6 +23,8 @@ import android.content.ContentValues
 import android.provider.Telephony
 import android.telecom.TelecomManager
 import android.telephony.SmsManager
+import android.telephony.SubscriptionManager
+import android.telephony.TelephonyManager
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
@@ -31,6 +33,8 @@ import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.PluginRegistry
 import org.json.JSONObject
 import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicLong
@@ -394,6 +398,107 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
             pendingOpenAvatok = avatokNumber
             emit("onLaunchOpenDial", mapOf("number" to number, "avatok_number" to avatokNumber))
         }
+
+        // ── [AVA-RCPT-5/6/7] PSTN voicemail forwarding — native mirror + expect
+        // ping (Specs/PLAN-2026-07-16-ava-receptionist-guardian-FINAL.md, Phase 2).
+        // Everything below is DARK until Dart writes {enabled:true,...} — see
+        // pstnVoicemailEnabled/readPstnConfig, both fail-CLOSED like
+        // nativeInCallEnabled above (missing/corrupt file → false/null, never "on").
+        const val PSTN_CONFIG_FILE = "pstn_config.json"
+
+        /** `{enabled, base, did}` — Dart's mirror of RemoteConfig.pstnVoicemail +
+         *  the forwarding target. [base] is the FULL origin including scheme
+         *  (`https://api.avatok.ai`), unlike missedcall_config's bare host — every
+         *  reader below uses it verbatim as `$base/api/pstn/expect-native`. Read by
+         *  AvaInCallService (reject → expect ping), AvaCallScreeningService
+         *  (hidden-caller-ID auto-route) and AvaMissedCallReceiver (missed → expect
+         *  ping) — none of which can rely on a live Flutter engine. */
+        fun pstnConfigFile(context: Context): File {
+            val dir = File(context.filesDir, SNAPSHOT_DIR)
+            if (!dir.exists()) dir.mkdirs()
+            return File(dir, PSTN_CONFIG_FILE)
+        }
+
+        private fun readPstnConfig(context: Context): JSONObject? = try {
+            val f = pstnConfigFile(context)
+            if (!f.exists() || f.length() == 0L) null else JSONObject(f.readText())
+        } catch (_: Throwable) {
+            null
+        }
+
+        /** Is PSTN voicemail forwarding live for this device right now? Fail-CLOSED
+         *  (same posture as [nativeInCallEnabled]): any doubt — missing file,
+         *  corrupt JSON, IO error — returns false, so a config-fetch failure keeps
+         *  every hidden-caller-ID call ringing through exactly as today and never
+         *  fires a stray expect ping. */
+        fun pstnVoicemailEnabled(context: Context): Boolean =
+            readPstnConfig(context)?.optBoolean("enabled", false) ?: false
+
+        /**
+         * [AVA-RCPT-5] Fire-and-forget POST `<base>/api/pstn/expect-native` on a
+         * background thread — pre-registers the caller so the worker's answer route
+         * can map the forwarded PSTN leg back to this owner (Phase 1,
+         * AVA-RCPT-4/worker/src/routes/pstn.ts; that route is a different lane's
+         * territory, this is only the client-side trigger).
+         *
+         * HARD RULE: NEVER blocks or delays the caller. Every call site is on the
+         * hot path of Call.reject() / CallScreeningService.onScreenCall(), both of
+         * which the OS holds the live/ringing call open for — a slow or hung HTTP
+         * call here would visibly delay hanging up or screening. Wrapped fully in
+         * try/catch; any failure (offline, DNS, 5xx, missing config) is invisible to
+         * the call path, matching [AvaMissedCallReceiver.confirmViaBackend]'s
+         * best-effort posture.
+         *
+         * [caller] is the E.164/raw number when known, or null (hidden caller ID /
+         * carrier withheld it — the missed-call path already tolerates this).
+         * [anonymous] flags the hidden-caller-ID auto-route case explicitly, per the
+         * plan's `{anonymous:true}` marker (AVA-RCPT-4).
+         */
+        fun firePstnExpect(context: Context, caller: String?, anonymous: Boolean = false) {
+            val cfg = readPstnConfig(context) ?: return
+            if (!cfg.optBoolean("enabled", false)) return
+            val base = cfg.optString("base", "").trim()
+            if (base.isEmpty()) return
+            // Reuse the SAME long-lived HMAC device token minted for the missed-call
+            // lane (missedcall_config.json) — the plan's spec (AVA-RCPT-5) calls for
+            // exactly this reuse rather than minting a second token no other lane
+            // needs. Absent when the missed-call feature was never armed on this
+            // device; the ping still fires (device_token omitted), the worker's
+            // owner-resolution just falls back to a later expectation/match step.
+            val token = try {
+                val mc = missedCallConfigFile(context)
+                if (mc.exists() && mc.length() > 0L) {
+                    JSONObject(mc.readText()).optString("token").takeIf { it.isNotEmpty() }
+                } else null
+            } catch (_: Throwable) {
+                null
+            }
+            Thread {
+                var conn: HttpURLConnection? = null
+                try {
+                    val url = URL("$base/api/pstn/expect-native")
+                    conn = (url.openConnection() as HttpURLConnection).apply {
+                        requestMethod = "POST"
+                        connectTimeout = 3000
+                        readTimeout = 3000
+                        doOutput = true
+                        setRequestProperty("Content-Type", "application/json")
+                    }
+                    val body = JSONObject().apply {
+                        put("caller", caller)
+                        if (anonymous) put("anonymous", true)
+                        if (token != null) put("device_token", token)
+                    }.toString()
+                    conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+                    conn.responseCode // drain — result is irrelevant, this is fire-and-forget
+                } catch (_: Throwable) {
+                    // best-effort — offline / DNS / server error must never surface
+                    // back to the call-handling code that triggered this.
+                } finally {
+                    try { conn?.disconnect() } catch (_: Throwable) {}
+                }
+            }.start()
+        }
     }
 
     private var channel: MethodChannel? = null
@@ -659,6 +764,19 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
                     writeFileAtomic(missedCallConfigFile(ctx), obj.toString())
                     result.success(true)
                 }
+                // ---- [AVA-RCPT-5/6/7] PSTN voicemail forwarding ----
+                "setPstnConfig" -> {
+                    val obj = JSONObject()
+                        .put("enabled", call.argument<Boolean>("enabled") == true)
+                        .put("base", call.argument<String>("base") ?: "")
+                        .put("did", call.argument<String>("did") ?: "")
+                        .put("updated", System.currentTimeMillis())
+                    writeFileAtomic(pstnConfigFile(ctx), obj.toString())
+                    result.success(true)
+                }
+                "dialMmiCode" -> dialMmiCode(ctx, call.argument<String>("code"), result)
+                "defaultVoiceSim" -> result.success(defaultVoiceSimLabel(ctx))
+
                 "writeAvatokDirectory" -> {
                     val jsonStr = call.argument<String>("json") ?: "{}"
                     writeFileAtomic(avatokDirFile(ctx), jsonStr)
@@ -1552,6 +1670,146 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
         } catch (_: Throwable) {
             false
         }
+    }
+
+    // ── [AVA-RCPT-7] MMI/USSD dialing for the forwarding setup screen ────────────
+    /**
+     * Dial an MMI/USSD code (`*67*+912271264209#`, `##67#`, `*#67#`, …) on the
+     * DEFAULT VOICE SIM. Tries [TelephonyManager.sendUssdRequest] first (API 26+;
+     * returns the raw carrier response text so the setup screen can show it
+     * verbatim, e.g. for the `*#67#` status check) — falls back to a plain
+     * `ACTION_CALL` intent (owner spec) when the USSD API is unavailable, throws,
+     * reports failure, or simply never calls back (some OEM/carrier combos never
+     * invoke either [TelephonyManager.UssdResponseCallback] method; the 15s
+     * watchdog below exists for exactly that). The fallback has no response text —
+     * the carrier's own dialer UI shows whatever it shows, outside our control.
+     *
+     * `result.success` is called EXACTLY once (guarded by [responded]) — the two
+     * async callbacks and the watchdog all race for it.
+     */
+    private fun dialMmiCode(ctx: Context, code: String?, result: MethodChannel.Result) {
+        if (code.isNullOrBlank()) {
+            result.success(mapOf("ok" to false, "error" to "no_code"))
+            return
+        }
+        val granted = ctx.checkSelfPermission(Manifest.permission.CALL_PHONE) ==
+            PackageManager.PERMISSION_GRANTED
+        if (!granted) {
+            activityBinding?.activity?.requestPermissions(
+                arrayOf(Manifest.permission.CALL_PHONE), REQ_CALL_PHONE,
+            )
+            result.success(mapOf("ok" to false, "error" to "no_permission"))
+            return
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            result.success(mapOf("ok" to placeMmiCall(ctx, code), "via" to "call_intent"))
+            return
+        }
+        try {
+            val tm = ctx.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+            if (tm == null) {
+                result.success(mapOf("ok" to placeMmiCall(ctx, code), "via" to "call_intent"))
+                return
+            }
+            // Per-SIM: target the default VOICE subscription's own TelephonyManager
+            // instance, so the code lands on the SIM actually used for calls on a
+            // dual-SIM phone, not whichever slot happens to be "SIM 1".
+            val targetTm = try {
+                val subId = SubscriptionManager.getDefaultVoiceSubscriptionId()
+                if (subId != SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+                    tm.createForSubscriptionId(subId)
+                } else tm
+            } catch (_: Throwable) {
+                tm
+            }
+            var responded = false
+            val handler = Handler(Looper.getMainLooper())
+            val watchdog = Runnable {
+                if (responded) return@Runnable
+                responded = true
+                result.success(
+                    mapOf("ok" to placeMmiCall(ctx, code), "via" to "call_intent", "timeout" to true),
+                )
+            }
+            targetTm.sendUssdRequest(
+                code,
+                object : TelephonyManager.UssdResponseCallback() {
+                    override fun onReceiveUssdResponse(
+                        telephonyManager: TelephonyManager,
+                        request: String,
+                        response: CharSequence,
+                    ) {
+                        if (responded) return
+                        responded = true
+                        handler.removeCallbacks(watchdog)
+                        result.success(mapOf("ok" to true, "via" to "ussd", "response" to response.toString()))
+                    }
+
+                    override fun onReceiveUssdResponseFailed(
+                        telephonyManager: TelephonyManager,
+                        request: String,
+                        failureCode: Int,
+                    ) {
+                        if (responded) return
+                        responded = true
+                        handler.removeCallbacks(watchdog)
+                        // USSD API reported failure — fall back to the ACTION_CALL
+                        // intent (owner spec) so the code still reaches the carrier.
+                        result.success(
+                            mapOf(
+                                "ok" to placeMmiCall(ctx, code), "via" to "call_intent",
+                                "ussd_failure_code" to failureCode,
+                            ),
+                        )
+                    }
+                },
+                handler,
+            )
+            // Both callbacks run on [handler] (main looper), same thread as this
+            // watchdog post — no race on [responded].
+            handler.postDelayed(watchdog, 15_000L)
+        } catch (_: SecurityException) {
+            result.success(mapOf("ok" to placeMmiCall(ctx, code), "via" to "call_intent"))
+        } catch (_: Throwable) {
+            result.success(mapOf("ok" to placeMmiCall(ctx, code), "via" to "call_intent"))
+        }
+    }
+
+    /** ACTION_CALL fallback for an MMI code — `#` must be percent-encoded in the
+     *  tel: URI or the platform silently drops the trailing digits. */
+    private fun placeMmiCall(ctx: Context, code: String): Boolean = try {
+        val intent = Intent(Intent.ACTION_CALL, Uri.parse("tel:${Uri.encode(code)}")).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        (activityBinding?.activity ?: ctx).startActivity(intent)
+        true
+    } catch (_: Throwable) {
+        false
+    }
+
+    /** Which SIM carries the default VOICE subscription right now — the one MMI
+     *  codes and outgoing calls actually use on a dual-SIM phone. `sim` is the
+     *  carrier/display name, null when unresolvable (single-SIM with no active
+     *  subscription info, READ_PHONE_STATE not yet granted, or a provider hiccup). */
+    private fun defaultVoiceSimLabel(ctx: Context): Map<String, Any?> = try {
+        val subId = SubscriptionManager.getDefaultVoiceSubscriptionId()
+        if (subId == SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+            mapOf("sim" to null, "sub_id" to null, "slot_index" to null)
+        } else if (ctx.checkSelfPermission(Manifest.permission.READ_PHONE_STATE) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            mapOf("sim" to null, "sub_id" to subId, "slot_index" to null)
+        } else {
+            val sm = ctx.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as? SubscriptionManager
+            val info = sm?.getActiveSubscriptionInfo(subId)
+            mapOf(
+                "sim" to (info?.displayName?.toString() ?: info?.carrierName?.toString()),
+                "sub_id" to subId,
+                "slot_index" to info?.simSlotIndex,
+            )
+        }
+    } catch (_: Throwable) {
+        mapOf("sim" to null, "sub_id" to null, "slot_index" to null)
     }
 
     private fun systemBlock(ctx: Context, number: String?): Boolean {

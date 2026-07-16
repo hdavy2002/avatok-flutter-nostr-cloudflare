@@ -219,6 +219,15 @@ class AvaInCallService : InCallService() {
                                 // never overwrite a more specific disposition.
                                 records[id]?.let { r -> if (r.finalState == null) r.finalState = "rejected" }
                                 noteAction(id, "end_call")
+                                // [AVA-RCPT-5] "Decline itself now means Ava takes it"
+                                // once forwarding is set (plan Phase 2). Fire the
+                                // expect ping BEFORE reject() — fire-and-forget on a
+                                // background thread, so this never delays the actual
+                                // hang-up the user is waiting on.
+                                if (AvaDialPlugin.pstnVoicemailEnabled(svc.applicationContext)) {
+                                    val number = callMap[id]?.details?.handle?.schemeSpecificPart
+                                    AvaDialPlugin.firePstnExpect(svc.applicationContext, number)
+                                }
                                 callMap[id]?.reject(false, null)
                                 true
                             }

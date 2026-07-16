@@ -87,6 +87,18 @@ class AvaMissedCallReceiver : BroadcastReceiver() {
     }
 
     private fun handleMissed(ctx: Context, ringNumber: String?, ringSecs: Int, ringStartAtCall: Long) {
+        // [AVA-RCPT-5] PSTN expect ping — deliberately INDEPENDENT of the
+        // missed-call OVERLAY gate below ([isEnabled]/[AvaMissedCallOverlay
+        // .canDraw] are a different feature/flag). Carrier no-answer-forwarding
+        // (CFNRy) already diverted this call to the DID on its own by the time we
+        // see IDLE; this ping just lets the worker's answer route map that
+        // forwarded leg back to this owner. [ringNumber] may be null when the OS
+        // withheld it (common — see [showForNumber]'s call-log fallback below);
+        // the worker tolerates a null caller the same way the anonymous
+        // screening path does.
+        if (AvaDialPlugin.pstnVoicemailEnabled(ctx)) {
+            AvaDialPlugin.firePstnExpect(ctx, ringNumber)
+        }
         if (!isEnabled(ctx)) return
         if (!AvaMissedCallOverlay.canDraw(ctx)) return
 

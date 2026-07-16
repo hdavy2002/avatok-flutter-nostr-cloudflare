@@ -883,6 +883,61 @@ class AvaDialChannel {
     }
   }
 
+  // ── [AVA-RCPT-5/6/7] PSTN voicemail forwarding ────────────────────────────
+  /// Mirror `pstn_config.json` to disk — read with NO engine attached by
+  /// [AvaInCallService] (reject → expect ping), [AvaCallScreeningService]
+  /// (hidden-caller-ID auto-route) and [AvaMissedCallReceiver] (missed →
+  /// expect ping). [base] is the FULL origin including scheme
+  /// (`https://api.avatok.ai`) — unlike [setMissedCallEnabled]'s bare host,
+  /// native uses this verbatim as `$base/api/pstn/expect-native`. Written on
+  /// every wire-up so a KV flip of `pstnVoicemail` takes effect on the next
+  /// app open, same pattern as [setNativeInCallEnabled].
+  Future<void> setPstnConfig({
+    required bool enabled,
+    required String base,
+    required String did,
+  }) =>
+      _invokeVoid('setPstnConfig', {
+        'enabled': enabled,
+        'base': base,
+        'did': did,
+      });
+
+  /// Dial an MMI/USSD code (`*67*+912271264209#`, `##67#`, `*#67#`, …) on the
+  /// default voice SIM, for the forwarding setup screen. Tries
+  /// `TelephonyManager.sendUssdRequest` first — `response` carries the raw
+  /// carrier text (used for the `*#67#` status check); falls back to an
+  /// `ACTION_CALL` intent (no response text) when the USSD API is
+  /// unavailable, fails, or times out. Returns `{ok, via, response?,
+  /// ussd_failure_code?, timeout?, error?}`; empty map only on an unexpected
+  /// platform-channel failure.
+  Future<Map<String, dynamic>> dialMmiCode(String code) async {
+    try {
+      final raw = await _ch.invokeMethod<Map<dynamic, dynamic>>('dialMmiCode', {'code': code});
+      if (raw == null) return {'ok': false};
+      return raw.map((k, v) => MapEntry('$k', v));
+    } catch (e) {
+      AvaLog.I.log('avadial', 'dialMmiCode failed: $e');
+      return {'ok': false, 'error': '$e'};
+    }
+  }
+
+  /// Which SIM currently carries the default VOICE subscription — the one MMI
+  /// codes and outgoing calls actually use on a dual-SIM phone. `{sim,
+  /// sub_id, slot_index}`; `sim` is null when unresolvable (single-SIM with
+  /// no active subscription info, permission not yet granted, or a provider
+  /// hiccup). Empty map on an unsupported platform.
+  Future<Map<String, dynamic>> defaultVoiceSim() async {
+    try {
+      final raw = await _ch.invokeMethod<Map<dynamic, dynamic>>('defaultVoiceSim');
+      if (raw == null) return {};
+      return raw.map((k, v) => MapEntry('$k', v));
+    } catch (e) {
+      AvaLog.I.log('avadial', 'defaultVoiceSim failed: $e');
+      return {};
+    }
+  }
+
   /// SHA-256 of the last 10 digits of [number], lowercase hex — the directory key
   /// the native overlay/receiver compute. Formatting-independent so a contact and a
   /// call-log entry for the same person collide.

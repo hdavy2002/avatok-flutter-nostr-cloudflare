@@ -8,6 +8,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../auth/clerk_client.dart';
 import '../core/account_storage.dart';
 import '../core/analytics.dart';
+import '../core/config.dart';
 import '../core/profile_store.dart';
 import '../core/remote_config.dart';
 import '../core/ui/avatok_dark.dart';
@@ -26,6 +27,13 @@ import 'v2/avadial_root.dart';
 import 'v2/root_order_store.dart';
 import 'v2/services_root.dart';
 import 'v2/talk_root.dart';
+
+/// [AVA-RCPT-7] Pool DID for PSTN voicemail forwarding (Phase 0 probe,
+/// Specs/PLAN-2026-07-16-ava-receptionist-guardian-FINAL.md). Shared across
+/// every user — DIDs are never per-user (plan's cost guardrails) — so this is
+/// a plain constant, not per-account config. Update here (and only here) if
+/// the pool grows to a second DID with routing logic; single-DID for v1.
+const String kPstnVoicemailDid = '+912271264209';
 
 /// The three sibling apps of the [ShellV2] shell (2026-07-12: Home root retired —
 /// AvaTOK/AvaTalk is now the sole landing app). Each is its OWN [Navigator] inside
@@ -312,6 +320,19 @@ class _ShellV2State extends State<ShellV2> {
     // RemoteConfig — this file IS how they learn the flag. Written on every wire-up
     // so a KV flip takes effect on the next app open. Absent/corrupt reads as OFF.
     unawaited(AvaDialChannel.I.setNativeInCallEnabled(RemoteConfig.nativeInCallUi));
+    // [AVA-RCPT-5/6/7] Mirror PSTN voicemail forwarding config to disk — read
+    // with NO engine attached by AvaInCallService (reject → expect ping),
+    // AvaCallScreeningService (hidden-caller-ID auto-route) and
+    // AvaMissedCallReceiver (missed → expect ping). Written on every wire-up
+    // so flipping `pstnVoicemail` in KV takes effect on the next app open,
+    // exactly like the nativeInCallUi mirror just above. `base` carries the
+    // scheme (unlike setMissedCallEnabled's bare host) because native uses it
+    // verbatim as `$base/api/pstn/expect-native`.
+    unawaited(AvaDialChannel.I.setPstnConfig(
+      enabled: RemoteConfig.pstnVoicemail,
+      base: 'https://$kSignalingHost',
+      did: kPstnVoicemailDid,
+    ));
     // [AVADIAL-CALL-INTEL-1] Tell native who is signed in, so calls that happen with
     // the app closed still carry the user's email — the only way to work out whose
     // device a call problem was on once there are many testers.
