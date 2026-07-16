@@ -3,11 +3,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../../core/analytics.dart';
 import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../../../shell/v2/shell_chrome.dart';
 import '../../../sync/sync_hub.dart';
 import '../avadial_theme.dart';
+import '../block_list.dart';
 import '../contact_overrides.dart';
 import '../device_contacts.dart';
 import 'inbox_api.dart';
@@ -298,6 +300,7 @@ class _InboxListScreenState extends State<InboxListScreen> {
         'Left a message';
     return GestureDetector(
       onTap: () => _open(t),
+      onLongPress: () => _showThreadMenu(t),
       child: AdCard(
         color: AvaDialTheme.surface2,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -333,6 +336,148 @@ class _InboxListScreenState extends State<InboxListScreen> {
     );
   }
 
+  // ── [INBOX-LISTMENU-1] Long-press thread-row menu ─────────────────────────
+  // Same idiom as `_VoicemailCardState._showCardMenu` (thread screen): grab
+  // handle, isScrollControlled, PhosphorIcon leading rows. Rename reuses the
+  // EXACT dialog/[ContactOverrides] flow the thread screen's card menu uses
+  // (see `promptRenameCaller` in inbox_thread_screen.dart). Block/Delete/Mark-
+  // heard act on every card in the thread at once, since this is the row for
+  // the WHOLE conversation, not one voicemail.
+  Future<void> _showThreadMenu(InboxThread t) async {
+    final phone = t.telPhone;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AvaDialTheme.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        side: BorderSide(color: AvaDialTheme.border, width: 1),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetCtx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const SizedBox(height: 10),
+          Container(
+            width: 40, height: 4,
+            decoration:
+                BoxDecoration(color: AvaDialTheme.textMute, borderRadius: BorderRadius.circular(100)),
+          ),
+          const SizedBox(height: 6),
+          if (phone != null)
+            _ThreadMenuRow(
+              icon: PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold),
+              color: AD.iconSearch,
+              label: 'Rename caller',
+              onTap: () { Navigator.pop(sheetCtx); _renameThreadCaller(t, phone); },
+            ),
+          if (phone != null)
+            _ThreadMenuRow(
+              icon: PhosphorIcons.prohibit(PhosphorIconsStyle.bold),
+              color: AD.danger,
+              label: 'Block caller',
+              onTap: () { Navigator.pop(sheetCtx); _blockThreadCaller(t, phone); },
+            ),
+          _ThreadMenuRow(
+            icon: PhosphorIcons.checkCircle(PhosphorIconsStyle.bold),
+            color: AD.iconShield,
+            label: 'Mark all as heard',
+            onTap: () { Navigator.pop(sheetCtx); _markThreadHeard(t); },
+          ),
+          _ThreadMenuRow(
+            icon: PhosphorIcons.trash(PhosphorIconsStyle.bold),
+            color: AD.danger,
+            label: 'Delete thread',
+            danger: true,
+            onTap: () { Navigator.pop(sheetCtx); _deleteThread(t); },
+          ),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
+  }
+
+  /// [INBOX-RENAME-1] Same override flow the thread screen's "Rename caller"
+  /// card-menu action uses — `promptRenameCaller` is the extracted dialog UI,
+  /// this call site does the exact same save + refresh dance
+  /// `_InboxThreadScreenState._renameCaller` does.
+  Future<void> _renameThreadCaller(InboxThread t, String phone) async {
+    final result = await promptRenameCaller(context, currentName: _overrideNames[phone]);
+    if (result == null) return; // cancelled
+    final newName = result.isEmpty ? null : result;
+    await ContactOverrides.I.setName(phone, newName);
+    Analytics.capture('inbox_rename_caller', {'has_number': true, 'cleared': newName == null, 'via': 'list'});
+    await _reload();
+  }
+
+  Future<void> _blockThreadCaller(InboxThread t, String phone) async {
+    await BlockList.I.block(phone);
+    Analytics.capture('inbox_block_tapped', {'report_spam': false, 'via': 'list'});
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Number blocked.')));
+  }
+
+  /// Deletes EVERY card in [t] — `InboxApi.hideCard` per card (the same
+  /// soft-delete RPC the thread screen's single-card delete uses), then drops
+  /// the row from the list optimistically rather than waiting on a refetch.
+  Future<void> _deleteThread(InboxThread t) async {
+    final label = _labelFor(t).title;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AvaDialTheme.surface2,
+        shape: RoundedRectangleBorder(
+          side: const BorderSide(color: AvaDialTheme.border, width: 1),
+          borderRadius: BorderRadius.circular(AD.rListCard),
+        ),
+        title: Text('Delete all voicemails from $label?', style: ADText.threadName(c: AvaDialTheme.text)),
+        content: Text(
+          'Every recording in this thread will be removed from your inbox.',
+          style: ADText.preview(c: AvaDialTheme.textSoft),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel', style: ADText.preview(c: AvaDialTheme.textSoft)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Delete', style: ADText.preview(c: AD.danger)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    var allOk = true;
+    for (final c in t.cards) {
+      final done = await InboxApi.hideCard(t.conv, c.stableId);
+      if (!done) allOk = false;
+    }
+    Analytics.capture('inbox_thread_deleted', {'ok': allOk, 'cards': t.cards.length});
+    if (!mounted) return;
+    if (allOk) {
+      setState(() {
+        _future = _future.then((list) => list.where((x) => x.conv != t.conv).toList());
+      });
+    } else {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Some voicemails couldn’t be deleted — try again.')));
+      await _reload();
+    }
+  }
+
+  /// Marks every card in [t] that has a recording as heard (clears the
+  /// accent/dot even for cards the owner never actually pressed play on).
+  Future<void> _markThreadHeard(InboxThread t) async {
+    for (final c in t.cards) {
+      if (c.hasRecording) await InboxHeardStore.I.markHeard(c.stableId);
+    }
+    Analytics.capture('inbox_thread_marked_heard', {'cards': t.cards.length});
+    if (!mounted) return;
+    setState(() {
+      _heardIds = {..._heardIds, ...t.cards.where((c) => c.hasRecording).map((c) => c.stableId)};
+    });
+  }
+
   String _relativeTime(int ms) {
     if (ms <= 0) return '';
     final dt = DateTime.fromMillisecondsSinceEpoch(ms);
@@ -342,5 +487,33 @@ class _InboxListScreenState extends State<InboxListScreen> {
     if (diff.inHours < 24) return '${diff.inHours}h';
     if (diff.inDays < 7) return '${diff.inDays}d';
     return '${dt.month}/${dt.day}/${dt.year % 100}';
+  }
+}
+
+/// One long-press menu row for the thread-list sheet — mirrors
+/// `_CardMenuRow` in inbox_thread_screen.dart (same leading/label/onTap
+/// shape), kept as its own private copy since that class is file-private.
+class _ThreadMenuRow extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String label;
+  final VoidCallback onTap;
+  final bool danger;
+  const _ThreadMenuRow({
+    required this.icon,
+    required this.color,
+    required this.label,
+    required this.onTap,
+    this.danger = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: PhosphorIcon(icon, color: color),
+      title: Text(label,
+          style: ADText.rowName(c: danger ? AD.danger : AvaDialTheme.text)),
+      onTap: onTap,
+    );
   }
 }

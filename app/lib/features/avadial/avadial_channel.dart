@@ -938,6 +938,35 @@ class AvaDialChannel {
     }
   }
 
+  // ── [INBOX-DOWNLOAD-2] AvaDial Inbox — real "save to Downloads" ────────────
+  /// Copies the file at [path] (a private/temp source the caller already
+  /// wrote) into the PUBLIC Downloads folder under `Download/AvaTok/`, via the
+  /// native `saveToDownloads` MethodChannel handler (AvaDialPlugin.kt):
+  /// `MediaStore.Downloads` on API 29+ (no extra permission needed), or the
+  /// legacy public-Downloads dir on older Android IF `WRITE_EXTERNAL_STORAGE`
+  /// is already granted.
+  ///
+  /// Unlike the other `_invoke*` helpers in this class, this one THROWS on
+  /// failure instead of swallowing it — the caller (inbox_thread_screen.dart
+  /// `_downloadRecording`) needs to know the MediaStore path failed so it can
+  /// fall back to the app-scoped-directory save rather than silently losing
+  /// the recording.
+  Future<String> saveToDownloads({
+    required String path,
+    required String filename,
+    String mime = 'audio/wav',
+  }) async {
+    final saved = await _ch.invokeMethod<String>('saveToDownloads', {
+      'path': path,
+      'filename': filename,
+      'mime': mime,
+    });
+    if (saved == null || saved.isEmpty) {
+      throw Exception('saveToDownloads returned no path');
+    }
+    return saved;
+  }
+
   /// SHA-256 of the last 10 digits of [number], lowercase hex — the directory key
   /// the native overlay/receiver compute. Formatting-independent so a contact and a
   /// call-log entry for the same person collide.

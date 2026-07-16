@@ -13,11 +13,13 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.provider.BlockedNumberContract
 import android.provider.CallLog
 import android.provider.ContactsContract
+import android.provider.MediaStore
 import android.provider.Settings
 import android.content.ContentValues
 import android.provider.Telephony
@@ -776,6 +778,9 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
                 }
                 "dialMmiCode" -> dialMmiCode(ctx, call.argument<String>("code"), result)
                 "defaultVoiceSim" -> result.success(defaultVoiceSimLabel(ctx))
+
+                // ---- [INBOX-DOWNLOAD-2] real public-Downloads save ----
+                "saveToDownloads" -> saveToDownloads(ctx, call, result)
 
                 "writeAvatokDirectory" -> {
                     val jsonStr = call.argument<String>("json") ?: "{}"
@@ -1650,6 +1655,88 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
                 tmp.delete()
             }
         } catch (_: Throwable) { /* best-effort */ }
+    }
+
+    // ── [INBOX-DOWNLOAD-2] Real "save to Downloads" for AvaDial Inbox ───────────
+    /**
+     * Copy the file at [path] (a private app-scoped source, e.g. a cache/temp
+     * file the Dart side just wrote) into the PUBLIC Downloads folder, under an
+     * `AvaTok` subfolder, so the recording is visible in the Files app / a
+     * connected PC exactly like a normal download — not the app-private
+     * `Android/data/<package>/files` directory Lane D's original gap fallback
+     * used.
+     *
+     * API 29+ (Q): goes through `MediaStore.Downloads`
+     * (`ContentResolver.insert` + `IS_PENDING`), which needs NO extra runtime
+     * permission — that's the whole point of scoped storage. API <29: no
+     * MediaStore.Downloads collection exists, so this falls back to the legacy
+     * `Environment.getExternalStoragePublicDirectory(DIRECTORY_DOWNLOADS)` path,
+     * which DOES need `WRITE_EXTERNAL_STORAGE` — this method never REQUESTS
+     * that permission (the manifest doesn't declare it — "AndroidManifest: do
+     * not add permissions" per this lane's brief), it only uses it if some
+     * other path already granted it; otherwise it returns an error the Dart
+     * side falls back on.
+     */
+    private fun saveToDownloads(ctx: Context, call: MethodCall, result: MethodChannel.Result) {
+        val path = call.argument<String>("path")
+        val filename = call.argument<String>("filename")
+        val mime = call.argument<String>("mime") ?: "audio/wav"
+        if (path.isNullOrEmpty() || filename.isNullOrEmpty()) {
+            result.error("bad_args", "path and filename are required", null)
+            return
+        }
+        val src = File(path)
+        if (!src.exists()) {
+            result.error("no_source", "source file not found", null)
+            return
+        }
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val resolver = ctx.contentResolver
+                val values = ContentValues().apply {
+                    put(MediaStore.Downloads.DISPLAY_NAME, filename)
+                    put(MediaStore.Downloads.MIME_TYPE, mime)
+                    put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/AvaTok")
+                    put(MediaStore.Downloads.IS_PENDING, 1)
+                }
+                val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                if (uri == null) {
+                    result.error("insert_failed", "MediaStore insert returned null", null)
+                    return
+                }
+                val out = resolver.openOutputStream(uri)
+                if (out == null) {
+                    result.error("open_failed", "could not open MediaStore output stream", null)
+                    return
+                }
+                out.use { o -> src.inputStream().use { it.copyTo(o) } }
+                values.clear()
+                values.put(MediaStore.Downloads.IS_PENDING, 0)
+                resolver.update(uri, values, null, null)
+                result.success("Downloads/AvaTok/$filename")
+            } else {
+                val granted = ctx.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) ==
+                    PackageManager.PERMISSION_GRANTED
+                if (!granted) {
+                    result.error(
+                        "no_permission",
+                        "WRITE_EXTERNAL_STORAGE not granted (required below API 29)",
+                        null,
+                    )
+                    return
+                }
+                @Suppress("DEPRECATION")
+                val publicDownloads =
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                val dir = File(publicDownloads, "AvaTok")
+                if (!dir.exists()) dir.mkdirs()
+                val dest = File(dir, filename)
+                src.inputStream().use { input -> dest.outputStream().use { output -> input.copyTo(output) } }
+                result.success(dest.absolutePath)
+            }
+        } catch (e: Throwable) {
+            result.error("save_failed", e.message, null)
+        }
     }
 
     private fun placeCall(ctx: Context, number: String?): Boolean {

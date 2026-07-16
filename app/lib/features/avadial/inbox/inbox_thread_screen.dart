@@ -13,6 +13,7 @@ import '../../../core/api_auth.dart';
 import '../../../core/config.dart';
 import '../../../core/ui/avatok_dark.dart';
 import '../../avatok/media.dart' show MediaService;
+import '../avadial_channel.dart';
 import '../avadial_theme.dart';
 import '../block_list.dart';
 import '../contact_edit_screen.dart';
@@ -20,6 +21,7 @@ import '../contact_overrides.dart';
 import '../device_contacts.dart';
 import 'inbox_api.dart';
 import 'inbox_heard_store.dart';
+import 'inbox_send_to_chat.dart';
 
 /// AvaDial Inbox thread — one caller's voicemail/Ava-Receptionist history,
 /// chat-thread style (Specs/PLAN-2026-07-16-ava-receptionist-guardian-FINAL.md
@@ -33,6 +35,48 @@ import 'inbox_heard_store.dart';
 /// importing those private/feature-coupled widgets — this is a fresh,
 /// self-contained card for the standalone Inbox surface, per the lane's hard
 /// rule to leave chat_thread.dart untouched.
+
+/// [INBOX-LISTMENU-1] The "Rename caller" dialog UI, extracted so the
+/// thread-list screen's long-press menu (inbox_list_screen.dart) can show the
+/// EXACT same dialog as this screen's card menu without duplicating markup.
+/// Pure UI — it does NOT write [ContactOverrides] itself; the caller does
+/// that (see `_renameCaller` above / `_renameThreadCaller` in
+/// inbox_list_screen.dart), matching the pre-existing save semantics: null =
+/// cancelled, empty string = "clear the override".
+Future<String?> promptRenameCaller(BuildContext context, {String? currentName}) {
+  final ctrl = TextEditingController(text: currentName ?? '');
+  return showDialog<String>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: AvaDialTheme.surface2,
+      shape: RoundedRectangleBorder(
+        side: const BorderSide(color: AvaDialTheme.border, width: 1),
+        borderRadius: BorderRadius.circular(AD.rListCard),
+      ),
+      title: Text('Rename caller', style: ADText.threadName(c: AvaDialTheme.text)),
+      content: TextField(
+        controller: ctrl,
+        autofocus: true,
+        style: ADText.rowName(c: AvaDialTheme.text),
+        decoration: InputDecoration(
+          hintText: 'Display name',
+          hintStyle: ADText.preview(c: AvaDialTheme.textMute),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: Text('Cancel', style: ADText.preview(c: AvaDialTheme.textSoft)),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+          child: Text('Save', style: ADText.preview(c: AvaDialTheme.accent)),
+        ),
+      ],
+    ),
+  );
+}
+
 class InboxThreadScreen extends StatefulWidget {
   final InboxThread thread;
   const InboxThreadScreen({super.key, required this.thread});
@@ -108,40 +152,13 @@ class _InboxThreadScreenState extends State<InboxThreadScreen> {
   /// (contact_edit_screen.dart / contact_row_menu.dart), so a rename here
   /// also shows up there and vice versa. Number-only (this dialog is not
   /// offered for [InboxThread.isAnonymous] threads — see the card menu).
+  /// The dialog itself is [promptRenameCaller] (extracted top-level function
+  /// below) so the thread-LIST screen's long-press menu can reuse the exact
+  /// same UI/flow (inbox_list_screen.dart `_renameThreadCaller`).
   Future<void> _renameCaller() async {
     final phone = _phone;
     if (phone == null) return;
-    final ctrl = TextEditingController(text: _overrideName ?? '');
-    final result = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AvaDialTheme.surface2,
-        shape: RoundedRectangleBorder(
-          side: const BorderSide(color: AvaDialTheme.border, width: 1),
-          borderRadius: BorderRadius.circular(AD.rListCard),
-        ),
-        title: Text('Rename caller', style: ADText.threadName(c: AvaDialTheme.text)),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          style: ADText.rowName(c: AvaDialTheme.text),
-          decoration: InputDecoration(
-            hintText: 'Display name',
-            hintStyle: ADText.preview(c: AvaDialTheme.textMute),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Cancel', style: ADText.preview(c: AvaDialTheme.textSoft)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-            child: Text('Save', style: ADText.preview(c: AvaDialTheme.accent)),
-          ),
-        ],
-      ),
-    );
+    final result = await promptRenameCaller(context, currentName: _overrideName);
     if (result == null) return; // cancelled
     final newName = result.isEmpty ? null : result;
     await ContactOverrides.I.setName(phone, newName);
@@ -616,19 +633,15 @@ class _VoicemailCardState extends State<_VoicemailCard> {
     }
   }
 
-  /// [INBOX-DOWNLOAD-1] KNOWN GAP — there is no MediaStore / public-Downloads
-  /// write channel anywhere in this app (grepped app/lib and the AvaDial
-  /// platform channel: nothing), and `share_plus` has no "Save to Files" /
-  /// public-Downloads target on Android — that's an OS share-sheet choice,
-  /// not an API this app can drive directly. Falls back to
-  /// `getExternalStorageDirectory()` (Android's app-scoped
-  /// `Android/data/<package>/files` — visible to a file manager without
-  /// root, unlike the fully-private app documents dir) with
-  /// `getApplicationDocumentsDirectory()` as the cross-platform fallback
-  /// where `getExternalStorageDirectory()` returns null (iOS/macOS/etc), and
-  /// shows the saved path in a snackbar so the owner isn't left guessing
-  /// where it went. This is NOT the public Downloads/Music folder the owner
-  /// spec asked for — see Lane D report.
+  /// [INBOX-DOWNLOAD-2] Real "save to Downloads" — writes the cached bytes to
+  /// a private temp file, then hands it to
+  /// `AvaDialChannel.I.saveToDownloads` (new native `saveToDownloads` method,
+  /// AvaDialPlugin.kt), which inserts into `MediaStore.Downloads` on API 29+
+  /// (needs NO extra permission) or falls back to the legacy public Downloads
+  /// dir on older Android IF `WRITE_EXTERNAL_STORAGE` is already granted.
+  /// Falls back to the old app-scoped-directory save (Lane D's original gap
+  /// fallback) on any channel failure or non-Android platform, so the file is
+  /// never lost even when the MediaStore path can't be used.
   Future<void> _downloadRecording() async {
     final bytes = await _fetchBytes();
     if (bytes == null) {
@@ -639,34 +652,56 @@ class _VoicemailCardState extends State<_VoicemailCard> {
       return;
     }
     try {
-      Directory? dir;
-      try { dir = await getExternalStorageDirectory(); } catch (_) {/* not on this platform */}
-      dir ??= await getApplicationDocumentsDirectory();
-      final f = File('${dir.path}/$_fileName');
-      await f.writeAsBytes(bytes, flush: true);
-      Analytics.capture('inbox_voicemail_downloaded', {'ok': true});
+      final tmpDir = await getTemporaryDirectory();
+      final tmp = File('${tmpDir.path}/$_fileName');
+      await tmp.writeAsBytes(bytes, flush: true);
+      await AvaDialChannel.I.saveToDownloads(
+        path: tmp.path,
+        filename: _fileName,
+        mime: 'audio/wav',
+      );
+      Analytics.capture('inbox_voicemail_downloaded', {'ok': true, 'via': 'mediastore'});
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Saved to ${f.path}')));
+            .showSnackBar(SnackBar(content: Text('Saved to Downloads/AvaTok/$_fileName')));
       }
     } catch (e) {
-      Analytics.capture('inbox_voicemail_downloaded', {'ok': false});
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Couldn’t save the recording.')));
+      // Non-Android platform, or the native write failed (e.g. legacy Android
+      // without WRITE_EXTERNAL_STORAGE) — fall back to the app-scoped dir so
+      // the recording is still saved SOMEWHERE rather than lost.
+      try {
+        Directory? dir;
+        try { dir = await getExternalStorageDirectory(); } catch (_) {/* not on this platform */}
+        dir ??= await getApplicationDocumentsDirectory();
+        final f = File('${dir.path}/$_fileName');
+        await f.writeAsBytes(bytes, flush: true);
+        Analytics.capture('inbox_voicemail_downloaded', {'ok': true, 'via': 'fallback'});
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text('Saved to ${f.path}')));
+        }
+      } catch (e2) {
+        Analytics.capture('inbox_voicemail_downloaded', {'ok': false});
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(const SnackBar(content: Text('Couldn’t save the recording.')));
+        }
       }
     }
   }
 
   /// Long-press bottom sheet — same idiom as `contact_row_menu.dart`'s
   /// `showAvaDialRowMenu` (grab handle, `isScrollControlled`, PhosphorIcon
-  /// leading rows). Share/Download only offered when there's a recording.
-  /// Block only offered on a `tel:` thread (owner spec). "Send to AvaTOK
-  /// chat" is deliberately NOT offered — see Lane D report (the existing
-  /// forward flows are text-message/contact-card forwarding, not a
-  /// lightweight "attach this audio and send" path; wiring one up means
-  /// going through `MediaService.encryptAndUpload` + the full chat-send
-  /// pipeline, out of scope for this pass).
+  /// leading rows). Share/Download/"Send to AvaTOK chat" only offered when
+  /// there's a recording. Block only offered on a `tel:` thread (owner spec).
+  /// [INBOX-SENDCHAT-1] "Send to AvaTOK chat" now wired: picks a contact
+  /// (inbox_send_to_chat.dart's minimal picker), uploads the cached
+  /// recording via `MediaService.encryptAndUpload` (kind: MediaKind.audio —
+  /// the SAME envelope a live-recorded voice note uses,
+  /// `chat_thread.dart._stopAndSendRecording`), and sends it with `AvaDm`
+  /// (sync/dm.dart) so it renders as a normal playable voice note in the
+  /// recipient's chat — reusing the existing send pipeline, not touching
+  /// chat_thread.dart.
   Future<void> _showCardMenu(BuildContext context) async {
     await showModalBottomSheet<void>(
       context: context,
@@ -698,6 +733,16 @@ class _VoicemailCardState extends State<_VoicemailCard> {
               color: AD.iconSearch,
               label: 'Download',
               onTap: () { Navigator.pop(sheetCtx); _downloadRecording(); },
+            ),
+          if (_c.hasRecording)
+            _CardMenuRow(
+              icon: PhosphorIcons.paperPlaneRight(PhosphorIconsStyle.bold),
+              color: AD.iconVideo,
+              label: 'Send to AvaTOK chat',
+              onTap: () {
+                Navigator.pop(sheetCtx);
+                sendVoicemailToChat(context, card: _c, callerName: widget.callerName);
+              },
             ),
           _CardMenuRow(
             icon: PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold),
