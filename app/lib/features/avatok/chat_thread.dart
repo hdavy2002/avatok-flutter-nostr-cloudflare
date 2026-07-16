@@ -1274,7 +1274,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         } catch (e) {
           Analytics.capture('chat_media_envelope_parse_failed', {
             'error': e.runtimeType.toString(),
-            'kind': env['kind']?.toString(),
+            // `?? '(absent)'` is load-bearing, not defensive padding:
+            // Analytics.capture takes Map<String, Object>?, so a String? value
+            // here is a compile error — and a MISSING `kind` is exactly one of
+            // the failures this event exists to catch, so null is a value we
+            // must expect and report, not one we can assume away.
+            'kind': env['kind']?.toString() ?? '(absent)',
             'size_type': env['size'].runtimeType.toString(),
             'mine': m.mine,
             'peer': widget.chat.name,
