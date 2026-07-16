@@ -426,6 +426,18 @@ class RemoteConfig {
   /// the symptom is a 400 from `scripts/flags.sh set inAppUpdateEnabled=false`.
   static bool get inAppUpdateEnabled => _b('inAppUpdateEnabled', true);
 
+  /// [AVAGRP-SEENBY-1 / AVAGRP-BUBBLE-2] Per-message group read/delivered
+  /// receipts (the "Info" sheet seen-by data, chat_thread.dart's
+  /// `_showMessageInfo`). Mirrors config.ts `groupReceiptsEnabled`, already
+  /// declared in both `PlatformConfig` and `DEFAULTS` (config.ts:206/373) —
+  /// this getter was the missing client half; without it the flag could be
+  /// read on the server but never checked here, so the dark-launched receipt
+  /// pipeline had no way to actually turn on. Default false (dark launch);
+  /// flip `groupReceiptsEnabled: true` in KV once the per-message ingest +
+  /// hydrate path (`sync_hub.dart` `_ingestMsgReceipt`, `group_dm.dart`
+  /// `sendMsgReceipt`) is device-verified.
+  static bool get groupReceiptsEnabled => _b('groupReceiptsEnabled', false);
+
   /// Fetch now + poll every 15 min. Never throws.
   static Future<void> start() async {
     // Paint the active account's cached admin flag first so admin-only surfaces

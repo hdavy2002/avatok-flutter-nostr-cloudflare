@@ -46,3 +46,18 @@ LinearGradient wallpaperGradient(String? id) {
   final colors = kWallpapers[id] ?? kWallpapers['default']!;
   return LinearGradient(colors: colors, begin: Alignment.topCenter, end: Alignment.bottomCenter);
 }
+
+/// [AVAGRP-BUBBLE-2] Answering the SANITY CHECK left above: every non-'default'
+/// preset is still a near-black tint, so any system/day-pill colour tuned for
+/// [kChatCanvas] (white) needs to know when it's sitting on one of these
+/// instead. Decision (owner asked for a white DEFAULT canvas; these 5 presets
+/// are pre-existing choices, not the product direction going forward): adapt
+/// the pill colours per-wallpaper (see chat_thread.dart's `_sysPill*` getters)
+/// rather than retire the presets outright — cheaper than a parallel dark
+/// bubble system and doesn't strand anyone who already picked teal/sunset/
+/// forest/lavender/sky.
+const Set<String> kDarkWallpaperIds = {'teal', 'sunset', 'forest', 'lavender', 'sky'};
+
+/// True for every preset except the white 'default' (and any unknown id,
+/// which falls back to 'default' in [wallpaperGradient]).
+bool wallpaperIsDark(String? id) => kDarkWallpaperIds.contains(id);

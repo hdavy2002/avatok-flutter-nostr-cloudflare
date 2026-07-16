@@ -189,18 +189,27 @@ class _Msg {
   Map<int, Set<String>> pollBy = {}; // option index → set of voter uids (who-voted)
   Set<int> pollMine = {}; // option indices I currently voted for (drives highlight)
   // [AVAGRP-BUBBLE-1 / message-info] Per-message, per-member receipts for the
-  // WhatsApp-style "Info" sheet (§4). uid → epoch-seconds. Default {} — the
-  // group high-water-mark ticks (`_peerReadTs`/`_peerDeliveredTs`) stay 1:1-only
-  // until Agent C's backend (worker/src/do/inbox.ts + sync_hub.dart) lands and
-  // actually populates these per group message; until then the Info sheet shows
-  // "No read receipts yet" rather than a broken/empty-looking sheet.
+  // WhatsApp-style "Info" sheet (§4). uid → epoch-seconds. Default {}.
+  // [AVAGRP-BUBBLE-2] LIVE as of this change, gated on
+  // `RemoteConfig.groupReceiptsEnabled` (dark launch, default false): populated
+  // by `_applyMsgReceipt` (live `{"t":"msg_receipt",...}` frames) and
+  // `_hydrateMsgReceipts` (`GET /api/msg/seen` on cold open), and persisted
+  // across restarts via `toJson`/`fromJson`. While the flag is off nothing
+  // writes into these maps, so the Info sheet still shows "No read receipts
+  // yet" exactly as before this change.
   Map<String, int> readBy = {};
   Map<String, int> deliveredTo = {};
+  // [AVAGRP-BUBBLE-2] A group SYSTEM announcement ("X created the group", "X
+  // added Y", "X changed the group photo" — `GroupApi.announce()`, wire
+  // envelope `{"t":"gtext","gid":conv,"body":text,"system":true}`). Renders as
+  // a centered pill (`_systemBubble`) with NO avatar, NO sender-name header,
+  // and NO per-sender tint — never routed through the normal `_bubble` path.
+  final bool system;
   _Msg(this.id, this.me, this.text, this.time,
       {this.ts = 0, this.evId, this.senderLabel, this.senderPub, this.reaction, this.media, this.pendingKind, this.mediaCaption = '', this.localBytes,
        this.uploading = false, this.failed = false, this.sent = false, this.replyTo, this.edited = false,
        this.starred = false, this.forwarded = false, this.hidden = false, this.expireAt, this.special, this.extra,
-       this.aiLocal = false, Map<String, int>? readBy, Map<String, int>? deliveredTo})
+       this.aiLocal = false, Map<String, int>? readBy, Map<String, int>? deliveredTo, this.system = false})
       : readBy = readBy ?? {}, deliveredTo = deliveredTo ?? {};
 }
 
@@ -574,6 +583,29 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       // ephemeral presence read only worked when both were online at once, which
       // is why ticks were stuck on "Sent" (owner report 2026-06-27).
       if (_dm != null) _dm!.sendReceipt('read', ts);
+      // [AVAGRP-BUBBLE-2 / AVAGRP-SEENBY-1] "read" half of the group receipt —
+      // mirrors the 1:1 `sendReceipt('read', ts)` call directly above. Group the
+      // currently-rendered, not-mine, non-system messages by their ORIGINAL
+      // sender (bySender) so this is one POST per distinct sender, not one per
+      // message — `AvaGroupDm.sendMsgReceipt` already documents why (only the
+      // author's own InboxDO needs to learn who has seen their message).
+      if (_isGroup && _gdm != null && RemoteConfig.groupReceiptsEnabled) {
+        final bySender = <String, List<String>>{};
+        for (final msg in _msgs) {
+          if (msg.me || msg.system || msg.evId == null) continue;
+          final sender = msg.senderPub;
+          if (sender == null || sender.isEmpty) continue;
+          (bySender[sender] ??= []).add(msg.evId!);
+        }
+        if (bySender.isNotEmpty) {
+          _gdm!.sendMsgReceipt('read', bySender);
+          Analytics.capture('chat_group_receipt_sent', {
+            'status': 'read', 'senders': bySender.length,
+            'mids': bySender.values.fold<int>(0, (n, l) => n + l.length),
+            'gid': widget.chat.gid ?? '',
+          });
+        }
+      }
     });
   }
 
@@ -955,22 +987,85 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     _bindAvaStream(); // render LIVE server @ava answers as they stream in
     _markRead();
     _loadChatExtras();
-    _loadCachedMessages();
-    // Durable group history from local SQLite — the source of truth that
-    // survives restarts WITHOUT re-downloading the backlog (cursor sync). The
-    // row stores `mine` but not the peer id, so senderPub is best-effort here
-    // ('' → no per-sender label); live frames carry the real sender. _onGroupMsg
-    // dedups by rumor id, so this never double-renders what's already shown.
-    Db.I.messagesFor(_convKey!).then((rows) {
+    // [AVAGRP-BUBBLE-2 §6] SEQUENCED, not fire-and-forget: the JSON cache below
+    // carries a correct `senderPub` per message (persisted since [AVAGRP-BUBBLE-1]
+    // — see `_persistNow`/`fromJson`), but the DB replay two lines down passes
+    // `senderPub: ''` for every row (the local SQLite schema doesn't store the
+    // peer id — see the comment on that call). Both calls dedup via `_seenEv`/
+    // `_onGroupMsg`'s `if (_seenEv.contains(rumorId)) return`, so WHICHEVER ONE
+    // RUNS FIRST for a given message wins and the second is silently skipped.
+    // Unsequenced, that was a race: if the DB replay's `.then()` happened to
+    // land before the cache finished its own async reads, its senderPub:''
+    // would "win" and permanently blank that message's avatar/tint for this
+    // session (see the AVAGRP-BUBBLE-2 report for why this can't be fully fixed
+    // without a `senderPub` column in `db.dart`, out of scope for this file).
+    // Awaiting the cache first guarantees it always wins the race for anything
+    // it actually has cached, which is every message received after this fix
+    // landed and persisted at least once.
+    _loadCachedMessages().then((_) {
       if (!mounted) return;
-      for (final m in rows) {
-        _onGroupMsg(GroupMessage(
-            rumorId: m.rumorId, senderPub: '', mine: m.mine,
-            payload: m.payload, createdAt: m.createdAt));
-      }
+      // Durable group history from local SQLite — the source of truth that
+      // survives restarts WITHOUT re-downloading the backlog (cursor sync). The
+      // row stores `mine` but not the peer id, so senderPub is best-effort here
+      // ('' → no per-sender label); live frames carry the real sender. _onGroupMsg
+      // dedups by rumor id, so this never double-renders what's already shown.
+      Db.I.messagesFor(_convKey!).then((rows) {
+        if (!mounted) return;
+        for (final m in rows) {
+          _onGroupMsg(GroupMessage(
+              rumorId: m.rumorId, senderPub: '', mine: m.mine,
+              payload: m.payload, createdAt: m.createdAt));
+        }
+        // [AVAGRP-BUBBLE-2 / AVAGRP-SEENBY-1 §Hydrate] Backfill the Info sheet
+        // for already-rendered OWN messages on cold open — otherwise a message
+        // sent in a past session shows "No read receipts yet" until a NEW live
+        // receipt happens to arrive, even if every peer read it while the
+        // thread was closed. Runs after BOTH replay sources have landed so the
+        // mid list is complete. Best-effort; never blocks the thread opening.
+        if (RemoteConfig.groupReceiptsEnabled) unawaited(_hydrateMsgReceipts());
+      });
     });
     // Let replayed group history settle before indexing LIVE messages into RAG.
     Future.delayed(const Duration(seconds: 3), () { if (mounted) _ragLive = true; });
+  }
+
+  /// [AVAGRP-BUBBLE-2 / AVAGRP-SEENBY-1 §Hydrate] `GET /api/msg/seen` for every
+  /// currently-rendered message I SENT in this group — the Info sheet only
+  /// applies to my own messages (§4/WhatsApp-parity), so that's the only set
+  /// worth hydrating. Server contract: `{receipts:[{msg_id,peer,status,ts},...]}`.
+  Future<void> _hydrateMsgReceipts() async {
+    if (!_isGroup || !mounted) return;
+    final conv = _group?.id;
+    if (conv == null) return;
+    final mids = _msgs.where((m) => m.me && m.evId != null).map((m) => m.evId!).toSet().toList();
+    if (mids.isEmpty) return;
+    try {
+      final res = await ApiAuth.getSigned(
+          '$kApiBase/msg/seen?conv=${Uri.encodeComponent(conv)}&mids=${Uri.encodeComponent(mids.join(','))}');
+      if (res.statusCode != 200 || !mounted) return;
+      final body = jsonDecode(res.body);
+      final receipts = (body is Map ? body['receipts'] : null);
+      if (receipts is! List) return;
+      setState(() {
+        for (final r in receipts) {
+          if (r is! Map) continue;
+          final mid = (r['msg_id'] ?? '').toString();
+          final peer = (r['peer'] ?? '').toString();
+          final status = (r['status'] ?? '').toString();
+          final ts = (r['ts'] as num?)?.toInt() ?? 0;
+          if (mid.isEmpty || peer.isEmpty) continue;
+          final i = _msgs.indexWhere((m) => m.evId == mid);
+          if (i < 0) continue;
+          if (status == 'read') {
+            _msgs[i].readBy[peer] = ts;
+            _msgs[i].deliveredTo.putIfAbsent(peer, () => ts);
+          } else if (status == 'delivered') {
+            _msgs[i].deliveredTo[peer] = ts;
+          }
+        }
+      });
+      _schedulePersist();
+    } catch (_) { /* best-effort; live receipts still arrive over the wire */ }
   }
 
   void _onPresence(Map<String, dynamic> e) {
@@ -1180,12 +1275,26 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     Map<String, dynamic>? replyMeta;
     String? special;
     Map<String, dynamic>? extra;
+    // [AVAGRP-BUBBLE-2] `GroupApi.announce()` (group_info_screen.dart's
+    // photo-change / new_group_screen's "created the group" / add-member
+    // copy) sends `{"t":"gtext","gid":conv,"body":text,"system":true}` — the
+    // SAME envelope shape as an ordinary text message, distinguished only by
+    // this flag. This has been on the wire for years; the client just never
+    // read it, so every announcement rendered as an ordinary tinted bubble
+    // with a sender name and avatar instead of a centered system pill.
+    bool isSystem = false;
     try {
       final env = jsonDecode(m.payload);
       if (env is Map && env['t'] == 'gedit') { _applyEdit(env['target'].toString(), (env['body'] ?? '').toString()); return; }
       if (env is Map && (env['t'] == 'del' || env['t'] == 'gdel')) { if (!m.mine) _applyDelete(env['target'].toString()); return; }
       if (env is Map && env['t'] == 'hide') { _applyHide(env['target'].toString(), env['hidden'] == true); return; }
       if (env is Map && env['t'] == 'vote') { _applyVote(env); return; }
+      // [AVAGRP-BUBBLE-2] Per-message group read/delivered receipt (Agent C's
+      // backend — `sync_hub.dart` `_ingestMsgReceipt`). A CONTROL frame, never a
+      // chat bubble — applies to the already-rendered `_Msg` (matched by its
+      // canonical mid, `_Msg.evId`, the same id already used for reactions) and
+      // returns before falling into the bubble-content switch below.
+      if (env is Map && env['t'] == 'msg_receipt') { _applyMsgReceipt(env.cast<String, dynamic>()); return; }
       if (env is Map && const ['loc', 'live', 'card', 'poll', 'sticker', 'gcall', 'ava', 'ava_private', 'ava_status', 'recept', 'marketplace_deal', 'voicemail', 'agent_transcript'].contains(env['t'])) {
         special = env['t'].toString(); extra = env.cast<String, dynamic>();
         text = _specialCaption(special!, extra!);
@@ -1198,6 +1307,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         if (!m.mine) MediaService.recordReceived(media); // mirror into the recipient's AvaLibrary
       } else if (env is Map && env['t'] == 'gtext') {
         text = (env['body'] ?? '').toString();
+        isSystem = env['system'] == true;
       } else if (env is Map && env['t'] == 'deleted') {
         text = 'This message was deleted'; // server tombstone on re-sync
       } else {
@@ -1242,12 +1352,18 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
           ts: m.createdAt, evId: m.rumorId, media: media, replyTo: replyMeta,
           forwarded: env2['forwarded'] == true, expireAt: exp, special: special, extra: extra,
           starred: _starred.contains(m.rumorId), hidden: _hiddenIds[m.rumorId] == true,
-          senderLabel: _groupLabelFor(m.senderPub, mine: m.mine),
+          // [AVAGRP-BUBBLE-2] A system announcement carries no sender identity —
+          // no name header, no avatar, no per-sender tint (`_systemBubble`
+          // renders before any of that is consulted, but null these out too so
+          // a future call site that reads `senderLabel`/`senderPub` directly
+          // can't accidentally attribute the announcement to whoever posted it).
+          senderLabel: isSystem ? null : _groupLabelFor(m.senderPub, mine: m.mine),
           // [AVAGRP-BUBBLE-1] stable identity for bubble colour + avatar lookup —
           // the previous code only kept the derived display label and threw the
           // uid away, which was the root cause of both the '?' avatar and the
           // reshuffling group tints.
-          senderPub: m.mine ? null : m.senderPub));
+          senderPub: (isSystem || m.mine) ? null : m.senderPub,
+          system: isSystem));
       _noteGuardianFlag(special, extra);
       _msgs.sort((a, b) => a.ts.compareTo(b.ts));
     });
@@ -1255,6 +1371,24 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     // `_ragLive` gates out the history that replays on open (avoids re-indexing).
     if (!m.mine && _ragLive && special == null && media == null) {
       _ragAddLine(_shortPub(m.senderPub), text);
+    }
+    // [AVAGRP-BUBBLE-2 / AVAGRP-SEENBY-1] "delivered" half of the WhatsApp-style
+    // two-step group receipt: the instant a peer's message is rendered on THIS
+    // device it has been delivered, regardless of whether the thread is the one
+    // on screen right now (that's the 'read' half — `_markRead` below fires that
+    // when the thread is actually viewed). System pills and control frames never
+    // get a receipt (they already `return`d above / carry no `senderPub`).
+    // Gated on the dark-launch kill switch — `AvaGroupDm.sendMsgReceipt` is also
+    // defense-in-depth server-side, but skip the network call entirely while off.
+    if (!m.mine && !isSystem && m.senderPub.isNotEmpty && RemoteConfig.groupReceiptsEnabled) {
+      _gdm?.sendMsgReceipt('delivered', {m.senderPub: [m.rumorId]});
+      // Two-sided telemetry (CLAUDE.md): fires on the READER's device — tag the
+      // ORIGINAL SENDER's uid (`sender_pub`) alongside the auto-stamped reader
+      // email, so a report from either party's email can be joined against the
+      // other side via `mid`/`sender_pub`.
+      Analytics.capture('chat_group_receipt_sent', {
+        'status': 'delivered', 'mid': m.rumorId, 'sender_pub': _shortPub(m.senderPub), 'gid': widget.chat.gid ?? '',
+      });
     }
     _jump();
     _markRead();
@@ -1314,9 +1448,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     // `worker/src/do/inbox.ts` + `sync_hub.dart`), a group message can report a
     // real status too: read once EVERY other member has read it, delivered once
     // EVERY other member has it. `_memberUids` is "every member except me" —
-    // set in `_setupGroup`. Until Agent C's wire-up lands, `readBy`/`deliveredTo`
-    // stay `{}` for every group message, so this silently falls through to
-    // "Sent" exactly like today — no regression, just no group ticks yet either.
+    // set in `_setupGroup`. [AVAGRP-BUBBLE-2] The wire-up is LIVE, gated on
+    // `RemoteConfig.groupReceiptsEnabled` (dark launch, default false) — while
+    // off, `readBy`/`deliveredTo` stay `{}` for every group message (nothing
+    // populates them), so this still falls through to "Sent" exactly as before.
     if (_isGroup) {
       if (_memberUids.isNotEmpty && m.readBy.length >= _memberUids.length) {
         return (icon: PhosphorIcons.checks(PhosphorIconsStyle.bold), color: AD.iconSearch, label: 'Read');
@@ -1535,6 +1670,41 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     if (i >= 0 && mounted) { setState(() { _msgs[i].text = body; _msgs[i].edited = true; }); _schedulePersist(); }
   }
 
+  /// [AVAGRP-BUBBLE-2] Apply an incoming per-message group receipt
+  /// (`{"t":"msg_receipt","mid":...,"uid":...,"status":"read"|"delivered","ts":...}`,
+  /// `sync_hub.dart` `_ingestMsgReceipt`) onto the matching `_Msg`, keyed by its
+  /// canonical mid (`_Msg.evId` — the same id `_onGroupMsg` already stamps from
+  /// `GroupMessage.rumorId`, and the same one reactions key off). A message not
+  /// currently rendered (scrolled out, not yet replayed) is a no-op — the next
+  /// `GET /api/msg/seen` hydrate on open will backfill it once it IS rendered.
+  /// A 'read' receipt also counts as 'delivered' (you can't read what didn't
+  /// arrive) so `_statusFor`'s delivered-vs-read gates never desync.
+  void _applyMsgReceipt(Map<String, dynamic> env) {
+    final mid = (env['mid'] ?? '').toString();
+    final uid = (env['uid'] ?? '').toString();
+    final status = (env['status'] ?? '').toString();
+    final ts = (env['ts'] as num?)?.toInt() ?? 0;
+    if (mid.isEmpty || uid.isEmpty || (status != 'read' && status != 'delivered')) return;
+    final i = _msgs.indexWhere((x) => x.evId == mid);
+    if (i < 0 || !mounted) return;
+    setState(() {
+      if (status == 'read') {
+        _msgs[i].readBy[uid] = ts;
+        _msgs[i].deliveredTo.putIfAbsent(uid, () => ts);
+      } else {
+        _msgs[i].deliveredTo[uid] = ts;
+      }
+    });
+    _schedulePersist();
+    // Two-sided telemetry (CLAUDE.md): fires on the ORIGINAL SENDER's device —
+    // auto-stamped with the sender's own email; `reader_pub` identifies the
+    // OTHER party so this event joins with that reader's own
+    // `chat_group_receipt_sent` event via `mid`.
+    Analytics.capture('chat_group_receipt_received', {
+      'status': status, 'mid': mid, 'reader_pub': _shortPub(uid), 'gid': widget.chat.gid ?? '',
+    });
+  }
+
   // ---- local message persistence ----
   // The relay doesn't re-deliver your OWN sent DMs on resubscribe, so cache the
   // thread locally and reload it on open. (Media messages aren't cached.)
@@ -1599,6 +1769,15 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         reaction: j['reaction'] as String?,
         starred: j['starred'] == true,
         hidden: j['hidden'] == true || _hiddenIds[ev] == true,
+        system: j['system'] == true, // [AVAGRP-BUBBLE-2]
+        // [AVAGRP-BUBBLE-2 §6] Restore per-member receipts so the Info sheet /
+        // group ticks survive an app restart instead of resetting to "no
+        // receipts yet" every cold open. `(j['readBy'] as Map?)` is JSON-decoded
+        // as `Map<String, dynamic>` — cast each value back to int explicitly
+        // rather than a blind `.cast<String, int>()`, which throws on a `num`
+        // that decoded as double.
+        readBy: (j['readBy'] as Map?)?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())),
+        deliveredTo: (j['deliveredTo'] as Map?)?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())),
       );
       // [MSG-OUTBOX-1] Restore a NOT-yet-ACKed send with the right affordance so it
       // never silently vanishes (the original bug). If its clientId (=evId) is STILL
@@ -1670,6 +1849,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         if (m.reaction != null) 'reaction': m.reaction,
         if (m.starred) 'starred': true,
         if (m.hidden) 'hidden': true, // soft-delete survives reopen; data retained for Undo
+        if (m.system) 'system': true, // [AVAGRP-BUBBLE-2]
+        // [AVAGRP-BUBBLE-2 §6] Per-member receipts — see the `fromJson` restore
+        // side for why these survive an app restart now instead of resetting.
+        if (m.readBy.isNotEmpty) 'readBy': m.readBy,
+        if (m.deliveredTo.isNotEmpty) 'deliveredTo': m.deliveredTo,
         // Restore hint: this bubble was NOT yet confirmed on the server. `mediaPending`
         // distinguishes a stuck media upload (no auto-resume) from a text send the
         // outbox will keep retrying.
@@ -1816,6 +2000,38 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     }
   }
 
+  // [AVAGRP-BUBBLE-2] Wallpaper-aware system/day-pill colours.
+  //
+  // REASONING (owner asked for a white DEFAULT canvas, 2026-07-17; see the
+  // SANITY CHECK left in `wallpaper.dart`): `kChatSysPillBg`/`kChatCanvasMeta`
+  // ([AVAGRP-BUBBLE-1]) are tuned for `kChatCanvas` (white) and read fine there
+  // — but 5 SELECTABLE presets (teal/sunset/forest/lavender/sky) stay near-black
+  // tints, and a near-white opaque pill floating on one of those is exactly the
+  // "hole punched in the page" class of bug this pass is fixing elsewhere (see
+  // `_hiddenBubble`), just inverted. Deriving from the ACTIVE wallpaper (rather
+  // than hardcoding one pair) fixes both cases with one bubble/pill system
+  // instead of a parallel dark theme. This is a minimal contrast fix, not a
+  // vote to keep the presets — if the owner later retires them, delete
+  // `wallpaperIsDark`/`kDarkWallpaperIds` (`wallpaper.dart`) and these getters
+  // collapse back to the single pale-on-white pair.
+  bool get _wallpaperDark => wallpaperIsDark(_wallpaperId);
+  Color get _sysPillBg => _wallpaperDark ? const Color(0xB3202024) : kChatSysPillBg;
+  Color get _sysPillBorder => _wallpaperDark ? Colors.white.withValues(alpha: 0.14) : kChatCanvasMeta.withValues(alpha: 0.35);
+  // Day-separator / older-messages caption tone (grey on light, pale-white on dark).
+  Color get _sysPillMeta => _wallpaperDark ? Colors.white.withValues(alpha: 0.82) : kChatCanvasMeta;
+  // The group-photo-change / "X created the group" announcement ink. Owner
+  // instruction (2026-07-17): "Use small fonts in black" — literal black is
+  // the light-canvas case; a dark wallpaper needs the inverse (white) or the
+  // text is unreadable, which the instruction didn't anticipate (it predates
+  // the dark-preset sanity check).
+  Color get _sysAnnounceInk => _wallpaperDark ? Colors.white : Colors.black;
+  // Text painted DIRECTLY on the canvas (no pill behind it) — day separators
+  // already had their own pill so they're covered by `_sysPillMeta` above; this
+  // pair is for canvas-level chrome like the in-thread search empty state.
+  Color get _canvasInk => _wallpaperDark ? AD.textPrimary : kChatCanvasInk;
+  Color get _canvasMeta => _wallpaperDark ? AD.textSecondary : kChatCanvasMeta;
+  Color get _canvasTertiary => _wallpaperDark ? AD.textTertiary : kChatCanvasMeta.withValues(alpha: 0.7);
+
   // A subtle divider rendered above the oldest loaded messages once we've paged
   // (or are paging) deep archive, so the user understands they're now looking at
   // history pulled from the cloud backup.
@@ -1823,23 +2039,25 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   // tuned for the OLD dark thread canvas. On the new white `kChatCanvas` a
   // white-at-18%-alpha divider and white-60% caption are both close to
   // invisible. Use the pale-on-white pair from `bubble_theme.dart` instead.
+  // [AVAGRP-BUBBLE-2] Now wallpaper-aware (`_sysPillMeta`) rather than
+  // hardcoded to the pale-on-white pair — see the reasoning above.
   Widget _olderMessagesDivider() => Padding(
         padding: const EdgeInsets.only(top: 4, bottom: 10),
         child: Row(children: [
-          Expanded(child: Divider(color: kChatCanvasMeta.withValues(alpha: 0.35), thickness: 1)),
+          Expanded(child: Divider(color: _sysPillMeta.withValues(alpha: 0.35), thickness: 1)),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10),
             child: _archiveLoading
                 ? Row(mainAxisSize: MainAxisSize.min, children: [
                     SizedBox(width: 12, height: 12,
-                        child: CircularProgressIndicator(strokeWidth: 1.6, color: kChatCanvasMeta)),
+                        child: CircularProgressIndicator(strokeWidth: 1.6, color: _sysPillMeta)),
                     const SizedBox(width: 7),
-                    Text('Loading older messages…', style: ADText.statCaption(c: kChatCanvasMeta)),
+                    Text('Loading older messages…', style: ADText.statCaption(c: _sysPillMeta)),
                   ])
                 : Text(_archiveDone ? 'Start of conversation' : 'Older messages',
-                    style: ADText.statCaption(c: kChatCanvasMeta)),
+                    style: ADText.statCaption(c: _sysPillMeta)),
           ),
-          Expanded(child: Divider(color: kChatCanvasMeta.withValues(alpha: 0.35), thickness: 1)),
+          Expanded(child: Divider(color: _sysPillMeta.withValues(alpha: 0.35), thickness: 1)),
         ]),
       );
 
@@ -1896,19 +2114,54 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   // [AVAGRP-BUBBLE-1] `AD.card` (near-black) + `AD.borderControl` were tuned
   // for the old dark canvas; on white they'd read as a hard black pill. Use
   // the pale system-pill pair (`kChatSysPillBg`/`kChatCanvasMeta`) instead.
+  // [AVAGRP-BUBBLE-2] Now wallpaper-aware (`_sysPillBg`/`_sysPillBorder`/
+  // `_sysPillMeta`) instead of hardcoded — see the reasoning above `_sysPillBg`.
   Widget _daySeparator(String label) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 10),
         child: Center(
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             decoration: BoxDecoration(
-              color: kChatSysPillBg,
+              color: _sysPillBg,
               borderRadius: BorderRadius.circular(100),
-              border: Border.all(color: kChatCanvasMeta.withValues(alpha: 0.35), width: 1.5),
+              border: Border.all(color: _sysPillBorder, width: 1.5),
               boxShadow: const [],
             ),
             child: Text(label.toUpperCase(),
-                style: ADText.statCaption(c: kChatCanvasMeta)),
+                style: ADText.statCaption(c: _sysPillMeta)),
+          ),
+        ),
+      );
+
+  /// [AVAGRP-BUBBLE-2] Centered system-announcement pill for a group ("Humphrey
+  /// Davy created the group", "X added Y", "X changed the group photo" —
+  /// `GroupApi.announce()`, wire envelope `{"t":"gtext","system":true,...}`).
+  /// Modelled on `_daySeparator` immediately above (same pale pill), but with:
+  ///   * NO avatar, NO sender-name header, NO bubble tail, NO per-sender tint —
+  ///     a system row belongs to no one.
+  ///   * Literal small BLACK text on the default white canvas, per the owner's
+  ///     explicit "Use small fonts in black" instruction (2026-07-17) — NOT
+  ///     `_sysPillMeta`'s grey caption tone, which `_daySeparator`/
+  ///     `_olderMessagesDivider` use instead. `_sysAnnounceInk` inverts to
+  ///     white on a dark wallpaper preset so it stays readable there too (see
+  ///     the wallpaper reasoning above).
+  ///   * Full-sentence casing (not the day-pill's uppercase) — this is a
+  ///     readable announcement, not a date-chip label.
+  Widget _systemBubble(_Msg m) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Center(
+          child: Container(
+            constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+            decoration: BoxDecoration(
+              color: _sysPillBg,
+              borderRadius: BorderRadius.circular(100),
+              border: Border.all(color: _sysPillBorder, width: 1),
+              boxShadow: const [],
+            ),
+            child: Text(m.text,
+                textAlign: TextAlign.center,
+                style: ADText.statCaption(c: _sysAnnounceInk)),
           ),
         ),
       );
@@ -5655,20 +5908,27 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   /// on `_showReactedBy` above (same sheet chrome, same `_reactorName`/
   /// `_memberNames` resolution) plus the group avatars from `_memberAvatars`.
   ///
-  /// CONTRACT SEAM (for Agent C — worker/src/do/inbox.ts + routes/messaging.ts +
-  /// sync/sync_hub.dart): `m.readBy`/`m.deliveredTo` are `Map<uid, epochSeconds>`
-  /// and default to `{}`. Until the per-message/per-member receipt store lands
-  /// and actually populates them (today only the thread-level high-water marks
-  /// `_peerReadTs`/`_peerDeliveredTs` exist, and only for 1:1), this sheet is
-  /// built and wired against the maps but will show "No read receipts yet" for
-  /// EVERY message, in both 1:1 and group threads — that is expected, not a bug,
-  /// until the backend lands.
+  /// [AVAGRP-BUBBLE-2] CONTRACT SEAM CLOSED: `m.readBy`/`m.deliveredTo`
+  /// (`Map<uid, epochSeconds>`) are now actually populated — live, via
+  /// `_applyMsgReceipt` (`{"t":"msg_receipt",...}` frames, `sync_hub.dart`
+  /// `_ingestMsgReceipt`), and on cold open via `_hydrateMsgReceipts`
+  /// (`GET /api/msg/seen`). Gated end-to-end on `RemoteConfig.groupReceiptsEnabled`
+  /// (dark launch, default false) — while off this sheet still shows "No read
+  /// receipts yet" for every group message exactly as before, by construction
+  /// (nothing writes into the maps with the flag off).
   void _showMessageInfo(_Msg m) {
+    // Two-sided telemetry (CLAUDE.md): this event fires on the SENDER's device
+    // (Info is own-messages-only), so `Analytics.capture` auto-stamps the
+    // sender's email. `mid` is the join key against the reader-side
+    // `chat_group_receipt_*` events below, which tag the READER's uid — either
+    // party's telemetry can be pulled and cross-referenced via `mid`.
     Analytics.capture('chat_message_info_view', {
       'group': widget.chat.group,
       'group_size': widget.chat.group ? widget.chat.members : 1,
       'read_count': m.readBy.length,
       'delivered_count': m.deliveredTo.length,
+      'mid': m.evId ?? '',
+      'group_receipts_enabled': RemoteConfig.groupReceiptsEnabled,
     });
     showModalBottomSheet(
       context: context,
@@ -8344,18 +8604,26 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
 
   /// Compact "AI results" section rendered under the literal hits (or in the empty
   /// state). Handles spinner / error / empty / consent-off, all in Zine styling.
+  // [AVAGRP-BUBBLE-2] This whole search-results section renders directly on the
+  // canvas (inside the message ListView, not a modal sheet) — every
+  // `AD.textTertiary`/`ADText.preview()` bare-default below was white/white-45%
+  // text tuned for the old dark canvas and is close to invisible on the new
+  // white one. Swapped to the wallpaper-aware `_canvas*` getters (same class of
+  // fix as `_hiddenBubble`/`_daySeparator`). `AD.iconSearch`/`AD.danger` are
+  // saturated accent colours that already read fine on both light and dark
+  // backgrounds, so those are left as-is.
   Widget _aiResultsSection() {
     final children = <Widget>[
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
         child: Row(children: [
-          Expanded(child: Container(height: 1, color: AD.textTertiary.withValues(alpha: 0.4))),
+          Expanded(child: Container(height: 1, color: _canvasTertiary.withValues(alpha: 0.4))),
           const SizedBox(width: 8),
           PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill), size: 13, color: AD.iconSearch),
           const SizedBox(width: 5),
           Text('AI RESULTS', style: ADText.statCaption(c: AD.iconSearch)),
           const SizedBox(width: 8),
-          Expanded(child: Container(height: 1, color: AD.textTertiary.withValues(alpha: 0.4))),
+          Expanded(child: Container(height: 1, color: _canvasTertiary.withValues(alpha: 0.4))),
         ]),
       ),
     ];
@@ -8364,7 +8632,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       children.add(Padding(
         padding: const EdgeInsets.fromLTRB(16, 2, 16, 12),
         child: Text('Enable AvaBrain for your messages in Settings to search by meaning.',
-            textAlign: TextAlign.center, style: ADText.preview()),
+            textAlign: TextAlign.center, style: ADText.preview(c: _canvasMeta)),
       ));
       return Column(mainAxisSize: MainAxisSize.min, children: children);
     }
@@ -8392,7 +8660,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       children.add(Padding(
         padding: const EdgeInsets.fromLTRB(16, 2, 16, 12),
         child: Text('No meaning-based matches in this chat.',
-            textAlign: TextAlign.center, style: ADText.preview()),
+            textAlign: TextAlign.center, style: ADText.preview(c: _canvasMeta)),
       ));
       return Column(mainAxisSize: MainAxisSize.min, children: children);
     }
@@ -8406,10 +8674,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
             PhosphorIcon(
                 _aiShowOther ? PhosphorIcons.caretDown(PhosphorIconsStyle.bold)
                     : PhosphorIcons.caretRight(PhosphorIconsStyle.bold),
-                size: 12, color: AD.textTertiary),
+                size: 12, color: _canvasTertiary),
             const SizedBox(width: 4),
             Text('${other.length} from your other chats',
-                style: ADText.statCaption(c: AD.textTertiary)),
+                style: ADText.statCaption(c: _canvasTertiary)),
           ]),
         ),
       ));
@@ -8438,13 +8706,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       margin: const EdgeInsets.fromLTRB(16, 3, 16, 3),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: AD.overlaySheet,
+        color: _sysPillBg,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: tappable ? AD.textPrimary : AD.textTertiary, width: tappable ? 2 : 1),
+        border: Border.all(color: tappable ? _canvasInk : _canvasTertiary, width: tappable ? 2 : 1),
       ),
       child: Row(children: [
         Expanded(child: Text(label, maxLines: 2, overflow: TextOverflow.ellipsis,
-            style: ADText.rowName())),
+            style: ADText.rowName(c: _canvasInk))),
         if (tappable) ...[
           const SizedBox(width: 8),
           PhosphorIcon(PhosphorIcons.arrowUpRight(PhosphorIconsStyle.bold), size: 15, color: AD.iconSearch),
@@ -8467,7 +8735,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
               decoration: BoxDecoration(
                 color: AD.iconVideo,
                 borderRadius: BorderRadius.circular(100),
-                border: Border.all(color: AD.borderControl, width: 1),
+                border: Border.all(color: _sysPillBorder, width: 1),
                 boxShadow: const [],
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -8483,6 +8751,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   /// Empty state shown when an in-thread search finds no literal match. Keeps the
   /// user IN the thread (the complaint was being kicked out) and offers Ava as a
   /// meaning-based fallback over the on-device transcript.
+  /// [AVAGRP-BUBBLE-2] Renders directly on the canvas — every colour below was
+  /// `AD.textTertiary`/bare `ADText.rowName()`/`ADText.preview()` (white /
+  /// white-alpha, tuned for the old dark canvas) and read as invisible text on
+  /// the new white one, plus a dark `AD.overlaySheet` pill for "Discuss with
+  /// Ava" that was its own small hole punched in the page. Swapped to the
+  /// wallpaper-aware `_canvas*`/`_sysPill*` getters (same fix class as
+  /// `_hiddenBubble`).
   Widget _searchEmptyState(String query) {
     final q = query.trim();
     final ranForThisQuery = _aiSearchedQuery == q &&
@@ -8491,13 +8766,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 12),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
-            size: 30, color: AD.textTertiary),
+            size: 30, color: _canvasTertiary),
         const SizedBox(height: 10),
         Text('No messages match “$query”.',
-            textAlign: TextAlign.center, style: ADText.rowName()),
+            textAlign: TextAlign.center, style: ADText.rowName(c: _canvasInk)),
         const SizedBox(height: 4),
         Text('Search this chat by meaning, not just exact words.',
-            textAlign: TextAlign.center, style: ADText.preview()),
+            textAlign: TextAlign.center, style: ADText.preview(c: _canvasMeta)),
         const SizedBox(height: 14),
         // Server-side smart (semantic) search over the user's own consented
         // index — the primary "AI search" path. Shows spinner/hits/error once run.
@@ -8516,17 +8791,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
             decoration: BoxDecoration(
-              color: AD.overlaySheet,
+              color: _sysPillBg,
               borderRadius: BorderRadius.circular(100),
-              border: Border.all(color: AD.borderControl, width: 1),
+              border: Border.all(color: _sysPillBorder, width: 1),
               boxShadow: const [],
             ),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               PhosphorIcon(PhosphorIcons.chatCircleText(PhosphorIconsStyle.bold),
-                  size: 15, color: AD.textPrimary),
+                  size: 15, color: _canvasInk),
               const SizedBox(width: 6),
               Text('Discuss with Ava',
-                  style: ADText.rowName(c: AD.textPrimary)),
+                  style: ADText.rowName(c: _canvasInk)),
             ]),
           ),
         ),
@@ -8885,6 +9160,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   // Soft-deleted (by me) pill: "You deleted this message" + an Undo that restores
   // it in MY view only. The content lives on in `m` until I tap Undo (recover) or
   // leave it hidden. onRight for my own messages, left for received ones I hid.
+  // [AVAGRP-BUBBLE-2] REGRESSION FIX: this was still `AD.headerFooter`
+  // (near-black, 0xFF131316) + `AD.textSecondary` (white 60%) — a hole punched
+  // in the white canvas ([AVAGRP-BUBBLE-1] made the canvas white but missed
+  // this bubble). Same pale/system pill treatment as `_daySeparator`/
+  // `_systemBubble`, wallpaper-aware via `_sysPillBg`/`_sysPillBorder`/
+  // `_sysPillMeta` — this is a system-style row (no per-sender tint applies).
   Widget _hiddenBubble(_Msg m) {
     return Align(
       alignment: m.me ? Alignment.centerRight : Alignment.centerLeft,
@@ -8892,15 +9173,15 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: AD.headerFooter,
-          border: Border.all(color: AD.borderControl.withValues(alpha: 0.35), width: 1.5),
+          color: _sysPillBg,
+          border: Border.all(color: _sysPillBorder, width: 1.5),
           borderRadius: BorderRadius.circular(14),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.bold), size: 14, color: AD.textSecondary),
+          PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.bold), size: 14, color: _sysPillMeta),
           const SizedBox(width: 6),
           Text('You deleted this message',
-              style: ADText.preview(c: AD.textSecondary)),
+              style: ADText.preview(c: _sysPillMeta)),
           const SizedBox(width: 12),
           GestureDetector(
             behavior: HitTestBehavior.opaque,
@@ -9177,6 +9458,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   }
 
   Widget _bubble(_Msg m) {
+    // [AVAGRP-BUBBLE-2] Group SYSTEM announcement — a centered pill, never a
+    // normal per-sender bubble. Checked FIRST: a system row has no avatar, no
+    // sender-name header, no bubble tail, and must never fall into any of the
+    // special/hidden/media logic below.
+    if (m.system) return _systemBubble(m);
     // Ava "working…" chip (kind 'ava_status') — inline, not a bubble. A 'phase:end'
     // frame is the CLOSE signal (e.g. image done/failed) — it must collapse the
     // chip, not render as a stuck "generating…" placeholder.
