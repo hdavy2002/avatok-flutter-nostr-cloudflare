@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../../../shell/v2/shell_chrome.dart';
+import '../../../sync/sync_hub.dart';
 import '../avadial_theme.dart';
 import '../device_contacts.dart';
 import 'inbox_api.dart';
@@ -41,6 +44,9 @@ class _InboxListScreenState extends State<InboxListScreen> {
   final _searchCtrl = TextEditingController();
   String _query = '';
 
+  StreamSubscription<HubEvent>? _liveSub;
+  Timer? _liveDebounce;
+
   @override
   void initState() {
     super.initState();
@@ -48,10 +54,30 @@ class _InboxListScreenState extends State<InboxListScreen> {
     // resolves known callers instead of flashing raw numbers then relabeling.
     DeviceContacts.I.load();
     _future = InboxApi.threads();
+    // [INBOX-LIVE-1, owner bug 2026-07-16] Voicemails only appeared after a
+    // manual pull-to-refresh. InboxDO broadcasts every append over the live
+    // sync WS, and SyncHub surfaces it on `incoming` — subscribe to voicemail/
+    // receptionist convs and reload. Debounced: a burst (initial sync replay,
+    // multi-card delivery) collapses into one fetch.
+    // NOTE convKey shape: SyncHub._ingestMsg maps non-dm_ convs to 'g:<conv>'
+    // (sync_hub.dart ~line 729), so a voicemail row for conv
+    // `voicemail_<owner>__<caller>` arrives here as `g:voicemail_…`.
+    _liveSub = SyncHub.I.incoming
+        .where((e) =>
+            e.convKey.startsWith('g:voicemail_') ||
+            e.convKey.startsWith('g:recept_'))
+        .listen((_) {
+      _liveDebounce?.cancel();
+      _liveDebounce = Timer(const Duration(milliseconds: 400), () {
+        if (mounted) _reload();
+      });
+    });
   }
 
   @override
   void dispose() {
+    _liveDebounce?.cancel();
+    _liveSub?.cancel();
     _searchCtrl.dispose();
     super.dispose();
   }
