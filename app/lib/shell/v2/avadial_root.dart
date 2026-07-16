@@ -23,6 +23,7 @@ import '../../features/avadial/contact_row_menu.dart';
 import '../../features/avadial/device_call_log.dart';
 import '../../features/avadial/device_contacts.dart';
 import '../../features/avadial/dialpad_search_tab.dart';
+import '../../features/avadial/inbox/inbox_list_screen.dart';
 import '../../features/avadial/outgoing_call_screen.dart';
 import '../../features/avadial/sms/sms_threads_screen.dart';
 import '../../features/avadial/sms/sms_unread_store.dart';
@@ -57,8 +58,13 @@ class _AvaDialRootState extends State<AvaDialRoot> {
   // different color, so users can recognise it"), reusing the same accents the
   // empty states already used for these tabs so the palette stays consistent.
   // Tab order (owner request 2026-07-14): Contacts · Messages · Dialpad ·
-  // Block list · Call logs. The IndexedStack bodies below MUST stay in this same
-  // order (index maps positionally).
+  // Block list · Call logs · Inbox. The IndexedStack bodies below MUST stay in
+  // this same order (index maps positionally).
+  //
+  // [AVA-RCPT-8] "Inbox" (Specs/PLAN-2026-07-16-ava-receptionist-guardian-
+  // FINAL.md, Owner-locked scope item 2) appended LAST so it never renumbers
+  // the existing five tabs. Gated independently on RemoteConfig.pstnVoicemail
+  // (like Messages on avaSms) — while off it keeps the Phase-1 placeholder.
   static const _items = [
     _CallsTabItem(Icons.person_outline, Icons.person, 'Contacts', AD.iconSearch),
     // [AVA-SMS-BADGE-1] Messages carries the unread-SMS count in ORANGE.
@@ -67,6 +73,7 @@ class _AvaDialRootState extends State<AvaDialRoot> {
     _CallsTabItem(Icons.dialpad_outlined, Icons.dialpad, 'Dialpad', AD.primaryBadge),
     _CallsTabItem(Icons.block_outlined, Icons.block, 'Block list', AD.danger),
     _CallsTabItem(Icons.history_outlined, Icons.history, 'Call logs', AD.online),
+    _CallsTabItem(Icons.voicemail_outlined, Icons.voicemail, 'Inbox', AD.iconShield),
   ];
 
   @override
@@ -123,7 +130,7 @@ class _AvaDialRootState extends State<AvaDialRoot> {
                 final on = RemoteConfig.avaDialer;
                 if (on) AvaDialChannel.I.ensureWired();
                 // Bodies MUST match the _items tab order:
-                // Contacts · Messages · Dialpad · Block list · Call logs.
+                // Contacts · Messages · Dialpad · Block list · Call logs · Inbox.
                 return IndexedStack(index: _tab, children: [
               on
                   ? const _ContactsTab()
@@ -165,6 +172,18 @@ class _AvaDialRootState extends State<AvaDialRoot> {
                       subtitle:
                           'Your device call history with friend/spam labels — coming with AvaDial.',
                       color: AD.online,
+                    ),
+              // [AVA-RCPT-8] Inbox — gated INDEPENDENTLY on `pstnVoicemail` (a
+              // live-traffic PSTN feature, separate opt-in from the base dialer
+              // role) exactly like Messages is gated on `avaSms` above.
+              RemoteConfig.pstnVoicemail
+                  ? const InboxListScreen()
+                  : const ShellEmptyState(
+                      icon: Icons.voicemail_outlined,
+                      title: 'Inbox',
+                      subtitle:
+                          'Missed calls Ava answers for you will show up here — coming with AvaDial.',
+                      color: AD.iconShield,
                     ),
                 ]);
               },
