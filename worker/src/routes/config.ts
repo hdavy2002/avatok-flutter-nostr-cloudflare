@@ -411,6 +411,24 @@ export interface PlatformConfig {
   agentConcurrencyA: number;       // AGENT_CONCURRENCY_A — Mode A concurrent calls per primary number (1)
   agentConcurrencyB: number;       // AGENT_CONCURRENCY_B — Mode B concurrent escrowed sessions per service number (5)
   networkReconnectWindowSec: number; // NETWORK_RECONNECT_WINDOW — drop-past-this settles+refunds, seconds (20)
+
+  // PSTN voicemail platform — Canonical Architecture v1.0 (Specs/PLAN-2026-07-16-
+  // ava-receptionist-guardian-FINAL.md, "Rollout inversion": V1 SHIPS VOICEMAIL FOR
+  // EVERYONE; the AI pipeline is merged but DARK — no engine code exists yet).
+  // `pstnVoicemail` is the master switch for worker/src/routes/pstn.ts's whole
+  // Vobiz webhook surface (answer/hangup/record-cb/expect). While FALSE the
+  // routes still run in PURE PROBE MODE (capture-only + orphan voicemail — this
+  // doubles as the Phase-0 Vobiz wiring probe and is safe dark because the routes
+  // are unreachable unless Vobiz itself calls them). Flip ON in KV (staging
+  // first) once the carrier-forwarding matrix (plan Phase 0) passes.
+  pstnVoicemail: boolean;
+  // Max voicemail recording length in seconds for the PSTN (Vobiz) leg — separate
+  // numeric flag from the existing in-app `voicemailRecordSec` (voicemail_room.ts)
+  // even though the default matches, because the two record windows are enforced
+  // by different systems (Vobiz's <Record maxLength=…> XML attribute vs our own
+  // DO timer) and may need to diverge for carrier/cost reasons. Numeric — remember
+  // the numericKeys entry below.
+  pstnVoicemailRecordSec: number;
 }
 
 // FREE LAUNCH (2026-06-28, owner-locked Specs/FREE-LAUNCH-DIRECTION.md): ship an
@@ -613,6 +631,11 @@ const DEFAULTS: PlatformConfig = {
   agentConcurrencyA: 1,
   agentConcurrencyB: 5,
   networkReconnectWindowSec: 20,
+  // PSTN voicemail platform — DARK. While false, worker/src/routes/pstn.ts runs
+  // pure-probe mode only (capture + orphan voicemail, no owner inbox delivery).
+  // Flip ON in KV (staging first) once Phase 0 carrier verification passes.
+  pstnVoicemail: false,
+  pstnVoicemailRecordSec: 25,
 };
 
 /** Merged config for server-side gates (same blob getConfig serves). */
@@ -665,6 +688,8 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     "minServiceRate", "agentRateAPerMin", "platformFeePerMin", "serviceLineFeePerMin", "agentMaxCallSec",
     "ringTimeoutSec", "agentAutoanswerSec", "voicemailRecordSec", "escrowPromptTimeoutSec", "offlineDetectSec",
     "agentConcurrencyA", "agentConcurrencyB", "networkReconnectWindowSec",
+    // PSTN voicemail platform (Canonical Architecture v1.0).
+    "pstnVoicemailRecordSec",
   ]);
   for (const [k, v] of Object.entries(body)) {
     if (!(k in DEFAULTS)) return json({ error: `unknown key: ${k}` }, 400);

@@ -78,6 +78,7 @@ import { getPaidCallOfferRoute, getPaidCallSettingsRoute, putPaidCallSettingsRou
 import { getAgentSettings, putAgentSettings, listAgentServices, createAgentService, updateAgentService, deleteAgentService, listAgentCalls, getAgentCallTranscript } from "./routes/agent_profiles";
 // [WP3] Voicemail bot session start (plan §3 step 4 / §7 item 5 / §15.5).
 import { voicemailStart, voicemailRecording } from "./routes/voicemail_routes";
+import { pstnRoute } from "./routes/pstn";
 // [WP4] Ava AI Voice Agent — Grok realtime session start (plan §4/§8/§15.1/§15.3).
 import { agentCallStart } from "./routes/agent_voice_routes";
 // [WP4] RAG document pipeline — Grok Collections (plan §5/§9).
@@ -580,6 +581,10 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/voicemail/start" && req.method === "POST") return await voicemailStart(req, env);
       // GAP-3: owner-authed voicemail recording playback (mirrors /api/receptionist/recording).
       if (p === "/api/voicemail/recording" && req.method === "GET") return await voicemailRecording(req, env);
+      // PSTN gateway + voicemail execution mode (Canonical Architecture v1.0,
+      // Specs/PLAN-2026-07-16-ava-receptionist-guardian-FINAL.md). Single
+      // startsWith dispatcher — routes/pstn.ts parses the sub-path itself.
+      if (p.startsWith("/api/pstn/")) return await pstnRoute(req, env, p);
       // [WP3] Agent Profiles + service numbers (plan §4/§7/§8b/§12.5/§12.8/§12.10).
       // Mode A (primary number) settings — 403 unless voiceAgent flag is on.
       if (p === "/api/agent/settings" && req.method === "GET") return await getAgentSettings(req, env);

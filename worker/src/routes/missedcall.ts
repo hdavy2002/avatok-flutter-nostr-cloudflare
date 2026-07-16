@@ -59,6 +59,12 @@ async function verifyToken(env: Env, token: string): Promise<string | null> {
   }
 }
 
+// Re-exported for other routes (e.g. pstn.ts's expect-native handler) that need
+// to verify the same long-lived device token minted by /api/missedcall/token —
+// no behavior change, just exposing the existing internal verifier under a
+// clearer cross-module name.
+export { verifyToken as verifyMissedcallDeviceToken };
+
 /** POST /api/missedcall/token — Clerk-auth. Mints a 30-day device token for this user. */
 export async function missedCallToken(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);

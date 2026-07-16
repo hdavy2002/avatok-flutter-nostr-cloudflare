@@ -359,4 +359,11 @@ export interface Env {
   TEST_CLOCK_OFFSET_MS?: string;
   // DLQ alert recipient (defaults to hdavy2005@gmail.com).
   ALERT_EMAIL?: string;
+
+  // PSTN voicemail platform (Canonical Architecture v1.0, Specs/PLAN-2026-07-16-
+  // ava-receptionist-guardian-FINAL.md). Long random secret Vobiz's webhook URLs
+  // carry as a trailing path segment (routes/pstn.ts). Unset → falls back to a
+  // fixed probe-grade constant in pstn.ts (fine for the Phase-0 wiring probe;
+  // production should set this via `wrangler secret put VOBIZ_WEBHOOK_SECRET`).
+  VOBIZ_WEBHOOK_SECRET?: string;
 }
