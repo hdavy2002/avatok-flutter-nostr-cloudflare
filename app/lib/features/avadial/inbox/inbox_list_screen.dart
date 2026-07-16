@@ -344,17 +344,28 @@ class _InboxListScreenState extends State<InboxListScreen> {
 
   String _formatTel(String e164) => e164; // kept simple; the number is already E.164
 
-  // [AVAINBOX-1] Owner spec pic3: "light green with red numbers" for a card
-  // with new/unplayed voicemail. A literal pastel light-green would blow out
-  // against this app's near-black dark theme (every other AvaDial surface is
-  // AD dark-v2, see avadial_theme.dart) — so this is a DESATURATED dark green
-  // tint that reads unmistakably as "green" (distinct hue from every other
-  // row) without the low-contrast wash a bright pastel would cause on black.
-  // Kept local to this screen (not promoted to AD.*) since it's a one-off,
-  // owner-specific accent, not a reusable design token.
-  static const _unreadCardBg = Color(0xFF16241B);
-  static const _unreadCardBorder = Color(0xFF2E6B44);
-  static const _unreadBadgeBg = Color(0xFFE5484D); // red — matches AD.danger family
+  // [AVAINBOX-2] Owner spec pic3, restated 2026-07-16 after AVAINBOX-1 shipped
+  // a dark tint instead: "light green with red numbers" — literal, not a
+  // desaturated dark-green wash. The owner said he'd asked for this before and
+  // will look for a real light-green card, so this ships exactly that: a
+  // genuinely LIGHT green surface that pops out of the near-black list.
+  // `AD.bubbleOutBg`/`AD.bubbleOutInk`/`AD.bubbleOutPlay` already ARE this
+  // "light green card, dark ink" pairing (the outgoing chat-bubble tokens in
+  // avatok_dark.dart) — reused here rather than inventing new hex, per the
+  // "use AD.* tokens where suitable ones exist" convention.
+  //
+  // Because the card is now LIGHT, every child (title/preview/timestamp) that
+  // was styled for the dark theme would go invisible on it — each is given an
+  // explicit dark-on-light color below instead of the row's normal
+  // AvaDialTheme.text/textSoft/textMute (those are near-white, made for the
+  // dark surface2 card). `ZineIconBadge` is unaffected: it paints its own
+  // colored fill + `Zine.ink` (near-black) glyph regardless of the row's
+  // background, so it already reads fine on both card states.
+  static const _unreadCardBg = AD.bubbleOutBg; // 0xFFCDEBD3 — light mint-green
+  static const _unreadCardBorder = AD.bubbleOutPlay; // 0xFF3E8E5A — deeper green edge
+  static const _unreadTitleInk = AD.bubbleOutInk; // 0xFF1C3324 — dark ink, paired w/ bubbleOutBg
+  static const _unreadSecondaryInk = Color(0xFF2A4436); // dark forest green — preview + timestamp
+  static const _unreadBadgeRed = Color(0xFFB71C1C); // deep red — the "red numbers" themselves
 
   Widget _row(InboxThread t) {
     final label = _labelFor(t);
@@ -387,27 +398,31 @@ class _InboxListScreenState extends State<InboxListScreen> {
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('Missed call from ${label.title}',
-                  style: ADText.threadName(c: AvaDialTheme.text),
+                  style: ADText.threadName(c: hasUnread ? _unreadTitleInk : AvaDialTheme.text),
                   maxLines: 1, overflow: TextOverflow.ellipsis),
               const SizedBox(height: 2),
               Text(preview,
-                  style: ADText.preview(c: AvaDialTheme.textSoft),
+                  style: ADText.preview(c: hasUnread ? _unreadSecondaryInk : AvaDialTheme.textSoft),
                   maxLines: 1, overflow: TextOverflow.ellipsis),
             ]),
           ),
           const SizedBox(width: 8),
           Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Text(_relativeTime(t.latest.createdAtMs), style: ADText.statCaption(c: AvaDialTheme.textMute)),
+            Text(_relativeTime(t.latest.createdAtMs),
+                style: ADText.statCaption(c: hasUnread ? _unreadSecondaryInk : AvaDialTheme.textMute)),
             const SizedBox(height: 6),
             if (hasUnread)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                 constraints: const BoxConstraints(minWidth: 20),
-                decoration: BoxDecoration(color: _unreadBadgeBg, borderRadius: BorderRadius.circular(100)),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(100),
+                  border: Border.all(color: _unreadBadgeRed, width: 1.4),
+                ),
                 child: Text(
                   unreadCount > 99 ? '99+' : '$unreadCount',
                   textAlign: TextAlign.center,
-                  style: ADText.statCaption(c: Colors.white).copyWith(fontWeight: FontWeight.w800),
+                  style: ADText.statCaption(c: _unreadBadgeRed).copyWith(fontWeight: FontWeight.w900),
                 ),
               ),
           ]),
