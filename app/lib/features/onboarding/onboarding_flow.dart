@@ -25,6 +25,7 @@ import '../../identity/identity.dart';
 import '../ava_ai/ava_ai_setup.dart';
 import '../avadial/avadial_channel.dart';
 import '../avadial/device_contacts.dart';
+import '../avadial/pstn_forwarding_intro.dart';
 import '../avatok/contacts.dart';
 
 /// The sign-up flow shown after Clerk auth on a fresh account. Starts by asking
@@ -67,8 +68,21 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   // are left in this file, unrouted, same pattern as the other retired steps
   // (account_kind, profile, verify_identity, drive_backup, contacts, add_ai,
   // apps) — do not re-add 'phone_roles' without an explicit owner request.
+  // [AVA-RCPT-CONSENT-1] SAME DAY (owner decision): carrier voicemail
+  // forwarding ships ON BY DEFAULT for every user, via informed consent
+  // rather than silently. 'voicemail_forwarding' is that consent step for
+  // NEW signups — see pstn_forwarding_intro.dart. Gated identically to the
+  // rest of the AvaDial telecom surface (Android + avaDialer + pstnVoicemail,
+  // same flags pstn_forwarding_setup.dart's Settings row uses) so onboarding
+  // stays 'terms' -> 'notifications' only when the feature is dark. Existing
+  // users who never went through onboarding are offered the same intro once,
+  // post-login, from shell_v2.dart's startup wiring.
   static List<String> _composeSteps() {
-    return <String>['terms', 'notifications'];
+    final steps = <String>['terms', 'notifications'];
+    if (Platform.isAndroid && RemoteConfig.pstnVoicemail && RemoteConfig.avaDialer) {
+      steps.add('voicemail_forwarding');
+    }
+    return steps;
   }
   static final List<String> _stepNames = _composeSteps();
   static final int _steps = _stepNames.length;
@@ -294,6 +308,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       case 'account_kind': return _accountType();
       case 'notifications': return _notifications();
       case 'phone_roles': return _phoneRoles();
+      case 'voicemail_forwarding': return _voicemailForwardingStep();
       case 'terms': return _terms();
       case 'profile': return _profileStep();
       case 'contacts': return _contacts();
@@ -694,6 +709,14 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       ),
     );
   }
+
+  // ---- Step: voicemail forwarding consent (AVA-RCPT-CONSENT-1) — OPTIONAL ----
+  // Embeds the SAME explainer/CTA body the existing-user re-offer route uses
+  // (pstn_forwarding_intro.dart) — do not re-implement the dial sequence or
+  // the "3 circumstances" copy here. onFinished == _next: Continue (after the
+  // three carrier codes are dialed) and "Not now" both just advance the flow,
+  // exactly like every other skippable onboarding step in this file.
+  Widget _voicemailForwardingStep() => PstnForwardingIntroBody(onFinished: _next);
 
   // ---- Step: make AvaTOK your phone (AVA-ONBOARD-2) — OPTIONAL ----
   // Only reachable on Android with shellV2 + avaDialer on (see _composeSteps).

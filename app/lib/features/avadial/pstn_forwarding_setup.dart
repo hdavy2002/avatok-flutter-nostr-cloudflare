@@ -20,24 +20,39 @@ import 'avadial_theme.dart';
 /// dialer/SMS app going forward (spam can't be filtered well enough as a
 /// default handler), so carrier conditional call forwarding to Vobiz's
 /// voicemail line is now the ONLY voicemail path. This screen is a simple
-/// two-toggle "Voicemail" settings section — no more multi-step guided setup,
-/// no spam toggle (not possible without the call-screening role, which AvaTOK
-/// no longer requests).
+/// three-toggle "Voicemail" settings section — no more multi-step guided
+/// setup, no spam toggle (not possible without the call-screening role,
+/// which AvaTOK no longer requests).
+///
+/// [AVA-RCPT-CONSENT-1] EXTENDED same day (owner decision): carrier voicemail
+/// forwarding is now ON BY DEFAULT for every user, surfaced via an
+/// informed-consent screen rather than buried here — see
+/// pstn_forwarding_intro.dart. This screen stays the ongoing Settings surface
+/// (toggle any of the three off/on any time) and now also owns the SHARED
+/// dial+persist logic ([pstnDialAndPersist] et al. below) that the intro
+/// screen reuses — do not duplicate that logic anywhere else.
 ///
 ///   • "Send missed calls to voicemail"   — ON dials `*61*<DID>#` (forward on
 ///     no-answer), OFF dials `##61#`.
 ///   • "Send declined calls to voicemail" — ON dials `*67*<DID>#` (forward on
 ///     busy/decline), OFF dials `##67#`.
+///   • "Send calls to voicemail when your phone is off or unreachable" — ON
+///     dials `*62*<DID>#` (forward on unreachable), OFF dials `##62#`.
 ///
-/// Both dial through [AvaDialChannel.dialMmiCode] — USSD first, `ACTION_CALL`
-/// fallback — never a raw dial the user has to watch and interpret.
+/// All three dial through [AvaDialChannel.dialMmiCode] — USSD first,
+/// `ACTION_CALL` fallback — never a raw dial the user has to watch and
+/// interpret.
 ///
-/// Defaults ON: the first time this screen opens with no stored toggle state,
-/// both toggles show ON immediately and the two enable codes are dialed once
-/// in the background; a failure on either flips that toggle back OFF and shows
-/// the carrier's raw response so the user knows what happened. Toggle state is
-/// persisted per-account via [readScoped]/[scopedKey] (never a raw global key
-/// — one phone can be shared by a parent + child accounts).
+/// Defaults ON: the first time this screen (or the intro screen) opens with
+/// no stored toggle state, all three toggles show ON immediately and the
+/// three enable codes are dialed once in the background; a failure on any
+/// one flips that toggle back OFF and shows the carrier's raw response so the
+/// user knows what happened. An existing user who already had the first two
+/// toggles set (from before the third toggle shipped) gets the new
+/// "unreachable" toggle defaulted ON and dialed once on next open, same as a
+/// true first-run. Toggle state is persisted per-account via
+/// [readScoped]/[scopedKey] (never a raw global key — one phone can be shared
+/// by a parent + child accounts).
 ///
 /// Visible only behind [RemoteConfig.pstnVoicemail]. Callers should gate on
 /// the flag before navigating here; the screen also self-guards in [build] as
@@ -47,6 +62,163 @@ import 'avadial_theme.dart';
 /// said — it does NOT talk to the AvaTOK worker (consent recording, DID
 /// assignment, `pstn_forwarding` state) — that is a different lane's
 /// territory (worker/src/routes/pstn.ts, AVA-RCPT-2/4).
+
+/// The three carrier-forwarding conditions AvaTOK offers. Shared by
+/// [PstnForwardingSetupScreen] (one toggle at a time) and the informed-consent
+/// intro screen (pstn_forwarding_intro.dart, all three sequentially).
+enum PstnForwardKind { missed, declined, unreachable }
+
+extension PstnForwardKindX on PstnForwardKind {
+  /// Per-account storage base key (namespaced via [scopedKey] by every
+  /// reader/writer — never read/written raw).
+  String get storageKey {
+    switch (this) {
+      case PstnForwardKind.missed:
+        return 'pstn_voicemail_missed_on';
+      case PstnForwardKind.declined:
+        return 'pstn_voicemail_declined_on';
+      case PstnForwardKind.unreachable:
+        return 'pstn_voicemail_unreachable_on';
+    }
+  }
+
+  /// Analytics `kind` value — unchanged for missed/declined so existing
+  /// dashboards keep working; unreachable is new.
+  String get analyticsKind {
+    switch (this) {
+      case PstnForwardKind.missed:
+        return 'missed';
+      case PstnForwardKind.declined:
+        return 'declined';
+      case PstnForwardKind.unreachable:
+        return 'unreachable';
+    }
+  }
+
+  String enableCode(String did) {
+    switch (this) {
+      case PstnForwardKind.missed:
+        return '*61*$did#';
+      case PstnForwardKind.declined:
+        return '*67*$did#';
+      case PstnForwardKind.unreachable:
+        return '*62*$did#';
+    }
+  }
+
+  String get disableCode {
+    switch (this) {
+      case PstnForwardKind.missed:
+        return '##61#';
+      case PstnForwardKind.declined:
+        return '##67#';
+      case PstnForwardKind.unreachable:
+        return '##62#';
+    }
+  }
+}
+
+/// Result of dialing one enable/disable MMI code — shared shape so both call
+/// sites (settings screen, intro screen) render the same carrier-response /
+/// error text.
+class PstnDialResult {
+  final bool ok;
+  final String? response; // raw carrier response text, when present
+  final String? error;    // user-facing error text, when !ok
+  const PstnDialResult({required this.ok, this.response, this.error});
+}
+
+/// User-facing text for a failed [AvaDialChannel.dialMmiCode] call. Shared by
+/// both call sites so the wording never drifts between them.
+String pstnErrorFor(Map<String, dynamic> res, String code) {
+  final err = res['error'] as String?;
+  if (err == 'no_permission') {
+    return 'AvaTOK needs call permission to dial $code — grant it, then try again.';
+  }
+  if (err == 'no_code') return 'Something went wrong preparing $code.';
+  if (res['timeout'] == true) {
+    return "$code didn't get a response from your carrier — check your signal and try again.";
+  }
+  return "Your carrier didn't accept $code — try again, or dial it yourself from the keypad.";
+}
+
+/// Dials [kind]'s MMI code toward [wantOn] against [did] and persists the
+/// resulting toggle state per-account on success (never on failure — the
+/// stored value must always reflect what the carrier actually confirmed).
+/// Fires the same `avadial_pstn_voicemail_toggle_tapped`/`_result` analytics
+/// pair the settings screen has always fired, tagged with [kind] and
+/// [isInitialDefault].
+///
+/// THE shared enable/disable primitive — [PstnForwardingSetupScreen] and the
+/// informed-consent intro screen (pstn_forwarding_intro.dart) both call this
+/// instead of dialing+persisting independently. Do not duplicate this logic.
+Future<PstnDialResult> pstnDialAndPersist({
+  required PstnForwardKind kind,
+  required bool wantOn,
+  required String did,
+  required FlutterSecureStorage storage,
+  bool isInitialDefault = false,
+}) async {
+  final code = wantOn ? kind.enableCode(did) : kind.disableCode;
+  Analytics.capture('avadial_pstn_voicemail_toggle_tapped', {
+    'kind': kind.analyticsKind,
+    'want_on': wantOn,
+    'initial_default': isInitialDefault,
+  });
+  final res = await AvaDialChannel.I.dialMmiCode(code);
+  final ok = res['ok'] == true;
+  final response = ok
+      ? ((res['response'] as String?)?.trim().isNotEmpty == true
+          ? res['response'] as String
+          : null)
+      : null;
+  final error = ok ? null : pstnErrorFor(res, code);
+  Analytics.capture('avadial_pstn_voicemail_toggle_result', {
+    'kind': kind.analyticsKind,
+    'want_on': wantOn,
+    'ok': ok,
+    'initial_default': isInitialDefault,
+  });
+  if (ok) {
+    try {
+      await storage.write(key: scopedKey(kind.storageKey), value: wantOn ? '1' : '0');
+    } catch (_) {/* best-effort */}
+  }
+  return PstnDialResult(ok: ok, response: response, error: error);
+}
+
+/// Dials all three enable codes (missed → declined → unreachable), in that
+/// order, via [pstnDialAndPersist] — the sequential "turn everything on"
+/// primitive used by the informed-consent intro screen
+/// (pstn_forwarding_intro.dart) on first run / re-offer. Each code is dialed
+/// even if an earlier one failed (a rejected `*67*` must not block `*61*`/
+/// `*62*` from being tried); failed codes are simply left OFF by
+/// [pstnDialAndPersist]. [onEach] fires after every code so the caller can
+/// update a progress UI and its own analytics as it goes.
+Future<List<PstnDialResult>> pstnEnableAllForwarding({
+  required String did,
+  required FlutterSecureStorage storage,
+  void Function(PstnForwardKind kind, PstnDialResult result)? onEach,
+}) async {
+  final results = <PstnDialResult>[];
+  for (final kind in const [
+    PstnForwardKind.missed,
+    PstnForwardKind.declined,
+    PstnForwardKind.unreachable,
+  ]) {
+    final result = await pstnDialAndPersist(
+      kind: kind,
+      wantOn: true,
+      did: did,
+      storage: storage,
+      isInitialDefault: true,
+    );
+    results.add(result);
+    onEach?.call(kind, result);
+  }
+  return results;
+}
+
 class PstnForwardingSetupScreen extends StatefulWidget {
   const PstnForwardingSetupScreen({super.key});
 
@@ -57,17 +229,15 @@ class PstnForwardingSetupScreen extends StatefulWidget {
 class _PstnForwardingSetupScreenState extends State<PstnForwardingSetupScreen> {
   static const String _did = kPstnVoicemailDid;
 
-  // Per-account persisted toggle state. Base keys namespaced via [scopedKey]
-  // in every read/write (see core/account_storage.dart — MANDATORY).
-  static const String _missedKey = 'pstn_voicemail_missed_on';
-  static const String _declinedKey = 'pstn_voicemail_declined_on';
   static final FlutterSecureStorage _sec = const FlutterSecureStorage();
 
   bool _loading = true;
   bool? _missedOn;   // null only transiently while loading
   bool? _declinedOn;
+  bool? _unreachableOn;
   bool _busyMissed = false;
   bool _busyDeclined = false;
+  bool _busyUnreachable = false;
   String? _lastResponse; // last raw carrier response shown to the user
   String? _lastError;
   String? _simLabel;
@@ -91,106 +261,126 @@ class _PstnForwardingSetupScreenState extends State<PstnForwardingSetupScreen> {
   }
 
   Future<void> _init() async {
-    final storedMissed = await readScoped(_sec, _missedKey);
-    final storedDeclined = await readScoped(_sec, _declinedKey);
-    final firstOpen = storedMissed == null && storedDeclined == null;
+    final storedMissed = await readScoped(_sec, PstnForwardKind.missed.storageKey);
+    final storedDeclined = await readScoped(_sec, PstnForwardKind.declined.storageKey);
+    final storedUnreachable = await readScoped(_sec, PstnForwardKind.unreachable.storageKey);
+    final firstOpen = storedMissed == null && storedDeclined == null && storedUnreachable == null;
     if (!mounted) return;
     if (firstOpen) {
-      // Defaults ON — show both ON right away, then dial the enable codes once
-      // in the background; a failure flips the affected toggle back OFF.
+      // True first run — show all three ON right away, then dial the three
+      // enable codes once in the background; a failure flips the affected
+      // toggle back OFF.
       setState(() {
         _missedOn = true;
         _declinedOn = true;
+        _unreachableOn = true;
         _loading = false;
       });
-      await _dialAndPersist(missed: true, wantOn: true, isInitialDefault: true);
-      await _dialAndPersist(missed: false, wantOn: true, isInitialDefault: true);
+      await _dialAndPersist(PstnForwardKind.missed, wantOn: true, isInitialDefault: true);
+      await _dialAndPersist(PstnForwardKind.declined, wantOn: true, isInitialDefault: true);
+      await _dialAndPersist(PstnForwardKind.unreachable, wantOn: true, isInitialDefault: true);
       return;
     }
     setState(() {
       _missedOn = storedMissed == '1';
       _declinedOn = storedDeclined == '1';
+      _unreachableOn = storedUnreachable == '1';
       _loading = false;
     });
+    if (storedUnreachable == null) {
+      // Existing user from before the third toggle shipped — default the new
+      // condition ON too, and dial it once, same as a true first-run would
+      // have for all three.
+      setState(() => _unreachableOn = true);
+      await _dialAndPersist(PstnForwardKind.unreachable, wantOn: true, isInitialDefault: true);
+    }
   }
 
-  String _errorFor(Map<String, dynamic> res, String code) {
-    final err = res['error'] as String?;
-    if (err == 'no_permission') {
-      return "AvaTOK needs call permission to dial $code — grant it, then try again.";
+  bool _valueFor(PstnForwardKind kind) {
+    switch (kind) {
+      case PstnForwardKind.missed:
+        return _missedOn ?? false;
+      case PstnForwardKind.declined:
+        return _declinedOn ?? false;
+      case PstnForwardKind.unreachable:
+        return _unreachableOn ?? false;
     }
-    if (err == 'no_code') return 'Something went wrong preparing $code.';
-    if (res['timeout'] == true) {
-      return "$code didn't get a response from your carrier — check your signal and try again.";
-    }
-    return "Your carrier didn't accept $code — try again, or dial it yourself from the keypad.";
   }
 
-  /// Dials the MMI code for [missed] (true = the `*61*`/`##61#` no-answer
-  /// pair, false = the `*67*`/`##67#` busy/decline pair) toward [wantOn], then
-  /// persists the toggle on success or reverts it on failure. Used both for
-  /// user-driven toggles and the one-time initial-default dial.
-  Future<void> _dialAndPersist({
-    required bool missed,
+  bool _busyFor(PstnForwardKind kind) {
+    switch (kind) {
+      case PstnForwardKind.missed:
+        return _busyMissed;
+      case PstnForwardKind.declined:
+        return _busyDeclined;
+      case PstnForwardKind.unreachable:
+        return _busyUnreachable;
+    }
+  }
+
+  void _setBusy(PstnForwardKind kind, bool busy) {
+    switch (kind) {
+      case PstnForwardKind.missed:
+        _busyMissed = busy;
+        return;
+      case PstnForwardKind.declined:
+        _busyDeclined = busy;
+        return;
+      case PstnForwardKind.unreachable:
+        _busyUnreachable = busy;
+        return;
+    }
+  }
+
+  void _setValue(PstnForwardKind kind, bool value) {
+    switch (kind) {
+      case PstnForwardKind.missed:
+        _missedOn = value;
+        return;
+      case PstnForwardKind.declined:
+        _declinedOn = value;
+        return;
+      case PstnForwardKind.unreachable:
+        _unreachableOn = value;
+        return;
+    }
+  }
+
+  /// Dials [kind]'s MMI code toward [wantOn] via the shared
+  /// [pstnDialAndPersist] helper, then updates this screen's own busy/value/
+  /// error UI state from the result. Used both for user-driven toggles and
+  /// the one-time initial-default dial.
+  Future<void> _dialAndPersist(
+    PstnForwardKind kind, {
     required bool wantOn,
     bool isInitialDefault = false,
   }) async {
-    final key = missed ? _missedKey : _declinedKey;
-    final code = wantOn
-        ? (missed ? '*61*$_did#' : '*67*$_did#')
-        : (missed ? '##61#' : '##67#');
     setState(() {
-      if (missed) {
-        _busyMissed = true;
-      } else {
-        _busyDeclined = true;
-      }
+      _setBusy(kind, true);
       _lastError = null;
     });
-    Analytics.capture('avadial_pstn_voicemail_toggle_tapped', {
-      'kind': missed ? 'missed' : 'declined',
-      'want_on': wantOn,
-      'initial_default': isInitialDefault,
-    });
-    final res = await AvaDialChannel.I.dialMmiCode(code);
+    final result = await pstnDialAndPersist(
+      kind: kind,
+      wantOn: wantOn,
+      did: _did,
+      storage: _sec,
+      isInitialDefault: isInitialDefault,
+    );
     if (!mounted) return;
-    final ok = res['ok'] == true;
     setState(() {
-      if (missed) {
-        _busyMissed = false;
+      _setBusy(kind, false);
+      if (result.ok) {
+        _lastResponse = result.response;
+        _setValue(kind, wantOn);
       } else {
-        _busyDeclined = false;
-      }
-      if (ok) {
-        _lastResponse = (res['response'] as String?)?.trim().isNotEmpty == true
-            ? res['response'] as String
-            : null;
-        if (missed) {
-          _missedOn = wantOn;
-        } else {
-          _declinedOn = wantOn;
-        }
-      } else {
-        _lastError = _errorFor(res, code);
-        // Revert — the toggle must always reflect reality, never an optimistic
-        // guess of what the carrier did with the code we sent it.
-        if (missed) {
-          _missedOn = !wantOn;
-        } else {
-          _declinedOn = !wantOn;
-        }
+        _lastError = result.error;
+        // Revert — the toggle must always reflect reality, never an
+        // optimistic guess of what the carrier did with the code we sent it.
+        _setValue(kind, !wantOn);
       }
     });
-    Analytics.capture('avadial_pstn_voicemail_toggle_result', {
-      'kind': missed ? 'missed' : 'declined',
-      'want_on': wantOn,
-      'ok': ok,
-      'initial_default': isInitialDefault,
-    });
-    if (ok) {
-      try { await _sec.write(key: scopedKey(key), value: wantOn ? '1' : '0'); } catch (_) {/* best-effort */}
-    } else if (!isInitialDefault) {
-      _toast(_lastError ?? "Couldn't reach your carrier.");
+    if (!result.ok && !isInitialDefault) {
+      _toast(result.error ?? "Couldn't reach your carrier.");
     }
   }
 
@@ -242,8 +432,8 @@ class _PstnForwardingSetupScreenState extends State<PstnForwardingSetupScreen> {
                         Text(
                           'AvaTOK is no longer your phone or SMS app, so it can only pick up '
                           'calls your carrier hands it. Turning these on tells your carrier to '
-                          'send missed or declined calls to AvaTOK instead of ringing out — '
-                          "you'll see them in your Inbox with a transcript.",
+                          'send missed, declined or unreachable calls to AvaTOK instead of '
+                          "ringing out — you'll see them in your Inbox with a transcript.",
                           style: ZineText.sub(size: 12.5, color: AvaDialTheme.textSoft),
                         ),
                       ]),
@@ -281,21 +471,19 @@ class _PstnForwardingSetupScreenState extends State<PstnForwardingSetupScreen> {
                     _toggleRow(
                       title: 'Send missed calls to voicemail',
                       sub: "No answer within your carrier's ring window",
-                      value: _missedOn ?? false,
-                      busy: _busyMissed,
-                      onChanged: _busyMissed
-                          ? null
-                          : (v) => _dialAndPersist(missed: true, wantOn: v),
+                      kind: PstnForwardKind.missed,
                     ),
                     const Divider(height: 22, thickness: 1, color: AD.borderHairline),
                     _toggleRow(
                       title: 'Send declined calls to voicemail',
                       sub: 'You decline, or your line is busy',
-                      value: _declinedOn ?? false,
-                      busy: _busyDeclined,
-                      onChanged: _busyDeclined
-                          ? null
-                          : (v) => _dialAndPersist(missed: false, wantOn: v),
+                      kind: PstnForwardKind.declined,
+                    ),
+                    const Divider(height: 22, thickness: 1, color: AD.borderHairline),
+                    _toggleRow(
+                      title: 'Send calls to voicemail when your phone is off or unreachable',
+                      sub: 'No signal, airplane mode, or powered off',
+                      kind: PstnForwardKind.unreachable,
                     ),
                   ]),
                 ),
@@ -321,7 +509,7 @@ class _PstnForwardingSetupScreenState extends State<PstnForwardingSetupScreen> {
                 _bullet('No spam filtering here — that needs the call-screening role, which '
                     'AvaTOK no longer asks for.'),
                 _bullet('Calls you answer ring and connect exactly as they do today — this '
-                    'only affects calls you miss or decline.'),
+                    'only affects calls you miss, decline, or can\'t receive.'),
                 _bullet('Each toggle dials one short carrier code for you — no need to type '
                     'anything yourself.'),
               ],
@@ -332,10 +520,9 @@ class _PstnForwardingSetupScreenState extends State<PstnForwardingSetupScreen> {
   Widget _toggleRow({
     required String title,
     required String sub,
-    required bool value,
-    required bool busy,
-    required ValueChanged<bool>? onChanged,
+    required PstnForwardKind kind,
   }) {
+    final busy = _busyFor(kind);
     return Row(children: [
       Expanded(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -349,7 +536,10 @@ class _PstnForwardingSetupScreenState extends State<PstnForwardingSetupScreen> {
         const SizedBox(
             width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
       else
-        _VoicemailToggle(value: value, onChanged: onChanged),
+        _VoicemailToggle(
+          value: _valueFor(kind),
+          onChanged: (v) => _dialAndPersist(kind, wantOn: v),
+        ),
     ]);
   }
 
@@ -451,7 +641,7 @@ class _PstnForwardingRow extends StatelessWidget {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('Voicemail', style: ADText.rowName()),
               const SizedBox(height: 2),
-              Text('Send missed and declined calls to your AvaTOK Inbox.',
+              Text('Send missed, declined and unreachable calls to your AvaTOK Inbox.',
                   style: ADText.preview()),
             ]),
           ),

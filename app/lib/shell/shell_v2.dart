@@ -21,6 +21,7 @@ import '../features/avadial/in_call_screen.dart';
 import '../features/avadial/inbox/inbox_list_screen.dart';
 import '../features/avadial/missed_call_service.dart';
 import '../features/avadial/pstn_call_screen.dart';
+import '../features/avadial/pstn_forwarding_intro.dart';
 import '../features/avadial/sms/sms_thread_screen.dart';
 import '../identity/identity.dart';
 import 'v2/app_switcher_bar.dart';
@@ -230,6 +231,49 @@ class _ShellV2State extends State<ShellV2> {
     _wireCompose();
     _wireMissedCall();
     _maybeRepromptDefaultApps();
+    _maybeShowVoicemailIntro();
+  }
+
+  /// [AVA-RCPT-CONSENT-1] (owner decision 2026-07-16, PLAN-2026-07-16
+  /// receptionist/guardian doc): carrier voicemail forwarding is ON BY
+  /// DEFAULT for every user now, via informed consent rather than silently.
+  /// New signups see this as the onboarding 'voicemail_forwarding' step
+  /// (onboarding_flow.dart); EXISTING users — anyone who signed up, or last
+  /// updated, before this shipped — get the exact same screen once, here,
+  /// post-login. Same three-brake shape as [_maybeRepromptDefaultApps]:
+  ///   1. Flag gate — `avaDialer` && `pstnVoicemail`, the identical pair the
+  ///      Settings row (pstn_forwarding_setup.dart) and the onboarding step
+  ///      both gate on.
+  ///   2. Per-account "seen" marker ([pstnIntroSeen]/[markPstnIntroSeen],
+  ///      pstn_forwarding_intro.dart) — at most once per account, ever.
+  ///   3. Never fights the incoming-call launch path: skipped outright while
+  ///      [AvaDialChannel.incomingScreenOpen] is true (an active
+  ///      [PstnCallScreen] push already owns the screen — the same guard
+  ///      [_openIncoming] checks above) and given a short beat after the
+  ///      first frame so it doesn't collide with [_maybeRepromptDefaultApps]'s
+  ///      own post-frame dialog on the very same cold start.
+  void _maybeShowVoicemailIntro() {
+    if (!Platform.isAndroid || !RemoteConfig.avaDialer || !RemoteConfig.pstnVoicemail) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        // Give the default-apps re-prompt (registered in the same initState,
+        // same frame) first crack at the screen — never stack two unrelated
+        // one-time prompts on top of each other on a single cold start.
+        await Future.delayed(const Duration(milliseconds: 600));
+        if (!mounted) return;
+        if (AvaDialChannel.I.incomingScreenOpen) return; // an incoming call owns the screen right now
+        if (await pstnIntroSeen()) return;
+        if (!mounted) return;
+        Analytics.capture('pstn_forward_intro_shown', {'from': 'shell_startup'});
+        await Navigator.of(context, rootNavigator: true).push(MaterialPageRoute<void>(
+          fullscreenDialog: true,
+          builder: (_) => const PstnForwardingIntroScreen(),
+        ));
+      } catch (e) {
+        // A prompt must never be able to break app launch.
+        Analytics.capture('pstn_forward_intro_error', {'error': e.toString()});
+      }
+    });
   }
 
   /// [DEFAULT-APPS-REPROMPT-1] (owner request 2026-07-15) Existing users who never
