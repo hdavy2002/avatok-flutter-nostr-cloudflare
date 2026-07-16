@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/remote_config.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../features/avadial/inbox/inbox_list_screen.dart';
 import '../../features/avadial/sms/sms_unread_store.dart';
 import '../shell_v2.dart';
 
@@ -9,8 +11,15 @@ import '../shell_v2.dart';
 /// the old Home-only footer / `HomeAppSwitcherBar`). Renders the three root icons
 /// — **AvaTOK** (avaTalk), **Calls** (avaDial), **Marketplace** (services) — in the
 /// user's chosen [order], each LONG-PRESS DRAGGABLE to a new position, plus a FIXED
-/// "Ava" action pinned at the far right (never draggable/targetable, since Ask Ava
-/// is a global action, not a root).
+/// "Inbox" action inserted right after the AvaDialer slot (never
+/// draggable/targetable — a push, not a root switch), gated on
+/// `RemoteConfig.pstnVoicemail`.
+///
+/// [AVA-RCPT-8 footer move] The "AvaBrain" fixed action that used to live at the
+/// far right of this bar was REMOVED from the footer (owner spec) and replaced
+/// by "Inbox" above. AvaBrain is not gone — it stays reachable from every root
+/// via the ShellSidebar drawer's "AvaBrain" row (shell/v2/shell_chrome.dart),
+/// which still calls [onAskAva]/`ShellScope.askAva`.
 ///
 /// Rendered ONCE by [ShellV2] itself (not by each root), so the same icons stay in
 /// the same place across every app — switching apps never moves or hides this bar.
@@ -18,7 +27,7 @@ import '../shell_v2.dart';
 /// per owner feedback (2026-07-12) since it made everything too small to read.
 ///
 /// The FIRST root in [order] is the landing app on cold open. Reorders are
-/// committed via [onReorder]; taps via [onSelect]; the Ava action via [onAskAva].
+/// committed via [onReorder]; taps via [onSelect]; Inbox via [onOpenInbox].
 class AppSwitcherBar extends StatefulWidget {
   final List<RootId> order;
   final RootId activeRoot;
@@ -34,6 +43,13 @@ class AppSwitcherBar extends StatefulWidget {
   final void Function(List<RootId>) onReorder;
   final VoidCallback onAskAva;
 
+  /// [AVA-RCPT-8 footer move] Opens the AvaDial Inbox (voicemail/Ava
+  /// Receptionist thread list) as a full-screen route on the active root's
+  /// navigator — pushed from a FIXED footer slot, not a draggable root, so
+  /// this callback is a simple push rather than a `switchRoot`. Only invoked
+  /// while the slot is actually shown (RemoteConfig.pstnVoicemail on).
+  final VoidCallback onOpenInbox;
+
   /// Personalisation accent for the active-root indicator (falls back to lime).
   final Color? indicatorColor;
 
@@ -45,6 +61,7 @@ class AppSwitcherBar extends StatefulWidget {
     required this.onSelect,
     required this.onReorder,
     required this.onAskAva,
+    required this.onOpenInbox,
     this.indicatorColor,
   });
 
@@ -112,10 +129,18 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
           height: 66,
           child: Row(
             children: [
-              for (var i = 0; i < widget.order.length; i++)
+              for (var i = 0; i < widget.order.length; i++) ...[
                 Expanded(child: _draggableSlot(i)),
-              // FIXED "AvaBrain" action — far right, not draggable / not a drop target.
-              Expanded(child: _aiSlot()),
+                // [AVA-RCPT-8 footer move] FIXED "Inbox" action, inserted right
+                // after AvaDialer's slot (between AvaDialer and Marketplace in
+                // the default order) — not draggable / not a drop target, same
+                // as the "AvaBrain" slot it replaces. Gated on pstnVoicemail:
+                // hidden entirely while the flag is off (the footer's standard
+                // hidden pattern — no placeholder slot, exactly like every
+                // other flag-gated AvaDial surface).
+                if (widget.order[i] == RootId.avaDial && RemoteConfig.pstnVoicemail)
+                  Expanded(child: _inboxSlot()),
+              ],
             ],
           ),
         ),
@@ -176,17 +201,26 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
     );
   }
 
-  Widget _aiSlot() {
+  /// [AVA-RCPT-8 footer move] FIXED "Inbox" action — replaces the old
+  /// "AvaBrain" footer slot (owner spec: AvaBrain drops off the footer;
+  /// AvaBrain itself stays fully reachable via the ShellSidebar drawer's
+  /// "AvaBrain" row on every root — shell/v2/shell_chrome.dart — so this is a
+  /// footer-only removal, not a feature removal). Never draggable / never a
+  /// drop target, exactly like the slot it replaces. Tapping it is a plain
+  /// PUSH of [InboxListScreen] (not a root switch — Inbox has no Navigator of
+  /// its own), so the active app's back stack still returns here on pop.
+  Widget _inboxSlot() {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: widget.onAskAva,
+      onTap: widget.onOpenInbox,
       child: _labelledIcon(
-        icon: Icons.auto_awesome_outlined,
-        selectedIcon: Icons.auto_awesome,
-        // 2026-07-14 owner rename: "Ava" → "AvaBrain". Display-only; the
-        // analytics key stays `askava` (see shell_v2.dart:410,424).
-        label: 'AvaBrain',
-        selected: widget.askAvaActive,
+        icon: Icons.voicemail_outlined,
+        selectedIcon: Icons.voicemail,
+        label: 'Inbox',
+        // This slot never becomes the "active root" (it's a push, not a
+        // switchRoot) — always rendered unselected, same visual language as
+        // every other row currently NOT the active app.
+        selected: false,
       ),
     );
   }

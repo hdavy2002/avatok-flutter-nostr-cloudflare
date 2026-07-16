@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/ui/avatok_dark.dart';
+import '../../../core/ui/zine_widgets.dart';
 import '../../../shell/v2/shell_chrome.dart';
 import '../avadial_theme.dart';
 import '../device_contacts.dart';
@@ -17,7 +18,15 @@ import 'inbox_thread_screen.dart';
 /// RemoteConfig.pstnVoicemail — this screen itself has no flag check because
 /// the tab that pushes it already does.
 class InboxListScreen extends StatefulWidget {
-  const InboxListScreen({super.key});
+  /// True (the default) when this screen is hosted as a TAB BODY inside
+  /// another Scaffold — e.g. AvaDial root's own IndexedStack (exactly like
+  /// `_LogsTab`/`_BlockTab`) — so it renders no Scaffold/AppBar of its own.
+  /// Pass `false` when this screen IS the top-level surface — the main-shell
+  /// footer's own "Inbox" slot (shell/v2/app_switcher_bar.dart) pushes it as a
+  /// full-screen route with no parent AvaDial Scaffold around it, so it needs
+  /// to own its own Scaffold + AppBar in that case.
+  final bool embedded;
+  const InboxListScreen({super.key, this.embedded = true});
 
   @override
   State<InboxListScreen> createState() => _InboxListScreenState();
@@ -25,6 +34,12 @@ class InboxListScreen extends StatefulWidget {
 
 class _InboxListScreenState extends State<InboxListScreen> {
   late Future<List<InboxThread>> _future;
+
+  // [INBOX-SEARCH-1] Client-side filter over the already-loaded threads —
+  // matches caller display name, PSTN number, and transcript text. Instant
+  // (no debounce), same idiom as AdSearchDock's other call sites.
+  final _searchCtrl = TextEditingController();
+  String _query = '';
 
   @override
   void initState() {
@@ -35,10 +50,39 @@ class _InboxListScreenState extends State<InboxListScreen> {
     _future = InboxApi.threads();
   }
 
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
   Future<void> _reload() async {
     final f = InboxApi.threads();
     setState(() => _future = f);
     await f;
+  }
+
+  /// Filters [threads] by caller display name, PSTN number, or any card's
+  /// transcript text (case-insensitive substring match).
+  List<InboxThread> _filtered(List<InboxThread> threads) {
+    final q = _query.trim().toLowerCase();
+    if (q.isEmpty) return threads;
+    return threads.where((t) {
+      final label = _labelFor(t);
+      if (label.title.toLowerCase().contains(q)) return true;
+      if (label.subtitleNumber != null && label.subtitleNumber!.toLowerCase().contains(q)) {
+        return true;
+      }
+      final phone = t.telPhone;
+      if (phone != null && phone.toLowerCase().contains(q)) return true;
+      for (final c in t.cards) {
+        if ((c.transcript ?? '').toLowerCase().contains(q)) return true;
+        if ((c.summaryText ?? '').toLowerCase().contains(q)) return true;
+        if ((c.callerPhone ?? '').toLowerCase().contains(q)) return true;
+        if ((c.callerName ?? '').toLowerCase().contains(q)) return true;
+      }
+      return false;
+    }).toList();
   }
 
   void _open(InboxThread t) {
@@ -47,13 +91,44 @@ class _InboxListScreenState extends State<InboxListScreen> {
         .then((_) => _reload()); // pick up the read-state flip on return
   }
 
-  // NOTE: this widget renders as ONE tab body inside AvaDialRoot's own
-  // Scaffold/AppBar/tab-strip (shell/v2/avadial_root.dart's IndexedStack) —
-  // exactly like `_LogsTab`/`_BlockTab` — so it deliberately has NO Scaffold
-  // or AppBar of its own (that would double the toolbar). The tab strip
-  // already labels this section "Inbox".
+  // NOTE: when `embedded` (the default), this widget renders as ONE tab body
+  // inside AvaDialRoot's own Scaffold/AppBar/tab-strip (shell/v2/avadial_root
+  // .dart's IndexedStack) — exactly like `_LogsTab`/`_BlockTab` — so it has NO
+  // Scaffold or AppBar of its own there (that would double the toolbar); the
+  // tab strip already labels that section "Inbox". When NOT embedded (the
+  // main-shell footer's own Inbox slot — shell/v2/app_switcher_bar.dart), this
+  // screen is the top-level route and owns its own Scaffold + AppBar below.
   @override
   Widget build(BuildContext context) {
+    final content = Column(children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
+        child: AdSearchDock(
+          controller: _searchCtrl,
+          hint: 'Search calls, numbers, transcripts',
+          onChanged: (v) => setState(() => _query = v),
+        ),
+      ),
+      Expanded(child: _list(context)),
+    ]);
+    if (!widget.embedded) {
+      return Scaffold(
+        backgroundColor: AvaDialTheme.bg,
+        appBar: AppBar(
+          backgroundColor: AvaDialTheme.surface,
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+          foregroundColor: AvaDialTheme.text,
+          title: Text('Inbox', style: ADText.threadName(c: AvaDialTheme.text)),
+          shape: const Border(bottom: BorderSide(color: AvaDialTheme.border, width: 1)),
+        ),
+        body: SafeArea(child: content),
+      );
+    }
+    return content;
+  }
+
+  Widget _list(BuildContext context) {
     return FutureBuilder<List<InboxThread>>(
       future: _future,
       builder: (context, snap) {
@@ -61,8 +136,9 @@ class _InboxListScreenState extends State<InboxListScreen> {
           return const Center(child: CircularProgressIndicator(color: AvaDialTheme.accent));
         }
         if (snap.hasError) return _errorState();
-        final threads = snap.data ?? const <InboxThread>[];
-        if (threads.isEmpty) {
+        final allThreads = snap.data ?? const <InboxThread>[];
+        final threads = _filtered(allThreads);
+        if (allThreads.isEmpty) {
           return RefreshIndicator(
             onRefresh: _reload,
             child: ListView(children: const [
@@ -72,6 +148,20 @@ class _InboxListScreenState extends State<InboxListScreen> {
                 title: 'No messages yet',
                 subtitle: 'Missed calls Ava answers for you will show up here.',
                 color: AD.iconShield,
+              ),
+            ]),
+          );
+        }
+        if (threads.isEmpty) {
+          return RefreshIndicator(
+            onRefresh: _reload,
+            child: ListView(children: const [
+              SizedBox(height: 100),
+              ShellEmptyState(
+                icon: Icons.search_off,
+                title: 'No matches',
+                subtitle: 'No calls match your search.',
+                color: AD.iconSearch,
               ),
             ]),
           );

@@ -87,6 +87,41 @@ class _InboxThreadScreenState extends State<InboxThreadScreen> {
     if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
   }
 
+  /// [INBOX-DAYGROUP-1] Splits [cards] (already oldest-first) into a flat
+  /// header+card list with a date separator inserted before the first card of
+  /// each calendar day, so the thread reads like a chat log grouped by day as
+  /// the user scrolls — "Today" / "Yesterday" / "Mon, 14 Jul 2026".
+  List<_ThreadItem> _dayGrouped(List<InboxCard> cards) {
+    final out = <_ThreadItem>[];
+    String? lastDayKey;
+    for (final c in cards) {
+      final dt = c.createdAtMs > 0
+          ? DateTime.fromMillisecondsSinceEpoch(c.createdAtMs)
+          : DateTime.now();
+      final dayKey = '${dt.year}-${dt.month}-${dt.day}';
+      if (dayKey != lastDayKey) {
+        out.add(_ThreadItem.header(_dayLabel(dt)));
+        lastDayKey = dayKey;
+      }
+      out.add(_ThreadItem.card(c));
+    }
+    return out;
+  }
+
+  String _dayLabel(DateTime dt) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final that = DateTime(dt.year, dt.month, dt.day);
+    final diffDays = today.difference(that).inDays;
+    if (diffDays == 0) return 'Today';
+    if (diffDays == 1) return 'Yesterday';
+    const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final wd = weekdays[dt.weekday - 1];
+    final mo = months[dt.month - 1];
+    return '$wd, ${dt.day} $mo ${dt.year}';
+  }
+
   Future<void> _addToContacts() async {
     final phone = _phone;
     if (phone == null) return;
@@ -174,14 +209,29 @@ class _InboxThreadScreenState extends State<InboxThreadScreen> {
               );
             }
             WidgetsBinding.instance.addPostFrameCallback((_) => _jumpToEnd());
+            final items = _dayGrouped(cards);
             return ListView.builder(
               controller: _scroll,
               padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
-              itemCount: cards.length,
-              itemBuilder: (context, i) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: _VoicemailCard(card: cards[i]),
-              ),
+              itemCount: items.length,
+              itemBuilder: (context, i) {
+                final item = items[i];
+                if (item.isHeader) {
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 4, bottom: 10),
+                    child: _DateSeparator(label: item.dayLabel!),
+                  );
+                }
+                final card = item.card!;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _VoicemailCard(
+                    card: card,
+                    callerName: _title,
+                    callerNumber: card.callerPhone ?? _phone,
+                  ),
+                );
+              },
             );
           },
         ),
@@ -190,12 +240,52 @@ class _InboxThreadScreenState extends State<InboxThreadScreen> {
   }
 }
 
-/// One voicemail/receptionist message: audio player + transcript underneath +
-/// timestamp. Mirrors `_ReceptionistCard`'s cache-first playback (chat_thread
-/// .dart) but is its own widget so this lane never imports that file.
+/// A flat-list entry for the day-grouped thread view: either a date-separator
+/// header or one voicemail card. Kept as a tiny sum type rather than two
+/// parallel lists so `ListView.builder` can address both by a single index.
+class _ThreadItem {
+  final String? dayLabel;
+  final InboxCard? card;
+  const _ThreadItem._(this.dayLabel, this.card);
+  factory _ThreadItem.header(String label) => _ThreadItem._(label, null);
+  factory _ThreadItem.card(InboxCard c) => _ThreadItem._(null, c);
+  bool get isHeader => dayLabel != null;
+}
+
+/// Centered day-separator pill ("Today" / "Yesterday" / "Mon, 14 Jul 2026").
+class _DateSeparator extends StatelessWidget {
+  final String label;
+  const _DateSeparator({required this.label});
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+        decoration: BoxDecoration(
+          color: AvaDialTheme.surface2,
+          borderRadius: BorderRadius.circular(100),
+          border: Border.all(color: AvaDialTheme.border, width: 1),
+        ),
+        child: Text(label, style: ADText.statCaption(c: AvaDialTheme.textMute)),
+      ),
+    );
+  }
+}
+
+/// One voicemail/receptionist message: caller name + number, audio player +
+/// transcript underneath + time/date. Mirrors `_ReceptionistCard`'s
+/// cache-first playback (chat_thread.dart) but is its own widget so this lane
+/// never imports that file.
 class _VoicemailCard extends StatefulWidget {
   final InboxCard card;
-  const _VoicemailCard({required this.card});
+  /// Thread-level caller display name (resolved contact name, or a formatted
+  /// number/"Hidden number"/"Unknown caller" fallback) — shown on every card
+  /// so the metadata reads correctly even scrolled far from the header.
+  final String callerName;
+  /// The PSTN number for this specific card, if any (falls back to the
+  /// thread's number when the card itself doesn't carry one).
+  final String? callerNumber;
+  const _VoicemailCard({required this.card, required this.callerName, this.callerNumber});
 
   @override
   State<_VoicemailCard> createState() => _VoicemailCardState();
@@ -301,12 +391,15 @@ class _VoicemailCardState extends State<_VoicemailCard> {
     return '$m:${sec.toString().padLeft(2, '0')}';
   }
 
+  /// "14:32 · 16 Jul 2026" — owner spec (JOB 2 item 4): time + date together
+  /// on every card, distinct from the day-separator header above it.
   String get _timeLabel {
     if (_c.createdAtMs <= 0) return '';
     final dt = DateTime.fromMillisecondsSinceEpoch(_c.createdAtMs);
     final hh = dt.hour.toString().padLeft(2, '0');
     final mm = dt.minute.toString().padLeft(2, '0');
-    return '${dt.month}/${dt.day} $hh:$mm';
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return '$hh:$mm · ${dt.day} ${months[dt.month - 1]} ${dt.year}';
   }
 
   @override
@@ -315,6 +408,13 @@ class _VoicemailCardState extends State<_VoicemailCard> {
       color: AvaDialTheme.surface2,
       padding: const EdgeInsets.all(12),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+        // ---- Caller metadata: display name + PSTN number (JOB 2 item 4) ----
+        Text(widget.callerName, style: ADText.threadName(c: AvaDialTheme.text)),
+        if (widget.callerNumber != null && widget.callerNumber != widget.callerName) ...[
+          const SizedBox(height: 1),
+          Text(widget.callerNumber!, style: ADText.statCaption(c: AvaDialTheme.textMute)),
+        ],
+        const SizedBox(height: 6),
         if (_c.summaryText != null) ...[
           Text(_c.summaryText!, style: ADText.bubbleBody(c: AvaDialTheme.text)),
           const SizedBox(height: 8),

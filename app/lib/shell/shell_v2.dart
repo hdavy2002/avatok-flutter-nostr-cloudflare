@@ -18,6 +18,7 @@ import '../features/avadial/avadial_setup_sheet.dart';
 import '../features/avadial/block_list.dart';
 import '../features/avadial/contact_detail_screen.dart';
 import '../features/avadial/in_call_screen.dart';
+import '../features/avadial/inbox/inbox_list_screen.dart';
 import '../features/avadial/missed_call_service.dart';
 import '../features/avadial/pstn_call_screen.dart';
 import '../features/avadial/sms/sms_thread_screen.dart';
@@ -542,6 +543,19 @@ class _ShellV2State extends State<ShellV2> {
     Analytics.capture('shellv2_root_selected', {'root': r.key});
   }
 
+  /// [AVA-RCPT-8 footer move] The main-shell footer's own "Inbox" slot
+  /// (shell/v2/app_switcher_bar.dart, between AvaDialer and Marketplace) —
+  /// pushes the Inbox as a full-screen route on the ACTIVE root's navigator,
+  /// same pattern as [_askAva]'s global-action push, so Android back / swipe
+  /// returns the user to wherever they were instead of switching roots.
+  void _openInbox() {
+    Analytics.capture('shellv2_inbox_opened', {'root': _root.key});
+    final nav = _navKeys[_root]?.currentState ?? Navigator.of(context);
+    nav.push(MaterialPageRoute<void>(
+      builder: (_) => const InboxListScreen(embedded: false),
+    ));
+  }
+
   void _askAva([String hint = 'root']) {
     Analytics.capture('shellv2_askava_opened', {'root': _root.key, 'hint': hint});
     // Reflect the open overlay in the footer: move the active indicator to the
@@ -634,6 +648,7 @@ class _ShellV2State extends State<ShellV2> {
             onSelect: _switchRoot,
             onReorder: _setRootOrder,
             onAskAva: _askAva,
+            onOpenInbox: _openInbox,
           ),
         ),
       ),
