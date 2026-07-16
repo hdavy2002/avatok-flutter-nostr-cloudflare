@@ -34,6 +34,7 @@ import '../features/avadial/device_contacts.dart' show DeviceContacts;
 import '../features/avatok/call_screen.dart';
 import '../features/avatok/contacts.dart' show ContactsStore;
 import '../features/avatok/incoming_business_call_screen.dart';
+import '../identity/identity.dart' show AccountScope; // [AVANOTIF-VM-3] name-cache account namespacing
 import '../sync/sync_hub.dart';
 
 /// Global key so we can navigate to the call screen when a call is accepted.
