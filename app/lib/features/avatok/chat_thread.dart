@@ -525,8 +525,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     // last-known keyboard height so the rich input panel opens instantly.
     // ignore: unawaited_futures
     PickerRecentsStore.I.load().then((_) { if (mounted) setState(() {}); });
-    // Phase 5: tick a lightweight clock so relative timestamps, day separators
-    // and the "last seen" header stay live without the user reloading the thread.
+    // Phase 5: tick a lightweight clock so the day separators and the "last
+    // seen" header stay live without the user reloading the thread. (Message
+    // timestamps no longer need this — [CHAT-TS-ABS-1] made them absolute — but
+    // a thread open across midnight still has to roll "Today" over to
+    // "Yesterday", and the header's relative last-seen is still relative.)
     _clockTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() {});
     });
@@ -1599,17 +1602,19 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
   }
 
-  // Phase 5: realtime timestamps ─────────────────────────────────────────────
-  // A short relative age ("now", "2m", "1h") for very recent messages; older
-  // ones keep their fixed HH:MM. Recomputed on every clock tick so it stays live.
+  // [CHAT-TS-ABS-1] (owner report 2026-07-16, pic 2): message bubbles now ALWAYS
+  // carry the wall-clock HH:MM they were sent at.
+  //
+  // This used to return a relative age ("now" / "2m" / "4h") for anything under
+  // 6 hours old, which is why a thread of voice notes and tombstones read as a
+  // column of "4h" with no timestamp anywhere. Relative ages are fine on a chat
+  // LIST (one row, "when did this thread last move"), but inside a thread the
+  // question is "what time was this said", and only a clock answers that — every
+  // other messenger (see WhatsApp, pic 5) shows the clock. The day a message
+  // belongs to is carried by the day separator chip, so HH:MM is unambiguous.
   String _relTime(int epochSecs) {
     if (epochSecs <= 0) return '';
-    final nowS = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    final diff = nowS - epochSecs;
-    if (diff < 45) return 'now';
-    if (diff < 3600) return '${(diff / 60).floor()}m';
-    if (diff < 21600) return '${(diff / 3600).floor()}h'; // <6h → still feels "live"
-    return _fmtTime(epochSecs); // older → fixed clock time
+    return _fmtTime(epochSecs);
   }
 
   // A day-separator label: Today / Yesterday / weekday (this week) / d Mon.
@@ -1629,7 +1634,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   }
 
   bool _sameDay(int a, int b) {
-    if (a == 0 || b == 0) return true; // demo/unknown ts → no separator
+    if (a == 0 && b == 0) return true; // both demo/unknown ts → no separator
+    // [CHAT-TS-ABS-1] Exactly one side has no timestamp (a legacy/demo bubble):
+    // it can't be proven to share a day with a real one, so treat it as a day
+    // boundary. Previously this returned true, which meant a single ts-less
+    // message sitting between two days silently swallowed the day chip for the
+    // whole run of messages after it.
+    if (a == 0 || b == 0) return false;
     final da = DateTime.fromMillisecondsSinceEpoch(a * 1000);
     final db = DateTime.fromMillisecondsSinceEpoch(b * 1000);
     return da.year == db.year && da.month == db.month && da.day == db.day;
