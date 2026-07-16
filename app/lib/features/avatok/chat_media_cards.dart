@@ -1,4 +1,6 @@
-import 'dart:async';
+// NOTE: `dart:async` was dropped with [VOICE-SCRUB-1] — the voice bubble's local
+// 1s Timer is gone, replaced by real position/duration streamed from the parent's
+// AudioPlayer, and nothing else in this file needs it.
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -125,12 +127,28 @@ class ChatLinkText extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// [UI-BUBBLE-3] Voice-note bubble — LARGE circular play button (>=44dp touch
-// target), a static waveform bar (progress-tinted while playing), a live
-// duration on the right, and a playback-speed chip (1x/1.5x/2x) that appears
-// once playback has started. Same 78% max-width rule (governed by the parent
-// bubble's BoxConstraints). Playback itself is owned by the parent (one shared
-// AudioPlayer); this widget is pure presentation + callbacks.
+// [VOICE-SCRUB-1] (owner report 2026-07-16, pic 5) Voice-note bubble — a LARGE
+// circular play button (>=44dp touch target), a WIDE **scrubbable** waveform
+// timeline with a red playhead, the real clip duration, and a playback-speed
+// chip (1x/1.5x/2x). Playback itself is owned by the parent (one shared
+// AudioPlayer); this widget is presentation + callbacks, and the parent feeds
+// it real `position`/`duration` from the player's streams.
+//
+// What changed and why (all four were the same root cause — the widget knew
+// nothing about the audio, so it could only mime playback):
+//
+//  1. WIDTH. The waveform was a hardcoded `SizedBox(width: 128)`, which left a
+//     ~2.6px-wide bar per 4 seconds of a long note. It now `Expanded`s to fill
+//     the bubble, so there is enough travel for a thumb to land on a moment.
+//  2. SCRUBBING. There was no gesture but `onTap` on the play circle — you
+//     could not jump to the end of a 3-minute note without listening to it.
+//     Tap-anywhere and drag now seek, via `onSeek`.
+//  3. PLAYHEAD. Nothing marked "you are here": bars only flat-swapped colour
+//     for the whole clip. There is now a red line + red dot riding the
+//     position, video-editor style, as the owner asked for.
+//  4. DURATION. `_elapsed` was a local 1s Timer started on play, i.e. an
+//     invented number that always began at 0:00 and never knew the clip's real
+//     length. Both sides of `0:07 / 0:40` are now the player's own truth.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class VoiceNoteBubble extends StatefulWidget {
@@ -140,6 +158,9 @@ class VoiceNoteBubble extends StatefulWidget {
     required this.speed,
     required this.onPlayPause,
     required this.onCycleSpeed,
+    this.position = Duration.zero,
+    this.duration,
+    this.onSeek,
     this.onRight = false,
   });
 
@@ -147,6 +168,19 @@ class VoiceNoteBubble extends StatefulWidget {
   final double speed; // 1.0 | 1.5 | 2.0
   final VoidCallback onPlayPause;
   final VoidCallback onCycleSpeed;
+
+  /// Live playhead position from the parent's AudioPlayer.
+  final Duration position;
+
+  /// True clip length — null until the player has decoded the header (or for a
+  /// note that has never been opened), which is why the label falls back to
+  /// 'Voice' rather than inventing a number.
+  final Duration? duration;
+
+  /// Seek request from a tap/drag on the timeline. Null → not scrubbable yet
+  /// (nothing loaded), and the timeline renders as a plain waveform.
+  final void Function(Duration to)? onSeek;
+
   final bool onRight; // my message (lime) vs theirs (card) — tints the bars
 
   @override
@@ -155,39 +189,49 @@ class VoiceNoteBubble extends StatefulWidget {
 
 class _VoiceNoteBubbleState extends State<VoiceNoteBubble> {
   // A stable, deterministic-looking waveform so the same note always draws the
-  // same shape (no random reshuffle on rebuild). 26 bars.
+  // same shape (no random reshuffle on rebuild). 40 bars — more than the old 26
+  // because the timeline is now full-width and 26 bars would look sparse.
+  //
+  // NOTE: this is still a decorative shape, not the note's real amplitude
+  // envelope — rendering a true envelope means decoding the whole clip on
+  // receive, which is a separate piece of work. It is honest about position
+  // (the playhead and the progress tint are real), just not about loudness.
   static const List<double> _bars = [
     0.30, 0.55, 0.42, 0.78, 0.62, 0.90, 0.48, 0.70, 0.35, 0.60,
     0.85, 0.52, 0.40, 0.72, 0.95, 0.58, 0.44, 0.66, 0.38, 0.80,
-    0.50, 0.68, 0.34, 0.74, 0.46, 0.88,
+    0.50, 0.68, 0.34, 0.74, 0.46, 0.88, 0.56, 0.36, 0.82, 0.64,
+    0.44, 0.76, 0.32, 0.68, 0.54, 0.86, 0.40, 0.60, 0.48, 0.70,
   ];
-  Timer? _tick;
-  int _elapsed = 0; // seconds, live while playing (we don't store true duration)
 
-  @override
-  void didUpdateWidget(VoiceNoteBubble old) {
-    super.didUpdateWidget(old);
-    if (widget.playing && !old.playing) {
-      _elapsed = 0;
-      _tick?.cancel();
-      _tick = Timer.periodic(const Duration(seconds: 1), (_) {
-        if (mounted) setState(() => _elapsed++);
-      });
-    } else if (!widget.playing && old.playing) {
-      _tick?.cancel();
-      _tick = null;
-    }
-  }
+  /// While the thumb is down we render THIS fraction instead of
+  /// `widget.position`, so the playhead tracks the finger at 60fps instead of
+  /// waiting for the player's ~200ms position callbacks to catch up (which
+  /// feels like dragging a rubber band).
+  double? _dragFrac;
 
-  @override
-  void dispose() {
-    _tick?.cancel();
-    super.dispose();
-  }
-
-  String get _durLabel {
-    final m = _elapsed ~/ 60, s = _elapsed % 60;
+  static String _fmt(Duration d) {
+    final m = d.inMinutes, s = d.inSeconds % 60;
     return '$m:${s.toString().padLeft(2, '0')}';
+  }
+
+  bool get _scrubbable =>
+      widget.onSeek != null &&
+      widget.duration != null &&
+      widget.duration!.inMilliseconds > 0;
+
+  double get _frac {
+    if (_dragFrac != null) return _dragFrac!;
+    final total = widget.duration?.inMilliseconds ?? 0;
+    if (total <= 0) return 0;
+    return (widget.position.inMilliseconds / total).clamp(0.0, 1.0);
+  }
+
+  void _seekTo(double frac, {required bool commit}) {
+    final total = widget.duration;
+    if (total == null || widget.onSeek == null) return;
+    final f = frac.clamp(0.0, 1.0);
+    setState(() => _dragFrac = commit ? null : f);
+    widget.onSeek!(Duration(milliseconds: (total.inMilliseconds * f).round()));
   }
 
   @override
@@ -196,6 +240,18 @@ class _VoiceNoteBubbleState extends State<VoiceNoteBubble> {
     final barPlayed = widget.onRight ? AD.bubbleOutPlay : AD.bubbleInPlay;
     final barIdle =
         (widget.onRight ? AD.bubbleOutMeta : AD.bubbleInMeta).withValues(alpha: 0.4);
+    final metaC = widget.onRight ? AD.bubbleOutMeta : AD.bubbleInMeta;
+    final inkC = widget.onRight ? AD.bubbleOutInk : AD.bubbleInInk;
+
+    final dur = widget.duration;
+    // Show 'Voice' only while we genuinely don't know the length; never invent
+    // a counter that starts at 0:00 regardless of the clip (the old behaviour).
+    final label = dur == null
+        ? 'Voice'
+        : (active || _dragFrac != null || widget.position > Duration.zero
+            ? '${_fmt(widget.position)} / ${_fmt(dur)}'
+            : _fmt(dur));
+
     return Row(mainAxisSize: MainAxisSize.min, children: [
       // LARGE circular play/pause — 44dp touch target.
       GestureDetector(
@@ -222,34 +278,97 @@ class _VoiceNoteBubbleState extends State<VoiceNoteBubble> {
         ),
       ),
       const SizedBox(width: 10),
-      // Waveform — bars tint to `barPlayed` while playing, idle otherwise.
-      SizedBox(
-        width: 128,
-        height: 30,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            for (final h in _bars)
-              Container(
-                width: 2.6,
-                height: 6 + h * 22,
-                decoration: BoxDecoration(
-                  color: active ? barPlayed : barIdle,
-                  borderRadius: BorderRadius.circular(2),
+      // Scrubbable waveform timeline. `Expanded` (not a fixed 128px) is the
+      // point of the fix: the bubble's own 78% max-width constraint decides how
+      // wide this gets, so a voice note now spans the bubble left-to-right.
+      Expanded(
+        child: LayoutBuilder(builder: (context, box) {
+          final w = box.maxWidth;
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            // Generous vertical slop: the visible bars are 30px tall but the
+            // gesture area is padded to a 44dp-ish target so scrubbing doesn't
+            // demand surgical precision.
+            onTapDown: _scrubbable
+                ? (d) => _seekTo(d.localPosition.dx / w, commit: true)
+                : null,
+            onHorizontalDragStart: _scrubbable
+                ? (d) => _seekTo(d.localPosition.dx / w, commit: false)
+                : null,
+            onHorizontalDragUpdate: _scrubbable
+                ? (d) => _seekTo(d.localPosition.dx / w, commit: false)
+                : null,
+            onHorizontalDragEnd:
+                _scrubbable ? (_) => _seekTo(_frac, commit: true) : null,
+            child: SizedBox(
+              height: 40,
+              child: Stack(alignment: Alignment.center, children: [
+                // Bars — everything left of the playhead is "played".
+                //
+                // The bar's tint threshold is its CENTRE as a fraction of the
+                // laid-out width, matching how the playhead's x is computed
+                // (`_frac * w`). Using the naive `i / length` instead would
+                // measure from each bar's left edge and drift out of step with
+                // the playhead by up to a full bar under `spaceBetween` — the
+                // red line would sit visibly off the colour boundary it's
+                // supposed to be drawing.
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    for (var i = 0; i < _bars.length; i++)
+                      Container(
+                        width: 2.6,
+                        height: 6 + _bars[i] * 22,
+                        decoration: BoxDecoration(
+                          color: ((i + 0.5) / _bars.length) <= _frac
+                              ? barPlayed
+                              : barIdle,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                  ],
                 ),
-              ),
-          ],
-        ),
+                // The red playhead the owner asked for: a full-height line with
+                // a dot on top, so you can see exactly where you're scrubbing to
+                // and drop back onto an exact moment. Only drawn once we know
+                // the duration — a playhead with nothing to point at is a lie.
+                if (_scrubbable)
+                  Positioned(
+                    left: (_frac * w).clamp(0.0, w) - 5,
+                    top: 0,
+                    bottom: 0,
+                    child: SizedBox(
+                      width: 10,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 10,
+                            height: 10,
+                            decoration: const BoxDecoration(
+                              color: AD.danger,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          Expanded(
+                            child: Container(width: 2, color: AD.danger),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ]),
+            ),
+          );
+        }),
       ),
       const SizedBox(width: 10),
       Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          Text(active ? _durLabel : 'Voice',
-              style: ADText.bubbleMeta(
-                  c: widget.onRight ? AD.bubbleOutMeta : AD.bubbleInMeta)),
+          Text(label, style: ADText.bubbleMeta(c: metaC)),
           // Speed chip — only after playback has started.
           if (active) ...[
             const SizedBox(height: 3),
@@ -258,20 +377,16 @@ class _VoiceNoteBubbleState extends State<VoiceNoteBubble> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                 decoration: BoxDecoration(
-                  color: (widget.onRight ? AD.bubbleOutInk : AD.bubbleInInk)
-                      .withValues(alpha: 0.10),
+                  color: inkC.withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(100),
                   border: Border.all(
-                      color: (widget.onRight ? AD.bubbleOutInk : AD.bubbleInInk)
-                          .withValues(alpha: 0.30),
-                      width: 1),
+                      color: inkC.withValues(alpha: 0.30), width: 1),
                 ),
                 child: Text(
                   widget.speed == 1.0
                       ? '1x'
                       : (widget.speed == 1.5 ? '1.5x' : '2x'),
-                  style: ADText.bubbleMeta(
-                      c: widget.onRight ? AD.bubbleOutInk : AD.bubbleInInk),
+                  style: ADText.bubbleMeta(c: inkC),
                 ),
               ),
             ),

@@ -20,6 +20,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:super_clipboard/super_clipboard.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
+import 'package:wakelock_plus/wakelock_plus.dart'; // [VOICE-REC-1] keep the screen awake while recording
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -187,7 +188,13 @@ class _AiHit {
   _AiHit(this.snippet, this.inThread, this.localId, this.localText);
 }
 
-class _ChatThreadScreenState extends State<ChatThreadScreen> {
+// [VOICE-REC-1] `WidgetsBindingObserver` (owner report 2026-07-16, pic 5): the
+// thread now watches the app lifecycle so a recording in progress can pause
+// itself when the user leaves. Previously nothing observed it — backgrounding
+// mid-recording left `record` running and `_recording == true` with no stop, no
+// save and no discard, so a take could be silently mangled by whatever the OS
+// did to the mic while the app was away.
+class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBindingObserver {
   // STREAM J (D17): whether incoming media auto-downloads on render in THIS
   // thread. Resolved once on open from MediaAutoDownload.shouldAutoFetch (mode +
   // connectivity + accept_state). Defaults to true so behavior is unchanged until
@@ -269,9 +276,26 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   bool _realMode = false;
   final Set<String> _seenEv = {};
   int? _playingAudioId;
+  // [VOICE-SCRUB-1] The note currently LOADED into the shared player — which is
+  // not the same thing as the note currently playing. A paused note, or one
+  // parked where the user scrubbed to, is still open: keeping this distinct is
+  // what lets play resume in place instead of re-downloading and restarting
+  // from 0:00, and lets the timeline stay scrubbable while paused.
+  int? _openAudioId;
   // [UI-BUBBLE-3] Voice-note playback speed chip (1x / 1.5x / 2x). Applied to the
   // shared _audio player on play and when the chip is tapped mid-playback.
   double _audioSpeed = 1.0;
+  // [VOICE-SCRUB-1] (owner report 2026-07-16, pic 5) Real playhead + real clip
+  // length for the voice-note timeline, straight from the shared player's
+  // streams. Before this the bubble ran a local 1s Timer and displayed a count
+  // that started at 0:00 on every play and never knew the note's actual length
+  // — so there was nothing to scrub against and nothing honest to label.
+  // Keyed by the currently-playing note (`_playingAudioId`); every other bubble
+  // renders at zero.
+  Duration _audioPos = Duration.zero;
+  Duration? _audioDur;
+  StreamSubscription<Duration>? _audioPosSub;
+  StreamSubscription<Duration>? _audioDurSub;
 
   // Presence: typing + read receipts (ephemeral, over the signaling WS).
   PresenceChannel? _presence;
@@ -507,6 +531,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this); // [VOICE-REC-1] recorder auto-pause
     // Opening a thread nudges a catch-up sync: a server-injected message (e.g. a
     // marketplace agent-deal card, or a receptionist card) is appended directly to
     // the InboxDO and only arrives on a fresh sync — if the socket wasn't connected
@@ -561,7 +586,23 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       if (mounted) setState(() => _premium = b['premium'] == 1 || b['premium'] == true);
     }).catchError((_) {});
     _audio.onPlayerComplete.listen((_) {
-      if (mounted) setState(() => _playingAudioId = null);
+      // [VOICE-SCRUB-1] Park the playhead at the END on completion rather than
+      // snapping it back to 0. The clip you just finished should look finished.
+      if (mounted) {
+        setState(() {
+          _playingAudioId = null;
+          _audioPos = _audioDur ?? Duration.zero;
+        });
+      }
+    });
+    // [VOICE-SCRUB-1] The player's own truth, replacing the bubble's invented
+    // 1s counter. `onDurationChanged` fires once the m4a header is decoded;
+    // `onPositionChanged` drives both the progress tint and the red playhead.
+    _audioPosSub = _audio.onPositionChanged.listen((p) {
+      if (mounted && _playingAudioId != null) setState(() => _audioPos = p);
+    });
+    _audioDurSub = _audio.onDurationChanged.listen((d) {
+      if (mounted && d > Duration.zero) setState(() => _audioDur = d);
     });
     // Load cross-device soft-delete flags, then re-apply to anything already shown.
     HiddenStore().load().then((m) {
@@ -1732,8 +1773,76 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
 
   final List<_Msg> _msgs = [];
 
+  /// [VOICE-REC-1] (owner report 2026-07-16, pic 5) Auto-pause a recording when
+  /// the app leaves the foreground, and let the user resume when they come back.
+  ///
+  /// The owner asked for exactly WhatsApp's behaviour: "if the phone screen
+  /// comes up or user navigates to another app, the recorder pauses on its own
+  /// and then when the user comes back, he can unpause it and continue".
+  ///
+  /// Pause — not stop-and-send, and not discard. Both of those decide something
+  /// on the user's behalf that they haven't said yet: auto-sending ships a
+  /// half-finished thought to another person and can't be taken back, and
+  /// discarding throws away a take they may have spent a minute on. Pausing is
+  /// the only option that's reversible in both directions. The take survives on
+  /// disk; when they come back the bar is still there, paused, with their
+  /// waveform and elapsed time intact, and they choose.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (!_recording || _recPaused) return;
+    // `inactive` also covers the transient states (a call banner, the app
+    // switcher, the screen locking) — precisely the cases the owner hit.
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
+      // Flip the flag SYNCHRONOUSLY, before the await. Backgrounding delivers
+      // `inactive` then `paused` back-to-back, so an async-only guard lets the
+      // second event re-enter and call pause() on an already-paused recorder.
+      setState(() => _recPaused = true);
+      unawaited(() async {
+        try {
+          await _recorder.pause();
+          // Backgrounded: stop holding the screen awake. It's re-enabled if the
+          // user resumes (see _toggleRecordPause).
+          try { await WakelockPlus.disable(); } catch (_) {}
+          Analytics.capture('voice_note_record_paused', {
+            ..._voiceTelemetry(),
+            'paused': true,
+            'seconds': _recElapsed.inSeconds,
+            'reason': 'backgrounded',
+          });
+        } catch (e) {
+          // The recorder refused to pause, so it is STILL CAPTURING. Put the
+          // flag back: leaving it true would show "Paused" over a live mic and
+          // freeze the elapsed timer, so the user would get a take longer than
+          // the UI claimed and Resume would fire at a recorder that never
+          // paused. Better to under-promise (bar still says recording) than to
+          // lie about the state of a microphone.
+          if (mounted) setState(() => _recPaused = false);
+          AvaLog.I.log('media', 'voice auto-pause failed: $e');
+          Analytics.capture('voice_note_record_pause_failed', {
+            ..._voiceTelemetry(), 'reason': 'backgrounded',
+          });
+        }
+      }());
+    }
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this); // [VOICE-REC-1]
+    // [VOICE-REC-1] Leaving the thread mid-recording must not strand the take,
+    // the metering subscription, or (worst) the wakelock — a leaked wakelock
+    // silently drains the battery with nothing on screen to explain why.
+    // `_recorder.dispose()` below stops the hardware; this releases everything
+    // hanging off it.
+    _recAmpSub?.cancel();
+    _recTick?.cancel();
+    if (_recording) { try { WakelockPlus.disable(); } catch (_) {} }
+    _audioPosSub?.cancel(); // [VOICE-SCRUB-1]
+    _audioDurSub?.cancel();
     // [PUSH-FG-BANNER-1] Release the on-screen-thread claim. Guarded by key
     // inside `leave` — pushing thread B over A runs B's enter BEFORE A's dispose,
     // so an unconditional clear here would wipe B's claim and B would then get
@@ -4590,15 +4699,33 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   }
 
   // ---- voice note record ----
+  // ── [VOICE-REC-1] Voice recorder (owner report 2026-07-16, pic 5) ──────────
+  //
+  // The recorder used to be a two-state tap toggle whose entire UI was the word
+  // "Recording… tap to send". That gave the user no way to know the mic was
+  // actually live, no elapsed time, no way to pause, no way to discard a bad
+  // take, no protection from the screen locking mid-sentence, and no handling
+  // of the app being backgrounded. This block adds all of it.
+
+  /// Rolling amplitude samples (0..1), newest last — the live waveform in the
+  /// recording bar. Sampled at 12Hz from the recorder's own metering.
+  ///
+  /// Why this exists: the bar previously just said "Recording". The owner's
+  /// complaint is exactly right — a static word is indistinguishable from a
+  /// recorder that has silently died (a revoked mic permission, another app
+  /// holding the input, a Bluetooth headset that dropped). A waveform that
+  /// moves when you speak is the ONLY affordance that proves the mic is hearing
+  /// you, which is why WhatsApp draws one.
+  final List<double> _recLevels = [];
+  StreamSubscription<Amplitude>? _recAmpSub;
+  Timer? _recTick;
+  Duration _recElapsed = Duration.zero;
+  bool _recPaused = false;
+  static const int _kRecMaxBars = 46;
+
+  /// Start / stop-and-send. Kept as the mic button's single action.
   Future<void> _toggleRecord() async {
-    if (_recording) {
-      final path = await _recorder.stop();
-      setState(() => _recording = false);
-      if (path == null) return;
-      final bytes = await File(path).readAsBytes();
-      await _sendMedia(MediaKind.audio, bytes, 'audio/mp4', 'voice.m4a');
-      return;
-    }
+    if (_recording) { await _stopAndSendRecording(); return; }
     if (!await _recorder.hasPermission()) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -4608,15 +4735,183 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     }
     final dir = await getTemporaryDirectory();
     _recPath = '${dir.path}/vn_${DateTime.now().millisecondsSinceEpoch}.m4a';
-    await _recorder.start(const RecordConfig(), path: _recPath!);
-    setState(() => _recording = true);
+    await _recorder.start(
+      // Ask the platform for amplitude metering so the live waveform below has
+      // something real to draw.
+      const RecordConfig(),
+      path: _recPath!,
+    );
+    // [VOICE-REC-1] Hold the screen awake for the whole recording.
+    //
+    // The owner hit this directly: the screen slept mid-recording, and on a
+    // locked device that risks the session being torn down and the take lost.
+    // The scenario he named is the one that matters — driving, speaking through
+    // a headset, phone untouched in a cradle: the user is producing input
+    // continuously, but from the OS's point of view the screen has had no touch
+    // for 30s and is idle. It isn't. A recording in progress IS activity, so we
+    // say so, exactly like a call does (see call_session.dart).
+    //
+    // Strictly paired with _releaseRecordingWakelock() on EVERY exit from the
+    // recording state (send, cancel, pause-to-background, dispose) — a leaked
+    // wakelock is a flat battery.
+    try { await WakelockPlus.enable(); } catch (_) {/* unsupported platform */}
+    _recAmpSub?.cancel();
+    _recAmpSub = _recorder
+        .onAmplitudeChanged(const Duration(milliseconds: 80))
+        .listen((amp) {
+      if (!mounted) return;
+      // `current` is dBFS: roughly -60 (silence) → 0 (clipping). Map to 0..1 and
+      // give it a floor so a quiet room still shows a living baseline rather
+      // than a flat dead line (which would read as "broken").
+      final db = amp.current.isFinite ? amp.current : -60.0;
+      final level = ((db + 60) / 60).clamp(0.05, 1.0);
+      setState(() {
+        _recLevels.add(level);
+        if (_recLevels.length > _kRecMaxBars) _recLevels.removeAt(0);
+      });
+    });
+    _recTick?.cancel();
+    _recTick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted || _recPaused) return;
+      setState(() => _recElapsed += const Duration(seconds: 1));
+    });
+    setState(() {
+      _recording = true;
+      _recPaused = false;
+      _recElapsed = Duration.zero;
+      _recLevels.clear();
+    });
+    Analytics.capture('voice_note_record_started', _voiceTelemetry());
+  }
+
+  /// Pause / resume — the owner's "am I still recording?" control, and the
+  /// mechanism behind auto-pause on backgrounding.
+  Future<void> _toggleRecordPause() async {
+    if (!_recording) return;
+    try {
+      if (_recPaused) {
+        await _recorder.resume();
+        try { await WakelockPlus.enable(); } catch (_) {}
+      } else {
+        await _recorder.pause();
+        // Don't hold the screen awake for a recorder that isn't listening.
+        try { await WakelockPlus.disable(); } catch (_) {}
+      }
+      setState(() => _recPaused = !_recPaused);
+      Analytics.capture('voice_note_record_paused', {
+        ..._voiceTelemetry(),
+        'paused': _recPaused,
+        'seconds': _recElapsed.inSeconds,
+        'reason': 'user',
+      });
+    } catch (e) {
+      AvaLog.I.log('media', 'voice pause/resume failed: $e');
+    }
+  }
+
+  /// Discard the take entirely — the bin button. Deliberately does NOT send.
+  Future<void> _cancelRecording({String reason = 'user'}) async {
+    if (!_recording) return;
+    final seconds = _recElapsed.inSeconds;
+    // `cancel()` stops the recorder AND deletes the file — the correct call for
+    // a discard (`stop()` would leave the abandoned take on disk).
+    try { await _recorder.cancel(); } catch (_) {}
+    await _endRecordingSession();
+    _recPath = null;
+    Analytics.capture('voice_note_record_cancelled', {
+      ..._voiceTelemetry(), 'seconds': seconds, 'reason': reason,
+    });
+  }
+
+  Future<void> _stopAndSendRecording() async {
+    final seconds = _recElapsed.inSeconds;
+    String? path;
+    try { path = await _recorder.stop(); } catch (e) {
+      AvaLog.I.log('media', 'voice stop failed: $e');
+    }
+    await _endRecordingSession();
+    if (path == null) return;
+    final bytes = await File(path).readAsBytes();
+    Analytics.capture('voice_note_record_sent', {
+      ..._voiceTelemetry(), 'seconds': seconds, 'bytes': bytes.length,
+    });
+    await _sendMedia(MediaKind.audio, bytes, 'audio/mp4', 'voice.m4a');
+  }
+
+  /// The single teardown path for a recording session — every exit routes here
+  /// so the wakelock, the metering subscription and the tick can't be orphaned.
+  Future<void> _endRecordingSession() async {
+    _recAmpSub?.cancel();
+    _recAmpSub = null;
+    _recTick?.cancel();
+    _recTick = null;
+    try { await WakelockPlus.disable(); } catch (_) {}
+    if (mounted) {
+      setState(() {
+        _recording = false;
+        _recPaused = false;
+        _recElapsed = Duration.zero;
+        _recLevels.clear();
+      });
+    } else {
+      _recording = false;
+      _recPaused = false;
+    }
+  }
+
+  /// Telemetry tag shared by every voice-note event. Per CLAUDE.md this carries
+  /// BOTH ends of the conversation, so either party's email retrieves the
+  /// interaction — a voice note is a two-sided event and diagnosing one from a
+  /// single device is how you end up looking at the wrong phone.
+  /// `Map<String, Object>` (not `dynamic`) to match `Analytics.capture`'s
+  /// signature — a `Map<String, dynamic>` would need an implicit downcast, which
+  /// Dart 3 rejects. `_myName` is a mutable field so it can't type-promote
+  /// inside a null check; the `case final n?` pattern binds it instead.
+  Map<String, Object> _voiceTelemetry() => {
+        'peer': widget.chat.name,
+        'is_group': _isGroup,
+        if (_myName case final n?) 'from_name': n,
+      };
+
+  /// [VOICE-SCRUB-1] Seek the currently-open note. Driven by a tap or drag on
+  /// the bubble's waveform — this is the "I only want to hear the end" case the
+  /// owner asked for, which was previously impossible: the only gesture on a
+  /// voice note was play/pause, so reaching the last 5 seconds of a 3-minute
+  /// note meant listening to the first 2:55 of it.
+  Future<void> _seekAudio(_Msg m, Duration to) async {
+    // Scrubbing works on the OPEN note, playing or paused — pausing to drag the
+    // playhead around is the natural gesture, and refusing to seek while paused
+    // would make the timeline feel broken exactly when you're using it most.
+    if (_openAudioId != m.id) return;
+    try {
+      await _audio.seek(to);
+      // Paint the new position immediately rather than waiting for the next
+      // position callback, so the red playhead lands under the finger.
+      if (mounted) setState(() => _audioPos = to);
+    } catch (e) {
+      AvaLog.I.log('media', 'voice seek failed: $e');
+    }
   }
 
   Future<void> _playAudio(_Msg m) async {
     if (_playingAudioId == m.id) {
-      await _audio.stop();
+      // [VOICE-SCRUB-1] Pause rather than stop. `stop()` resets the position to
+      // zero, so pausing a note silently threw away where you were — including
+      // any point you had just scrubbed to. Pause holds it.
+      await _audio.pause();
       if (mounted) setState(() => _playingAudioId = null);
       return;
+    }
+    // [VOICE-SCRUB-1] Resume the note that's already loaded (paused, or parked
+    // at a position the user scrubbed to) instead of re-downloading, re-writing
+    // the temp file and restarting it from 0:00.
+    if (_openAudioId == m.id) {
+      try {
+        await _audio.resume();
+        try { await _audio.setPlaybackRate(_audioSpeed); } catch (_) {}
+        if (mounted) setState(() => _playingAudioId = m.id);
+        return;
+      } catch (_) { /* fall through to a full reload */ }
     }
     try {
       final bytes = m.localBytes ?? (m.media != null ? await MediaService.downloadAndDecrypt(m.media!) : null);
@@ -4630,11 +4925,28 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       final dir = await getTemporaryDirectory();
       final f = File('${dir.path}/play_${m.id}.m4a');
       await f.writeAsBytes(bytes, flush: true);
+      // [VOICE-SCRUB-1] Reset the playhead BEFORE play(), never after.
+      //
+      // `onDurationChanged` fires once per source, from inside play() when the
+      // platform decodes the m4a header. Clearing `_audioDur` afterwards would
+      // race that event and usually WIN — nulling the duration we'd just been
+      // told and never being told again, which silently disables the whole
+      // timeline (no length label, no red playhead, no seeking) in a way that
+      // depends on device timing and would pass a casual test on one handset.
+      if (mounted) {
+        setState(() {
+          // A different note is now loaded — forget the previous clip's length
+          // so the timeline can't render this note against the last one's.
+          _openAudioId = m.id;
+          _audioPos = Duration.zero;
+          _audioDur = null;
+        });
+      }
       await _audio.play(DeviceFileSource(f.path));
       // [UI-BUBBLE-3] honour the chosen playback speed for this note.
       try { await _audio.setPlaybackRate(_audioSpeed); } catch (_) {/* not supported on all platforms */}
       if (mounted) setState(() => _playingAudioId = m.id);
-      Analytics.capture('voice_note_played', {'speed': _audioSpeed});
+      Analytics.capture('voice_note_played', {..._voiceTelemetry(), 'speed': _audioSpeed});
     } catch (e) {
       AvaLog.I.log('media', 'voice play failed: $e');
       if (mounted) {
@@ -6788,24 +7100,79 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             child: Icon(icon, color: AD.sendActiveInk, size: 20)),
       );
 
+  /// [VOICE-REC-1] (owner report 2026-07-16, pic 5) The recording bar.
+  ///
+  /// Replaces a single line of static text ("Recording… tap to send") with the
+  /// four things the owner asked for, and that WhatsApp has:
+  ///   • a LIVE waveform driven by the mic's real amplitude, so you can see it
+  ///     hearing you — the whole point of his "I am not even sure if it is
+  ///     listening to me";
+  ///   • the elapsed time, so a long note isn't a guess;
+  ///   • a bin to discard the take (there was NO way to cancel — the only
+  ///     control sent it, so a fluffed sentence had to be sent and deleted);
+  ///   • a pause/resume, which is also what auto-pause-on-background resumes to.
+  Widget _recordingBar(BoxDecoration bandDeco) {
+    final mm = _recElapsed.inMinutes.toString();
+    final ss = (_recElapsed.inSeconds % 60).toString().padLeft(2, '0');
+    return Container(
+      decoration: bandDeco,
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+      // NOTE: no SafeArea here — the caller already wraps _inputBar() in one.
+      child: Row(children: [
+          // Discard. Sits on the far left, away from send — a destructive action
+          // should never be adjacent to the one you're reaching for.
+          IconButton(
+            tooltip: 'Delete recording',
+            icon: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.bold),
+                color: AD.danger, size: 22),
+            onPressed: () => _cancelRecording(),
+          ),
+          // Blinking dot + elapsed. The dot stops blinking while paused, so
+          // "paused" is legible at a glance and not just an icon swap.
+          _RecordingDot(active: !_recPaused),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 44,
+            child: Text('$mm:$ss',
+                style: ADText.bubbleMeta(c: AD.textSecondary)),
+          ),
+          // The live waveform.
+          Expanded(
+            child: SizedBox(
+              height: 32,
+              child: _recPaused
+                  ? Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text('Paused · tap ▶ to continue',
+                          style: ADText.bubbleMeta(c: AD.textSecondary)),
+                    )
+                  : _LiveWaveform(levels: _recLevels),
+            ),
+          ),
+          const SizedBox(width: 4),
+          IconButton(
+            tooltip: _recPaused ? 'Resume recording' : 'Pause recording',
+            icon: PhosphorIcon(
+                _recPaused
+                    ? PhosphorIcons.play(PhosphorIconsStyle.fill)
+                    : PhosphorIcons.pause(PhosphorIconsStyle.fill),
+                color: AD.textSecondary,
+                size: 22),
+            onPressed: _toggleRecordPause,
+          ),
+          _sendCircle(
+              PhosphorIcons.paperPlaneRight(PhosphorIconsStyle.fill), _toggleRecord),
+      ]),
+    );
+  }
+
   Widget _inputBar() {
     // Input band: paper-2 with ink top border; field = ink-bordered pill.
     const bandDeco = BoxDecoration(
       color: AD.headerFooter,
       border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
     );
-    if (_recording) {
-      return Container(
-        decoration: bandDeco,
-        padding: const EdgeInsets.fromLTRB(16, 12, 12, 10),
-        child: Row(children: [
-          PhosphorIcon(PhosphorIcons.record(PhosphorIconsStyle.fill), color: AD.danger, size: 16),
-          const SizedBox(width: 8),
-          Expanded(child: Text('Recording… tap to send', style: ADText.rowName())),
-          _sendCircle(PhosphorIcons.paperPlaneRight(PhosphorIconsStyle.fill), _toggleRecord),
-        ]),
-      );
-    }
+    if (_recording) return _recordingBar(bandDeco);
     // STREAM E: WhatsApp-parity rich input bar + emoji/GIF/sticker panel (flag ON
     // by default). Reuses the SAME handlers as the legacy row below (_send,
     // _attach, camera, _toggleRecord, _onInputChanged) so send/attach/camera/mic
@@ -9263,6 +9630,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         }
         // [UI-BUBBLE-3] rich voice-note bubble: large circular play, waveform,
         // live duration, and a 1x/1.5x/2x speed chip after play starts.
+        // [VOICE-SCRUB-1] Feed the bubble the shared player's REAL position and
+        // duration — but only for the note that's actually open. Every other
+        // voice bubble gets zero/null, so they render idle instead of all
+        // mirroring the playhead of whichever note happens to be playing.
+        final isOpen = _openAudioId == m.id;
         return VoiceNoteBubble(
           key: ValueKey('voice_${m.media?.id ?? m.id}'),
           playing: _playingAudioId == m.id,
@@ -9270,6 +9642,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           onRight: m.me && !_isAvaBubble(m),
           onPlayPause: () => _playAudio(m),
           onCycleSpeed: _cycleAudioSpeed,
+          position: isOpen ? _audioPos : Duration.zero,
+          duration: isOpen ? _audioDur : null,
+          onSeek: isOpen ? (to) => _seekAudio(m, to) : null,
         );
       case MediaKind.video:
         // Rich card: first-frame thumbnail + tap-to-play inline; the expand
@@ -9871,4 +10246,106 @@ class _BurstFx {
   final int id;
   final String emoji;
   const _BurstFx({required this.id, required this.emoji});
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [VOICE-REC-1] Recording-bar chrome (owner report 2026-07-16, pic 5).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// A red dot that pulses while the recorder is live and holds steady while
+/// paused. Small, but it is the ambient "this is running" signal that the old
+/// bar's static text couldn't give — a still icon reads the same whether the
+/// mic is hot or the recorder has quietly fallen over.
+class _RecordingDot extends StatefulWidget {
+  const _RecordingDot({required this.active});
+  final bool active;
+
+  @override
+  State<_RecordingDot> createState() => _RecordingDotState();
+}
+
+class _RecordingDotState extends State<_RecordingDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.active) {
+      return const _Dot(opacity: 0.45);
+    }
+    return FadeTransition(
+      opacity: Tween<double>(begin: 1.0, end: 0.25).animate(_c),
+      child: const _Dot(opacity: 1),
+    );
+  }
+}
+
+class _Dot extends StatelessWidget {
+  const _Dot({required this.opacity});
+  final double opacity;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: 10,
+        height: 10,
+        decoration: BoxDecoration(
+          color: AD.danger.withValues(alpha: opacity),
+          shape: BoxShape.circle,
+        ),
+      );
+}
+
+/// The live recording waveform — one bar per amplitude sample, newest on the
+/// right, scrolling left as the buffer fills (WhatsApp's behaviour, pic 5).
+///
+/// This is drawn from the recorder's REAL metering (`onAmplitudeChanged`), not
+/// an animation on a timer. That distinction is the entire feature: a canned
+/// animation would look identical whether or not the mic was working, which is
+/// the exact ambiguity the owner is complaining about. If these bars are flat,
+/// the mic genuinely isn't hearing anything, and that's worth knowing before
+/// you talk for two minutes into a dead recorder.
+class _LiveWaveform extends StatelessWidget {
+  const _LiveWaveform({required this.levels});
+  final List<double> levels;
+
+  @override
+  Widget build(BuildContext context) => CustomPaint(
+        painter: _LiveWaveformPainter(levels),
+        size: Size.infinite,
+      );
+}
+
+class _LiveWaveformPainter extends CustomPainter {
+  _LiveWaveformPainter(this.levels);
+  final List<double> levels;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = AD.iconSearch
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = 2.6;
+    const gap = 4.5;
+    final mid = size.height / 2;
+    // Right-align: the newest sample sits at the right edge and older samples
+    // march left, so the waveform reads as "now" rather than jumping around.
+    for (var i = 0; i < levels.length; i++) {
+      final x = size.width - (levels.length - i) * gap;
+      if (x < 0) continue;
+      final h = (levels[i] * size.height).clamp(2.0, size.height);
+      canvas.drawLine(Offset(x, mid - h / 2), Offset(x, mid + h / 2), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_LiveWaveformPainter old) => true;
 }
