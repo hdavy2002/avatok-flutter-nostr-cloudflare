@@ -1201,6 +1201,16 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       final env = jsonDecode(m.payload);
       if (env is Map && env['t'] == 'receipt') { _applyReceipt(m.mine, env); return; } // status, never a bubble
       if (env is Map && env['t'] == 'read') return; // read high-water (badge clears via the chat list) — never a bubble
+      // [CHAT-RAWENV-1] (owner report 2026-07-16, pic 4) — THE bug in pic 4.
+      // A status post is fanned out to every contact over the SAME inbox stream
+      // that carries DMs (see status_screen._addPhoto → chat_list._startInbox,
+      // which lifts it into the status ring). This thread also reads that
+      // stream, had no `status` branch, and so fell through to the catch-all
+      // with `text` still holding the raw payload — rendering the entire status
+      // envelope, nested media descriptor and AES key included, as a text
+      // bubble in the conversation. Status posts belong to the ring, never to a
+      // thread: swallow it here.
+      if (env is Map && env['t'] == 'status') return;
       if (env is Map && env['gid'] != null) return; // group message — not this 1:1
       if (env is Map && env['t'] == 'edit') { _applyEdit(env['target'].toString(), (env['body'] ?? '').toString()); return; }
       if (env is Map && (env['t'] == 'del' || env['t'] == 'gdel')) { if (!m.mine) _applyDelete(env['target'].toString()); return; }
@@ -1213,7 +1223,23 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         // reinstalled devices see any votes already cast (best-effort).
         if (special == 'poll') unawaited(_hydratePolls());
       } else if (env is Map && env['t'] == 'media') {
-        media = ChatMedia.fromEnvelope(env.cast<String, dynamic>());
+        // [CHAT-RAWENV-1] Scoped try: a throw in here (an unknown MediaKind, a
+        // `size` that arrived as a String, a missing key from a newer build)
+        // used to escape to the outer catch with `text` still equal to the raw
+        // payload — i.e. one bad field printed the AES key on screen. Now the
+        // failure is reported and the frame is dropped by the backstop below.
+        try {
+          media = ChatMedia.fromEnvelope(env.cast<String, dynamic>());
+        } catch (e) {
+          Analytics.capture('chat_media_envelope_parse_failed', {
+            'error': e.runtimeType.toString(),
+            'kind': env['kind']?.toString(),
+            'size_type': env['size'].runtimeType.toString(),
+            'mine': m.mine,
+            'peer': widget.chat.name,
+          });
+          rethrow;
+        }
         text = _caption(media.kind, media.name);
         final keyShort = media.id.length > 12 ? media.id.substring(media.id.length - 8) : media.id;
         AvaLog.I.log('media', 'recv dm media kind=${media.kind.name} ${media.size}B key=…$keyShort mine=${m.mine}');
@@ -1244,6 +1270,30 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     // this stops any unhandled/older-format control from leaking into the chat.
     if (_isControlEnvelope(m.payload)) {
       Analytics.capture('chat_control_filtered', {'where': 'dm_live'});
+      return;
+    }
+    // [CHAT-RAWENV-1] Backstop: if we got all the way here with `text` still
+    // byte-identical to the wire payload AND that payload is one of our
+    // envelopes, then no branch above understood it and we are one line away
+    // from drawing raw JSON at the user. Drop the frame — a missing bubble is a
+    // bug we can chase; a bubble full of ciphertext keys is one the user has to
+    // look at, and (via _persistNow) keeps looking at forever.
+    //
+    // This path was previously SILENT — the outer `catch (_)` swallowed every
+    // cause with no log and no event, which is why pic 4 had to be reported by
+    // hand from a screenshot instead of showing up in telemetry. Tag both ends
+    // so either party's email retrieves it.
+    if (text == m.payload && _isAppEnvelope(m.payload)) {
+      String? envT;
+      try { envT = (jsonDecode(m.payload) as Map)['t']?.toString(); } catch (_) {}
+      Analytics.capture('chat_raw_envelope_dropped', {
+        'where': seed ? 'dm_seed' : 'dm_live',
+        'envelope_t': envT ?? 'unparsed',
+        'mine': m.mine,
+        'peer': widget.chat.name,
+        'bytes': m.payload.length,
+      });
+      AvaLog.I.log('media', 'dropped unrenderable envelope t=$envT mine=${m.mine}');
       return;
     }
     // A peer deleted this for everyone (recorded durably) — render the tombstone,
@@ -1338,6 +1388,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       // (e.g. a leaked `{"t":"del",...}`), so it never reappears on reopen.
       if (_isControlEnvelope((j['text'] ?? '').toString())) {
         Analytics.capture('chat_control_filtered', {'where': 'cache'});
+        continue;
+      }
+      // [CHAT-RAWENV-1] Purge a bubble a previous build cached as raw envelope
+      // JSON (pic 4). This is the half of the fix that actually reaches the
+      // people already affected: `_persistNow` wrote the raw payload into
+      // `text` with no `media` key, and this loader restores `text` verbatim
+      // and NEVER re-parses it — so without this the JSON bubble would survive
+      // the fix and sit in their thread forever. Same precedent, and the same
+      // reasoning, as the control-envelope purge directly above.
+      if (j['media'] == null && _isAppEnvelope((j['text'] ?? '').toString())) {
+        Analytics.capture('chat_raw_envelope_dropped', {'where': 'cache'});
         continue;
       }
       final ts = (j['ts'] as num?)?.toInt() ?? 0;
@@ -1451,7 +1512,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               ? last.text
               : (last.media != null ? _caption(last.media!.kind, last.media!.name) : ''));
       final ts = last.ts == 0 ? DateTime.now().millisecondsSinceEpoch ~/ 1000 : last.ts;
-      if (preview.isNotEmpty) await ChatPreviewStore().record(key, preview, ts, last.me);
+      // [CHAT-RAWENV-1] Never let an envelope become the chat-list preview line —
+      // the raw-JSON bubble in pic 4 poisoned the list row too, so the user met
+      // it twice.
+      if (preview.isNotEmpty && !_isAppEnvelope(preview)) {
+        await ChatPreviewStore().record(key, preview, ts, last.me);
+      }
     }
   }
 
@@ -7448,6 +7514,32 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         const ctrl = {'read', 'delivered', 'typing', 'ack', 'receipt', 'seen', 'del', 'gdel'};
         return ctrl.contains(j['t']) || ctrl.contains(j['type']);
       }
+    } catch (_) { /* not JSON → real text */ }
+    return false;
+  }
+
+  /// [CHAT-RAWENV-1] (owner report 2026-07-16, pic 4) — the backstop that turns
+  /// "render the machine's plumbing at the user" into "render nothing".
+  ///
+  /// True if [text] is one of OUR wire envelopes rather than something a human
+  /// typed. `_onDm` seeds `text = m.payload` and only overwrites it inside a
+  /// `try` block, so ANY envelope it doesn't explicitly branch on — a new `t`
+  /// from a newer build, a `status` fan-out, a field-shape change that makes
+  /// `fromEnvelope` throw — falls out of the `catch` with the raw JSON still in
+  /// `text` and gets drawn as a chat bubble. That is how a photo turned into a
+  /// wall of `{"t":"status",…,"who":"Humphrey Davy"}` on the recipient's screen.
+  ///
+  /// `_isControlEnvelope` only ever covered receipts, so it never caught this.
+  /// This is deliberately broader: an object with a **string `t`** is, by
+  /// construction, an AvaTOK envelope — `toEnvelope()` and every `_send…` path
+  /// stamps one, and nothing else does. A real user typing `{"t":"hi"}` is a
+  /// rounding error next to leaking key material into a conversation. Drop it.
+  bool _isAppEnvelope(String text) {
+    final t = text.trim();
+    if (t.isEmpty || t.codeUnitAt(0) != 0x7B /* { */) return false;
+    try {
+      final j = jsonDecode(t);
+      return j is Map && j['t'] is String;
     } catch (_) { /* not JSON → real text */ }
     return false;
   }
