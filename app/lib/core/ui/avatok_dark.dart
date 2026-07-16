@@ -168,6 +168,15 @@ class AD {
   );
   static const mediaPlaceholderBg = Color(0xFFD9DCE6);
   static const mediaPlaceholderLabel = Color(0xFF70778C);
+  /// [AVAGRP-CARDS-1] (owner decision 2026-07-17, pale-bubbles-on-white):
+  /// checked, not replaced — these two were audited for use as a media
+  /// LOADING-state fill (`ChatVideoCard`'s pre-thumbnail square) sitting
+  /// INSIDE a pale bubble instead of directly on the old dark canvas. Ink-on-
+  /// bg contrast is ~3.4:1 (icon/glyph-only content, not body text, so >=3:1
+  /// is the relevant bar — WCAG large-text/graphical-object threshold) and
+  /// the fill itself is neutral enough not to clash with any of the 12
+  /// `kGroupSenderPalette` tints or `kBubbleMine`/`kBubbleTheirs`/`kBubbleAva`.
+  /// No new token added.
 
   // ----------------------------------------------------------- avatar self
   static const selfAvatarBg = Color(0xFFE8833A);

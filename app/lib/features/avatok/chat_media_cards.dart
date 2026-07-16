@@ -19,6 +19,7 @@ import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 import '../../core/analytics.dart';
 import '../../core/ava_log.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/bubble_theme.dart';
 import '../messaging/widgets/media_download_placeholder.dart';
 import 'media.dart';
 
@@ -95,16 +96,23 @@ Future<void> _open(String url) async {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class ChatLinkText extends StatelessWidget {
-  const ChatLinkText({super.key, required this.text, required this.style});
+  const ChatLinkText({super.key, required this.text, required this.style, this.theme});
   final String text;
   final TextStyle style;
+
+  /// Resolved bubble theme (see `core/ui/bubble_theme.dart`). Null keeps the
+  /// original hardcoded link-accent colour (pre-[AVAGRP-CARDS-1] callers).
+  final BubbleTheme? theme;
 
   @override
   Widget build(BuildContext context) {
     final spans = urlSpans(text);
     if (spans.isEmpty) return Text(text, style: style);
+    // Link accent: [theme.play] is the closest role to "tappable accent" the
+    // contract defines (play/waveform/progress) — reuse it here rather than
+    // adding a new BubbleTheme field for a single hyperlink colour.
     final linkStyle = style.copyWith(
-      color: AD.iconSearch,
+      color: theme?.play ?? AD.iconSearch,
       decoration: TextDecoration.underline,
     );
     final children = <InlineSpan>[];
@@ -162,6 +170,7 @@ class VoiceNoteBubble extends StatefulWidget {
     this.duration,
     this.onSeek,
     this.onRight = false,
+    this.theme,
   });
 
   final bool playing;
@@ -182,6 +191,12 @@ class VoiceNoteBubble extends StatefulWidget {
   final void Function(Duration to)? onSeek;
 
   final bool onRight; // my message (lime) vs theirs (card) — tints the bars
+
+  /// Resolved bubble theme. Non-null → ALL colours below come from it (play
+  /// button, active bars, meta label, speed-chip ink); null falls back to the
+  /// original [onRight]-derived colours exactly, so any caller that hasn't
+  /// migrated yet keeps its old look.
+  final BubbleTheme? theme;
 
   @override
   State<VoiceNoteBubble> createState() => _VoiceNoteBubbleState();
@@ -237,11 +252,13 @@ class _VoiceNoteBubbleState extends State<VoiceNoteBubble> {
   @override
   Widget build(BuildContext context) {
     final active = widget.playing;
-    final barPlayed = widget.onRight ? AD.bubbleOutPlay : AD.bubbleInPlay;
+    final t = widget.theme;
+    final barPlayed = t?.play ?? (widget.onRight ? AD.bubbleOutPlay : AD.bubbleInPlay);
     final barIdle =
-        (widget.onRight ? AD.bubbleOutMeta : AD.bubbleInMeta).withValues(alpha: 0.4);
-    final metaC = widget.onRight ? AD.bubbleOutMeta : AD.bubbleInMeta;
-    final inkC = widget.onRight ? AD.bubbleOutInk : AD.bubbleInInk;
+        (t?.meta ?? (widget.onRight ? AD.bubbleOutMeta : AD.bubbleInMeta)).withValues(alpha: 0.4);
+    final metaC = t?.meta ?? (widget.onRight ? AD.bubbleOutMeta : AD.bubbleInMeta);
+    final inkC = t?.ink ?? (widget.onRight ? AD.bubbleOutInk : AD.bubbleInInk);
+    final borderC = t?.border ?? AD.borderControl;
 
     final dur = widget.duration;
     // Show 'Voice' only while we genuinely don't know the length; never invent
@@ -261,9 +278,9 @@ class _VoiceNoteBubbleState extends State<VoiceNoteBubble> {
           width: 44,
           height: 44,
           decoration: BoxDecoration(
-            color: widget.onRight ? AD.bubbleOutPlay : AD.bubbleInPlay,
+            color: barPlayed,
             shape: BoxShape.circle,
-            border: Border.all(color: AD.borderControl, width: 1),
+            border: Border.all(color: borderC, width: 1),
             boxShadow: const [],
           ),
           child: Center(
@@ -419,19 +436,24 @@ class _VoiceNoteBubbleState extends State<VoiceNoteBubble> {
 /// label reads as "this is on its way", not "did it disappear?".
 class PendingVoiceNoteBubble extends StatelessWidget {
   final bool onRight;
-  const PendingVoiceNoteBubble({super.key, this.onRight = false});
+
+  /// Resolved bubble theme; null keeps the original [onRight]-derived colours.
+  final BubbleTheme? theme;
+  const PendingVoiceNoteBubble({super.key, this.onRight = false, this.theme});
 
   @override
   Widget build(BuildContext context) {
-    final metaC = onRight ? AD.bubbleOutMeta : AD.bubbleInMeta;
+    final metaC = theme?.meta ?? (onRight ? AD.bubbleOutMeta : AD.bubbleInMeta);
+    final playC = theme?.play ?? (onRight ? AD.bubbleOutPlay : AD.bubbleInPlay);
+    final borderC = theme?.border ?? AD.borderControl;
     return Row(mainAxisSize: MainAxisSize.min, children: [
       Container(
         width: 44,
         height: 44,
         decoration: BoxDecoration(
-          color: (onRight ? AD.bubbleOutPlay : AD.bubbleInPlay).withValues(alpha: 0.5),
+          color: playC.withValues(alpha: 0.5),
           shape: BoxShape.circle,
-          border: Border.all(color: AD.borderControl, width: 1),
+          border: Border.all(color: borderC, width: 1),
         ),
         child: const Center(
           child: SizedBox(
@@ -454,7 +476,13 @@ class PendingVoiceNoteBubble extends StatelessWidget {
 class FailedVoiceNoteBubble extends StatelessWidget {
   final bool onRight;
   final VoidCallback? onRetry;
-  const FailedVoiceNoteBubble({super.key, this.onRight = false, this.onRetry});
+
+  /// Accepted for signature parity with the other voice-bubble states, but
+  /// deliberately UNUSED for colour: a failed upload is a universal error
+  /// state (red), not a per-sender tint — theming it would make a failure
+  /// blend into whichever pale colour the sender happens to have.
+  final BubbleTheme? theme;
+  const FailedVoiceNoteBubble({super.key, this.onRight = false, this.onRetry, this.theme});
 
   @override
   Widget build(BuildContext context) {
@@ -490,8 +518,19 @@ class FailedVoiceNoteBubble extends StatelessWidget {
 /// be the last child of a Stack over an image/video. [trailing] is the caller's
 /// timestamp + delivery-status row (built with its own logic).
 class MediaTimestampScrim extends StatelessWidget {
-  const MediaTimestampScrim({super.key, required this.trailing});
+  const MediaTimestampScrim({super.key, required this.trailing, this.theme});
   final Widget trailing;
+
+  /// Accepted for signature parity but deliberately UNUSED: this scrim paints
+  /// OVER the photo/video pixels, not the bubble fill, so it must stay a
+  /// black gradient + white text regardless of the bubble's pale tint — the
+  /// underlying media can be any colour, and a themed (pale) scrim would be
+  /// unreadable over a bright frame. See report for the full reasoning: the
+  /// owner's "every message needs a date+time" requirement is satisfied by
+  /// keeping this scrim exactly as-is; only Agent A's day/thread-level meta
+  /// row (for kinds with no scrim, e.g. file cards) needed a new visible
+  /// timestamp.
+  final BubbleTheme? theme;
   @override
   Widget build(BuildContext context) => Positioned(
         left: 0,
@@ -513,7 +552,12 @@ class MediaTimestampScrim extends StatelessWidget {
 
 /// "↪ Forwarded" label overlaid top-left on media (render when envelope fwd:true).
 class MediaForwardedLabel extends StatelessWidget {
-  const MediaForwardedLabel({super.key});
+  const MediaForwardedLabel({super.key, this.theme});
+
+  /// Accepted for signature parity but deliberately UNUSED — same reasoning
+  /// as [MediaTimestampScrim]: this badge sits on top of the media pixels,
+  /// not the bubble fill, so it stays a fixed black/white badge.
+  final BubbleTheme? theme;
   @override
   Widget build(BuildContext context) => Positioned(
         left: 6,
@@ -548,11 +592,17 @@ class ChatImageCard extends StatelessWidget {
     this.onTap,
     this.overlays = const [],
     this.maxHeight = 320,
+    this.theme,
   });
   final Uint8List bytes;
   final VoidCallback? onTap;
   final List<Widget> overlays; // forwarded label, timestamp scrim
   final double maxHeight;
+
+  /// Accepted for signature parity but deliberately UNUSED — the image IS the
+  /// bubble (no inner fill/ink of its own to theme); the pale bubble fill and
+  /// border are painted by the caller's outer bubble container.
+  final BubbleTheme? theme;
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
@@ -589,6 +639,7 @@ class ChatVideoCard extends StatefulWidget {
     this.width = 220,
     this.autoFetch = true,
     this.onFullscreen,
+    this.theme,
   });
 
   final ChatMedia? media;
@@ -599,6 +650,10 @@ class ChatVideoCard extends StatefulWidget {
   /// (play / download) still fetches. Once bytes are fetched they are cached.
   final bool autoFetch;
   final VoidCallback? onFullscreen;
+
+  /// Resolved bubble theme. Used for the play-glyph accent and the pre-thumb
+  /// loading square; null keeps the original hardcoded colours.
+  final BubbleTheme? theme;
 
   @override
   State<ChatVideoCard> createState() => _ChatVideoCardState();
@@ -776,15 +831,22 @@ class _ChatVideoCardState extends State<ChatVideoCard> {
             Container(
               width: widget.width,
               height: widget.width * 9 / 16,
-              color: AD.card,
+              // Themed → a neutral loading fill that reads on a pale bubble
+              // (the old AD.card near-black square read as a hole punched in
+              // the bubble once the canvas/bubbles went pale/white).
+              color: widget.theme != null ? AD.mediaPlaceholderBg : AD.card,
               alignment: Alignment.center,
               child: _thumbTried
                   ? PhosphorIcon(PhosphorIcons.filmSlate(PhosphorIconsStyle.fill),
-                      color: Colors.white, size: 34)
-                  : const SizedBox(
+                      color: widget.theme != null ? AD.mediaPlaceholderLabel : Colors.white,
+                      size: 34)
+                  : SizedBox(
                       width: 22,
                       height: 22,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: widget.theme != null ? AD.mediaPlaceholderLabel : Colors.white),
+                    ),
             ),
           if (_starting)
             const SizedBox(
@@ -807,7 +869,7 @@ class _ChatVideoCardState extends State<ChatVideoCard> {
         width: 52,
         height: 52,
         decoration: BoxDecoration(
-          color: AD.bubbleOutPlay,
+          color: widget.theme?.play ?? AD.bubbleOutPlay,
           shape: BoxShape.circle,
           border: Border.all(color: Colors.white, width: 2),
           boxShadow: const [],
@@ -849,6 +911,7 @@ class ChatFileCard extends StatefulWidget {
     this.width = 240,
     this.autoFetch = true,
     this.onOpen,
+    this.theme,
   });
 
   final ChatMedia? media;
@@ -863,6 +926,13 @@ class ChatFileCard extends StatefulWidget {
   /// tap always fetches; fetched bytes are cached.
   final bool autoFetch;
   final VoidCallback? onOpen;
+
+  /// Resolved bubble theme. Colours the TYPED card's fill/border/text (the
+  /// file IS the bubble in that layout, like [ChatImageCard]); the PDF-thumb
+  /// variant's black filename scrim is left alone for the same reason as
+  /// [MediaTimestampScrim] — it paints over the rendered page pixels, not a
+  /// themeable fill. Null keeps the original AD.card/dark-mode look.
+  final BubbleTheme? theme;
 
   @override
   State<ChatFileCard> createState() => _ChatFileCardState();
@@ -985,16 +1055,25 @@ class _ChatFileCardState extends State<ChatFileCard> {
       );
     }
 
-    // Typed card: coloured square badge (extension) + name + size.
+    // Typed card: coloured square badge (extension) + name + size. The
+    // extension badge (info.color) stays file-type-accented (PDF red, DOC
+    // blue, ...) regardless of theme — that colour identifies the FILE KIND,
+    // not the sender, and is meaningful across every bubble tint.
+    final t = widget.theme;
+    final cardBg = t?.bg ?? AD.card;
+    final cardBorder = t?.border ?? AD.borderControl;
+    final inkC = t?.ink;
+    final metaC = t?.meta ?? AD.textSecondary;
+    final accentC = t?.play ?? AD.iconSearch;
     return GestureDetector(
       onTap: widget.onOpen,
       child: Container(
         width: widget.width,
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: AD.card,
+          color: cardBg,
           borderRadius: BorderRadius.circular(AD.rListCard),
-          border: Border.all(color: AD.borderControl, width: 1),
+          border: Border.all(color: cardBorder, width: 1),
         ),
         child: Row(children: [
           Container(
@@ -1023,16 +1102,16 @@ class _ChatFileCardState extends State<ChatFileCard> {
                 Text(widget.name,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: ADText.rowName()),
+                    style: inkC != null ? ADText.rowName(c: inkC) : ADText.rowName()),
                 const SizedBox(height: 3),
                 Row(children: [
                   if (sizeLabel.isNotEmpty)
-                    Text(sizeLabel, style: ADText.statCaption(c: AD.textSecondary)),
+                    Text(sizeLabel, style: ADText.statCaption(c: metaC)),
                   if (sizeLabel.isNotEmpty) const SizedBox(width: 8),
                   PhosphorIcon(PhosphorIcons.downloadSimple(PhosphorIconsStyle.bold),
-                      size: 13, color: AD.iconSearch),
+                      size: 13, color: accentC),
                   const SizedBox(width: 3),
-                  Text('OPEN', style: ADText.statCaption(c: AD.iconSearch)),
+                  Text('OPEN', style: ADText.statCaption(c: accentC)),
                 ]),
               ],
             ),
@@ -1053,11 +1132,18 @@ class YouTubeCard extends StatefulWidget {
     required this.videoId,
     required this.url,
     this.width = 260,
+    this.theme,
   });
 
   final String videoId;
   final String url;
   final double width;
+
+  /// Resolved bubble theme. Colours the card's fill/border/title/author text;
+  /// the play-badge overlay (drawn on the video thumbnail pixels, not the
+  /// card fill) is left as the fixed brand-red disc, same reasoning as
+  /// [MediaTimestampScrim].
+  final BubbleTheme? theme;
 
   @override
   State<YouTubeCard> createState() => _YouTubeCardState();
@@ -1120,12 +1206,13 @@ class _YouTubeCardState extends State<YouTubeCard> {
   @override
   Widget build(BuildContext context) {
     final c = _ctrl;
+    final t = widget.theme;
     return Container(
       width: widget.width,
       decoration: BoxDecoration(
-        color: AD.card,
+        color: t?.bg ?? AD.card,
         borderRadius: BorderRadius.circular(AD.rListCard),
-        border: Border.all(color: AD.borderControl, width: 1),
+        border: Border.all(color: t?.border ?? AD.borderControl, width: 1),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1176,12 +1263,12 @@ class _YouTubeCardState extends State<YouTubeCard> {
               _loadingMeta ? 'YouTube video' : (_title?.isNotEmpty == true ? _title! : 'YouTube video'),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: ADText.rowName(),
+              style: t != null ? ADText.rowName(c: t.ink) : ADText.rowName(),
             ),
             if (_author?.isNotEmpty == true) ...[
               const SizedBox(height: 2),
               Text(_author!, maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: ADText.statCaption(c: AD.textSecondary)),
+                  style: ADText.statCaption(c: t?.meta ?? AD.textSecondary)),
             ],
           ]),
         ),

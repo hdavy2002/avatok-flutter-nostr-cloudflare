@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/ava_log.dart';
 import '../../../core/ui/avatok_dark.dart';
+import '../../../core/ui/bubble_theme.dart';
 import 'link_viewer_sheet.dart';
 
 /// Link previews + inline YouTube — AI Messenger Batch, STREAM C ([PREVIEW-3]).
@@ -319,15 +320,17 @@ class _DurationPill extends StatelessWidget {
 /// Footer: favicon + lowercase domain (WhatsApp parity).
 class _DomainFooter extends StatelessWidget {
   const _DomainFooter({required this.preview, this.padding =
-      const EdgeInsets.fromLTRB(10, 0, 10, 9)});
+      const EdgeInsets.fromLTRB(10, 0, 10, 9), this.theme});
   final LinkPreview preview;
   final EdgeInsets padding;
+  final BubbleTheme? theme;
 
   @override
   Widget build(BuildContext context) {
     final d = preview.displayDomain;
     if (d.isEmpty) return const SizedBox.shrink();
     final fav = preview.faviconUrl;
+    final metaC = theme?.meta ?? AD.textTertiary;
     return Padding(
       padding: padding,
       child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -337,17 +340,17 @@ class _DomainFooter extends StatelessWidget {
             child: Image.network(fav, width: 13, height: 13,
                 errorBuilder: (_, __, ___) => PhosphorIcon(
                     PhosphorIcons.link(PhosphorIconsStyle.bold),
-                    size: 11, color: AD.textTertiary)),
+                    size: 11, color: metaC)),
           )
         else
           PhosphorIcon(PhosphorIcons.link(PhosphorIconsStyle.bold),
-              size: 11, color: AD.textTertiary),
+              size: 11, color: metaC),
         const SizedBox(width: 5),
         Flexible(
           child: Text(d,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: ADText.statCaption(c: AD.textTertiary)),
+              style: ADText.statCaption(c: metaC)),
         ),
       ]),
     );
@@ -369,10 +372,11 @@ Widget? buildLinkPreviewCard(
   LinkPreview preview, {
   bool pending = false,
   double? width,
+  BubbleTheme? theme,
 }) {
   if (pending) return null; // STRANGER GATE — raw URL only
   if (!preview.hasCard) return null;
-  return LinkPreviewCard(preview: preview, width: width);
+  return LinkPreviewCard(preview: preview, width: width, theme: theme);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -380,24 +384,31 @@ Widget? buildLinkPreviewCard(
 // ─────────────────────────────────────────────────────────────────────────────
 
 class LinkPreviewCard extends StatelessWidget {
-  const LinkPreviewCard({super.key, required this.preview, this.width});
+  const LinkPreviewCard({super.key, required this.preview, this.width, this.theme});
   final LinkPreview preview;
 
   /// null → the card fills the bubble edge to edge (the default).
   final double? width;
 
+  /// Resolved bubble theme. Colours the card fill/border/title/description;
+  /// the play badge + duration pill overlay the thumbnail's own pixels (not
+  /// the card fill) and stay the fixed black/white treatment, same reasoning
+  /// as `chat_media_cards.dart`'s `MediaTimestampScrim`.
+  final BubbleTheme? theme;
+
   @override
   Widget build(BuildContext context) {
     final img = preview.displayImage;
+    final t = theme;
     // Two tap targets (owner decision 2026-07-10):
     //   thumbnail            → play/read INSIDE AvaTOK (LinkViewer)
     //   title / desc / domain → deep-link out to the native app
     return Container(
       width: width ?? double.infinity,
       decoration: BoxDecoration(
-        color: AD.card,
+        color: t?.bg ?? AD.card,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AD.borderControl, width: 1),
+        border: Border.all(color: t?.border ?? AD.borderControl, width: 1),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -443,7 +454,7 @@ class LinkPreviewCard extends StatelessWidget {
                       preview.title!,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: ADText.rowName(),
+                      style: t != null ? ADText.rowName(c: t.ink) : ADText.rowName(),
                     ),
                   ),
                 if (preview.description != null)
@@ -453,10 +464,10 @@ class LinkPreviewCard extends StatelessWidget {
                       preview.description!,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: ADText.preview(c: AD.textSecondary),
+                      style: ADText.preview(c: t?.meta ?? AD.textSecondary),
                     ),
                   ),
-                _DomainFooter(preview: preview),
+                _DomainFooter(preview: preview, theme: t),
               ],
             ),
           ),
@@ -477,21 +488,29 @@ class ComposeLinkPreview extends StatelessWidget {
     required this.preview,
     required this.onDismiss,
     this.loading = false,
+    this.theme,
   });
 
   final LinkPreview? preview;
   final VoidCallback onDismiss;
   final bool loading;
 
+  /// Resolved bubble theme. This is the composer's OWN draft preview (always
+  /// "my message" before it's even sent), so callers should pass
+  /// [kBubbleMine] rather than a per-sender group tint; null keeps the
+  /// original dark-card look.
+  final BubbleTheme? theme;
+
   @override
   Widget build(BuildContext context) {
     final p = preview;
+    final t = theme;
     return Container(
       margin: const EdgeInsets.fromLTRB(10, 8, 10, 2),
       decoration: BoxDecoration(
-        color: AD.card,
+        color: t?.bg ?? AD.card,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AD.borderControl, width: 1),
+        border: Border.all(color: t?.border ?? AD.borderControl, width: 1),
       ),
       clipBehavior: Clip.antiAlias,
       child: Row(children: [
@@ -500,21 +519,22 @@ class ComposeLinkPreview extends StatelessWidget {
           height: 60,
           child: loading || p?.displayImage == null
               ? Container(
-                  color: AD.cardHover,
+                  color: t?.bg.withValues(alpha: 0.6) ?? AD.cardHover,
                   alignment: Alignment.center,
                   child: loading
-                      ? const SizedBox(
+                      ? SizedBox(
                           width: 16,
                           height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2))
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: t?.meta))
                       : PhosphorIcon(PhosphorIcons.link(PhosphorIconsStyle.bold),
-                          size: 18, color: AD.textTertiary),
+                          size: 18, color: t?.meta ?? AD.textTertiary),
                 )
               : Stack(fit: StackFit.expand, children: [
                   Image.network(p!.displayImage!,
                       fit: BoxFit.cover,
                       errorBuilder: (_, __, ___) =>
-                          Container(color: AD.cardHover)),
+                          Container(color: t?.bg.withValues(alpha: 0.6) ?? AD.cardHover)),
                   if (p.isVideo) const Center(child: _PlayBadge(size: 24)),
                 ]),
         ),
@@ -531,14 +551,14 @@ class ComposeLinkPreview extends StatelessWidget {
                       : (p?.title ?? p?.displayDomain ?? 'Link'),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: ADText.rowName(),
+                  style: t != null ? ADText.rowName(c: t.ink) : ADText.rowName(),
                 ),
                 if (!loading && p != null) ...[
                   const SizedBox(height: 2),
                   Text(p.displayDomain,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: ADText.statCaption(c: AD.textTertiary)),
+                      style: ADText.statCaption(c: t?.meta ?? AD.textTertiary)),
                 ],
               ],
             ),
@@ -547,7 +567,7 @@ class ComposeLinkPreview extends StatelessWidget {
         IconButton(
           visualDensity: VisualDensity.compact,
           icon: const Icon(Icons.close_rounded, size: 18),
-          color: AD.textTertiary,
+          color: t?.meta ?? AD.textTertiary,
           onPressed: onDismiss,
           tooltip: 'Remove preview',
         ),

@@ -10,6 +10,7 @@ import '../../core/avatar.dart';
 import '../../core/avatar_cache.dart';
 import '../../core/chat_state.dart';
 import '../../core/group_store.dart';
+import '../../core/profile_store.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../identity/identity.dart';
 import '../../sync/group_api.dart';
@@ -193,6 +194,22 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
       if (!mounted) return;
       setState(() { _photoBusy = false; if (g != null) _group = g; });
       _toast(g == null ? 'Could not save the group photo.' : 'Group photo updated');
+      if (g != null) {
+        // [AVAGRP-CARDS-1] Owner (pic 6): nobody in the group could tell WHO
+        // changed the group photo. Same client-side announcement pattern as
+        // "$myName created the group" (new_group_screen.dart) and "added
+        // ${_label(uid)}..." (above) — posts a normal `kind:'text'` message
+        // whose body is `{'t':'gtext','gid':conv,'body':text,'system':true}`.
+        // Rendering that centred/small/black is chat_thread.dart's job
+        // (Agent A); this only emits the envelope.
+        final myName = (await ProfileStore().load()).displayName;
+        final who = myName.isEmpty ? 'Someone' : myName;
+        GroupApi.announce(_group.id, '$who changed the group photo');
+        Analytics.capture('group_photo_changed', {
+          'gid': _group.id,
+          'uid': _myUid ?? '',
+        });
+      }
     } catch (_) {
       if (mounted) setState(() => _photoBusy = false);
       _toast("Couldn't open that image — try another.");
@@ -205,7 +222,18 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     final g = await GroupApi.setAvatar(_group.id, '');
     if (!mounted) return;
     setState(() { _photoBusy = false; if (g != null) _group = g; });
-    if (g == null) _toast('Could not remove the group photo.');
+    if (g == null) {
+      _toast('Could not remove the group photo.');
+    } else {
+      // [AVAGRP-CARDS-1] Same "who did it" announcement as the change path.
+      final myName = (await ProfileStore().load()).displayName;
+      final who = myName.isEmpty ? 'Someone' : myName;
+      GroupApi.announce(_group.id, '$who removed the group photo');
+      Analytics.capture('group_photo_removed', {
+        'gid': _group.id,
+        'uid': _myUid ?? '',
+      });
+    }
   }
 
   Future<void> _editDescription() async {
