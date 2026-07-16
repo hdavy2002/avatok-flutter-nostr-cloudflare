@@ -16,7 +16,9 @@ library;
 import '../features/settings/sections/auto_download_section.dart';
 import '../features/settings/sections/backup_sync_section.dart';
 import '../features/avadial/pstn_forwarding_setup.dart';
-import '../features/settings/sections/default_dialer_section.dart';
+// AVA-DIAL-6 → DISABLED 2026-07-16: default-dialer settings section no longer
+// registered (see registerDefaultDialerSection() call site below for why).
+// import '../features/settings/sections/default_dialer_section.dart';
 import '../features/settings/sections/delegate_section.dart';
 import '../features/settings/sections/focus_section.dart';
 import '../features/settings/marketplace_agent_settings_page.dart';
@@ -118,13 +120,17 @@ class AvaBootstrap {
     // Never). Free setting, no flag. The choice is per-account and consulted by
     // MediaAutoDownload.shouldAutoFetch() at every incoming-media render site.
     registerAutoDownloadSection();
-    // AVA-DIAL-6: "Default phone & messages" settings section — wired OS-role
-    // toggles that reflect LIVE reality and launch the system RoleManager picker /
-    // default-apps screen. Hides itself unless Android + shellV2 + avaDialer (the
-    // messages toggle additionally needs avaSms). Gives users who declined the
-    // onboarding "make AvaTOK your phone" step a later path, and a place to hand a
-    // role back if Truecaller/stock took it. Idempotent (registry keys by id).
-    registerDefaultDialerSection();
+    // AVA-DIAL-6 → DISABLED 2026-07-16 (owner decision, PLAN-2026-07-16 receptionist
+    // /guardian doc): AvaTOK will no longer be the Android default dialer/SMS app —
+    // spam can't be filtered well enough as a default handler. Carrier conditional
+    // call forwarding to the Vobiz voicemail line is now the only voicemail path
+    // (see registerPstnForwardingSection below). The native role-helper code
+    // (AvaDialChannel, RoleManager plumbing, InCallService) is left intact — it's
+    // still used when avatok-to-avatok calling has the role granted from before —
+    // only this settings UI entry point (which prompted users to grant the role)
+    // is removed so users are never asked to make AvaTOK their default phone/SMS
+    // app again. Do not re-enable without an explicit owner request.
+    // registerDefaultDialerSection();
     // [AVA-RCPT-7] "Voicemail forwarding" settings entry — opens the plain
     // -language carrier-forwarding setup screen (MMI/USSD codes to AvaTOK's
     // pool DID). Hidden unless Android + avaDialer + the feature's own

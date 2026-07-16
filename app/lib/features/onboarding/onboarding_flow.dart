@@ -57,18 +57,18 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   // this file but are no longer routed; apps default to the standard set in
   // _finish(), and contacts permission is now requested on demand at "add
   // contact" (not as an onboarding wall).
-  // AVA-ONBOARD-2: an OPTIONAL "Make AvaTOK your phone" step follows
-  // notifications. It only appears on Android (iOS can never be a default dialer)
-  // AND when both the shellV2 and avaDialer remote flags are on — otherwise the
-  // flow is byte-for-byte 'terms' → 'notifications' as before. Step indices in
-  // analytics re-index with the list, so onboarding_step_viewed/completed stay
-  // consistent whether or not the phone step is present.
+  // AVA-ONBOARD-2 → RETIRED 2026-07-16 (owner decision, PLAN-2026-07-16
+  // receptionist/guardian doc): AvaTOK will no longer ask to become the Android
+  // default dialer/SMS app — spam can't be filtered well enough as a default
+  // handler, and carrier conditional call forwarding to the Vobiz voicemail line
+  // is now the only voicemail path. The 'phone_roles' step is never added to the
+  // flow anymore, so onboarding is byte-for-byte 'terms' → 'notifications' on
+  // every platform. Its builders (_phoneRoles/_phoneResult/_phonePreview etc.)
+  // are left in this file, unrouted, same pattern as the other retired steps
+  // (account_kind, profile, verify_identity, drive_backup, contacts, add_ai,
+  // apps) — do not re-add 'phone_roles' without an explicit owner request.
   static List<String> _composeSteps() {
-    final steps = <String>['terms', 'notifications'];
-    if (Platform.isAndroid && RemoteConfig.shellV2 && RemoteConfig.avaDialer) {
-      steps.add('phone_roles');
-    }
-    return steps;
+    return <String>['terms', 'notifications'];
   }
   static final List<String> _stepNames = _composeSteps();
   static final int _steps = _stepNames.length;
