@@ -198,6 +198,24 @@ class _Msg {
 /// Installs itself once as [AudioPlaybackService.onTapOrigin]; other surfaces
 /// (e.g. the AvaDial voicemail inbox) can compose with or override that hook
 /// for their own `originRoute` scheme without needing anything from this file.
+///
+/// [AVAVM-PLAYER-2] COMPOSES rather than clobbers — mirrors
+/// `InboxThreadRegistry._ensureHook()` (features/avadial/inbox/inbox_thread_screen.dart):
+/// captures whatever `AudioPlaybackService.onTapOrigin` was already installed
+/// and falls through to it for any track this registry doesn't recognise
+/// (i.e. not one of `_byConvKey`'s keys). Previously this unconditionally
+/// OVERWROTE the hook the first time any chat thread opened, so if a chat
+/// thread happened to open AFTER the Inbox lane had already installed its own
+/// hook, chat's install silently discarded Inbox's — tapping the mini-player
+/// after a voicemail could then navigate to the wrong place (or no-op)
+/// depending purely on which thread type was opened first (AVAINBOX-1
+/// handover report, confirmed). Capturing+chaining `previous` here fixes the
+/// reverse ordering that report flagged as NOT fixed by the Inbox side alone;
+/// combined with `InboxThreadRegistry`'s existing capture-and-chain, BOTH
+/// installation orders now compose correctly. `AudioPlaybackService
+/// .onTapOrigin` itself is untouched (still a single nullable field) — no
+/// public API change, so `InboxThreadRegistry` (owned by a different agent)
+/// keeps compiling unchanged.
 abstract class ChatThreadRegistry {
   static final Map<String, Chat> _byConvKey = {};
   static bool _installed = false;
@@ -210,14 +228,19 @@ abstract class ChatThreadRegistry {
   static void _ensureNavHook() {
     if (_installed) return;
     _installed = true;
+    final previous = AudioPlaybackService.onTapOrigin;
     AudioPlaybackService.onTapOrigin = (context, track) async {
       final route = track.originRoute;
-      if (route == null) return;
-      final chat = _byConvKey[route];
-      if (chat == null) return; // not a chat-thread track (or not opened this session)
-      await Navigator.of(context, rootNavigator: true).push(
-        MaterialPageRoute(builder: (_) => ChatThreadScreen(chat: chat)),
-      );
+      final chat = route != null ? _byConvKey[route] : null;
+      if (chat != null) {
+        await Navigator.of(context, rootNavigator: true).push(
+          MaterialPageRoute(builder: (_) => ChatThreadScreen(chat: chat)),
+        );
+        return;
+      }
+      // Not a chat-thread track (or not opened this session yet) — fall
+      // through to whatever was installed before us (e.g. Inbox's hook).
+      await previous?.call(context, track);
     };
   }
 }
@@ -10139,7 +10162,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
     if (_sharing) return;
     setState(() => _sharing = true);
     try {
-      final cacheKey = 'recept_${widget.sessionId}';
+      final cacheKey = _cacheKey;
       Uint8List? bytes = await MediaService.cachedBlob(cacheKey);
       if (bytes == null || bytes.isEmpty) {
         final url = 'https://$kSignalingHost/api/receptionist/recording?sid=${widget.sessionId}';
@@ -10179,13 +10202,39 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
       _e['has_recording'] == true ||
       (_e['recording_url'] ?? '').toString().isNotEmpty;
 
+  /// [AVAVM-PLAYER-2] KEY SCHEME NOTE: this card renders the AI-receptionist
+  /// intercept session (`kind:'receptionist'`, worker/src/do/reception_room_cf.ts),
+  /// a DIFFERENT server entity from the PSTN `kind:'voicemail'` row the Inbox
+  /// card and `business_thread_widgets.dart`'s `VoicemailCard` render. Those
+  /// two share ONE cache entry via `vm_<media_ref>` because `media_ref` (the R2
+  /// key) rides inside their envelope body (GAP-3 fix, voicemail_room.ts). The
+  /// receptionist session's envelope does NOT carry an R2 key at all — only
+  /// `session_id` (reception_room_cf.ts's `postMessage` puts the R2 key
+  /// (`recordingUrl`) in the top-level `/inbox/append` `media_ref` field, but
+  /// never bakes it into the `body` JSON the client decodes into `extra`, so it
+  /// never reaches this card). Grafting a client-side guess at that R2 key
+  /// (`receptionist/<owner_uid>/<phoneKey>/<sid>.wav`) would be inventing a
+  /// second, fragile key scheme from a different server file this issue does
+  /// not own (worker/** is out of scope here) — so this card intentionally
+  /// KEEPS its own `recept_<sessionId>` cache key. `sessionId` already 1:1
+  /// identifies one recording, so this IS still a real, working cache — it
+  /// just can't be unified with the other two lanes without a worker-side
+  /// change to add `media_ref` inside the envelope body (follow-up, not done
+  /// here).
+  String get _cacheKey => 'recept_${widget.sessionId}';
+
   Future<void> _prefetch() async {
     final sid = widget.sessionId;
     if (sid.isEmpty || !_hasRecording) return;
-    final cacheKey = 'recept_$sid';
+    final cacheKey = _cacheKey;
     try {
       final cached = await MediaService.cachedBlob(cacheKey);
-      if (cached != null && cached.isNotEmpty) return; // already on-device
+      if (cached != null && cached.isNotEmpty) {
+        Analytics.capture('voicemail_cache', {
+          'hit': true, 'stage': 'prefetch', 'lane': 'receptionist', 'session_id': sid,
+        });
+        return; // already on-device
+      }
       final t0 = DateTime.now().millisecondsSinceEpoch;
       final url = 'https://$kSignalingHost/api/receptionist/recording?sid=$sid';
       final r = await ApiAuth.getBytes(url);
@@ -10195,6 +10244,10 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
         'session_id': sid,
         'bytes': r.bodyBytes.length,
         'fetch_ms': DateTime.now().millisecondsSinceEpoch - t0,
+      });
+      Analytics.capture('voicemail_cache', {
+        'hit': false, 'stage': 'prefetch', 'lane': 'receptionist', 'session_id': sid,
+        'bytes': r.bodyBytes.length,
       });
     } catch (_) {/* on-demand fetch in _togglePlay is the fallback */}
   }
@@ -10234,9 +10287,12 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
       // Cache-first: a voicemail recording never changes, so once fetched we
       // keep the bytes in the per-account media cache and replay locally instead
       // of re-downloading on every tap / chat reopen.
-      final cacheKey = 'recept_${widget.sessionId}';
+      final cacheKey = _cacheKey;
       Uint8List? bytes = await MediaService.cachedBlob(cacheKey);
       final fromCache = bytes != null && bytes.isNotEmpty;
+      Analytics.capture('voicemail_cache', {
+        'hit': fromCache, 'stage': 'play', 'lane': 'receptionist', 'session_id': widget.sessionId,
+      });
       if (!fromCache) {
         final url = 'https://$kSignalingHost/api/receptionist/recording?sid=${widget.sessionId}';
         final r = await ApiAuth.getBytes(url);

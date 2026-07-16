@@ -1,6 +1,7 @@
+import 'dart:typed_data';
+
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
@@ -8,6 +9,7 @@ import '../../core/api_auth.dart';
 import '../../core/blocking_api.dart';
 import '../../core/config.dart';
 import '../../core/ui/avatok_dark.dart';
+import 'media.dart';
 import 'unknown_caller.dart';
 
 /// Message-bubble renderers for business-call records (Specs/PLAN-2026-07-11-
@@ -49,6 +51,21 @@ class _VoicemailCardState extends State<VoicemailCard> {
   bool _expanded = false;
   bool _handled = false; // local optimistic state for Accept/Block
 
+  @override
+  void initState() {
+    super.initState();
+    // [AVAVM-PLAYER-2] Warm the shared, content-addressed media cache as soon
+    // as the card renders — mirrors `_ReceptionistCard._prefetch()` and the
+    // Inbox `_VoicemailCard._prefetch()` (AVAINBOX-1) so playing this
+    // recording in one lane means the OTHER lanes never redownload it. Before
+    // this fix this card did zero caching at all — a raw `http.get` on every
+    // tap — which was the owner's actual "redownloading every time" report
+    // (his screenshot shows this exact "Play voicemail" card, not the Inbox
+    // or receptionist one).
+    // ignore: unawaited_futures
+    _prefetch();
+  }
+
   Map<String, dynamic> get _e => widget.extra;
   String get _callId => (_e['call_id'] ?? '').toString();
   String get _callerUid => (_e['caller_uid'] ?? '').toString();
@@ -65,10 +82,55 @@ class _VoicemailCardState extends State<VoicemailCard> {
       ? 'https://$kSignalingHost/api/voicemail/recording?key=${Uri.encodeQueryComponent(_mediaRef)}'
       : (_e['recording_url'] ?? '').toString();
 
+  /// [AVAVM-PLAYER-2] CONTENT-ADDRESSED cache key — same scheme adopted by
+  /// AVAINBOX-1's Inbox `_VoicemailCard` (`inbox_thread_screen.dart`
+  /// `_cacheKey`, `vm_<r2 key>`): `media_ref` IS the R2 recording key
+  /// (`voicemail/<owner>/<callerKey>/<callId>.wav`, see
+  /// worker/src/do/voicemail_room.ts) for BOTH surfaces — this card and the
+  /// Inbox card render the SAME `kind:'voicemail'` server row, just from two
+  /// different client lanes. Sharing the key means a recording played in
+  /// either lane is on-device for the other. Falls back to a call-id key only
+  /// for the rare legacy row with no `media_ref` (nothing to de-dupe against).
+  String get _cacheKey {
+    final ref = _mediaRef;
+    if (ref.isNotEmpty) {
+      return 'vm_${ref.replaceAll(RegExp(r'[^a-zA-Z0-9_.-]'), '_')}';
+    }
+    return 'business_vm_$_callId';
+  }
+
   @override
   void dispose() {
     _player.dispose();
     super.dispose();
+  }
+
+  Future<void> _prefetch() async {
+    if (!_hasRecording) return;
+    try {
+      final cached = await MediaService.cachedBlob(_cacheKey);
+      if (cached != null && cached.isNotEmpty) {
+        Analytics.capture('voicemail_cache', {
+          'hit': true, 'stage': 'prefetch', 'lane': 'business_thread', 'call_id': _callId,
+        });
+        return;
+      }
+      final url = _recordingUrl.startsWith('http')
+          ? _recordingUrl
+          : 'https://$kSignalingHost$_recordingUrl';
+      final t0 = DateTime.now().millisecondsSinceEpoch;
+      final r = await ApiAuth.getBytes(url);
+      if (r.statusCode == 200 && r.bodyBytes.isNotEmpty) {
+        await MediaService.writeBlob(_cacheKey, r.bodyBytes);
+        Analytics.capture('voicemail_cache', {
+          'hit': false, 'stage': 'prefetch', 'lane': 'business_thread', 'call_id': _callId,
+          'bytes': r.bodyBytes.length,
+          'load_ms': DateTime.now().millisecondsSinceEpoch - t0,
+        });
+      }
+    } catch (_) {
+      // Best-effort — _togglePlay() fetches on demand if this misses.
+    }
   }
 
   Future<void> _togglePlay() async {
@@ -79,19 +141,37 @@ class _VoicemailCardState extends State<VoicemailCard> {
       return;
     }
     setState(() => _loading = true);
+    final t0 = DateTime.now().millisecondsSinceEpoch;
     try {
-      final url = _recordingUrl.startsWith('http')
-          ? _recordingUrl
-          : 'https://$kSignalingHost$_recordingUrl';
-      // Owner-authed fetch → play from bytes (audioplayers UrlSource has no
-      // headers param in this project's version; same pattern as team_inbox).
-      final headers = await ApiAuth.signedHeaders('GET', url);
-      final r = await http.get(Uri.parse(url), headers: headers);
-      if (r.statusCode != 200) throw Exception('recording ${r.statusCode}');
-      await _player.play(BytesSource(r.bodyBytes, mimeType: 'audio/wav'));
+      // Cache-first: a voicemail recording never changes, so once fetched by
+      // ANY lane (this card, the Inbox card, or a prior open of this same
+      // card) we replay LOCAL bytes instead of re-downloading — the fix for
+      // the owner's "redownloading every time" report.
+      Uint8List? bytes = await MediaService.cachedBlob(_cacheKey);
+      final fromCache = bytes != null && bytes.isNotEmpty;
+      if (!fromCache) {
+        final url = _recordingUrl.startsWith('http')
+            ? _recordingUrl
+            : 'https://$kSignalingHost$_recordingUrl';
+        final r = await ApiAuth.getBytes(url);
+        if (r.statusCode != 200 || r.bodyBytes.isEmpty) {
+          throw Exception('recording ${r.statusCode}');
+        }
+        bytes = r.bodyBytes;
+        await MediaService.writeBlob(_cacheKey, bytes); // best-effort
+      }
+      // Proves the caching fix in production: cache-hit vs miss on every
+      // actual play tap, not just the silent background prefetch.
+      Analytics.capture('voicemail_cache', {
+        'hit': fromCache, 'stage': 'play', 'lane': 'business_thread', 'call_id': _callId,
+      });
+      await _player.play(BytesSource(bytes, mimeType: 'audio/wav'));
       if (!mounted) return;
       setState(() { _playing = true; _loading = false; });
-      Analytics.capture('voicemail_played', {'call_id': _callId});
+      Analytics.capture('voicemail_played', {
+        'call_id': _callId, 'cached': fromCache,
+        'load_ms': DateTime.now().millisecondsSinceEpoch - t0,
+      });
       _player.onPlayerComplete.first.then((_) { if (mounted) setState(() => _playing = false); });
     } catch (_) {
       if (mounted) setState(() => _loading = false);
