@@ -61,6 +61,7 @@ import '../library/library_picker.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/bubble_theme.dart'; // [AVAGRP-BUBBLE-1] per-sender pale bubble theming contract
 import '../../core/group_store.dart';
 import '../../core/message_store.dart';
 import '../../identity/identity.dart';
@@ -146,6 +147,14 @@ class _Msg {
   final int ts; // sort key (epoch seconds; 0 for demo)
   String? evId; // rumor id (real DMs) — set after media upload too
   final String? senderLabel; // group: who sent (null for mine / 1:1)
+  // [AVAGRP-BUBBLE-1] The sender's STABLE uid (`GroupMessage.senderPub`), kept
+  // alongside the display-name `senderLabel`. This is the identity that must
+  // drive both per-sender bubble colour (`resolveBubbleTheme`) and the group
+  // avatar lookup (`_memberAvatars`) — `senderLabel` is a display NAME that can
+  // change (a member renames themselves) or arrive null before the name is
+  // learned, and hashing/keying off it is exactly why the group tint reshuffled
+  // mid-thread and the avatar fell back to a bare '?'. Null for mine / 1:1.
+  final String? senderPub;
   String? reaction;
   Map<String, int> reactCounts = {}; // Phase 4: aggregate live reactions (emoji → count)
   Map<String, Set<String>> reactBy = {}; // Phase 5: who reacted (emoji → set of uids) for the "reacted by" sheet
@@ -179,11 +188,20 @@ class _Msg {
   Map<int, int> pollVotes = {}; // option index → vote count (server-authoritative)
   Map<int, Set<String>> pollBy = {}; // option index → set of voter uids (who-voted)
   Set<int> pollMine = {}; // option indices I currently voted for (drives highlight)
+  // [AVAGRP-BUBBLE-1 / message-info] Per-message, per-member receipts for the
+  // WhatsApp-style "Info" sheet (§4). uid → epoch-seconds. Default {} — the
+  // group high-water-mark ticks (`_peerReadTs`/`_peerDeliveredTs`) stay 1:1-only
+  // until Agent C's backend (worker/src/do/inbox.ts + sync_hub.dart) lands and
+  // actually populates these per group message; until then the Info sheet shows
+  // "No read receipts yet" rather than a broken/empty-looking sheet.
+  Map<String, int> readBy = {};
+  Map<String, int> deliveredTo = {};
   _Msg(this.id, this.me, this.text, this.time,
-      {this.ts = 0, this.evId, this.senderLabel, this.reaction, this.media, this.pendingKind, this.mediaCaption = '', this.localBytes,
+      {this.ts = 0, this.evId, this.senderLabel, this.senderPub, this.reaction, this.media, this.pendingKind, this.mediaCaption = '', this.localBytes,
        this.uploading = false, this.failed = false, this.sent = false, this.replyTo, this.edited = false,
        this.starred = false, this.forwarded = false, this.hidden = false, this.expireAt, this.special, this.extra,
-       this.aiLocal = false});
+       this.aiLocal = false, Map<String, int>? readBy, Map<String, int>? deliveredTo})
+      : readBy = readBy ?? {}, deliveredTo = deliveredTo ?? {};
 }
 
 /// [AVAVM-PLAYER-1] Best-effort, in-memory registry of the [Chat] behind every
@@ -465,6 +483,15 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   bool _aiShowOther = false;                 // reveal "from your other chats" hits
   List<_AiHit> _aiHits = const [];           // matched + unmatched semantic hits
   Map<String, String> _memberNames = {}; // hex → name (group mentions)
+  // [AVAGRP-BUBBLE-1] hex → photo URL, mirroring `_memberNames` (shape copied
+  // from `group_info_screen.dart`'s `_avatars` map). Populated ONLY from
+  // ContactsStore (`_loadChatExtras`) — the group wire envelope only ever
+  // carries `fromName`, never an avatar URL, so a member's photo can only be
+  // known here if the LOCAL device already has them saved as a contact. That is
+  // the contract seam: a member who is a stranger (not in Contacts) will still
+  // fall back to initials/short-id in `_bubbleAvatar`, never a real photo, until
+  // the envelope (or a profile lookup) carries one.
+  Map<String, String> _memberAvatars = {};
   String _wallpaperId = 'default';
   List<String> _mentionMatches = [];
 
@@ -845,11 +872,15 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     if (_isGroup) {
       final contacts = await ContactsStore().load();
       final names = <String, String>{};
-      for (final c in contacts) { names[c.uid] = c.name; }
+      final avatars = <String, String>{}; // [AVAGRP-BUBBLE-1] uid → photo URL
+      for (final c in contacts) {
+        names[c.uid] = c.name;
+        if (c.avatarUrl.isNotEmpty) avatars[c.uid] = c.avatarUrl;
+      }
       if (_meId != null) names[_meId!.uid] = 'You';
-      // Merge (don't replace): keep any names already learned from early
-      // live reactions / messages (keyed by uid) — Phase 5.
-      if (mounted) setState(() => _memberNames.addAll(names));
+      // Merge (don't replace): keep any names/avatars already learned from
+      // early live reactions / messages (keyed by uid) — Phase 5.
+      if (mounted) setState(() { _memberNames.addAll(names); _memberAvatars.addAll(avatars); });
     }
     // 2026-07-04: hydrate server-persisted poll tallies for this conversation so
     // a reinstalled / new device shows correct counts + my selection + who-voted.
@@ -1211,7 +1242,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
           ts: m.createdAt, evId: m.rumorId, media: media, replyTo: replyMeta,
           forwarded: env2['forwarded'] == true, expireAt: exp, special: special, extra: extra,
           starred: _starred.contains(m.rumorId), hidden: _hiddenIds[m.rumorId] == true,
-          senderLabel: _groupLabelFor(m.senderPub, mine: m.mine)));
+          senderLabel: _groupLabelFor(m.senderPub, mine: m.mine),
+          // [AVAGRP-BUBBLE-1] stable identity for bubble colour + avatar lookup —
+          // the previous code only kept the derived display label and threw the
+          // uid away, which was the root cause of both the '?' avatar and the
+          // reshuffling group tints.
+          senderPub: m.mine ? null : m.senderPub));
       _noteGuardianFlag(special, extra);
       _msgs.sort((a, b) => a.ts.compareTo(b.ts));
     });
@@ -1262,13 +1298,35 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   /// delivered to the phone → actually read.
   ({IconData icon, Color color, String label})? _statusFor(_Msg m) {
     if (m.aiLocal) return null; // private @ava question — never sent, so no ticks
-    if (!m.me || !_realMode || _isGroup || m.ts <= 0) return null;
+    if (!m.me || !_realMode || m.ts <= 0) return null;
     // My bubbles are lime (ink text), so status ticks read in ink tones:
     // read = blue-ink, everything in-flight = ink-soft, failed = coral.
     if (m.failed) {
       return (icon: PhosphorIcons.warningCircle(PhosphorIconsStyle.bold), color: AD.danger, label: 'Not sent · tap to retry');
     }
     if (m.uploading) {
+      return (icon: PhosphorIcons.clock(PhosphorIconsStyle.bold), color: AD.bubbleOutMeta, label: 'Sending…');
+    }
+    // [AVAGRP-BUBBLE-1 / message-info] Groups were hard-gated out above
+    // (`_isGroup` in the old guard) because only the 1:1 thread-level
+    // high-water marks (`_peerReadTs`/`_peerDeliveredTs`) existed. Now that
+    // `_Msg` carries per-member `readBy`/`deliveredTo` (Agent C's backend,
+    // `worker/src/do/inbox.ts` + `sync_hub.dart`), a group message can report a
+    // real status too: read once EVERY other member has read it, delivered once
+    // EVERY other member has it. `_memberUids` is "every member except me" —
+    // set in `_setupGroup`. Until Agent C's wire-up lands, `readBy`/`deliveredTo`
+    // stay `{}` for every group message, so this silently falls through to
+    // "Sent" exactly like today — no regression, just no group ticks yet either.
+    if (_isGroup) {
+      if (_memberUids.isNotEmpty && m.readBy.length >= _memberUids.length) {
+        return (icon: PhosphorIcons.checks(PhosphorIconsStyle.bold), color: AD.iconSearch, label: 'Read');
+      }
+      if (_memberUids.isNotEmpty && m.deliveredTo.length >= _memberUids.length) {
+        return (icon: PhosphorIcons.checks(PhosphorIconsStyle.bold), color: AD.bubbleOutMeta, label: 'Delivered');
+      }
+      if (m.sent) {
+        return (icon: PhosphorIcons.check(PhosphorIconsStyle.bold), color: AD.bubbleOutMeta, label: 'Sent');
+      }
       return (icon: PhosphorIcons.clock(PhosphorIconsStyle.bold), color: AD.bubbleOutMeta, label: 'Sending…');
     }
     if (_peerReadTs > 0 && m.ts <= _peerReadTs) {
@@ -1537,6 +1595,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         forwarded: j['forwarded'] == true,
         expireAt: (j['expireAt'] as num?)?.toInt(),
         senderLabel: j['senderLabel'] as String?,
+        senderPub: j['senderPub'] as String?, // [AVAGRP-BUBBLE-1]
         reaction: j['reaction'] as String?,
         starred: j['starred'] == true,
         hidden: j['hidden'] == true || _hiddenIds[ev] == true,
@@ -1607,6 +1666,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         if (m.forwarded) 'forwarded': true,
         if (m.expireAt != null) 'expireAt': m.expireAt,
         if (m.senderLabel != null) 'senderLabel': m.senderLabel,
+        if (m.senderPub != null) 'senderPub': m.senderPub, // [AVAGRP-BUBBLE-1]
         if (m.reaction != null) 'reaction': m.reaction,
         if (m.starred) 'starred': true,
         if (m.hidden) 'hidden': true, // soft-delete survives reopen; data retained for Undo
@@ -1759,23 +1819,27 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   // A subtle divider rendered above the oldest loaded messages once we've paged
   // (or are paging) deep archive, so the user understands they're now looking at
   // history pulled from the cloud backup.
+  // [AVAGRP-BUBBLE-1] `AD.textPrimary`/`AD.textSecondary` are white/near-white —
+  // tuned for the OLD dark thread canvas. On the new white `kChatCanvas` a
+  // white-at-18%-alpha divider and white-60% caption are both close to
+  // invisible. Use the pale-on-white pair from `bubble_theme.dart` instead.
   Widget _olderMessagesDivider() => Padding(
         padding: const EdgeInsets.only(top: 4, bottom: 10),
         child: Row(children: [
-          Expanded(child: Divider(color: AD.textPrimary.withValues(alpha: 0.18), thickness: 1)),
+          Expanded(child: Divider(color: kChatCanvasMeta.withValues(alpha: 0.35), thickness: 1)),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10),
             child: _archiveLoading
                 ? Row(mainAxisSize: MainAxisSize.min, children: [
                     SizedBox(width: 12, height: 12,
-                        child: CircularProgressIndicator(strokeWidth: 1.6, color: AD.textSecondary)),
+                        child: CircularProgressIndicator(strokeWidth: 1.6, color: kChatCanvasMeta)),
                     const SizedBox(width: 7),
-                    Text('Loading older messages…', style: ADText.statCaption(c: AD.textSecondary)),
+                    Text('Loading older messages…', style: ADText.statCaption(c: kChatCanvasMeta)),
                   ])
                 : Text(_archiveDone ? 'Start of conversation' : 'Older messages',
-                    style: ADText.statCaption(c: AD.textSecondary)),
+                    style: ADText.statCaption(c: kChatCanvasMeta)),
           ),
-          Expanded(child: Divider(color: AD.textPrimary.withValues(alpha: 0.18), thickness: 1)),
+          Expanded(child: Divider(color: kChatCanvasMeta.withValues(alpha: 0.35), thickness: 1)),
         ]),
       );
 
@@ -1829,19 +1893,22 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   }
 
   // A centered "Today / Yesterday / date" chip rendered between day groups.
+  // [AVAGRP-BUBBLE-1] `AD.card` (near-black) + `AD.borderControl` were tuned
+  // for the old dark canvas; on white they'd read as a hard black pill. Use
+  // the pale system-pill pair (`kChatSysPillBg`/`kChatCanvasMeta`) instead.
   Widget _daySeparator(String label) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 10),
         child: Center(
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             decoration: BoxDecoration(
-              color: AD.card,
+              color: kChatSysPillBg,
               borderRadius: BorderRadius.circular(100),
-              border: Border.all(color: AD.borderControl, width: 1.5),
+              border: Border.all(color: kChatCanvasMeta.withValues(alpha: 0.35), width: 1.5),
               boxShadow: const [],
             ),
             child: Text(label.toUpperCase(),
-                style: ADText.statCaption(c: AD.textSecondary)),
+                style: ADText.statCaption(c: kChatCanvasMeta)),
           ),
         ),
       );
@@ -3449,11 +3516,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         ]))));
   }
 
-  Widget _specialContent(_Msg m) {
+  Widget _specialContent(_Msg m, BubbleTheme t) {
     final e = m.extra ?? {};
-    // Both bubble fills (lime/card) are light — text is always ink (§2: white
-    // text only on coral).
-    const fg = AD.bubbleInInk;
+    // [AVAGRP-BUBBLE-1] Every pale bubble fill is light — text is always the
+    // resolved theme's ink (§2: white text only on coral/danger).
+    final fg = t.ink;
     switch (m.special) {
       case 'sticker':
         return Text((e['emoji'] ?? '🙂').toString(), style: const TextStyle(fontSize: 46));
@@ -3489,15 +3556,15 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
           Container(
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: AD.bubbleInInk, width: 2),
+              border: Border.all(color: t.border, width: 2),
             ),
             child: Avatar(seed: (e['uid'] ?? 'c').toString(), name: (e['name'] ?? '').toString(), size: 36),
           ),
           const SizedBox(width: 8),
           Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            Text((e['name'] ?? 'Contact').toString(), style: ADText.rowName(c: AD.bubbleInInk)),
+            Text((e['name'] ?? 'Contact').toString(), style: ADText.rowName(c: fg)),
             GestureDetector(onTap: () => _addSharedContact(e),
-                child: Text('ADD CONTACT', style: ADText.bubbleMeta(c: AD.iconSearch))),
+                child: Text('ADD CONTACT', style: ADText.bubbleMeta(c: t.play))),
           ]),
         ]);
       case 'gcall':
@@ -3512,7 +3579,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                     : PhosphorIcons.videoCamera(PhosphorIconsStyle.fill),
                 size: 17, color: AD.online),
             const SizedBox(width: 6),
-            Text(audio ? 'Audio call' : 'Video call', style: ADText.rowName(c: AD.bubbleInInk)),
+            Text(audio ? 'Audio call' : 'Video call', style: ADText.rowName(c: fg)),
             if (_confLive) ...[
               const SizedBox(width: 8),
               Container(
@@ -3520,8 +3587,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                 decoration: BoxDecoration(
                     color: AD.online,
                     borderRadius: BorderRadius.circular(100),
-                    border: Border.all(color: AD.bubbleInInk, width: 2)),
-                child: Text('JOIN', style: ADText.bubbleMeta(c: AD.bubbleInMeta)),
+                    border: Border.all(color: t.border, width: 2)),
+                child: Text('JOIN', style: ADText.bubbleMeta(c: t.meta)),
               ),
             ],
           ]),
@@ -3538,9 +3605,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         return ConstrainedBox(
           constraints: const BoxConstraints(minWidth: 200),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            Text((e['q'] ?? 'Poll').toString(), style: ADText.rowName(c: AD.bubbleInInk)),
+            Text((e['q'] ?? 'Poll').toString(), style: ADText.rowName(c: fg)),
             if (multi) Padding(padding: const EdgeInsets.only(top: 2),
-              child: Text('Select one or more', style: ADText.bubbleMeta(c: AD.bubbleInMeta))),
+              child: Text('Select one or more', style: ADText.bubbleMeta(c: t.meta))),
             const SizedBox(height: 8),
             for (var i = 0; i < options.length; i++)
               Builder(builder: (_) {
@@ -3555,7 +3622,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                   child: Container(
                     margin: const EdgeInsets.only(bottom: 6),
                     decoration: BoxDecoration(
-                        border: Border.all(color: mine ? AD.primaryBadge : AD.bubbleInInk, width: 2),
+                        border: Border.all(color: mine ? AD.primaryBadge : t.border, width: 2),
                         borderRadius: BorderRadius.circular(10)),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(8),
@@ -3563,7 +3630,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                         // Percentage bar fill.
                         Positioned.fill(child: FractionallySizedBox(
                           alignment: Alignment.centerLeft, widthFactor: frac.clamp(0.0, 1.0),
-                          child: Container(color: (mine ? AD.primaryBadge : AD.bubbleInInk).withValues(alpha: 0.14)))),
+                          child: Container(color: (mine ? AD.primaryBadge : t.border).withValues(alpha: 0.35)))),
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                           child: Row(children: [
@@ -3571,7 +3638,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                               child: Icon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill), size: 15, color: AD.primaryBadge)),
                             Expanded(child: Text(options[i],
                               style: ADText.bubbleBody(c: fg).copyWith(fontWeight: mine ? FontWeight.w700 : FontWeight.w500))),
-                            Text('$pct%', style: ADText.bubbleMeta(c: AD.bubbleInMeta)),
+                            Text('$pct%', style: ADText.bubbleMeta(c: t.meta)),
                           ]),
                         ),
                       ]),
@@ -3583,7 +3650,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
               child: Text(
                 totalVoters == 0 ? 'Tap to vote' : '$totalVoters ${totalVoters == 1 ? 'vote' : 'votes'}'
                     '${m.pollMine.isNotEmpty ? ' · tap again to change' : ''}',
-                style: ADText.bubbleMeta(c: AD.bubbleInMeta))),
+                style: ADText.bubbleMeta(c: t.meta))),
           ]),
         );
       case 'marketplace_deal':
@@ -3732,25 +3799,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   /// in one place.
   bool _isAvaBubble(_Msg m) => AvaKind.isBubble(m.special);
 
-  // Per-sender bubble tint for GROUP chats — a stable colour picked from a small
-  // pastel palette by hashing the sender label, so each person keeps the same
-  // colour throughout the thread and you can tell who's who at a glance. Lime
-  // (me) and lilac (Ava) are intentionally excluded from this palette.
-  static const List<Color> _groupTints = [
-    AD.online,
-    AD.iconSearch,
-    AD.danger,
-    Color(0xFFF7D070), // amber
-    Color(0xFFB7E4A0), // sage
-    Color(0xFFF3A6C9), // pink
-  ];
-  Color _groupSenderTint(String sender) {
-    var h = 0;
-    for (final c in sender.codeUnits) {
-      h = (h * 31 + c) & 0x7fffffff;
-    }
-    return _groupTints[h % _groupTints.length];
-  }
+  // [AVAGRP-BUBBLE-1] `_groupSenderTint`/`_groupTints` are GONE — they hashed
+  // the display NAME (reshuffled a member's colour if they renamed themselves)
+  // and only ever changed the fill, leaving the ink hardcoded to
+  // `AD.bubbleInInk` with undefined contrast on most of the 6 tints. Per-sender
+  // colour now comes from `resolveBubbleTheme(senderKey: m.senderPub)` in
+  // `bubble_theme.dart`, keyed on the STABLE uid and carrying a matched
+  // ink/meta/play/border set for every tint. See `_bubble` / `_bubbleTheme`.
 
   /// The inline "Ava is working…" chip row (kind 'ava_status'). Not a normal
   /// bubble — a subtle lilac pill with a tiny spinner. Generic: any phase that
@@ -5232,6 +5287,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                         m.starred ? 'Unstar' : 'Star', () => _toggleStar(m)),
                     if (m.me && m.evId != null && m.media == null && m.text != 'You deleted this message')
                       menuRow(PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold), 'Edit', () => _startEdit(m)),
+                    // [AVAGRP-BUBBLE-1 / message-info] WhatsApp only shows "Info"
+                    // on YOUR OWN sent messages — never on an incoming bubble.
+                    if (m.me && m.ts > 0)
+                      menuRow(PhosphorIcons.info(PhosphorIconsStyle.bold), 'Info', () => _showMessageInfo(m)),
                     menuRow(PhosphorIcons.dotsThree(PhosphorIconsStyle.bold), 'More…',
                         () => _onBubbleLongPress(m)),
                   ]),
@@ -5329,6 +5388,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                             m.media!.kind == MediaKind.image),
                   ),
                   _action(ctx, PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold), 'Forward', () => _forward(m)),
+                  // [AVAGRP-BUBBLE-1 / message-info] "Info" (§4, WhatsApp-style):
+                  // how many members have seen my message. Own-message-only, same
+                  // gate as the floating-pill menu above.
+                  if (m.me && m.ts > 0)
+                    _action(ctx, PhosphorIcons.info(PhosphorIconsStyle.bold), 'Info', () => _showMessageInfo(m)),
                   // Share OUT to another app (WhatsApp, Files, etc.) via the OS
                   // share sheet — works for any media, including voice notes.
                   if (m.media != null || m.localBytes != null)
@@ -5580,6 +5644,98 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                 leading: Text(e.key, style: const TextStyle(fontSize: 22)),
                 title: Text(_reactorName(uid), style: ADText.rowName(c: AD.textPrimary)),
               ),
+          const SizedBox(height: 6),
+        ]),
+      ),
+    );
+  }
+
+  /// [AVAGRP-BUBBLE-1 / message-info §4] WhatsApp-style "Info" sheet for MY OWN
+  /// message: who has read it and who it's been delivered to. Modelled EXACTLY
+  /// on `_showReactedBy` above (same sheet chrome, same `_reactorName`/
+  /// `_memberNames` resolution) plus the group avatars from `_memberAvatars`.
+  ///
+  /// CONTRACT SEAM (for Agent C — worker/src/do/inbox.ts + routes/messaging.ts +
+  /// sync/sync_hub.dart): `m.readBy`/`m.deliveredTo` are `Map<uid, epochSeconds>`
+  /// and default to `{}`. Until the per-message/per-member receipt store lands
+  /// and actually populates them (today only the thread-level high-water marks
+  /// `_peerReadTs`/`_peerDeliveredTs` exist, and only for 1:1), this sheet is
+  /// built and wired against the maps but will show "No read receipts yet" for
+  /// EVERY message, in both 1:1 and group threads — that is expected, not a bug,
+  /// until the backend lands.
+  void _showMessageInfo(_Msg m) {
+    Analytics.capture('chat_message_info_view', {
+      'group': widget.chat.group,
+      'group_size': widget.chat.group ? widget.chat.members : 1,
+      'read_count': m.readBy.length,
+      'delivered_count': m.deliveredTo.length,
+    });
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AD.overlaySheet,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+            child: Align(alignment: Alignment.centerLeft,
+                child: Text('Info', style: ADText.rowName())),
+          ),
+          if (m.readBy.isEmpty && m.deliveredTo.isEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+              child: Text('No read receipts yet', style: ADText.bubbleBody(c: AD.textSecondary)),
+            )
+          else ...[
+            if (m.readBy.isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+                child: Text('READ BY (${m.readBy.length})', style: ADText.sectionLabel(c: AD.iconSearch)),
+              ),
+              for (final uid in m.readBy.keys)
+                ListTile(
+                  dense: true,
+                  leading: Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AD.borderAvatar, width: 1.5),
+                    ),
+                    child: Avatar(
+                      seed: uid,
+                      name: _reactorName(uid),
+                      size: 32,
+                      avatarUrl: (_memberAvatars[uid]?.isNotEmpty ?? false) ? _memberAvatars[uid] : null,
+                    ),
+                  ),
+                  title: Text(_reactorName(uid), style: ADText.rowName(c: AD.textPrimary)),
+                  trailing: Text(_fmtTime(m.readBy[uid]!), style: ADText.statCaption(c: AD.textSecondary)),
+                ),
+            ],
+            if (m.deliveredTo.isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 10, 20, 4),
+                child: Text('DELIVERED TO (${m.deliveredTo.length})', style: ADText.sectionLabel(c: AD.textSecondary)),
+              ),
+              for (final uid in m.deliveredTo.keys)
+                ListTile(
+                  dense: true,
+                  leading: Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AD.borderAvatar, width: 1.5),
+                    ),
+                    child: Avatar(
+                      seed: uid,
+                      name: _reactorName(uid),
+                      size: 32,
+                      avatarUrl: (_memberAvatars[uid]?.isNotEmpty ?? false) ? _memberAvatars[uid] : null,
+                    ),
+                  ),
+                  title: Text(_reactorName(uid), style: ADText.rowName(c: AD.textPrimary)),
+                  trailing: Text(_fmtTime(m.deliveredTo[uid]!), style: ADText.statCaption(c: AD.textSecondary)),
+                ),
+            ],
+          ],
           const SizedBox(height: 6),
         ]),
       ),
@@ -6656,7 +6812,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   Widget build(BuildContext context) {
     final c = widget.chat;
     return Scaffold(
-      backgroundColor: AD.bg,
+      // [AVAGRP-BUBBLE-1] `AD.bg` is near-black (Color(0xFF0B0B0D)) — fine
+      // behind the header/footer chrome, but it used to show through on
+      // overscroll bounce at the top/bottom of the message list. The wallpaper
+      // `DecoratedBox` already resolves to `kChatCanvas` (white) for the
+      // 'default' id (see `core/wallpaper.dart`), so the Scaffold itself must
+      // match or a dark flash shows through the bounce.
+      backgroundColor: kChatCanvas,
       body: Stack(children: [
       SafeArea(
         bottom: false,
@@ -9043,15 +9205,6 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     if (!m.me && m.special == null && m.media == null && m.localBytes == null && _flaggedTs.contains(m.ts)) {
       return _redFlagBubble(m, '⚠ FLAGGED BY AVA — DO NOT TRUST');
     }
-    // [UI-BUBBLE-STICKER] Fully bubble-LESS sticker (Stream E follow-up). A
-    // sticker rides the media pipeline tagged via `isStickerName`. WhatsApp-parity:
-    // render StickerMediaView (160dp) with NO bubble chrome — no background, no
-    // padding, no tail, no border — aligned to the sender side, with the timestamp
-    // + read receipt in a small row BELOW the sticker (also side-aligned). Long-
-    // press still opens the reaction/action sheet; tap opens the fullscreen viewer.
-    if (isStickerName(m.media?.name ?? '')) {
-      return _stickerBubbleLess(m);
-    }
     // Phase A (Ava Copilot §6/D3): PRIVATE-LANE Ava rows (copilot Moments, doc
     // results, Guardian notes — lane:"private" or a guardian payload in the
     // body) render via the dedicated AvaLaneBubble: soft orchid fill, "Ava ✨"
@@ -9080,6 +9233,42 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     // conversation", never confused with a green message to a person.
     final toAva = m.me && m.aiLocal;
     final onRight = m.me && !isAva;
+    // [AVAGRP-BUBBLE-1] Resolve ONE BubbleTheme for this whole bubble — never
+    // re-derive a colour further down (in `_specialContent`, the meta row, the
+    // reply strip, etc). `mine` excludes `toAva` (my own private question TO Ava
+    // still renders in her lilac, not my green) and `senderKey` is the STABLE
+    // `senderPub` uid, never the display name — see the `_Msg.senderPub` doc.
+    final t = resolveBubbleTheme(
+      mine: onRight && !toAva,
+      isGroup: widget.chat.group,
+      isAva: isAva || toAva,
+      senderKey: m.senderPub,
+    );
+    // Telemetry seam: a group peer bubble with a senderPub but no learned name
+    // AND no learned avatar is exactly the failure mode that used to render the
+    // bare '?' avatar — flag it once per message so a future regression is
+    // diagnosable from PostHog alone, without needing a screenshot report.
+    if (widget.chat.group && !m.me && (m.senderPub?.isNotEmpty ?? false) &&
+        _memberNames[m.senderPub] == null && _memberAvatars[m.senderPub] == null) {
+      Analytics.capture('chat_group_sender_unresolved', {
+        // Analytics.capture already stamps the account's email/phone on every
+        // event (Analytics._base) — no need to pass them explicitly here.
+        'gid': widget.chat.gid ?? '',
+        'sender_pub': _shortPub(m.senderPub!),
+        'has_label': m.senderLabel != null,
+      });
+    }
+    // [UI-BUBBLE-STICKER] Fully bubble-LESS sticker (Stream E follow-up). A
+    // sticker rides the media pipeline tagged via `isStickerName`. WhatsApp-parity:
+    // render StickerMediaView (160dp) with NO bubble chrome — no background, no
+    // padding, no tail, no border — aligned to the sender side, with the timestamp
+    // + read receipt in a small row BELOW the sticker (also side-aligned). Long-
+    // press still opens the reaction/action sheet; tap opens the fullscreen viewer.
+    // Moved below the `t` resolution ([AVAGRP-BUBBLE-1]) so the meta row under
+    // the sticker can carry the same per-sender colour as every other bubble.
+    if (isStickerName(m.media?.name ?? '')) {
+      return _stickerBubbleLess(m, t);
+    }
     // [UI-BUBBLE-2] "media IS the bubble": for a bare image/video (no caption,
     // no reply, no special kind) the media fills the bubble edge-to-edge and the
     // forwarded label + timestamp/status overlay ON the media (bottom-right scrim
@@ -9114,12 +9303,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
               // uploading attachment (m.media == null) doesn't fall back to the
               // wide text padding — that was the broad white border on sent media.
               // Voice notes stay on the normal padding (they're an inline row).
-              // [UI-BUBBLE-2] pure image/video = ZERO padding so the media reaches
-              // the bubble edge (the media IS the bubble); other media keep the 3px
-              // hug; text/voice keep the wide padding.
-              padding: isPureMedia
-                  ? EdgeInsets.zero
-                  : (m.special == null &&
+              // [AVAGRP-BUBBLE-1] Owner (2026-07-17): every bubble kind, including
+              // pure image/video, must be "enclosed inside a pale color" — the old
+              // ZERO padding for `isPureMedia` put the media flush to the outer
+              // rounded edge with no pale surround at all. Give it the SAME 3px hug
+              // as every other media kind instead of a special-cased zero.
+              padding: (m.special == null &&
                           hasMedia &&
                           (m.media?.kind ??
                                   (m.localBytes != null ? MediaKind.image : MediaKind.file)) !=
@@ -9143,21 +9332,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                               m.extra?['preview'] is Map)
                           ? 0.92
                           : 0.78)),
-              // Chat bubble (§7.14): 2.5px ink border, radius 16 with one
-              // squared corner toward the sender; me = lime, them = card.
+              // [AVAGRP-BUBBLE-1] Pale fill from the ONE resolved `t`: mine =
+              // pale green, Ava (or my message TO Ava) = pale blue, a 1:1 peer =
+              // pale lilac, and in GROUPS each sender gets their own stable pale
+              // tint (keyed on `senderPub`, never the display name) so you can
+              // tell at a glance who said what. A hairline `t.border` gives pale
+              // bubbles an edge against the white canvas.
               decoration: BoxDecoration(
-                // me = lime, Ava (or my message TO Ava) = lilac, a 1:1 peer = card,
-                // and in GROUPS each sender gets their own stable tint so you can
-                // tell at a glance who said what.
-                color: (isAva || toAva)
-                    ? AD.bubbleInBg
-                    : onRight
-                        ? AD.bubbleOutBg
-                        : (widget.chat.group && m.senderLabel != null
-                            ? _groupSenderTint(m.senderLabel!)
-                            : AD.bubbleInBg),
+                color: t.bg,
+                border: Border.all(color: t.border, width: 1),
                 boxShadow: const [],
-                borderRadius: onRight ? AD.bubbleOutRadius : AD.bubbleInRadius,
+                borderRadius: t.radius,
               ),
               // [UI-BUBBLE-2] clip edge-to-edge media to the bubble's rounded shape.
               clipBehavior: isPureMedia ? Clip.antiAlias : Clip.none,
@@ -9172,11 +9357,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                       padding: const EdgeInsets.only(bottom: 2),
                       child: Row(mainAxisSize: MainAxisSize.min, children: [
                         PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
-                            size: 11, color: AD.bubbleInInk),
+                            size: 11, color: t.ink),
                         const SizedBox(width: 4),
                         Text(
                             m.special == 'ava_private' ? 'AVA · PRIVATE' : 'AVA',
-                            style: ADText.bubbleMeta(c: AD.bubbleInInk)),
+                            style: ADText.bubbleMeta(c: t.ink)),
                       ]),
                     ),
                   // [UI-BUBBLE-2] For pure media the FORWARDED label overlays the
@@ -9186,61 +9371,67 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                       padding: const EdgeInsets.only(bottom: 1),
                       child: Row(mainAxisSize: MainAxisSize.min, children: [
                         PhosphorIcon(PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold),
-                            size: 11, color: AD.bubbleInMeta),
+                            size: 11, color: t.meta),
                         const SizedBox(width: 3),
-                        Text('FORWARDED', style: ADText.bubbleMeta(c: AD.bubbleInMeta)),
+                        Text('FORWARDED', style: ADText.bubbleMeta(c: t.meta)),
                       ]),
                     ),
+                  // [AVAGRP-BUBBLE-1] Sender name header uses the same saturated
+                  // sibling colour as the bubble's own tint (`groupSenderNameColor`)
+                  // so the name always matches the bubble it sits above.
                   if (m.senderLabel != null)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 2),
                       child: Text(m.senderLabel!.toUpperCase(),
-                          style: ADText.bubbleMeta(c: AD.iconSearch)),
+                          style: ADText.bubbleMeta(
+                              c: (m.senderPub?.isNotEmpty ?? false)
+                                  ? groupSenderNameColor(m.senderPub!)
+                                  : t.play)),
                     ),
                   if (m.replyTo != null)
                     Container(
                       margin: const EdgeInsets.only(bottom: 4),
                       padding: const EdgeInsets.fromLTRB(8, 5, 8, 5),
                       decoration: BoxDecoration(
-                          color: AD.mediaPlaceholderBg,
-                          border: const Border(left: BorderSide(color: AD.iconSearch, width: 3)),
+                          color: t.bg.withValues(alpha: 0.6),
+                          border: Border(left: BorderSide(color: t.play, width: 3)),
                           borderRadius: BorderRadius.circular(6)),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
                         Text((m.replyTo!['who'] ?? '').toString().toUpperCase(),
-                            style: ADText.bubbleMeta(c: AD.iconSearch)),
+                            style: ADText.bubbleMeta(c: t.play)),
                         Text((m.replyTo!['preview'] ?? '').toString(), maxLines: 1, overflow: TextOverflow.ellipsis,
-                            style: ADText.bubbleBody(c: AD.bubbleInInk)),
+                            style: ADText.bubbleBody(c: t.ink)),
                       ]),
                     ),
-                  if (m.special != null) _specialContent(m)
+                  if (m.special != null) _specialContent(m, t)
                   else if (hasMedia) ...[
                     // [UI-BUBBLE-2] pure image/video → media fills edge-to-edge with
                     // the forwarded label + timestamp/status overlaid on it.
-                    _mediaContent(m, overlayMeta: isPureMedia),
+                    _mediaContent(m, t, overlayMeta: isPureMedia),
                     // WhatsApp-style caption: the attachment's own text, in the
                     // SAME bubble. A hairline divider above it separates the media
                     // area from the text area so the two read as distinct zones.
                     if (_mediaCaptionOf(m).isNotEmpty) ...[
                       // Full-bleed divider: negative horizontal margin (= the 3px
                       // media padding) pushes it flush to the bubble's inner edge,
-                      // and a 2px ink rule clearly splits the media + text zones.
+                      // and a 2px border-toned rule clearly splits the media + text zones.
                       Container(
                         margin: const EdgeInsets.fromLTRB(-3, 7, -3, 0),
                         height: 2,
-                        color: AD.bubbleInInk.withValues(alpha: 0.28),
+                        color: t.border,
                       ),
                       Padding(
                         padding: const EdgeInsets.only(top: 7, left: 5, right: 5),
                         child: Text(_mediaCaptionOf(m),
-                            style: ADText.bubbleBody(c: AD.bubbleInInk)),
+                            style: ADText.bubbleBody(c: t.ink)),
                       ),
                     ],
                     // Voice-note transcript / translation (viewer-only). Rendered
                     // below the waveform when the user long-pressed → Transcribe
                     // or Translate. Both are cached per message, per-account.
-                    ..._voiceTranscriptBlock(m),
+                    ..._voiceTranscriptBlock(m, t),
                   ]
-                  else _textContent(m),
+                  else _textContent(m, t),
                   // [UI-BUBBLE-2] pure media carries its timestamp/status as an
                   // overlay scrim on the media itself, so skip this inline row.
                   if (!isPureMedia)
@@ -9248,19 +9439,22 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                     padding: const EdgeInsets.only(top: 3, left: 2, right: 2),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       if (m.starred) ...[
-                        PhosphorIcon(PhosphorIcons.star(PhosphorIconsStyle.fill), size: 11, color: AD.iconSearch),
+                        PhosphorIcon(PhosphorIcons.star(PhosphorIconsStyle.fill), size: 11, color: t.play),
                         const SizedBox(width: 3),
                       ],
                       if (m.edited) ...[
-                        Text('EDITED ', style: ADText.bubbleMeta(c: AD.bubbleInMeta)),
+                        Text('EDITED ', style: ADText.bubbleMeta(c: t.meta)),
                       ],
                       // Mono timestamp (10px) — Phase 5: live relative age for
                       // recent messages ("now"/"2m"/"1h"), fixed HH:MM for older.
+                      // [AVAGRP-BUBBLE-1] Every bubble kind reaches this row (or
+                      // the pure-media overlay / sticker meta row below) — the
+                      // owner's "every message needs a date+time stamp" rule.
                       Text(m.ts != 0 ? _relTime(m.ts) : m.time,
-                          style: ADText.bubbleMeta(c: AD.bubbleInMeta)),
+                          style: ADText.bubbleMeta(c: t.meta)),
                       if (m.expireAt != null) ...[
                         const SizedBox(width: 4),
-                        PhosphorIcon(PhosphorIcons.timer(PhosphorIconsStyle.bold), size: 11, color: AD.bubbleInMeta),
+                        PhosphorIcon(PhosphorIcons.timer(PhosphorIconsStyle.bold), size: 11, color: t.meta),
                       ],
                       // Delivery status (my 1:1 messages): tick + tiny caption —
                       // sending → "waiting to reach phone" (1 tick) → "delivered"
@@ -9273,7 +9467,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                           Icon(st.icon, size: 13, color: st.color),
                           const SizedBox(width: 3),
                           Text(st.label.toUpperCase(),
-                              style: ADText.bubbleMeta(c: st.color)),
+                              style: ADText.bubbleMeta(c: st.color)), // status colour is semantic (danger/read/etc.), not theme-tinted
                         ]);
                         if (!m.failed) return row;
                         return GestureDetector(
@@ -9325,9 +9519,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                         decoration: BoxDecoration(
-                            color: m.reaction == e.key ? AD.primaryBadge : AD.mediaPlaceholderBg,
+                            color: m.reaction == e.key ? AD.primaryBadge : t.bg,
                             borderRadius: BorderRadius.circular(100),
-                            border: Border.all(color: AD.bubbleInInk, width: 2),
+                            border: Border.all(color: t.border, width: 2),
                             boxShadow: const []),
                         child: Text(e.value > 1 ? '${e.key} ${e.value}' : e.key,
                             style: const TextStyle(fontSize: 13)),
@@ -9339,11 +9533,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
               Container(
                 margin: const EdgeInsets.only(bottom: 10),
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                // Reaction sticker — ink border + hard offset shadow, no blur.
+                // Reaction sticker — themed border, no blur.
                 decoration: BoxDecoration(
-                    color: AD.mediaPlaceholderBg,
+                    color: t.bg,
                     borderRadius: BorderRadius.circular(100),
-                    border: Border.all(color: AD.bubbleInInk, width: 2),
+                    border: Border.all(color: t.border, width: 2),
                     boxShadow: const []),
                 child: Text(m.reaction!, style: const TextStyle(fontSize: 14)),
               ),
@@ -9364,7 +9558,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
               margin: const EdgeInsets.only(bottom: 10),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(color: AD.bubbleInInk, width: 1.5),
+                border: Border.all(color: t.border, width: 1.5),
               ),
               child: Avatar(
                 seed: _myNpub ?? 'me',
@@ -9384,7 +9578,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          _bubbleAvatar(m, isAva),
+          _bubbleAvatar(m, isAva, t),
           const SizedBox(width: 6),
           Flexible(child: core),
         ],
@@ -9396,7 +9590,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   // 160dp sticker aligned to the sender's side, with a slim timestamp + read-
   // receipt row underneath (WhatsApp-parity). Long-press → reaction/action sheet;
   // tap → fullscreen viewer once bytes are available.
-  Widget _stickerBubbleLess(_Msg m) {
+  Widget _stickerBubbleLess(_Msg m, BubbleTheme t) {
     final onRight = m.me && !_isAvaBubble(m);
     final st = _statusFor(m);
     // The sticker itself (decrypt on demand for received stickers).
@@ -9426,11 +9620,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         if (m.starred) ...[
           PhosphorIcon(PhosphorIcons.star(PhosphorIconsStyle.fill),
-              size: 11, color: AD.iconSearch),
+              size: 11, color: t.play),
           const SizedBox(width: 3),
         ],
+        // [AVAGRP-BUBBLE-1] Sticker bubbles are bubble-LESS, but the owner's
+        // "every message needs a date+time stamp" rule still applies — this row
+        // is that stamp, themed to match the sender like every other bubble.
         Text(m.ts != 0 ? _relTime(m.ts) : m.time,
-            style: ADText.bubbleMeta(c: AD.bubbleInMeta)),
+            style: ADText.bubbleMeta(c: t.meta)),
         if (st != null) ...[
           const SizedBox(width: 4),
           Icon(st.icon, size: 13, color: st.color),
@@ -9464,9 +9661,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                     padding:
                         const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                     decoration: BoxDecoration(
-                        color: m.reaction == e.key ? AD.primaryBadge : AD.mediaPlaceholderBg,
+                        color: m.reaction == e.key ? AD.primaryBadge : t.bg,
                         borderRadius: BorderRadius.circular(100),
-                        border: Border.all(color: AD.bubbleInInk, width: 2),
+                        border: Border.all(color: t.border, width: 2),
                         boxShadow: const []),
                     child: Text(e.value > 1 ? '${e.key} ${e.value}' : e.key,
                         style: const TextStyle(fontSize: 13)),
@@ -9492,8 +9689,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
 
   // The tiny avatar shown beside an incoming bubble. Ava uses her sitewide
   // asset (with a lilac-sparkle fallback if the asset is missing); a 1:1 peer
-  // uses the chat's avatar; a group member uses a per-sender seed.
-  Widget _bubbleAvatar(_Msg m, bool isAva) {
+  // uses the chat's avatar; a group member uses their OWN photo (from
+  // `_memberAvatars`, keyed by the stable `senderPub`) when known, else
+  // initials from their learned name — NEVER a bare '?'.
+  //
+  // [AVAGRP-BUBBLE-1] Root cause of the old '?' bug: the group branch passed no
+  // `avatarUrl` (so a photo could never render) AND seeded/named off
+  // `m.senderLabel`, which is null until a name is learned from the wire — so
+  // `Avatar._initials` fell through to '?'. Both are fixed here: `avatarUrl`
+  // is threaded through, and the seed/name chain always resolves to SOMETHING
+  // human before ever reaching an empty string.
+  Widget _bubbleAvatar(_Msg m, bool isAva, BubbleTheme t) {
     const s = 30.0;
     Widget inner;
     if (isAva) {
@@ -9502,14 +9708,29 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
           AvaId.avatarAsset,
           width: s, height: s, fit: BoxFit.cover,
           errorBuilder: (_, __, ___) => Container(
-            width: s, height: s, color: AD.bubbleInBg, alignment: Alignment.center,
+            width: s, height: s, color: t.bg, alignment: Alignment.center,
             child: PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
-                size: 15, color: AD.bubbleInInk),
+                size: 15, color: t.ink),
           ),
         ),
       );
     } else if (widget.chat.group) {
-      inner = Avatar(seed: m.senderLabel ?? 'peer', name: m.senderLabel ?? '?', size: s);
+      final pub = m.senderPub ?? '';
+      final learnedName = pub.isNotEmpty ? _memberNames[pub] : null;
+      // Fallback chain: learned name → senderLabel (may already BE a short
+      // pub from `_groupLabelFor`) → short pub → 'peer'. Always non-empty.
+      final name = (learnedName != null && learnedName.isNotEmpty)
+          ? learnedName
+          : (m.senderLabel != null && m.senderLabel!.isNotEmpty)
+              ? m.senderLabel!
+              : (pub.isNotEmpty ? _shortPub(pub) : 'peer');
+      final avatarUrl = pub.isNotEmpty ? _memberAvatars[pub] : null;
+      inner = Avatar(
+        seed: pub.isNotEmpty ? pub : name, // stable uid seed, never the mutable label
+        name: name,
+        size: s,
+        avatarUrl: (avatarUrl?.isNotEmpty ?? false) ? avatarUrl : null,
+      );
     } else {
       inner = Avatar(seed: widget.chat.seed, name: widget.chat.name, size: s,
           avatarUrl: widget.chat.avatarUrl.isEmpty ? null : widget.chat.avatarUrl);
@@ -9518,7 +9739,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        border: Border.all(color: AD.bubbleInInk, width: 1.5),
+        border: Border.all(color: t.border, width: 1.5),
       ),
       child: inner,
     );
@@ -9533,7 +9754,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   /// Styled like the inline text-translate rendering: a hairline rule then the
   /// text, with a small translate/transcript glyph + label. Empty for anything
   /// that hasn't been transcribed/translated yet, so it costs nothing until used.
-  List<Widget> _voiceTranscriptBlock(_Msg m) {
+  List<Widget> _voiceTranscriptBlock(_Msg m, BubbleTheme t) {
     final transcript = (m.extra?['transcript'] as String?)?.trim();
     final translated = (m.extra?['transcript_translated'] as String?)?.trim();
     final tLang = (m.extra?['transcript_translated_lang'] as String?) ?? '';
@@ -9545,19 +9766,19 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
           padding: const EdgeInsets.only(top: 6, left: 5, right: 5),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
             Row(mainAxisSize: MainAxisSize.min, children: [
-              PhosphorIcon(icon, size: 11, color: AD.iconSearch),
+              PhosphorIcon(icon, size: 11, color: t.play),
               const SizedBox(width: 4),
-              Text(label, style: ADText.bubbleMeta(c: AD.iconSearch)),
+              Text(label, style: ADText.bubbleMeta(c: t.play)),
             ]),
             const SizedBox(height: 2),
-            Text(body, style: ADText.bubbleBody(c: AD.bubbleInInk)),
+            Text(body, style: ADText.bubbleBody(c: t.ink)),
           ]),
         );
     return [
       Container(
         margin: const EdgeInsets.fromLTRB(-3, 7, -3, 0),
         height: 2,
-        color: AD.bubbleInInk.withValues(alpha: 0.28),
+        color: t.border,
       ),
       if (transcript != null && transcript.isNotEmpty)
         line(PhosphorIcons.textAa(PhosphorIconsStyle.bold), 'transcript', transcript),
@@ -9569,9 +9790,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
 
   // Plain-text bubble content: links are tappable, and a YouTube link renders a
   // rich card with inline playback right inside the chat (no leaving the thread).
-  Widget _textContent(_Msg m) {
-    final style = ADText.bubbleBody(c: AD.bubbleInInk);
-    final link = ChatLinkText(text: m.text, style: style);
+  Widget _textContent(_Msg m, BubbleTheme t) {
+    final style = ADText.bubbleBody(c: t.ink);
+    final link = ChatLinkText(text: m.text, style: style, theme: t);
 
     // STREAM G [GROUP-AI-3/5]: translated bubble → "show original" toggle. Wraps
     // the ORIGINAL child; does NOT alter Stream K geometry.
@@ -9591,7 +9812,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     // preview (m.extra['preview']) — zero recipient fetch.
     final envPreview = LinkPreview.fromEnvelope(m.extra?['preview']);
     if (envPreview != null) {
-      final card = buildLinkPreviewCard(envPreview, pending: pending);
+      final card = buildLinkPreviewCard(envPreview, pending: pending, theme: t);
       if (card != null) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && envPreview.isYouTube) {
@@ -9627,7 +9848,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       if (mounted) Analytics.capture('chat_youtube_card_shown', {'video_id': ytId});
     });
     return Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-      YouTubeCard(videoId: ytId, url: ytUrl),
+      YouTubeCard(videoId: ytId, url: ytUrl, theme: t),
       const SizedBox(height: 6),
       link,
     ]);
@@ -9656,7 +9877,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     ];
   }
 
-  Widget _mediaContent(_Msg m, {bool overlayMeta = false}) {
+  Widget _mediaContent(_Msg m, BubbleTheme t, {bool overlayMeta = false}) {
     // STREAM E: sticker media (tagged via stickerMediaName). Renders at a fixed
     // 160dp via StickerMediaView. NOTE: pure sticker messages are now intercepted
     // in _bubble() and rendered fully bubble-LESS via _stickerBubbleLess (no
@@ -9693,6 +9914,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
               bytes: m.localBytes!,
               onTap: () => _openImageBytes(m.localBytes!, mime: m.media?.contentType),
               overlays: _mediaMetaOverlays(m),
+              theme: t,
             );
           }
           // Tap → full-screen, pinch-to-zoom viewer with an X to close (and a
@@ -9732,6 +9954,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                     bytes: snap.data!,
                     onTap: () => _openImageBytes(snap.data!, mime: m.media?.contentType),
                     overlays: _mediaMetaOverlays(m),
+                    theme: t,
                   );
                 }
                 return GestureDetector(
@@ -9758,7 +9981,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         // auto-fetch placeholder below (which is only for ALREADY-uploaded,
         // not-yet-downloaded notes) and before the playable bubble.
         if (m.media == null && m.uploading) {
-          return PendingVoiceNoteBubble(onRight: m.me && !_isAvaBubble(m));
+          return PendingVoiceNoteBubble(onRight: m.me && !_isAvaBubble(m), theme: t);
         }
         // Upload FAILED — an explicit error beats a bubble that spins
         // forever. Retry re-runs the exact same upload the status-row "tap to
@@ -9769,6 +9992,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
             onRetry: m.localBytes == null
                 ? null
                 : () => _upload(m, m.localBytes!, MediaKind.audio, 'audio/mp4', 'voice.m4a'),
+            theme: t,
           );
         }
         // STREAM J (D17): auto-download off + nothing cached -> small download
@@ -9809,6 +10033,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
           position: isOpen ? _audioPos : (savedPos ?? Duration.zero),
           duration: isOpen ? _audioDur : savedDur,
           onSeek: isOpen ? (to) => _seekAudio(m, to) : null,
+          theme: t,
         );
       case MediaKind.video:
         // Rich card: first-frame thumbnail + tap-to-play inline; the expand
@@ -9828,6 +10053,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                 width: w,
                 autoFetch: _mediaAutoFetch,
                 onFullscreen: () => _openVideo(m),
+                theme: t,
               ),
               ..._mediaMetaOverlays(m),
             ]);
@@ -9840,6 +10066,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
           width: 220,
           autoFetch: _mediaAutoFetch,
           onFullscreen: () => _openVideo(m),
+          theme: t,
         );
       case MediaKind.file:
         // Rich card: PDF first-page thumbnail, or a typed card (badge + name +
@@ -9863,6 +10090,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
             width: w,
             autoFetch: _mediaAutoFetch,
             onOpen: () => _openFile(m, fname),
+            theme: t,
           );
           // [CHAT-PDFVIEW-1] Overlay a spinner while the tap downloads/decrypts
           // so the bubble shows progress instead of appearing dead.
