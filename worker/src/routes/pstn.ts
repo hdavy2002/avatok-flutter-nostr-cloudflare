@@ -206,7 +206,7 @@ async function handleAnswer(req: Request, env: Env, secret: string): Promise<Res
 
     const responseXml =
       `<?xml version="1.0" encoding="UTF-8"?><Response>${introBlock}` +
-      `<Record maxLength="${recordSec}" timeout="10" playBeep="true" fileFormat="wav" ` +
+      `<Record maxLength="${recordSec}" timeout="3" playBeep="true" fileFormat="wav" ` +
       `callbackUrl="${esc(recordCbUrl)}" callbackMethod="POST"/>` +
       `<Speak>Thank you. Goodbye.</Speak><Hangup/></Response>`;
 
@@ -249,6 +249,52 @@ async function handleHangup(req: Request, env: Env, secret: string): Promise<Res
           )
           .run();
       } catch { /* best-effort — cost accounting never blocks the webhook */ }
+
+      // [Owner spec 2026-07-16] MISSED-CALL FALLBACK: caller hung up without a
+      // recording landing (bailed during the greeting, or the 3s silence
+      // cutoff closed an empty Record). The owner is STILL informed with a
+      // text-only card. Vobiz sends record-cb BEFORE hangup when a recording
+      // exists (observed live), but we wait 4s and re-check the delivered
+      // marker anyway to close the race. client_id differs from the recording
+      // card's (`pstn-missed:` vs `pstn:`) so a late recording card can never
+      // be swallowed by idempotency — worst case (very slow record-cb) the
+      // owner gets both cards, which is honest.
+      const session2 = session;
+      if (session2 && !session2.is_orphan && session2.owner_uid) {
+        await new Promise((r) => setTimeout(r, 4000));
+        const delivered = await env.TOKENS.get(`pstn_delivered:${callUuid}`).catch(() => null);
+        if (!delivered) {
+          try {
+            const ownerUid = session2.owner_uid;
+            const callerLabel = session2.caller || "Unknown caller";
+            const callerKey = sanitizeKey(session2.caller || "unknown");
+            const conv = `voicemail_${ownerUid}__${callerKey}`;
+            const envelope = JSON.stringify({
+              t: "voicemail",
+              text: `📞 Missed call from ${callerLabel} — no voicemail recorded.`,
+              session_id: session2.call_id, caller_uid: null, caller_name: null,
+              caller_phone: session2.caller, call_id: session2.call_id,
+              duration_s: null, transcript: "", has_recording: false, media_ref: null,
+            });
+            const stub = env.INBOX.get(env.INBOX.idFromName(ownerUid));
+            await stub.fetch("https://inbox/append", {
+              method: "POST", headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                conv, sender: "ava_pstn", kind: "voicemail", body: envelope,
+                media_ref: null, scope: `to:${ownerUid}`, created_at: Date.now(),
+                owner: ownerUid, client_id: `pstn-missed:${callUuid}`,
+              }),
+            });
+            try {
+              await env.Q_PUSH.send({
+                kind: "notify", to: ownerUid, fromName: callerLabel, title: "Missed call",
+                body: `${callerLabel} called — no voicemail left`,
+                data: { type: "voicemail", conv, caller_uid: null },
+              });
+            } catch { /* best-effort */ }
+          } catch { /* best-effort — never fail the webhook */ }
+        }
+      }
     }
   } catch { /* best-effort */ }
 
@@ -356,6 +402,10 @@ async function handleRecordCb(req: Request, env: Env, secret: string): Promise<R
           owner: ownerUid, client_id: `pstn:${callUuid}`,
         }),
       });
+
+      // Mark the call delivered so the hangup handler's missed-call fallback
+      // (below) knows a real voicemail card already landed for this CallUUID.
+      try { await env.TOKENS.put(`pstn_delivered:${callUuid}`, "1", { expirationTtl: SESSION_TTL_SEC }); } catch { /* best-effort */ }
 
       try {
         await env.Q_PUSH.send({
