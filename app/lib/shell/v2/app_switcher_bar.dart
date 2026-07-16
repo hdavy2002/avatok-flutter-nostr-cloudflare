@@ -50,6 +50,13 @@ class AppSwitcherBar extends StatefulWidget {
   /// while the slot is actually shown (RemoteConfig.pstnVoicemail on).
   final VoidCallback onOpenInbox;
 
+  /// True while the Inbox route is on top. Mirrors [askAvaActive]'s fix (owner
+  /// bug 2026-07-14, re-reported for Inbox 2026-07-16): while the pushed Inbox
+  /// overlay is showing, the active indicator moves to the "Inbox" slot and NO
+  /// root is shown as selected — otherwise the footer keeps highlighting the
+  /// root underneath and Inbox looks unselected while you're inside it.
+  final bool inboxActive;
+
   /// Personalisation accent for the active-root indicator (falls back to lime).
   final Color? indicatorColor;
 
@@ -62,6 +69,7 @@ class AppSwitcherBar extends StatefulWidget {
     required this.onReorder,
     required this.onAskAva,
     required this.onOpenInbox,
+    this.inboxActive = false,
     this.indicatorColor,
   });
 
@@ -153,7 +161,9 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
     // While Ask Ava is open, no root is "active" — the indicator lives on the
     // Ava action instead.
     final item = _rootItem(root,
-        selected: !widget.askAvaActive && root == widget.activeRoot);
+        selected: !widget.askAvaActive &&
+            !widget.inboxActive &&
+            root == widget.activeRoot);
 
     // DragTarget lets any OTHER root be dropped onto this slot; the whole row of
     // three roots is a reorder surface.
@@ -217,10 +227,10 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
         icon: Icons.voicemail_outlined,
         selectedIcon: Icons.voicemail,
         label: 'Inbox',
-        // This slot never becomes the "active root" (it's a push, not a
-        // switchRoot) — always rendered unselected, same visual language as
-        // every other row currently NOT the active app.
-        selected: false,
+        // Selected while the pushed Inbox route is on top ([inboxActive]) —
+        // the slot is not a root, but the user IS "in" Inbox, so the footer
+        // must say so (owner bug 2026-07-16; same fix as [askAvaActive]).
+        selected: widget.inboxActive,
       ),
     );
   }

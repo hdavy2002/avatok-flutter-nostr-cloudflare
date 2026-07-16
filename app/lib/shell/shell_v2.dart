@@ -189,6 +189,11 @@ class _ShellV2State extends State<ShellV2> {
   // "Ava icon stays white, orange highlight stuck on another icon").
   bool _askAvaOpen = false;
 
+  /// True while the footer-pushed Inbox route is on top — mirrors
+  /// [_askAvaOpen] so the footer highlights the Inbox slot (owner bug
+  /// 2026-07-16: Inbox icon stayed unselected while inside the Inbox).
+  bool _inboxOpen = false;
+
   // User-chosen app-switcher order (AVA-SHELL-8). Drives BOTH the Home footer
   // rendering and the cold-open landing decision (order.first = landing app).
   // Loaded per-account in initState; defaults until then.
@@ -550,10 +555,19 @@ class _ShellV2State extends State<ShellV2> {
   /// returns the user to wherever they were instead of switching roots.
   void _openInbox() {
     Analytics.capture('shellv2_inbox_opened', {'root': _root.key});
+    // Reflect the open overlay in the footer: move the active indicator to the
+    // "Inbox" icon (and off the current root) while the Inbox is showing —
+    // exactly the [_askAva] fix (owner bug 2026-07-16: Inbox icon stayed
+    // unselected while the user was inside the Inbox).
+    setState(() => _inboxOpen = true);
     final nav = _navKeys[_root]?.currentState ?? Navigator.of(context);
-    nav.push(MaterialPageRoute<void>(
-      builder: (_) => const InboxListScreen(embedded: false),
-    ));
+    nav
+        .push(MaterialPageRoute<void>(
+          builder: (_) => const InboxListScreen(embedded: false),
+        ))
+        .whenComplete(() {
+      if (mounted) setState(() => _inboxOpen = false);
+    });
   }
 
   void _askAva([String hint = 'root']) {
@@ -649,6 +663,7 @@ class _ShellV2State extends State<ShellV2> {
             onReorder: _setRootOrder,
             onAskAva: _askAva,
             onOpenInbox: _openInbox,
+            inboxActive: _inboxOpen,
           ),
         ),
       ),
