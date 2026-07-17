@@ -384,6 +384,13 @@ class _PstnForwardingWizardState extends State<PstnForwardingWizard>
   Widget _trailing(PstnForwardKind kind, _StepState s) {
     switch (s) {
       case _StepState.dialing:
+      // [AVA-RCPT-VERIFY-2] `awaitReturn` (dialed the carrier code, waiting for
+      // the user to come back from the dialer) was missing here — Dart requires
+      // enum switches to be exhaustive, so the whole release build failed with
+      // "'_StepState' is not exhaustively matched". It shows the same spinner as
+      // its neighbours: the row's _statusLine already says "Waiting for
+      // confirmation", and verification starts the moment the app resumes.
+      case _StepState.awaitReturn:
       case _StepState.verifying:
         return const SizedBox(
             width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2));
