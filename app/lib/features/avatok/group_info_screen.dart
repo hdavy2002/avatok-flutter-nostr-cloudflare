@@ -15,6 +15,7 @@ import '../../core/ui/avatok_dark.dart';
 import '../../identity/identity.dart';
 import '../../sync/group_api.dart';
 import '../profile/avatar_crop_screen.dart';
+import 'contact_profile_screen.dart';
 import 'contacts.dart';
 
 /// Group details + member management: add from contacts, remove, promote/demote
@@ -115,6 +116,42 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
 
   void _toast(String m) {
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+  }
+
+  /// [AVAGRP-MEMBERTAP-1] Open the full profile card — photo, name, AvaTOK
+  /// number and the QR "add me" share card — for a tapped MEMBERS row. Mirrors
+  /// `chat_thread.dart`'s `_openMemberProfile` ([AVA-GRP-UI]) contract exactly:
+  /// same `ContactProfileScreen`, same `user_…` gate, same
+  /// `grp_profile_popup_opened` event with a distinct `from`, so the two tap
+  /// surfaces stay comparable in PostHog. The rows here had NO onTap at all.
+  ///
+  /// SELF ROW IS A DELIBERATE NO-OP. `ContactProfileScreen` is a *contact* card:
+  /// it renders "Add <name> on AvaTOK" plus a SHARED GROUPS section ("groups in
+  /// common"), neither of which means anything pointed at yourself — and on the
+  /// 'You' row it would read "Add You on AvaTOK". Your own profile is reached
+  /// from the shell (Settings → Profile → `ProfileScreen`, see
+  /// `shell/v2/shell_destinations.dart` / `shell/ava_shell.dart`), which is the
+  /// editable surface. This also matches chat_thread, where only OTHER people's
+  /// bubble avatars are tappable. Non-`user_` ids (Ava, `tel:` rows) have no
+  /// profile and fall through the same gate.
+  void _openMemberProfile(String uid) {
+    if (uid.isEmpty || !uid.startsWith('user_') || uid == _myUid) return;
+    // `Analytics._base` auto-stamps the VIEWER's email/platform; `member_uid`
+    // tags the person tapped so either side of a report joins up.
+    Analytics.capture('grp_profile_popup_opened', {
+      'from': 'group_info',
+      'gid': _group.id,
+      'group': true,
+      'member_uid': uid,
+      'member_role': _roleOf(uid),
+      'has_photo': (_avatars[uid]?.isNotEmpty ?? false),
+    });
+    final url = _avatars[uid];
+    Navigator.push(context, MaterialPageRoute(
+        builder: (_) => ContactProfileScreen(
+            name: _label(uid), uid: uid,
+            avatarUrl: (url?.isNotEmpty ?? false) ? url : null,
+            me: _id)));
   }
 
   Future<void> _addMember(String uid) async {
@@ -610,6 +647,17 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                     ? IconButton(
                         icon: PhosphorIcon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold), color: AD.textSecondary),
                         onPressed: _busy ? null : () => _memberActions(m))
+                    : null,
+                // [AVAGRP-MEMBERTAP-1] Tapping the row (avatar included — the
+                // leading widget has no gesture of its own, so the tile's own
+                // ink well covers it) opens the member's full profile card.
+                // `trailing` keeps working untouched: the overflow IconButton is
+                // its own hit target and wins over the ListTile's onTap, so the
+                // admin menu is never swallowed by this. Null for your own row
+                // and for non-`user_` ids, which greys nothing but simply makes
+                // the row inert (see _openMemberProfile for why).
+                onTap: (m != _myUid && m.startsWith('user_'))
+                    ? () => _openMemberProfile(m)
                     : null,
               ),
             const SizedBox(height: 16),
