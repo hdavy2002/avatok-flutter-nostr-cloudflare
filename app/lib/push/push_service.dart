@@ -1774,7 +1774,10 @@ class PushService {
     FirebaseMessaging.instance.onTokenRefresh.listen((t) {
       AvaLog.I.log('push', 'FCM token refreshed — re-registering');
       Analytics.capture('push_token_refreshed', {});
-      _postToken(t).catchError((e) {
+      // [FCM-DEDUPE] force:true — a rotation is exactly when the credential must be
+      // pushed immediately, so it must never be swallowed by the unchanged-token
+      // guard (and it refreshes the stored fingerprint for subsequent opens).
+      _postToken(t, force: true).catchError((e) {
         AvaLog.I.log('push', 're-register failed: $e');
         final err = e.toString();
         Analytics.capture('push_register_failed', {
@@ -2075,15 +2078,46 @@ class PushService {
     }
   }
 
+  /// [FCM-DEDUPE] Per-account scoped fingerprint of the token most recently
+  /// registered SUCCESSFULLY. PostHog (7d prod): the token was re-POSTed to the
+  /// worker (a KV/D1 write) on essentially every app open even when nothing
+  /// changed — ~162 "registered FCM token … -> HTTP 200" diag lines/week and ~97
+  /// push_token_registered/3d for a single user. The token belongs to the device
+  /// but the REGISTRATION maps the ACTIVE account → token, so the guard is
+  /// account-scoped (DiskCache.read/write is namespaced by AccountScope.id): a
+  /// switch to a different account still re-POSTs (its scoped store has no/old
+  /// token), while a plain relaunch on the same account with the same token is a
+  /// no-op. Only a SUCCESSFUL (HTTP 200) registration updates it, so a failed
+  /// POST is retried on the next open rather than masked.
+  static const String _kLastRegisteredTokenKey = 'push_last_registered_token_v1';
+
   /// POST the current token to the server (uid is derived server-side from the
   /// NIP-98 signature). Used by registerToken AND by onTokenRefresh.
-  static Future<void> _postToken(String token) async {
+  ///
+  /// [force] bypasses the [FCM-DEDUPE] unchanged-token guard — the token-ROTATION
+  /// callback (onTokenRefresh) and any future server-driven invalidation pass it
+  /// so a fresh/rotated credential is always pushed immediately.
+  static Future<void> _postToken(String token, {bool force = false}) async {
     // [MULTIACCT-2] Send the stable per-device id so the server keys the token by
     // DEVICE (device_tokens) and maps the ACTIVE account to it (account_devices).
     // A token refresh updates the single device row; a login/switch flips the
     // mapping — neither orphans the token, so the callee never becomes silently
     // unreachable after a re-login.
     final deviceId = await DeviceId.get();
+    // [FCM-DEDUPE] Short-circuit an unchanged re-registration for this account.
+    if (!force) {
+      try {
+        final last = await DiskCache.read(_kLastRegisteredTokenKey);
+        if (last != null && last == token) {
+          Analytics.capture('push_register_skipped', {
+            'reason': 'unchanged',
+            'device_id': deviceId,
+            'token_prefix': token.length >= 12 ? token.substring(0, 12) : token,
+          });
+          return;
+        }
+      } catch (_) {/* best-effort — on any read error, fall through and POST */}
+    }
     final res = await ApiAuth.postJson(
         kRegisterUrl, {'token': token, 'platform': 'fcm', 'device_id': deviceId});
     AvaLog.I.log('push', 'registered FCM token ${token.substring(0, 10)}… -> HTTP ${res.statusCode}');
@@ -2107,6 +2141,9 @@ class PushService {
     // push_register_ok, not replacing it) so a successful FCM-token registration
     // is queryable under a stable name for the FIX-FCM tracking dashboard.
     if (ok) {
+      // [FCM-DEDUPE] Remember the token we just registered (per-account scoped) so
+      // the next same-account open with the same token is skipped, not re-POSTed.
+      try { await DiskCache.write(_kLastRegisteredTokenKey, token); } catch (_) {/* best-effort */}
       Analytics.capture('push_token_registered', {
         'platform': 'fcm',
         'status': res.statusCode,

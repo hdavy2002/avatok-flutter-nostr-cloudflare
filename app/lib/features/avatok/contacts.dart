@@ -560,6 +560,66 @@ class ContactsStore {
 
 /// Thin client for the AvaTok directory Worker (handle/uid resolve + search).
 class Directory {
+  // [AVA-DIR-NEGCACHE] Per-account negative cache for directory lookups that the
+  // worker (D1) said do NOT exist. PostHog (7d prod): 1,321 of 1,544
+  // contact_resolve events were reason=http_404 — the SAME not-found names being
+  // re-queried against the directory endlessly, because resolve() had no memory
+  // of a miss. Every caller of resolve() (avatar backfill, add-contact sheet,
+  // search, DM addressing) now benefits: a query the server 404'd is remembered
+  // for 24h and short-circuited to null without another round trip.
+  //
+  // Scoping: DiskCache.read/write are account-scoped by AccountScope.id, so each
+  // account on a shared phone keeps its own miss set — no cross-account leak.
+  // TTL: entries expire naturally after 24h, so a name that later registers is
+  // reachable within a day. ONLY real 404s (deterministic "not found") are
+  // cached — never timeouts/5xx/network errors, which are transient and a
+  // negative-cache of them would wrongly hide a person during an outage.
+  static const String _kNegCacheKey = 'avatok_dir_negcache_v1'; // JSON {q: attemptMs}
+  static const int _negCacheTtlMs = 24 * 60 * 60 * 1000; // 24h
+  static int _negCacheHitCount = 0; // process-lifetime; drives sampled telemetry
+
+  static String _negCacheKeyFor(String q) => q.toLowerCase();
+
+  static Future<Map<String, int>> _loadNegCache() async {
+    try {
+      final raw = await DiskCache.read(_kNegCacheKey);
+      if (raw == null || raw.isEmpty) return {};
+      final m = jsonDecode(raw) as Map<String, dynamic>;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      // Prune expired entries on read so the map can never grow without bound.
+      return {
+        for (final e in m.entries)
+          if (now - ((e.value as num?)?.toInt() ?? 0) < _negCacheTtlMs)
+            e.key: (e.value as num?)?.toInt() ?? 0
+      };
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// Record that the directory returned a hard 404 for [q] (case-folded), so the
+  /// next lookup within the TTL is answered locally. Best-effort; a write failure
+  /// just means the miss isn't remembered (existing behaviour).
+  static Future<void> _rememberMiss(String q) async {
+    try {
+      final m = await _loadNegCache(); // already pruned
+      m[_negCacheKeyFor(q)] = DateTime.now().millisecondsSinceEpoch;
+      await DiskCache.write(_kNegCacheKey, jsonEncode(m));
+    } catch (_) {/* best-effort */}
+  }
+
+  /// True if [q] was recently 404'd by the directory and is still inside the TTL.
+  static Future<bool> _isNegCached(String q) async {
+    try {
+      final m = await _loadNegCache();
+      final ts = m[_negCacheKeyFor(q)];
+      if (ts == null) return false;
+      return DateTime.now().millisecondsSinceEpoch - ts < _negCacheTtlMs;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Resolve `@handle`, `handle`, or `npub1…` → a Contact, or null if unknown.
   static Future<Contact?> resolve(String query) async {
     final q = query.trim();
@@ -575,11 +635,29 @@ class Directory {
                 : RegExp(r'^[+\d]').hasMatch(q)
                     ? 'phone'
                     : 'name';
+    // [AVA-DIR-NEGCACHE] Short-circuit a lookup the directory already 404'd within
+    // the last 24h — this is the fix for the 1,321 repeated http_404 resolves.
+    // Telemetry is SAMPLED (at most 1 event per 50 hits) so a chatty caller can't
+    // flood PostHog; the cumulative count rides along so the true rate is still
+    // visible.
+    if (await _isNegCached(q)) {
+      _negCacheHitCount++;
+      if (_negCacheHitCount % 50 == 1) {
+        Analytics.capture('contact_resolve_negcache_hit',
+            {'kind': kind, 'count': _negCacheHitCount});
+      }
+      return null;
+    }
     try {
       final r = await http
           .get(Uri.parse('$kResolveUrl?q=${Uri.encodeQueryComponent(q)}'))
           .timeout(const Duration(seconds: 8));
       if (r.statusCode != 200) {
+        // Only a real 404 (deterministic "not found") is negative-cached; a 5xx /
+        // 429 / other is transient and must stay retriable, so it is NOT cached.
+        if (r.statusCode == 404) {
+          await _rememberMiss(q);
+        }
         Analytics.capture('contact_resolve', {'kind': kind, 'found': false, 'reason': 'http_${r.statusCode}'});
         return null;
       }

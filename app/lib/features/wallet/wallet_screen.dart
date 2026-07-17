@@ -148,7 +148,13 @@ class _WalletScreenState extends State<WalletScreen> {
     });
     _paintFromCache();
     _refresh();
-    MoneyApi.isAdmin().then((a) { if (mounted && a) setState(() => _admin = true); });
+    // [ADMIN-GATE] Reuse the admin flag RemoteConfig already resolved at app start
+    // (and re-resolves per account switch) instead of firing a fresh /admin/recon
+    // probe on every wallet open. PostHog (7d prod) showed ordinary users' clients
+    // hammering /admin/recon with 401/403s; a non-admin's cached flag is false, so
+    // this paints the admin-money entry only for the (rare) real admin without a
+    // per-open network probe.
+    if (RemoteConfig.isAdmin) _admin = true;
     // Bind the native Play Billing purchase stream for wallet top-ups (Android).
     // Credits land server-side; we just refresh the balance + surface a notice.
     if (Platform.isAndroid) {

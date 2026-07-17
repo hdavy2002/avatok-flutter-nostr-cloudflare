@@ -49,6 +49,18 @@ class RemoteConfig {
   /// paint before the probe lands (no Marketplace flicker on a non-admin child).
   static const String _kAdminCache = 'is_admin';
 
+  /// [ADMIN-GATE] Per-account timestamp (ms) of the last COMPLETED /admin/recon
+  /// probe. PostHog (7d prod): every ordinary user's client fired the admin probe
+  /// on launch + every 15 min, so the directory saw 95×401 (79 users) + 128×403
+  /// (39 users) and 378 admin_probe events across 82 users — all rejections, all
+  /// pure waste, since admin status is a fixed server-side claim that does not
+  /// change minute to minute. Admin status is only knowable server-side (no local
+  /// claim), so for a NON-admin account we cache the rejection and re-probe at
+  /// most once a week; a known admin (cached is_admin=1) keeps probing normally so
+  /// a revoked admin loses admin surfaces promptly. Scoped by AccountScope.id.
+  static const String _kAdminProbeAtKey = 'admin_probe_last_ms';
+  static const int _adminProbeThrottleMs = 7 * 24 * 60 * 60 * 1000; // 7d
+
   /// Load the ACTIVE account's cached admin flag into memory (instant paint).
   /// Never throws; defaults to non-admin when nothing is cached for this account.
   static Future<void> _loadAdminCache() async {
@@ -85,6 +97,12 @@ class RemoteConfig {
   static bool get liveEnabled => _b('liveEnabled', false);
   static bool get consultEnabled => _b('consultEnabled', false);
   static bool get conferenceEnabled => _b('conferenceEnabled', true);
+  /// [AVA-SYNC-SKIP] Kill switch for the reconnect/resume empty-catch-up skip. Default
+  /// TRUE. When true, the InboxDO answers a reconnect/resume whose cursor is already at
+  /// head with a cheap `sync_skip` frame instead of a full replay. Flip false in KV to
+  /// make every device fall back to the always-full-sync behaviour. Declared in
+  /// worker/src/routes/config.ts (PlatformConfig + DEFAULTS) so it is a real, flippable flag.
+  static bool get syncSkipEnabled => _b('syncSkipEnabled', true);
   /// CF Realtime SFU group-audio path — dormant until its build lands + is
   /// CI/device-verified. While false, group calls use the existing LiveKit path.
   static bool get groupAudioSfuEnabled => _b('groupAudioSfuEnabled', false);
@@ -462,6 +480,24 @@ class RemoteConfig {
   /// Never throws. Call again after an account switch to re-resolve.
   static Future<void> refreshAdmin() async {
     final scope = AccountScope.id; // capture: an account switch may race this probe
+    // [ADMIN-GATE] For an account NOT already known to be an admin, throttle the
+    // /admin/recon probe to at most once/week. A known admin (_isAdmin, painted
+    // from the scoped cache) is exempt and re-probes every cycle. A last-probe of
+    // 0 (never probed on this account) always probes, so a real admin is still
+    // discovered on first launch. Only a COMPLETED probe writes the timestamp, so
+    // a transient network failure is retried next cycle rather than throttled.
+    if (!_isAdmin) {
+      int last = 0;
+      try {
+        last = int.tryParse(await DiskCache.read(_kAdminProbeAtKey) ?? '') ?? 0;
+      } catch (_) {/* best-effort — treat as never-probed */}
+      final now = DateTime.now().millisecondsSinceEpoch;
+      if (last != 0 && now - last < _adminProbeThrottleMs) {
+        Analytics.capture('admin_probe_skipped',
+            {'account': scope ?? '', 'reason': 'throttled', 'age_ms': now - last});
+        return;
+      }
+    }
     try {
       final was = _isAdmin;
       final v = await MoneyApi.isAdmin();
@@ -473,6 +509,11 @@ class RemoteConfig {
       if (_isAdmin != was) revision.value++;
       // Persist per-account so the next switch to this account paints instantly.
       try { await DiskCache.write(_kAdminCache, v ? '1' : '0'); } catch (_) {/* best-effort */}
+      // [ADMIN-GATE] Record the probe time so a non-admin result throttles the
+      // next probe(s) to once/week (see _kAdminProbeAtKey).
+      try {
+        await DiskCache.write(_kAdminProbeAtKey, '${DateTime.now().millisecondsSinceEpoch}');
+      } catch (_) {/* best-effort */}
       Analytics.capture('admin_probe', {'is_admin': v, 'account': scope ?? ''});
     } catch (e) {
       AvaLog.I.log('config', 'admin probe failed: $e');
