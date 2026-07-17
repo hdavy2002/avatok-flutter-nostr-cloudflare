@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -15,6 +16,7 @@ import '../../core/ui/avatok_dark.dart';
 import '../../identity/identity.dart';
 import '../../sync/group_api.dart';
 import '../profile/avatar_crop_screen.dart';
+import '../profile/profile_screen.dart';
 import 'contact_profile_screen.dart';
 import 'contacts.dart';
 
@@ -88,6 +90,45 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
       'am_owner': _amOwner,
       'server_backed': r != null,
     });
+    // [AVA-GRPINFO-PROFILES] Backfill photos for members you have NOT saved as a
+    // contact — `_avatars` is otherwise seeded only from ContactsStore (+ your
+    // own ProfileStore above), so a non-contact member painted a bare initial.
+    // Same contract as chat_thread's `_backfillMemberAvatars`: resolve each
+    // missing member through the directory (24h per-account negative cache, so a
+    // photo-less member is queried at most once a day) and merge the URL in; the
+    // `Avatar` widget then loads it through the cached Cloudflare-AVIF pipeline.
+    // State is in-memory only (`_avatars`/`_names`) — nothing to per-account
+    // scope. Fire-and-forget: a failure just leaves the initials fallback.
+    unawaited(_backfillMemberAvatars());
+  }
+
+  /// [AVA-GRPINFO-PROFILES] Resolve directory photos/names for members missing a
+  /// local avatar. Mirrors `chat_thread.dart`'s `_backfillMemberAvatars`
+  /// ([AVA-GRP-UI]) exactly. Own row is skipped (seeded from ProfileStore) and
+  /// non-`user_` ids (Ava, `tel:`) have no directory profile.
+  Future<void> _backfillMemberAvatars() async {
+    final myUid = _myUid;
+    for (final uid in _group.members) {
+      if (uid.isEmpty || uid == myUid || !uid.startsWith('user_')) continue;
+      if (_avatars[uid]?.isNotEmpty ?? false) continue; // already have a photo
+      Contact? c;
+      try {
+        c = await Directory.resolve(uid);
+      } catch (_) {
+        c = null; // transient — leave the initial, retry on next open
+      }
+      if (!mounted || c == null) continue;
+      final gotPhoto =
+          c.avatarUrl.isNotEmpty && !(_avatars[uid]?.isNotEmpty ?? false);
+      final gotName = c.name.isNotEmpty &&
+          (_names[uid] == null || _names[uid]!.isEmpty);
+      if (gotPhoto || gotName) {
+        setState(() {
+          if (gotPhoto) _avatars[uid] = c!.avatarUrl;
+          if (gotName) _names[uid] = c!.name;
+        });
+      }
+    }
   }
 
   String _label(String uid) =>
@@ -118,30 +159,43 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
   }
 
-  /// [AVAGRP-MEMBERTAP-1] Open the full profile card — photo, name, AvaTOK
-  /// number and the QR "add me" share card — for a tapped MEMBERS row. Mirrors
-  /// `chat_thread.dart`'s `_openMemberProfile` ([AVA-GRP-UI]) contract exactly:
-  /// same `ContactProfileScreen`, same `user_…` gate, same
-  /// `grp_profile_popup_opened` event with a distinct `from`, so the two tap
-  /// surfaces stay comparable in PostHog. The rows here had NO onTap at all.
+  /// [AVA-GRPINFO-PROFILES] Open the full profile for a tapped MEMBERS row.
   ///
-  /// SELF ROW IS A DELIBERATE NO-OP. `ContactProfileScreen` is a *contact* card:
-  /// it renders "Add <name> on AvaTOK" plus a SHARED GROUPS section ("groups in
-  /// common"), neither of which means anything pointed at yourself — and on the
-  /// 'You' row it would read "Add You on AvaTOK". Your own profile is reached
-  /// from the shell (Settings → Profile → `ProfileScreen`, see
-  /// `shell/v2/shell_destinations.dart` / `shell/ava_shell.dart`), which is the
-  /// editable surface. This also matches chat_thread, where only OTHER people's
-  /// bubble avatars are tappable. Non-`user_` ids (Ava, `tel:` rows) have no
-  /// profile and fall through the same gate.
+  /// PEER rows → `ContactProfileScreen` (photo, name, AvaTOK number, the QR "add
+  /// me" share card), mirroring `chat_thread.dart`'s `_openMemberProfile`
+  /// ([AVA-GRP-UI]) contract — same screen, same `avatarUrl` seed.
+  ///
+  /// OWN row → `ProfileScreen` (the editable self profile). `ContactProfileScreen`
+  /// is a *contact* card ("Add <name> on AvaTOK" + a SHARED GROUPS section),
+  /// which is meaningless pointed at yourself — on the 'You' row it would read
+  /// "Add You on AvaTOK" — so the self row routes to the profile hub, which is
+  /// the editable surface and carries its own AdBackButton.
+  ///
+  /// Both surfaces emit `grp_profile_popup_opened {from:'group_info_member'}` so
+  /// this tap point is comparable to the chat_thread one in PostHog;
+  /// `Analytics._base` auto-stamps the VIEWER's email/platform, and `member_uid`
+  /// tags the person tapped so either side of a report joins up. Non-`user_` ids
+  /// (Ava, `tel:` rows) have no profile and are inert (their rows pass no onTap).
   void _openMemberProfile(String uid) {
-    if (uid.isEmpty || !uid.startsWith('user_') || uid == _myUid) return;
-    // `Analytics._base` auto-stamps the VIEWER's email/platform; `member_uid`
-    // tags the person tapped so either side of a report joins up.
+    if (uid.isEmpty) return;
+    if (uid == _myUid) {
+      Analytics.capture('grp_profile_popup_opened', {
+        'from': 'group_info_member',
+        'gid': _group.id,
+        'group': true,
+        'self': true,
+        'member_uid': uid,
+      });
+      Navigator.push(context, MaterialPageRoute(
+          builder: (_) => ProfileScreen(identity: _id)));
+      return;
+    }
+    if (!uid.startsWith('user_')) return;
     Analytics.capture('grp_profile_popup_opened', {
-      'from': 'group_info',
+      'from': 'group_info_member',
       'gid': _group.id,
       'group': true,
+      'self': false,
       'member_uid': uid,
       'member_role': _roleOf(uid),
       'has_photo': (_avatars[uid]?.isNotEmpty ?? false),
@@ -648,15 +702,16 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                         icon: PhosphorIcon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold), color: AD.textSecondary),
                         onPressed: _busy ? null : () => _memberActions(m))
                     : null,
-                // [AVAGRP-MEMBERTAP-1] Tapping the row (avatar included — the
+                // [AVA-GRPINFO-PROFILES] Tapping the row (avatar included — the
                 // leading widget has no gesture of its own, so the tile's own
-                // ink well covers it) opens the member's full profile card.
-                // `trailing` keeps working untouched: the overflow IconButton is
-                // its own hit target and wins over the ListTile's onTap, so the
-                // admin menu is never swallowed by this. Null for your own row
-                // and for non-`user_` ids, which greys nothing but simply makes
-                // the row inert (see _openMemberProfile for why).
-                onTap: (m != _myUid && m.startsWith('user_'))
+                // ink well covers it) opens the member's full profile: peers →
+                // ContactProfileScreen, your own 'You' row → the editable
+                // ProfileScreen (see _openMemberProfile). `trailing` keeps
+                // working untouched: the overflow IconButton is its own hit
+                // target and wins over the ListTile's onTap, so the admin menu is
+                // never swallowed. Non-`user_` ids (Ava, tel:) are the sole inert
+                // rows — they have no profile.
+                onTap: (m == _myUid || m.startsWith('user_'))
                     ? () => _openMemberProfile(m)
                     : null,
               ),
