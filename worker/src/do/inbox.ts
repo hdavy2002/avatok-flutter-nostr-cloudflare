@@ -1203,6 +1203,34 @@ export class InboxDO {
       // messages (no message loss, ever); the client de-dupes the extras. Flag off, or
       // no `cc` → identical legacy behaviour.
       const convCursorOn = (this.env as Record<string, unknown>).SYNC_CONV_CURSOR_V2 === "1";
+      // [AVA-SYNC-SKIP] Empty-catch-up short-circuit. A skip-capable client (the only
+      // clients that set m.skip; old clients never do) that reconnects/resumes with a
+      // persisted cursor ALREADY AT the server head does NOT need a full replay — a
+      // socket flap under Android doze fires ~15x/user/day and 97.6% of those returned
+      // 0 messages, each waking DO-SQLite + rebuilding a payload for nothing. The check
+      // is a single indexed MAX(id) read (no message scan) and is SERVER-AUTHORITATIVE:
+      // we only skip when the client's cursor is >= the true head, so a client can never
+      // wrongly skip past a message it is missing. Purely additive — the `sync_skip`
+      // frame is a new type old clients would ignore, and an old worker that doesn't
+      // understand m.skip just falls through to the normal full sync below.
+      // NOTE: the client gates m.skip so it is NEVER set on 'login' or 'push' and only
+      // when its local state is non-empty (cursor > 0); this path additionally requires
+      // head > 0. A skip omits the small cross-device snapshots (reads/calls/safety/
+      // thread-clears) that a full sync also carries — those are re-delivered live while
+      // connected and reconciled on the next non-at-head sync / login / push, so a
+      // message is never lost. `syncSkipEnabled` (config.ts) is the kill switch: the
+      // client stops setting m.skip when it is false, so this branch goes dormant.
+      if (m.skip === true) {
+        try {
+          const clientCursor = Number(m.cursor || 0);
+          const row = this.sql.exec(`SELECT MAX(id) AS h FROM messages`).one() as { h: number | null };
+          const head = Number(row?.h ?? 0);
+          if (head > 0 && clientCursor >= head) {
+            ws.send(JSON.stringify({ type: "sync_skip", head, cursor: clientCursor }));
+            return;
+          }
+        } catch { /* fall through to a normal full sync on any error */ }
+      }
       try {
         if (convCursorOn && m.cc && typeof m.cc === "object") {
           ws.send(JSON.stringify(this.syncPayloadHybrid(Number(m.cursor || 0), m.cc as Record<string, number>)));

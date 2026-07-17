@@ -23,6 +23,14 @@ export interface PlatformConfig {
   groupAudioSfuEnabled: boolean;
   brainEnabled: boolean;
   verseEnabled: boolean;
+  // [AVA-SYNC-SKIP] Kill switch for the reconnect/resume catch-up skip. Default TRUE
+  // (matches the client's own fallback default, so declaring it changes nothing today).
+  // When a socket flaps (Android doze ~15x/user/day) the client re-runs a full InboxDO
+  // catch-up even when its message cursor is already at the server head — 97.6% of those
+  // returned 0 messages. With this ON, a reconnect/resume whose persisted cursor is
+  // already at head is answered with a cheap `sync_skip` frame instead of a full replay.
+  // Flip false in KV to make every client fall back to the always-full-sync behaviour.
+  syncSkipEnabled: boolean;
   // Progressive Identity ladder (PROPOSAL-PROGRESSIVE-IDENTITY.md)
   identityLadderEnabled: boolean;    // master switch for requireLevel gating
   guestTierEnabled: boolean;         // L0 handle-only visitors
@@ -453,6 +461,8 @@ const DEFAULTS: PlatformConfig = {
   groupAudioSfuEnabled: false,     // CF Realtime SFU group path — dormant until built+CI-verified
   brainEnabled: false,             // FREE LAUNCH: secondary — revisit later
   verseEnabled: false,             // FREE LAUNCH: creator dashboard hidden
+  syncSkipEnabled: true,           // [AVA-SYNC-SKIP] skip empty reconnect/resume catch-ups when the client cursor is already at head; flip false to force full syncs
+
   identityLadderEnabled: true,
   guestTierEnabled: true,
   workersAiLivenessEnabled: true,  // ON 2026-07-03: Cloudflare-native liveness (no AWS/Rekognition creds); powers the signup human-check

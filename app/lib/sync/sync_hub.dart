@@ -18,6 +18,7 @@ import '../core/db.dart';
 import '../core/disk_cache.dart';
 import '../core/message_store.dart' show SafetyFlagStore;
 import '../core/net/connectivity_coordinator.dart';
+import '../core/remote_config.dart' show RemoteConfig; // [AVA-SYNC-SKIP] syncSkipEnabled kill switch
 import '../identity/identity.dart';
 import '../push/push_service.dart' show PushService; // [WS-RING-1]
 import 'dm.dart' show DmMessage;
@@ -123,6 +124,17 @@ class SyncHub {
   Stream<Map<String, dynamic>> get safetyFlags => _safetyFlags.stream;
 
   String? get _myUid => AccountScope.id;
+
+  /// [AVA-SYNC-SKIP] Whether THIS catch-up may be short-circuited by the server when
+  /// our cursor is already at head. True only for the two triggers the telemetry
+  /// flagged (reconnect/resume), never on login/push/zombie, never with empty/fresh
+  /// local state (cursor==0), and never when the remote kill switch is off. The
+  /// server still re-checks cursor>=head, so this is a hint, not a decision — it can
+  /// never cause a missed message.
+  bool get _skipEligible =>
+      RemoteConfig.syncSkipEnabled &&
+      _cursor > 0 &&
+      (_syncTrigger == 'reconnect' || _syncTrigger == 'resume');
 
   /// Start (idempotent) the shared InboxDO socket. The priv/pub args are legacy
   /// and ignored — identity is the Clerk uid (AccountScope.id).
@@ -362,7 +374,18 @@ class SyncHub {
         _convSeqUid = _myUid;
       }
       _syncStartedAt = DateTime.now().millisecondsSinceEpoch; // P13-A sync_catchup base
-      _send({'type': 'hello', 'cursor': _cursor, 'cc': _convSeq}); // cc = per-conv positions (inert unless SYNC_CONV_CURSOR_V2 on server) // request backlog since cursor
+      // [AVA-SYNC-SKIP] Ask the server to short-circuit an EMPTY catch-up: a socket
+      // flap under Android doze fires ~15x/user/day and 97.6% of resume/reconnect
+      // catch-ups return 0 messages. `skip:true` invites the InboxDO to answer with a
+      // cheap `sync_skip` frame (single MAX(id) read, no message scan) IFF our
+      // persisted cursor is already at the server head. Gated to the two triggers the
+      // telemetry flagged (reconnect/resume) and NEVER on login (fresh state must full-
+      // sync), on push (a push proves new data exists), or when cursor==0 (empty/fresh
+      // local state). The decision is still server-authoritative — the server only
+      // skips when cursor>=head, so this flag can never cause us to miss a message. An
+      // old worker ignores the extra field and returns a normal 'sync'. Kill switch:
+      // RemoteConfig.syncSkipEnabled (default true) — false → always request a full sync.
+      _send({'type': 'hello', 'cursor': _cursor, 'cc': _convSeq, if (_skipEligible) 'skip': true}); // cc = per-conv positions (inert unless SYNC_CONV_CURSOR_V2 on server) // request backlog since cursor
       _pingTimer?.cancel();
       _pingsUnanswered = 0;
       _pingTimer = Timer.periodic(const Duration(seconds: 25), (_) {
@@ -487,6 +510,19 @@ class SyncHub {
     if (ft.isNotEmpty && ft != 'pong') _frameCounts[ft] = (_frameCounts[ft] ?? 0) + 1;
     switch (m['type']) {
       case 'pong':
+        break;
+      case 'sync_skip':
+        // [AVA-SYNC-SKIP] The InboxDO confirmed our persisted cursor is already at the
+        // server head, so it skipped the full catch-up replay (no message scan, no
+        // DO-SQLite payload build). There is nothing to ingest — do NOT touch _cursor,
+        // do NOT emit ttfm (no message rendered). Record the cheap savings so PostHog
+        // can show the skip rate against sync_catchup. Then re-arm the trigger label
+        // for the next cycle, exactly like the 'sync' path does.
+        Analytics.capture('sync_skipped', {
+          'trigger': _syncTrigger,
+          'cursor': _cursor,
+        });
+        _syncTrigger = 'login';
         break;
       case 'sync':
         // Apply MY read high-water marks FIRST, before any message is replayed,
