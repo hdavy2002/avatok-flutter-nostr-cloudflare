@@ -306,7 +306,12 @@ async function handleHangup(req: Request, env: Env, secret: string): Promise<Res
               await env.Q_PUSH.send({
                 kind: "notify", to: ownerUid, fromName: callerLabel, title: "Missed call",
                 body: `${callerLabel} called — no voicemail left`,
-                data: { type: "voicemail", conv, caller_uid: null },
+                // [AVA-VM-PUSH-1] See the record-cb notify — caller_phone is what
+                // lets the device name a saved contact instead of showing E.164.
+                data: {
+                  type: "voicemail", conv, caller_uid: null,
+                  caller_phone: session2.caller ?? null,
+                },
               });
             } catch { /* best-effort */ }
           } catch { /* best-effort — never fail the webhook */ }
@@ -456,7 +461,13 @@ async function handleRecordCb(req: Request, env: Env, secret: string): Promise<R
         await env.Q_PUSH.send({
           kind: "notify", to: ownerUid, fromName: callerLabel, title: "New voicemail",
           body: transcript ? transcript.slice(0, 140) : `${callerLabel} left you a voicemail`,
-          data: { type: "voicemail", conv, caller_uid: null },
+          // [AVA-VM-PUSH-1 2026-07-17] `caller_phone` is REQUIRED, not decoration:
+          // consumers/src/fcm.ts reads `data.caller_phone` to forward `fromPhone`,
+          // which is the ONLY way the recipient's device can resolve this caller
+          // against its OWN contact book (AVANOTIF-VM-1). Omit it and the banner
+          // is titled with the raw E.164 even for a saved contact — while the
+          // Inbox row right next to it shows the real name.
+          data: { type: "voicemail", conv, caller_uid: null, caller_phone: session!.caller ?? null },
         });
       } catch { /* best-effort — push is an accelerator, InboxDO append is the record of truth */ }
 
