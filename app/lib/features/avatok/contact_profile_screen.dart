@@ -24,7 +24,13 @@ class ContactProfileScreen extends StatefulWidget {
   final String uid; // contact routing id (Clerk uid)
   final String? handle; // DEPRECATED; ignored
   final Identity? me;
-  const ContactProfileScreen({super.key, required this.name, required this.uid, this.handle, this.me});
+  // [AVA-GRP-UI] Optional known photo URL so the profile popup shows the user's
+  // actual picture instantly (e.g. a group member's avatar the chat already
+  // resolved). Additive + backward compatible — existing callers pass nothing
+  // and get the previous initials-then-directory-resolve behaviour. The
+  // directory resolve below still refines/fills it when this is null.
+  final String? avatarUrl;
+  const ContactProfileScreen({super.key, required this.name, required this.uid, this.handle, this.me, this.avatarUrl});
   @override
   State<ContactProfileScreen> createState() => _ContactProfileScreenState();
 }
@@ -34,6 +40,7 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
   String _number = '';
   String _email = '';
   late String _name = widget.name;
+  late String _avatarUrl = widget.avatarUrl ?? ''; // [AVA-GRP-UI] photo, refined below
 
   /// A name that is really just the raw routing id (e.g. "user_3FcSU…tojL") is
   /// no name at all — show a friendly label resolved from the saved contact or
@@ -72,6 +79,7 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
         setState(() {
           if (m.first.number.isNotEmpty) _number = m.first.number;
           if (m.first.email.isNotEmpty) _email = m.first.email;
+          if (_avatarUrl.isEmpty && m.first.avatarUrl.isNotEmpty) _avatarUrl = m.first.avatarUrl;
         });
       }
     });
@@ -80,6 +88,7 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
       setState(() {
         if (c.number.isNotEmpty) _number = c.number;
         if (c.email.isNotEmpty) _email = c.email;
+        if (_avatarUrl.isEmpty && c.avatarUrl.isNotEmpty) _avatarUrl = c.avatarUrl;
         // Directory name is a fallback when no saved contact matched.
         if (_looksLikeRawId(_name, widget.uid) &&
             c.name.isNotEmpty && !_looksLikeRawId(c.name, widget.uid)) {
@@ -131,7 +140,8 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
             decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(color: AD.borderAvatar, width: 2)),
-            child: Avatar(seed: widget.uid, name: _displayName, size: 96),
+            child: Avatar(seed: widget.uid, name: _displayName, size: 96,
+                avatarUrl: _avatarUrl.isEmpty ? null : _avatarUrl),
           ),
         ),
         const SizedBox(height: 14),

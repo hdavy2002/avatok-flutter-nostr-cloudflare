@@ -199,6 +199,12 @@ class _Msg {
   // yet" exactly as before this change.
   Map<String, int> readBy = {};
   Map<String, int> deliveredTo = {};
+  // [AVA-GRP-SENDSTATE] True only when the durable outbox has TERMINALLY given up
+  // on this send (50 attempts / 24h) — the single honest signal for "not sent".
+  // Persisted so a genuine give-up stays "not sent · tap to retry" across restarts,
+  // while a group message that merely lacks an in-memory ACK (delivered, echoed,
+  // outbox entry already removed) is NOT confused for a failure on reopen.
+  bool sendGaveUp = false;
   // [AVAGRP-BUBBLE-2] A group SYSTEM announcement ("X created the group", "X
   // added Y", "X changed the group photo" — `GroupApi.announce()`, wire
   // envelope `{"t":"gtext","gid":conv,"body":text,"system":true}`). Renders as
@@ -385,6 +391,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   AvaGroupDm? _gdm;
   Group? _group;
   bool _isGroup = false;
+  // [AVA-GRP-SENDSTATE] Count of own group bubbles healed from a false "not sent"
+  // back to "sent" on thread load (old builds persisted delivered group messages
+  // as pending). Emitted once via `grp_sendstate_healed` after the cache restore.
+  int _grpSendStateHealed = 0;
   NostrClient? _nostr;
   bool _realMode = false;
   final Set<String> _seenEv = {};
@@ -933,10 +943,52 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       // Merge (don't replace): keep any names/avatars already learned from
       // early live reactions / messages (keyed by uid) — Phase 5.
       if (mounted) setState(() { _memberNames.addAll(names); _memberAvatars.addAll(avatars); });
+      // [AVA-GRP-UI] Members you haven't saved as contacts have no local photo,
+      // so their bubbles showed a bare initial. Resolve their profile photo from
+      // the directory in the background and load it via the cached Avatar pipeline.
+      unawaited(_backfillMemberAvatars());
     }
     // 2026-07-04: hydrate server-persisted poll tallies for this conversation so
     // a reinstalled / new device shows correct counts + my selection + who-voted.
     unawaited(_hydratePolls());
+  }
+
+  /// [AVA-GRP-UI] Backfill group-member profile PHOTOS for members the local
+  /// user hasn't saved as a contact. `_memberAvatars` is otherwise seeded only
+  /// from `ContactsStore`, so a member not in your contacts rendered a bare
+  /// initial ("P") in their bubble instead of their photo. Resolve each missing
+  /// member through the directory (Clerk uid → profile photo) and merge the URL
+  /// in; the `Avatar` widget (`core/avatar.dart`) then loads it through the
+  /// normal cached Cloudflare-AVIF pipeline like every other avatar. Best-effort
+  /// and cheap: `Directory.resolve` has a 24h per-account negative cache, so a
+  /// member with no directory photo is queried at most once a day. State is
+  /// in-memory only (`_memberAvatars`/`_memberNames`), so no per-account
+  /// persisted store to scope here.
+  Future<void> _backfillMemberAvatars() async {
+    final members = _group?.members;
+    if (members == null || members.isEmpty) return;
+    final myUid = _meId?.uid;
+    for (final uid in members) {
+      if (uid.isEmpty || uid == myUid) continue;
+      if (_memberAvatars[uid]?.isNotEmpty ?? false) continue; // already have a photo
+      Contact? c;
+      try {
+        c = await Directory.resolve(uid);
+      } catch (_) {
+        c = null; // transient — leave the initial fallback, try again next open
+      }
+      if (!mounted) return;
+      if (c == null) continue;
+      final gotPhoto = c.avatarUrl.isNotEmpty && !(_memberAvatars[uid]?.isNotEmpty ?? false);
+      final gotName = c.name.isNotEmpty &&
+          (_memberNames[uid] == null || _memberNames[uid]!.isEmpty);
+      if (gotPhoto || gotName) {
+        setState(() {
+          if (gotPhoto) _memberAvatars[uid] = c!.avatarUrl;
+          if (gotName) _memberNames[uid] = c!.name;
+        });
+      }
+    }
   }
 
   /// Batch-fetch every poll's tally for THIS conversation from the server and
@@ -992,6 +1044,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     _nostr = SyncHub.I.ensure(id.uid, id.uid); // shared app-lifetime client (no per-thread socket/REQ)
     _gdm = AvaGroupDm(group: g);
     _gdm!.messages.listen(_onGroupMsg);
+    // [AVA-GRP-SENDSTATE] Bridge the outbox ACK/give-up stream to the same handler
+    // the DM path uses, so a group bubble flips "Sending…" → "Sent" on the real
+    // HTTP-200 ACK (and "Not sent" only on a terminal give-up). Without this a
+    // delivered group message never left the pending state and was later mis-shown
+    // as "NOT SENT · tap to retry" on reopen.
+    _gdm!.sendStatus.listen(_onSendStatus);
     _gdm!.start();
     _presenceMe = id.shortId;
     _presence = PresenceChannel(PresenceChannel.roomForGroup(g.id), id.shortId,
@@ -1090,7 +1148,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         }
       });
       _schedulePersist();
-    } catch (_) { /* best-effort; live receipts still arrive over the wire */ }
+    } catch (e) {
+      // [AVA-GRP-SENDSTATE] Surface hydration failures instead of swallowing them
+      // silently — an empty Info sheet on a message everyone has read is exactly
+      // the symptom the owner hit, and a failing `GET /api/msg/seen` is one cause
+      // that was previously invisible. Best-effort still: live receipts keep
+      // arriving over the wire regardless. Email auto-attached by Analytics._base.
+      Analytics.capture('grp_receipt_hydrate_failed', {
+        'gid': widget.chat.gid ?? '',
+        'err': e.toString().length > 120 ? e.toString().substring(0, 120) : e.toString(),
+      });
+    }
   }
 
   void _onPresence(Map<String, dynamic> e) {
@@ -1448,7 +1516,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     if (idx < 0) return;
     final m = _msgs[idx];
     final alreadySent = m.sent;
-    setState(() { m.failed = !s.ok; m.sent = s.ok; });
+    // [AVA-GRP-SENDSTATE] The outbox only emits ok:false on a TERMINAL give-up
+    // (interim retries stay silent), so `!s.ok` here is authoritative "not sent".
+    // Record it so a genuine give-up survives a restart as failed, while a
+    // delivered-but-un-ACKed group bubble is never mistaken for one on reopen.
+    setState(() { m.failed = !s.ok; m.sent = s.ok; m.sendGaveUp = !s.ok; });
     // [AVA-CHAT-INSTANT] Confirm/fail telemetry (email auto-attached by
     // Analytics._base). msg_send_confirmed carries the true send→ACK round-trip;
     // guard on !alreadySent so a re-emitted ACK doesn't double-count.
@@ -1831,8 +1903,22 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       if (j['pending'] == true && msg.me) {
         final stillQueued = ev != null && Outbox.I.isPending(ev);
         final mediaPending = j['mediaPending'] == true;
+        final gaveUp = j['gaveUp'] == true;
         if (stillQueued && !mediaPending) {
           msg.sent = false; msg.failed = false; // "sending…" — outbox is retrying
+        } else if (_isGroup && !mediaPending && !gaveUp) {
+          // [AVA-GRP-SENDSTATE] Self-heal the owner's bug. Old builds had NO
+          // outbox-ACK listener for groups, so EVERY own group message was
+          // persisted `pending` even after the outbox delivered it (the entry
+          // cleared on echo, so `isPending` is false now). Those builds also never
+          // recorded a genuine give-up (`gaveUp`), so a non-queued, non-media,
+          // non-give-up group pending bubble is a DELIVERED message mis-persisted
+          // as pending — restore it as "sent", never the false "not sent · tap to
+          // retry" the owner saw on messages his group had already replied to. A
+          // real terminal failure carries `gaveUp:true` (written since this fix)
+          // and falls through to the failed branch below.
+          msg.sent = true; msg.failed = false;
+          _grpSendStateHealed++;
         } else {
           msg.sent = false; msg.failed = true;   // "not sent · tap to retry"
         }
@@ -1851,6 +1937,18 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     // If any cached poll bubbles were restored, pull their server tallies so a
     // reinstalled device shows real counts + my selection (survives reinstall).
     if (loaded.any((m) => m.special == 'poll')) unawaited(_hydratePolls());
+    // [AVA-GRP-SENDSTATE] Report + re-persist the one-time heal so the corrected
+    // "sent" state sticks (this reopen won't re-heal them) and the fleet-wide
+    // blast radius of the old false-failure bug is measurable. Email auto-attached
+    // by Analytics._base.
+    if (_grpSendStateHealed > 0) {
+      Analytics.capture('grp_sendstate_healed', {
+        'count': _grpSendStateHealed,
+        'gid': widget.chat.gid ?? '',
+        'conv_kind': 'group',
+      });
+      _schedulePersist();
+    }
   }
 
   void _schedulePersist() {
@@ -1902,6 +2000,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         // outbox will keep retrying.
         if (notAcked) 'pending': true,
         if (notAcked && (m.uploading || m.media != null)) 'mediaPending': true,
+        // [AVA-GRP-SENDSTATE] Record a TERMINAL give-up so it restores as a real
+        // "not sent" — the only case a group pending bubble should reopen failed.
+        if (m.sendGaveUp) 'gaveUp': true,
       });
     }
     await _msgStore.save(key, out);
@@ -2057,7 +2158,27 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   // vote to keep the presets — if the owner later retires them, delete
   // `wallpaperIsDark`/`kDarkWallpaperIds` (`wallpaper.dart`) and these getters
   // collapse back to the single pale-on-white pair.
-  bool get _wallpaperDark => wallpaperIsDark(_wallpaperId);
+  // [AVA-GRP-UI] Owner reversed the 2026-07-17 white-canvas decision (his
+  // screenshot showed a white thread background he did not want): the 'default'
+  // thread canvas is DARK/near-black again. `wallpaper.dart`/`bubble_theme.dart`
+  // are owned elsewhere and left untouched, so the reversal lives here in the UI
+  // layer — 'default' now counts as a dark wallpaper for every system/day-pill
+  // and canvas-ink getter above, exactly like the 5 selectable dark presets, so
+  // pills and separators invert to their dark-readable variants automatically.
+  bool get _wallpaperDark => _wallpaperId == 'default' || wallpaperIsDark(_wallpaperId);
+
+  /// [AVA-GRP-UI] The thread canvas gradient. 'default' resolves to near-black
+  /// (`AD.bg`) rather than the white `kChatCanvas` that `wallpaperGradient`
+  /// would return — the owner wants a dark background with the pale bubbles +
+  /// hairline borders sitting on top (they read fine on dark; see
+  /// `bubble_theme.dart`). The 5 selectable presets keep their own tints.
+  LinearGradient _gradientFor(String id) => id == 'default'
+      ? const LinearGradient(
+          colors: [AD.bg, AD.bg],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter)
+      : wallpaperGradient(id);
+  LinearGradient get _threadGradient => _gradientFor(_wallpaperId);
   Color get _sysPillBg => _wallpaperDark ? const Color(0xB3202024) : kChatSysPillBg;
   Color get _sysPillBorder => _wallpaperDark ? Colors.white.withValues(alpha: 0.14) : kChatCanvasMeta.withValues(alpha: 0.35);
   // Day-separator / older-messages caption tone (grey on light, pale-white on dark).
@@ -5826,7 +5947,38 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     if (widget.chat.group) { _openGroupInfo(); return; }
     if (!widget.chat.seed.startsWith('user_')) return;
     Navigator.push(context, MaterialPageRoute(
-        builder: (_) => ContactProfileScreen(name: widget.chat.name, uid: widget.chat.seed, me: _meId)));
+        builder: (_) => ContactProfileScreen(
+            name: widget.chat.name, uid: widget.chat.seed,
+            avatarUrl: widget.chat.avatarUrl.isEmpty ? null : widget.chat.avatarUrl,
+            me: _meId)));
+  }
+
+  /// [AVA-GRP-UI] Open the full profile popup — photo, name, AvaTOK number and
+  /// the QR "add me" share card — for a tapped avatar (a group member's bubble
+  /// avatar, or a 1:1 peer). Reuses the existing `ContactProfileScreen`, whose
+  /// own header carries a back button that returns to the chat; we do not build
+  /// a bespoke sheet. Only opens for a real user id (Clerk `user_…`); Ava and
+  /// unknown-number `tel:` rows have no profile and are skipped by the callers.
+  /// `from` records the tap surface for telemetry (`grp_profile_popup_opened`);
+  /// the viewer's email/phone are auto-stamped by `Analytics._base`.
+  void _openMemberProfile({
+    required String uid,
+    required String name,
+    String? avatarUrl,
+    required String from,
+  }) {
+    if (uid.isEmpty || !uid.startsWith('user_')) return;
+    Analytics.capture('grp_profile_popup_opened', {
+      'from': from,
+      'gid': widget.chat.gid ?? '',
+      'group': widget.chat.group,
+    });
+    final url = (avatarUrl?.isNotEmpty ?? false) ? avatarUrl : _memberAvatars[uid];
+    Navigator.push(context, MaterialPageRoute(
+        builder: (_) => ContactProfileScreen(
+            name: name, uid: uid,
+            avatarUrl: (url?.isNotEmpty ?? false) ? url : null,
+            me: _meId)));
   }
 
   static const _reactionSounds = {
@@ -6011,7 +6163,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
           if (m.readBy.isEmpty && m.deliveredTo.isEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
-              child: Text('No read receipts yet', style: ADText.bubbleBody(c: AD.textSecondary)),
+              // [AVA-GRP-SENDSTATE] Honest empty state. With `groupReceiptsEnabled`
+              // OFF nothing EVER populates readBy/deliveredTo, so the old
+              // unconditional "No read receipts yet" was misleading — it implied the
+              // feature was on and simply had no data, when receipts are switched
+              // off entirely. Tell the truth so a "seen by everyone" message doesn't
+              // look like the receipt system is broken.
+              child: Text(
+                RemoteConfig.groupReceiptsEnabled
+                    ? 'No read receipts yet'
+                    : 'Read receipts are off for group chats.',
+                style: ADText.bubbleBody(c: AD.textSecondary)),
             )
           else ...[
             if (m.readBy.isNotEmpty) ...[
@@ -7144,13 +7306,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   Widget build(BuildContext context) {
     final c = widget.chat;
     return Scaffold(
-      // [AVAGRP-BUBBLE-1] `AD.bg` is near-black (Color(0xFF0B0B0D)) — fine
-      // behind the header/footer chrome, but it used to show through on
-      // overscroll bounce at the top/bottom of the message list. The wallpaper
-      // `DecoratedBox` already resolves to `kChatCanvas` (white) for the
-      // 'default' id (see `core/wallpaper.dart`), so the Scaffold itself must
-      // match or a dark flash shows through the bounce.
-      backgroundColor: kChatCanvas,
+      // [AVA-GRP-UI] Near-black Scaffold backdrop — the thread canvas is dark
+      // again for the 'default' wallpaper (`_threadGradient` → `AD.bg`) and the
+      // 5 selectable presets are all near-black tints too, so `AD.bg` behind the
+      // overscroll bounce matches every canvas instead of flashing white.
+      backgroundColor: AD.bg,
       body: Stack(children: [
       SafeArea(
         bottom: false,
@@ -7169,12 +7329,29 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                   icon: PhosphorIcon(PhosphorIcons.caretLeft(PhosphorIconsStyle.bold), size: 22, color: AD.textPrimary),
                   onPressed: () => Navigator.pop(context),
                 ),
-                Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AD.borderAvatar, width: 2),
+                // [AVA-GRP-UI] Tapping the header avatar opens the full profile:
+                // group info for a group, the peer's profile popup for a 1:1.
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    if (c.group) {
+                      _openInfo();
+                    } else {
+                      _openMemberProfile(
+                        uid: c.seed,
+                        name: c.name,
+                        avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl,
+                        from: 'header_avatar',
+                      );
+                    }
+                  },
+                  child: Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AD.borderAvatar, width: 2),
+                    ),
+                    child: Avatar(seed: c.seed, name: c.name, size: 38, avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl),
                   ),
-                  child: Avatar(seed: c.seed, name: c.name, size: 38, avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -7246,7 +7423,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
               CatchupCard(bullets: _catchupBullets, msgCount: _catchupCount, onDismiss: _dismissCatchup),
             Expanded(
               child: DecoratedBox(
-                decoration: BoxDecoration(gradient: wallpaperGradient(_wallpaperId)),
+                decoration: BoxDecoration(gradient: _threadGradient),
                 child: Builder(builder: (_) {
                 final nowS = DateTime.now().millisecondsSinceEpoch ~/ 1000;
                 var visible = _msgs
@@ -7793,6 +7970,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     );
   }
 
+  // [AVA-GRP-UI] Full-width ORANGE rule that caps the composer, visually
+  // separating the input area (hint row + field) from the bubble list above it
+  // (owner request). Uses the app orange accent `AD.unreadAccent` (0xFFF2A65A);
+  // sits at the very top of the composer band so it spans the whole screen width.
+  Widget _composerTopDivider() =>
+      Container(width: double.infinity, height: 2.5, color: AD.unreadAccent);
+
   Widget _inputBar() {
     // Input band: paper-2 with ink top border; field = ink-bordered pill.
     const bandDeco = BoxDecoration(
@@ -7821,6 +8005,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         onGif: _sendGif,
         onSticker: _sendStickerAsset,
         topSlot: Column(mainAxisSize: MainAxisSize.min, children: [
+          _composerTopDivider(),
           if (_replyTo != null || _editing != null) _replyBanner(),
           if (_sttActive) _listeningBanner(),
           if (_showComposePreview) _composePreviewBar(),
@@ -7831,6 +8016,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     return Container(
       decoration: bandDeco,
       child: Column(mainAxisSize: MainAxisSize.min, children: [
+        _composerTopDivider(),
         if (_replyTo != null || _editing != null) _replyBanner(),
         if (_sttActive) _listeningBanner(),
         if (_showComposePreview) _composePreviewBar(),
@@ -8922,7 +9108,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                 child: Container(
                   width: 64, height: 64,
                   decoration: BoxDecoration(
-                      gradient: wallpaperGradient(id), borderRadius: BorderRadius.circular(14),
+                      gradient: _gradientFor(id), borderRadius: BorderRadius.circular(14),
                       border: Border.all(
                           color: _wallpaperId == id ? AD.textPrimary : AD.textTertiary,
                           width: _wallpaperId == id ? 3 : 2)),
@@ -10107,13 +10293,46 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       inner = Avatar(seed: widget.chat.seed, name: widget.chat.name, size: s,
           avatarUrl: widget.chat.avatarUrl.isEmpty ? null : widget.chat.avatarUrl);
     }
-    return Container(
+    final avatarBox = Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         border: Border.all(color: t.border, width: 1.5),
       ),
       child: inner,
+    );
+    // [AVA-GRP-UI] Tapping a real person's avatar opens their full profile popup.
+    // Ava has no profile; unknown-number tel: rows aren't `user_…` ids so
+    // `_openMemberProfile` no-ops for them.
+    if (isAva) return avatarBox;
+    String? tapUid;
+    String tapName = '';
+    String? tapAvatar;
+    if (widget.chat.group) {
+      final pub = m.senderPub ?? '';
+      if (pub.isNotEmpty) {
+        tapUid = pub;
+        tapName = (_memberNames[pub]?.isNotEmpty ?? false)
+            ? _memberNames[pub]!
+            : (m.senderLabel?.isNotEmpty ?? false) ? m.senderLabel! : _shortPub(pub);
+        tapAvatar = _memberAvatars[pub];
+      }
+    } else {
+      tapUid = widget.chat.seed;
+      tapName = widget.chat.name;
+      tapAvatar = widget.chat.avatarUrl;
+    }
+    if (tapUid == null || !tapUid.startsWith('user_')) return avatarBox;
+    final uid = tapUid;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _openMemberProfile(
+        uid: uid,
+        name: tapName,
+        avatarUrl: tapAvatar,
+        from: widget.chat.group ? 'group_bubble_avatar' : 'dm_bubble_avatar',
+      ),
+      child: avatarBox,
     );
   }
 
