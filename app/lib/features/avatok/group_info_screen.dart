@@ -57,6 +57,18 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
       if (c.avatarUrl.isNotEmpty) avatars[c.uid] = c.avatarUrl;
     }
     if (id != null) names[id.uid] = 'You';
+    // [AVAGRP-SELFAVATAR-1] Owner report: his own MEMBERS row showed a 'Y'
+    // initial instead of his photo. `_avatars` was built ONLY from ContactsStore
+    // — and you are never your own contact, so `_avatars[myUid]` was always
+    // absent and `Avatar` fell back to initials. Your photo lives in
+    // ProfileStore (the same source the group-photo announcements read for
+    // `displayName`), so seed it here. Empty avatarUrl → leave the key unset so
+    // the initials fallback stays intact rather than painting a broken image.
+    if (id != null) {
+      final me = await ProfileStore().load();
+      final myPhoto = me.avatarUrl.trim();
+      if (myPhoto.isNotEmpty) avatars[id.uid] = myPhoto;
+    }
     if (mounted) setState(() { _id = id; _contacts = contacts; _names.addAll(names); _avatars.addAll(avatars); });
     // Pull authoritative members + roles from the server (this also refreshes the
     // local group), so admin controls and the member list reflect reality.
