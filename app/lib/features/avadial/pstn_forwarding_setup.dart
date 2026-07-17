@@ -127,7 +127,35 @@ extension PstnForwardKindX on PstnForwardKind {
         return '##62#';
     }
   }
+
+  /// [AVA-VM-PAID-1] (owner decision 2026-07-17) Is this condition a PAID
+  /// upgrade? Every forwarded call costs ~55 paisa, so only "phone off /
+  /// unreachable" — the one a user genuinely cannot work around — is free.
+  ///
+  /// Gate on [RemoteConfig.pstnPaidConditionsUnlocked], never on this alone:
+  /// this says "costs money", the flag says "the user may have it anyway".
+  /// [pstnConditionLocked] combines the two — prefer it at call sites.
+  bool get isPaid {
+    switch (this) {
+      case PstnForwardKind.missed:
+      case PstnForwardKind.declined:
+        return true;
+      case PstnForwardKind.unreachable:
+        return false;
+    }
+  }
 }
+
+/// [AVA-VM-PAID-1] True when [kind] must be shown greyed/uninteractive with the
+/// PAID pill. The single source of truth for "can the user turn this on" —
+/// the wizard, the intro screen and the onboarding step all read THIS, so
+/// unlocking the paid tier is one flag flip and never a hunt for call sites.
+bool pstnConditionLocked(PstnForwardKind kind) =>
+    kind.isPaid && !RemoteConfig.pstnPaidConditionsUnlocked;
+
+/// [AVA-VM-PAID-1] The conditions a user may actually set up right now.
+List<PstnForwardKind> get pstnAvailableConditions =>
+    PstnForwardKind.values.where((k) => !pstnConditionLocked(k)).toList();
 
 /// [server-driven carrier codes] Per-carrier MMI code templates, resolved
 /// from GET `$kApiBase/pstn/carrier-codes` (worker/src/routes/pstn.ts) with
@@ -468,6 +496,72 @@ Future<void> pstnPersistVerified({
   } catch (_) {/* best-effort */}
 }
 
+/// [AVA-VM-PAID-1] One-time cancel of any PAID condition that is still
+/// registered at the carrier from before those conditions became a paid
+/// upgrade (2026-07-17).
+///
+/// WHY THIS IS NOT OPTIONAL: missed + declined forwarding shipped free and
+/// DEFAULT-ON, so existing users have `*61*`/`*67*` live at their carrier right
+/// now. Greying the rows out only removes our UI — the carrier keeps forwarding
+/// and we keep paying ~55 paisa per call, with no way for the user to stop it.
+/// Locking the rows WITHOUT this cancel would silently raise the bill instead
+/// of cutting it.
+///
+/// Runs at most once per account per condition (guarded by
+/// `pstn_paid_cancelled_<kind>`), and ONLY silently: [allowFallback] stays
+/// false, so if the device blocks silent USSD we mark nothing, leave the stored
+/// state alone, and try again next open rather than throwing the user into
+/// their phone app unannounced ([AVA-RCPT-SILENT-1]).
+///
+/// No-ops entirely once [RemoteConfig.pstnPaidConditionsUnlocked] is true.
+Future<void> pstnCancelLockedPaidConditions({
+  required FlutterSecureStorage storage,
+  PstnCarrierCodes? codes,
+}) async {
+  if (RemoteConfig.pstnPaidConditionsUnlocked) return;
+  for (final kind in PstnForwardKind.values) {
+    if (!pstnConditionLocked(kind)) continue;
+    final cancelledKey = 'pstn_paid_cancelled_${kind.analyticsKind}';
+    try {
+      if (await readScoped(storage, cancelledKey) == '1') continue;
+      // Only dial if we believe it's actually ON — never dial a disable code
+      // at a carrier for something the user never enabled.
+      if (await readScoped(storage, kind.storageKey) != '1') {
+        await storage.write(key: scopedKey(cancelledKey), value: '1');
+        continue;
+      }
+    } catch (_) {
+      continue; // storage unreadable — try again next open, never guess
+    }
+    Analytics.capture('pstn_paid_condition_cancel_attempt', {
+      'kind': kind.analyticsKind,
+    });
+    final result = await pstnDialAndPersist(
+      kind: kind,
+      wantOn: false,
+      did: kPstnVoicemailDid,
+      storage: storage,
+      codes: codes,
+      allowFallback: false, // silent-only — see doc above
+    );
+    Analytics.capture('pstn_paid_condition_cancel_result', {
+      'kind': kind.analyticsKind,
+      'ok': result.ok,
+      'error_kind': result.errorKind ?? 'none',
+    });
+    if (result.ok) {
+      // pstnDialAndPersist already persisted the toggle OFF. Mark the migration
+      // done so we never re-dial the carrier for this condition again.
+      try {
+        await storage.write(key: scopedKey(cancelledKey), value: '1');
+      } catch (_) {/* best-effort — a retry next open is harmless */}
+    }
+    // Not ok → leave BOTH the toggle state and the guard untouched, so the
+    // next open retries. The row still shows locked+PAID either way; this is
+    // about the carrier's state and our bill, not the UI.
+  }
+}
+
 /// Dials [kind]'s MMI code toward [wantOn] against [did] and persists the
 /// resulting toggle state per-account on success (never on failure — the
 /// stored value must always reflect what the carrier actually confirmed).
@@ -665,11 +759,13 @@ class _PstnForwardingSetupScreenState extends State<PstnForwardingSetupScreen> {
                       style: ZineText.cardTitle(size: 15.5, color: AvaDialTheme.text)),
                   const SizedBox(height: 4),
                   Text(
+                    // [AVA-VM-PAID-1] No longer claims all three conditions are
+                    // yours to switch on — two are a paid upgrade.
                     'AvaTOK is no longer your phone or SMS app, so it can only pick up '
-                    'calls your carrier hands it. Each step below tells your carrier to '
-                    'send missed, declined or unreachable calls to AvaTOK instead of '
-                    "ringing out — you'll see them in your Inbox with a transcript. "
-                    'A step only turns green once your carrier confirms it.',
+                    'calls your carrier hands it. The steps below tell your carrier to '
+                    "send calls you can't take to AvaTOK instead of ringing out — "
+                    "you'll see them in your Inbox with a transcript. A step only "
+                    'turns green once your carrier confirms it.',
                     style: ZineText.sub(size: 12.5, color: AvaDialTheme.textSoft),
                   ),
                 ]),

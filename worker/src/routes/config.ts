@@ -444,6 +444,17 @@ export interface PlatformConfig {
   // DO timer) and may need to diverge for carrier/cost reasons. Numeric — remember
   // the numericKeys entry below.
   pstnVoicemailRecordSec: number;
+  // [AVA-VM-PAID-1] (owner decision 2026-07-17) Each forwarded condition costs us
+  // ~55 paisa per call, so only "phone off / unreachable" (cfnrc) is FREE. The
+  // "missed calls" (cfnry) and "declined / busy" (cfb) conditions are a PAID
+  // upgrade: the client renders those two rows greyed with a green PAID pill and
+  // no "Turn on" button, and one-time-cancels them at the carrier for anyone who
+  // already had them on (they shipped free-and-default-ON before this date).
+  //
+  // TRUE unlocks both conditions for EVERYONE — this is the switch to flip when
+  // the paid tier ships (or to un-break a mistake), NOT a per-user entitlement.
+  // Per-user billing is a separate lane; until it exists, leave this FALSE.
+  pstnPaidConditionsUnlocked: boolean;
 }
 
 // FREE LAUNCH (2026-06-28, owner-locked Specs/FREE-LAUNCH-DIRECTION.md): ship an
@@ -654,6 +665,9 @@ const DEFAULTS: PlatformConfig = {
   // Flip ON in KV (staging first) once Phase 0 carrier verification passes.
   pstnVoicemail: false,
   pstnVoicemailRecordSec: 25,
+  // [AVA-VM-PAID-1] FALSE = missed/declined are a locked paid upgrade (the
+  // launch state). Flip TRUE only when the paid tier actually ships.
+  pstnPaidConditionsUnlocked: false,
 };
 
 /** Merged config for server-side gates (same blob getConfig serves). */

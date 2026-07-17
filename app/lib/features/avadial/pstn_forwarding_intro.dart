@@ -87,16 +87,23 @@ Future<bool> pstnIntroSeen() async {
   return alreadyOn;
 }
 
-/// True only when all three carrier-forwarding conditions are CONFIRMED on —
+/// True only when every AVAILABLE carrier-forwarding condition is CONFIRMED on —
 /// [pstnDialAndPersist] persists a toggle's value only after the carrier
 /// accepts the code, never optimistically — so this can't false-positive on a
 /// forwarding attempt that actually failed.
+///
+/// [AVA-VM-PAID-1] Reads [pstnAvailableConditions], NOT all three. Missed and
+/// declined are a locked paid upgrade and are actively cancelled at the carrier,
+/// so their stored value is now permanently '0'. Requiring all three (as this
+/// did) would mean this never returns true again — and the consent intro would
+/// re-show on every single open, forever, for every user. Whatever the free set
+/// is, this asks only about that set.
 Future<bool> _forwardingAlreadyOn() async {
   try {
-    final missed = await readScoped(_introSec, PstnForwardKind.missed.storageKey);
-    final declined = await readScoped(_introSec, PstnForwardKind.declined.storageKey);
-    final unreachable = await readScoped(_introSec, PstnForwardKind.unreachable.storageKey);
-    return missed == '1' && declined == '1' && unreachable == '1';
+    for (final kind in pstnAvailableConditions) {
+      if (await readScoped(_introSec, kind.storageKey) != '1') return false;
+    }
+    return true;
   } catch (_) {
     return false; // never let a storage error block the caller
   }
@@ -198,9 +205,13 @@ class _PstnForwardingIntroBodyState extends State<PstnForwardingIntroBody> {
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 340),
             child: Text(
-              'Under three circumstances, your carrier sends the call to your Ava '
-              'voicemail instead of ringing out. Priya answers, takes the message, '
-              'and it shows up in your Inbox — with a transcript.',
+              // [AVA-VM-PAID-1] Was "Under three circumstances" — only one is
+              // free now, so that number is a promise the screen below no
+              // longer keeps. Kept condition-count-agnostic so the copy stays
+              // true whichever way `pstnPaidConditionsUnlocked` is flipped.
+              'When your phone can\'t take the call, your carrier sends it to your '
+              'Ava voicemail instead of ringing out. Priya answers, takes the '
+              'message, and it shows up in your Inbox — with a transcript.',
               textAlign: TextAlign.center,
               style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14.5),
             ),

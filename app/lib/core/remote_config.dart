@@ -393,6 +393,18 @@ class RemoteConfig {
   static int get pstnVoicemailRecordSec =>
       (_asNum(_cfg['pstnVoicemailRecordSec'])?.toInt()) ?? 25;
 
+  /// [AVA-VM-PAID-1] Mirrors config.ts `pstnPaidConditionsUnlocked`. FALSE (the
+  /// default and the launch state) = the "missed calls" and "declined / busy"
+  /// forwarding conditions are a PAID upgrade: greyed, no "Turn on", green PAID
+  /// pill — and one-time-cancelled at the carrier for users who already had them
+  /// on. Only "phone off / unreachable" is free, because every forwarded call
+  /// costs ~55 paisa (owner decision 2026-07-17).
+  ///
+  /// TRUE unlocks both for EVERYONE. This is a global switch, not a per-user
+  /// entitlement — wire real billing before flipping it.
+  static bool get pstnPaidConditionsUnlocked =>
+      _b('pstnPaidConditionsUnlocked', false);
+
   static int get minAppBuild => (_asNum(_cfg['minAppBuild'])?.toInt()) ?? 0;
 
   /// The versionCode this install ACTUALLY carries, resolved once at [start]

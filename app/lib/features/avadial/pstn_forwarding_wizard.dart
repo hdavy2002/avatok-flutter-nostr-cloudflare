@@ -42,8 +42,12 @@ import 'pstn_forwarding_setup.dart';
 /// reassurance card — what the code is, that it's the standard carrier code
 /// for call forwarding, and that it's safe — and the user chooses "dial it
 /// for me" (phone app opens, pre-filled) or "I'll dial it myself".
+/// [AVA-VM-PAID-1] `paid` = this condition costs money and the paid tier isn't
+/// unlocked, so the row is inert: greyed, green PAID pill, no "Turn on", no
+/// "Skip for now" (there is nothing to skip). Distinct from `locked`, which
+/// means "your turn hasn't come up yet in the sequence" and resolves on its own.
 enum _StepState {
-  locked, ready, dialing, needsVisibleDial, awaitReturn, verifying, verified, failed, skipped,
+  locked, paid, ready, dialing, needsVisibleDial, awaitReturn, verifying, verified, failed, skipped,
 }
 
 class PstnForwardingWizard extends StatefulWidget {
@@ -102,7 +106,16 @@ class _PstnForwardingWizardState extends State<PstnForwardingWizard>
 
   Future<void> _init() async {
     _codes = await pstnResolveCarrierCodes();
+    // [AVA-VM-PAID-1] Cancel any paid condition still live at the carrier from
+    // before the paywall, BEFORE reading stored state — it persists the toggle
+    // off, so reading after means the row reflects reality rather than the
+    // stale pre-paywall "on". Silent-only and self-guarded; see the helper.
+    await pstnCancelLockedPaidConditions(storage: widget.storage, codes: _codes);
     for (final kind in _order) {
+      if (pstnConditionLocked(kind)) {
+        _state[kind] = _StepState.paid;
+        continue;
+      }
       final stored = await readScoped(widget.storage, kind.storageKey);
       _state[kind] = stored == '1' ? _StepState.verified : _StepState.locked;
     }
@@ -113,12 +126,20 @@ class _PstnForwardingWizardState extends State<PstnForwardingWizard>
   }
 
   /// The first non-terminal step becomes ready; everything after it stays
-  /// locked. Terminal = verified/skipped.
+  /// locked. Terminal = verified/skipped/paid.
+  ///
+  /// [AVA-VM-PAID-1] `paid` MUST count as terminal here and in
+  /// [_reportProgress]. A paid row can never be actioned, so if it counted as a
+  /// blocker it would sit un-terminal forever: the sequence would never unlock
+  /// the row beneath it, and the intro screen's `allDone` would never fire —
+  /// permanently disabling the Continue button and dead-ending onboarding.
   void _unlockNext() {
     bool blockerSeen = false;
     for (final kind in _order) {
       final s = _state[kind]!;
-      if (s == _StepState.verified || s == _StepState.skipped) continue;
+      if (s == _StepState.verified ||
+          s == _StepState.skipped ||
+          s == _StepState.paid) continue;
       if (!blockerSeen) {
         if (s == _StepState.locked) _state[kind] = _StepState.ready;
         blockerSeen = true;
@@ -130,8 +151,12 @@ class _PstnForwardingWizardState extends State<PstnForwardingWizard>
   }
 
   void _reportProgress() {
+    // [AVA-VM-PAID-1] `paid` counts as done — see [_unlockNext]. Without it the
+    // intro screen's Continue button never enables.
     final done = _order.every((k) =>
-        _state[k] == _StepState.verified || _state[k] == _StepState.skipped);
+        _state[k] == _StepState.verified ||
+        _state[k] == _StepState.skipped ||
+        _state[k] == _StepState.paid);
     final verified = _order.where((k) => _state[k] == _StepState.verified).length;
     widget.onProgress?.call(done, verified);
   }
@@ -154,6 +179,14 @@ class _PstnForwardingWizardState extends State<PstnForwardingWizard>
   /// screen. true: the user has SEEN the reassurance card and tapped "dial it
   /// for me", so the phone app opening with the pre-filled code is expected.
   Future<void> _enable(PstnForwardKind kind, {bool visible = false}) async {
+    // [AVA-VM-PAID-1] Hard backstop. The UI never offers a way in, but this is
+    // the one function that spends the owner's money at the carrier, so it
+    // refuses a locked condition outright rather than trusting the widget tree.
+    if (pstnConditionLocked(kind)) {
+      Analytics.capture('pstn_paid_condition_enable_blocked',
+          {'kind': kind.analyticsKind});
+      return;
+    }
     final s = _state[kind]!;
     if (s != _StepState.ready && s != _StepState.failed && s != _StepState.needsVisibleDial) {
       return;
@@ -393,8 +426,11 @@ class _PstnForwardingWizardState extends State<PstnForwardingWizard>
     final s = _state[kind]!;
     final detail = _detail[kind];
     final locked = s == _StepState.locked;
+    // [AVA-VM-PAID-1] Paid rows read as "unavailable, not broken": same dimming
+    // as a sequence-locked row, but with the PAID pill carrying the reason.
+    final paid = s == _StepState.paid;
     return Opacity(
-      opacity: locked ? 0.45 : 1,
+      opacity: locked || paid ? 0.45 : 1,
       child: AdCard(
         radius: Zine.rSm,
         padding: const EdgeInsets.all(14),
@@ -409,7 +445,32 @@ class _PstnForwardingWizardState extends State<PstnForwardingWizard>
             const SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(_title(kind), style: ADText.rowName().copyWith(fontSize: 14.5)),
+                Row(children: [
+                  Flexible(
+                    child: Text(_title(kind),
+                        style: ADText.rowName().copyWith(fontSize: 14.5)),
+                  ),
+                  // [AVA-VM-PAID-1] Green PAID pill (owner's explicit choice
+                  // 2026-07-17 over an amber one, accepting that green also
+                  // means "confirmed" elsewhere on this screen).
+                  if (paid) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AD.online.withValues(alpha: 0.16),
+                        borderRadius: BorderRadius.circular(7),
+                        border: Border.all(color: AD.online, width: 1),
+                      ),
+                      child: Text('PAID',
+                          style: ADText.preview(c: AD.online).copyWith(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.4,
+                          )),
+                    ),
+                  ],
+                ]),
                 const SizedBox(height: 2),
                 Text(_statusLine(s) ?? _sub(kind),
                     style: ADText.preview(
@@ -504,6 +565,9 @@ class _PstnForwardingWizardState extends State<PstnForwardingWizard>
         _StepState.awaitReturn => 'Waiting for confirmation',
         _StepState.verified => 'On — confirmed with your phone company',
         _StepState.skipped => 'Skipped — you can enable it later',
+        // [AVA-VM-PAID-1] Says what it is and what it costs us, without
+        // promising a purchase flow that doesn't exist yet.
+        _StepState.paid => 'Part of a paid upgrade — coming soon',
         _ => null,
       };
 
@@ -543,6 +607,12 @@ class _PstnForwardingWizardState extends State<PstnForwardingWizard>
       case _StepState.locked:
         return PhosphorIcon(PhosphorIcons.lockSimple(PhosphorIconsStyle.bold),
             size: 18, color: AD.textTertiary);
+      // [AVA-VM-PAID-1] No "Turn on" — the whole point is that this cannot be
+      // switched on. The PAID pill next to the title carries the reason; this
+      // is just the lock glyph, tinted green to match it.
+      case _StepState.paid:
+        return PhosphorIcon(PhosphorIcons.lockSimple(PhosphorIconsStyle.fill),
+            size: 18, color: AD.online);
     }
   }
 }
