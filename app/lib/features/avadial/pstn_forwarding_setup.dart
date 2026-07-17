@@ -333,6 +333,11 @@ class PstnDialResult {
   final bool ok;
   final String? response; // raw carrier response text, when present
   final String? error;    // user-facing error text, when !ok
+  /// Machine-readable failure kind when !ok: 'no_permission' | 'no_code' |
+  /// 'ussd_unavailable' | null. The wizard branches on this —
+  /// 'ussd_unavailable' means "silent path impossible, ask the user before
+  /// any visible dial" ([AVA-RCPT-SILENT-1]).
+  final String? errorKind;
   final String? carrier;
   final String? mccmnc;
   final String? codesSource; // 'default' | 'override'
@@ -341,6 +346,7 @@ class PstnDialResult {
     required this.ok,
     this.response,
     this.error,
+    this.errorKind,
     this.carrier,
     this.mccmnc,
     this.codesSource,
@@ -354,6 +360,9 @@ String pstnErrorFor(Map<String, dynamic> res, String code) {
   final err = res['error'] as String?;
   if (err == 'no_permission') {
     return 'AvaTOK needs call permission to dial $code — grant it, then try again.';
+  }
+  if (err == 'ussd_unavailable') {
+    return "Your phone didn't let AvaTOK send $code in the background.";
   }
   if (err == 'no_code') return 'Something went wrong preparing $code.';
   if (res['timeout'] == true) {
@@ -418,7 +427,9 @@ Future<PstnVerifyResult> pstnVerifyForwarding({
 }) async {
   final resolved = codes ?? await pstnResolveCarrierCodes();
   final statusCode = resolved.statusTemplate(kind);
-  final res = await AvaDialChannel.I.dialMmiCode(statusCode);
+  // [AVA-RCPT-SILENT-1] Status queries are ALWAYS silent — a `*#61#` popping
+  // up in the phone app unannounced reads as a hack attempt, not a check.
+  final res = await AvaDialChannel.I.dialMmiCode(statusCode, allowFallback: false);
   final via = res['via'] as String?;
   final response = (res['response'] as String?)?.trim();
   final gotText = res['ok'] == true && via == 'ussd' && (response?.isNotEmpty ?? false);
@@ -473,10 +484,13 @@ Future<PstnDialResult> pstnDialAndPersist({
   required String did,
   required FlutterSecureStorage storage,
   bool isInitialDefault = false,
-  // Caller may pass an already-resolved [PstnCarrierCodes] (e.g.
-  // [pstnEnableAllForwarding] resolving once for all three dials); when
-  // omitted this resolves (and caches) it itself.
+  // Caller may pass an already-resolved [PstnCarrierCodes]; when omitted this
+  // resolves (and caches) it itself.
   PstnCarrierCodes? codes,
+  // [AVA-RCPT-SILENT-1] false (default) = fully invisible: silent USSD or a
+  // not-ok result — NEVER the phone app. The wizard first tries silent, and
+  // only re-dials with true after showing the user its reassurance card.
+  bool allowFallback = false,
 }) async {
   final resolved = codes ?? await pstnResolveCarrierCodes();
   final template = wantOn ? resolved.enableTemplate(kind) : resolved.disableTemplate(kind);
@@ -507,13 +521,14 @@ Future<PstnDialResult> pstnDialAndPersist({
       ok: false,
       error: 'AvaTOK needs the Phone permission to set up voicemail — '
           'allow it and try again.',
+      errorKind: 'no_permission',
       carrier: resolved.carrier,
       mccmnc: resolved.mccmnc,
       codesSource: resolved.source,
       dialedCode: code,
     );
   }
-  final res = await AvaDialChannel.I.dialMmiCode(code);
+  final res = await AvaDialChannel.I.dialMmiCode(code, allowFallback: allowFallback);
   final ok = res['ok'] == true;
   final response = ok
       ? ((res['response'] as String?)?.trim().isNotEmpty == true
@@ -549,6 +564,7 @@ Future<PstnDialResult> pstnDialAndPersist({
     ok: ok,
     response: response,
     error: error,
+    errorKind: ok ? null : res['error'] as String?,
     carrier: resolved.carrier,
     mccmnc: resolved.mccmnc,
     codesSource: resolved.source,

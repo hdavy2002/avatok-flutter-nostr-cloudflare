@@ -37,7 +37,14 @@ import 'pstn_forwarding_setup.dart';
 /// Embedded by BOTH the informed-consent intro (pstn_forwarding_intro.dart)
 /// and Settings → Voicemail (pstn_forwarding_setup.dart) — one flow, one
 /// source of truth, per the owner's "replace both screens" decision.
-enum _StepState { locked, ready, dialing, awaitReturn, verifying, verified, failed, skipped }
+/// [AVA-RCPT-SILENT-1] `needsVisibleDial`: the silent USSD path is blocked on
+/// this device, so before ANYTHING appears in the user's phone app we show a
+/// reassurance card — what the code is, that it's the standard carrier code
+/// for call forwarding, and that it's safe — and the user chooses "dial it
+/// for me" (phone app opens, pre-filled) or "I'll dial it myself".
+enum _StepState {
+  locked, ready, dialing, needsVisibleDial, awaitReturn, verifying, verified, failed, skipped,
+}
 
 class PstnForwardingWizard extends StatefulWidget {
   final String did;
@@ -73,6 +80,9 @@ class _PstnForwardingWizardState extends State<PstnForwardingWizard>
   };
   final Map<PstnForwardKind, String?> _detail = {}; // carrier response / error line
   final Map<PstnForwardKind, int> _attempts = {};
+  /// Last machine-readable failure per kind — decides what "Check again"
+  /// does: re-request permission, or silently re-ask the carrier.
+  final Map<PstnForwardKind, String?> _failKind = {};
   PstnCarrierCodes? _codes;
   bool _loading = true;
 
@@ -140,11 +150,17 @@ class _PstnForwardingWizardState extends State<PstnForwardingWizard>
   }
 
   // ── actions ────────────────────────────────────────────────────────────────
-  Future<void> _enable(PstnForwardKind kind) async {
-    if (_state[kind] != _StepState.ready && _state[kind] != _StepState.failed) return;
+  /// [visible] false (default): fully silent attempt — nothing may appear on
+  /// screen. true: the user has SEEN the reassurance card and tapped "dial it
+  /// for me", so the phone app opening with the pre-filled code is expected.
+  Future<void> _enable(PstnForwardKind kind, {bool visible = false}) async {
+    final s = _state[kind]!;
+    if (s != _StepState.ready && s != _StepState.failed && s != _StepState.needsVisibleDial) {
+      return;
+    }
     _attempts[kind] = (_attempts[kind] ?? 0) + 1;
     Analytics.capture('pstn_wizard_button_tapped',
-        {'kind': kind.analyticsKind, 'attempt': _attempts[kind]!});
+        {'kind': kind.analyticsKind, 'attempt': _attempts[kind]!, 'visible': visible});
     setState(() {
       _state[kind] = _StepState.dialing;
       _detail[kind] = null;
@@ -155,18 +171,89 @@ class _PstnForwardingWizardState extends State<PstnForwardingWizard>
       did: widget.did,
       storage: widget.storage,
       codes: _codes,
+      allowFallback: visible,
     );
     if (!mounted) return;
     if (!result.ok) {
+      if (result.errorKind == 'ussd_unavailable' && !visible) {
+        // Silent path blocked on this device — explain BEFORE anything shows
+        // up in the user's phone app ([AVA-RCPT-SILENT-1]).
+        Analytics.capture('pstn_wizard_reassure_shown', {'kind': kind.analyticsKind});
+        setState(() {
+          _state[kind] = _StepState.needsVisibleDial;
+          _detail[kind] = null;
+        });
+      } else {
+        setState(() {
+          _state[kind] = _StepState.failed;
+          _detail[kind] = result.error;
+          _failKind[kind] = result.errorKind;
+        });
+      }
+      _reportProgress();
+      return;
+    }
+    if (visible) {
+      // The phone app is opening with the code — the user leaves AvaTOK. We
+      // verify silently the moment they come back (lifecycle hook below), and
+      // the attest buttons cover devices where even that check is blocked.
       setState(() {
-        _state[kind] = _StepState.failed;
-        _detail[kind] = result.error;
+        _state[kind] = _StepState.awaitReturn;
+        _detail[kind] = null;
       });
       _reportProgress();
       return;
     }
-    // Dial accepted — but acceptance is NOT proof. Ask the carrier.
+    // Silent dial accepted. If the carrier's own reply to the ENABLE code
+    // already names our voicemail number, that IS the confirmation — no
+    // second query needed. Otherwise ask via the status code.
+    final enableResp = result.response;
+    if (enableResp != null && pstnResponseNamesDid(enableResp, widget.did)) {
+      await pstnPersistVerified(kind: kind, on: true, storage: widget.storage);
+      Analytics.capture('pstn_wizard_verified', {
+        'kind': kind.analyticsKind,
+        'attempts': _attempts[kind] ?? 0,
+        'via': 'enable_response',
+      });
+      setState(() {
+        _state[kind] = _StepState.verified;
+        _detail[kind] = null;
+        _unlockNext();
+      });
+      _reportProgress();
+      return;
+    }
     await _verify(kind);
+  }
+
+  /// "Check again" on a failed row. A permission failure needs the full
+  /// enable flow re-run (so the grant dialog can come back); anything else —
+  /// e.g. the user just dialed the code manually — only needs the carrier
+  /// asked again, silently.
+  Future<void> _verifyRetry(PstnForwardKind kind) async {
+    Analytics.capture('pstn_wizard_check_again',
+        {'kind': kind.analyticsKind, 'fail_kind': _failKind[kind] ?? 'none'});
+    if (_failKind[kind] == 'no_permission') {
+      _failKind[kind] = null;
+      await _enable(kind);
+      return;
+    }
+    _failKind[kind] = null;
+    await _verify(kind);
+  }
+
+  /// "I'll dial it myself" from the reassurance card — hand over the exact
+  /// code with the safety explanation and a re-check path.
+  void _manualDial(PstnForwardKind kind) {
+    Analytics.capture('pstn_wizard_manual_chosen', {'kind': kind.analyticsKind});
+    setState(() {
+      _state[kind] = _StepState.failed;
+      _detail[kind] =
+          'Open your phone app, dial ${_enableCodeFor(kind)} and press call — '
+          "it's the standard code phone companies use to switch on call "
+          'forwarding, completely safe. Then come back and tap "Check again".';
+    });
+    _reportProgress();
   }
 
   Future<void> _verify(PstnForwardKind kind) async {
@@ -183,14 +270,18 @@ class _PstnForwardingWizardState extends State<PstnForwardingWizard>
         _unlockNext();
       });
     } else if (v.checked) {
-      // Carrier answered and forwarding is NOT registered — the enable code
-      // didn't take. Hand the user the exact code for a manual keypad dial.
+      // The carrier answered but its reply didn't name our number. On most
+      // carriers that means forwarding is NOT registered — but some word the
+      // status reply without echoing the number, so we ASK rather than
+      // assert ([AVA-RCPT-SILENT-1]): attest buttons + the manual code.
       Analytics.capture('pstn_wizard_manual_shown', {'kind': kind.analyticsKind});
       setState(() {
-        _state[kind] = _StepState.failed;
+        _state[kind] = _StepState.awaitReturn;
         _detail[kind] =
-            "Your carrier says this isn't on yet. Dial ${_enableCodeFor(kind)} "
-            'from your phone keypad, then come back and tap "Check again".';
+            "We couldn't confirm this is on yet. If your phone company showed "
+            "you a confirmation, tap \"It turned on\". If not, dial "
+            '${_enableCodeFor(kind)} from your phone app — the standard, safe '
+            'code carriers use for call forwarding — then come back.';
       });
     } else {
       // Could not read the carrier's answer (USSD blocked / fallback used) —
@@ -331,15 +422,49 @@ class _PstnForwardingWizardState extends State<PstnForwardingWizard>
           ]),
           if (detail != null) ...[
             const SizedBox(height: 10),
-            Text(detail, style: ADText.preview(c: AD.danger).copyWith(fontSize: 12)),
+            Text(detail,
+                style: ADText.preview(
+                  c: s == _StepState.failed ? AD.danger : AD.textSecondary,
+                ).copyWith(fontSize: 12)),
+          ],
+          if (s == _StepState.needsVisibleDial) ...[
+            const SizedBox(height: 10),
+            Text(
+              'Your phone won\'t let AvaTOK do this quietly in the background, '
+              'so your phone app will open with the code '
+              '${_enableCodeFor(kind)} filled in. That code is the standard, '
+              'safe instruction phone companies worldwide use to switch on '
+              'call forwarding — it only talks to your phone company and '
+              'can\'t read or change anything on your phone.',
+              style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12.5),
+            ),
+            const SizedBox(height: 8),
+            Row(children: [
+              Expanded(
+                child: AdButton(
+                  label: 'Dial it for me',
+                  fontSize: 13.5,
+                  onPressed: () => _enable(kind, visible: true),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: AdButton(
+                  label: "I'll dial it myself",
+                  fontSize: 13.5,
+                  onPressed: () => _manualDial(kind),
+                ),
+              ),
+            ]),
           ],
           if (s == _StepState.awaitReturn) ...[
             const SizedBox(height: 10),
-            Text(
-              'Your phone showed the result of the forwarding code. '
-              'What did it say?',
-              style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12.5),
-            ),
+            if (detail == null)
+              Text(
+                'Your phone app showed your phone company\'s reply to the '
+                'forwarding code (a standard, safe carrier code). What did it say?',
+                style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12.5),
+              ),
             const SizedBox(height: 8),
             Row(children: [
               Expanded(
@@ -373,10 +498,11 @@ class _PstnForwardingWizardState extends State<PstnForwardingWizard>
   }
 
   String? _statusLine(_StepState s) => switch (s) {
-        _StepState.dialing => 'Dialing the carrier code…',
-        _StepState.verifying => 'Asking your carrier to confirm…',
+        _StepState.dialing => 'Setting up with your phone company…',
+        _StepState.verifying => 'Asking your phone company to confirm…',
+        _StepState.needsVisibleDial => 'One small step needed',
         _StepState.awaitReturn => 'Waiting for confirmation',
-        _StepState.verified => 'On — confirmed with your carrier',
+        _StepState.verified => 'On — confirmed with your phone company',
         _StepState.skipped => 'Skipped — you can enable it later',
         _ => null,
       };
@@ -408,8 +534,10 @@ class _PstnForwardingWizardState extends State<PstnForwardingWizard>
               setState(() => _state[kind] = _StepState.ready);
             },
             underline: AD.iconSearch);
+      case _StepState.needsVisibleDial:
+        return const SizedBox.shrink(); // choices render inline in the card body
       case _StepState.failed:
-        return AdButton(label: 'Check again', fontSize: 13, onPressed: () => _enable(kind));
+        return AdButton(label: 'Check again', fontSize: 13, onPressed: () => _verifyRetry(kind));
       case _StepState.ready:
         return AdButton(label: 'Turn on', fontSize: 13, onPressed: () => _enable(kind));
       case _StepState.locked:

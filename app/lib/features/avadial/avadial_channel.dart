@@ -911,9 +911,15 @@ class AvaDialChannel {
   /// unavailable, fails, or times out. Returns `{ok, via, response?,
   /// ussd_failure_code?, timeout?, error?}`; empty map only on an unexpected
   /// platform-channel failure.
-  Future<Map<String, dynamic>> dialMmiCode(String code) async {
+  /// [AVA-RCPT-SILENT-1] `allowFallback: false` guarantees this is INVISIBLE
+  /// — silent USSD or `{ok: false, error: 'ussd_unavailable'}`, never the
+  /// phone app. A tester saw `*#61#` appear in his dialer unannounced and
+  /// thought his phone was being hacked; visible dials are now opt-in and
+  /// must be preceded by the wizard's reassurance card.
+  Future<Map<String, dynamic>> dialMmiCode(String code, {bool allowFallback = false}) async {
     try {
-      final raw = await _ch.invokeMethod<Map<dynamic, dynamic>>('dialMmiCode', {'code': code});
+      final raw = await _ch.invokeMethod<Map<dynamic, dynamic>>(
+          'dialMmiCode', {'code': code, 'allowFallback': allowFallback});
       if (raw == null) return {'ok': false};
       return raw.map((k, v) => MapEntry('$k', v));
     } catch (e) {

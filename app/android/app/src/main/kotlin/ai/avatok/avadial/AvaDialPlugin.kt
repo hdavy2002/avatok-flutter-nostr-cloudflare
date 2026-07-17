@@ -833,7 +833,14 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
                     writeFileAtomic(pstnConfigFile(ctx), obj.toString())
                     result.success(true)
                 }
-                "dialMmiCode" -> dialMmiCode(ctx, call.argument<String>("code"), result)
+                "dialMmiCode" -> dialMmiCode(
+                    ctx,
+                    call.argument<String>("code"),
+                    // [AVA-RCPT-SILENT-1] false = NEVER open the phone app; a
+                    // failed USSD attempt just reports not-ok. See dialMmiCode doc.
+                    call.argument<Boolean>("allowFallback") ?: true,
+                    result,
+                )
                 // [AVA-RCPT-VERIFY-1] awaitable CALL_PHONE grant — resolve BEFORE
                 // dialing forwarding codes, see ensureCallPermission's doc.
                 "ensureCallPermission" -> ensureCallPermission(ctx, result)
@@ -1834,8 +1841,16 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
      *
      * `result.success` is called EXACTLY once (guarded by [responded]) — the two
      * async callbacks and the watchdog all race for it.
+     *
+     * [AVA-RCPT-SILENT-1] (owner decision 2026-07-17): [allowFallback] gates the
+     * ACTION_CALL path. A tester saw `*#61#` pop up in his phone app with no
+     * explanation and thought his phone was being hacked. With
+     * `allowFallback=false` this method is guaranteed INVISIBLE — silent USSD
+     * or a not-ok result (`error: "ussd_unavailable"`), never the phone app.
+     * Callers that DO want the visible dial (after showing the user a
+     * reassurance card first) pass `allowFallback=true` explicitly.
      */
-    private fun dialMmiCode(ctx: Context, code: String?, result: MethodChannel.Result) {
+    private fun dialMmiCode(ctx: Context, code: String?, allowFallback: Boolean, result: MethodChannel.Result) {
         if (code.isNullOrBlank()) {
             result.success(mapOf("ok" to false, "error" to "no_code"))
             return
@@ -1849,14 +1864,20 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
             result.success(mapOf("ok" to false, "error" to "no_permission"))
             return
         }
+        fun fallbackOrFail(extra: Map<String, Any?> = emptyMap()): Map<String, Any?> =
+            if (allowFallback) {
+                mapOf("ok" to placeMmiCall(ctx, code), "via" to "call_intent") + extra
+            } else {
+                mapOf("ok" to false, "via" to "none", "error" to "ussd_unavailable") + extra
+            }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            result.success(mapOf("ok" to placeMmiCall(ctx, code), "via" to "call_intent"))
+            result.success(fallbackOrFail())
             return
         }
         try {
             val tm = ctx.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
             if (tm == null) {
-                result.success(mapOf("ok" to placeMmiCall(ctx, code), "via" to "call_intent"))
+                result.success(fallbackOrFail())
                 return
             }
             // Per-SIM: target the default VOICE subscription's own TelephonyManager
@@ -1875,9 +1896,10 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
             val watchdog = Runnable {
                 if (responded) return@Runnable
                 responded = true
-                result.success(
-                    mapOf("ok" to placeMmiCall(ctx, code), "via" to "call_intent", "timeout" to true),
-                )
+                // [AVA-RCPT-SILENT-1] The watchdog used to launch the phone app
+                // 15s AFTER the tap — the most startling possible moment. It now
+                // respects allowFallback like every other failure path.
+                result.success(fallbackOrFail(mapOf("timeout" to true)))
             }
             targetTm.sendUssdRequest(
                 code,
@@ -1901,14 +1923,9 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
                         if (responded) return
                         responded = true
                         handler.removeCallbacks(watchdog)
-                        // USSD API reported failure — fall back to the ACTION_CALL
-                        // intent (owner spec) so the code still reaches the carrier.
-                        result.success(
-                            mapOf(
-                                "ok" to placeMmiCall(ctx, code), "via" to "call_intent",
-                                "ussd_failure_code" to failureCode,
-                            ),
-                        )
+                        // USSD API reported failure — visible fallback only when
+                        // the caller opted in ([AVA-RCPT-SILENT-1]).
+                        result.success(fallbackOrFail(mapOf("ussd_failure_code" to failureCode)))
                     }
                 },
                 handler,
@@ -1917,9 +1934,9 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
             // watchdog post — no race on [responded].
             handler.postDelayed(watchdog, 15_000L)
         } catch (_: SecurityException) {
-            result.success(mapOf("ok" to placeMmiCall(ctx, code), "via" to "call_intent"))
+            result.success(fallbackOrFail())
         } catch (_: Throwable) {
-            result.success(mapOf("ok" to placeMmiCall(ctx, code), "via" to "call_intent"))
+            result.success(fallbackOrFail())
         }
     }
 
