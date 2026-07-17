@@ -381,6 +381,30 @@ class AppDb extends _$AppDb {
   Future<void> upsertMessage(MessagesCompanion m) =>
       into(messages).insert(m, mode: InsertMode.insertOrIgnore);
 
+  /// [AVAGRP-SENDERPUB-BACKFILL-1] Repair the [Messages.senderPub] of ONE
+  /// already-stored row. This exists because [upsertMessage] is
+  /// `insertOrIgnore` — re-ingesting a message the DB already holds (which is
+  /// exactly what a re-sync does) silently keeps the OLD row, so a row written
+  /// by a build from before the v8 column existed can never learn its sender
+  /// through the normal ingest path. Rows from those builds read back NULL and
+  /// render as the "unknown sender" fallback (no photo, no per-member tint, the
+  /// literal 'P' initial from `_bubbleAvatar`'s 'peer' fallback) forever.
+  ///
+  /// The WHERE clause makes this IDEMPOTENT and NON-DESTRUCTIVE: it only ever
+  /// fills a NULL/empty value, so a row that already knows its sender is never
+  /// overwritten (a repair racing the live ingest path cannot corrupt a good
+  /// value), and re-running the backfill is a no-op. Returns the number of rows
+  /// actually changed, so the caller can report a truthful `recovered` count.
+  ///
+  /// No schema change: [Messages.senderPub] already exists (v8, AVAGRP-DBPUB-1).
+  /// This is a plain UPDATE, so there is no migration to run.
+  Future<int> setSenderPub(String rumorId, String senderPub) =>
+      (update(messages)
+            ..where((t) =>
+                t.rumorId.equals(rumorId) &
+                (t.senderPub.isNull() | t.senderPub.equals(''))))
+          .write(MessagesCompanion(senderPub: Value(senderPub)));
+
   /// Move every message from one conversation key to another (used when an
   /// unknown-number receptionist thread `g:recept_…__tel:<phone>` is promoted to
   /// a real DM `1:<uid>` after the caller is discovered on AvaTOK, so the

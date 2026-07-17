@@ -67,6 +67,7 @@ import '../../core/message_store.dart';
 import '../../identity/identity.dart';
 import '../../core/db.dart';
 import '../../core/device_contacts.dart';
+import '../../core/disk_cache.dart'; // [AVAGRP-SENDERPUB-BACKFILL-1] per-account scoped repair marker
 import '../../sync/dm.dart';
 import '../../sync/outbox.dart';
 import '../../sync/group_dm.dart';
@@ -146,7 +147,13 @@ class _Msg {
   final String time;
   final int ts; // sort key (epoch seconds; 0 for demo)
   String? evId; // rumor id (real DMs) — set after media upload too
-  final String? senderLabel; // group: who sent (null for mine / 1:1)
+  // [AVAGRP-SENDERPUB-BACKFILL-1] `senderLabel`/`senderPub` were `final`; they
+  // are now mutable (like `evId` above, which is likewise stamped after the
+  // fact) so `_backfillSenderPubs` can REPAIR an already-rendered history bubble
+  // in place. Nothing else assigns them after construction — the live ingest
+  // path (`_onGroupMsg`) still sets both in the constructor, and the repair only
+  // ever fills a value that is currently null/empty, never rewrites a good one.
+  String? senderLabel; // group: who sent (null for mine / 1:1)
   // [AVAGRP-BUBBLE-1] The sender's STABLE uid (`GroupMessage.senderPub`), kept
   // alongside the display-name `senderLabel`. This is the identity that must
   // drive both per-sender bubble colour (`resolveBubbleTheme`) and the group
@@ -154,7 +161,8 @@ class _Msg {
   // change (a member renames themselves) or arrive null before the name is
   // learned, and hashing/keying off it is exactly why the group tint reshuffled
   // mid-thread and the avatar fell back to a bare '?'. Null for mine / 1:1.
-  final String? senderPub;
+  // [AVAGRP-SENDERPUB-BACKFILL-1] No longer `final` — see `senderLabel` above.
+  String? senderPub;
   String? reaction;
   Map<String, int> reactCounts = {}; // Phase 4: aggregate live reactions (emoji → count)
   Map<String, Set<String>> reactBy = {}; // Phase 5: who reacted (emoji → set of uids) for the "reacted by" sheet
@@ -991,6 +999,172 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     }
   }
 
+  // ── [AVAGRP-SENDERPUB-BACKFILL-1] historical `senderPub` repair ─────────────
+  //
+  // THE BUG: group bubbles from Tue 2026-07-14 → Thu 2026-07-16 render the
+  // letter "P" instead of the sender's photo. `_bubbleAvatar`'s fallback chain
+  // ends in the literal 'peer' → `Avatar` draws its initial. That branch is only
+  // reachable when `m.senderPub` is empty (`_groupLabelFor` returns null for an
+  // empty uid, so `senderLabel` is null too, and `_memberAvatars[pub]` can never
+  // be keyed).
+  //
+  // WHY THOSE ROWS ARE EMPTY: `[AVAGRP-DBPUB-1]` only STARTED persisting
+  // `senderPub` (Messages column v8). Rows written by earlier builds read back
+  // NULL → ''. The JSON disk cache has the same hole (caches written by older
+  // builds carry no `senderPub` key), so BOTH local replay sources are blank and
+  // no amount of reopening fixes it. The server is fine — `inbox.ts` has stored
+  // `sender` on every row all along.
+  //
+  // WHY RE-SYNCING CANNOT FIX IT (the trap): `Db.upsertMessage` is
+  // `insertOrIgnore`. Re-ingesting a message the DB already holds keeps the OLD
+  // row, so `senderPub` stays NULL. `_onGroupMsg` likewise returns early on
+  // `_seenEv`, so re-feeding a repaired frame would not re-render either. The
+  // repair therefore has to UPDATE the row (`Db.setSenderPub`) and mutate the
+  // already-rendered `_Msg` in place — which is why those two fields lost their
+  // `final`.
+  //
+  // THE SOURCE: `GET /api/msg/sync?cursor=0` (worker `syncMsg` →
+  // `InboxDO.syncPayload`) returns this account's own backlog with `sender` on
+  // every row. It is ALREADY reachable from the client with no worker change —
+  // `inbox_api.dart` (AvaDial) calls the same route. Deliberately NOT the WS
+  // `SyncHub` cursor: that is shared app-lifetime state, and rewinding it to 0
+  // would re-drive every listener (unread recount, preview bumps, delete
+  // re-application) for the whole account. This is a plain read-only HTTP GET
+  // that touches nothing but the rows it repairs.
+  //
+  // NO KILL SWITCH, deliberately. The FAKE-FLAG rule in CLAUDE.md means a real
+  // flag needs a `config.ts` DEFAULTS entry + a worker deploy to be flippable,
+  // and this repair does not warrant one: it is read-only on the server, runs at
+  // most once per conversation, only ever fills empty fields, cannot duplicate a
+  // bubble (`_seenEv`), cannot lose one (it never deletes or reorders), and
+  // degrades to today's exact behaviour on any failure. The self-limiting guards
+  // below ARE the brake.
+  //
+  // State is a per-account DiskCache key: `DiskCache` writes under
+  // `cache/<AccountScope.id>/`, so the marker is namespaced per account by
+  // construction and cannot leak between the parent/child accounts sharing a
+  // phone (CLAUDE.md rule 1).
+  static const String _kSenderPubRepairKey = 'grp_senderpub_repaired_v1';
+
+  Future<Set<String>> _senderPubRepairedConvs() async {
+    try {
+      final raw = await DiskCache.read(_kSenderPubRepairKey);
+      if (raw == null || raw.isEmpty) return {};
+      final l = jsonDecode(raw);
+      if (l is List) return l.map((e) => e.toString()).toSet();
+    } catch (_) { /* unreadable marker ⇒ treat as unrepaired; worst case one extra GET */ }
+    return {};
+  }
+
+  Future<void> _markSenderPubRepaired(String gid) async {
+    try {
+      final s = await _senderPubRepairedConvs();
+      if (!s.add(gid)) return;
+      await DiskCache.write(_kSenderPubRepairKey, jsonEncode(s.toList()));
+    } catch (_) { /* best-effort; a lost marker only costs one repeat GET */ }
+  }
+
+  /// One-shot, per-conversation, best-effort repair of blank `senderPub` on
+  /// historical group bubbles. Never blocks the thread opening (fired via
+  /// `unawaited` after both replay sources have landed), never throws.
+  Future<void> _backfillSenderPubs() async {
+    if (!_isGroup || !mounted) return;
+    final gid = _group?.id;
+    if (gid == null || gid.isEmpty) return;
+
+    // Cheapest guard FIRST: a healthy thread does zero I/O and never marks
+    // itself, so this stays inert for every user who has no damaged rows.
+    final stuck = _msgs
+        .where((m) =>
+            !m.me &&
+            !m.system &&
+            (m.senderPub?.isEmpty ?? true) &&
+            (m.evId?.isNotEmpty ?? false))
+        .toList();
+    if (stuck.isEmpty) return;
+
+    // One-shot per conversation: rows the server can no longer show us (older
+    // than the DO's 500-row SYNC_LIMIT window, or purged) would otherwise re-ask
+    // on every single open, forever.
+    if ((await _senderPubRepairedConvs()).contains(gid)) return;
+    if (!mounted) return;
+
+    final scanned = stuck.length;
+    var recovered = 0;
+    final resolvedUids = <String>{};
+    try {
+      final res = await ApiAuth.getSigned('$kMsgSyncUrl?cursor=0');
+      if (res.statusCode != 200 || !mounted) return; // transient → retry next open, stay unmarked
+      final body = jsonDecode(res.body);
+      final rows = (body is Map ? body['messages'] : null);
+      if (rows is! List) return;
+
+      // rumorId is derived EXACTLY as `SyncHub._ingestMsg` and
+      // `_ingestArchiveRow` derive it, so these keys line up with `_Msg.evId`.
+      final byRumor = <String, String>{};
+      for (final r in rows) {
+        if (r is! Map) continue;
+        if ((r['conv'] ?? '').toString() != gid) continue; // this thread only
+        final sender = (r['sender'] ?? '').toString();
+        if (sender.isEmpty) continue;
+        final clientId = (r['client_id'] ?? '').toString();
+        final id = (r['id'] as num?)?.toInt() ?? 0;
+        byRumor[clientId.isNotEmpty ? clientId : 'srv_$id'] = sender;
+      }
+
+      final myUid = _meId?.uid ?? '';
+      final patch = <String, String>{};
+      for (final m in stuck) {
+        final sender = byRumor[m.evId];
+        // `sender == myUid` ⇒ my own row misfiled as inbound. Leave it: every
+        // consumer keys "is this mine" off `mine`, and the whole codebase's
+        // convention is `senderPub: ''` for own rows.
+        if (sender == null || sender.isEmpty || sender == myUid) continue;
+        patch[m.evId!] = sender;
+      }
+
+      if (patch.isNotEmpty) {
+        setState(() {
+          for (final m in stuck) {
+            final s = patch[m.evId];
+            if (s == null) continue;
+            m.senderPub = s;
+            // Recompute the label the same way `_onGroupMsg` does — it was null
+            // only because the uid behind it was missing.
+            m.senderLabel ??= _groupLabelFor(s);
+            recovered++;
+            resolvedUids.add(s);
+          }
+        });
+        // Durable half: UPDATE (not upsert — see `Db.setSenderPub`) so the fix
+        // survives a restart even if the JSON cache is later evicted.
+        for (final e in patch.entries) {
+          try { await Db.I.setSenderPub(e.key, e.value); } catch (_) { /* row repaired in memory regardless */ }
+        }
+        _schedulePersist(); // rewrite the JSON cache WITH senderPub this time
+        // Members whose photo we never fetched (they aren't saved contacts) can
+        // now be resolved — the map is keyed by uid, which we finally have.
+        unawaited(_backfillMemberAvatars());
+      }
+      await _markSenderPubRepaired(gid);
+    } catch (_) {
+      return; // degrade silently — the bubbles look exactly as they do today
+    }
+
+    // Two-sided by design: a group thread is a conversation, so the resolved
+    // sender uids are tagged here to let EITHER party's telemetry retrieve the
+    // interaction. The viewer's own email/platform is auto-stamped by
+    // `Analytics._base` — never hand-add it (CLAUDE.md).
+    Analytics.capture('grp_senderpub_backfill', {
+      'gid': gid,
+      'scanned': scanned,
+      'recovered': recovered,
+      'skipped_unresolvable': scanned - recovered,
+      'sender_uids': resolvedUids.take(25).toList(),
+      'sender_count': resolvedUids.length,
+    });
+  }
+
   /// Batch-fetch every poll's tally for THIS conversation from the server and
   /// merge it into the loaded poll bubbles. Runs on open (after cache load) and
   /// again when a new poll bubble arrives. Server is the source of truth — this
@@ -1106,6 +1280,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         // thread was closed. Runs after BOTH replay sources have landed so the
         // mid list is complete. Best-effort; never blocks the thread opening.
         if (RemoteConfig.groupReceiptsEnabled) unawaited(_hydrateMsgReceipts());
+        // [AVAGRP-SENDERPUB-BACKFILL-1] Repair history rows whose `senderPub`
+        // predates the v8 column (they render as the 'P' initial with no photo
+        // and no per-member tint). Must run HERE — after BOTH the JSON cache and
+        // the DB replay have landed — so it sees the complete `_msgs` list and
+        // doesn't ask the server about rows the cache was about to resolve.
+        // `unawaited` + fully self-guarded: never blocks the thread opening.
+        unawaited(_backfillSenderPubs());
       });
     });
     // Let replayed group history settle before indexing LIVE messages into RAG.
