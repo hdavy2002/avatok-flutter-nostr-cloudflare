@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'ui/avatok_dark.dart' show AD;
 import 'ui/zine.dart';
 
 export 'ui/zine.dart';
@@ -61,6 +62,20 @@ class AvaTheme {
       ),
       scaffoldBackgroundColor: Zine.paper,
       fontFamily: ZineText.body,
+      // [AVA-FLASH-1] 2026-07-17 — the "bright light then the page appears"
+      // flash on every push/pop. Material 3 on Android uses
+      // ZoomPageTransitionsBuilder, which paints the route's snapshot over a
+      // solid fill that defaults to colorScheme.surface — here Zine.card
+      // (0xFFFEFDFA, near-white). Every screen paints itself dark (AD.bg), so
+      // for the length of the transition the user got a white strobe. Pinning
+      // the transition fill to the real page background kills it. Do NOT drop
+      // this back to the default; the app's ThemeData is nominally "light"
+      // while the UI is dark, so the default will always be wrong here.
+      pageTransitionsTheme: const PageTransitionsTheme(builders: {
+        TargetPlatform.android: ZoomPageTransitionsBuilder(backgroundColor: AD.bg),
+        TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+      }),
     );
 
     // Nunito for display/titles, Nunito (>=600) for body — bundled fonts.
