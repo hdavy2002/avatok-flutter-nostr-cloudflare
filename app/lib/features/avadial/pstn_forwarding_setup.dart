@@ -629,6 +629,8 @@ class _PstnForwardingSetupScreenState extends State<PstnForwardingSetupScreen> {
         backgroundColor: AvaDialTheme.bg,
         appBar: AppBar(
           backgroundColor: AvaDialTheme.surface,
+          leading: const AdBackButton(),
+          iconTheme: const IconThemeData(color: AvaDialTheme.text),
           title: Text('Voicemail', style: ZineText.appbar(color: AvaDialTheme.text)),
         ),
         body: const SizedBox.shrink(),
@@ -641,6 +643,11 @@ class _PstnForwardingSetupScreenState extends State<PstnForwardingSetupScreen> {
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         shape: const Border(bottom: BorderSide(color: AvaDialTheme.border, width: 1)),
+        // [AVA-VM-BACK-1] Do NOT rely on AppBar's implicit leading: it renders
+        // with the ambient IconTheme, which on this dark surface came out a
+        // near-invisible brown (owner report 2026-07-17). Explicit + themed.
+        leading: const AdBackButton(),
+        iconTheme: const IconThemeData(color: AvaDialTheme.text),
         title: Text('Voicemail', style: ZineText.appbar(color: AvaDialTheme.text)),
       ),
       body: ListView(
