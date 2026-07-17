@@ -17,6 +17,7 @@ import '../../shell/shell_v2.dart' show kPstnVoicemailDid;
 import '../settings/settings_registry.dart';
 import 'avadial_channel.dart';
 import 'avadial_theme.dart';
+import 'pstn_forwarding_wizard.dart';
 
 /// [AVA-RCPT-7] → REPLACED 2026-07-16 (owner decision, PLAN-2026-07-16
 /// receptionist/guardian doc): AvaTOK will never be the Android default
@@ -45,6 +46,13 @@ import 'avadial_theme.dart';
 /// All three dial through [AvaDialChannel.dialMmiCode] — USSD first,
 /// `ACTION_CALL` fallback — never a raw dial the user has to watch and
 /// interpret.
+///
+/// [AVA-RCPT-VERIFY-1] REPLACED AGAIN 2026-07-17 (owner decision, after the
+/// rgoa/Airtel incident): the three optimistic toggles are gone. This screen
+/// now embeds [PstnForwardingWizard] — sequential per-condition buttons where
+/// a row only turns green after the CARRIER's status query (`*#61#` etc.)
+/// confirms forwarding is registered to our DID. This file still owns the
+/// shared dial/verify/persist primitives below, which the wizard drives.
 ///
 /// Defaults ON: the first time this screen (or the intro screen) opens with
 /// no stored toggle state, all three toggles show ON immediately and the
@@ -354,6 +362,101 @@ String pstnErrorFor(Map<String, dynamic> res, String code) {
   return "Your carrier didn't accept $code — try again, or dial it yourself from the keypad.";
 }
 
+// ── [AVA-RCPT-VERIFY-1] Carrier-confirmed verification (2026-07-17) ─────────
+// Lesson from the rgoa/Airtel incident: an enable dial that "succeeds" (or
+// fails) tells us almost nothing across thousands of global carriers. The only
+// ground truth is the carrier's own STATUS query (`*#61#`/`*#67#`/`*#62#`,
+// GSM 3GPP TS 22.004 — or a per-carrier override from /pstn/carrier-codes).
+// When forwarding is registered, the status response carries the forwarding
+// NUMBER — and digit-matching our DID inside it is language-agnostic, so it
+// works no matter how the carrier words the reply. A toggle is now persisted
+// ON only after this check confirms it.
+
+/// Outcome of one carrier status query for one forwarding condition.
+class PstnVerifyResult {
+  /// True when the carrier answered the status code at all. False = we could
+  /// not check (USSD unavailable/failed/timeout) — NOT the same as "off".
+  final bool checked;
+  /// Meaningful only when [checked]: carrier's response contains our DID.
+  final bool verified;
+  final String? response; // raw carrier response text, when present
+  final String? via;      // 'ussd' | 'call_intent'
+  final String? dialedCode;
+  const PstnVerifyResult({
+    required this.checked,
+    required this.verified,
+    this.response,
+    this.via,
+    this.dialedCode,
+  });
+}
+
+/// Digits-only projection for language-agnostic number matching.
+String _digitsOf(String s) => s.replaceAll(RegExp(r'[^0-9]'), '');
+
+/// Does [response] name [did] as the forwarding target? Compares digits only
+/// and accepts a suffix match on the last 8 digits, so `+91 22 7126 4209`,
+/// `02271264209` and `912271264209` all match regardless of carrier
+/// formatting, spacing, or 0/+91 prefixing.
+bool pstnResponseNamesDid(String response, String did) {
+  final respDigits = _digitsOf(response);
+  final didDigits = _digitsOf(did);
+  if (didDigits.length < 6 || respDigits.isEmpty) return false;
+  final tail = didDigits.length > 8 ? didDigits.substring(didDigits.length - 8) : didDigits;
+  return respDigits.contains(tail);
+}
+
+/// Ask the CARRIER whether [kind]'s forwarding is registered to [did] — dials
+/// the status MMI code silently over USSD and digit-matches the response.
+/// Never throws. `checked=false` when the carrier gave us no text to inspect
+/// (e.g. the ACTION_CALL fallback fired — its response renders in the phone
+/// app, outside our reach).
+Future<PstnVerifyResult> pstnVerifyForwarding({
+  required PstnForwardKind kind,
+  required String did,
+  PstnCarrierCodes? codes,
+}) async {
+  final resolved = codes ?? await pstnResolveCarrierCodes();
+  final statusCode = resolved.statusTemplate(kind);
+  final res = await AvaDialChannel.I.dialMmiCode(statusCode);
+  final via = res['via'] as String?;
+  final response = (res['response'] as String?)?.trim();
+  final gotText = res['ok'] == true && via == 'ussd' && (response?.isNotEmpty ?? false);
+  final verified = gotText && pstnResponseNamesDid(response!, did);
+  Analytics.capture('pstn_forward_verify_result', {
+    'kind': kind.analyticsKind,
+    'checked': gotText,
+    'verified': verified,
+    'via': via ?? 'none',
+    'code': statusCode,
+    'codes_source': resolved.source,
+    if (resolved.carrier != null) 'carrier': resolved.carrier!,
+    if (resolved.mccmnc != null) 'mccmnc': resolved.mccmnc!,
+    if (res['ussd_failure_code'] != null) 'ussd_failure_code': res['ussd_failure_code'],
+    if (res['timeout'] == true) 'timeout': true,
+  });
+  return PstnVerifyResult(
+    checked: gotText,
+    verified: verified,
+    response: response,
+    via: via,
+    dialedCode: statusCode,
+  );
+}
+
+/// Mark [kind] carrier-confirmed ON (or off) in per-account storage. The
+/// wizard calls this ONLY after [pstnVerifyForwarding] returns verified —
+/// nothing else may write these keys optimistically.
+Future<void> pstnPersistVerified({
+  required PstnForwardKind kind,
+  required bool on,
+  required FlutterSecureStorage storage,
+}) async {
+  try {
+    await storage.write(key: scopedKey(kind.storageKey), value: on ? '1' : '0');
+  } catch (_) {/* best-effort */}
+}
+
 /// Dials [kind]'s MMI code toward [wantOn] against [did] and persists the
 /// resulting toggle state per-account on success (never on failure — the
 /// stored value must always reflect what the carrier actually confirmed).
@@ -383,6 +486,33 @@ Future<PstnDialResult> pstnDialAndPersist({
     'want_on': wantOn,
     'initial_default': isInitialDefault,
   });
+  // [AVA-RCPT-VERIFY-1] Await the ACTUAL permission grant before dialing.
+  // Previously dialMmiCode fired the permission dialog and instantly returned
+  // no_permission — all three codes "failed" in ~150ms and the user walked
+  // away believing voicemail was on (rgoa/Airtel, 2026-07-17).
+  final hasPermission = await AvaDialChannel.I.ensureCallPermission();
+  if (!hasPermission) {
+    Analytics.capture('avadial_pstn_voicemail_toggle_result', {
+      'kind': kind.analyticsKind,
+      'want_on': wantOn,
+      'ok': false,
+      'error_kind': 'no_permission',
+      'initial_default': isInitialDefault,
+      'codes_source': resolved.source,
+      'code': code,
+      if (resolved.carrier != null) 'carrier': resolved.carrier!,
+      if (resolved.mccmnc != null) 'mccmnc': resolved.mccmnc!,
+    });
+    return PstnDialResult(
+      ok: false,
+      error: 'AvaTOK needs the Phone permission to set up voicemail — '
+          'allow it and try again.',
+      carrier: resolved.carrier,
+      mccmnc: resolved.mccmnc,
+      codesSource: resolved.source,
+      dialedCode: code,
+    );
+  }
   final res = await AvaDialChannel.I.dialMmiCode(code);
   final ok = res['ok'] == true;
   final response = ok
@@ -398,13 +528,22 @@ Future<PstnDialResult> pstnDialAndPersist({
     'initial_default': isInitialDefault,
     'codes_source': resolved.source,
     'code': code,
+    // [AVA-RCPT-VERIFY-1] carry the FULL failure shape — the 2026-07-17
+    // incident was undiagnosable remotely because only `ok` was captured.
+    'via': (res['via'] as String?) ?? 'none',
+    if (res['error'] != null) 'error_kind': res['error'],
+    if (res['ussd_failure_code'] != null) 'ussd_failure_code': res['ussd_failure_code'],
+    if (res['timeout'] == true) 'timeout': true,
     if (resolved.carrier != null) 'carrier': resolved.carrier!,
     if (resolved.mccmnc != null) 'mccmnc': resolved.mccmnc!,
   });
-  if (ok) {
-    try {
-      await storage.write(key: scopedKey(kind.storageKey), value: wantOn ? '1' : '0');
-    } catch (_) {/* best-effort */}
+  // [AVA-RCPT-VERIFY-1] A dial's "ok" is no longer trusted as proof that
+  // forwarding is ON — only [pstnVerifyForwarding] (carrier status query) may
+  // set a toggle to '1', via [pstnPersistVerified]. Turning OFF still persists
+  // here on an accepted disable dial (worst case: forwarding stays off-ish and
+  // the wizard re-verifies next open — never the reverse lie).
+  if (ok && !wantOn) {
+    await pstnPersistVerified(kind: kind, on: false, storage: storage);
   }
   return PstnDialResult(
     ok: ok,
@@ -417,43 +556,11 @@ Future<PstnDialResult> pstnDialAndPersist({
   );
 }
 
-/// Dials all three enable codes (missed → declined → unreachable), in that
-/// order, via [pstnDialAndPersist] — the sequential "turn everything on"
-/// primitive used by the informed-consent intro screen
-/// (pstn_forwarding_intro.dart) on first run / re-offer. Each code is dialed
-/// even if an earlier one failed (a rejected `*67*` must not block `*61*`/
-/// `*62*` from being tried); failed codes are simply left OFF by
-/// [pstnDialAndPersist]. [onEach] fires after every code so the caller can
-/// update a progress UI and its own analytics as it goes.
-Future<List<PstnDialResult>> pstnEnableAllForwarding({
-  required String did,
-  required FlutterSecureStorage storage,
-  void Function(PstnForwardKind kind, PstnDialResult result)? onEach,
-}) async {
-  // Resolve once for all three dials — [pstnDialAndPersist] would otherwise
-  // resolve independently per call, but they'd share the same in-flight
-  // future anyway via [pstnResolveCarrierCodes]'s cache; passing it
-  // explicitly just avoids the redundant lookups being sequential.
-  final codes = await pstnResolveCarrierCodes();
-  final results = <PstnDialResult>[];
-  for (final kind in const [
-    PstnForwardKind.missed,
-    PstnForwardKind.declined,
-    PstnForwardKind.unreachable,
-  ]) {
-    final result = await pstnDialAndPersist(
-      kind: kind,
-      wantOn: true,
-      did: did,
-      storage: storage,
-      isInitialDefault: true,
-      codes: codes,
-    );
-    results.add(result);
-    onEach?.call(kind, result);
-  }
-  return results;
-}
+// [AVA-RCPT-VERIFY-1] `pstnEnableAllForwarding` (dial all three codes blind,
+// no carrier confirmation) is DELETED — that optimistic sequence is exactly
+// what stranded rgoa with voicemail "on" that the carrier never registered.
+// The only enable path is now the sequential dial-and-verify wizard
+// (pstn_forwarding_wizard.dart).
 
 class PstnForwardingSetupScreen extends StatefulWidget {
   const PstnForwardingSetupScreen({super.key});
@@ -477,15 +584,6 @@ class _PstnForwardingSetupScreenState extends State<PstnForwardingSetupScreen> {
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
 
-  bool _loading = true;
-  bool? _missedOn;   // null only transiently while loading
-  bool? _declinedOn;
-  bool? _unreachableOn;
-  bool _busyMissed = false;
-  bool _busyDeclined = false;
-  bool _busyUnreachable = false;
-  String? _lastResponse; // last raw carrier response shown to the user
-  String? _lastError;
   String? _simLabel;
   bool _simLoading = true;
 
@@ -494,7 +592,6 @@ class _PstnForwardingSetupScreenState extends State<PstnForwardingSetupScreen> {
     super.initState();
     Analytics.screenViewed('avadial', 'pstn_forwarding_setup');
     _loadSim();
-    _init();
   }
 
   Future<void> _loadSim() async {
@@ -504,135 +601,6 @@ class _PstnForwardingSetupScreenState extends State<PstnForwardingSetupScreen> {
       _simLabel = (info['sim'] as String?)?.trim();
       _simLoading = false;
     });
-  }
-
-  Future<void> _init() async {
-    final storedMissed = await readScoped(_sec, PstnForwardKind.missed.storageKey);
-    final storedDeclined = await readScoped(_sec, PstnForwardKind.declined.storageKey);
-    final storedUnreachable = await readScoped(_sec, PstnForwardKind.unreachable.storageKey);
-    final firstOpen = storedMissed == null && storedDeclined == null && storedUnreachable == null;
-    if (!mounted) return;
-    if (firstOpen) {
-      // True first run — show all three ON right away, then dial the three
-      // enable codes once in the background; a failure flips the affected
-      // toggle back OFF.
-      setState(() {
-        _missedOn = true;
-        _declinedOn = true;
-        _unreachableOn = true;
-        _loading = false;
-      });
-      await _dialAndPersist(PstnForwardKind.missed, wantOn: true, isInitialDefault: true);
-      await _dialAndPersist(PstnForwardKind.declined, wantOn: true, isInitialDefault: true);
-      await _dialAndPersist(PstnForwardKind.unreachable, wantOn: true, isInitialDefault: true);
-      return;
-    }
-    setState(() {
-      _missedOn = storedMissed == '1';
-      _declinedOn = storedDeclined == '1';
-      _unreachableOn = storedUnreachable == '1';
-      _loading = false;
-    });
-    if (storedUnreachable == null) {
-      // Existing user from before the third toggle shipped — default the new
-      // condition ON too, and dial it once, same as a true first-run would
-      // have for all three.
-      setState(() => _unreachableOn = true);
-      await _dialAndPersist(PstnForwardKind.unreachable, wantOn: true, isInitialDefault: true);
-    }
-  }
-
-  bool _valueFor(PstnForwardKind kind) {
-    switch (kind) {
-      case PstnForwardKind.missed:
-        return _missedOn ?? false;
-      case PstnForwardKind.declined:
-        return _declinedOn ?? false;
-      case PstnForwardKind.unreachable:
-        return _unreachableOn ?? false;
-    }
-  }
-
-  bool _busyFor(PstnForwardKind kind) {
-    switch (kind) {
-      case PstnForwardKind.missed:
-        return _busyMissed;
-      case PstnForwardKind.declined:
-        return _busyDeclined;
-      case PstnForwardKind.unreachable:
-        return _busyUnreachable;
-    }
-  }
-
-  void _setBusy(PstnForwardKind kind, bool busy) {
-    switch (kind) {
-      case PstnForwardKind.missed:
-        _busyMissed = busy;
-        return;
-      case PstnForwardKind.declined:
-        _busyDeclined = busy;
-        return;
-      case PstnForwardKind.unreachable:
-        _busyUnreachable = busy;
-        return;
-    }
-  }
-
-  void _setValue(PstnForwardKind kind, bool value) {
-    switch (kind) {
-      case PstnForwardKind.missed:
-        _missedOn = value;
-        return;
-      case PstnForwardKind.declined:
-        _declinedOn = value;
-        return;
-      case PstnForwardKind.unreachable:
-        _unreachableOn = value;
-        return;
-    }
-  }
-
-  /// Dials [kind]'s MMI code toward [wantOn] via the shared
-  /// [pstnDialAndPersist] helper, then updates this screen's own busy/value/
-  /// error UI state from the result. Used both for user-driven toggles and
-  /// the one-time initial-default dial.
-  Future<void> _dialAndPersist(
-    PstnForwardKind kind, {
-    required bool wantOn,
-    bool isInitialDefault = false,
-  }) async {
-    setState(() {
-      _setBusy(kind, true);
-      _lastError = null;
-    });
-    final result = await pstnDialAndPersist(
-      kind: kind,
-      wantOn: wantOn,
-      did: _did,
-      storage: _sec,
-      isInitialDefault: isInitialDefault,
-    );
-    if (!mounted) return;
-    setState(() {
-      _setBusy(kind, false);
-      if (result.ok) {
-        _lastResponse = result.response;
-        _setValue(kind, wantOn);
-      } else {
-        _lastError = result.error;
-        // Revert — the toggle must always reflect reality, never an
-        // optimistic guess of what the carrier did with the code we sent it.
-        _setValue(kind, !wantOn);
-      }
-    });
-    if (!result.ok && !isInitialDefault) {
-      _toast(result.error ?? "Couldn't reach your carrier.");
-    }
-  }
-
-  void _toast(String m) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
   }
 
   @override
@@ -659,134 +627,73 @@ class _PstnForwardingSetupScreenState extends State<PstnForwardingSetupScreen> {
         shape: const Border(bottom: BorderSide(color: AvaDialTheme.border, width: 1)),
         title: Text('Voicemail', style: ZineText.appbar(color: AvaDialTheme.text)),
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
-          : ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                AdCard(
-                  color: AD.card,
-                  child: Row(children: [
-                    ZineIconBadge(
-                        icon: PhosphorIcons.voicemail(PhosphorIconsStyle.bold), color: AD.iconVideo),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text('Voicemail via your carrier',
-                            style: ZineText.cardTitle(size: 15.5, color: AvaDialTheme.text)),
-                        const SizedBox(height: 4),
-                        Text(
-                          'AvaTOK is no longer your phone or SMS app, so it can only pick up '
-                          'calls your carrier hands it. Turning these on tells your carrier to '
-                          'send missed, declined or unreachable calls to AvaTOK instead of '
-                          "ringing out — you'll see them in your Inbox with a transcript.",
-                          style: ZineText.sub(size: 12.5, color: AvaDialTheme.textSoft),
-                        ),
-                      ]),
-                    ),
-                  ]),
-                ),
-                const SizedBox(height: 12),
-                if (_simLoading)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 4, left: 4),
-                    child: Text('Checking your SIM…',
-                        style: ZineText.sub(size: 12.5, color: AvaDialTheme.textMute)),
-                  )
-                else
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 4, left: 4),
-                    child: Row(children: [
-                      Icon(PhosphorIcons.deviceMobile(PhosphorIconsStyle.bold),
-                          size: 16, color: AvaDialTheme.textMute),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          (_simLabel == null || _simLabel!.isEmpty)
-                              ? 'Using your default calling SIM'
-                              : 'Using $_simLabel for these codes',
-                          style: ZineText.sub(size: 12.5, color: AvaDialTheme.textMute),
-                        ),
-                      ),
-                    ]),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          AdCard(
+            color: AD.card,
+            child: Row(children: [
+              ZineIconBadge(
+                  icon: PhosphorIcons.voicemail(PhosphorIconsStyle.bold), color: AD.iconVideo),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Voicemail via your carrier',
+                      style: ZineText.cardTitle(size: 15.5, color: AvaDialTheme.text)),
+                  const SizedBox(height: 4),
+                  Text(
+                    'AvaTOK is no longer your phone or SMS app, so it can only pick up '
+                    'calls your carrier hands it. Each step below tells your carrier to '
+                    'send missed, declined or unreachable calls to AvaTOK instead of '
+                    "ringing out — you'll see them in your Inbox with a transcript. "
+                    'A step only turns green once your carrier confirms it.',
+                    style: ZineText.sub(size: 12.5, color: AvaDialTheme.textSoft),
                   ),
-                const SizedBox(height: 8),
-                AdCard(
-                  padding: const EdgeInsets.all(14),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    _toggleRow(
-                      title: 'Send missed calls to voicemail',
-                      sub: "No answer within your carrier's ring window",
-                      kind: PstnForwardKind.missed,
-                    ),
-                    const Divider(height: 22, thickness: 1, color: AD.borderHairline),
-                    _toggleRow(
-                      title: 'Send declined calls to voicemail',
-                      sub: 'You decline, or your line is busy',
-                      kind: PstnForwardKind.declined,
-                    ),
-                    const Divider(height: 22, thickness: 1, color: AD.borderHairline),
-                    _toggleRow(
-                      title: 'Send calls to voicemail when your phone is off or unreachable',
-                      sub: 'No signal, airplane mode, or powered off',
-                      kind: PstnForwardKind.unreachable,
-                    ),
-                  ]),
-                ),
-                if (_lastResponse != null) ...[
-                  const SizedBox(height: 12),
-                  AdCard(
-                    color: AvaDialTheme.surface2,
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('Carrier says', style: ZineText.cardTitle(size: 13, color: AvaDialTheme.text)),
-                      const SizedBox(height: 4),
-                      Text(_lastResponse!,
-                          style: ZineText.sub(size: 12.5, color: AvaDialTheme.textSoft)),
-                    ]),
+                ]),
+              ),
+            ]),
+          ),
+          const SizedBox(height: 12),
+          if (_simLoading)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4, left: 4),
+              child: Text('Checking your SIM…',
+                  style: ZineText.sub(size: 12.5, color: AvaDialTheme.textMute)),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4, left: 4),
+              child: Row(children: [
+                Icon(PhosphorIcons.deviceMobile(PhosphorIconsStyle.bold),
+                    size: 16, color: AvaDialTheme.textMute),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    (_simLabel == null || _simLabel!.isEmpty)
+                        ? 'Using your default calling SIM'
+                        : 'Using $_simLabel for these codes',
+                    style: ZineText.sub(size: 12.5, color: AvaDialTheme.textMute),
                   ),
-                ],
-                if (_lastError != null) ...[
-                  const SizedBox(height: 12),
-                  Text(_lastError!, style: ZineText.sub(size: 12.5, color: AD.danger)),
-                ],
-                const SizedBox(height: 20),
-                Text('WHAT THIS DOES NOT DO', style: ZineText.kicker(color: AvaDialTheme.textMute)),
-                const SizedBox(height: 8),
-                _bullet('No spam filtering here — that needs the call-screening role, which '
-                    'AvaTOK no longer asks for.'),
-                _bullet('Calls you answer ring and connect exactly as they do today — this '
-                    'only affects calls you miss, decline, or can\'t receive.'),
-                _bullet('Each toggle dials one short carrier code for you — no need to type '
-                    'anything yourself.'),
-              ],
+                ),
+              ]),
             ),
-    );
-  }
-
-  Widget _toggleRow({
-    required String title,
-    required String sub,
-    required PstnForwardKind kind,
-  }) {
-    final busy = _busyFor(kind);
-    return Row(children: [
-      Expanded(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title, style: ZineText.cardTitle(size: 14.5, color: AvaDialTheme.text)),
-          const SizedBox(height: 3),
-          Text(sub, style: ZineText.sub(size: 12, color: AvaDialTheme.textMute)),
-        ]),
+          const SizedBox(height: 8),
+          // [AVA-RCPT-VERIFY-1] The dial-and-verify wizard replaces the old
+          // optimistic toggles — same widget the consent intro embeds, with
+          // the Settings-only "Turn off" affordance on verified rows.
+          PstnForwardingWizard(did: _did, storage: _sec, showTurnOff: true),
+          const SizedBox(height: 20),
+          Text('WHAT THIS DOES NOT DO', style: ZineText.kicker(color: AvaDialTheme.textMute)),
+          const SizedBox(height: 8),
+          _bullet('No spam filtering here — that needs the call-screening role, which '
+              'AvaTOK no longer asks for.'),
+          _bullet('Calls you answer ring and connect exactly as they do today — this '
+              'only affects calls you miss, decline, or can\'t receive.'),
+          _bullet('Each step dials one short carrier code for you and then asks your '
+              'carrier to confirm — if your phone app opens, just come back here.'),
+        ],
       ),
-      const SizedBox(width: 10),
-      if (busy)
-        const SizedBox(
-            width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
-      else
-        _VoicemailToggle(
-          value: _valueFor(kind),
-          onChanged: (v) => _dialAndPersist(kind, wantOn: v),
-        ),
-    ]);
+    );
   }
 
   Widget _bullet(String text) => Padding(
@@ -804,41 +711,6 @@ class _PstnForwardingSetupScreenState extends State<PstnForwardingSetupScreen> {
           ),
         ]),
       );
-}
-
-/// Dark v2 inline toggle — track [AD.card] off / [AD.online] on, white thumb.
-/// Matches the style previously used by the retired default-dialer section
-/// (features/settings/sections/default_dialer_section.dart) so Calls' dark
-/// toggles stay visually consistent.
-class _VoicemailToggle extends StatelessWidget {
-  final bool value;
-  final ValueChanged<bool>? onChanged;
-  const _VoicemailToggle({required this.value, this.onChanged});
-  @override
-  Widget build(BuildContext context) {
-    final reduce = MediaQuery.of(context).disableAnimations;
-    return GestureDetector(
-      onTap: onChanged == null ? null : () => onChanged!(!value),
-      child: AnimatedContainer(
-        duration: reduce ? Duration.zero : const Duration(milliseconds: 120),
-        width: 52, height: 30,
-        padding: const EdgeInsets.all(3),
-        decoration: BoxDecoration(
-          color: value ? AD.online : AD.card,
-          borderRadius: BorderRadius.circular(100),
-          border: Border.all(color: AD.borderControl, width: 1),
-        ),
-        child: AnimatedAlign(
-          duration: reduce ? Duration.zero : const Duration(milliseconds: 120),
-          alignment: value ? Alignment.centerRight : Alignment.centerLeft,
-          child: Container(
-            width: 22, height: 22,
-            decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 /// [AVA-RCPT-7] Settings → "Voicemail" entry — a single tappable row that

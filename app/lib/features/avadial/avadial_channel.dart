@@ -922,6 +922,23 @@ class AvaDialChannel {
     }
   }
 
+  /// [AVA-RCPT-VERIFY-1] Awaitable CALL_PHONE permission gate. Returns only
+  /// after the user has answered the system dialog (or immediately when the
+  /// permission is already granted / no activity is attached). `{granted,
+  /// already?, reason?}` — `granted: false` on any failure path so callers can
+  /// simply `if (!granted) …`. This MUST be awaited before dialing forwarding
+  /// MMI codes: dialing without it instant-fails `no_permission` (the exact
+  /// bug that silently left carrier voicemail off on 2026-07-17).
+  Future<bool> ensureCallPermission() async {
+    try {
+      final raw = await _ch.invokeMethod<Map<dynamic, dynamic>>('ensureCallPermission');
+      return raw?['granted'] == true;
+    } catch (e) {
+      AvaLog.I.log('avadial', 'ensureCallPermission failed: $e');
+      return false;
+    }
+  }
+
   /// Which SIM currently carries the default VOICE subscription — the one MMI
   /// codes and outgoing calls actually use on a dual-SIM phone. `{sim,
   /// sub_id, slot_index}`; `sim` is null when unresolvable (single-SIM with

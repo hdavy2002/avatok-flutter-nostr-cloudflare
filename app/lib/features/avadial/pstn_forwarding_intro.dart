@@ -10,6 +10,7 @@ import '../../core/ui/zine_widgets.dart';
 import '../../shell/shell_v2.dart' show kPstnVoicemailDid;
 import 'avadial_theme.dart';
 import 'pstn_forwarding_setup.dart';
+import 'pstn_forwarding_wizard.dart';
 
 /// [AVA-RCPT-CONSENT-1] (owner decision 2026-07-16, PLAN-2026-07-16
 /// receptionist/guardian doc): carrier voicemail forwarding is ON BY DEFAULT
@@ -20,13 +21,14 @@ import 'pstn_forwarding_setup.dart';
 /// [PstnForwardingIntroBody] (new users, embedded as an onboarding step body
 /// in onboarding_flow.dart's `_composeSteps()`).
 ///
-/// Both surfaces run the SAME dial+persist sequence via
-/// [pstnEnableAllForwarding] (pstn_forwarding_setup.dart) — this file must
-/// never dial an MMI code or write toggle state itself. On Continue, all
-/// three carrier codes (`*61*`/`*67*`/`*62*`) are dialed in order; a failure
-/// on one does not stop the others, and a failed code is left OFF (per
-/// [pstnDialAndPersist]'s contract) while the carrier's response/error text
-/// is shown inline.
+/// [AVA-RCPT-VERIFY-1] (owner decision 2026-07-17): both surfaces embed the
+/// SAME sequential dial-and-verify wizard ([PstnForwardingWizard]) — this
+/// file must never dial an MMI code or write toggle state itself. Each of
+/// the three conditions is a button the user taps; a row only turns green
+/// after the CARRIER confirms the forwarding is registered (status-code
+/// query), and Continue unlocks only once every row is verified or skipped.
+/// The old Continue-dials-all-three-blind sequence is gone — it left users
+/// believing voicemail was on when no code had actually registered.
 ///
 /// The "seen" marker is per-account (see [pstnIntroSeen]/[markPstnIntroSeen])
 /// so this shows once per account, not once per device — a parent and child
@@ -133,10 +135,11 @@ class _PstnForwardingIntroBodyState extends State<PstnForwardingIntroBody> {
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
 
-  bool _running = false;
-  bool _done = false;
-  PstnForwardKind? _inFlight; // the code currently being dialed, for the spinner
-  final Map<PstnForwardKind, PstnDialResult> _results = {};
+  // [AVA-RCPT-VERIFY-1] The dial-everything-on-Continue sequence is GONE —
+  // the embedded wizard drives per-condition dial + carrier verification, and
+  // Continue only closes the screen once every condition is verified/skipped.
+  bool _allDone = false;
+  int _verifiedCount = 0;
 
   @override
   void initState() {
@@ -145,46 +148,18 @@ class _PstnForwardingIntroBodyState extends State<PstnForwardingIntroBody> {
   }
 
   Future<void> _continue() async {
-    if (_running || _done) return;
-    setState(() => _running = true);
     Analytics.capture('pstn_forward_intro_continue_tapped');
-    await pstnEnableAllForwarding(
-      did: _did,
-      storage: _sec,
-      onEach: (kind, result) {
-        // Per-code progress + carrier response/error, shown live as each
-        // code lands — see class doc: a failure never stops the sequence.
-        Analytics.capture('pstn_forward_enable_result', {
-          'code': result.dialedCode ?? kind.analyticsKind,
-          'kind': kind.analyticsKind,
-          'ok': result.ok,
-          'codes_source': result.codesSource ?? 'default',
-          if (result.carrier != null) 'carrier': result.carrier!,
-          if (result.mccmnc != null) 'mccmnc': result.mccmnc!,
-        });
-        if (!mounted) return;
-        setState(() {
-          _inFlight = kind;
-          _results[kind] = result;
-        });
-      },
-    );
-    if (!mounted) return;
     await markPstnIntroSeen();
-    final allOk = _results.values.every((r) => r.ok);
-    Analytics.capture('pstn_forward_intro_done', {'skipped': false, 'all_ok': allOk});
-    setState(() {
-      _running = false;
-      _done = true;
-    });
+    Analytics.capture('pstn_forward_intro_done',
+        {'skipped': false, 'verified_count': _verifiedCount, 'all_done': _allDone});
     widget.onFinished();
   }
 
   Future<void> _skip() async {
-    if (_running) return;
     Analytics.capture('pstn_forward_intro_skip_tapped');
     await markPstnIntroSeen();
-    Analytics.capture('pstn_forward_intro_done', {'skipped': true});
+    Analytics.capture('pstn_forward_intro_done',
+        {'skipped': true, 'verified_count': _verifiedCount});
     widget.onFinished();
   }
 
@@ -231,14 +206,20 @@ class _PstnForwardingIntroBodyState extends State<PstnForwardingIntroBody> {
             ),
           ),
           const SizedBox(height: 24),
-          _circumstanceRow(PhosphorIcons.phoneX(PhosphorIconsStyle.bold), AD.danger,
-              'You decline the call', 'or your line is busy'),
-          const SizedBox(height: 12),
-          _circumstanceRow(PhosphorIcons.phone(PhosphorIconsStyle.bold), AD.iconSearch,
-              "You don't answer", "within your carrier's ring window"),
-          const SizedBox(height: 12),
-          _circumstanceRow(PhosphorIcons.wifiSlash(PhosphorIconsStyle.bold), AD.iconVideo,
-              'Your phone is off or unreachable', 'no signal, airplane mode, powered off'),
+          // [AVA-RCPT-VERIFY-1] One button per condition, unlocked in order.
+          // Each tap dials the code in the background, then the carrier is
+          // asked to CONFIRM before the row goes green — see the wizard's doc.
+          PstnForwardingWizard(
+            did: _did,
+            storage: _sec,
+            onProgress: (allDone, verifiedCount) {
+              if (!mounted) return;
+              setState(() {
+                _allDone = allDone;
+                _verifiedCount = verifiedCount;
+              });
+            },
+          ),
           const SizedBox(height: 20),
           AdCard(
             color: AD.card,
@@ -249,31 +230,26 @@ class _PstnForwardingIntroBodyState extends State<PstnForwardingIntroBody> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'This is on by default. Your carrier will show a notification '
-                  'confirming call forwarding is on.',
+                  'A row only turns green after your carrier confirms the '
+                  'forwarding is on — no guesswork.',
                   style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12.5),
                 ),
               ),
             ]),
           ),
-          if (_running || _done) ...[
-            const SizedBox(height: 20),
-            _progressCard(),
-          ],
           const SizedBox(height: 28),
           AdButton(
-            label: _running ? 'Turning on…' : 'Continue',
-            onPressed: _running ? null : _continue,
+            label: _allDone ? 'Continue' : 'Finish the steps above',
+            onPressed: _allDone ? _continue : null,
             fullWidth: true,
             fontSize: 21,
-            loading: _running,
-            icon: _running ? null : PhosphorIcons.arrowRight(PhosphorIconsStyle.bold),
+            icon: _allDone ? PhosphorIcons.arrowRight(PhosphorIconsStyle.bold) : null,
           ),
           const SizedBox(height: 14),
           ZineLink(
             'Not now',
             fontSize: 14,
-            onTap: _running ? null : _skip,
+            onTap: _skip,
             underline: AD.iconSearch,
           ),
           const SizedBox(height: 6),
@@ -285,72 +261,4 @@ class _PstnForwardingIntroBodyState extends State<PstnForwardingIntroBody> {
     );
   }
 
-  Widget _circumstanceRow(IconData icon, Color accent, String title, String sub) => AdCard(
-        radius: Zine.rSm,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        child: Row(children: [
-          ZineIconBadge(icon: icon, color: accent),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title, style: ADText.rowName().copyWith(fontSize: 14.5)),
-              const SizedBox(height: 2),
-              Text(sub, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12)),
-            ]),
-          ),
-        ]),
-      );
-
-  Widget _progressCard() => AdCard(
-        color: AvaDialTheme.surface2,
-        radius: Zine.rSm,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          for (final kind in const [
-            PstnForwardKind.missed,
-            PstnForwardKind.declined,
-            PstnForwardKind.unreachable,
-          ])
-            _codeStatusRow(kind),
-          if (_results.values.any((r) => !r.ok)) ...[
-            const Divider(height: 20, thickness: 1, color: AD.borderHairline),
-            Text(
-              _results.values.firstWhere((r) => !r.ok).error ??
-                  "Your carrier didn't accept one of the codes.",
-              style: ADText.preview(c: AD.danger).copyWith(fontSize: 12),
-            ),
-          ],
-        ]),
-      );
-
-  Widget _codeStatusRow(PstnForwardKind kind) {
-    final label = switch (kind) {
-      PstnForwardKind.missed => 'No answer',
-      PstnForwardKind.declined => 'Declined / busy',
-      PstnForwardKind.unreachable => 'Off / unreachable',
-    };
-    final result = _results[kind];
-    Widget trailing;
-    if (result != null) {
-      trailing = PhosphorIcon(
-        result.ok
-            ? PhosphorIcons.checkCircle(PhosphorIconsStyle.fill)
-            : PhosphorIcons.xCircle(PhosphorIconsStyle.fill),
-        size: 18,
-        color: result.ok ? AD.online : AD.danger,
-      );
-    } else if (_inFlight == kind && _running) {
-      trailing = const SizedBox(
-          width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2));
-    } else {
-      trailing = PhosphorIcon(PhosphorIcons.circle(PhosphorIconsStyle.bold),
-          size: 18, color: AD.textTertiary);
-    }
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(children: [
-        Expanded(child: Text(label, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13))),
-        trailing,
-      ]),
-    );
-  }
 }

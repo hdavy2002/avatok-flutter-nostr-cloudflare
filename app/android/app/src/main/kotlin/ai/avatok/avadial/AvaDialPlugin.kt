@@ -58,7 +58,7 @@ import java.util.concurrent.atomic.AtomicLong
  * methods are invoked until the flag is on.
  */
 class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler,
-    PluginRegistry.ActivityResultListener {
+    PluginRegistry.ActivityResultListener, PluginRegistry.RequestPermissionsResultListener {
 
     companion object {
         const val CHANNEL = "avatok/avadial"
@@ -620,6 +620,7 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
         activityBinding = binding
         binding.addActivityResultListener(this)
+        binding.addRequestPermissionsResultListener(this)
     }
 
     override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) =
@@ -629,7 +630,63 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
 
     override fun onDetachedFromActivity() {
         activityBinding?.removeActivityResultListener(this)
+        activityBinding?.removeRequestPermissionsResultListener(this)
         activityBinding = null
+        // Never leak a dart Future across an activity teardown — complete it as
+        // not-granted so the caller's await always returns.
+        pendingCallPermissionResult?.let {
+            pendingCallPermissionResult = null
+            try { it.success(mapOf("granted" to false, "reason" to "activity_detached")) } catch (_: Throwable) {}
+        }
+    }
+
+    // ── [AVA-RCPT-VERIFY-1] Awaitable CALL_PHONE permission request ──────────────
+    // Root cause of the 2026-07-17 "voicemail never enabled" bug (rgoa/Airtel):
+    // dialMmiCode fired requestPermissions() and IMMEDIATELY returned
+    // ok=false/no_permission, so all three forwarding codes "failed" in ~150ms
+    // while the permission dialog was still on screen, the toggles reverted, and
+    // the user believed voicemail was on (intro marked seen). Flutter now calls
+    // `ensureCallPermission` FIRST and awaits the actual grant before dialing.
+    /** The dart-side Future for an in-flight CALL_PHONE request; completed
+     *  exactly once by [onRequestPermissionsResult] (or detach above). */
+    private var pendingCallPermissionResult: MethodChannel.Result? = null
+
+    private fun ensureCallPermission(ctx: Context, result: MethodChannel.Result) {
+        val granted = ctx.checkSelfPermission(Manifest.permission.CALL_PHONE) ==
+            PackageManager.PERMISSION_GRANTED
+        if (granted) {
+            result.success(mapOf("granted" to true, "already" to true)); return
+        }
+        val activity = activityBinding?.activity
+        if (activity == null) {
+            result.success(mapOf("granted" to false, "reason" to "no_activity")); return
+        }
+        // A second concurrent request while one dialog is pending: fail the OLD
+        // waiter (it can retry) and adopt the new one — never hold two.
+        pendingCallPermissionResult?.let {
+            try { it.success(mapOf("granted" to false, "reason" to "superseded")) } catch (_: Throwable) {}
+        }
+        pendingCallPermissionResult = result
+        try {
+            activity.requestPermissions(arrayOf(Manifest.permission.CALL_PHONE), REQ_CALL_PHONE)
+        } catch (t: Throwable) {
+            pendingCallPermissionResult = null
+            result.success(mapOf("granted" to false, "reason" to "request_failed"))
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ): Boolean {
+        if (requestCode != REQ_CALL_PHONE) return false
+        val pending = pendingCallPermissionResult ?: return false
+        pendingCallPermissionResult = null
+        val granted = grantResults.isNotEmpty() &&
+            grantResults[0] == PackageManager.PERMISSION_GRANTED
+        try { pending.success(mapOf("granted" to granted)) } catch (_: Throwable) {}
+        return true
     }
 
     // ── Method dispatch ──────────────────────────────────────────────────────────
@@ -777,6 +834,9 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
                     result.success(true)
                 }
                 "dialMmiCode" -> dialMmiCode(ctx, call.argument<String>("code"), result)
+                // [AVA-RCPT-VERIFY-1] awaitable CALL_PHONE grant — resolve BEFORE
+                // dialing forwarding codes, see ensureCallPermission's doc.
+                "ensureCallPermission" -> ensureCallPermission(ctx, result)
                 "defaultVoiceSim" -> result.success(defaultVoiceSimLabel(ctx))
                 "simOperatorCode" -> result.success(simOperatorCode(ctx))
 
