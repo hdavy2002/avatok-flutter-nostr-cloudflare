@@ -56,17 +56,31 @@ export async function avaChatToggleOn(env: Env, uid: string, conv: string): Prom
 // POST /api/ava/chat-toggle {conv,on} → { ok, on }
 export async function avaChatToggle(req: Request, env: Env): Promise<Response> {
   const cfg = await readConfig(env);
-  if ((cfg as any).avaCopilotEnabled !== true) {
+  const copilotOn = (cfg as any).avaCopilotEnabled === true;
+
+  // AVA-CHATTOGGLE-503: the toggle READ is a pure default lookup. When the
+  // copilot master switch is OFF we must NOT 503 the GET — the client's
+  // documented fallback is already "ON by default" (see AvaChatToggle.fetch),
+  // so a disabled copilot has every GET resolve to {on:true} regardless. The old
+  // 503 changed nothing behaviourally but produced a steady prod error-storm:
+  // clients re-fetch on every chat open, each 503 re-hitting the worker (PostHog
+  // 2026-07-17: 157×/week across 4 users). Answer the read gracefully; keep the
+  // WRITE hard-gated so no opt-out can be persisted while the feature is dark.
+  if (req.method === "GET") {
+    if (!copilotOn) return json({ on: true, disabled: true });
+    const gctx = await requireUser(req, env);
+    if (isFail(gctx)) return json({ error: gctx.error }, gctx.status);
+    const conv = String(new URL(req.url).searchParams.get("conv") ?? "").trim();
+    if (!conv) return json({ error: "conv required" }, 400);
+    return json({ on: await avaChatToggleOn(env, gctx.uid, conv) });
+  }
+
+  // POST (write): the master switch still hard-gates persisting a toggle.
+  if (!copilotOn) {
     return json({ error: "ava copilot disabled", flag: "avaCopilotEnabled" }, 503);
   }
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
-
-  if (req.method === "GET") {
-    const conv = String(new URL(req.url).searchParams.get("conv") ?? "").trim();
-    if (!conv) return json({ error: "conv required" }, 400);
-    return json({ on: await avaChatToggleOn(env, ctx.uid, conv) });
-  }
 
   let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
   const conv = String(b?.conv ?? "").trim();

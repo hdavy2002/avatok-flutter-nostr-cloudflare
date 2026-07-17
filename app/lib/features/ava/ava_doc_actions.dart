@@ -5,6 +5,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
+import '../../core/api_backoff.dart';
 import '../../core/ava_log.dart';
 import '../../core/composer_ai.dart';
 import '../../core/config.dart';
@@ -242,14 +243,49 @@ class AvaChatToggle {
 
   static String get _url => '$kApiBase/ava/chat-toggle';
 
+  // AVA-CHATTOGGLE-503: this READ used to fire on EVERY chat open (chat_thread's
+  // _initAvaChatState), and while the copilot master switch is OFF the worker
+  // answered every one with a 503 kill-switch gate — a steady prod error-storm
+  // (PostHog 2026-07-17: 157×/week across 4 users, ~5.6/user/day). The worker
+  // GET is now graceful (200 {on:true, disabled:true}), but old server builds and
+  // genuine transient 5xx still exist, so the client hard-backs-off too:
+  //   • generic 503  → ApiBackoffState (30s→1m→5m→30m), the shared pattern.
+  //   • kill-switch  → 503/{disabled:true} means the feature is DARK and will not
+  //     change without an app upgrade or a flag flip, so we go session-sticky:
+  //     stop fetching entirely (defaults to ON) until the app is relaunched.
+  // Suppressed attempts emit `chat_toggle_backoff` (email auto-attached).
+  static final ApiBackoffState _backoff = ApiBackoffState('/api/ava/chat-toggle');
+  static bool _sessionDisabled = false; // kill-switch seen this run → stop asking
+
   /// Fetch the current state for [conv]. Defaults to ON (D29: on by default)
-  /// when the server can't be reached or the row doesn't exist yet.
+  /// when the server can't be reached, the row doesn't exist yet, or the call is
+  /// suppressed by backoff.
   static Future<bool> fetch(String conv) async {
+    // Kill-switch already observed this session → never re-hit the worker.
+    if (_sessionDisabled) {
+      Analytics.capture('chat_toggle_backoff',
+          {'conv': conv, 'reason': 'session_disabled'});
+      return true;
+    }
+    // Exponential backoff window from a prior transient 503 still open → skip.
+    if (_backoff.isBackingOff) {
+      Analytics.capture('chat_toggle_backoff', {
+        'conv': conv,
+        'reason': 'backoff',
+        'retry_in_s': _backoff.timeUntilNextRetry.inSeconds,
+      });
+      return true;
+    }
     try {
       final res = await ApiAuth.getSigned('$_url?conv=${Uri.encodeComponent(conv)}');
+      _backoff.shouldRetry(res.statusCode); // arm/reset backoff from the status
       if (res.statusCode == 200) {
         final j = jsonDecode(res.body);
+        // {disabled:true} → copilot master switch is off; stop asking this run.
+        if (j is Map && j['disabled'] == true) _sessionDisabled = true;
         if (j is Map && j['on'] is bool) return j['on'] as bool;
+      } else if (res.statusCode == 503 && _isCopilotDisabled(res.body)) {
+        _sessionDisabled = true; // dark feature (kill switch) — quiet for the run.
       }
     } catch (e) {
       AvaLog.I.log('ava', 'chat-toggle fetch failed: $e');
@@ -259,14 +295,29 @@ class AvaChatToggle {
 
   /// Flip the switch. Returns true on success (callers keep their optimistic
   /// state); false means revert (e.g. 403 — a non-admin in a group, D29).
+  /// Only fires on an actual user toggle, so it is never a storm source.
   static Future<bool> set(String conv, bool on) async {
     try {
       final res = await ApiAuth.postJson(_url, {'conv': conv, 'on': on});
       Analytics.capture('ava_chat_toggle_set',
           {'conv': conv, 'on': on, 'status': res.statusCode});
+      // A user tapping the toggle while the feature is dark reveals the kill
+      // switch — quiet subsequent fetches too instead of re-probing on reopen.
+      if (res.statusCode == 503 && _isCopilotDisabled(res.body)) {
+        _sessionDisabled = true;
+      }
       return res.statusCode == 200;
     } catch (e) {
       AvaLog.I.log('ava', 'chat-toggle set failed: $e');
+      return false;
+    }
+  }
+
+  static bool _isCopilotDisabled(String body) {
+    try {
+      final j = jsonDecode(body);
+      return j is Map && j['flag'] == 'avaCopilotEnabled';
+    } catch (_) {
       return false;
     }
   }
