@@ -196,6 +196,23 @@ class _ShellV2State extends State<ShellV2> {
   /// 2026-07-16: Inbox icon stayed unselected while inside the Inbox).
   bool _inboxOpen = false;
 
+  /// [AVA-NAV-STUCK-1] (owner bug 2026-07-17) The live Inbox / Ask Ava overlay
+  /// routes, plus the root whose Navigator they were pushed onto.
+  ///
+  /// WHY THIS EXISTS: Inbox and Ask Ava are GLOBAL actions but they get pushed
+  /// onto the ACTIVE ROOT's navigator, and each root's stack survives an app
+  /// switch inside the IndexedStack. So opening Inbox from AvaDialer and then
+  /// tapping AvaTalk used to leave the Inbox route parked on AvaDialer's stack
+  /// forever: `_inboxOpen` never cleared (nothing popped it), so the orange
+  /// pill stayed welded to the Inbox slot with no root selected, AND the next
+  /// tap on AvaDialer re-revealed the Inbox route sitting on top of it — the
+  /// user got "switched back to Inbox" without asking. Holding the route lets
+  /// [_dismissOverlays] remove it from whichever navigator owns it, by identity,
+  /// without disturbing anything the user pushed on top of it.
+  Route<void>? _inboxRoute;
+  Route<void>? _askAvaRoute;
+  RootId? _overlayRoot;
+
   // User-chosen app-switcher order (AVA-SHELL-8). Drives BOTH the Home footer
   // rendering and the cold-open landing decision (order.first = landing app).
   // Loaded per-account in initState; defaults until then.
@@ -581,14 +598,42 @@ class _ShellV2State extends State<ShellV2> {
     unawaited(_ss.write(key: scopedKey(_kLastRoot), value: r.key).catchError((_) {}));
   }
 
+  /// [AVA-NAV-STUCK-1] Tear down any live global overlay (Inbox / Ask Ava)
+  /// before a root switch. Removes each route BY IDENTITY from the navigator it
+  /// was actually pushed onto — never `pop()`, which would kill whatever the
+  /// user has on top instead. `removeRoute` does not fire the push future's
+  /// `whenComplete`, so the flags are cleared here explicitly.
+  void _dismissOverlays() {
+    if (_inboxRoute == null && _askAvaRoute == null) return;
+    final nav = _navKeys[_overlayRoot ?? _root]?.currentState;
+    for (final route in [_inboxRoute, _askAvaRoute]) {
+      if (route != null && route.isActive) nav?.removeRoute(route);
+    }
+    _inboxRoute = null;
+    _askAvaRoute = null;
+    _overlayRoot = null;
+    _inboxOpen = false;
+    _askAvaOpen = false;
+  }
+
   void _switchRoot(RootId r) {
-    if (r == _root) {
+    if (r == _root && !_inboxOpen && !_askAvaOpen) {
       // Re-tapping the active app pops it back to its first route (common
-      // bottom-nav affordance).
+      // bottom-nav affordance). Guarded on the overlay flags: while Inbox or
+      // Ask Ava is up, the "active app" the user sees in the footer is the
+      // OVERLAY, not `_root` — so a tap on the root underneath is a real switch
+      // back to it (fall through and dismiss), not a pop-to-root of a stack the
+      // user isn't looking at.
       _navKeys[r]?.currentState?.popUntil((route) => route.isFirst);
       return;
     }
-    setState(() => _root = r);
+    // Close Inbox/Ask Ava first: they are global actions parked on some root's
+    // stack, and leaving them there strands the footer indicator and ambushes
+    // the user with the overlay on their next visit to that root.
+    setState(() {
+      _dismissOverlays();
+      _root = r;
+    });
     _persistLastRoot(r);
     Analytics.capture('shellv2_root_selected', {'root': r.key});
   }
@@ -606,12 +651,22 @@ class _ShellV2State extends State<ShellV2> {
     // unselected while the user was inside the Inbox).
     setState(() => _inboxOpen = true);
     final nav = _navKeys[_root]?.currentState ?? Navigator.of(context);
-    nav
-        .push(MaterialPageRoute<void>(
-          builder: (_) => const InboxListScreen(embedded: false),
-        ))
-        .whenComplete(() {
-      if (mounted) setState(() => _inboxOpen = false);
+    // [AVA-NAV-STUCK-1] Remember the route + the root that owns it so a footer
+    // root-switch can dismiss it (see [_dismissOverlays]).
+    final route = MaterialPageRoute<void>(
+      builder: (_) => const InboxListScreen(embedded: false),
+    );
+    _inboxRoute = route;
+    _overlayRoot = _root;
+    nav.push(route).whenComplete(() {
+      // Only clear if this is still the live overlay — _dismissOverlays may
+      // have already torn it down and opened another.
+      if (!mounted || !identical(_inboxRoute, route)) return;
+      setState(() {
+        _inboxOpen = false;
+        _inboxRoute = null;
+        if (_askAvaRoute == null) _overlayRoot = null;
+      });
     });
   }
 
@@ -623,15 +678,22 @@ class _ShellV2State extends State<ShellV2> {
     // Global action: push the assistant onto the ACTIVE root's navigator so it
     // overlays the current app and Android back returns the user where they were.
     final nav = _navKeys[_root]?.currentState ?? Navigator.of(context);
-    nav
-        .push(MaterialPageRoute<void>(
-          builder: (_) => AskAvaScreen(contextHint: hint),
-        ))
-        // Restore the indicator to the underlying root once the overlay is
-        // dismissed (Android back, swipe, or in-screen close).
-        .whenComplete(() {
+    // [AVA-NAV-STUCK-1] Same stranding hazard as _openInbox — track the route.
+    final route = MaterialPageRoute<void>(
+      builder: (_) => AskAvaScreen(contextHint: hint),
+    );
+    _askAvaRoute = route;
+    _overlayRoot = _root;
+    // Restore the indicator to the underlying root once the overlay is
+    // dismissed (Android back, swipe, or in-screen close).
+    nav.push(route).whenComplete(() {
       Analytics.capture('shellv2_askava_closed', {'root': _root.key});
-      if (mounted) setState(() => _askAvaOpen = false);
+      if (!mounted || !identical(_askAvaRoute, route)) return;
+      setState(() {
+        _askAvaOpen = false;
+        _askAvaRoute = null;
+        if (_inboxRoute == null) _overlayRoot = null;
+      });
     });
   }
 
