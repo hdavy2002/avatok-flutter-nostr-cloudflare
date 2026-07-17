@@ -36,11 +36,23 @@ class GroupMessage {
 class AvaGroupDm {
   final Group group;
   StreamSubscription? _sub;
+  StreamSubscription? _outboxSub; // [AVA-GRP-SENDSTATE] outbox ACK/give-up bridge
   final _controller = StreamController<GroupMessage>.broadcast();
+  // [AVA-GRP-SENDSTATE] Per-message send outcome for THIS group, mirroring
+  // `AvaDm.sendStatus`. Groups previously had NO listener on `Outbox.I.status`,
+  // so a group bubble's `sent` never flipped true on the HTTP-200 ACK: it stayed
+  // "Sending…" forever in-session, was persisted as `pending`, and then — because
+  // the outbox entry had already been removed on echo (so `isPending` was false on
+  // reopen) — the thread's cache-restore heuristic mis-marked every DELIVERED own
+  // group message as "NOT SENT · tap to retry" (the owner's bug). Bridging the
+  // shared outbox status here, exactly as the DM path does, flips the bubble to
+  // "sent" on ACK so it never persists as pending in the first place.
+  final _statusC = StreamController<({String rumorId, bool ok, String message})>.broadcast();
 
   AvaGroupDm({required this.group});
 
   Stream<GroupMessage> get messages => _controller.stream;
+  Stream<({String rumorId, bool ok, String message})> get sendStatus => _statusC.stream;
 
   void start() {
     final myConv = 'g:${group.id}';
@@ -52,6 +64,15 @@ class AvaGroupDm {
         ));
       }
     });
+    // [AVA-GRP-SENDSTATE] Relay the durable outbox's per-message results for THIS
+    // group conversation into `sendStatus` so the bubble shows "sending…" → "sent"
+    // (HTTP-200 ACK) / "not sent" (terminal give-up). Filter to this conv so the
+    // shared singleton doesn't leak another thread's status. Mirrors AvaDm.start().
+    _outboxSub = Outbox.I.status.where((s) => s.convKey == myConv).listen((s) {
+      if (!_statusC.isClosed) _statusC.add((rumorId: s.clientId, ok: s.ok, message: s.message));
+    });
+    // A thread open is also a retry trigger: flush anything still queued.
+    unawaited(Outbox.I.drain(reason: 'group_thread_open'));
   }
 
   /// Send [payload] (already gid-stamped) to the group conversation. Returns the
@@ -131,7 +152,9 @@ class AvaGroupDm {
 
   void stop() {
     _sub?.cancel();
+    _outboxSub?.cancel();
     _controller.close();
+    _statusC.close();
   }
 
   static String _randId() {
