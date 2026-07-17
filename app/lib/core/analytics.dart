@@ -268,6 +268,12 @@ class Analytics {
     }
   }
 
+  /// [AVA-DIAG-SAMPLE] Rate-limiter for the diag_log → PostHog forwarding.
+  /// rate=10 is hardcoded (a `diagSampleRate` remote flag would need declaring
+  /// in the Worker's config.ts PlatformConfig/DEFAULTS/numericKeys, which is
+  /// owned elsewhere — so no fake flag).
+  static final _DiagSampler _diagSampler = _DiagSampler();
+
   static Future<void> init() async {
     // [APPVER-RUNTIME-1] Stamp the REAL installed version+build (e.g.
     // '0.1.18+12363') on every event. PackageInfo reads the platform package
@@ -289,16 +295,31 @@ class Analytics {
         ..debug = kDebugMode;
       await Posthog().setup(config);
       _ready = true;
-      // Stream every diagnostic log line live to PostHog (batched/flushed by the
+      // Stream diagnostic log lines live to PostHog (batched/flushed by the
       // SDK), keyed to the person via identify(uid). No manual upload, no
       // app-owned DB. Pull a user's logs by resolving their email -> uid.
-      AvaLog.I.sink = (e) => capture('diag_log', {
-            'tag': e.tag,
-            'level': e.level,
-            'line': e.line,
-            'log_app': AvaLog.I.app,
-            'session': AvaLog.I.session,
-          });
+      //
+      // [AVA-DIAG-SAMPLE] diag_log was ~65% of ALL telemetry (5.4k events/wk),
+      // most of it NORMAL narration repeated hundreds of times (socket flap,
+      // cache-HIT, cursor-sync connects, "FTS5 ready"). We forward warnings /
+      // errors and rare lines at 100%, but throttle routine high-frequency
+      // narration to 1-in-N via [_diagSampler] — the one event that IS sent
+      // carries {sampled:true, represented:N} so no signal is lost. This gate
+      // is ONLY on the PostHog forwarding: AvaLog.log() already wrote the line
+      // to the local ring buffer (the Diagnostics page) BEFORE calling this
+      // sink, so on-device logs stay full-fidelity.
+      AvaLog.I.sink = (e) {
+        final extra = _diagSampler.decide(e);
+        if (extra == null) return; // dropped: routine high-frequency line
+        capture('diag_log', {
+          'tag': e.tag,
+          'level': e.level,
+          'line': e.line,
+          'log_app': AvaLog.I.app,
+          'session': AvaLog.I.session,
+          ...extra, // {} for a full-fidelity line, else {sampled, represented}
+        });
+      };
     } catch (_) {/* analytics is optional; app runs without it */}
   }
 
@@ -508,4 +529,121 @@ class Analytics {
     out = out.replaceAll(RegExp(r'[A-Za-z0-9_\-]{40,}'), '[redacted]');
     return out.length > 500 ? out.substring(0, 500) : out;
   }
+}
+
+/// [AVA-DIAG-SAMPLE] Level-aware sampler for the diag_log → PostHog forwarding
+/// ONLY. It never touches the on-device ring buffer (that is written before the
+/// sink runs), so the Diagnostics log page always keeps every line.
+///
+/// Policy:
+///   • warnings + errors  → always forwarded (100%).
+///   • rare info lines     → always forwarded (a line's first [warmup] hits pass
+///                           at 100%, so anything genuinely infrequent is kept).
+///   • chatty info lines   → throttled to 1-in-[rate]; the forwarded event
+///                           carries {sampled:true, represented:N} so the count
+///                           of suppressed siblings is preserved.
+///
+/// Chattiness is DETECTED generically, not hardcoded: entries are keyed on
+/// `tag + normalized-line-prefix` (digits and hex hashes collapsed to `#`) in a
+/// small insertion-ordered LRU, and a per-key counter decides throttling. A
+/// short seed list of known high-frequency prefixes skips the warm-up so pure
+/// narration (socket flap, cache-HIT, cursor-sync connects, "FTS5 ready") is
+/// throttled from the start of a session rather than after the first [warmup].
+class _DiagSampler {
+  _DiagSampler({this.rate = 10, this.warmup = 8, this.maxKeys = 512});
+
+  /// Keep 1-in-[rate] of a line once it has proven chatty.
+  final int rate;
+
+  /// A key's first [warmup] hits are forwarded at 100% (rare-line protection).
+  final int warmup;
+
+  /// LRU cap on tracked keys — bounds memory on a long-running session.
+  final int maxKeys;
+
+  // Insertion-ordered → cheapest possible LRU: touching a key re-inserts it at
+  // the end, so the least-recently-seen key is always `keys.first`.
+  final Map<String, _DiagKeyCount> _state = <String, _DiagKeyCount>{};
+
+  // Normalized (lowercased, digits/hashes collapsed) substrings that are known
+  // pure high-frequency narration. Substring match — NOT exact strings — so the
+  // socket_down/socket_up variants, any cursor value, any cache-hit hash, etc.
+  // all collapse in. Seed only: detection covers everything not listed here.
+  // (FCM re-registration is deliberately NOT seeded — it's being deduped at the
+  // source, and detection will still throttle it if it stays chatty.)
+  static const List<String> _seedChatty = <String>[
+    'socket_down',
+    'socket_up',
+    'socket closed',
+    'synced from cursor',
+    'cache-hit',
+    'fts5 memory ready',
+  ];
+
+  /// Decide the fate of one log entry. Returns:
+  ///   • null              → drop (do not forward to PostHog).
+  ///   • const {}          → forward as-is (full-fidelity line).
+  ///   • {sampled,represented} → forward, tagged as a throttled sample.
+  Map<String, Object>? decide(AvaLogEntry e) {
+    if (e.level != 'info') return const {}; // warnings + errors are never sampled
+    final key = _key(e.tag, e.line);
+    final seeded = _isSeeded(key);
+
+    var st = _state.remove(key); // remove+reinsert = LRU touch
+    st ??= _DiagKeyCount();
+    st.total++;
+    _state[key] = st;
+    _evict();
+
+    // Keep at least the FIRST occurrence of even a seeded line as a marker,
+    // then throttle it.
+    if (seeded && st.total == 1) {
+      st.sinceEmit = 0;
+      return const {};
+    }
+    // Rare lines (and the warm-up window of any not-yet-proven-chatty line) go
+    // through untouched.
+    if (!seeded && st.total <= warmup) {
+      st.sinceEmit = 0;
+      return const {};
+    }
+    // Chatty: forward 1-in-[rate], carrying how many raw lines this one stands
+    // for (the suppressed siblings plus itself).
+    st.sinceEmit++;
+    if (st.sinceEmit >= rate) {
+      final represented = st.sinceEmit;
+      st.sinceEmit = 0;
+      return <String, Object>{'sampled': true, 'represented': represented};
+    }
+    return null; // drop
+  }
+
+  bool _isSeeded(String key) {
+    for (final s in _seedChatty) {
+      if (key.contains(s)) return true;
+    }
+    return false;
+  }
+
+  void _evict() {
+    while (_state.length > maxKeys) {
+      _state.remove(_state.keys.first);
+    }
+  }
+
+  /// tag + a stable, low-cardinality prefix of the line. Hex hashes/ids are
+  /// collapsed first, then any remaining digit runs, so e.g. "cursor=1837",
+  /// "download cache-HIT deadbeef…" and "socket_down" each fold onto one key.
+  static String _key(String tag, String line) {
+    var s = line.toLowerCase();
+    s = s.replaceAll(RegExp(r'[0-9a-f]{6,}'), '#'); // hashes / long hex ids
+    s = s.replaceAll(RegExp(r'\d+'), '#'); // any remaining numbers
+    if (s.length > 48) s = s.substring(0, 48);
+    return '$tag|$s';
+  }
+}
+
+class _DiagKeyCount {
+  int total = 0; // lifetime hits of this key
+  int sinceEmit = 0; // suppressed hits since the last forwarded sample
 }
