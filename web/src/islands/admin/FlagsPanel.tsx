@@ -9,11 +9,16 @@ import { Button } from '../../components/Button';
 import { Spinner } from '../../components/Spinner';
 
 // Known boolean kill switches (PlatformConfig). minAppBuild handled separately.
+// Every entry MUST exist in DEFAULTS in worker/src/routes/config.ts — putConfig
+// rejects any key not in DEFAULTS (`unknown key`, 400), so a stale entry here is a
+// switch that 400s when it's touched. ([M-D11 2026-07-18] simOnlyPhoneEnabled was
+// exactly that, and was removed when phone OTP was deleted app-wide.)
 const BOOL_FLAGS = [
   'liveEnabled', 'consultEnabled', 'conferenceEnabled', 'avavoiceEnabled', 'avavisionEnabled',
+  'marketplaceEnabled', 'olxEnabled',
   'translationEnabled', 'translationGroupEnabled', 'donationsEnabled', 'brainEnabled', 'verseEnabled',
   'walletRealMoney', 'identityLadderEnabled', 'guestTierEnabled', 'workersAiLivenessEnabled',
-  'simOnlyPhoneEnabled', 'avaAffiliateEnabled', 'affiliateAssetKitEnabled',
+  'avaAffiliateEnabled', 'affiliateAssetKitEnabled',
 ];
 
 function Inner() {
