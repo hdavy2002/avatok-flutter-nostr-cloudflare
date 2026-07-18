@@ -47,6 +47,27 @@ export interface SarvamTtsReq {
   sampleRate?: number;   // default 24000
 }
 
+/** Saarika v2.5 STT: transcribe a WAV clip with AUTO language detection (handles
+ *  code-mixed Hindi/English natively). Returns { transcript, lang } or null on any
+ *  failure so the caller falls back to Workers AI Whisper. Never throws. */
+export async function sarvamSttTranscribe(env: unknown, wav: Uint8Array): Promise<{ transcript: string; lang: string } | null> {
+  try {
+    const key = (env as { SARVAM_API_KEY?: string }).SARVAM_API_KEY;
+    if (!key || !wav?.byteLength) return null;
+    const fd = new FormData();
+    fd.append("model", "saarika:v2.5");
+    fd.append("language_code", "unknown"); // auto-detect, incl. code-mixed speech
+    fd.append("file", new Blob([wav as unknown as BlobPart], { type: "audio/wav" }), "turn.wav");
+    const r = await fetch("https://api.sarvam.ai/speech-to-text", {
+      method: "POST", headers: { "api-subscription-key": key }, body: fd,
+    });
+    if (!r.ok) return null;
+    const j = await r.json() as { transcript?: string; language_code?: string | null };
+    const t = String(j.transcript ?? "").trim();
+    return t ? { transcript: t, lang: String(j.language_code ?? "").trim() } : null;
+  } catch { return null; }
+}
+
 /** Bulbul v3 → PCM16 @sampleRate mono, or null on any failure. Never throws. */
 export async function sarvamTtsPcm(env: unknown, opts: SarvamTtsReq): Promise<Uint8Array | null> {
   try {

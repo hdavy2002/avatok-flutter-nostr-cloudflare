@@ -458,11 +458,14 @@ export function composeReceptionistPrompt(
     ? String(s.status_note).trim().slice(0, MAX_STATUS_NOTE) : "";
   const statusUntil = statusNote && s.status_expires_at ? new Date(Number(s.status_expires_at)).toUTCString() : "";
 
-  // CF engine: the greeting is spoken deterministically and the ENGINE decides
-  // turn-taking, so the LLM is invoked ONLY to produce the closing line. Keep this
-  // dead simple so a small/fast model (Haiku) can't wander into questions or stage
-  // directions like "<silence>". (Gemini keeps the conversational prompt below.)
-  if (ctx?.engine === "cf") {
+  // CONVERSATIONAL CF ENGINE (owner decision 2026-07-19): the old CF-only branch
+  // below hardcoded a one-line voicemail script ("reply with EXACTLY ONE line, no
+  // questions, no follow-ups") — that made Ava take a message, repeat it, and hang
+  // up instead of holding a real conversation. The CF engine now uses the SAME
+  // conversational prompt as Gemini (the code below already threads engine:"cf"
+  // through endWith → the <END_CALL> marker). The legacy script is kept ONLY behind
+  // the RECEPT_CF_LEGACY_VOICEMAIL env flag as an emergency fallback.
+  if (ctx?.engine === "cf" && (globalThis as any).__RECEPT_CF_LEGACY_VOICEMAIL__ === true) {
     // BUSY SCRIPTS (RECEPT-1, plan §3.2): the busy caller already knows the owner is
     // on a call (the busy card told them) and CHOSE to leave a message. So Ava frames
     // it "on another call / will get it the moment ${subj}'s free", never "couldn't
@@ -612,7 +615,8 @@ function composeDeterministicGreeting(a: {
     if (a.isUnreachable) {
       return `नमस्ते ${namePart}मैं Ava हूँ, ${a.ownerLabel} की असिस्टेंट। लगता है ${a.ownerLabel} का फ़ोन बंद है या नेटवर्क से बाहर है — क्या मैं उनके लिए मैसेज ले लूँ? मैं उन तक ज़रूर पहुँचा दूँगी।`;
     }
-    return `नमस्ते ${namePart}मैं Ava हूँ, ${a.ownerLabel} की असिस्टेंट। ${a.ownerLabel} अभी कॉल नहीं ले पा रहे — करीब 25 सेकंड का मैसेज छोड़ दीजिए, मैं उन तक पहुँचा दूँगी।`;
+    // Conversational no-answer opener (owner 2026-07-19) — no "25 seconds" script.
+    return `नमस्ते ${namePart}मैं Ava हूँ, ${a.ownerLabel} की असिस्टेंट। ${a.ownerLabel} अभी कॉल नहीं ले पा रहे — बताइए, मैं आपकी क्या मदद कर सकती हूँ? चाहें तो मैसेज भी छोड़ सकते हैं।`;
   }
   // Default (English + any language without a template — the CF prompt's "Speak in
   // <lang>" line still steers the LLM close; the greeting itself opens in English).
@@ -624,8 +628,9 @@ function composeDeterministicGreeting(a: {
   if (a.isUnreachable) {
     return `${a.greetPrefix}it's Ava, ${a.ownerLabel}'s assistant. It looks like ${a.ownerLabel}'s phone is off or unreachable right now — can I take a message? I'll make sure ${a.gSubj} gets it the moment ${a.gSubj}'s back.`;
   }
-  // No-answer greeting — UNCHANGED wording from before this change.
-  return `${a.greetPrefix}${a.ownerLabel} can't take the call right now — leave a message of about 25 seconds and ${a.gSubj}'ll get back to you.`;
+  // No-answer greeting — conversational (owner 2026-07-19): open the conversation,
+  // don't dictate a timed voicemail.
+  return `${a.greetPrefix}it's Ava, ${a.ownerLabel}'s assistant. ${a.ownerLabel} can't take the call right now — I can help with something quick, or pass on a message. What can I do for you?`;
 }
 
 // ---------------------------------------------------------------------------

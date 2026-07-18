@@ -29,7 +29,7 @@ import { contactFor } from "../lib/identity";
 import { avaReasonRaw } from "../lib/ava_reason"; // One Brain B1: gateway for STT/LLM/TTS
 import { aiRunOpts } from "../lib/ai_gate";       // AI Gateway cost-logging opts
 import { googleSynthesizeForLang } from "../lib/google_tts"; // WaveNet voice, any language (RECEPT-TTS-GOOGLE)
-import { sarvamTtsPcm } from "../lib/sarvam"; // Bulbul v3 India voice (RECEPT-TTS-SARVAM)
+import { sarvamTtsPcm, sarvamSttTranscribe } from "../lib/sarvam"; // Bulbul TTS + Saarika STT (RECEPT-SARVAM)
 
 /** Redact secrets from free-text error strings before telemetry. */
 function scrubSecrets(s: string): string {
@@ -287,7 +287,9 @@ export class ReceptionRoomCf {
     // e.g. hi-IN. Fixes "I spoke Hindi but STT listened in English and she replied in
     // English." Empty = use the owner's saved answer language as before.
     const forced = String((this.env as any).RECEPT_CF_FORCE_LANG || "").trim();
-    return forced || (this.init?.language_code || "").trim();
+    // Order: env override (normally unset) → owner's saved answer language → the
+    // language Saarika DETECTED the caller actually speaking (per-turn, adaptive).
+    return forced || (this.init?.language_code || "").trim() || this.sttDetectedLang;
   }
   private cfSttModel(): string { return String((this.env as any).RECEPT_CF_STT_MODEL || CF_STT_MODEL_DEFAULT); }
   private cfLlmModel(): string { return String((this.env as any).RECEPT_CF_LLM_MODEL || CF_LLM_MODEL_DEFAULT); }
@@ -340,8 +342,12 @@ export class ReceptionRoomCf {
         await this.cfAssistantTurn("[Caller connected — give your one-sentence voicemail greeting now, then stop and listen.]");
       }
     } finally { this.cfBusy = false; }
-    // Caller now has ~50s to leave their message; when it elapses Ava cuts in.
-    this.cfMsgTimer = setTimeout(() => this.onMsgCap(), CF_MSG_WINDOW_MS);
+    // CONVERSATION BUDGET (owner 2026-07-19): was a hardcoded 25s voicemail window —
+    // that made Ava rush "message → repeat → goodbye". Now a generous, env-tunable
+    // conversation budget (default 150s) so the flow ends NATURALLY (caller bye /
+    // <END_CALL> / inactivity), with the timer only as a final wrap-up backstop.
+    const msgWindow = (() => { const v = Number((this.env as any).RECEPT_CF_MSG_WINDOW_MS); return Number.isFinite(v) && v > 0 ? v : 150_000; })();
+    this.cfMsgTimer = setTimeout(() => this.onMsgCap(), msgWindow);
     this.bumpIdle();
   }
 
@@ -519,7 +525,23 @@ export class ReceptionRoomCf {
     if (wantsEnd && !this.finalized) { this.saidGoodbye = true; this.cfClosing = true; this.ev("ava_recept_cf_goodbye_close", {}); void this.finalize("ava_goodbye"); }
   }
 
+  // Language the caller ACTUALLY spoke, detected by Saarika STT per turn (BCP-47,
+  // e.g. "hi-IN"). Drives the TTS target so Ava replies in the caller's language —
+  // no forced/hardcoded language anywhere (owner 2026-07-19).
+  private sttDetectedLang = "";
+
   private async cfStt(wav: Uint8Array): Promise<string> {
+    // Saarika v2.5 (RECEPT_CF_STT_PROVIDER=sarvam): India-tuned STT with AUTO
+    // language detection incl. code-mixed Hindi/English. Falls back to Whisper.
+    if (String((this.env as any).RECEPT_CF_STT_PROVIDER || "").toLowerCase() === "sarvam") {
+      const res = await sarvamSttTranscribe(this.env, wav);
+      if (res) {
+        if (res.lang) this.sttDetectedLang = res.lang;
+        this.ev("ava_recept_cf_stt_provider", { provider: "sarvam", lang: res.lang || "unknown" });
+        return res.transcript;
+      }
+      this.ev("ava_recept_cf_stt_provider", { provider: "fallback_whisper", lang: "" });
+    }
     try {
       // whisper-large-v3-turbo wants audio as a base64 STRING (verified against the
       // live model 2026-06-29 — array/binary inputs are rejected with AiError 5006).
