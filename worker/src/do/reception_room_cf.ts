@@ -28,7 +28,7 @@ import { dmConvId } from "../authz";
 import { contactFor } from "../lib/identity";
 import { avaReasonRaw } from "../lib/ava_reason"; // One Brain B1: gateway for STT/LLM/TTS
 import { aiRunOpts } from "../lib/ai_gate";       // AI Gateway cost-logging opts
-import { googleSynthesizePcm } from "../lib/google_tts"; // Hindi WaveNet voice (RECEPT-TTS-GOOGLE)
+import { googleSynthesizeForLang } from "../lib/google_tts"; // WaveNet voice, any language (RECEPT-TTS-GOOGLE)
 
 /** Redact secrets from free-text error strings before telemetry. */
 function scrubSecrets(s: string): string {
@@ -606,16 +606,23 @@ export class ReceptionRoomCf {
     let firstChunk = true;
     let carry: Uint8Array | null = null; // odd trailing byte held for 16-bit alignment
     try {
-      // Hindi WaveNet (RECEPT-TTS-GOOGLE, owner decision 2026-07-18): a natural
-      // hi-IN voice via Cloud TTS instead of the robotic Deepgram/melotts path.
-      // Non-streaming REST; on null (secret unset, error, non-Hindi) we fall through
-      // to the avaReasonRaw path below, so a Google outage never silences Ava and the
-      // feature is disabled simply by unsetting GOOGLE_TTS_SA_JSON — no redeploy.
+      // Google WaveNet is the DEFAULT voice for EVERY language (RECEPT-TTS-GOOGLE,
+      // owner decision 2026-07-18: "disable aura, wavenet default, any language").
+      // googleSynthesizeForLang resolves the session language to a WaveNet-first
+      // voice for that language. Non-streaming REST; on null (secret unset or error)
+      // we fall through to the legacy Deepgram/melotts path below, so a Google outage
+      // never silences Ava and the whole thing is disabled by unsetting
+      // GOOGLE_TTS_SA_JSON — no redeploy.
       let gPcm: Uint8Array | null = null;
-      if (baseLang(this.langCode()) === "hi" && (this.env as any).GOOGLE_TTS_SA_JSON) {
-        const gVoice = String((this.env as any).RECEPT_CF_GOOGLE_VOICE || "hi-IN-Wavenet-E");
-        gPcm = await googleSynthesizePcm(this.env, { text: text.slice(0, 800), voice: gVoice, languageCode: "hi-IN", sampleRate: 24000 });
-        this.ev("ava_recept_cf_tts_provider", { provider: gPcm ? "google" : "fallback", voice: gVoice });
+      if ((this.env as any).GOOGLE_TTS_SA_JSON) {
+        gPcm = await googleSynthesizeForLang(this.env, {
+          text: text.slice(0, 800),
+          langCode: this.langCode(),
+          preferVoice: String((this.env as any).RECEPT_CF_GOOGLE_VOICE || "hi-IN-Wavenet-E"),
+          defaultLang: String((this.env as any).RECEPT_CF_GOOGLE_LANG || "en-IN"),
+          sampleRate: 24000,
+        });
+        this.ev("ava_recept_cf_tts_provider", { provider: gPcm ? "google" : "fallback", lang: this.langCode() || "auto" });
       }
       const resp: any = gPcm ? null : await avaReasonRaw(this.env, {
         role: "receptionist", capability: "tts", trigger: "speak", feature: "receptionist_tts",
