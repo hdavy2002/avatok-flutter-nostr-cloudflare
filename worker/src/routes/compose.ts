@@ -1472,16 +1472,18 @@ export async function composeTurn(req: Request, env: Env): Promise<Response> {
   }
 
   // ── The gateway. verb:"reason". NEVER callSonnet, never a raw provider fetch ──
-  // MODEL PIN + TIMEOUT (2026-07-18 fix): without legacyModel the "reason" ladder
-  // routes to the Workers-AI reasoner (@cf/google/gemma-4-26b, 26B) as PRIMARY, and
-  // only falls back to the OpenRouter ALT on error/429 — NOT on slowness. On this
-  // large compose prompt (playbook + full category list + schema + draft) generating
-  // 900 JSON tokens, gemma-4 was slow enough to read as "stuck", with no timeout to
-  // catch it. Pin the proven marketplace model (same one negotiate/ai-assist use —
-  // reliable at strict JSON tool-calling) via legacyModel → a single fast OpenRouter
-  // call, and cap it so a slow provider becomes a graceful "say that again?" instead
-  // of an infinite spinner.
-  const composeModel = String((env as any).OPENROUTER_MARKET_MODEL ?? "").trim() || "anthropic/claude-sonnet-4.6";
+  // FAST MODEL PIN + TIMEOUT (owner decision 2026-07-18: "use a fast model like groq,
+  // forget gemma"). Without a pin the "reason" ladder routes to the Workers-AI
+  // reasoner (@cf/google/gemma-4-26b, 26B) as PRIMARY and only falls back on
+  // error/429, NOT on slowness — so on this large compose prompt gemma-4 hung as
+  // "Ava is thinking…" with no timeout. Pin a FAST Groq-served model via OpenRouter
+  // (Groq runs Llama-3.3-70b at ~1s; OpenRouter routes this id to Groq/the fastest
+  // provider — no new key or adapter, the marketplace already uses OpenRouter).
+  // legacyModel → a single OpenRouter call, no ladder. Env-overridable via
+  // COMPOSE_MODEL so the model can be tuned in wrangler vars without a code change.
+  // timeoutMs caps a slow provider to a graceful "say that again?" instead of an
+  // infinite spinner; parseModelTurn() has a regex JSON backstop for imperfect output.
+  const composeModel = String((env as any).COMPOSE_MODEL ?? "").trim() || "meta-llama/llama-3.3-70b-instruct";
   let raw = "";
   try {
     raw = await avaReason(env, {
