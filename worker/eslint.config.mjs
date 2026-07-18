@@ -40,15 +40,68 @@ const restricted = [
   ]),
 ];
 
+// ── §10.3 Guardian safety-store ACL (SPEC-2026-07-17 §10.3) ──────────────────
+// The safety store is governed by MODULE BOUNDARY, lint-enforced — "a convention can
+// rot; the lint + import-walker test cannot." Two bans, both scoped so lib/guardian/
+// (and, for the reader, ava_guardian.ts) are the ONLY places that touch it:
+//   (1) importing guardianContext (lib/guardian/context) — the safety reader must not
+//       become general context for every Ava feature (brainRecall, Copilot, compose,
+//       Connect). Allowed ONLY in lib/guardian/** and routes/ava_guardian.ts.
+//   (2) a raw `INSERT INTO guardian_events` — the safety store has ONE writer,
+//       guardianIngest(). Allowed ONLY in lib/guardian/**.
+const GUARDIAN_CONTEXT_IMPORT_MSG =
+  "guardianContext (worker/src/lib/guardian/context) is ACL'd (SPEC §10.3): the safety store is " +
+  "reachable ONLY from worker/src/lib/guardian/** and worker/src/routes/ava_guardian.ts — never " +
+  "brainRecall or any general Ava feature. Do not import it here.";
+const GUARDIAN_EVENTS_INSERT_MSG =
+  "INSERT into guardian_events is banned outside worker/src/lib/guardian/ (SPEC §10.3). The safety " +
+  "store has ONE writer — guardianIngest(). Route safety events through it, not a raw INSERT.";
+
+// no-restricted-imports patterns matching any relative path resolving to the context
+// module (…/lib/guardian/context, with or without an extension).
+const GUARDIAN_CONTEXT_IMPORT_PATTERNS = [
+  "**/guardian/context",
+  "**/guardian/context.*",
+  "*/guardian/context",
+];
+// no-restricted-syntax selectors: a raw INSERT INTO guardian_events in a plain string
+// literal OR a template-string chunk. Added to the main block, dropped for lib/guardian.
+const guardianInsertRules = [
+  { selector: "Literal[value=/INSERT\\s+INTO\\s+guardian_events/i]", message: GUARDIAN_EVENTS_INSERT_MSG },
+  { selector: "TemplateElement[value.raw=/INSERT\\s+INTO\\s+guardian_events/i]", message: GUARDIAN_EVENTS_INSERT_MSG },
+];
+
 export default tseslint.config(
   {
     files: ["src/**/*.ts"],
     languageOptions: { parser: tseslint.parser, parserOptions: { sourceType: "module" } },
-    rules: { "no-restricted-syntax": ["error", ...restricted] },
+    rules: {
+      "no-restricted-syntax": ["error", ...restricted, ...guardianInsertRules],
+      // §10.3 — ban the guardianContext import everywhere; the two override blocks
+      // below re-allow it inside the ACL boundary.
+      "no-restricted-imports": ["error", { patterns: [
+        { group: GUARDIAN_CONTEXT_IMPORT_PATTERNS, message: GUARDIAN_CONTEXT_IMPORT_MSG },
+      ] }],
+    },
   },
   {
     // The gateway is the ONE place provider access is allowed (core + adapters).
     files: ["src/lib/ava_reason/**/*.ts"],
     rules: { "no-restricted-syntax": "off" },
+  },
+  {
+    // §10.3 — lib/guardian/ is the safety store's writer + reader: it may INSERT into
+    // guardian_events AND import guardianContext. The AI-provider bans still apply.
+    files: ["src/lib/guardian/**/*.ts"],
+    rules: {
+      "no-restricted-syntax": ["error", ...restricted],
+      "no-restricted-imports": "off",
+    },
+  },
+  {
+    // §10.3 — the Guardian route is the ONE purpose-scoped consumer allowed to read
+    // the safety store (guardianContext). It never INSERTs directly (that ban stays on).
+    files: ["src/routes/ava_guardian.ts"],
+    rules: { "no-restricted-imports": "off" },
   },
 );

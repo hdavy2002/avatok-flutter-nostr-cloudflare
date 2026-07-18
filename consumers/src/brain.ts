@@ -731,6 +731,11 @@ async function purgeBrain(uid: string, env: Env): Promise<void> {
       try { await env.VECTOR_INDEX.deleteByIds(ids.slice(i, i + 1000)); } catch { /* best-effort */ }
     }
   }
+  // §10.2 — guardian_events (the legal-basis SAFETY store) is DELIBERATELY absent from
+  // this list. The churn sweep must NOT delete safety records for a dormant user any
+  // more than the user's own deletion may (a block/ban record cannot be laundered by
+  // going quiet for 90 days). guardian_events has its OWN retention clock in
+  // runBrainRetention (flags 12mo, enforcement 24mo) — never this purge.
   for (const q of [
     "DELETE FROM brain_entities WHERE uid=?1",
     "DELETE FROM brain_relationships WHERE uid=?1",
@@ -853,7 +858,31 @@ async function runDeletionJob(env: Env, uid: string, deletionId: string | null, 
   counts.inbox_brain = inbox.count;
   if (!inbox.ok) failures.push("inbox_brain");
 
-  const audit = { ...counts, attempts, failures };
+  // §10.2 SAFETY-RECORD EXEMPTION — guardian_events (the legal-basis safety store) is
+  // DELIBERATELY NOT wiped here. Applying §5.1's user-initiated deletion to safety data
+  // would erase the user's own grooming flags / enforcement actions and reset the
+  // blockSender counter — deletion would become a reputation-laundering tool, and the
+  // more dangerous the user the more motivated they are to use it. GDPR Art. 17(3)
+  // permits refusing erasure where processing is necessary for a legal obligation or
+  // the establishment/defence of legal claims. §5.1 forbids SILENT half-completion, so
+  // the retention is stated HONESTLY in the audit (a count of what is kept), never
+  // omitted. "safety records retained under legitimate interest."
+  let safetyRetained = 0;
+  try {
+    const r = await env.DB_BRAIN
+      .prepare("SELECT COUNT(*) AS n FROM guardian_events WHERE subject_uid=?1")
+      .bind(uid).first<{ n: number }>();
+    safetyRetained = Number(r?.n ?? 0);
+  } catch { /* table optional / absent pre-§10 — nothing to report */ }
+
+  const audit = {
+    ...counts,
+    attempts,
+    failures,
+    // §10.2 — retained under legitimate interest, not deleted (honest, not silent).
+    safety_records_retained: true,
+    guardian_events_retained: safetyRetained,
+  };
 
   if (failures.length === 0) {
     try {
@@ -996,12 +1025,20 @@ export async function rollupDailySummaries(env: Env, forDayMs = Date.now() - 86_
 //       recomputable from events + the device lane, so aggressive decay is safe.
 //       Facts are not individually vectorized today (only entities/library/
 //       voicemail are), so there are no separate fact vectors to prune here.
-export async function runBrainRetention(env: Env): Promise<{ events: number; facts: number; vectors: number }> {
+// §10.2 safety-record retention (B-D9 — PLACEHOLDER pending legal review). An event
+// is "enforcement" (kept 24 months) when it is a block/ban action OR a high-severity
+// event; every other flag ages out at 12 months. A ban record must outlive an ordinary
+// flag. TODO(B-D9): confirm these periods with legal, and add any longer clock for
+// ban-list face hashes when the Connect ban list lands.
+const GUARDIAN_ENFORCEMENT_SEVERITY = 3;
+
+export async function runBrainRetention(env: Env): Promise<{ events: number; facts: number; vectors: number; guardianFlags: number; guardianEnforcement: number }> {
   const now = Date.now();
   const MONTH_MS = 30 * 86_400_000;
   const cut12mo = now - 12 * MONTH_MS;
   const cut18mo = now - 18 * MONTH_MS;
-  let events = 0, facts = 0, vectors = 0;
+  const cut24mo = now - 24 * MONTH_MS;
+  let events = 0, facts = 0, vectors = 0, guardianFlags = 0, guardianEnforcement = 0;
 
   // (a) event-derived vector roll-off (voicemail/message kinds only).
   try {
@@ -1034,7 +1071,26 @@ export async function runBrainRetention(env: Env): Promise<{ events: number; fac
     facts = Number((r as any).meta?.changes ?? 0);
   } catch (e) { console.error("[brain-retention facts]", String(e)); }
 
-  return { events, facts, vectors };
+  // (c) §10.2 safety-record retention. guardian_events is EXEMPT from the deletion
+  // contract and the churn purge (§10.2), but is NOT kept forever — it has its OWN
+  // clock, distinct from §5.3 fact decay. Enforcement FIRST (24mo), then the remaining
+  // flags (12mo) EXCLUDING enforcement rows, so a block/ban younger than 24mo survives
+  // past the 12mo flag horizon. Both idempotent + additive (only DELETE). TODO(B-D9):
+  // periods pending legal review.
+  try {
+    const rEnf = await env.DB_BRAIN.prepare(
+      "DELETE FROM guardian_events WHERE created_at < ?1 AND (action IN ('block','ban') OR severity >= ?2)",
+    ).bind(cut24mo, GUARDIAN_ENFORCEMENT_SEVERITY).run();
+    guardianEnforcement = Number((rEnf as any).meta?.changes ?? 0);
+  } catch (e) { if (!isMissingTable(e)) console.error("[brain-retention guardian-enforcement]", String(e)); }
+  try {
+    const rFlag = await env.DB_BRAIN.prepare(
+      "DELETE FROM guardian_events WHERE created_at < ?1 AND NOT (action IN ('block','ban') OR severity >= ?2)",
+    ).bind(cut12mo, GUARDIAN_ENFORCEMENT_SEVERITY).run();
+    guardianFlags = Number((rFlag as any).meta?.changes ?? 0);
+  } catch (e) { if (!isMissingTable(e)) console.error("[brain-retention guardian-flags]", String(e)); }
+
+  return { events, facts, vectors, guardianFlags, guardianEnforcement };
 }
 
 // Admin-triggered backfill: re-index the user's existing PUBLIC library files

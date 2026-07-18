@@ -2,7 +2,9 @@
 // (SPEC §3). Authenticated: the Settings UI is generated from this, so a toggle
 // can never gate nothing and a capability can never exist without a toggle.
 //
-// Response: { domains: [{ key, consentKey, label, default, scope }] }
+// Response: { domains: [{ key, consentKey, basis, deletable, label, default, scope }] }
+// basis/deletable (§10.1) let the client render legal-basis rows (consentKey null) as
+// a disclosure instead of a switch, and exclude them from delete-my-data.
 import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, isFail } from "../authz";

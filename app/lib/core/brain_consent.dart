@@ -20,19 +20,40 @@ import 'config.dart';
 /// persist under the same `consentKey` the server ingestion pipeline reads.
 class BrainDomain {
   final String key; // registry domain id, e.g. 'calls', 'missed', 'msg_meta'
-  final String consentKey; // the consent boolean this domain gates on
+  final String consentKey; // the consent boolean this domain gates on ('' for legal)
   final String label; // human label from the registry
   final bool defaultOn; // opt-out default (spec: all true)
   final String scope; // 'account_private' | 'device_private'
-  const BrainDomain(this.key, this.consentKey, this.label, this.defaultOn, this.scope);
+  // §10.1 — the lawful basis. 'consent' → a user-movable toggle. 'legal' →
+  // legitimate interest / legal obligation: a DISCLOSURE row, never a switch.
+  final String basis; // 'consent' | 'legal'
+  final bool deletable; // §10.2 — legal-basis rows are not deletable by the subject
+  const BrainDomain(this.key, this.consentKey, this.label, this.defaultOn, this.scope,
+      {this.basis = 'consent', this.deletable = true});
 
-  factory BrainDomain.fromJson(Map<String, dynamic> j) => BrainDomain(
-        (j['key'] ?? '').toString(),
-        (j['consentKey'] ?? j['consent'] ?? j['key'] ?? '').toString(),
-        (j['label'] ?? '').toString(),
-        j['default'] == null ? true : j['default'] == true,
-        (j['scope'] ?? 'account_private').toString(),
-      );
+  /// True for a legal-basis domain (§10.1) — rendered as a disclosure, not a toggle.
+  bool get isLegal => basis == 'legal';
+
+  factory BrainDomain.fromJson(Map<String, dynamic> j) {
+    // Parse defensively: a missing basis → 'consent' (an older server that predates
+    // §10.1 keeps rendering every row as a toggle, unchanged).
+    final basis = (j['basis'] ?? 'consent').toString();
+    final isLegal = basis == 'legal';
+    // Legal-basis rows have no consent key (null on the wire); never fall back to the
+    // domain key for them, or they'd masquerade as a gated toggle.
+    final consentKey =
+        isLegal ? '' : (j['consentKey'] ?? j['consent'] ?? j['key'] ?? '').toString();
+    final deletable = j['deletable'] == null ? !isLegal : j['deletable'] == true;
+    return BrainDomain(
+      (j['key'] ?? '').toString(),
+      consentKey,
+      (j['label'] ?? '').toString(),
+      j['default'] == null ? true : j['default'] == true,
+      (j['scope'] ?? 'account_private').toString(),
+      basis: basis,
+      deletable: deletable,
+    );
+  }
 
   Map<String, dynamic> toJson() => {
         'key': key,
@@ -40,6 +61,8 @@ class BrainDomain {
         'label': label,
         'default': defaultOn,
         'scope': scope,
+        'basis': basis,
+        'deletable': deletable,
       };
 }
 
@@ -126,7 +149,7 @@ class BrainConsent {
       final list = raw
           .whereType<Map>()
           .map((e) => BrainDomain.fromJson(e.cast<String, dynamic>()))
-          .where((d) => d.key.isNotEmpty && d.consentKey.isNotEmpty)
+          .where((d) => d.key.isNotEmpty && (d.consentKey.isNotEmpty || d.isLegal))
           .toList();
       if (list.isEmpty) return null;
       try {
@@ -148,7 +171,7 @@ class BrainConsent {
         final list = (jsonDecode(raw) as List)
             .whereType<Map>()
             .map((e) => BrainDomain.fromJson(e.cast<String, dynamic>()))
-            .where((d) => d.key.isNotEmpty && d.consentKey.isNotEmpty)
+            .where((d) => d.key.isNotEmpty && (d.consentKey.isNotEmpty || d.isLegal))
             .toList();
         if (list.isNotEmpty) return list;
       }
@@ -157,11 +180,14 @@ class BrainConsent {
   }
 
   /// The deduped toggle rows (one per unique consentKey), in registry order.
+  /// §10.1: legal-basis domains are NOT toggles — they are excluded here and surfaced
+  /// via [disclosures] instead. A control the user cannot move would be a lie.
   static Future<List<BrainToggle>> toggles() async {
     final ds = await domains();
     final seen = <String>{};
     final out = <BrainToggle>[];
     for (final d in ds) {
+      if (d.isLegal || d.consentKey.isEmpty) continue; // disclosure, not a toggle
       if (!seen.add(d.consentKey)) continue; // first label/default per consentKey wins
       out.add(BrainToggle(
         d.consentKey,
@@ -169,6 +195,20 @@ class BrainConsent {
         d.defaultOn,
         _kConsentBlurb[d.consentKey] ?? 'Let AvaBrain learn from this so it can help you later',
       ));
+    }
+    return out;
+  }
+
+  /// §10.1 — legal-basis domains (e.g. Safety records), deduped by key. Rendered as
+  /// an info DISCLOSURE (no switch): visible, plainly explained, not deletable (§10.2).
+  static Future<List<BrainDomain>> disclosures() async {
+    final ds = await domains();
+    final seen = <String>{};
+    final out = <BrainDomain>[];
+    for (final d in ds) {
+      if (!d.isLegal) continue;
+      if (!seen.add(d.key)) continue;
+      out.add(d);
     }
     return out;
   }

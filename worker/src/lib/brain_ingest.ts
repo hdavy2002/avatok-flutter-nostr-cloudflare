@@ -51,7 +51,7 @@ export interface BrainIngestInput {
 export interface BrainIngestResult {
   ok: boolean;
   dropped?: boolean;
-  reason?: "device_private" | "no_consent" | "consent_error" | "queue_error";
+  reason?: "device_private" | "no_consent" | "consent_error" | "queue_error" | "acl_safety";
 }
 
 // FNV-1a (32-bit) → hex. Deterministic, synchronous, bounded length. The
@@ -122,9 +122,28 @@ export async function brainIngest(env: Env, input: BrainIngestInput): Promise<Br
   const { uid, domain, kind } = input;
   if (!uid || !domain || !kind) return { ok: false, dropped: true, reason: "no_consent" };
 
+  // §10.3 ACL — the legal-basis `safety` store is NEVER written through this public
+  // lane. It is a separate store (guardian_events) written directly, and only, by
+  // lib/guardian/. A producer (or a spoofed one) cannot inject a safety record by
+  // labelling an event domain:'safety' — reject it at the edge (basis:'legal' has
+  // no consent key to gate on anyway). This also keeps `def.consent` a real
+  // capability string below, since the only null-consent domain is excluded here.
+  if (domain === "safety") {
+    try {
+      metric(env, "brain_ingest_rejected_acl_safety", [1], [domain, kind]);
+      void track(env, uid, "ingest_rejected_acl_safety", "avabrain", {
+        domain, kind, ...(input.email ? { email: input.email } : {}),
+      });
+    } catch { /* telemetry best-effort */ }
+    return { ok: false, dropped: true, reason: "acl_safety" };
+  }
+
   const def = BRAIN_DOMAINS[domain];
   const scope: BrainScope = def.scope;
-  const consentKey: BrainConsentKey = def.consent;
+  // Non-null: the only null-consent domain ('safety') was rejected above, so every
+  // domain reaching here is consent-based (§10.1). The cast strips the `null` the
+  // registry union contributes for legal-basis rows.
+  const consentKey: BrainConsentKey = def.consent as BrainConsentKey;
 
   // 1. HARD-REJECT device_private at the server edge. Content indexed on-device
   //    (§2.1) must use the device-only API; it can never enter the server brain,

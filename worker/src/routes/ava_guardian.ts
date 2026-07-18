@@ -90,6 +90,11 @@ function hourUtc(ts: number): number {
 // Fail-open, detached (void). Full event-bus consumption arrives with the consumers
 // wiring (plan §S1.5); this hook is the minimal in-worker fan-in point at launch.
 import { sentinelIngest } from "../sentinel/ingest";
+// §10 Guardian-as-producer: minimal structured safety events into the governed,
+// legal-basis safety store (guardian_events). Subject = the flagged SENDER. Never
+// message content. Direct lib/guardian write, fail-open (P0-1 makes senderUid/members
+// server-derived, so a spoof can't poison the safety store — see the SECURITY CONTRACT).
+import { guardianIngest } from "../lib/guardian/safety_ingest";
 // Phase C (ODL) — detached, fail-silent, zero-AI wake scan. DARK behind the
 // `odlEnabled` KV flag (default OFF → no-op). Never blocks or delays delivery.
 import { odlProcess } from "../lib/ava_odl";
@@ -1002,6 +1007,23 @@ export async function guardianScan(env: Env, args: GuardianScanArgs): Promise<Gu
     await recordFlag(env, { uid, conv, peer: senderUid, category, severity, detail });
     flagged++;
 
+    // §10 GUARDIAN-AS-PRODUCER — the same flag, recorded as a MINIMAL derived safety
+    // event in the governed safety store (guardian_events). Subject is the flagged
+    // SENDER (the record is ABOUT them); counterparty is the recipient. NO message
+    // content (§10.3/B-D1). Best-effort, detached, fail-open. §3.2 idempotency keyed
+    // to the exact flagged message so a redelivery collapses to one row.
+    void guardianIngest(env, {
+      subjectUid: senderUid,
+      counterpartyUid: uid,
+      conversationId: conv,
+      category,
+      severity,
+      action: "flag",
+      modelVersion: MOD_MODEL,
+      sourceId: `flag:${conv}:${flaggedClientId || Date.now()}:${category}`,
+      ts: Date.now(),
+    });
+
     // Guardian Sentinel (S1) — best-effort, detached, fail-open. The FLAGGED actor
     // is the SENDER (senderUid), so the evidence is ABOUT them. DARK behind
     // sentinelEnabled (sentinelIngest self-gates on the KV flag; a no-op when off).
@@ -1080,6 +1102,21 @@ export async function guardianScan(env: Env, args: GuardianScanArgs): Promise<Gu
       const count = await recentFlagCount(env, uid, conv, senderUid);
       if (count >= BLOCK_THRESHOLD) {
         await blockSender(env, uid, senderUid);
+        // §10 GUARDIAN-AS-PRODUCER — the enforcement ACTION (auto-block), recorded in
+        // the safety store with action:'block'. This is the record §10.2 refuses to let
+        // the subject delete (a ban record is not a reputation-laundering surface).
+        // Subject = the blocked SENDER. Fail-open, detached.
+        void guardianIngest(env, {
+          subjectUid: senderUid,
+          counterpartyUid: uid,
+          conversationId: conv,
+          category,
+          severity,
+          action: "block",
+          modelVersion: MOD_MODEL,
+          sourceId: `block:${conv}:${senderUid}:${uid}`,
+          ts: Date.now(),
+        });
         void track(env, uid, "guardian_sender_blocked", "guardian", {
           conv, is_group: isGroup, sender_uid: senderUid, recipient_uid: uid, flags: count, category,
           country: geo.country ?? null, // PII: raw ip removed (spec §1)

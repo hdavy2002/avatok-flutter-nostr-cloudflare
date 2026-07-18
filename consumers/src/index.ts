@@ -191,7 +191,9 @@ export default {
       } catch (e) { console.error("[brain-rollup]", String(e)); }
       try {
         const ret = await runBrainRetention(env);
-        if (ret.events || ret.facts || ret.vectors) env.ANALYTICS?.writeDataPoint({ blobs: ["brain_retention"], doubles: [ret.events, ret.facts, ret.vectors], indexes: ["cron"] });
+        // §10.2: also logs the safety-store roll-off (flags 12mo / enforcement 24mo).
+        if (ret.events || ret.facts || ret.vectors || ret.guardianFlags || ret.guardianEnforcement)
+          env.ANALYTICS?.writeDataPoint({ blobs: ["brain_retention"], doubles: [ret.events, ret.facts, ret.vectors, ret.guardianFlags, ret.guardianEnforcement], indexes: ["cron"] });
       } catch (e) { console.error("[brain-retention]", String(e)); }
       // AvaStorage (Phase 4): daily usage snapshot (trend mini-bars) + the
       // monthly 20-coins/GB over-quota billing run on the 1st (idempotent op_id).

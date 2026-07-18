@@ -30,6 +30,8 @@ class _BrainSettingsScreenState extends State<BrainSettingsScreen> {
   static const _deletedAtKey = 'brain_deleted_at';
 
   List<BrainToggle> _toggles = [];
+  // §10.1 — legal-basis domains (e.g. Safety records) shown as info disclosures, not switches.
+  List<BrainDomain> _disclosures = [];
   Map<String, bool> _state = {};
   bool _loading = true;
 
@@ -57,11 +59,13 @@ class _BrainSettingsScreenState extends State<BrainSettingsScreen> {
     await BrainConsent.refreshDomains();
     await BrainConsent.pull();
     final toggles = await BrainConsent.toggles();
+    final disclosures = await BrainConsent.disclosures();
     final state = await BrainConsent.all();
     final localOnly = await LocalOnlyAnswers.isOn();
     if (!mounted) return;
     setState(() {
       _toggles = toggles;
+      _disclosures = disclosures;
       _state = state;
       _localOnly = localOnly;
       _loading = false;
@@ -276,6 +280,10 @@ class _BrainSettingsScreenState extends State<BrainSettingsScreen> {
                 for (final t in _toggles)
                   _row(t.consentKey, t.label, t.description,
                       value: _state[t.consentKey] ?? t.defaultOn),
+              // §10.1 legal-basis DISCLOSURES (e.g. Safety records) — always shown, no
+              // switch. Safety processing runs on legitimate interest, not consent, so
+              // it is not gated by the master switch either.
+              for (final d in _disclosures) _disclosureRow(d),
             ]),
     );
   }
@@ -322,6 +330,64 @@ class _BrainSettingsScreenState extends State<BrainSettingsScreen> {
         const SizedBox(width: 10),
         ZineToggle(value: value, onChanged: (v) => _set(key, v)),
       ]),
+    );
+  }
+
+  // §10.1 — a legal-basis domain rendered as an info DISCLOSURE: an icon + a plain
+  // explanation + a "Learn more" affordance opening the explainer dialog. NEVER a
+  // Switch (a control the user cannot move would be a consent UI that lies).
+  Widget _disclosureRow(BrainDomain d) {
+    final label = d.label.isEmpty ? 'Safety records' : d.label;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 9),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        ZineIconBadge(
+            icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill), color: Zine.lilac, size: 30),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(label, style: ZineText.value(size: 14.5, weight: FontWeight.w800)),
+            const SizedBox(height: 2),
+            GestureDetector(
+              onTap: () => _showDisclosure(d),
+              behavior: HitTestBehavior.opaque,
+              child: Text.rich(TextSpan(style: ZineText.sub(size: 12), children: [
+                const TextSpan(text: 'Kept for platform safety; not deletable. '),
+                TextSpan(text: 'Learn more', style: ZineText.sub(size: 12, color: Zine.lilac)),
+              ])),
+            ),
+          ]),
+        ),
+      ]),
+    );
+  }
+
+  void _showDisclosure(BrainDomain d) {
+    Analytics.capture('brain_disclosure_opened', {
+      'domain': d.key,
+      if (Analytics.currentEmail != null) 'email': Analytics.currentEmail!,
+    });
+    final label = d.label.isEmpty ? 'Safety records' : d.label;
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Zine.card,
+        title: Text(label, style: ZineText.cardTitle()),
+        content: Text(
+            'To keep everyone safe, Ava keeps a minimal record of safety events — for '
+            'example when a message is flagged or someone is blocked for unsafe behaviour. '
+            'These records are kept under our legitimate interest in platform safety, not '
+            'as something you switch on or off, so there is no toggle. They are not removed '
+            'when you delete your other AvaBrain data, and they never include the content '
+            'of your messages.',
+            style: ZineText.sub(size: 14)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Got it', style: ZineText.tag(size: 13, color: Zine.inkSoft)),
+          ),
+        ],
+      ),
     );
   }
 
