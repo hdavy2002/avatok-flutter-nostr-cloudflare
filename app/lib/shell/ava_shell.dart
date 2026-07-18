@@ -37,6 +37,7 @@ import '../features/library/avalibrary_screen.dart';
 import '../features/library/avastorage_screen.dart';
 import '../features/marketplace/my_listings_screen.dart';
 import '../features/marketplace/sell_listing_flow.dart';
+import '../features/marketplace/compose_chat.dart';
 import '../features/marketplace/archived_screen.dart';
 import '../features/marketplace/marketplace_browse.dart';
 import '../features/explore/explore_home.dart';
@@ -302,6 +303,14 @@ class _AvaShellState extends State<AvaShell> {
         _push(ExploreHome(onMenu: () => Navigator.of(context).maybePop()));
         return;
       case 'createlisting':
+        // [MKT2] When aiComposeEnabled is ON, "Create listing" opens the AI compose
+        // chat, which runs the liveness gate CONVERSATIONALLY (§3.1) — so we push it
+        // directly, NOT behind the pre-gate (sending the user away first is the
+        // drop-off cliff the design avoids). The old form stays as the fallback.
+        if (RemoteConfig.aiComposeEnabled) {
+          _push(const ComposeChatScreen());
+          return;
+        }
         // First-time liveness gate (owner 2026-07-03): an unverified user must
         // pass the one-time human check before the sell flow opens. Verified
         // users go straight in (no extra screen). Only enforced when the flag is

@@ -12,6 +12,7 @@ import '../../features/marketplace/archived_screen.dart';
 import '../../features/marketplace/marketplace_browse.dart';
 import '../../features/marketplace/my_listings_screen.dart';
 import '../../features/marketplace/sell_listing_flow.dart';
+import '../../features/marketplace/compose_chat.dart';
 import '../../features/payout/payout_screen.dart';
 import '../../features/profile/profile_screen.dart';
 import '../../features/settings/about_screen.dart';
@@ -87,7 +88,11 @@ void openShellDestination(BuildContext context, String dest) {
       push(const ArchivedScreen());
       return;
     case 'createlisting':
-      push(const SellListingFlow());
+      // [MKT2] AI compose chat when enabled (it runs the liveness gate in-chat,
+      // §3.1), else the old form. Mirrors ava_shell.dart.
+      push(RemoteConfig.aiComposeEnabled
+          ? const ComposeChatScreen()
+          : const SellListingFlow());
       return;
     case 'about':
       push(const AboutScreen());

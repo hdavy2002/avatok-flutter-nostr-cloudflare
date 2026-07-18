@@ -251,6 +251,13 @@ class RemoteConfig {
   /// in KV `platform_config` to surface the Marketplace menu + agent calls.
   static bool get marketplaceEnabled => _b('marketplaceEnabled', false);
 
+  /// [MKT2] AI-chat listing creation (PLAN-2026-07-17 §3). When ON, "Create
+  /// listing" opens the AI compose chat instead of the 6-step form. Default OFF
+  /// (mirrors config.ts `aiComposeEnabled`); the form stays as the fallback (M-D7)
+  /// until the compose funnel proves out. Separate from `marketplaceEnabled` on
+  /// purpose — compose can be dark while the marketplace itself is live.
+  static bool get aiComposeEnabled => _b('aiComposeEnabled', false);
+
   /// Effective Marketplace visibility for the CURRENT account. The global
   /// `marketplaceEnabled` KV flag stays false during the phased/pro launch, so
   /// ordinary testers never see the Marketplace. Admins (see [isAdmin]) get it
