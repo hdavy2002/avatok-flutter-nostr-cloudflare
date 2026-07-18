@@ -319,6 +319,14 @@ export interface Env {
   // leaves the Worker (the caller only gets a DO WebSocket URL).
   RECEPTIONIST_GEMINI_API_KEY?: string;
 
+  // Cloud Text-to-Speech service-account JSON (project avatok-avaglobal, SA
+  // ava-tts@…), used by the CF receptionist engine to voice Ava in Hindi with the
+  // natural WaveNet voice (hi-IN-Wavenet-E) via lib/google_tts.ts. Cloud TTS needs
+  // an OAuth principal, not an API key — the Worker mints a token from this SA.
+  // Absent → cfSpeak() falls back to the Deepgram/melotts path (nothing breaks).
+  GOOGLE_TTS_SA_JSON?: string;
+  RECEPT_CF_GOOGLE_VOICE?: string;   // override the hi-IN Google voice (default hi-IN-Wavenet-E)
+
   // GenUI global template cache (Upstash Redis REST). URL is a [var]; TOKEN is a
   // secret. Absent → cache no-ops (compose every time; nothing breaks).
   UPSTASH_REDIS_REST_URL?: string;

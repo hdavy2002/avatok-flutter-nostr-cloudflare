@@ -28,6 +28,7 @@ import { dmConvId } from "../authz";
 import { contactFor } from "../lib/identity";
 import { avaReasonRaw } from "../lib/ava_reason"; // One Brain B1: gateway for STT/LLM/TTS
 import { aiRunOpts } from "../lib/ai_gate";       // AI Gateway cost-logging opts
+import { googleSynthesizePcm } from "../lib/google_tts"; // Hindi WaveNet voice (RECEPT-TTS-GOOGLE)
 
 /** Redact secrets from free-text error strings before telemetry. */
 function scrubSecrets(s: string): string {
@@ -605,7 +606,18 @@ export class ReceptionRoomCf {
     let firstChunk = true;
     let carry: Uint8Array | null = null; // odd trailing byte held for 16-bit alignment
     try {
-      const resp: any = await avaReasonRaw(this.env, {
+      // Hindi WaveNet (RECEPT-TTS-GOOGLE, owner decision 2026-07-18): a natural
+      // hi-IN voice via Cloud TTS instead of the robotic Deepgram/melotts path.
+      // Non-streaming REST; on null (secret unset, error, non-Hindi) we fall through
+      // to the avaReasonRaw path below, so a Google outage never silences Ava and the
+      // feature is disabled simply by unsetting GOOGLE_TTS_SA_JSON — no redeploy.
+      let gPcm: Uint8Array | null = null;
+      if (baseLang(this.langCode()) === "hi" && (this.env as any).GOOGLE_TTS_SA_JSON) {
+        const gVoice = String((this.env as any).RECEPT_CF_GOOGLE_VOICE || "hi-IN-Wavenet-E");
+        gPcm = await googleSynthesizePcm(this.env, { text: text.slice(0, 800), voice: gVoice, languageCode: "hi-IN", sampleRate: 24000 });
+        this.ev("ava_recept_cf_tts_provider", { provider: gPcm ? "google" : "fallback", voice: gVoice });
+      }
+      const resp: any = gPcm ? null : await avaReasonRaw(this.env, {
         role: "receptionist", capability: "tts", trigger: "speak", feature: "receptionist_tts",
         verb: "speak", model: this.cfTtsModel(), uid: this.init?.owner_uid,
         raw: { text: text.slice(0, 800), speaker: this.cfVoice(), encoding: "linear16", sample_rate: 24000, container: "none" },
@@ -614,7 +626,14 @@ export class ReceptionRoomCf {
         aiRunOpts: { returnRawResponse: true, ...(aiRunOpts(this.env, this.init?.owner_uid) || {}) },
       });
       const body: any = resp?.body ?? null;
-      if (body && typeof body.getReader === "function") {
+      if (gPcm && gPcm.byteLength) {
+        // Buffered send of the Google PCM (already full LINEAR16 @24kHz). Same
+        // record + chunked-send + first-audio-ack shape as the fallback branch below.
+        if (this.pcmBytes < ReceptionRoomCf.MAX_REC_BYTES) { this.pcmOut.push({ caller: false, pcm: gPcm }); this.pcmBytes += gPcm.byteLength; }
+        this.avaBytes += gPcm.byteLength; bytesSent = gPcm.byteLength; firstChunkAt = Date.now();
+        if (!this.firstAudioSent) { this.firstAudioSent = true; this.sendReadyAck(); this.ev("ava_recept_first_audio", { engine: "cf", ms: Date.now() - this.startedAt }); }
+        for (let o = 0; o < gPcm.byteLength && !this.cfBarged && !this.finalized; o += 24000) { try { this.client?.send(gPcm.subarray(o, Math.min(o + 24000, gPcm.byteLength))); } catch { /* caller gone */ } }
+      } else if (body && typeof body.getReader === "function") {
         const reader = body.getReader();
         for (;;) {
           if (this.cfBarged || this.finalized) { try { await reader.cancel(); } catch { /* ignore */ } break; }
