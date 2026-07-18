@@ -295,10 +295,10 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
       'attempt': attempt,
       'turn_seq': seq,
       'lang': _lang,
-      if (ux.firstByteMs != null) 'first_byte_ms': ux.firstByteMs,
-      if (ux.firstTextMs != null) 'first_text_ms': ux.firstTextMs,
-      if (ux.doneMs != null) 'done_ms': ux.doneMs,
-      if (ux.error != null) 'error': ux.error,
+      if (ux.firstByteMs != null) 'first_byte_ms': ux.firstByteMs!,
+      if (ux.firstTextMs != null) 'first_text_ms': ux.firstTextMs!,
+      if (ux.doneMs != null) 'done_ms': ux.doneMs!,
+      if (ux.error != null) 'error': ux.error!,
     });
   }
 
