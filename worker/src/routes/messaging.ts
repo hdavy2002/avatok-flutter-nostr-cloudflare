@@ -16,6 +16,7 @@ import { novuGroupInvite } from "../notify_novu"; // optional Novu orchestration
 import { delegateScan } from "./ava_delegate";   // P7 — Phase 11 hook
 import { guardianScan, guardianFastScan, hasGuardianOnRecipient } from "./ava_guardian"; // P8 + G3 inline two-lane scan
 import { canonicalMsgId } from "../util"; // canonical, chronologically-sortable message id
+import { brainIngest } from "../lib/brain_ingest"; // One Brain B3 (§8-B3, B-D1) — metadata-only chat activity
 import { inboxAcceptState } from "./safety"; // STREAM B — read-receipt suppression for pending stranger threads
 // STREAM F — auto-responder ("Ava replies while you're away"). Hot-path hook only:
 // on an incoming DM we decide whether to enqueue an auto-reply job; the heavy work
@@ -615,28 +616,51 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
         app_name: "avatok", service_name: "avatok-api", worker: true } });
   } catch { /* best-effort */ }
 
-  // Phase 9 — AvaBrain ingestion producer (best-effort; consumer re-checks the
-  // guardrails). Sender + each recipient (≤ sync cap) get the message indexed
-  // into THEIR OWN brain. Voice notes (kind=audio) get Whisper-transcribed.
-  try {
-    // [BRAIN-KILL-1] Honour the brainEnabled kill switch at the PRODUCER. The
-    // consumer re-checks guardrails, but enqueuing while the feature is OFF spends
-    // queue ops + risks ingestion the flag is meant to suppress. brainEnabled is
-    // false at launch, so this block ships dark — zero Q_BRAIN traffic from chat.
-    if ((await readConfig(env)).brainEnabled) {
-      const isGroup = mem.length > 2;
-      const brainPayload = {
-        conv, kind, body: text ? text.slice(0, 2000) : null, media_ref: mediaRef,
-        group: isGroup, created_at: created,
-      };
-      void env.Q_BRAIN.send({ uid: ctx.uid, event_type: "message_stored", source_app: "avatok", payload: { ...brainPayload, peer: others[0] ?? null } });
-      if (recipients.length <= FANOUT_SYNC_MAX) {
-        for (const m of recipients) {
-          void env.Q_BRAIN.send({ uid: m, event_type: "message_received", source_app: "avatok", payload: { ...brainPayload, peer: ctx.uid } });
+  // ── One Brain B3 (SPEC-2026-07-17 §8-B3, B-D1) — METADATA-ONLY chat activity ──
+  // The old dark `brainEnabled`-gated full-CONTENT ingestion path was REMOVED here
+  // (not flipped — §9): message BODIES never enter the server brain. Content is
+  // indexed on-device only (domain `msg_content`, device_private — the server edge
+  // HARD-REJECTS it). All we emit server-side is a non-content `msg_meta` event
+  // (who / when / thread / direction — NEVER a body or a snippet) into each
+  // participant's OWN brain, through the ONE ingestion contract. brainIngest fails
+  // consent CLOSED, and the consumer treats `msg_meta` as D1-event-only (no
+  // Vectorize embed, no LLM fact-extraction — per-message embedding is wasteful and
+  // there is no content to embed). A delete-for-everyone control is not activity.
+  // Runs detached so the extra work never adds latency to the send (best-effort,
+  // same fire-and-forget posture as the guardian scans below).
+  if (!delTarget) {
+    void (async () => {
+      try {
+        const isGroup = mem.length > 2;
+        const peerUid = isGroup ? null : (others[0] ?? null);
+        const mediaType = kind && kind !== "text" ? kind : undefined;
+        // Peer display name for the audit one-liner ONLY (never embedded). Best-effort.
+        const peerName = isGroup
+          ? "a group"
+          : (peerUid ? await senderDisplayName(env, peerUid).catch(() => "a contact") : "a contact");
+        // Sender's own brain — outgoing activity.
+        await brainIngest(env, {
+          uid: ctx.uid, domain: "msg_meta", kind: "message_sent", sourceId: String(mid),
+          text: `Message to ${peerName}`,
+          meta: { peer: peerUid, conv, direction: "out", group: isGroup, ...(mediaType ? { mediaType } : {}) },
+          ts: created, email: _email || null,
+        });
+        // Each recipient's own brain — incoming activity. Mirrors the legacy dual
+        // emit; bounded to the sync fan-out cap (large fan-outs skip per-recipient
+        // brain events, exactly as the removed path did).
+        if (recipients.length <= FANOUT_SYNC_MAX) {
+          for (const m of recipients) {
+            await brainIngest(env, {
+              uid: m, domain: "msg_meta", kind: "message_received", sourceId: String(mid),
+              text: `Message from ${fromName}`,
+              meta: { peer: ctx.uid, conv, direction: "in", group: isGroup, ...(mediaType ? { mediaType } : {}) },
+              ts: created,
+            });
+          }
         }
-      }
-    }
-  } catch { /* brain feed is best-effort, never blocks the send */ }
+      } catch { /* brain feed is best-effort, never blocks the send */ }
+    })();
+  }
 
   // Ava delegate (P7) + guardian (P8) post-fanout scans. Both self-gate on cheap
   // string heuristics → ZERO model cost for clean / non-monitored messages. Run

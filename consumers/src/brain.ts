@@ -146,12 +146,12 @@ function normalizeEnvelope(m: any): NormMsg | null {
 }
 
 // Map a registry domain onto the consumer's processing branch. Files → the
-// library ingest path; message domains → the message/vector path; everything
-// else flows through the generic entity/fact extractor (event_type is only a
-// label there).
+// library ingest path; everything else keeps the event's own kind as the label
+// (routing to the msg_meta / voicemail paths is by DOMAIN — see handleBrain — not
+// by event_type, so msg_meta events keep an accurate 'message_sent'/'received'
+// event_type in brain_events instead of a misleading 'message_stored').
 function mapDomainToEventType(domain: string, kind: string): string {
   if (domain === "files") return "library_file_added";
-  if (domain === "msg_meta" || domain === "msg_content") return "message_stored";
   return kind || domain;
 }
 
@@ -216,10 +216,34 @@ export async function handleBrain(rawMsg: BrainMsg, env: Env): Promise<void> {
     if (eventId === null) return; // duplicate — already processed, drop
   }
 
-  // Phase 9: messages + voice notes → retrievable vectors (RAG), not the
-  // entity/fact extraction below (too high-volume for an LLM per message).
+  // ── One Brain B3 (SPEC-2026-07-17 §8-B3, B-D1) — message + voicemail routing ──
+  // msg_meta is METADATA-ONLY. Its raw event is already recorded in brain_events
+  // (via the idempotency claim above); it is NEVER embedded into Vectorize and
+  // NEVER run through LLM fact-extraction — per-message embedding is wasteful and
+  // there is no content to embed (B-D1). Mark processed and stop. Routed by DOMAIN
+  // (source_app), not event_type, so it can't fall through to any content path.
+  if (msg.source_app === "msg_meta") {
+    if (eventId) { try { await env.DB_BRAIN.prepare("UPDATE brain_events SET processed=1 WHERE id=?1").bind(eventId).run(); } catch { /* best-effort */ } }
+    return;
+  }
+
+  // Voicemail transcripts (server-readable, account_private — owner-approved server
+  // side). Re-homed under the `voicemail` domain (§8-B3): this path previously
+  // piggy-backed on chat `message_stored` audio events gated at the producer by
+  // brainEnabled — that producer path is GONE. Voicemails now arrive as their own
+  // domain event, gated ONLY by the `voicemail` consent key (checked above), so the
+  // transcript path no longer depends on brainEnabled.
+  if (msg.source_app === "voicemail") {
+    await ingestVoicemail(msg, env);
+    return;
+  }
+
+  // B-D1: legacy in-flight chat CONTENT events (message_stored / message_received
+  // from the now-removed brainEnabled producer, source_app 'avatok') must NEVER be
+  // embedded server-side — chat content lives on-device only. Drop them. This
+  // guards the transition window where a few such events may still sit in Q_BRAIN.
   if (msg.event_type === "message_stored" || msg.event_type === "message_received") {
-    await ingestMessage(msg, env);
+    if (eventId) { try { await env.DB_BRAIN.prepare("UPDATE brain_events SET processed=1 WHERE id=?1").bind(eventId).run(); } catch { /* best-effort */ } }
     return;
   }
 
@@ -571,62 +595,47 @@ async function recordVector(env: Env, uid: string, vecId: string, capability: st
   } catch { /* registry best-effort (table from brain_phase9.sql) */ }
 }
 
-// Message stored/received → embed the text (or the Whisper transcript for a
-// voice note) into Vectorize, uid-scoped, with deep-linkable metadata.
-// payload: { conv, kind, body, media_ref, peer, group, created_at }
-async function ingestMessage(msg: BrainMsg, env: Env): Promise<void> {
+// Voicemail transcription (server-readable, account_private). One Brain B3
+// (§8-B3): re-homed from the old chat-audio path — triggered by the `voicemail`
+// DOMAIN, gated by the `voicemail` consent key (checked in handleBrain), NOT by
+// brainEnabled. Whisper-transcribe the voicemail audio in R2 → store the transcript
+// + embed retrievable, deep-linkable kind=voicemail vectors. NO chat-message TEXT
+// is ever embedded here (B-D1) — that ingestion path is deleted.
+// payload (from the `voicemail` domain brainIngest meta): { media_ref, conv?, peer?, created_at? }
+async function ingestVoicemail(msg: BrainMsg, env: Env): Promise<void> {
   const uid = msg.uid;
   const p = (msg.payload ?? {}) as any;
-  if (!env.VECTOR_INDEX || !p.conv) return;
-  const conv = String(p.conv);
-  const ts = Number(p.created_at || Date.now());
+  const mediaRef = p.media_ref ? String(p.media_ref) : "";
+  if (!env.VECTOR_INDEX || !mediaRef) return;
+  const conv = p.conv ? String(p.conv) : "";
+  const ts = Number(p.created_at || p.ts || Date.now());
   const peer = p.peer ? String(p.peer) : "";
-  const capability = capabilityFor(msg);
 
-  // Voice note / voice mail → Whisper transcription → kind=voicemail vectors.
-  if (String(p.kind || "text") === "audio" && p.media_ref) {
-    const mediaRef = String(p.media_ref);
-    // Client-encrypted blobs (legacy E2E DM media) are unscannable ciphertext —
-    // skip them; only server-readable voice notes get transcribed.
-    try {
-      const row = await env.DB_MEDIA.prepare("SELECT encrypted FROM user_media WHERE key=?1 LIMIT 1").bind(mediaRef).first<{ encrypted: number }>();
-      if (row && Number(row.encrypted) === 1) return;
-    } catch { /* lookup best-effort */ }
-    const transcript = await transcribeVoice(env, mediaRef);
-    if (!transcript) return; // no key / fetch failed — nothing to index
-    try {
-      await env.DB_BRAIN.prepare(
-        `INSERT OR REPLACE INTO brain_transcripts (uid, media_ref, conv, transcript, created_at)
-         VALUES (?1,?2,?3,?4,?5)`,
-      ).bind(uid, mediaRef, conv, transcript.slice(0, 8000), ts).run();
-    } catch { /* table from brain_phase9.sql */ }
-    const chunks = chunkText(transcript, 480).slice(0, 8);
-    const md = { uid, kind: "voicemail", app: "avatok", conv, media_ref: mediaRef, peer, ts, type: "voicemail" };
-    const vectors = [] as any[];
-    for (let i = 0; i < chunks.length; i++) {
-      const values = await embed(env, chunks[i]);
-      if (values) vectors.push({ id: `${uid}:vm:${mediaRef}:${i}`, values, metadata: { ...md, snippet: chunks[i].slice(0, 480) } });
-    }
-    if (vectors.length) {
-      try { await env.VECTOR_INDEX.upsert(vectors); } catch { return; }
-      for (const v of vectors) await recordVector(env, uid, v.id, "voicemail", "voicemail", "avatok", mediaRef);
-    }
-    return;
-  }
-
-  // Text message → one bounded vector (snippet keeps the answerable content).
-  const body = String(p.body || "").trim();
-  if (!body) return;
-  const values = await embed(env, body.slice(0, 512));
-  if (!values) return;
-  const vecId = `${uid}:msg:${conv}:${ts}`;
+  // Client-encrypted blobs are unscannable ciphertext — never transcribe them.
   try {
-    await env.VECTOR_INDEX.upsert([{
-      id: vecId, values,
-      metadata: { uid, kind: "message", app: "avatok", conv, peer, ts, snippet: body.slice(0, 480), type: "message" },
-    }]);
-  } catch { return; }
-  await recordVector(env, uid, vecId, capability, "message", "avatok", conv);
+    const row = await env.DB_MEDIA.prepare("SELECT encrypted FROM user_media WHERE key=?1 LIMIT 1").bind(mediaRef).first<{ encrypted: number }>();
+    if (row && Number(row.encrypted) === 1) return;
+  } catch { /* lookup best-effort */ }
+
+  const transcript = await transcribeVoice(env, mediaRef);
+  if (!transcript) return; // no key / fetch failed — nothing to index
+  try {
+    await env.DB_BRAIN.prepare(
+      `INSERT OR REPLACE INTO brain_transcripts (uid, media_ref, conv, transcript, created_at)
+       VALUES (?1,?2,?3,?4,?5)`,
+    ).bind(uid, mediaRef, conv, transcript.slice(0, 8000), ts).run();
+  } catch { /* table from brain_phase9.sql */ }
+  const chunks = chunkText(transcript, 480).slice(0, 8);
+  const md = { uid, kind: "voicemail", app: "avatok", conv, media_ref: mediaRef, peer, ts, type: "voicemail" };
+  const vectors = [] as any[];
+  for (let i = 0; i < chunks.length; i++) {
+    const values = await embed(env, chunks[i]);
+    if (values) vectors.push({ id: `${uid}:vm:${mediaRef}:${i}`, values, metadata: { ...md, snippet: chunks[i].slice(0, 480) } });
+  }
+  if (vectors.length) {
+    try { await env.VECTOR_INDEX.upsert(vectors); } catch { return; }
+    for (const v of vectors) await recordVector(env, uid, v.id, "voicemail", "voicemail", "avatok", mediaRef);
+  }
 }
 
 // Whisper transcription of a voice note in R2. Prefers OpenAI when

@@ -73,14 +73,14 @@ export async function avaRagStore(req: Request, env: Env): Promise<Response> {
   return json({ ok: true, store: shardId(env, ctx.uid) });
 }
 
-// POST /api/ava/rag/backfill — index the user's EXISTING Messenger history into
-// their one AI Search instance, so the master brain (ChatAVA) can discuss past
-// conversations and files even if they predate live ingestion (or a tier upgrade).
+// POST /api/ava/rag/backfill — index the user's EXISTING FILES into their one AI
+// Search instance so the master brain (ChatAVA) can discover them by name.
 // Free + premium (free is capped by freeQuota). Idempotent-ish: re-runs re-upload by name.
 //
-// COVERAGE: (1) text-bearing messages from the user's InboxDO (server-readable in
-// the Cloudflare-native arch), grouped one document per conversation; (2) a
-// descriptor per user_media file so files are discoverable by name. Existing-file
+// One Brain B-D2 (SPEC-2026-07-17 §1, §6.1): the former chat-history feed (InboxDO
+// messages → AI Search) is REMOVED — chat content must not be shipped to a second
+// store; it is indexed on-device only (AvaLocalBrain). COVERAGE now: a descriptor
+// per user_media file so files are discoverable by name (NON-chat). Existing-file
 // CONTENT (PDF text etc.) is indexed by the client on upload; a deeper server-side
 // content backfill (fetch + extract per file) can be queued later for scale.
 export async function avaRagBackfill(req: Request, env: Env): Promise<Response> {
@@ -96,41 +96,18 @@ export async function avaRagBackfill(req: Request, env: Env): Promise<Response> 
   const canIngest = (bytes: number): boolean =>
     premium || (used!.items < q.maxItems && used!.bytes + bytes <= q.maxBytes);
 
-  let conversations = 0;
+  // One Brain B-D2 (SPEC-2026-07-17 §1, §6.1): the CHAT-TEXT feed of this backfill
+  // is CUT. It used to read the user's InboxDO messages and index chat BODIES into a
+  // second store (Cloudflare AI Search) — a second, unaudited brain of message
+  // content, exactly what B-D2 rejects. Message content now lives on-device only
+  // (AvaLocalBrain, domain msg_content). The file/document backfill below is
+  // NON-chat and is retained. `conversations` stays 0 so the response shape is
+  // unchanged for older clients.
+  const conversations = 0;
   let files = 0;
   let capped = false;
 
-  // (1) Messages from the user's own InboxDO, grouped per conversation.
-  try {
-    const dobj = env.INBOX.get(env.INBOX.idFromName(ctx.uid));
-    const r = await dobj.fetch("https://inbox/export?limit=1500");
-    const j: any = await r.json().catch(() => ({}));
-    const rows: any[] = Array.isArray(j?.messages) ? j.messages : [];
-    const byConv = new Map<string, string[]>();
-    // rows arrive newest→oldest; reverse to read chronologically.
-    for (const m of rows.reverse()) {
-      const kind = String(m.kind ?? "text");
-      if (kind !== "text" && kind !== "ava" && kind !== "ava_private") continue;
-      const body = String(m.body ?? "").trim();
-      if (!body || body.startsWith("{")) continue; // skip control/JSON envelopes
-      const who = m.sender === "ava" ? "Ava" : (m.sender === ctx.uid ? "Me" : "Them");
-      const conv = String(m.conv ?? "chat");
-      if (!byConv.has(conv)) byConv.set(conv, []);
-      byConv.get(conv)!.push(`${who}: ${body}`);
-    }
-    for (const [conv, lines] of byConv) {
-      if (!lines.length) continue;
-      const doc = (`Messenger conversation ${conv}:\n` + lines.slice(-400).join("\n")).slice(0, 100_000);
-      if (!canIngest(doc.length)) { capped = true; break; }
-      try {
-        await ingestForUser(env, ctx.uid, `messages-${conv}.txt`, doc, undefined, { tier, src: "backfill" });
-        if (used) { used.items++; used.bytes += doc.length; }
-        conversations++;
-      } catch { /* skip one conv, keep going */ }
-    }
-  } catch { /* messages best-effort */ }
-
-  // (2) A descriptor per user_media file (discoverable by name in ChatAVA).
+  // A descriptor per user_media file (discoverable by name in ChatAVA). NON-chat.
   try {
     const mdb = mediaSession(env);
     const res = await mdb.prepare(
