@@ -91,7 +91,7 @@ const CARD_SELECT = `
          l.starts_at, l.duration_min, l.capacity, l.status, l.joined_count,
          l.expires_at, l.expiry_days, l.market_type, l.social_sub, l.location,
          l.translation_enabled, l.spoken_lang,
-         l.rating_avg, l.rating_count, l.created_at,
+         l.rating_avg, l.rating_count, l.created_at, l.content_version,
          (SELECT COUNT(*) FROM reviews rv WHERE rv.listing_id = l.id) AS review_count,
          (SELECT COUNT(*) FROM listing_views lv WHERE lv.subject_kind='listing' AND lv.subject_id = l.id) AS view_count,
          u.handle AS creator_handle, u.display_name AS creator_name, u.avatar_url AS creator_avatar,
@@ -153,6 +153,12 @@ function shapeCard(r: any, promosByListing?: Map<string, any[]>, favorited?: Set
     view_count: Number(r.view_count ?? 0),
     created_at: r.created_at != null ? Number(r.created_at) : null,
     favorited: favorited ? favorited.has(String(r.id)) : false,
+    // [AVA-MKT-CVER-1] The negotiation reopen key. The client echoes this back on
+    // /marketplace/negotiate{,/state}, which key mkt_negotiations on
+    // (buyer_id, listing_id, content_version) — so a material owner edit (which
+    // bumps this in updateListing) reopens "talk to my agent" for every buyer.
+    // Defaults to 0 pre-migration, which is exactly what the client already sent.
+    content_version: Number(r.content_version ?? 0),
     creator: {
       uid: r.creator_id, handle: r.creator_handle ?? null,
       name: r.creator_name ?? null, avatar_url: r.creator_avatar ?? null,
@@ -231,6 +237,24 @@ export async function fanout(env: Env, creatorId: string, title: string, body: s
 
 const EDITABLE = ["title", "description", "category", "price", "currency_display", "country", "adults_only", "badges", "cover_media", "starts_at", "duration_min", "capacity", "translation_enabled", "spoken_lang", "agent_instructions", "agent_lang", "agent_voice_persona", "location", "expiry_days"] as const;
 
+// [AVA-MKT-CVER-1] MATERIAL fields — the subset of EDITABLE whose change invalidates
+// a negotiation a buyer's agent already had. Editing one bumps listings.content_version,
+// which reopens "talk to my agent" for EVERY buyer on the listing (the mkt_negotiations
+// PK includes content_version).
+//
+// This list is deliberately SHORT, and adding to it costs real money. A bump reopens a
+// PAID Sonnet negotiation for every buyer, and agentDailyCap (10/day) caps the BUYER,
+// not the seller — nothing bounds a seller who edits repeatedly. So the test is strictly
+// "would a buyer's agent have negotiated differently?":
+//   IN  — title, description, price, currency_display, category: the terms themselves.
+//         (currency_display matters as much as price: 500 USD ≠ 500 INR.)
+//   OUT — cover_media (reordering photos), expiry_days (a TTL renewal), agent_* settings
+//         (the SELLER's own mandate, not the offer), country/location/badges, and the
+//         live_event scheduling fields. None change what was agreed.
+// normFields() already folds the client's price_amount/price_currency aliases into
+// price/currency_display, so comparing the normalized values here catches both spellings.
+const MATERIAL = ["title", "description", "price", "currency_display", "category"] as const;
+
 function normFields(b: any): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   if (b.title !== undefined) out.title = String(b.title).slice(0, 140);
@@ -283,9 +307,14 @@ function normFields(b: any): Record<string, unknown> {
 // one contract, no per-surface special cases — a gap in a safety control is a
 // destination, not an omission.
 //
-// requireLiveness() fails CLOSED and emits its own telemetry. Returns a 403 Response
+// gatePublicAction() fails CLOSED and emits its own telemetry. Returns a 403 Response
 // to short-circuit, or null to proceed. Browsing stays free.
-async function phoneGate(env: Env, uid: string, listingKind: string, listingId: string | null): Promise<Response | null> {
+//
+// NAME: this was `phoneGate()` until 2026-07-18. It has enforced LIVENESS (never a
+// phone) since 2026-07-10; the old name and its comments claimed the opposite and
+// misled readers into deriving a phone-OTP model that no longer exists. Owner
+// decisions M-D1 (2026-07-17) / M-D11 (2026-07-18): liveness only, no phone anywhere.
+async function identityGate(env: Env, uid: string, listingKind: string, listingId: string | null): Promise<Response | null> {
   // A 'social' listing IS a post; 'live_event' IS going live. Same gate either way.
   const action: PublicAction = listingKind === "live_event" ? "live" : listingKind === "social" ? "post" : "listing";
   const blocked = await gatePublicAction(env, uid, await emailOf(env, uid), action);
@@ -301,9 +330,10 @@ export async function createListing(req: Request, env: Env): Promise<Response> {
   const b = (await req.json().catch(() => ({}))) as any;
   const kind = String(b.kind || "");
   if (!KINDS.has(kind)) return json({ error: "kind must be live_event|consult|sell|buy|social" }, 400);
-  // Marketplace sell gate (2026-07-07): phone-OTP instead of liveness. Liveness
-  // is the ONBOARDING gate only and is NOT required to create a listing.
-  const gate = await phoneGate(env, ctx.uid, kind, null);
+  // Marketplace listing gate (2026-07-10): a Didit LIVENESS pass, valid 90 days.
+  // Creating a listing is a public action, so it is gated exactly like posts,
+  // going live and DMs to strangers. There is no phone check here (none anywhere).
+  const gate = await identityGate(env, ctx.uid, kind, null);
   if (gate) return gate;
   const id = crypto.randomUUID();
   const now = Date.now();
@@ -333,7 +363,11 @@ export async function createListing(req: Request, env: Env): Promise<Response> {
 export async function updateListing(req: Request, env: Env, id: string): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
-  const row = await metaDb(env).prepare("SELECT creator_id, status, kind FROM listings WHERE id=?1").bind(id).first<any>();
+  // [AVA-MKT-CVER-1] The MATERIAL columns ride along so we can diff old vs new below
+  // — a bump must reflect a real CHANGE, not merely a field being submitted.
+  const row = await metaDb(env).prepare(
+    "SELECT creator_id, status, kind, content_version, title, description, price, currency_display, category FROM listings WHERE id=?1",
+  ).bind(id).first<any>();
   if (!row || row.creator_id !== ctx.uid) return json({ error: "not found" }, 404);
   if (row.status === "cancelled" || row.status === "completed") return json({ error: "listing closed" }, 409);
   const f = normFields((await req.json().catch(() => ({}))) as any);
@@ -348,9 +382,25 @@ export async function updateListing(req: Request, env: Env, id: string): Promise
   if (row.status !== "draft" && row.kind === "live_event" && ("starts_at" in f || "duration_min" in f)) {
     return json({ error: "cannot move a published event — cancel and re-create" }, 409);
   }
+  // [AVA-MKT-CVER-1] Bump content_version ONLY on a real delta to a MATERIAL field.
+  // Submitting title unchanged (the client PUTs the whole form) must NOT reopen every
+  // buyer's paid negotiation — hence the value comparison, not an `in f` check.
+  // Compared as strings so 500 vs "500" (D1 vs JSON) and null vs "" don't read as edits.
+  const same = (a: unknown, b: unknown) => String(a ?? "") === String(b ?? "");
+  const changed = (MATERIAL as readonly string[]).filter((k) => k in f && !same(f[k], row[k]));
+  const material = changed.length > 0;
+  // Literal expression, not a bind — keeps the ?N bind order below stable, and the
+  // read-modify-write happens inside SQLite so concurrent edits can't lose a bump.
+  const bump = material ? ", content_version=content_version+1" : "";
   const sets = keys.map((k, i) => `${k}=?${i + 2}`).join(", ");
-  await metaDb(env).prepare(`UPDATE listings SET ${sets}, updated_at=?${keys.length + 2} WHERE id=?1`)
+  await metaDb(env).prepare(`UPDATE listings SET ${sets}${bump}, updated_at=?${keys.length + 2} WHERE id=?1`)
     .bind(id, ...keys.map((k) => f[k]), Date.now()).run();
+  const version = Number(row.content_version ?? 0) + (material ? 1 : 0);
+  if (material) {
+    track(env, ctx.uid, "listing_content_version_bumped", APP, {
+      listing_id: id, listing_kind: row.kind, fields: changed, content_version: version,
+    });
+  }
   // #8: live listing update — nudge anyone viewing this listing to refresh
   // (price / details changed). Ephemeral, best-effort.
   void partyEmit(env, `listing:${id}`, { t: "listing_update" });
@@ -361,7 +411,9 @@ export async function updateListing(req: Request, env: Env, id: string): Promise
       .bind(id, Date.now() + Number(f.expiry_days) * 86_400_000).run();
   }
   if (row.status !== "draft") await ftsSync(env, id);
-  return json({ ok: true });
+  // content_version is additive in this response: the client can refresh its copy of
+  // the reopen key without re-fetching the card.
+  return json({ ok: true, content_version: version });
 }
 
 // POST /api/listings/:id/publish — KYC gate + slot claim (live) / rules check (consult).
@@ -373,18 +425,19 @@ export async function publishListing(req: Request, env: Env, id: string): Promis
   if (!l || l.creator_id !== ctx.uid) return json({ error: "not found" }, 404);
   if (l.status !== "draft") return json({ error: "already published", status_now: l.status }, 409);
 
-  // Marketplace sell gate (2026-07-07): phone-OTP instead of liveness. Covers
-  // publish AND edit-to-republish (a re-publish always funnels back through here).
-  // Liveness is the ONBOARDING gate only and is NOT required to publish a listing.
-  const lg = await phoneGate(env, ctx.uid, String(l.kind), id);
+  // Marketplace listing gate (2026-07-10): a Didit LIVENESS pass, valid 90 days.
+  // Covers publish AND edit-to-republish (a re-publish always funnels back through
+  // here). No phone check — phone verification was removed app-wide.
+  const lg = await identityGate(env, ctx.uid, String(l.kind), id);
   if (lg) return lg;
 
   const isMarket = MARKET_KINDS.has(String(l.kind));
   if (isMarket) {
     // AvaMarketplace (buy/sell/social): no slots, availability, capacity or valid-
     // category-id requirement; photos are optional so the flow is testable now.
-    // NOTE: the 3-factor identity gate (video+email+phone) is the pre-public-launch
-    // requirement and is intentionally NOT enforced here yet (testing phase).
+    // NOTE: identity IS enforced — identityGate() above already required a Didit
+    // liveness pass. The old "3-factor (video+email+phone), not enforced yet" note
+    // here was wrong on both counts: there is no phone factor, and the gate is live.
     if (!l.title) return json({ error: "title required" }, 400);
     const mc = parseJson(l.cover_media, [] as unknown[]);
     if (Array.isArray(mc) && mc.length > 5) return json({ error: "max 5 photos" }, 400);

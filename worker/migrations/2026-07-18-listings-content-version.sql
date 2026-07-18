@@ -1,0 +1,57 @@
+-- [AVA-MKT-CVER-1] listings.content_version — the negotiation reopen key.
+--
+-- THIS IS GENUINELY NEW SCHEMA — unlike its sibling
+-- 2026-07-18-listings-drift-columns.sql, which back-fills 8 columns that already
+-- existed in prod by hand. Verified read-only against the live prod `avatok-meta`
+-- DDL on 2026-07-18: `content_version` does NOT exist there, on ANY database, and
+-- no code has ever written it. This ALTER genuinely adds a column everywhere.
+--
+-- WHY — A DOCUMENTED FEATURE THAT HAS NEVER WORKED.
+-- worker/src/routes/marketplace.ts:367-395 keys the "talk to my agent" ledger
+-- `mkt_negotiations` on (buyer_id, listing_id, content_version), and its own
+-- comment says "an owner edit bumps the version and reopens the door (Specs §3 B)".
+-- app/lib/features/marketplace/my_listings_screen.dart:99-106 repeats that claim to
+-- the seller. Both are FALSE: `listings` had no content_version column, nothing in
+-- listings.ts ever bumped one, and the client therefore always sends 0. The primary
+-- key collapses to (buyer_id, listing_id) in practice, so a buyer gets exactly ONE
+-- negotiation per listing FOREVER — editing the listing has never reopened anything.
+-- This column is the missing half; listings.ts updateListing() now bumps it.
+--
+-- DEFAULT 0 is deliberate and required for backward compatibility: every existing
+-- row and every client that omits the param already means version 0, so existing
+-- mkt_negotiations rows keep matching their listings and no in-flight negotiation
+-- is orphaned by this migration. NOT NULL keeps the PK component non-null.
+--
+-- SCOPE NOTE — bumping is intentionally NOT "on every update". A bump reopens a
+-- PAID Sonnet negotiation for EVERY buyer on the listing, and agentDailyCap (10/day)
+-- caps the BUYER, not the seller — so a seller toggling a field in a loop would
+-- multiply our LLM spend with nothing bounding it. listings.ts bumps only on a real
+-- delta to buyer-relevant content: title, description, price, currency_display,
+-- category. Cover-media reordering, expiry_days and agent settings do NOT bump.
+--
+-- ---------------------------------------------------------------------------
+-- IDEMPOTENCY — same rule as every ALTER migration in this directory.
+--
+-- SQLite/D1 has NO `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`:
+--   * FRESH / STAGING / PROD (column absent) -> applies cleanly. Correct.
+--   * RE-RUN (column present)                -> fails with
+--                                               "duplicate column name: content_version".
+--                                               SAFE, and EXPECTED on a second run.
+--
+--   PREFERRED (safe on every DB state — PRAGMA-guards the column, no-op if present):
+--     scripts/d1_apply_alters.py worker/migrations/2026-07-18-listings-content-version.sql --dry-run
+--     scripts/d1_apply_alters.py worker/migrations/2026-07-18-listings-content-version.sql
+--
+--   RAW (only for a known-fresh DB):
+--     scripts/cf.sh worker d1 execute DB_META --remote \
+--       --file=migrations/2026-07-18-listings-content-version.sql
+--
+-- Both go through scripts/cf.sh, so staging is the default and prod is fail-closed
+-- behind ALLOW_PROD=1. Pass the BINDING (DB_META), not a database name — prod is
+-- `avatok-meta`, staging is `avatok-meta-staging`; the binding resolves per --env.
+--
+-- Apply order: after 2026-07-18-listings-drift-columns.sql, so a fresh DB's column
+-- order continues to match prod's (this column lands last on both).
+-- ---------------------------------------------------------------------------
+
+ALTER TABLE listings ADD COLUMN content_version INTEGER NOT NULL DEFAULT 0;
