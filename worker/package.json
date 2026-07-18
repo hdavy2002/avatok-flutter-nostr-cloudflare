@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
     "dry-run": "wrangler deploy --dry-run --outdir=dist",
     "deploy": "echo '[ENV-ISOLATION-1] `npm run deploy` is disabled: it deployed to PRODUCTION with no warning. Use `npm run deploy:staging` (safe) or `npm run deploy:prod` (requires ALLOW_PROD=1).' && exit 1",
     "deploy:staging": "AVATOK_TARGET=staging ../scripts/cf.sh worker deploy",
@@ -15,7 +16,9 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250510.0",
+    "eslint": "^9.9.0",
     "typescript": "^5.5.4",
+    "typescript-eslint": "^8.0.0",
     "vitest": "^2.1.9",
     "wrangler": "^4.0.0"
   }
