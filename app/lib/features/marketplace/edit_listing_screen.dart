@@ -8,6 +8,7 @@ import '../../core/api_auth.dart';
 import '../../core/cached_image.dart';
 import '../../core/config.dart';
 import '../../core/listings_api.dart';
+import '../../core/marketplace_api.dart';
 import '../../core/ui/avatok_dark.dart';
 import 'sell_listing_flow.dart'
     show kMarketCategories, kMarketCurrencies, kCountries, kCountryCodes, flagFor;
@@ -109,6 +110,20 @@ class _EditListingScreenState extends State<EditListingScreen> {
 
   Future<void> _save() async {
     setState(() { _busy = true; _error = null; });
+    // P7 safety precheck — the SAME gate `_submit` in sell_listing_flow.dart runs
+    // before publish. Without it an edit was a moderation bypass: publish clean
+    // text, get approved, then swap in anything. Runs BEFORE the update so the
+    // rejected text never reaches the listing, and before `fields` is built so the
+    // PII-stripped `cleaned_description` is what gets saved.
+    final pc = await MarketplaceApi.precheck(title: _title.text.trim(), description: _desc.text.trim());
+    if (!mounted) return;
+    if (pc['ok'] != true) {
+      Analytics.capture('listing_edit_rejected', {'listing_id': widget.listingId, 'reason': pc['reason']});
+      setState(() { _busy = false; _error = pc['reason']?.toString() ?? 'Your changes were rejected — please revise them.'; });
+      return;
+    }
+    final cleaned = pc['cleaned_description']?.toString();
+    if (cleaned != null && cleaned.isNotEmpty) _desc.text = cleaned;
     final fields = <String, dynamic>{
       'title': _title.text.trim(),
       'description': _desc.text.trim(),
