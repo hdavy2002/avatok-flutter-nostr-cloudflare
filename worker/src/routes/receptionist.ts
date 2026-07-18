@@ -40,6 +40,7 @@ import {
   authorityRelease,
   shadowRecord,
 } from "../lib/call_authority"; // control-plane authority — fail-open, flag-gated (see file header)
+import { vmGreetingText, prerenderVmGreetings } from "../lib/vm_greeting"; // shared zero-cost VM greetings (in-app + PSTN)
 
 // Receptionist gating is SUBSCRIPTION-DRIVEN (not a hard premium wall): it reads
 // the OWNER's tier's daily `recept` allowance from plans.ts, which merges the KV
@@ -785,6 +786,14 @@ export async function receptionistPutSettings(req: Request, env: Env): Promise<R
     { style: greetingStyle ?? "none", festival: festivalGreeting === 1, answer_lang: answerLang ?? "auto" });
 
   await refreshSettingsCache(env, ctx.uid); // bust-on-save: next call sees fresh settings
+  // ZERO-COST VM (owner 2026-07-19): pre-render ALL scenario greetings in the owner's
+  // chosen language on save, so the first real call never pays render latency and a
+  // name/language change regenerates immediately. Content-hash cache = unchanged
+  // settings re-save is a no-op (pure R2 hits). Best-effort; call path lazily heals.
+  try {
+    const vmLabel = display || (await nameFor(env, ctx.uid).catch(() => null)) || "";
+    await prerenderVmGreetings(env, ctx.uid, vmLabel, answerLang || language || "");
+  } catch { /* best-effort */ }
   track(env, ctx.uid, enabled ? "ava_recept_enabled" : "ava_recept_disabled", APP,
     { has_instructions: instr.length > 0, voice, has_persona: !!persona,
       language: language ?? "auto", answer_all: !!answerAll,
@@ -1125,27 +1134,8 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   // call"), rings/default ("not picking up"). Each variant caches under its own
   // content-hash key in R2, so all 3-4 renders per owner are one-time and replay
   // free. Hindi templates when the owner's answer language is Hindi.
-  const vmGreeting = (() => {
-    const hi = greetingBaseLang(greetLangCode) === "hi";
-    switch (activationMode) {
-      case "decline": // callee actively rejected the call
-        return hi
-          ? `नमस्ते! ${ownerLabel} अभी व्यस्त हैं — कृपया बाद में कॉल करें, या बीप के बाद अपना संदेश छोड़ दीजिए।`
-          : `Hi! ${ownerLabel} is busy right now — please call later, or leave a voice mail after the beep.`;
-      case "unreachable": // phone off / no network
-        return hi
-          ? `नमस्ते! ${ownerLabel} का फ़ोन अभी बंद है — कृपया बीप के बाद अपना संदेश छोड़ दीजिए।`
-          : `Hi! ${ownerLabel}'s phone is off — please leave a message after the beep.`;
-      case "busy": // on another call
-        return hi
-          ? `नमस्ते! ${ownerLabel} अभी दूसरी कॉल पर हैं — कृपया बीप के बाद अपना संदेश छोड़ दीजिए।`
-          : `Hi! ${ownerLabel} is on another call — please leave a message after the beep.`;
-      default: // rings / no answer
-        return hi
-          ? `नमस्ते! लगता है ${ownerLabel} अभी कॉल नहीं उठा पा रहे — शायद व्यस्त हों या फ़ोन साइलेंट पर हो। कृपया बीप के बाद अपना संदेश छोड़ दीजिए।`
-          : `Hi! Seems like ${ownerLabel} is not picking up the call — might be busy, or the phone is on silent. Kindly leave a message after the beep.`;
-    }
-  })();
+  const vmScenario = (["decline", "busy", "unreachable"].includes(activationMode) ? activationMode : "rings") as import("../lib/vm_greeting").VmScenario;
+  const vmGreeting = vmGreetingText(ownerLabel, greetLangCode, vmScenario);
   const greeting = vmMode ? vmGreeting : composeDeterministicGreeting({
     isBusy: activationMode === "busy",
     isUnreachable: activationMode === "unreachable",

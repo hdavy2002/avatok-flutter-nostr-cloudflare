@@ -31,6 +31,11 @@ import { contactFor } from "../lib/identity";
 import { trackUserContact } from "../hooks";
 import { avaReasonRaw } from "../lib/ava_reason"; // One Brain B1: gateway for STT
 import { aiRunOpts } from "../lib/ai_gate";       // AI Gateway cost-logging opts
+// Shared zero-cost VM greetings (owner 2026-07-19): the SAME per-owner cached
+// renders the in-app VM mode plays — one language setting covers both lanes.
+// lib/vm_greeting is a VOICEMAIL lib (TTS render + R2 cache only, no engine code),
+// so the hard no-engine-import rule above is respected.
+import { vmGreetingText, getOrRenderVmGreeting, pcmToWavBytes } from "../lib/vm_greeting";
 
 // Probe-grade fallback — production deployments should `wrangler secret put
 // VOBIZ_WEBHOOK_SECRET` and never rely on this constant being unknown.
@@ -189,6 +194,26 @@ async function handleAnswer(req: Request, env: Env, secret: string): Promise<Res
     // quiet take). Version the URL with the R2 object's etag so every new
     // upload is a brand-new URL to Vobiz, while an unchanged file stays fully
     // cacheable on their side.
+    // PER-OWNER GREETING (owner 2026-07-19): play the owner's own cached greeting —
+    // the SAME render the in-app VM mode uses — in the owner's chosen voicemail
+    // language. The content HASH is in the URL, so Vobiz's cache-by-URL-string works
+    // FOR us: a name/language change → new text → new hash → new URL. Cached renders
+    // are instant; a first-ever render (~1s, one-time) happens inline. Any failure
+    // falls back to the legacy global greeting / <Speak> below.
+    let ownerGreetingUrl = "";
+    if (!isOrphan && resolved.owner_uid) {
+      try {
+        const row = await metaDb(env)
+          .prepare("SELECT answer_lang, language_code, display_name FROM receptionist_settings WHERE owner_uid=?1")
+          .bind(resolved.owner_uid).first<{ answer_lang: string | null; language_code: string | null; display_name: string | null }>();
+        const lang = (row?.answer_lang || row?.language_code || "").trim();
+        const label = (row?.display_name || resolved.owner_name || "").trim();
+        const text = vmGreetingText(label, lang, "rings");
+        const g = await getOrRenderVmGreeting(env, resolved.owner_uid, text, lang);
+        if (g) ownerGreetingUrl = `${PUBLIC_BASE}/api/pstn/greeting-owner/${encodeURIComponent(resolved.owner_uid)}/${g.hash}`;
+      } catch { /* legacy greeting below */ }
+    }
+
     let hasGreeting = false;
     let greetingVersion = "";
     try {
@@ -197,7 +222,9 @@ async function handleAnswer(req: Request, env: Env, secret: string): Promise<Res
       greetingVersion = head?.httpEtag ? head.httpEtag.replace(/[^A-Za-z0-9]/g, "").slice(0, 16) : "";
     } catch { /* fall back to Speak */ }
 
-    const greetingUrl = `${PUBLIC_BASE}/api/pstn/greeting/hi-en${greetingVersion ? `?v=${greetingVersion}` : ""}`;
+    const greetingUrl = ownerGreetingUrl
+      || `${PUBLIC_BASE}/api/pstn/greeting/hi-en${greetingVersion ? `?v=${greetingVersion}` : ""}`;
+    if (ownerGreetingUrl) hasGreeting = true;
     const recordCbUrl = `${PUBLIC_BASE}/api/pstn/record-cb/${encodeURIComponent(secret)}`;
 
     const introBlock = hasGreeting
@@ -627,6 +654,28 @@ async function handleGreeting(env: Env, lang: string): Promise<Response> {
 }
 
 // ---------------------------------------------------------------------------
+// GET /api/pstn/greeting-owner/<uid>/<hash> — per-owner cached VM greeting,
+// served as WAV for Vobiz <Play>. Public like /greeting (just an audio file);
+// the unguessable content hash doubles as the access token. Cache forever:
+// the hash IS the version (new text → new hash → new URL).
+// ---------------------------------------------------------------------------
+async function handleOwnerGreeting(env: Env, uid: string, hash: string): Promise<Response> {
+  const safeUid = uid.replace(/[^A-Za-z0-9_-]/g, "");
+  const safeHash = hash.replace(/[^a-f0-9]/g, "");
+  if (!safeUid || safeHash.length !== 40) return new Response("not found", { status: 404 });
+  try {
+    const obj = await (env as any).AGENT_AUDIO?.get(`recept_vm_greeting/${safeUid}/${safeHash}.pcm`);
+    if (!obj) return new Response("not found", { status: 404 });
+    const wav = pcmToWavBytes(new Uint8Array(await obj.arrayBuffer()), 24000);
+    return new Response(wav, {
+      headers: { "content-type": "audio/wav", "cache-control": "public, max-age=31536000, immutable" },
+    });
+  } catch {
+    return new Response("not found", { status: 404 });
+  }
+}
+
+// ---------------------------------------------------------------------------
 // POST /api/pstn/expect — app-side pre-registration (Flutter session auth).
 // A native HMAC-token path (missedcall.ts pattern) is planned so this also
 // works with the Flutter engine dead (cold-start reject); v1 uses the app's
@@ -719,6 +768,7 @@ export async function pstnRoute(req: Request, env: Env, path: string): Promise<R
     if (kind === "hangup" && req.method === "POST") return await handleHangup(req, env, decodeURIComponent(parts[1] || ""));
     if (kind === "record-cb" && req.method === "POST") return await handleRecordCb(req, env, decodeURIComponent(parts[1] || ""));
     if (kind === "greeting" && req.method === "GET") return await handleGreeting(env, decodeURIComponent(parts[1] || ""));
+    if (kind === "greeting-owner" && req.method === "GET") return await handleOwnerGreeting(env, decodeURIComponent(parts[1] || ""), decodeURIComponent(parts[2] || ""));
     if (kind === "carrier-codes" && req.method === "GET") return await handleCarrierCodes(req, env);
     if (kind === "expect" && req.method === "POST") return await handleExpect(req, env);
     if (kind === "expect-native" && req.method === "POST") return await handleExpectNative(req, env);
