@@ -89,7 +89,7 @@ class BrainApi {
   /// job across every AvaBrain store. Returns the job {id, state}; poll
   /// [deleteStatus] until it reaches `complete` (or pins at `partial`).
   static Future<BrainDeletion> deleteAll() async {
-    final res = await ApiAuth.postJson('$kBrainBase/delete', {'op': 'delete_all'},
+    final res = await ApiAuth.postJson('$kBrainBase/delete_all', const {},
         timeout: const Duration(seconds: 20));
     return BrainDeletion.fromJson(_json(res.body));
   }
@@ -97,7 +97,7 @@ class BrainApi {
   /// Poll the status of a deletion job started by [deleteAll].
   static Future<BrainDeletion> deleteStatus(String id) async {
     final res = await ApiAuth.postJson(
-        '$kBrainBase/delete', {'op': 'delete_status', 'id': id},
+        '$kBrainBase/delete_status', {'id': id},
         timeout: const Duration(seconds: 15));
     return BrainDeletion.fromJson(_json(res.body));
   }
