@@ -1119,11 +1119,33 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   // falling back to English. Ava's feminine self-reference is preserved per language.
   const greetLangCode = (s.answer_lang || s.language_code || "").trim();
   // VM-mode greeting is NAME-FREE by design (owner 2026-07-19) so the cached render
-  // is per-OWNER (not per-caller) and replays free forever. Hindi template when the
-  // owner's answer language is Hindi; English otherwise.
-  const vmGreeting = greetingBaseLang(greetLangCode) === "hi"
-    ? `नमस्ते! लगता है ${ownerLabel} अभी उपलब्ध नहीं हैं — कृपया बीप के बाद अपना संदेश छोड़ दीजिए।`
-    : `Hi! Seems like ${ownerLabel} is not available — kindly leave a message after the beep.`;
+  // is per-OWNER (not per-caller) and replays free forever. SCENARIO-SPECIFIC
+  // (owner 2026-07-19): the wording matches WHY Ava answered (activation_mode) —
+  // declined ("busy, call later"), unreachable ("phone is off"), busy ("on another
+  // call"), rings/default ("not picking up"). Each variant caches under its own
+  // content-hash key in R2, so all 3-4 renders per owner are one-time and replay
+  // free. Hindi templates when the owner's answer language is Hindi.
+  const vmGreeting = (() => {
+    const hi = greetingBaseLang(greetLangCode) === "hi";
+    switch (activationMode) {
+      case "decline": // callee actively rejected the call
+        return hi
+          ? `नमस्ते! ${ownerLabel} अभी व्यस्त हैं — कृपया बाद में कॉल करें, या बीप के बाद अपना संदेश छोड़ दीजिए।`
+          : `Hi! ${ownerLabel} is busy right now — please call later, or leave a voice mail after the beep.`;
+      case "unreachable": // phone off / no network
+        return hi
+          ? `नमस्ते! ${ownerLabel} का फ़ोन अभी बंद है — कृपया बीप के बाद अपना संदेश छोड़ दीजिए।`
+          : `Hi! ${ownerLabel}'s phone is off — please leave a message after the beep.`;
+      case "busy": // on another call
+        return hi
+          ? `नमस्ते! ${ownerLabel} अभी दूसरी कॉल पर हैं — कृपया बीप के बाद अपना संदेश छोड़ दीजिए।`
+          : `Hi! ${ownerLabel} is on another call — please leave a message after the beep.`;
+      default: // rings / no answer
+        return hi
+          ? `नमस्ते! लगता है ${ownerLabel} अभी कॉल नहीं उठा पा रहे — शायद व्यस्त हों या फ़ोन साइलेंट पर हो। कृपया बीप के बाद अपना संदेश छोड़ दीजिए।`
+          : `Hi! Seems like ${ownerLabel} is not picking up the call — might be busy, or the phone is on silent. Kindly leave a message after the beep.`;
+    }
+  })();
   const greeting = vmMode ? vmGreeting : composeDeterministicGreeting({
     isBusy: activationMode === "busy",
     isUnreachable: activationMode === "unreachable",
