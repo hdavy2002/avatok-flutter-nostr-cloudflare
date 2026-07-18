@@ -2,13 +2,14 @@
 **Status:** APPROVED DIRECTION — v2, revised 2026-07-18 after design review. v1's seven
 review findings are resolved inline (§7). Not "final" as code until B0 lands and the
 contracts in §3, §5 and §6 survive first contact.
-**Amended 2026-07-18 — §10 (Guardian), pre-B0.** Guardian joins as a governed safety
-consumer/producer. Three corrections to the incoming proposal: safety runs on **legal basis,
-not consent** (§10.1); safety records are **exempt from the §5.1 deletion contract** or it
-becomes a reputation-laundering tool (§10.2); safety is **two-party and therefore not a
-per-user brain domain** (§10.3). Also **B-D7: recommend turning `sentinelEnabled` and
-`sentinelMem0Enabled` OFF in prod now** — both are live, half-built, and feeding an
-ungoverned third-party store (§10.4).
+**§10 (Guardian) added then DEFERRED 2026-07-18 (owner).** Design of record for a future
+Guardian/One Brain task; **B0 ships without it**. Only two live P0s + a placeholder agent
+boundary are carved out into the marketplace plan. Its three corrections to the incoming
+proposal stand for whoever picks it up: safety runs on **legal basis, not consent** (§10.1);
+safety records must be **exempt from the §5.1 deletion contract** or it becomes a
+reputation-laundering tool (§10.2); safety is **two-party and therefore not a per-user brain
+domain** (§10.3). **B-D7** (turn `sentinelEnabled`/`sentinelMem0Enabled` off) moves to that
+task and should be sequenced first there — it's two flags and it's costing money daily.
 **Supersedes:** v1 (2026-07-17) and the draft inventory/plan. The draft's Part 1 inventory
 remains the factual baseline.
 
@@ -330,10 +331,41 @@ was never stored server-side. This is now explicit and governed:
 
 ---
 
-## 10. AMENDMENT — Guardian (2026-07-18, pre-B0)
+## 10. AMENDMENT — Guardian — **DEFERRED (owner, 2026-07-18)**
+
+> **SCOPE DECISION — owner, 2026-07-18. Do not build §10.** Marketplace chat is the
+> priority. **Guardian does not expand into AvaBrain yet.** This section is the *design of
+> record for a future Guardian/One Brain task* — it is analysis, not a work item, and B0
+> ships without it.
+>
+> **Carved out and kept — the only Guardian work that proceeds now** (as a bounded
+> dependency of the marketplace plan, not as brain work):
+>
+> 1. **P0-1 — `guardianScan` sender/member spoofing** (`ava_guardian.ts:1358-1362`). Live
+>    in prod; three crafted calls auto-block an innocent user. → marketplace plan Phase 0.
+> 2. **P0-2 — `isMinorAccount` fails open to adult** (`:194-195`). → Phase 0.
+> 3. **Placeholder boundary only:** marketplace agents cannot reach Guardian **or** brain
+>    safety memory. Lint + closed type, ~3 files, no Guardian changes. → marketplace plan
+>    §1.2b-b.
+> 4. **Connect stays behind Guardian readiness** and is **explicitly unscheduled**.
+>
+> **Deferred to the separate Guardian/One Brain task:** everything else in §10 —
+> Sentinel/mem0 consolidation (**incl. B-D7**), the `safety` domain and `basis` field
+> (§10.1), the deletion exemption (§10.2), the two-party store model (§10.3),
+> `guardianContext()`, safety recall, the ranking boundary (§10.5), and broader Connect
+> policy.
+>
+> **One note for whoever picks that task up, not a re-litigation:** B-D7 (§10.4) is two
+> KV flags, not a build. While `sentinelEnabled` and `sentinelMem0Enabled` stay `true` in
+> prod we are paying Nemotron **twice per watched message** (P1-5) to feed a system where 6
+> of 7 rules have no producer, and the replay check *will* start paging — *"a matter of
+> volume, not if"*. It is the cheapest item on the deferred list and the only one that
+> costs money daily. Sequence it first there.
+
+*(Design of record below — retained in full for the future task.)*
 
 Source: `Specs/GUARDIAN-SYSTEM-REPORT-2026-07-18.md` (prod-read, not DEFAULTS-read) + a
-design proposal. **The proposal's shape is adopted.** Guardian is a **governed safety
+design proposal. **The proposal's shape is adopted.** Guardian would be a **governed safety
 consumer and producer**: it reads narrow context, reasons via `avaReason({role:"guardian"})`
 (already true, `moderation.ts:274`), and writes **minimal structured events** — never raw
 content — into a restricted store that general `brainRecall` cannot see.
