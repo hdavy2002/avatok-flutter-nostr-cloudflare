@@ -140,6 +140,16 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="https" android:host="avatok.ai" android:pathPrefix="/add"/>
             </intent-filter>
+            <!-- [MKT7] App Link — https://avatok.ai/l/<id> opens a marketplace
+                 listing (QR on the listing detail page). Same host as /j/ and /add,
+                 so the existing /.well-known/assetlinks.json verifies it too.
+                 iOS follow-up: add "/l/*" to the hosted apple-app-site-association. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https" android:host="avatok.ai" android:pathPrefix="/l/"/>
+            </intent-filter>
             <!-- Custom-scheme deeplink fallback (avatok://booking/<id>, avatok://add?t=). -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW"/>

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../features/avatok/add_by_link_sheet.dart';
 import '../features/avatok/ava_number.dart';
 import '../features/avatok/contacts.dart';
+import '../features/explore/listing_detail.dart';
 import 'analytics.dart';
 
 /// Routes incoming deep links into the app.
@@ -42,6 +43,18 @@ class DeepLinks {
   }
 
   static void _handle(Uri uri) {
+    // [MKT7] Marketplace listing link — https://avatok.ai/l/<id> or avatok://l/<id>
+    // (the QR on a listing detail page). Open the listing directly.
+    final listingId = _listingId(uri);
+    if (listingId.isNotEmpty) {
+      Analytics.capture('listing_link_opened', {'scheme': uri.scheme});
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final st = _navKey?.currentState;
+        if (st == null) return;
+        st.push(MaterialPageRoute(builder: (_) => ListingDetailScreen(listingId: listingId)));
+      });
+      return;
+    }
     // Group-invite deep link (avatok://group?conv= / https://avatok.ai/group?conv=)
     // → open the app; the Groups tab + notification bell surface the pending invite.
     if (_isGroupLink(uri)) {
@@ -90,6 +103,16 @@ class DeepLinks {
         messenger?.showSnackBar(SnackBar(content: Text('Added ${contact.name}')));
       }
     });
+  }
+
+  /// Listing id from a `/l/<id>` link (https://avatok.ai/l/<id> or avatok://l/<id>),
+  /// or '' if this isn't a listing link. Custom-scheme puts "l" in the host and the
+  /// id in the first path segment; universal-link puts both in the path.
+  static String _listingId(Uri uri) {
+    final segs = uri.pathSegments.where((s) => s.isNotEmpty).toList();
+    if (uri.scheme == 'avatok' && uri.host == 'l' && segs.isNotEmpty) return segs.first;
+    if (uri.host.endsWith('avatok.ai') && segs.length >= 2 && segs.first == 'l') return segs[1];
+    return '';
   }
 
   /// Digits of the `?n=` number on an AvaTOK add link, or '' if none.
