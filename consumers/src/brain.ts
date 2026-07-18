@@ -660,10 +660,14 @@ async function transcribeVoice(env: Env, mediaRef: string): Promise<string> {
     } catch { return ""; }
   }
   // Workers AI fallback (Whisper large file support varies; voice notes are short)
+  // One Brain B1: routed through the avaReason gateway (pinned-@cf → cf_ai adapter,
+  // raw body passthrough) for aiRunOpts/telemetry/kill-switch parity.
   try {
-    const r = (await (env as any).AI.run("@cf/openai/whisper", {
-      audio: [...new Uint8Array(buf)],
-    })) as any;
+    const r = (await avaReason(env as any, {
+      verb: "transcribe", feature: "brain_voicemail_stt",
+      model: "@cf/openai/whisper",
+      raw: { audio: [...new Uint8Array(buf)] },
+    } as any)) as any;
     try { env.ANALYTICS?.writeDataPoint({ blobs: ["brain_whisper_cf"], doubles: [buf.byteLength], indexes: ["brain"] }); } catch { /* noop */ }
     return String(r?.text || "").trim();
   } catch { return ""; }
@@ -1113,8 +1117,11 @@ async function backfill(uid: string, env: Env): Promise<void> {
 
 async function embed(env: Env, text: string): Promise<number[] | null> {
   const model = env.BRAIN_EMBED_MODEL || "@cf/baai/bge-small-en-v1.5";
-  const out = (await env.AI.run(model as any, { text })) as unknown as { data?: number[][] };
-  return out.data?.[0] ?? null;
+  // One Brain B1: via the avaReason gateway (pinned-@cf → cf_ai adapter, raw body).
+  const out = (await avaReason(env as any, {
+    verb: "embed", feature: "brain_embed", model, raw: { text },
+  } as any)) as unknown as { data?: number[][] };
+  return out?.data?.[0] ?? null;
 }
 
 function clamp(n: number): number { return Math.max(0, Math.min(1, Number(n) || 0)); }
