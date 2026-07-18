@@ -460,6 +460,7 @@ export class ReceptionRoomCf {
     // (3) Listening → accumulate the turn and endpoint on trailing silence.
     if (speech) {
       this.cfHadSpeech = true;
+      this.cfTurnExtends = 0; // fresh speech resets the smart-turn extension budget
       this.cfTurnBuf.push(bytes); this.cfTurnBytes += bytes.byteLength;
       // Active speech keeps the call alive: reset the inactivity timer so a long
       // continuous message (after the first turn re-armed it via bumpIdle) is
@@ -469,8 +470,45 @@ export class ReceptionRoomCf {
       if (this.cfEndpointTimer) { clearTimeout(this.cfEndpointTimer); this.cfEndpointTimer = null; }
       if (this.cfTurnBytes > CF_MAX_TURN_BYTES) void this.processCfTurn();
     } else if (this.cfHadSpeech && !this.cfEndpointTimer) {
-      this.cfEndpointTimer = setTimeout(() => void this.processCfTurn(), this.endpointMs());
+      this.cfEndpointTimer = setTimeout(() => void this.maybeEndTurn(), this.endpointMs());
     }
+  }
+
+  // ── SEMANTIC ENDPOINTING (owner 2026-07-19): @cf/pipecat-ai/smart-turn-v2 ──
+  // Silence alone can't tell "my number is 98..." (still going) from "…98432"
+  // (done). When the silence endpointer fires, ask smart-turn whether the turn
+  // sounds COMPLETE; if not, extend listening (max 2×1.5s) before processing.
+  // Fail-open: any model error/ambiguity → process the turn (never wedge a call).
+  // Gated by secret RECEPT_CF_SMART_TURN=on; ~$0.0003/audio-min.
+  private cfTurnExtends = 0;
+  private async maybeEndTurn(): Promise<void> {
+    this.cfEndpointTimer = null;
+    const mode = String((this.env as any).RECEPT_CF_SMART_TURN || "").toLowerCase();
+    const on = mode === "on" || mode === "1" || mode === "true";
+    if (!on || this.finalized || this.cfBusy || this.cfTimeUp || this.cfTurnExtends >= 2) {
+      this.cfTurnExtends = 0; void this.processCfTurn(); return;
+    }
+    try {
+      const total = this.cfTurnBytes;
+      let pcm = concatFrames(this.cfTurnBuf, total);
+      const tail = 16000 * 2 * 8; // smart-turn works on ≤8s of context
+      if (pcm.byteLength > tail) pcm = pcm.subarray(pcm.byteLength - tail);
+      const out: any = await avaReasonRaw(this.env, {
+        role: "receptionist", capability: "stt", trigger: "turn_check", feature: "receptionist_smart_turn",
+        verb: "detect", model: "@cf/pipecat-ai/smart-turn-v2", uid: this.init?.owner_uid,
+        raw: { audio: b64encode(pcm16ToWavMono(pcm, 16000)) }, aiRunOpts: aiRunOpts(this.env, this.init?.owner_uid),
+      });
+      const complete = out?.is_complete ?? out?.result?.is_complete;
+      const prob = Number(out?.probability ?? out?.result?.probability ?? NaN);
+      this.ev("ava_recept_smart_turn", { complete: complete !== false, prob: Number.isFinite(prob) ? Math.round(prob * 100) / 100 : null, extends: this.cfTurnExtends });
+      if (complete === false && !this.finalized && !this.cfTimeUp) {
+        this.cfTurnExtends++;
+        this.cfEndpointTimer = setTimeout(() => void this.maybeEndTurn(), 1500);
+        return;
+      }
+    } catch { /* fail-open → process */ }
+    this.cfTurnExtends = 0;
+    void this.processCfTurn();
   }
 
   /** Caller talked over Ava → stop her audio, drop the client's playback buffer,
@@ -683,10 +721,10 @@ export class ReceptionRoomCf {
           const r = await fetch("https://api.sarvam.ai/v1/chat/completions", {
             method: "POST",
             headers: { "api-subscription-key": skey, "Content-Type": "application/json" },
-            // Sarvam chat is a REASONING model: it spends tokens in reasoning_content
-            // before content. reasoning_effort "low" minimizes the think budget, and we
-            // give headroom (+220) so the actual answer completes instead of truncating.
-            body: JSON.stringify({ model: this.cfLlmModel(), messages, max_tokens: Math.max(maxTokens + 220, 320), temperature: 0.4, reasoning_effort: "low" }),
+            // NON-THINK MODE (verified live 2026-07-19): reasoning_effort must be JSON
+            // null — that fully disables thinking (6 completion tokens vs 106 with the
+            // default). The string "none" is REJECTED (400). No token headroom needed.
+            body: JSON.stringify({ model: this.cfLlmModel(), messages, max_tokens: maxTokens, temperature: 0.4, reasoning_effort: null }),
           });
           const j: any = await r.json().catch(() => ({}));
           const u = j?.usage; if (u) { this.cfLlmTokIn += Number(u.prompt_tokens) || 0; this.cfLlmTokOut += Number(u.completion_tokens) || 0; }
