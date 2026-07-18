@@ -56,6 +56,10 @@ import { brainIngest } from "../lib/brain_ingest";
 // [AVA-MKT-ENTITLEMENTS-1] §5 quota + §1.3 token charge, consumed inside the publish
 // keyed on listing_id (§3.3c). Same helper the classic publish path calls.
 import { consumeListingEntitlement } from "../lib/listing_billing";
+// [AVA-MKT-COMPOSE-ENRICH] §1.2/§6.1 — brain enrichment for the /session greeting. All
+// four §6.1 gates + the "return null when there's nothing useful" degrade live INSIDE
+// this helper; we only call it and warm the greeting when it returns non-null.
+import { listingEnrichment, type ListingEnrichment } from "../lib/listing_enrichment";
 import { gatePublicAction, livenessState, emailOf } from "../lib/identity_gate";
 import {
   DEFAULT_VERTICAL, resolveCategoryVersion, validateAttrs,
@@ -1193,12 +1197,60 @@ export async function composeSession(req: Request, env: Env): Promise<Response> 
   }
 
   const name = await displayName(env, ctx.uid);
-  const greeting = `Hey ${name} 👋  What are you listing today?`;
+  // §1.2 — enrichment is a Phase-6 NICETY. The flow MUST be complete without it: an off
+  // flag (or an absent brain, or nothing worth saying) degrades to the same one extra
+  // question, not a broken flow. The helper enforces all four §6.1 gates and returns
+  // null in every degrade case; it is wrapped so it can't throw, but we still `.catch`
+  // defensively so a surprise here can never take the session open with it.
+  const enrich = await listingEnrichment(env, ctx.uid, vertical).catch(() => null);
+  // Warm the greeting only when enrichment is present; otherwise TODAY's greeting, verbatim.
+  // NOTE (lang hint): `lang` is already baked into the D1 INSERT and emptyDraft() above,
+  // so overriding it here from `enrich.lang` would desync the persisted session lang from
+  // the effective one (and the return contract doesn't expose lang anyway). Per §1.2's
+  // "risky → skip", we do NOT touch lang and only warm the greeting text.
+  const greeting = enrich
+    ? warmGreeting(name, enrich)
+    : `Hey ${name} 👋  What are you listing today?`;
   void trackUser(env, ctx.uid, email, "compose_session_opened", APP, {
     session_id: sessionId, vertical, lang, identity_ok: identity.ok,
     identity_reason: identity.reason ?? null, resumable: !!resume, categories: categories.length,
+    // §6.1 measurement — did enrichment fire, and how much history it saw. Extends the
+    // existing event; NOT a new event.
+    enriched: !!enrich, prior_count: enrich?.priorCount ?? 0,
   });
   return json({ session_id: sessionId, identity, greeting, categories, ...(resume ? { resume } : {}) });
+}
+
+/**
+ * §1.2/§6.1 — turn a non-null ListingEnrichment into a SHORT, natural greeting.
+ *
+ * Deliberately conservative about what it surfaces: `priorCount` and, at most, one
+ * brain-derived note that already reads as a full sentence. It never dumps
+ * `recentCategories` verbatim and never echoes the raw `note` as a fragment — the two
+ * ways this could start feeling creepy. When enrichment is useful only via a soft hint
+ * (a lang/location the greeting can't naturally say), it falls back to today's ask.
+ */
+function warmGreeting(name: string, e: ListingEnrichment): string {
+  const base = `Hey ${name} 👋`;
+  const ask = "What are you listing today?";
+
+  // A brain-derived note, but ONLY if it already reads as a self-contained, natural
+  // sentence (the helper trims/sanitises it) — never a bare fragment we'd have to glue.
+  const note = (e.note ?? "").trim();
+  if (note && note.length <= 140 && /[.!?]$/.test(note)) {
+    return `${base}  ${note} ${ask}`;
+  }
+
+  // A returning seller: a soft nod to their history — count only, no category dump.
+  if (e.priorCount > 0) {
+    const cnt = e.priorCount === 1
+      ? "You've listed one before."
+      : `You've posted ${e.priorCount} before.`;
+    return `${base}  Back to list something? ${cnt}`;
+  }
+
+  // Useful only via a hint we can't voice naturally → today's greeting, unchanged.
+  return `${base}  ${ask}`;
 }
 
 async function displayName(env: Env, uid: string): Promise<string> {
