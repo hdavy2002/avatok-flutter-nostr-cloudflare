@@ -84,7 +84,15 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
     // Talk-once: grey the Call Agent button if this buyer already negotiated this
     // listing version (one agent↔agent conversation per buyer per listing).
     if (d != null && const ['sell', 'buy', 'social'].contains(d.listing.kind) && !d.isOwner) {
-      final talked = await MarketplaceApi.alreadyTalked(d.listing.id, 0);
+      // [AVA-MKT-CVER-1] The REAL content version of the listing we just loaded —
+      // read off `d` (the fetched detail), never off a possibly-stale/unset `_d`.
+      // The server keys talk-once on (buyer_id, listing_id, content_version) and
+      // bumps it on a material owner edit, so an edit reopens the gate here.
+      // MUST stay in lockstep with the contentVersion sent by _callAgent below —
+      // that reads the same loaded listing (`_d.listing.contentVersion`), so the
+      // version we grey the button against is always the one we negotiate against.
+      // Absent field (pre-migration server) → 0, matching what it already stores.
+      final talked = await MarketplaceApi.alreadyTalked(d.listing.id, d.listing.contentVersion);
       if (mounted && talked) setState(() => _alreadyTalked = true);
     }
   }
@@ -106,7 +114,12 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
     final started = await showCallAgentSheet(
       context,
       listingId: d.listing.id,
-      contentVersion: 0, // server keys talk-once on (buyer, listing, version)
+      // [AVA-MKT-CVER-1] The loaded listing's real content version. `d` is the
+      // non-null `_d` guarded above, i.e. the SAME ListingDetail that _load()'s
+      // alreadyTalked() check read its version from — so the version we grey the
+      // button against and the version we negotiate against can never diverge.
+      // (A refresh replaces `_d` and re-runs both, so they move together.)
+      contentVersion: d.listing.contentVersion,
       currency: d.listing.currency,
       onMessageSeller: _message, // P5: daily-limit fallback → owner-DM path
     );

@@ -74,6 +74,15 @@ class ListingCard {
   final int reviewCount, viewCount;
   final int? createdAt;
   bool favorited;
+  // [AVA-MKT-CVER-1] The listing's content version — the negotiation reopen key.
+  // The server keys talk-once on (buyer_id, listing_id, content_version) and bumps
+  // this on a material owner edit (title/description/price/currency/category), so a
+  // bump reopens "talk to my agent" for every buyer. Echoed back verbatim on
+  // /marketplace/negotiate{,/state} — see listing_detail.dart.
+  // Defaults to 0 when absent: this client ships before the migration is applied
+  // everywhere, and every existing mkt_negotiations row is at version 0, so 0 is
+  // the value that matches what the server already stores.
+  final int contentVersion;
   String? description; // only on the details endpoint
 
   ListingCard.fromJson(Map<String, dynamic> j)
@@ -106,6 +115,7 @@ class ListingCard {
         viewCount = (j['view_count'] as num?)?.toInt() ?? 0,
         createdAt = (j['created_at'] as num?)?.toInt(),
         favorited = j['favorited'] == true,
+        contentVersion = int.tryParse('${j['content_version'] ?? 0}') ?? 0,
         creator = ListingCreator.fromJson((j['creator'] as Map?)?.cast<String, dynamic>() ?? const {}),
         description = j['description']?.toString();
 
