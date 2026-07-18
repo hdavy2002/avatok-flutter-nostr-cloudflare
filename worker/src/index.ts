@@ -126,6 +126,7 @@ import {
   marketplaceAiAssist, marketplaceNegotiate, marketplaceNegotiateState,
   marketplaceSearch, marketplacePrecheck, marketplaceAudio,
 } from "./routes/marketplace";
+import { marketplaceCategories, proposedCategories } from "./routes/categories";
 import {
   affiliateRegister, affiliateMe, affiliateListings, affiliateLinkCreate, affiliateLinks,
   affiliateLinkStats, affiliateLinkSubscribers, affiliateLinkPause, affiliateClick,
@@ -1042,6 +1043,13 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/listings" && req.method === "POST") return await createListing(req, env);
       if (p === "/api/listings/mine" && req.method === "GET") return await myListings(req, env);
       // --- AvaMarketplace (buy/sell/social + agent negotiation) ---
+      // [MKT1-CATAPI] Category engine (PLAN-2026-07-17 §2.0-2.4). Categories are DATA,
+      // not code: adding "Boats for sale" is a D1 insert, not a release. `vertical`
+      // (commerce|connect) defaults to commerce so every existing caller is unaffected.
+      // Cached 300s like /api/explore/categories — cached() keys on the full URL, so
+      // ?vertical=connect caches separately. /proposed is NOT cached (admin, per-bearer).
+      if (p === "/api/marketplace/categories" && req.method === "GET") return await cached(req, ctx, () => marketplaceCategories(req, env), 300);
+      if (p === "/api/marketplace/categories/proposed" && req.method === "GET") return await proposedCategories(req, env);
       if (p === "/api/marketplace/ai-assist" && req.method === "POST") return await marketplaceAiAssist(req, env);
       if (p === "/api/marketplace/negotiate" && req.method === "POST") return await marketplaceNegotiate(req, env, ctx);
       if (p === "/api/marketplace/negotiate/state" && req.method === "GET") return await marketplaceNegotiateState(req, env);
