@@ -24,6 +24,7 @@ export class UserBrain {
       case "ask": return json({ answer: await this.ask(uid, String(body.question || "")) });
       case "chat": return json(await this.chat(uid, String(body.message || "")));
       case "briefing": return json({ briefing: await this.briefing(uid) });
+      case "recall": return json(await this.recall(uid, String(body.query || ""), { domains: body.domains, k: body.k }));
       case "remember": return json(await this.remember(uid, body.facts || [], body.entities || []));
       case "investigate": return json({ diagnosis: await this.investigate(uid, String(body.complaint || "")) });
       case "forget": return json(await this.forget(uid, String(body.entity_id || "")));
@@ -52,7 +53,7 @@ export class UserBrain {
 
   private async recentFacts(uid: string, limit: number): Promise<any[]> {
     const rs = await this.env.DB_BRAIN.prepare(
-      "SELECT fact_type, content, scope, confidence, updated_at FROM brain_facts WHERE uid=?1 ORDER BY updated_at DESC LIMIT ?2",
+      "SELECT fact_type, content, scope, source_app, confidence, updated_at FROM brain_facts WHERE uid=?1 ORDER BY updated_at DESC LIMIT ?2",
     ).bind(uid, limit).all();
     return (rs.results ?? []) as any[];
   }
@@ -72,31 +73,85 @@ export class UserBrain {
   }
 
   // ---- semantic recall (uid-scoped) ----
+  // Formats Vectorize matches as context strings for `ask`. Shares the ONE
+  // embed+query primitive (rawMatches) with `chat` and `serverRecall` — no
+  // duplicate embedding call (B4 refactor).
   private async vectorRecall(uid: string, query: string): Promise<string[]> {
-    if (!this.env.VECTOR_INDEX) return [];
-    try {
-      const emb = (await avaReasonRaw(this.env, {
-        role: "brain", capability: "embed", trigger: "recall", feature: "brain_embed",
-        verb: "embed", model: this.env.BRAIN_EMBED_MODEL || "@cf/baai/bge-small-en-v1.5", uid,
-        raw: { text: query }, aiRunOpts: aiRunOpts(this.env, uid),
-      })) as any;
-      const vec: number[] | undefined = emb.data?.[0];
-      if (!vec) return [];
-      // Vectors are per-entity; metadata carries name+summary, so no D1 round-trip.
-      const res = await this.env.VECTOR_INDEX.query(vec, { topK: 6, filter: { uid }, returnMetadata: true } as any);
-      return (res.matches ?? [])
-        .map((m: any) => {
-          const md = m.metadata ?? {};
-          // Library file vectors carry media_id → cite as a deep-linkable file so
-          // the answer can open it in AvaLibrary. Entity vectors stay name: summary.
-          if (md.media_id) {
-            const where = [md.app, md.category].filter(Boolean).join("/");
-            return `File "${md.name ?? "file"}"${where ? ` (${where})` : ""}: ${md.summary ?? ""} [file:${md.media_id}]`;
-          }
-          return [md.name, md.summary].filter(Boolean).join(": ");
-        })
-        .filter((s: string) => s);
-    } catch { return []; }
+    const matches = await this.rawMatches(uid, query, 6);
+    return matches
+      .map((m: any) => {
+        const md = m.metadata ?? {};
+        // Library file vectors carry media_id → cite as a deep-linkable file so
+        // the answer can open it in AvaLibrary. Entity vectors stay name: summary.
+        if (md.media_id) {
+          const where = [md.app, md.category].filter(Boolean).join("/");
+          return `File "${md.name ?? "file"}"${where ? ` (${where})` : ""}: ${md.summary ?? ""} [file:${md.media_id}]`;
+        }
+        return [md.name, md.summary].filter(Boolean).join(": ");
+      })
+      .filter((s: string) => s);
+  }
+
+  // ── One Brain B4 (SPEC-2026-07-17 §6, §8-B4) — unified SERVER-lane recall ────
+  // brainRecall(uid, query, {domains?, k}) over the ACCOUNT-PRIVATE server stores
+  // only: Vectorize semantic matches + brain_facts. Every server hit is, by
+  // construction, scope:'account_private' — device_private data never reaches the
+  // server (§2.1), so the server can only ever return account_private hits. The
+  // DEVICE lane is merged CLIENT-side (B4-app); this deliberately returns
+  // server-lane hits only. Reuses the SAME retrieval internals as `ask`/`chat`
+  // (rawMatches embed+query; recentFacts) — no duplicated retrieval path.
+  private async serverRecall(
+    uid: string,
+    query: string,
+    opts: { domains?: unknown; k?: unknown } = {},
+  ): Promise<Array<{ text: string; domain: string; scope: "account_private"; score: number; ts: number | null }>> {
+    if (!query.trim()) return [];
+    const k = Math.max(1, Math.min(24, Number(opts.k) || 8));
+    const domainSet = Array.isArray(opts.domains) && opts.domains.length
+      ? new Set((opts.domains as unknown[]).map((d) => String(d)))
+      : null;
+    const hits: Array<{ text: string; domain: string; scope: "account_private"; score: number; ts: number | null }> = [];
+
+    // 1. Semantic matches from Vectorize (uid-scoped). Domain derived from the
+    //    vector's own metadata (voicemail / library file / entity memory).
+    const matches = await this.rawMatches(uid, query, Math.max(k, 12));
+    for (const m of matches) {
+      const md = (m as any).metadata ?? {};
+      const domain =
+        md.kind === "voicemail" || md.type === "voicemail" ? "voicemail"
+        : md.media_id || md.type === "library" ? "files"
+        : "memory";
+      if (domainSet && !domainSet.has(domain)) continue;
+      const text = String(md.snippet ?? md.summary ?? [md.name, md.summary].filter(Boolean).join(": ")).slice(0, 480);
+      if (!text) continue;
+      hits.push({ text, domain, scope: "account_private", score: Number((m as any).score ?? 0), ts: md.ts != null ? Number(md.ts) : null });
+    }
+
+    // 2. Structured facts (server-derived). Lexically scored against the query so a
+    //    recall over the graph surfaces even without a vector hit. `source_app` is
+    //    the registry domain / consent key (files, voicemail, listings, …).
+    const facts = await this.recentFacts(uid, 60);
+    const terms = query.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 2);
+    for (const f of facts as any[]) {
+      const content = String(f.content ?? "");
+      if (!content) continue;
+      const domain = String(f.source_app ?? "memory");
+      if (domainSet && !domainSet.has(domain)) continue;
+      if (!terms.length) continue;
+      const lc = content.toLowerCase();
+      let overlap = 0;
+      for (const t of terms) if (lc.includes(t)) overlap++;
+      const score = overlap / terms.length;
+      if (score <= 0) continue; // lexical matches only — the vector lane covers semantics
+      hits.push({ text: content.slice(0, 480), domain, scope: "account_private", score: 0.3 + 0.4 * score, ts: f.updated_at != null ? Number(f.updated_at) : null });
+    }
+
+    hits.sort((a, b) => b.score - a.score);
+    return hits.slice(0, k);
+  }
+
+  private async recall(uid: string, query: string, opts: { domains?: unknown; k?: unknown }): Promise<{ hits: Array<{ text: string; domain: string; scope: "account_private"; score: number; ts: number | null }> }> {
+    return { hits: await this.serverRecall(uid, query, opts) };
   }
 
   // ---- Phase 9: AvaChat — RAG answer + tappable source chips ----------------
@@ -208,9 +263,11 @@ export class UserBrain {
     for (const f of Array.isArray(facts) ? facts.slice(0, 50) : []) {
       const content = String(f.content || f).trim();
       if (!content) continue;
+      // B4 (§5.3): stamp derived_from_max_ts + last_confirmed_at so the nightly
+      // fact-decay job can age this out (18 mo) / refresh it on re-observation.
       await this.env.DB_BRAIN.prepare(
-        `INSERT INTO brain_facts (id, uid, fact_type, content, scope, source_app, confidence, expires_at, created_at, updated_at)
-         VALUES (?1,?2,?3,?4,'private',?5,?6,?7,?8,?8)`,
+        `INSERT INTO brain_facts (id, uid, fact_type, content, scope, source_app, confidence, expires_at, created_at, updated_at, derived_from_max_ts, last_confirmed_at)
+         VALUES (?1,?2,?3,?4,'private',?5,?6,?7,?8,?8,?8,?8)`,
       ).bind(crypto.randomUUID(), uid, String(f.fact_type || "insight"), content, String(f.source_app || "client"), 0.9, f.expires_at ?? null, now).run();
       stored++;
     }

@@ -270,28 +270,29 @@ export async function handleBrain(rawMsg: BrainMsg, env: Env): Promise<void> {
   // 2. Extract structured memory (8B, JSON).
   const extracted = await extract(env, msg);
 
-  // 3. Upsert entities (dedupe by uid+name+type) → name→id map.
-  const idByName = new Map<string, string>();
+  // 3. Upsert entities (dedupe by uid+name+type). (No name→id map now — it only
+  //    served relationship resolution, dropped in step 4 per B-D3.)
   for (const e of extracted.entities) {
     if (!e.name) continue;
-    const id = await upsertEntity(env, uid, e, now);
-    idByName.set(e.name.toLowerCase(), id);
+    await upsertEntity(env, uid, e, now);
   }
 
-  // 4. Upsert relationships (resolve names → ids; skip if either side unknown).
-  for (const r of extracted.relationships) {
-    const from = idByName.get((r.from || "").toLowerCase());
-    const to = idByName.get((r.to || "").toLowerCase());
-    if (!from || !to || !r.relationship) continue;
-    await upsertRelationship(env, uid, from, to, r.relationship, r.context ?? null, now);
-  }
+  // 4. Relationships: STOP WRITING (One Brain B-D3). `brain_relationships` was a
+  //    written-never-read graph — no recall path consumes it. We keep the TABLE and
+  //    the forget-path / deletion-contract READS+DELETES (do/user_brain.ts forget,
+  //    the purge/deletion jobs below) for now; the schema is removed in a later
+  //    change once those readers are retired. Extraction still parses relationships
+  //    (harmless) but nothing is persisted.
 
   // 5. Insert facts (scope=public — server-derived).
   for (const f of extracted.facts) {
     if (!f.content) continue;
+    // B4 (§5.3): derived_from_max_ts = newest supporting event; last_confirmed_at
+    // refreshed on (re-)observation. Both = now (this event). The nightly job ages
+    // out facts not re-supported within 18 months (COALESCE fallback for pre-B4 rows).
     await env.DB_BRAIN.prepare(
-      `INSERT INTO brain_facts (id, uid, fact_type, content, scope, source_app, source_id, confidence, created_at, updated_at)
-       VALUES (?1,?2,?3,?4,'public',?5,?6,?7,?8,?8)`,
+      `INSERT INTO brain_facts (id, uid, fact_type, content, scope, source_app, source_id, confidence, created_at, updated_at, derived_from_max_ts, last_confirmed_at)
+       VALUES (?1,?2,?3,?4,'public',?5,?6,?7,?8,?8,?8,?8)`,
     ).bind(crypto.randomUUID(), uid, f.fact_type || "insight", f.content, msg.source_app, eventId, clamp(f.confidence ?? 0.8), now).run();
   }
 
@@ -355,8 +356,8 @@ async function ingestLibraryFile(msg: BrainMsg, env: Env): Promise<void> {
     }
     try {
       await env.DB_BRAIN.prepare(
-        `INSERT INTO brain_facts (id, uid, fact_type, content, scope, source_app, source_id, confidence, created_at, updated_at)
-         VALUES (?1,?2,'file',?3,'public',?4,?5,0.7,?6,?6)`,
+        `INSERT INTO brain_facts (id, uid, fact_type, content, scope, source_app, source_id, confidence, created_at, updated_at, derived_from_max_ts, last_confirmed_at)
+         VALUES (?1,?2,'file',?3,'public',?4,?5,0.7,?6,?6,?6,?6)`,
       ).bind(crypto.randomUUID(), uid, `${category === "video" ? "Video" : "Audio"} "${title}" (${mime})${caption ? `: ${caption}` : ""}`, msg.source_app, String(p.media_id), Date.now()).run();
     } catch { /* table optional */ }
     return;
@@ -566,21 +567,9 @@ async function upsertEntity(env: Env, uid: string, e: { name: string; entity_typ
   return id;
 }
 
-async function upsertRelationship(env: Env, uid: string, from: string, to: string, rel: string, context: string | null, now: number): Promise<void> {
-  const existing = await env.DB_BRAIN.prepare(
-    "SELECT id, strength FROM brain_relationships WHERE uid=?1 AND from_entity_id=?2 AND to_entity_id=?3 AND relationship=?4",
-  ).bind(uid, from, to, rel).first<{ id: string; strength: number }>();
-  if (existing) {
-    await env.DB_BRAIN.prepare(
-      "UPDATE brain_relationships SET strength=?2, context=COALESCE(?3,context), last_seen=?4 WHERE id=?1",
-    ).bind(existing.id, Math.min(1, (existing.strength ?? 0.5) + 0.05), context, now).run();
-    return;
-  }
-  await env.DB_BRAIN.prepare(
-    `INSERT INTO brain_relationships (id, uid, from_entity_id, to_entity_id, relationship, strength, context, first_seen, last_seen)
-     VALUES (?1,?2,?3,?4,?5,0.5,?6,?7,?7)`,
-  ).bind(crypto.randomUUID(), uid, from, to, rel, context, now).run();
-}
+// B-D3: upsertRelationship() REMOVED — `brain_relationships` is no longer written
+// (written-never-read graph). The table + forget/deletion READS remain until those
+// readers are retired in a later change.
 
 // ═══════════ Phase 9 — message / voicemail ingestion + RAG vectors ═══════════
 
@@ -915,6 +904,137 @@ export async function purgeChurnedBrains(env: Env, cutoffDays = 90, limit = 200)
     try { await purgeBrain(String(r.uid), env); n++; } catch { /* best-effort; retry next tick */ }
   }
   return n;
+}
+
+// ═══════════ One Brain B4 (SPEC-2026-07-17 §8-B4) — nightly rollup + retention ═══════════
+
+// Nightly brain_daily_summaries rollup. For each uid with brain_events in the
+// target UTC day, assemble a COMPACT summary row MECHANICALLY — counts + top event
+// kinds + a few key texts. NO LLM on the cron hot path (extract() already paid for
+// per-event reasoning at ingest; a per-uid summarization call would be a nightly
+// fan-out over the whole active base). The row shape (id, uid, date, summary,
+// highlights, created_at) EXACTLY matches brain.sql and what do/user_brain.ts
+// recentSummaries() reads (`SELECT date, summary …`, consumed by ask()/briefing()).
+// Idempotent per (uid, date) via the UNIQUE(uid,date) constraint. Bounded by `limit`
+// active uids/run; a backlog catches up on the next nightly tick. Returns #rows.
+export async function rollupDailySummaries(env: Env, forDayMs = Date.now() - 86_400_000, limit = 500): Promise<number> {
+  const d = new Date(forDayMs);
+  const start = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  const end = start + 86_400_000;
+  const date = new Date(start).toISOString().slice(0, 10);
+  let uids: string[] = [];
+  try {
+    const rs = await env.DB_BRAIN.prepare(
+      "SELECT uid FROM brain_events WHERE created_at >= ?1 AND created_at < ?2 GROUP BY uid LIMIT ?3",
+    ).bind(start, end, limit).all();
+    uids = ((rs.results ?? []) as any[]).map((r) => String(r.uid));
+  } catch { return 0; } // brain tables optional / absent pre-Phase-9
+  let n = 0;
+  for (const uid of uids) {
+    try {
+      // Never re-add a summary for a uid mid-wipe (the deletion job deletes them).
+      const del = await env.DB_BRAIN.prepare(
+        "SELECT 1 FROM brain_deletions WHERE uid=?1 AND state IN ('pending','running','partial') LIMIT 1",
+      ).bind(uid).first().catch(() => null);
+      if (del) continue;
+      const er = await env.DB_BRAIN.prepare(
+        "SELECT event_type, source_app, payload FROM brain_events WHERE uid=?1 AND created_at >= ?2 AND created_at < ?3 ORDER BY created_at DESC LIMIT 500",
+      ).bind(uid, start, end).all();
+      const rows = (er.results ?? []) as any[];
+      if (!rows.length) continue;
+      const kinds = new Map<string, number>();
+      const domains = new Map<string, number>();
+      const texts: string[] = [];
+      for (const r of rows) {
+        const k = String(r.event_type || "event");
+        kinds.set(k, (kinds.get(k) ?? 0) + 1);
+        const dom = String(r.source_app || "");
+        if (dom) domains.set(dom, (domains.get(dom) ?? 0) + 1);
+        if (texts.length < 6) {
+          try {
+            const t = String((JSON.parse(String(r.payload || "{}")) as any).text || "").trim();
+            if (t) texts.push(t.slice(0, 160));
+          } catch { /* payload not JSON — skip */ }
+        }
+      }
+      const topKinds = [...kinds.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+      const topDomains = [...domains.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+      const summary = [
+        `${rows.length} activit${rows.length === 1 ? "y" : "ies"} on ${date}.`,
+        topKinds.length ? `Top: ${topKinds.map(([k, c]) => `${k} (${c})`).join(", ")}.` : "",
+        texts.length ? `Notably: ${texts.slice(0, 3).join(" · ")}` : "",
+      ].filter(Boolean).join(" ").slice(0, 2000);
+      const highlights = JSON.stringify({
+        count: rows.length,
+        kinds: Object.fromEntries(topKinds),
+        domains: Object.fromEntries(topDomains),
+        texts: texts.slice(0, 6),
+      }).slice(0, 4000);
+      await env.DB_BRAIN.prepare(
+        `INSERT INTO brain_daily_summaries (id, uid, date, summary, highlights, created_at)
+         VALUES (?1,?2,?3,?4,?5,?6)
+         ON CONFLICT(uid, date) DO UPDATE SET summary=?4, highlights=?5, created_at=?6`,
+      ).bind(crypto.randomUUID(), uid, date, summary, highlights, Date.now()).run();
+      n++;
+    } catch (e) { console.error("[brain-rollup]", String(e)); }
+  }
+  return n;
+}
+
+// Brain retention (B-D4 / §5.3). Two deletes, both idempotent and additive — they
+// only REMOVE data, so they never race the deletion contract / forget (which also
+// only remove; the ingest-time deletion watermark blocks WRITES, not these). Runs
+// nightly. Returns per-store counts for the cron log.
+//   (a) Raw event roll-off at 12 months (backstop beyond the 30-day expires_at
+//       prune). Event-DERIVED Vectorize embeddings (voicemail/message kinds
+//       registered in brain_vectors) age out with them; library FILE vectors are
+//       durable user content and are NOT rolled off here (they die only via
+//       retro_delete / the deletion contract).
+//   (b) Fact decay at 18 months: a fact not re-supported by any event within 18
+//       months is deleted (age = COALESCE(last_confirmed_at, derived_from_max_ts,
+//       updated_at) — pre-B4 NULL rows fall back to updated_at). Facts are
+//       recomputable from events + the device lane, so aggressive decay is safe.
+//       Facts are not individually vectorized today (only entities/library/
+//       voicemail are), so there are no separate fact vectors to prune here.
+export async function runBrainRetention(env: Env): Promise<{ events: number; facts: number; vectors: number }> {
+  const now = Date.now();
+  const MONTH_MS = 30 * 86_400_000;
+  const cut12mo = now - 12 * MONTH_MS;
+  const cut18mo = now - 18 * MONTH_MS;
+  let events = 0, facts = 0, vectors = 0;
+
+  // (a) event-derived vector roll-off (voicemail/message kinds only).
+  try {
+    const vr = await env.DB_BRAIN.prepare(
+      "SELECT vec_id FROM brain_vectors WHERE created_at < ?1 AND kind IN ('voicemail','message')",
+    ).bind(cut12mo).all();
+    const ids = ((vr.results ?? []) as any[]).map((r) => String(r.vec_id));
+    if (env.VECTOR_INDEX && ids.length) {
+      for (let i = 0; i < ids.length; i += 1000) {
+        try { await env.VECTOR_INDEX.deleteByIds(ids.slice(i, i + 1000)); } catch { /* best-effort */ }
+      }
+    }
+    if (ids.length) {
+      await env.DB_BRAIN.prepare("DELETE FROM brain_vectors WHERE created_at < ?1 AND kind IN ('voicemail','message')").bind(cut12mo).run();
+    }
+    vectors = ids.length;
+  } catch (e) { console.error("[brain-retention vectors]", String(e)); }
+
+  // (a) raw event roll-off.
+  try {
+    const r = await env.DB_BRAIN.prepare("DELETE FROM brain_events WHERE created_at < ?1").bind(cut12mo).run();
+    events = Number((r as any).meta?.changes ?? 0);
+  } catch (e) { console.error("[brain-retention events]", String(e)); }
+
+  // (b) fact decay.
+  try {
+    const r = await env.DB_BRAIN.prepare(
+      "DELETE FROM brain_facts WHERE COALESCE(last_confirmed_at, derived_from_max_ts, updated_at) < ?1",
+    ).bind(cut18mo).run();
+    facts = Number((r as any).meta?.changes ?? 0);
+  } catch (e) { console.error("[brain-retention facts]", String(e)); }
+
+  return { events, facts, vectors };
 }
 
 // Admin-triggered backfill: re-index the user's existing PUBLIC library files

@@ -22,6 +22,17 @@ export interface PlatformConfig {
   // GROUP path over to CF Realtime SFU (audio-only, 32 cap, active-speaker pull).
   groupAudioSfuEnabled: boolean;
   brainEnabled: boolean;
+  // One Brain B4 (SPEC-2026-07-17 §6, B-D6) — global brake on handing a
+  // `device_private` recall snippet to a CLOUD avaReason call. `brainRecall`
+  // merges the device + server lanes; a device-private hit can be included in a
+  // cloud model call ONLY over our-keys, no-retention transport. TRUE by default
+  // (matches the client fallback, so declaring it changes nothing today). The
+  // per-account "local-only answers" toggle lives under the `messages` consent
+  // domain; THIS flag is the platform-wide switch — set false in KV to force
+  // device-private hits to be stripped before any cloud reasoning app-wide.
+  // Declared here (interface + DEFAULTS in the same change) per the fake-flag rule
+  // so the brake is actually flippable.
+  cloudReasoningOverPrivate: boolean;
   verseEnabled: boolean;
   // [AVA-SYNC-SKIP] Kill switch for the reconnect/resume catch-up skip. Default TRUE
   // (matches the client's own fallback default, so declaring it changes nothing today).
@@ -497,6 +508,7 @@ const DEFAULTS: PlatformConfig = {
   conferenceEnabled: true,         // group AUDIO calls (master kill switch)
   groupAudioSfuEnabled: false,     // CF Realtime SFU group path — dormant until built+CI-verified
   brainEnabled: false,             // FREE LAUNCH: secondary — revisit later
+  cloudReasoningOverPrivate: true, // One Brain B4/B-D6: allow device-private recall snippets in cloud reasoning (our-keys, no-retention transport). Flip false in KV to force local-only handling of private hits.
   verseEnabled: false,             // FREE LAUNCH: creator dashboard hidden
   syncSkipEnabled: true,           // [AVA-SYNC-SKIP] skip empty reconnect/resume catch-ups when the client cursor is already at head; flip false to force full syncs
 

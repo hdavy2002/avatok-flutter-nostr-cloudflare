@@ -7,7 +7,7 @@ import { sweepAbandonedLiveness } from "./liveness_sweep"; // STREAM H — aband
 import { sweepRetention } from "./retention"; // [AVA-IDGATE-1] +256d biometric purge
 import { handleModeration } from "./moderation";
 import { handlePush } from "./fcm";
-import { handleBrain, purgeChurnedBrains } from "./brain";
+import { handleBrain, purgeChurnedBrains, rollupDailySummaries, runBrainRetention } from "./brain";
 import { handleArchive } from "./archive";
 import { handleDeletion } from "./deletion";
 import { handleWalletTx } from "./wallet";
@@ -181,6 +181,18 @@ export default {
     // checked against the double-entry ledger; mismatches email ALERT_EMAIL.
     if (new Date().getUTCHours() === 0) {
       try { await reconWallet(env); } catch (e) { console.error("[recon]", String(e)); }
+      // One Brain B4 (SPEC §8-B4) — nightly brain_daily_summaries rollup (yesterday
+      // UTC, mechanical: counts + top kinds + key texts, no LLM) + retention
+      // (12-mo raw-event roll-off + event-vector age-out, 18-mo fact decay). Both
+      // bounded + idempotent; they only DELETE, so never race the deletion contract.
+      try {
+        const rolled = await rollupDailySummaries(env);
+        if (rolled) env.ANALYTICS?.writeDataPoint({ blobs: ["brain_daily_rollup"], doubles: [rolled], indexes: ["cron"] });
+      } catch (e) { console.error("[brain-rollup]", String(e)); }
+      try {
+        const ret = await runBrainRetention(env);
+        if (ret.events || ret.facts || ret.vectors) env.ANALYTICS?.writeDataPoint({ blobs: ["brain_retention"], doubles: [ret.events, ret.facts, ret.vectors], indexes: ["cron"] });
+      } catch (e) { console.error("[brain-retention]", String(e)); }
       // AvaStorage (Phase 4): daily usage snapshot (trend mini-bars) + the
       // monthly 20-coins/GB over-quota billing run on the 1st (idempotent op_id).
       try { await storageSnapshots(env); } catch (e) { console.error("[storage-snap]", String(e)); }

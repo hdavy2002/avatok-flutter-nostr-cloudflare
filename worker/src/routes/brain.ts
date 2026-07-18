@@ -164,6 +164,10 @@ export async function brain(req: Request, env: Env, op: string): Promise<Respons
   switch (op) {
     case "ask": return toBrain(env, uid, { op, question: b.question });
     case "briefing": return toBrain(env, uid, { op });
+    // One Brain B4 (§6, §8-B4): POST /api/brain/recall {query, domains?, k?} →
+    // {hits:[{text, domain, scope:'account_private', score, ts}]}. Server-lane
+    // only; the device lane is merged client-side (B4-app).
+    case "recall": return toBrain(env, uid, { op, query: b.query, domains: b.domains, k: b.k });
     case "remember": return toBrain(env, uid, { op, facts: b.facts, entities: b.entities });
     case "investigate": return toBrain(env, uid, { op, complaint: b.complaint });
     case "forget": return toBrain(env, uid, { op, entity_id: b.entity_id });
