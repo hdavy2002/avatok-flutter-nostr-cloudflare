@@ -495,10 +495,17 @@ export class ReceptionRoomCf {
     if (this.finalized) return;
     if (this.cfTimeUp) this.cfHistory.push({ role: "user", content: "[SYSTEM: time is up]" });
     this.cfHistory.push({ role: "user", content: userContent });
-    let text = (await this.cfLlm()).trim();
-    text = text.replace(/<END_CALL>/gi, "").trim(); // engine decides ending, not the marker
+    const raw = (await this.cfLlm()).trim();
+    // CLOSE-ON-GOODBYE (owner 2026-07-19): end the call the moment Ava signs off,
+    // instead of holding the line open until the hard timer (which made her wake up
+    // again after "have a great day"). Honor the model's <END_CALL> marker AND detect
+    // a spoken goodbye, because a small model often drops the marker. She still speaks
+    // her FULL closing line first (cfSpeak awaits playback), THEN we finalize.
+    const wantsEnd = /<END_CALL>/i.test(raw) || (!this.cfTimeUp && isGoodbyeLine(raw));
+    const text = raw.replace(/<END_CALL>/gi, "").trim();
     this.cfHistory.push({ role: "assistant", content: text || "..." });
     if (text) { this.outText.push(text); this.pushDialog("ava", text); await this.cfSpeak(text); }
+    if (wantsEnd && !this.finalized) { this.saidGoodbye = true; this.cfClosing = true; this.ev("ava_recept_cf_goodbye_close", {}); void this.finalize("ava_goodbye"); }
   }
 
   private async cfStt(wav: Uint8Array): Promise<string> {
@@ -979,6 +986,17 @@ function concatFrames(frames: Uint8Array[], total: number): Uint8Array {
   const out = new Uint8Array(total);
   let o = 0; for (const f of frames) { out.set(f, o); o += f.byteLength; }
   return out;
+}
+// Ava's sign-off detector (CLOSE-ON-GOODBYE): when her reply is a clear farewell we
+// end the call right after she says it. Conservative + multilingual so a mid-call line
+// never trips it. Checks Ava's OWN reply text, never the caller's.
+function isGoodbyeLine(t: string): boolean {
+  const s = t.toLowerCase();
+  return /\bhave a (great|good|wonderful|nice|lovely|blessed) (day|evening|morning|afternoon|night|one|rest of your \w+)\b/.test(s)
+    || /\b(take care|good ?bye|bye now|bye bye|talk soon|speak soon|talk to you soon|catch you later)\b/.test(s)
+    || /(अलविदा|फिर मिलेंगे|ध्यान रखना|ध्यान रखिए|शुभ दिन|आपका दिन शुभ हो|दिन अच्छा बीते)/.test(t)
+    || /\b(adiós|hasta luego|que tengas un buen día|cuídate)\b/i.test(s)
+    || /\b(au revoir|bonne journée)\b/i.test(s);
 }
 function callerHasSpeech(pcm: Uint8Array, threshold = 600): boolean {
   const n = pcm.byteLength >> 1;
