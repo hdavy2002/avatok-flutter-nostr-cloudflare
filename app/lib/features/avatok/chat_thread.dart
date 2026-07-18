@@ -56,7 +56,7 @@ import '../../core/ice_cache.dart';
 import '../../core/profile_store.dart';
 import '../../core/drive_service.dart';
 import '../../core/library_api.dart';
-import '../../core/rag_service.dart';
+import '../../core/local_brain/local_brain.dart';
 import '../library/library_picker.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/avatok_dark.dart';
@@ -2669,20 +2669,19 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   /// flipping back to message the person. Toggled by the ✦ button in the composer.
   bool _avaMode = false;
 
-  /// Buffer of conversation lines (everyone's), flushed into THIS member's own
-  /// RAG store (Gemini File Search) in batches so @ava can recall the whole
-  /// thread later. Group RAG = each member indexes the full thread into their
-  /// own store (owner decision 2026-06-18). `_ragLive` gates incoming messages
-  /// so reopening a chat doesn't re-index already-seen history.
-  final List<String> _ragBuffer = [];
+  /// `_ragLive` gates incoming messages so reopening a chat doesn't re-index
+  /// already-seen history. [ONEBRAIN-B3-APP] The former per-member RAG BATCH
+  /// (buffer conversation lines → flush to the user's Gemini File Search store
+  /// via RagService) was CUT (B-D2): it was a second, unaudited brain shipping
+  /// chat content server-side. Chat content is device_private (§2.1) and stays
+  /// on-device (the AvaOnDeviceRag lane below, when Local Ava AI is active).
   bool _ragLive = false;
 
-  /// Append one labelled line to the RAG batch; flush to the store every 10.
-  /// Skips empty lines and @ava control lines. Fire-and-forget — never blocks.
+  /// Index one labelled line into the ON-DEVICE lane (when Local Ava AI is
+  /// active). Skips empty lines and @ava control lines. Fire-and-forget.
   void _ragAddLine(String who, String text) {
     final t = text.trim();
     if (t.isEmpty || t.toLowerCase().contains(_avaWakeWord)) return;
-    _ragBuffer.add('$who: $t');
     // On-device memory: ONLY when Local Ava AI is active (model loaded) so we
     // never trigger a model download just from chatting. Makes facts said in
     // this chat findable on-device/offline — including cross-surface in AvaChat.
@@ -2691,13 +2690,6 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       // greetings/acks + respects the episodic cap). Facts, not chatter.
       // ignore: unawaited_futures
       AvaOnDeviceRag.I.rememberMessage(who, t, name: 'chat-${widget.chat.name}');
-    }
-    if (_ragBuffer.length >= 10) {
-      final batch = _ragBuffer.join('\n');
-      _ragBuffer.clear();
-      // ignore: unawaited_futures
-      RagService.I.ingestText('Chat with ${widget.chat.name}:\n$batch',
-          name: 'chat-${widget.chat.name}');
     }
   }
 
@@ -4770,21 +4762,23 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       'ms_to_bubble': DateTime.now().millisecondsSinceEpoch - tShownStart,
       'size': bytes.length,
     });
-    // Index shared docs/images into the user's own RAG store (content extraction
-    // supports text/PDF/Office/PNG/JPEG, not audio/video). Fire-and-forget.
-    if (kind == MediaKind.image || kind == MediaKind.file) {
-      // ignore: unawaited_futures
-      RagService.I.ingestFileBytes(bytes, ct, name);
-    }
-    // Also index a short DESCRIPTOR line (name + caption + kind) for EVERY
-    // attachment — so "@ava find the logo I sent" / "the video about X" resolves
-    // by name even when the bytes aren't text-extractable (video/audio) or the
-    // content lacks the words the user searches by. This is what makes Ava able
-    // to find files via Cloudflare AI Search.
+    // [ONEBRAIN-B3-APP] The cloud File Search push of raw file bytes
+    // (RagService.ingestFileBytes) was CUT (B-D2). Server-readable file indexing
+    // is the `files` domain via the AvaLibrary/upload pipeline; here we keep only
+    // an ON-DEVICE descriptor so "@ava find the logo I sent" / "the video about
+    // X" resolves by name offline even when the bytes aren't text-extractable
+    // (video/audio) or the content lacks the words the user searches by.
     final descr = StringBuffer('Shared a ${kind.name} named "$name"');
     if (caption.trim().isNotEmpty) descr.write(' — note: ${caption.trim()}');
     // ignore: unawaited_futures
-    RagService.I.ingestText(descr.toString(), name: 'chat-${widget.chat.name}-file');
+    AvaLocalBrain.I.ingest(
+      domain: 'files',
+      kind: 'chat_file',
+      text: descr.toString(),
+      meta: {'convKey': 'file:${widget.chat.name}'},
+      ts: now,
+      sourceId: 'chatfile_${DateTime.now().microsecondsSinceEpoch}',
+    );
     Analytics.capture('chat_media_sent', {
       'kind': kind.name,
       'has_caption': caption.trim().isNotEmpty,

@@ -57,11 +57,11 @@ class AvaApi {
   /// P3 — in-thread agent turn (posts ava/ava_status into the existing conv).
   static const String threadTurn = '/api/ava/thread/turn';
 
-  /// RAG — index the user's files + chat text into their own File Search store
-  /// (under their Google key); @ava queries it automatically.
-  static const String ragIngest = '/api/ava/rag/ingest';
-  static const String ragStore = '/api/ava/rag/store';
-  static const String ragBackfill = '/api/ava/rag/backfill';
+  // [ONEBRAIN-B3-APP] The RAG File Search ingest/store/backfill endpoints
+  // (ragIngest / ragStore / ragBackfill → the user's Gemini/CF File Search
+  // brain) were REMOVED with RagService (B-D2): it was a second, unaudited
+  // brain. Chat content is device_private (§2.1) and is indexed on-device
+  // (AvaLocalBrain). Do not re-add a client File Search ingest endpoint.
 
   /// In-thread "smart search" — semantic search over the user's own AI Search
   /// shard, best-effort scoped to a conversation so the thread search UI can map

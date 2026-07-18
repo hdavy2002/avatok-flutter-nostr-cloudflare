@@ -27,8 +27,8 @@ import 'dart:convert';
 import '../api_auth.dart';
 import '../brain_consent.dart';
 import '../config.dart';
-import 'embedder.dart';
-import 'local_index.dart';
+import '../local_brain/embedder.dart';
+import '../local_brain/local_index.dart';
 
 /// A single memory search result. Stable shape consumed by P3 (the spine) and
 /// P5 (the `brain.search` AvaTool).

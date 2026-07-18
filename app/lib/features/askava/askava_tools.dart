@@ -31,7 +31,7 @@ class AskAvaToolResult {
 /// on-device (device book / call log / chats via SQLite) EXCEPT `spam_lookup`,
 /// which is the one central call (the §4.4 edge-cached D1 endpoint). Only the
 /// user's query + the few matching rows ever transit to the model; nothing is
-/// stored server-side, and NONE of this is fed to RagService/AvaBrain ingestion.
+/// stored server-side, and NONE of this is fed to any AvaBrain ingestion lane.
 class AskAvaTools {
   AskAvaTools._();
 

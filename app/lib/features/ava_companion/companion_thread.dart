@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:audioplayers/audioplayers.dart';
@@ -14,14 +13,13 @@ import '../../core/ava_ai_client.dart';
 import '../../core/ava_local_mode.dart';
 import '../../core/ava_log.dart';
 import '../../core/ava_memory/ava_profile_memory.dart';
-import '../../core/ava_memory/local_index.dart';
+import '../../core/local_brain/local_brain.dart';
 import '../../core/ava_ondevice_rag.dart';
 import '../../core/avatar_cache.dart';
 import '../../core/cached_image.dart';
 import '../../core/ava_prompt_budget.dart';
 import '../../core/ava_quality.dart';
 import '../../core/library_api.dart';
-import '../../core/rag_service.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
@@ -133,10 +131,10 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
     super.initState();
     AvaVoicePref.load();
     Analytics.screenViewed('avatok', 'avachat_thread');
-    // Master brain: index existing Messenger history + files into AI Search once
-    // per session so ChatAVA can discuss past conversations/files (premium-gated
-    // server-side; free users are a no-op). Fire-and-forget.
-    RagService.I.backfillOncePerSession();
+    // [ONEBRAIN-B3-APP] The server-side RagService history backfill (chat text +
+    // files → the user's Gemini/CF File Search store) was CUT (B-D2): it was a
+    // second, unaudited brain. Message content is device-private (§2.1) and is
+    // recalled from the on-device lane (AvaLocalBrain); no server backfill fires.
     _title = (widget.initialTitle ?? '').trim();
     // Clear the "now playing" highlight when a clip finishes (subscribe once).
     _audio.onPlayerComplete.listen((_) {
@@ -225,10 +223,11 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
   /// Attach a file from the device and INGEST it three ways so Ava can use it and
   /// the user can find it later:
   ///   1. AvaLibrary — the universal content-addressed pool (it shows up in
-  ///      AvaLibrary; the server runs moderation + AvaBrain ingestion on upload).
-  ///   2. RAG vector store — the user's own File Search store, so `@ava` can cite
-  ///      it (no-op when AI isn't connected).
-  ///   3. On-device FTS5 + vector index — so local search surfaces it offline.
+  ///      AvaLibrary; the server runs moderation + AvaBrain `files`-domain
+  ///      ingestion on upload — the server-readable, account_private lane).
+  ///   2. On-device FTS5 + vector index (AvaLocalBrain) — so local search
+  ///      surfaces it offline. [ONEBRAIN-B3-APP] The old step 2 (push bytes to
+  ///      the user's Gemini File Search store via RagService) was CUT (B-D2).
   Future<void> _attachFile() async {
     final res = await FilePicker.platform.pickFiles(withData: true);
     final f = res?.files.single;
@@ -251,15 +250,19 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
           domain: 'media', code: 'avachat_library_upload_failed',
           message: e.toString(), screen: 'avachat_thread', action: 'attach_file');
     }
-    // 2) RAG vector store (user's File Search store). 3) On-device index.
+    // 2) On-device device-lane index (AvaLocalBrain). A short descriptor makes
+    // the shared file findable offline by @ava. [ONEBRAIN-B3-APP] The former
+    // cloud File Search push (RagService.ingestFileBytes) was CUT (B-D2); the
+    // server `files` domain (via the AvaLibrary upload above) is the audited
+    // account_private lane.
     // ignore: unawaited_futures
-    RagService.I.ingestFileBytes(bytes, mime, name);
-    // ignore: unawaited_futures
-    AvaLocalIndex.I.indexMessage(
-      messageId: 'avachat_file_${DateTime.now().microsecondsSinceEpoch}',
-      convKey: 'avachat:$_sessionId',
-      payload: jsonEncode({'t': 'text', 'body': 'File shared with Ava: $name'}),
-      createdAt: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+    AvaLocalBrain.I.ingest(
+      domain: 'files',
+      kind: 'avachat_file',
+      text: 'File shared with Ava: $name',
+      meta: {'convKey': 'avachat:$_sessionId'},
+      ts: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      sourceId: 'avachat_file_${DateTime.now().microsecondsSinceEpoch}',
     );
 
     if (!mounted) return;
@@ -449,8 +452,8 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
     _persist();
   }
 
-  /// Index one chat line into on-device memory (when Local Ava AI is loaded) and
-  /// the user's cloud File Search store. Fire-and-forget; never blocks the chat.
+  /// Index one chat line into on-device memory (when Local Ava AI is loaded).
+  /// Fire-and-forget; never blocks the chat.
   void _ingestTurn(String who, String text) {
     final line = text.trim();
     if (line.isEmpty) return;
@@ -460,9 +463,9 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
       // ignore: unawaited_futures
       AvaOnDeviceRag.I.rememberMessage(who, line, name: 'avachat');
     }
-    // cloud File Search store (separate budget) keeps the full exchange.
-    // ignore: unawaited_futures
-    RagService.I.ingestText('$who: $line', name: 'avachat');
+    // [ONEBRAIN-B3-APP] The cloud File Search push (RagService.ingestText) was
+    // CUT (B-D2). Chat content is device_private (§2.1) — it never leaves the
+    // device for a server-side content archive.
   }
 
   /// Snap any partially-revealed message to its full text (and stop the timer),

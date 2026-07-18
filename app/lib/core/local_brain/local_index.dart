@@ -6,6 +6,16 @@
 /// so there is no parallel database and per-account scoping comes for free (the
 /// whole DB file is already per-account).
 ///
+/// ── NETWORKLESS BOUNDARY (One Brain B3, §6.1) ────────────────────────────────
+/// Moved into `app/lib/core/local_brain/` — the device-private brain module. It
+/// imports ONLY: `dart:convert`/`math`/`typed_data`, `package:drift` (the local
+/// SQLite engine), and two audited local infra files — `../ava_log.dart`
+/// (diagnostics logger; never transmits index content) and `../db.dart` (the
+/// per-account SQLite source of truth). It has NO network-capable dependency.
+/// `test/local_brain_networkless_test.dart` walks this module's imports and
+/// fails if that ever changes. See also `AvaLocalBrain` (`local_brain.dart`),
+/// the façade that callers use.
+///
 /// ── Why raw SQL on the existing drift DB (not a new schema) ──────────────────
 /// `core/db.dart` is owned by another phase and is FROZEN to Phase 4. We must
 /// not add tables to its `@DriftDatabase` declaration. Instead we run raw DDL/DML

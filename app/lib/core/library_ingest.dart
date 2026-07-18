@@ -1,7 +1,5 @@
-import 'dart:convert';
-
 import 'analytics.dart';
-import 'ava_memory/ava_memory.dart';
+import 'local_brain/local_brain.dart';
 import 'money_api.dart';
 
 /// Tier-aware routing for a newly-added AvaLibrary file (owner decision 2026-06-20).
@@ -11,7 +9,7 @@ import 'money_api.dart';
 ///     same wallet `premium` flag), so AvaChat can pull it by description. Nothing
 ///     to do on the client.
 ///   • FREE                     → index the file into the ON-DEVICE memory lane
-///     ([AvaMemory]/[AvaLocalIndex]) so AvaChat's free lane finds it locally, and
+///     ([AvaLocalBrain]) so AvaChat's free lane finds it locally, and
 ///     let the existing daily auto-backup ship the per-account SQLite (which now
 ///     contains this index) to the user's own Google Drive. Nothing is sent to
 ///     the server brain for free users.
@@ -68,14 +66,19 @@ class LibraryIngest {
       if (id.isEmpty) return;
       if (await _isPremium()) return; // paid → server vectorises/embeds it
       final cat = _catOf(mime);
-      // Index the file's name + type into the on-device lane. The filename is the
-      // searchable signal ("invoice-june.pdf" → AvaChat can find "the invoice");
-      // for premium users the server additionally embeds the CONTENT (OCR/text).
-      await AvaMemory.I.index(
-        messageId: 'lib:$id',
-        convKey: 'lib:$cat',
-        payload: jsonEncode({'t': 'file', 'name': name, 'body': '$name ($cat file)'}),
-        createdAt: DateTime.now().millisecondsSinceEpoch,
+      // Index the file's name + type into the device lane (AvaLocalBrain — the
+      // §2.1 device_private brain). The filename is the searchable signal
+      // ("invoice-june.pdf" → AvaChat can find "the invoice"); for premium users
+      // the server additionally embeds the CONTENT (OCR/text). [ONEBRAIN-B3-APP]
+      // Routed through AvaLocalBrain.ingest so all device-lane content enters
+      // through the one networkless device-brain boundary.
+      await AvaLocalBrain.I.ingest(
+        domain: 'files',
+        kind: 'library_file',
+        text: '$name ($cat file)',
+        meta: {'convKey': 'lib:$cat'},
+        ts: DateTime.now().millisecondsSinceEpoch,
+        sourceId: 'lib:$id',
       );
       Analytics.capture('library_local_index', {'category': cat, 'app': app, 'tier': 'free'});
     } catch (_) {/* best-effort — never block or break the upload */}

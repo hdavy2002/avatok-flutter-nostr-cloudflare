@@ -13,7 +13,7 @@ import '../../../core/api_auth.dart';
 import '../../../core/audio_playback_service.dart';
 import '../../../core/brain_consent.dart';
 import '../../../core/config.dart';
-import '../../../core/rag_service.dart';
+import '../../../core/local_brain/local_brain.dart';
 import '../../../core/ui/avatok_dark.dart';
 // [AVAINBOX-3] `show` is REQUIRED, not tidiness: contacts.dart declares its own
 // `Directory` (the AvaTOK user directory), which collides with dart:io's
@@ -227,10 +227,13 @@ class _InboxThreadScreenState extends State<InboxThreadScreen> {
   /// register a new toggle, it checks the existing one, exactly per the
   /// rulebook ("find how an existing app registers its guardrail toggle and
   /// follow that exact pattern; do not invent a parallel one"). Text +
-  /// metadata only — never raw audio bytes (ingestFileBytes excludes audio
-  /// today; rag_service.dart `_supported`). De-duped per card via
+  /// metadata only — never raw audio bytes. De-duped per card via
   /// [InboxBrainIngestStore] so reopening the same thread doesn't re-ingest
-  /// the same transcript every time.
+  /// the same transcript every time. [ONEBRAIN-B3-APP] The transcript now goes
+  /// to the on-device brain (AvaLocalBrain) instead of the user's Gemini File
+  /// Search store (RagService, CUT under B-D2); the server-readable voicemail
+  /// domain is ingested server-side (brain.ts), so nothing chat/voicemail
+  /// content leaves the device from here.
   Future<void> _ingestToBrain(List<InboxCard> cards) async {
     bool allowed;
     try {
@@ -261,7 +264,16 @@ class _InboxThreadScreenState extends State<InboxThreadScreen> {
         if (meta != null && meta.tags.isNotEmpty) descr.writeln('Tags: ${meta.tags.join(', ')}');
         if (meta?.title != null && meta!.title!.isNotEmpty) descr.writeln('Title: ${meta.title}');
         descr.writeln('Transcript: $transcript');
-        await RagService.I.ingestText(descr.toString(), name: 'voicemail-$_title-$dateStr');
+        await AvaLocalBrain.I.ingest(
+          domain: 'voicemail',
+          kind: 'voicemail_transcript',
+          text: descr.toString(),
+          meta: {'convKey': 'voicemail:$_title'},
+          ts: c.createdAtMs > 0
+              ? c.createdAtMs ~/ 1000
+              : DateTime.now().millisecondsSinceEpoch ~/ 1000,
+          sourceId: 'vm:${c.stableId}',
+        );
         await InboxBrainIngestStore.I.markIngested(c.stableId);
         ingested++;
       } catch (_) {/* best-effort — never blocks the thread from rendering */}

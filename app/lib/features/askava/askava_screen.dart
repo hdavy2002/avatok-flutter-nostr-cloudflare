@@ -28,7 +28,7 @@ import 'askava_tools.dart';
 ///
 /// HARD PRIVACY BOUNDARY (plan §4.6): only the user's query + the few matching
 /// rows a tool returns ever enter the model context; tool results are NEVER passed
-/// to RagService/AvaBrain ingestion and are not persisted beyond the visible
+/// to any AvaBrain ingestion lane and are not persisted beyond the visible
 /// thread. Actions (dial/block/report_spam) NEVER auto-run — they render a
 /// confirmation chip the user must tap.
 class AskAvaScreen extends StatefulWidget {
