@@ -26,6 +26,7 @@ import 'dart:convert';
 
 import '../api_auth.dart';
 import '../brain_consent.dart';
+import '../brain_recall.dart';
 import '../config.dart';
 import '../local_brain/embedder.dart';
 import '../local_brain/local_index.dart';
@@ -78,6 +79,7 @@ abstract class AvaMemory {
     int topK = 5,
     bool onDeviceOnly = false,
     bool allowServer = false,
+    bool forCloud = false,
   });
 
   /// Index a single message into the on-device lane (lazy/selective; trivia is
@@ -111,45 +113,33 @@ class AvaMemoryRouter implements AvaMemory {
     int topK = 5,
     bool onDeviceOnly = false,
     bool allowServer = false,
+    bool forCloud = false,
   }) async {
     final q = query.trim();
     if (q.isEmpty) return const [];
 
-    // 1) Local lane — FTS5 keyword first, vector on a miss. Always runs.
-    var local = await AvaLocalIndex.I.searchKeyword(q, convKey: convKey, topK: topK);
-    if (local.isEmpty) {
-      local = await AvaLocalIndex.I.searchVector(q, convKey: convKey, topK: topK);
-    }
-    final hits = <MemoryHit>[
-      for (final h in local)
+    // [ONEBRAIN-B4-APP] Routed onto the ONE unified recall API. brainRecall runs
+    // the device lane always and the server lane when permitted, merges + ranks,
+    // and enforces the §6 cloud boundary (device_private strip + first-run
+    // disclosure) when [forCloud] is set — a private/on-device conv still stays
+    // device-only via `deviceOnly`.
+    final hits = await brainRecall(
+      q,
+      k: topK,
+      convKey: convKey,
+      forCloud: forCloud,
+      deviceOnly: onDeviceOnly || !allowServer,
+    );
+    return [
+      for (final h in hits)
         MemoryHit(
-          messageId: h.messageId,
+          messageId: h.sourceId,
           convKey: h.convKey,
           score: h.score,
-          snippet: h.snippet,
-          lane: 'local',
+          snippet: h.text,
+          lane: h.source == 'server' ? 'server' : 'local',
         ),
     ];
-
-    // 2) Server lane — ONLY when explicitly allowed and never for private convs.
-    if (!onDeviceOnly && allowServer && serverLane != null) {
-      if (await serverLane!.permitted()) {
-        try {
-          final serverHits = await serverLane!.search(q, topK: topK);
-          hits.addAll(serverHits);
-        } catch (_) {/* server lane is best-effort; local already answered */}
-      }
-    }
-
-    // De-dup by messageId (local wins), then take top-k by score.
-    final seen = <String>{};
-    final merged = <MemoryHit>[];
-    for (final h in hits) {
-      if (h.messageId.isNotEmpty && !seen.add(h.messageId)) continue;
-      merged.add(h);
-    }
-    merged.sort((a, b) => b.score.compareTo(a.score));
-    return merged.take(topK).toList(growable: false);
   }
 
   @override

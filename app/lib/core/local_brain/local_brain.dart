@@ -126,6 +126,13 @@ class AvaLocalBrain {
     ];
   }
 
+  /// Warm the device-lane schema (and fold any legacy on-device store on first
+  /// call). Cheap + idempotent; indexes nothing on its own.
+  Future<void> ensureReady() => AvaLocalIndex.I.warm();
+
+  /// Row count of the unified device index (for adoption/size telemetry).
+  Future<int> count() => AvaLocalIndex.I.count();
+
   /// Backfill the device lane from the local `messages` table (device-only).
   /// Bounded by [limit]; returns the number of NEW items indexed.
   Future<int> backfill({String? convKey, int limit = 500}) =>

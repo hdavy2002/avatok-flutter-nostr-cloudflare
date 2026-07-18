@@ -6,6 +6,7 @@ import '../../core/account_storage.dart';
 import '../../core/analytics.dart';
 import '../../core/brain_api.dart';
 import '../../core/brain_consent.dart';
+import '../../core/brain_recall.dart';
 import '../../core/theme.dart';
 import '../../core/ui/zine_widgets.dart';
 
@@ -32,6 +33,9 @@ class _BrainSettingsScreenState extends State<BrainSettingsScreen> {
   Map<String, bool> _state = {};
   bool _loading = true;
 
+  // B-D6 / §6 — per-account "Local-only answers" toggle (default OFF).
+  bool _localOnly = false;
+
   // Deletion job UI state.
   bool _deleting = false;
   String? _deleteMessage; // shown under the danger button
@@ -54,12 +58,19 @@ class _BrainSettingsScreenState extends State<BrainSettingsScreen> {
     await BrainConsent.pull();
     final toggles = await BrainConsent.toggles();
     final state = await BrainConsent.all();
+    final localOnly = await LocalOnlyAnswers.isOn();
     if (!mounted) return;
     setState(() {
       _toggles = toggles;
       _state = state;
+      _localOnly = localOnly;
       _loading = false;
     });
+  }
+
+  Future<void> _setLocalOnly(bool v) async {
+    setState(() => _localOnly = v);
+    await LocalOnlyAnswers.set(v); // persists (scoped) + emits local_only_toggled
   }
 
   Future<void> _loadDeletedAt() async {
@@ -231,6 +242,9 @@ class _BrainSettingsScreenState extends State<BrainSettingsScreen> {
                 style: ZineText.sub(size: 11.5, color: Zine.inkMute)),
           ),
           const SizedBox(height: 24),
+          _section('Privacy'),
+          _privacyCard(),
+          const SizedBox(height: 24),
           _section('Danger zone'),
           _dangerCard(),
         ]),
@@ -264,6 +278,34 @@ class _BrainSettingsScreenState extends State<BrainSettingsScreen> {
                       value: _state[t.consentKey] ?? t.defaultOn),
             ]),
     );
+  }
+
+  Widget _privacyCard() {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      ZineCard(
+        radius: Zine.rSm,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        boxShadow: Zine.shadowXs,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 9),
+          child: Row(children: [
+            Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Local-only answers',
+                  style: ZineText.value(size: 14.5, weight: FontWeight.w800)),
+              const SizedBox(height: 2),
+              Text(
+                  'When on, Ava never sends excerpts of on-device content (your '
+                  'messages, notes and files) to the cloud to answer. Local search '
+                  'still works; some answers may need cloud reasoning it can’t use.',
+                  style: ZineText.sub(size: 12)),
+            ])),
+            const SizedBox(width: 10),
+            ZineToggle(value: _localOnly, onChanged: _setLocalOnly),
+          ]),
+        ),
+      ),
+    ]);
   }
 
   Widget _row(String key, String title, String sub, {required bool value, bool master = false}) {

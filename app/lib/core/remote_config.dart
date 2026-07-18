@@ -107,6 +107,15 @@ class RemoteConfig {
   /// CI/device-verified. While false, group calls use the existing LiveKit path.
   static bool get groupAudioSfuEnabled => _b('groupAudioSfuEnabled', false);
   static bool get brainEnabled => _b('brainEnabled', false);
+  /// [ONEBRAIN-B4] Global kill-switch for cloud reasoning over device_private
+  /// brain content (SPEC §6, B-D6). Default TRUE (owner decision 2026-07-18:
+  /// cloud reasoning is allowed; the per-account "Local-only answers" toggle is
+  /// the opt-out). When flipped FALSE in KV it behaves like every account has the
+  /// toggle ON — `brainRecall(forCloud: true)` strips device_private hits for
+  /// everyone, so no on-device excerpt ever reaches a cloud model. Declared in
+  /// worker/src/routes/config.ts (PlatformConfig + DEFAULTS, per the fake-flag
+  /// rule) so it is a real, flippable flag — the server agent adds it there.
+  static bool get cloudReasoningOverPrivate => _b('cloudReasoningOverPrivate', true);
   static bool get verseEnabled => _b('verseEnabled', false);
   static bool get translationEnabled => _b('translationEnabled', false);
   static bool get translationGroupEnabled => _b('translationGroupEnabled', false);

@@ -15,6 +15,8 @@ import '../../core/ava_log.dart';
 import '../../core/ava_memory/ava_profile_memory.dart';
 import '../../core/local_brain/local_brain.dart';
 import '../../core/ava_ondevice_rag.dart';
+import '../../core/brain_recall.dart';
+import '../avabrain/brain_settings_screen.dart';
 import '../../core/avatar_cache.dart';
 import '../../core/cached_image.dart';
 import '../../core/ava_prompt_budget.dart';
@@ -153,6 +155,35 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
       Analytics.capture('avachat_session_resumed',
           {'persona': widget.persona.id, 'turns': seed.length});
     }
+    // [ONEBRAIN-B4-APP] Listen for the §6/B-D6 first-run disclosure. brainRecall
+    // raises this the first time an on-device excerpt would be sent to the cloud
+    // model on this account; the UI (here) surfaces the one-time notice.
+    BrainPrivacyNotices.pending.addListener(_onPrivacyDisclosurePending);
+    _onPrivacyDisclosurePending();
+  }
+
+  void _onPrivacyDisclosurePending() {
+    if (!mounted || !BrainPrivacyNotices.pending.value) return;
+    // Defer to after the current frame so a SnackBar mid-build is safe.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !BrainPrivacyNotices.pending.value) return;
+      final messenger = ScaffoldMessenger.maybeOf(context);
+      if (messenger == null) return;
+      messenger.showSnackBar(SnackBar(
+        duration: const Duration(seconds: 8),
+        content: const Text(BrainPrivacyNotices.disclosureText),
+        action: SnackBarAction(
+          label: 'Turn off',
+          onPressed: () {
+            Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const BrainSettingsScreen()));
+          },
+        ),
+      ));
+      // Mark shown (persist + telemetry) once surfaced — never before.
+      // ignore: unawaited_futures
+      BrainPrivacyNotices.markShown();
+    });
   }
 
   String _opener(AvaPersona p) {
@@ -177,6 +208,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
 
   @override
   void dispose() {
+    BrainPrivacyNotices.pending.removeListener(_onPrivacyDisclosurePending);
     _revealTimer?.cancel();
     _stt?.cancel();
     _persist(); // save the session on close (local + D1)
@@ -341,11 +373,16 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
     String notes = '';
     if (AvaLocalMode.I.isActive) {
       try {
-        final hits = await AvaOnDeviceRag.I.search(t, limit: 4);
+        // [ONEBRAIN-B4-APP] Grounding runs through the ONE recall API. forCloud:
+        // true means brainRecall enforces the §6 boundary — device_private hits
+        // are stripped when "Local-only answers" is on (or the remote kill-switch
+        // is off), and the first-run disclosure fires the first time a private
+        // excerpt would reach the cloud model this answer calls.
+        final hits = await brainRecall(t, k: 4, forCloud: true);
         hitCount = hits.length;
         if (hits.isNotEmpty) {
           notes = AvaPromptBudget.rag(
-              "The user's own saved notes/messages that may be relevant (use them to answer; if they don't cover it, say you don't have it):\n${hits.map((h) => '• ${h.content}').join('\n')}");
+              "The user's own saved notes/messages that may be relevant (use them to answer; if they don't cover it, say you don't have it):\n${hits.map((h) => '• ${h.text}').join('\n')}");
         }
       } catch (_) {}
     }

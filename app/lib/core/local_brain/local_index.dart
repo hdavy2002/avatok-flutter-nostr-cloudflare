@@ -110,6 +110,77 @@ class AvaLocalIndex {
       );
     ''');
     _schemaReady = true;
+    await _migrateLegacyRag();
+  }
+
+  /// One-time fold of the old [AvaOnDeviceRag] store (`ava_mem_fts`, columns
+  /// name/content/created_at) into the unified `ava_fts` index. B3 deferred the
+  /// AvaOnDeviceRag→AvaLocalBrain merge to B4; this backfills those rows on first
+  /// use so companion grounding + any note saved via the old API stays findable
+  /// through `brainRecall`/`AvaLocalBrain`. Networkless (drift + SQLite only),
+  /// idempotent (guarded by a sentinel row), and best-effort — a missing legacy
+  /// table (fresh install) is a no-op. The old table is left in place so the
+  /// legacy shim can keep counting it; re-running only ever inserts NEW rowids.
+  Future<void> _migrateLegacyRag() async {
+    try {
+      final db = Db.I;
+      final present = await db.customSelect(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='ava_mem_fts'",
+      ).get();
+      if (present.isEmpty) return; // no legacy store on this device — nothing to do
+
+      final rows = await db.customSelect(
+        'SELECT rowid AS rid, name, content, created_at FROM ava_mem_fts',
+      ).get();
+      for (final r in rows) {
+        final rid = r.read<int>('rid');
+        final messageId = 'legacy_rag_$rid';
+        // Already folded? (idempotent across launches / partial runs.)
+        final done = await db.customSelect(
+          'SELECT 1 FROM ava_index_state WHERE message_id = ?1',
+          variables: [Variable<String>(messageId)],
+        ).get();
+        if (done.isNotEmpty) continue;
+
+        final content = r.readNullable<String>('content') ?? '';
+        if (_isTrivia(content)) {
+          // Record it as seen so we never re-scan it, but don't index trivia.
+          await db.customStatement(
+            'INSERT OR IGNORE INTO ava_index_state(message_id, fts, vec) VALUES (?1, 0, 0)',
+            [messageId],
+          );
+          continue;
+        }
+        final name = (r.readNullable<String>('name') ?? 'rag').trim();
+        final createdAt = r.readNullable<int>('created_at') ?? 0;
+        await db.customStatement(
+          'INSERT INTO ava_fts(message_id, conv_key, body, created_at) VALUES (?1, ?2, ?3, ?4)',
+          [messageId, 'notes:${name.isEmpty ? 'rag' : name}', content, createdAt],
+        );
+        await db.customStatement(
+          'INSERT OR IGNORE INTO ava_index_state(message_id, fts, vec) VALUES (?1, 1, 0)',
+          [messageId],
+        );
+      }
+    } catch (e) {
+      AvaLog.I.log('ava_mem', 'legacy rag migration skipped: $e');
+    }
+  }
+
+  /// Ensure the unified index schema exists (and fold any legacy store on first
+  /// call). Public, cheap, idempotent — used by the [AvaOnDeviceRag] compat shim
+  /// and [AvaLocalBrain.ensureReady] to warm the lane without indexing anything.
+  Future<void> warm() => _ensureSchema();
+
+  /// How many rows are in the unified FTS index right now (0 on any error).
+  Future<int> count() async {
+    try {
+      await _ensureSchema();
+      final rows = await Db.I.customSelect('SELECT count(*) AS c FROM ava_fts').get();
+      return rows.isNotEmpty ? rows.first.read<int>('c') : 0;
+    } catch (_) {
+      return 0;
+    }
   }
 
   // ── Indexing ────────────────────────────────────────────────────────────────
