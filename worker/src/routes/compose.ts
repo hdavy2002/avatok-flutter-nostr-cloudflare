@@ -53,6 +53,9 @@ import { avaReason } from "../lib/ava_reason";
 import { moderate } from "../lib/moderation";
 import { guardWrite } from "./moderate";
 import { brainIngest } from "../lib/brain_ingest";
+// [AVA-MKT-ENTITLEMENTS-1] §5 quota + §1.3 token charge, consumed inside the publish
+// keyed on listing_id (§3.3c). Same helper the classic publish path calls.
+import { consumeListingEntitlement } from "../lib/listing_billing";
 import { gatePublicAction, livenessState, emailOf } from "../lib/identity_gate";
 import {
   DEFAULT_VERTICAL, resolveCategoryVersion, validateAttrs,
@@ -1704,6 +1707,39 @@ export async function composePublish(req: Request, env: Env): Promise<Response> 
       error: "stale_session", rev: cur?.rev ?? null, listing_id: cur?.listing_id ?? null,
       ...(st ? { turn_seq: st.turn_seq, progress: st.progress, missing: st.missing, draft: st.card } : {}),
     }, 409);
+  }
+
+  // [AVA-MKT-ENTITLEMENTS-1] §5 quota + §1.3 charge — AFTER moderation passed (the
+  // fail-closed 422/503 gates above already returned), and AFTER the atomic claim, so we
+  // only ever charge the WINNING publish of this session (a double-tapped Publish loses
+  // the claim on the second tap and never reaches here). Keyed on the fresh listingId
+  // with period=1 (§3.3c): the wallet debit dedupes on op_id `${listingId}:1` and the
+  // entitlement row dedupes on the (listing_id, 1) PK.
+  //
+  // On failure we ROLL THE CLAIM BACK to 'active' (same posture as the listings-INSERT
+  // failure path below) so the draft is not stranded in 'published' with no listing, then
+  // return 402/503 without publishing — the draft stays safe, exactly like the 503
+  // moderation path. Nothing charged, nothing published.
+  const ent = await consumeListingEntitlement(env, {
+    uid: ctx.uid, listingId, vertical: draft.vertical, period: 1,
+  });
+  if (!ent.ok) {
+    try {
+      await db.prepare(
+        "UPDATE listing_compose_sessions SET status='active', listing_id=NULL, updated_at=?2 WHERE session_id=?1 AND status='published'",
+      ).bind(sessionId, Date.now()).run();
+    } catch { /* best-effort — the listing was never inserted regardless */ }
+    if (ent.error === "insufficient_funds") {
+      void trackUser(env, ctx.uid, email, "compose_publish_insufficient_funds", APP, {
+        session_id: sessionId, needed: ent.needed,
+      });
+      return json({ error: "insufficient_funds", needed: ent.needed, feature: "listing_post" }, 402);
+    }
+    void trackUser(env, ctx.uid, email, "compose_publish_charge_failed", APP, { session_id: sessionId });
+    return json({
+      error: "billing_unavailable",
+      message: "I can't complete the listing charge right now, so I won't publish yet. Try again in a minute.",
+    }, 503);
   }
 
   // §2.3 — `other` is the ESCAPE HATCH, reached only when the model found nothing in

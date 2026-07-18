@@ -49,6 +49,9 @@ import { gatePublicAction, emailOf, type PublicAction } from "../lib/identity_ga
 // [AVA-MKT-VERT-1] Taxonomy: verticals, pinned category versions, attrs validation.
 // Spec: Specs/PLAN-2026-07-17-ai-listing-creation-DRAFT.md §2.0, §2.2, §2.3, §2.4.
 import { DEFAULT_VERTICAL, resolveCategoryVersion, validateAttrs } from "./categories";
+// [AVA-MKT-ENTITLEMENTS-1] §5 quota + §1.3 token charge, consumed inside the publish
+// keyed on listing_id (§3.3c). Same helper the compose publish path calls.
+import { consumeListingEntitlement } from "../lib/listing_billing";
 
 const APP = "avaexplore";
 // live_event/consult = creator services; sell/buy/social = AvaMarketplace listings.
@@ -766,6 +769,38 @@ export async function publishListing(req: Request, env: Env, id: string): Promis
       // Consult listings attach to availability_rules — there must be some.
       const rules = await db.prepare("SELECT 1 FROM availability_rules WHERE user_id=?1 LIMIT 1").bind(ctx.uid).first();
       if (!rules) return json({ error: "no_availability", detail: "Set your availability in AvaCalendar before publishing a consult listing." }, 409);
+    }
+  }
+
+  // [AVA-MKT-ENTITLEMENTS-1] §5 quota + §1.3 charge — the LAST gate before the status
+  // flip, and only for marketplace listings (creator services live_event/consult are a
+  // different money model and are not metered here).
+  //
+  // ORDERING (§3.3c): moderation → entitlement → status flip. In the classic path,
+  // content moderation ran at create/edit time (createListing/updateListing → guardWrite),
+  // and all the shape checks above (title/price/photos) have passed — so a listing that
+  // would fail those never reaches here, and is never charged. We consume the entitlement
+  // immediately BEFORE the UPDATE that flips status='published', so:
+  //   • insufficient funds → we return 402 and DO NOT flip status (nothing published,
+  //     nothing charged, no entitlement row written — the draft is untouched).
+  //   • ok → the flip proceeds; a charged listing always goes live.
+  // IDEMPOTENCY: keyed on (l.id, period=1). A re-publish of an already-live listing is
+  // rejected at the l.status !== "draft" guard above (409) before reaching here; and an
+  // archive→restore→republish re-enters with the SAME listing id → the (listing_id, 1) PK
+  // row already exists → consumeListingEntitlement returns it as-is, NO second charge.
+  if (isMarket) {
+    const ent = await consumeListingEntitlement(env, {
+      uid: ctx.uid, listingId: id, vertical: String(l.vertical ?? DEFAULT_VERTICAL), period: 1,
+    });
+    if (!ent.ok) {
+      if (ent.error === "insufficient_funds") {
+        track(env, ctx.uid, "listing_publish_insufficient_funds", APP, { listing_id: id, needed: ent.needed });
+        return json({ error: "insufficient_funds", needed: ent.needed, feature: "listing_post" }, 402);
+      }
+      // charge_failed — wallet unreachable/errored. Fail closed like moderation: nothing
+      // charged, nothing published, safe to retry.
+      track(env, ctx.uid, "listing_publish_charge_failed", APP, { listing_id: id });
+      return json({ error: "billing_unavailable", message: "Couldn't complete the listing charge right now, try again in a minute." }, 503);
     }
   }
 

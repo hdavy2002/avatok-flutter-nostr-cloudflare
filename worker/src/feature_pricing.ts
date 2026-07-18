@@ -32,6 +32,14 @@ export const FEATURE_COSTS: Record<string, number> = {
   // Ava answered (ceil(duration/60) units per session, max 3). Free while
   // betaFreePremium is on — chargeFeature already short-circuits to charged:0.
   ava_receptionist_minute: 3, // $0.03/min
+  // MARKETPLACE LISTING FEE (M-D2, PLAN §1.3/§5): 100 tokens = $1 to publish a listing
+  // for one 30-day period, after the first 5 free (the quota is enforced in
+  // lib/listing_billing.ts, independent of tokens). Charged idempotently on
+  // opId = `${listing_id}:${period}` so a retried publish never double-charges (§3.3c).
+  // Per-vertical key so Connect can price differently later at zero structural cost
+  // (§1.3 note) — same 100 for now. betaFreePremium makes both a no-op in beta.
+  listing_post: 100,         // $1.00 — commerce listing, 30 days
+  listing_post_connect: 100, // $1.00 — connect (dating/matrimony) listing, 30 days
 };
 
 export function featureCost(key: string): number | null {
