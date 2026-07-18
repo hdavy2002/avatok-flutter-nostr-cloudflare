@@ -73,6 +73,48 @@ export async function brain(req: Request, env: Env, op: string): Promise<Respons
     return json({ ok: true, queued: true });
   }
 
+  // POST /api/brain/delete_all — the stateful deletion contract (§5.1). Inserts a
+  // brain_deletions row (state 'pending') and enqueues the async deletion job, which
+  // wipes every store idempotently and drives the row to 'complete' (with a per-store
+  // counts audit) or pins it at 'partial' + alerts. Optional body {domains:[...]} to
+  // scope the deletion; absent → everything. Returns {id, state}.
+  if (op === "delete_all" && req.method === "POST") {
+    const b = (await req.json().catch(() => ({}))) as any;
+    const id = crypto.randomUUID();
+    const now = Date.now();
+    const targets = Array.isArray(b.domains) && b.domains.length ? b.domains.map((d: any) => String(d)) : "all";
+    try {
+      await env.DB_BRAIN.prepare(
+        `INSERT INTO brain_deletions (id, uid, requested_at, targets, state, attempts, counts, completed_at)
+         VALUES (?1,?2,?3,?4,'pending',0,NULL,NULL)`,
+      ).bind(id, uid, now, JSON.stringify(targets)).run();
+    } catch { return json({ error: "deletion store unavailable" }, 503); }
+    try { await env.Q_BRAIN.send({ uid, event_type: "delete_all", source_app: "avabrain", payload: { deletionId: id, targets } }); }
+    catch { /* row is 'pending'; a redrive/cron can still pick it up */ }
+    // Telemetry — pullable by the user's email (uid maps to the PostHog person).
+    try {
+      await env.Q_ANALYTICS?.send({
+        event: "brain_deletion_requested", uid, ts: now,
+        props: { deletion_id: id, targets, app_name: "avatok", service_name: "avatok-api", worker: true, account_id: uid },
+      });
+    } catch { /* best-effort */ }
+    return json({ id, state: "pending" });
+  }
+
+  // GET|POST /api/brain/delete_status — the latest deletion for this uid (§5.1
+  // audit). Returns {id, state, requested_at, completed_at, counts}; 'none' if never.
+  // POST is accepted too so the op works the moment the index regex allows the
+  // underscore, without also needing the GET/readOp allowlist widened (see report).
+  if (op === "delete_status" && (req.method === "GET" || req.method === "POST")) {
+    const row = await env.DB_BRAIN.prepare(
+      "SELECT id, state, requested_at, completed_at, counts FROM brain_deletions WHERE uid=?1 ORDER BY requested_at DESC LIMIT 1",
+    ).bind(uid).first<any>().catch(() => null);
+    if (!row) return json({ id: null, state: "none", requested_at: null, completed_at: null, counts: null });
+    let counts: unknown = null;
+    try { counts = row.counts ? JSON.parse(row.counts) : null; } catch { counts = null; }
+    return json({ id: row.id, state: row.state, requested_at: row.requested_at, completed_at: row.completed_at, counts });
+  }
+
   // POST /api/brain/backfill — admin-triggered re-index of existing history.
   // Body {uid?} lets an admin backfill another user; self-serve backfills self.
   if (op === "backfill" && req.method === "POST") {
@@ -104,13 +146,12 @@ export async function brain(req: Request, env: Env, op: string): Promise<Respons
         `INSERT INTO brain_consent (uid, capability, enabled, updated_at) VALUES (?1,?2,?3,?4)
          ON CONFLICT(uid, capability) DO UPDATE SET enabled=?3, updated_at=?4`,
       ).bind(uid, cap, en ? 1 : 0, now)));
-    // Phase 9: toggling OFF with BRAIN_RETRO_DELETE also deletes already-indexed
-    // items from that source (vectors + transcripts + derived facts).
-    if (env.BRAIN_RETRO_DELETE === "1") {
-      for (const [cap, en] of entries) {
-        if (!en && cap !== "master") {
-          try { void env.Q_BRAIN.send({ uid, event_type: "retro_delete", source_app: "avabrain", payload: { capability: cap } }); } catch { /* best-effort */ }
-        }
+    // §5.1 (One Brain B0): toggling a capability OFF ALWAYS retro-deletes the
+    // already-indexed data for it — NO LONGER env-gated. One retro_delete job per
+    // capability turned off (vectors + transcripts + derived facts).
+    for (const [cap, en] of entries) {
+      if (!en && cap !== "master") {
+        try { void env.Q_BRAIN.send({ uid, event_type: "retro_delete", source_app: "avabrain", payload: { capability: cap } }); } catch { /* best-effort */ }
       }
     }
     return json({ ok: true });

@@ -9,51 +9,206 @@ import { avaReason } from "./ava_reason"; // AVA-CORE-5: the ONE reasoning gatew
 
 const RAW_TTL_MS = 30 * 86_400_000; // 30 days
 
-// Phase 9 — which guardrail capability gates an event. Producers may pass an
-// explicit msg.capability; otherwise it's derived here. The AvaBrain settings
-// screen renders exactly these keys (default ON / opt-out; rows only exist when
-// the user changed something).
+// ── One Brain B0 (SPEC-2026-07-17) — consent keys mirror the registry ────────
+// worker/src/lib/brain_domains.ts BRAIN_DOMAINS is THE authority. The consumer is
+// a separate Worker package and can't cross-import it, so this map MUST stay in
+// sync (domain → consent key). Adding a domain there = add a row here.
+const DOMAIN_CONSENT: Record<string, string> = {
+  contacts: "contacts",
+  calls: "calls",
+  missed: "calls",
+  voicemail: "voicemail",
+  msg_meta: "messages",
+  msg_content: "messages",
+  listings: "listings",
+  wallet: "wallet",
+  files: "files",
+  profile: "profile",
+};
+
+// Legacy app names (legacy event source_app) → new registry consent key. Used
+// only when a legacy event carries no explicit capability.
+const APP_CONSENT: Record<string, string> = {
+  avawallet: "wallet", wallet: "wallet",
+  avatok: "messages",
+  avalibrary: "files", avastorage: "files",
+  listings: "listings", olx: "listings", marketplace: "listings",
+  contacts: "contacts", avacontacts: "contacts",
+};
+
+// The Q_BRAIN envelope MAJOR version this consumer accepts (§3.2). Unknown majors
+// are ACKed and dropped (never processed with the wrong assumptions).
+const B0_MAJOR = 1;
+
+// Consent capability names that MAY still hold a stored opt-out row from BEFORE the
+// B0 key migration. When the NEW key has no row we still honour a disabled OLD row
+// (read old key as fallback), and retro-delete matches rows written under the old
+// capability. Keyed by NEW consent key.
+function legacyAliasesFor(consentKey: string): string[] {
+  switch (consentKey) {
+    case "messages":  return ["avatok_messages", "group_chats"];
+    case "voicemail": return ["voicemails"];
+    case "files":     return ["avatok_files", "avalibrary_files", "avastorage_files"];
+    default:          return [];
+  }
+}
+
+// PostHog telemetry (server side): pullable by the user's email via uid + the
+// stored email_hash (raw email is never persisted server-side). Mirrors the
+// auto_reply.ts track()/ownerEmail() pattern.
+async function brainOwnerEmailHash(env: Env, uid: string): Promise<string | null> {
+  try {
+    const r = await env.DB_META.prepare("SELECT email_hash FROM users WHERE uid=?1 LIMIT 1").bind(uid).first<{ email_hash: string | null }>();
+    return r?.email_hash ?? null;
+  } catch { return null; }
+}
+async function brainTrack(env: Env, uid: string, event: string, props: Record<string, unknown>): Promise<void> {
+  try {
+    await env.Q_ANALYTICS?.send({
+      event, uid, ts: Date.now(),
+      props: { ...props, app_name: "avatok", service_name: "avatok-consumers", worker: true, account_id: uid, email_hash: await brainOwnerEmailHash(env, uid) },
+    });
+  } catch { /* best-effort */ }
+}
+
+// The registry consent key that gates an event. Normalized new-envelope events
+// arrive with `capability` already set to the registry key (see normalizeEnvelope);
+// legacy events derive it here, mapped onto the B0 keys.
 function capabilityFor(msg: BrainMsg): string {
   if (msg.capability) return String(msg.capability);
   const p = (msg.payload ?? {}) as any;
   switch (msg.event_type) {
     case "message_stored":
     case "message_received":
-      if (String(p.kind || "") === "audio") return "voicemails";
-      return p.group ? "group_chats" : "avatok_messages";
+      return String(p.kind || "") === "audio" ? "voicemail" : "messages";
     case "library_file_added":
     case "upload_completed":
       return "files";
     default:
-      // App-level toggle (avawallet, avacalendar, avapayout, …).
-      return msg.source_app || "files";
+      return APP_CONSENT[String(msg.source_app || "")] || "files";
   }
 }
 
-// Guardrail check (master + the event's capability). Default ON when no row
-// exists (opt-out model). Fail-open on D1 error — consent rows are tiny.
-async function guardrailAllows(env: Env, uid: string, capability: string): Promise<boolean> {
+// Guardrail check (master + the event's consent key + any legacy alias keys).
+// Default ON only when NO relevant row exists (opt-out model). FAILS CLOSED on a
+// D1 error (§2/§5.2): a consent-store outage MUST block ingestion, never allow it.
+async function guardrailAllows(env: Env, uid: string, consentKey: string): Promise<boolean> {
+  const keys = ["master", consentKey, ...legacyAliasesFor(consentKey)];
   try {
+    const ph = keys.map((_, i) => `?${i + 2}`).join(",");
     const rs = await env.DB_BRAIN.prepare(
-      "SELECT capability, enabled FROM brain_consent WHERE uid=?1 AND capability IN ('master',?2)",
-    ).bind(uid, capability).all();
+      `SELECT capability, enabled FROM brain_consent WHERE uid=?1 AND capability IN (${ph})`,
+    ).bind(uid, ...keys).all();
     for (const r of (rs.results ?? []) as any[]) if (Number(r.enabled) === 0) return false;
     return true;
-  } catch { return true; }
+  } catch (e) {
+    console.error("[brain] consent check failed — dropping event (fail-closed):", String(e));
+    await brainTrack(env, uid, "consent_check_failed_closed", { where: "guardrailAllows", consent_key: consentKey });
+    return false;
+  }
 }
 
-export async function handleBrain(msg: BrainMsg, env: Env): Promise<void> {
+// A normalized internal event carries the legacy BrainMsg fields PLUS the optional
+// idempotency key (present on B0 v1-envelope events).
+type NormMsg = BrainMsg & { idempotencyKey?: string };
+
+// Accept both wire shapes: the B0 v1 envelope {v,uid,domain,kind,idempotencyKey,
+// text,meta,ts} (§3) and the legacy {uid,event_type,source_app,payload}. Returns
+// null ONLY for an unknown MAJOR version (rejected + dropped per §3.2).
+function normalizeEnvelope(m: any): NormMsg | null {
+  if (m && m.v != null && m.domain) {
+    const major = Number(m.v);
+    if (!Number.isFinite(major) || Math.trunc(major) !== B0_MAJOR) return null; // unknown major → reject
+    const domain = String(m.domain);
+    const consent = DOMAIN_CONSENT[domain] || "files";
+    const meta = (m.meta ?? {}) as Record<string, unknown>;
+    return {
+      uid: String(m.uid || ""),
+      event_type: mapDomainToEventType(domain, String(m.kind || "")),
+      source_app: domain,
+      payload: { ...meta, text: m.text ?? "" },
+      capability: consent,                       // registry-resolved consent key
+      traceId: m.traceId ?? m.trace_id ?? undefined,
+      ts: m.ts,
+      idempotencyKey: m.idempotencyKey ? String(m.idempotencyKey) : undefined,
+    };
+  }
+  if (m && typeof m.event_type === "string") {
+    return { ...(m as BrainMsg), idempotencyKey: m.idempotencyKey ? String(m.idempotencyKey) : undefined };
+  }
+  return m ? { ...(m as BrainMsg) } : null;
+}
+
+// Map a registry domain onto the consumer's processing branch. Files → the
+// library ingest path; message domains → the message/vector path; everything
+// else flows through the generic entity/fact extractor (event_type is only a
+// label there).
+function mapDomainToEventType(domain: string, kind: string): string {
+  if (domain === "files") return "library_file_added";
+  if (domain === "msg_meta" || domain === "msg_content") return "message_stored";
+  return kind || domain;
+}
+
+// §5.1 ingest-time deletion watermark: while a deletion for this uid is active
+// (pending/running/partial), DROP any incoming event so a queue retry can't
+// resurrect data mid-wipe. Fail-open only if the table is absent (nothing to
+// delete pre-B0) — that is NOT a consent decision.
+async function hasActiveDeletion(env: Env, uid: string): Promise<boolean> {
+  try {
+    const r = await env.DB_BRAIN.prepare(
+      "SELECT 1 FROM brain_deletions WHERE uid=?1 AND state IN ('pending','running','partial') LIMIT 1",
+    ).bind(uid).first();
+    return !!r;
+  } catch { return false; }
+}
+
+// §3.2 idempotency: claim the (uid, idempotency_key) slot by inserting the raw
+// brain_events copy. Returns the event id on a fresh claim, or null when the row
+// already existed (duplicate → ACK + drop). A real D1 error is re-thrown so the
+// queue RETRIES (we must not silently drop a live event on a transient fault).
+async function claimIdempotency(env: Env, uid: string, idem: string, msg: NormMsg): Promise<string | null> {
+  const eventId = crypto.randomUUID();
+  const now = Date.now();
+  const r = await env.DB_BRAIN.prepare(
+    `INSERT INTO brain_events (id, uid, event_type, source_app, payload, processed, trace_id, idempotency_key, created_at, expires_at)
+     VALUES (?1,?2,?3,?4,?5,0,?6,?7,?8,?9)
+     ON CONFLICT(uid, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING`,
+  ).bind(eventId, uid, msg.event_type, msg.source_app, JSON.stringify(msg.payload ?? {}), msg.traceId ?? null, idem, now, now + RAW_TTL_MS).run();
+  return Number((r as any).meta?.changes ?? 0) === 0 ? null : eventId;
+}
+
+export async function handleBrain(rawMsg: BrainMsg, env: Env): Promise<void> {
+  const msg = normalizeEnvelope(rawMsg);
+  if (msg === null) {
+    await brainTrack(env, String((rawMsg as any).uid || ""), "brain_envelope_rejected", { v: (rawMsg as any).v });
+    return; // unknown major — ACK + drop
+  }
   const uid = msg.uid;
   if (!uid) return;
 
-  // Maintenance ops bypass guardrails (they REMOVE data, never add it).
+  // Maintenance ops bypass guardrails + watermark (they REMOVE data, never add it).
   if (msg.event_type === "retro_delete") { await retroDelete(msg, env); return; }
-  if (msg.event_type === "purge") { await purgeBrain(uid, env); return; }
+  if (msg.event_type === "delete_all" || msg.event_type === "purge") {
+    const p = (msg.payload ?? {}) as any;
+    await runDeletionJob(env, uid, p.deletionId ? String(p.deletionId) : null, p.targets ?? null);
+    return;
+  }
   if (msg.event_type === "backfill") { await backfill(uid, env); return; }
 
-  // Phase 9: EVERY ingestion event is guardrail-checked first (master + per-app
-  // toggle). Drop silently when the user opted out.
+  // §5.1 deletion watermark — never resurrect data for a uid being deleted.
+  if (await hasActiveDeletion(env, uid)) return;
+
+  // Consent — FAILS CLOSED (§2). Drop silently when opted out / on store error.
   if (!(await guardrailAllows(env, uid, capabilityFor(msg)))) return;
+
+  // §3.2 idempotency: dedup on the producer-supplied key (queue redelivery, client
+  // retry, multi-device double-fire all collapse to one insert).
+  const idem = msg.idempotencyKey ? String(msg.idempotencyKey) : null;
+  let eventId: string | null = null;
+  if (idem) {
+    eventId = await claimIdempotency(env, uid, idem, msg);
+    if (eventId === null) return; // duplicate — already processed, drop
+  }
 
   // Phase 9: messages + voice notes → retrievable vectors (RAG), not the
   // entity/fact extraction below (too high-volume for an LLM per message).
@@ -71,13 +226,16 @@ export async function handleBrain(msg: BrainMsg, env: Env): Promise<void> {
   }
 
   const now = Date.now();
-  const eventId = crypto.randomUUID();
-
-  // 1. Short-TTL raw copy (catch-up buffer, not permanent source of truth).
-  await env.DB_BRAIN.prepare(
-    `INSERT INTO brain_events (id, uid, event_type, source_app, payload, processed, trace_id, created_at, expires_at)
-     VALUES (?1,?2,?3,?4,?5,0,?6,?7,?8)`,
-  ).bind(eventId, uid, msg.event_type, msg.source_app, JSON.stringify(msg.payload ?? {}), msg.traceId ?? null, now, now + RAW_TTL_MS).run();
+  // The idempotency claim already wrote the raw brain_events copy; only insert
+  // one here when the event carried no key (legacy path).
+  if (!eventId) {
+    eventId = crypto.randomUUID();
+    // 1. Short-TTL raw copy (catch-up buffer, not permanent source of truth).
+    await env.DB_BRAIN.prepare(
+      `INSERT INTO brain_events (id, uid, event_type, source_app, payload, processed, trace_id, created_at, expires_at)
+       VALUES (?1,?2,?3,?4,?5,0,?6,?7,?8)`,
+    ).bind(eventId, uid, msg.event_type, msg.source_app, JSON.stringify(msg.payload ?? {}), msg.traceId ?? null, now, now + RAW_TTL_MS).run();
+  }
 
   // 2. Extract structured memory (8B, JSON).
   const extracted = await extract(env, msg);
@@ -270,15 +428,23 @@ function chunkText(s: string, size: number): string[] {
   return out;
 }
 
-// Consent re-check in the consumer (defense in depth; default ON when absent).
+// File-ingestion consent re-check in the consumer (defense in depth). Checks the
+// B0 "files" key + its legacy aliases + the legacy per-app `${app}_files` key.
+// FAILS CLOSED on a D1 error (§2/§5.2).
 async function consentAllows(env: Env, uid: string, app: string): Promise<boolean> {
+  const keys = ["master", "files", ...legacyAliasesFor("files"), `${app}_files`];
   try {
+    const ph = keys.map((_, i) => `?${i + 2}`).join(",");
     const rs = await env.DB_BRAIN.prepare(
-      "SELECT capability, enabled FROM brain_consent WHERE uid=?1 AND capability IN ('master',?2)",
-    ).bind(uid, `${app}_files`).all();
+      `SELECT capability, enabled FROM brain_consent WHERE uid=?1 AND capability IN (${ph})`,
+    ).bind(uid, ...keys).all();
     for (const r of (rs.results ?? []) as any[]) if (Number(r.enabled) === 0) return false;
     return true;
-  } catch { return true; }
+  } catch (e) {
+    console.error("[brain] file consent check failed — dropping (fail-closed):", String(e));
+    await brainTrack(env, uid, "consent_check_failed_closed", { where: "consentAllows", app });
+    return false;
+  }
 }
 
 // ---- extraction ----
@@ -437,7 +603,7 @@ async function ingestMessage(msg: BrainMsg, env: Env): Promise<void> {
     }
     if (vectors.length) {
       try { await env.VECTOR_INDEX.upsert(vectors); } catch { return; }
-      for (const v of vectors) await recordVector(env, uid, v.id, "voicemails", "voicemail", "avatok", mediaRef);
+      for (const v of vectors) await recordVector(env, uid, v.id, "voicemail", "voicemail", "avatok", mediaRef);
     }
     return;
   }
@@ -492,31 +658,35 @@ async function transcribeVoice(env: Env, mediaRef: string): Promise<string> {
   } catch { return ""; }
 }
 
-// Guardrail toggled OFF with BRAIN_RETRO_DELETE → remove already-indexed items
-// for that capability. payload: { capability }
+// A capability toggled OFF → remove already-indexed items for that consent key
+// (§5.1: retro-delete is NO LONGER env-gated — the /api/brain consent route always
+// enqueues this). payload: { capability } where capability is the registry consent
+// key. Matches rows written under the key AND its legacy aliases (pre-B0 vectors
+// were stored under old capability names like `voicemails`/`avatok_messages`).
 async function retroDelete(msg: BrainMsg, env: Env): Promise<void> {
   const uid = msg.uid;
-  const capability = String((msg.payload as any)?.capability || msg.capability || "");
-  if (!capability || !env.VECTOR_INDEX) return;
+  const consentKey = String((msg.payload as any)?.capability || msg.capability || "");
+  if (!consentKey || !env.VECTOR_INDEX) return;
+  const caps = [consentKey, ...legacyAliasesFor(consentKey)];
+  const ph = caps.map((_, i) => `?${i + 2}`).join(",");
   const rs = await env.DB_BRAIN.prepare(
-    "SELECT vec_id, kind, ref FROM brain_vectors WHERE uid=?1 AND capability=?2",
-  ).bind(uid, capability).all().catch(() => ({ results: [] as any[] }));
-  const rows = (rs.results ?? []) as any[];
-  const ids = rows.map((r) => String(r.vec_id));
+    `SELECT vec_id FROM brain_vectors WHERE uid=?1 AND capability IN (${ph})`,
+  ).bind(uid, ...caps).all().catch(() => ({ results: [] as any[] }));
+  const ids = ((rs.results ?? []) as any[]).map((r) => String(r.vec_id));
   for (let i = 0; i < ids.length; i += 1000) {
     try { await env.VECTOR_INDEX.deleteByIds(ids.slice(i, i + 1000)); } catch { /* best-effort */ }
   }
-  await env.DB_BRAIN.prepare("DELETE FROM brain_vectors WHERE uid=?1 AND capability=?2").bind(uid, capability).run().catch(() => null);
-  if (capability === "voicemails") {
+  await env.DB_BRAIN.prepare(`DELETE FROM brain_vectors WHERE uid=?1 AND capability IN (${ph})`).bind(uid, ...caps).run().catch(() => null);
+  if (consentKey === "voicemail" || consentKey === "voicemails") {
     await env.DB_BRAIN.prepare("DELETE FROM brain_transcripts WHERE uid=?1").bind(uid).run().catch(() => null);
   }
-  // App-level toggles also drop derived facts from that app.
-  await env.DB_BRAIN.prepare("DELETE FROM brain_facts WHERE uid=?1 AND source_app=?2").bind(uid, capability).run().catch(() => null);
+  // Derived facts from that source (facts.source_app holds the app/consent key).
+  await env.DB_BRAIN.prepare(`DELETE FROM brain_facts WHERE uid=?1 AND source_app IN (${ph})`).bind(uid, ...caps).run().catch(() => null);
 }
 
-// "Delete my AvaBrain data" — wipe ALL brain stores + vectors for the user
-// (account itself stays; this is the settings-screen button, not GDPR deletion).
-async function purgeBrain(uid: string, env: Env): Promise<void> {
+// Every Vectorize id owned by a user (entity + registry + library). Vectorize can
+// only delete BY ID, so we enumerate them from the D1 rows before wiping those rows.
+async function collectVectorIds(env: Env, uid: string): Promise<string[]> {
   const ids: string[] = [];
   try {
     const er = await env.DB_BRAIN.prepare("SELECT id FROM brain_entities WHERE uid=?1").bind(uid).all();
@@ -530,6 +700,21 @@ async function purgeBrain(uid: string, env: Env): Promise<void> {
     const lr = await env.DB_MEDIA.prepare("SELECT DISTINCT id FROM user_media WHERE uid=?1").bind(uid).all();
     for (const r of (lr.results ?? []) as any[]) for (let i = 0; i < 8; i++) ids.push(`${uid}:lib:${r.id}:${i}`);
   } catch { /* empty */ }
+  return ids;
+}
+
+// A missing D1 table (pre-B0 DB, optional store) is NOT a deletion failure —
+// there's simply nothing to delete. Distinguish it from a real error so an absent
+// table can't pin a deletion at 'partial' forever.
+function isMissingTable(e: unknown): boolean {
+  return /no such table/i.test(String((e as any)?.message ?? e));
+}
+
+// "Delete my AvaBrain data" — the low-level idempotent store wipe (vectors + the 7
+// DB_BRAIN tables + avachat_sessions). Used by the churn sweep. The settings-screen
+// deletion goes through runDeletionJob (stateful) which reuses the SAME steps.
+async function purgeBrain(uid: string, env: Env): Promise<void> {
+  const ids = await collectVectorIds(env, uid);
   if (env.VECTOR_INDEX) {
     for (let i = 0; i < ids.length; i += 1000) {
       try { await env.VECTOR_INDEX.deleteByIds(ids.slice(i, i + 1000)); } catch { /* best-effort */ }
@@ -544,6 +729,141 @@ async function purgeBrain(uid: string, env: Env): Promise<void> {
     "DELETE FROM brain_vectors WHERE uid=?1",
     "DELETE FROM brain_transcripts WHERE uid=?1",
   ]) { try { await env.DB_BRAIN.prepare(q).bind(uid).run(); } catch { /* table optional */ } }
+  try { await env.DB_META.prepare("DELETE FROM avachat_sessions WHERE user_id=?1").bind(uid).run(); } catch { /* optional */ }
+}
+
+// ═══════════ One Brain B0 — stateful deletion job (SPEC §5.1) ═══════════
+// Deletion is a JOB WITH STATE, not a request. Idempotent per-store steps run in
+// one pass; on any store failure the row is pinned at 'partial' and an alert fires,
+// and (until DELETION_MAX_ATTEMPTS) the queue message is re-thrown so Cloudflare
+// redelivers it with backoff. On full success the row goes 'complete' with a
+// per-store counts audit + completed_at (Settings surfaces "deleted on <date>").
+const DELETION_MAX_ATTEMPTS = 6;
+
+// Best-effort targeted wipe of the AvaChat history in the user's InboxDO (conv
+// 'brain'). The InboxDO exposes NO per-conversation hard-delete today (only a wipe-
+// everything /purge, which we must NOT use here), and inbox.ts is out of this
+// change's scope — so this posts to /conv_delete (to be added by the InboxDO owner)
+// and treats its absence as a no-op that does NOT pin the deletion at 'partial'.
+// See the B0 report: this step is a documented gap until /conv_delete lands.
+async function deleteInboxBrainConv(env: Env, uid: string): Promise<{ ok: boolean; count: number }> {
+  if (!env.INBOX) return { ok: true, count: 0 };
+  try {
+    const stub = env.INBOX.get(env.INBOX.idFromName(uid));
+    const res = await stub.fetch("https://inbox/conv_delete", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ conv: "brain" }),
+    });
+    if (res.ok) {
+      const j = (await res.json().catch(() => ({}))) as any;
+      return { ok: true, count: Number(j.deleted ?? 0) };
+    }
+    return { ok: true, count: 0 }; // endpoint absent / non-2xx — best-effort, don't block
+  } catch (e) {
+    console.error("[brain] del inbox brain conv:", String(e));
+    return { ok: true, count: 0 };
+  }
+}
+
+async function runDeletionJob(env: Env, uid: string, deletionId: string | null, targets: unknown): Promise<void> {
+  const now = Date.now();
+  let id = deletionId;
+  let attempts = 0;
+
+  // Ensure a tracking row exists + advance to 'running' with an incremented attempt.
+  try {
+    if (id) {
+      const row = await env.DB_BRAIN.prepare("SELECT attempts FROM brain_deletions WHERE id=?1").bind(id).first<{ attempts: number }>();
+      if (row) attempts = Number(row.attempts) || 0;
+      else {
+        await env.DB_BRAIN.prepare(
+          `INSERT INTO brain_deletions (id, uid, requested_at, targets, state, attempts, counts, completed_at)
+           VALUES (?1,?2,?3,?4,'pending',0,NULL,NULL) ON CONFLICT(id) DO NOTHING`,
+        ).bind(id, uid, now, JSON.stringify(targets ?? "all")).run();
+      }
+    } else {
+      id = crypto.randomUUID();
+      await env.DB_BRAIN.prepare(
+        `INSERT INTO brain_deletions (id, uid, requested_at, targets, state, attempts, counts, completed_at)
+         VALUES (?1,?2,?3,?4,'pending',0,NULL,NULL)`,
+      ).bind(id, uid, now, JSON.stringify(targets ?? "all")).run();
+      // Legacy /api/brain/purge entry point has no worker-side telemetry — emit here.
+      await brainTrack(env, uid, "brain_deletion_requested", { deletion_id: id, targets: targets ?? "all", via: "purge" });
+    }
+  } catch (e) {
+    console.error("[brain] deletion row init failed:", String(e));
+    throw e; // transient — let the queue retry
+  }
+  attempts += 1;
+  try { await env.DB_BRAIN.prepare("UPDATE brain_deletions SET state='running', attempts=?2 WHERE id=?1").bind(id, attempts).run(); } catch { /* best-effort */ }
+
+  const counts: Record<string, number> = {};
+  const failures: string[] = [];
+
+  // Step 1 — Vectorize ids.
+  try {
+    const ids = await collectVectorIds(env, uid);
+    if (env.VECTOR_INDEX && ids.length) {
+      for (let i = 0; i < ids.length; i += 1000) await env.VECTOR_INDEX.deleteByIds(ids.slice(i, i + 1000));
+    }
+    counts.vectors = ids.length;
+  } catch (e) { failures.push("vectors"); console.error("[brain] del vectors:", String(e)); }
+
+  // Step 2 — the 7 DB_BRAIN tables (one idempotent DELETE each).
+  for (const [store, sql] of [
+    ["brain_entities", "DELETE FROM brain_entities WHERE uid=?1"],
+    ["brain_relationships", "DELETE FROM brain_relationships WHERE uid=?1"],
+    ["brain_facts", "DELETE FROM brain_facts WHERE uid=?1"],
+    ["brain_daily_summaries", "DELETE FROM brain_daily_summaries WHERE uid=?1"],
+    ["brain_events", "DELETE FROM brain_events WHERE uid=?1"],
+    ["brain_vectors", "DELETE FROM brain_vectors WHERE uid=?1"],
+    ["brain_transcripts", "DELETE FROM brain_transcripts WHERE uid=?1"],
+  ] as Array<[string, string]>) {
+    try {
+      const r = await env.DB_BRAIN.prepare(sql).bind(uid).run();
+      counts[store] = Number((r as any).meta?.changes ?? 0);
+    } catch (e) {
+      if (isMissingTable(e)) counts[store] = 0;
+      else { failures.push(store); console.error(`[brain] del ${store}:`, String(e)); }
+    }
+  }
+
+  // Step 3 — avachat_sessions (DB_META): AvaChat cloud transcripts.
+  try {
+    const r = await env.DB_META.prepare("DELETE FROM avachat_sessions WHERE user_id=?1").bind(uid).run();
+    counts.avachat_sessions = Number((r as any).meta?.changes ?? 0);
+  } catch (e) {
+    if (isMissingTable(e)) counts.avachat_sessions = 0;
+    else { failures.push("avachat_sessions"); console.error("[brain] del avachat_sessions:", String(e)); }
+  }
+
+  // Step 4 — InboxDO 'brain' conversation (AvaChat chat history).
+  const inbox = await deleteInboxBrainConv(env, uid);
+  counts.inbox_brain = inbox.count;
+  if (!inbox.ok) failures.push("inbox_brain");
+
+  const audit = { ...counts, attempts, failures };
+
+  if (failures.length === 0) {
+    try {
+      await env.DB_BRAIN.prepare(
+        "UPDATE brain_deletions SET state='complete', counts=?2, completed_at=?3 WHERE id=?1",
+      ).bind(id, JSON.stringify(audit), Date.now()).run();
+    } catch (e) { console.error("[brain] deletion finalize:", String(e)); }
+    await brainTrack(env, uid, "brain_deletion_complete", { deletion_id: id, attempts, counts: audit });
+    return;
+  }
+
+  // Failures remain → pin at 'partial', record the audit, and ALERT (never silently
+  // half-complete). Re-throw to get a backoff retry until attempts are exhausted.
+  try {
+    await env.DB_BRAIN.prepare("UPDATE brain_deletions SET state='partial', counts=?2 WHERE id=?1").bind(id, JSON.stringify(audit)).run();
+  } catch { /* best-effort */ }
+  await brainTrack(env, uid, "brain_deletion_partial_alert", { deletion_id: id, attempts, failures, counts: audit });
+  if (attempts < DELETION_MAX_ATTEMPTS) {
+    throw new Error(`brain deletion ${id} partial: ${failures.join(",")} (attempt ${attempts})`);
+  }
+  // Retries exhausted — leave state='partial' + the alert; ACK to stop looping.
 }
 
 // [BRAIN-CHURN-1] Storage reclaim for churned users. A user is "churned" when their

@@ -22,6 +22,11 @@ import { json } from "../util";
 import { requireUser, isFail } from "../authz";
 import { metaDb } from "../db/shard";
 
+// [ONEBRAIN-B0] avachat_sessions now ALSO has a real migration
+// (worker/migrations/brain_phase_b0.sql, applied to avatok-meta). This ensureTable()
+// is kept as the lazy safety-net for fresh/older DBs and MUST stay schema-identical
+// to that migration — the effective schema here (base columns + the starred/archived/
+// sort_order ALTERs) IS what the migration creates inline. No drift.
 async function ensureTable(env: Env): Promise<void> {
   await metaDb(env).prepare(
     `CREATE TABLE IF NOT EXISTS avachat_sessions (
