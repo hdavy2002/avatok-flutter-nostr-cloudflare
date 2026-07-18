@@ -82,17 +82,25 @@ function resolveLangCode(langCode: string | null | undefined, def: string): stri
 
 // ── best voice per language (cached), WaveNet-first ──────────────────────────
 const _voiceCache = new Map<string, string>();
-function tierOf(name: string): number {
-  if (name.includes("Wavenet")) return 0;   // owner: wavenet default
-  if (name.includes("Neural2")) return 1;
-  if (name.includes("Chirp3")) return 2;
-  if (name.includes("Standard")) return 3;
-  return 4;
+// Voice-tier preference (RECEPT_CF_GOOGLE_TIER): which Google voice family to prefer
+// per language. Lets us A/B tiers live (owner comparing quality 2026-07-18). The
+// first family present for the language wins; the rest are ordered fallbacks.
+const TIER_ORDER: Record<string, string[]> = {
+  wavenet:  ["Wavenet", "Neural2", "Chirp3", "Standard"],
+  neural2:  ["Neural2", "Wavenet", "Chirp3", "Standard"],
+  chirp3:   ["Chirp3", "Wavenet", "Neural2", "Standard"],
+  standard: ["Standard", "Neural2", "Wavenet", "Chirp3"],
+};
+function tierRank(name: string, tier: string): number {
+  const seq = TIER_ORDER[tier] || TIER_ORDER.wavenet;
+  for (let i = 0; i < seq.length; i++) if (name.includes(seq[i])) return i;
+  return seq.length;
 }
-async function pickVoice(token: string, languageCode: string, prefer?: string): Promise<string> {
-  // Exact configured voice wins when it belongs to this language.
-  if (prefer && prefer.toLowerCase().startsWith(languageCode.toLowerCase())) return prefer;
-  const ck = languageCode.toLowerCase();
+async function pickVoice(token: string, languageCode: string, prefer: string | undefined, tier: string): Promise<string> {
+  // An exact configured voice wins ONLY on the default wavenet preference, so a tier
+  // override (e.g. neural2) actually takes effect instead of being masked by prefer.
+  if (prefer && tier === "wavenet" && prefer.toLowerCase().startsWith(languageCode.toLowerCase())) return prefer;
+  const ck = `${languageCode.toLowerCase()}|${tier}`;
   const hit = _voiceCache.get(ck); if (hit != null) return hit;
   let chosen = "";
   try {
@@ -101,7 +109,7 @@ async function pickVoice(token: string, languageCode: string, prefer?: string): 
     if (r.ok) {
       const voices = ((await r.json()) as { voices?: { name: string; ssmlGender: string }[] }).voices || [];
       const females = voices.filter((v) => v.ssmlGender === "FEMALE");
-      const pool = (females.length ? females : voices).slice().sort((a, b) => tierOf(a.name) - tierOf(b.name) || a.name.localeCompare(b.name));
+      const pool = (females.length ? females : voices).slice().sort((a, b) => tierRank(a.name, tier) - tierRank(b.name, tier) || a.name.localeCompare(b.name));
       chosen = pool.length ? pool[0].name : "";
     }
   } catch { /* leave chosen "" → Google picks a default for the languageCode */ }
@@ -131,8 +139,9 @@ async function synthPcm(token: string, text: string, languageCode: string, voice
 export interface GoogleTtsLangReq {
   text: string;
   langCode?: string | null;   // session BCP-47 (e.g. "hi-IN") or base ("hi") or ""
-  preferVoice?: string;       // exact voice used when it matches the session language
+  preferVoice?: string;       // exact voice used when it matches the session language (wavenet tier only)
   defaultLang?: string;       // BCP-47 used when langCode is empty (default en-IN)
+  tier?: string;              // voice family preference: wavenet|neural2|chirp3|standard
   sampleRate?: number;        // default 24000
 }
 
@@ -146,7 +155,7 @@ export async function googleSynthesizeForLang(env: unknown, opts: GoogleTtsLangR
     if (!sa.client_email || !sa.private_key) return null;
     const token = await accessTokenFor(sa);
     const languageCode = resolveLangCode(opts.langCode, opts.defaultLang || "en-IN");
-    const voice = await pickVoice(token, languageCode, opts.preferVoice);
+    const voice = await pickVoice(token, languageCode, opts.preferVoice, (opts.tier || "wavenet").toLowerCase());
     return await synthPcm(token, opts.text, languageCode, voice, opts.sampleRate || 24000);
   } catch { return null; }
 }

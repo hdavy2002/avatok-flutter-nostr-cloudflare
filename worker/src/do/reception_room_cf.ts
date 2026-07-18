@@ -638,6 +638,7 @@ export class ReceptionRoomCf {
           langCode: this.langCode(),
           preferVoice: String((this.env as any).RECEPT_CF_GOOGLE_VOICE || "hi-IN-Wavenet-E"),
           defaultLang: String((this.env as any).RECEPT_CF_GOOGLE_LANG || "en-IN"),
+          tier: String((this.env as any).RECEPT_CF_GOOGLE_TIER || "wavenet"),
           sampleRate: 24000,
         });
         this.ev("ava_recept_cf_tts_provider", { provider: gPcm ? "google" : "fallback", lang: this.langCode() || "auto" });
