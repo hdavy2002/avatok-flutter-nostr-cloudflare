@@ -35,7 +35,9 @@ export interface PlatformConfig {
   identityLadderEnabled: boolean;    // master switch for requireLevel gating
   guestTierEnabled: boolean;         // L0 handle-only visitors
   workersAiLivenessEnabled: boolean; // L2 via Workers AI clip check (Rekognition fallback)
-  simOnlyPhoneEnabled: boolean;      // block VoIP/temp numbers on phone verify
+  // [M-D1 2026-07-17 / M-D11 2026-07-18] simOnlyPhoneEnabled REMOVED — phone OTP was
+  // deleted app-wide 2026-07-10 (/api/id/phone/confirm is in LEGACY_GONE → 410 and the
+  // handler is unrouted). Liveness only, no phone anywhere; the flag gated nothing reachable.
   // Live voice translation (Gemini 3.5 Live Translate, $3/h in AvaCoins).
   translationEnabled: boolean;       // master switch for /api/translate/*
   translationGroupEnabled: boolean;  // group conferences (multi-speaker caveat)
@@ -171,6 +173,18 @@ export interface PlatformConfig {
   // agreed to (BIPA §15(b)). Bump when the disclosure text or retention period
   // changes; the value is stored per-user so we can prove WHICH text they saw.
   biometricConsentVersion: string;
+  // [LIVE-DIDIT-1] didit.me-hosted liveness. Default ON — this IS the liveness path.
+  // [LIVE-DIDIT-5] When ON, only didit-provider liveness counts for L2.
+  // ── DRIFT FIX 2026-07-18: both keys existed in DEFAULTS but NOT here. That is the
+  // INVERSE of the fake-flag bug: `putConfig` gates writes on `k in DEFAULTS` (a
+  // runtime check), so they were settable and did reach clients — but they were
+  // absent from the type, so `readConfig(env).diditLivenessEnabled` did not
+  // typecheck, and `const DEFAULTS: PlatformConfig` was an excess-property error.
+  // Nothing caught it because NOTHING TYPECHECKS THE WORKER: `npm run typecheck`
+  // (tsc --noEmit) exists in worker/package.json but no workflow runs it, and
+  // wrangler deploys via esbuild, which strips types without checking them.
+  diditLivenessEnabled: boolean;
+  requireDiditLiveness: boolean;
   // P6: always-on per-message safety scanning (Nemotron :free via OpenRouter) with
   // red-bubble marking on the recipient. Ships **ON** (this one ships enabled).
   // Async, fail-open — a scan never blocks or delays delivery. Adult opt-out lives
@@ -455,6 +469,18 @@ export interface PlatformConfig {
   // the paid tier ships (or to un-break a mistake), NOT a per-user entitlement.
   // Per-user billing is a separate lane; until it exists, leave this FALSE.
   pstnPaidConditionsUnlocked: boolean;
+  // Creator marketplace master switch for /api/marketplace/*. worker/src/routes/
+  // marketplace.ts has claimed since day one that "everything here is dark until the
+  // marketplaceEnabled kill switch is on" — but the key was never declared, so
+  // putConfig rejected it (`unknown key`, 400) and the routes in fact had NO master
+  // switch at all. Declaring it makes the documented brake real (same shape of bug as
+  // inAppUpdateEnabled, found 2026-07-15). Default OFF per FREE LAUNCH (marketplace
+  // hidden); flip ON in KV (staging first) when the marketplace goes public.
+  marketplaceEnabled: boolean;
+  // Master kill switch for /api/olx/*. Until now olx.ts was LIVE in production gated
+  // by nothing — no flag anywhere. Default OFF so the routes ship dark and can be
+  // turned on deliberately in KV (staging first). Read side lives in routes/olx.ts.
+  olxEnabled: boolean;
 }
 
 // FREE LAUNCH (2026-06-28, owner-locked Specs/FREE-LAUNCH-DIRECTION.md): ship an
@@ -477,7 +503,8 @@ const DEFAULTS: PlatformConfig = {
   identityLadderEnabled: true,
   guestTierEnabled: true,
   workersAiLivenessEnabled: true,  // ON 2026-07-03: Cloudflare-native liveness (no AWS/Rekognition creds); powers the signup human-check
-  simOnlyPhoneEnabled: true,
+  // [M-D1 2026-07-17 / M-D11 2026-07-18] simOnlyPhoneEnabled removed from DEFAULTS —
+  // phone OTP is gone app-wide; the flag gated an unrouted, 410'd endpoint.
   translationEnabled: false,       // FREE LAUNCH: Gemini-Live cost — hidden
   translationGroupEnabled: false,  // FREE LAUNCH: hidden
   avavoiceEnabled: false,          // FREE LAUNCH: agent builder hidden
@@ -668,6 +695,12 @@ const DEFAULTS: PlatformConfig = {
   // [AVA-VM-PAID-1] FALSE = missed/declined are a locked paid upgrade (the
   // launch state). Flip TRUE only when the paid tier actually ships.
   pstnPaidConditionsUnlocked: false,
+  // Creator marketplace (/api/marketplace/*) — DARK, per FREE LAUNCH. The kill switch
+  // marketplace.ts always claimed to have; it did not exist until now.
+  marketplaceEnabled: false,
+  // OLX surface (/api/olx/*) — DARK. Was previously ungated in production; flip ON in
+  // KV (staging first) when it should be reachable.
+  olxEnabled: false,
 };
 
 /** Merged config for server-side gates (same blob getConfig serves). */
