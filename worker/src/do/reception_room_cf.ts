@@ -284,6 +284,13 @@ export class ReceptionRoomCf {
   private cfSttModel(): string { return String((this.env as any).RECEPT_CF_STT_MODEL || CF_STT_MODEL_DEFAULT); }
   private cfLlmModel(): string { return String((this.env as any).RECEPT_CF_LLM_MODEL || CF_LLM_MODEL_DEFAULT); }
   private cfEnvTtsModel(): string { return String((this.env as any).RECEPT_CF_TTS_MODEL || CF_TTS_MODEL_DEFAULT); }
+  // VAD / turn-taking knobs — env-tunable at RUNTIME (secrets apply without a redeploy)
+  // so we can adjust live. Lower RMS = more sensitive to quiet speech; higher idle =
+  // more patience before an "inactivity" close. Defaults loosened 2026-07-18 after a
+  // live call closed on inactivity (caller speech never crossed the old 600 RMS gate).
+  private vadRms(): number { const v = Number((this.env as any).RECEPT_CF_VAD_RMS); return Number.isFinite(v) && v > 0 ? v : 300; }
+  private idleMs(): number { const v = Number((this.env as any).RECEPT_CF_IDLE_MS); return Number.isFinite(v) && v > 0 ? v : 18_000; }
+  private endpointMs(): number { const v = Number((this.env as any).RECEPT_CF_ENDPOINT_MS); return Number.isFinite(v) && v > 0 ? v : CF_ENDPOINT_MS; }
   // English uses the configured (English) Aura model unchanged; non-English routes
   // to a language-appropriate / multilingual model so output isn't English phonemes.
   private cfTtsModel(): string {
@@ -354,7 +361,7 @@ export class ReceptionRoomCf {
     if (!bytes) return;
     this.inBytes += bytes.byteLength;
     // 2-way recording: capture caller speech (upsampled to match Ava's 24k).
-    if (this.pcmBytes < ReceptionRoomCf.MAX_REC_BYTES && callerHasSpeech(bytes)) {
+    if (this.pcmBytes < ReceptionRoomCf.MAX_REC_BYTES && callerHasSpeech(bytes, this.vadRms())) {
       const up = upsample16to24(bytes);
       const pk = peakOf(up); if (pk > this.callerPeak) this.callerPeak = pk;
       this.pcmOut.push({ caller: true, pcm: up }); this.pcmBytes += up.byteLength; this.callerRecBytes += up.byteLength;
@@ -367,7 +374,7 @@ export class ReceptionRoomCf {
   /** Full-duplex endpointing + barge-in detection. */
   private feedCfAudio(bytes: Uint8Array): void {
     if (this.finalized || this.cfTimeUp || this.takenOver) return; // close/takeover in progress → ignore input
-    const speech = callerHasSpeech(bytes);
+    const speech = callerHasSpeech(bytes, this.vadRms());
     // (1) Ava is speaking → watch for the caller talking over her (barge-in).
     if (this.cfSpeaking) {
       if (speech) {
@@ -396,7 +403,7 @@ export class ReceptionRoomCf {
       if (this.cfEndpointTimer) { clearTimeout(this.cfEndpointTimer); this.cfEndpointTimer = null; }
       if (this.cfTurnBytes > CF_MAX_TURN_BYTES) void this.processCfTurn();
     } else if (this.cfHadSpeech && !this.cfEndpointTimer) {
-      this.cfEndpointTimer = setTimeout(() => void this.processCfTurn(), CF_ENDPOINT_MS);
+      this.cfEndpointTimer = setTimeout(() => void this.processCfTurn(), this.endpointMs());
     }
   }
 
@@ -703,7 +710,7 @@ export class ReceptionRoomCf {
   private bumpIdle(): void {
     if (this.finalized) return;
     if (this.idleTimer) clearTimeout(this.idleTimer);
-    this.idleTimer = setTimeout(() => this.finalize("inactivity"), ReceptionRoomCf.IDLE_MS);
+    this.idleTimer = setTimeout(() => this.finalize("inactivity"), this.idleMs());
   }
 
   /** AVA-LIVE ACK (RECEPT-1): tell the client the instant Ava is truly live — sent
@@ -961,13 +968,13 @@ function concatFrames(frames: Uint8Array[], total: number): Uint8Array {
   let o = 0; for (const f of frames) { out.set(f, o); o += f.byteLength; }
   return out;
 }
-function callerHasSpeech(pcm: Uint8Array): boolean {
+function callerHasSpeech(pcm: Uint8Array, threshold = 600): boolean {
   const n = pcm.byteLength >> 1;
   if (n === 0) return false;
   const view = new DataView(pcm.buffer, pcm.byteOffset, pcm.byteLength);
   let sumSq = 0;
   for (let i = 0; i < n; i++) { const s = view.getInt16(i * 2, true); sumSq += s * s; }
-  return Math.sqrt(sumSq / n) > 600;
+  return Math.sqrt(sumSq / n) > threshold;
 }
 function upsample16to24(pcm16: Uint8Array, gain = 1): Uint8Array {
   const inN = pcm16.byteLength >> 1;
