@@ -207,7 +207,17 @@ export async function deleteDocument(env: Env, collectionId: string, fileId: str
 /** Document/collections search with the REGULAR key.
  *  POST api.x.ai/v1/documents/search {query, source:{collection_ids}, retrieval_mode:{type:"hybrid"}}.
  *  Used server-side by any RAG lookup that isn't the realtime session's own
- *  `file_search` tool call (e.g. a text-channel agent, or a diagnostic route). */
+ *  `file_search` tool call (e.g. a text-channel agent, or a diagnostic route).
+ *
+ *  One Brain B1 (SPEC §4) note: NOTHING in this file is a `reason`-verb inference
+ *  call, so nothing routes through the xai adapter today. The realtime voice session
+ *  builders (session.update / wrap-up nudges) are WebSocket control payloads, the
+ *  collections CRUD hits management-api.x.ai, and this `documents/search` is a
+ *  vector-retrieval endpoint — none is an api.x.ai chat/completions call. The moment
+ *  a server-side x.ai *chat/completions* inference is added here (e.g. a text-channel
+ *  Grok agent that answers from a Collection), route THAT call through
+ *  `avaReason({ verb:"reason", ... })` → the xai adapter; leave these transport,
+ *  RAG-retrieval, and realtime paths as-is. */
 export async function searchDocuments(
   env: Env, query: string, collectionIds: string[],
 ): Promise<{ ok: boolean; results?: unknown[]; error?: string }> {

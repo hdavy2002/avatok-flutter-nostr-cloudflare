@@ -21,6 +21,8 @@ import type { A2uiNode, A2uiSurface, A2uiAction } from "./a2ui";
 import { affordanceToAction, type Affordance } from "./capabilities";
 import { redisGetJson, redisSetJson } from "./redis";
 import { signThumbUrl } from "./genui_thumb_sign";
+import { avaReason } from "./ava_reason"; // One Brain B1: unified reasoning gateway
+import { sha256Hex } from "../util"; // One Brain B1: KV cache key = hash(planning input)
 
 // Hard ceiling on how many records we put into ONE card. The trim layer already
 // caps the data, but the builder bounds it again so a huge list can NEVER blow up
@@ -238,31 +240,25 @@ async function llmJson(env: Env, sys: string, usr: string): Promise<{ text: stri
   const orModel = (env as any).OPENROUTER_PLANNER_MODEL || OPENROUTER_PLANNER_MODEL;
   if (orKey) {
     const t0 = Date.now();
-    let status = 0;
     try {
-      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${orKey}`,
-          "HTTP-Referer": "https://avatok.ai",
-          "X-Title": "AvaTOK GenUI",
-        },
-        body: JSON.stringify({
-          model: orModel,
-          messages: [{ role: "system", content: sys }, { role: "user", content: usr }],
-          response_format: { type: "json_object" },
-          temperature: 0.2,
-          max_tokens: 900,
-        }),
-        signal: AbortSignal.timeout(20000),
+      // One Brain B1 (SPEC §4): the Claude-Opus design call now goes through the
+      // shared avaReason gateway. Model still pinned via `legacyModel` (single
+      // OpenRouter call, no reasoner-ladder fallback), JSON mode, temperature 0.2,
+      // max_tokens 900, same 20s abort — behaviour-identical to the old raw fetch.
+      // NEW: a KV response cache keyed on a hash of the planning input (sys+usr+
+      // model) — GenUI plans for the same surface are deterministic, so identical
+      // requests now skip a ~2-6s Opus round-trip (24h TTL, via the gateway's
+      // gen:<cacheKey> cache). The gateway emits ava_reason_call automatically; the
+      // private LlmCall telemetry (provider/model/ms/ok/status) below is preserved.
+      const cacheKey = await sha256Hex(`genui | ${orModel} | ${sys} | ${usr}`);
+      const text = await avaReason(env, {
+        role: "genui", capability: "plan", trigger: "plan_surface",
+        feature: "genui", legacyModel: orModel,
+        system: sys, user: usr, json: true,
+        temperature: 0.2, maxTokens: 900, timeoutMs: 20000,
+        cacheKey, cacheTtl: 86400,
       });
-      status = res.status;
-      if (res.ok) {
-        const out: any = await res.json().catch(() => null);
-        const text = out?.choices?.[0]?.message?.content ?? "";
-        if (text) return { text: String(text), provider: "openrouter", model: orModel, ms: Date.now() - t0, ok: true, status };
-      }
+      if (text) return { text: String(text), provider: "openrouter", model: orModel, ms: Date.now() - t0, ok: true, status: 200 };
     } catch { /* fall back to Gemini */ }
     // OpenRouter failed — record it but continue to Gemini (don't break the card).
     // (provider stays openrouter so the failure is attributable; ok=false.)

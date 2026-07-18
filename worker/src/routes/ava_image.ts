@@ -43,6 +43,7 @@ import { enforceAllowance } from "../lib/usage";
 import { mediaSession } from "../db/shard";
 import { postAvaMessage } from "./ava_thread";
 import type { MessageScope } from "../lib/ava_kinds";
+import { imageModel } from "../lib/ava_reason/policy"; // One Brain B1: env-overridable image model
 
 // Image generation is metered by the Phase-1 SUBSCRIPTION ALLOWANCE (plans.ts):
 // every tier — including Free — gets a daily image grant (Free 3, Plus 30,
@@ -50,7 +51,15 @@ import type { MessageScope } from "../lib/ava_kinds";
 // PROVIDER: OpenRouter's dedicated Image API (POST /api/v1/images) on xAI Grok —
 // the Google Gemini image model hit a hard 429 quota on our free key (owner
 // decision 2026-06-24: switch to OpenRouter). Returns base64 PNG bytes.
-const IMAGE_MODEL = "x-ai/grok-imagine-image-quality";
+//
+// One Brain B1 (SPEC §4): this is the OpenRouter *image-generation* endpoint
+// (/v1/images), which is NOT chat/vision-shaped and has no avaReason verb/adapter,
+// so it stays a direct fetch by design. What B1 fixes here: the model is no longer
+// hard-coded — it comes from policy.imageModel(env) (OPENROUTER_IMAGE_MODEL env
+// override → the default below) so it is flippable without a code deploy, and the
+// call now emits an `ava_reason_call`-compatible telemetry event so image spend is
+// attributable in the same PostHog schema as every gateway call.
+// Default model id lives in policy.imageModel(env); no module-level const here.
 
 function inboxOf(env: Env, uid: string) {
   return env.INBOX.get(env.INBOX.idFromName(uid));
@@ -134,9 +143,25 @@ async function endChip(env: Env, uid: string, conv: string, statusId: string | u
 // blue") — passed as an input_reference for image-to-image. Errors emit
 // `ava_image_error` telemetry so the real provider message is visible in PostHog.
 async function generateImage(env: Env, key: string, prompt: string, uid: string, editRef?: string): Promise<Uint8Array> {
+  // One Brain B1: model is env-overridable (OPENROUTER_IMAGE_MODEL) via policy.
+  const model = imageModel(env);
+  const t0 = Date.now();
+  // ava_reason_call-compatible telemetry (same schema as the gateway) so image
+  // spend is attributable alongside every other AI call. verb "see" tags this as a
+  // vision/image op; provider "openrouter". Emitted best-effort on ok and error.
+  const emitReason = (ok: boolean, error: string | null) => {
+    try {
+      track(env, uid, "ava_reason_call", "avaai", {
+        role: "ava_image", capability: "image_generate", trigger: editRef ? "image_edit" : "image_create",
+        opportunity: null, feature: "ava_image", verb: "see", provider: "openrouter",
+        model, primary_model: null, ok, fallback_used: false, cache_hit: false,
+        latency_ms: Date.now() - t0, tokens_in: null, tokens_out: null, error,
+      });
+    } catch { /* telemetry best-effort */ }
+  };
   // Grok Imagine supports: resolution, aspect_ratio, n, input_references (no
   // output_format) — send only supported fields so the endpoint doesn't reject.
-  const body: any = { model: IMAGE_MODEL, prompt, resolution: "2K" };
+  const body: any = { model, prompt, resolution: "2K" };
   if (editRef) {
     body.input_references = [{ type: "image_url", image_url: { url: editRef } }];
   }
@@ -154,7 +179,8 @@ async function generateImage(env: Env, key: string, prompt: string, uid: string,
   const j = (await r.json().catch(() => ({}))) as any;
   if (!r.ok) {
     const msg = String(j?.error?.message ?? j?.error ?? "unknown").slice(0, 300);
-    track(env, uid, "ava_image_error", "avaai", { stage: "generate", status: r.status, model: IMAGE_MODEL, provider: "openrouter", error: msg });
+    track(env, uid, "ava_image_error", "avaai", { stage: "generate", status: r.status, model, provider: "openrouter", error: msg });
+    emitReason(false, `openrouter ${r.status}: ${msg}`);
     throw new Error(`openrouter ${r.status}: ${msg}`);
   }
   // Response: { data: [{ b64_json }] }. Some providers may return a data URL.
@@ -164,12 +190,14 @@ async function generateImage(env: Env, key: string, prompt: string, uid: string,
     b64 = item.url.slice(item.url.indexOf(",") + 1);
   }
   if (!b64) {
-    track(env, uid, "ava_image_error", "avaai", { stage: "no_image", model: IMAGE_MODEL, provider: "openrouter" });
+    track(env, uid, "ava_image_error", "avaai", { stage: "no_image", model, provider: "openrouter" });
+    emitReason(false, "openrouter returned no image");
     throw new Error("openrouter returned no image");
   }
   const bin = atob(b64);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  emitReason(true, null);
   return bytes;
 }
 

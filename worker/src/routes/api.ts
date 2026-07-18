@@ -15,6 +15,7 @@ import { verifyClerk, resolveCanonicalUid, linkClerkAlias } from "../auth";
 import { nameFor, primaryVerifiedEmailFor } from "../lib/identity";
 import { track } from "../hooks";
 import { brainIngest } from "../lib/brain_ingest";
+import { avaReason } from "../lib/ava_reason"; // One Brain B1: unified reasoning gateway
 import { guardWrite } from "./moderate"; // save-time content validation (Nemotron)
 import { readConfig } from "./config"; // P11: profileCompletionGate
 // [WP1] Event-sourced call stream (Specs/PLAN-2026-07-11-dialpad-business-calls-ava-voice-agent.md §13/§14)
@@ -612,19 +613,25 @@ async function geminiDirectVet(key: string, prompt: string): Promise<{ plausible
 
 // OpenRouter (Gemini model) fallback — same key/endpoint the guardian + CF
 // receptionist use. null on ANY failure.
+//
+// One Brain B1 (SPEC §4): routed through the shared avaReason gateway. Model still
+// pinned via `legacyModel` (single OpenRouter call, no reasoner-ladder fallback),
+// temperature 0, max_tokens 80, same OPENROUTER_NAME_MODEL override → gemini-2.0.
+// NEW: an abort timeout (this vet runs in the registration path and previously had
+// NONE — a hung OpenRouter socket could stall a signup indefinitely). The gateway
+// also adds ava_reason_call telemetry. The null-on-any-failure contract is kept at
+// the call site so vetRealName still fails OPEN when every provider is unreachable.
 async function openrouterVet(env: Env, prompt: string): Promise<{ plausible: boolean; reason: string } | null> {
   const key = (env as any).OPENROUTER_API_KEY as string | undefined;
   if (!key) return null;
   const model = (env as any).OPENROUTER_NAME_MODEL || "google/gemini-2.0-flash-001";
   try {
-    const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "HTTP-Referer": "https://avatok.ai", "X-Title": "AvaTok Name Check" },
-      body: JSON.stringify({ model, temperature: 0, max_tokens: 80, messages: [{ role: "user", content: prompt }] }),
+    const text = await avaReason(env, {
+      role: "profile", capability: "name_vet", trigger: "profile_upsert",
+      feature: "name_vet", legacyModel: model,
+      user: prompt, temperature: 0, maxTokens: 80, timeoutMs: 15000,
     });
-    if (!r.ok) return null;
-    const j = (await r.json()) as any;
-    return parseNameVerdict(String(j?.choices?.[0]?.message?.content ?? ""));
+    return parseNameVerdict(String(text ?? ""));
   } catch { return null; }
 }
 

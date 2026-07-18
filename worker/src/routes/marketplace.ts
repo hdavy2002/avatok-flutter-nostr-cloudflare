@@ -17,6 +17,7 @@ import { notifyUser } from "../notify";
 import { exploreSearch } from "./listings";
 import { partyEmit } from "./messaging"; // PartyKit live nudges (ephemeral)
 import { moderate } from "../lib/moderation";
+import { avaReason } from "../lib/ava_reason"; // One Brain B1: unified reasoning gateway
 import { readConfig } from "./config"; // P5: agentDailyCap
 import { getAgentSettings, type AgentSettings } from "./agent_settings"; // MKT-LANG: buyer/seller lang, floor, tone, guardrails
 import { contactFor } from "../lib/identity"; // MKT-LANG-5: stamp email on translation telemetry
@@ -24,7 +25,20 @@ import { contactFor } from "../lib/identity"; // MKT-LANG-5: stamp email on tran
 /** Latest Claude Sonnet via OpenRouter — overridable by env for "latest" tracking. */
 export const MARKET_LLM = "anthropic/claude-sonnet-4.6";
 
-/** One-shot OpenRouter chat call (Sonnet). Returns trimmed text or "" on error. */
+/**
+ * One-shot OpenRouter chat call (Sonnet). Returns trimmed text or "" on error.
+ *
+ * One Brain B1 (SPEC §4): routed through the shared avaReason gateway instead of a
+ * raw fetch, so this call now gains unified `ava_reason_call` telemetry, the abort
+ * timeout, and centralised error logging. Behaviour preserved EXACTLY: the model is
+ * still pinned via `legacyModel` (single OpenRouter call, no reasoner-ladder
+ * fallback — the worker `legacyModel` plan is noFallback), temperature 0.4,
+ * max_tokens = maxTokens, same `OPENROUTER_MARKET_MODEL` env override → MARKET_LLM.
+ * The ""-on-error / ""-when-no-key contract is kept here at the call site; provider
+ * failures are now logged/telemetered by the gateway rather than swallowed silently.
+ * (The only observable delta is the OpenRouter `X-Title` header: "AvaMarketplace" →
+ * "AvaTOK avaReason" — a dashboard label, not model input or output.)
+ */
 export async function callSonnet(
   env: Env,
   system: string,
@@ -35,28 +49,13 @@ export async function callSonnet(
   const key = (env as any).OPENROUTER_API_KEY as string | undefined;
   if (!key) return "";
   try {
-    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${key}`,
-        "HTTP-Referer": "https://avatok.ai",
-        "X-Title": "AvaMarketplace",
-      },
-      body: JSON.stringify({
-        model: (env as any).OPENROUTER_MARKET_MODEL || MARKET_LLM,
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: user },
-        ],
-        temperature: 0.4,
-        max_tokens: maxTokens,
-      }),
-      signal: AbortSignal.timeout(timeoutMs),
+    return await avaReason(env, {
+      role: "marketplace", capability: "assist", trigger: "call_sonnet",
+      feature: "marketplace",
+      legacyModel: (env as any).OPENROUTER_MARKET_MODEL || MARKET_LLM,
+      system, user,
+      temperature: 0.4, maxTokens, timeoutMs,
     });
-    if (!res.ok) return "";
-    const out: any = await res.json().catch(() => null);
-    return String(out?.choices?.[0]?.message?.content ?? "").trim();
   } catch {
     return "";
   }
@@ -187,13 +186,20 @@ async function inboxAppend(env: Env, recipient: string, sender: string, conv: st
  * Best-effort: if TTS fails, still delivers a text message carrying the outcome.
  */
 // Per-category negotiation profile: caps SPOKEN length (voice cost + max-talk
-// rule) and sets the agents' tone. All CURRENT marketplace kinds use the brief
-// buy/sell profile; dating/matrimony (future categories) get a longer, warmer,
-// more expressive style. Add new categories here — same pipeline, different knob.
+// rule) and sets the agents' tone.
+//
+// The live `listings.kind` values are: live_event | consult | sell | buy | social.
+// ALL of them fall through to the brief buy/sell profile below — that is intended,
+// not an oversight. The dating/matrimony branch is RESERVED for future categories
+// and is unreachable until a listing can actually be created with one of those
+// kinds; don't "fix" it by inventing kinds that no listing has.
+//
+// Add new categories here — same pipeline, different knob. Callers MUST select
+// `kind` in their listing row query, or every negotiation silently gets the default.
 function negotiationProfile(kind: string): { maxWords: number; maxSeconds: number; tone: string } {
   switch (kind) {
-    case "dating":
-    case "matrimony":
+    case "dating":     // reserved — not a current listings.kind value
+    case "matrimony":  // reserved — not a current listings.kind value
       return { maxWords: 85, maxSeconds: 35, tone: "warm, expressive, curious and a little playful/flirty where appropriate; ask a question or two" };
     default: // sell | buy | social | live_event | …
       return { maxWords: 60, maxSeconds: 25, tone: "brief and businesslike" };
@@ -400,7 +406,10 @@ export async function marketplaceNegotiate(req: Request, env: Env, exctx?: Execu
   if (!listingId) return json({ error: "listing_id required" }, 400);
 
   const listing = await metaDb(env).prepare(
-    "SELECT id, creator_id, title, description, price, currency_display, status, agent_instructions, agent_lang, agent_voice_persona FROM listings WHERE id=?1",
+    // `kind` is REQUIRED here: runNegotiationJob feeds it to negotiationProfile(),
+    // which caps the spoken transcript length. Omitting it silently degrades every
+    // negotiation to the default profile.
+    "SELECT id, creator_id, kind, title, description, price, currency_display, status, agent_instructions, agent_lang, agent_voice_persona FROM listings WHERE id=?1",
   ).bind(listingId).first<any>();
   if (!listing) return json({ error: "not found" }, 404);
   if (listing.creator_id === ctx.uid) return json({ error: "own_listing" }, 400);

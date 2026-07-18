@@ -637,10 +637,17 @@ async function transcribeVoice(env: Env, mediaRef: string): Promise<string> {
     form.append("file", new File([buf], "voice.m4a", { type: mime }));
     form.append("model", "whisper-1");
     try {
+      // One Brain B1 (SPEC §4): this is a TRANSCRIBE (STT) path, not a `reason`
+      // call — its cf fallback below is a bare env.AI.run STT site that the fetch
+      // migration deliberately does NOT touch, and the frozen openai `transcribe`
+      // adapter carries no abort signal. The concrete B1 fix requested for this
+      // path — a request timeout, which it previously LACKED (a hung OpenAI socket
+      // could stall a voice-note ingest indefinitely) — is applied here directly.
       const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
         method: "POST",
         headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}` },
         body: form,
+        signal: AbortSignal.timeout(30000),
       });
       if (!res.ok) return "";
       const j = (await res.json()) as any;
