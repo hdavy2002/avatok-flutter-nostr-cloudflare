@@ -70,7 +70,7 @@ function mkEvent(
 
 function runStep(env: ReasonEnv, s: Step, req: ReasonReq, dialect: Dialect): Promise<AdapterOut> {
   return ADAPTERS[s.provider].run(env, {
-    model: s.model, req, body: s.body, aiRunOpts: req.aiRunOpts, title: OR_TITLE[dialect],
+    model: s.model, models: s.models, req, body: s.body, aiRunOpts: req.aiRunOpts, title: OR_TITLE[dialect],
   });
 }
 

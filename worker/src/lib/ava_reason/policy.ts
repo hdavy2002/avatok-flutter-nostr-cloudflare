@@ -40,6 +40,24 @@ export function imageModel(env: ReasonEnv): string {
   return ((env as any).OPENROUTER_IMAGE_MODEL as string) || DEFAULT_IMAGE_MODEL;
 }
 
+// ── gemini_direct feature route (One Brain B1 Gemini-direct migration) ─────────
+// Direct Google Gemini via the generativelanguage REST API — the path util.geminiRun
+// and the genui_planner Gemini fallback used to hit with a raw fetch. Same-provider
+// two-model ladder: primary gemini-3-flash-preview → alt gemini-2.5-flash-lite (both
+// env-overridable). gemini-3-flash-preview is NOT a valid Workers-AI partner id
+// (7003), so this stays on the direct API rather than the cf_ai reasoner ladder.
+const DEFAULT_GEMINI_DIRECT = "gemini-3-flash-preview";
+const DEFAULT_GEMINI_DIRECT_ALT = "gemini-2.5-flash-lite";
+
+/** gemini_direct primary model (env override → default). */
+export function geminiDirectModel(env: ReasonEnv): string {
+  return ((env as any).GEMINI_DIRECT_MODEL as string) || DEFAULT_GEMINI_DIRECT;
+}
+/** gemini_direct ALT model — the same-provider ladder's second rung. */
+export function geminiDirectAltModel(env: ReasonEnv): string {
+  return ((env as any).GEMINI_DIRECT_ALT_MODEL as string) || DEFAULT_GEMINI_DIRECT_ALT;
+}
+
 function step(provider: Step["provider"], model: string, body: BodyOpts): Step {
   return { provider, model, body };
 }
@@ -63,6 +81,26 @@ export function plan(env: ReasonEnv, req: ReasonReq, dialect: Dialect): Plan {
   if (pinnedCf.startsWith("@cf/")) {
     return {
       verb, primary: step("cf_ai", pinnedCf, CF_C), alt: null,
+      noFallback: true, retryPrimaryIfNoAlt: false, altRequiresKey: false, altChatOnly: false,
+    };
+  }
+
+  // One Brain B1: `gemini_direct` feature → direct Google Gemini (systemInstruction
+  // + per-model thinking-off + same-provider ladder), replacing util.geminiRun and
+  // the genui_planner Gemini fallback's raw generativelanguage fetches. A caller that
+  // PINS req.model (genui fallback: gemini-2.5-flash) gets a SINGLE google call with
+  // that model; otherwise the two-model ladder (gemini-3-flash-preview → gemini-2.5-
+  // flash-lite) that geminiRun used. The ladder + empty-text fallthrough + soft "" on
+  // total failure all live IN the google adapter (Step.models), so core dispatches ONE
+  // step and never throws for this route. Takes precedence over verb routing.
+  if (req.feature === "gemini_direct") {
+    const pinned = String(req.model ?? "").trim();
+    const primaryModel = pinned || geminiDirectModel(env);
+    const models = pinned ? [primaryModel] : [primaryModel, geminiDirectAltModel(env)];
+    return {
+      verb,
+      primary: { provider: "google", model: primaryModel, body: CF_C, models },
+      alt: null,
       noFallback: true, retryPrimaryIfNoAlt: false, altRequiresKey: false, altChatOnly: false,
     };
   }

@@ -73,6 +73,17 @@ export interface ReasonReq {
   aiRunOpts?: any;       // AI Gateway opts (see ai_gate.aiRunOpts) — passed to env.AI.run
   input?: unknown;       // verb payload (embed text / audio bytes / etc.)
 
+  // Google/Gemini-direct extras (One Brain B1 `gemini_direct` route — additive).
+  // `generationConfig` is a Gemini `generationConfig` fragment merged verbatim into
+  // the body (responseMimeType, static thinkingConfig, topP, …) — the "generationConfig
+  // extras via a request field" seam. `geminiThinkingOff` is the PER-MODEL latency
+  // mechanism: the google adapter derives thinking-off from the model name
+  // (gemini-3 → thinkingLevel "low", gemini-2.x → thinkingBudget 0 — the two must
+  // never be mixed or Google 400s), so a two-model ladder gets the right config for
+  // EACH rung. A static `generationConfig.thinkingConfig` cannot do that.
+  generationConfig?: Record<string, unknown>;
+  geminiThinkingOff?: boolean;
+
   // Control.
   fallback?: boolean;    // consumers: allow the OpenRouter ALT fallback (default true)
   stream?: boolean;      // worker: OpenRouter streaming passthrough (returns Response)
@@ -107,6 +118,12 @@ export interface Step {
   provider: Provider;
   model: string;
   body: BodyOpts;
+  /** google: same-provider model ladder (primary → alt on empty text), tried
+   *  IN-ADAPTER (not via core's exception-driven alt). Set by policy for the
+   *  `gemini_direct` route; when present the google adapter iterates it and returns
+   *  the first non-empty answer, soft-failing to "" if every rung comes back empty
+   *  or errors — reproducing util.geminiRun's historical swallow. */
+  models?: string[];
 }
 
 export interface Plan {
@@ -127,6 +144,7 @@ export interface Plan {
 
 export interface AdapterCtx {
   model: string;
+  models?: string[];   // same-provider ladder (google); see Step.models
   req: ReasonReq;
   body: BodyOpts;
   aiRunOpts?: any;

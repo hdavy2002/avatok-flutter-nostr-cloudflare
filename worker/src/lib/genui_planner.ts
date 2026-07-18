@@ -263,25 +263,26 @@ async function llmJson(env: Env, sys: string, usr: string): Promise<{ text: stri
     // OpenRouter failed — record it but continue to Gemini (don't break the card).
     // (provider stays openrouter so the failure is attributable; ok=false.)
   }
-  // Gemini fallback
+  // Gemini fallback — One Brain B1 (SPEC §4): routed through the shared avaReason
+  // gateway via the `gemini_direct` feature, model pinned to gemini-2.5-flash for a
+  // SINGLE call (no ladder). systemInstruction (sys) + JSON mode + temperature 0.2 +
+  // thinking-off (geminiThinkingOff → thinkingBudget 0 for gemini-2.5) are preserved
+  // by the google adapter, so the wire request is byte-identical to the old raw
+  // fetch. The gateway soft-fails (returns "") and does not surface the HTTP status,
+  // so we report 200 on success / 0 on empty|failure — exactly how the already-
+  // migrated Opus branch above reports its outcome.
   const key = env.GEMINI_API_KEY ?? "";
   if (!key) return { text: "", provider: "none", model: "", ms: 0, ok: false, status: 0 };
   const g0 = Date.now();
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${PLAN_MODEL}:generateContent`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-goog-api-key": key },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: sys }] },
-        contents: [{ role: "user", parts: [{ text: usr }] }],
-        generationConfig: { responseMimeType: "application/json", temperature: 0.2, thinkingConfig: { thinkingBudget: 0 } },
-      }),
+    const text = await avaReason(env, {
+      role: "genui", capability: "plan", trigger: "plan_surface",
+      feature: "gemini_direct", model: PLAN_MODEL,
+      system: sys, user: usr, json: true,
+      temperature: 0.2, geminiThinkingOff: true,
     });
-    if (!res.ok) return { text: "", provider: "gemini", model: PLAN_MODEL, ms: Date.now() - g0, ok: false, status: res.status };
-    const out: any = await res.json().catch(() => null);
-    const text = out?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text).filter(Boolean).join("") ?? "";
-    return { text, provider: "gemini", model: PLAN_MODEL, ms: Date.now() - g0, ok: !!text, status: res.status };
+    if (text) return { text: String(text), provider: "gemini", model: PLAN_MODEL, ms: Date.now() - g0, ok: true, status: 200 };
+    return { text: "", provider: "gemini", model: PLAN_MODEL, ms: Date.now() - g0, ok: false, status: 0 };
   } catch { return { text: "", provider: "gemini", model: PLAN_MODEL, ms: Date.now() - g0, ok: false, status: 0 }; }
 }
 

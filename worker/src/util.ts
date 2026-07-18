@@ -1,4 +1,5 @@
 // Shared helpers: HTTP/CORS, hashing, hex, phone normalization.
+import { avaReason } from "./lib/ava_reason"; // One Brain B1: unified reasoning gateway
 
 export const CORS: Record<string, string> = {
   "access-control-allow-origin": "*",
@@ -73,36 +74,32 @@ export function geminiBody(system: string, user: string, maxTokens = 700, temper
 export const GEMINI_MODEL = "gemini-3-flash-preview";
 export const GEMINI_FALLBACK_MODEL = "gemini-2.5-flash-lite";
 
-/// Run a single-turn Gemini generation via the DIRECT generativelanguage API
-/// using env.GEMINI_API_KEY. Tries gemini-3, falls back to gemini-2.5; returns
-/// the answer text (or "" on total failure). One real call, no 7003 penalty.
+/// Run a single-turn Gemini generation via the DIRECT generativelanguage API using
+/// env.GEMINI_API_KEY. Tries gemini-3, falls back to gemini-2.5; returns the answer
+/// text (or "" on total failure). One real call, no 7003 penalty.
+///
+/// One Brain B1 (SPEC §4): now a THIN SHIM over the shared avaReason gateway via the
+/// `gemini_direct` route. Behaviour is preserved EXACTLY for all 6 call sites
+/// (ava_agent ×3, conversation, user_brain, ava_delegate): system → systemInstruction,
+/// per-model thinking-off (geminiThinkingOff), the gemini-3 → gemini-2.5-flash-lite
+/// two-model empty-text ladder (now in the google adapter, models from policy),
+/// answer text with "thought" parts dropped, and the "never throw, return '' on any
+/// failure" contract. The public signature is unchanged. The model ladder now lives
+/// in ava_reason/policy.ts (env-overridable via GEMINI_DIRECT_MODEL / _ALT_MODEL) and
+/// each call now emits a unified `ava_reason_call` telemetry event.
 export async function geminiRun(
   env: any, system: string, user: string,
   maxTokens = 700, temperature = 0.7,
 ): Promise<string> {
-  const key = env?.GEMINI_API_KEY;
-  if (!key) return "";
-  const body = geminiBody(system, user, maxTokens, temperature);
-  for (const model of [GEMINI_MODEL, GEMINI_FALLBACK_MODEL]) {
-    try {
-      // Thinking off (per-model) so a one-shot reasoner reply is ~1s, not ~4–5s.
-      const mbody = { ...body, generationConfig: { ...body.generationConfig, ...thinkingCfg(model) } };
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json", "x-goog-api-key": key },
-          body: JSON.stringify(mbody),
-        },
-      );
-      const out: any = await res.json().catch(() => ({}));
-      if (res.ok) {
-        const t = geminiText(out);
-        if (t) return t;
-      }
-    } catch { /* try the fallback model */ }
-  }
-  return "";
+  if (!env?.GEMINI_API_KEY) return ""; // no key → "" without a gateway call (as before)
+  try {
+    return await avaReason(env, {
+      role: "reasoner", capability: "reason", trigger: "gemini_run",
+      feature: "gemini_direct",
+      system, user, maxTokens, temperature,
+      geminiThinkingOff: true, // per-model thinking off for ~1s latency (was thinkingCfg)
+    });
+  } catch { return ""; } // preserve geminiRun's total-failure "" (never throws)
 }
 
 // D1 caps bound parameters at 100 per query. Split arrays into safe batches.
