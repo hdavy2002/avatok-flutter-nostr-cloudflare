@@ -2,6 +2,13 @@
 **Status:** APPROVED DIRECTION — v2, revised 2026-07-18 after design review. v1's seven
 review findings are resolved inline (§7). Not "final" as code until B0 lands and the
 contracts in §3, §5 and §6 survive first contact.
+**Amended 2026-07-18 — §10 (Guardian), pre-B0.** Guardian joins as a governed safety
+consumer/producer. Three corrections to the incoming proposal: safety runs on **legal basis,
+not consent** (§10.1); safety records are **exempt from the §5.1 deletion contract** or it
+becomes a reputation-laundering tool (§10.2); safety is **two-party and therefore not a
+per-user brain domain** (§10.3). Also **B-D7: recommend turning `sentinelEnabled` and
+`sentinelMem0Enabled` OFF in prod now** — both are live, half-built, and feeding an
+ungoverned third-party store (§10.4).
 **Supersedes:** v1 (2026-07-17) and the draft inventory/plan. The draft's Part 1 inventory
 remains the factual baseline.
 
@@ -320,6 +327,166 @@ was never stored server-side. This is now explicit and governed:
 - 12-month event roll-off (B-D4).
 - **Exit:** ChatAVA, Copilot, briefing, receptionist all answer via `brainRecall`; direct
   call sites on the five old recall paths are gone.
+
+---
+
+## 10. AMENDMENT — Guardian (2026-07-18, pre-B0)
+
+Source: `Specs/GUARDIAN-SYSTEM-REPORT-2026-07-18.md` (prod-read, not DEFAULTS-read) + a
+design proposal. **The proposal's shape is adopted.** Guardian is a **governed safety
+consumer and producer**: it reads narrow context, reasons via `avaReason({role:"guardian"})`
+(already true, `moderation.ts:274`), and writes **minimal structured events** — never raw
+content — into a restricted store that general `brainRecall` cannot see.
+
+Adopted as proposed, no changes: no raw chat into the brain (B-D1 consistent); minimal
+derived record only (category/severity, subject+counterparty ids, ts, action, model+version,
+appeal state); a purpose-specific `guardianContext({subjectUid, conversationId, purpose})`
+instead of `brainRecall`; Guardian results must not become general context for every Ava
+feature; safety labels treated as sensitive even though derived (provenance, model version,
+human review for serious enforcement, appeal/correction).
+
+**Three corrections. Two of them matter a great deal.**
+
+### 10.1 Safety is not consent — the registry needs `basis`
+
+The proposal suggests `safety: { consent:'safety', default:'system_required' }`. **If it
+can't be turned off, it isn't consent** — and Settings is *generated from the registry*
+(§3), so `system_required` renders as **a toggle the user cannot move**. That is the
+"consent UI that lies" failure (draft §1.5 defect 1) re-created in inverted form: a control
+that appears to exist and doesn't.
+
+The lawful basis for safety processing is **legitimate interest / legal obligation**, not
+consent. So the registry gains a field, and Settings renders on it:
+
+```ts
+BRAIN_DOMAINS = {
+  listings: { basis:'consent', consent:'listings', default:true,  scope:'account_private' },
+  safety:   { basis:'legal',   consent:null,       deletable:false, acl:'guardian',
+              scope:'account_private', retention:'§10.2' },
+}
+```
+
+`basis:'consent'` → a toggle. `basis:'legal'` → **a disclosure, not a toggle** — visible in
+Settings, plainly explained, no switch. Honest, and it makes B0's generated-Settings
+guarantee stronger rather than weaker.
+
+### 10.2 Safety data must NOT follow the deletion contract — this is the important one
+
+The proposal ends with: *"follows the same deletion, retention, audit, and rebuildability
+contracts as every other Brain store."* **Audit and retention yes. Deletion no — and this
+would be a serious mistake to ship.**
+
+§5.1's deletion contract is user-initiated and complete by design. Apply it to safety data
+and **"delete my AvaBrain data" erases your own grooming flags.** A user accumulates two of
+the three sev-2 flags that trigger `blockSender` (`ava_guardian.ts:1042-1059`), taps delete,
+and the counter resets. **The deletion contract becomes a reputation-laundering tool, and
+the more dangerous the user, the more motivated they are to use it.**
+
+This isn't a new position for us — **we already decided it, twice, without noticing:**
+
+- **M-D11** (marketplace plan, resolved yesterday): Connect's gate is *"liveness + face-dedup
+  **against a ban list**"*. A ban list only works if the banned person cannot delete
+  themselves from it. We committed to non-deletable safety state when we chose face-dedup
+  over OTP.
+- `blockSender` already writes the `blocks` table, and nobody thinks a blocked user should
+  be able to DELETE their way out.
+
+GDPR anticipates this exactly — Art. 17(3)(b)/(e) permit refusing erasure where processing
+is necessary for a legal obligation or the establishment/defence of legal claims. Every
+platform runs this way: **you may delete your account; you may not delete your ban record.**
+
+So:
+
+- `safety` is **`deletable:false`** with a documented lawful basis, and the §5.1 deletion job
+  **skips it by design** — recorded in the completion audit as *"safety records retained
+  under legitimate interest"* rather than silently omitted. §5.1 already insists deletion
+  never silently half-completes; this is the honest version of the same rule.
+- It gets its **own retention clock**, not §5.3's fact decay: flags 12 months, enforcement
+  actions (blocks, bans, ban-list face hashes) longer, defined with legal.
+- **Not rebuildable** — unlike §5.3's facts, safety events cannot be recomputed from raw
+  events, because we deliberately never stored the raw content. That's correct, and it is
+  the reason retention has to be explicit rather than inherited.
+
+### 10.3 Safety is two-party — so it is not a per-user brain domain
+
+The proposal scopes `safety` as `account_private`. But a flag is inherently **about a sender,
+raised in a conversation with a recipient** — Sentinel's subject is the *sender*
+(report §3.8). Whose brain holds it? The sender's, and they delete it (§10.2). The
+recipient's, and the sender's reputation is unaffected by their own conduct.
+
+**Neither. It is not per-user memory at all** — it's a platform safety record that happens to
+reference users. Concretely: same governance plane (one ingest contract, one audit, one
+retention policy, `brainIngest`-shaped envelope with §3.2 idempotency), **separate store**,
+`acl:'guardian'`, no `brainRecall` path. "One Brain" holds — one governance plane, one
+contract — while being honest that **safety ≠ memory**. Collapsing them is what creates both
+the deletion hole and the leak risk.
+
+**ACL by module boundary, not convention** — the pattern §6.1 already establishes for
+`AvaLocalBrain` (*"a convention can rot; the lint + import-walker test cannot"*) and the
+marketplace plan's agent runtime: `guardianContext` is importable only from `lib/guardian/`,
+lint-enforced; `safety` is unreachable from ChatAVA, Copilot, marketplace compose, and
+Connect.
+
+### 10.4 Prerequisites — three of these are live in prod right now
+
+The report's headline: **four Guardian subsystems the code calls "dark" are ON in prod** —
+`sentinelEnabled`, `sentinelMem0Enabled`, `guardianInlineEnabled`, `guardianGateEnabled` are
+all `true` in KV while `DEFAULTS` says `false`. Consequences for this amendment:
+
+1. **P0-1 blocks Guardian-as-producer, not just Connect.** `guardianScan` trusts
+   caller-supplied `members`/`sender` (`ava_guardian.ts:1358-1362`) — three crafted calls
+   auto-block an innocent user and poison their Sentinel score, **today, in prod**. Making
+   Guardian a brain producer while that hole is open means the spoof writes into the safety
+   store too. **Fix before wiring, not before Connect.**
+2. **P0-2 `isMinorAccount` fails open to adult** (`:194-195`). One Brain B0's whole thesis is
+   consent fails *closed*; the same argument applies with more force to child protection. If
+   B0 is flipping fail-open→fail-closed across the consent path, this belongs in the same PR.
+3. **mem0 is RagService again.** B-D2 cut `RagService` as *"a second, unaudited brain."* mem0
+   is the same pattern with a worse payload: `sentinelMem0Enabled=true` in prod is shipping
+   **our behavioural inferences about users** to a third-party store whose purge drops after
+   8 attempts leaving a telemetry breadcrumb, drained only opportunistically, **with no cron**
+   (`purge.ts:98-104`, `summariser.ts:219`). RagService at least held the user's own files
+   under the user's own key. Consistency says: **cut it, or bring it under §5.1.**
+
+> **RECOMMENDATION (B-D7).** Set **`sentinelEnabled=false` and `sentinelMem0Enabled=false`
+> in prod now**, ahead of B0. Rationale, from the report itself: 6 of 7 Sentinel rules have
+> no producer; `SentinelDO` is orphaned; the replay-mismatch bug (`fold.ts:100-104`) *will*
+> start emitting "page immediately" alerts once consolidation triggers — *"a matter of
+> volume, not if"*; and the mem0 purge path has no guaranteed sweep. We are currently paying
+> Nemotron **twice per watched message** (P1-5) to feed a half-built reputation system into
+> an ungoverned third-party store. Turning two flags off stops that today and costs nothing —
+> Guardian's actual protection (scan, flag, warn, block, parent alert) does not depend on
+> either flag. Then finish Sentinel *inside* the governance plane rather than beside it.
+
+### 10.5 Two boundaries this amendment adds
+
+- **Safety must never feed ranking or matching.** Sentinel already has a **`marketplace_trust`
+  bucket** and SEN-004 (`listing_moderation_fail` → −6). It currently feeds nothing, because
+  SentinelDO is orphaned — which makes now the moment to say it: **a trust score must not
+  affect listing visibility, search order, or dating recommendations.** A reputation system
+  that silently changes who sees you, with no notice and no appeal, is a shadow-ban system.
+  If we ever want that, it's a decision with an appeals process attached, not a side-effect
+  of wiring up an orphaned DO.
+- **M-D17 extends to Guardian** (marketplace plan §2.1b-i): Guardian must not infer, store,
+  search on, or use **orientation or neurodivergence** for trust scoring, moderation
+  weighting, or ranking. One concrete risk worth measuring rather than asserting: safety
+  classifiers are known to over-flag LGBTQ+ content as "sexual." Guardian on a dating
+  vertical could therefore flag gay users at a higher rate for identical behaviour. That is
+  **testable** — flag-rate parity across the `orientation` field, as a CI fixture — and it
+  should be tested before Connect ships, not after someone notices.
+
+### 10.6 Amendment summary
+
+> **Guardian is a governed safety consumer and producer.** It may inspect content transiently
+> and ingest minimal structured safety events into a **restricted, ACL'd safety store** —
+> reachable only via `guardianContext()` from `lib/guardian/`, never via `brainRecall`.
+> Safety records are governed by **legitimate interest, not consent** (`basis:'legal'` —
+> disclosed, not toggleable), are **not deletable by their subject** (§10.2), carry their own
+> retention clock, and are **never used to infer protected traits or to rank anything**.
+> Same governance plane; not the same store. **Safety ≠ memory.**
+
+New decisions: **B-D7** (turn Sentinel + mem0 off now — recommended), **B-D8** (cut mem0 or
+govern it), **B-D9** (retention periods for flags vs enforcement actions — needs legal).
 
 ---
 
