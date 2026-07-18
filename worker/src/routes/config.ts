@@ -500,6 +500,14 @@ export interface PlatformConfig {
   // remains the escape hatch (M-D7) until the compose_started→listing_published funnel
   // proves out (§7.4).
   aiComposeEnabled: boolean;
+  // [MKT6] Compose brain enrichment (PLAN §6.1). When ON, the compose greeting is
+  // pre-filled from the seller's OWN listing history + a minimal-domain brainRecall
+  // (domains:['listings'], k<=5). Default OFF, and it is only ONE of FOUR gates: (1) this
+  // flag, (2) the user's `listings` brain consent, (3) One Brain B4 shipped (brainRecall
+  // exists), (4) domains:['listings'] filtering. Failing any → the AI just asks. Separate
+  // from aiComposeEnabled ON PURPOSE: turning compose on must NOT silently turn on
+  // account-history recall. Read side is worker/src/lib/listing_enrichment.ts.
+  listingBrainEnrichmentEnabled: boolean;
   // [MKT5] Per-listing billing (PLAN §5, M-D2: 5 free listings, then 100 tokens = $1
   // per listing per 30 days). Default OFF: while off, every publish is granted 'free'
   // and the entitlement row is still written so the quota count is accurate the moment
@@ -735,6 +743,9 @@ const DEFAULTS: PlatformConfig = {
   // Per-listing billing — DARK. While off, publishes are free and entitlements are
   // still recorded so the 5-free quota is accurate when this flips on (staging first).
   listingFeeEnabled: false,
+  // Compose brain enrichment — DARK. Needs One Brain B4 + the user's listings consent;
+  // separate from aiComposeEnabled so compose can be live without account-history recall.
+  listingBrainEnrichmentEnabled: false,
 };
 
 /** Merged config for server-side gates (same blob getConfig serves). */
