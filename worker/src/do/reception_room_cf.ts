@@ -29,6 +29,7 @@ import { contactFor } from "../lib/identity";
 import { avaReasonRaw } from "../lib/ava_reason"; // One Brain B1: gateway for STT/LLM/TTS
 import { aiRunOpts } from "../lib/ai_gate";       // AI Gateway cost-logging opts
 import { googleSynthesizeForLang } from "../lib/google_tts"; // WaveNet voice, any language (RECEPT-TTS-GOOGLE)
+import { sarvamTtsPcm } from "../lib/sarvam"; // Bulbul v3 India voice (RECEPT-TTS-SARVAM)
 
 /** Redact secrets from free-text error strings before telemetry. */
 function scrubSecrets(s: string): string {
@@ -588,6 +589,29 @@ export class ReceptionRoomCf {
   /** Chat completion via OpenRouter (Claude); falls back to Workers AI Llama only
    *  if OPENROUTER_API_KEY is unset or the OpenRouter call fails. */
   private async cfChat(messages: Array<{ role: string; content: string }>, maxTokens: number): Promise<string> {
+    // Sarvam-M brain (RECEPT_CF_LLM_PROVIDER=sarvam, owner 2026-07-19): India-tuned,
+    // strong Hindi. OpenAI-compatible /v1/chat/completions with the api-subscription-key
+    // header. On failure we fall through to the OpenRouter/Llama path below.
+    if (String((this.env as any).RECEPT_CF_LLM_PROVIDER || "").toLowerCase() === "sarvam") {
+      const skey = (this.env as any).SARVAM_API_KEY as string | undefined;
+      if (skey) {
+        try {
+          const r = await fetch("https://api.sarvam.ai/v1/chat/completions", {
+            method: "POST",
+            headers: { "api-subscription-key": skey, "Content-Type": "application/json" },
+            // Sarvam chat is a REASONING model: it spends tokens in reasoning_content
+            // before content. reasoning_effort "low" minimizes the think budget, and we
+            // give headroom (+220) so the actual answer completes instead of truncating.
+            body: JSON.stringify({ model: this.cfLlmModel(), messages, max_tokens: Math.max(maxTokens + 220, 320), temperature: 0.4, reasoning_effort: "low" }),
+          });
+          const j: any = await r.json().catch(() => ({}));
+          const u = j?.usage; if (u) { this.cfLlmTokIn += Number(u.prompt_tokens) || 0; this.cfLlmTokOut += Number(u.completion_tokens) || 0; }
+          const txt = String(j?.choices?.[0]?.message?.content ?? "").trim();
+          if (txt) return txt;
+          this.ev("ava_recept_cf_llm_error", { via: "sarvam", error_scrubbed: scrubSecrets(JSON.stringify(j?.error ?? j)).slice(0, 160) });
+        } catch (e) { this.ev("ava_recept_cf_llm_error", { via: "sarvam", error_scrubbed: scrubSecrets(String(e)).slice(0, 160) }); }
+      }
+    }
     const key = (this.env as any).OPENROUTER_API_KEY as string | undefined;
     if (key) {
       try {
@@ -643,7 +667,16 @@ export class ReceptionRoomCf {
       // never silences Ava and the whole thing is disabled by unsetting
       // GOOGLE_TTS_SA_JSON — no redeploy.
       let gPcm: Uint8Array | null = null;
-      if ((this.env as any).GOOGLE_TTS_SA_JSON) {
+      const ttsProvider = String((this.env as any).RECEPT_CF_TTS_PROVIDER || "").toLowerCase();
+      if (ttsProvider === "sarvam" && (this.env as any).SARVAM_API_KEY) {
+        gPcm = await sarvamTtsPcm(this.env, {
+          text: text.slice(0, 2000), langCode: this.langCode(),
+          speaker: String((this.env as any).RECEPT_CF_SARVAM_SPEAKER || "priya"),
+          defaultLang: String((this.env as any).RECEPT_CF_SARVAM_LANG || "en-IN"),
+          sampleRate: 24000,
+        });
+        this.ev("ava_recept_cf_tts_provider", { provider: gPcm ? "sarvam" : "fallback", lang: this.langCode() || "auto" });
+      } else if ((this.env as any).GOOGLE_TTS_SA_JSON) {
         gPcm = await googleSynthesizeForLang(this.env, {
           text: text.slice(0, 800),
           langCode: this.langCode(),
