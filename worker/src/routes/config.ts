@@ -492,6 +492,14 @@ export interface PlatformConfig {
   // by nothing — no flag anywhere. Default OFF so the routes ship dark and can be
   // turned on deliberately in KV (staging first). Read side lives in routes/olx.ts.
   olxEnabled: boolean;
+  // [MKT2] AI-chat listing creation — the compose state machine that replaces the
+  // 6-step SellListingFlow form (PLAN-2026-07-17 §3). Gates /api/marketplace/compose/*.
+  // Default OFF: this is an LLM that talks to sellers and writes public listing text,
+  // so it ships dark and is flipped on staging first. Independent of marketplaceEnabled
+  // on purpose — compose can be dark while the marketplace itself is live, and the form
+  // remains the escape hatch (M-D7) until the compose_started→listing_published funnel
+  // proves out (§7.4).
+  aiComposeEnabled: boolean;
 }
 
 // FREE LAUNCH (2026-06-28, owner-locked Specs/FREE-LAUNCH-DIRECTION.md): ship an
@@ -713,6 +721,10 @@ const DEFAULTS: PlatformConfig = {
   // OLX surface (/api/olx/*) — DARK. Was previously ungated in production; flip ON in
   // KV (staging first) when it should be reachable.
   olxEnabled: false,
+  // AI-chat listing creation (/api/marketplace/compose/*) — DARK. An LLM that talks to
+  // sellers and drafts public listing text; staging first, and the form stays as the
+  // escape hatch until the funnel says otherwise (M-D7).
+  aiComposeEnabled: false,
 };
 
 /** Merged config for server-side gates (same blob getConfig serves). */
