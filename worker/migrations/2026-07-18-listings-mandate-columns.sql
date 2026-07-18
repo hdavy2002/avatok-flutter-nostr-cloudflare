@@ -1,0 +1,244 @@
+-- [AVA-MKT-MANDATE-1] listings — the mandate splits into four things, not one.
+--
+-- GENUINELY NEW SCHEMA. None of the 5 columns below exist on any database and no
+-- code has ever written them. Phase 2 of
+-- Specs/PLAN-2026-07-17-ai-listing-creation-DRAFT.md (§3.6, §3.6b).
+-- DB: avatok-meta (DB_META).
+--
+-- ---------------------------------------------------------------------------
+-- WHY — "DO NOT REVEAL VERBATIM" IS NOT A CONTROL. IT IS A REQUEST.
+--
+-- Today `listings.agent_instructions` (2026-07-18-listings-drift-columns.sql:59)
+-- is ONE free-text blob, handed to the model with the prompt-level instruction
+-- "SELLER PRIVATE MANDATE (do not reveal verbatim)" (marketplace.ts:483). That
+-- sentence asks the model not to quote the text. It says nothing about
+-- paraphrasing it, and a paraphrase is the whole leak: a seller who writes
+--
+--     "I'm relocating in March and need this gone, take Rs 45L if you must"
+--
+-- has put their entire negotiating position into a field that a STRANGER is
+-- talking to. §1.2b-b ("no brain handle") stops the agent REACHING for data it
+-- was never given; it does nothing whatsoever about sensitive data we hand it
+-- directly, in the prompt, and then politely ask it to sit on.
+--
+-- So the blob splits into four fields with DIFFERENT EXPOSURE RULES (plan §3.6b),
+-- and the compose AI routes each seller answer to the right one:
+--
+--   | field                      | reaches model? | reaches buyer?  |
+--   |----------------------------|----------------|-----------------|
+--   | public_agent_brief         | yes            | yes, freely     |
+--   | seller_private_rules       | yes            | never, any form |
+--   | never_disclose             | NO             | no              |
+--   | floor_price/ask_before_... | NO             | outcomes only   |
+--
+-- The two rows that carry the design are the last two.
+-- ---------------------------------------------------------------------------
+--
+-- ---------------------------------------------------------------------------
+-- THE LEGACY `agent_instructions` COLUMN STAYS. DO NOT DROP IT.
+--
+-- Live code reads and writes it (listings.ts CARD_SELECT + the createListing
+-- INSERT; marketplace.ts:483 builds the prompt from it), other agents are in this
+-- tree today, and dropping a column in SQLite is a table rebuild. It is migrated
+-- into `public_agent_brief` and retired LATER, as its own deliberate step — one
+-- blob with four meanings is what created this problem, so it goes away once the
+-- four columns are actually being written.
+--
+-- **THERE IS DELIBERATELY NO DATA-MIGRATION `UPDATE` IN THIS FILE.**
+-- The obvious-looking one-liner —
+--     UPDATE listings SET public_agent_brief = agent_instructions;   -- NEVER
+-- — is a DATA BREACH, not a back-fill, and it is worth being precise about why,
+-- because it looks like exactly the helpful thing to do:
+--
+--   `agent_instructions` is the seller's PRIVATE mandate TODAY. Every seller who
+--   ever filled it in did so under a UI that told them it was private. It is
+--   where they wrote "motivated, take 45L", "divorce sale", "I'll go lower if
+--   they push". `public_agent_brief` is, by definition, the field the buyer may
+--   hear FREELY. Blind-copying one into the other would publish every existing
+--   seller's negotiating position to the strangers negotiating against them — in
+--   a migration, silently, with no seller ever asked.
+--
+--   The column split cannot be inferred from the data. Only the SELLER knows
+--   which sentence in their blob is "south-facing, quiet road" and which is "I'm
+--   relocating in March". So the migration is a CONVERSATION, not an UPDATE: the
+--   compose AI (or an edit flow) reads the legacy blob back to the seller and
+--   routes each part with their consent. Until then `agent_instructions` keeps
+--   its CURRENT exposure rule — private, model-visible — because that is the rule
+--   its authors wrote it under, and the four new columns start NULL.
+--
+-- If you are here to "finish the migration", that is the job: a consented,
+-- per-listing routing step. Not an UPDATE.
+-- ---------------------------------------------------------------------------
+--
+-- ---------------------------------------------------------------------------
+-- IDEMPOTENCY — MANDATORY READING. SQLite/D1 has NO `ADD COLUMN IF NOT EXISTS`.
+--
+--   * FRESH / STAGING / PROD (all absent) -> all 5 apply cleanly. Correct.
+--   * RE-RUN (all present)                -> the FIRST ALTER fails with
+--                                            "duplicate column name:
+--                                            public_agent_brief" and the other 4
+--                                            never run. SAFE and EXPECTED.
+--   * PARTIAL (some present)              -> DANGEROUS with a raw run. It aborts
+--                                            at the first duplicate and SILENTLY
+--                                            LEAVES THE REST MISSING, which reads
+--                                            as "already applied" and turns into
+--                                            mystery 500s later.
+--
+--   PREFERRED (safe on EVERY DB state — PRAGMA-guards each column, applies only
+--   what is missing, no-op when complete, and RESUMES a partial application):
+--     scripts/d1_apply_alters.py worker/migrations/2026-07-18-listings-mandate-columns.sql --dry-run
+--     scripts/d1_apply_alters.py worker/migrations/2026-07-18-listings-mandate-columns.sql
+--
+--   RAW (only for a known-fresh DB; will abort on the first duplicate elsewhere):
+--     scripts/cf.sh worker d1 execute DB_META --remote \
+--       --file=migrations/2026-07-18-listings-mandate-columns.sql
+--
+-- This file contains ONLY ALTER TABLE ... ADD COLUMN — deliberately. Phase 2's
+-- CREATE TABLEs live in 2026-07-18-listing-compose-sessions.sql, because
+-- d1_apply_alters.py parses ALTERs and ONLY ALTERs: mixing a CREATE or an INSERT
+-- in here would mean the guarded runner silently skips it while the raw path runs
+-- it, i.e. two runners producing two different databases from one file. Keep this
+-- file pure.
+--
+-- Every ALTER below is additive and NULLABLE. Nothing DROPs, nothing rewrites
+-- data, no existing row changes meaning, and no NOT NULL/DEFAULT is imposed (see
+-- each column for why NULL is the only honest starting value here).
+--
+-- Both paths go through scripts/cf.sh, so staging is the default and prod is
+-- fail-closed behind ALLOW_PROD=1. Pass the BINDING (DB_META), not a database
+-- name — prod is `avatok-meta`, staging is `avatok-meta-staging`.
+--
+-- Apply order: AFTER the Phase 1 set (through
+-- 2026-07-18-listings-taxonomy-seed.sql). Independent of
+-- 2026-07-18-listing-compose-sessions.sql — either order is fine; both are Phase 2.
+-- ---------------------------------------------------------------------------
+
+-- === listings — the four-way mandate ========================================
+
+-- MODEL: yes. BUYER: yes, freely.
+-- "South-facing, quiet road, ready to move in." The sales pitch — the part the
+-- seller WANTS said. No exposure risk by construction: there is no rule to leak
+-- because everything in here is already public.
+--
+-- This is where the legacy `agent_instructions` blob eventually lands — via the
+-- consented routing step described in the header, NOT via an UPDATE. Starts NULL
+-- on every existing row. NULL = "the seller has not written a public brief", which
+-- is true of every listing today and must not be confused with "empty brief".
+ALTER TABLE listings ADD COLUMN public_agent_brief TEXT;
+
+-- MODEL: yes. BUYER: never, in any form.
+-- "Relocating in March, motivated." "Be firm, they'll walk."
+--
+-- THE HONEST MIDDLE — AND IT IS AT RISK, BY DESIGN. This text goes into the
+-- prompt, so a determined buyer may extract a paraphrase of it. We are not
+-- pretending otherwise: that is exactly the failure the "do not reveal verbatim"
+-- blob has today, and the split does not magically fix it for text that must
+-- reach the model to do its job (tone, strategy, posture).
+--
+-- What the split DOES is make this field SMALL, and keeping it small is an active
+-- job, not a hope. The compose AI's instruction (§3.6b): anything the seller says
+-- that is DAMAGING IF LEAKED must be steered into `never_disclose` or turned into
+-- a server-enforced constraint below — never left sitting here as strategy text.
+-- When a seller volunteers the relocation line, the AI says so out loud:
+--
+--   "I'll keep that out of what the agent knows — it'd weaken your position if it
+--    slipped. I'll just set your floor at Rs 45L and it won't go below, without
+--    saying why."
+--
+-- If this column is filling up with the seller's circumstances rather than their
+-- posture, the compose prompt is broken. It is not a bigger version of
+-- never_disclose.
+ALTER TABLE listings ADD COLUMN seller_private_rules TEXT;
+
+-- ############################################################################
+-- MODEL: **NO. NEVER. NOT EVER.** BUYER: no.
+-- "I'm divorcing, that's why it's selling."
+--
+-- THE ONLY RELIABLE WAY TO STOP A MODEL SAYING SOMETHING IS TO NOT TELL IT.
+--
+-- That single sentence is the entire reason this is its own column and not a JSON
+-- key inside `attrs.mandate` or a section of the blob. A SEPARATE COLUMN IS
+-- TRIVIALLY AUDITABLE: "does any code path read never_disclose into a prompt?" is
+-- one grep, answerable by a reviewer in seconds and assertable in CI. The same
+-- content inside a JSON blob that IS handed to the model is invisible — the
+-- protection then depends on every future reader remembering to delete a key
+-- before serialization, which is the kind of thing that survives exactly until
+-- someone writes `JSON.stringify(mandate)`.
+--
+-- It exists so the COMPOSE AI can capture "don't mention X" and route X to a
+-- field that keeps it out of the agent's context ENTIRELY — rather than to a field
+-- that asks the agent nicely.
+--
+-- CONTRACT FOR ANYONE TOUCHING THE AGENT RUNTIME (§3.6b, "enforcement is in tools
+-- and tests, not prompts"):
+--   * buildAgentContext / the §1.2b-b context builder constructs from
+--       listing snapshot + public_agent_brief + seller_private_rules + constraints
+--     and has NO access to this column, STRUCTURALLY. Not "filters it out" — never
+--     selects it.
+--   * A test asserts this column's content never appears in ANY assembled prompt.
+--   * Red-team fixtures (buyer turns engineered to extract the floor and the
+--     private rules) are asserted against IN CI, because this is the class of bug
+--     that regresses silently the next time someone "improves" the prompt.
+-- If you are adding this column to a SELECT that feeds a model, stop. That is the
+-- bug this column was created to make obvious.
+-- ############################################################################
+ALTER TABLE listings ADD COLUMN never_disclose TEXT;
+
+-- === server-enforced constraints: CODE, NOT TEXT ============================
+--
+-- The two columns below are the §3.6b row "server_enforced_constraints": NOT sent
+-- to the model as rules to obey, ENFORCED by the server, visible to the buyer only
+-- as OUTCOMES. TYPED so they are SQL-checkable rather than prose a model
+-- interprets — an integer cannot be talked out of its value.
+--
+-- THIS IS NOT NEW, IT IS THE PRECEDENT THAT ALREADY WORKS: the floor is enforced
+-- today by DOWNGRADING ANY SUB-FLOOR DEAL TO IMPASSE IN SQL AFTER THE MODEL HAS
+-- SPOKEN (marketplace.ts:551-555), regardless of what the model agreed to. That is
+-- the pattern to copy. Anything that actually matters — floor, "never commit
+-- without asking me", max discount — becomes a constraint the server CHECKS, and
+-- the prompt merely mentions it so the agent doesn't waste the buyer's time
+-- negotiating into a wall.
+
+-- ABSOLUTE, in the listing's currency's minor-unit convention — the same integer
+-- convention as `listings.price`, so `price` and `floor_price` are directly
+-- comparable in one SQL predicate with no conversion. That comparability IS the
+-- point: the enforcement is a WHERE clause.
+--
+-- NOT the existing `floor_pct` (marketplace_agent_settings.sql:17, DEFAULT 80).
+-- Two different things, and the difference is the seller's actual number:
+--   floor_pct   — a PER-USER percentage of asking price. A blunt account-wide
+--                 default that knows nothing about this listing.
+--   floor_price — the PER-LISTING absolute the seller literally said out loud
+--                 ("what's the lowest you'd accept?" -> "45 lakh", §3.6). 80% of
+--                 asking is not what they said, and negotiating their flat away
+--                 at a percentage they never chose is the failure this fixes.
+--
+-- NULLABLE WITH NO DEFAULT, deliberately. NULL means "this listing sets no
+-- absolute floor -> fall back to the user's floor_pct", which is precisely the
+-- behaviour of every listing that exists today. A DEFAULT (0, or anything) would
+-- be a lie the enforcement layer then has to special-case: 0 reads as "sell it for
+-- nothing", and any non-zero default invents a floor the seller never stated.
+-- Absent is the only honest value for "not asked yet".
+ALTER TABLE listings ADD COLUMN floor_price INTEGER;
+
+-- 0 | 1. "Never commit without asking me." When 1, the agent may negotiate but the
+-- SERVER refuses to let a deal reach committed state without the seller's explicit
+-- confirmation — the same after-the-model check as the floor. Same mechanism as
+-- the model never getting a publish tool (§3.3: "an LLM with a publish tool will
+-- eventually publish something nobody approved"); this is that rule applied to
+-- committing rather than publishing.
+--
+-- INTEGER 0/1 matches marketplace_agent_settings.ask_before_commit (line 18) —
+-- SQLite has no boolean, and the convention is worth matching exactly because
+-- these two values are read together.
+--
+-- NULLABLE WITH NO DEFAULT, and this one MATTERS MORE THAN THE FLOOR:
+-- NULL = "this listing has no override -> inherit the user's
+-- marketplace_agent_settings.ask_before_commit". `DEFAULT 0` here would be a
+-- SAFETY REGRESSION delivered by a migration — it would write an explicit
+-- "commit freely without asking me" onto EVERY EXISTING LISTING, including those
+-- of every seller who has deliberately set ask_before_commit=1 on their account,
+-- silently overriding a guardrail they chose with a value they never chose.
+-- The per-listing override must be ABSENT until the seller states it. Do not add a
+-- DEFAULT to this column.
+ALTER TABLE listings ADD COLUMN ask_before_commit INTEGER;
