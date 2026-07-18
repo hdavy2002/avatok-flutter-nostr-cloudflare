@@ -1377,7 +1377,7 @@ content) were a genuine collision waiting to be misread across two documents.
 | **M-D3** | D3 | Matrimony/dating in v1? | **Defer** |
 | **M-D4** | D4 | Faceted filtering in v1 (needs EAV)? | **No** — AI search covers v1 |
 | **M-D5** | D5 | YouTube embeds? | Yes, `nocookie` + `rel=0` — but confirm |
-| **M-D6** | D6 | Pale cards in a dark shell — how? | One pale tint per intent, luminance-flipped |
+| ~~M-D6~~ | D6 | ~~Pale cards in a dark shell — how?~~ | **RESOLVED 2026-07-18 (owner): pale tint per intent, dark-adapted.** A tinted card face (very dark surface + soft pale-tinted border + pale accent chip per intent), luminance-flipped to read as a pale family on the dark shell — NOT a white island, NOT a light zone. Applies to the card + all 5 detail templates. |
 | **M-D7** | D7 | Keep the form as an escape hatch? | **Yes**, until the funnel says otherwise |
 | **M-D8** | *new* | Phase 4 agent chat: stateless (InboxDO only), or server-side transcript? | **Stateless.** A server transcript is two-party content and therefore a **One Brain amendment (B-D1)**, not a marketplace call (§3.3b) |
 | **M-D9** | *new* | Should the legacy form path also fail closed on moderation? | **Yes** — same durable public content; otherwise the old flow is a moderation bypass (§7.1) |
