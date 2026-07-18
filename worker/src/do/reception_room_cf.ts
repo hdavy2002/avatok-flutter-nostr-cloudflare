@@ -309,7 +309,54 @@ export class ReceptionRoomCf {
     return ttsForLang(this.langCode(), this.cfEnglishVoice(), env).model;
   }
 
+  // ── ZERO-COST VOICEMAIL MODE (owner 2026-07-19) ────────────────────────────
+  // Deterministic flow: cached greeting → beep → 30s recording (warning beep at
+  // 25s) → finalize. No STT, no LLM, no live TTS. The greeting is rendered ONCE
+  // per (text+voice) with Bulbul v3 and cached in R2 (AGENT_AUDIO) under a
+  // content-hash key — so an owner name/language change changes the text, which
+  // changes the key, which auto-regenerates on the next call. Replays are free.
+  private vmWarnTimer: ReturnType<typeof setTimeout> | null = null;
+  private vmEndTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Chunk-send PCM to the caller + capture into the 2-way recording. */
+  private async playPcm(pcm: Uint8Array): Promise<void> {
+    if (this.finalized || !pcm?.byteLength) return;
+    if (this.pcmBytes < ReceptionRoomCf.MAX_REC_BYTES) { this.pcmOut.push({ caller: false, pcm }); this.pcmBytes += pcm.byteLength; }
+    this.avaBytes += pcm.byteLength;
+    if (!this.firstAudioSent) { this.firstAudioSent = true; this.sendReadyAck(); this.ev("ava_recept_first_audio", { engine: "cf", ms: Date.now() - this.startedAt }); }
+    for (let o = 0; o < pcm.byteLength && !this.finalized; o += 24000) {
+      try { this.client?.send(pcm.subarray(o, Math.min(o + 24000, pcm.byteLength))); } catch { /* caller gone */ }
+    }
+  }
+
+  private async startVmFlow(): Promise<void> {
+    const i = this.init!;
+    this.ev("ava_recept_vm_started", {});
+    const text = (i.greeting || "").trim()
+      || `Hi! Seems like ${i.owner_name || "the person you called"} is not available — kindly leave a message after the beep.`;
+    const voice = String((this.env as any).RECEPT_CF_SARVAM_SPEAKER || "anushka");
+    // Content-hash cache key: text or voice change → new key → auto re-render.
+    const digest = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(`${text}|${voice}|bulbul:v3|24000`));
+    const hash = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+    const r2key = `recept_vm_greeting/${i.owner_uid}/${hash}.pcm`;
+    let pcm: Uint8Array | null = null;
+    try { const obj = await (this.env as any).AGENT_AUDIO?.get(r2key); if (obj) pcm = new Uint8Array(await obj.arrayBuffer()); } catch { /* miss */ }
+    let rendered = false;
+    if (!pcm) {
+      pcm = await sarvamTtsPcm(this.env, { text, langCode: this.langCode(), model: "bulbul:v3", speaker: voice, defaultLang: "en-IN", sampleRate: 24000 });
+      if (pcm) { rendered = true; try { await (this.env as any).AGENT_AUDIO?.put(r2key, pcm, { httpMetadata: { contentType: "application/octet-stream" } }); } catch { /* best-effort */ } }
+    }
+    this.ev("ava_recept_vm_greeting", { cached: !rendered, ok: !!pcm });
+    if (pcm) await this.playPcm(pcm);
+    await this.playPcm(beepPcm(1000, 350));           // the record beep
+    // 30s recording window; warning beep at 25s (owner spec).
+    this.vmWarnTimer = setTimeout(() => { void this.playPcm(beepPcm(800, 200)); }, 25_000);
+    this.vmEndTimer = setTimeout(() => { void this.finalize("vm_complete"); }, 30_000);
+    this.bumpIdle();
+  }
+
   private async startCfEngine(): Promise<void> {
+    if (this.init?.vm === true) { await this.startVmFlow(); return; } // zero-cost VM flow
     const init = this.init!;
     // LANGUAGE (RECEPT-1): record what language we actually resolved end-to-end so a
     // Hindi-spoke-English regression is visible in one event.
@@ -375,6 +422,17 @@ export class ReceptionRoomCf {
     if (!bytes) return;
     this.inBytes += bytes.byteLength;
     // 2-way recording: capture caller speech (upsampled to match Ava's 24k).
+    // VM MODE: record EVERYTHING the caller sends (no VAD gate — a quiet voice must
+    // never be dropped from a voicemail), no STT, no endpointing. Timers own the flow.
+    if (this.init?.vm === true) {
+      if (this.pcmBytes < ReceptionRoomCf.MAX_REC_BYTES) {
+        const up = upsample16to24(bytes);
+        const pk = peakOf(up); if (pk > this.callerPeak) this.callerPeak = pk;
+        this.pcmOut.push({ caller: true, pcm: up }); this.pcmBytes += up.byteLength; this.callerRecBytes += up.byteLength;
+      }
+      if (callerHasSpeech(bytes, this.vadRms())) this.bumpIdle();
+      return;
+    }
     if (this.pcmBytes < ReceptionRoomCf.MAX_REC_BYTES && callerHasSpeech(bytes, this.vadRms())) {
       const up = upsample16to24(bytes);
       const pk = peakOf(up); if (pk > this.callerPeak) this.callerPeak = pk;
@@ -853,6 +911,8 @@ export class ReceptionRoomCf {
   private async finalize(reason: string): Promise<void> {
     if (this.finalized) return;
     this.finalized = true;
+    if (this.vmWarnTimer) { clearTimeout(this.vmWarnTimer); this.vmWarnTimer = null; }
+    if (this.vmEndTimer) { clearTimeout(this.vmEndTimer); this.vmEndTimer = null; }
     if (this.softTimer) clearTimeout(this.softTimer);
     if (this.hardTimer) clearTimeout(this.hardTimer);
     if (this.idleTimer) clearTimeout(this.idleTimer);
@@ -955,6 +1015,7 @@ export class ReceptionRoomCf {
   /** One-shot message summary via Workers AI LLM (keeps the call Gemini-free). */
   private async cfSummarize(transcript: string):
       Promise<{ caller_name: string | null; reason: string; callback: string | null; urgency: string } | null> {
+    if (this.init?.vm === true) return null; // VM mode: zero AI cost — no LLM summary
     if (!transcript) return null;
     try {
       const prompt = `From this phone-message transcript, return STRICT JSON {"caller_name":string|null,"reason":string,"callback":string|null,"urgency":"low"|"normal"|"high"}. Only the JSON. Transcript:\n${transcript.slice(0, 4000)}`;
@@ -1067,6 +1128,20 @@ function isGoodbyeLine(t: string): boolean {
     || /(अलविदा|फिर मिलेंगे|ध्यान रखना|ध्यान रखिए|शुभ दिन|आपका दिन शुभ हो|दिन अच्छा बीते)/.test(t)
     || /\b(adiós|hasta luego|que tengas un buen día|cuídate)\b/i.test(s)
     || /\b(au revoir|bonne journée)\b/i.test(s);
+}
+/** Synthesized beep (sine, PCM16 mono @24kHz, 20ms fade in/out) — no asset, no cost. */
+function beepPcm(freqHz = 1000, ms = 300, sampleRate = 24000): Uint8Array {
+  const n = Math.floor((ms / 1000) * sampleRate);
+  const out = new Uint8Array(n * 2);
+  const view = new DataView(out.buffer);
+  const fade = Math.floor(sampleRate * 0.02);
+  for (let i = 0; i < n; i++) {
+    let a = 0.35 * Math.sin(2 * Math.PI * freqHz * (i / sampleRate));
+    if (i < fade) a *= i / fade;
+    if (i > n - fade) a *= (n - i) / fade;
+    view.setInt16(i * 2, Math.max(-32768, Math.min(32767, Math.round(a * 32767))), true);
+  }
+  return out;
 }
 function callerHasSpeech(pcm: Uint8Array, threshold = 600): boolean {
   const n = pcm.byteLength >> 1;

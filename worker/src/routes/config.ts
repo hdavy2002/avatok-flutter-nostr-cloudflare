@@ -68,6 +68,15 @@ export interface PlatformConfig {
   // way — /start just points the call's WS at the chosen DO. One KV flip switches
   // every NEW call, instantly reversible, so the two can be A/B'd for cost.
   receptionistUseCf: boolean;
+  // ZERO-COST VOICEMAIL MODE (owner 2026-07-19): routes receptionist calls to the CF
+  // DO in a deterministic voicemail flow — play the owner's CACHED Bulbul-v3 greeting
+  // ("Hi, seems like <owner> is not available — kindly leave a message after the
+  // beep"), beep, record 30s (warning beep at 25s), store + notify. The greeting is
+  // rendered ONCE per (owner name + language + voice) and cached in R2 — a name or
+  // language change auto-regenerates on the next call (content-hash key). NO
+  // STT/LLM/live-TTS runs during the call, so marginal AI cost is zero. Takes
+  // precedence over receptionistUseCf/Gemini while ON.
+  receptionistVmMode: boolean;
   // P1 call-reliability (Specs/MASTER-PROMPT-LAUNCH-READINESS-2026-07-02.md, Phase 1).
   // When ON, the caller's Ava-takeover countdown does NOT start until the server
   // confirms the incoming-call FCM push outcome over the CallRoom socket
@@ -548,6 +557,7 @@ const DEFAULTS: PlatformConfig = {
   instantCallMountEnabled: true,   // [INSTANT-CALL-MOUNT-1] instant 1:1 call screen; POST /api/call runs in background. Kill switch (flip false to restore awaited path)
   receptionistRings: 4,            // [ONE-FLOW-1] owner 2026-07-09: 4 rings (20s) GLOBAL — one flow for everyone; KV can override
   receptionistUseCf: false,        // engine switch: false = Gemini Live (default), true = Cloudflare Workers AI engine
+  receptionistVmMode: false,       // zero-cost voicemail: cached Bulbul greeting + beep + 30s record (overrides engines while ON)
   receptTakeoverGuard: false,      // P1: gate Ava takeover on FCM ring-ack — ships dark, flip after device test
 
   avaAffiliateEnabled: false,      // launch gate — flip ON after A5 fraud checks

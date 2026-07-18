@@ -878,7 +878,10 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   // Engine switch (KV flag): CF-native pipeline (Workers AI) vs Gemini Live. Read
   // once so the init blob the DO consumes pins the engine for THIS call.
   const cfg = await readConfig(env);
-  const useCf = (cfg as any).receptionistUseCf === true;
+  // ZERO-COST VM MODE (owner 2026-07-19): vmMode routes to the CF DO in deterministic
+  // voicemail flow (cached greeting + beep + 30s record; no STT/LLM/live-TTS).
+  const vmMode = (cfg as any).receptionistVmMode === true;
+  const useCf = vmMode || (cfg as any).receptionistUseCf === true;
   const sessionCaps = capsFor(cfg); // 3-min menu budget vs legacy 40/60/90s
 
   // FREE FOR NOW + DEFAULT-ON: unconfigured owners get Ava by default; an explicit
@@ -1115,7 +1118,13 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   // localized to the owner's answer language where we have a template (Hindi et al.),
   // falling back to English. Ava's feminine self-reference is preserved per language.
   const greetLangCode = (s.answer_lang || s.language_code || "").trim();
-  const greeting = composeDeterministicGreeting({
+  // VM-mode greeting is NAME-FREE by design (owner 2026-07-19) so the cached render
+  // is per-OWNER (not per-caller) and replays free forever. Hindi template when the
+  // owner's answer language is Hindi; English otherwise.
+  const vmGreeting = greetingBaseLang(greetLangCode) === "hi"
+    ? `नमस्ते! लगता है ${ownerLabel} अभी उपलब्ध नहीं हैं — कृपया बीप के बाद अपना संदेश छोड़ दीजिए।`
+    : `Hi! Seems like ${ownerLabel} is not available — kindly leave a message after the beep.`;
+  const greeting = vmMode ? vmGreeting : composeDeterministicGreeting({
     isBusy: activationMode === "busy",
     isUnreachable: activationMode === "unreachable",
     isMenu: activationMode === "menu",
@@ -1167,6 +1176,7 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
 
     // engine: "cf" → the WS routes to ReceptionRoomCf (Workers AI); else Gemini.
     engine: useCf ? "cf" : "gemini",
+    vm: vmMode, // zero-cost voicemail flow inside the CF DO
     cf_voice: useCf ? AVA_CF_VOICE : null,
     greeting,                                     // CF engine speaks this immediately (no LLM)
     model: useCf ? "cf-workers-ai" : ((env as any).RECEPTIONIST_MODEL || RECEPTIONIST_MODEL_DEFAULT),
