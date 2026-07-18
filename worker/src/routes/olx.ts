@@ -19,9 +19,29 @@ import { presignGetUrl } from "../aws/sigv4";
 import { track } from "../hooks";
 import { brainIngest } from "../lib/brain_ingest";
 import { notifyUser } from "../notify";
+import { readConfig } from "./config";
+import { guardWrite } from "./moderate";
 
 const APP = "avaolx";
 const REFUND_WINDOW = 24 * 60 * 60_000;
+
+// `olxEnabled` kill switch (DEFAULTS in routes/config.ts → false). Fails CLOSED on a
+// config read error, matching subscribe.ts's billingEnabled idiom: a default-off
+// feature should stay off when we can't prove it was turned on.
+//
+// Gated: create / update / upload-file / buy — every path that adds NEW public text,
+// NEW seller-supplied bytes, or NEW spend — plus browse, the public enumeration surface.
+// Deliberately NOT gated: get-by-id, delete, refund, downloads, download-file — see
+// the note on olxDownloadFile. Flipping this flag off must never strip access to, or
+// trap money in, something a user already paid for. Delete stays open so a seller can
+// always retire a listing, including while the feature is paused.
+async function olxEnabled(env: Env): Promise<boolean> {
+  try { return !!(await readConfig(env)).olxEnabled; } catch { return false; }
+}
+
+function olxOff(): Response {
+  return json({ error: "AvaOLX is disabled", reason: "flag_off" }, 503);
+}
 
 // Auto-generate a tidy "2-page" listing body from short input (§10.6).
 function autoListing(title: string, kind: string, notes: string, category?: string, price?: number): string {
@@ -39,6 +59,7 @@ function autoListing(title: string, kind: string, notes: string, category?: stri
 
 // POST /api/olx/listings  { kind, title, notes, category, price_coins?, location?, image_hashes? }
 export async function olxCreate(req: Request, env: Env): Promise<Response> {
+  if (!(await olxEnabled(env))) return olxOff();
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   if (!(await kycVerified(env, ctx.uid))) return json({ error: "verification required to list", reason: "tier2" }, 403);
@@ -48,6 +69,16 @@ export async function olxCreate(req: Request, env: Env): Promise<Response> {
   if (!b.title) return json({ error: "title required" }, 400);
   const price = kind === "digital" ? Math.max(1, Math.trunc(Number(b.price_coins || 0))) : 0;
   if (kind === "digital" && !(price >= 1)) return json({ error: "digital products need price_coins>=1" }, 400);
+
+  // Moderate the SELLER-AUTHORED text, not autoListing()'s output — the wrapper adds
+  // boilerplate that would only dilute the classifier's view of the actual input.
+  // `location` is free text on physical listings, so it's checked too.
+  const blocked = await guardWrite(req, env, ctx.uid, APP, [
+    { text: String(b.title), field: "listing_title" },
+    { text: (b.notes ?? b.description) as string | undefined, field: "listing_desc" },
+    { text: kind === "physical" ? (b.location as string | undefined) : undefined, field: "listing_desc" },
+  ]);
+  if (blocked) return blocked;
 
   const id = crypto.randomUUID();
   const now = Date.now();
@@ -64,6 +95,11 @@ export async function olxCreate(req: Request, env: Env): Promise<Response> {
 
 // GET /api/olx/listings — browse (open / Tier 1).
 export async function olxBrowse(req: Request, env: Env): Promise<Response> {
+  // Gated: this is the unauthenticated PUBLIC enumeration surface, i.e. the one that
+  // actually broadcasts listing text at scale. Listings created before moderation
+  // landed are unclassified, so with the flag off they shouldn't be discoverable.
+  // olxGet (by-UUID, non-enumerable) stays open so buyers can still see what they own.
+  if (!(await olxEnabled(env))) return olxOff();
   const u = new URL(req.url).searchParams;
   const kind = u.get("kind"); const category = u.get("category"); const seller = u.get("seller");
   const where: string[] = ["status='active'"]; const binds: any[] = [];
@@ -85,11 +121,20 @@ export async function olxGet(req: Request, env: Env, id: string): Promise<Respon
 }
 
 export async function olxUpdate(req: Request, env: Env, id: string): Promise<Response> {
+  if (!(await olxEnabled(env))) return olxOff();
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const row = await mediaDb(env).prepare("SELECT seller_uid, kind FROM olx_listings WHERE id=?1").bind(id).first<any>();
   if (!row || row.seller_uid !== ctx.uid) return json({ error: "not found" }, 404);
   const b = (await req.json().catch(() => ({}))) as any;
+  // Partial edit: only the fields actually present are re-checked (firstUnsafe skips
+  // empty/undefined), so an untouched title isn't re-classified on every save.
+  const blocked = await guardWrite(req, env, ctx.uid, APP, [
+    { text: b.title as string | undefined, field: "listing_title" },
+    { text: b.notes as string | undefined, field: "listing_desc" },
+    { text: b.location as string | undefined, field: "listing_desc" },
+  ]);
+  if (blocked) return blocked;
   const desc = b.title || b.notes ? autoListing(String(b.title || ""), row.kind, String(b.notes || ""), b.category, b.price_coins) : null;
   await mediaDb(env).prepare(
     "UPDATE olx_listings SET title=COALESCE(?2,title), description=COALESCE(?3,description), category=COALESCE(?4,category), price_coins=COALESCE(?5,price_coins), location=COALESCE(?6,location), updated_at=?7 WHERE id=?1",
@@ -108,6 +153,7 @@ export async function olxDelete(req: Request, env: Env, id: string): Promise<Res
 
 // POST /api/olx/listings/:id/file — seller uploads the digital deliverable (bytes).
 export async function olxUploadFile(req: Request, env: Env, id: string): Promise<Response> {
+  if (!(await olxEnabled(env))) return olxOff();
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const listing = await mediaDb(env).prepare("SELECT seller_uid, kind FROM olx_listings WHERE id=?1").bind(id).first<any>();
@@ -131,6 +177,9 @@ export async function olxUploadFile(req: Request, env: Env, id: string): Promise
 
 // POST /api/olx/buy  { listing_id }
 export async function olxBuy(req: Request, env: Env): Promise<Response> {
+  // Gated: buy creates NEW spend + a NEW refund obligation. Refusing it strips nobody
+  // of anything already paid for — unlike download, which is left open on purpose.
+  if (!(await olxEnabled(env))) return olxOff();
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as any;
@@ -163,6 +212,10 @@ export async function olxBuy(req: Request, env: Env): Promise<Response> {
 }
 
 // POST /api/olx/refund { purchase_id } — 24h refund if NOT downloaded (§10.6).
+// NOT gated on olxEnabled, deliberately: turning the flag off while a purchase is
+// inside its 24h window must not trap the buyer's coins. A kill switch that blocks
+// refunds converts "feature paused" into "money taken". Same reasoning keeps
+// olxDownloads/olxDownloadFile open — see olxDownloadFile.
 export async function olxRefund(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
@@ -204,6 +257,10 @@ export async function olxDownloads(req: Request, env: Env): Promise<Response> {
 }
 
 // GET /api/olx/downloads/:id/file — signed download; marks downloaded (ends refund window).
+// NOT gated on olxEnabled, deliberately: the buyer already paid for these bytes. A
+// hard gate here would revoke delivery of a completed purchase every time the flag is
+// flipped off — the one outcome the kill switch must never cause. Access stays scoped
+// by buyer_uid, so this is not an authz hole; it's a paid-goods escrow guarantee.
 export async function olxDownloadFile(req: Request, env: Env, purchaseId: string): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
