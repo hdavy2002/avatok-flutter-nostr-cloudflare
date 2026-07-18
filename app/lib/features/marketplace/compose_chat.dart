@@ -83,12 +83,43 @@ class _Msg {
   /// Only for [_Role.resume].
   final ComposeResume? resume;
 
+  /// True while this Ava bubble is being typed out live from `say_delta`
+  /// frames — renders a trailing cursor and (when still empty) the "thinking"
+  /// placeholder. Cleared when the authoritative `say` reconciles it.
+  final bool streaming;
+
   const _Msg(
     this.role,
     this.text, {
     this.photoUrls = const [],
     this.card,
     this.resume,
+    this.streaming = false,
+  });
+}
+
+/// Per-turn UX telemetry accumulator (§7.4). Times the user's FELT latency
+/// client-side from the moment the POST fires: how long until the first byte,
+/// until the first text they can read, and until the reply finished. Emitted
+/// once per logical turn as `compose_turn_ux`.
+class _TurnUx {
+  final Stopwatch sw = Stopwatch()..start();
+  final String sessionId;
+  final int textLen;
+  final bool hadMedia;
+  final bool fromChip;
+  int? firstByteMs; // first SSE frame of any kind (network + server TTFB)
+  int? firstTextMs; // first say_delta/say — when the user first SEES a reply
+  int? doneMs; // stream drained ([DONE])
+  bool streamed = false; // did any say_delta arrive (vs only a final say)
+  bool chipsShown = false;
+  bool reachedReview = false;
+  String? error;
+  _TurnUx({
+    required this.sessionId,
+    required this.textLen,
+    required this.hadMedia,
+    required this.fromChip,
   });
 }
 
@@ -118,6 +149,11 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
 
   /// §3.3c — the optimistic version from the latest review card.
   int? _rev;
+
+  /// Index in [_msgs] of the Ava bubble currently being streamed into from
+  /// `say_delta` frames. Non-null only while a turn is in flight; deltas append
+  /// here and the final `say` reconciles it. Cleared when the turn finalises.
+  int? _streamIdx;
 
   bool _identityOk = true;
   String? _identityReason;
@@ -190,6 +226,80 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
   void _add(_Msg m) {
     setState(() => _msgs.add(m));
     _jumpToEnd();
+  }
+
+  /// Keep the view pinned to the bottom WITHOUT an animation — used on every
+  /// streamed delta, where an animated scroll would fight itself many times a
+  /// second and stutter the typewriter.
+  void _stickToEnd() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scroll.hasClients) {
+        _scroll.jumpTo(_scroll.position.maxScrollExtent);
+      }
+    });
+  }
+
+  // ── Streaming render helpers (§3.3) ─────────────────────────────────────────
+
+  /// Append a `say_delta` chunk to the live Ava bubble and rebuild, so the
+  /// reply types out as it arrives.
+  void _appendDelta(String delta) {
+    final idx = _streamIdx;
+    if (idx == null || idx >= _msgs.length) return;
+    final m = _msgs[idx];
+    if (m.role != _Role.ava) return;
+    setState(() => _msgs[idx] = _Msg(_Role.ava, m.text + delta, streaming: true));
+    _stickToEnd();
+  }
+
+  /// Reconcile the live bubble to the authoritative full `say` text (in case a
+  /// delta was dropped) and drop the typing cursor.
+  void _finalizeSay(String say) {
+    final idx = _streamIdx;
+    if (idx == null || idx >= _msgs.length || _msgs[idx].role != _Role.ava) {
+      if (say.isNotEmpty) setState(() => _msgs.add(_Msg(_Role.ava, say)));
+      _jumpToEnd();
+      return;
+    }
+    setState(() => _msgs[idx] = _Msg(_Role.ava, say));
+    _jumpToEnd();
+  }
+
+  /// End-of-turn cleanup: an Ava bubble that never received any text (e.g. an
+  /// error fired first) is removed rather than left blank; a bubble that still
+  /// carries the streaming flag has its cursor dropped. Call inside setState.
+  void _finalizeStream() {
+    final idx = _streamIdx;
+    _streamIdx = null;
+    if (idx == null || idx >= _msgs.length) return;
+    final m = _msgs[idx];
+    if (m.role != _Role.ava) return;
+    if (m.text.isEmpty) {
+      _msgs.removeAt(idx);
+    } else if (m.streaming) {
+      _msgs[idx] = _Msg(_Role.ava, m.text);
+    }
+  }
+
+  void _emitTurnUx(_TurnUx ux, int seq, int attempt) {
+    Analytics.capture('compose_turn_ux', {
+      'session_id': ux.sessionId,
+      'category': _card?['category']?.toString() ?? '',
+      'text_len': ux.textLen,
+      'had_media': ux.hadMedia,
+      'chip_tap': ux.fromChip,
+      'streamed': ux.streamed,
+      'chips_shown': ux.chipsShown,
+      'reached_review': ux.reachedReview,
+      'sent_ms': 0, // baseline: the moment the POST fired
+      'attempt': attempt,
+      'turn_seq': seq,
+      'lang': _lang,
+      if (ux.firstByteMs != null) 'first_byte_ms': ux.firstByteMs,
+      if (ux.firstTextMs != null) 'first_text_ms': ux.firstTextMs,
+      if (ux.doneMs != null) 'done_ms': ux.doneMs,
+      if (ux.error != null) 'error': ux.error,
+    });
   }
 
   // ── Open ──────────────────────────────────────────────────────────────────
@@ -416,16 +526,37 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
     // model and re-applying its tools.
     final idem = MarketplaceApi.newIdemKey();
 
+    if (fromChip) {
+      Analytics.capture('compose_chip_tapped', {
+        'session_id': sid,
+        'chip': text,
+        'category': _card?['category']?.toString() ?? '',
+      });
+    }
+
     _input.clear();
     setState(() {
       _msgs.add(_Msg(_Role.user, text, photoUrls: photoUrls));
       _pending.clear();
       _chips = const [];
       _busy = true;
+      // Show Ava's bubble IMMEDIATELY (empty, with a cursor) so the reply feels
+      // instant — the deltas stream into it. Replaces the old behaviour where
+      // the bubble only appeared once the whole reply had arrived.
+      _msgs.add(const _Msg(_Role.ava, '', streaming: true));
+      _streamIdx = _msgs.length - 1;
     });
     _jumpToEnd();
 
-    await _runTurn(sid, seq, idem, text, media, attempt: 1, fromChip: fromChip);
+    // Stopwatch starts as close to the POST as possible — its zero is `sent_ms`.
+    final ux = _TurnUx(
+      sessionId: sid,
+      textLen: text.length,
+      hadMedia: media.isNotEmpty,
+      fromChip: fromChip,
+    );
+    await _runTurn(sid, seq, idem, text, media,
+        attempt: 1, ux: ux, fromChip: fromChip);
   }
 
   Future<void> _runTurn(
@@ -435,6 +566,7 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
     String text,
     List<String> media, {
     required int attempt,
+    required _TurnUx ux,
     bool fromChip = false,
   }) async {
     Analytics.capture('compose_turn', {
@@ -447,6 +579,14 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
       'lang': _lang,
       'identity_ok': _identityOk,
     });
+
+    // On a RETRY the server replays the whole stored reply as fresh deltas
+    // (same idem_key), so clear the live bubble first — otherwise the text
+    // doubles up until the final `say` reconciles it.
+    if (attempt > 1 && _streamIdx != null && _streamIdx! < _msgs.length) {
+      setState(() =>
+          _msgs[_streamIdx!] = const _Msg(_Role.ava, '', streaming: true));
+    }
 
     var applied = false; // the server actually moved the draft on
     var failed = false;
@@ -461,12 +601,20 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
       );
       await for (final e in stream) {
         if (!mounted) return;
+        // First frame of ANY kind — network + server TTFB, felt as "it woke up".
+        ux.firstByteMs ??= ux.sw.elapsedMilliseconds;
         switch (e) {
+          case ComposeSayDelta(text: final delta):
+            // The user first SEES a reply here — the key "feels fast" metric.
+            ux.firstTextMs ??= ux.sw.elapsedMilliseconds;
+            ux.streamed = true;
+            applied = true;
+            if (delta.isNotEmpty) _appendDelta(delta);
+            break;
           case ComposeSay(text: final say):
-            if (say.isNotEmpty) {
-              setState(() => _msgs.add(_Msg(_Role.ava, say)));
-              _jumpToEnd();
-            }
+            ux.firstTextMs ??= ux.sw.elapsedMilliseconds;
+            // Authoritative full text — reconcile the streamed bubble to it.
+            _finalizeSay(say);
             applied = true;
             break;
           case ComposeDraftState(progress: final p, missing: final m):
@@ -477,9 +625,11 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
             applied = true;
             break;
           case ComposeChips(chips: final c):
+            ux.chipsShown = c.isNotEmpty;
             setState(() => _chips = c);
             break;
           case ComposeReview(card: final card):
+            ux.reachedReview = true;
             setState(() {
               _card = card;
               _rev = (card['rev'] as num?)?.toInt();
@@ -490,10 +640,13 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
             break;
           case ComposeError(error: final code, message: final msg):
             failed = true;
+            ux.error = code;
             _onTurnError(code, msg);
             break;
         }
       }
+      // Stream drained cleanly ([DONE]) — the reply is fully in.
+      ux.doneMs ??= ux.sw.elapsedMilliseconds;
     } catch (_) {
       // Transport failure. Retry ONCE with the SAME idem_key (§3.3c) — the
       // server either never saw the turn (it runs) or already ran it (it
@@ -508,9 +661,10 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
         await Future<void>.delayed(const Duration(milliseconds: 700));
         if (!mounted) return;
         return _runTurn(sid, seq, idem, text, media,
-            attempt: attempt + 1, fromChip: fromChip);
+            attempt: attempt + 1, ux: ux, fromChip: fromChip);
       }
       failed = true;
+      ux.error ??= 'network';
       if (mounted) {
         setState(() => _msgs.add(const _Msg(
             _Role.notice, "I couldn't reach Ava just then. Try that again?")));
@@ -521,7 +675,11 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
     // Advance ONLY on a turn the server applied. A refused or lost turn leaves
     // the sequence where it was, so the next send is still `server + 1`.
     if (applied && !failed) _turnSeq = seq;
-    setState(() => _busy = false);
+    setState(() {
+      _busy = false;
+      _finalizeStream();
+    });
+    _emitTurnUx(ux, seq, attempt);
     _jumpToEnd();
   }
 
@@ -567,6 +725,10 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
     if (sid == null || _publishing || _busy) return;
 
     setState(() => _publishing = true);
+    Analytics.capture('compose_publish_tapped', {
+      'session_id': sid,
+      'category': _card?['category']?.toString() ?? '',
+    });
     Analytics.capture('listing_submitted', {
       'via': 'compose',
       'session_id': sid,
@@ -740,7 +902,11 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
                       child: ListView.builder(
                         controller: _scroll,
                         padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-                        itemCount: _msgs.length + (_busy ? 1 : 0),
+                        // The live Ava bubble now carries the "thinking" state
+                        // itself, so the standalone typing row only shows in the
+                        // gap before that bubble exists.
+                        itemCount:
+                            _msgs.length + ((_busy && _streamIdx == null) ? 1 : 0),
                         itemBuilder: (_, i) =>
                             i >= _msgs.length ? _typing() : _row(_msgs[i]),
                       ),
@@ -815,8 +981,13 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
             ]),
             if (m.text.isNotEmpty) const SizedBox(height: 8),
           ],
-          if (m.text.isNotEmpty)
-            Text(m.text,
+          // A streaming Ava bubble that has no text yet shows the "thinking"
+          // placeholder; once deltas arrive it types out with a trailing cursor
+          // until the final `say` reconciles it and drops the streaming flag.
+          if (m.text.isEmpty && m.streaming)
+            Text('Ava is thinking…', style: ADText.preview(c: AD.textSecondary))
+          else if (m.text.isNotEmpty)
+            Text(m.streaming ? '${m.text}▌' : m.text,
                 style: ADText.bubbleBody(
                     c: mine ? AD.bubbleOutInk : AD.textPrimary)),
         ]),

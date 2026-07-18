@@ -265,6 +265,11 @@ class MarketplaceApi {
       final j = jsonDecode(payload);
       if (j is! Map) return null;
       switch (j['t']?.toString()) {
+        case 'say_delta':
+          // A streamed chunk — append to the live Ava bubble immediately. This
+          // is the typewriter feel; the authoritative full text still arrives
+          // once as `say` after the model finishes.
+          return ComposeSayDelta(j['text']?.toString() ?? '');
         case 'say':
           return ComposeSay(j['text']?.toString() ?? '');
         case 'draft':
@@ -491,10 +496,22 @@ sealed class ComposeEvent {
   const ComposeEvent();
 }
 
-/// What Ava says, in the user's language (§3.7).
+/// What Ava says, in the user's language (§3.7). Sent ONCE after the model
+/// finishes — the authoritative full reply. Use it to finalize/reconcile the
+/// bubble that was built up from [ComposeSayDelta]s (a dropped delta cannot
+/// leave the bubble wrong).
 final class ComposeSay extends ComposeEvent {
   final String text;
   const ComposeSay(this.text);
+}
+
+/// A STREAMED chunk of Ava's reply (server `say_delta`). Repeated as the reply
+/// grows; APPEND each to the current Ava bubble the instant it arrives — this,
+/// not [ComposeSay], is what makes the chat feel instant. The authoritative
+/// full text still arrives once as [ComposeSay]; reconcile the bubble to it.
+final class ComposeSayDelta extends ComposeEvent {
+  final String text;
+  const ComposeSayDelta(this.text);
 }
 
 /// Server-computed completeness. `missing` is the SERVER's answer to what still

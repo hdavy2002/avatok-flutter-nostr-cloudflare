@@ -492,7 +492,8 @@ async function lookupCategory(
 const PLAYBOOK =
   "You are Ava, helping someone write ONE marketplace listing by talking to them. " +
   "You do NOT hold the listing — the server does. You propose changes; the server validates and stores them.\n\n" +
-  "HOW TO REPLY. Output ONLY a JSON object, no prose outside it:\n" +
+  "HOW TO REPLY. Output ONLY a JSON object, no prose outside it. Put \"say\" FIRST, before " +
+  "everything else, so the user sees your reply stream in as you write it:\n" +
   '{"say":"<what you say to the user, in their language>","chips":["<=4 short tappable replies"],' +
   '"tool_calls":[{"tool":"<name>","args":{...}}]}\n\n' +
   "TOOLS (the server validates every one; an invalid call is reported back to you):\n" +
@@ -1347,6 +1348,9 @@ function parseModelTurn(raw: string): { say: string; chips: string[]; tool_calls
  *     instead of clobbering.
  */
 export async function composeTurn(req: Request, env: Env): Promise<Response> {
+  // §PART2 — the FIRST checkpoint: "request received". Everything else is measured as
+  // a delta from here so t_total_ms is a single wall-clock span the owner can read.
+  const tReqStart = Date.now();
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   if (!(await composeEnabled(env))) {
@@ -1366,6 +1370,31 @@ export async function composeTurn(req: Request, env: Env): Promise<Response> {
 
   const db = metaDb(env);
   const email = await emailOf(env, ctx.uid).catch(() => null);
+
+  // ── §PART2 phase-timing checkpoints ──────────────────────────────────────────
+  // Millisecond wall-clock stamps; every duration is a delta between two of these.
+  // `undefined` where a phase never ran (e.g. an error before the model call) — the
+  // `dur()` helper turns that into a null field rather than a bogus 0/NaN.
+  const timing: {
+    sessionLoaded?: number;
+    preToolsStart?: number; preToolsEnd?: number;
+    promptBuilt?: number;
+    modelStart?: number; firstToken?: number; modelEnd?: number;
+    toolsStart?: number; toolsEnd?: number;
+    validateEnd?: number;
+    persistStart?: number; persistEnd?: number;
+  } = {};
+  let tokensOut: number | null = null;
+
+  // FAST MODEL PIN + TIMEOUT (owner decision 2026-07-18: "use a fast model like groq,
+  // forget gemma"). Declared here (not at the call site) so the timing emitter can name
+  // it on EVERY exit path. Env-overridable via COMPOSE_MODEL so the model can be tuned
+  // in wrangler vars without a code change. Streaming is OpenRouter-only (ava_reason
+  // core §streaming passthrough), so the provider is always "openrouter".
+  const composeModel = String((env as any).COMPOSE_MODEL ?? "").trim() || "meta-llama/llama-3.3-70b-instruct";
+
+  const dur = (a?: number, b?: number): number | null =>
+    a != null && b != null ? Math.max(0, b - a) : null;
 
   // ── Replay: return the STORED response, do not re-run the model (§3.3c) ──────
   try {
@@ -1390,6 +1419,7 @@ export async function composeTurn(req: Request, env: Env): Promise<Response> {
   } catch (e: any) {
     return sseError("compose_unavailable", String(e?.message ?? e).slice(0, 200));
   }
+  timing.sessionLoaded = Date.now();
   if (!s) return sseError("not_found", "That conversation has gone. Start a new one?");
   if (s.status !== "active") return sseError("stale_session", "This listing is already finished.");
   if (s.expires_at <= Date.now()) return sseError("stale_session", "This draft expired. Start a new one?");
@@ -1414,6 +1444,33 @@ export async function composeTurn(req: Request, env: Env): Promise<Response> {
     cat: s.category ? await resolveCategoryVersion(env, s.category, s.cat_version).catch(() => null) : null,
   };
 
+  // ── §PART2 — the ONE place the timing event is emitted, from every exit path ──
+  // Two events per turn (this + the existing `compose_turn`) answer the owner's two
+  // questions: "where is it slow" (this) and "what did the turn do" (compose_turn).
+  // `t_model_ttft_ms` is THE metric for "feels slow" — model start → first token.
+  const catAtStart = s.category;
+  const emitTiming = (streamed: boolean, extra: Record<string, unknown>): void => {
+    const tEnd = Date.now();
+    void trackUser(env, ctx.uid, email, "compose_turn_timing", APP, {
+      session_id: sessionId,
+      t_total_ms: tEnd - tReqStart,
+      t_session_load_ms: dur(tReqStart, timing.sessionLoaded),
+      t_pretools_ms: dur(timing.preToolsStart, timing.preToolsEnd),
+      t_prompt_build_ms: dur(timing.preToolsEnd ?? timing.sessionLoaded, timing.promptBuilt),
+      t_model_ttft_ms: dur(timing.modelStart, timing.firstToken),
+      t_model_total_ms: dur(timing.modelStart, timing.modelEnd),
+      t_tools_ms: dur(timing.toolsStart, timing.toolsEnd),
+      t_validate_ms: dur(timing.toolsEnd, timing.validateEnd),
+      t_persist_ms: dur(timing.persistStart, timing.persistEnd),
+      model: composeModel, provider: "openrouter",
+      tokens_out: tokensOut, streamed,
+      category: s?.category ?? null,
+      chose_category: s?.category != null && s.category !== catAtStart,
+      turn_seq: turnSeq, vertical: draft.vertical,
+      ...extra,
+    });
+  };
+
   // ── §3.1 pushback → the APPROVED paragraph, verbatim. No model improvisation ──
   let identityOk = true;
   try { identityOk = (await livenessState(env, ctx.uid)).valid; } catch { identityOk = false; }
@@ -1431,14 +1488,17 @@ export async function composeTurn(req: Request, env: Env): Promise<Response> {
     void trackUser(env, ctx.uid, email, "compose_identity_explained", APP, {
       session_id: sessionId, canned: true, lang: s.lang ?? "en",
     });
+    emitTiming(false, { tool_count: 0, chars_out: say.length, path: "identity_canned" });
     return sse(events);
   }
 
   // ── Photos the user attached with this turn (idempotent by content hash) ─────
+  timing.preToolsStart = Date.now();
   const outcomes: ToolOutcome[] = [];
   if (mediaHashes.length) {
     outcomes.push(await runTool(env, ctx.uid, { tool: "attach_media", args: { hashes: mediaHashes } }, draft, catRef, s));
   }
+  timing.preToolsEnd = Date.now();
 
   // ── Build the prompt. promptView() is the never_disclose firewall (§3.6b) ────
   const recent = transcript.slice(-MAX_TRANSCRIPT_TURNS);
@@ -1460,6 +1520,7 @@ export async function composeTurn(req: Request, env: Env): Promise<Response> {
     `USER SAYS: ${text || "(they sent media only)"}`,
     `Reply in this language: ${s.lang ?? "en"}`,
   ].filter(Boolean).join("\n\n");
+  timing.promptBuilt = Date.now();
 
   // Tripwire. If this ever fires we do NOT call the model — a lost turn is trivial
   // next to a leaked secret — and it is reported loudly, because a silent leak here
@@ -1471,101 +1532,260 @@ export async function composeTurn(req: Request, env: Env): Promise<Response> {
     return sseError("internal", "Something went wrong on my side — say that again?");
   }
 
-  // ── The gateway. verb:"reason". NEVER callSonnet, never a raw provider fetch ──
-  // FAST MODEL PIN + TIMEOUT (owner decision 2026-07-18: "use a fast model like groq,
-  // forget gemma"). Without a pin the "reason" ladder routes to the Workers-AI
-  // reasoner (@cf/google/gemma-4-26b, 26B) as PRIMARY and only falls back on
-  // error/429, NOT on slowness — so on this large compose prompt gemma-4 hung as
-  // "Ava is thinking…" with no timeout. Pin a FAST Groq-served model via OpenRouter
-  // (Groq runs Llama-3.3-70b at ~1s; OpenRouter routes this id to Groq/the fastest
-  // provider — no new key or adapter, the marketplace already uses OpenRouter).
-  // legacyModel → a single OpenRouter call, no ladder. Env-overridable via
-  // COMPOSE_MODEL so the model can be tuned in wrangler vars without a code change.
-  // timeoutMs caps a slow provider to a graceful "say that again?" instead of an
-  // infinite spinner; parseModelTurn() has a regex JSON backstop for imperfect output.
-  const composeModel = String((env as any).COMPOSE_MODEL ?? "").trim() || "meta-llama/llama-3.3-70b-instruct";
-  let raw = "";
+  // ── The gateway, STREAMING. verb:"reason", stream:true ───────────────────────
+  // PART 1 — TRUE token streaming. `stream:true` makes ava_reason's OpenRouter
+  // passthrough hand back the raw provider Response (ava_reason/core.ts §streaming);
+  // we drive our own SSE from it so the reply text appears as it is generated instead
+  // of the whole turn buffering behind "Ava is thinking…".
+  //
+  // FAST MODEL PIN (owner 2026-07-18: "use a fast model like groq, forget gemma").
+  // `legacyModel` pins a single OpenRouter call (no ladder); OpenRouter routes the id
+  // to Groq/the fastest provider. maxTokens 420 covers even a set_core turn that writes
+  // a title+description; generation time scales with tokens, so we keep it tight.
+  // parseModelTurn() has a regex JSON backstop for imperfect output.
+  timing.modelStart = Date.now();
+  let modelResp: Response;
   try {
-    raw = await avaReason(env, {
+    modelResp = await avaReason(env, {
       role: "marketplace", capability: "compose_listing", trigger: "compose_turn",
       verb: "reason", feature: "compose", uid: ctx.uid, email,
-      legacyModel: composeModel, timeoutMs: 30000,
+      stream: true, legacyModel: composeModel, timeoutMs: 30000,
       system: PLAYBOOK, user: context,
-      // maxTokens 900→420 (2026-07-18 latency): a compose turn is a short question
-      // + a small tool_calls array; 900 let the model run far longer than it ever
-      // needs and generation time scales with tokens produced. 420 covers even a
-      // set_core turn that writes a title+description. Faster total, no truncation.
       json: true, maxTokens: 420, temperature: 0.4, appName: APP,
     });
   } catch (e: any) {
     void trackUser(env, ctx.uid, email, "compose_turn_model_error", APP, {
-      session_id: sessionId, error: String(e?.message ?? e).slice(0, 200),
+      session_id: sessionId, error: String(e?.message ?? e).slice(0, 200), streamed: true,
     });
-    // The draft is untouched — the server holds it, so a failed turn costs a turn,
-    // not the user's work. That is the whole point of §3.3.
+    timing.modelEnd = Date.now();
+    // The draft is untouched — the server holds it, so a failed turn costs a turn, not
+    // the user's work (§3.3).
+    emitTiming(true, { tool_count: 0, chars_out: 0, path: "model_throw" });
+    return sseError("model_unavailable", "I lost my train of thought there — say that again?");
+  }
+  if (!modelResp.ok || !modelResp.body) {
+    void trackUser(env, ctx.uid, email, "compose_turn_model_error", APP, {
+      session_id: sessionId, error: `http ${modelResp.status}`, streamed: true,
+    });
+    timing.modelEnd = Date.now();
+    emitTiming(true, { tool_count: 0, chars_out: 0, path: "model_http_error" });
     return sseError("model_unavailable", "I lost my train of thought there — say that again?");
   }
 
-  const turn = parseModelTurn(raw);
+  // From here s is non-null; capture it so the streaming closure keeps the narrowing.
+  const sess = s;
+  const body = modelResp.body;
+  const enc = new TextEncoder();
+  const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
+  const writer = writable.getWriter();
+  const frame = (obj: unknown): Promise<void> => writer.write(enc.encode(`data: ${JSON.stringify(obj)}\n\n`));
 
-  // ── Execute the proposed tools. The model proposed; the SERVER decides ───────
-  let ready = false;
-  let priceData: Record<string, unknown> | null = null;
-  for (const call of turn.tool_calls) {
-    const r = await runTool(env, ctx.uid, call, draft, catRef, s);
-    outcomes.push(r);
-    if (call.tool === "ready_to_publish" && r.ready) ready = true;
-    if (r.data?.comparables) priceData = r.data;
-  }
+  void (async () => {
+    let raw = "";
+    let modelFailed = false;
+    let toolCount = 0;
+    let charsOut = 0;
+    let timingPath = "stream_ok";
 
-  // catRef, not `cat`: if set_category landed in this turn, THIS is the schema the
-  // answers must be judged against.
-  const v = validateAttrs(catRef.cat?.field_schema ?? null, draft.attrs);
-  const missing = missingFor(draft, v.missing, s);
-  if (missing.length) ready = false; // the model does not get the last word on this
+    // ── Incremental `say` extractor (PART 1 step 4) ───────────────────────────
+    // The model outputs a JSON object with `say` first (PLAYBOOK asks for it). We find
+    // `"say":"` then stream the UNESCAPED characters as they arrive, stopping at the
+    // closing quote. Each pass re-decodes the whole say value from `raw`, so an escape
+    // that split across two chunks (a lone trailing `\` or a partial `\uXXXX`) is simply
+    // re-evaluated next pass rather than emitted half-formed. If `"say"` never appears
+    // we emit no deltas and rely on the authoritative final `say` frame — never garbage.
+    let sayOpen = false, sayClosed = false, sayContentStart = 0, sayEmitted = 0;
+    const SAY_OPEN = /"say"\s*:\s*"/;
+    const decodeSay = (): { text: string; closed: boolean } => {
+      let out = "";
+      let i = sayContentStart;
+      let closed = false;
+      while (i < raw.length) {
+        const ch = raw[i];
+        if (ch === "\\") {
+          if (i + 1 >= raw.length) break;                 // lone trailing backslash — wait
+          const nx = raw[i + 1];
+          if (nx === "u") {
+            if (i + 6 > raw.length) break;                // partial \uXXXX — wait for more
+            const hex = raw.slice(i + 2, i + 6);
+            if (/^[0-9a-fA-F]{4}$/.test(hex)) { out += String.fromCharCode(parseInt(hex, 16)); i += 6; continue; }
+            out += "\\u"; i += 2; continue;               // malformed — pass through literally
+          }
+          switch (nx) {
+            case "n": out += "\n"; break;
+            case "t": out += "\t"; break;
+            case "r": out += "\r"; break;
+            case "b": out += "\b"; break;
+            case "f": out += "\f"; break;
+            case '"': out += '"'; break;
+            case "\\": out += "\\"; break;
+            case "/": out += "/"; break;
+            default: out += nx; break;
+          }
+          i += 2;
+          continue;
+        }
+        if (ch === '"') { closed = true; break; }
+        out += ch;
+        i++;
+      }
+      return { text: out, closed };
+    };
+    const feedSay = async (): Promise<void> => {
+      if (sayClosed) return;
+      if (!sayOpen) {
+        const m = SAY_OPEN.exec(raw);
+        if (!m) return;                                   // ambiguous so far — emit nothing
+        sayOpen = true;
+        sayContentStart = m.index + m[0].length;
+      }
+      const { text: decoded, closed } = decodeSay();
+      if (decoded.length > sayEmitted) {
+        const fresh = decoded.slice(sayEmitted);
+        sayEmitted = decoded.length;
+        await frame({ t: "say_delta", text: fresh });
+      }
+      if (closed) sayClosed = true;
+    };
 
-  const say = turn.say || "Got it.";
-  const events: Event[] = [{ t: "say", text: say }];
-  // rev/turn_seq are the values persistTurn is about to write — the same predicted-rev
-  // convention the review card already uses. If the write loses its race the client
-  // gets a stale_session carrying the real numbers instead, so it is never left
-  // believing these.
-  events.push({
-    t: "draft", progress: progressOf(draft, missing), missing,
-    rev: s.rev + 1, turn_seq: s.turn_seq + 1,
+    try {
+      // ── Read the raw OpenRouter SSE, accumulate `raw`, stream say_delta frames ──
+      const reader = body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          let nl: number;
+          while ((nl = buf.indexOf("\n")) >= 0) {
+            const line = buf.slice(0, nl).trim();
+            buf = buf.slice(nl + 1);
+            if (!line || !line.startsWith("data:")) continue;
+            const payload = line.slice(5).trim();
+            if (payload === "[DONE]") continue;
+            let obj: any;
+            try { obj = JSON.parse(payload); } catch { continue; }
+            const delta = obj?.choices?.[0]?.delta?.content;
+            if (typeof delta === "string" && delta.length) {
+              if (timing.firstToken == null) timing.firstToken = Date.now();
+              raw += delta;
+              await feedSay();
+            }
+            // OpenRouter emits a final chunk carrying usage — capture tokens_out if there.
+            const ct = obj?.usage?.completion_tokens;
+            if (ct != null && Number.isFinite(Number(ct))) tokensOut = Number(ct);
+          }
+        }
+      } catch { modelFailed = true; }
+      timing.modelEnd = Date.now();
+
+      if (modelFailed) {
+        // Mid-stream error: draft untouched, no persist. Tell the client, keep telemetry.
+        void trackUser(env, ctx.uid, email, "compose_turn_model_error", APP, {
+          session_id: sessionId, error: "stream_read_error", streamed: true,
+        });
+        timingPath = "model_stream_error";
+        await frame({ t: "error", error: "model_unavailable", message: "I lost my train of thought there — say that again?" });
+        return;
+      }
+
+      // ── Model stream ended: parse the FULL JSON (robust) and finalize the bubble ─
+      const turn = parseModelTurn(raw);
+      const say = turn.say || "Got it.";
+      charsOut = say.length;
+      // The authoritative full reply — the client reconciles/finalizes the streamed bubble.
+      await frame({ t: "say", text: say });
+
+      // ── Execute the proposed tools. The model proposed; the SERVER decides ─────
+      timing.toolsStart = Date.now();
+      let ready = false;
+      let priceData: Record<string, unknown> | null = null;
+      toolCount = turn.tool_calls.length;
+      for (const call of turn.tool_calls) {
+        const r = await runTool(env, ctx.uid, call, draft, catRef, sess);
+        outcomes.push(r);
+        if (call.tool === "ready_to_publish" && r.ready) ready = true;
+        if (r.data?.comparables) priceData = r.data;
+      }
+      timing.toolsEnd = Date.now();
+
+      // catRef, not `cat`: if set_category landed in this turn, THIS is the schema the
+      // answers must be judged against.
+      const v = validateAttrs(catRef.cat?.field_schema ?? null, draft.attrs);
+      const missing = missingFor(draft, v.missing, sess);
+      if (missing.length) ready = false; // the model does not get the last word on this
+      timing.validateEnd = Date.now();
+
+      // Build the event list EXACTLY as the buffered path did — this is what persistTurn
+      // stores for replay (§3.3c: a replay re-emits these instantly, no re-streaming).
+      const events: Event[] = [{ t: "say", text: say }];
+      events.push({
+        t: "draft", progress: progressOf(draft, missing), missing,
+        rev: sess.rev + 1, turn_seq: sess.turn_seq + 1,
+      });
+      if (turn.chips.length) events.push({ t: "chips", chips: turn.chips });
+      if (ready) events.push({ t: "review", card: reviewCard(draft, { ...sess, rev: sess.rev + 1 }) });
+
+      const nextTranscript = [
+        ...transcript,
+        { role: "user" as const, text: stripPiiFast(text) },
+        { role: "ava" as const, text: stripPiiFast(say) },
+      ].slice(-MAX_TRANSCRIPT_TURNS * 2);
+
+      // ── Persist with the SAME rev/idem invariants as before (rev-guarded UPDATE
+      //    first, idem row second). persistTurn is unchanged. ─────────────────────
+      timing.persistStart = Date.now();
+      const wrote = await persistTurn(env, sess, draft, nextTranscript, idemKey, events);
+      timing.persistEnd = Date.now();
+      if (!wrote) {
+        // rev moved under us — converge, don't clobber (§3.3c). This turn's work is
+        // discarded (server holds the draft), no idem row was written, so a retry re-runs
+        // honestly. Emit the stale_session error + the winner's current draft, mirroring
+        // sseStale on the buffered path.
+        void trackUser(env, ctx.uid, email, "compose_turn_conflict", APP, { session_id: sessionId, rev: sess.rev });
+        timingPath = "conflict";
+        const state = await currentState(env, sessionId, ctx.uid);
+        await frame({ t: "error", error: "stale_session", message: "Another device moved this draft on. Reloading…" });
+        if (state) {
+          await frame({
+            t: "draft", progress: state.progress, missing: state.missing,
+            rev: state.rev, turn_seq: state.turn_seq, card: state.card,
+          });
+        }
+        return;
+      }
+
+      void trackUser(env, ctx.uid, email, "compose_turn", APP, {
+        session_id: sessionId, turn_seq: turnSeq, category: sess.category,
+        tools: turn.tool_calls.map((t) => t.tool), tool_failures: outcomes.filter((o) => !o.ok).length,
+        cat_version: sess.category ? sess.cat_version : null, vertical: draft.vertical,
+        missing_count: missing.length, ready, has_media: mediaHashes.length > 0,
+        priced: !!priceData, comparables_n: (priceData?.comparables as any)?.n ?? null,
+        identity_ok: identityOk, lang: sess.lang ?? "en", streamed: true,
+      });
+
+      // Stream the post-turn frames (say already sent above; send draft/chips/review).
+      for (const e of events.slice(1)) await frame(e);
+    } catch {
+      // Unexpected failure after the model stream — treat as a model error, do not
+      // persist. Best-effort tell the client.
+      timingPath = "stream_exception";
+      try {
+        await frame({ t: "error", error: "model_unavailable", message: "I lost my train of thought there — say that again?" });
+      } catch { /* stream already gone */ }
+    } finally {
+      try { await writer.write(enc.encode("data: [DONE]\n\n")); } catch { /* closed */ }
+      try { await writer.close(); } catch { /* already closed */ }
+      // PART 2 — the timing event, emitted at the END of the turn on every path.
+      emitTiming(true, { tool_count: toolCount, chars_out: charsOut, path: timingPath });
+    }
+  })();
+
+  return new Response(readable, {
+    headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache", ...CORS },
   });
-  if (turn.chips.length) events.push({ t: "chips", chips: turn.chips });
-  if (ready) events.push({ t: "review", card: reviewCard(draft, { ...s, rev: s.rev + 1 }) });
-
-  const nextTranscript = [
-    ...transcript,
-    { role: "user" as const, text: stripPiiFast(text) },
-    { role: "ava" as const, text: stripPiiFast(say) },
-  ].slice(-MAX_TRANSCRIPT_TURNS * 2);
-
-  const wrote = await persistTurn(env, s, draft, nextTranscript, idemKey, events);
-  if (!wrote) {
-    // rev moved under us — a second device wrote first. Converge, don't clobber: this
-    // turn's work is discarded (the server holds the draft, so nothing is corrupted)
-    // and the client re-renders from the winner's state. No idem row was written, so a
-    // retry of this same idem_key re-runs honestly rather than replaying a "success"
-    // for a draft that never advanced.
-    void trackUser(env, ctx.uid, email, "compose_turn_conflict", APP, { session_id: sessionId, rev: s.rev });
-    return sseStale(
-      "Another device moved this draft on. Reloading…",
-      await currentState(env, sessionId, ctx.uid),
-    );
-  }
-
-  void trackUser(env, ctx.uid, email, "compose_turn", APP, {
-    session_id: sessionId, turn_seq: turnSeq, category: s.category,
-    tools: turn.tool_calls.map((t) => t.tool), tool_failures: outcomes.filter((o) => !o.ok).length,
-    cat_version: s.category ? s.cat_version : null, vertical: draft.vertical,
-    missing_count: missing.length, ready, has_media: mediaHashes.length > 0,
-    priced: !!priceData, comparables_n: (priceData?.comparables as any)?.n ?? null,
-    identity_ok: identityOk, lang: s.lang ?? "en",
-  });
-  return sse(events);
 }
 
 /**
