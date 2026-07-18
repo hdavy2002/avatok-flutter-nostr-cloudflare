@@ -16,6 +16,7 @@ import { reconWallet } from "./recon";
 import { storageSnapshots, storageBilling } from "./storage";
 import { bookingReminderLadder, gcalSyncSweep } from "./calendar";
 import { moneySweep } from "./money_sweep";
+import { sweepListingExpiry } from "./listing_expiry"; // PLAN §5 — marketplace listing-expiry lifecycle (notify T−3d / expire T / archive T+30d)
 
 export default {
   // Queue consumer — dispatch by queue name; ack on success, retry on transient error.
@@ -110,6 +111,17 @@ export default {
     } catch (e) { console.error("[retention-sweep]", String(e)); }
 
     if ((event as any).cron && (event as any).cron !== "0 */6 * * *") return; // 15m tick: reminders + sweeps only
+
+    // PLAN §5 — marketplace listing-expiry lifecycle. Day-granularity clock (T−3d
+    // notice, T expire, T+30d archive), so the 6h tick is plenty; running it every
+    // minute would only waste D1 reads. Cheap + a no-op when the marketplace is dark
+    // (all queries require a published marketplace row with expires_at set), and
+    // idempotent, so it's safe on every 6h tick.
+    try {
+      const r = await sweepListingExpiry(env);
+      if (r.notified || r.archived || r.expiredNow)
+        env.ANALYTICS?.writeDataPoint({ blobs: ["listing_expiry_sweep"], doubles: [r.notified, r.expiredNow, r.archived], indexes: ["cron"] });
+    } catch (e) { console.error("[listing-expiry-sweep]", String(e)); }
 
     const dayAgo = Date.now() - 86_400_000;
     // Public uploads stuck 'pending' >24h (failed/lost moderation) → reject.
