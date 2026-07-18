@@ -1,13 +1,10 @@
 import 'package:flutter/material.dart';
 
-import 'dart:io';
-
 import '../../core/analytics.dart';
-import '../../core/avatar.dart';
-import '../../core/avatar_cache.dart';
 import '../../core/listings_api.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../explore/listing_detail.dart';
+import 'intent_theme.dart';
 import 'sell_listing_flow.dart' show kMarketCategories;
 
 /// [UI-MKT-1] Card-impression de-dupe — fire 'mkt_card_impression' once per
@@ -187,7 +184,10 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
                 return GridView.builder(
                   padding: const EdgeInsets.all(12),
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2, mainAxisSpacing: 12, crossAxisSpacing: 12, childAspectRatio: 0.72),
+                    // Match the ListingCardTile family extent (MarketplaceCard
+                    // mirrors it, and its 2-line one-liner + location row need
+                    // the extra height vs the old compact card's 0.72).
+                    crossAxisCount: 2, mainAxisSpacing: 12, crossAxisSpacing: 12, childAspectRatio: 0.66),
                   itemCount: items.length,
                   itemBuilder: (_, i) => _Card(card: items[i]),
                 );
@@ -200,39 +200,13 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
   }
 }
 
-/// Disk-cached cover image — loads from the on-device cache so it doesn't
-/// re-download on every scroll/reopen (pic 3). Falls back to a placeholder.
-class _CachedCover extends StatelessWidget {
-  final String? url;
-  const _CachedCover({required this.url});
-  @override
-  Widget build(BuildContext context) {
-    final placeholder = Container(
-      color: AD.card,
-      child: Center(child: Icon(Icons.inventory_2_outlined, size: 36, color: AD.textTertiary)),
-    );
-    if (url == null || url!.isEmpty) return placeholder;
-    return FutureBuilder<File?>(
-      future: AvatarCache.getAny(url!, 600),
-      builder: (_, snap) {
-        if (snap.connectionState != ConnectionState.done) {
-          return Container(color: AD.cardHover);
-        }
-        final f = snap.data;
-        if (f == null) return placeholder;
-        return Image.file(f, width: double.infinity, fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => placeholder);
-      },
-    );
-  }
-}
-
-/// [UI-MKT-1] Compact zine-styled grid card, WIRED to the extended list endpoint.
-/// Photo edge-to-edge on top with a heart overlay (optimistic favorite toggle);
-/// below: price, 1-line title, and a micro-stats row built ONLY from real data —
-/// star rating + review count, eye view count, country flag, an optional "NEW"
-/// chip (<48h), and a small seller avatar. Zero/absent stats hide their chip
-/// (never render "0" or "NULL").
+/// [UI-MKT-1 · M-D6] Browse grid cell — a thin stateful wrapper that owns the
+/// per-card side effects this screen is responsible for (session-deduped
+/// `mkt_card_impression`, the `listing_card_clicked` → detail navigation, and
+/// the optimistic-with-revert favourite toggle) and renders the shared pale
+/// [MarketplaceCard] for the actual UI. All appearance (intent tint, price
+/// semantics, chips, stats) lives in `MarketplaceCard`; this wrapper only wires
+/// the callbacks so behaviour stays byte-for-byte what it was before.
 class _Card extends StatefulWidget {
   final ListingCard card;
   const _Card({required this.card});
@@ -261,93 +235,22 @@ class _CardState extends State<_Card> {
   Widget build(BuildContext context) {
     // Fire the impression once this card is built into the tree.
     WidgetsBinding.instance.addPostFrameCallback((_) => _fireImpression(card.id));
-    return GestureDetector(
+    return MarketplaceCard(
+      card: card,
+      // Pass the real intent + price semantics the card carries (server ships
+      // them on the browse item; both default safe — SELL / asking — when the
+      // server hasn't populated them yet, so this is always well-defined).
+      intent: parseIntent(card.intent),
+      priceSemantics: card.priceSemantics,
       onTap: () {
         Analytics.capture('listing_card_clicked', {'listing_id': card.id});
         Navigator.of(context).push(MaterialPageRoute(
           builder: (_) => ListingDetailScreen(listingId: card.id)));
       },
-      child: Container(
-        decoration: BoxDecoration(
-          color: AD.card,
-          border: Border.all(color: AD.borderControl, width: 1),
-          borderRadius: BorderRadius.circular(AD.rListCard),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Expanded(
-            child: Stack(fit: StackFit.expand, children: [
-              _CachedCover(url: card.coverUrl),
-              // "NEW" chip (top-left) — only when created_at < 48h.
-              if (card.isNew)
-                Positioned(left: 6, top: 6, child: _chip('NEW', bg: AD.primaryBadge, fg: Colors.white)),
-              // Heart overlay (top-right) — optimistic favorite toggle.
-              Positioned(
-                right: 4, top: 4,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: _toggleFav,
-                  child: Container(
-                    padding: const EdgeInsets.all(5),
-                    decoration: const BoxDecoration(color: Color(0xE6FFFFFF), shape: BoxShape.circle),
-                    child: Icon(
-                      card.favorited ? Icons.favorite : Icons.favorite_border,
-                      size: 18,
-                      color: card.favorited ? AD.danger : AD.textOnInput,
-                    ),
-                  ),
-                ),
-              ),
-            ]),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(8, 7, 8, 8),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Expanded(child: Text(card.displayPrice,
-                    maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w800, fontSize: 14, color: AD.online))),
-                if (card.country != null && card.country!.isNotEmpty)
-                  Text(_flagOf(card.country), style: const TextStyle(fontSize: 13)),
-              ]),
-              const SizedBox(height: 2),
-              Text(card.title, maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600, fontSize: 12.5, color: AD.textPrimary)),
-              const SizedBox(height: 5),
-              // Wired micro-stats row — every chip guards its own value (no 0/NULL).
-              Row(children: [
-                if (card.ratingAvg != null && card.ratingCount > 0) ...[
-                  Icon(Icons.star, size: 12, color: AD.iconEmoji),
-                  const SizedBox(width: 1),
-                  Text('${card.ratingAvg!.toStringAsFixed(1)} (${card.ratingCount})',
-                      style: TextStyle(fontFamily: ADText.family, fontSize: 10.5, color: AD.textTertiary, fontWeight: FontWeight.w700)),
-                  const SizedBox(width: 8),
-                ],
-                if (card.viewCount > 0) ...[
-                  Icon(Icons.visibility_outlined, size: 12, color: AD.textTertiary),
-                  const SizedBox(width: 2),
-                  Text('${card.viewCount}',
-                      style: TextStyle(fontFamily: ADText.family, fontSize: 10.5, color: AD.textTertiary, fontWeight: FontWeight.w600)),
-                ],
-                const Spacer(),
-                // Small seller avatar chip (never a dummy — Avatar seeds from uid).
-                Avatar(
-                  seed: card.creator.uid,
-                  name: card.creator.name ?? card.creator.handle ?? '?',
-                  size: 20,
-                  avatarUrl: card.creator.avatarUrl,
-                ),
-              ]),
-            ]),
-          ),
-        ]),
-      ),
+      // Reuse the existing optimistic-with-revert handler. It computes the next
+      // state and reverts on failure itself (and fires listing_favorited /
+      // listing_unfavorited), so the desired flag the card passes is ignored.
+      onFavToggle: (_) => _toggleFav(),
     );
   }
-
-  Widget _chip(String text, {required Color bg, required Color fg}) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(100)),
-        child: Text(text, style: TextStyle(fontSize: 9.5, color: fg, fontWeight: FontWeight.w800, letterSpacing: 0.4)),
-      );
 }
