@@ -455,6 +455,12 @@ export class InboxDO {
       // [MSG-DELETE-1] Whole-thread clear for THIS account (Issue 3). Self-scoped
       // append-only cursor write — never touches the peer. See threadClear().
       if (url.pathname.endsWith("/thread_clear")) return this.threadClear(await req.json());
+      // [ONEBRAIN-B0-CONSUMERS] HARD-delete a SINGLE conversation's rows (used by the
+      // AvaBrain deletion job to wipe the 'brain' AvaChat thread). Distinct from
+      // /purge (wipes EVERYTHING) and /thread_clear (a soft, per-account cursor
+      // tombstone that keeps the rows). Idempotent: an unknown/missing conv is a
+      // clean {ok:true, deleted:0}. See convDelete().
+      if (url.pathname.endsWith("/conv_delete") && req.method === "POST") return this.convDelete(await req.json());
       // [MSG-DELETE-1] Author-only unsend gate: return the stored author (sender)
       // of a message by its client_id so the router can verify ctx.uid authored it
       // BEFORE fanning out a delete-for-everyone. Reads the owner's OWN copy.
@@ -859,6 +865,33 @@ export class InboxDO {
     this.sql.exec(`UPDATE messages SET hidden=?1 WHERE conv=?2 AND client_id=?3`, hidden, conv, target);
     const live = this.broadcast(JSON.stringify({ type: "hide", conv, target, hidden: !!b.hidden }));
     return new Response(JSON.stringify({ ok: true, live }), { headers: { "content-type": "application/json" } });
+  }
+
+  // [ONEBRAIN-B0-CONSUMERS] HARD-delete ONE conversation across every DO-local table
+  // that keys on the conv id. Unlike threadClear() (a soft, per-account cursor that
+  // KEEPS the rows for local re-materialization) this physically removes the rows —
+  // the deletion contract the AvaBrain wipe job needs for the 'brain' AvaChat thread
+  // (deleteInboxBrainConv in consumers/src/brain.ts posts {conv} and reads `deleted`).
+  // Unlike /purge it touches only the named conversation, never the whole inbox.
+  // Idempotent: a missing/unknown conv deletes nothing and returns deleted:0.
+  // `deleted` = the number of `messages` rows removed (the meaningful "how much chat
+  // history did we erase" count the deletion audit records); the ancillary per-conv
+  // metadata/receipt/cursor rows are wiped too but not counted. Each table is guarded
+  // so an older DO predating a given migration can't 500 the whole delete.
+  private convDelete(b: { conv?: string }): Response {
+    const conv = String(b.conv ?? "");
+    if (!conv) return new Response(JSON.stringify({ ok: true, deleted: 0 }), { headers: { "content-type": "application/json" } });
+    let deleted = 0;
+    try { deleted = this.sql.exec(`DELETE FROM messages WHERE conv=?1`, conv).rowsWritten; } catch { /* table optional */ }
+    // Ancillary per-conversation state (all key on conv). Best-effort per table so a
+    // pre-migration DO missing one still deletes the rest.
+    try { this.sql.exec(`DELETE FROM receipts WHERE conv=?1`, conv); } catch { /* optional */ }
+    try { this.sql.exec(`DELETE FROM conv_meta WHERE conv=?1`, conv); } catch { /* optional */ }
+    try { this.sql.exec(`DELETE FROM read_state WHERE conv=?1`, conv); } catch { /* optional */ }
+    try { this.sql.exec(`DELETE FROM safety_flags WHERE conv=?1`, conv); } catch { /* table may predate this migration */ }
+    try { this.sql.exec(`DELETE FROM thread_clears WHERE conv=?1`, conv); } catch { /* table may predate this migration */ }
+    try { this.sql.exec(`DELETE FROM msg_receipts WHERE conv=?1`, conv); } catch { /* table may predate this migration */ }
+    return new Response(JSON.stringify({ ok: true, deleted }), { headers: { "content-type": "application/json" } });
   }
 
   // [MSG-DELETE-1] The author (sender) of a message in THIS user's own copy, by
