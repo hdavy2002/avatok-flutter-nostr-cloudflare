@@ -27,6 +27,19 @@ export function streamModel(env: ReasonEnv, req: ReasonReq): string {
   return String(req.legacyModel ?? "").trim() || reasonerAltModel(env);
 }
 
+// ── Additive feature-model overrides (One Brain B1 fetch migration) ───────────
+// Env-overridable model ids for feature paths that are NOT chat/vision-shaped and
+// therefore do not dispatch through an adapter/verb (e.g. the OpenRouter *image*
+// generation endpoint). Kept here so "which model does feature X use" has ONE home
+// and is flippable via [vars] without a code deploy. Additive only — no existing
+// routing changes shape.
+const DEFAULT_IMAGE_MODEL = "x-ai/grok-imagine-image-quality";
+
+/** OpenRouter image-generation model for ava_image (env override → default). */
+export function imageModel(env: ReasonEnv): string {
+  return ((env as any).OPENROUTER_IMAGE_MODEL as string) || DEFAULT_IMAGE_MODEL;
+}
+
 function step(provider: Step["provider"], model: string, body: BodyOpts): Step {
   return { provider, model, body };
 }
@@ -34,6 +47,26 @@ function step(provider: Step["provider"], model: string, body: BodyOpts): Step {
 /** Build the routing plan for a request. */
 export function plan(env: ReasonEnv, req: ReasonReq, dialect: Dialect): Plan {
   const verb = req.verb ?? "reason";
+
+  // ADDITIVE (One Brain B1 step 2b): a caller that PINS a Workers-AI model
+  // (`@cf/…`) routes straight to cf_ai — no ladder, no ALT, no retry — so it is
+  // byte-identical to a bare `env.AI.run(model, body)` for that exact model,
+  // gaining only aiRunOpts (AI Gateway cost logging) + unified telemetry. This is
+  // how the migrated TTS/STT/embed/vision sites and the pinned `@cf` reception
+  // LLM call reach cf_ai regardless of verb (e.g. `transcribe` would otherwise
+  // prefer the OpenAI adapter, `speak` the Google adapter). SAFE: no existing
+  // avaReason() caller pins an `@cf` model — the reasoner default `@cf/…` is
+  // applied only when `req.model` is ABSENT — so the reasoner ladder and the
+  // dormant verb routes below are untouched. CF_C honours `req.raw` as the full
+  // body, reproducing the original call byte-for-byte.
+  const pinnedCf = String(req.model ?? "").trim();
+  if (pinnedCf.startsWith("@cf/")) {
+    return {
+      verb, primary: step("cf_ai", pinnedCf, CF_C), alt: null,
+      noFallback: true, retryPrimaryIfNoAlt: false, altRequiresKey: false, altChatOnly: false,
+    };
+  }
+
   if (verb !== "reason") return verbPlan(env, req, verb);
 
   if (dialect === "worker") {

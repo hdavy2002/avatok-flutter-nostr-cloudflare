@@ -68,3 +68,20 @@ export async function avaReason(env: Env, req: AvaReasonReq): Promise<string | R
   if (r.response) return r.response;
   return r.text;
 }
+
+/**
+ * RAW variant (One Brain B1 step 2b). Returns the UNSHAPED provider output — the
+ * exact object `env.AI.run(...)` returned (audio bytes / base64, `{ text }`,
+ * `{ data }` embeddings, LLaVA vision JSON, or a streaming `Response` when the
+ * caller passes `aiRunOpts.returnRawResponse`). The `reason`-oriented `avaReason()`
+ * above returns a trimmed string, which is wrong for the widened verbs
+ * (embed/transcribe/speak/see) and the pinned `@cf` TTS/STT/vision/LLM sites that
+ * were migrated off bare `env.AI.run`. Those pass their exact body as `req.raw`,
+ * pin the model via `req.model`, and read the provider payload from here exactly as
+ * they did from `env.AI.run`. Additive: the string/Response `avaReason()` is
+ * unchanged, and this shares the same routing, telemetry, and kill-switch seam.
+ */
+export async function avaReasonRaw(env: Env, req: AvaReasonReq): Promise<any> {
+  const r = await runReason(env as any, req, host, "worker");
+  return r.raw;
+}
