@@ -180,7 +180,8 @@ async function ensureTables(env: Env): Promise<void> {
 // "adult-only content" warning cards. Minors CANNOT (the write is refused).
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Is this uid a self-declared minor (< 18 by users.birth_year)? Null year → adult. */
+/** Is this uid a self-declared minor (< 18 by users.birth_year)? Null year →
+ *  adult (product default). On a DB error → MINOR (fail-closed, P0-2). */
 async function isMinorAccount(env: Env, uid: string): Promise<boolean> {
   try {
     const r = await env.DB_META
@@ -188,10 +189,38 @@ async function isMinorAccount(env: Env, uid: string): Promise<boolean> {
       .bind(uid)
       .first<{ birth_year: number | null }>();
     const by = r?.birth_year ?? null;
-    if (!by) return false; // no declared year → treated as adult
+    if (!by) return false; // no declared year → treated as adult (deliberate
+    // product default; NOT the P0-2 error path — a missing year is a stable,
+    // known result, not a transient failure, so flipping it here would trap the
+    // entire undeclared userbase as minors permanently).
     return new Date().getFullYear() - by < 18;
   } catch {
-    return false; // fail-open toward adult (never traps an adult as a minor)
+    // P0-2 (One Brain §10.4): fail CLOSED. A D1 blip must NOT silently disable
+    // force-ON child protection — the one guarantee that cannot fail open. On a
+    // lookup error we treat the account as a minor (the stricter path). The only
+    // cost is temporarily denying an adult (e.g. the adult-content opt-out toggle)
+    // during a transient DB error, which is the acceptable trade.
+    void track(env, uid, "minor_check_failed_closed", "guardian", { reason: "db_error" });
+    return true;
+  }
+}
+
+/**
+ * Server-side truth for a conversation's membership (P0-1). Reads the same
+ * `conversation_members` table the send path uses to build its fan-out list, so
+ * a Guardian scan can NEVER trust a caller-supplied member/sender identity.
+ * On a read error returns [] — the caller then rejects (fail-closed: a scan is
+ * refused rather than run against an unverified membership).
+ */
+async function conversationMembers(env: Env, conv: string): Promise<string[]> {
+  try {
+    const rows = await env.DB_META
+      .prepare("SELECT uid FROM conversation_members WHERE conv_id = ?1")
+      .bind(conv)
+      .all<{ uid: string }>();
+    return (rows.results || []).map((r) => r.uid).filter(Boolean);
+  } catch {
+    return [];
   }
 }
 
@@ -678,6 +707,14 @@ async function warnPrivately(
 //   4. For guardian-ON recipients: run the Nemotron content-safety pass + the Opus
 //      deep classifier (classifyThreat), record a flag + PRIVATE warning on a hit.
 //   5. Escalation (grooming/scam): repeat offenders auto-block + parent alert.
+//
+// SECURITY CONTRACT (P0-1, One Brain §10.4): `members` and `senderUid` are
+// treated as AUTHORITATIVE and drive flag attribution, auto-block and Sentinel
+// evidence. Every caller MUST derive them server-side — never from a request
+// body. The two callers both satisfy this: messaging.ts passes the server-built
+// fan-out member list + `ctx.uid`; the /scan route derives membership from D1
+// and forces `senderUid = authenticated caller` (see avaGuardianScan). Do NOT add
+// a caller that forwards client-supplied identity into these fields.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface GuardianScanArgs {
@@ -1347,19 +1384,55 @@ export async function avaGuardianScan(req: Request, env: Env): Promise<Response>
 
   // (G0: the {media_ref} deepfake check mode has been REMOVED.)
 
-  // --- scan a message NOW (protect the caller) --------------------------------
-  // The caller scans a chat they're in. We protect the CALLER, so we model the
-  // scan with the caller as the (sole) recipient and the message's sender as peer.
+  // --- scan a message NOW -----------------------------------------------------
+  // P0-1 (One Brain §10.4): the sender and members are derived SERVER-SIDE from
+  // the authenticated caller and the conversation's real membership. Any caller-
+  // supplied `sender`/`members`/`message.sender` are IGNORED. Previously this
+  // block trusted the request body, so three crafted calls could attribute a
+  // flag to an ARBITRARY victim uid — those flags feed recentFlagCount →
+  // blockSender and Sentinel evidence, auto-blocking an innocent user and
+  // poisoning their reputation. The authenticated caller is ALWAYS the attributed
+  // sender, so this route can only ever accrue flags against the caller themself.
   const conv = String(b.conv ?? "").trim();
   if (!conv) return json({ error: "conv required" }, 400);
+
+  // Real membership from D1 (never the request body).
+  const realMembers = await conversationMembers(env, conv);
+  if (!realMembers.includes(ctx.uid)) {
+    // The caller isn't a verified member of this conversation (or membership
+    // couldn't be read → fail-closed). Refuse rather than scan on trust.
+    void track(env, ctx.uid, "guardian_scan_identity_rejected", "guardian", {
+      conv, reason: realMembers.length ? "not_a_member" : "membership_unavailable",
+      supplied_sender: b.sender != null || !!(b.message && typeof b.message === "object" && (b.message as any).sender != null),
+      supplied_members: Array.isArray(b.members) && b.members.length > 0,
+    });
+    return json({ error: "not_a_member" }, 403);
+  }
+
+  // Record (and then discard) any attempt to assert a foreign identity so the
+  // spoof surface is observable in telemetry even when we safely ignore it.
+  const suppliedSender = b.sender != null
+    ? String(b.sender)
+    : (b.message && typeof b.message === "object" && (b.message as any).sender != null
+        ? String((b.message as any).sender)
+        : null);
+  const spoofAttempt =
+    (suppliedSender != null && suppliedSender !== ctx.uid) ||
+    (Array.isArray(b.members) && b.members.length > 0);
+  if (spoofAttempt) {
+    void track(env, ctx.uid, "guardian_scan_identity_rejected", "guardian", {
+      conv, reason: "supplied_identity_ignored",
+      supplied_sender: suppliedSender, authenticated_uid: ctx.uid,
+      supplied_members: Array.isArray(b.members) && b.members.length > 0,
+    });
+  }
+
+  // Authenticated caller is the sender; membership is the D1 truth.
+  const sender = ctx.uid;
   const message = (b.message && typeof b.message === "object")
-    ? b.message
-    : { sender: String(b.sender ?? "peer"), body: String(b.text ?? ""), kind: String(b.kind ?? "text") };
-  const sender = String(message.sender ?? b.sender ?? "peer");
-  // members = [sender, caller] so the caller is the protected recipient.
-  const members = Array.isArray(b.members) && b.members.length
-    ? b.members.map(String)
-    : [sender, ctx.uid];
+    ? { ...(b.message as Record<string, unknown>), sender }
+    : { sender, body: String(b.text ?? ""), kind: String(b.kind ?? "text") };
+  const members = realMembers;
 
   const result = await guardianScan(env, { conv, message, members, senderUid: sender });
   return json({ ok: true, ...result });
