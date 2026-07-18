@@ -869,7 +869,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // [ONEBRAIN-B0] Registry contract for the Settings UI (must precede the
       // generic /api/brain/:op matcher below, which would 404 a GET 'domains').
       if (p === "/api/brain/domains" && req.method === "GET") return await brainDomains(req, env);
-      const bm = p.match(/^\/api\/brain\/([a-z]+)$/);
+      const bm = p.match(/^\/api\/brain\/([a-z_]+)$/);
       if (bm) {
         const op = bm[1];
         const readOp = op === "entities" || op === "timeline" || op === "history";
