@@ -127,6 +127,7 @@ import {
   marketplaceSearch, marketplacePrecheck, marketplaceAudio,
 } from "./routes/marketplace";
 import { marketplaceCategories, proposedCategories } from "./routes/categories";
+import { composeSession, composeTurn, composePublish } from "./routes/compose";
 import {
   affiliateRegister, affiliateMe, affiliateListings, affiliateLinkCreate, affiliateLinks,
   affiliateLinkStats, affiliateLinkSubscribers, affiliateLinkPause, affiliateClick,
@@ -1050,6 +1051,13 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // ?vertical=connect caches separately. /proposed is NOT cached (admin, per-bearer).
       if (p === "/api/marketplace/categories" && req.method === "GET") return await cached(req, ctx, () => marketplaceCategories(req, env), 300);
       if (p === "/api/marketplace/categories/proposed" && req.method === "GET") return await proposedCategories(req, env);
+      // [MKT2-CORE] AI-chat listing creation (PLAN-2026-07-17 §3). Server owns the draft;
+      // the LLM only proposes validated tool calls and can NEVER publish — publish is a
+      // separate explicit user action on a review card. /turn is SSE, so it must NOT be
+      // wrapped in cached(). Whole surface is dark behind aiComposeEnabled (default false).
+      if (p === "/api/marketplace/compose/session" && req.method === "POST") return await composeSession(req, env);
+      if (p === "/api/marketplace/compose/turn" && req.method === "POST") return await composeTurn(req, env);
+      if (p === "/api/marketplace/compose/publish" && req.method === "POST") return await composePublish(req, env);
       if (p === "/api/marketplace/ai-assist" && req.method === "POST") return await marketplaceAiAssist(req, env);
       if (p === "/api/marketplace/negotiate" && req.method === "POST") return await marketplaceNegotiate(req, env, ctx);
       if (p === "/api/marketplace/negotiate/state" && req.method === "GET") return await marketplaceNegotiateState(req, env);
