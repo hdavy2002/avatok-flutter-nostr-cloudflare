@@ -41,7 +41,8 @@ function stripWav(bytes: Uint8Array): Uint8Array {
 export interface SarvamTtsReq {
   text: string;
   langCode?: string | null;
-  speaker?: string;      // bulbul:v3 speaker (default priya, female)
+  speaker?: string;      // female speaker (v2: anushka/manisha/…, v3: priya/…)
+  model?: string;        // "bulbul:v2" (cheaper) | "bulbul:v3"
   defaultLang?: string;  // BCP-47 when langCode empty (default en-IN)
   sampleRate?: number;   // default 24000
 }
@@ -55,8 +56,8 @@ export async function sarvamTtsPcm(env: unknown, opts: SarvamTtsReq): Promise<Ui
     const body = {
       text: opts.text.slice(0, 2400),
       target_language_code: sarvamLang(opts.langCode, opts.defaultLang || "en-IN"),
-      model: "bulbul:v3",
-      speaker: (opts.speaker || "priya").toLowerCase(),
+      model: opts.model || "bulbul:v2",
+      speaker: (opts.speaker || "anushka").toLowerCase(),
       speech_sample_rate: sr,
       output_audio_codec: "wav",
     };

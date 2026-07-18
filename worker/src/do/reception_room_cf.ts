@@ -281,7 +281,14 @@ export class ReceptionRoomCf {
     return AURA_FEMALE.has(v) ? v : "asteria";
   }
   /** Owner's chosen language (BCP-47) or "" for auto. */
-  private langCode(): string { return (this.init?.language_code || "").trim(); }
+  private langCode(): string {
+    // RECEPT_CF_FORCE_LANG (owner 2026-07-19): pin the whole pipeline (Nova STT lang,
+    // TTS target language, and the "speak in X" prompt line) to one BCP-47 language,
+    // e.g. hi-IN. Fixes "I spoke Hindi but STT listened in English and she replied in
+    // English." Empty = use the owner's saved answer language as before.
+    const forced = String((this.env as any).RECEPT_CF_FORCE_LANG || "").trim();
+    return forced || (this.init?.language_code || "").trim();
+  }
   private cfSttModel(): string { return String((this.env as any).RECEPT_CF_STT_MODEL || CF_STT_MODEL_DEFAULT); }
   private cfLlmModel(): string { return String((this.env as any).RECEPT_CF_LLM_MODEL || CF_LLM_MODEL_DEFAULT); }
   private cfEnvTtsModel(): string { return String((this.env as any).RECEPT_CF_TTS_MODEL || CF_TTS_MODEL_DEFAULT); }
@@ -502,7 +509,10 @@ export class ReceptionRoomCf {
     // again after "have a great day"). Honor the model's <END_CALL> marker AND detect
     // a spoken goodbye, because a small model often drops the marker. She still speaks
     // her FULL closing line first (cfSpeak awaits playback), THEN we finalize.
-    const wantsEnd = /<END_CALL>/i.test(raw) || (!this.cfTimeUp && isGoodbyeLine(raw));
+    // Gate the goodbye heuristic behind >=2 caller turns so Ava can't say "have a
+    // great day" and hang up on the very first exchange (owner 2026-07-19). The
+    // explicit <END_CALL> marker still closes any time the model means it.
+    const wantsEnd = /<END_CALL>/i.test(raw) || (!this.cfTimeUp && this.turnCount >= 2 && isGoodbyeLine(raw));
     const text = raw.replace(/<END_CALL>/gi, "").trim();
     this.cfHistory.push({ role: "assistant", content: text || "..." });
     if (text) { this.outText.push(text); this.pushDialog("ava", text); await this.cfSpeak(text); }
@@ -671,7 +681,8 @@ export class ReceptionRoomCf {
       if (ttsProvider === "sarvam" && (this.env as any).SARVAM_API_KEY) {
         gPcm = await sarvamTtsPcm(this.env, {
           text: text.slice(0, 2000), langCode: this.langCode(),
-          speaker: String((this.env as any).RECEPT_CF_SARVAM_SPEAKER || "priya"),
+          speaker: String((this.env as any).RECEPT_CF_SARVAM_SPEAKER || "anushka"),
+          model: String((this.env as any).RECEPT_CF_SARVAM_MODEL || "bulbul:v2"),
           defaultLang: String((this.env as any).RECEPT_CF_SARVAM_LANG || "en-IN"),
           sampleRate: 24000,
         });
