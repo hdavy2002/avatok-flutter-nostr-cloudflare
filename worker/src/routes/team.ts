@@ -26,6 +26,8 @@ import { metaDb, metaSession, sha256hex } from "../db/shard";
 import { readConfig } from "./config";
 import { TEAM_PLAN } from "./plans";
 import { track, metric } from "../hooks";
+import { avaReasonRaw } from "../lib/ava_reason"; // One Brain B1: gateway for TTS
+import { aiRunOpts } from "../lib/ai_gate";       // AI Gateway cost-logging opts
 
 const APP = "team";
 const MONTH_MS = 30 * 24 * 60 * 60 * 1000;
@@ -425,7 +427,11 @@ async function speak(env: Env, text: string, voice: string): Promise<Uint8Array 
     if (hit) return new Uint8Array(await hit.arrayBuffer());
   } catch { /* synth fresh */ }
   try {
-    const out: any = await env.AI.run(TTS_MODEL, { text: text.slice(0, 800), speaker: voice } as any);
+    const out: any = await avaReasonRaw(env, {
+      role: "team_ivr", capability: "tts", trigger: "greeting", feature: "team_tts",
+      verb: "speak", model: TTS_MODEL,
+      raw: { text: text.slice(0, 800), speaker: voice }, aiRunOpts: aiRunOpts(env),
+    });
     const buf = await ttsBytes(out);
     if (!buf || !buf.length) return null;
     await env.AGENT_AUDIO.put(key, buf, { httpMetadata: { contentType: "audio/mpeg" } });

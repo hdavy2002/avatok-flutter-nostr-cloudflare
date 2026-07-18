@@ -29,6 +29,8 @@ import { metaDb } from "../db/shard";
 import { CallState, ExecutionMode, PlatformEvent } from "../lib/platform_types";
 import { contactFor } from "../lib/identity";
 import { trackUserContact } from "../hooks";
+import { avaReasonRaw } from "../lib/ava_reason"; // One Brain B1: gateway for STT
+import { aiRunOpts } from "../lib/ai_gate";       // AI Gateway cost-logging opts
 
 // Probe-grade fallback — production deployments should `wrangler secret put
 // VOBIZ_WEBHOOK_SECRET` and never rely on this constant being unknown.
@@ -415,7 +417,11 @@ async function handleRecordCb(req: Request, env: Env, secret: string): Promise<R
     let transcript = "";
     if (wavBytes) {
       try {
-        const out: unknown = await env.AI.run(STT_MODEL, { audio: b64encode(wavBytes) } as unknown as Record<string, unknown>);
+        const out: unknown = await avaReasonRaw(env, {
+          role: "voicemail", capability: "stt", trigger: "transcribe", feature: "pstn_voicemail_stt",
+          verb: "transcribe", model: STT_MODEL, uid: ownerUid,
+          raw: { audio: b64encode(wavBytes) }, aiRunOpts: aiRunOpts(env, ownerUid),
+        });
         const o = out as { text?: string; transcription?: string } | null;
         transcript = String(o?.text ?? o?.transcription ?? "").trim();
       } catch { /* best-effort — envelope still lands without a transcript */ }

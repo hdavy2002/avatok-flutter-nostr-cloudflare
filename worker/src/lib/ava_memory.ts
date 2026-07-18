@@ -18,6 +18,8 @@
 
 import type { Env } from "../types";
 import { searchForUser } from "./ava_search";
+import { avaReasonRaw } from "./ava_reason"; // One Brain B1: gateway for embeddings
+import { aiRunOpts } from "./ai_gate";       // AI Gateway cost-logging opts
 
 /** One server-lane hit. Shape aligns with the client `MemoryHit` + the brain
  *  `sources` cards so P3/P5 can render or feed it into a prompt uniformly. */
@@ -63,7 +65,10 @@ export async function brainSearch(
     // 1) Embed the query with the SAME model the ingestion pipeline used (so the
     //    query vector lives in the same space as the stored vectors).
     const model = env.BRAIN_EMBED_MODEL || DEFAULT_EMBED_MODEL;
-    const emb = (await env.AI.run(model as any, { text: q })) as any;
+    const emb = (await avaReasonRaw(env, {
+      role: "brain", capability: "embed", trigger: "search", feature: "brain_embed",
+      verb: "embed", model, uid, raw: { text: q }, aiRunOpts: aiRunOpts(env, uid),
+    })) as any;
     const vec: number[] | undefined = emb?.data?.[0];
     if (!vec) return [];
 

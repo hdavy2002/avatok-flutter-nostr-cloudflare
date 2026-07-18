@@ -10,6 +10,8 @@ import { json } from "../util";
 import { requireUser, isFail } from "../authz";
 import { metaDb } from "../db/shard";
 import { track, metric } from "../hooks";
+import { avaReasonRaw } from "../lib/ava_reason"; // One Brain B1: gateway for TTS
+import { aiRunOpts } from "../lib/ai_gate";       // AI Gateway cost-logging opts
 
 const TTS_MODEL = "@cf/deepgram/aura-2-en";
 // 40 valid Aura-2 voice IDs (captured in Phase 0 probe).
@@ -69,7 +71,11 @@ export async function agentTts(req: Request, env: Env): Promise<Response> {
   for (const m of transcript) {
     const speaker = m.speaker === "you" ? voiceYou : voiceThem;
     try {
-      const out: any = await env.AI.run(TTS_MODEL, { text: m.content.slice(0, 600), speaker } as any);
+      const out: any = await avaReasonRaw(env, {
+        role: "agent", capability: "tts", trigger: "render", feature: "agent_tts",
+        verb: "speak", model: TTS_MODEL, uid: ctx.uid,
+        raw: { text: m.content.slice(0, 600), speaker }, aiRunOpts: aiRunOpts(env, ctx.uid),
+      });
       const buf = await toBytes(out);
       if (buf && buf.length) { parts.push(buf); calls++; }
     } catch { /* skip a failed segment */ }

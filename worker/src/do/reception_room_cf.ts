@@ -26,6 +26,8 @@ import type { Env } from "../types";
 import { trackUserContact, metric } from "../hooks";
 import { dmConvId } from "../authz";
 import { contactFor } from "../lib/identity";
+import { avaReasonRaw } from "../lib/ava_reason"; // One Brain B1: gateway for STT/LLM/TTS
+import { aiRunOpts } from "../lib/ai_gate";       // AI Gateway cost-logging opts
 
 /** Redact secrets from free-text error strings before telemetry. */
 function scrubSecrets(s: string): string {
@@ -495,7 +497,11 @@ export class ReceptionRoomCf {
     try {
       // whisper-large-v3-turbo wants audio as a base64 STRING (verified against the
       // live model 2026-06-29 — array/binary inputs are rejected with AiError 5006).
-      const out: any = await this.env.AI.run(this.cfSttModel(), { audio: b64encode(wav) } as any);
+      const out: any = await avaReasonRaw(this.env, {
+        role: "receptionist", capability: "stt", trigger: "caller_turn", feature: "receptionist_stt",
+        verb: "transcribe", model: this.cfSttModel(), uid: this.init?.owner_uid,
+        raw: { audio: b64encode(wav) }, aiRunOpts: aiRunOpts(this.env, this.init?.owner_uid),
+      });
       return String(out?.text ?? out?.transcription ?? out?.results?.channels?.[0]?.alternatives?.[0]?.transcript ?? "").trim();
     } catch (e) { this.ev("ava_recept_cf_stt_error", { error_scrubbed: scrubSecrets(String(e)).slice(0, 160) }); return ""; }
   }
@@ -572,7 +578,11 @@ export class ReceptionRoomCf {
       } catch (e) { this.ev("ava_recept_cf_llm_error", { via: "openrouter", error_scrubbed: scrubSecrets(String(e)).slice(0, 160) }); }
     }
     try {
-      const out: any = await this.env.AI.run("@cf/meta/llama-3.1-8b-instruct-fast", { messages, max_tokens: maxTokens, temperature: 0.4 } as any);
+      const out: any = await avaReasonRaw(this.env, {
+        role: "receptionist", capability: "chat", trigger: "assistant_turn", feature: "receptionist_llm",
+        verb: "reason", model: "@cf/meta/llama-3.1-8b-instruct-fast", uid: this.init?.owner_uid,
+        raw: { messages, max_tokens: maxTokens, temperature: 0.4 }, aiRunOpts: aiRunOpts(this.env, this.init?.owner_uid),
+      });
       const u = out?.usage; if (u) { this.cfLlmTokIn += Number(u.prompt_tokens) || 0; this.cfLlmTokOut += Number(u.completion_tokens) || 0; }
       return String(out?.response ?? out?.result?.response ?? "").trim();
     } catch (e) { this.ev("ava_recept_cf_llm_error", { via: "workers_ai", error_scrubbed: scrubSecrets(String(e)).slice(0, 160) }); return ""; }
@@ -595,9 +605,14 @@ export class ReceptionRoomCf {
     let firstChunk = true;
     let carry: Uint8Array | null = null; // odd trailing byte held for 16-bit alignment
     try {
-      const resp: any = await this.env.AI.run(this.cfTtsModel(),
-        { text: text.slice(0, 800), speaker: this.cfVoice(), encoding: "linear16", sample_rate: 24000, container: "none" } as any,
-        { returnRawResponse: true } as any);
+      const resp: any = await avaReasonRaw(this.env, {
+        role: "receptionist", capability: "tts", trigger: "speak", feature: "receptionist_tts",
+        verb: "speak", model: this.cfTtsModel(), uid: this.init?.owner_uid,
+        raw: { text: text.slice(0, 800), speaker: this.cfVoice(), encoding: "linear16", sample_rate: 24000, container: "none" },
+        // returnRawResponse keeps the streaming ReadableStream contract; gateway
+        // opts (when configured) merge into the same env.AI.run options object.
+        aiRunOpts: { returnRawResponse: true, ...(aiRunOpts(this.env, this.init?.owner_uid) || {}) },
+      });
       const body: any = resp?.body ?? null;
       if (body && typeof body.getReader === "function") {
         const reader = body.getReader();

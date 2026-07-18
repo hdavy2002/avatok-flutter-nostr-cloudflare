@@ -23,6 +23,8 @@ import type { Env } from "../types";
 import { trackUserContact } from "../hooks";
 import { emitCallEvent, EVENT_SCHEMA_VERSION, newTraceId } from "../lib/call_events";
 import { contactFor } from "../lib/identity";
+import { avaReasonRaw } from "../lib/ava_reason"; // One Brain B1: gateway for TTS/STT
+import { aiRunOpts } from "../lib/ai_gate";       // AI Gateway cost-logging opts
 
 const AURA_VOICE = "asteria"; // fixed warm female voice — mirrors reception_room_cf's Ava
 const TTS_MODEL = "@cf/deepgram/aura-2-en";
@@ -172,8 +174,12 @@ export class VoicemailRoom {
         }
       }
     } catch { /* cache unavailable → live TTS below */ }
-    const resp: unknown = await this.env.AI.run(TTS_MODEL,
-      { text: text.slice(0, 400), speaker: AURA_VOICE, encoding: "linear16", sample_rate: SAMPLE_RATE_OUT, container: "none" } as unknown as Record<string, unknown>);
+    const resp: unknown = await avaReasonRaw(this.env, {
+      role: "voicemail", capability: "tts", trigger: "greeting", feature: "voicemail_tts",
+      verb: "speak", model: TTS_MODEL, uid: this.init?.owner_uid,
+      raw: { text: text.slice(0, 400), speaker: AURA_VOICE, encoding: "linear16", sample_rate: SAMPLE_RATE_OUT, container: "none" },
+      aiRunOpts: aiRunOpts(this.env, this.init?.owner_uid),
+    });
     const pcm = await ttsToPcm(resp);
     if (pcm && pcm.byteLength && cacheKey) {
       this.ev("voicemail_tts_cache", { hit: false, bytes: pcm.byteLength });
@@ -239,7 +245,11 @@ export class VoicemailRoom {
       await this.env.BLOBS.put(recordingKey, wav, { httpMetadata: { contentType: "audio/wav" } });
       this.ev("voicemail_recording_stored", { bytes: wav.byteLength, ok: true });
       try {
-        const out: unknown = await this.env.AI.run(STT_MODEL, { audio: b64encode(wav) } as unknown as Record<string, unknown>);
+        const out: unknown = await avaReasonRaw(this.env, {
+          role: "voicemail", capability: "stt", trigger: "transcribe", feature: "voicemail_stt",
+          verb: "transcribe", model: STT_MODEL, uid: init.owner_uid,
+          raw: { audio: b64encode(wav) }, aiRunOpts: aiRunOpts(this.env, init.owner_uid),
+        });
         const o = out as { text?: string; transcription?: string } | null;
         transcript = String(o?.text ?? o?.transcription ?? "").trim();
       } catch (e) { this.ev("voicemail_stt_error", { error: String(e).slice(0, 160) }); }

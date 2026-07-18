@@ -6,6 +6,8 @@
 // time. It holds no in-memory state, so it idles to nothing between requests.
 import type { Env } from "../types";
 import { json, aiText, geminiRun } from "../util";
+import { avaReasonRaw } from "../lib/ava_reason"; // One Brain B1: gateway for embeddings
+import { aiRunOpts } from "../lib/ai_gate";       // AI Gateway cost-logging opts
 
 const DECAY_PER_DAY = 0.995;
 
@@ -73,7 +75,11 @@ export class UserBrain {
   private async vectorRecall(uid: string, query: string): Promise<string[]> {
     if (!this.env.VECTOR_INDEX) return [];
     try {
-      const emb = (await this.env.AI.run((this.env.BRAIN_EMBED_MODEL || "@cf/baai/bge-small-en-v1.5") as any, { text: query })) as any;
+      const emb = (await avaReasonRaw(this.env, {
+        role: "brain", capability: "embed", trigger: "recall", feature: "brain_embed",
+        verb: "embed", model: this.env.BRAIN_EMBED_MODEL || "@cf/baai/bge-small-en-v1.5", uid,
+        raw: { text: query }, aiRunOpts: aiRunOpts(this.env, uid),
+      })) as any;
       const vec: number[] | undefined = emb.data?.[0];
       if (!vec) return [];
       // Vectors are per-entity; metadata carries name+summary, so no D1 round-trip.
@@ -99,7 +105,11 @@ export class UserBrain {
   private async rawMatches(uid: string, query: string, topK: number): Promise<any[]> {
     if (!this.env.VECTOR_INDEX) return [];
     try {
-      const emb = (await this.env.AI.run((this.env.BRAIN_EMBED_MODEL || "@cf/baai/bge-small-en-v1.5") as any, { text: query })) as any;
+      const emb = (await avaReasonRaw(this.env, {
+        role: "brain", capability: "embed", trigger: "recall", feature: "brain_embed",
+        verb: "embed", model: this.env.BRAIN_EMBED_MODEL || "@cf/baai/bge-small-en-v1.5", uid,
+        raw: { text: query }, aiRunOpts: aiRunOpts(this.env, uid),
+      })) as any;
       const vec: number[] | undefined = emb.data?.[0];
       if (!vec) return [];
       // HARD tenant isolation: every query is uid-filtered. 'kind' is filtered

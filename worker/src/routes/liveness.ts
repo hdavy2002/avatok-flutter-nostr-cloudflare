@@ -52,6 +52,8 @@ import { metaDb, metaSession } from "../db/shard";
 import { trackUser, metric, brainFact } from "../hooks";
 import { emailFor } from "../lib/identity";
 import { notifyUser } from "../notify";
+import { avaReasonRaw } from "../lib/ava_reason"; // One Brain B1: gateway for vision/STT
+import { aiRunOpts } from "../lib/ai_gate";       // AI Gateway cost-logging opts
 import { invalidateLevelCache } from "./ladder";
 import { markGatePassed } from "./ava_guardian"; // U1-lite: flip pending verify gate on liveness pass (dark)
 import { recordLivenessAudit, auditPrefix, deviceCtxFromBody } from "./liveness_audit";
@@ -334,11 +336,12 @@ async function visionRun(env: Env, budget: LlavaBudget, image: ArrayBuffer, prom
   if (budget.calls >= MAX_LLAVA_CALLS) return null; // over budget — caller treats as "unknown"
   budget.calls++;
   try {
-    const r: any = await env.AI.run(VISION_MODEL as any, {
-      image: [...new Uint8Array(image)],
-      prompt,
-      max_tokens: 8,
-    } as any);
+    const r: any = await avaReasonRaw(env, {
+      role: "liveness", capability: "vision", trigger: "challenge", feature: "liveness_vision",
+      verb: "see", model: VISION_MODEL,
+      raw: { image: [...new Uint8Array(image)], prompt, max_tokens: 8 },
+      aiRunOpts: aiRunOpts(env),
+    });
     return String(r?.description ?? r?.response ?? "").trim().toUpperCase();
   } catch {
     return null;
@@ -885,7 +888,11 @@ export async function runLivenessChecks(
   if (clipObj) {
     try {
       const audio = await clipObj.arrayBuffer();
-      const r: any = await env.AI.run(WHISPER_MODEL as any, { audio: [...new Uint8Array(audio)] } as any);
+      const r: any = await avaReasonRaw(env, {
+        role: "liveness", capability: "stt", trigger: "phrase_check", feature: "liveness_stt",
+        verb: "transcribe", model: WHISPER_MODEL,
+        raw: { audio: [...new Uint8Array(audio)] }, aiRunOpts: aiRunOpts(env),
+      });
       const text = stripDiacritics(String(r?.text ?? "").toLowerCase()).replace(/[^a-z0-9\s]/g, " ");
       const heard = text.split(/\s+/).filter(Boolean);
       const words = stripDiacritics(challenge.phrase.toLowerCase()).split(" ");

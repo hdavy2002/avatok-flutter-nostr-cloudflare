@@ -38,6 +38,8 @@ import { metaDb, metaSession } from "../db/shard";
 import { trackUserContact, metric, brainFact } from "../hooks";
 import { contactFor } from "../lib/identity";
 import { notifyUser } from "../notify";
+import { avaReasonRaw } from "../lib/ava_reason"; // One Brain B1: gateway for vision
+import { aiRunOpts } from "../lib/ai_gate";       // AI Gateway cost-logging opts
 import { invalidateLevelCache } from "./ladder";
 import { markGatePassed } from "./ava_guardian";
 import { recordLivenessAudit, auditPrefix, deviceCtxFromBody, edgeCtx } from "./liveness_audit";
@@ -953,10 +955,12 @@ async function extractFrames(env: Env, video: Uint8Array, offsets: number[]): Pr
 // verdict still degrades to REVIEW (never a PASS on the fallback alone).
 async function workersAiFacePresent(env: Env, image: Uint8Array): Promise<boolean> {
   try {
-    const r: any = await env.AI.run(
-      "@cf/llava-hf/llava-1.5-7b-hf" as any,
-      { image: [...image], prompt: "Is there exactly one real human face in this photo? Answer only YES or NO.", max_tokens: 8 } as any,
-    );
+    const r: any = await avaReasonRaw(env, {
+      role: "liveness", capability: "vision", trigger: "face_present", feature: "liveness_vision",
+      verb: "see", model: "@cf/llava-hf/llava-1.5-7b-hf",
+      raw: { image: [...image], prompt: "Is there exactly one real human face in this photo? Answer only YES or NO.", max_tokens: 8 },
+      aiRunOpts: aiRunOpts(env),
+    });
     return String(r?.description ?? r?.response ?? "").trim().toUpperCase().startsWith("YES");
   } catch { return false; }
 }
