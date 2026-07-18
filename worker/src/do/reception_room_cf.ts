@@ -334,19 +334,32 @@ export class ReceptionRoomCf {
     this.ev("ava_recept_vm_started", {});
     const text = (i.greeting || "").trim()
       || `Hi! Seems like ${i.owner_name || "the person you called"} is not available — kindly leave a message after the beep.`;
-    const voice = String((this.env as any).RECEPT_CF_SARVAM_SPEAKER || "anushka");
-    // Content-hash cache key: text or voice change → new key → auto re-render.
-    const digest = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(`${text}|${voice}|bulbul:v3|24000`));
+    // TTS ROUTING (owner 2026-07-19): Indian languages → Bulbul v3 (India-tuned);
+    // everything else → Google Chirp 3 HD (most natural). One-time render per owner
+    // per scenario, so premium quality is effectively free.
+    const lang = this.langCode();
+    const INDIAN = new Set(["", "en", "hi", "bn", "gu", "kn", "ml", "mr", "od", "or", "pa", "ta", "te", "as", "ur", "ne", "sa"]);
+    const useSarvam = INDIAN.has(baseLang(lang));
+    const voice = useSarvam ? String((this.env as any).RECEPT_CF_SARVAM_SPEAKER || "anushka") : "chirp3-hd-auto";
+    const engine = useSarvam ? "bulbul:v3" : "google:chirp3";
+    // Content-hash cache key: text/voice/engine change → new key → auto re-render.
+    const digest = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(`${text}|${voice}|${engine}|24000`));
     const hash = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
     const r2key = `recept_vm_greeting/${i.owner_uid}/${hash}.pcm`;
     let pcm: Uint8Array | null = null;
     try { const obj = await (this.env as any).AGENT_AUDIO?.get(r2key); if (obj) pcm = new Uint8Array(await obj.arrayBuffer()); } catch { /* miss */ }
     let rendered = false;
     if (!pcm) {
-      pcm = await sarvamTtsPcm(this.env, { text, langCode: this.langCode(), model: "bulbul:v3", speaker: voice, defaultLang: "en-IN", sampleRate: 24000 });
+      pcm = useSarvam
+        ? await sarvamTtsPcm(this.env, { text, langCode: lang, model: "bulbul:v3", speaker: voice, defaultLang: "en-IN", sampleRate: 24000 })
+        : await googleSynthesizeForLang(this.env, { text, langCode: lang, tier: "chirp3", defaultLang: "en-IN", sampleRate: 24000 });
+      // Cross-fallback so a provider outage never leaves the caller in silence.
+      if (!pcm) pcm = useSarvam
+        ? await googleSynthesizeForLang(this.env, { text, langCode: lang, tier: "chirp3", defaultLang: "en-IN", sampleRate: 24000 })
+        : await sarvamTtsPcm(this.env, { text, langCode: lang, model: "bulbul:v3", speaker: "anushka", defaultLang: "en-IN", sampleRate: 24000 });
       if (pcm) { rendered = true; try { await (this.env as any).AGENT_AUDIO?.put(r2key, pcm, { httpMetadata: { contentType: "application/octet-stream" } }); } catch { /* best-effort */ } }
     }
-    this.ev("ava_recept_vm_greeting", { cached: !rendered, ok: !!pcm });
+    this.ev("ava_recept_vm_greeting", { cached: !rendered, ok: !!pcm, engine });
     if (pcm) await this.playPcm(pcm);
     await this.playPcm(beepPcm(1000, 350));           // the record beep
     // 30s recording window; warning beep at 25s (owner spec).
