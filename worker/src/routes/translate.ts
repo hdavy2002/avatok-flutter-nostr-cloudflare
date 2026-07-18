@@ -265,6 +265,9 @@ export async function translateStart(req: Request, env: Env): Promise<Response> 
   const t = await mintToken(env, lang);
   if ("error" in t) return json({ error: t.error }, 502);
   track(env, ctx.uid, "translation_started", APP, { context, lang, mode: m.mode });
+  // One Brain B1 §5 — live-session attribution (a Gemini Live cloud session opens
+  // at token mint). Unified event across all live features (feature, uid, model).
+  track(env, ctx.uid, "live_session_open", APP, { feature: "translate", model: TRANSLATE_MODEL, verb: "transcribe", session_id: id, lang });
   metric(env, "translation_start", [1]);
   return json({
     ok: true, session_id: id, token: t.token, token_expires_at: t.expires_at,
@@ -328,6 +331,8 @@ export async function translateStop(req: Request, env: Env, id: string): Promise
     "UPDATE translation_sessions SET status='ended', billed_min=?2, billed_coins=?3, last_beat_at=?4, updated_at=?4 WHERE id=?1",
   ).bind(id, finalMin, finalCoins, now).run();
   track(env, ctx.uid, "translation_stopped", APP, { minutes: finalMin, coins: finalCoins, mode: s.mode });
+  // One Brain B1 §5 — live-session close (natural close hook exists here).
+  track(env, ctx.uid, "live_session_close", APP, { feature: "translate", model: TRANSLATE_MODEL, verb: "transcribe", session_id: id, minutes: finalMin });
   metric(env, "translation_minutes", [finalMin, finalCoins]);
   return json({ ok: true, minutes: finalMin, coins: finalCoins });
 }

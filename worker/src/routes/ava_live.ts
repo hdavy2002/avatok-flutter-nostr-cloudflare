@@ -12,6 +12,7 @@
 import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, isFail } from "../authz";
+import { track } from "../hooks";
 
 // Gemini 3.1 Flash Live — Google's flagship low-latency audio-to-audio model.
 // Verified working on generativelanguage.googleapis.com (Developer API) via a live
@@ -133,5 +134,9 @@ export async function avaLiveToken(req: Request, env: Env): Promise<Response> {
   } catch { /* no body */ }
   const t = await mintToken(env, voice, firstName, lang);
   if ("error" in t) return json({ error: t.error }, 502);
+  // One Brain B1 §5 — live-session attribution: a Gemini Live ephemeral token was
+  // minted (a cloud reasoning session opens). No natural server-side close hook here
+  // (the client connects DIRECTLY to Gemini), so this is a mint-only event.
+  void track(env, ctx.uid, "ava_live_session_open", "ava_live", { feature: "ava_live", model: t.model, verb: "speak" });
   return json(t);
 }

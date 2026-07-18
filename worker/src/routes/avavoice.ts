@@ -698,6 +698,9 @@ export async function avavoiceSessionStart(req: Request, env: Env): Promise<Resp
   await db.prepare("UPDATE avavoice_bookings SET status='in_progress', updated_at=?2 WHERE id=?1")
     .bind(bookingId, now).run();
   track(env, ctx.uid, "avavoice_call_started", APP, { agent: a.id, language, limit: limitMin });
+  // One Brain B1 §5 — live-session attribution (Gemini Live cloud session opens at
+  // token mint). Unified event across all live features (feature, uid, model).
+  track(env, ctx.uid, "live_session_open", APP, { feature: "avavoice", model: t.model, verb: a.vision_enabled ? "see" : "speak", session_id: sid, agent: a.id });
   metric(env, "avavoice_call_start", [1]);
   return json({
     ok: true, session_id: sid, token: t.token, token_expires_at: t.expires_at,
@@ -796,6 +799,12 @@ async function settleSession(env: Env, s: any, now: number, reason: string): Pro
     agent: String(s.agent_id), reason, minutes: mins, seconds: Math.round(usedMs / 1000),
     gross_coins: gross, refund_coins: refundCoins, language: String(s.language),
     payer_mode: a?.payer_mode ?? "unknown",
+  });
+  // One Brain B1 §5 — live-session close (settleSession is the natural close hook).
+  track(env, String(s.user_id), "live_session_close", APP, {
+    feature: "avavoice", verb: a?.vision_enabled ? "see" : "speak", session_id: String(s.id),
+    model: a ? (a.vision_enabled ? ((env as any).AVAVOICE_VISION_MODEL || DEFAULT_VISION_MODEL) : ((env as any).AVAVOICE_MODEL || DEFAULT_MODEL)) : null,
+    reason, minutes: mins,
   });
   // Creator-side settlement event — the AvaVerse dashboard's earnings stream.
   if (a) {

@@ -940,6 +940,9 @@ export async function avavisionSessionStart(req: Request, env: Env): Promise<Res
   await db.prepare("UPDATE avavision_bookings SET status='in_progress', updated_at=?2 WHERE id=?1")
     .bind(bookingId, now).run();
   track(env, ctx.uid, "avavision_call_started", APP, { agent: a.id, language, limit: limitMin, capability: a.capability });
+  // One Brain B1 §5 — live-session attribution (Gemini Live cloud session opens at
+  // token mint). Unified event across all live features (feature, uid, model).
+  track(env, ctx.uid, "live_session_open", APP, { feature: "avavision", model: t.model, verb: "see", session_id: sid, agent: a.id });
   metric(env, "avavision_call_start", [1]);
   return json({
     ok: true, session_id: sid, token: t.token, token_expires_at: t.expires_at,
@@ -1092,6 +1095,11 @@ async function settleSession(env: Env, s: any, now: number, reason: string, tele
     agent: String(s.agent_id), reason, minutes: mins, seconds: Math.round(usedMs / 1000),
     gross_coins: gross, refund_coins: refundCoins, language: String(s.language),
     payer_mode: a?.payer_mode ?? "unknown", frames_streamed: framesStreamed, snapshot_calls: snapshotCalls,
+  });
+  // One Brain B1 §5 — live-session close (settleSession is the natural close hook).
+  track(env, String(s.user_id), "live_session_close", APP, {
+    feature: "avavision", verb: "see", session_id: String(s.id),
+    model: (env as any).AVAVISION_VISION_MODEL || DEFAULT_VISION_MODEL, reason, minutes: mins,
   });
   if (a) {
     track(env, a.creator_id, "avavision_creator_settlement", APP, {

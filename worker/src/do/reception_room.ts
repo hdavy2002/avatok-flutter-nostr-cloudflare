@@ -297,6 +297,10 @@ export class ReceptionRoom {
       aig_id: (this as any)._aigId ?? null,
       model: init.model, voice: init.voice_name, language: init.language_code ?? "auto",
     });
+    // One Brain B1 §5 — live-session attribution: the receptionist's Gemini Live
+    // cloud session is now open. Unified event across all live features (the ev()
+    // helper already stamps feature="receptionist", owner uid/email/phone + model).
+    this.ev("live_session_open", { feature: "receptionist", verb: "speak", language: init.language_code ?? "auto" });
 
     // setup — model, voice, locked system prompt, transcription on, optional RAG.
     const speechConfig: any = { voiceConfig: { prebuiltVoiceConfig: { voiceName: init.voice_name } } };
@@ -684,6 +688,9 @@ export class ReceptionRoom {
     if (!init) return;
     const now = Date.now();
     const durationS = Math.max(0, Math.round((now - this.startedAt) / 1000));
+    // One Brain B1 §5 — live-session close (finalize is the natural close hook; runs
+    // once for every end reason). ev() stamps feature="receptionist", uid + model.
+    this.ev("live_session_close", { feature: "receptionist", verb: "speak", reason, duration_s: durationS, turns: this.turnCount });
     const transcript = this.buildTranscript();
 
     // [CALL-EXCL-1] owner_answered yield: the device owner picked up the real
