@@ -16,7 +16,8 @@ import { requireUser, isFail, kycVerified } from "../authz";
 import { mediaSession, mediaDb } from "../db/shard";
 import { transferCoins } from "./wallet";
 import { presignGetUrl } from "../aws/sigv4";
-import { track, brainFact } from "../hooks";
+import { track } from "../hooks";
+import { brainIngest } from "../lib/brain_ingest";
 import { notifyUser } from "../notify";
 
 const APP = "avaolx";
@@ -57,7 +58,7 @@ export async function olxCreate(req: Request, env: Env): Promise<Response> {
   ).bind(id, ctx.uid, kind, String(b.title), desc, b.category ?? null, price, kind === "physical" ? (b.location ?? null) : null, b.image_hashes ? JSON.stringify(b.image_hashes) : null, now).run();
 
   track(env, ctx.uid, "olx_listing_created", APP, { kind, price });
-  brainFact(env, ctx.uid, "olx_listed", APP, { kind, title: b.title, price });
+  void brainIngest(env, { uid: ctx.uid, domain: "listings", kind: "olx_listed", sourceId: id, text: `Listed "${String(b.title)}" for sale`, meta: { kind, title: b.title, price } });
   return json({ ok: true, listing_id: id, kind, needs_file: kind === "digital" });
 }
 
@@ -155,7 +156,7 @@ export async function olxBuy(req: Request, env: Env): Promise<Response> {
      VALUES (?1,?2,?3,?4,?5,?6,'paid',?7)`,
   ).bind(purchaseId, listingId, ctx.uid, listing.seller_uid, listing.price_coins, t.commission, now).run();
 
-  brainFact(env, ctx.uid, "olx_purchased", APP, { title: listing.title, price: listing.price_coins });
+  void brainIngest(env, { uid: ctx.uid, domain: "listings", kind: "olx_purchased", sourceId: purchaseId, text: `Purchased "${listing.title}"`, meta: { title: listing.title, price: listing.price_coins } });
   track(env, ctx.uid, "olx_purchase", APP, { price: listing.price_coins, commission: t.commission });
   try { await notifyUser(env, listing.seller_uid, { type: "wallet", title: "Product sold", body: listing.title, data: { deeplink: "/wallet" } }); } catch { /* best-effort */ }
   return json({ ok: true, purchase_id: purchaseId, download_path: `/api/olx/downloads/${purchaseId}/file` });

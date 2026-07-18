@@ -12,7 +12,8 @@ import { json } from "../util";
 import { requireUser, requireStripeKyc, isFail } from "../authz";
 import { walletOp } from "./wallet";
 import { wiseConfigured, createRecipient, createQuote, createTransfer, fundTransfer } from "../wise";
-import { track, brainFact } from "../hooks";
+import { track } from "../hooks";
+import { brainIngest } from "../lib/brain_ingest";
 import { notifyUser } from "../notify";
 import { clerkEmail } from "../ledger";
 import { agreementAccepted, currentAgreementVersion } from "./kyc";
@@ -148,7 +149,7 @@ export async function payoutRequest(req: Request, env: Env): Promise<Response> {
     await fundTransfer(env, transfer.id);
     await env.DB_WALLET.prepare("UPDATE payout_requests SET status='funded', wise_quote_id=?2, wise_transfer_id=?3, updated_at=?4 WHERE id=?1")
       .bind(id, quote.id, String(transfer.id), Date.now()).run();
-    brainFact(env, ctx.uid, "payout_requested", "avapayout", { amount, currency });
+    void brainIngest(env, { uid: ctx.uid, domain: "wallet", kind: "payout_requested", sourceId: id, text: `Requested a payout of ${amount} coins`, meta: { amount, currency } });
     track(env, ctx.uid, "payout_requested", "avapayout", { amount });
     await payoutEmail(env, ctx.uid, "Withdrawal on its way", [
       `Your withdrawal of ${amount} coins ($${(amount / 100).toFixed(2)}) has been submitted to your bank.`,
@@ -202,7 +203,7 @@ export async function wiseWebhook(req: Request, env: Env): Promise<Response> {
       `The coins have been returned to your wallet. Reference: ${reqRow.id}.`,
     ]);
   } else if (status === "completed") {
-    brainFact(env, reqRow.uid, "payout_completed", "avapayout", { amount: reqRow.amount_coins });
+    void brainIngest(env, { uid: reqRow.uid, domain: "wallet", kind: "payout_completed", sourceId: reqRow.id, text: `Payout of ${reqRow.amount_coins} coins completed`, meta: { amount: reqRow.amount_coins } });
     try { await notifyUser(env, reqRow.uid, { type: "wallet", title: "Payout sent ✓", body: `${reqRow.amount_coins} coins withdrawn`, data: { deeplink: "/wallet" } }); } catch { /* best-effort */ }
     await payoutEmail(env, reqRow.uid, "Withdrawal sent ✓", [
       `Your withdrawal of ${reqRow.amount_coins} coins ($${(reqRow.amount_coins / 100).toFixed(2)}) was sent to your bank.`,

@@ -3,6 +3,8 @@
 // where the spec says so). Centralized so every phase wires observability the same
 // way. All best-effort: a telemetry failure never breaks the user's request.
 import type { Env } from "./types";
+import { brainIngest } from "./lib/brain_ingest";
+import { isBrainDomain, type BrainDomain } from "./lib/brain_domains";
 
 const SERVICE = "avatok-api";
 
@@ -97,15 +99,57 @@ export function metric(env: Env, name: string, doubles: number[], blobs: string[
   try { env.ANALYTICS?.writeDataPoint({ blobs: [name, ...blobs].slice(0, 20), doubles: doubles.slice(0, 20), indexes: [name.slice(0, 32)] }); } catch { /* best-effort */ }
 }
 
-/** Feed a derived fact to the brain (Q_BRAIN → consumer → DB_BRAIN). Public/
- *  platform facts only — never DM plaintext. Scope defaults to 'public'. */
+/**
+ * DEPRECATED shim — feed a derived fact to the brain. Kept so the remaining
+ * legacy call sites keep compiling, but every event now flows through the ONE
+ * ingestion contract (`brainIngest`): registry-resolved consent key + scope, a
+ * consent check that FAILS CLOSED, and device_private rejection.
+ *
+ * The `domain` argument MUST be a registry domain (`BrainDomain`) — that is the
+ * whole point: the old `source_app` fallback (which turned any string into an
+ * unblockable pseudo-capability with no Settings toggle) is GONE. A call passing
+ * a string that is not a registered domain is dropped at runtime (with telemetry)
+ * rather than ingested under a toggle the user can never see.
+ *
+ * @deprecated Call `brainIngest(env, {...})` directly for new producers.
+ */
 export function brainFact(
   env: Env,
   uid: string,
-  event_type: string,
-  source_app: string,
-  payload: Record<string, unknown>,
-  scope: "public" | "private" | string = "public",
+  kind: string,
+  domain: BrainDomain,
+  payload?: Record<string, unknown>,
+  sourceId?: string,
+): void;
+/**
+ * @deprecated Legacy overload for call sites that still pass a non-registry app
+ * string (e.g. 'avaid', 'avacalendar'). These are DROPPED at runtime — they were
+ * only ever ingestible via the removed unblockable fallback. Migrate them to a
+ * registry domain or delete the call.
+ */
+export function brainFact(
+  env: Env,
+  uid: string,
+  kind: string,
+  domain: string,
+  payload?: Record<string, unknown>,
+  sourceId?: string,
+): void;
+export function brainFact(
+  env: Env,
+  uid: string,
+  kind: string,
+  domain: string,
+  payload: Record<string, unknown> = {},
+  sourceId?: string,
 ): void {
-  try { void env.Q_BRAIN.send({ uid, event_type, source_app, scope, payload }); } catch { /* best-effort */ }
+  if (!isBrainDomain(domain)) {
+    // The deleted fallback used to ingest this under an unblockable capability.
+    try {
+      metric(env, "brain_ingest_unknown_domain", [1], [String(domain), kind]);
+      void track(env, uid, "ingest_dropped_unknown_domain", "avabrain", { domain, kind });
+    } catch { /* best-effort */ }
+    return;
+  }
+  void brainIngest(env, { uid, domain, kind, meta: payload, sourceId });
 }

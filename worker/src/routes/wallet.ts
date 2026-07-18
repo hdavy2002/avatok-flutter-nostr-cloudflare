@@ -15,7 +15,8 @@
 import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, isFail } from "../authz";
-import { track, brainFact } from "../hooks";
+import { track } from "../hooks";
+import { brainIngest } from "../lib/brain_ingest";
 import { notifyUser } from "../notify";
 import { withIdempotency, rateLimit, RL } from "../money";
 import { acctUser, sendReceipt } from "../ledger";
@@ -297,7 +298,7 @@ async function creditPlayTopup(
 
   try { await payAffiliateOnTopup(env, uid, coins, id); } catch { /* best-effort */ }
   try { await sendReceipt(env, uid, "topup", { orderId: id, title: `${coins} Tokens`, lines: [{ label: `${coins} Tokens`, amount: coins }], total: coins }); } catch { /* best-effort */ }
-  brainFact(env, uid, "wallet_topup", "avawallet", { coins, source: "play" });
+  void brainIngest(env, { uid, domain: "wallet", kind: "wallet_topup", sourceId: `play:${orderRef}`, text: `Topped up ${coins} Tokens`, meta: { coins, source: "play" } });
   try { await notifyUser(env, uid, { type: "wallet", title: `Added ${coins} Tokens`, data: { deeplink: "/wallet", amount: coins } }); } catch { /* best-effort */ }
   track(env, uid, "wallet_topup_completed", "avawallet", { coins, source: "play" });
   return json({ ok: true, credited: coins, coins, balance: r.body?.balance ?? null });
@@ -388,7 +389,7 @@ async function creditTopup(
   try { await payAffiliateOnTopup(env, uid, coins, topupId); } catch { /* best-effort */ }
   // A4: top-up receipt (best-effort, never blocks the credit).
   try { await sendReceipt(env, uid, "topup", { orderId: topupId, title: `${coins} Tokens`, lines: [{ label: `${coins} Tokens`, amount: coins }], total: coins }); } catch { /* best-effort */ }
-  brainFact(env, uid, "wallet_topup", "avawallet", { coins });
+  void brainIngest(env, { uid, domain: "wallet", kind: "wallet_topup", sourceId: `stripe:${topupId}`, text: `Topped up ${coins} Tokens`, meta: { coins } });
   try { await notifyUser(env, uid, { type: "wallet", title: `Added ${coins} Tokens`, data: { deeplink: "/wallet", amount: coins } }); } catch { /* best-effort */ }
   track(env, uid, "wallet_topup_completed", "avawallet", { coins });
   return json({ received: true, credited: coins });

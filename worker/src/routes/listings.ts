@@ -36,7 +36,8 @@ import { metaDb, metaSession, moderationDb } from "../db/shard";
 import { claimBlock, releaseBlocks, policyViolation } from "../cal/engine";
 import { hold, refund } from "../ledger";
 import { LANGS as TRL_LANGS, RATE_PER_MIN as TRL_RATE } from "./translate";
-import { track, brainFact } from "../hooks";
+import { track } from "../hooks";
+import { brainIngest } from "../lib/brain_ingest";
 import { partyEmit } from "./messaging"; // PartyKit live nudges (ephemeral)
 import { recordView, trackImpressions, geoOf } from "./insights";
 import { guardWrite } from "./moderate"; // save-time content validation (Nemotron)
@@ -435,7 +436,7 @@ export async function publishListing(req: Request, env: Env, id: string): Promis
   const who = await nameOf(env, ctx.uid);
   const fo = await fanout(env, ctx.uid, `${who} just scheduled: ${String(l.title).slice(0, 40)}`,
     l.kind === "live_event" ? "New live event — book your spot" : "New session offering", `/explore/listing/${id}`);
-  brainFact(env, ctx.uid, "listing_published", APP, { kind: l.kind, title: l.title, price: l.price });
+  void brainIngest(env, { uid: ctx.uid, domain: "listings", kind: "listing_published", sourceId: id, text: `Published listing "${l.title}" (${l.kind})`, meta: { kind: l.kind, title: l.title, price: l.price } });
   track(env, ctx.uid, "listing_published", APP, { kind: l.kind, price: l.price, fanout: fo.sent });
   return json({ ok: true, status: "published", fanout: fo });
 }
@@ -852,7 +853,7 @@ export async function followCreator(req: Request, env: Env, id: string): Promise
     db.prepare(`INSERT INTO creator_profiles (user_id, follower_count, updated_at) VALUES (?1,1,?2)
                 ON CONFLICT(user_id) DO UPDATE SET follower_count=follower_count+1, updated_at=?2`).bind(id, Date.now()),
   ]);
-  brainFact(env, ctx.uid, "creator_followed", APP, { creator: id });
+  void brainIngest(env, { uid: ctx.uid, domain: "listings", kind: "creator_followed", sourceId: `${ctx.uid}:${id}`, text: "Followed a creator", meta: { creator: id } });
   track(env, ctx.uid, "creator_followed", APP, {});
   return json({ ok: true, following: true, notify });
 }
@@ -1111,7 +1112,7 @@ export async function bookListing(req: Request, env: Env, id: string): Promise<R
   } catch { /* best-effort */ }
   try { await notifyUser(env, l.creator_id, { type: "system", title: l.kind === "live_event" ? "New attendee" : "New booking", body: l.title, data: { deeplink: "/booking", booking_id: bookingId } }); } catch { /* best-effort */ }
   try { await notifyUser(env, ctx.uid, { type: "system", title: "Booking confirmed", body: l.title, data: { deeplink: `/explore/listing/${id}`, booking_id: bookingId } }); } catch { /* best-effort */ }
-  brainFact(env, ctx.uid, "listing_booked", APP, { title: l.title, kind: l.kind, amount });
+  void brainIngest(env, { uid: ctx.uid, domain: "listings", kind: "listing_booked", sourceId: bookingId, text: `Booked "${l.title}" (${l.kind})`, meta: { title: l.title, kind: l.kind, amount } });
   {
     const g = geoOf(req);
     track(env, ctx.uid, "listing_booked", APP, {
@@ -1168,7 +1169,7 @@ export async function createReview(req: Request, env: Env, id: string): Promise<
     ).bind(l.creator_id, now),
   ]);
   try { await notifyUser(env, l.creator_id, { type: "social", title: `New ${rating}★ review`, body: b.body ? String(b.body).slice(0, 80) : undefined, data: { deeplink: `/explore/listing/${id}` } }); } catch { /* best-effort */ }
-  brainFact(env, ctx.uid, "review_left", APP, { rating });
+  void brainIngest(env, { uid: ctx.uid, domain: "listings", kind: "review_left", sourceId: `${ctx.uid}:${id}`, text: `Left a ${rating}★ review`, meta: { rating } });
   track(env, ctx.uid, "review_created", APP, { rating });
   return json({ ok: true });
 }

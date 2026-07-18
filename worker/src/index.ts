@@ -12,6 +12,7 @@ import { uploadPublic, uploadPrivate, mediaRedirect, getLibrary, getLibraryTree,
 import { getStorageSummary } from "./storage";
 import { streamWebhook } from "./routes/stream";
 import { brain } from "./routes/brain";
+import { brainDomains } from "./routes/brain_domains";
 import { deleteAccount, cancelDeletion, deletionStatus } from "./routes/account";
 // [AVADIAL-CALL-INTEL-1] Call-intelligence ingest. The ONLY place raw E.164 and the
 // HMAC secret meet — the device never holds the key. See routes/telemetry_calls.ts.
@@ -865,6 +866,9 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/notifications" && req.method === "DELETE") return await clearNotifications(req, env);
 
       // --- AvaBrain (dual auth; routes to the caller's UserBrain DO) ---
+      // [ONEBRAIN-B0] Registry contract for the Settings UI (must precede the
+      // generic /api/brain/:op matcher below, which would 404 a GET 'domains').
+      if (p === "/api/brain/domains" && req.method === "GET") return await brainDomains(req, env);
       const bm = p.match(/^\/api\/brain\/([a-z]+)$/);
       if (bm) {
         const op = bm[1];

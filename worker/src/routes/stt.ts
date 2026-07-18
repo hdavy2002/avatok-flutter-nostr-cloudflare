@@ -23,6 +23,17 @@ import { track, metric } from "../hooks";
 // Multilingual (99+ langs), supports transcription AND translation. Override per
 // deploy with OPENROUTER_STT_MODEL (e.g. a Groq fast-whisper id for lower latency).
 const STT_MODEL_DEFAULT = "openai/whisper-large-v3";
+// [ONEBRAIN-B0] Strict server-side allowlist of the STT models we actually use.
+// The client may request a model (b.model), but only these are honoured — an
+// unknown model is a 400, so a caller can't point our OPENROUTER_API_KEY at an
+// arbitrary/expensive model. The env override (OPENROUTER_STT_MODEL) is
+// server-controlled and therefore always trusted, even if not in this set.
+const STT_MODEL_ALLOWLIST = new Set<string>([
+  "openai/whisper-large-v3",       // default (multilingual, transcribe + translate)
+  "openai/whisper-1",              // OpenAI hosted whisper
+  "groq/whisper-large-v3",         // faster hosted whisper
+  "groq/whisper-large-v3-turbo",   // low-latency variant
+]);
 const APP = "avastt";
 // Whisper's hard input cap is 25 MB of audio; base64 inflates ~33%, so guard at
 // ~33 MB of base64 (~25 MB raw). Short dictation clips are a few hundred KB.
@@ -47,7 +58,21 @@ export async function sttTranscribe(req: Request, env: Env): Promise<Response> {
   if (!data) return json({ error: "audio required (base64)" }, 400);
   if (data.length > MAX_B64) return json({ error: "audio too large", max_b64: MAX_B64 }, 413);
 
-  const model = String(b.model || (env as any).OPENROUTER_STT_MODEL || STT_MODEL_DEFAULT);
+  // Client may request a model, but it MUST be on the allowlist. The env override
+  // is server-set and trusted; the built-in default is always allowed.
+  const requested = b.model != null ? String(b.model) : "";
+  const envDefault = String((env as any).OPENROUTER_STT_MODEL || STT_MODEL_DEFAULT);
+  let model: string;
+  if (requested) {
+    if (!STT_MODEL_ALLOWLIST.has(requested)) {
+      metric(env, "stt_model_rejected", [1], [requested]);
+      track(env, ctx.uid, "stt_model_rejected", APP, { model: requested });
+      return json({ error: "unsupported model", model: requested }, 400);
+    }
+    model = requested;
+  } else {
+    model = envDefault;
+  }
 
   const body: Record<string, unknown> = {
     input_audio: { data, format },

@@ -13,7 +13,8 @@ import { requireUser, isFail, dmConvId } from "../authz";
 import { gatePublicAction, emailOf } from "../lib/identity_gate"; // [AVA-IDGATE-1]
 import { verifyClerk, resolveCanonicalUid, linkClerkAlias } from "../auth";
 import { nameFor, primaryVerifiedEmailFor } from "../lib/identity";
-import { brainFact, track } from "../hooks";
+import { track } from "../hooks";
+import { brainIngest } from "../lib/brain_ingest";
 import { guardWrite } from "./moderate"; // save-time content validation (Nemotron)
 import { readConfig } from "./config"; // P11: profileCompletionGate
 // [WP1] Event-sourced call stream (Specs/PLAN-2026-07-11-dialpad-business-calls-ava-voice-agent.md §13/§14)
@@ -810,14 +811,18 @@ export async function profileUpsert(req: Request, env: Env): Promise<Response> {
   ).bind(ctx.uid, name, firstName, lastName, avatarUrl, emailHash, phoneHash, birthYear, now, bio, gender).run();
   // Feed a non-empty self-description to AvaBrain so Ava can personalise. Scoped
   // 'private'; the brain consumer still honours the user's AvaBrain consent toggle.
-  if (bio) brainFact(env, ctx.uid, "profile_bio", "profile", { bio }, "private");
+  if (bio) void brainIngest(env, { uid: ctx.uid, domain: "profile", kind: "profile_bio", sourceId: `${ctx.uid}:bio`, text: String(bio).slice(0, 480), meta: { bio } });
   // P11: feed the profile summary so the receptionist + AvaBrain know their owner
   // (name, gender→pronouns, About). Scoped private; the brain consumer still honours
   // the AvaBrain consent toggle.
-  brainFact(env, ctx.uid, "profile_updated", "profile", {
-    name, first_name: firstName, last_name: lastName, gender, birth_year: birthYear,
-    ...(bio ? { about: bio } : {}),
-  }, "private");
+  void brainIngest(env, {
+    uid: ctx.uid, domain: "profile", kind: "profile_updated", sourceId: `${ctx.uid}:${now}`,
+    text: `Profile: ${name}`,
+    meta: {
+      name, first_name: firstName, last_name: lastName, gender, birth_year: birthYear,
+      ...(bio ? { about: bio } : {}),
+    },
+  });
   return json({ ok: true, profile: { uid: ctx.uid, name, first_name: firstName, last_name: lastName, email: b.email || "", phone: b.phone || "" } });
 }
 

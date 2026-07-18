@@ -6,6 +6,7 @@ import { mediaSession, moderationSession } from "../db/shard";
 import { requireUser, isFail } from "../authz";
 import { walletOp } from "./wallet";
 import { checkUploadAllowed, afterRegisterFile } from "../storage";
+import { brainIngest } from "../lib/brain_ingest";
 // [AVA-IDGATE-1] identity_gate import removed — /upload/public is no longer gated
 // (avatars must upload during onboarding; the public ACTION is gated at its endpoint).
 
@@ -64,7 +65,7 @@ export async function uploadPublic(req: Request, env: Env, exec: ExecutionContex
     // async moderation — content hash for scan/blocklist, r2_key for fetch/delete.
     exec.waitUntil(env.Q_MODERATION.send({ type: "image", hash, uid: ctx.uid, media_id: id, r2_key: r2Key }));
     // AvaBrain learns from public uploads (metadata only — no DM media here).
-    exec.waitUntil(env.Q_BRAIN.send({ uid: ctx.uid, event_type: "upload_completed", source_app: app, payload: { hash, mime: ct, size: bytes.byteLength } }));
+    exec.waitUntil(brainIngest(env, { uid: ctx.uid, domain: "files", kind: "upload_completed", sourceId: id, meta: { hash, mime: ct, size: bytes.byteLength, app } }));
     // AvaBrain CONTENT ingestion of the public file itself (caption/OCR/text → embed),
     // gated on the user's consent toggles. Private uploads never reach this path.
     exec.waitUntil(maybeEmitLibraryBrain(env, ctx.uid, app, { media_id: id, key: r2Key, mime: ct, size: bytes.byteLength, name: fileName, category: categoryOf(ct), visibility: "public" }));
@@ -595,7 +596,7 @@ export async function maybeEmitLibraryBrain(
     const bal = await walletOp(env, uid, { op: "balance", uid });
     if (Number(bal.body?.premium ?? 0) !== 1) return;
   } catch { return; }
-  await env.Q_BRAIN.send({ uid, event_type: "library_file_added", source_app: app, payload });
+  await brainIngest(env, { uid, domain: "files", kind: "library_file_added", sourceId: String((payload as { media_id?: unknown }).media_id ?? ""), meta: payload as Record<string, unknown> });
 }
 
 // A sensible display name when the client didn't send one. Extension from mime.
