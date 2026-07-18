@@ -519,6 +519,17 @@ export class ReceptionRoomCf {
    *  signal. Best-effort: if it can't connect, the whole-clip Whisper fallback in
    *  processCfTurn keeps the receptionist working (just at higher latency). */
   private async connectStt(): Promise<void> {
+    // STT provider switch (RECEPT_CF_STT_STREAM, owner 2026-07-18): set to "off"/
+    // "whisper" to SKIP Deepgram Nova streaming and transcribe each turn with the
+    // cheaper whole-clip Whisper in processCfTurn (~18× cheaper: $0.0005 vs $0.0092
+    // per audio-min; trades a small post-turn latency). Turn-ending then relies on
+    // the energy-VAD endpointer (CF_ENDPOINT_MS), which is what we tune. Runtime-
+    // toggleable via secret — a new call reads the current value.
+    const sttMode = String((this.env as any).RECEPT_CF_STT_STREAM ?? "").toLowerCase();
+    if (sttMode === "off" || sttMode === "0" || sttMode === "false" || sttMode === "whisper") {
+      this.ev("ava_recept_cf_stt_stream", { ms: -1, mode: "whisper_only" });
+      return;
+    }
     const token = (this.env as any).AI_WS_TOKEN as string | undefined;
     const acc = (this.env as any).CF_ACCOUNT_ID as string | undefined;
     if (!token || !acc) return; // no token → Whisper fallback path stays in effect
