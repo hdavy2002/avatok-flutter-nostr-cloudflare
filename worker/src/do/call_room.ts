@@ -49,6 +49,13 @@ import type { Env } from "../types";
 import type { CallSnapshot } from "../lib/call_snapshot";
 import type { ReasonCode } from "../lib/call_events";
 import { settleCallMinute, refundUnused } from "../lib/call_billing";
+import { brainIngest } from "../lib/brain_ingest";
+
+// [ONEBRAIN-B2] Human-readable call length for a brain summary (e.g. "4m12s").
+function fmtCallDuration(sec: number): string {
+  const s = Math.max(0, Math.floor(sec));
+  return `${Math.floor(s / 60)}m${String(s % 60).padStart(2, "0")}s`;
+}
 
 interface AwayPeer {
   id: string;
@@ -124,7 +131,39 @@ export class CallRoom {
     const wasEnded = this.ended === true;
     this.ended = true;
     try { await this.state.storage.put("ended", true); } catch { /* best-effort */ }
-    if (!wasEnded) await this.stopBilling(reason);
+    if (!wasEnded) {
+      // [ONEBRAIN-B2] Record the completed call in the brain BEFORE stopBilling
+      // clears the billing state (which holds the two account ids). Fire-and-forget
+      // inside a guard so a brain hiccup can never affect call teardown.
+      try { await this.ingestCallCompleted(); } catch { /* best-effort */ }
+      await this.stopBilling(reason);
+    }
+  }
+
+  /** [ONEBRAIN-B2] Emit one `call_completed` brain event per participant when a
+   *  paid, ANSWERED call ends. Paid because the billing state is the only place the
+   *  DO holds both account ids; answered because a never-connected call is a missed
+   *  call (missedcall.ts owns the `missed` domain), not a completed one. sourceId is
+   *  the call id, so a redelivered/duplicate teardown collapses to one row per uid.
+   *  Text carries only the duration (no numbers); ids live in meta (§ contract). */
+  private async ingestCallCompleted(): Promise<void> {
+    const b = await this.loadBilling();
+    if (!b) return; // free call — no server-side account ids in this DO
+    await this.loadCallState();
+    if (!this.answeredAt) return; // never connected → missed, not completed
+    const durationSec = Math.max(0, Math.round((Date.now() - this.answeredAt) / 1000));
+    const dur = fmtCallDuration(durationSec);
+    // caller placed the call → outgoing (peer = callee); callee → incoming.
+    void brainIngest(this.env, {
+      uid: b.caller_id, domain: "calls", kind: "call_completed", sourceId: b.call_id,
+      text: `Call ${dur}, outgoing`,
+      meta: { peer: b.callee_id, duration: durationSec, direction: "outgoing" },
+    });
+    void brainIngest(this.env, {
+      uid: b.callee_id, domain: "calls", kind: "call_completed", sourceId: b.call_id,
+      text: `Call ${dur}, incoming`,
+      meta: { peer: b.caller_id, duration: durationSec, direction: "incoming" },
+    });
   }
 
   /** CALL-GEN-1: bump + return the new generation for a peer id (accepted join/

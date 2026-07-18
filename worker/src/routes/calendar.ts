@@ -159,8 +159,8 @@ export async function bookSlot(req: Request, env: Env): Promise<Response> {
   try { await notifyUser(env, slot.host_uid, { type: "system", title: "New booking", body: slot.title, data: { deeplink: "/calendar", booking_id: bookingId } }); } catch { /* best-effort */ }
   try { await notifyUser(env, ctx.uid, { type: "system", title: "Booking confirmed", body: slot.title, data: { deeplink: "/calendar", booking_id: bookingId } }); } catch { /* best-effort */ }
   try { await gcalExport(env, ctx.uid, claim.id, "upsert"); } catch { /* best-effort */ }
-  brainFact(env, ctx.uid, "calendar_booked", APP, { title: slot.title, start_at: slot.start_at, price });
-  brainFact(env, slot.host_uid, "calendar_hosted", APP, { title: slot.title, start_at: slot.start_at });
+  brainFact(env, ctx.uid, "calendar_booked", "calendar", { title: slot.title, start_at: slot.start_at, price }, bookingId);
+  brainFact(env, slot.host_uid, "calendar_hosted", "calendar", { title: slot.title, start_at: slot.start_at }, bookingId);
   track(env, ctx.uid, "calendar_booked", APP, { price, source: isAgent ? "agent" : "user" });
   return json({ ok: true, booking_id: bookingId, start_at: slot.start_at, end_at: slot.end_at, paid: price > 0 });
 }

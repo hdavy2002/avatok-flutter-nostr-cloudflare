@@ -150,7 +150,7 @@ export async function liveStart(req: Request, env: Env): Promise<Response> {
 
   const token = await signSessionToken(env, { sid: id, uid: ctx.uid, role: "host", order: null, name: await displayName(env, ctx.uid), exp: endsAt + 6 * 3_600_000 });
   track(env, ctx.uid, "live_started", APP, { listing: id });
-  brainFact(env, ctx.uid, "went_live", APP, { title: l.title });
+  brainFact(env, ctx.uid, "went_live", "live", { title: l.title }, `${ctx.uid}:went_live:${id}`);
   return json({ ok: true, whip, whep, room_token: token, starts_at: startsAt, ends_at: endsAt });
 }
 
@@ -258,7 +258,7 @@ export async function liveDonate(req: Request, env: Env): Promise<Response> {
   const name = await displayName(env, ctx.uid);
   await sessionOp(env, `live:${id}`, { op: "donation", name, amount, net: r.net });
   try { await notifyUser(env, l.creator_id, { type: "wallet", title: `${name} donated ${amount} AvaCoins`, body: l.title, data: { deeplink: "/wallet", amount: r.net } }); } catch { /* best-effort */ }
-  brainFact(env, ctx.uid, "donated", APP, { title: l.title, amount });
+  brainFact(env, ctx.uid, "donated", "live", { title: l.title, amount }, donationId);
   track(env, ctx.uid, "live_donation", APP, { amount, listing: id });
   metric(env, "live_donation", [amount, r.fee]);
   return json({ ok: true, gross: amount, net: r.net, fee: r.fee, balance: r.body?.buyer_balance });

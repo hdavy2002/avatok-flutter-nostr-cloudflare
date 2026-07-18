@@ -8,13 +8,12 @@
 // Dual auth on all (NIP-98 + Clerk). Rekognition is flag-gated (src/aws/rekognition
 // .ts): unset AWS creds → 503 "verification unavailable", everything else still works.
 import type { Env } from "../types";
-import { json, sha256Hex, normalizePhone } from "../util";
+import { json, sha256Hex } from "../util";
 import { setVerifiedCache } from "../auth";
 import { requireUser, isFail } from "../authz";
 import { metaDb, metaSession } from "../db/shard";
 import { createLivenessSession, getLivenessResults, rekognitionConfigured } from "../aws/rekognition";
 import { stripeKycSession, stripeIdentityConfigured } from "./kyc";
-import { invalidateLevelCache } from "./ladder";
 import { track, trackUser, metric, brainFact } from "../hooks";
 import { notifyUser } from "../notify";
 import { recordLivenessAudit, storeRekognitionAuditImages, deviceCtxFromBody, edgeCtx } from "./liveness_audit";
@@ -147,7 +146,7 @@ export async function idResult(req: Request, env: Env): Promise<Response> {
   ]);
   await setVerifiedCache(env, ctx.uid, true);
 
-  brainFact(env, ctx.uid, "identity_verified", "avaid", { method: "rekognition_liveness", confidence, at: now });
+  brainFact(env, ctx.uid, "identity_verified", "identity", { method: "rekognition_liveness", confidence, at: now }, `${ctx.uid}:identity_verified`);
   track(env, ctx.uid, "id_verified", "avaid", { confidence });
   // STREAM H [LIVE-GATE-6]: rich pass telemetry + person-props (server-stamped geo
   // + device). PostHog person props: liveness_verified:true, liveness_country.
@@ -173,8 +172,12 @@ export async function idStatus(req: Request, env: Env): Promise<Response> {
   const kyc = await metaSession(env)
     .prepare("SELECT status, provider, verified_at FROM kyc_status WHERE uid=?1")
     .bind(ctx.uid).first<{ status: string; provider: string | null; verified_at: number | null }>();
-  // Phone verification (account-keyed) — lets a reinstall / new device skip the
-  // OTP entirely once the account's phone is already confirmed (no wasted SMS).
+  // [M-D1/M-D11] LEGACY READ ONLY. Phone verification is gone (no OTP exists to
+  // set this any more) — nothing can write phone_verified=1 now that
+  // /api/id/phone/confirm is a 410. This reports historical rows written before
+  // 2026-07-10 and is false for every account created since. The field stays in
+  // the response so older clients don't break on a missing key; do NOT build new
+  // logic on it, and do NOT treat it as an identity signal.
   const cv = await metaSession(env)
     .prepare("SELECT phone_verified FROM contact_verification WHERE uid=?1")
     .bind(ctx.uid).first<{ phone_verified: number }>().catch(() => null);
@@ -194,11 +197,19 @@ export async function idStatus(req: Request, env: Env): Promise<Response> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Onboarding contact verification: phone (Firebase OTP) + email (server OTP).
-// Phone OTP itself is done client-side by Firebase; /phone/confirm records that
-// the authenticated uid confirmed a number. Email OTP is fully server-issued:
-// /email/start mints a 6-digit code, stores only its hash in KV (10-min TTL),
-// and emails it via Q_EMAIL → Brevo; /email/verify checks it. All dual-auth.
+// Onboarding contact verification: email (server OTP).
+//
+// [M-D1 2026-07-17 / M-D11 2026-07-18] PHONE IS GONE — liveness only, no phone
+// anywhere: not as an identity gate, and not as a contact field. The AvaTOK
+// number is the contact rail. Phone OTP was unrouted 2026-07-10 (410 via
+// LEGACY_GONE in index.ts) and the dead handler + Twilio Lookup line-type check
+// were deleted 2026-07-18. Rationale: Specs/SPEC-2026-07-10-whatsapp-
+// verification.md §13 — no private company can trace a number to a person in
+// any jurisdiction, so it bought no safety at Twilio cost. Do NOT reintroduce.
+//
+// Email OTP is fully server-issued: /email/start mints a 6-digit code, stores
+// only its hash in KV (10-min TTL), and emails it via Q_EMAIL → Brevo;
+// /email/verify checks it. All dual-auth.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const OTP_TTL_S = 600;            // 10 minutes
@@ -326,112 +337,6 @@ export async function idEmailVerify(req: Request, env: Env): Promise<Response> {
 
   track(env, ctx.uid, "email_verified", "avaid", {});
   metric(env, "email_otp_verified", [1]);
-  return json({ ok: true, verified: true });
-}
-
-// ── SIM-only phone enforcement (PROPOSAL-PROGRESSIVE-IDENTITY.md §7b) ────────
-// Web temp-OTP services hand out VoIP/virtual numbers; we only accept real
-// mobile SIMs. Three layers: (1) carrier line-type lookup via Twilio Lookup v2
-// when TWILIO_* creds are set — accept type 'mobile' only; (2) a KV denylist
-// of known temp-number prefixes (`phone_denylist`: JSON array of E.164
-// prefixes, updatable without deploy); (3) one phone → one account.
-// Flag-gated by platform_config.simOnlyPhoneEnabled.
-
-async function simOnlyEnabled(env: Env): Promise<boolean> {
-  try {
-    const cfg = (await env.TOKENS.get("platform_config", "json")) as any;
-    if (cfg && "simOnlyPhoneEnabled" in cfg) return cfg.simOnlyPhoneEnabled !== false;
-  } catch { /* default on */ }
-  return true;
-}
-
-async function phoneDenylisted(env: Env, phone: string): Promise<boolean> {
-  try {
-    const list = (await env.TOKENS.get("phone_denylist", "json")) as string[] | null;
-    if (Array.isArray(list)) return list.some((p) => p && phone.startsWith(p));
-  } catch { /* no list */ }
-  return false;
-}
-
-/** 'mobile' | 'voip' | 'landline' | … | null when lookup unavailable. */
-async function lineType(env: Env, phone: string): Promise<string | null> {
-  if (!env.TWILIO_ACCOUNT_SID || !env.TWILIO_AUTH_TOKEN) return null;
-  try {
-    const r = await fetch(
-      `https://lookups.twilio.com/v2/PhoneNumbers/${encodeURIComponent(phone)}?Fields=line_type_intelligence`,
-      { headers: { authorization: "Basic " + btoa(`${env.TWILIO_ACCOUNT_SID}:${env.TWILIO_AUTH_TOKEN}`) } },
-    );
-    if (!r.ok) return null;
-    const j: any = await r.json();
-    return j?.line_type_intelligence?.type ?? null;
-  } catch {
-    return null; // lookup outage must not lock users out — denylist still applies
-  }
-}
-
-// POST /api/id/phone/confirm  { phone }
-// Records that this uid completed Firebase phone OTP. (Hardening option: also
-// accept a Firebase ID token here and verify it server-side before trusting it.)
-export async function idPhoneConfirm(req: Request, env: Env): Promise<Response> {
-  const ctx = await requireUser(req, env);
-  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
-
-  const b = (await req.json().catch(() => ({}))) as { phone?: string };
-  const phone = normalizePhone(String(b.phone || ""));
-  if (phone.replace(/\D/g, "").length < 8) return json({ error: "valid phone required" }, 400);
-
-  if (await simOnlyEnabled(env)) {
-    if (await phoneDenylisted(env, phone)) {
-      track(env, ctx.uid, "phone_verification_failed", "avaid", { reason: "denylisted" });
-      return json({ error: "this number can't be used — please use a real mobile number", reason: "phone_type_blocked" }, 400);
-    }
-    const t = await lineType(env, phone);
-    if (t !== null && t !== "mobile") {
-      track(env, ctx.uid, "phone_verification_failed", "avaid", { reason: "line_type", line_type: t });
-      metric(env, "phone_blocked_linetype", [1]);
-      return json({ error: "temporary/VoIP numbers aren't accepted — please use a real mobile number", reason: "phone_type_blocked" }, 400);
-    }
-  }
-
-  // One phone → one account.
-  const phoneHashPre = await sha256Hex(phone);
-  const existing = await env.DB_META
-    .prepare("SELECT uid FROM contact_phone_index WHERE phone_hash=?1")
-    .bind(phoneHashPre).first<{ uid: string }>();
-  if (existing && existing.uid !== ctx.uid) {
-    track(env, ctx.uid, "phone_verification_failed", "avaid", { reason: "in_use" });
-    return json({ error: "this number is already linked to another account", reason: "phone_in_use" }, 409);
-  }
-
-  const now = Date.now();
-  const phoneHash = phoneHashPre; // store hash only — never the raw number
-  await metaDb(env).batch([
-    metaDb(env).prepare(
-      `INSERT INTO contact_verification (uid, phone_verified, phone_hash, phone_verified_at, updated_at)
-       VALUES (?1, 1, ?2, ?3, ?3)
-       ON CONFLICT(uid) DO UPDATE SET phone_verified=1, phone_hash=?2, phone_verified_at=?3, updated_at=?3`,
-    ).bind(ctx.uid, phoneHash, now),
-    // Claim the number in the directory index (enforces one phone → one account).
-    metaDb(env).prepare(
-      "INSERT OR REPLACE INTO contact_phone_index (phone_hash, uid, updated_at) VALUES (?1,?2,?3)",
-    ).bind(phoneHash, ctx.uid, now),
-    metaDb(env).prepare(
-      `INSERT INTO identity_proofs (uid, proof, status, provider, verified_at, updated_at)
-       VALUES (?1,'phone','verified','firebase',?2,?2)
-       ON CONFLICT(uid, proof) DO UPDATE SET status='verified', verified_at=?2, updated_at=?2`,
-    ).bind(ctx.uid, now),
-  ]);
-
-  // The Trust Ladder level (proofs map, incl. the 'phone' green tick in the
-  // AvaIdentity hub) is cached in KV under idlevel:<uid>. Without this, the
-  // freshly-written identity_proofs('phone','verified') row is masked by the
-  // stale cache and the phone tick stays grey until the TTL lapses. The
-  // liveness pass path already invalidates; mirror it here so phone turns
-  // green immediately after OTP confirm.
-  await invalidateLevelCache(env, ctx.uid).catch(() => { /* best-effort */ });
-
-  track(env, ctx.uid, "phone_verification_completed", "avaid", {});
-  metric(env, "phone_confirmed", [1]);
   return json({ ok: true, verified: true });
 }
 

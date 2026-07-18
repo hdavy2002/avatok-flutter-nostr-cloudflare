@@ -1009,7 +1009,7 @@ export async function runLivenessChecks(
   // TODO(liveness-wire): this is the ONE authoritative liveness-success call site.
   void markGatePassed(env, ctx.uid);
 
-  brainFact(env, ctx.uid, "identity_verified", "avaid", { method: kycProvider, at: now });
+  brainFact(env, ctx.uid, "identity_verified", "identity", { method: kycProvider, at: now }, `${ctx.uid}:identity_verified`);
   void trackUser(env, ctx.uid, await emailFor(env, ctx.uid).catch(() => null),
     "id_verified", "avaid", { provider: kycProvider, session_id: sid });
   metric(env, "liveness_wai_verified", [1]);

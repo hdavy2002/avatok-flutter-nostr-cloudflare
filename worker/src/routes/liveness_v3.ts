@@ -988,7 +988,7 @@ async function applyPassToLadder(env: Env, uid: string, sid: string, thumbKey: s
   // Guardian gate hand-off (dark; no-op when guardianGateEnabled is off). Liveness
   // ONLY emits this signal — it never reads/writes Guardian state (strict boundary).
   void markGatePassed(env, uid);
-  brainFact(env, uid, "identity_verified", "avaid", { method: "liveness_v3", requester: sess.requester, at: now });
+  brainFact(env, uid, "identity_verified", "identity", { method: "liveness_v3", requester: sess.requester, at: now }, `${uid}:identity_verified`);
   try {
     await notifyUser(env, uid, { type: "system", title: "You're verified ✓", body: "Your identity check passed.", data: { deeplink: "/identity" } });
   } catch { /* best-effort */ }

@@ -14,6 +14,7 @@ import { json } from "../util";
 import { requireUser, isFail } from "../authz";
 import { readConfig } from "./config";
 import { matchAvatokPhones } from "./api";
+import { brainIngest } from "../lib/brain_ingest";
 
 const TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
@@ -91,5 +92,20 @@ export async function missedCallLookup(req: Request, env: Env): Promise<Response
   };
   const uid = await verifyToken(env, b.token || "");
   if (!uid) return json({ error: "bad token" }, 401);
-  return json({ matched: await matchAvatokPhones(env, b) });
+  const matched = await matchAvatokPhones(env, b);
+  // [ONEBRAIN-B2] Brain ingest — a missed call FROM a known AvaTOK user, on the
+  // receiver's account (domain 'missed', consent-keyed to 'calls'). Summary only:
+  // display name in text, uid in meta — NEVER the phone number. Consent is enforced
+  // inside brainIngest; fire-and-forget. sourceId buckets to the minute so a native
+  // retry of the same lookup dedupes while genuinely separate missed calls don't.
+  for (const m of (Array.isArray(matched) ? matched : []) as Array<{ uid?: string; name?: string }>) {
+    if (!m?.uid) continue;
+    void brainIngest(env, {
+      uid, domain: "missed", kind: "call_missed",
+      sourceId: `${m.uid}:${Math.floor(Date.now() / 60000)}`,
+      text: `Missed call${m.name ? ` from ${m.name}` : ""}`,
+      meta: { peer: m.uid, name: m.name ?? null, direction: "incoming", missed: true },
+    });
+  }
+  return json({ matched });
 }

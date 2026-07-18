@@ -38,6 +38,16 @@ export const BRAIN_DOMAINS = {
   // above, so it gets its own row + consent key rather than riding an unblockable
   // fallback. account_private, opt-out ON like the rest. See report/deviations.
   profile:     { consent: "profile",   label: "Profile",       default: true, scope: "account_private" },
+  // ── One Brain B2 (SPEC §8-B2) — newly-wired domains. All account_private,
+  // opt-out ON, basis: consent (the ordinary consent model — distinct from the
+  // future legal-basis `safety` domain in §10, which a later agent owns and is
+  // deliberately NOT added here). Each has one brainIngest producer:
+  //   identity → id.ts/kyc.ts/liveness*.ts (previously dropped as 'avaid')
+  //   calendar → calendar.ts   live → live.ts   verse → verse.ts
+  identity:    { consent: "identity",  label: "Identity verification", default: true, scope: "account_private" },
+  calendar:    { consent: "calendar",  label: "Calendar",      default: true, scope: "account_private" },
+  live:        { consent: "live",      label: "Live sessions", default: true, scope: "account_private" },
+  verse:       { consent: "verse",     label: "AvaVerse",      default: true, scope: "account_private" },
 } as const satisfies Record<string, BrainDomainDef>;
 
 // The domain union. An unknown domain fails at the TYPE level (callers of

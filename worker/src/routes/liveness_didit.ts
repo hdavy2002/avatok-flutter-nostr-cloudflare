@@ -507,7 +507,7 @@ async function applyDiditPass(env: Env, uid: string, sid: string): Promise<void>
   await setVerifiedCache(env, uid, true).catch(() => {});
   await invalidateLevelCache(env, uid).catch(() => {});
   void markGatePassed(env, uid);
-  brainFact(env, uid, "identity_verified", "avaid", { method: "didit", at: now });
+  brainFact(env, uid, "identity_verified", "identity", { method: "didit", at: now }, `${uid}:identity_verified`);
   try {
     await notifyUser(env, uid, { type: "system", title: "You're verified ✓", body: "Your identity check passed.", data: { deeplink: "/identity" } });
   } catch { /* best-effort */ }

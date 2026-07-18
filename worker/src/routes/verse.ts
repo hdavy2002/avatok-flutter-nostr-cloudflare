@@ -248,7 +248,7 @@ export async function verseAnnounce(req: Request, env: Env): Promise<Response> {
   }
   const cnt = await db.prepare("SELECT count FROM fanout_log WHERE creator_id=?1 AND day=?2").bind(ctx.uid, dayUtc(Date.now())).first<{ count: number }>();
   const remaining = Math.max(0, FANOUT_DAILY_CAP - (cnt?.count ?? 0));
-  brainFact(env, ctx.uid, "followers_announced", APP, { listing: lid, sent: fo.sent });
+  brainFact(env, ctx.uid, "followers_announced", "verse", { listing: lid, sent: fo.sent }, `${ctx.uid}:announce:${lid}:${dayUtc(Date.now())}`);
   track(env, ctx.uid, "verse_announce", APP, { listing: lid, sent: fo.sent, remaining });
   return json({ ok: true, sent: fo.sent, remaining });
 }
@@ -357,7 +357,7 @@ export async function reviewReply(req: Request, env: Env, reviewId: string): Pro
       data: { deeplink: `/explore/listing/${r.listing_id}` },
     });
   } catch { /* best-effort */ }
-  brainFact(env, ctx.uid, "review_replied", APP, { review: reviewId });
+  brainFact(env, ctx.uid, "review_replied", "verse", { review: reviewId }, `${ctx.uid}:review_reply:${reviewId}`);
   track(env, ctx.uid, "review_reply_posted", APP, {});
   return json({ ok: true });
 }

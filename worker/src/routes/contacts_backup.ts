@@ -69,6 +69,7 @@ import { json } from "../util";
 import { requireUser, isFail } from "../authz";
 import { rateLimit } from "../money";
 import { readConfig } from "./config";
+import { brainIngest } from "../lib/brain_ingest";
 
 const WRAP_INFO = "avatok-contacts-book-v1";
 const enc = new TextEncoder();
@@ -637,6 +638,16 @@ export async function contactBookPut(req: Request, env: Env, ctx: ExecutionConte
     groups: groups?.length ?? -1,
     source,
     ms,
+  });
+  // [ONEBRAIN-B2] Brain ingest — a light contacts-sync SUMMARY only (never the
+  // contact rows / no names / no numbers). Consent is enforced inside brainIngest
+  // (domain 'contacts'); fire-and-forget so a brain hiccup never affects backup.
+  void brainIngest(env, {
+    uid: ctxUser.uid, domain: "contacts", kind: "contacts_synced",
+    sourceId: `${ctxUser.uid}:contacts:${now}`,
+    text: `Synced ${merged.length} contacts${mergedIn ? `, ${mergedIn} new` : ""}`,
+    meta: { count: merged.length, sent: contacts.length, new: mergedIn, pruned, mode, source },
+    ts: now,
   });
   return json({
     ok: true,

@@ -136,7 +136,7 @@ export async function stripeIdentityWebhook(req: Request, env: Env): Promise<Res
     ]);
     await setVerifiedCache(env, uid, true);
     try { await env.TOKENS.delete(`idlevel:${uid}`); } catch { /* level cache */ }
-    brainFact(env, uid, "identity_verified", "avaid", { method: "stripe_identity", at: now });
+    brainFact(env, uid, "identity_verified", "identity", { method: "stripe_identity", at: now }, `${uid}:identity_verified`);
     track(env, uid, "id_verified", "avaid", { provider: "stripe" });
     metric(env, "avaid_stripe_verified", [1]);
     try { await notifyUser(env, uid, { type: "system", title: "You're verified ✓", body: "Creator features are now unlocked.", data: { deeplink: "/identity" } }); } catch { /* best-effort */ }

@@ -24,6 +24,12 @@ const DOMAIN_CONSENT: Record<string, string> = {
   wallet: "wallet",
   files: "files",
   profile: "profile",
+  // One Brain B2 (SPEC §8-B2) — mirrors the new BRAIN_DOMAINS rows. New keys, so
+  // no legacy aliases needed.
+  identity: "identity",
+  calendar: "calendar",
+  live: "live",
+  verse: "verse",
 };
 
 // Legacy app names (legacy event source_app) → new registry consent key. Used
