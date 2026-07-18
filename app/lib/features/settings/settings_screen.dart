@@ -12,7 +12,6 @@ import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
 import '../../core/ava_ai_store.dart';
 import '../../core/avaapps_cache.dart';
-import '../../core/brain_consent.dart';
 import '../../core/config.dart';
 import '../../core/drive_service.dart';
 import '../../core/ui/avatok_dark.dart';
@@ -53,8 +52,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   bool _backingUp = false;
 
-  Map<String, bool> _brain = {};
-
   final _aiStore = AvaAiStore();
   bool _aiConnected = false;
   String? _aiEmail;
@@ -62,7 +59,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
-    BrainConsent.pull().then((_) => BrainConsent.all()).then((m) { if (mounted) setState(() => _brain = m); });
     _refreshAi();
   }
 
@@ -108,102 +104,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: Text('Disconnect', style: ADText.rowName(c: AD.danger)),
           ),
         ],
-      ),
-    );
-  }
-
-  Future<void> _setBrain(String key, bool v) async {
-    setState(() => _brain[key] = v);
-    await BrainConsent.set(key, v);
-    // F7 telemetry: which guardrail scope was flipped and to what.
-    Analytics.capture('brain_toggle_set', {'scope': key, 'on': v});
-  }
-
-  /// Dark v2 pill switch — same value/onChanged wiring as the old ZineToggle.
-  Widget _darkSwitch(bool v, ValueChanged<bool>? onChanged) {
-    return GestureDetector(
-      onTap: onChanged == null ? null : () => onChanged(!v),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 120),
-        width: 52, height: 30,
-        padding: const EdgeInsets.all(3),
-        decoration: BoxDecoration(
-          color: v ? AD.online : AD.card,
-          borderRadius: BorderRadius.circular(100),
-          border: Border.all(color: AD.borderControl, width: 1),
-        ),
-        child: AnimatedAlign(
-          duration: const Duration(milliseconds: 120),
-          alignment: v ? Alignment.centerRight : Alignment.centerLeft,
-          child: Container(
-            width: 22, height: 22,
-            decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// F7 — the AvaBrain guardrail card: master switch + the four per-app toggles
-  /// (Messaging, Library, Marketplace, Receptionist). ALL default ON. When the
-  /// master is OFF the per-app toggles are disabled/greyed. Each toggle persists
-  /// per-account (scoped) AND syncs to the server prefs the pipeline reads, via
-  /// [BrainConsent].
-  Widget _brainCard() {
-    bool on(String k) => _brain[k] ?? true; // absent = default ON
-    final masterOn = on('master');
-    Widget row(String key, String title, String sub, {bool master = false}) {
-      final enabled = master || masterOn;
-      final value = on(key);
-      return Padding(
-        padding: EdgeInsets.only(bottom: master ? 12 : 10, left: master ? 0 : 8),
-        child: Opacity(
-          opacity: enabled ? 1 : 0.45,
-          child: Row(children: [
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(title, style: ADText.rowName()),
-                const SizedBox(height: 2),
-                Text(sub, style: ADText.preview()),
-              ]),
-            ),
-            const SizedBox(width: 10),
-            _darkSwitch(
-              master ? value : (value && masterOn),
-              enabled ? (v) => _setBrain(key, v) : null,
-            ),
-          ]),
-        ),
-      );
-    }
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: AdCard(
-        radius: AD.rListCard,
-        padding: const EdgeInsets.all(14),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            ZineIconBadge(icon: PhosphorIcons.brain(PhosphorIconsStyle.fill), color: AD.iconVideo, size: 34),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'AvaBrain learns from your activity to help you across apps. '
-                'Turn it off entirely, or pick which apps it may learn from. '
-                'Private, end-to-end content is only ever read on your device.',
-                style: ADText.preview(),
-              ),
-            ),
-          ]),
-          const SizedBox(height: 14),
-          row('master', 'AvaBrain', 'Master switch for everything below', master: true),
-          const Divider(height: 1, thickness: 1, color: AD.borderHairline),
-          const SizedBox(height: 12),
-          row('messaging', 'Messaging', 'Learn from your chats'),
-          row('library', 'Library', 'Read your files (captions, text)'),
-          row('marketplace', 'Marketplace', 'Remember your listings, buys and sells'),
-          row('receptionist', 'Receptionist', 'Use call notes and voicemails to answer for you'),
-        ]),
       ),
     );
   }

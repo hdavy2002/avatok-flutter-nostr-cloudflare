@@ -221,6 +221,10 @@ const String kBackupUrl = 'https://$kSignalingHost/api/backup';
 /// AvaBrain — the per-user AI memory/reasoning layer. All dual-auth (NIP-98 + Clerk).
 const String kBrainBase = 'https://$kSignalingHost/api/brain';
 
+/// One-Brain B0 — the server-owned domain registry that drives the AvaBrain
+/// Settings toggle list. GET → {"domains":[{key,consentKey,label,default,scope}]}.
+const String kBrainDomainsUrl = '$kBrainBase/domains';
+
 // ── Platform + agentic API bases (v5.2 Phases 1-8) ──────────────────────────
 const String kApiBase = 'https://$kSignalingHost/api';
 

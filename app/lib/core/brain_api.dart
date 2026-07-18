@@ -78,10 +78,28 @@ class BrainApi {
         .toList();
   }
 
-  /// "Delete my AvaBrain data" — wipes vectors, transcripts and the knowledge graph.
+  /// "Delete my AvaBrain data" — legacy one-shot (kept for compatibility).
+  /// Prefer [deleteAll] + [deleteStatus] (the stateful deletion contract).
   static Future<bool> purge() async {
     final res = await ApiAuth.postJson('$kBrainBase/purge', const {});
     return res.statusCode == 200;
+  }
+
+  /// One-Brain B0 deletion contract (§5.1). Kick off an async, stateful deletion
+  /// job across every AvaBrain store. Returns the job {id, state}; poll
+  /// [deleteStatus] until it reaches `complete` (or pins at `partial`).
+  static Future<BrainDeletion> deleteAll() async {
+    final res = await ApiAuth.postJson('$kBrainBase/delete', {'op': 'delete_all'},
+        timeout: const Duration(seconds: 20));
+    return BrainDeletion.fromJson(_json(res.body));
+  }
+
+  /// Poll the status of a deletion job started by [deleteAll].
+  static Future<BrainDeletion> deleteStatus(String id) async {
+    final res = await ApiAuth.postJson(
+        '$kBrainBase/delete', {'op': 'delete_status', 'id': id},
+        timeout: const Duration(seconds: 15));
+    return BrainDeletion.fromJson(_json(res.body));
   }
 
   static Map<String, dynamic> _json(String body) {
@@ -100,4 +118,34 @@ class BrainChatReply {
   final String answer;
   final List<Map<String, dynamic>> sources;
   const BrainChatReply(this.answer, this.sources);
+}
+
+/// State of a stateful AvaBrain deletion job (§5.1). `state` flows
+/// pending → running → partial → complete | failed.
+class BrainDeletion {
+  final String id;
+  final String state;
+  final DateTime? requestedAt;
+  final DateTime? completedAt;
+  final Map<String, dynamic> counts;
+  const BrainDeletion(this.id, this.state, this.requestedAt, this.completedAt, this.counts);
+
+  bool get isComplete => state == 'complete';
+  bool get isPartial => state == 'partial';
+  bool get isFailed => state == 'failed';
+  bool get isTerminal => isComplete || isPartial || isFailed;
+
+  static DateTime? _dt(Object? v) {
+    if (v == null) return null;
+    if (v is num) return DateTime.fromMillisecondsSinceEpoch(v.toInt(), isUtc: true).toLocal();
+    return DateTime.tryParse(v.toString())?.toLocal();
+  }
+
+  factory BrainDeletion.fromJson(Map<String, dynamic> j) => BrainDeletion(
+        (j['id'] ?? '').toString(),
+        (j['state'] ?? '').toString(),
+        _dt(j['requested_at']),
+        _dt(j['completed_at']),
+        ((j['counts'] as Map?) ?? const {}).cast<String, dynamic>(),
+      );
 }
