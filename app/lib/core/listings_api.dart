@@ -83,6 +83,21 @@ class ListingCard {
   // everywhere, and every existing mkt_negotiations row is at version 0, so 0 is
   // the value that matches what the server already stores.
   final int contentVersion;
+  // [MKT1-DETAIL] Category-driven detail contract (Phase 3 buyer surfaces). These come
+  // from the listing's CATEGORY (server resolves them in getListing / ships them on the
+  // card): the five detail templates in listing_detail.dart key on `detailTemplate`, and
+  // the browse cards read `intent` / `priceSemantics` to render the right price shape.
+  //   intent          — SELL|RENT|BOOK|LEAD|PROFILE
+  //   detailTemplate  — sell|rent|book|lead|profile (PINNED at the listing's cat_version)
+  //   priceSemantics  — asking|per_month|from|range|none
+  //   attrs           — the category's structured answers, rendered by the template
+  //   videoUrl        — optional YouTube link (§2.2)
+  //   vertical        — which marketplace this belongs to; a listing never crosses (§2.0)
+  // All default safe so a card/detail that arrives from a server shipping this before OR
+  // after the client keeps rendering (the two ship independently).
+  final String intent, detailTemplate, priceSemantics, vertical;
+  final Map<String, dynamic> attrs;
+  final String? videoUrl;
   String? description; // only on the details endpoint
 
   ListingCard.fromJson(Map<String, dynamic> j)
@@ -116,8 +131,29 @@ class ListingCard {
         createdAt = (j['created_at'] as num?)?.toInt(),
         favorited = j['favorited'] == true,
         contentVersion = int.tryParse('${j['content_version'] ?? 0}') ?? 0,
+        intent = (j['intent'] ?? 'SELL').toString(),
+        detailTemplate = (j['detail_template'] ?? 'sell').toString(),
+        priceSemantics = (j['price_semantics'] ?? 'asking').toString(),
+        vertical = (j['vertical'] ?? 'commerce').toString(),
+        attrs = _parseAttrs(j['attrs']),
+        videoUrl = j['video_url']?.toString(),
         creator = ListingCreator.fromJson((j['creator'] as Map?)?.cast<String, dynamic>() ?? const {}),
         description = j['description']?.toString();
+
+  /// [MKT1-DETAIL] `attrs` arrives as a JSON object (Dart Map) from the server, but be
+  /// defensive: tolerate a JSON *string* (some caches / re-encodes ship it that way) and
+  /// NEVER throw on a malformed blob — a bad attrs must not break the detail page, so it
+  /// falls back to an empty map.
+  static Map<String, dynamic> _parseAttrs(dynamic v) {
+    if (v is Map) return v.cast<String, dynamic>();
+    if (v is String && v.isNotEmpty) {
+      try {
+        final d = jsonDecode(v);
+        if (d is Map) return d.cast<String, dynamic>();
+      } catch (_) {/* malformed — fall through to {} */}
+    }
+    return <String, dynamic>{};
+  }
 
   /// True when this listing was created less than 48h ago (drives the "NEW" chip).
   bool get isNew {

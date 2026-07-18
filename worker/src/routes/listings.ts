@@ -1138,8 +1138,35 @@ export async function getListing(req: Request, env: Env, id: string): Promise<Re
       app: APP, source: src, extra: { listing_kind: r.kind, price: Number(r.price), live: r.status === "live" },
     });
   }
+  // [MKT1-DETAIL] The buyer detail page renders one of five templates keyed on the
+  // listing's CATEGORY, not on `kind`. Three category-driven fields drive that choice:
+  //   detail_template — PINNED (§2.4). Resolve it at the listing's OWN cat_version via
+  //     resolveCategoryVersion, so the page renders with the template the listing was
+  //     BORN with, never "latest" (an admin re-templating a category in September must
+  //     not silently reshape a July listing's detail page).
+  //   intent + price_semantics — NOT behaviour-pinned. They rarely change and, unlike
+  //     the playbook, don't steer a paid negotiation, so read them from the LIVE
+  //     listing_categories row by id (matching how categories.ts surfaces them).
+  // agent_playbook is deliberately NOT surfaced: resolveCategoryVersion returns it, but
+  // it is the seller's negotiation mandate and is dropped here exactly as CAT_PUBLIC_COLS
+  // withholds it (categories.ts header). Defaults are the browse-card defaults so a
+  // pre-migration category (or a category the lookup can't resolve) still renders.
+  let intent = "SELL", detailTemplate = "sell", priceSemantics = "asking";
+  try {
+    const cat = String(r.category ?? "");
+    const resolved = await resolveCategoryVersion(env, cat, Number(r.cat_version ?? 1));
+    if (resolved?.detail_template) detailTemplate = String(resolved.detail_template);
+    const catLive = await metaSession(env).prepare(
+      "SELECT intent, price_semantics FROM listing_categories WHERE id=?1",
+    ).bind(cat).first<any>();
+    if (catLive?.intent) intent = String(catLive.intent);
+    if (catLive?.price_semantics) priceSemantics = String(catLive.price_semantics);
+  } catch { /* pre-migration: category columns/tables absent — keep the safe defaults */ }
   return json({
-    listing: { ...card, description: r.description ?? "" },
+    listing: {
+      ...card, description: r.description ?? "",
+      intent, detail_template: detailTemplate, price_semantics: priceSemantics,
+    },
     creator_stats: { rating_avg: prof?.rating_avg ?? null, rating_count: prof?.rating_count ?? 0, follower_count: prof?.follower_count ?? 0 },
     reviews: reviews.results ?? [],
     viewer: { following, booked, is_owner: isOwner },
