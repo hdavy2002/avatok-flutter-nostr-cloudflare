@@ -46,6 +46,9 @@ import { emailBookingConfirmed } from "../cal/emails";
 // [AVA-IDGATE-1] readConfig is no longer read here — gatePublicAction() owns the
 // flag check (identityGatingEnabled) and the fail-closed posture.
 import { gatePublicAction, emailOf, type PublicAction } from "../lib/identity_gate";
+// [AVA-MKT-VERT-1] Taxonomy: verticals, pinned category versions, attrs validation.
+// Spec: Specs/PLAN-2026-07-17-ai-listing-creation-DRAFT.md §2.0, §2.2, §2.3, §2.4.
+import { DEFAULT_VERTICAL, resolveCategoryVersion, validateAttrs } from "./categories";
 
 const APP = "avaexplore";
 // live_event/consult = creator services; sell/buy/social = AvaMarketplace listings.
@@ -77,6 +80,95 @@ function parseJson<T>(s: unknown, fallback: T): T {
   try { return JSON.parse(s) as T; } catch { return fallback; }
 }
 
+// [AVA-MKT-VERT-1] §2.0 — `vertical` is a filter on EVERY listing query, and the
+// cross-vertical rule is absolute: a listing never crosses. A Connect profile
+// surfacing in a commerce search is a §2.6 safety violation, not a preference.
+//
+// The DEFAULT is what makes this free: every read below resolves an absent
+// ?vertical to 'commerce', and the migration back-fills every existing row to
+// 'commerce' (2026-07-18-listings-taxonomy-columns.sql:157) — so every caller that
+// shipped before today keeps seeing exactly the rows it saw yesterday.
+//
+// Mirrors normVertical() in categories.ts (kept local rather than exported across
+// the module boundary for one regex). Anything that isn't id-shaped falls back to
+// commerce rather than 400ing: a junk ?vertical must not be a way to probe for the
+// other vertical's rows, and it is bound as a parameter regardless.
+function vertOf(raw: string | null | undefined): string {
+  const v = String(raw ?? "").trim().toLowerCase();
+  return /^[a-z][a-z0-9_]{0,31}$/.test(v) ? v : DEFAULT_VERTICAL;
+}
+
+/** Push `l.vertical=?N` onto a read's WHERE. Every browse/search/mine/favourites
+ *  read calls this — see the block above for why the default is load-bearing. */
+function verticalFilter(req: Request, binds: unknown[], where: string[]): string {
+  const vertical = vertOf(new URL(req.url).searchParams.get("vertical"));
+  binds.push(vertical);
+  where.push(`l.vertical=?${binds.length}`);
+  return vertical;
+}
+
+// [AVA-MKT-VERT-1] §2.2 — `attrs` is ONE JSON column of user/LLM-authored answers,
+// so it needs a hard size cap the way every other free field here has one.
+//
+// 8 KB, and the number is reasoned, not round:
+//   * WHAT IT HOLDS — answers to a category's field_schema. The worst schema in the
+//     plan (property, §2.2) is ~10 short scalars; 8 KB is ~2.5x headroom over a
+//     pessimistic 30-field × 100-char category (~3 KB), so no honest listing can hit it.
+//   * WHY NOT BIGGER — attrs rides CARD_SELECT, so it is returned for EVERY card on
+//     EVERY page. A 50-card browse page is the real constraint: 50 × 8 KB = 400 KB,
+//     which still clears D1's response ceiling with room for the rest of the card.
+//     Cap it at description's 8000 and one page could not be a megabyte of JSON.
+//   * WHY IT MATCHES description (8000) — the same "largest thing a user can type"
+//     class of field, so there is one number to remember instead of two.
+// Measured in BYTES, not characters: a cap on `.length` is a cap on nothing when the
+// content is Devanagari or emoji (3–4 bytes/char), which for this app is the norm.
+const ATTRS_MAX_BYTES = 8192;
+
+/** Encode `attrs` to the JSON we store, or explain why we won't.
+ *
+ *  REJECTS rather than truncates, deliberately: slicing a JSON string at 8192 bytes
+ *  produces invalid JSON, which parseJson() then silently swallows to `{}` on read —
+ *  i.e. the seller's answers vanish with no error anywhere. A 422 is the only honest
+ *  outcome. Callers that must not fail (normFields) drop the field instead of writing
+ *  a blob that can never be read back. */
+function encodeAttrs(v: unknown): { json: string | null; error?: string } {
+  if (v === null) return { json: null };            // explicit clear
+  if (typeof v !== "object" || Array.isArray(v)) {
+    return { json: null, error: "attrs must be a JSON object" };
+  }
+  // Assigned via a nullable local rather than a bare `let s: string` — stringify throws
+  // on a cycle, and TS's definite-assignment analysis across try/catch is the kind of
+  // thing that compiles today and warns after a tsconfig change. Nothing typechecks this
+  // Worker in CI, so it is written to be obviously correct instead of merely legal.
+  let s: string | null = null;
+  try { s = JSON.stringify(v); } catch { s = null; }
+  if (s === null) return { json: null, error: "attrs must be JSON-serialisable" };
+  const bytes = new TextEncoder().encode(s).length;
+  if (bytes > ATTRS_MAX_BYTES) {
+    return { json: null, error: `attrs too large (${bytes} bytes; max ${ATTRS_MAX_BYTES})` };
+  }
+  return { json: s };
+}
+
+/** The version triple a listing born RIGHT NOW would pin (§2.4), or null when the
+ *  category doesn't exist / isn't migrated yet. Read at creation ONLY — after that
+ *  the listing's own pins are the truth and this must never be consulted again. */
+async function catVersions(env: Env, category: string): Promise<{ cat: number; playbook: number; template: number } | null> {
+  try {
+    const r = await metaDb(env).prepare(
+      "SELECT cat_version, playbook_version, template_version FROM listing_categories WHERE id=?1",
+    ).bind(category).first<any>();
+    if (!r) return null;
+    return {
+      cat: Number(r.cat_version ?? 1),
+      playbook: Number(r.playbook_version ?? 1),
+      template: Number(r.template_version ?? 1),
+    };
+  } catch {
+    return null; // columns not migrated yet — the DEFAULT 1 pins are correct anyway
+  }
+}
+
 // [UI-MKT-4] Card SELECT extended with review + view aggregates in-query (NO
 // N+1 per card): rating_avg/rating_count already live on `listings` (kept in sync
 // by the reviews route); `review_count` is a correlated COUNT over `reviews`, and
@@ -92,6 +184,8 @@ const CARD_SELECT = `
          l.expires_at, l.expiry_days, l.market_type, l.social_sub, l.location,
          l.translation_enabled, l.spoken_lang,
          l.rating_avg, l.rating_count, l.created_at, l.content_version,
+         l.vertical, l.attrs, l.video_url, l.proposed_category,
+         l.cat_version, l.playbook_version, l.template_version,
          (SELECT COUNT(*) FROM reviews rv WHERE rv.listing_id = l.id) AS review_count,
          (SELECT COUNT(*) FROM listing_views lv WHERE lv.subject_kind='listing' AND lv.subject_id = l.id) AS view_count,
          u.handle AS creator_handle, u.display_name AS creator_name, u.avatar_url AS creator_avatar,
@@ -159,6 +253,23 @@ function shapeCard(r: any, promosByListing?: Map<string, any[]>, favorited?: Set
     // bumps this in updateListing) reopens "talk to my agent" for every buyer.
     // Defaults to 0 pre-migration, which is exactly what the client already sent.
     content_version: Number(r.content_version ?? 0),
+    // [AVA-MKT-VERT-1] Taxonomy fields (§2.0/§2.2/§2.4). All additive with the same
+    // defaults the migration back-fills, so a pre-migration row and a legacy client
+    // both keep behaving exactly as before.
+    //   vertical  — which marketplace this belongs to; a listing never crosses (§2.0).
+    //   attrs     — the category-specific answers, rendered by the detail template.
+    //   video_url — YouTube link (§2.2); null on every listing that has none.
+    //   *_version — the PINNED versions (§2.4). Shipped so the detail page renders
+    //               with the template the listing was BORN with, never "latest".
+    // proposed_category is the §2.3 audit trail of where the taxonomy was wrong; it
+    // is a suggestion box, and the client must never render it AS a category.
+    vertical: r.vertical ?? DEFAULT_VERTICAL,
+    attrs: parseJson(r.attrs, {} as Record<string, unknown>),
+    video_url: r.video_url ?? null,
+    proposed_category: r.proposed_category ?? null,
+    cat_version: Number(r.cat_version ?? 1),
+    playbook_version: Number(r.playbook_version ?? 1),
+    template_version: Number(r.template_version ?? 1),
     creator: {
       uid: r.creator_id, handle: r.creator_handle ?? null,
       name: r.creator_name ?? null, avatar_url: r.creator_avatar ?? null,
@@ -183,7 +294,19 @@ async function promosFor(env: Env, ids: string[]): Promise<Map<string, any[]>> {
   return map;
 }
 
-/** Keep the FTS row in sync (listings are low-write → replace-on-write). */
+/** Keep the FTS row in sync (listings are low-write → replace-on-write).
+ *
+ *  [AVA-MKT-VERT-1] §2.0 names "search (ftsSync included)" as vertical-scoped, and this
+ *  function deliberately does NOT write a vertical — `listings_fts` has no such column
+ *  and does not need one. It indexes CONTENT, and the scoping happens where the rows are
+ *  actually chosen: exploreSearch is two-phase (FTS nominates ids → the main `listings`
+ *  query filters them with `l.vertical=?`), so an id this table hands back for the wrong
+ *  vertical is discarded before it can become a card. The reasoning is spelled out in
+ *  full at the exploreSearch call site, including the recall caveat (phase 1's LIMIT 200
+ *  is vertical-blind) and what to do about it when connect has volume. Do not add a
+ *  vertical token into the indexed text as a shortcut: the marketplace MATCH is column-
+ *  filtered to {title description category}, so a smuggled token would make "connect"
+ *  a query that matches every connect listing by name. */
 async function ftsSync(env: Env, id: string, remove = false): Promise<void> {
   const db = metaDb(env);
   await db.prepare("DELETE FROM listings_fts WHERE listing_id=?1").bind(id).run();
@@ -235,7 +358,16 @@ export async function fanout(env: Env, creatorId: string, title: string, body: s
 // creation pipeline
 // ---------------------------------------------------------------------------
 
-const EDITABLE = ["title", "description", "category", "price", "currency_display", "country", "adults_only", "badges", "cover_media", "starts_at", "duration_min", "capacity", "translation_enabled", "spoken_lang", "agent_instructions", "agent_lang", "agent_voice_persona", "location", "expiry_days"] as const;
+// [AVA-MKT-VERT-1] `attrs` and `video_url` are editable; `vertical`, `cat_version`,
+// `playbook_version` and `template_version` are deliberately ABSENT and must stay so.
+//   vertical  — §2.0, a listing never crosses. Not editable = not crossable, by
+//               construction, rather than by a check someone can forget to write.
+//   *_version — §2.4, PINNED AT BIRTH. A listing renders and negotiates at the version
+//               it was created under, always; letting a client PUT a new pin is exactly
+//               the silent behaviour change the whole versioning design exists to stop.
+// proposed_category is also absent: it is the §2.3 record of what the AI proposed when
+// it filed this listing, not a field to be revised afterwards.
+const EDITABLE = ["title", "description", "category", "price", "currency_display", "country", "adults_only", "badges", "cover_media", "starts_at", "duration_min", "capacity", "translation_enabled", "spoken_lang", "agent_instructions", "agent_lang", "agent_voice_persona", "location", "expiry_days", "attrs", "video_url"] as const;
 
 // [AVA-MKT-CVER-1] MATERIAL fields — the subset of EDITABLE whose change invalidates
 // a negotiation a buyer's agent already had. Editing one bumps listings.content_version,
@@ -253,7 +385,45 @@ const EDITABLE = ["title", "description", "category", "price", "currency_display
 //         live_event scheduling fields. None change what was agreed.
 // normFields() already folds the client's price_amount/price_currency aliases into
 // price/currency_display, so comparing the normalized values here catches both spellings.
-const MATERIAL = ["title", "description", "price", "currency_display", "category"] as const;
+//
+// [AVA-MKT-VERT-1] `attrs` IS IN, and it is the one addition this list has earned.
+// Apply the test above literally: attrs holds the category's own answers — bedrooms,
+// area, mileage, year. "3 bedrooms" → "2 bedrooms" is not a detail around the offer,
+// it IS the thing being sold, and a buyer's agent that negotiated the first number
+// negotiated a flat that does not exist. That is squarely "would a buyer's agent have
+// negotiated differently?", and it is a worse failure than a stale title: the title is
+// prose a human re-reads, while attrs is the structured data the agent reasons over.
+// The cost side is real and accepted: a bump reopens a paid negotiation. Leaving it OUT
+// would trade that cost for agents negotiating hard over specs the seller has since
+// corrected — cheaper, and wrong.
+//
+// It cannot use the plain string compare, though, and that is why it is called out
+// here rather than just appended. `attrs` is JSON: JSON.stringify key order follows
+// insertion order, so a compose loop that rebuilds the same object with its keys in a
+// different order produces a different string for identical data. Under String()
+// comparison that reads as an edit and bumps — a free, unbounded reopen of every
+// buyer's paid negotiation, triggered by nothing. sameAttrs() below compares canonically.
+//
+// Still OUT — video_url: swapping the YouTube link is the cover_media case (the
+// presentation of the offer, not its terms). vertical and the pinned versions are not
+// editable at all, so they cannot reach here.
+const MATERIAL = ["title", "description", "price", "currency_display", "category", "attrs"] as const;
+
+/** Order-insensitive equality for the `attrs` JSON — see the MATERIAL note above.
+ *  Top-level keys are sorted; values are compared by their own JSON, which is exact.
+ *  §2.2 attrs are flat (scalars, and arrays for `multi`), so top-level canonicalisation
+ *  is total for every schema the plan defines. If a nested-object field type is ever
+ *  added, this needs to recurse — a bug that would cost money, so it is written down.
+ *  Non-object / unparseable input falls back to the raw string compare. */
+function sameAttrs(a: unknown, b: unknown): boolean {
+  const canon = (s: unknown): string => {
+    const v = parseJson<unknown>(s, null);
+    if (!v || typeof v !== "object" || Array.isArray(v)) return String(s ?? "");
+    const o = v as Record<string, unknown>;
+    return JSON.stringify(Object.keys(o).sort().map((k) => [k, o[k]]));
+  };
+  return canon(a) === canon(b);
+}
 
 function normFields(b: any): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -291,6 +461,32 @@ function normFields(b: any): Record<string, unknown> {
   if (b.social_sub !== undefined) out.social_sub = b.social_sub ? String(b.social_sub).slice(0, 32) : null;
   if (b.location !== undefined) out.location = b.location ? String(b.location).slice(0, 120) : null;
   if (b.expiry_days !== undefined) out.expiry_days = b.expiry_days ? Math.max(1, Math.min(90, Math.trunc(Number(b.expiry_days) || 30))) : null;
+  // [AVA-MKT-VERT-1] §2.2 — the category's own answers, one JSON column.
+  // Size-capped (see ATTRS_MAX_BYTES). An oversize / non-object blob is DROPPED here
+  // rather than written: normFields cannot return an error, and storing JSON that
+  // parseJson() will silently read back as {} is strictly worse than not storing it.
+  // Both write routes call encodeAttrs() themselves first and 422 on the same error,
+  // so a caller always gets told — this branch is the backstop that guarantees no
+  // future caller of normFields can slip an unbounded blob into the column.
+  if (b.attrs !== undefined) {
+    const enc = encodeAttrs(b.attrs);
+    if (!enc.error) out.attrs = enc.json;
+  }
+  // §2.2 — YouTube link. https-only, exactly like cover_media above: a plain http URL
+  // is a mixed-content failure in the client's player and a stripped-in-transit link.
+  // Non-https is dropped, not stored broken (same posture as cover_media's filter).
+  // NOTE: the plan says "YouTube only" and this does NOT yet enforce a host allowlist
+  // — see the report / follow-up; it is a validation gap, not a media-upload surface
+  // (nothing here accepts bytes).
+  if (b.video_url !== undefined) {
+    const v = b.video_url ? String(b.video_url) : "";
+    out.video_url = /^https:\/\//.test(v) ? v.slice(0, 500) : null;
+  }
+  // §2.3 — the AI's suggestion when nothing fit. Free text with no allowlist is correct
+  // HERE and nowhere else: it is never a query key and never renders as a category.
+  if (b.proposed_category !== undefined) {
+    out.proposed_category = b.proposed_category ? String(b.proposed_category).trim().slice(0, 80) || null : null;
+  }
   return out;
 }
 
@@ -338,25 +534,67 @@ export async function createListing(req: Request, env: Env): Promise<Response> {
   const id = crypto.randomUUID();
   const now = Date.now();
   const f = normFields(b);
+  // [AVA-MKT-VERT-1] §2.2 — attrs is the one field a caller can get wrong in a way
+  // worth naming, so say so instead of dropping it silently (normFields would).
+  if (b.attrs !== undefined) {
+    const enc = encodeAttrs(b.attrs);
+    if (enc.error) return json({ ok: false, error: enc.error, message: enc.error, field: "attrs" }, 422);
+  }
   const blocked = await guardWrite(req, env, ctx.uid, APP, [
     { text: f.title as string | undefined, field: "listing_title" },
     { text: f.description as string | undefined, field: "listing_desc" },
   ]);
   if (blocked) return blocked;
+
+  // §2.0 — the vertical is chosen ONCE, at birth, and is not editable afterwards
+  // (it is absent from EDITABLE). Absent ⇒ 'commerce', so every caller that shipped
+  // before today creates exactly the listing it created yesterday.
+  const vertical = vertOf(b.vertical);
+
+  // §2.3 — THE AI PROPOSES, AN ADMIN APPROVES, AND THE USER IS NEVER BLOCKED.
+  // An unknown category is NOT an error here. When the compose AI couldn't match one
+  // it sends its suggestion as `proposed_category`; we file the listing under the
+  // seeded 'other' waiting-room row and it publishes normally. The suggestion becomes
+  // the admin queue's input (proposedCategories, categories.ts) and the audit trail of
+  // where the taxonomy was wrong. Blocking here would be the one outcome §2.3 forbids.
+  let category = (f.category as string) ?? "teachers";
+  let versions = await catVersions(env, category);
+  if (!versions && f.proposed_category) {
+    category = "other";
+    versions = await catVersions(env, category);
+  }
+  // §2.4 — PIN AT BIRTH. Read the category's versions now and freeze them onto the row;
+  // the listing renders and negotiates at THESE numbers forever, never at "latest". A
+  // category the row lookup can't resolve (unknown id, or pre-migration columns) pins
+  // 1/1/1 — which is exactly the DEFAULT the migration back-fills, so the fallback and
+  // the migration agree rather than inventing a third answer.
+  const catV = versions?.cat ?? 1, pbV = versions?.playbook ?? 1, tplV = versions?.template ?? 1;
+
   await metaDb(env).prepare(
     `INSERT INTO listings (id, creator_id, kind, title, description, category, price, currency_display,
        country, adults_only, badges, cover_media, starts_at, duration_min, capacity, status, created_at, updated_at,
-       agent_instructions, agent_lang, agent_voice_persona, market_type, social_sub, location, expiry_days)
-     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,'draft',?16,?16,?17,?18,?19,?20,?21,?22,?23)`,
-  ).bind(id, ctx.uid, kind, (f.title as string) ?? "Untitled", f.description ?? null, (f.category as string) ?? "teachers",
+       agent_instructions, agent_lang, agent_voice_persona, market_type, social_sub, location, expiry_days,
+       vertical, attrs, video_url, proposed_category, cat_version, playbook_version, template_version)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,'draft',?16,?16,?17,?18,?19,?20,?21,?22,?23,
+             ?24,?25,?26,?27,?28,?29,?30)`,
+  ).bind(id, ctx.uid, kind, (f.title as string) ?? "Untitled", f.description ?? null, category,
     f.price ?? 0, f.currency_display ?? "USD", f.country ?? null, f.adults_only ?? 0, f.badges ?? null,
     f.cover_media ?? null, f.starts_at ?? null, f.duration_min ?? null,
     kind === "consult" ? (f.capacity ?? 1) : null, now,
     f.agent_instructions ?? null, f.agent_lang ?? null, f.agent_voice_persona ?? null,
     f.market_type ?? (MARKET_KINDS.has(kind) ? kind : null), f.social_sub ?? null, f.location ?? null,
-    f.expiry_days ?? null).run();
-  track(env, ctx.uid, "listing_draft_created", APP, { kind });
-  return json({ ok: true, listing_id: id, status: "draft" });
+    f.expiry_days ?? null,
+    vertical, f.attrs ?? null, f.video_url ?? null, f.proposed_category ?? null, catV, pbV, tplV).run();
+  track(env, ctx.uid, "listing_draft_created", APP, {
+    kind, vertical, category, proposed_category: f.proposed_category ?? null,
+    cat_version: catV, playbook_version: pbV, template_version: tplV,
+    // §2.3 signal: how often the taxonomy has no home for what someone is listing.
+    filed_as_other: category === "other" && !!f.proposed_category,
+  });
+  return json({
+    ok: true, listing_id: id, status: "draft", vertical, category,
+    cat_version: catV, playbook_version: pbV, template_version: tplV,
+  });
 }
 
 // PUT /api/listings/:id — step updates (owner only; drafts and published).
@@ -365,14 +603,67 @@ export async function updateListing(req: Request, env: Env, id: string): Promise
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   // [AVA-MKT-CVER-1] The MATERIAL columns ride along so we can diff old vs new below
   // — a bump must reflect a real CHANGE, not merely a field being submitted.
+  // [AVA-MKT-VERT-1] `attrs` rides along as a MATERIAL column (diffed below), and
+  // `cat_version` because it is the PIN every attrs check must be resolved at (§2.4).
   const row = await metaDb(env).prepare(
-    "SELECT creator_id, status, kind, content_version, title, description, price, currency_display, category FROM listings WHERE id=?1",
+    "SELECT creator_id, status, kind, content_version, title, description, price, currency_display, category, attrs, cat_version FROM listings WHERE id=?1",
   ).bind(id).first<any>();
   if (!row || row.creator_id !== ctx.uid) return json({ error: "not found" }, 404);
   if (row.status === "cancelled" || row.status === "completed") return json({ error: "listing closed" }, 409);
-  const f = normFields((await req.json().catch(() => ({}))) as any);
+  const b = (await req.json().catch(() => ({}))) as any;
+  const f = normFields(b);
   const keys = (EDITABLE as readonly string[]).filter((k) => k in f);
   if (!keys.length) return json({ error: "nothing to update" }, 400);
+
+  // -------------------------------------------------------------------------
+  // [AVA-MKT-VERT-1] §2.2 + §2.4 — validate `attrs` against the category's
+  // field_schema AT THE LISTING'S PINNED cat_version.
+  //
+  // The pin is the whole point, and it is easy to get wrong by reaching for the live
+  // row: validating a seller's answers against a NEWER schema than the listing was
+  // born under means an admin adding a required field in September retroactively makes
+  // a July listing un-editable — the seller cannot fix a typo without answering
+  // questions that did not exist when they published. That is the silent drift §2.4
+  // exists to stop, wearing a different hat. resolveCategoryVersion() reads the exact
+  // pinned version row and falls back to the live row (never MAX(version)).
+  // -------------------------------------------------------------------------
+  let attrsMissing: string[] = [];
+  // Keyed on the RAW body, not on `"attrs" in f`: normFields DROPS an oversize/malformed
+  // attrs, so a `f`-keyed check would skip this block precisely when it is needed and
+  // return 200 on a write that stored nothing. Ask the body whether attrs was submitted.
+  if (b.attrs !== undefined) {
+    const enc = encodeAttrs(b.attrs);
+    if (enc.error) return json({ ok: false, error: enc.error, message: enc.error, field: "attrs" }, 422);
+    // A category change in the same PUT validates against the NEW category — still at
+    // the pinned cat_version, because re-pinning is an explicit admin migration (§2.4),
+    // never a side effect of a seller edit.
+    const cat = String(("category" in f ? f.category : row.category) ?? "");
+    const resolved = await resolveCategoryVersion(env, cat, Number(row.cat_version ?? 1));
+    const v = validateAttrs(resolved?.field_schema ?? null, parseJson(f.attrs, {} as Record<string, unknown>));
+    // ONLY `violations` block. `missing` (the min_required keys still unanswered) must
+    // NOT 422: this endpoint is how the compose loop saves a half-finished draft, and
+    // "you haven't told me the area yet" is the loop's next QUESTION, not a failed save.
+    // §2.2 puts min_required behind publish; validateAttrs().ok folds the two together,
+    // so it is deliberately not used here. Unknown keys are never violations either
+    // (§2.4: a schema bump must not orphan data).
+    if (v.violations.length) {
+      const msg = v.violations.map((x) => x.detail).join("; ");
+      track(env, ctx.uid, "listing_attrs_rejected", APP, {
+        listing_id: id, category: cat, cat_version: Number(row.cat_version ?? 1),
+        resolved_from: resolved?.resolved_from ?? "none",
+        codes: v.violations.map((x) => x.code), keys: v.violations.map((x) => x.k),
+      });
+      // Shape mirrors guardWrite()'s 422 (moderate.ts:95) — same `ok:false` + `field` +
+      // `error`/`message` pair, so the client's existing 422 renderer needs no new case.
+      return json({
+        ok: false, attrs: "invalid", field: "attrs",
+        violations: v.violations, missing: v.missing, unknown_keys: v.unknown_keys,
+        error: msg, message: msg,
+      }, 422);
+    }
+    attrsMissing = v.missing;
+  }
+
   const blocked = await guardWrite(req, env, ctx.uid, APP, [
     { text: f.title as string | undefined, field: "listing_title" },
     { text: f.description as string | undefined, field: "listing_desc" },
@@ -386,8 +677,13 @@ export async function updateListing(req: Request, env: Env, id: string): Promise
   // Submitting title unchanged (the client PUTs the whole form) must NOT reopen every
   // buyer's paid negotiation — hence the value comparison, not an `in f` check.
   // Compared as strings so 500 vs "500" (D1 vs JSON) and null vs "" don't read as edits.
-  const same = (a: unknown, b: unknown) => String(a ?? "") === String(b ?? "");
-  const changed = (MATERIAL as readonly string[]).filter((k) => k in f && !same(f[k], row[k]));
+  // [AVA-MKT-VERT-1] `attrs` is JSON and compares canonically (sameAttrs) — a raw
+  // String() compare would read a key REORDER as an edit and reopen every buyer's paid
+  // negotiation for free. Every other MATERIAL field is a scalar and keeps String().
+  const same = (x: unknown, y: unknown) => String(x ?? "") === String(y ?? "");
+  const changed = (MATERIAL as readonly string[]).filter(
+    (k) => k in f && !(k === "attrs" ? sameAttrs(f[k], row[k]) : same(f[k], row[k])),
+  );
   const material = changed.length > 0;
   // Literal expression, not a bind — keeps the ?N bind order below stable, and the
   // read-modify-write happens inside SQLite so concurrent edits can't lose a bump.
@@ -413,7 +709,9 @@ export async function updateListing(req: Request, env: Env, id: string): Promise
   if (row.status !== "draft") await ftsSync(env, id);
   // content_version is additive in this response: the client can refresh its copy of
   // the reopen key without re-fetching the card.
-  return json({ ok: true, content_version: version });
+  // [AVA-MKT-VERT-1] attrs_missing is the compose loop's "what must I still ask before
+  // this can publish" (§2.2 min_required) — reported, never enforced, on a draft save.
+  return json({ ok: true, content_version: version, attrs_missing: attrsMissing });
 }
 
 // POST /api/listings/:id/publish — KYC gate + slot claim (live) / rules check (consult).
@@ -532,14 +830,27 @@ export async function duplicateListing(req: Request, env: Env, id: string): Prom
   if (!l || l.creator_id !== ctx.uid) return json({ error: "not found" }, 404);
   const nid = crypto.randomUUID();
   const now = Date.now();
+  // [AVA-MKT-VERT-1] The copy carries `vertical` — omitting it would silently re-home a
+  // connect listing into commerce via the column DEFAULT, i.e. the exact cross-vertical
+  // leak §2.0 calls absolute, through the one path nobody would think to check.
+  //
+  // Versions are RE-PINNED to the category's CURRENT triple, not copied from the source.
+  // §2.4 is "every listing pins the versions it was BORN with", and this listing is born
+  // now: copying a stale pin would create a brand-new listing already frozen to a schema
+  // and playbook that were retired before it existed. attrs comes along (the whole point
+  // of a duplicate) and is re-validated against the new pin on the next PUT.
+  const dupVersions = await catVersions(env, String(l.category ?? ""));
   await db.prepare(
     `INSERT INTO listings (id, creator_id, kind, title, description, category, price, currency_display,
-       country, adults_only, badges, cover_media, starts_at, duration_min, capacity, translation_enabled, spoken_lang, status, created_at, updated_at)
-     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,NULL,?13,?14,?15,?16,'draft',?17,?17)`,
+       country, adults_only, badges, cover_media, starts_at, duration_min, capacity, translation_enabled, spoken_lang, status, created_at, updated_at,
+       vertical, attrs, video_url, cat_version, playbook_version, template_version)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,NULL,?13,?14,?15,?16,'draft',?17,?17,?18,?19,?20,?21,?22,?23)`,
   ).bind(nid, ctx.uid, l.kind, l.title, l.description, l.category, l.price, l.currency_display,
     l.country, l.adults_only, l.badges, l.cover_media, l.duration_min, l.capacity,
-    l.translation_enabled ?? 0, l.spoken_lang ?? null, now).run();
-  track(env, ctx.uid, "listing_duplicated", APP, {});
+    l.translation_enabled ?? 0, l.spoken_lang ?? null, now,
+    l.vertical ?? DEFAULT_VERTICAL, l.attrs ?? null, l.video_url ?? null,
+    dupVersions?.cat ?? 1, dupVersions?.playbook ?? 1, dupVersions?.template ?? 1).run();
+  track(env, ctx.uid, "listing_duplicated", APP, { vertical: l.vertical ?? DEFAULT_VERTICAL });
   return json({ ok: true, listing_id: nid });
 }
 
@@ -581,9 +892,13 @@ export async function cancelListing(req: Request, env: Env, id: string): Promise
 export async function myListings(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  // [AVA-MKT-VERT-1] §2.0 — My Listings is vertical-scoped like every other listing
+  // read. Each vertical has its own menu and its own My Listings; one user's Connect
+  // profile must not appear in their commerce list. Absent ?vertical ⇒ commerce.
+  const vertical = vertOf(new URL(req.url).searchParams.get("vertical"));
   const rs = await metaSession(env).prepare(
-    `${CARD_SELECT} WHERE l.creator_id=?1 ORDER BY l.updated_at DESC LIMIT 100`,
-  ).bind(ctx.uid).all();
+    `${CARD_SELECT} WHERE l.creator_id=?1 AND l.vertical=?2 ORDER BY l.updated_at DESC LIMIT 100`,
+  ).bind(ctx.uid, vertical).all();
   const rows = (rs.results ?? []) as any[];
   const promos = await promosFor(env, rows.map((r) => r.id));
   const favs = await favoritesFor(env, ctx.uid, rows.map((r) => String(r.id))); // [UI-MKT-3]
@@ -656,6 +971,9 @@ export async function exploreBrowse(req: Request, env: Env): Promise<Response> {
   // Hide expired marketplace listings (creator listings have no expiry → null shows).
   binds.push(Date.now());
   where.push(`(l.expires_at IS NULL OR l.expires_at > ?${binds.length})`);
+  // [AVA-MKT-VERT-1] §2.0 — the cross-vertical rule, on the main browse. Defaults to
+  // commerce, so today's callers (which send no ?vertical) see today's rows.
+  const vertical = verticalFilter(req, binds, where);
   for (const [k, col] of [["kind", "l.kind"], ["category", "l.category"], ["country", "l.country"]] as const) {
     const v = u.get(k);
     if (v) { binds.push(v); where.push(`${col}=?${binds.length}`); }
@@ -677,7 +995,7 @@ export async function exploreBrowse(req: Request, env: Env): Promise<Response> {
   const promos = await promosFor(env, page.map((r) => r.id));
   const favs = await favoritesFor(env, uid, page.map((r) => String(r.id))); // [UI-MKT-3] hydrate heart state per fetch
   trackImpressions(env, req, uid, APP, "explore", page.map((r) => String(r.id)));
-  return json({ listings: page.map((r) => shapeCard(r, promos, favs)), cursor: rows.length > limit ? String(offset + limit) : null });
+  return json({ vertical, listings: page.map((r) => shapeCard(r, promos, favs)), cursor: rows.length > limit ? String(offset + limit) : null });
 }
 
 // GET /api/explore/live-now — the red-dot rail.
@@ -685,6 +1003,9 @@ export async function exploreLiveNow(req: Request, env: Env): Promise<Response> 
   const uid = await maybeUid(req, env);
   const where = ["l.status='live'"];
   const binds: unknown[] = [];
+  // [AVA-MKT-VERT-1] §2.0 — the live rail is a listing read like any other, and it is
+  // the one that renders unbidden at the top of the shell. Defaults to commerce.
+  const vertical = verticalFilter(req, binds, where);
   blockFilter(uid, binds, where);
   const rs = await metaSession(env).prepare(
     `${CARD_SELECT} WHERE ${where.join(" AND ")} ORDER BY l.joined_count DESC LIMIT 25`,
@@ -693,7 +1014,7 @@ export async function exploreLiveNow(req: Request, env: Env): Promise<Response> 
   const promos = await promosFor(env, rows.map((r) => r.id));
   const favs = await favoritesFor(env, uid, rows.map((r) => String(r.id))); // [UI-MKT-3]
   trackImpressions(env, req, uid, APP, "live_now", rows.map((r) => String(r.id)));
-  return json({ listings: rows.map((r) => ({ ...shapeCard(r, promos, favs), joinable: true })) });
+  return json({ vertical, listings: rows.map((r) => ({ ...shapeCard(r, promos, favs), joinable: true })) });
 }
 
 // GET /api/explore/search — A1: FTS5 + filters + sorts; partial title AND creator name hit.
@@ -703,6 +1024,30 @@ export async function exploreSearch(req: Request, env: Env): Promise<Response> {
   const q = (u.get("q") || "").trim();
   const where = ["l.status IN ('published','live')"];
   const binds: unknown[] = [];
+
+  // -------------------------------------------------------------------------
+  // [AVA-MKT-VERT-1] §2.0 — "search (ftsSync included)" is vertical-scoped, and this
+  // ONE predicate is what enforces it. Why that is sufficient, verified rather than
+  // assumed, because "a Connect profile must never surface in a commerce search" is a
+  // §2.6 safety requirement and not a UX preference:
+  //
+  // `listings_fts` has no `vertical` column (it is title/description/creator_name/
+  // category only — see ftsSync), so FTS on its own CANNOT scope by vertical. But the
+  // search below is TWO-PHASE: phase 1 asks FTS for candidate ids, phase 2 re-queries
+  // the MAIN `listings` table with `l.id IN (<those ids>)` AND every predicate in this
+  // WHERE. FTS never returns a row to the caller — it only nominates ids, and each
+  // nominee must survive `l.vertical=?` on the real table to be shaped into a card.
+  // A connect listing nominated by FTS is therefore dropped in phase 2. Confirmed by
+  // reading the phase-2 query: it is `${CARD_SELECT} WHERE ${where.join(" AND ")}`, so
+  // this predicate is unconditionally ANDed onto the id filter. No FTS migration needed.
+  //
+  // The one real cost, and it is RECALL, not leakage: phase 1 is `LIMIT 200`, applied
+  // before we know anything about verticals. Once connect has volume, a query whose top
+  // 200 FTS hits are mostly connect rows yields fewer commerce cards than it should —
+  // never wrong rows, just thin pages. The fix when that bites is a `vertical` column on
+  // listings_fts (a migration + a ftsSync write), not a change here.
+  // -------------------------------------------------------------------------
+  const vertical = verticalFilter(req, binds, where);
 
   const isMarket = u.get("market") === "1";
   if (q) {
@@ -718,7 +1063,7 @@ export async function exploreSearch(req: Request, env: Env): Promise<Response> {
         "SELECT listing_id FROM listings_fts WHERE listings_fts MATCH ?1 LIMIT 200",
       ).bind(match).all();
       const idList = ((ids.results ?? []) as any[]).map((r) => String(r.listing_id));
-      if (!idList.length) return json({ listings: [], cursor: null });
+      if (!idList.length) return json({ vertical, listings: [], cursor: null });
       where.push(`l.id IN (${idList.map((_, i) => `?${binds.length + i + 1}`).join(",")})`);
       binds.push(...idList);
     }
@@ -758,9 +1103,9 @@ export async function exploreSearch(req: Request, env: Env): Promise<Response> {
   const promos = await promosFor(env, page.map((r) => r.id));
   const favs = await favoritesFor(env, uid, page.map((r) => String(r.id))); // [UI-MKT-3]
   const g = geoOf(req);
-  track(env, uid ?? "guest", "explore_search", APP, { q: q.slice(0, 40), sort, n: page.length, guest: !uid, country: g.country, city: g.city });
+  track(env, uid ?? "guest", "explore_search", APP, { q: q.slice(0, 40), sort, n: page.length, guest: !uid, vertical, country: g.country, city: g.city });
   trackImpressions(env, req, uid, APP, "search", page.map((r) => String(r.id)));
-  return json({ listings: page.map((r) => shapeCard(r, promos, favs)), cursor: rows.length > limit ? String(offset + limit) : null });
+  return json({ vertical, listings: page.map((r) => shapeCard(r, promos, favs)), cursor: rows.length > limit ? String(offset + limit) : null });
 }
 
 // GET /api/listings/:id — full details + creator card + reviews page 1.
@@ -810,10 +1155,15 @@ export async function getCreator(req: Request, env: Env, id: string): Promise<Re
   if (!user) return json({ error: "not found" }, 404);
   const prof = await metaSession(env).prepare("SELECT * FROM creator_profiles WHERE user_id=?1").bind(id).first<any>();
   const kyc = await metaSession(env).prepare("SELECT status FROM kyc_status WHERE uid=?1").bind(id).first<any>();
+  // [AVA-MKT-VERT-1] §2.0 — the channel page lists LISTINGS, so it is scoped too: one
+  // person may hold a commerce shop and a connect profile, and the commerce channel must
+  // not surface the latter (that is the §2.6 case, not a tidiness one). Not named in the
+  // spec's list, but "a filter on every query" is the rule and the same default applies.
+  const vertical = vertOf(new URL(req.url).searchParams.get("vertical"));
   const ls = await metaSession(env).prepare(
-    `${CARD_SELECT} WHERE l.creator_id=?1 AND l.status IN ('published','live')
+    `${CARD_SELECT} WHERE l.creator_id=?1 AND l.vertical=?2 AND l.status IN ('published','live')
       ORDER BY (l.status='live') DESC, COALESCE(l.starts_at, 4102444800000) ASC LIMIT 50`,
-  ).bind(id).all();
+  ).bind(id, vertical).all();
   const lrows = (ls.results ?? []) as any[];
   const promos = await promosFor(env, lrows.map((r) => r.id));
   const favs = await favoritesFor(env, uid, lrows.map((r) => String(r.id))); // [UI-MKT-3]
@@ -1013,16 +1363,21 @@ export async function removeFavorite(req: Request, env: Env): Promise<Response> 
 export async function listFavorites(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  // [AVA-MKT-VERT-1] §2.0 — "favourites" is named in the cross-vertical rule. The Saved
+  // tab belongs to a vertical's shell, so it shows that vertical's saves; the row itself
+  // is unchanged (listing_favorites needs no vertical column — the join to `listings`
+  // already carries it). Absent ?vertical ⇒ commerce, i.e. today's list for today's app.
+  const vertical = vertOf(new URL(req.url).searchParams.get("vertical"));
   const rs = await metaSession(env).prepare(
     `${CARD_SELECT}
        JOIN listing_favorites f ON f.listing_id = l.id
-      WHERE f.uid=?1 AND l.status IN ('published','live')
+      WHERE f.uid=?1 AND l.vertical=?2 AND l.status IN ('published','live')
       ORDER BY f.created_at DESC LIMIT 100`,
-  ).bind(ctx.uid).all();
+  ).bind(ctx.uid, vertical).all();
   const rows = (rs.results ?? []) as any[];
   const promos = await promosFor(env, rows.map((r) => r.id));
   const favs = new Set(rows.map((r) => String(r.id))); // all favorited by definition
-  return json({ listings: rows.map((r) => shapeCard(r, promos, favs)) });
+  return json({ vertical, listings: rows.map((r) => shapeCard(r, promos, favs)) });
 }
 
 // ---------------------------------------------------------------------------
