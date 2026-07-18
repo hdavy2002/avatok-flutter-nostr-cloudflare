@@ -11,6 +11,7 @@ import '../../core/listings_api.dart';
 import '../../core/marketplace_api.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../identity/listing_liveness_gate.dart';
+import '../identity/public_action_gate.dart' show isIdentityRequired;
 
 /// AvaMarketplace P2 — buy/sell/social listing pipeline with the agent-mandate
 /// + language step (Specs/AVAMARKETPLACE-FINAL-PROPOSAL.md). Self-contained so
@@ -213,6 +214,11 @@ class _SellListingFlowState extends State<SellListingFlow> {
     }
   }
 
+  /// `ListingsApi.publish` hands back a decoded Map ({} on success, else the
+  /// parsed body + a 'status' key) rather than the raw response, so adapt it to
+  /// `isIdentityRequired(statusCode, body)` instead of re-implementing the match.
+  int _statusOf(Map<String, dynamic> res) => (res['status'] as num?)?.toInt() ?? 0;
+
   Future<void> _submit() async {
     setState(() { _busy = true; _error = null; });
     final sw = Stopwatch()..start();
@@ -235,20 +241,22 @@ class _SellListingFlowState extends State<SellListingFlow> {
       return;
     }
     var res = await ListingsApi.publish(id);
-    // Fallback: the server gate returns 403 {error:'phone_required'} when the
-    // seller hasn't confirmed a phone. (Legacy builds may still return
-    // 'liveness_required' — accept both.) Don't show the raw string — run the
-    // one-time phone-OTP confirm and, on PASS, retry publish once. On fail, a
-    // friendly message.
-    final gateErr = res.isEmpty ? '' : (res['error']?.toString() ?? '');
-    if (gateErr == 'phone_required' || gateErr == 'liveness_required') {
+    // Fallback: the server gate returns 403 {error:'identity_required'} when the
+    // seller has no valid (<90 day) liveness pass. The old 'phone_required' /
+    // 'liveness_required' strings are DEAD — phone verification was removed
+    // app-wide on 2026-07-10 and creating a listing became a PUBLIC ACTION
+    // (see identity/public_action_gate.dart). Matching them meant this friendly
+    // path never fired and the seller saw the raw error string instead.
+    // Don't show the raw string — run consent→liveness and, on PASS, retry
+    // publish once. On fail, a friendly message.
+    if (isIdentityRequired(_statusOf(res), jsonEncode(res))) {
       if (!mounted) return;
       final passed = await ensureListingLiveness(context);
       if (!mounted) return;
       if (passed) {
         res = await ListingsApi.publish(id); // retry once, now verified
       } else {
-        setState(() { _busy = false; _error = 'You need to confirm your phone number to publish a listing.'; });
+        setState(() { _busy = false; _error = 'You need to verify you\'re a real person to publish a listing.'; });
         return;
       }
     }
@@ -261,7 +269,7 @@ class _SellListingFlowState extends State<SellListingFlow> {
           const SnackBar(content: Text('Listing submitted for review.')));
         Navigator.of(context).maybePop();
       }
-    } else if (res['error']?.toString() == 'liveness_required') {
+    } else if (isIdentityRequired(_statusOf(res), jsonEncode(res))) {
       // Retry still gated (e.g. server hadn't propagated) — friendly message.
       setState(() => _error = 'You need to verify you\'re a real person to publish a listing.');
     } else {
