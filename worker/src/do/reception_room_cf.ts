@@ -594,7 +594,11 @@ export class ReceptionRoomCf {
         const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
           headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "HTTP-Referer": "https://avatok.ai", "X-Title": "AvaTok Receptionist" },
-          body: JSON.stringify({ model: this.cfLlmModel(), messages, max_tokens: maxTokens, temperature: 0.4 }),
+          body: JSON.stringify({ model: this.cfLlmModel(), messages, max_tokens: maxTokens, temperature: 0.4,
+            // Pin the OpenRouter upstream provider (RECEPT_CF_LLM_PROVIDER, e.g. "Groq")
+            // for speed; allow_fallbacks keeps the call working if that provider is down.
+            ...(String((this.env as any).RECEPT_CF_LLM_PROVIDER || "").trim()
+              ? { provider: { order: [String((this.env as any).RECEPT_CF_LLM_PROVIDER).trim()], allow_fallbacks: true } } : {}) }),
         });
         const j: any = await r.json().catch(() => ({}));
         const u = j?.usage; if (u) { this.cfLlmTokIn += Number(u.prompt_tokens) || 0; this.cfLlmTokOut += Number(u.completion_tokens) || 0; }
