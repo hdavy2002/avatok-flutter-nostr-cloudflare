@@ -1472,11 +1472,22 @@ export async function composeTurn(req: Request, env: Env): Promise<Response> {
   }
 
   // ── The gateway. verb:"reason". NEVER callSonnet, never a raw provider fetch ──
+  // MODEL PIN + TIMEOUT (2026-07-18 fix): without legacyModel the "reason" ladder
+  // routes to the Workers-AI reasoner (@cf/google/gemma-4-26b, 26B) as PRIMARY, and
+  // only falls back to the OpenRouter ALT on error/429 — NOT on slowness. On this
+  // large compose prompt (playbook + full category list + schema + draft) generating
+  // 900 JSON tokens, gemma-4 was slow enough to read as "stuck", with no timeout to
+  // catch it. Pin the proven marketplace model (same one negotiate/ai-assist use —
+  // reliable at strict JSON tool-calling) via legacyModel → a single fast OpenRouter
+  // call, and cap it so a slow provider becomes a graceful "say that again?" instead
+  // of an infinite spinner.
+  const composeModel = String((env as any).OPENROUTER_MARKET_MODEL ?? "").trim() || "anthropic/claude-sonnet-4.6";
   let raw = "";
   try {
     raw = await avaReason(env, {
       role: "marketplace", capability: "compose_listing", trigger: "compose_turn",
       verb: "reason", feature: "compose", uid: ctx.uid, email,
+      legacyModel: composeModel, timeoutMs: 30000,
       system: PLAYBOOK, user: context,
       json: true, maxTokens: 900, temperature: 0.4, appName: APP,
     });
