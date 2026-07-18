@@ -1491,7 +1491,11 @@ export async function composeTurn(req: Request, env: Env): Promise<Response> {
       verb: "reason", feature: "compose", uid: ctx.uid, email,
       legacyModel: composeModel, timeoutMs: 30000,
       system: PLAYBOOK, user: context,
-      json: true, maxTokens: 900, temperature: 0.4, appName: APP,
+      // maxTokens 900→420 (2026-07-18 latency): a compose turn is a short question
+      // + a small tool_calls array; 900 let the model run far longer than it ever
+      // needs and generation time scales with tokens produced. 420 covers even a
+      // set_core turn that writes a title+description. Faster total, no truncation.
+      json: true, maxTokens: 420, temperature: 0.4, appName: APP,
     });
   } catch (e: any) {
     void trackUser(env, ctx.uid, email, "compose_turn_model_error", APP, {
