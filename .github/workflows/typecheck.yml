@@ -1,0 +1,49 @@
+# [MKT7-CI] TypeScript type-check gate for the Cloudflare Workers.
+#
+# WHY THIS EXISTS: worker/ and consumers/ both ship to production via `wrangler
+# deploy`, which bundles with esbuild — and esbuild STRIPS types without checking
+# them. `npm run typecheck` (tsc --noEmit) existed in both package.json files but
+# NO workflow ran it, so ~20 type errors shipped to prod invisibly for months
+# (found 2026-07-18, including a real duplicate-import in index.ts). This gate
+# closes that hole: from now on a type error is caught here instead of in prod.
+#
+# TRIGGER: pull_request + manual only — deliberately NOT `push:`. This is not a
+# build (it deploys nothing, runs only `tsc --noEmit`), but the repo is manual-
+# only by owner decision and scripts/git_safe_push.py refuses to push when any
+# workflow has an active `push:` trigger. pull_request gates every PR into main;
+# workflow_dispatch lets anyone run it by hand from the Actions tab.
+name: typecheck
+
+on:
+  pull_request:
+    branches: [main, staging]
+  workflow_dispatch:
+
+jobs:
+  worker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install worker deps
+        working-directory: worker
+        run: npm ci --no-audit --no-fund --silent
+      - name: Type-check worker
+        working-directory: worker
+        run: npm run typecheck
+
+  consumers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install consumers deps
+        working-directory: consumers
+        run: npm ci --no-audit --no-fund --silent
+      - name: Type-check consumers
+        working-directory: consumers
+        run: npm run typecheck

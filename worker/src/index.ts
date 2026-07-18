@@ -166,7 +166,6 @@ import { marketplaceAgentSettingsGet, marketplaceAgentSettingsPut } from "./rout
 import { convAccept, convBlock, safetyReport, convAcceptState } from "./routes/safety";              // STREAM B
 import { unfurl } from "./routes/unfurl";                                                            // STREAM C
 import { gifSearch, gifTrending } from "./routes/gif";                                               // STREAM E
-import { getAutoResponder, putAutoResponder } from "./routes/auto_responder";                        // STREAM F
 import { aiCatchup, aiSmartReplies, aiTranslate, aiGroupTranslate, safetyScore, aiBio, aiGender } from "./routes/ai_chat"; // STREAM G + bio writer + gender infer
 import { forwardMsg } from "./routes/messaging";                                                     // STREAM I
 import { addFavorite, removeFavorite, listFavorites } from "./routes/listings";                       // STREAM K

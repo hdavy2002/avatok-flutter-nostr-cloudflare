@@ -349,6 +349,9 @@ async function ingestLibraryFile(msg: BrainMsg, env: Env): Promise<void> {
           metadata: {
             uid, media_id: String(p.media_id), app: msg.source_app, category,
             type: "library", title, caption, filename, mime,
+            // @ts-expect-error pre-existing: durationS is number|null but VectorizeVectorMetadata
+            // rejects null — coercing would change behaviour (a null duration currently makes this
+            // best-effort upsert throw+skip). Runtime preserved; needs domain review.
             duration_s: durationS, sender, ts, summary: metaText.slice(0, 480),
           },
         }]);

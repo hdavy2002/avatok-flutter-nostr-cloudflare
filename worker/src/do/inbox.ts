@@ -416,7 +416,7 @@ export class InboxDO {
         // legacy global id-cursor path runs verbatim (default, fully reversible — no
         // current client sends ?conv=, so this is dark until we flip both).
         const convParam = url.searchParams.get("conv");
-        const convCursorOn = (this.env as Record<string, unknown>).SYNC_CONV_CURSOR_V2 === "1";
+        const convCursorOn = (this.env as unknown as Record<string, unknown>).SYNC_CONV_CURSOR_V2 === "1";
         if (convParam && convCursorOn) {
           return new Response(JSON.stringify(this.syncConvPayload(convParam, Number(url.searchParams.get("after") || 0))), {
             headers: { "content-type": "application/json" },
@@ -669,7 +669,7 @@ export class InboxDO {
     // are gated by SYNC_OPS_V2 (default ON; set the wrangler var to '0' to disable —
     // a cheap env read, never a KV fetch). Nothing READS conv_seq until Phase 1, so
     // this remains a zero-behaviour-change dual-write.
-    const stampSeq = (this.env as Record<string, unknown>).SYNC_OPS_V2 !== "0";
+    const stampSeq = (this.env as unknown as Record<string, unknown>).SYNC_OPS_V2 !== "0";
     const meta = this.sql.exec(
       `INSERT INTO conv_meta (conv, last_id, unread, peer, updated_at, seq)
        VALUES (?1, ?2, ?3, ?4, ?5, 1)
@@ -1235,7 +1235,7 @@ export class InboxDO {
       // strict SUPERSET of the plain global sweep, so it can NEVER deliver fewer
       // messages (no message loss, ever); the client de-dupes the extras. Flag off, or
       // no `cc` → identical legacy behaviour.
-      const convCursorOn = (this.env as Record<string, unknown>).SYNC_CONV_CURSOR_V2 === "1";
+      const convCursorOn = (this.env as unknown as Record<string, unknown>).SYNC_CONV_CURSOR_V2 === "1";
       // [AVA-SYNC-SKIP] Empty-catch-up short-circuit. A skip-capable client (the only
       // clients that set m.skip; old clients never do) that reconnects/resumes with a
       // persisted cursor ALREADY AT the server head does NOT need a full replay — a

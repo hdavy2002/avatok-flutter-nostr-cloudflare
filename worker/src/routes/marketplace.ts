@@ -292,7 +292,7 @@ async function deliverDealAudio(env: Env, a: {
   transcriptEn?: Array<{ speaker: string; text: string }>;
   transcriptI18n?: Record<string, Array<{ speaker: string; text: string }>>;
   summary?: string; pendingOwnerApproval?: boolean;
-}): Promise<{ audioKey: string | null; bytes: number }> {
+}): Promise<{ audioKey: string | null; bytes: number; queued?: boolean }> {
   const conv = dmConvId(a.sellerUid, a.buyerUid);
   // CREATE the DM thread so it appears in the buyer's chat list.
   await ensureDmThread(env, a.sellerUid, a.buyerUid, `event:${a.listingId}`);

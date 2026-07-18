@@ -117,7 +117,7 @@ export function basisFor(domain: BrainDomain): BrainBasis {
  *  Legal-basis domains are never deletable (§10.2); consent domains default true. */
 export function isDeletable(domain: BrainDomain): boolean {
   const d = BRAIN_DOMAINS[domain];
-  return d.basis === "legal" ? false : (d.deletable ?? true);
+  return d.basis === "legal" ? false : ((d as BrainDomainDef).deletable ?? true);
 }
 
 /** The derived scope for a domain — the ONLY authority (§2.1). */
@@ -143,7 +143,7 @@ export function brainDomainList(): Array<{
       key,
       consentKey: d.consent,
       basis: d.basis,
-      deletable: d.basis === "legal" ? false : (d.deletable ?? true),
+      deletable: d.basis === "legal" ? false : ((d as BrainDomainDef).deletable ?? true),
       label: d.label,
       default: d.default,
       scope: d.scope,

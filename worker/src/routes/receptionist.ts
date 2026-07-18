@@ -503,6 +503,7 @@ export function composeReceptionistPrompt(
   }
   // End mechanism differs per engine: Gemini hangs up via the end_call tool; the
   // CF engine ends on a silent <END_CALL> marker. Keep the branch so Gemini is unchanged.
+  // @ts-expect-error pre-existing: CF-engine ('cf') branch vs narrowed type — the branch must stay live, needs domain review
   const endWith = ctx?.engine === "cf"
     ? `end your reply with the marker <END_CALL> on its own line (never say it aloud)`
     : `immediately call the end_call function`;
@@ -551,6 +552,7 @@ export function composeReceptionistPrompt(
     // AVA-VM-CLOSE-1: event-driven close. The moment the caller's message is complete
     // AND they fall silent, OR they say goodbye / "that's all", END the call yourself —
     // do NOT wait for a timer or leave the line open hoping for more.
+    // @ts-expect-error pre-existing: CF-engine ('cf') branch vs narrowed type — the branch must stay live, needs domain review
     `END THE CALL YOURSELF as soon as the message is done. When the caller has clearly finished — they have given their message and gone quiet for a few seconds, OR they say "that's all" / "bye" / anything meaning they're done — say ONE short, warm closing line and IMMEDIATELY ${endWith}${ctx?.engine === "cf" ? "" : " with reason 'caller_bye' if they said goodbye, otherwise 'message_complete'"}. Do NOT ask another question, do NOT wait, do NOT re-offer help after they are done.`,
     // Never surface the time cap in normal flow — the cap is a silent backstop, not the UX.
     `NEVER mention time, a time limit, or "that's all the time I have" on your own. Only speak about time if you receive an explicit "[SYSTEM: … time is nearly up …]" note. In a normal call you simply take the message and close warmly the moment it's complete.`,

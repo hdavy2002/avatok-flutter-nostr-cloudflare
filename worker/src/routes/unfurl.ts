@@ -189,7 +189,7 @@ async function readCapped(r: Response): Promise<string> {
     off += slice.length;
     if (off >= buf.length) break;
   }
-  return new TextDecoder("utf-8", { fatal: false }).decode(buf.subarray(0, off));
+  return new TextDecoder("utf-8", { fatal: false, ignoreBOM: false }).decode(buf.subarray(0, off));
 }
 
 function metaContent(html: string, patterns: RegExp[]): string | undefined {
@@ -351,7 +351,7 @@ export async function unfurl(req: Request, env: Env): Promise<Response> {
   // Kill switch (STREAM C). linkPreviewsEnabled defaults ON; the field is read
   // loosely so this route works whether or not the config.ts type has been
   // extended yet (owner of config.ts adds the flag — see engineering report).
-  const cfg = (await readConfig(env)) as Record<string, unknown>;
+  const cfg = (await readConfig(env)) as unknown as Record<string, unknown>;
   if (cfg.linkPreviewsEnabled === false) {
     const off: Preview = { type: "link", url: new URL(req.url).searchParams.get("url") ?? "" };
     return json(off, 200, { "cache-control": "private, max-age=60" });

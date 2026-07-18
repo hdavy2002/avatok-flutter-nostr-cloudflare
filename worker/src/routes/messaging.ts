@@ -396,7 +396,7 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
   // this ships dark; fail-open on any KV error. Delete-controls are exempt.
   if (isDm && recipients.length === 1 && !delTarget && (kind === "text" || kind === "audio")) {
     try {
-      const cfgCm = await readConfig(env) as Record<string, unknown>;
+      const cfgCm = await readConfig(env) as unknown as Record<string, unknown>;
       if (cfgCm.callMenuEnabled === true && cfgCm.callMenuRateLimitEnabled !== false) {
         const peer = recipients[0];
         const markerKey = `cmstranger:${ctx.uid}:${peer}`;
@@ -671,7 +671,7 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
   // geo/network for telemetry, and (G3) the fast-lane verdict so the deep lane never
   // double-warns for a category the inline fast lane already surfaced.
   void guardianScan(env, {
-    conv, message: payload, members: mem, senderUid: ctx.uid,
+    conv, message: { ...payload, client_id: payload.client_id ?? undefined }, members: mem, senderUid: ctx.uid,
     geo: _guardGeo,
     fastVerdict: _fastVerdict as any,
   });
@@ -736,7 +736,7 @@ export async function forwardMsg(req: Request, env: Env): Promise<Response> {
   // Feature flag (FWD-4): unlimitedForwardEnabled (default ON). Treat only an
   // explicit `false` as off, so the route is ON even before config.ts ships the
   // key into DEFAULTS.
-  const cfg = await readConfig(env) as Record<string, unknown>;
+  const cfg = await readConfig(env) as unknown as Record<string, unknown>;
   if (cfg.unlimitedForwardEnabled === false) return json({ error: "forwarding disabled" }, 403);
 
   let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }

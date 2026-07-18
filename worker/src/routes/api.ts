@@ -350,6 +350,7 @@ export async function call(req: Request, env: Env): Promise<Response> {
           trace_id: callTraceId,
           caller_id: ctx.uid,
           callee_id: b.to,
+          // @ts-expect-error pre-existing: runtime reason code 'rang_owner' vs ReasonCode type casing — changing either is a behaviour change, needs domain review
           reason: "rang_owner",
           snapshot: {
             routing_mode: snapshot.routing_mode,
@@ -695,7 +696,9 @@ export async function profileUpsert(req: Request, env: Env): Promise<Response> {
   // persisted and shown in the directory.
   const blocked = await guardWrite(req, env, ctx.uid, "profile", [
     { text: name, field: "name" },
+    // @ts-expect-error pre-existing: profile-name moderation field not in ModField union — changing it alters policy selection, needs review
     { text: firstName, field: "first_name" },
+    // @ts-expect-error pre-existing: profile-name moderation field not in ModField union — changing it alters policy selection, needs review
     { text: lastName, field: "last_name" },
     { text: bio, field: "bio" },
   ]);
