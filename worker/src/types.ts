@@ -220,8 +220,12 @@ export interface Env {
 
   // Progressive Identity ladder (PROPOSAL-PROGRESSIVE-IDENTITY.md).
   GUEST_TOKEN_SECRET?: string;     // HMAC for L0 guest tokens (falls back to JOIN_LINK_SECRET)
-  TWILIO_ACCOUNT_SID?: string;     // Twilio Lookup v2 — SIM-only phone enforcement
-  TWILIO_AUTH_TOKEN?: string;      // (unset → line-type check skipped; KV denylist still applies)
+  // [M-D1 2026-07-17 / M-D11 2026-07-18] TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN removed.
+  // Their only consumer was the Twilio Lookup v2 line-type check inside idPhoneConfirm
+  // (routes/id.ts), deleted when phone OTP was removed app-wide. Nothing else in worker/,
+  // consumers/ or app/ references Twilio — AvaDial/PSTN uses a different provider
+  // (routes/pstn.ts → Vobiz). The Worker SECRETS still exist in the deployed environments
+  // and must be unbound separately (ops step). Do NOT reintroduce.
 
   // AvaStorage (universal per-account pool). Free quota in GB (default 5);
   // over-quota metered price in AvaCoins per GB per month (default 20 — billed
