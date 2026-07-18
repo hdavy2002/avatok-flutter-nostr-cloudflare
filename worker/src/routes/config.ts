@@ -500,6 +500,13 @@ export interface PlatformConfig {
   // remains the escape hatch (M-D7) until the compose_started→listing_published funnel
   // proves out (§7.4).
   aiComposeEnabled: boolean;
+  // [MKT5] Per-listing billing (PLAN §5, M-D2: 5 free listings, then 100 tokens = $1
+  // per listing per 30 days). Default OFF: while off, every publish is granted 'free'
+  // and the entitlement row is still written so the quota count is accurate the moment
+  // this flips on. NOTE betaFreePremium independently zeroes chargeFeature, so even with
+  // this ON beta users are not debited — the machinery lands dark twice over. Read side
+  // is worker/src/lib/listing_billing.ts.
+  listingFeeEnabled: boolean;
 }
 
 // FREE LAUNCH (2026-06-28, owner-locked Specs/FREE-LAUNCH-DIRECTION.md): ship an
@@ -725,6 +732,9 @@ const DEFAULTS: PlatformConfig = {
   // sellers and drafts public listing text; staging first, and the form stays as the
   // escape hatch until the funnel says otherwise (M-D7).
   aiComposeEnabled: false,
+  // Per-listing billing — DARK. While off, publishes are free and entitlements are
+  // still recorded so the 5-free quota is accurate when this flips on (staging first).
+  listingFeeEnabled: false,
 };
 
 /** Merged config for server-side gates (same blob getConfig serves). */
