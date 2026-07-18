@@ -2639,6 +2639,12 @@ class CallSession {
   }
 
   Future<void> _runAvaCountdown() async {
+    // [AVA-VM-NOCOUNTDOWN-1, owner 2026-07-19] The 3-2-1 countdown existed to mask
+    // the AI receptionist's warm-up. Zero-cost VM mode plays a CACHED greeting
+    // near-instantly, so the countdown is skipped (flag-gated: flip
+    // avaCountdownEnabled back on in KV if real networks ever feel slow — no
+    // app release needed). call.start() runs in parallel either way.
+    if (!RemoteConfig.avaCountdownEnabled) return;
     for (var n = 3; n >= 1; n--) {
       if (_ended) return;
       _avaCount = n;

@@ -77,6 +77,10 @@ export interface PlatformConfig {
   // STT/LLM/live-TTS runs during the call, so marginal AI cost is zero. Takes
   // precedence over receptionistUseCf/Gemini while ON.
   receptionistVmMode: boolean;
+  // [AVA-VM-NOCOUNTDOWN-1] client 3-2-1 Ava warm-up countdown before voicemail.
+  // Default true (legacy); flipped false in prod KV — the cached VM greeting is
+  // instant so the warm-up screen is dead time. Client mirror: RemoteConfig.
+  avaCountdownEnabled: boolean;
   // P1 call-reliability (Specs/MASTER-PROMPT-LAUNCH-READINESS-2026-07-02.md, Phase 1).
   // When ON, the caller's Ava-takeover countdown does NOT start until the server
   // confirms the incoming-call FCM push outcome over the CallRoom socket
@@ -558,6 +562,7 @@ const DEFAULTS: PlatformConfig = {
   receptionistRings: 4,            // [ONE-FLOW-1] owner 2026-07-09: 4 rings (20s) GLOBAL — one flow for everyone; KV can override
   receptionistUseCf: false,        // engine switch: false = Gemini Live (default), true = Cloudflare Workers AI engine
   receptionistVmMode: false,       // zero-cost voicemail: cached Bulbul greeting + beep + 30s record (overrides engines while ON)
+  avaCountdownEnabled: true,       // client 3-2-1 Ava countdown; prod KV flips false (VM greeting is instant)
   receptTakeoverGuard: false,      // P1: gate Ava takeover on FCM ring-ack — ships dark, flip after device test
 
   avaAffiliateEnabled: false,      // launch gate — flip ON after A5 fraud checks

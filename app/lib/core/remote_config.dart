@@ -97,6 +97,9 @@ class RemoteConfig {
   static bool get liveEnabled => _b('liveEnabled', false);
   static bool get consultEnabled => _b('consultEnabled', false);
   static bool get conferenceEnabled => _b('conferenceEnabled', true);
+  // [AVA-VM-NOCOUNTDOWN-1] 3-2-1 Ava warm-up countdown before voicemail. Default ON
+  // (legacy behavior); prod KV flips it OFF because the cached VM greeting is instant.
+  static bool get avaCountdownEnabled => _b('avaCountdownEnabled', true);
   /// [AVA-SYNC-SKIP] Kill switch for the reconnect/resume empty-catch-up skip. Default
   /// TRUE. When true, the InboxDO answers a reconnect/resume whose cursor is already at
   /// head with a cheap `sync_skip` frame instead of a full replay. Flip false in KV to
