@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 
 import '../../core/analytics.dart';
 import '../../core/avatar.dart';
@@ -9,6 +13,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import '../../sync/party/party_hub.dart';
+import '../marketplace/intent_theme.dart';
 import '../marketplace/call_agent_sheet.dart';
 import '../../core/marketplace_api.dart';
 import '../../core/chat_state.dart';
@@ -81,6 +86,15 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
     final d = await ListingsApi.detail(widget.listingId);
     if (!mounted) return;
     setState(() { _d = d; _loading = false; });
+    // [MKT1-DETAIL] One skeleton, five templates — record which template rendered
+    // so we can see the category-template mix buyers actually land on.
+    if (d != null) {
+      Analytics.capture('listing_template_rendered', {
+        'template': d.listing.detailTemplate,
+        'intent': d.listing.intent,
+        'listing_id': d.listing.id,
+      });
+    }
     // Talk-once: grey the Call Agent button if this buyer already negotiated this
     // listing version (one agent↔agent conversation per buyer per listing).
     if (d != null && const ['sell', 'buy', 'social'].contains(d.listing.kind) && !d.isOwner) {
@@ -258,6 +272,65 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
     if (ok == true) _load();
   }
 
+  /// [MKT1-DETAIL] Report affordance present on EVERY template (§4.2 skeleton
+  /// step 6). Same `POST /api/report` path as the overflow menu.
+  Future<void> _reportListing() async {
+    final d = _d;
+    if (d == null) return;
+    final ok = await ListingsApi.report('listing', d.listing.id, 'inappropriate');
+    if (mounted && ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Report submitted — thank you')));
+    }
+  }
+
+  /// [MKT1-DETAIL] The bottom-bar PRIMARY CTA. Booking listings (live events,
+  /// consults, the `book` template) keep the real checkout / slot-picker path
+  /// (`_book`); every other template's primary is "Talk to my agent" with the
+  /// per-template verb (§4.2), wired to the unchanged `_callAgent`.
+  Widget _primaryCta(ListingCard l) {
+    final isLive = l.status == 'live';
+    final isBooking = isLive ||
+        l.kind == 'live_event' ||
+        l.kind == 'consult' ||
+        l.detailTemplate == 'book';
+    if (isBooking) {
+      return AdButton(
+        label: isLive
+            ? 'Join now · ${l.priceLabel}'
+            : l.detailTemplate == 'book'
+                ? 'Book a slot'
+                : l.kind == 'live_event'
+                    ? 'Book · ${l.priceLabel}'
+                    : 'Book a session · ${l.priceLabel}',
+        variant: isLive ? AdButtonVariant.danger : AdButtonVariant.primary,
+        fontSize: 18, fullWidth: true,
+        onPressed: _book,
+      );
+    }
+    return AdButton(
+      label: _agentCtaLabel(l.detailTemplate),
+      variant: AdButtonVariant.primary,
+      fontSize: 18, fullWidth: true,
+      onPressed: _alreadyTalked ? _alreadyTalkedNotice : _callAgent,
+    );
+  }
+
+  /// Per-template verb for the "Talk to my agent" primary CTA (§4.2 table).
+  String _agentCtaLabel(String template) {
+    switch (template) {
+      case 'rent':
+        return 'Talk to my agent · rate & dates';
+      case 'lead':
+        return 'Ask anything';
+      case 'profile':
+        return 'Screen & ask';
+      case 'sell':
+      default:
+        return 'Talk to my agent';
+    }
+  }
+
   void _overflow() {
     final d = _d;
     if (d == null) return;
@@ -326,6 +399,7 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
                     followerCount: d.followerCount, canReview: d.booked && !d.isOwner,
                     viewers: _viewers,
                     onReview: _review,
+                    onReport: _reportListing,
                     onCreatorTap: () => Navigator.push(context,
                         MaterialPageRoute(builder: (_) => CreatorChannelScreen(creatorUid: d.listing.creator.uid))),
                   ),
@@ -356,6 +430,9 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
                     ]),
                   ),
                 ),
+              // [MKT1-DETAIL] §4.2 skeleton CTAs: [Message owner] + a primary that
+              // changes VERB per template (wiring unchanged). Message owner is the
+              // round chat button; the primary is booking or "Talk to my agent".
               Row(children: [
               ZinePressable(
                 onTap: _message,
@@ -368,44 +445,7 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
                 )),
               ),
               const SizedBox(width: 12),
-              if (const ['sell', 'buy', 'social'].contains(d.listing.kind)) ...[
-                ZinePressable(
-                  onTap: _alreadyTalked ? _alreadyTalkedNotice : _callAgent,
-                  color: AD.card,
-                  borderColor: AD.borderControl,
-                  boxShadow: const [],
-                  radius: BorderRadius.circular(100),
-                  child: SizedBox(width: 52, height: 52, child: Center(
-                    child: Icon(Icons.support_agent, size: 24,
-                        color: _alreadyTalked ? AD.textTertiary : AD.textPrimary),
-                  )),
-                ),
-                const SizedBox(width: 12),
-              ],
-              Expanded(child: () {
-                final isMarket = const ['sell', 'buy', 'social'].contains(d.listing.kind);
-                if (isMarket) {
-                  // Marketplace listing: the primary action is to message the owner
-                  // directly (price is shown above; agents handle negotiation).
-                  return AdButton(
-                    label: 'Message owner',
-                    variant: AdButtonVariant.primary,
-                    fontSize: 18, fullWidth: true,
-                    onPressed: _message,
-                  );
-                }
-                return AdButton(
-                  label: d.listing.status == 'live'
-                      ? 'Join now · ${d.listing.priceLabel}'
-                      : d.listing.kind == 'live_event'
-                          ? 'Book · ${d.listing.priceLabel}'
-                          : 'Book a session · ${d.listing.priceLabel}',
-                  variant: d.listing.status == 'live' ? AdButtonVariant.danger : AdButtonVariant.primary,
-                  fontSize: 18,
-                  fullWidth: true,
-                  onPressed: _book,
-                );
-              }()),
+              Expanded(child: _primaryCta(d.listing)),
             ]),
             ]),
           ),
@@ -423,47 +463,49 @@ class ListingDetailView extends StatelessWidget {
   final double? creatorRating;
   final int creatorRatingCount, followerCount;
   final bool canReview;
-  final VoidCallback? onReview, onCreatorTap;
+  final VoidCallback? onReview, onCreatorTap, onReport;
   final int viewers; // #7: live viewer count (PartyKit), 0 when none/off
   const ListingDetailView({
     super.key, required this.card, this.reviews = const [],
     this.creatorRating, this.creatorRatingCount = 0, this.followerCount = 0,
-    this.canReview = false, this.onReview, this.onCreatorTap, this.viewers = 0,
+    this.canReview = false, this.onReview, this.onCreatorTap, this.onReport,
+    this.viewers = 0,
   });
 
   @override
   Widget build(BuildContext context) {
+    // [MKT1-DETAIL] ONE skeleton, five templates (§4.2). The order is fixed for
+    // every template: HERO → title+price → owner block (avatar/number/QR) →
+    // category block → CTAs (bottom bar, owned by the screen) → reviews → report.
+    // Only the CATEGORY BLOCK and the CTA VERBS change per `detailTemplate`.
+    final it = IntentTheme.parse(card.intent);
     final covers = card.coverMedia
         .map((m) => (m is Map ? (m['url'] ?? m['r2_key']) : null)?.toString())
         .whereType<String>().where((u) => u.startsWith('http')).toList();
+    // §4.1 price semantics — RENT → "/mo", LEAD → "from", PROFILE → "" (nothing).
+    final priceStr = priceLabel(card.price, card.currency, card.priceSemantics);
     return ListView(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.only(bottom: 24), children: [
-      // [UI-MKT-2] swipeable photo gallery header — page dots + heart overlay.
-      Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-        child: _GalleryHeader(card: card, covers: covers),
-      ),
+      // 1. HERO — one rule, all templates: video > photo > intent placeholder.
+      _ListingHero(card: card, covers: covers, videoId: _youtubeId(card.videoUrl), theme: it),
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          // 2. Title + price (intent-aware label).
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Expanded(child: Text(card.title, style: ADText.appTitle())),
-            const SizedBox(width: 10),
-            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              if (card.promoPct > 0)
-                Text(fmtCoins(card.price),
-                    style: ADText.preview(c: AD.textTertiary)
-                        .copyWith(decoration: TextDecoration.lineThrough)),
-              // money = green pill.
+            if (priceStr.isNotEmpty) ...[
+              const SizedBox(width: 10),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 decoration: BoxDecoration(
-                  color: AD.online,
+                  color: card.price <= 0 ? AD.online : it.chipBg,
                   borderRadius: BorderRadius.circular(100),
-                  border: Border.all(color: AD.borderControl, width: 1),
+                  border: Border.all(color: it.tintBorder, width: 1),
                 ),
-                child: Text(card.displayPrice, style: ADText.rowName(c: Colors.white)),
+                child: Text(priceStr,
+                    style: ADText.rowName(c: card.price <= 0 ? Colors.white : it.tint)),
               ),
-            ]),
+            ],
           ]),
           // #7: live viewer count (PartyKit roster). Shown only when others are
           // here too; dormant/0 until partyEnabled is on.
@@ -520,37 +562,20 @@ class ListingDetailView extends StatelessWidget {
             Text(card.description!, style: ADText.preview(c: AD.textPrimary)),
             const SizedBox(height: 18),
           ],
-          // creator mini-card → channel
-          AdCard(
-            onTap: onCreatorTap,
-            padding: const EdgeInsets.all(12),
-            radius: AD.rListCard,
-            child: Row(children: [
-              Avatar(seed: card.creator.uid, name: card.creator.name ?? '?', size: 44,
-                  avatarUrl: card.creator.avatarUrl),
-              const SizedBox(width: 10),
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  Flexible(child: Text(card.creator.name ?? (card.creator.handle ?? 'Creator'),
-                      maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: ADText.rowName())),
-                  if (card.creator.kycVerified) ...[
-                    const SizedBox(width: 5),
-                    PhosphorIcon(PhosphorIcons.sealCheck(PhosphorIconsStyle.fill), size: 16, color: AD.iconSearch),
-                  ],
-                ]),
-                Text(
-                  [
-                    if (creatorRating != null && creatorRatingCount > 0) '★ ${creatorRating!.toStringAsFixed(1)} ($creatorRatingCount)',
-                    if (followerCount > 0) '$followerCount followers',
-                  ].join(' · '),
-                  style: ADText.statCaption(c: AD.textSecondary),
-                ),
-              ])),
-              PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 18, color: AD.textSecondary),
-            ]),
+          // 3. Owner profile block — avatar, AvaTOK number, QR of the deep link.
+          _OwnerProfileBlock(
+            card: card,
+            creatorRating: creatorRating,
+            creatorRatingCount: creatorRatingCount,
+            followerCount: followerCount,
+            onCreatorTap: onCreatorTap,
           ),
+          const SizedBox(height: 20),
+          // 4. Category block — the ONLY part that varies by template. Reads
+          // `attrs` generically (the field_schema drives what's present).
+          _CategoryBlock(card: card, theme: it),
           const SizedBox(height: 22),
+          // 5. Reviews (existing).
           Row(children: [
             Text('Reviews', style: ADText.appTitle()),
             const SizedBox(width: 10),
@@ -567,10 +592,43 @@ class ListingDetailView extends StatelessWidget {
             Padding(padding: const EdgeInsets.symmetric(vertical: 12),
                 child: Text('No reviews yet — be the first.', style: ADText.preview())),
           for (final r in reviews) ReviewTile(review: r),
+          // 6. Report — present on EVERY template (skeleton step 6). Hidden in the
+          // creation-preview (onReport null) since there's nothing to report yet.
+          if (onReport != null) ...[
+            const SizedBox(height: 18),
+            Center(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onReport,
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  PhosphorIcon(PhosphorIcons.flag(PhosphorIconsStyle.bold), size: 15, color: AD.textTertiary),
+                  const SizedBox(width: 6),
+                  Text('Report this listing', style: ADText.preview(c: AD.textTertiary)),
+                ]),
+              ),
+            ),
+          ],
         ]),
       ),
     ]);
   }
+}
+
+/// [MKT1-DETAIL] Extract a YouTube video id from a (server-validated, §3.4)
+/// YouTube URL. Handles watch / youtu.be / shorts / embed / nocookie forms.
+String? _youtubeId(String? url) {
+  if (url == null || url.trim().isEmpty) return null;
+  final u = url.trim();
+  for (final p in <RegExp>[
+    RegExp(r'youtube\.com/watch\?[^ ]*[?&]?v=([A-Za-z0-9_-]{6,})'),
+    RegExp(r'youtu\.be/([A-Za-z0-9_-]{6,})'),
+    RegExp(r'youtube\.com/shorts/([A-Za-z0-9_-]{6,})'),
+    RegExp(r'youtube(?:-nocookie)?\.com/embed/([A-Za-z0-9_-]{6,})'),
+  ]) {
+    final m = p.firstMatch(u);
+    if (m != null) return m.group(1);
+  }
+  return null;
 }
 
 /// [UI-MKT-2] A small icon+label stat pill for the detail stats row.
@@ -599,17 +657,21 @@ String _postedAgo(int createdMs) {
   return '${days ~/ 365}y ago';
 }
 
-/// [UI-MKT-2] Swipeable photo gallery with page dots + a heart overlay that
-/// optimistically toggles the favorite (calls the POST/DELETE endpoints).
-class _GalleryHeader extends StatefulWidget {
+/// [MKT1-DETAIL] The shared HERO (§4.2 skeleton step 1): ONE rule, all
+/// templates — full-bleed YouTube player when a (server-validated) video is
+/// present, else a swipeable photo gallery, else an intent-tinted placeholder.
+/// Keeps the favourite heart + page dots + analytics from the old gallery.
+class _ListingHero extends StatefulWidget {
   final ListingCard card;
   final List<String> covers;
-  const _GalleryHeader({required this.card, required this.covers});
+  final String? videoId;
+  final IntentTheme theme;
+  const _ListingHero({required this.card, required this.covers, required this.videoId, required this.theme});
   @override
-  State<_GalleryHeader> createState() => _GalleryHeaderState();
+  State<_ListingHero> createState() => _ListingHeroState();
 }
 
-class _GalleryHeaderState extends State<_GalleryHeader> {
+class _ListingHeroState extends State<_ListingHero> {
   final _pc = PageController();
   int _page = 0;
   bool _favBusy = false;
@@ -620,7 +682,7 @@ class _GalleryHeaderState extends State<_GalleryHeader> {
   void dispose() { _pc.dispose(); super.dispose(); }
 
   Future<void> _toggleFav() async {
-    if (_favBusy) return;
+    if (_favBusy || card.id.isEmpty) return;
     final next = !card.favorited;
     setState(() { card.favorited = next; _favBusy = true; });
     Analytics.capture(next ? 'listing_favorited' : 'listing_unfavorited', {'listing_id': card.id});
@@ -631,25 +693,55 @@ class _GalleryHeaderState extends State<_GalleryHeader> {
     setState(() { if (!ok) card.favorited = !next; _favBusy = false; });
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final covers = widget.covers;
-    return SizedBox(
-      height: 230,
-      child: Stack(children: [
-        Positioned.fill(
+  Widget _heart() => Positioned(
+        top: 10, right: 10,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: _toggleFav,
           child: Container(
-            decoration: BoxDecoration(borderRadius: BorderRadius.circular(AD.rListCard), boxShadow: const []),
-            child: covers.isEmpty
-                ? CoverImage(url: null, seed: card.id.hashCode)
-                : PageView(
-                    controller: _pc,
-                    onPageChanged: (i) => setState(() => _page = i),
-                    children: [for (final u in covers) CoverImage(url: u, seed: card.id.hashCode)],
-                  ),
+            padding: const EdgeInsets.all(7),
+            decoration: BoxDecoration(
+              color: const Color(0xF2FFFFFF),
+              shape: BoxShape.circle,
+              border: Border.all(color: AD.borderControl, width: 1),
+              boxShadow: const [],
+            ),
+            child: Icon(
+              card.favorited ? Icons.favorite : Icons.favorite_border,
+              size: 20,
+              color: card.favorited ? AD.danger : AD.textOnInput,
+            ),
           ),
         ),
-        // page dots — only when there's more than one photo.
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final vid = widget.videoId;
+    // Video hero — full-bleed inline YouTube (its own 16:9 height).
+    if (vid != null) {
+      return Stack(children: [
+        _YouTubeHero(videoId: vid, url: card.videoUrl ?? ''),
+        if (card.id.isNotEmpty) _heart(),
+      ]);
+    }
+    final covers = widget.covers;
+    return SizedBox(
+      height: 240,
+      child: Stack(children: [
+        Positioned.fill(
+          child: covers.isEmpty
+              // Intent-tinted placeholder (no photo, no video).
+              ? Container(
+                  color: widget.theme.chipBg,
+                  child: Center(child: PhosphorIcon(widget.theme.icon, size: 64, color: widget.theme.tint)),
+                )
+              : PageView(
+                  controller: _pc,
+                  onPageChanged: (i) => setState(() => _page = i),
+                  children: [for (final u in covers) CoverImage(url: u, seed: card.id.hashCode, radius: BorderRadius.zero)],
+                ),
+        ),
         if (covers.length > 1)
           Positioned(
             bottom: 10, left: 0, right: 0,
@@ -667,31 +759,340 @@ class _GalleryHeaderState extends State<_GalleryHeader> {
                 ),
             ]),
           ),
-        // heart overlay (top-right).
-        Positioned(
-          top: 8, right: 8,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: _toggleFav,
-            child: Container(
-              padding: const EdgeInsets.all(7),
-              decoration: BoxDecoration(
-                color: const Color(0xF2FFFFFF),
-                shape: BoxShape.circle,
-                border: Border.all(color: AD.borderControl, width: 1),
-                boxShadow: const [],
-              ),
-              child: Icon(
-                card.favorited ? Icons.favorite : Icons.favorite_border,
-                size: 20,
-                color: card.favorited ? AD.danger : AD.textOnInput,
-              ),
-            ),
-          ),
-        ),
+        if (card.id.isNotEmpty) _heart(),
       ]),
     );
   }
+}
+
+/// [MKT1-DETAIL] Full-bleed YouTube hero. Thumbnail + play affordance; tap plays
+/// inline (youtube_player_iframe, already a dependency — see chat_media_cards.dart's
+/// YouTubeCard). Mitigates the §3.4 embed RISK with `strictRelatedVideos: true`
+/// (rel=0 — only same-channel related videos at the end).
+/// TODO(M-D5): the package doesn't expose a `youtube-nocookie.com` host toggle on
+/// its public params; wire the nocookie origin if/when it lands upstream.
+class _YouTubeHero extends StatefulWidget {
+  final String videoId;
+  final String url;
+  const _YouTubeHero({required this.videoId, required this.url});
+  @override
+  State<_YouTubeHero> createState() => _YouTubeHeroState();
+}
+
+class _YouTubeHeroState extends State<_YouTubeHero> {
+  YoutubePlayerController? _ctrl;
+
+  @override
+  void dispose() {
+    _ctrl?.close();
+    super.dispose();
+  }
+
+  void _play() {
+    Analytics.capture('listing_video_play', {'video_id': widget.videoId});
+    setState(() {
+      _ctrl = YoutubePlayerController.fromVideoId(
+        videoId: widget.videoId,
+        autoPlay: true,
+        params: const YoutubePlayerParams(
+          showControls: true,
+          showFullscreenButton: true,
+          enableCaption: true,
+          strictRelatedVideos: true, // rel=0 (§3.4 risk note)
+        ),
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = _ctrl;
+    if (c != null) return YoutubePlayer(controller: c, aspectRatio: 16 / 9);
+    return GestureDetector(
+      onTap: _play,
+      child: AspectRatio(
+        aspectRatio: 16 / 9,
+        child: Stack(fit: StackFit.expand, alignment: Alignment.center, children: [
+          Image.network(
+            'https://img.youtube.com/vi/${widget.videoId}/hqdefault.jpg',
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => Container(color: AD.card),
+          ),
+          Container(color: Colors.black.withValues(alpha: 0.12)),
+          Container(
+            width: 60, height: 60,
+            decoration: BoxDecoration(
+              color: AD.brandYoutube,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 2),
+              boxShadow: const [],
+            ),
+            child: const Icon(Icons.play_arrow, color: Colors.white, size: 34),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+/// [MKT1-DETAIL] Owner profile block (§4.2 skeleton step 3): avatar, the owner's
+/// AvaTOK number, and a QR of the listing deep link. Tapping the row opens the
+/// creator channel; tapping the QR opens a share sheet (copy / share the link).
+class _OwnerProfileBlock extends StatelessWidget {
+  final ListingCard card;
+  final double? creatorRating;
+  final int creatorRatingCount, followerCount;
+  final VoidCallback? onCreatorTap;
+  const _OwnerProfileBlock({
+    required this.card,
+    this.creatorRating,
+    this.creatorRatingCount = 0,
+    this.followerCount = 0,
+    this.onCreatorTap,
+  });
+
+  // The client-rendered listing deep link (no server work, §4.2). Universal-link
+  // form so a scan opens AvaTOK (Play-Store fallback lives on the web side).
+  String get _deepLink => 'https://avatok.ai/l/${card.id}';
+
+  void _openQrSheet(BuildContext context) {
+    final number = card.creator.avatokNumber ?? '';
+    final name = card.creator.name ?? card.creator.handle ?? 'this listing';
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AD.overlaySheet,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (c) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text('Share this listing', style: ADText.appTitle(), textAlign: TextAlign.center),
+            const SizedBox(height: 16),
+            Center(child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AD.inputField,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AD.borderControl, width: 1),
+              ),
+              child: QrImageView(data: _deepLink, size: 200, backgroundColor: AD.inputField),
+            )),
+            if (number.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(number, textAlign: TextAlign.center, style: ADText.rowName(c: AD.textPrimary)),
+            ],
+            const SizedBox(height: 8),
+            Text(_deepLink, textAlign: TextAlign.center, style: ADText.statCaption(c: AD.textTertiary)),
+            const SizedBox(height: 16),
+            Row(children: [
+              Expanded(child: AdButton(
+                label: 'Copy link',
+                variant: AdButtonVariant.ghost,
+                fullWidth: true,
+                onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: _deepLink));
+                  Analytics.capture('listing_link_copied', {'listing_id': card.id});
+                  if (c.mounted) {
+                    Navigator.pop(c);
+                    ScaffoldMessenger.of(c).showSnackBar(const SnackBar(content: Text('Link copied')));
+                  }
+                },
+              )),
+              const SizedBox(width: 12),
+              Expanded(child: AdButton(
+                label: 'Share',
+                fullWidth: true,
+                onPressed: () async {
+                  Analytics.capture('listing_link_shared', {'listing_id': card.id});
+                  await Share.share('$name on AvaTOK — $_deepLink');
+                  if (c.mounted) Navigator.pop(c);
+                },
+              )),
+            ]),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final number = card.creator.avatokNumber ?? '';
+    final subtitle = [
+      if (creatorRating != null && creatorRatingCount > 0) '★ ${creatorRating!.toStringAsFixed(1)} ($creatorRatingCount)',
+      if (followerCount > 0) '$followerCount followers',
+    ].join(' · ');
+    return AdCard(
+      padding: const EdgeInsets.all(12),
+      radius: AD.rListCard,
+      child: Row(children: [
+        Expanded(child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onCreatorTap,
+          child: Row(children: [
+            Avatar(seed: card.creator.uid, name: card.creator.name ?? '?', size: 44, avatarUrl: card.creator.avatarUrl),
+            const SizedBox(width: 10),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Flexible(child: Text(card.creator.name ?? (card.creator.handle ?? 'Creator'),
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.rowName())),
+                if (card.creator.kycVerified) ...[
+                  const SizedBox(width: 5),
+                  PhosphorIcon(PhosphorIcons.sealCheck(PhosphorIconsStyle.fill), size: 16, color: AD.iconSearch),
+                ],
+              ]),
+              if (number.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Row(children: [
+                    PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold), size: 13, color: AD.textSecondary),
+                    const SizedBox(width: 5),
+                    Text(number, style: ADText.statCaption(c: AD.textSecondary)),
+                  ]),
+                ),
+              if (subtitle.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(subtitle, style: ADText.statCaption(c: AD.textSecondary)),
+                ),
+            ])),
+          ]),
+        )),
+        const SizedBox(width: 10),
+        // QR — client-rendered (qr_flutter is a dependency). Tap → share sheet.
+        if (card.id.isNotEmpty)
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => _openQrSheet(context),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Container(
+                padding: const EdgeInsets.all(5),
+                decoration: BoxDecoration(
+                  color: AD.inputField,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AD.borderControl, width: 1),
+                ),
+                child: QrImageView(data: _deepLink, size: 58, backgroundColor: AD.inputField),
+              ),
+              const SizedBox(height: 3),
+              Text('Share', style: ADText.statCaption(c: AD.textTertiary)),
+            ]),
+          ),
+      ]),
+    );
+  }
+}
+
+/// [MKT1-DETAIL] The ONLY part of the skeleton that varies (§4.2 step 4). Reads
+/// `attrs` GENERICALLY — the category's field_schema drives what's present, so
+/// nothing is hardcoded per category. Each template gets its own heading + verb,
+/// per the §4.2 table:
+///   sell    → Specifications        rent → Rental details
+///   book    → Credentials & booking lead → Services
+///   profile → Experience & skills
+class _CategoryBlock extends StatelessWidget {
+  final ListingCard card;
+  final IntentTheme theme;
+  const _CategoryBlock({required this.card, required this.theme});
+
+  // Internal / private keys that must NEVER surface to buyers (§3.6b: the
+  // mandate and its sub-fields, plus i18n bookkeeping). Excluded, not enumerated
+  // to render — the render itself stays generic over whatever else is in attrs.
+  static const _hidden = {
+    'mandate', 'never_disclose', 'seller_private_rules', 'public_agent_brief',
+    'server_enforced_constraints', 'floor_price', 'floor_pct', 'ask_before_commit',
+    'orig_lang', 'title_orig', 'desc_orig', 'agent_instructions', 'agent_playbook',
+  };
+
+  String get _heading {
+    switch (card.detailTemplate) {
+      case 'rent':
+        return 'Rental details';
+      case 'book':
+        return 'Credentials & booking';
+      case 'lead':
+        return 'Services';
+      case 'profile':
+        return 'Experience & skills';
+      case 'sell':
+      default:
+        return 'Specifications';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = <MapEntry<String, String>>[];
+    card.attrs.forEach((k, v) {
+      if (_hidden.contains(k)) return;
+      final val = _attrValue(v);
+      if (val == null) return;
+      rows.add(MapEntry(_humanizeKey(k), val));
+    });
+    // BOOK listings point at the slot picker that lives behind the CTA.
+    final bookHint = card.detailTemplate == 'book';
+    if (rows.isEmpty && !bookHint) return const SizedBox.shrink();
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        PhosphorIcon(theme.icon, size: 16, color: theme.tint),
+        const SizedBox(width: 8),
+        Text(_heading, style: ADText.appTitle()),
+      ]),
+      const SizedBox(height: 12),
+      if (rows.isNotEmpty)
+        AdCard(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          radius: AD.rListCard,
+          child: Column(children: [
+            for (var i = 0; i < rows.length; i++)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  SizedBox(
+                    width: 130,
+                    child: Text(rows[i].key, style: ADText.statCaption(c: AD.textSecondary)),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text(rows[i].value, style: ADText.preview(c: AD.textPrimary))),
+                ]),
+              ),
+          ]),
+        ),
+      if (bookHint) ...[
+        if (rows.isNotEmpty) const SizedBox(height: 10),
+        Row(children: [
+          PhosphorIcon(PhosphorIcons.calendarCheck(PhosphorIconsStyle.bold), size: 15, color: AD.textSecondary),
+          const SizedBox(width: 6),
+          Expanded(child: Text('Pick an available time when you tap "Book a slot" below.',
+              style: ADText.preview(c: AD.textSecondary))),
+        ]),
+      ],
+    ]);
+  }
+}
+
+/// Humanise an attrs key: `year_built` / `yearBuilt` → "Year Built".
+String _humanizeKey(String k) {
+  var s = k.replaceAll('_', ' ').replaceAll('-', ' ');
+  s = s.replaceAllMapped(RegExp(r'([a-z0-9])([A-Z])'), (m) => '${m[1]} ${m[2]}').trim();
+  if (s.isEmpty) return k;
+  return s
+      .split(RegExp(r'\s+'))
+      .map((w) => w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}')
+      .join(' ');
+}
+
+/// Render an attrs value for display, or null to skip it (empty / nested object).
+String? _attrValue(dynamic v) {
+  if (v == null) return null;
+  if (v is bool) return v ? 'Yes' : 'No';
+  if (v is List) {
+    final parts = v.map((e) => e?.toString().trim() ?? '').where((s) => s.isNotEmpty).toList();
+    return parts.isEmpty ? null : parts.join(', ');
+  }
+  if (v is Map) return null; // nested objects aren't a labelled-grid value
+  final s = v.toString().trim();
+  return s.isEmpty ? null : s;
 }
 
 class ReviewTile extends StatelessWidget {
