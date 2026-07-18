@@ -234,9 +234,10 @@ Future<bool> _serverAllowed() async {
 /// The server never returns `device_private` (§2.1); any such value is coerced.
 Future<List<BrainHit>> _serverRecall(String q, List<String>? domains, int k) async {
   final res = await ApiAuth.postJson(
-    '$kBrainBase/ops',
+    // Path-style op, matching delete_all/delete_status (server routes/brain.ts
+    // switches on the /api/brain/<op> path segment — there is no /ops endpoint).
+    '$kBrainBase/recall',
     {
-      'op': 'recall',
       'query': q,
       'k': k,
       if (domains != null && domains.isNotEmpty) 'domains': domains,
