@@ -127,9 +127,19 @@ body = body[body.index('{'):end + 1]
 body = re.sub(r'/\*.*?\*/', '', body, flags=re.S)
 body = re.sub(r'//.*', '', body)
 out = {}
-for m in re.finditer(r'(\w+)\s*:\s*(true|false|-?\d+)', body):
+# [RECEPT-BILLING-3] numeric literals may be floats (usdInrRate: 96.4) and may use
+# TS numeric separators (receptWrapCueMs: 120_000) — the old `-?\d+` regex silently
+# truncated both (96.4 -> 96, 120_000 -> 120), so float flags could never be set
+# and `effective`/`prune` compared against wrong defaults.
+for m in re.finditer(r'(\w+)\s*:\s*(true|false|-?[0-9][0-9_]*(?:\.[0-9]+)?)', body):
     k, v = m.group(1), m.group(2)
-    out[k] = True if v == 'true' else False if v == 'false' else int(v)
+    if v == 'true':
+        out[k] = True
+    elif v == 'false':
+        out[k] = False
+    else:
+        v = v.replace('_', '')
+        out[k] = float(v) if '.' in v else int(v)
 print(json.dumps(out))
 PY
   echo "$out"

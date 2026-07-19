@@ -19,12 +19,18 @@ import sys
 def parse_value(raw, key, defaults):
     if key not in defaults:
         sys.exit(f"unknown flag: {key!r} (not in DEFAULTS in routes/config.ts)")
-    want_num = isinstance(defaults[key], int) and not isinstance(defaults[key], bool)
+    # [RECEPT-BILLING-3] floats are legal numeric flags (usdInrRate: 96.4) — the
+    # worker's putConfig checks `typeof v === "number"`, so mirror that here
+    # instead of forcing integers. Ints stay ints (no 3 -> 3.0 churn in the blob).
+    want_num = isinstance(defaults[key], (int, float)) and not isinstance(defaults[key], bool)
     if want_num:
         try:
             return int(raw)
         except ValueError:
-            sys.exit(f"{key} expects a number, got {raw!r}")
+            try:
+                return float(raw)
+            except ValueError:
+                sys.exit(f"{key} expects a number, got {raw!r}")
     if raw in ("true", "false"):
         return raw == "true"
     sys.exit(f"{key} expects true|false, got {raw!r}")
