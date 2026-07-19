@@ -96,6 +96,33 @@ the settings card).
 Goal: per-OWNER dashboard of incoming Ava/voicemail traffic: which numbers call
 most, origin country, busiest hours, mode split, minutes & tokens spent.
 
+✅ SHIPPED [RECEPT-STATS-1] (2026-07-19, commit 4c0fda0, worker version
+d4fe932b-8ceb-48b1-98c3-4e7cb09d03f4, consumers f334a24e):
+- C1: ONE shared sink `lib/recept_stats.ts` recordCallSummary() called from all
+  four lanes' finalize (reception_room / reception_room_cf incl. VM mode /
+  vobiz_agent_room / pstn.ts record-cb + hangup-missed). Emits the canonical
+  `ava_recept_call_summary` event (email/phone-stamped), mirrors into
+  self-migrating D1 `recept_call_stats` (caller_key UNhashed per owner decision)
+  and enforces the 90-day retention with a per-owner DELETE on each insert.
+  `lib/e164_country.ts` maps E.164 prefixes (~75 incl. NANP US/CA split) → ISO;
+  app lane threads req.cf.country/timezone through the /start init blob.
+  Skipped on owner_answered / owner takeover (the owner handled the call).
+- C2: `GET /api/receptionist/analytics?days=30&tz_offset_min=330` (requireUser,
+  own rows only, days clamped 1-90; verified 401 unauthenticated). The device
+  sends its UTC offset (Dart has no IANA name) so by_hour/by_day are owner-local.
+- C3: receptionist_analytics_page.dart (totals row, mode split, 24h bars, daily
+  trend, top callers, countries — cockpit-wallet AdCard/Container-bar patterns,
+  7/30/90 chips, pull-to-refresh) + "View call analytics" entry on the merged
+  card. Needs an app build ("ship it") to reach devices.
+- C4: recordCallSummary → brainIngest(domain "receptionist") — NEW registry row
+  in brain_domains.ts (consent key "receptionist", label "Receptionist calls",
+  opt-out ON) so the Settings guardrail toggle is auto-generated; consent is
+  checked inside brainIngest (master + key, FAILS CLOSED) and re-checked by the
+  consumer (DOMAIN_CONSENT mirror row added + consumers redeployed).
+- Deferred: PostHog-fallback/backfill for C2 (D1-only; PostHog stays ops view);
+  tap-through from a top caller to contact/thread; caller-name enrichment for
+  PSTN voicemail rows (E.164 only server-side — the device resolves names).
+
 C1. Event enrichment (worker, do first — data quality feeds everything):
 - At /start (app lane) and handleAnswer/record-cb (PSTN lane) emit ONE canonical
   event `ava_recept_call_summary` at call end with props: owner_uid, owner email
