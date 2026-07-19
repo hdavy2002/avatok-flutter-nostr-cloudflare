@@ -257,7 +257,7 @@ export async function liveDonate(req: Request, env: Env): Promise<Response> {
   }
   const name = await displayName(env, ctx.uid);
   await sessionOp(env, `live:${id}`, { op: "donation", name, amount, net: r.net });
-  try { await notifyUser(env, l.creator_id, { type: "wallet", title: `${name} donated ${amount} AvaCoins`, body: l.title, data: { deeplink: "/wallet", amount: r.net } }); } catch { /* best-effort */ }
+  try { await notifyUser(env, l.creator_id, { type: "wallet", title: `${name} donated ${amount} Tokens`, body: l.title, data: { deeplink: "/wallet", amount: r.net } }); } catch { /* best-effort */ }
   brainFact(env, ctx.uid, "donated", "live", { title: l.title, amount }, donationId);
   track(env, ctx.uid, "live_donation", APP, { amount, listing: id });
   metric(env, "live_donation", [amount, r.fee]);

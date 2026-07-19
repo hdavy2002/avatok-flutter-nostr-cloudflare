@@ -176,7 +176,7 @@ export async function sendReceipt(env: Env, uid: string, kind: "topup" | "purcha
     <table style="width:100%;border-collapse:collapse;border-top:1px solid #eee">${rows}
       <tr><td style="padding:10px 12px 0 0;font-weight:700;border-top:1px solid #eee">Total</td><td style="padding:10px 0 0;text-align:right;font-weight:700;border-top:1px solid #eee">${usd(opts.total)}</td></tr>
     </table>
-    <p style="color:#999;font-size:12px;margin-top:20px">Payment source: ${kind === "topup" ? "card (Stripe)" : "AvaTok wallet"} · Order ${opts.orderId}<br>1 AvaCoin = $0.01</p>
+    <p style="color:#999;font-size:12px;margin-top:20px">Payment source: ${kind === "topup" ? "card (Stripe)" : "AvaTok wallet"} · Order ${opts.orderId}<br>1 Token = $0.01</p>
   </div>`;
   try {
     await env.Q_EMAIL.send({ to: email, subject: `Your AvaTok receipt — ${opts.title}`, html });

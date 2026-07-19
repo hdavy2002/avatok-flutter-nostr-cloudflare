@@ -305,7 +305,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
               // all. Restored here as a top-level item directly under
               // Marketplace (owner request). Always shown — unlike Marketplace
               // itself, Wallet isn't admin/flag-gated.
-              _special('avawallet', 'Wallet', 'Balance & AvaCoins',
+              _special('avawallet', 'Wallet', 'Balance & Tokens',
                   PhosphorIcons.wallet(PhosphorIconsStyle.bold), AD.online),
               // Team — AI receptionist + staff routing. HIDDEN from the sidebar
               // (owner decision 2026-06-28). Re-enable by un-commenting this row.

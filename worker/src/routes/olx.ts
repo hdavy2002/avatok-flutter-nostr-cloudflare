@@ -48,7 +48,7 @@ function autoListing(title: string, kind: string, notes: string, category?: stri
   const head = `# ${title}\n\n`;
   const meta = `**Type:** ${kind === "digital" ? "Digital product" : "For sale (physical)"}` +
     (category ? `  ·  **Category:** ${category}` : "") +
-    (kind === "digital" && price ? `  ·  **Price:** ${price} AvaCoins` : "") + "\n\n";
+    (kind === "digital" && price ? `  ·  **Price:** ${price} Tokens` : "") + "\n\n";
   const body = (notes || "").trim() ||
     "The seller hasn't added details yet. Contact them via AvaChat for more information.";
   const footer = kind === "digital"

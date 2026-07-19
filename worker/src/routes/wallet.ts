@@ -35,7 +35,10 @@ import { verifyPlayProduct } from "../play";
 // live balances / in-flight payments / dashboards; the user-facing term is "Tokens".
 const TOKENS_PER_USD = 100;
 const usdCentsForTokens = (tokens: number) => Math.round((tokens * 100) / TOKENS_PER_USD); // tokens → USD cents (== tokens)
-const MIN_TOPUP = 500, MAX_TOPUP = 50_000; // in TOKENS: $5 (lowest Play tier) .. $500
+// [TOKENS-FX-1] Min lowered 500→100 tokens so the region-aware quote presets
+// ($1 minimum / ₹100 minimum, both = 100 tokens) are actually payable on the
+// Stripe rail. Play's own floor stays $5 (its lowest fixed product).
+const MIN_TOPUP = 100, MAX_TOPUP = 50_000; // in TOKENS: $1 (= ₹100) .. $500
 
 function walletStub(env: Env, uid: string) {
   return env.WALLET_DO.get(env.WALLET_DO.idFromName(uid));
@@ -118,7 +121,7 @@ async function topupCore(req: Request, env: Env, uid: string): Promise<Response>
   form.set("line_items[0][quantity]", "1");
   form.set("line_items[0][price_data][currency]", "usd");
   form.set("line_items[0][price_data][unit_amount]", String(cents));
-  form.set("line_items[0][price_data][product_data][name]", `${amount} AvaCoins`);
+  form.set("line_items[0][price_data][product_data][name]", `${amount} Tokens`);
 
   const res = await fetch("https://api.stripe.com/v1/checkout/sessions", {
     method: "POST",
@@ -165,11 +168,23 @@ export async function walletTopupIntent(req: Request, env: Env): Promise<Respons
   if (limited) return limited;
 
   const b = (await req.json().catch(() => ({}))) as any;
-  const cents = Math.trunc(Number(b.usd_cents ?? b.amountUsdCents));
-  if (!(cents > 0)) return json({ error: "usd_cents required (USD amount in cents)" }, 400);
-  const coins = Math.round((cents * TOKENS_PER_USD) / 100); // server-decided conversion (var kept; unit = tokens)
+  // [TOKENS-FX-1] Region-aware: the quote-driven client sends { amount_minor,
+  // currency: "usd"|"inr" }; legacy { usd_cents } stays USD. INR is India's
+  // FIXED price — 1 Token = ₹1 (tokens = rupees, NOT FX-converted), min ₹100.
+  // USD is canonical: 1 USD = 100 Tokens. The server, never the client, decides
+  // the token conversion either way.
+  const currency = String(b.currency ?? "usd").toLowerCase() === "inr" ? "inr" : "usd";
+  const cents = Math.trunc(Number(b.amount_minor ?? b.usd_cents ?? b.amountUsdCents)); // minor units of `currency`
+  if (!(cents > 0)) return json({ error: "amount_minor required (amount in minor units)" }, 400);
+  const coins = currency === "inr"
+    ? Math.round(cents / 100)                       // paise → whole rupees → tokens (₹1 = 1 Token, fixed)
+    : Math.round((cents * TOKENS_PER_USD) / 100);   // USD cents → tokens (1 token == 1 cent)
   if (!(coins >= MIN_TOPUP && coins <= MAX_TOPUP)) {
-    return json({ error: `amount must be $${MIN_TOPUP / TOKENS_PER_USD}..$${MAX_TOPUP / TOKENS_PER_USD}` }, 400);
+    return json({
+      error: currency === "inr"
+        ? `amount must be ₹${MIN_TOPUP}..₹${MAX_TOPUP}`
+        : `amount must be $${MIN_TOPUP / TOKENS_PER_USD}..$${MAX_TOPUP / TOKENS_PER_USD}`,
+    }, 400);
   }
   if (!topupEnabled(env)) {
     return json({ error: "top-up unavailable", reason: "pending_legal_approval", flag: "WALLET_TOPUP_ENABLED" }, 503);
@@ -178,7 +193,7 @@ export async function walletTopupIntent(req: Request, env: Env): Promise<Respons
   const id = crypto.randomUUID();
   const form = new URLSearchParams();
   form.set("amount", String(cents));
-  form.set("currency", "usd");
+  form.set("currency", currency);
   form.set("automatic_payment_methods[enabled]", "true"); // card + wallets, Stripe-managed
   form.set("description", `${coins} Tokens top-up`);
   form.set("metadata[uid]", ctx.uid);
@@ -190,13 +205,14 @@ export async function walletTopupIntent(req: Request, env: Env): Promise<Respons
   // One pending record per attempt — the PaymentIntent id rides in stripe_session_id
   // (unique-indexed) so the webhook can match THIS exact attempt.
   await env.DB_WALLET.prepare(
-    "INSERT INTO topup_records (id, uid, stripe_session_id, amount_coins, amount_cents, currency, status, created_at) VALUES (?1,?2,?3,?4,?5,'usd','pending',?6)",
-  ).bind(id, ctx.uid, pi.body.id, coins, cents, Date.now()).run();
-  track(env, ctx.uid, "wallet_topup_initiated", "avawallet", { coins, cents, via: "payment_sheet" });
+    // amount_cents = minor units of `currency` (USD cents, or paise for INR).
+    "INSERT INTO topup_records (id, uid, stripe_session_id, amount_coins, amount_cents, currency, status, created_at) VALUES (?1,?2,?3,?4,?5,?7,'pending',?6)",
+  ).bind(id, ctx.uid, pi.body.id, coins, cents, Date.now(), currency).run();
+  track(env, ctx.uid, "wallet_topup_initiated", "avawallet", { coins, cents, currency, via: "payment_sheet" });
   return json({
     payment_intent_client_secret: pi.body.client_secret,
     publishable_key: env.STRIPE_PUBLISHABLE_KEY || "",
-    topup_id: id, coins, cents,
+    topup_id: id, coins, cents, currency,
   });
 }
 
@@ -372,7 +388,7 @@ async function creditTopup(
 
   // Ledger meta drives the in-app receipt + log-detail sheet: the real USD charged,
   // and HOW it was paid (card brand/last4, Apple/Google Pay, …) so a user can see
-  // "$10 paid with Visa ···4242 → 10,000 AvaCoins".
+  // "$10 paid with Visa ···4242 → 10,000 Tokens".
   const meta: any = { title: `Top-up ${coins} Tokens`, cents: usdCentsForTokens(coins), source: "topup" };
   meta.method = p.method ?? "card";
   if (p.brand) meta.card_brand = p.brand;

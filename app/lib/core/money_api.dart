@@ -47,13 +47,31 @@ class MoneyApi {
   static Future<Map<String, dynamic>> topup(int amountUsdCents) =>
       _post('$kWalletBase/topup', {'amountUsdCents': amountUsdCents});
 
+  /// [TOKENS-FX-1] Region-aware top-up quote (server decides from edge geo;
+  /// [country] is a testing override): {country, currency: 'INR'|'USD',
+  /// tokens_per_unit, min_amount, presets: [{amount, tokens}], fx_usd_rate,
+  /// note}. India → INR fixed 1 Token = ₹1 (min ₹100); everywhere else → USD
+  /// (1 USD = 100 Tokens, min $1).
+  static Future<Map<String, dynamic>> topupQuote({String? country}) async =>
+      _json((await ApiAuth.getSigned(
+              '$kWalletBase/topup-quote${country == null ? '' : '?country=${Uri.encodeQueryComponent(country)}'}'))
+          .body);
+
   /// Create a Stripe PaymentIntent for the NATIVE in-app PaymentSheet (no browser
-  /// redirect). [usdCents] is the real money amount in USD cents; the server is
-  /// the single source of truth for the USD→coins conversion. Returns
-  /// {payment_intent_client_secret, publishable_key, coins, cents} on success, or
-  /// {error, reason:'pending_legal_approval'} while the legal flag is off.
-  static Future<Map<String, dynamic>> topupIntent(int usdCents) =>
-      _post('$kWalletBase/topup/intent', {'usd_cents': usdCents});
+  /// redirect). [amountMinor] is the real money amount in MINOR units of
+  /// [currency] (USD cents, or paise for India's fixed ₹1/Token pricing); the
+  /// server is the single source of truth for the money→Tokens conversion.
+  /// Returns {payment_intent_client_secret, publishable_key, coins, cents,
+  /// currency} on success, or {error, reason:'pending_legal_approval'} while the
+  /// legal flag is off.
+  static Future<Map<String, dynamic>> topupIntent(int amountMinor, {String currency = 'usd'}) =>
+      _post('$kWalletBase/topup/intent', {
+        'amount_minor': amountMinor,
+        'currency': currency,
+        // Legacy field for an older server — USD only, so an old server can
+        // never misread INR paise as USD cents.
+        if (currency == 'usd') 'usd_cents': amountMinor,
+      });
 
   /// Verify a Google Play top-up purchase server-side and credit Tokens. The
   /// server maps [productId] → Tokens (never trusts a client amount) and dedupes

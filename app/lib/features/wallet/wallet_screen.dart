@@ -350,21 +350,37 @@ class _WalletScreenState extends State<WalletScreen> {
   }
 
   // ── top-up (in-app, native Stripe PaymentSheet — NO browser redirect) ──────
-  // Flow: ask amount → server mints a PaymentIntent → present the native sheet
+  // Flow: fetch the region-aware quote → ask amount in the user's top-up
+  // currency → server mints a PaymentIntent → present the native sheet
   // (card / Apple Pay / Google Pay) right here → poll the balance so the topped-up
   // coins + the new ledger entry land on this same page. Coins are credited
   // server-side ONLY (Stripe webhook); the client never moves money itself.
+  //
+  // [TOKENS-FX-1] Region-aware: /api/wallet/topup-quote decides the currency —
+  // India tops up in INR at the FIXED price 1 Token = ₹1 (min ₹100); everyone
+  // else in USD (1 USD = 100 Tokens, min $1). The server converts money→Tokens.
   Future<void> _topupFlow() async {
-    final cents = await _askAmountCents();
+    Map<String, dynamic> quote = const {};
+    try {
+      quote = await MoneyApi.topupQuote();
+    } catch (e) {
+      // Offline/failed quote → the sheet falls back to canonical USD pricing.
+      Analytics.error(domain: 'wallet', code: 'topup_quote_failed', message: '$e', screen: 'wallet_main', action: 'topup');
+    }
+    if (!mounted) return;
+    final inr = quote['currency'] == 'INR';
+    final currency = inr ? 'inr' : 'usd';
+    final tokensPerUnit = ((quote['tokens_per_unit'] as num?) ?? (inr ? 1 : kCoinsPerUsd)).toInt();
+    final cents = await _askAmountMinor(quote); // minor units of `currency`
     if (cents == null || !mounted) return;
-    final coins = (cents * kCoinsPerUsd / 100).round();
-    Analytics.capture('wallet_topup_started', {'cents': cents, 'coins': coins, 'method': 'payment_sheet'});
+    final coins = (cents * tokensPerUnit / 100).round();
+    Analytics.capture('wallet_topup_started', {'cents': cents, 'coins': coins, 'currency': currency, 'method': 'payment_sheet'});
 
     // 1) Server creates the PaymentIntent and returns the client secret + the
     //    publishable key (so the app never hardcodes a Stripe key).
     Map<String, dynamic> r;
     try {
-      r = await MoneyApi.topupIntent(cents);
+      r = await MoneyApi.topupIntent(cents, currency: currency);
     } catch (e) {
       Analytics.error(domain: 'wallet', code: 'topup_intent_failed', message: '$e', screen: 'wallet_main', action: 'topup');
       _snack('Could not start checkout. Please try again.');
@@ -450,9 +466,24 @@ class _WalletScreenState extends State<WalletScreen> {
     }
   }
 
-  /// Amount sheet: USD entry with a live Token preview. Returns USD cents, or
-  /// null if cancelled. Min $10 / max $500 (mirrors the server's top-up bounds).
-  Future<int?> _askAmountCents() async {
+  /// [TOKENS-FX-1] Amount sheet driven by the /api/wallet/topup-quote response:
+  /// currency-correct presets (₹100/₹200/₹500/₹1000 for India, $1/$2/$5/$10
+  /// elsewhere) each showing "= N Tokens", a custom amount field validating the
+  /// quote's minimum, and clear rate copy ("1 Token = ₹1" / "1 USD = 100
+  /// Tokens"). Returns the amount in MINOR units (cents/paise), or null if
+  /// cancelled. Falls back to canonical USD if the quote didn't load.
+  Future<int?> _askAmountMinor(Map<String, dynamic> quote) async {
+    final inr = quote['currency'] == 'INR';
+    final sym = inr ? '₹' : '\$';
+    final tokensPerUnit = ((quote['tokens_per_unit'] as num?) ?? (inr ? 1 : kCoinsPerUsd)).toInt();
+    final minUnits = ((quote['min_amount'] as num?) ?? (inr ? 100 : 1)).toInt();
+    final maxUnits = inr ? 50000 : 500; // both = 50,000 tokens (server MAX_TOPUP)
+    final qPresets = [
+      for (final p in (quote['presets'] as List?) ?? const [])
+        if (p is Map && p['amount'] is num) (p['amount'] as num).toInt(),
+    ];
+    final presets = qPresets.isNotEmpty ? qPresets : (inr ? const [100, 200, 500, 1000] : const [1, 2, 5, 10]);
+    final rateCopy = inr ? '1 Token = ${sym}1' : '1 USD = ${_coins(kCoinsPerUsd)} Tokens';
     final ctrl = TextEditingController();
     return showModalBottomSheet<int>(
       context: context,
@@ -462,34 +493,34 @@ class _WalletScreenState extends State<WalletScreen> {
       builder: (c) => StatefulBuilder(
         builder: (c, setSheet) {
           final d = double.tryParse(ctrl.text.trim());
-          final valid = d != null && d >= 10 && d <= 500;
-          final previewCoins = valid ? (d * kCoinsPerUsd).round() : 0;
+          final valid = d != null && d >= minUnits && d <= maxUnits;
+          final previewCoins = valid ? (d * tokensPerUnit).round() : 0;
           return Padding(
             padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(c).viewInsets.bottom + 20),
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('Top up wallet', style: ADText.appTitle()),
               const SizedBox(height: 4),
-              Text('Pay securely in-app. \$1 = ${_coins(kCoinsPerUsd)} Tokens.', style: ADText.preview()),
+              Text('Pay securely in-app. $rateCopy. Minimum $sym$minUnits.', style: ADText.preview()),
               const SizedBox(height: 16),
               AdField(
                 controller: ctrl,
                 autofocus: true,
-                leadText: '\$',
-                hint: '10.00',
+                leadText: sym,
+                hint: inr ? '100' : '1.00',
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 onChanged: (_) => setSheet(() {}),
               ),
               const SizedBox(height: 8),
               Text(
-                valid ? '= ${_coins(previewCoins)} Tokens' : 'Enter \$10 – \$500',
+                valid ? '= ${_coins(previewCoins)} Tokens' : 'Enter $sym$minUnits – $sym${_coins(maxUnits)}',
                 style: ADText.rowName(c: valid ? AD.online : AD.textTertiary),
               ),
               const SizedBox(height: 12),
               Wrap(spacing: 8, runSpacing: 8, children: [
-                for (final v in [10, 25, 50, 100])
-                  AdSticker('\$$v', onTap: () {
-                    Analytics.capture('wallet_topup_preset', {'usd': v});
-                    setSheet(() => ctrl.text = v.toStringAsFixed(2));
+                for (final v in presets)
+                  AdSticker('$sym$v · ${_coins(v * tokensPerUnit)} Tokens', onTap: () {
+                    Analytics.capture('wallet_topup_preset', {'amount': v, 'currency': inr ? 'inr' : 'usd', 'tokens': v * tokensPerUnit});
+                    setSheet(() => ctrl.text = inr ? '$v' : v.toStringAsFixed(2));
                   }),
               ]),
               const SizedBox(height: 18),
@@ -515,6 +546,20 @@ class _WalletScreenState extends State<WalletScreen> {
   // handled by us.
   Future<void> _playTopupFlow() async {
     Analytics.capture('wallet_topup_opened', {'method': 'play_billing'});
+    // [TOKENS-FX-1] The quote is INFORMATIONAL on Android: the Play rail only
+    // sells fixed USD-defined `avatok_topup_*` products and Google converts to
+    // the local currency at Play's own rate, so India's fixed ₹1/Token pricing
+    // cannot apply here until INR-priced Play products exist (deferred). We
+    // still fetch the quote so an Indian user sees honest copy about that.
+    String? regionNote;
+    try {
+      final q = await MoneyApi.topupQuote();
+      if (q['currency'] == 'INR') {
+        regionNote = '₹ pricing (1 Token = ₹1) is coming to Google Play — for now these '
+            'tiers are charged at Google Play\'s local rate.';
+      }
+    } catch (_) {/* note is optional */}
+    if (!mounted) return;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -542,7 +587,8 @@ class _WalletScreenState extends State<WalletScreen> {
             const SizedBox(height: 10),
           ],
           const SizedBox(height: 4),
-          Text('Charged in your local currency at Google Play’s rate.', style: ADText.preview(c: AD.textTertiary)),
+          Text(regionNote ?? 'Charged in your local currency at Google Play’s rate.',
+              style: ADText.preview(c: AD.textTertiary)),
         ]),
       ),
     );

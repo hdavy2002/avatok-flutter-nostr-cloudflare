@@ -159,7 +159,7 @@ class _TranslateOverlayState extends State<TranslateOverlay> {
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Text('Top up Tokens', style: ZineText.cardTitle()),
           const SizedBox(height: 6),
-          const ZineSticker('\$3 PER HOUR · 5 AVACOINS / MIN', kind: ZineStickerKind.hint),
+          const ZineSticker('\$3 PER HOUR · 5 TOKENS / MIN', kind: ZineStickerKind.hint),
           const SizedBox(height: 14),
           Wrap(spacing: 10, runSpacing: 10, children: [
             for (final usd in const [3, 5, 10, 20])
@@ -254,7 +254,7 @@ class _TranslateOverlayState extends State<TranslateOverlay> {
                     boxShadow: Zine.shadowXs,
                   ),
                   child: Text(
-                    '$min MIN · ${TranslationApi.quoteCoins(min)} AVACOINS (\$3/H)',
+                    '$min MIN · ${TranslationApi.quoteCoins(min)} TOKENS (\$3/H)',
                     style: ZineText.tag(size: 10.5, color: Zine.inkSoft),
                   ),
                 ),

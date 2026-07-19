@@ -263,7 +263,7 @@ class _HomeCardsState extends State<HomeCards> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _cardHead(
             icon: PhosphorIcons.wallet(PhosphorIconsStyle.bold),
-            title: 'Wallet', accent: AD.online, tag: 'AVACOINS'),
+            title: 'Wallet', accent: AD.online, tag: 'TOKENS'),
         const SizedBox(height: 14),
         if (_walletLoading)
           _skeletonLine(120)
@@ -469,7 +469,7 @@ class _HomeCardsState extends State<HomeCards> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _cardHead(
             icon: PhosphorIcons.trendUp(PhosphorIconsStyle.bold),
-            title: 'Earnings', accent: AD.online, tag: 'AVACOINS'),
+            title: 'Earnings', accent: AD.online, tag: 'TOKENS'),
         const SizedBox(height: 12),
         if (_aggLoading)
           _skeletonLine(200)

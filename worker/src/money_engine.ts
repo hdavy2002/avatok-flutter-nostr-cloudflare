@@ -152,7 +152,7 @@ async function applyAction(env: Env, ctx: SessionCtx, a: Action): Promise<void> 
       if (!fresh) return;
       if (r.ok && a.email === "settlement_paid") {
         try { await emailSettlementPaid(env, ctx.hostId, { title: ctx.title, gross: r.body.gross, fee: r.body.fee, net: r.body.net }); } catch { /* best-effort */ }
-        try { await notifyUser(env, ctx.hostId, { type: "wallet", title: `Earned ${r.body.net} AvaCoins`, body: `${ctx.title} settled (80/20). Available after the 7-day hold.`, data: { deeplink: "/wallet" } }); } catch { /* best-effort */ }
+        try { await notifyUser(env, ctx.hostId, { type: "wallet", title: `Earned ${r.body.net} Tokens`, body: `${ctx.title} settled (80/20). Available after the 7-day hold.`, data: { deeplink: "/wallet" } }); } catch { /* best-effort */ }
       }
       track(env, ctx.hostId, "escrow_settled", ctx.kind === "live_event" ? "avalive" : "avaconsult", { rule: a.rule, gross: a.gross, sid: ctx.sid });
       return;

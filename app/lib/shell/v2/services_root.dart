@@ -72,7 +72,7 @@ class ServicesRoot extends StatelessWidget {
               icon: PhosphorIcons.wallet(PhosphorIconsStyle.bold),
               color: AD.online,
               title: 'Wallet',
-              subtitle: 'Balance & AvaCoins',
+              subtitle: 'Balance & Tokens',
               onTap: () {
                 Navigator.of(context).maybePop();
                 openShellDestination(context, 'wallet');

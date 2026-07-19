@@ -258,6 +258,9 @@ export interface Env {
   // AvaPayout (Phase 4). Production transfers flag-gated OFF pending legal (§10.3).
   PAYOUT_ENABLED?: string;         // "1" enables Wise transfers (ONLY after legal)
   WISE_API_KEY?: string;
+  // [TOKENS-FX-1] OPTIONAL Wise token for the FX RATES endpoint (lib/fx_rates.ts).
+  // Separate from WISE_API_KEY (payout rail). Unset → free open.er-api.com is used.
+  WISE_API_TOKEN?: string;
   WISE_PROFILE_ID?: string;
   WISE_ENV?: string;               // "production" | (default sandbox)
 

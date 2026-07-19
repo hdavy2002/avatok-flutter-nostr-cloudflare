@@ -20,6 +20,7 @@ import { requireUser, isFail } from "../authz";
 import { track } from "../hooks";
 import { walletOp } from "./wallet";
 import { metaDb } from "../db/shard";
+import { getUsdRate } from "../lib/fx_rates";
 
 // Human labels per app_name/feature key. Spends carry the chargeFeature key in
 // app_name (feature_pricing.ts); earns carry the marketplace app. A key missing
@@ -260,5 +261,45 @@ export async function walletSummary(req: Request, env: Env): Promise<Response> {
     ai_calls: aiCalls,
     by_feature: byFeature,
     earn_sources: earnSources,
+  });
+}
+
+// ── [TOKENS-FX-1] Region-aware top-up quote ─────────────────────────────────
+// GET /api/wallet/topup-quote[?country=XX]   (requireUser)
+//
+// Canonical economics: 1 USD = 100 Tokens (1 Token = $0.01), site-wide.
+// India special case (owner decision): 1 Token = ₹1 FIXED — NOT FX-converted —
+// with a ₹100 minimum (= 100 Tokens). Everyone outside India tops up in USD
+// only. Country comes from Cloudflare's edge geo (req.cf.country); ?country=
+// is a testing override. fx_usd_rate is INFORMATIONAL only (lib/fx_rates.ts)
+// — no price or balance is ever derived from it.
+export async function walletTopupQuote(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const u = new URL(req.url);
+  const override = (u.searchParams.get("country") || "").trim().toUpperCase();
+  const cfCountry = String(((req as any).cf?.country as string | undefined) || "").toUpperCase();
+  const country = /^[A-Z]{2}$/.test(override) ? override : (cfCountry || "US");
+  const india = country === "IN";
+
+  const currency = india ? "INR" : "USD";
+  const tokensPerUnit = india ? 1 : 100;   // ₹1 = 1 Token (fixed) · $1 = 100 Tokens
+  const minAmount = india ? 100 : 1;       // ₹100 minimum · $1 minimum
+  const presetAmounts = india ? [100, 200, 500, 1000] : [1, 2, 5, 10];
+  const presets = presetAmounts.map((amount) => ({ amount, tokens: amount * tokensPerUnit }));
+
+  const fx = await getUsdRate(env, currency);
+  track(env, ctx.uid, "wallet_topup_quote", "avawallet", { country, currency, fx_source: fx.source });
+  return json({
+    country,
+    currency,
+    tokens_per_unit: tokensPerUnit,
+    min_amount: minAmount,
+    presets,
+    fx_usd_rate: fx.rate,       // informational: live USD→currency (1 for USD)
+    fx_source: fx.source,
+    note: india
+      ? "1 Token = ₹1 (fixed for India). Minimum top-up ₹100 = 100 Tokens."
+      : "1 USD = 100 Tokens. Minimum top-up $1.",
   });
 }

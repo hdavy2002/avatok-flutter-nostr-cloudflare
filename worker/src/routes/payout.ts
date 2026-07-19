@@ -34,7 +34,7 @@ async function payoutEmail(env: Env, uid: string, subject: string, lines: string
     const html = `<div style="font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:0 auto;padding:24px">
       <h2 style="margin:0 0 12px">${subject}</h2>
       ${lines.map((l) => `<p style="color:#444;margin:0 0 8px">${l}</p>`).join("")}
-      <p style="color:#999;font-size:12px;margin-top:20px">AvaPayout · 1 AvaCoin = $0.01</p>
+      <p style="color:#999;font-size:12px;margin-top:20px">AvaPayout · 1 Token = $0.01</p>
     </div>`;
     await env.Q_EMAIL.send({ to: email, subject: `AvaPayout — ${subject}`, html });
   } catch { /* never block payout flow on email */ }
