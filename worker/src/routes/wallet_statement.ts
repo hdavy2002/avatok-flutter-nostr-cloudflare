@@ -58,6 +58,8 @@ const FEATURE_LABELS: Record<string, string> = {
   escrow: "Escrow",
   admin: "Adjustment",
   call_billing: "Paid call",
+  // [WELCOME-100-1] 100-token signup bonus (routes/welcome_bonus.ts; type=promo)
+  welcome_bonus: "Welcome bonus",
 };
 
 function titleize(key: string): string {
@@ -71,6 +73,7 @@ function directionFor(type: string, amount: number): string {
   switch (type) {
     case "spend": return "spend";
     case "earn": case "donation": case "gift": case "hold_release": return "earn";
+    case "promo": return "earn"; // [WELCOME-100-1] promo grants render as incoming
     case "topup": return "topup";
     case "payout": return "payout";
     case "refund": return "refund";
@@ -105,7 +108,7 @@ const encodeCursor = (t: number, id: string) => btoa(`${t}:${id}`);
 // Map a requested direction to the wallet_transactions types it covers.
 const DIRECTION_TYPES: Record<string, string[]> = {
   spend: ["spend"],
-  earn: ["earn", "donation", "gift", "hold_release"],
+  earn: ["earn", "donation", "gift", "hold_release", "promo"],
   topup: ["topup"],
   payout: ["payout"],
   refund: ["refund"],

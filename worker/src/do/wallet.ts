@@ -50,6 +50,12 @@ export class WalletDO {
       "CREATE TABLE IF NOT EXISTS acct (k INTEGER PRIMARY KEY, free INTEGER NOT NULL DEFAULT 0, premium INTEGER NOT NULL DEFAULT 0, last_grant_day TEXT NOT NULL DEFAULT '')",
     );
     this.sql.exec("INSERT OR IGNORE INTO acct (k, free, premium, last_grant_day) VALUES (1,0,0,'')");
+    // [WELCOME-100-1] Persistent promo bucket (welcome bonus). Unlike `free`
+    // (RESET to DAILY_FREE_GRANT each UTC day, zeroed on the premium flip),
+    // `bonus` persists until spent. Same spending rules as free coins: draws on
+    // allow_free feature costs only, NEVER part of paid `balance`, so it can
+    // never fund a payout. Self-migrating column add (throws when it exists).
+    try { this.sql.exec("ALTER TABLE acct ADD COLUMN bonus INTEGER NOT NULL DEFAULT 0"); } catch { /* column already exists */ }
   }
 
   /** Replay guard: return the stored result for a seen op_id, else null. */
@@ -76,9 +82,9 @@ export class WalletDO {
     this.sql.exec("UPDATE bal SET balance=?1, held=?2 WHERE k=1", balance, held);
   }
 
-  private acct(): { free: number; premium: number; last_grant_day: string } {
-    const r = this.sql.exec("SELECT free, premium, last_grant_day FROM acct WHERE k=1").one() as any;
-    return { free: Number(r.free), premium: Number(r.premium), last_grant_day: String(r.last_grant_day) };
+  private acct(): { free: number; premium: number; last_grant_day: string; bonus: number } {
+    const r = this.sql.exec("SELECT free, premium, last_grant_day, bonus FROM acct WHERE k=1").one() as any;
+    return { free: Number(r.free), premium: Number(r.premium), last_grant_day: String(r.last_grant_day), bonus: Number(r.bonus ?? 0) };
   }
 
   // Free-coin daily grant. Non-premium users get DAILY_FREE_GRANT reset (NOT added
@@ -96,12 +102,14 @@ export class WalletDO {
     }
   }
 
-  // Full balance snapshot the client sees: paid `balance`, `held`, promo `free`,
-  // `premium`, and `spendable` = free + paid.
-  private snap(): { balance: number; held: number; free: number; premium: number; spendable: number } {
+  // Full balance snapshot the client sees: paid `balance`, `held`, promo `free`
+  // (daily grant + persistent bonus combined, so existing clients render the
+  // welcome bonus with no change), `bonus` (the persistent slice alone),
+  // `premium`, and `spendable` = free + bonus + paid.
+  private snap(): { balance: number; held: number; free: number; bonus: number; premium: number; spendable: number } {
     const b = this.bal();
     const a = this.acct();
-    return { balance: b.balance, held: b.held, free: a.free, premium: a.premium, spendable: a.free + b.balance };
+    return { balance: b.balance, held: b.held, free: a.free + a.bonus, bonus: a.bonus, premium: a.premium, spendable: a.free + a.bonus + b.balance };
   }
 
   async fetch(req: Request): Promise<Response> {
@@ -117,7 +125,7 @@ export class WalletDO {
 
     // Idempotency at the authority: replay of a seen op_id returns the original
     // result without re-applying (and without re-emitting the ledger row).
-    if (body.op === "credit" || body.op === "spend" || body.op === "earn" || body.op === "debit_hold") {
+    if (body.op === "credit" || body.op === "spend" || body.op === "earn" || body.op === "debit_hold" || body.op === "promo_credit") {
       const dup = this.seenOp(body.op_id);
       if (dup) return dup;
     }
@@ -125,6 +133,7 @@ export class WalletDO {
     switch (body.op) {
       case "balance": return json({ ...this.snap(), uid });
       case "credit": return this.credit(uid, body);
+      case "promo_credit": return this.promoCredit(uid, body); // [WELCOME-100-1] persistent promo bucket
       case "spend": return this.spend(uid, body);
       case "earn": return this.earn(uid, body);
       case "debit_hold": return this.debitHold(uid, body); // refund clawback within hold
@@ -150,6 +159,21 @@ export class WalletDO {
     return json(result);
   }
 
+  // [WELCOME-100-1] Credit the PERSISTENT promo bucket (welcome bonus). Never
+  // touches paid `balance`, so promo grants can never be paid out — only spent
+  // on allow_free feature costs (drawn after the daily free coins). Idempotent
+  // via op_id like every mutating op.
+  private async promoCredit(uid: string, b: any): Promise<Response> {
+    const amount = Math.trunc(Number(b.amount));
+    if (!(amount > 0)) return json({ error: "amount>0 required" }, 400);
+    this.sql.exec("UPDATE acct SET bonus=bonus+?1 WHERE k=1", amount);
+    const result = { ok: true, ...this.snap() };
+    this.recordOp(b.op_id, result);
+    await this.audit(uid, { type: b.type || "promo", amount, balance_after: this.snap().spendable, app_name: b.app_name, ref: b.ref }, b);
+    this.broadcast();
+    return json(result);
+  }
+
   // Atomic debit. Refuses to go negative.
   //   b.allow_free === true  → AI/feature cost: spend promo FREE coins first, then
   //                            paid. (Internal cost; never a seller payout.)
@@ -163,22 +187,25 @@ export class WalletDO {
     const allowFree = b.allow_free === true;
 
     let freeUsed = 0;
+    let bonusUsed = 0; // [WELCOME-100-1] persistent promo bucket, drawn after daily free
     let paidUsed = amount;
     if (allowFree) {
-      const total = a.free + cur.balance;
+      const total = a.free + a.bonus + cur.balance;
       if (total < amount) return json({ error: "insufficient balance", ...this.snap() }, 402);
       freeUsed = Math.min(a.free, amount);
-      paidUsed = amount - freeUsed;
+      bonusUsed = Math.min(a.bonus, amount - freeUsed);
+      paidUsed = amount - freeUsed - bonusUsed;
     } else if (cur.balance < amount) {
       return json({ error: "insufficient balance", ...this.snap() }, 402);
     }
 
     if (freeUsed > 0) this.sql.exec("UPDATE acct SET free=free-?1 WHERE k=1", freeUsed);
+    if (bonusUsed > 0) this.sql.exec("UPDATE acct SET bonus=bonus-?1 WHERE k=1", bonusUsed);
     const balance = cur.balance - paidUsed;
     this.setBal(balance, cur.held);
 
     const txType = b.type === "payout" || b.type === "refund" ? b.type : "spend";
-    const result = { ok: true, ...this.snap(), free_used: freeUsed, paid_used: paidUsed };
+    const result = { ok: true, ...this.snap(), free_used: freeUsed, bonus_used: bonusUsed, paid_used: paidUsed };
     this.recordOp(b.op_id, result);
     await this.audit(uid, { type: txType, amount: -amount, balance_after: this.snap().spendable, app_name: b.app_name, counterparty_uid: b.counterparty_uid, ref: b.ref }, b);
     this.broadcast();

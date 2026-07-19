@@ -23,6 +23,7 @@ import { idStatus, idEmailStart, idEmailVerify, idPasswordStart, idPasswordSet }
 import { walletTopup, walletTopupIntent, walletTopupPlayVerify, stripeWebhook, walletSpend, walletBalance, walletTransactions, walletEarnings, walletLive, walletLedger, walletLedgerDetail, walletReceiptResend } from "./routes/wallet";
 import { walletStatement, walletSummary } from "./routes/wallet_statement";
 import { adminLedger, adminRefund, adminAdjust, adminAccount, adminRecon, adminEscrowHold, adminEscrowRelease, adminTaxExport, adminFailedSettlements, adminRetrySettlement, requireAdmin } from "./routes/admin_money";
+import { welcomeBackfill } from "./routes/welcome_bonus"; // [WELCOME-100-1]
 import { liveStart, liveStop, liveJoin, liveRoom, liveDonate, liveMod, liveState } from "./routes/live";
 import { consultJoin, consultRoom, consultSfu, consultComplete, consultCancel, consultExtend, consultProbe, consultProbeBlob } from "./routes/consult";
 import { runMoney, moneyDlq, type MoneyMsg } from "./money_engine";
@@ -778,6 +779,14 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/admin/tax-export" && req.method === "GET") return await adminTaxExport(req, env);
       if (p === "/api/admin/escrow/hold" && req.method === "POST") return await adminEscrowHold(req, env);
       if (p === "/api/admin/escrow/release" && req.method === "POST") return await adminEscrowRelease(req, env);
+      // [WELCOME-100-1] One-time retroactive welcome-bonus backfill (idempotent
+      // per uid). Bare path = ADMIN_UIDS Clerk bearer; trailing segment = the
+      // WELCOME_BACKFILL_SECRET shared secret (fails closed when unset).
+      if (p === "/api/admin/welcome-backfill" && req.method === "POST") return await welcomeBackfill(req, env);
+      {
+        const wb = p.match(/^\/api\/admin\/welcome-backfill\/([A-Za-z0-9_-]{16,128})$/);
+        if (wb && req.method === "POST") return await welcomeBackfill(req, env, wb[1]);
+      }
 
       // --- AvaAdmin dashboard (Phase 6) — read-mostly aggregation + alerts/roles. requireAdmin enforced inside. ---
       if (p === "/api/admin/overview" && req.method === "GET") return await adminOverview(req, env);

@@ -31,6 +31,8 @@ import { rateLimit } from "../money"; // abuse limits (Phase 3 hardening)
 // R2-F2: avatar nudity moderation (AWS Rekognition DetectModerationLabels; SigV4
 // signing reused from ../aws/sigv4 via ../aws/rekognition).
 import { rekognitionConfigured, detectModerationLabels, avatarModerationRejected } from "../aws/rekognition";
+// [WELCOME-100-1] 100-token welcome bonus on first account materialization.
+import { grantWelcomeBonus } from "./welcome_bonus";
 
 // ---- push: /api/register /api/call /api/notify /api/call-status ----
 export async function register(req: Request, env: Env): Promise<Response> {
@@ -810,6 +812,14 @@ export async function profileUpsert(req: Request, env: Env): Promise<Response> {
     track(env, ctx.uid, "profile_vet_passed", "profile", {});
   }
 
+  // [WELCOME-100-1] The upsert below both creates and updates, so detect the
+  // FIRST materialization here: no users row yet → this publish is the account
+  // creation → grant the 100-token welcome bonus after the insert. The grant is
+  // idempotent (WalletDO op_id `welcome:<uid>`), so a replayed/racing publish —
+  // or this check misreading a lagged replica — can never double-grant.
+  const existedBefore = await db.prepare("SELECT 1 AS one FROM users WHERE uid=?1")
+    .bind(ctx.uid).first<{ one: number }>().catch(() => null);
+
   await db.prepare(
     `INSERT INTO users (uid, display_name, first_name, last_name, avatar_url, email_hash, phone_hash, birth_year, bio, gender, created_at, updated_at)
      VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?10,?11,?9,?9)
@@ -819,6 +829,11 @@ export async function profileUpsert(req: Request, env: Env): Promise<Response> {
        phone_hash=COALESCE(?7,phone_hash), birth_year=COALESCE(?8,birth_year),
        bio=COALESCE(?10,bio), gender=COALESCE(?11,gender), updated_at=?9`,
   ).bind(ctx.uid, name, firstName, lastName, avatarUrl, emailHash, phoneHash, birthYear, now, bio, gender).run();
+  // [WELCOME-100-1] New account → 100-token welcome bonus (persistent promo
+  // bucket; idempotent). Awaited (no executionCtx here) but NEVER blocks signup.
+  if (!existedBefore) {
+    try { await grantWelcomeBonus(env, ctx.uid); } catch { /* best-effort — backfill route can repair */ }
+  }
   // Feed a non-empty self-description to AvaBrain so Ava can personalise. Scoped
   // 'private'; the brain consumer still honours the user's AvaBrain consent toggle.
   if (bio) void brainIngest(env, { uid: ctx.uid, domain: "profile", kind: "profile_bio", sourceId: `${ctx.uid}:bio`, text: String(bio).slice(0, 480), meta: { bio } });

@@ -14,8 +14,14 @@
   credit op shape in routes/wallet.ts + WalletDO first.
 - Statement label in wallet_statement.ts FEATURE_LABELS: welcome_bonus → "Welcome
   bonus". Telemetry `welcome_bonus_granted` (email-stamped).
-- Retroactive? Owner to decide: existing users get nothing unless we run a
-  one-time backfill script (list uids → same idempotent op).
+- Retroactive? OWNER DECIDED 2026-07-19: **YES — all existing users get the
+  bonus.** Built as `POST /api/admin/welcome-backfill[/:secret]?cursor=`
+  (routes/welcome_bonus.ts) paging the users table and issuing the same
+  idempotent `welcome:<uid>` grant; run to completion against prod. ✅ SHIPPED
+  [WELCOME-100-1]: WalletDO gained a PERSISTENT promo bucket (`acct.bonus`,
+  op "promo_credit") because the existing `free` bucket resets daily and is
+  zeroed on the premium flip — the bonus must survive both, yet stay
+  non-payable (spend draws free → bonus → paid; payouts touch paid only).
 
 ## B. AI-Receptionist onboarding flow (Flutter + small server)
 Trigger: user flips **AI Voice Agent** toggle ON in the merged Receptionist/Voice
@@ -34,11 +40,12 @@ Agent-mode steps (exact owner spec):
    self-migrate column; PUT/GET carry it; enforcement: /start (app lane) checks
    scope∈{app,all}; pstn.ts agent lane checks scope∈{cell,all}. (Both lanes
    fall back to voicemail when out of scope.)
-4. DID NUMBER — "You need a virtual phone number — **600 tokens/month**."
+4. DID NUMBER — "You need a virtual phone number — **700 tokens/month**."
    GREYED OUT with a bright green pill **“Free in Beta”**. No charge wired yet
-   (subscription rail exists from TEL-TIERS-1 when we activate it; note tier
-   pricing there is ₹700 retail — owner quoted 600 here (wholesale); owner must
-   confirm the retail number before activation. For now the pill is display-only.)
+   (subscription rail exists from TEL-TIERS-1 when we activate it). OWNER
+   CONFIRMED 2026-07-19: retail price when beta ends is **700 tokens/month**
+   (matches TEL-TIERS-1); the "600" previously quoted here was the owner's
+   mistake — do NOT use 600 anywhere. For now the pill is display-only.
 5. (Cell scope only) FORWARDING CONDITIONS — the 3 toggles: when I **reject** a
    call · when my **phone is off** · when I'm **not picking up**. Reuse the
    existing carrier-forwarding machinery:
@@ -50,7 +57,7 @@ Agent-mode steps (exact owner spec):
 6. PRIVACY COPY — "Under these conditions your call is diverted to your DiD
    number by YOUR phone company. No SMS, OTP or text messages are forwarded, and
    no information leaves your phone — this is standard carrier call routing."
-7. TOKEN SUMMARY — "600 tokens/month for your number (**Free in Beta**) ·
+7. TOKEN SUMMARY — "700 tokens/month for your number (**Free in Beta**) ·
    3 tokens/min while Ava talks to your callers · max 3 min per call." → Done →
    save mode=agent (+scope + conditions).
 
@@ -104,7 +111,12 @@ checked by the ingestion pipeline; consent fails closed).
 4. C2+C3 dashboard — 1-2 sessions. C4 brain feed alongside C1.
 - App changes across A-C need builds ("ship it").
 
-## Open questions for owner
-- Welcome bonus retroactive for existing users?
-- DID retail price when beta ends: 600 (quoted here) vs 700 (TEL-TIERS-1)?
-- Analytics retention window (suggest 90 days in D1, aggregate beyond).
+## Open questions for owner — ANSWERED 2026-07-19
+- Welcome bonus retroactive for existing users? → **YES, backfill ALL existing
+  users** (shipped: [WELCOME-100-1] idempotent `welcome:<uid>` grant + admin
+  backfill route, run to completion against prod).
+- DID retail price when beta ends? → **700 tokens/month** (matches TEL-TIERS-1).
+  The "600" quoted in the original brief was the owner's mistake; this doc has
+  been corrected to 700 throughout.
+- Analytics retention window? → **90 days in D1** (`recept_call_stats`),
+  aggregate beyond that.
