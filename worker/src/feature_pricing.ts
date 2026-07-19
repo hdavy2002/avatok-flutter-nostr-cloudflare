@@ -32,6 +32,7 @@ export const FEATURE_COSTS: Record<string, number> = {
   // Ava answered (ceil(duration/60) units per session, max 3). Free while
   // betaFreePremium is on — chargeFeature already short-circuits to charged:0.
   ava_receptionist_minute: 3, // ₹3/min — LOCKED by AvaTok_Tiered_Pricing_Brief.pdf 2026-07-19 (supersedes same-day verbal "5"); hard cap 3:00; margin alert >₹2.20/min
+  ava_voicemail: 1,          // ₹1 per voicemail (owner 2026-07-19) — charged once per VM session (in-app + PSTN)
   // MARKETPLACE LISTING FEE (M-D2, PLAN §1.3/§5): 100 tokens = $1 to publish a listing
   // for one 30-day period, after the first 5 free (the quota is enforced in
   // lib/listing_billing.ts, independent of tokens). Charged idempotently on

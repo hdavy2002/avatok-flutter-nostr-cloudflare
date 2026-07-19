@@ -36,6 +36,7 @@ import { aiRunOpts } from "../lib/ai_gate";       // AI Gateway cost-logging opt
 // lib/vm_greeting is a VOICEMAIL lib (TTS render + R2 cache only, no engine code),
 // so the hard no-engine-import rule above is respected.
 import { vmGreetingText, getOrRenderVmGreeting, pcmToWavBytes } from "../lib/vm_greeting";
+import { chargeFeature } from "../feature_pricing"; // ₹1/voicemail (pay-per-use, owner 2026-07-19)
 
 // Probe-grade fallback — production deployments should `wrangler secret put
 // VOBIZ_WEBHOOK_SECRET` and never rely on this constant being unknown.
@@ -438,6 +439,9 @@ async function handleRecordCb(req: Request, env: Env, secret: string): Promise<R
       try {
         recordingKey = `voicemail/${ownerUid}/${callerKey}/${callId}.wav`;
         await env.BLOBS.put(recordingKey, wavBytes, { httpMetadata: { contentType: "audio/wav" } });
+        // PAY-PER-USE (owner 2026-07-19): ₹1 per voicemail, charged to the OWNER,
+        // idempotent per call. Best-effort — a wallet error never loses the voicemail.
+        try { await chargeFeature(env, ownerUid, "ava_voicemail", `pstnvm:${callUuid || callId}`); } catch { /* best-effort */ }
       } catch { recordingKey = null; }
     }
 

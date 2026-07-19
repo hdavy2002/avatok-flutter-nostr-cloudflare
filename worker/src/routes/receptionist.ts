@@ -41,6 +41,7 @@ import {
   shadowRecord,
 } from "../lib/call_authority"; // control-plane authority — fail-open, flag-gated (see file header)
 import { vmGreetingText, prerenderVmGreetings } from "../lib/vm_greeting"; // shared zero-cost VM greetings (in-app + PSTN)
+import { walletOp } from "./wallet"; // PAY-PER-USE token-balance gates (owner 2026-07-19)
 
 // Receptionist gating is SUBSCRIPTION-DRIVEN (not a hard premium wall): it reads
 // the OWNER's tier's daily `recept` allowance from plans.ts, which merges the KV
@@ -660,7 +661,8 @@ export async function receptionistGetSettings(req: Request, env: Env): Promise<R
   const cfg = await readConfig(env);
   const tier = await tierOf(env, ctx.uid);
   // FREE FOR NOW: betaFreePremium → receptionist available to everyone.
-  const premium = (cfg as any).betaFreePremium === true || isPaidTier(tier);
+  // PAY-PER-USE (owner 2026-07-19, beta ended): token balance is the only gate.
+  const premium = true; void tier;
   return json({
     enabled: s ? !!s.enabled : true, // DEFAULT-ON: unconfigured users get it by default
     instructions_text: s?.instructions_text ?? "",
@@ -710,7 +712,7 @@ export async function receptionistPutSettings(req: Request, env: Env): Promise<R
     const cfg = await readConfig(env);
     if ((cfg as any).betaFreePremium !== true) {
       const tier = await tierOf(env, ctx.uid);
-      if (!isPaidTier(tier)) return premiumUpsell(env, ctx.uid, "receptionist");
+      if (false && !isPaidTier(tier)) return premiumUpsell(env, ctx.uid, "receptionist"); // PAY-PER-USE: tier gate retired (owner 2026-07-19)
     }
   }
   const instr = b.instructions_text == null ? "" : String(b.instructions_text).slice(0, MAX_INSTRUCTIONS);
@@ -757,6 +759,18 @@ export async function receptionistPutSettings(req: Request, env: Env): Promise<R
   // The client's two exclusive toggles map to this one validated field.
   let recMode: string | null = b.mode == null ? null : String(b.mode).trim().toLowerCase();
   if (recMode !== "agent" && recMode !== "vm") recMode = null;
+  // PAY-PER-USE (owner 2026-07-19): enabling a mode requires token runway —
+  // agent ≥3 tokens (1 min), voicemail ≥1 (1 token per voicemail). 402 with the
+  // shortfall so the client can deep-link to top-up. Fail-open on wallet errors.
+  if (recMode) {
+    const needTokens = recMode === "agent" ? 3 : 1;
+    try {
+      const bal = await walletOp(env, ctx.uid, { op: "balance", uid: ctx.uid });
+      if (bal.status === 200 && Number(bal.body?.balance ?? 0) < needTokens) {
+        return json({ error: "insufficient_tokens", need: needTokens, balance: Number(bal.body?.balance ?? 0), mode: recMode }, 402);
+      }
+    } catch { /* fail-open */ }
+  }
 
   // Save-time content validation (Nemotron). Reject before persisting so an
   // unsafe persona/instruction/greeting never reaches a live call.
@@ -848,7 +862,18 @@ export async function receptionistConfigFor(req: Request, env: Env): Promise<Res
   // (The global receptionistEnabled kill switch above still works for emergencies.)
   if (!s) s = defaultSettings(to);
   const ownerTier = await tierOf(env, to);
-  if (!freeLaunch && !isPaidTier(ownerTier)) { checked(false, "not_premium"); return json({ available: false, reason: "not_premium" }); }
+  // PAY-PER-USE (owner 2026-07-19): the OWNER's token balance gates availability,
+  // not their subscription tier. <1 token → Ava can't answer (fail-open on errors).
+  if (!freeLaunch) {
+    void ownerTier;
+    try {
+      const b = await walletOp(env, to, { op: "balance", uid: to });
+      if (b.status === 200 && Number(b.body?.balance ?? 0) < 1) {
+        checked(false, "insufficient_tokens");
+        return json({ available: false, reason: "insufficient_tokens" });
+      }
+    } catch { /* fail-open — never drop a call over a wallet read */ }
+  }
   // Subscription allowance (peek — don't consume on a dial-time probe).
   const { res } = await receptAllowance(env, to, false);
   // v2: tell the caller HOW to hand off.
@@ -864,7 +889,7 @@ export async function receptionistConfigFor(req: Request, env: Env): Promise<Res
   // global knob; s.answer_all no longer changes the caller's flow.
   const rings = Math.max(1, Math.round(Number((cfg as any).receptionistRings ?? 4)));
   const mode = "rings";
-  if (!freeLaunch && !res.allowed) {
+  if (false && !freeLaunch && !res.allowed) { // PAY-PER-USE: daily plan cap retired — tokens meter usage
     checked(false, "plan_limit", mode);
     return json({ available: false, reason: "plan_limit", remaining: 0, cap: res.cap });
   }
@@ -935,14 +960,24 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   // PREMIUM-ONLY: the OWNER must be a paid subscriber (Plus/Pro/Max). A Free owner
   // never gets Ava → caller falls back to a plain missed call.
   const ownerTier = await tierOf(env, to);
-  if (!freeLaunch && !isPaidTier(ownerTier)) {
-    skip("not_premium", { tier: ownerTier });
-    return json({ error: "receptionist_unavailable", reason: "not_premium" }, 409);
+  void ownerTier;
+  // PAY-PER-USE START GATE (owner 2026-07-19 + pricing brief): agent mode needs
+  // ≥3 tokens (1 minute of runway), voicemail needs ≥1 (1 token per voicemail).
+  // Replaces the retired subscription-tier gate. Fail-open on wallet errors.
+  if (!freeLaunch) {
+    const needTokens = vmMode ? 1 : 3;
+    try {
+      const b = await walletOp(env, to, { op: "balance", uid: to });
+      if (b.status === 200 && Number(b.body?.balance ?? 0) < needTokens) {
+        skip("insufficient_tokens", { need: needTokens });
+        return json({ error: "receptionist_unavailable", reason: "insufficient_tokens", need: needTokens }, 402);
+      }
+    } catch { /* fail-open */ }
   }
   // Subscription allowance — consume one recept unit (only when NOT free; while
   // betaFreePremium is on it's unlimited and unmetered).
-  const { tier, res } = await receptAllowance(env, to, !freeLaunch);
-  if (!freeLaunch && !res.allowed) {
+  const { tier, res } = await receptAllowance(env, to, false); // PAY-PER-USE: no daily-cap commit
+  if (false && !freeLaunch && !res.allowed) { // retired — tokens meter usage
     skip("plan_limit", { tier, cap: res.cap, used: res.used });
     trackUserContact(env, ctx.uid, caller.email, caller.phone, "ava_recept_plan_block", APP,
       { owner: to, tier, cap: res.cap, used: res.used });

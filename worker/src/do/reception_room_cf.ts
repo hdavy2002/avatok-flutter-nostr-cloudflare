@@ -31,6 +31,7 @@ import { aiRunOpts } from "../lib/ai_gate";       // AI Gateway cost-logging opt
 import { googleSynthesizeForLang } from "../lib/google_tts"; // WaveNet voice, any language (RECEPT-TTS-GOOGLE)
 import { sarvamTtsPcm, sarvamSttTranscribe } from "../lib/sarvam"; // Bulbul TTS + Saarika STT (RECEPT-SARVAM)
 import { getOrRenderVmGreeting } from "../lib/vm_greeting"; // shared VM greeting cache (also used by PSTN)
+import { chargeFeature } from "../feature_pricing"; // ₹1/voicemail (pay-per-use, owner 2026-07-19)
 
 /** Redact secrets from free-text error strings before telemetry. */
 function scrubSecrets(s: string): string {
@@ -950,6 +951,11 @@ export class ReceptionRoomCf {
     this.finalized = true;
     if (this.vmWarnTimer) { clearTimeout(this.vmWarnTimer); this.vmWarnTimer = null; }
     if (this.vmEndTimer) { clearTimeout(this.vmEndTimer); this.vmEndTimer = null; }
+    // PAY-PER-USE (owner 2026-07-19): ₹1 per in-app voicemail, charged to the OWNER,
+    // idempotent per session. Best-effort — never blocks delivery of the message.
+    if (this.init?.vm === true && this.init?.owner_uid) {
+      try { await chargeFeature(this.env, this.init.owner_uid, "ava_voicemail", `${this.init.sid}:vm`); } catch { /* best-effort */ }
+    }
     if (this.softTimer) clearTimeout(this.softTimer);
     if (this.hardTimer) clearTimeout(this.hardTimer);
     if (this.idleTimer) clearTimeout(this.idleTimer);
