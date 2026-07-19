@@ -339,4 +339,21 @@ class ReceptionistApi {
     final rel = rtcUrl.startsWith('/') ? rtcUrl : '/$rtcUrl';
     return 'wss://$kSignalingHost$rel';
   }
+
+  /// [RECEPT-STATS-1] Owner: call analytics for the last [days] days (1–90,
+  /// server-clamped). Reads the D1 mirror `recept_call_stats` — own rows only.
+  /// The device's UTC offset is sent so busiest-hours / daily-trend buckets are
+  /// in the OWNER's local time (Dart has no IANA tz name, only the offset).
+  static Future<Map<String, dynamic>?> analytics({int days = 30}) async {
+    try {
+      final off = DateTime.now().timeZoneOffset.inMinutes;
+      final r = await ApiAuth.getSigned(
+          '$_base/analytics?days=$days&tz_offset_min=$off');
+      if (r.statusCode != 200) return null;
+      final j = jsonDecode(r.body) as Map<String, dynamic>;
+      return j['ok'] == true ? j : null;
+    } catch (_) {
+      return null;
+    }
+  }
 }

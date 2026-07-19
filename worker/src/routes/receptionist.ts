@@ -1282,6 +1282,11 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
     // (only meaningful with the 3-min menu budget; see reception_room.onWrapCue).
     wrap_soft: (cfg as any).callMenuEnabled === true,
     started_at: now,
+    // [RECEPT-STATS-1] caller geo/tz captured at /start (the CALLER's device made
+    // this request) — feeds the ava_recept_call_summary caller_country dimension
+    // + best-effort hour_local. Cheap: two strings on the KV init blob.
+    caller_country: (((req as any)?.cf?.country as string | undefined) || null),
+    caller_tz: (((req as any)?.cf?.timezone as string | undefined) || null),
   };
   await env.TOKENS.put(`recept_rtc:${sid}`, JSON.stringify(init), { expirationTtl: INIT_TTL_SEC });
 

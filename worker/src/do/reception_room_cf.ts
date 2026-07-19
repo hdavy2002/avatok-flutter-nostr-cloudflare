@@ -32,6 +32,7 @@ import { googleSynthesizeForLang } from "../lib/google_tts"; // WaveNet voice, a
 import { sarvamTtsPcm, sarvamSttTranscribe } from "../lib/sarvam"; // Bulbul TTS + Saarika STT (RECEPT-SARVAM)
 import { getOrRenderVmGreeting } from "../lib/vm_greeting"; // shared VM greeting cache (also used by PSTN)
 import { chargeFeature } from "../feature_pricing"; // ₹1/voicemail (pay-per-use, owner 2026-07-19)
+import { recordCallSummary, receptOutcome } from "../lib/recept_stats"; // [RECEPT-STATS-1] canonical call summary
 
 /** Redact secrets from free-text error strings before telemetry. */
 function scrubSecrets(s: string): string {
@@ -128,6 +129,10 @@ interface InitBlob {
   owner_name?: string | null; ava_name?: string | null;
   engine?: "gemini" | "cf" | null; cf_voice?: string | null;
   greeting?: string | null; // deterministic greeting, spoken immediately (no LLM)
+  vm?: boolean | null;      // zero-cost voicemail flow (set by /start; was implicit)
+  // [RECEPT-STATS-1] caller geo/tz captured at /start (req.cf) for the canonical
+  // call-summary event + D1 mirror (lib/recept_stats.ts).
+  caller_country?: string | null; caller_tz?: string | null;
 }
 
 export class ReceptionRoomCf {
@@ -953,8 +958,12 @@ export class ReceptionRoomCf {
     if (this.vmEndTimer) { clearTimeout(this.vmEndTimer); this.vmEndTimer = null; }
     // PAY-PER-USE (owner 2026-07-19): ₹1 per in-app voicemail, charged to the OWNER,
     // idempotent per session. Best-effort — never blocks delivery of the message.
+    let vmChargedTokens = 0; // [RECEPT-STATS-1] actual tokens charged, for the call summary
     if (this.init?.vm === true && this.init?.owner_uid) {
-      try { await chargeFeature(this.env, this.init.owner_uid, "ava_voicemail", `${this.init.sid}:vm`); } catch { /* best-effort */ }
+      try {
+        const r = await chargeFeature(this.env, this.init.owner_uid, "ava_voicemail", `${this.init.sid}:vm`);
+        vmChargedTokens = r.ok ? (r.charged ?? 0) : 0;
+      } catch { /* best-effort */ }
     }
     if (this.softTimer) clearTimeout(this.softTimer);
     if (this.hardTimer) clearTimeout(this.hardTimer);
@@ -1035,6 +1044,30 @@ export class ReceptionRoomCf {
       est_usd: round6(estUsd), cutoff_reason: reason,
     });
     metric(this.env, "ava_recept_cost_usd_micro", [Math.round(estUsd * 1e6)]);
+
+    // ── [RECEPT-STATS-1] ONE canonical call summary (event + D1 mirror + 90d
+    // retention + consent-gated AvaBrain feed) — lib/recept_stats.ts. Skipped on
+    // a live takeover: the owner picked the call up themselves, so there is no
+    // receptionist-handled call to count (mirrors the cancelled voicemail).
+    if (!this.takenOver) {
+      await recordCallSummary(this.env, {
+        id: init.sid,
+        owner_uid: init.owner_uid,
+        ts: now,
+        caller_key: init.caller_uid || init.caller_phone || "unknown",
+        caller_name: init.caller_name ?? null,
+        country: init.caller_country || "??",
+        mode: init.vm === true ? "vm" : "agent",
+        transport: "app",
+        duration_s: durationS,
+        tokens: vmChargedTokens,
+        outcome: receptOutcome(reason, hadConversation),
+        reason,
+        owner_email: this.ownerEmail,
+        owner_phone: this.ownerPhone,
+        tz: init.caller_tz ?? null,
+      });
+    }
   }
 
   private pushDialog(who: "ava" | "caller", text: string): void {

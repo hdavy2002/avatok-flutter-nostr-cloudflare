@@ -75,6 +75,12 @@ export const BRAIN_DOMAINS = {
   calendar:    { basis: "consent", consent: "calendar",  label: "Calendar",      default: true, scope: "account_private" },
   live:        { basis: "consent", consent: "live",      label: "Live sessions", default: true, scope: "account_private" },
   verse:       { basis: "consent", consent: "verse",     label: "AvaVerse",      default: true, scope: "account_private" },
+  // [RECEPT-STATS-1] (plan §C4) — receptionist call summaries ("Sonal called 3×
+  // this week"). Its own consent key = its own Settings guardrail toggle (the
+  // rulebook's per-app guardrail; opt-out ON like the rest). ONE producer:
+  // lib/recept_stats.ts recordCallSummary → brainIngest. Mirror row added to
+  // consumers/src/brain.ts DOMAIN_CONSENT (the consumer can't cross-import).
+  receptionist:{ basis: "consent", consent: "receptionist", label: "Receptionist calls", default: true, scope: "account_private" },
   // ── §10 Guardian (SPEC-2026-07-17 §10.1-10.3) — the SAFETY store ────────────
   // basis:'legal' (legitimate interest / legal obligation), NOT consent: it is a
   // DISCLOSURE in Settings, never a toggle (§10.1). consent:null (nothing to gate).

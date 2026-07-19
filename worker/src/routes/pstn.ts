@@ -48,6 +48,12 @@ import { walletOp } from "./wallet";
 // billing plumbing (D1 row + chargeAmount) — NOT engine code — so the hard
 // no-engine-import rule above still holds.
 import { getTelephonySubscription } from "./telephony_tiers";
+// [RECEPT-STATS-1] Canonical call-summary sink (plan §C1) — lib/recept_stats.ts
+// is ANALYTICS PLUMBING (PostHog event + D1 mirror + consent-gated brain feed),
+// not engine code, so the hard no-engine-import rule above still holds. Same for
+// lib/e164_country.ts (pure prefix→ISO data).
+import { recordCallSummary } from "../lib/recept_stats";
+import { e164Country } from "../lib/e164_country";
 
 // Probe-grade fallback — production deployments should `wrangler secret put
 // VOBIZ_WEBHOOK_SECRET` and never rely on this constant being unknown.
@@ -602,6 +608,31 @@ async function handleHangup(req: Request, env: Env, secret: string): Promise<Res
                 },
               });
             } catch { /* best-effort */ }
+
+            // [RECEPT-STATS-1] Canonical call summary for the MISSED outcome
+            // (caller hung up before any recording/agent handled the call).
+            // Runs only on the !delivered branch, so a real voicemail
+            // (record-cb) or an agent-lane call (DO finalize) never
+            // double-counts — those lanes emit their own summary.
+            try {
+              const contact = await contactFor(env, ownerUid).catch(() => ({ email: null, phone: null }));
+              await recordCallSummary(env, {
+                id: callUuid,
+                owner_uid: ownerUid,
+                ts: Date.now(),
+                caller_key: session2.caller || "unknown",
+                caller_name: null,
+                country: e164Country(session2.caller),
+                mode: "vm",
+                transport: "vobiz",
+                duration_s: 0,
+                tokens: 0,
+                outcome: "missed",
+                reason: "no_recording",
+                owner_email: contact.email,
+                owner_phone: contact.phone,
+              });
+            } catch { /* best-effort */ }
           } catch { /* best-effort — never fail the webhook */ }
         }
       }
@@ -707,13 +738,17 @@ async function handleRecordCb(req: Request, env: Env, secret: string): Promise<R
     const traceId = session!.trace_id || crypto.randomUUID();
 
     let recordingKey: string | null = null;
+    let vmChargedTokens = 0; // [RECEPT-STATS-1] actual tokens charged, for the call summary
     if (wavBytes) {
       try {
         recordingKey = `voicemail/${ownerUid}/${callerKey}/${callId}.wav`;
         await env.BLOBS.put(recordingKey, wavBytes, { httpMetadata: { contentType: "audio/wav" } });
         // PAY-PER-USE (owner 2026-07-19): ₹1 per voicemail, charged to the OWNER,
         // idempotent per call. Best-effort — a wallet error never loses the voicemail.
-        try { await chargeFeature(env, ownerUid, "ava_voicemail", `pstnvm:${callUuid || callId}`); } catch { /* best-effort */ }
+        try {
+          const r = await chargeFeature(env, ownerUid, "ava_voicemail", `pstnvm:${callUuid || callId}`);
+          vmChargedTokens = r.ok ? (r.charged ?? 0) : 0;
+        } catch { /* best-effort */ }
       } catch { recordingKey = null; }
     }
 
@@ -798,6 +833,30 @@ async function handleRecordCb(req: Request, env: Env, secret: string): Promise<R
           call_id: callId,
           trace_id: traceId,
         }, traceId);
+      } catch { /* best-effort */ }
+
+      // [RECEPT-STATS-1] ONE canonical call summary (event + D1 mirror + 90d
+      // retention + consent-gated AvaBrain feed) — analytics plumbing, see the
+      // import note at the top of this file. Vobiz reports the recording length
+      // in RecordingDuration (seconds); missing → 0.
+      try {
+        const contact = await contactFor(env, ownerUid).catch(() => ({ email: null, phone: null }));
+        await recordCallSummary(env, {
+          id: callUuid || callId,
+          owner_uid: ownerUid,
+          ts: Date.now(),
+          caller_key: session!.caller || "unknown",
+          caller_name: null,
+          country: e164Country(session!.caller),
+          mode: "vm",
+          transport: "vobiz",
+          duration_s: Number(fields.RecordingDuration ?? fields.RecordDuration ?? fields.Duration ?? 0) || 0,
+          tokens: vmChargedTokens,
+          outcome: "completed",
+          reason: "vm_complete",
+          owner_email: contact.email,
+          owner_phone: contact.phone,
+        });
       } catch { /* best-effort */ }
 
       try {

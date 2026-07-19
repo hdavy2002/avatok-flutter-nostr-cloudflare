@@ -11,6 +11,7 @@ import '../../../core/receptionist_api.dart';
 import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../settings_registry.dart';
+import 'receptionist_analytics_page.dart';
 import 'receptionist_onboarding.dart';
 
 /// Availability presets. id → label shown in the dropdown. Must match the
@@ -687,6 +688,31 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                   fontSize: 15,
                   loading: _saving,
                   onPressed: _saving ? null : () => _save(enabled: true),
+                ),
+                const SizedBox(height: 10),
+                // ── [RECEPT-STATS-1] Call analytics entry (plan §C3) ───────
+                ZinePressable(
+                  onTap: () {
+                    Analytics.capture('recept_analytics_entry_tapped', {});
+                    Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => const ReceptionistAnalyticsPage()));
+                  },
+                  color: AD.card,
+                  borderColor: AD.borderControl,
+                  radius: BorderRadius.circular(AD.rInput),
+                  boxShadow: const [],
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                  child: Row(children: [
+                    Icon(PhosphorIcons.chartBar(PhosphorIconsStyle.bold),
+                        size: 18, color: AD.textSecondary),
+                    const SizedBox(width: 10),
+                    Expanded(
+                        child:
+                            Text('View call analytics', style: ADText.rowName())),
+                    Icon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold),
+                        size: 16, color: AD.textTertiary),
+                  ]),
                 ),
               ],
             ]),

@@ -108,6 +108,7 @@ import {
   receptionistStart, receptionistFinish, receptionistKbUpload, receptionistKbClear,
   receptionistRecording,
 } from "./routes/receptionist";
+import { receptionistAnalytics } from "./routes/recept_analytics"; // [RECEPT-STATS-1]
 import {
   avavisionTemplates, avavisionVoices, avavisionMarketplace, avavisionMine, avavisionCreateAgent,
   avavisionGetAgent, avavisionUpdateAgent, avavisionPublish, avavisionDeleteAgent, avavisionUploadFile,
@@ -954,6 +955,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/receptionist/start" && req.method === "POST") return await receptionistStart(req, env);
       if (p === "/api/receptionist/finish" && req.method === "POST") return await receptionistFinish(req, env);
       if (p === "/api/receptionist/recording" && req.method === "GET") return await receptionistRecording(req, env);
+      if (p === "/api/receptionist/analytics" && req.method === "GET") return await receptionistAnalytics(req, env); // [RECEPT-STATS-1]
       if (p === "/api/receptionist/kb" && req.method === "POST") return await receptionistKbUpload(req, env);
       if (p === "/api/receptionist/kb" && req.method === "DELETE") return await receptionistKbClear(req, env);
       {

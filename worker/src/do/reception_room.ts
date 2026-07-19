@@ -25,6 +25,7 @@ import { chargeAmount } from "../feature_pricing"; // [RECEPT-BILLING-3] exact p
 import { readConfig } from "../routes/config"; // [RECEPT-BILLING-LIVE-1] live-billing test switch
 import { walletOp } from "../routes/wallet"; // [RECEPT-BILLING-3] start-of-call balance read (accrual + zero-stop)
 import { metaDb } from "../db/shard"; // [RECEPT-BILLING-3] internal call_cost_ledger
+import { recordCallSummary, receptOutcome } from "../lib/recept_stats"; // [RECEPT-STATS-1] canonical call summary
 
 /** Redact secrets from free-text error strings BEFORE they go into telemetry.
  *  The Gemini Live URL carries `?key=AIza…` / `?access_token=auth_tokens/…`, so a
@@ -95,6 +96,9 @@ interface InitBlob {
   language_code?: string | null; activation_mode?: string | null;
   owner_name?: string | null; // owner's display name, for the caller-side ack
   ava_name?: string | null;   // Ava's persona name, for transcript speaker labels
+  // [RECEPT-STATS-1] caller geo/tz captured at /start (req.cf) for the canonical
+  // call-summary event + D1 mirror (lib/recept_stats.ts).
+  caller_country?: string | null; caller_tz?: string | null;
 }
 
 // P2: ultra-cheap language guess from Unicode script ranges (no model call). Feeds
@@ -935,17 +939,41 @@ export class ReceptionRoom {
       hundredths = Math.min(hundredths, Math.ceil(this.startBalance * 100));
     }
     const tokensToCharge = Math.ceil(hundredths / 100);
+    let chargedTokens = 0; // [RECEPT-STATS-1] actual tokens charged, for the call summary
     if (hadConversation && durationS > 0) {
       try {
         const r = await chargeAmount(this.env, init.owner_uid, "ava_receptionist_call", tokensToCharge,
           `${init.sid}:settle`, { forceMeter: cfg.receptBillingLive === true });
+        chargedTokens = r.ok ? (r.charged ?? 0) : 0;
         this.ev("ava_recept_billed", {
-          seconds: Math.round(secondsExact * 10) / 10, hundredths, tokens_charged: r.ok ? (r.charged ?? 0) : 0,
+          seconds: Math.round(secondsExact * 10) / 10, hundredths, tokens_charged: chargedTokens,
           charge_ok: r.ok, feature: "ava_receptionist_call", rate: 3,
           zero_stopped: this.zeroStopFired,
         });
       } catch { /* best-effort */ }
     }
+
+    // ── [RECEPT-STATS-1] ONE canonical call summary (event + D1 mirror + 90d
+    // retention + consent-gated AvaBrain feed) — lib/recept_stats.ts. App lane:
+    // caller is an AvaTOK uid; country/tz were captured at /start (req.cf).
+    const summaryReason = this.zeroStopFired ? "balance_exhausted" : reason;
+    await recordCallSummary(this.env, {
+      id: init.sid,
+      owner_uid: init.owner_uid,
+      ts: now,
+      caller_key: init.caller_uid || init.caller_phone || "unknown",
+      caller_name: init.caller_name ?? null,
+      country: init.caller_country || "??",
+      mode: "agent",
+      transport: "app",
+      duration_s: durationS,
+      tokens: chargedTokens,
+      outcome: receptOutcome(summaryReason, hadConversation),
+      reason,
+      owner_email: this.ownerEmail,
+      owner_phone: this.ownerPhone,
+      tz: init.caller_tz ?? null,
+    });
 
     // ── COST telemetry (Gemini Live audio) ────────────────────────────────────
     // Estimate $ spent on this call from audio throughput both ways:

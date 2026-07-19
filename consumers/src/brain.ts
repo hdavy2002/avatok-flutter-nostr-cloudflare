@@ -30,6 +30,9 @@ const DOMAIN_CONSENT: Record<string, string> = {
   calendar: "calendar",
   live: "live",
   verse: "verse",
+  // [RECEPT-STATS-1] — receptionist call summaries (worker lib/recept_stats.ts →
+  // brainIngest domain "receptionist"). New key, no legacy aliases.
+  receptionist: "receptionist",
 };
 
 // Legacy app names (legacy event source_app) → new registry consent key. Used

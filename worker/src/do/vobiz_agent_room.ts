@@ -47,6 +47,8 @@ import { metaDb } from "../db/shard";
 // rule (Hinglish mirroring, aap-first etiquette, one-goodbye, end_call, …).
 import { composeReceptionistPrompt, RECEPTIONIST_MODEL_DEFAULT, AVA_VOICE } from "../routes/receptionist";
 import { matchAvatokPhones } from "../routes/api";
+import { recordCallSummary, receptOutcome } from "../lib/recept_stats"; // [RECEPT-STATS-1] canonical call summary
+import { e164Country } from "../lib/e164_country";                      // [RECEPT-STATS-1] caller_country from E.164
 
 /** Redact secrets from free-text error strings BEFORE telemetry (same scrubber
  *  as reception_room.ts — the Gemini URL carries ?key=AIza…). */
@@ -903,17 +905,41 @@ export class VobizAgentRoom {
       hundredths = Math.min(hundredths, Math.ceil(this.startBalance * 100));
     }
     const tokensToCharge = Math.ceil(hundredths / 100);
+    let chargedTokens = 0; // [RECEPT-STATS-1] actual tokens charged, for the call summary
     if (hadConversation && durationS > 0) {
       try {
         const r = await chargeAmount(this.env, init.owner_uid, "ava_receptionist_call", tokensToCharge,
           `${init.sid}:settle`, { forceMeter: cfg.receptBillingLive === true });
+        chargedTokens = r.ok ? (r.charged ?? 0) : 0;
         this.ev("ava_recept_billed", {
-          seconds: Math.round(secondsExact * 10) / 10, hundredths, tokens_charged: r.ok ? (r.charged ?? 0) : 0,
+          seconds: Math.round(secondsExact * 10) / 10, hundredths, tokens_charged: chargedTokens,
           charge_ok: r.ok, feature: "ava_receptionist_call", rate: 3,
           zero_stopped: this.zeroStopFired,
         });
       } catch { /* best-effort */ }
     }
+
+    // ── [RECEPT-STATS-1] ONE canonical call summary (event + D1 mirror + 90d
+    // retention + consent-gated AvaBrain feed) — lib/recept_stats.ts. PSTN lane:
+    // caller_key is the E.164; country derives from the dialing prefix (a Vobiz
+    // webhook carries no useful req.cf for the caller).
+    const summaryReason = this.zeroStopFired ? "balance_exhausted" : reason;
+    await recordCallSummary(this.env, {
+      id: init.sid,
+      owner_uid: init.owner_uid,
+      ts: now,
+      caller_key: init.caller_phone || init.caller_uid || "unknown",
+      caller_name: init.caller_name ?? null,
+      country: e164Country(init.caller_phone),
+      mode: "agent",
+      transport: "vobiz",
+      duration_s: durationS,
+      tokens: chargedTokens,
+      outcome: receptOutcome(summaryReason, hadConversation),
+      reason,
+      owner_email: this.ownerEmail,
+      owner_phone: this.ownerPhone,
+    });
 
     // ── COST telemetry (Gemini Live audio) — same maths as reception_room.
     const inRate = Number((this.env as any).RECEPT_AUDIO_IN_USD_MIN) || LIVE_AUDIO_IN_USD_PER_MIN;
