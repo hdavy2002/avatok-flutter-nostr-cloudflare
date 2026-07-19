@@ -405,6 +405,13 @@ class_name = "VoicemailRoom"
 name = "AGENT_VOICE_ROOMS"
 class_name = "AgentVoiceRoom"
 
+# [AVA-PSTN-AGENT-1] Live Gemini agent on CELL (Vobiz DID) calls — bidirectional
+# media-stream bridge, one per PSTN agent session. DARK behind pstnAgentEnabled
+# (routes/config.ts). Specs/PLAN-2026-07-19-vobiz-media-stream-agent.md.
+[[durable_objects.bindings]]
+name = "VOBIZ_AGENT_ROOM"
+class_name = "VobizAgentRoom"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["CallRoom"]
@@ -480,6 +487,11 @@ new_sqlite_classes = ["VoicemailRoom"]
 [[migrations]]
 tag = "v15"
 new_sqlite_classes = ["AgentVoiceRoom"]
+
+# [AVA-PSTN-AGENT-1] Vobiz PSTN live-agent bridge DO. DARK behind pstnAgentEnabled.
+[[migrations]]
+tag = "v16"
+new_sqlite_classes = ["VobizAgentRoom"]
 
 # Brain reasoning + observability config (vars; secrets set via wrangler):
 #   BRAIN_REASONER_MODEL  — default @cf/meta/llama-3.1-8b-instruct-fp8 (8B)
@@ -763,6 +775,12 @@ class_name = "VoicemailRoom"
 name = "AGENT_VOICE_ROOMS"
 class_name = "AgentVoiceRoom"
 
+# [AVA-PSTN-AGENT-1] Vobiz PSTN live-agent bridge DO (mirrored from prod).
+# DARK behind pstnAgentEnabled.
+[[env.staging.durable_objects.bindings]]
+name = "VOBIZ_AGENT_ROOM"
+class_name = "VobizAgentRoom"
+
 [[env.staging.migrations]]
 tag = "v1"
 new_sqlite_classes = ["CallRoom"]
@@ -829,3 +847,8 @@ new_sqlite_classes = ["VoicemailRoom"]
 [[env.staging.migrations]]
 tag = "v15"
 new_sqlite_classes = ["AgentVoiceRoom"]
+
+# [AVA-PSTN-AGENT-1] Vobiz PSTN live-agent bridge DO (mirrored from prod).
+[[env.staging.migrations]]
+tag = "v16"
+new_sqlite_classes = ["VobizAgentRoom"]

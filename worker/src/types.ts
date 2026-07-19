@@ -122,6 +122,12 @@ export interface Env {
   // calls, booking-authority gated writes). Dark behind `voiceAgent`.
   // Specs/PLAN-2026-07-11-dialpad-business-calls-ava-voice-agent.md.
   AGENT_VOICE_ROOMS: DurableObjectNamespace;
+  // Durable Object — [AVA-PSTN-AGENT-1] live Gemini agent on CELL (Vobiz DID)
+  // calls via bidirectional media streams. One instance per PSTN agent session
+  // (`pstn-<CallUUID>`); speaks the Vobiz JSON frame protocol to the caller and
+  // Gemini Live upstream. DARK behind pstnAgentEnabled (routes/config.ts).
+  // Specs/PLAN-2026-07-19-vobiz-media-stream-agent.md.
+  VOBIZ_AGENT_ROOM: DurableObjectNamespace;
 
   // vars
   BLOSSOM_BASE_URL: string;

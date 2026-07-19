@@ -37,6 +37,12 @@ import { aiRunOpts } from "../lib/ai_gate";       // AI Gateway cost-logging opt
 // so the hard no-engine-import rule above is respected.
 import { vmGreetingText, getOrRenderVmGreeting, pcmToWavBytes } from "../lib/vm_greeting";
 import { chargeFeature } from "../feature_pricing"; // ₹1/voicemail (pay-per-use, owner 2026-07-19)
+// [AVA-PSTN-AGENT-1] Wallet balance read for the agent-lane runway gate ONLY.
+// walletOp is billing plumbing, NOT engine code — the no-engine-import rule
+// (reception_room/prompt/Gemini modules) still holds: the agent lane here only
+// builds <Stream> XML + a KV handoff blob; all engine logic lives in
+// routes/pstn_agent.ts + do/vobiz_agent_room.ts.
+import { walletOp } from "./wallet";
 
 // Probe-grade fallback — production deployments should `wrangler secret put
 // VOBIZ_WEBHOOK_SECRET` and never rely on this constant being unknown.
@@ -100,6 +106,10 @@ interface PstnSession {
   trace_id: string;
   call_id: string;
   ts: number;
+  // [AVA-PSTN-AGENT-1] true when handleAnswer routed this call to the live
+  // agent (<Stream> XML) instead of voicemail — lets handleHangup label the
+  // cost row AI_AGENT. Absent on every voicemail-lane session (unchanged).
+  agent?: boolean;
 }
 
 function sanitizeKey(s: string): string {
@@ -155,6 +165,65 @@ async function resolveOwner(env: Env, forwardedFrom: string, callerFrom: string)
 }
 
 // ---------------------------------------------------------------------------
+// [AVA-PSTN-AGENT-1] Live agent lane (Specs/PLAN-2026-07-19-vobiz-media-stream-
+// agent.md). Decides whether THIS call gets the live Gemini agent and, if so,
+// returns the bidirectional <Stream> XML; null → caller falls to voicemail.
+//
+// SERVICE BOUNDARY: this function builds XML + a minimal KV handoff blob ONLY.
+// It reads the owner's saved mode from D1 and their wallet balance — no
+// engine/prompt/Gemini import exists here; all of that lives in
+// routes/pstn_agent.ts + do/vobiz_agent_room.ts.
+//
+// Protocol facts (verified in Vobiz docs 2026-07-19): keepCallAlive="true" is
+// REQUIRED or the call drops when the XML ends; contentType on <Stream>
+// configures the INBOUND leg only (L16@16k = exactly Gemini Live input); the
+// outbound 24k rate is declared per playAudio frame by the DO.
+// ---------------------------------------------------------------------------
+const AGENT_KV_TTL_SEC = 300;       // Vobiz must connect the WS within 5 min
+const AGENT_MIN_TOKENS = 3;         // 1 minute of runway at 3 tokens/min
+
+async function agentStreamXmlOrNull(
+  env: Env, cfg: unknown, ownerUid: string, callUuid: string, callerFrom: string, secret: string,
+): Promise<Response | null> {
+  // The OWNER must have explicitly chosen mode="agent" ([RECEPT-MODE-1]).
+  // Anything else (vm / null / no row) → voicemail, the unchanged default.
+  const row = await metaDb(env)
+    .prepare("SELECT mode FROM receptionist_settings WHERE owner_uid=?1")
+    .bind(ownerUid).first<{ mode: string | null }>();
+  if (((row?.mode || "") as string).trim().toLowerCase() !== "agent") return null;
+
+  // Token runway ≥3 (1 min), mirroring /api/receptionist/start's agent gate.
+  // FAIL-OPEN on wallet read errors (a wallet hiccup must not silently demote a
+  // paying owner to voicemail); skipped entirely while betaFreePremium.
+  if ((cfg as { betaFreePremium?: boolean } | null)?.betaFreePremium !== true) {
+    try {
+      const b = await walletOp(env, ownerUid, { op: "balance", uid: ownerUid });
+      if (b.status === 200 && Number(b.body?.balance ?? 0) < AGENT_MIN_TOKENS) return null;
+    } catch { /* fail-open */ }
+  }
+
+  // Minimal, explicit handoff blob (NOT the in-app recept_rtc shape — that one
+  // carries client-only fields like rtc_token). The DO burns it on connect.
+  const sid = `pstn-${callUuid || crypto.randomUUID()}`;
+  await env.TOKENS.put(`pstn_agent:${sid}`, JSON.stringify({
+    owner_uid: ownerUid,
+    caller_e164: callerFrom || null,
+    call_uuid: callUuid || null,
+    ts: Date.now(),
+  }), { expirationTtl: AGENT_KV_TTL_SEC });
+
+  const wsBase = PUBLIC_BASE.replace(/^https:/, "wss:");
+  const streamUrl = `${wsBase}/api/pstn-agent/stream/${encodeURIComponent(secret)}/${encodeURIComponent(sid)}`;
+  const cbUrl = `${PUBLIC_BASE}/api/pstn/stream-cb/${encodeURIComponent(secret)}`;
+  return xml(
+    `<?xml version="1.0" encoding="UTF-8"?><Response>` +
+    `<Stream bidirectional="true" keepCallAlive="true" contentType="audio/x-l16;rate=16000" ` +
+    `statusCallbackUrl="${esc(cbUrl)}">${esc(streamUrl)}</Stream>` +
+    `</Response>`,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // POST /api/pstn/answer/<secret>
 // ---------------------------------------------------------------------------
 async function handleAnswer(req: Request, env: Env, secret: string): Promise<Response> {
@@ -185,6 +254,28 @@ async function handleAnswer(req: Request, env: Env, secret: string): Promise<Res
       call_id: callId,
       ts: Date.now(),
     };
+
+    // ── [AVA-PSTN-AGENT-1] LIVE AGENT LANE (dark behind pstnAgentEnabled) ────
+    // When the resolved OWNER's receptionist mode is "agent" AND the flag is on,
+    // answer the cell call with a bidirectional <Stream> to VobizAgentRoom (the
+    // Gemini Live bridge) instead of the voicemail XML. Never for orphans, and
+    // EVERY error in this branch falls through to the voicemail lane below —
+    // the "never lose a call" guarantee stands (worst case is voicemail).
+    // With the flag off this costs zero extra I/O and the voicemail path below
+    // is byte-identical.
+    if (!isOrphan && resolved.owner_uid && (cfg as any).pstnAgentEnabled === true) {
+      try {
+        const agentXml = await agentStreamXmlOrNull(env, cfg, resolved.owner_uid, callUuid, callerFrom, secret);
+        if (agentXml) {
+          session.agent = true;
+          if (callUuid) {
+            try { await env.TOKENS.put(`pstn_session:${callUuid}`, JSON.stringify(session), { expirationTtl: SESSION_TTL_SEC }); } catch { /* best-effort */ }
+          }
+          return agentXml;
+        }
+      } catch { /* any agent-lane failure → voicemail below, never a dropped call */ }
+    }
+
     if (callUuid) {
       try { await env.TOKENS.put(`pstn_session:${callUuid}`, JSON.stringify(session), { expirationTtl: SESSION_TTL_SEC }); } catch { /* best-effort */ }
     }
@@ -291,7 +382,9 @@ async function handleHangup(req: Request, env: Env, secret: string): Promise<Res
             session?.trace_id ?? null,
             billDuration,
             cost,
-            ExecutionMode.VOICEMAIL,
+            // [AVA-PSTN-AGENT-1] label agent-lane calls honestly; voicemail rows
+            // are unchanged (session.agent is only ever set by the agent branch).
+            session?.agent === true ? ExecutionMode.AI_AGENT : ExecutionMode.VOICEMAIL,
             Date.now(),
           )
           .run();
@@ -350,6 +443,20 @@ async function handleHangup(req: Request, env: Env, secret: string): Promise<Res
     }
   } catch { /* best-effort */ }
 
+  return xml(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`);
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/pstn/stream-cb/<secret> — [AVA-PSTN-AGENT-1] Vobiz <Stream> status
+// callbacks (StartStream/MediaError/StopStream/timeout/failed…). Pure
+// best-effort observability: capture the payload into the probe KV and 200.
+// Call teardown itself is handled in-band by the DO (socket close), so a lost
+// or misdirected callback changes nothing about the call.
+// ---------------------------------------------------------------------------
+async function handleStreamCb(req: Request, env: Env, secret: string): Promise<Response> {
+  if (secret !== webhookSecret(env)) return xml(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`, 403);
+  const fields = await parseForm(req);
+  await captureProbe(env, "stream-cb", fields.CallUUID || "", req, fields);
   return xml(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`);
 }
 
@@ -771,6 +878,7 @@ export async function pstnRoute(req: Request, env: Env, path: string): Promise<R
     if (kind === "answer" && req.method === "POST") return await handleAnswer(req, env, decodeURIComponent(parts[1] || ""));
     if (kind === "hangup" && req.method === "POST") return await handleHangup(req, env, decodeURIComponent(parts[1] || ""));
     if (kind === "record-cb" && req.method === "POST") return await handleRecordCb(req, env, decodeURIComponent(parts[1] || ""));
+    if (kind === "stream-cb" && req.method === "POST") return await handleStreamCb(req, env, decodeURIComponent(parts[1] || ""));
     if (kind === "greeting" && req.method === "GET") return await handleGreeting(env, decodeURIComponent(parts[1] || ""));
     if (kind === "greeting-owner" && req.method === "GET") return await handleOwnerGreeting(env, decodeURIComponent(parts[1] || ""), decodeURIComponent(parts[2] || ""));
     if (kind === "carrier-codes" && req.method === "GET") return await handleCarrierCodes(req, env);

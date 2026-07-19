@@ -497,6 +497,14 @@ export interface PlatformConfig {
   // the paid tier ships (or to un-break a mistake), NOT a per-user entitlement.
   // Per-user billing is a separate lane; until it exists, leave this FALSE.
   pstnPaidConditionsUnlocked: boolean;
+  // [AVA-PSTN-AGENT-1] (Specs/PLAN-2026-07-19-vobiz-media-stream-agent.md)
+  // Live Gemini agent on CELL (Vobiz DID) calls via bidirectional media
+  // streams. When TRUE, routes/pstn.ts's answer webhook routes calls for
+  // owners with receptionist mode="agent" (and ≥3 tokens runway) to a
+  // <Stream> WebSocket → do/vobiz_agent_room.ts instead of the voicemail XML.
+  // FALSE (dark) = the voicemail lane is byte-identical to before. This is
+  // ALSO the kill switch: flip off and the very next call gets voicemail.
+  pstnAgentEnabled: boolean;
   // [AVA-CONVO-BUDGET-1] (owner 2026-07-19) Receptionist conversation budget in ms,
   // decoupled from callMenuEnabled. The old coupling reverted Gemini to the 40/60/90s
   // VOICEMAIL caps when the menu was turned off — the 40s wrap cue landed mid-goodbye
@@ -771,6 +779,11 @@ const DEFAULTS: PlatformConfig = {
   // [AVA-VM-PAID-1] FALSE = missed/declined are a locked paid upgrade (the
   // launch state). Flip TRUE only when the paid tier actually ships.
   pstnPaidConditionsUnlocked: false,
+  // [AVA-PSTN-AGENT-1] Live Gemini agent on Vobiz DID calls — SHIPS DARK.
+  // Flip on only after: Gemini credits topped up on avatok-avaglobal, audio-
+  // streams confirmed enabled on the Vobiz account, and a test owner has
+  // mode="agent". Boolean → NOT in numericKeys.
+  pstnAgentEnabled: false,
   // Creator marketplace (/api/marketplace/*) — DARK, per FREE LAUNCH. The kill switch
   // marketplace.ts always claimed to have; it did not exist until now.
   marketplaceEnabled: false,

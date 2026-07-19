@@ -81,6 +81,9 @@ import { getAgentSettings, putAgentSettings, listAgentServices, createAgentServi
 // [WP3] Voicemail bot session start (plan §3 step 4 / §7 item 5 / §15.5).
 import { voicemailStart, voicemailRecording } from "./routes/voicemail_routes";
 import { pstnRoute } from "./routes/pstn";
+// [AVA-PSTN-AGENT-1] Vobiz bidirectional media-stream WS → VobizAgentRoom DO
+// (live Gemini agent on cell/DID calls; dark behind pstnAgentEnabled).
+import { pstnAgentStream } from "./routes/pstn_agent";
 // [WP4] Ava AI Voice Agent — Grok realtime session start (plan §4/§8/§15.1/§15.3).
 import { agentCallStart } from "./routes/agent_voice_routes";
 // [WP4] RAG document pipeline — Grok Collections (plan §5/§9).
@@ -194,6 +197,7 @@ export { ReceptionRoom } from "./do/reception_room"; // Ava Receptionist call br
 export { ReceptionRoomCf } from "./do/reception_room_cf"; // Ava Receptionist — Cloudflare-native engine (separate)
 export { VoicemailRoom } from "./do/voicemail_room"; // [WP3] carrier-style voicemail bot (dark behind voicemailBot)
 export { AgentVoiceRoom } from "./do/agent_voice_room"; // [WP4] Ava AI Voice Agent — Grok realtime bridge (dark behind voiceAgent)
+export { VobizAgentRoom } from "./do/vobiz_agent_room"; // [AVA-PSTN-AGENT-1] live Gemini agent on Vobiz DID calls (dark behind pstnAgentEnabled)
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -342,6 +346,14 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
         return env.RECEPTION_ROOM_CF.get(env.RECEPTION_ROOM_CF.idFromName(sid), hint ? { locationHint: hint } : undefined).fetch(req);
       }
       return env.RECEPTION_ROOM.get(env.RECEPTION_ROOM.idFromName(sid), hint ? { locationHint: hint } : undefined).fetch(req);
+    }
+
+    // [AVA-PSTN-AGENT-1] Vobiz bidirectional media stream → VobizAgentRoom DO
+    // (live Gemini agent on cell/DID calls, Specs/PLAN-2026-07-19-vobiz-media-
+    // stream-agent.md). Secret-in-path auth (webhook pattern) is verified in
+    // the route; the DO validates the single-use pstn_agent:<sid> KV record.
+    if (p.startsWith("/api/pstn-agent/stream/") && req.headers.get("Upgrade") === "websocket") {
+      return await pstnAgentStream(req, env, p);
     }
 
     // Voicemail bot bridge → VoicemailRoom DO (WP3, plan §3 step 4 / §7 item 5).
