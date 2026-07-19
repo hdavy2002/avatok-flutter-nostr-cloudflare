@@ -61,6 +61,23 @@ export async function chargeFeature(
 ): Promise<{ ok: boolean; charged?: number; balance?: number; reason?: string }> {
   const cost = featureCost(featureKey);
   if (cost == null) return { ok: false, reason: "unknown_feature" };
+  return chargeAmount(env, uid, featureKey, cost, opId, opts);
+}
+
+/**
+ * [RECEPT-BILLING-3] Like chargeFeature, but for a CALLER-SUPPLIED amount — used
+ * by per-second metered features (receptionist exact settle: ceil of accrued
+ * token-hundredths) where the price is not a fixed FEATURE_COSTS entry. Same
+ * protections as chargeFeature: betaFreePremium short-circuit (unless forceMeter),
+ * team billing, idempotent WalletDO spend by opId, and the double-entry Q_WALLET
+ * ledger message. The amount is server-computed by the calling DO/route — never
+ * client-supplied.
+ */
+export async function chargeAmount(
+  env: Env, uid: string, featureKey: string, amount: number, opId: string,
+  opts?: { forceMeter?: boolean },
+): Promise<{ ok: boolean; charged?: number; balance?: number; reason?: string }> {
+  const cost = Math.max(0, Math.ceil(Number(amount) || 0)); // wallet is integer tokens
   if (cost === 0) return { ok: true, charged: 0 };
   // BETA PHASE: all services are free for everyone — never deduct coins. Flip
   // betaFreePremium off in KV to re-enable metering. (Lookup failure → charge as normal.)

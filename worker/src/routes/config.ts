@@ -505,6 +505,14 @@ export interface PlatformConfig {
   receptWrapCueMs: number;
   receptCloseMs: number;
   receptHardCapMs: number;
+  // [RECEPT-BILLING-3] Phase 1 billing v2 (Specs/PLAN-2026-07-19-tokens-cockpit-pstn-master.md):
+  // USD→INR conversion for the INTERNAL per-call cost ledger
+  // (call_cost_ledger.actual_api_cost_inr, written by ReceptionRoom.finalize), and
+  // the real-cost-per-minute margin alert threshold in PAISE (₹2.20/min default —
+  // above it finalize emits ava_recept_margin_alert). Both numeric — they MUST
+  // also be in the numericKeys set below.
+  usdInrRate: number;
+  receptMarginAlertPaise: number;
   // Creator marketplace master switch for /api/marketplace/*. worker/src/routes/
   // marketplace.ts has claimed since day one that "everything here is dark until the
   // marketplaceEnabled kill switch is on" — but the key was never declared, so
@@ -579,6 +587,8 @@ const DEFAULTS: PlatformConfig = {
   receptWrapCueMs: 120_000,        // [AVA-CONVO-BUDGET-1] wrap-up cue at 2:00 (was 40s when menu off → double sign-off)
   receptCloseMs: 160_000,          // graceful close by ~2:40
   receptHardCapMs: 180_000,        // stall backstop 3:00
+  usdInrRate: 96.4,                // [RECEPT-BILLING-3] USD→INR for the internal call_cost_ledger (tune from KV as FX moves)
+  receptMarginAlertPaise: 220,     // [RECEPT-BILLING-3] alert when real API cost > ₹2.20/min (price is ₹3/min)
   receptTakeoverGuard: false,      // P1: gate Ava takeover on FCM ring-ack — ships dark, flip after device test
 
   avaAffiliateEnabled: false,      // launch gate — flip ON after A5 fraud checks
@@ -824,6 +834,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
   const numericKeys = new Set([
     "minAppBuild", "latestAppBuild", "dailyAvaTurnLimit", "receptionistRings", "agentDailyCap", "livenessAuditSampleRate",
     "receptWrapCueMs", "receptCloseMs", "receptHardCapMs",
+    "usdInrRate", "receptMarginAlertPaise", // [RECEPT-BILLING-3] cost-ledger FX + margin alert threshold
     "guardianInlineBudgetMs", "callProtocolVersion", "avaSessionsPerCallerPerDay", "strangerVoiceNotesPerDay",
     "strangerTextNotesPerDay",
     // Dialpad business calls + Ava AI Voice Agent — §11/§15 numeric constants.

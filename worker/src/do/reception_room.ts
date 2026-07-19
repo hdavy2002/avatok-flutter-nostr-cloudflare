@@ -21,8 +21,10 @@ import type { Env } from "../types";
 import { trackUserContact, metric } from "../hooks";
 import { dmConvId } from "../authz";
 import { contactFor } from "../lib/identity";
-import { chargeFeature } from "../feature_pricing"; // Ava minute billing (CALL-OUTCOME-MENU §6)
+import { chargeAmount } from "../feature_pricing"; // [RECEPT-BILLING-3] exact per-second settle (was per-minute chargeFeature)
 import { readConfig } from "../routes/config"; // [RECEPT-BILLING-LIVE-1] live-billing test switch
+import { walletOp } from "../routes/wallet"; // [RECEPT-BILLING-3] start-of-call balance read (accrual + zero-stop)
+import { metaDb } from "../db/shard"; // [RECEPT-BILLING-3] internal call_cost_ledger
 
 /** Redact secrets from free-text error strings BEFORE they go into telemetry.
  *  The Gemini Live URL carries `?key=AIza…` / `?access_token=auth_tokens/…`, so a
@@ -109,6 +111,22 @@ function isAvaFarewell(t: string): boolean {
     || /\b(alvida|phir milenge|dhyan rakhiye)\b/.test(s);
 }
 
+// [RECEPT-BILLING-3] Phase 1 §5 — INTERNAL per-call cost ledger (never exposed via
+// any API). Self-migrating, once per isolate (same guarded pattern as
+// ensureStatusColumns in routes/receptionist.ts). tokens_charged is REAL because
+// the EXACT accrued token-hundredths go in the ledger even though the wallet
+// settles the integer ceil.
+let _costLedgerEnsured = false;
+async function ensureCallCostLedger(env: Env): Promise<void> {
+  if (_costLedgerEnsured) return;
+  _costLedgerEnsured = true;
+  try {
+    await metaDb(env).prepare(
+      "CREATE TABLE IF NOT EXISTS call_cost_ledger (call_id TEXT PRIMARY KEY, user_id TEXT, mode TEXT, start_ts INTEGER, end_ts INTEGER, duration_seconds INTEGER, tokens_charged REAL, actual_api_cost_inr REAL)",
+    ).run();
+  } catch { _costLedgerEnsured = false; /* retry on next call */ }
+}
+
 function guessLangFromText(s: string): string {
   if (!s) return "und";
   if (/[ऀ-ॿ]/.test(s)) return "hi";  // Devanagari (Hindi/Marathi/…)
@@ -191,6 +209,14 @@ export class ReceptionRoom {
   // cost telemetry covers ALL Gemini spend on a receptionist call, not just live.
   private sumTokIn = 0;
   private sumTokOut = 0;
+  // [RECEPT-BILLING-3] Phase 1 billing v2 — per-second accrual (internal only).
+  // 3 tokens/min = 0.05 tok/s = 5 HUNDREDTHS of a token per second. The wallet
+  // stays integer tokens; we meter in hundredths and settle ceil() at finalize.
+  private startBalance: number | null = null; // owner tokens at session start; null = read failed → fail-open (no zero-stop, settle still runs)
+  private accruedHundredths = 0;              // token-hundredths accrued so far (5/s of elapsed time)
+  private accrualTimer: ReturnType<typeof setInterval> | null = null; // 1s tick; cleared in finalize + at zero-stop
+  private lastBalanceFrameAt = 0;             // last {t:"balance"} control frame (every 15s)
+  private zeroStopFired = false;              // balance-exhausted close injected exactly once
   // Goodbye backstop: end the call after a stretch of total silence (covers the
   // case where Ava says "have a great day" but the model doesn't hang up).
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -224,6 +250,14 @@ export class ReceptionRoom {
       const c = await contactFor(this.env, init.owner_uid);
       this.ownerEmail = c.email; this.ownerPhone = c.phone;
     } catch { /* best-effort */ }
+    // [RECEPT-BILLING-3] Read the OWNER's wallet balance ONCE at session start —
+    // it seeds the per-second accrual, the live {t:"balance"} frames and the
+    // hard stop at zero. Fail-open: a failed read leaves startBalance null, the
+    // zero-stop is skipped entirely and the exact settle at finalize still bills.
+    try {
+      const b = await walletOp(this.env, init.owner_uid, { op: "balance", uid: init.owner_uid });
+      if (b.status === 200) this.startBalance = Math.max(0, Number(b.body?.balance ?? 0));
+    } catch { /* fail-open */ }
 
     const pair = new WebSocketPair();
     const client = pair[0], server = pair[1];
@@ -255,6 +289,10 @@ export class ReceptionRoom {
     this.wrapCueTimer = setTimeout(() => this.onWrapCue(), init.wrap_cue_ms ?? 40_000);
     this.closeTimer = setTimeout(() => this.onSessionClose(), init.soft_cap_ms);
     this.hardTimer = setTimeout(() => this.finalize("hard_cap"), init.hard_cap_ms);
+    // [RECEPT-BILLING-3] per-second accrual tick (5 hundredths/s). First
+    // {t:"balance"} frame goes at ~15s, then every 15s (frames start counting now).
+    this.lastBalanceFrameAt = Date.now();
+    this.accrualTimer = setInterval(() => this.onAccrualTick(), 1000);
 
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -458,6 +496,53 @@ export class ReceptionRoom {
       this.liveTokOut = outD;
       this.haveLiveUsage = true;
     } catch { /* best-effort — fall back to byte-based estimate */ }
+  }
+
+  // [RECEPT-BILLING-3] Per-second billing accrual (Phase 1 §1-3). Runs every 1s:
+  //  - accruedHundredths = 5 per elapsed second (3 tok/min), from wall clock so a
+  //    missed tick can't under-accrue.
+  //  - every 15s: {t:"balance", tokens_left, est_minutes} control frame to the
+  //    client (unknown `t` values are ignored safely by the Flutter client).
+  //  - at zero: ONE [SYSTEM] cue so Ava ends the call in her own words, 6s
+  //    backstop finalize("balance_exhausted"), and the interval stops so accrual
+  //    NEVER continues past zero.
+  // Skipped entirely (except raw accrual) when the start-of-call balance read
+  // failed — fail-open, the exact settle at finalize still bills.
+  private onAccrualTick(): void {
+    if (this.finalized) {
+      if (this.accrualTimer) { clearInterval(this.accrualTimer); this.accrualTimer = null; }
+      return;
+    }
+    this.accruedHundredths = Math.floor(((Date.now() - this.startedAt) / 1000) * 5);
+    const bal = this.startBalance;
+    if (bal == null) return; // balance unknown → no frames, no zero-stop (fail-open)
+    const limitHundredths = Math.ceil(bal * 100);
+    if (this.accruedHundredths > limitHundredths) this.accruedHundredths = limitHundredths; // never past zero
+    const now = Date.now();
+    if (now - this.lastBalanceFrameAt >= 15_000) {
+      this.lastBalanceFrameAt = now;
+      // tokens_left rounded to 2dp, floored at 0; est_minutes = tokens_left/3 min, 1dp floor.
+      const tokensLeft = Math.max(0, Math.round(limitHundredths - this.accruedHundredths) / 100);
+      const estMinutes = Math.floor((tokensLeft / 3) * 10) / 10;
+      try { this.client?.send(JSON.stringify({ t: "balance", tokens_left: tokensLeft, est_minutes: estMinutes })); } catch { /* caller gone */ }
+    }
+    if (this.accruedHundredths >= limitHundredths && !this.zeroStopFired) {
+      this.zeroStopFired = true;
+      if (this.accrualTimer) { clearInterval(this.accrualTimer); this.accrualTimer = null; }
+      this.ev("ava_recept_balance_exhausted", { at_ms: now - this.startedAt, start_balance: bal });
+      // End the caller's open turn (automatic VAD would otherwise hold the model
+      // in listening mode — same reason onWrapCue does this), then ONE cue so Ava
+      // closes the line in her own voice.
+      this.sendGem({ realtimeInput: { audioStreamEnd: true } });
+      this.sendGem({
+        clientContent: {
+          turns: [{ role: "user", parts: [{ text: "[SYSTEM] Balance exhausted. Say one short line that the call must end now, say goodbye, and invoke end_call." }] }],
+          turnComplete: true,
+        },
+      });
+      // Backstop: if the model doesn't end it (end_call/goodbye), we do.
+      setTimeout(() => { if (!this.finalized) void this.finalize("balance_exhausted"); }, 6000);
+    }
   }
 
   /** Reset the silence backstop on any real audio activity (either side). */
@@ -733,6 +818,7 @@ export class ReceptionRoom {
     if (this.closeTimer) clearTimeout(this.closeTimer);
     if (this.hardTimer) clearTimeout(this.hardTimer);
     if (this.idleTimer) clearTimeout(this.idleTimer);
+    if (this.accrualTimer) { clearInterval(this.accrualTimer); this.accrualTimer = null; } // [RECEPT-BILLING-3]
     try { this.gem?.close(); } catch { /* ignore */ }
     try { this.client?.send(JSON.stringify({ t: "ended", reason })); this.client?.close(1000, reason); } catch { /* ignore */ }
 
@@ -832,23 +918,32 @@ export class ReceptionRoom {
     });
     metric(this.env, reason === "hard_cap" ? "ava_recept_hardcap" : "ava_recept_completed", [1, durationS]);
 
-    // ── TOKEN BILLING (owner 2026-07-09, Specs/CALL-OUTCOME-MENU-SPEC-2026-07-09.md
-    // §6): Ava minutes cost the OWNER `ava_receptionist_minute` tokens (3/min =
-    // 3¢/min) — ceil(duration/60), one idempotent charge unit per minute
-    // (op_id = `<sid>:min<N>`, deduped by the WalletDO on retry). FREE while
-    // betaFreePremium is on: chargeFeature short-circuits to charged:0, so this is
-    // dormant wiring until billing turns on. Best-effort — a wallet error must
-    // never break message delivery (which already happened above).
+    // ── TOKEN BILLING [RECEPT-BILLING-3] (Phase 1 §4, supersedes the per-started-
+    // minute loop of CALL-OUTCOME-MENU §6): EXACT per-second settle. Accrual is 5
+    // token-hundredths per second (3 tok/min); the wallet is integer tokens so we
+    // charge ceil(hundredths/100) ONCE, idempotently (op_id = `<sid>:settle`,
+    // deduped by the WalletDO on retry). The EXACT hundredths go in the internal
+    // call_cost_ledger below. If the zero-stop fired, the goodbye tail past zero
+    // is free — hundredths is capped at the start balance, never past zero.
+    // FREE while betaFreePremium is on unless receptBillingLive forces metering
+    // (chargeAmount short-circuits exactly like chargeFeature did). Best-effort —
+    // a wallet error must never break message delivery (already happened above).
+    const cfg: any = await readConfig(this.env).catch(() => ({} as any));
+    const secondsExact = Math.max(0, (now - this.startedAt) / 1000);
+    let hundredths = Math.ceil(secondsExact * 5);
+    if (this.zeroStopFired && this.startBalance != null) {
+      hundredths = Math.min(hundredths, Math.ceil(this.startBalance * 100));
+    }
+    const tokensToCharge = Math.ceil(hundredths / 100);
     if (hadConversation && durationS > 0) {
       try {
-        const minutes = Math.min(10, Math.ceil(durationS / 60)); // sanity clamp
-        for (let m = 1; m <= minutes; m++) {
-          // [RECEPT-BILLING-LIVE-1] receptBillingLive=true → charge for REAL even
-          // during the free beta (owner's live token-deduction test switch).
-          await chargeFeature(this.env, init.owner_uid, "ava_receptionist_minute", `${init.sid}:min${m}`,
-            { forceMeter: (await readConfig(this.env).catch(() => ({} as any))).receptBillingLive === true });
-        }
-        this.ev("ava_recept_billed", { minutes, feature: "ava_receptionist_minute", rate: 3 });
+        const r = await chargeAmount(this.env, init.owner_uid, "ava_receptionist_call", tokensToCharge,
+          `${init.sid}:settle`, { forceMeter: cfg.receptBillingLive === true });
+        this.ev("ava_recept_billed", {
+          seconds: Math.round(secondsExact * 10) / 10, hundredths, tokens_charged: r.ok ? (r.charged ?? 0) : 0,
+          charge_ok: r.ok, feature: "ava_receptionist_call", rate: 3,
+          zero_stopped: this.zeroStopFired,
+        });
       } catch { /* best-effort */ }
     }
 
@@ -907,6 +1002,32 @@ export class ReceptionRoom {
     });
     // Aggregate metric (USD micro-cents so the integer counter stays meaningful).
     metric(this.env, "ava_recept_cost_usd_micro", [Math.round(estUsd * 1e6)]);
+
+    // ── [RECEPT-BILLING-3] PER-CALL COST LEDGER (Phase 1 §5, INTERNAL ONLY — no
+    // API exposes this table) + MARGIN ALERT (§6). actual_api_cost_inr = the
+    // exact estUsd computed above × usdInrRate (config, default 96.4);
+    // tokens_charged is the EXACT accrued hundredths/100 (the wallet settled the
+    // integer ceil above). Best-effort — never let bookkeeping break finalize.
+    try {
+      await ensureCallCostLedger(this.env);
+      const usdInr = Number(cfg.usdInrRate) > 0 ? Number(cfg.usdInrRate) : 96.4;
+      const actualInr = Math.round(estUsd * usdInr * 1e6) / 1e6;
+      await metaDb(this.env).prepare(
+        `INSERT OR REPLACE INTO call_cost_ledger
+           (call_id, user_id, mode, start_ts, end_ts, duration_seconds, tokens_charged, actual_api_cost_inr)
+         VALUES (?1, ?2, 'receptionist_agent', ?3, ?4, ?5, ?6, ?7)`,
+      ).bind(init.sid, init.owner_uid, this.startedAt, now, durationS, hundredths / 100, actualInr).run();
+      // Margin alert: real cost per minute above the paise threshold (₹2.20/min
+      // default) on a ₹3/min price → the owner's margin is being eaten.
+      const minuteCostInr = actualInr / Math.max(1, durationS / 60);
+      const alertPaise = Number(cfg.receptMarginAlertPaise) > 0 ? Number(cfg.receptMarginAlertPaise) : 220;
+      if (minuteCostInr > alertPaise / 100) {
+        this.ev("ava_recept_margin_alert", {
+          minute_cost_inr: Math.round(minuteCostInr * 100) / 100, price_inr: 3,
+          duration_s: durationS, est_usd: round6(estUsd), usd_inr: usdInr,
+        });
+      }
+    } catch { /* internal bookkeeping is best-effort */ }
   }
 
   /** Append a transcript fragment to the running turn-by-turn dialogue, merging
