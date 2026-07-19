@@ -22,6 +22,7 @@ import { trackUserContact, metric } from "../hooks";
 import { dmConvId } from "../authz";
 import { contactFor } from "../lib/identity";
 import { chargeFeature } from "../feature_pricing"; // Ava minute billing (CALL-OUTCOME-MENU §6)
+import { readConfig } from "../routes/config"; // [RECEPT-BILLING-LIVE-1] live-billing test switch
 
 /** Redact secrets from free-text error strings BEFORE they go into telemetry.
  *  The Gemini Live URL carries `?key=AIza…` / `?access_token=auth_tokens/…`, so a
@@ -842,9 +843,12 @@ export class ReceptionRoom {
       try {
         const minutes = Math.min(10, Math.ceil(durationS / 60)); // sanity clamp
         for (let m = 1; m <= minutes; m++) {
-          await chargeFeature(this.env, init.owner_uid, "ava_receptionist_minute", `${init.sid}:min${m}`);
+          // [RECEPT-BILLING-LIVE-1] receptBillingLive=true → charge for REAL even
+          // during the free beta (owner's live token-deduction test switch).
+          await chargeFeature(this.env, init.owner_uid, "ava_receptionist_minute", `${init.sid}:min${m}`,
+            { forceMeter: (await readConfig(this.env).catch(() => ({} as any))).receptBillingLive === true });
         }
-        this.ev("ava_recept_billed", { minutes, feature: "ava_receptionist_minute" });
+        this.ev("ava_recept_billed", { minutes, feature: "ava_receptionist_minute", rate: 3 });
       } catch { /* best-effort */ }
     }
 

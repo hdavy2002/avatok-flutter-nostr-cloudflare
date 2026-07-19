@@ -31,7 +31,7 @@ export const FEATURE_COSTS: Record<string, number> = {
   // one minute of an Ava receptionist/sales-agent call, charged to the OWNER whose
   // Ava answered (ceil(duration/60) units per session, max 3). Free while
   // betaFreePremium is on — chargeFeature already short-circuits to charged:0.
-  ava_receptionist_minute: 5, // $0.05/min — owner decision 2026-07-19 (was 3)
+  ava_receptionist_minute: 3, // ₹3/min — LOCKED by AvaTok_Tiered_Pricing_Brief.pdf 2026-07-19 (supersedes same-day verbal "5"); hard cap 3:00; margin alert >₹2.20/min
   // MARKETPLACE LISTING FEE (M-D2, PLAN §1.3/§5): 100 tokens = $1 to publish a listing
   // for one 30-day period, after the first 5 free (the quota is enforced in
   // lib/listing_billing.ts, independent of tokens). Charged idempotently on
@@ -56,13 +56,16 @@ export function featureCost(key: string): number | null {
  */
 export async function chargeFeature(
   env: Env, uid: string, featureKey: string, opId: string,
+  opts?: { forceMeter?: boolean },
 ): Promise<{ ok: boolean; charged?: number; balance?: number; reason?: string }> {
   const cost = featureCost(featureKey);
   if (cost == null) return { ok: false, reason: "unknown_feature" };
   if (cost === 0) return { ok: true, charged: 0 };
   // BETA PHASE: all services are free for everyone — never deduct coins. Flip
   // betaFreePremium off in KV to re-enable metering. (Lookup failure → charge as normal.)
-  try { if ((await readConfig(env)).betaFreePremium) return { ok: true, charged: 0 }; } catch { /* meter normally */ }
+  // [RECEPT-BILLING-LIVE-1] forceMeter (owner 2026-07-19): lets ONE feature charge for
+  // real during beta (receptionist billing test) without un-freeing the whole platform.
+  try { if (!opts?.forceMeter && (await readConfig(env)).betaFreePremium) return { ok: true, charged: 0 }; } catch { /* meter normally */ }
   // TEAM BILLING: if `uid` is on a Team plan, the spend leaves the TEAM wallet, not
   // the member's. The op_id stays keyed to the member + action (audit shows WHO
   // spent); only the payer changes. Non-members resolve to themselves (no-op).

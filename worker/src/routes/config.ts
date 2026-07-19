@@ -81,6 +81,10 @@ export interface PlatformConfig {
   // Default true (legacy); flipped false in prod KV — the cached VM greeting is
   // instant so the warm-up screen is dead time. Client mirror: RemoteConfig.
   avaCountdownEnabled: boolean;
+  // [RECEPT-BILLING-LIVE-1] charge ava_receptionist_minute for REAL even while
+  // betaFreePremium is on (forceMeter) — lets the owner live-test token deduction
+  // without ending the free beta platform-wide. Default false (beta stays free).
+  receptBillingLive: boolean;
   // P1 call-reliability (Specs/MASTER-PROMPT-LAUNCH-READINESS-2026-07-02.md, Phase 1).
   // When ON, the caller's Ava-takeover countdown does NOT start until the server
   // confirms the incoming-call FCM push outcome over the CallRoom socket
@@ -571,6 +575,7 @@ const DEFAULTS: PlatformConfig = {
   receptionistUseCf: false,        // engine switch: false = Gemini Live (default), true = Cloudflare Workers AI engine
   receptionistVmMode: false,       // zero-cost voicemail: cached Bulbul greeting + beep + 30s record (overrides engines while ON)
   avaCountdownEnabled: true,       // client 3-2-1 Ava countdown; prod KV flips false (VM greeting is instant)
+  receptBillingLive: false,        // [RECEPT-BILLING-LIVE-1] real receptionist token deduction during beta (test switch)
   receptWrapCueMs: 120_000,        // [AVA-CONVO-BUDGET-1] wrap-up cue at 2:00 (was 40s when menu off → double sign-off)
   receptCloseMs: 160_000,          // graceful close by ~2:40
   receptHardCapMs: 180_000,        // stall backstop 3:00
