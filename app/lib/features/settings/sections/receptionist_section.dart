@@ -11,6 +11,7 @@ import '../../../core/receptionist_api.dart';
 import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../settings_registry.dart';
+import 'receptionist_onboarding.dart';
 
 /// Availability presets. id → label shown in the dropdown. Must match the
 /// server's STATUS_PRESETS keys in worker/src/routes/receptionist.ts. Default is
@@ -222,6 +223,9 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
   // [RECEPT-MODE-1] answering mode: 'agent' (AI voice agent) | 'vm' (voicemail) |
   // '' (server/global default). Two exclusive toggles drive this one field.
   String _mode = '';
+  // [RECEPT-ONBOARD-1] where the agent answers: 'cell' | 'app' | 'all' | ''
+  // (server treats ''/invalid as 'all'). Chosen in the onboarding wizard.
+  String _agentScope = '';
 
   // F1 — status note expiry. Null = no expiry; else the absolute epoch-ms instant
   // the note lapses. `_customExpiry` mirrors a picked custom instant so its chip
@@ -294,6 +298,10 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
         _festivalGreeting = s.festivalGreeting;
         _greeting.text = s.greetingText;
         _mode = (s.mode == 'agent' || s.mode == 'vm') ? s.mode : '';
+        _agentScope = (s.agentScope == 'cell' || s.agentScope == 'app' ||
+                s.agentScope == 'all')
+            ? s.agentScope
+            : '';
       }
       _loading = false;
     });
@@ -319,6 +327,8 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
     _greeting.text = (m['greeting_text'] ?? '').toString();
     final md = (m['mode'] ?? '').toString();
     _mode = (md == 'agent' || md == 'vm') ? md : '';
+    final sc = (m['agent_scope'] ?? '').toString();
+    _agentScope = (sc == 'cell' || sc == 'app' || sc == 'all') ? sc : '';
   }
 
   Future<void> _writeMirror() async {
@@ -332,6 +342,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
         'festival_greeting': _festivalGreeting,
         'greeting_text': _greeting.text,
         'mode': _mode,
+        'agent_scope': _agentScope,
       }));
     } catch (_) {/* best-effort */}
   }
@@ -405,6 +416,8 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
       festivalGreeting: _festivalGreeting,
       // [RECEPT-MODE-1] answering mode from the two exclusive toggles.
       mode: _mode,
+      // [RECEPT-ONBOARD-1] agent scope chosen in the onboarding wizard.
+      agentScope: _agentScope,
     );
     if (!mounted) return res.ok;
     setState(() {
@@ -462,6 +475,45 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
   }
 
+  // ── [RECEPT-ONBOARD-1] onboarding flows (plan §B) ─────────────────────────
+  // Both flows persist through THIS state's _save (which owns the full settings
+  // payload — the PUT overwrites every column, so a minimal save from the wizard
+  // would wipe the note/greeting/language). State is set optimistically before
+  // the save and rolled back if it fails, so a failed save never leaves the
+  // toggle lying about what the server has.
+
+  Future<void> _startAgentOnboarding() async {
+    if (_saving) return;
+    await showReceptionistAgentOnboarding(
+      context,
+      initialScope: _agentScope.isEmpty ? 'all' : _agentScope,
+      onFinish: (scope) async {
+        final prevMode = _mode;
+        final prevScope = _agentScope;
+        setState(() { _mode = 'agent'; _agentScope = scope; });
+        final ok = await _save(enabled: true);
+        if (!ok && mounted) {
+          setState(() { _mode = prevMode; _agentScope = prevScope; });
+        }
+        return ok;
+      },
+    );
+  }
+
+  Future<void> _startVmOnboarding() async {
+    if (_saving) return;
+    await showReceptionistVoicemailSheet(
+      context,
+      onConfirm: () async {
+        final prevMode = _mode;
+        setState(() => _mode = 'vm');
+        final ok = await _save(enabled: true);
+        if (!ok && mounted) setState(() => _mode = prevMode);
+        return ok;
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AdCard(
@@ -498,22 +550,29 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                 const SizedBox(height: 14),
                 // ── [RECEPT-MODE-1] Answering mode: two mutually-exclusive toggles.
                 // Turning one ON turns the other OFF (they map to one server field).
+                // [RECEPT-ONBOARD-1] Any transition INTO a mode goes through its
+                // onboarding flow (wizard for agent, one-screen sheet for vm) —
+                // the toggle only moves once the flow completes AND the save
+                // lands; cancel/back = no change. Turning a toggle OFF is, by the
+                // exclusive-pair design, turning the OTHER mode on — so it runs
+                // the other mode's flow.
                 Text('ANSWERING MODE', style: ADText.sectionLabel()),
                 const SizedBox(height: 6),
                 _toggleRow(
                   'AI Voice Agent',
                   'Ava talks with your callers live (AvaTOK and cell calls). '
-                      '5 tokens per minute from your wallet.',
+                      '3 tokens per minute from your wallet, calls capped at '
+                      '3 minutes.',
                   _mode == 'agent',
-                  (v) => setState(() => _mode = v ? 'agent' : 'vm'),
+                  (v) => v ? _startAgentOnboarding() : _startVmOnboarding(),
                 ),
                 const SizedBox(height: 8),
                 _toggleRow(
                   'Voice mail',
                   'Callers hear your pre-recorded greeting and leave a message. '
-                      'Free.',
+                      '1 token per voicemail.',
                   _mode == 'vm',
-                  (v) => setState(() => _mode = v ? 'vm' : 'agent'),
+                  (v) => v ? _startVmOnboarding() : _startAgentOnboarding(),
                 ),
                 const SizedBox(height: 14),
                 // ── The note: tell Ava your availability ───────────────────

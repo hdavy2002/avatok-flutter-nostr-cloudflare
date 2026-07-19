@@ -40,6 +40,9 @@ class ReceptionistSettings {
   // [RECEPT-MODE-1] answering mode: 'agent' (AI voice agent) | 'vm' (voicemail) |
   // '' (server/global default). The two exclusive toggles map onto this one field.
   final String mode;
+  // [RECEPT-ONBOARD-1] where the agent answers: 'cell' | 'app' | 'all' |
+  // '' (server treats empty/invalid as 'all').
+  final String agentScope;
   const ReceptionistSettings({
     required this.enabled,
     required this.instructions,
@@ -64,6 +67,7 @@ class ReceptionistSettings {
     this.greetingStyle = '',
     this.festivalGreeting = false,
     this.mode = '',
+    this.agentScope = '',
   });
   factory ReceptionistSettings.fromJson(Map<String, dynamic> j) => ReceptionistSettings(
         enabled: j['enabled'] == true,
@@ -89,6 +93,7 @@ class ReceptionistSettings {
         greetingStyle: (j['greeting_style'] ?? '').toString(),
         festivalGreeting: j['festival_greeting'] == true,
         mode: (j['mode'] ?? '').toString(),
+        agentScope: (j['agent_scope'] ?? '').toString(),
       );
 }
 
@@ -149,6 +154,8 @@ class ReceptionistApi {
     bool? festivalGreeting,
     // [RECEPT-MODE-1] 'agent' | 'vm' | '' (server/global default).
     String? mode,
+    // [RECEPT-ONBOARD-1] 'cell' | 'app' | 'all' (anything else → server null = all).
+    String? agentScope,
   }) async {
     final body = <String, dynamic>{
       'enabled': enabled,
@@ -172,6 +179,7 @@ class ReceptionistApi {
       if (greetingStyle != null) 'greeting_style': greetingStyle,
       if (festivalGreeting != null) 'festival_greeting': festivalGreeting,
       if (mode != null) 'mode': mode,
+      if (agentScope != null) 'agent_scope': agentScope,
     };
     const maxAttempts = 3;
     for (var attempt = 1; attempt <= maxAttempts; attempt++) {

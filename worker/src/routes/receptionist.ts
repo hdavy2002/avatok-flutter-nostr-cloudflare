@@ -227,6 +227,11 @@ async function ensureStatusColumns(env: Env): Promise<void> {
     // (fall back to the global receptionistVmMode/receptionistUseCf flags).
     // The two client toggles are mutually exclusive and map onto this ONE field.
     "ALTER TABLE receptionist_settings ADD COLUMN mode TEXT",
+    // [RECEPT-ONBOARD-1] (owner 2026-07-19, plan §B3): WHERE the AI agent answers —
+    // "cell" (Vobiz DID / carrier-forwarded calls only) | "app" (AvaTOK-to-AvaTOK
+    // calls only) | "all". NULL/invalid → treated as "all" (fail-open) so a user
+    // who set mode=agent before this shipped keeps both lanes.
+    "ALTER TABLE receptionist_settings ADD COLUMN agent_scope TEXT",
     // Self-migration for receptionist_sessions columns:
     "ALTER TABLE receptionist_sessions ADD COLUMN activation_mode TEXT",
     "ALTER TABLE receptionist_sessions ADD COLUMN team_id TEXT",
@@ -366,6 +371,8 @@ interface SettingsRow {
   greeting_style?: string | null; festival_greeting?: number | null;
   // [RECEPT-MODE-1] "agent" | "vm" | null
   mode?: string | null;
+  // [RECEPT-ONBOARD-1] "cell" | "app" | "all" | null (null/invalid → "all")
+  agent_scope?: string | null;
 }
 
 async function loadSettings(env: Env, uid: string): Promise<SettingsRow | null> {
@@ -691,6 +698,8 @@ export async function receptionistGetSettings(req: Request, env: Env): Promise<R
     festival_greeting: !!(s?.festival_greeting),
     // [RECEPT-MODE-1] per-user answering mode for the merged Receptionist/Voice mail page.
     mode: s?.mode ?? "",
+    // [RECEPT-ONBOARD-1] where the agent answers: "cell" | "app" | "all" ('' = all).
+    agent_scope: s?.agent_scope ?? "",
     premium, // client greys the toggle + shows upsell when false
     soft_cap_ms: SOFT_CAP_MS, hard_cap_ms: HARD_CAP_MS,
   });
@@ -759,6 +768,11 @@ export async function receptionistPutSettings(req: Request, env: Env): Promise<R
   // The client's two exclusive toggles map to this one validated field.
   let recMode: string | null = b.mode == null ? null : String(b.mode).trim().toLowerCase();
   if (recMode !== "agent" && recMode !== "vm") recMode = null;
+  // [RECEPT-ONBOARD-1] agent scope: "cell" | "app" | "all" | null. Invalid values
+  // coerce to null, and every reader treats null as "all" (fail-open) — a bad value
+  // can therefore never silence a lane the owner didn't ask to silence.
+  let agentScope: string | null = b.agent_scope == null ? null : String(b.agent_scope).trim().toLowerCase();
+  if (agentScope !== "cell" && agentScope !== "app" && agentScope !== "all") agentScope = null;
   // PAY-PER-USE (owner 2026-07-19): enabling a mode requires token runway —
   // agent ≥3 tokens (1 min), voicemail ≥1 (1 token per voicemail). 402 with the
   // shortfall so the client can deep-link to top-up. Fail-open on wallet errors.
@@ -792,21 +806,21 @@ export async function receptionistPutSettings(req: Request, env: Env): Promise<R
         persona_name, language_code, greeting_text, custom_prompt,
         answer_all, status_preset, status_custom, decline_to_ava,
         status_note, status_expires_at, answer_lang,
-        greeting_style, festival_greeting, mode,
+        greeting_style, festival_greeting, mode, agent_scope,
         created_at, updated_at)
-     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?15,?16,?17,?18,?19,?20,?14,?14)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?15,?16,?17,?18,?19,?20,?21,?14,?14)
      ON CONFLICT(owner_uid) DO UPDATE SET
        enabled=?2, instructions_text=?3, voice_name=?4, display_name=?5,
        persona_name=?6, language_code=?7, greeting_text=?8, custom_prompt=?9,
        answer_all=?10, status_preset=?11, status_custom=?12, decline_to_ava=?13,
        status_note=?15, status_expires_at=?16, answer_lang=?17,
-       greeting_style=?18, festival_greeting=?19, mode=?20,
+       greeting_style=?18, festival_greeting=?19, mode=?20, agent_scope=?21,
        updated_at=?14`,
   ).bind(ctx.uid, enabled ? 1 : 0, instr, voice, display,
     persona, language, greeting, customPrompt,
     answerAll, statusPreset, statusCustom, declineToAva, now,
     statusNote, statusExpiresAt, answerLang,
-    greetingStyle, festivalGreeting, recMode).run();
+    greetingStyle, festivalGreeting, recMode, agentScope).run();
   // F1 telemetry.
   const ttlBucket = statusExpiresAt == null ? "never"
     : (() => { const d = statusExpiresAt - Date.now();
@@ -954,6 +968,11 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   const ownerMode = ((s.mode || "") as string).trim().toLowerCase();
   if (ownerMode === "vm") { vmMode = true; useCf = true; }
   else if (ownerMode === "agent") { vmMode = false; useCf = false; }
+  // [RECEPT-ONBOARD-1] agent_scope enforcement, APP lane: an owner who scoped the
+  // live agent to CELL calls only still gets voicemail on AvaTOK-to-AvaTOK calls
+  // (never a dead end). Missing/invalid scope → "all" (fail-open, pre-wizard rows).
+  const agentScope = ((s.agent_scope || "") as string).trim().toLowerCase();
+  if (ownerMode === "agent" && agentScope === "cell") { vmMode = true; useCf = true; }
   // Gemini engine needs a Gemini key (dedicated, else global); the CF engine runs
   // entirely on the Workers AI binding and needs no Gemini key.
   if (!useCf && !env.RECEPTIONIST_GEMINI_API_KEY && !env.GEMINI_API_KEY) { skip("no_model_key"); return json({ error: "receptionist_unavailable", reason: "no_model_key" }, 503); }

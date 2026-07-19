@@ -196,10 +196,24 @@ async function agentStreamXmlOrNull(
 ): Promise<Response | null> {
   // The OWNER must have explicitly chosen mode="agent" ([RECEPT-MODE-1]).
   // Anything else (vm / null / no row) → voicemail, the unchanged default.
-  const row = await metaDb(env)
-    .prepare("SELECT mode FROM receptionist_settings WHERE owner_uid=?1")
-    .bind(ownerUid).first<{ mode: string | null }>();
+  // [RECEPT-ONBOARD-1] agent_scope in the SAME query: the CELL lane also requires
+  // scope ∈ {cell, all}. "app" (agent on AvaTOK calls only) → voicemail here.
+  // Missing/NULL/invalid → "all" (fail-open, pre-wizard rows keep both lanes).
+  // The agent_scope column self-migrates in receptionist.ts's ensureStatusColumns;
+  // until a receptionist route has run post-deploy it may not exist yet, so a
+  // failed 2-column SELECT falls back to the mode-only SELECT (scope → "all").
+  let row: { mode: string | null; agent_scope?: string | null } | null = null;
+  try {
+    row = await metaDb(env)
+      .prepare("SELECT mode, agent_scope FROM receptionist_settings WHERE owner_uid=?1")
+      .bind(ownerUid).first<{ mode: string | null; agent_scope: string | null }>();
+  } catch {
+    row = await metaDb(env)
+      .prepare("SELECT mode FROM receptionist_settings WHERE owner_uid=?1")
+      .bind(ownerUid).first<{ mode: string | null }>();
+  }
   if (((row?.mode || "") as string).trim().toLowerCase() !== "agent") return null;
+  if (((row?.agent_scope || "") as string).trim().toLowerCase() === "app") return null;
 
   // Token runway ≥3 (1 min), mirroring /api/receptionist/start's agent gate.
   // FAIL-OPEN on wallet read errors (a wallet hiccup must not silently demote a
