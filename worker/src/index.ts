@@ -81,6 +81,8 @@ import { getAgentSettings, putAgentSettings, listAgentServices, createAgentServi
 // [WP3] Voicemail bot session start (plan §3 step 4 / §7 item 5 / §15.5).
 import { voicemailStart, voicemailRecording } from "./routes/voicemail_routes";
 import { pstnRoute } from "./routes/pstn";
+// [TEL-TIERS-1] Telephony subscription tiers (Teler/Vobiz resale, Phase 4).
+import { telephonySubscribe, telephonyAddon, telephonyCancel, telephonyStatus } from "./routes/telephony_tiers";
 // [AVA-PSTN-AGENT-1] Vobiz bidirectional media-stream WS → VobizAgentRoom DO
 // (live Gemini agent on cell/DID calls; dark behind pstnAgentEnabled).
 import { pstnAgentStream } from "./routes/pstn_agent";
@@ -604,6 +606,13 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // Specs/PLAN-2026-07-16-ava-receptionist-guardian-FINAL.md). Single
       // startsWith dispatcher — routes/pstn.ts parses the sub-path itself.
       if (p.startsWith("/api/pstn/")) return await pstnRoute(req, env, p);
+      // [TEL-TIERS-1] Telephony subscription tiers (Phase 4, Specs/PLAN-2026-07-19-
+      // tokens-cockpit-pstn-master.md): ₹700 Tier-1 / ₹2,500 Tier-2 / ₹700 add-on,
+      // token-charged, lazy monthly renewal. Concurrency gauges live in pstn.ts.
+      if (p === "/api/telephony/subscribe" && req.method === "POST") return await telephonySubscribe(req, env);
+      if (p === "/api/telephony/addon" && req.method === "POST") return await telephonyAddon(req, env);
+      if (p === "/api/telephony/cancel" && req.method === "POST") return await telephonyCancel(req, env);
+      if (p === "/api/telephony/status" && req.method === "GET") return await telephonyStatus(req, env);
       // [WP3] Agent Profiles + service numbers (plan §4/§7/§8b/§12.5/§12.8/§12.10).
       // Mode A (primary number) settings — 403 unless voiceAgent flag is on.
       if (p === "/api/agent/settings" && req.method === "GET") return await getAgentSettings(req, env);

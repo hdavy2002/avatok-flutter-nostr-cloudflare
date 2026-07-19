@@ -505,6 +505,15 @@ export interface PlatformConfig {
   // FALSE (dark) = the voicemail lane is byte-identical to before. This is
   // ALSO the kill switch: flip off and the very next call gets voicemail.
   pstnAgentEnabled: boolean;
+  // [TEL-TIERS-1] (Phase 4, Specs/PLAN-2026-07-19-tokens-cockpit-pstn-master.md)
+  // PSTN channel-concurrency ENFORCEMENT. routes/pstn.ts always TRACKS per-owner
+  // active-call gauges + monthly peaks (KV, best-effort); with this FALSE
+  // (track-only, the launch state) a subscribed owner whose simultaneous calls
+  // exceed channels_total still gets the call — we only emit pstn_channel_busy
+  // telemetry. Flip TRUE only after real peak data validates the tier limits:
+  // then the excess call gets the busy/voicemail fallback instead of admission.
+  // Boolean → NOT in numericKeys.
+  pstnConcurrencyEnforced: boolean;
   // [AVA-CONVO-BUDGET-1] (owner 2026-07-19) Receptionist conversation budget in ms,
   // decoupled from callMenuEnabled. The old coupling reverted Gemini to the 40/60/90s
   // VOICEMAIL caps when the menu was turned off — the 40s wrap cue landed mid-goodbye
@@ -784,6 +793,9 @@ const DEFAULTS: PlatformConfig = {
   // streams confirmed enabled on the Vobiz account, and a test owner has
   // mode="agent". Boolean → NOT in numericKeys.
   pstnAgentEnabled: false,
+  // [TEL-TIERS-1] Track-only launch state: concurrency gauges run, enforcement
+  // (busy fallback above channels_total) stays OFF until peak data says otherwise.
+  pstnConcurrencyEnforced: false,
   // Creator marketplace (/api/marketplace/*) — DARK, per FREE LAUNCH. The kill switch
   // marketplace.ts always claimed to have; it did not exist until now.
   marketplaceEnabled: false,

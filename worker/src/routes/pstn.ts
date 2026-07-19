@@ -43,6 +43,11 @@ import { chargeFeature } from "../feature_pricing"; // ₹1/voicemail (pay-per-u
 // builds <Stream> XML + a KV handoff blob; all engine logic lives in
 // routes/pstn_agent.ts + do/vobiz_agent_room.ts.
 import { walletOp } from "./wallet";
+// [TEL-TIERS-1] Subscription read for the channel-concurrency gate (Phase 4,
+// Specs/PLAN-2026-07-19-tokens-cockpit-pstn-master.md). telephony_tiers.ts is
+// billing plumbing (D1 row + chargeAmount) — NOT engine code — so the hard
+// no-engine-import rule above still holds.
+import { getTelephonySubscription } from "./telephony_tiers";
 
 // Probe-grade fallback — production deployments should `wrangler secret put
 // VOBIZ_WEBHOOK_SECRET` and never rely on this constant being unknown.
@@ -110,6 +115,10 @@ interface PstnSession {
   // agent (<Stream> XML) instead of voicemail — lets handleHangup label the
   // cost row AI_AGENT. Absent on every voicemail-lane session (unchanged).
   agent?: boolean;
+  // [TEL-TIERS-1] true when handleAnswer incremented the KV active-call
+  // gauges for this call — handleHangup only decrements when set (and clears
+  // it after, so a Vobiz hangup retry can't double-decrement).
+  gauged?: boolean;
 }
 
 function sanitizeKey(s: string): string {
@@ -224,6 +233,124 @@ async function agentStreamXmlOrNull(
 }
 
 // ---------------------------------------------------------------------------
+// [TEL-TIERS-1] CHANNEL-CONCURRENCY TRACKING (Phase 4, Specs/PLAN-2026-07-19-
+// tokens-cockpit-pstn-master.md). Channels = concurrent call slots sold by the
+// telephony subscription tiers (telephony_tiers.ts — billing plumbing only, so
+// this file's hard no-engine-import rule still holds).
+//
+// KV-based, BEST-EFFORT, FAIL-OPEN: KV has no atomic increment, so the
+// read-modify-write gauges can drift slightly under true concurrency — fine
+// for capacity stats, and every failure path ADMITS the call (this file's
+// "never lose a call" posture). Gauge TTL matches SESSION_TTL_SEC so a missed
+// hangup self-heals within the hour.
+//
+// Keys (read back by GET /api/telephony/status):
+//   pstn_active:<uid>            live per-owner active-call count (TTL 1h)
+//   pstn_active:global           every answered call — capacity planning
+//   pstn_peak:<uid|global>:<YYYY-MM>   monthly peak simultaneous calls
+//   pstn_reject:<uid>:<YYYY-MM>        over-channel rejections (busy rate)
+//
+// ENFORCEMENT is flag-gated: pstnConcurrencyEnforced (DEFAULT FALSE =
+// track-only). Over channels_total → always emit pstn_channel_busy telemetry;
+// only when the flag is ON does the call get the busy fallback instead of
+// admission (and then NO gauge is incremented — a rejected call is not
+// active). At >=80% utilization on admission emit pstn_channel_pressure.
+// Owners with NO subscription row: unchanged behavior — global gauge only
+// plus their per-owner gauge for stats, never any enforcement.
+// ---------------------------------------------------------------------------
+const GAUGE_TTL_SEC = SESSION_TTL_SEC;         // live gauges — leaks self-heal
+const GAUGE_STAT_TTL_SEC = 90 * 24 * 3600;     // monthly peaks/reject counters
+const PRESSURE_RATIO = 0.8;                    // 80% alert threshold
+
+function gaugePeriod(): string { return new Date().toISOString().slice(0, 7); } // YYYY-MM
+
+async function gaugeReadInt(env: Env, key: string): Promise<number> {
+  const v = await env.TOKENS.get(key);
+  return Math.max(0, Math.trunc(Number(v || 0) || 0));
+}
+
+async function gaugeBumpPeak(env: Env, key: string, current: number): Promise<void> {
+  const prev = await gaugeReadInt(env, key);
+  if (current > prev) await env.TOKENS.put(key, String(current), { expirationTtl: GAUGE_STAT_TTL_SEC });
+}
+
+/** Called once per answered call, AFTER owner resolution and BEFORE any XML is
+ *  returned. Returns admit=false ONLY when a subscribed owner is over their
+ *  channels_total AND pstnConcurrencyEnforced is true; tracked=true when the
+ *  gauges were incremented (→ session.gauged, so hangup decrements). */
+async function pstnGaugeAdmit(env: Env, cfg: unknown, ownerUid: string | null): Promise<{ admit: boolean; tracked: boolean }> {
+  try {
+    const period = gaugePeriod();
+
+    if (ownerUid) {
+      const next = (await gaugeReadInt(env, `pstn_active:${ownerUid}`)) + 1;
+
+      // Subscription lookup ALSO doubles as the lazy-renewal touchpoint on
+      // PSTN call admission (telephony_tiers.ts maybeRenew). No row → no
+      // enforcement, no pressure math — legacy behavior, stats only.
+      let sub: Awaited<ReturnType<typeof getTelephonySubscription>> = null;
+      try { sub = await getTelephonySubscription(env, ownerUid); } catch { /* fail-open */ }
+      const chTotal = sub && sub.active ? sub.channels_total : null;
+
+      if (chTotal != null && chTotal > 0 && next > chTotal) {
+        // Over the subscribed channel count — always visible in telemetry,
+        // owner-stamped (email/phone via contactFor) so PostHog pulls work.
+        try {
+          const contact = await contactFor(env, ownerUid).catch(() => ({ email: null, phone: null }));
+          await trackUserContact(env, ownerUid, contact.email, contact.phone, "pstn_channel_busy", "pstn", {
+            active: next, channels_total: chTotal, tier: sub?.row.tier ?? null,
+            enforced: (cfg as { pstnConcurrencyEnforced?: boolean } | null)?.pstnConcurrencyEnforced === true,
+          });
+        } catch { /* best-effort */ }
+        try {
+          const rejKey = `pstn_reject:${ownerUid}:${period}`;
+          await env.TOKENS.put(rejKey, String((await gaugeReadInt(env, rejKey)) + 1), { expirationTtl: GAUGE_STAT_TTL_SEC });
+        } catch { /* best-effort */ }
+        if ((cfg as { pstnConcurrencyEnforced?: boolean } | null)?.pstnConcurrencyEnforced === true) {
+          return { admit: false, tracked: false }; // rejected call is never gauged
+        }
+        // Track-only (the launch state): admit and fall through to the writes.
+      } else if (chTotal != null && chTotal > 0 && next / chTotal >= PRESSURE_RATIO) {
+        // 80% pressure alert — the early-warning the tier-sizing needs.
+        try {
+          const contact = await contactFor(env, ownerUid).catch(() => ({ email: null, phone: null }));
+          await trackUserContact(env, ownerUid, contact.email, contact.phone, "pstn_channel_pressure", "pstn", {
+            active: next, channels_total: chTotal, utilization: Math.round((next / chTotal) * 100) / 100,
+            tier: sub?.row.tier ?? null,
+          });
+        } catch { /* best-effort */ }
+      }
+
+      await env.TOKENS.put(`pstn_active:${ownerUid}`, String(next), { expirationTtl: GAUGE_TTL_SEC });
+      await gaugeBumpPeak(env, `pstn_peak:${ownerUid}:${period}`, next);
+    }
+
+    // GLOBAL gauge — every admitted call (owner-resolved or orphan) counts,
+    // for whole-trunk capacity planning against the Vobiz channel count.
+    const g = (await gaugeReadInt(env, "pstn_active:global")) + 1;
+    await env.TOKENS.put("pstn_active:global", String(g), { expirationTtl: GAUGE_TTL_SEC });
+    await gaugeBumpPeak(env, `pstn_peak:global:${gaugePeriod()}`, g);
+
+    return { admit: true, tracked: true };
+  } catch {
+    return { admit: true, tracked: false }; // FAIL-OPEN — gauges never cost a call
+  }
+}
+
+/** Hangup-side decrement (floor 0) for a call pstnGaugeAdmit tracked. */
+async function pstnGaugeRelease(env: Env, ownerUid: string | null): Promise<void> {
+  try {
+    const g = await gaugeReadInt(env, "pstn_active:global");
+    await env.TOKENS.put("pstn_active:global", String(Math.max(0, g - 1)), { expirationTtl: GAUGE_TTL_SEC });
+  } catch { /* best-effort */ }
+  if (!ownerUid) return;
+  try {
+    const c = await gaugeReadInt(env, `pstn_active:${ownerUid}`);
+    await env.TOKENS.put(`pstn_active:${ownerUid}`, String(Math.max(0, c - 1)), { expirationTtl: GAUGE_TTL_SEC });
+  } catch { /* best-effort */ }
+}
+
+// ---------------------------------------------------------------------------
 // POST /api/pstn/answer/<secret>
 // ---------------------------------------------------------------------------
 async function handleAnswer(req: Request, env: Env, secret: string): Promise<Response> {
@@ -254,6 +381,19 @@ async function handleAnswer(req: Request, env: Env, secret: string): Promise<Res
       call_id: callId,
       ts: Date.now(),
     };
+
+    // ── [TEL-TIERS-1] CHANNEL-CONCURRENCY GAUGE (see the block above) ────────
+    // Track every answered call; with pstnConcurrencyEnforced ON (default OFF),
+    // a subscribed owner over their channels_total gets the busy fallback
+    // instead of admission. Fail-open: any gauge error admits the call.
+    const gauge = await pstnGaugeAdmit(env, cfg, isOrphan ? null : resolved.owner_uid);
+    if (!gauge.admit) {
+      // Enforced over-capacity: same polite busy XML as the safety net — the
+      // caller hears "unable to take your call", never dead air. No session is
+      // stored and no gauge was incremented for this rejected call.
+      return safetyNetXml();
+    }
+    if (gauge.tracked) session.gauged = true;
 
     // ── [AVA-PSTN-AGENT-1] LIVE AGENT LANE (dark behind pstnAgentEnabled) ────
     // When the resolved OWNER's receptionist mode is "agent" AND the flag is on,
@@ -367,6 +507,17 @@ async function handleHangup(req: Request, env: Env, secret: string): Promise<Res
   try {
     if (callUuid) {
       const session = await env.TOKENS.get(`pstn_session:${callUuid}`, "json") as PstnSession | null;
+      // [TEL-TIERS-1] Release the concurrency gauges this call's answer
+      // incremented, then clear the flag in the session record so a Vobiz
+      // hangup RETRY can never double-decrement (floor 0 is the last resort,
+      // not the plan). Best-effort like everything else in this webhook.
+      if (session?.gauged) {
+        try {
+          await pstnGaugeRelease(env, session.owner_uid ?? null);
+          session.gauged = false;
+          await env.TOKENS.put(`pstn_session:${callUuid}`, JSON.stringify(session), { expirationTtl: SESSION_TTL_SEC });
+        } catch { /* best-effort — gauge TTL self-heals a missed decrement */ }
+      }
       const billDuration = Number(fields.BillDuration ?? fields.Duration ?? 0) || 0;
       const cost = Number(fields.Cost ?? fields.TotalCost ?? 0) || null;
       try {

@@ -37,6 +37,11 @@ const FEATURE_LABELS: Record<string, string> = {
   ava_vision_snapshot: "Vision snapshot",
   ava_mcp_tool: "Connected-app action",
   guardian_always_on: "Guardian monitoring",
+  // [TEL-TIERS-1] Telephony subscription tiers (telephony_tiers.ts) — monthly
+  // chargeAmount spends; the featureKey lands in app_name like every spend.
+  telephony_tier1: "Phone line — Tier 1",
+  telephony_tier2: "Phone line — Tier 2",
+  telephony_addon: "Extra phone channel",
   listing_post: "Marketplace listing",
   listing_post_connect: "Connect listing",
   // marketplace / app-level rows
