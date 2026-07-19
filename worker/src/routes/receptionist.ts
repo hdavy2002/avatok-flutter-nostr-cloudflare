@@ -544,6 +544,10 @@ export function composeReceptionistPrompt(
     `You ALREADY KNOW the caller is ${callerRef}, and ${who} already has ${poss} number — so NEVER ask for a name, number, or callback; you have all of it.`,
     note && !greetLine ? `Why ${who} can't talk (from ${poss} note): "${note}". Tell the caller this NATURALLY in your own words — e.g. "${subj}'s travelling right now" or "${subj}'s in a meeting at the moment" — never read the note out word-for-word.` : ``,
     step1,
+    // [AVA-TTS-NAMES-1] The reply is spoken by an Indic TTS: Latin proper names in a
+    // Hindi/Indic sentence get transliterated badly ("Humphrey" → "phonfree"). Have
+    // the model write names phonetically in the reply script so TTS says them right.
+    `When speaking Hindi or another Indian language, write every proper name PHONETICALLY IN THAT SCRIPT so it is pronounced correctly (e.g. Humphrey → हम्फ्री, Sonal → सोनल) — never leave names in Latin letters inside a Devanagari sentence.`,
     `THEN offer a warm choice and let the caller lead: would they like to leave a message for ${who}, or is there something quick you can help with or answer for them?`,
     `Have a brief, natural back-and-forth: if they ask something you can reasonably answer from what you know, answer kindly and concisely; if they want to leave a message, listen and acknowledge it warmly. Keep YOUR turns SHORT (a sentence or two) so the caller does most of the talking. Never interrogate, never stall, and never invent facts about ${who} or ${poss} plans.`,
     // [AVA-NATURAL-CLOSE-1] (owner decision 2026-07-09): silence AFTER a message
