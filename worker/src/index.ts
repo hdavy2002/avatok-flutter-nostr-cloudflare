@@ -21,6 +21,7 @@ import { ingestCallTelemetry } from "./routes/telemetry_calls";
 // minted verification without a Didit check. See LEGACY_GONE in the router.
 import { idStatus, idEmailStart, idEmailVerify, idPasswordStart, idPasswordSet } from "./routes/id";
 import { walletTopup, walletTopupIntent, walletTopupPlayVerify, stripeWebhook, walletSpend, walletBalance, walletTransactions, walletEarnings, walletLive, walletLedger, walletLedgerDetail, walletReceiptResend } from "./routes/wallet";
+import { walletStatement, walletSummary } from "./routes/wallet_statement";
 import { adminLedger, adminRefund, adminAdjust, adminAccount, adminRecon, adminEscrowHold, adminEscrowRelease, adminTaxExport, adminFailedSettlements, adminRetrySettlement, requireAdmin } from "./routes/admin_money";
 import { liveStart, liveStop, liveJoin, liveRoom, liveDonate, liveMod, liveState } from "./routes/live";
 import { consultJoin, consultRoom, consultSfu, consultComplete, consultCancel, consultExtend, consultProbe, consultProbeBlob } from "./routes/consult";
@@ -735,6 +736,9 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/auth/google" && req.method === "POST") return await googleAuth(req, env, ctx);
       if (p === "/api/wallet/balance" && req.method === "GET") return await walletBalance(req, env);
       if (p === "/api/wallet/transactions" && req.method === "GET") return await walletTransactions(req, env);
+      // [WALLET-COCKPIT-1] Cockpit wallet reads: labeled statement + aggregates.
+      if (p === "/api/wallet/statement" && req.method === "GET") return await walletStatement(req, env);
+      if (p === "/api/wallet/summary" && req.method === "GET") return await walletSummary(req, env);
       if (p === "/api/wallet/earnings" && req.method === "GET") return await walletEarnings(req, env);
       if (p === "/api/wallet/live" && req.headers.get("Upgrade") === "websocket") return await walletLive(req, env);
       // Double-entry ledger reads + receipts (Phase 2 marketplace plan).

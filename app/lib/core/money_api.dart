@@ -81,6 +81,29 @@ class MoneyApi {
   static Future<Map<String, dynamic>> ledgerDetail(String id) async =>
       _json((await ApiAuth.getSigned('$kWalletBase/ledger/$id')).body);
 
+  /// [WALLET-COCKPIT-1] Human-labeled statement feed (wallet_transactions):
+  /// each entry = {id, ts, type, direction, feature_key, label, tokens (signed),
+  /// balance_after?, ref}. Keyset cursor pagination, newest first.
+  static Future<Map<String, dynamic>> statement({
+    String? cursor, int limit = 50, String? direction, int? from, int? to, String? q,
+  }) async {
+    final p = <String, String>{
+      'limit': '$limit',
+      if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
+      if (direction != null && direction.isNotEmpty) 'direction': direction,
+      if (from != null) 'from': '$from',
+      if (to != null) 'to': '$to',
+      if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
+    };
+    final qs = p.entries.map((e) => '${e.key}=${Uri.encodeQueryComponent(e.value)}').join('&');
+    return _json((await ApiAuth.getSigned('$kWalletBase/statement?$qs')).body);
+  }
+
+  /// [WALLET-COCKPIT-1] Cockpit aggregates over the last [days] days: balance,
+  /// earned/spent totals, per-feature breakdown, burn/day, runway, AI minutes.
+  static Future<Map<String, dynamic>> summary({int days = 30}) async =>
+      _json((await ApiAuth.getSigned('$kWalletBase/summary?days=$days')).body);
+
   static Future<Map<String, dynamic>> resendReceipt(String id) =>
       _post('$kWalletBase/ledger/$id/receipt', const {});
 
