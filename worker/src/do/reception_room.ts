@@ -97,6 +97,17 @@ interface InitBlob {
 // P2: ultra-cheap language guess from Unicode script ranges (no model call). Feeds
 // ONLY the detected_lang telemetry dimension — it never drives call behavior (the
 // model detects language itself from the caller's first words per the system prompt).
+// [AVA-CLOSING-STATE-1] Did Ava's turn end in a farewell? EN + HI (Devanagari and
+// romanized). Conservative: matched against her OWN transcript for the CURRENT
+// turn only, and CLOSING is still cancellable by caller speech, so a false
+// positive costs at most an early-but-clean close after 1.8s of silence.
+function isAvaFarewell(t: string): boolean {
+  const s = t.toLowerCase();
+  return /\b(good\s?bye|bye(\s?bye)?|take care|talk (to you )?soon|have a (great|good|nice|lovely|wonderful) (day|evening|morning|afternoon|night|one))\b/.test(s)
+    || /(अलविदा|फिर मिलेंगे|ध्यान रखिए|ध्यान रखना|शुभ दिन|आपका दिन (शुभ|अच्छा) (हो|रहे)|नमस्ते।?\s*$)/.test(t)
+    || /\b(alvida|phir milenge|dhyan rakhiye)\b/.test(s);
+}
+
 function guessLangFromText(s: string): string {
   if (!s) return "und";
   if (/[ऀ-ॿ]/.test(s)) return "hi";  // Devanagari (Hindi/Marathi/…)
@@ -136,6 +147,15 @@ export class ReceptionRoom {
   private steerInjected = false;   // the silent 20s "wind it down" hint (once)
   private avaSpeaking = false;     // true between an Ava audio chunk and her turnComplete
   private selfClosed = false;      // AVA-VM-CLOSE-1: Ava ended via the end_call tool (healthy close, not a cap)
+  // [AVA-CLOSING-STATE-1] (owner 2026-07-19, ChatGPT-consult plan): terminal CLOSING
+  // state. When Ava's own transcript contains a farewell and her turn completes, we
+  // enter CLOSING: idle nudges are DISABLED (the nudge waking her post-goodbye was
+  // the double-sign-off root cause), silence is success, and a short server grace
+  // (1.8s) invokes the close ourselves instead of leaving the line open 5-10s.
+  // Caller speech during CLOSING cancels it (they reopened the conversation).
+  private closing = false;
+  private avaTurnText = "";        // Ava's CURRENT-turn transcript accumulation (reset per turn)
+  private goodbyeGraceTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Owner contact, resolved once so EVERY event carries email/phone (support
   // pulls a user's receptionist calls by email/phone). v2 telemetry spec.
@@ -453,6 +473,10 @@ export class ReceptionRoom {
   // call therefore ALWAYS ends on Ava's voice, never a silent drop.
   private onIdle(): void {
     if (this.finalized) return;
+    // [AVA-CLOSING-STATE-1] CLOSING is terminal for the watchdog: after Ava's
+    // farewell, silence is SUCCESS — never nudge, just close. (The nudge firing
+    // here was the double-goodbye root cause.)
+    if (this.closing) { void this.finalize("ava_goodbye"); return; }
     // Wrap already spoken (goodbye said/requested) and STILL silent → close.
     // ONE goodbye, ever — the "Ava said goodbye then woke up asking if there's
     // anything else" bug (owner report 2026-07-09) came from nudging after wrap.
@@ -473,7 +497,8 @@ export class ReceptionRoom {
     this.sendGem({ realtimeInput: { audioStreamEnd: true } });
     this.sendGem({
       clientContent: {
-        turns: [{ role: "user", parts: [{ text: "[SYSTEM: The caller has gone quiet without leaving a message. In ONE short, warm sentence, check if they're still there and ask if there's anything you can pass on. Do NOT say goodbye yet.]" }] }],
+        // [AVA-INDIA-TUNE-1] One-line check-in.
+        turns: [{ role: "user", parts: [{ text: "[SYSTEM] Caller is quiet. One short warm check-in. No goodbye yet." }] }],
         turnComplete: true,
       },
     });
@@ -534,6 +559,13 @@ export class ReceptionRoom {
       }
       const inT = sc.inputTranscription?.text;
       if (inT) {
+        // [AVA-CLOSING-STATE-1] Caller spoke during CLOSING → they reopened the
+        // conversation: cancel the grace close and return to normal flow.
+        if (this.closing) {
+          this.closing = false;
+          if (this.goodbyeGraceTimer) { clearTimeout(this.goodbyeGraceTimer); this.goodbyeGraceTimer = null; }
+          this.ev("ava_recept_closing_cancelled", { at_ms: Date.now() - this.startedAt });
+        }
         this.inText.push(String(inT)); this.pushDialog("caller", String(inT));
         // [AVA-NATURAL-CLOSE-1] Caller speech budget. Consecutive transcription
         // chunks ≤1.5s apart count as continuous speech; a first/isolated chunk
@@ -561,12 +593,27 @@ export class ReceptionRoom {
         }
       }
       const outT = sc.outputTranscription?.text;
-      if (outT) { this.outText.push(String(outT)); this.pushDialog("ava", String(outT)); }
+      if (outT) {
+        this.outText.push(String(outT)); this.pushDialog("ava", String(outT));
+        this.avaTurnText += String(outT); // [AVA-CLOSING-STATE-1] farewell detection buffer
+      }
       // Per-turn observability: each completed exchange, with server-truth audio
       // throughput both ways. in_bytes≈0 across turns ⇒ the caller wasn't heard.
       if (sc.turnComplete === true) {
         this.turnCount++;
         this.avaSpeaking = false; // P2: Ava's turn is done
+        // [AVA-CLOSING-STATE-1] Her turn ended with a farewell → enter CLOSING:
+        // no more idle nudges (silence is now success), and a short grace timer
+        // closes the line ourselves if end_call doesn't arrive and the caller
+        // stays quiet — kills both the double goodbye and the 5-10s dead tail.
+        if (!this.closing && isAvaFarewell(this.avaTurnText)) {
+          this.closing = true;
+          this.ev("ava_recept_closing_state", { at_ms: Date.now() - this.startedAt, turn: this.turnCount });
+          this.goodbyeGraceTimer = setTimeout(() => {
+            if (!this.finalized && this.closing) void this.finalize("ava_goodbye");
+          }, 1800); // covers audio drain to the caller, then we hang up
+        }
+        this.avaTurnText = "";
         this.ev("ava_recept_turn", {
           turn: this.turnCount,
           in_chars: this.inText.join("").length,
@@ -619,7 +666,9 @@ export class ReceptionRoom {
     if (this.init?.wrap_soft === true) {
       this.sendGem({
         clientContent: {
-          turns: [{ role: "user", parts: [{ text: "[SYSTEM: Time is nearly up. Over your next turns, gently steer the conversation to a close: let the caller finish their current point, then briefly acknowledge what you'll pass on, say ONE short warm goodbye and invoke end_call. Never mention time or time limits, do not open new topics, and do not speak again after the goodbye.]" }] }],
+          // [AVA-INDIA-TUNE-1] One-line cue: mid-session injections are the freshest
+        // instruction and verbose ones visibly shift her tone.
+        turns: [{ role: "user", parts: [{ text: "[SYSTEM] Begin wrapping up naturally. Finish within ~30 seconds. Do not mention time." }] }],
           turnComplete: true,
         },
       });
@@ -639,7 +688,8 @@ export class ReceptionRoom {
     // never ask anything further, never speak again after the goodbye.
     this.sendGem({
       clientContent: {
-        turns: [{ role: "user", parts: [{ text: "[SYSTEM: Close the call now, in your own words: briefly acknowledge you've got their message and will pass it on, then say ONE short warm goodbye and immediately invoke end_call. Vary your phrasing — never use a stock line, never mention time or time limits, do not ask any question, and do not speak again after the goodbye.]" }] }],
+        // [AVA-INDIA-TUNE-1] One-line firm close.
+        turns: [{ role: "user", parts: [{ text: "[SYSTEM] Close the call now: one short goodbye in your own words, then invoke end_call. Do not mention time." }] }],
         turnComplete: true,
       },
     });
@@ -677,6 +727,7 @@ export class ReceptionRoom {
   private async finalize(reason: string): Promise<void> {
     if (this.finalized) return;
     this.finalized = true;
+    if (this.goodbyeGraceTimer) { clearTimeout(this.goodbyeGraceTimer); this.goodbyeGraceTimer = null; }
     if (this.wrapCueTimer) clearTimeout(this.wrapCueTimer);
     if (this.closeTimer) clearTimeout(this.closeTimer);
     if (this.hardTimer) clearTimeout(this.hardTimer);
