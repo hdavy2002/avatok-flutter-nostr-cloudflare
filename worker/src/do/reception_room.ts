@@ -861,7 +861,17 @@ export class ReceptionRoom {
     if (!t) return;
     const last = this.dialog[this.dialog.length - 1];
     if (last && last.who === who) last.text = (last.text + " " + t).replace(/\s+/g, " ").trim();
-    else this.dialog.push({ who, text: t });
+    else {
+      this.dialog.push({ who, text: t });
+      // [AVA-CONVO-TELEMETRY-1] (owner 2026-07-19): per-utterance trace so the whole
+      // conversation is reconstructable in PostHog for tuning (tone, double sign-off,
+      // scripted-ness). One event per SPEAKER CHANGE (continuations merge above);
+      // text capped to keep events light.
+      this.ev("ava_recept_dialog", {
+        who, seq: this.dialog.length, at_ms: Date.now() - this.startedAt,
+        text: t.slice(0, 220),
+      });
+    }
   }
 
   /** Human-readable transcript: real turn order with speaker names, e.g.

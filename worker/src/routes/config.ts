@@ -493,6 +493,14 @@ export interface PlatformConfig {
   // the paid tier ships (or to un-break a mistake), NOT a per-user entitlement.
   // Per-user billing is a separate lane; until it exists, leave this FALSE.
   pstnPaidConditionsUnlocked: boolean;
+  // [AVA-CONVO-BUDGET-1] (owner 2026-07-19) Receptionist conversation budget in ms,
+  // decoupled from callMenuEnabled. The old coupling reverted Gemini to the 40/60/90s
+  // VOICEMAIL caps when the menu was turned off — the 40s wrap cue landed mid-goodbye
+  // and produced a double sign-off. Defaults are conversation-grade (wrap 120s, close
+  // 160s, hard 180s); tune live from KV. All three MUST be in numericKeys.
+  receptWrapCueMs: number;
+  receptCloseMs: number;
+  receptHardCapMs: number;
   // Creator marketplace master switch for /api/marketplace/*. worker/src/routes/
   // marketplace.ts has claimed since day one that "everything here is dark until the
   // marketplaceEnabled kill switch is on" — but the key was never declared, so
@@ -563,6 +571,9 @@ const DEFAULTS: PlatformConfig = {
   receptionistUseCf: false,        // engine switch: false = Gemini Live (default), true = Cloudflare Workers AI engine
   receptionistVmMode: false,       // zero-cost voicemail: cached Bulbul greeting + beep + 30s record (overrides engines while ON)
   avaCountdownEnabled: true,       // client 3-2-1 Ava countdown; prod KV flips false (VM greeting is instant)
+  receptWrapCueMs: 120_000,        // [AVA-CONVO-BUDGET-1] wrap-up cue at 2:00 (was 40s when menu off → double sign-off)
+  receptCloseMs: 160_000,          // graceful close by ~2:40
+  receptHardCapMs: 180_000,        // stall backstop 3:00
   receptTakeoverGuard: false,      // P1: gate Ava takeover on FCM ring-ack — ships dark, flip after device test
 
   avaAffiliateEnabled: false,      // launch gate — flip ON after A5 fraud checks
@@ -807,6 +818,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
   const next: Record<string, unknown> = { ...current };
   const numericKeys = new Set([
     "minAppBuild", "latestAppBuild", "dailyAvaTurnLimit", "receptionistRings", "agentDailyCap", "livenessAuditSampleRate",
+    "receptWrapCueMs", "receptCloseMs", "receptHardCapMs",
     "guardianInlineBudgetMs", "callProtocolVersion", "avaSessionsPerCallerPerDay", "strangerVoiceNotesPerDay",
     "strangerTextNotesPerDay",
     // Dialpad business calls + Ava AI Voice Agent — §11/§15 numeric constants.

@@ -110,10 +110,18 @@ export const MENU_WRAP_CUE_AT_MS = 120_000;
 export const MENU_SESSION_CLOSE_MS = 160_000;
 export const MENU_HARD_CAP_MS = 180_000;
 function capsFor(cfg: unknown): { wrap: number; close: number; hard: number } {
-  const menuOn = (cfg as { callMenuEnabled?: boolean } | null)?.callMenuEnabled === true;
-  return menuOn
-    ? { wrap: MENU_WRAP_CUE_AT_MS, close: MENU_SESSION_CLOSE_MS, hard: MENU_HARD_CAP_MS }
-    : { wrap: WRAP_CUE_AT_MS, close: SESSION_CLOSE_MS, hard: HARD_CAP_MS };
+  // [AVA-CONVO-BUDGET-1] (owner 2026-07-19): caps come from numeric config keys,
+  // DECOUPLED from callMenuEnabled. The old coupling silently reverted Gemini to the
+  // 40/60/90s voicemail caps when the menu was off — the 40s wrap cue landed mid-
+  // goodbye and Ava signed off twice. Defaults are conversation-grade (120/160/180s);
+  // legacy constants remain only as the last-resort fallback.
+  const c = cfg as { receptWrapCueMs?: number; receptCloseMs?: number; receptHardCapMs?: number } | null;
+  const n = (v: unknown, fb: number) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : fb);
+  return {
+    wrap: n(c?.receptWrapCueMs, MENU_WRAP_CUE_AT_MS),
+    close: n(c?.receptCloseMs, MENU_SESSION_CLOSE_MS),
+    hard: n(c?.receptHardCapMs, MENU_HARD_CAP_MS),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -531,6 +539,8 @@ export function composeReceptionistPrompt(
     `${who} isn't picking up right now`;
   const lines: string[] = [
     `You are ${me}, ${who}'s phone assistant, answering a real phone call on ${poss} behalf. Have a completely natural conversation — no script, no fixed steps. You're warm, capable, and human-sounding.`,
+    // [AVA-TONE-1] (owner feedback 2026-07-19: opener too energetic, delivery flat)
+    `TONE: calm, warm, everyday-professional — like a composed real assistant on a normal workday. Not bubbly, not salesy, no exclamation-mark energy; vary your intonation naturally rather than delivering lines evenly.`,
     // WHO IS CALLING — full context so she never has to ask.
     `CALLER CONTEXT: you are speaking with ${callerRef}${firstName ? ` (address them naturally as ${firstName})` : ""}. ${who} already has their number on file, so never ask for a name, number, or callback details. Situation: ${scenarioCtx}.`,
     note ? `${who}'s own note about ${poss} availability: "${note}" — weave it in naturally in your own words if relevant, never read it verbatim.` : ``,
@@ -539,7 +549,7 @@ export function composeReceptionistPrompt(
     `You are a woman — use feminine self-reference forms in every language (Hindi "मैं बोलूंगी", Spanish "encantada", French "désolée").`,
     `When speaking an Indian language, write proper names phonetically in that script (Humphrey → हम्फ्री) so they're pronounced correctly.`,
     `What you can do for the caller: chat, answer what you reasonably know about the situation, and take a message for ${who} — anything they say, you'll pass on. Never invent facts about ${who} or ${poss} plans. Keep your turns conversational and reasonably short; let the caller do most of the talking.`,
-    `Ending: when the caller is done — they say bye, or clearly have nothing more — say one warm goodbye in your own words and ${endWith}. One goodbye, then the call is over; never speak after it, never end silently, and never mention time limits (only react to an explicit [SYSTEM: …] note).`,
+    `Ending: when the caller is done — they say bye, or clearly have nothing more — say one warm goodbye in your own words and ${endWith}. STRICTLY ONE goodbye per call: if you have already said goodbye (or the caller has), do NOT say it again for any reason — even if a [SYSTEM: …] wind-down note arrives afterwards, just ${endWith} silently. Never end silently BEFORE a goodbye, and never mention time limits.`,
     `If asked who you are: ${who}'s assistant, helping while ${subj}'s away. You may say the call is recorded if asked. Refuse anything illegal or harmful.`,
   ].filter(Boolean);
   // F1: time-bound status note — Ava uses it naturally (e.g. "he's out at lunch,
