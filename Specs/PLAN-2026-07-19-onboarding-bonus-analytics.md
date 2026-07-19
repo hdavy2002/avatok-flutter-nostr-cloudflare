@@ -1,0 +1,110 @@
+# PLAN — Signup Bonus · AI-Receptionist Onboarding · Receptionist/Voicemail Analytics
+
+2026-07-19, owner brief. Status: PLAN ONLY. Prereqs all live: pay-per-use billing
+(3 tok/min agent, 1 tok voicemail), per-user mode field, cell-call live agent
+(pstnAgentEnabled=true), concurrency enforcement ON, cockpit wallet APIs.
+
+## A. 100-token welcome bonus (server, small)
+- On account creation (find the signup/first-login hook — Clerk user bootstrap in
+  worker; grep where a users row is first inserted), credit 100 tokens:
+  `walletOp(env, uid, {op:"credit"|equivalent, amount:100, type:"promo",
+  app_name:"welcome_bonus", op_id:`welcome:${uid}`})` — idempotent by op_id so a
+  re-login can never double-grant. Decide promo-vs-paid bucket: use the FREE/promo
+  bucket (like daily free coins) so bonuses can't be paid out; verify walletOp
+  credit op shape in routes/wallet.ts + WalletDO first.
+- Statement label in wallet_statement.ts FEATURE_LABELS: welcome_bonus → "Welcome
+  bonus". Telemetry `welcome_bonus_granted` (email-stamped).
+- Retroactive? Owner to decide: existing users get nothing unless we run a
+  one-time backfill script (list uids → same idempotent op).
+
+## B. AI-Receptionist onboarding flow (Flutter + small server)
+Trigger: user flips **AI Voice Agent** toggle ON in the merged Receptionist/Voice
+mail page (before saving mode=agent). A separate lighter sheet when flipping
+**Voice mail** ON. Multi-step sheet/wizard, AD design system.
+
+Agent-mode steps (exact owner spec):
+1. COST INTRO — "An AI conversation costs **3 tokens/min**, calls capped at
+   **3 minutes** to save you money."
+2. BALANCE CHECK — fetch wallet balance; need ≥3 tokens to proceed. If short:
+   top-up CTA (deep-link to wallet), block Continue. (Server already 402s on
+   save; this makes it friendly.)
+3. SCOPE CHOICE — "Where should Ava answer?" → **Cell phone calls** /
+   **AvaTOK-to-AvaTOK calls** / Both. NEW server field:
+   `receptionist_settings.agent_scope` TEXT ("cell"|"app"|"all", default "all");
+   self-migrate column; PUT/GET carry it; enforcement: /start (app lane) checks
+   scope∈{app,all}; pstn.ts agent lane checks scope∈{cell,all}. (Both lanes
+   fall back to voicemail when out of scope.)
+4. DID NUMBER — "You need a virtual phone number — **600 tokens/month**."
+   GREYED OUT with a bright green pill **“Free in Beta”**. No charge wired yet
+   (subscription rail exists from TEL-TIERS-1 when we activate it; note tier
+   pricing there is ₹700 retail — owner quoted 600 here (wholesale); owner must
+   confirm the retail number before activation. For now the pill is display-only.)
+5. (Cell scope only) FORWARDING CONDITIONS — the 3 toggles: when I **reject** a
+   call · when my **phone is off** · when I'm **not picking up**. Reuse the
+   existing carrier-forwarding machinery:
+   app/lib/features/avadial/pstn_forwarding_setup.dart already implements
+   condition-based forwarding (cfb/cfnrc/cfnry MMI codes) — embed/reuse it, don't
+   rebuild. Note [AVA-VM-PAID-1] in config.ts: reject/no-answer conditions were
+   marked paid-tier (pstnPaidConditionsUnlocked flag) — with pay-per-use they
+   should now be unlocked: flip pstnPaidConditionsUnlocked=true when this ships.
+6. PRIVACY COPY — "Under these conditions your call is diverted to your DiD
+   number by YOUR phone company. No SMS, OTP or text messages are forwarded, and
+   no information leaves your phone — this is standard carrier call routing."
+7. TOKEN SUMMARY — "600 tokens/month for your number (**Free in Beta**) ·
+   3 tokens/min while Ava talks to your callers · max 3 min per call." → Done →
+   save mode=agent (+scope + conditions).
+
+Voicemail-mode sheet: one screen — "Each voicemail costs **1 token**. All
+messages appear in your Inbox." → save mode=vm.
+
+Server work in B: agent_scope column + validation + both-lane enforcement;
+optionally an `onboarded_at` column so the wizard shows once (re-openable from
+the settings card).
+
+## C. Receptionist/Voicemail ANALYTICS page (the big piece)
+Goal: per-OWNER dashboard of incoming Ava/voicemail traffic: which numbers call
+most, origin country, busiest hours, mode split, minutes & tokens spent.
+
+C1. Event enrichment (worker, do first — data quality feeds everything):
+- At /start (app lane) and handleAnswer/record-cb (PSTN lane) emit ONE canonical
+  event `ava_recept_call_summary` at call end with props: owner_uid, owner email
+  (trackUserContact), caller_e164 (PSTN) or caller_uid/name (app),
+  caller_country (derive: E.164 prefix table server-side; app lane use req.cf
+  country of caller), mode (agent|vm), transport (app|vobiz), duration_s,
+  tokens_charged, hour_utc + owner-local hour (req.cf.timezone), outcome
+  (completed|missed|busy|balance_exhausted). Much cheaper to aggregate one rich
+  event than stitch 8 event types later.
+- Also mirror each summary into a per-owner D1 table `recept_call_stats`
+  (owner_uid, ts, caller_key hashed, country, mode, duration_s, tokens) — the
+  DASHBOARD reads D1 (fast, free, no PostHog egress); PostHog stays the
+  ops/debug view. (Lesson: user-facing analytics should not depend on PostHog
+  query latency/limits.)
+
+C2. Server API `GET /api/receptionist/analytics?days=30` (requireUser, own data
+only): {top_callers:[{caller,count,minutes}], by_country:[{country,count}],
+by_hour:[24 buckets], mode_split, totals:{calls,minutes,tokens}, trend:[daily
+counts]}. Reads recept_call_stats; PostHog personal-API proxy only as fallback/
+backfill (POSTHOG_PERSONAL_API_KEY exists server-side; never expose it).
+
+C3. Flutter page "Receptionist / Voicemail — Analytics": entry from the merged
+settings card + inbox. Cards: busiest-hours bar chart (24h), country list with
+counts, top callers (tap → contact/thread), totals row (calls/minutes/tokens
+this month), mode split. Reuse cockpit-wallet widget patterns.
+
+C4. AvaBrain feed: send each ava_recept_call_summary to Q_BRAIN as an ingestion
+episode ("Sonal called 3× this week, mostly evenings") — MUST respect the
+AvaBrain consent rules (rulebook §3): master brain toggle + per-app guardrail
+(register a "receptionist" guardrail toggle in main Settings, default ON,
+checked by the ingestion pipeline; consent fails closed).
+
+## Order & effort
+1. A (welcome bonus) — small; 1 short session incl. backfill decision.
+2. B server (agent_scope + condition unlock) then B Flutter wizard — 1-2 sessions.
+3. C1 enrichment + D1 mirror — 1 session (do before C2/C3 so data accrues).
+4. C2+C3 dashboard — 1-2 sessions. C4 brain feed alongside C1.
+- App changes across A-C need builds ("ship it").
+
+## Open questions for owner
+- Welcome bonus retroactive for existing users?
+- DID retail price when beta ends: 600 (quoted here) vs 700 (TEL-TIERS-1)?
+- Analytics retention window (suggest 90 days in D1, aggregate beyond).
