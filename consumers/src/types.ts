@@ -148,8 +148,11 @@ export interface WalletTxMsg {
   // Legacy audit fields (uid/type/amount) — optional for ledger-only rows
   // (e.g. escrow→platform fee rows, which touch no user account).
   uid?: string; id: string; ts?: number;
-  type?: "topup" | "spend" | "earn" | "hold_release" | "refund" | "gift" | "payout";
+  type?: "topup" | "spend" | "earn" | "hold_release" | "refund" | "gift" | "payout" | "promo";
   amount?: number; balance_after?: number; app_name?: string;
+  // counterparty_uid is what WalletDO actually sends; counterparty_npub is the
+  // legacy field name kept for old in-flight messages. [WELCOME-100-1]
+  counterparty_uid?: string | null;
   counterparty_npub?: string | null; commission?: number; ref?: string | null; hold_until?: number;
   // Phase 2 double-entry row (id above = op_id = wallet_ledger PK).
   ledger?: { debit: string; credit: string; type: string; ref?: string | null; meta?: string | null };

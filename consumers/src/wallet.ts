@@ -48,13 +48,20 @@ export async function handleWalletTx(msg: WalletTxMsg, env: Env): Promise<void> 
   if (!msg.uid || !msg.type) return;
 
   // Ledger row (idempotent: id is the PK; ignore replays).
+  // [WELCOME-100-1] FIX: the live wallet_transactions schema names the column
+  // `counterparty_uid` (Clerk-uid rename; worker/migrations/wallet.sql) — this
+  // insert still said `counterparty_npub`, so EVERY per-user audit insert threw
+  // ("no column named counterparty_npub") and the statement feed silently
+  // starved (prod had 2 rows total, none since 2026-06-20) while wallet_ledger
+  // kept filling. The WalletDO also SENDS the field as `counterparty_uid`, so
+  // read that first with the legacy key as fallback.
   await env.DB_WALLET.prepare(
-    `INSERT INTO wallet_transactions (id, uid, type, amount, balance_after, app_name, counterparty_npub, commission, ref, status, created_at)
+    `INSERT INTO wallet_transactions (id, uid, type, amount, balance_after, app_name, counterparty_uid, commission, ref, status, created_at)
      VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,'settled',?10)
      ON CONFLICT(id) DO NOTHING`,
   ).bind(
     msg.id, msg.uid, msg.type, msg.amount, msg.balance_after ?? null,
-    msg.app_name ?? null, msg.counterparty_npub ?? null, msg.commission ?? 0, msg.ref ?? null, now,
+    msg.app_name ?? null, msg.counterparty_uid ?? msg.counterparty_npub ?? null, msg.commission ?? 0, msg.ref ?? null, now,
   ).run();
 
   // Earnings hold mirror (for the /earnings route).
