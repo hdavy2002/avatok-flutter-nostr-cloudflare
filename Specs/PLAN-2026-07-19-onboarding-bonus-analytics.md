@@ -24,6 +24,30 @@
   non-payable (spend draws free → bonus → paid; payouts touch paid only).
 
 ## B. AI-Receptionist onboarding flow (Flutter + small server)
+✅ SHIPPED [RECEPT-ONBOARD-1] (2026-07-19, commit 301b263, worker version
+3e713ee9-8c5c-4e55-84db-c978da7c14cb):
+- Server: self-migrating `receptionist_settings.agent_scope` TEXT
+  ("cell"|"app"|"all", NULL/invalid → "all" fail-open) in ensureStatusColumns;
+  GET returns `agent_scope`; PUT validates + persists it (?21 in the upsert).
+  Enforcement BOTH lanes: /start (app lane) demotes mode=agent+scope=cell to
+  the zero-cost vm flow; pstn.ts agentStreamXmlOrNull reads agent_scope in the
+  same D1 query and falls to voicemail when scope="app" (with a mode-only
+  SELECT fallback until the column self-migrates).
+- `pstnPaidConditionsUnlocked=true` flipped in prod KV (pay-per-use replaces
+  the paid-conditions gate) — verified cache-busted on /api/config.
+- Flutter: receptionist_onboarding.dart — full-screen agent wizard (cost intro
+  → balance check ≥3 tokens w/ WalletScreen top-up CTA → scope choice → DID
+  step w/ struck-through "700 tokens/month" + green "Free in Beta" pill →
+  forwarding conditions (cell/all only; reuses PstnForwardingSetupScreen) →
+  privacy copy → token summary → save) + one-screen Voice mail sheet (1 token/
+  voicemail). receptionist_section.dart toggles now route every mode
+  transition through these flows; cancel = no change; save is optimistic with
+  rollback. Analytics `recept_onboarding_step` {step, mode} on every step +
+  done/cancelled/topup_cta/forwarding_opened.
+- Deferred: `onboarded_at` column (wizard currently opens on every agent-ON
+  flip — harmless, re-openable by design); DID billing stays display-only
+  (TEL-TIERS-1 rail, activate when beta ends); needs an app build ("ship it")
+  to reach devices.
 Trigger: user flips **AI Voice Agent** toggle ON in the merged Receptionist/Voice
 mail page (before saving mode=agent). A separate lighter sheet when flipping
 **Voice mail** ON. Multi-step sheet/wizard, AD design system.
