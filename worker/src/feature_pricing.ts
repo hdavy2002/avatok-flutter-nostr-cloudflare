@@ -31,7 +31,7 @@ export const FEATURE_COSTS: Record<string, number> = {
   // one minute of an Ava receptionist/sales-agent call, charged to the OWNER whose
   // Ava answered (ceil(duration/60) units per session, max 3). Free while
   // betaFreePremium is on — chargeFeature already short-circuits to charged:0.
-  ava_receptionist_minute: 3, // $0.03/min
+  ava_receptionist_minute: 5, // $0.05/min — owner decision 2026-07-19 (was 3)
   // MARKETPLACE LISTING FEE (M-D2, PLAN §1.3/§5): 100 tokens = $1 to publish a listing
   // for one 30-day period, after the first 5 free (the quota is enforced in
   // lib/listing_billing.ts, independent of tokens). Charged idempotently on

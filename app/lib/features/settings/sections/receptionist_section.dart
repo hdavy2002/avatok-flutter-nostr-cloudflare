@@ -153,7 +153,8 @@ void registerReceptionistSection() {
   SettingsSectionRegistry.register(
     SettingsSection(
       id: 'ava_receptionist',
-      title: 'Ava Receptionist',
+      // [RECEPT-MODE-1] merged page: AI voice agent + voicemail in one place.
+      title: 'Receptionist / Voice mail',
       order: 24, // just above "Ava voice" (25)
       builder: (context) => const _ReceptionistCard(),
     ),
@@ -218,6 +219,9 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
   // the festival auto-greeting toggle.
   String _greetingStyle = 'none';
   bool _festivalGreeting = false;
+  // [RECEPT-MODE-1] answering mode: 'agent' (AI voice agent) | 'vm' (voicemail) |
+  // '' (server/global default). Two exclusive toggles drive this one field.
+  String _mode = '';
 
   // F1 — status note expiry. Null = no expiry; else the absolute epoch-ms instant
   // the note lapses. `_customExpiry` mirrors a picked custom instant so its chip
@@ -289,6 +293,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
             : 'none';
         _festivalGreeting = s.festivalGreeting;
         _greeting.text = s.greetingText;
+        _mode = (s.mode == 'agent' || s.mode == 'vm') ? s.mode : '';
       }
       _loading = false;
     });
@@ -312,6 +317,8 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
     _greetingStyle = kReceptionistGreetingPresets.containsKey(gs) ? gs : 'none';
     _festivalGreeting = m['festival_greeting'] == true;
     _greeting.text = (m['greeting_text'] ?? '').toString();
+    final md = (m['mode'] ?? '').toString();
+    _mode = (md == 'agent' || md == 'vm') ? md : '';
   }
 
   Future<void> _writeMirror() async {
@@ -324,6 +331,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
         'greeting_style': _greetingStyle,
         'festival_greeting': _festivalGreeting,
         'greeting_text': _greeting.text,
+        'mode': _mode,
       }));
     } catch (_) {/* best-effort */}
   }
@@ -395,6 +403,8 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
       // F2 — greeting preset + festival auto-greeting toggle.
       greetingStyle: _greetingStyle,
       festivalGreeting: _festivalGreeting,
+      // [RECEPT-MODE-1] answering mode from the two exclusive toggles.
+      mode: _mode,
     );
     if (!mounted) return res.ok;
     setState(() {
@@ -471,12 +481,12 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('Ava Receptionist', style: ADText.rowName()),
+                    Text('Receptionist / Voice mail', style: ADText.rowName()),
                     const SizedBox(height: 2),
                     Text(
-                      'When you miss a call, Ava answers, tells the caller why '
-                      'you can’t pick up, takes a message and leaves you a recording. '
-                      'Always on.',
+                      'When you miss a call, Ava answers — as a live AI voice '
+                      'agent, or as a voicemail that plays your greeting and '
+                      'records a message.',
                       style: ADText.preview(),
                     ),
                   ]),
@@ -485,6 +495,26 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                 // Ava Receptionist can no longer be disabled per user.
               ]),
               ...[
+                const SizedBox(height: 14),
+                // ── [RECEPT-MODE-1] Answering mode: two mutually-exclusive toggles.
+                // Turning one ON turns the other OFF (they map to one server field).
+                Text('ANSWERING MODE', style: ADText.sectionLabel()),
+                const SizedBox(height: 6),
+                _toggleRow(
+                  'AI Voice Agent',
+                  'Ava talks with your callers live (AvaTOK and cell calls). '
+                      '5 tokens per minute from your wallet.',
+                  _mode == 'agent',
+                  (v) => setState(() => _mode = v ? 'agent' : 'vm'),
+                ),
+                const SizedBox(height: 8),
+                _toggleRow(
+                  'Voice mail',
+                  'Callers hear your pre-recorded greeting and leave a message. '
+                      'Free.',
+                  _mode == 'vm',
+                  (v) => setState(() => _mode = v ? 'vm' : 'agent'),
+                ),
                 const SizedBox(height: 14),
                 // ── The note: tell Ava your availability ───────────────────
                 AdField(

@@ -37,6 +37,9 @@ class ReceptionistSettings {
   // festival auto-greeting toggle. '' greetingStyle = plain open.
   final String greetingStyle;
   final bool festivalGreeting;
+  // [RECEPT-MODE-1] answering mode: 'agent' (AI voice agent) | 'vm' (voicemail) |
+  // '' (server/global default). The two exclusive toggles map onto this one field.
+  final String mode;
   const ReceptionistSettings({
     required this.enabled,
     required this.instructions,
@@ -60,6 +63,7 @@ class ReceptionistSettings {
     this.answerLangDefault = 'en',
     this.greetingStyle = '',
     this.festivalGreeting = false,
+    this.mode = '',
   });
   factory ReceptionistSettings.fromJson(Map<String, dynamic> j) => ReceptionistSettings(
         enabled: j['enabled'] == true,
@@ -84,6 +88,7 @@ class ReceptionistSettings {
         answerLangDefault: (j['answer_lang_default'] ?? 'en').toString(),
         greetingStyle: (j['greeting_style'] ?? '').toString(),
         festivalGreeting: j['festival_greeting'] == true,
+        mode: (j['mode'] ?? '').toString(),
       );
 }
 
@@ -142,6 +147,8 @@ class ReceptionistApi {
     // F2 — greeting preset id (GREETING_PRESETS) + festival auto-greeting toggle.
     String? greetingStyle,
     bool? festivalGreeting,
+    // [RECEPT-MODE-1] 'agent' | 'vm' | '' (server/global default).
+    String? mode,
   }) async {
     final body = <String, dynamic>{
       'enabled': enabled,
@@ -164,6 +171,7 @@ class ReceptionistApi {
       if (answerLangSource != null) 'answer_lang_source': answerLangSource,
       if (greetingStyle != null) 'greeting_style': greetingStyle,
       if (festivalGreeting != null) 'festival_greeting': festivalGreeting,
+      if (mode != null) 'mode': mode,
     };
     const maxAttempts = 3;
     for (var attempt = 1; attempt <= maxAttempts; attempt++) {

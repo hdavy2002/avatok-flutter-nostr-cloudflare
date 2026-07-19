@@ -221,6 +221,11 @@ async function ensureStatusColumns(env: Env): Promise<void> {
     // auto-greeting toggle. Same guarded ADD-COLUMN self-migration pattern.
     "ALTER TABLE receptionist_settings ADD COLUMN greeting_style TEXT",
     "ALTER TABLE receptionist_settings ADD COLUMN festival_greeting INTEGER",
+    // [RECEPT-MODE-1] (owner 2026-07-19): per-user answering mode — "agent" (AI
+    // voice agent, Gemini Live) | "vm" (pre-recorded voicemail flow) | NULL
+    // (fall back to the global receptionistVmMode/receptionistUseCf flags).
+    // The two client toggles are mutually exclusive and map onto this ONE field.
+    "ALTER TABLE receptionist_settings ADD COLUMN mode TEXT",
     // Self-migration for receptionist_sessions columns:
     "ALTER TABLE receptionist_sessions ADD COLUMN activation_mode TEXT",
     "ALTER TABLE receptionist_sessions ADD COLUMN team_id TEXT",
@@ -358,6 +363,8 @@ interface SettingsRow {
   status_note?: string | null; status_expires_at?: number | null; answer_lang?: string | null;
   // F2 (customizable greeting)
   greeting_style?: string | null; festival_greeting?: number | null;
+  // [RECEPT-MODE-1] "agent" | "vm" | null
+  mode?: string | null;
 }
 
 async function loadSettings(env: Env, uid: string): Promise<SettingsRow | null> {
@@ -545,7 +552,13 @@ export function composeReceptionistPrompt(
   const lines: string[] = [
     // 1. Role + caller context
     `You are ${me}, a woman answering ${who}'s phone. You're speaking with ${callerRef}${firstName ? ` (call them ${firstName})` : ""}. Situation: ${scenarioCtx}. ${who} already has their number — never ask for a name, number, or callback details.`,
+    // 1b. OPENING (owner 2026-07-19): Indian callee etiquette — the CALLEE says a
+    // brief hello and WAITS; the caller states their business first. Never open
+    // with "is this X speaking?" — she answered the phone, she knows who called.
+    `OPENING: answer like a real Indian callee — say just a brief hello (in ${who}'s default language), then WAIT for the caller to speak. Build your response on what they say. Never open with a question like "are you ${callerRef} speaking?" — you already know who's calling.`,
     note ? `${who}'s availability note: "${note}" — use it naturally, never verbatim.` : ``,
+    // Owner-configured profile/role (from the receptionist settings).
+    (s.custom_prompt || "").trim() ? `${who} configured your role: "${String(s.custom_prompt).trim()}". Follow it within these rules.` : ``,
     // 2. Brevity
     `Default to 1–2 short sentences per turn. Expand only if the caller asks.`,
     // 3. Language mirroring (India: Hinglish code-switching)
@@ -674,6 +687,8 @@ export async function receptionistGetSettings(req: Request, env: Env): Promise<R
     // F2: customizable greeting — preset id + festival auto-greeting toggle.
     greeting_style: s?.greeting_style ?? "",
     festival_greeting: !!(s?.festival_greeting),
+    // [RECEPT-MODE-1] per-user answering mode for the merged Receptionist/Voice mail page.
+    mode: s?.mode ?? "",
     premium, // client greys the toggle + shows upsell when false
     soft_cap_ms: SOFT_CAP_MS, hard_cap_ms: HARD_CAP_MS,
   });
@@ -738,6 +753,10 @@ export async function receptionistPutSettings(req: Request, env: Env): Promise<R
   let greetingStyle: string | null = b.greeting_style == null ? null : String(b.greeting_style).trim();
   if (greetingStyle && !(greetingStyle in GREETING_PRESETS)) greetingStyle = null;
   const festivalGreeting = b.festival_greeting === true || b.festival_greeting === 1 ? 1 : 0;
+  // [RECEPT-MODE-1] answering mode: "agent" | "vm" | null (null = global defaults).
+  // The client's two exclusive toggles map to this one validated field.
+  let recMode: string | null = b.mode == null ? null : String(b.mode).trim().toLowerCase();
+  if (recMode !== "agent" && recMode !== "vm") recMode = null;
 
   // Save-time content validation (Nemotron). Reject before persisting so an
   // unsafe persona/instruction/greeting never reaches a live call.
@@ -759,21 +778,21 @@ export async function receptionistPutSettings(req: Request, env: Env): Promise<R
         persona_name, language_code, greeting_text, custom_prompt,
         answer_all, status_preset, status_custom, decline_to_ava,
         status_note, status_expires_at, answer_lang,
-        greeting_style, festival_greeting,
+        greeting_style, festival_greeting, mode,
         created_at, updated_at)
-     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?15,?16,?17,?18,?19,?14,?14)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?15,?16,?17,?18,?19,?20,?14,?14)
      ON CONFLICT(owner_uid) DO UPDATE SET
        enabled=?2, instructions_text=?3, voice_name=?4, display_name=?5,
        persona_name=?6, language_code=?7, greeting_text=?8, custom_prompt=?9,
        answer_all=?10, status_preset=?11, status_custom=?12, decline_to_ava=?13,
        status_note=?15, status_expires_at=?16, answer_lang=?17,
-       greeting_style=?18, festival_greeting=?19,
+       greeting_style=?18, festival_greeting=?19, mode=?20,
        updated_at=?14`,
   ).bind(ctx.uid, enabled ? 1 : 0, instr, voice, display,
     persona, language, greeting, customPrompt,
     answerAll, statusPreset, statusCustom, declineToAva, now,
     statusNote, statusExpiresAt, answerLang,
-    greetingStyle, festivalGreeting).run();
+    greetingStyle, festivalGreeting, recMode).run();
   // F1 telemetry.
   const ttlBucket = statusExpiresAt == null ? "never"
     : (() => { const d = statusExpiresAt - Date.now();
@@ -890,8 +909,10 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   const cfg = await readConfig(env);
   // ZERO-COST VM MODE (owner 2026-07-19): vmMode routes to the CF DO in deterministic
   // voicemail flow (cached greeting + beep + 30s record; no STT/LLM/live-TTS).
-  const vmMode = (cfg as any).receptionistVmMode === true;
-  const useCf = vmMode || (cfg as any).receptionistUseCf === true;
+  // [RECEPT-MODE-1]: these start as the GLOBAL defaults and are overridden per-owner
+  // below once the owner's settings row is loaded (mode: "agent" | "vm").
+  let vmMode = (cfg as any).receptionistVmMode === true;
+  let useCf = vmMode || (cfg as any).receptionistUseCf === true;
   const sessionCaps = capsFor(cfg); // 3-min menu budget vs legacy 40/60/90s
 
   // FREE FOR NOW + DEFAULT-ON: unconfigured owners get Ava by default; an explicit
@@ -902,6 +923,12 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   // ALWAYS-ON (owner decision 2026-07-07): the per-user off switch is retired —
   // a saved enabled=0 row is ignored so Ava can always take the message.
   if (!s) s = defaultSettings(to);
+  // [RECEPT-MODE-1] (owner 2026-07-19): the OWNER's saved mode overrides the global
+  // flags. "vm" → zero-cost voicemail flow (CF DO); "agent" → AI voice agent
+  // (Gemini Live, billed ava_receptionist_minute); null → global defaults above.
+  const ownerMode = ((s.mode || "") as string).trim().toLowerCase();
+  if (ownerMode === "vm") { vmMode = true; useCf = true; }
+  else if (ownerMode === "agent") { vmMode = false; useCf = false; }
   // Gemini engine needs a Gemini key (dedicated, else global); the CF engine runs
   // entirely on the Workers AI binding and needs no Gemini key.
   if (!useCf && !env.RECEPTIONIST_GEMINI_API_KEY && !env.GEMINI_API_KEY) { skip("no_model_key"); return json({ error: "receptionist_unavailable", reason: "no_model_key" }, 503); }
