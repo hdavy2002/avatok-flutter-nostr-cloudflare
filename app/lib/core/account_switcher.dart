@@ -149,9 +149,24 @@ class AccountSwitcher {
   /// target (via /api/register carrying device_id). Best-effort + unawaited so a
   /// slow network never blocks the UI switch; a failure is captured by
   /// registerToken's own telemetry.
+  ///
+  /// [CALL-REACH-1] force:true is MANDATORY here. Switch-OUT set this account's
+  /// account_devices.active=0, and /api/register is the only path that flips it
+  /// back to 1 — but registerToken's unchanged-token dedupe guard was skipping
+  /// that POST whenever the FCM token hadn't rotated (the common case), leaving
+  /// the returning account permanently inactive: token_count=0,
+  /// mapped_inactive=1, every incoming call routed to the Ava agent (root cause
+  /// of the 2026-07-19 "Sat gets my Ava agent" diagnosis). Belt-and-braces:
+  /// also flip the mapping directly via /api/account/device, so even if the FCM
+  /// token is momentarily unavailable (null getToken) the mapping is healed.
   static Future<void> _reRegisterPush(String uid) async {
     try {
-      await PushService.registerToken(uid);
+      await PushService.mapDevice(active: true);
+    } catch (e) {
+      AvaLog.I.log('acct', 'reactivate device mapping failed for $uid: $e');
+    }
+    try {
+      await PushService.registerToken(uid, force: true, trigger: 'account_switch_in');
     } catch (e) {
       AvaLog.I.log('acct', 're-register push failed for $uid: $e');
     }

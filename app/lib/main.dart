@@ -418,8 +418,42 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
     super.dispose();
   }
 
+  // [CALL-REACH-1] Fine-grained lifecycle telemetry: which state we left, which
+  // we entered, and how long we sat in the previous one. This is the missing
+  // "awake / asleep / just came back" signal — before this the server (and
+  // PostHog) had no record of the app's sleep/wake transitions at all, so an
+  // unreachable idle device was invisible until someone's call failed.
+  AppLifecycleState? _lastLifecycleState;
+  int _lastLifecycleAt = DateTime.now().millisecondsSinceEpoch;
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final prev = _lastLifecycleState;
+    final inPrevMs = nowMs - _lastLifecycleAt;
+    _lastLifecycleState = state;
+    _lastLifecycleAt = nowMs;
+    // Skip the noisy inactive<->resumed flicker (notification shade, permission
+    // dialogs) — only transitions in/out of paused/detached/resumed matter.
+    if (!(prev == AppLifecycleState.inactive && state == AppLifecycleState.resumed)) {
+      Analytics.capture('app_lifecycle', {
+        'state': state.name,                    // resumed | inactive | paused | detached | hidden
+        'prev_state': prev?.name ?? 'launch',
+        'in_prev_state_ms': inPrevMs,
+        'signed_in': ApiAuth.identity != null,
+      });
+    }
+    // [CALL-REACH-1] Every RESUME re-asserts push registration (TTL-guarded, so
+    // at most one real POST per 12h per account). This is the self-healing path
+    // for the silent server-side token prune: the server deletes tokens on FCM
+    // 404 without telling the client, so the client must periodically re-prove
+    // it is registered rather than trusting a years-old success.
+    if (state == AppLifecycleState.resumed && ApiAuth.identity != null) {
+      final uid = AccountScope.id;
+      if (uid != null && uid.isNotEmpty) {
+        unawaited(PushService.registerToken(uid, trigger: 'app_resume'));
+      }
+    }
     // Back up the user's prefs to the cross-device vault whenever the app goes
     // to the background — captures any settings/app-toggle/filter changes.
     if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {

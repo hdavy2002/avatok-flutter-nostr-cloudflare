@@ -511,6 +511,8 @@ async function sendFcm(
       // correctly clears the dead device for every account on a shared phone,
       // and touches no other device.
       let mappingsDropped = -1;
+      let prunedDeviceId: string | null = null;
+      let affectedAccounts: string[] = [];
       try {
         const row = await env.DB_META
           .prepare("SELECT device_id FROM device_tokens WHERE token=?1")
@@ -518,6 +520,21 @@ async function sendFcm(
           .first<{ device_id: string }>();
         await env.DB_META.prepare("DELETE FROM device_tokens WHERE token=?1").bind(token).run();
         if (row?.device_id) {
+          prunedDeviceId = row.device_id;
+          // [CALL-REACH-1] Record WHO becomes unreachable by this prune BEFORE
+          // deleting, so a single PostHog row answers "whose calls will start
+          // falling to the Ava agent from this moment". The client is never
+          // notified (its push channel is the thing that just died), so this
+          // event is the only server-side record of the blast radius; the
+          // client-side heal is the 12h TTL re-register ([CALL-REACH-1] in
+          // push_service.dart) + forced re-register on account switch-in.
+          try {
+            const acc = await env.DB_META
+              .prepare("SELECT account_id FROM account_devices WHERE device_id=?1")
+              .bind(row.device_id)
+              .all<{ account_id: string }>();
+            affectedAccounts = (acc.results ?? []).map(r => r.account_id).slice(0, 10);
+          } catch { /* best-effort */ }
           const r = await env.DB_META
             .prepare("DELETE FROM account_devices WHERE device_id=?1")
             .bind(row.device_id)
@@ -538,6 +555,12 @@ async function sendFcm(
         // Should trend to ~1. A persistent 0 means the GC isn't firing; a large
         // number means a shared device is being cleared for many accounts.
         mappings_dropped: mappingsDropped,
+        // [CALL-REACH-1] Blast radius: the device and every account that just
+        // lost its ring path. Join key for the client's device_id-tagged
+        // register/skip events, and the query answering "who is deaf right now".
+        device_id: prunedDeviceId,
+        affected_accounts: affectedAccounts,
+        affected_account_count: affectedAccounts.length,
       });
       return { ok: false, error: `http_${res.status}`, pruned: true };
     } else {

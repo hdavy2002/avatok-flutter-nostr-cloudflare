@@ -1777,7 +1777,7 @@ class PushService {
       // [FCM-DEDUPE] force:true — a rotation is exactly when the credential must be
       // pushed immediately, so it must never be swallowed by the unchanged-token
       // guard (and it refreshes the stored fingerprint for subsequent opens).
-      _postToken(t, force: true).catchError((e) {
+      _postToken(t, force: true, trigger: 'token_refresh').catchError((e) {
         AvaLog.I.log('push', 're-register failed: $e');
         final err = e.toString();
         Analytics.capture('push_register_failed', {
@@ -2016,7 +2016,15 @@ class PushService {
   }
 
   /// Register this device's FCM token against the user's uid.
-  static Future<void> registerToken(String uid) async {
+  ///
+  /// [CALL-REACH-1] `force` bypasses the [FCM-DEDUPE] unchanged-token guard and
+  /// `trigger` labels the call site in telemetry (app_open / account_switch_in /
+  /// app_resume / token_refresh). Account switch-IN MUST force: switch-OUT sets
+  /// account_devices.active=0 and the /api/register POST is the only thing that
+  /// sets it back to 1 — the dedupe guard was silently skipping exactly that
+  /// POST (token unchanged), leaving the account permanently unreachable
+  /// (token_count=0, mapped_inactive=1 → every call fell to the Ava agent).
+  static Future<void> registerToken(String uid, {bool force = false, String trigger = 'app_open'}) async {
     // init() is deferred to post-first-frame (PERF-1): wait for it (bounded)
     // so getToken() isn't called before Firebase messaging is set up.
     try { await ready.future.timeout(const Duration(seconds: 15)); } catch (_) {}
@@ -2033,10 +2041,10 @@ class PushService {
         // server stores 0 push tokens and CALLERS hit the "no device registered"
         // 404. Previously this was only in the local diag log (invisible in
         // PostHog) — emit a discrete, per-user event so it is queryable.
-        Analytics.capture('push_register_failed', {'reason': 'fcm_token_null'});
+        Analytics.capture('push_register_failed', {'reason': 'fcm_token_null', 'trigger': trigger});
         return;
       }
-      await _postToken(token);
+      await _postToken(token, force: force, trigger: trigger);
     } catch (e) {
       AvaLog.I.log('push', 'register token FAILED: $e');
       // Surface the FCM/Firebase error (e.g. FIS_AUTH_ERROR — a Firebase
@@ -2045,6 +2053,7 @@ class PushService {
       final err = e.toString();
       Analytics.capture('push_register_failed', {
         'reason': 'exception',
+        'trigger': trigger,
         'error': err.length > 200 ? err.substring(0, 200) : err,
       });
     }
@@ -2091,30 +2100,63 @@ class PushService {
   /// POST is retried on the next open rather than masked.
   static const String _kLastRegisteredTokenKey = 'push_last_registered_token_v1';
 
+  /// [CALL-REACH-1] When the last SUCCESSFUL registration happened (per-account
+  /// scoped, ms since epoch). The dedupe guard is now a TTL, not a permanent
+  /// skip: the server prunes tokens on FCM 404 (consumers/src/fcm.ts) and NEVER
+  /// tells the client, so "I registered this token once" must expire. Without
+  /// this, a prune while the device was idle made the account permanently
+  /// unreachable — the app would open, read the cache, skip the POST, and every
+  /// call kept falling to the Ava agent (the 2026-07-19 fleet-wide diagnosis:
+  /// 298 push_no_device vs 236 call_push_sent over 30 days).
+  static const String _kLastRegisteredAtKey = 'push_last_registered_at_v1';
+
+  /// Re-POST at most this often when the token is unchanged. Cheap (one D1
+  /// upsert) and idempotent server-side; bounds the worst-case unreachable
+  /// window after a silent server-side prune to one app-open + TTL.
+  static const Duration _reRegisterTtl = Duration(hours: 12);
+
   /// POST the current token to the server (uid is derived server-side from the
   /// NIP-98 signature). Used by registerToken AND by onTokenRefresh.
   ///
   /// [force] bypasses the [FCM-DEDUPE] unchanged-token guard — the token-ROTATION
   /// callback (onTokenRefresh) and any future server-driven invalidation pass it
   /// so a fresh/rotated credential is always pushed immediately.
-  static Future<void> _postToken(String token, {bool force = false}) async {
+  static Future<void> _postToken(String token, {bool force = false, String trigger = 'app_open'}) async {
     // [MULTIACCT-2] Send the stable per-device id so the server keys the token by
     // DEVICE (device_tokens) and maps the ACTIVE account to it (account_devices).
     // A token refresh updates the single device row; a login/switch flips the
     // mapping — neither orphans the token, so the callee never becomes silently
     // unreachable after a re-login.
     final deviceId = await DeviceId.get();
-    // [FCM-DEDUPE] Short-circuit an unchanged re-registration for this account.
+    // [FCM-DEDUPE]+[CALL-REACH-1] Short-circuit an unchanged re-registration for
+    // this account — but ONLY within the TTL. The server can prune our token
+    // (FCM 404) or deactivate our mapping (account switch elsewhere) without
+    // telling us, so an unchanged token is only trustworthy for a bounded time.
     if (!force) {
       try {
         final last = await DiskCache.read(_kLastRegisteredTokenKey);
-        if (last != null && last == token) {
+        final atRaw = await DiskCache.read(_kLastRegisteredAtKey);
+        final at = int.tryParse(atRaw ?? '') ?? 0;
+        final ageMs = DateTime.now().millisecondsSinceEpoch - at;
+        final fresh = at > 0 && ageMs < _reRegisterTtl.inMilliseconds;
+        if (last != null && last == token && fresh) {
           Analytics.capture('push_register_skipped', {
             'reason': 'unchanged',
+            'trigger': trigger,
+            'age_ms': ageMs,
             'device_id': deviceId,
             'token_prefix': token.length >= 12 ? token.substring(0, 12) : token,
           });
           return;
+        }
+        if (last != null && last == token && !fresh) {
+          // Fine-grained: distinguish a TTL-driven refresh from a genuinely new
+          // token so the dashboard can measure how often the TTL is what saves us.
+          Analytics.capture('push_register_ttl_refresh', {
+            'trigger': trigger,
+            'age_ms': ageMs,
+            'device_id': deviceId,
+          });
         }
       } catch (_) {/* best-effort — on any read error, fall through and POST */}
     }
@@ -2131,19 +2173,42 @@ class PushService {
     // incident could not answer. token_prefix only (never the whole token):
     // an FCM token is a sending credential and must not land in analytics.
     final tokenPrefix = token.length >= 12 ? token.substring(0, 12) : token;
+    // [CALL-REACH-1] The register response reports how many reachable devices the
+    // server now has for this account ({ok, devices:N}). Surface it: devices==0
+    // right after a 200 means the D1 write path is broken — the exact class of
+    // silent failure that made callees unreachable. Fine-grained + queryable.
+    int? serverDevices;
+    if (ok) {
+      try {
+        final body = jsonDecode(res.body);
+        if (body is Map && body['devices'] is num) serverDevices = (body['devices'] as num).toInt();
+      } catch (_) {/* best-effort */}
+    }
     Analytics.capture(ok ? 'push_register_ok' : 'push_register_failed', {
       'reason': ok ? 'registered' : 'http_error',
       'status': res.statusCode,
+      'trigger': trigger,
+      if (serverDevices != null) 'server_devices': serverDevices,
       'device_id': deviceId,
       'token_prefix': tokenPrefix,
     });
+    if (ok && serverDevices == 0) {
+      Analytics.capture('push_register_zero_devices', {
+        'trigger': trigger,
+        'device_id': deviceId,
+      });
+    }
     // Additional, explicit "token registered" event (kept ALONGSIDE
     // push_register_ok, not replacing it) so a successful FCM-token registration
     // is queryable under a stable name for the FIX-FCM tracking dashboard.
     if (ok) {
       // [FCM-DEDUPE] Remember the token we just registered (per-account scoped) so
       // the next same-account open with the same token is skipped, not re-POSTed.
-      try { await DiskCache.write(_kLastRegisteredTokenKey, token); } catch (_) {/* best-effort */}
+      // [CALL-REACH-1] …and WHEN, so the skip expires (TTL) instead of lasting forever.
+      try {
+        await DiskCache.write(_kLastRegisteredTokenKey, token);
+        await DiskCache.write(_kLastRegisteredAtKey, DateTime.now().millisecondsSinceEpoch.toString());
+      } catch (_) {/* best-effort */}
       Analytics.capture('push_token_registered', {
         'platform': 'fcm',
         'status': res.statusCode,
