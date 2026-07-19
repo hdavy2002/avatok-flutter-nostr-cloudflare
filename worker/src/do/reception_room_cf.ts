@@ -481,6 +481,8 @@ export class ReceptionRoomCf {
   // Fail-open: any model error/ambiguity → process the turn (never wedge a call).
   // Gated by secret RECEPT_CF_SMART_TURN=on; ~$0.0003/audio-min.
   private cfTurnExtends = 0;
+  /** Caller's most recent transcribed utterance — read by the goodbye heuristic. */
+  private lastCallerText = "";
   private async maybeEndTurn(): Promise<void> {
     this.cfEndpointTimer = null;
     const mode = String((this.env as any).RECEPT_CF_SMART_TURN || "").toLowerCase();
@@ -553,7 +555,7 @@ export class ReceptionRoomCf {
       if (!heard && total >= CF_MIN_TURN_BYTES) {
         heard = await this.cfStt(pcm16ToWavMono(concatFrames(frames, total), 16000));
       }
-      if (heard) { this.inText.push(heard); this.pushDialog("caller", heard); }
+      if (heard) { this.inText.push(heard); this.pushDialog("caller", heard); this.lastCallerText = heard; }
       this.turnCount++;
       this.ev("ava_recept_turn", {
         turn: this.turnCount, engine: "cf", time_up: this.cfTimeUp,
@@ -605,10 +607,13 @@ export class ReceptionRoomCf {
     // again after "have a great day"). Honor the model's <END_CALL> marker AND detect
     // a spoken goodbye, because a small model often drops the marker. She still speaks
     // her FULL closing line first (cfSpeak awaits playback), THEN we finalize.
-    // Gate the goodbye heuristic behind >=2 caller turns so Ava can't say "have a
-    // great day" and hang up on the very first exchange (owner 2026-07-19). The
-    // explicit <END_CALL> marker still closes any time the model means it.
-    const wantsEnd = /<END_CALL>/i.test(raw) || (!this.cfTimeUp && this.turnCount >= 2 && isGoodbyeLine(raw));
+    // GOODBYE HEURISTIC v2 (owner 2026-07-19, after a live misfire): small models
+    // append polite farewells to NORMAL replies, so Ava's own phrasing alone must
+    // NEVER end the call. The heuristic now also requires the CALLER's last
+    // utterance to be a farewell. Deliberate closes still work any time via the
+    // explicit <END_CALL> marker (the prompt instructs the model to use it).
+    const callerBye = /\b(bye|goodbye|bubye|that'?s all|thanks,? bye|thank you,? bye|talk (to you )?later|gotta go|रखता हूँ|रखती हूँ|अलविदा|बाय|बस इतना ही|धन्यवाद)\b/i.test(this.lastCallerText || "");
+    const wantsEnd = /<END_CALL>/i.test(raw) || (!this.cfTimeUp && this.turnCount >= 2 && callerBye && isGoodbyeLine(raw));
     const text = raw.replace(/<END_CALL>/gi, "").trim();
     this.cfHistory.push({ role: "assistant", content: text || "..." });
     if (text) { this.outText.push(text); this.pushDialog("ava", text); await this.cfSpeak(text); }
