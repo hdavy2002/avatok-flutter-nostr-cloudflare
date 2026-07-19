@@ -40,6 +40,14 @@ const String kAgentScopeCell = 'cell';
 const String kAgentScopeApp = 'app';
 const String kAgentScopeAll = 'all';
 
+// [WALLET-UX-1] Readability scale for the wizard. The shared ADText styles are
+// chat-list sized (preview 12.5sp / rowName 14sp) — far too small for a
+// full-screen onboarding step. Same family/weights, bigger sizes; the step
+// counter label deliberately stays at ADText.sectionLabel size.
+TextStyle _wizBody({Color? c}) =>
+    ADText.preview(c: c ?? AD.textSecondary).copyWith(fontSize: 16.5, height: 1.4);
+TextStyle _wizTitle() => ADText.rowName().copyWith(fontSize: 19, height: 1.2);
+
 /// Opens the multi-step AI Voice Agent wizard. Returns the chosen scope
 /// ('cell'|'app'|'all') after a successful save, or null when the user backed
 /// out (caller must leave the toggle unchanged).
@@ -118,16 +126,16 @@ class _VoicemailSheetState extends State<_VoicemailSheet> {
           Row(children: [
             ZineIconBadge(
                 icon: PhosphorIcons.voicemail(PhosphorIconsStyle.fill),
-                color: AD.iconVideo, size: 36),
-            const SizedBox(width: 12),
-            Expanded(child: Text('Voice mail', style: ADText.rowName())),
+                color: AD.iconVideo, size: 44),
+            const SizedBox(width: 14),
+            Expanded(child: Text('Voice mail', style: _wizTitle())),
           ]),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           Align(
             alignment: Alignment.centerLeft,
             child: Text(
               'Each voicemail costs 1 token. All messages appear in your Inbox.',
-              style: ADText.preview(c: AD.textPrimary),
+              style: _wizBody(c: AD.textPrimary),
             ),
           ),
           const SizedBox(height: 18),
@@ -218,7 +226,11 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
       final b = await MoneyApi.balance();
       if (!mounted) return;
       setState(() {
-        _balance = (b['balance'] as num?)?.toInt();
+        // [WALLET-UX-1] Gate on TOTAL SPENDABLE tokens (paid + welcome bonus +
+        // daily free) — the DO's `spendable`. The paid-only `balance` field
+        // showed 0 to users whose tokens live in the promo buckets and wrongly
+        // blocked this step. `balance` stays the fallback for old servers.
+        _balance = ((b['spendable'] ?? b['balance']) as num?)?.toInt();
         _balLoading = false;
       });
     } catch (_) {
@@ -286,19 +298,32 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
           shape: const Border(bottom: BorderSide(color: AD.borderControl, width: 1)),
           leading: AdBackButton(onTap: _back),
           iconTheme: const IconThemeData(color: AD.textPrimary),
-          title: Text('AI Voice Agent', style: ADText.rowName()),
+          title: Text('AI Voice Agent',
+              style: ADText.rowName().copyWith(fontSize: 17)),
         ),
         body: SafeArea(
           child: Column(children: [
+            // [WALLET-UX-1] Readability pass: each step's card is CENTERED in
+            // the available vertical space (was hugging the top of a ListView),
+            // scrollable when it overflows, with the Continue button pinned
+            // below. Copy is untouched (owner's exact wording).
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  Text('STEP ${_idx + 1} OF ${_steps.length}',
-                      style: ADText.sectionLabel()),
-                  const SizedBox(height: 10),
-                  _buildStep(),
-                ],
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Center(
+                        child: Text('STEP ${_idx + 1} OF ${_steps.length}',
+                            style: ADText.sectionLabel()),
+                      ),
+                      const SizedBox(height: 14),
+                      _buildStep(),
+                    ],
+                  ),
+                ),
               ),
             ),
             Padding(
@@ -339,7 +364,7 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
         Text(
           'An AI conversation costs 3 tokens/min, calls capped at 3 minutes to '
           'save you money.',
-          style: ADText.preview(c: AD.textPrimary),
+          style: _wizBody(c: AD.textPrimary),
         ),
       ],
     );
@@ -356,22 +381,22 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
             const SizedBox(width: 16, height: 16,
                 child: CircularProgressIndicator(strokeWidth: 2)),
             const SizedBox(width: 10),
-            Text('Checking your wallet…', style: ADText.preview()),
+            Text('Checking your wallet…', style: _wizBody()),
           ])
         else ...[
           Text(
             _balance == null
                 ? 'Couldn’t read your wallet — check your connection.'
                 : 'You have $_balance token${_balance == 1 ? '' : 's'}.',
-            style: ADText.preview(c: AD.textPrimary),
+            style: _wizBody(c: AD.textPrimary),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           Text(
             _balanceOk
                 ? 'That’s enough to get started (you need at least $_needTokens).'
                 : 'You need at least $_needTokens tokens — one minute of Ava '
                     'talking to a caller — to turn the agent on.',
-            style: ADText.preview(),
+            style: _wizBody(),
           ),
           if (!_balanceOk) ...[
             const SizedBox(height: 14),
@@ -392,7 +417,9 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
           GestureDetector(
             onTap: _fetchBalance,
             child: Text('Refresh balance',
-                style: ADText.preview(c: AD.textSecondary)),
+                style: _wizBody(c: AD.textSecondary)
+                    .copyWith(decoration: TextDecoration.underline,
+                        decorationColor: AD.textTertiary)),
           ),
         ],
       ],
@@ -419,27 +446,30 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
 
   Widget _scopeTile(String value, String title, String sub) {
     final active = _scope == value;
+    // [WALLET-UX-1] Bigger, comfortable tap targets: more padding, 17sp title,
+    // 14.5sp subtitle, larger radio glyph.
     return ZinePressable(
       onTap: () => setState(() => _scope = value),
       color: AD.card,
       borderColor: active ? AD.primaryBadge : AD.borderControl,
       radius: BorderRadius.circular(AD.rInput),
       boxShadow: const [],
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       child: Row(children: [
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: ADText.rowName()),
-            const SizedBox(height: 2),
-            Text(sub, style: ADText.preview()),
+            Text(title, style: ADText.rowName().copyWith(fontSize: 17)),
+            const SizedBox(height: 3),
+            Text(sub,
+                style: ADText.preview().copyWith(fontSize: 14.5, height: 1.35)),
           ]),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 10),
         Icon(
           active
               ? PhosphorIcons.checkCircle(PhosphorIconsStyle.fill)
               : PhosphorIcons.circle(PhosphorIconsStyle.bold),
-          size: 22,
+          size: 26,
           color: active ? AD.primaryBadge : AD.textTertiary,
         ),
       ]),
@@ -455,14 +485,15 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
         Text(
           'You need a virtual phone number so your carrier can hand Ava the '
           'calls you can’t take.',
-          style: ADText.preview(c: AD.textPrimary),
+          style: _wizBody(c: AD.textPrimary),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 16),
         Row(children: [
           Text(
             '700 tokens/month',
             style: ADText.rowName(c: AD.textTertiary)
-                .copyWith(decoration: TextDecoration.lineThrough,
+                .copyWith(fontSize: 17,
+                    decoration: TextDecoration.lineThrough,
                     decorationColor: AD.textTertiary),
           ),
           const SizedBox(width: 10),
@@ -484,7 +515,7 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
       ),
       child: Text(label,
           style: TextStyle(fontFamily: ADText.family,
-              fontWeight: FontWeight.w800, fontSize: 12.5, color: Colors.white)),
+              fontWeight: FontWeight.w800, fontSize: 14, color: Colors.white)),
     );
   }
 
@@ -499,7 +530,7 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
           'Pick the conditions: when you reject a call, when your phone is '
           'off, and when you’re not picking up. Each one dials a short '
           'carrier code and only turns green once your carrier confirms it.',
-          style: ADText.preview(c: AD.textPrimary),
+          style: _wizBody(c: AD.textPrimary),
         ),
         const SizedBox(height: 14),
         AdButton(
@@ -516,7 +547,7 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
         const SizedBox(height: 10),
         Text(
           'You can change these any time in Settings → Voicemail.',
-          style: ADText.preview(),
+          style: _wizBody(),
         ),
       ],
     );
@@ -533,7 +564,7 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
           'YOUR phone company. No SMS, OTP or text messages are forwarded, '
           'and no information leaves your phone — this is standard carrier '
           'call routing.',
-          style: ADText.preview(c: AD.textPrimary),
+          style: _wizBody(c: AD.textPrimary),
         ),
       ],
     );
@@ -557,14 +588,14 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
   Widget _summaryRow(String text, {String? pill}) {
     return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Padding(
-        padding: const EdgeInsets.only(top: 5, right: 8),
+        padding: const EdgeInsets.only(top: 9, right: 10),
         child: Container(
-          width: 4, height: 4,
+          width: 5, height: 5,
           decoration:
               const BoxDecoration(color: AD.textTertiary, shape: BoxShape.circle),
         ),
       ),
-      Expanded(child: Text(text, style: ADText.preview(c: AD.textPrimary))),
+      Expanded(child: Text(text, style: _wizBody(c: AD.textPrimary))),
       if (pill != null) ...[
         const SizedBox(width: 8),
         _greenPill(pill),
@@ -577,15 +608,16 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
     required String title,
     required List<Widget> children,
   }) {
+    // [WALLET-UX-1] Roomier card: 20px padding, 44px badge, 19sp title.
     return AdCard(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          ZineIconBadge(icon: icon, color: AD.iconVideo, size: 36),
-          const SizedBox(width: 12),
-          Expanded(child: Text(title, style: ADText.rowName())),
+          ZineIconBadge(icon: icon, color: AD.iconVideo, size: 44),
+          const SizedBox(width: 14),
+          Expanded(child: Text(title, style: _wizTitle())),
         ]),
-        const SizedBox(height: 12),
+        const SizedBox(height: 16),
         ...children,
       ]),
     );

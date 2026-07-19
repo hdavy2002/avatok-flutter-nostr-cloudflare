@@ -14,6 +14,7 @@ import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../payout/payout_screen.dart';
 import 'admin_money_screen.dart';
+import 'wallet_balance_chip.dart' show WalletBalanceStore;
 
 /// Inline dark v2 header band (replaces the light ZineAppBar): header/footer
 /// surface, hairline bottom border, back button + Nunito title + optional tag.
@@ -225,27 +226,43 @@ class _WalletScreenState extends State<WalletScreen> {
     }
     final b = await bal;
     if (mounted && b['balance'] is num) {
-      setState(() { _balance = (b['balance'] as num).toInt(); _held = ((b['held'] as num?) ?? 0).toInt(); });
+      // [WALLET-UX-1] The hero number is the TOTAL SPENDABLE tokens: paid
+      // `balance` + persistent welcome `bonus` + daily free grant. The DO's
+      // snap() reports that as `spendable`; binding the paid-only `balance`
+      // here is exactly the bug that showed "Balance 0" to a user whose 100
+      // welcome-bonus tokens live in the promo bucket. `balance` stays the
+      // fallback for an old server response.
+      setState(() {
+        _balance = (((b['spendable'] ?? b['balance']) as num)).toInt();
+        _held = ((b['held'] as num?) ?? 0).toInt();
+      });
+      WalletBalanceStore.set(_balance); // keep the header chip in sync
       Analytics.capture('wallet_balance_loaded', {
-        'balance_coins': _balance,
+        'balance_coins': _balance, // displayed number = total spendable
+        'paid_coins': ((b['balance'] as num?) ?? 0).toInt(),
+        'bonus_coins': ((b['bonus'] as num?) ?? 0).toInt(),
+        'free_coins': ((b['free'] as num?) ?? 0).toInt(),
         'held_coins': _held,
         'balance_usd_cents': (_balance * 100 / kCoinsPerUsd).round(),
         'entries_loaded': _entries.length,
         'has_ledger': _entries.isNotEmpty,
         'filtered': _filtered,
       });
-      // DIAGNOSTIC: a positive balance with an EMPTY (unfiltered) ledger means the
-      // user has coins but no transaction history — the exact "no log below my
-      // recent transaction" symptom. This usually means the balance was credited
-      // outside the queue→wallet_ledger path (seed/admin adjust/DO-only), or the
-      // top-up's ledger row never landed. email + phone ride every event (see
-      // Analytics._base), so support can pull THIS user by email/phone in PostHog
-      // and reconcile the missing ledger row.
-      if (_balance > 0 && _entries.isEmpty && !_filtered && !_loading) {
+      // DIAGNOSTIC: a positive PAID balance with an EMPTY (unfiltered) ledger
+      // means the user has coins but no transaction history — the exact "no log
+      // below my recent transaction" symptom. This usually means the balance was
+      // credited outside the queue→wallet_ledger path (seed/admin adjust/
+      // DO-only), or the top-up's ledger row never landed. Keyed to the PAID
+      // balance (not spendable) so the daily free grant — which legitimately has
+      // no statement row — doesn't fire this for every user. email + phone ride
+      // every event (see Analytics._base), so support can pull THIS user by
+      // email/phone in PostHog and reconcile the missing ledger row.
+      final paidCoins = ((b['balance'] as num?) ?? 0).toInt();
+      if (paidCoins > 0 && _entries.isEmpty && !_filtered && !_loading) {
         Analytics.capture('wallet_balance_without_ledger', {
-          'balance_coins': _balance,
+          'balance_coins': paidCoins,
           'held_coins': _held,
-          'balance_usd_cents': (_balance * 100 / kCoinsPerUsd).round(),
+          'balance_usd_cents': (paidCoins * 100 / kCoinsPerUsd).round(),
         });
       }
     } else if (mounted) {
@@ -686,7 +703,10 @@ class _WalletScreenState extends State<WalletScreen> {
       backgroundColor: AD.bg,
       appBar: _darkHeader(
         title: 'AvaWallet',
-        tag: 'your avacoins',
+        // [WALLET-UX-1] Owner decision: no "AvaCoins" branding in the UI — the
+        // wallet's user-facing unit is Tokens (display copy only; code
+        // identifiers and storage keys keep their historical names).
+        tag: 'your tokens',
         showBack: false,
         actions: [
           if (_admin)
@@ -793,7 +813,7 @@ class _WalletScreenState extends State<WalletScreen> {
               ),
               const SizedBox(width: 11),
               Expanded(child: Text('Balance', style: ADText.threadName(c: AD.textOnInput))),
-              Text('AVACOINS', style: ADText.statCaption(c: AD.textOnInput)),
+              Text('TOKENS', style: ADText.statCaption(c: AD.textOnInput)),
             ]),
             const SizedBox(height: 14),
             // Hero is the Token count — coins are the wallet's native unit.
@@ -1146,6 +1166,9 @@ class _WalletScreenState extends State<WalletScreen> {
         return PhosphorIcons.translate(PhosphorIconsStyle.bold);
       case 'avapayout':
         return PhosphorIcons.bank(PhosphorIconsStyle.bold);
+      // [WALLET-UX-1] Welcome bonus (type=promo, app_name=welcome_bonus).
+      case 'welcome_bonus':
+        return PhosphorIcons.gift(PhosphorIconsStyle.bold);
     }
     switch (direction) {
       case 'topup':

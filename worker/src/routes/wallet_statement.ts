@@ -187,7 +187,12 @@ export async function walletSummary(req: Request, env: Env): Promise<Response> {
   const free = Number(bal.body?.free ?? 0);
 
   const db = env.DB_WALLET.withSession("first-unconstrained");
-  const earnTypes = "('earn','donation','gift','hold_release')";
+  // [WALLET-UX-1] 'promo' included: the statement feed already buckets promo
+  // grants (welcome bonus) under direction 'earn' (DIRECTION_TYPES), so the
+  // summary's earn aggregates must count them too — otherwise a user whose only
+  // activity is the welcome bonus sees empty cockpit panels above a statement
+  // row the same screen labels "Welcome bonus".
+  const earnTypes = "('earn','donation','gift','hold_release','promo')";
   const spends = await db.prepare(
     `SELECT COALESCE(app_name,'') AS app, COALESCE(SUM(-amount),0) AS tokens, COUNT(*) AS n
      FROM wallet_transactions WHERE uid=?1 AND created_at>=?2 AND type='spend' AND amount<0

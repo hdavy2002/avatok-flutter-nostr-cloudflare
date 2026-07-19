@@ -38,6 +38,7 @@ import '../../shell/ava_sidebar.dart';
 import '../ava_companion/companion_home.dart';
 import '../../core/notifications_api.dart';
 import '../notifications/notifications_screen.dart';
+import '../wallet/wallet_balance_chip.dart';
 import 'groups_tab.dart';
 import '../status/status_ring.dart';
 import '../status/status_screen.dart';
@@ -1663,6 +1664,12 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                 // shell root label. Display-only.
                 Text('AvaTalk', style: ADText.appTitle()),
                 const Spacer(),
+                // [WALLET-UX-1] Compact wallet-balance chip (coin icon + total
+                // spendable tokens). Loads once via WalletBalanceStore; the
+                // wallet screen pushes fresh values on its refreshes — no
+                // polling. Tap → AvaWallet.
+                const WalletBalanceChip(),
+                const SizedBox(width: 10),
                 // Status avatar — opens the status viewer; shows my latest photo
                 // status as a thumbnail (glows when I have a live status).
                 _headerStatusButton(),
