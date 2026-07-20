@@ -92,6 +92,15 @@ export interface TelephonyProvider {
 
   /** Force-hangup a live (or cancel a queued) call. */
   hangupCall(callUuid: string): Promise<void>;
+
+  /**
+   * Warm human handover (spec §7): transfer a live call's leg(s) to fetch
+   * fresh XML from a new URL mid-session. Used to move the caller's aleg
+   * into a <Conference> so a human agent can be bridged in and the AI leg
+   * dropped, without the caller ever hanging up. Only valid against a call
+   * in the `in-progress` state.
+   */
+  transferCall(p: { callUuid: string; legs?: "aleg" | "bleg" | "both"; alegUrl?: string; blegUrl?: string; alegMethod?: string }): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------

@@ -47,6 +47,15 @@
 //                    (docs: call/hangup-call, compare/plivo/voice-call-api).
 //                    No request body; works for both a live call (hangup)
 //                    and a still-queued call (cancel).
+//   transferCall   → POST   /Account/{auth_id}/Call/{call_uuid}/
+//                    {legs, aleg_url, aleg_method, bleg_url?, bleg_method?}
+//                    (docs: call/transfer-call — confirmed 2026-07-20 via the
+//                    vobiz-docs MCP, full param table + example bodies
+//                    indexed, no uncertainty). legs defaults to "aleg" per
+//                    docs; only in-progress calls can be transferred (404 if
+//                    queued/ended). This is the primitive spec §7 warm human
+//                    handover uses to move the caller's aleg into a
+//                    <Conference> XML flow.
 //
 // NOTE (spec §7): "One authority for ring timeout: ring_timeout (do not also
 // set hangup_on_ring)" — makeCall below deliberately never sends
@@ -305,5 +314,29 @@ export class VobizProvider implements TelephonyProvider {
 
   async hangupCall(callUuid: string): Promise<void> {
     await this.request(`/Account/${this.authId}/Call/${encodeURIComponent(callUuid)}`, { method: "DELETE" });
+  }
+
+  /**
+   * Warm human handover (spec §7): transfer a live call leg to fetch fresh
+   * XML from a new URL (docs: call/transfer-call, confirmed 2026-07-20).
+   * Only the legs actually provided are sent — Vobiz defaults `legs` to
+   * "aleg" server-side when omitted, but we pass it explicitly whenever the
+   * caller specifies it to avoid relying on that default.
+   */
+  async transferCall(p: { callUuid: string; legs?: "aleg" | "bleg" | "both"; alegUrl?: string; blegUrl?: string; alegMethod?: string }): Promise<void> {
+    const body: Record<string, unknown> = {};
+    if (p.legs) body.legs = p.legs;
+    if (p.alegUrl) {
+      body.aleg_url = p.alegUrl;
+      body.aleg_method = p.alegMethod ?? "POST";
+    }
+    if (p.blegUrl) {
+      body.bleg_url = p.blegUrl;
+      body.bleg_method = "POST";
+    }
+    await this.request(`/Account/${this.authId}/Call/${encodeURIComponent(p.callUuid)}/`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
   }
 }
