@@ -271,12 +271,16 @@ export class VobizProvider implements TelephonyProvider {
         `/Account/${this.authId}/Call/${encodeURIComponent(callUuid)}?status=live`,
         { method: "GET" },
       );
+      // Verified against docs (call/retrieve-live-call): the live-call object
+      // is TOP-LEVEL and carries `call_status` + `session_start`. A live call
+      // has NO answer_time/end_time/hangup_cause — those only exist on the CDR
+      // once the call has completed (see the CDR branch below).
       return {
         callUuid,
         status: String(json?.call_status ?? json?.status ?? "live"),
-        answeredAt: json?.answer_time ?? json?.answered_at ?? null,
-        endedAt: json?.end_time ?? json?.ended_at ?? null,
-        hangupCause: json?.hangup_cause ?? null,
+        answeredAt: json?.session_start ?? null,
+        endedAt: null,
+        hangupCause: null,
       };
     } catch (e) {
       if (!(e instanceof VobizProviderError) || e.status !== 404) throw e;
@@ -303,12 +307,17 @@ export class VobizProvider implements TelephonyProvider {
     //    Vobiz's call_uuid, which the CDR endpoint's {call_id} path segment
     //    is documented to accept as one of the identifiers it resolves by.
     const { json } = await this.request(`/Account/${this.authId}/cdr/${encodeURIComponent(callUuid)}`, { method: "GET" });
+    // Verified against docs (cdr/get-cdr): the CDR response NESTS the call
+    // fields under `data` — data.answer_time / data.end_time /
+    // data.hangup_cause (+ hangup_cause_code / hangup_cause_name). Reading them
+    // top-level (the old code) always returned nulls.
+    const d = (json?.data ?? {}) as any;
     return {
       callUuid,
-      status: String(json?.hangup_cause ? "completed" : "unknown"),
-      answeredAt: json?.answer_time ?? null,
-      endedAt: json?.end_time ?? null,
-      hangupCause: json?.hangup_cause ?? null,
+      status: String(d.hangup_cause ? "completed" : "unknown"),
+      answeredAt: d.answer_time ?? null,
+      endedAt: d.end_time ?? null,
+      hangupCause: d.hangup_cause ?? null,
     };
   }
 
