@@ -26,6 +26,7 @@ import { readConfig } from "../routes/config"; // [RECEPT-BILLING-LIVE-1] live-b
 import { walletOp } from "../routes/wallet"; // [RECEPT-BILLING-3] start-of-call balance read (accrual + zero-stop)
 import { metaDb } from "../db/shard"; // [RECEPT-BILLING-3] internal call_cost_ledger
 import { recordCallSummary, receptOutcome } from "../lib/recept_stats"; // [RECEPT-STATS-1] canonical call summary
+import { thinkingCfg } from "../util"; // [RECEPT-COST-THINK-1] per-model thinking-off (gemini-3 → thinkingLevel low)
 
 /** Redact secrets from free-text error strings BEFORE they go into telemetry.
  *  The Gemini Live URL carries `?key=AIza…` / `?access_token=auth_tokens/…`, so a
@@ -381,6 +382,12 @@ export class ReceptionRoom {
       generationConfig: {
         responseModalities: ["AUDIO"],
         speechConfig,
+        // COST GUARD [RECEPT-COST-THINK-1] (owner mandate 2026-07-21): DISABLE
+        // thinking. Gemini bills thinking tokens at the OUTPUT rate (~$12/1M), which
+        // silently wrecks the economics of a simple message-taker. thinkingCfg() picks
+        // the per-model form — gemini-3 → thinkingLevel "low" (its floor; sending
+        // thinkingBudget to a gemini-3 model 400s), older models → thinkingBudget 0.
+        ...thinkingCfg(init.model),
       },
       systemInstruction: { parts: [{ text: init.system_prompt }] },
       inputAudioTranscription: {},
