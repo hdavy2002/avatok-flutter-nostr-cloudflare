@@ -252,7 +252,7 @@ export class CampaignDO {
 
     const db = metaDb(this.env);
     const attempt = await db.prepare(
-      "SELECT attempt_uuid, campaign_id, contact_id, outcome, ended_at, tokens_reserved FROM campaign_call_attempts WHERE attempt_uuid=?1",
+      "SELECT attempt_uuid, campaign_id, contact_id, outcome, answered_at, ended_at, tokens_reserved, handover_status FROM campaign_call_attempts WHERE attempt_uuid=?1",
     ).bind(attemptUuid).first<any>();
     if (!attempt) return json({ error: "attempt not found" }, 404);
 
@@ -262,21 +262,54 @@ export class CampaignDO {
 
     const now = Date.now();
 
-    // Billable tokens are computed from the actual call duration (§5 "AI
-    // talk time 6 tokens/min"), not trusted from the webhook body — falls
-    // back to ai_duration_s if the PSTN-leg duration wasn't reported. A
-    // minimum of 1 token is charged for any attempt that reaches settlement
-    // (covers e.g. a machine/answered call with a sub-minute duration).
-    const tokensSpent = Math.max(1, Math.ceil((pstnTotalDurationS || aiDurationS || 0) / 60) * 6);
+    // ── Split-tariff billing (§5 "tariff switch 6->2 at AI disconnect/
+    // BridgeConfirmed, no blending"). campaign_call_attempts has no
+    // `handover_connected_at` column — the bridge instant is instead read
+    // from the fsm_transitions audit trail (call_fsm.ts's
+    // applyHandoverTransition writes a `to_state='BridgeConfirmed'` row the
+    // moment the caller-leg conference join event lands), so this is a
+    // read-only lookup against data call_fsm.ts already persists.
+    const bridgeRow = await db
+      .prepare(`SELECT ts FROM fsm_transitions WHERE attempt_uuid=?1 AND to_state='BridgeConfirmed' ORDER BY ts ASC LIMIT 1`)
+      .bind(attemptUuid)
+      .first<{ ts: number }>();
+    const bridgeConnectedAt = bridgeRow ? Number(bridgeRow.ts) : null;
+
+    let tokensSpent: number;
+    let billedAiDurationS = aiDurationS;
+    let humanSegmentSeconds: number | null = null;
+
+    if (bridgeConnectedAt != null && attempt.answered_at) {
+      // Connected handover: AI-talk segment (answered -> bridge) billed at
+      // 6 tokens/min, bridged human-to-human segment (bridge -> hangup)
+      // billed at 2 tokens/min — no blended rate (§5).
+      const aiSeconds = Math.max(0, (bridgeConnectedAt - Number(attempt.answered_at)) / 1000);
+      const humanSeconds = Math.max(0, (now - bridgeConnectedAt) / 1000);
+      tokensSpent = Math.ceil(aiSeconds / 60) * 6 + Math.ceil(humanSeconds / 60) * 2;
+      billedAiDurationS = Math.round(aiSeconds);
+      humanSegmentSeconds = Math.round(humanSeconds);
+    } else {
+      // Non-handover attempt (or a handover that never reached
+      // BridgeConfirmed) — unchanged existing single-tariff computation.
+      // Billable tokens are computed from the actual call duration (§5 "AI
+      // talk time 6 tokens/min"), not trusted from the webhook body — falls
+      // back to ai_duration_s if the PSTN-leg duration wasn't reported. A
+      // minimum of 1 token is charged for any attempt that reaches
+      // settlement (covers e.g. a machine/answered call with a sub-minute
+      // duration).
+      tokensSpent = Math.max(1, Math.ceil((pstnTotalDurationS || aiDurationS || 0) / 60) * 6);
+    }
 
     // Record the terminal facts on the attempt row. `outcome` itself is NOT
     // written here — CallFSM (via the route's applyAttemptTransition call)
     // already owns and persisted that column; re-writing it here would be a
-    // second, unaudited writer of the same fact.
+    // second, unaudited writer of the same fact. `human_segment_seconds` is
+    // written unconditionally (null on non-handover attempts) so analytics/
+    // wallet detail can show the AI/human split when it applies.
     await db.prepare(
-      `UPDATE campaign_call_attempts SET ended_at=?2, hangup_cause_raw=?3, ai_duration_s=?4, pstn_total_duration_s=?5, tokens_spent=?6
+      `UPDATE campaign_call_attempts SET ended_at=?2, hangup_cause_raw=?3, ai_duration_s=?4, pstn_total_duration_s=?5, tokens_spent=?6, human_segment_seconds=?7
        WHERE attempt_uuid=?1`,
-    ).bind(attemptUuid, now, hangupCauseRaw, aiDurationS, pstnTotalDurationS, tokensSpent).run();
+    ).bind(attemptUuid, now, hangupCauseRaw, billedAiDurationS, pstnTotalDurationS, tokensSpent, humanSegmentSeconds).run();
 
     // ── Idempotency guard (§4 "duplicate webhooks are idempotent") — checked
     // BEFORE this call's own settlement work lands, so it reflects whether a
@@ -297,6 +330,12 @@ export class CampaignDO {
     if (row) {
       await walletConsumeReserved(this.env, row.uid, attemptUuid, tokensSpent, `${attemptUuid}:settle`).catch(() => null);
       await walletReleaseReservation(this.env, row.uid, attemptUuid, `${attemptUuid}:release`).catch(() => null);
+      // The handover controller reserves its rolling top-up (§5 "20 tokens
+      // per 10 min at the 2/min tariff") under a SEPARATE ref (`:ho`) from
+      // the base dial reservation settled above — release it too so no
+      // headroom is left dangling. Harmless no-op (idempotent) if this
+      // attempt never went through handover / never had a top-up reserved.
+      await walletReleaseReservation(this.env, row.uid, `${attemptUuid}:ho`, `${attemptUuid}:ho-release`).catch(() => null);
     }
 
     // ── Billing-lifecycle marker (§4): 'settled' is audit-only — it never
