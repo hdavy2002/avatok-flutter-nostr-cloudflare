@@ -851,6 +851,8 @@ export class ReceptionRoomCf {
     return this.cfChat(this.cfHistory, 120); // short replies → faster LLM + TTS
   }
 
+  private sleep(ms: number): Promise<void> { return new Promise((r) => setTimeout(r, Math.max(0, ms))); }
+
   /** Send one fully-synthesized PCM16 @24k buffer to the caller: record it, fire the
    *  first-audio ack once, then chunk it out — stopping immediately on barge-in or
    *  finalize. Returns bytes sent. Shared by the DeepInfra chunked-streaming path. */
@@ -961,26 +963,48 @@ export class ReceptionRoomCf {
         if (!this.firstAudioSent) { this.firstAudioSent = true; this.sendReadyAck(); this.ev("ava_recept_first_audio", { engine: "cf", ms: Date.now() - this.startedAt }); }
         for (let o = 0; o < gPcm.byteLength && !this.cfBarged && !this.finalized; o += 24000) { try { this.client?.send(gPcm.subarray(o, Math.min(o + 24000, gPcm.byteLength))); } catch { /* caller gone */ } }
       } else if (body && typeof body.getReader === "function") {
+        // REALTIME PACING (RECEPT-DEEPINFRA-PACE): a realtime TTS (Inworld) generates
+        // FASTER than realtime, so forwarding each chunk the instant it arrives BURSTS
+        // several seconds of PCM at the phone at once. Its realtime jitter buffer then
+        // overflows and periodically drops a frame → a rhythmic "tick tick" under Ava's
+        // voice. Fix: re-slice into 50ms frames and pace them to wall-clock, keeping only
+        // a small ~200ms lead buffered at the client. First audio is still immediate; the
+        // client just receives audio at ~the rate it plays it. Barge-in still fires during
+        // the paced sleeps (incoming caller audio is handled on the event loop).
         const reader = body.getReader();
+        const FRAME = 2400;   // 50ms @ 24kHz mono PCM16
+        const LEAD_MS = 200;  // target audio buffered ahead of playback
+        const speakStart = Date.now();
+        let audioMsSent = 0;
+        let acc = new Uint8Array(0);
+        const flushFrame = async (frame: Uint8Array): Promise<void> => {
+          if (this.pcmBytes < ReceptionRoomCf.MAX_REC_BYTES) { this.pcmOut.push({ caller: false, pcm: frame }); this.pcmBytes += frame.byteLength; }
+          this.avaBytes += frame.byteLength; bytesSent += frame.byteLength;
+          if (!firstChunkAt) firstChunkAt = Date.now();
+          if (!this.firstAudioSent) { this.firstAudioSent = true; this.sendReadyAck(); this.ev("ava_recept_first_audio", { engine: "cf", ms: Date.now() - this.startedAt }); }
+          try { this.client?.send(frame); } catch { /* caller gone */ }
+          audioMsSent += (frame.byteLength / 2) / 24; // samples/24 = ms of audio @24kHz
+          const ahead = audioMsSent - (Date.now() - speakStart);
+          if (ahead > LEAD_MS && !this.cfBarged && !this.finalized) await this.sleep(ahead - LEAD_MS);
+        };
         for (;;) {
           if (this.cfBarged || this.finalized) { try { await reader.cancel(); } catch { /* ignore */ } break; }
           const { done, value } = await reader.read();
           if (done) break;
           if (!value || !value.length) continue;
           let chunk: Uint8Array = value;
-          if (firstChunk) { chunk = stripWavHeader(value); firstChunk = false; } // strip a leading WAV header if container:none wasn't honored
-          // 16-BIT ALIGNMENT: Deepgram streams arbitrary byte lengths. An odd-length
-          // PCM16 chunk shifts every later sample by a byte → pure noise. So prepend
-          // any carried byte and hold back a trailing odd byte for the next chunk.
+          if (firstChunk) { chunk = stripWavHeader(value); firstChunk = false; } // strip a leading WAV header if present
+          // 16-BIT ALIGNMENT: an odd-length PCM16 chunk shifts every later sample by a
+          // byte → noise. Prepend any carried byte; hold back a trailing odd byte.
           if (carry) { const m = new Uint8Array(carry.length + chunk.length); m.set(carry, 0); m.set(chunk, carry.length); chunk = m; carry = null; }
           if (chunk.length % 2 === 1) { carry = new Uint8Array([chunk[chunk.length - 1]]); chunk = chunk.subarray(0, chunk.length - 1); }
           if (chunk.length === 0) continue;
-          if (this.pcmBytes < ReceptionRoomCf.MAX_REC_BYTES) { this.pcmOut.push({ caller: false, pcm: chunk }); this.pcmBytes += chunk.byteLength; }
-          this.avaBytes += chunk.byteLength; bytesSent += chunk.byteLength;
-          if (!firstChunkAt) firstChunkAt = Date.now();
-          if (!this.firstAudioSent) { this.firstAudioSent = true; this.sendReadyAck(); this.ev("ava_recept_first_audio", { engine: "cf", ms: Date.now() - this.startedAt }); }
-          try { this.client?.send(chunk); } catch { /* caller gone */ }
+          const merged = new Uint8Array(acc.length + chunk.length); merged.set(acc, 0); merged.set(chunk, acc.length); acc = merged;
+          let o = 0;
+          while (acc.length - o >= FRAME && !this.cfBarged && !this.finalized) { await flushFrame(acc.subarray(o, o + FRAME)); o += FRAME; }
+          acc = acc.subarray(o);
         }
+        if (acc.length && !this.cfBarged && !this.finalized) await flushFrame(acc);
       } else {
         // Fallback: buffered path (binding didn't give a streamable body).
         const pcm = await ttsToPcm(resp);
