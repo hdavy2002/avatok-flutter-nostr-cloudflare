@@ -82,6 +82,10 @@ import { getAgentSettings, putAgentSettings, listAgentServices, createAgentServi
 // [WP3] Voicemail bot session start (plan §3 step 4 / §7 item 5 / §15.5).
 import { voicemailStart, voicemailRecording } from "./routes/voicemail_routes";
 import { pstnRoute } from "./routes/pstn";
+// [AVA-CAMP-B2-WIRE] Outbound AI calling campaigns — PSTN bridge + CRUD API
+// (dark behind campaignDialerEnabled; Specs/OUTBOUND-AI-CALLING-CAMPAIGNS.md).
+import { campaignPstnRoute } from "./routes/campaign_pstn";
+import { campaignsRoute } from "./routes/campaigns";
 // [TEL-TIERS-1] Telephony subscription tiers (Teler/Vobiz resale, Phase 4).
 import { telephonySubscribe, telephonyAddon, telephonyCancel, telephonyStatus } from "./routes/telephony_tiers";
 // [AVA-PSTN-AGENT-1] Vobiz bidirectional media-stream WS → VobizAgentRoom DO
@@ -203,6 +207,7 @@ export { VoicemailRoom } from "./do/voicemail_room"; // [WP3] carrier-style voic
 export { AgentVoiceRoom } from "./do/agent_voice_room"; // [WP4] Ava AI Voice Agent — Grok realtime bridge (dark behind voiceAgent)
 export { VobizAgentRoom } from "./do/vobiz_agent_room"; // [AVA-PSTN-AGENT-1] live Gemini agent on Vobiz DID calls (dark behind pstnAgentEnabled)
 export { DialerGateDO } from "./do/dialer_gate_do"; // [AVA-CAMP-B1-GATE] per-user outbound-dial channel pool + rate limit (dark — nothing calls it yet, campaignDialerEnabled)
+export { CampaignDO } from "./do/campaign_do"; // [AVA-CAMP-B2-WIRE] per-campaign SQLite-backed DO (call_fsm state, pacing; dark behind campaignDialerEnabled)
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -609,6 +614,14 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // Specs/PLAN-2026-07-16-ava-receptionist-guardian-FINAL.md). Single
       // startsWith dispatcher — routes/pstn.ts parses the sub-path itself.
       if (p.startsWith("/api/pstn/")) return await pstnRoute(req, env, p);
+      // [AVA-CAMP-B2-WIRE] Outbound AI calling campaigns (dark behind
+      // campaignDialerEnabled). campaign-pstn (per-call PSTN bridge) is checked
+      // before the broader campaigns CRUD matcher — the two prefixes never
+      // actually collide ("/api/campaign-pstn/" vs "/api/campaigns" diverge at
+      // the 15th char), but ordering the more specific path first keeps the
+      // precedence obviously correct as routes are added later.
+      if (p.startsWith("/api/campaign-pstn/")) return await campaignPstnRoute(req, env, p);
+      if (p.startsWith("/api/campaigns")) return await campaignsRoute(req, env, p);
       // [TEL-TIERS-1] Telephony subscription tiers (Phase 4, Specs/PLAN-2026-07-19-
       // tokens-cockpit-pstn-master.md): ₹700 Tier-1 / ₹2,500 Tier-2 / ₹700 add-on,
       // token-charged, lazy monthly renewal. Concurrency gauges live in pstn.ts.

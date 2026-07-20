@@ -134,6 +134,8 @@ export interface Env {
   // uid. Phase B1 scaffolding — DARK, nothing calls it yet (campaignDialerEnabled
   // defaults false). Specs/OUTBOUND-AI-CALLING-CAMPAIGNS.md §2, §6.3.
   DIALER_GATE: DurableObjectNamespace;
+  // [AVA-CAMP-B2-WIRE] Per-campaign SQLite-backed DO (call_fsm state, pacing).
+  CAMPAIGN_DO: DurableObjectNamespace;
 
   // vars
   BLOSSOM_BASE_URL: string;

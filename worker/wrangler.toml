@@ -420,6 +420,11 @@ class_name = "VobizAgentRoom"
 name = "DIALER_GATE"
 class_name = "DialerGateDO"
 
+# [AVA-CAMP-B2-WIRE] Per-campaign SQLite-backed DO (call_fsm state, pacing).
+[[durable_objects.bindings]]
+name = "CAMPAIGN_DO"
+class_name = "CampaignDO"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["CallRoom"]
@@ -506,6 +511,12 @@ new_sqlite_classes = ["VobizAgentRoom"]
 [[migrations]]
 tag = "v17"
 new_sqlite_classes = ["DialerGateDO"]
+
+# [AVA-CAMP-B2-WIRE] Per-campaign SQLite-backed DO (call_fsm state, pacing).
+# DARK behind campaignDialerEnabled.
+[[migrations]]
+tag = "v18"
+new_sqlite_classes = ["CampaignDO"]
 
 # Brain reasoning + observability config (vars; secrets set via wrangler):
 #   BRAIN_REASONER_MODEL  — default @cf/meta/llama-3.1-8b-instruct-fp8 (8B)
@@ -801,6 +812,11 @@ class_name = "VobizAgentRoom"
 name = "DIALER_GATE"
 class_name = "DialerGateDO"
 
+# [AVA-CAMP-B2-WIRE] Per-campaign SQLite-backed DO (mirrored from prod).
+[[env.staging.durable_objects.bindings]]
+name = "CAMPAIGN_DO"
+class_name = "CampaignDO"
+
 [[env.staging.migrations]]
 tag = "v1"
 new_sqlite_classes = ["CallRoom"]
@@ -878,3 +894,9 @@ new_sqlite_classes = ["VobizAgentRoom"]
 [[env.staging.migrations]]
 tag = "v17"
 new_sqlite_classes = ["DialerGateDO"]
+
+# [AVA-CAMP-B2-WIRE] Per-campaign SQLite-backed DO (mirrored from prod). DARK
+# behind campaignDialerEnabled.
+[[env.staging.migrations]]
+tag = "v18"
+new_sqlite_classes = ["CampaignDO"]
