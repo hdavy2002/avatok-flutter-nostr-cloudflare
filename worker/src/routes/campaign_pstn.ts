@@ -36,6 +36,7 @@ import type { Env } from "../types";
 import { json } from "../util";
 import { metaDb } from "../db/shard";
 import { applyAttemptTransition, type AttemptState } from "../lib/call_fsm";
+import { track } from "../hooks";
 // [AVA-CAMP-F4-CTRL] warm-transfer human-handover controller — see
 // lib/campaign_handover.ts for the FSM orchestration; this file only wires
 // its webhook subpaths (secret-check + attempt lookup are reused from above).
@@ -154,6 +155,13 @@ async function handleAnswer(req: Request, env: Env, secret: string, attemptUuid:
 
     const ctx = await lookupAttemptContext(env, attemptUuid);
     if (!ctx) return safetyNetXml(); // attempt row vanished — never leave the callee on dead air
+
+    // [AVA-CAMP-D-ANALYTICS] call_answered — §12.1 event taxonomy. Additive;
+    // does not affect the XML/handoff path above or below it.
+    void track(env, ctx.uid, "call_answered", "avatok", {
+      campaign_id: ctx.campaign_id, attempt_uuid: attemptUuid,
+      analytics_schema_version: 1, purpose: "LIVE",
+    });
 
     // Minimal compiled prompt for B2 (full compilation is Phase C, §8 "Prompt
     // compiled server-side, frozen with compiled_prompt_hash + prompt_version
