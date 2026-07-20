@@ -41,6 +41,10 @@ import { track } from "../hooks";
 import { getTelephonyProvider } from "../lib/telephony_provider";
 import { walletReserve, walletConsumeReserved, walletReleaseReservation } from "../routes/wallet";
 import { applyAttemptTransition } from "../lib/call_fsm";
+import { readConfig } from "../routes/config";
+// [AVA-CAMP-P-ENGINE] rolling handover top-up + conference-TTL engine pieces.
+import { readActiveHandovers, removeActiveHandover, getHandoverBlob, type HandoverBlob } from "../lib/campaign_handover";
+import { maybeRenewDid } from "../lib/campaign_did_renewal";
 
 // Same callback-base convention as routes/pstn.ts (PUBLIC_BASE is not
 // exported from there, so it is duplicated here — keep in lock-step if it
@@ -59,6 +63,11 @@ const CIRCUIT_BREAKER_CONSECUTIVE = 20; // §6.5
 const CIRCUIT_BREAKER_WINDOW_MS = 5 * 60_000;
 const CIRCUIT_BREAKER_5XX_RATE = 0.5;
 const HEARTBEAT_MIN_INTERVAL_MS = 60_000; // §15 "every 60-120s while not progressing"
+// [AVA-CAMP-P-ENGINE] rolling handover top-up + conference-TTL engine (§4/§5).
+const CONFERENCE_TTL_MS = 60_000;          // §4 "conference TTL 60s" single-participant watchdog
+const HANDOVER_SERVICE_TICK_MS = 30_000;   // "~30-60s alarm when only handovers remain"
+const HANDOVER_TOPUP_FALLBACK_MIN = 10;    // mirrors campaignHandoverTopupMin's spec default
+const HANDOVER_TOPUP_TOKENS_PER_MIN_FALLBACK = 2; // mirrors campaignHandoverTokensPerMin's spec default
 
 type CampaignRow = {
   id: string; uid: string; status: string;
@@ -488,7 +497,12 @@ export class CampaignDO {
   }
 
   // ---------------------------------------------------------------------
-  // alarm() — the dial tick (§6.3)
+  // alarm() — the dial tick (§6.3), wrapped so an active handover
+  // (`ho_active:<campaign_id>` non-empty) keeps this DO alarming and getting
+  // rolling top-ups / conference-TTL enforcement EVEN IF the dial loop itself
+  // has nothing left to do (campaign paused/window_wait/completed/etc — a
+  // handover on the LAST call must still be serviced). See
+  // serviceActiveHandovers() + alarmDialLoop() below.
   // ---------------------------------------------------------------------
   async alarm(): Promise<void> {
     const campaignId = this.campaignId ?? (await this.state.storage.get<string>("campaignId"));
@@ -499,6 +513,31 @@ export class CampaignDO {
     const row = await this.loadCampaign(campaignId);
     if (!row) return; // campaign row gone — nothing to reconstruct
 
+    let hasActiveHandovers = false;
+    try {
+      hasActiveHandovers = (await readActiveHandovers(this.env, campaignId)).length > 0;
+      if (hasActiveHandovers) await this.serviceActiveHandovers(campaignId, row);
+      // Re-check post-service: a handover that just ended this tick (TTL/
+      // credit-exhaustion/etc) should not by itself force yet another alarm.
+      hasActiveHandovers = (await readActiveHandovers(this.env, campaignId)).length > 0;
+    } catch {
+      /* best-effort — a handover-servicing failure must never break the dial loop */
+    }
+
+    await this.alarmDialLoop(campaignId, row, hasActiveHandovers);
+
+    if (hasActiveHandovers) {
+      // If alarmDialLoop() didn't already schedule a (sooner) alarm of its
+      // own, make sure the active handover still gets serviced on the next
+      // tick — this is the "don't go idle while a handover is live" guarantee.
+      const nextAlarm = await this.state.storage.getAlarm();
+      if (nextAlarm == null) {
+        await this.state.storage.setAlarm(Date.now() + HANDOVER_SERVICE_TICK_MS);
+      }
+    }
+  }
+
+  private async alarmDialLoop(campaignId: string, row: CampaignRow, hasActiveHandovers: boolean): Promise<void> {
     if (row.status === "completed" || row.status === "cancelled") return;
 
     if (row.status === "cancelling") {
@@ -544,10 +583,32 @@ export class CampaignDO {
       await this.heartbeat(campaignId, "paused", "provider", row);
       return;
     }
-    const did = await metaDb(this.env).prepare("SELECT status FROM user_dids WHERE e164=?1").bind(row.did_e164).first<{ status: string }>();
-    if (!did || did.status !== "active") {
+    const didRow = await metaDb(this.env)
+      .prepare("SELECT id, uid, e164, status, next_renewal_at FROM user_dids WHERE e164=?1")
+      .bind(row.did_e164)
+      .first<{ id: string; uid: string; e164: string; status: string; next_renewal_at: number | null }>();
+    if (!didRow) {
       await this.setStatus(campaignId, "paused");
       void track(this.env, row.uid, "dial_denied", "avatok", { campaign_id: campaignId, reason: "did_inactive" });
+      await this.heartbeat(campaignId, "paused", "provider", row);
+      return;
+    }
+    // [AVA-CAMP-P-ENGINE] lazy monthly renewal, checked at admission time (§5
+    // "lazy renewal... past_due pauses campaigns on that DID"). Best-effort:
+    // a renewal-check failure must never block an otherwise-eligible dial, so
+    // fall back to the DID's already-loaded status on any exception.
+    let didStatus = didRow.status;
+    if (didStatus === "active") {
+      try {
+        const renewal = await maybeRenewDid(this.env, didRow);
+        didStatus = renewal.status;
+      } catch { /* best-effort — admit on the pre-renewal-check status */ }
+    }
+    if (didStatus !== "active") {
+      await this.setStatus(campaignId, "paused");
+      void track(this.env, row.uid, "dial_denied", "avatok", {
+        campaign_id: campaignId, reason: didStatus === "past_due" ? "did_past_due" : "did_inactive",
+      });
       await this.heartbeat(campaignId, "paused", "provider", row);
       return;
     }
@@ -583,6 +644,14 @@ export class CampaignDO {
       await this.releaseGate(row.uid, campaignId);
       const stillOutstanding = await this.contactsRemaining(campaignId);
       if (!stillOutstanding && this.inFlight.size === 0) {
+        if (hasActiveHandovers) {
+          // [AVA-CAMP-P-ENGINE] dialing is done, but a handover from the last
+          // call is still bridged — do NOT mark the campaign completed while
+          // `ho_active` is non-empty; back off to the slower handover-service
+          // cadence instead of the tight 2s dial-retry loop below.
+          await this.state.storage.setAlarm(Date.now() + HANDOVER_SERVICE_TICK_MS);
+          return;
+        }
         await this.setStatus(campaignId, "completed", { completed_at: Date.now() });
         void track(this.env, row.uid, "campaign_completed", "avatok", { campaign_id: campaignId, event: "campaign_completed" });
         return;
@@ -597,6 +666,115 @@ export class CampaignDO {
 
     // 7) Won a contact — mint the attempt, reserve tokens, dial.
     await this.dialContact(campaignId, row, won);
+  }
+
+  // ---------------------------------------------------------------------
+  // [AVA-CAMP-P-ENGINE] active-handover servicing (§4 conference TTL / §5
+  // rolling reservation top-up), run every alarm tick while
+  // `ho_active:<campaignId>` is non-empty, independent of the campaign's own
+  // dial status (see alarm()'s wrapper above).
+  // ---------------------------------------------------------------------
+  private async serviceActiveHandovers(campaignId: string, row: CampaignRow): Promise<void> {
+    let cfg: Awaited<ReturnType<typeof readConfig>> | null = null;
+    try { cfg = await readConfig(this.env); } catch { /* fall through to spec defaults below */ }
+    const topupMin = cfg?.campaignHandoverTopupMin ?? HANDOVER_TOPUP_FALLBACK_MIN;
+    const tokensPerMin = cfg?.campaignHandoverTokensPerMin ?? HANDOVER_TOPUP_TOKENS_PER_MIN_FALLBACK;
+    const topupTokens = Math.max(1, Math.round(topupMin * tokensPerMin)) || 20;
+    const windowMs = Math.max(1, topupMin) * 60_000;
+
+    const active = await readActiveHandovers(this.env, campaignId);
+    if (active.length === 0) return;
+
+    const provider = getTelephonyProvider(this.env, "vobiz");
+    const now = Date.now();
+
+    for (const entry of active) {
+      let blob: HandoverBlob | null = null;
+      try { blob = await getHandoverBlob(this.env, entry.attempt_uuid); } catch { /* best-effort */ }
+      if (!blob || !blob.bridge_confirmed) {
+        // Stale/expired KV blob (past the 6h TTL) or something that never
+        // actually bridged — nothing left to service; drop it from the set
+        // so we stop paying the lookup cost on every future tick.
+        await removeActiveHandover(this.env, campaignId, entry.attempt_uuid).catch(() => null);
+        continue;
+      }
+
+      const ownerUid = blob.owner_uid ?? row.uid;
+      const reserveRef = blob.reserve_ref ?? `${entry.attempt_uuid}:ho`;
+      const connectedAt = blob.connected_at ?? entry.connected_at;
+
+      // (b) CONFERENCE TTL — destroy-on-single-participant, checked BEFORE
+      // the top-up so a dead/single-party room never gets topped up first.
+      const members = Number(blob.members) || 0;
+      const singleSince = blob.single_since ?? null;
+      if (members <= 1 && singleSince != null && now - singleSince > CONFERENCE_TTL_MS) {
+        await this.endActiveHandover(campaignId, entry.attempt_uuid, blob, provider, ownerUid, reserveRef, "conf_ttl");
+        void track(this.env, ownerUid, "campaign_handover_conf_ttl", "avatok", {
+          campaign_id: campaignId, attempt_uuid: entry.attempt_uuid,
+        });
+        continue;
+      }
+
+      // (a) ROLLING TOP-UP — reserve one more `topupMin*tokensPerMin`-token
+      // window once elapsed bridged time is approaching the currently-held
+      // headroom. `targetWindowIndex` is the count of TOP-UP windows (beyond
+      // the initial reservation made at connect time) that should already be
+      // held by now; op_id is keyed on that index so re-entering this loop on
+      // every ~30-60s tick within the same window is a safe no-op
+      // (WalletDO/chargeAmount-style op_id dedup), and `topped_up_window`
+      // (persisted on the blob) skips the redundant walletReserve call
+      // entirely once a window is confirmed topped up.
+      const elapsedMs = Math.max(0, now - connectedAt);
+      const targetWindowIndex = Math.floor(elapsedMs / windowMs) + 1;
+      const alreadyToppedUp = Number(blob.topped_up_window) || 0;
+      if (targetWindowIndex > alreadyToppedUp) {
+        const topupOpId = `${entry.attempt_uuid}:ho-topup:${targetWindowIndex}`;
+        const topup = await walletReserve(this.env, ownerUid, topupTokens, reserveRef, topupOpId);
+        if (!topup.ok) {
+          // Credit exhaustion — spec §5 "credit-exhaustion disconnect":
+          // hang up the remaining leg and stop servicing this handover.
+          await this.endActiveHandover(campaignId, entry.attempt_uuid, blob, provider, ownerUid, reserveRef, "topup_exhausted");
+          void track(this.env, ownerUid, "campaign_handover_credit_exhausted", "avatok", {
+            campaign_id: campaignId, attempt_uuid: entry.attempt_uuid, window: targetWindowIndex,
+          });
+          continue;
+        }
+        // Persist the new high-water mark on the blob itself (via the same KV
+        // write path campaign_handover.ts uses) so the next tick's
+        // `alreadyToppedUp` check short-circuits without re-calling the wallet.
+        try {
+          await this.env.TOKENS.put(
+            `ho:${entry.attempt_uuid}`,
+            JSON.stringify({ ...blob, topped_up_window: targetWindowIndex, ts: Date.now() }),
+            { expirationTtl: 6 * 60 * 60 },
+          );
+        } catch { /* best-effort — worst case we just re-call walletReserve (idempotent) next tick */ }
+        void track(this.env, ownerUid, "campaign_handover_topup", "avatok", {
+          campaign_id: campaignId, attempt_uuid: entry.attempt_uuid, window: targetWindowIndex, tokens: topupTokens,
+        });
+      }
+    }
+  }
+
+  /** Hang up whatever's left of a handover's legs, drop it from the active
+   *  set, and release the rolling-top-up reservation remainder. Used by both
+   *  the conference-TTL and credit-exhaustion branches above — the two ways
+   *  this engine forcibly ends a still-bridged handover (as opposed to the
+   *  human/caller hanging up naturally, which lib/campaign_handover.ts's own
+   *  onHandoverLegHangup/onConferenceEvent final-exit path already handles). */
+  private async endActiveHandover(
+    campaignId: string,
+    attemptUuid: string,
+    blob: HandoverBlob,
+    provider: ReturnType<typeof getTelephonyProvider>,
+    ownerUid: string,
+    reserveRef: string,
+    reason: "conf_ttl" | "topup_exhausted",
+  ): Promise<void> {
+    try { if (blob.human_call_uuid) await provider.hangupCall(blob.human_call_uuid); } catch { /* best-effort */ }
+    try { if (blob.caller_call_uuid) await provider.hangupCall(blob.caller_call_uuid); } catch { /* best-effort */ }
+    await removeActiveHandover(this.env, campaignId, attemptUuid).catch(() => null);
+    await walletReleaseReservation(this.env, ownerUid, reserveRef, `${attemptUuid}:ho-release-${reason}`).catch(() => null);
   }
 
   private async tickCancelling(campaignId: string, row: CampaignRow): Promise<void> {

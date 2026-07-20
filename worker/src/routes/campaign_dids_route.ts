@@ -24,6 +24,7 @@ import { metaDb } from "../db/shard";
 import { walletOp } from "./wallet";
 import { chargeAmount } from "../feature_pricing";
 import { getTelephonyProvider } from "../lib/telephony_provider";
+import { maybeRenewDid } from "../lib/campaign_did_renewal";
 
 // ---------------------------------------------------------------------------
 // Gating helper — identical logic to routes/campaigns.ts's gate() (kept as a
@@ -257,7 +258,37 @@ async function listDids(env: Env, uid: string): Promise<Response> {
     .prepare(`SELECT * FROM user_dids WHERE uid=?1 ORDER BY purchased_at DESC`)
     .bind(uid)
     .all<UserDidRow>();
-  return json({ ok: true, dids: (results ?? []).map(didSummary) });
+  const rows = results ?? [];
+
+  // [AVA-CAMP-P-ENGINE] renew-on-read: opportunistic, best-effort lazy
+  // renewal so an owner who views this list (without a campaign tick ever
+  // running that day) still sees an up-to-date status/next_renewal_at rather
+  // than a stale 'active' past its due date. Mirrors the admission-time check
+  // in do/campaign_do.ts's alarm(); a failure here never breaks the listing —
+  // it just serves the pre-renewal snapshot for that row.
+  for (const row of rows) {
+    if (row.status !== "active") continue;
+    try {
+      const renewal = await maybeRenewDid(env, {
+        id: row.id, uid: row.uid, e164: row.e164, next_renewal_at: row.next_renewal_at, status: row.status,
+      });
+      if (renewal.renewed || renewal.status !== row.status) {
+        // Re-read this one row for the authoritative post-renewal
+        // status/next_renewal_at rather than recomputing locally — cheap
+        // (only on the rare tick a renewal/status-flip actually happened).
+        const fresh = await metaDb(env)
+          .prepare(`SELECT status, next_renewal_at FROM user_dids WHERE id=?1`)
+          .bind(row.id)
+          .first<{ status: string; next_renewal_at: number | null }>();
+        if (fresh) {
+          row.status = fresh.status;
+          row.next_renewal_at = fresh.next_renewal_at;
+        }
+      }
+    } catch { /* best-effort — serve the pre-renewal snapshot for this row */ }
+  }
+
+  return json({ ok: true, dids: rows.map(didSummary) });
 }
 
 // ---------------------------------------------------------------------------

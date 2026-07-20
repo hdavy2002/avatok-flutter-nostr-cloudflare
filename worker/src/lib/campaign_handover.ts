@@ -75,7 +75,7 @@ function kvKey(attemptUuid: string): string {
 // KV blob shape
 // ---------------------------------------------------------------------------
 
-interface HandoverBlob {
+export interface HandoverBlob {
   human_call_uuid: string | null;
   caller_call_uuid: string;
   conf_name: string;
@@ -89,6 +89,29 @@ interface HandoverBlob {
   resume_ai?: boolean;
   outcome?: string | null;
   ts?: number;
+  // [AVA-CAMP-P-ENGINE] campaign_id + active-handover bookkeeping. campaign_id
+  // is written once at initiateHandover time (it's on HandoverCtx already,
+  // just wasn't persisted onto the blob before this task) so downstream
+  // webhook-driven code (onConferenceEvent/onHandoverLegHangup) and
+  // CampaignDO's alarm-driven serviceActiveHandovers() can both resolve which
+  // per-campaign `ho_active:<campaign_id>` set this attempt belongs to
+  // without a D1 join. connected_at/members/single_since are the rolling
+  // top-up + conference-TTL state (spec §4/§5): members is derived purely
+  // from Vobiz conference enter/exit events (this is always a 2-party room —
+  // human + caller — so it only ever ranges 0..2); single_since is the epoch
+  // ms the room dropped to exactly 1 participant (cleared back to null the
+  // moment it returns to 2), which campaign_do.ts's alarm compares against
+  // the 60s CONFERENCE_TTL_MS.
+  campaign_id?: string | null;
+  connected_at?: number | null;
+  members?: number;
+  single_since?: number | null;
+  // High-water mark of which rolling top-up window has been reserved so far
+  // (0 = only the initial connect-time reservation) — written by
+  // campaign_do.ts's serviceActiveHandovers() directly via the same `ho:` KV
+  // key so its idempotent-reserve check doesn't have to re-call the wallet on
+  // every tick within an already-topped-up window.
+  topped_up_window?: number;
 }
 
 async function readBlob(env: Env, attemptUuid: string): Promise<HandoverBlob | null> {
@@ -111,6 +134,72 @@ async function writeBlobPatch(
   } catch {
     // best-effort — the FSM/D1 write is the source of truth; a lost blob only
     // degrades the room's ability to poll for "should I resume AI now".
+  }
+}
+
+/** Read-only accessor for CampaignDO's alarm loop (lib/campaign_do.ts) — the
+ *  DO needs the raw blob (members/single_since/connected_at/reserve_ref/
+ *  owner_uid/human_call_uuid/caller_call_uuid) to service rolling top-ups and
+ *  the conference TTL, but must not itself know the KV key shape. */
+export async function getHandoverBlob(env: Env, attemptUuid: string): Promise<HandoverBlob | null> {
+  return readBlob(env, attemptUuid);
+}
+
+// ---------------------------------------------------------------------------
+// Active-handover set — `ho_active:<campaign_id>` (spec §5 rolling top-up /
+// §4 conference TTL). One JSON array of {attempt_uuid, connected_at} per
+// campaign; membership starts at BridgeConfirmed (onConferenceEvent below)
+// and ends the moment the handover is no longer a live bridged call (a final
+// conference exit here, a post-bridge hangup in onHandoverLegHangup, or a
+// TTL/credit-exhaustion disconnect driven by campaign_do.ts's
+// serviceActiveHandovers()). Same "best-effort, never throw" contract as the
+// rest of this module's KV I/O.
+// ---------------------------------------------------------------------------
+
+export interface ActiveHandoverEntry {
+  attempt_uuid: string;
+  connected_at: number;
+}
+
+function activeKey(campaignId: string): string {
+  return `ho_active:${campaignId}`;
+}
+
+export async function readActiveHandovers(env: Env, campaignId: string): Promise<ActiveHandoverEntry[]> {
+  try {
+    const arr = await env.TOKENS.get(activeKey(campaignId), "json");
+    return Array.isArray(arr) ? (arr as ActiveHandoverEntry[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function addActiveHandover(env: Env, campaignId: string, attemptUuid: string, connectedAt: number): Promise<void> {
+  try {
+    const list = await readActiveHandovers(env, campaignId);
+    if (list.some((e) => e.attempt_uuid === attemptUuid)) return;
+    list.push({ attempt_uuid: attemptUuid, connected_at: connectedAt });
+    await env.TOKENS.put(activeKey(campaignId), JSON.stringify(list), { expirationTtl: HO_BLOB_TTL_SEC });
+  } catch {
+    // best-effort — worst case campaign_do.ts's alarm never sees this
+    // handover in the active set and it just doesn't get rolling top-ups /
+    // TTL enforcement; the base reservation + bridge itself are unaffected.
+  }
+}
+
+export async function removeActiveHandover(env: Env, campaignId: string, attemptUuid: string): Promise<void> {
+  try {
+    const list = await readActiveHandovers(env, campaignId);
+    const next = list.filter((e) => e.attempt_uuid !== attemptUuid);
+    if (next.length) {
+      await env.TOKENS.put(activeKey(campaignId), JSON.stringify(next), { expirationTtl: HO_BLOB_TTL_SEC });
+    } else {
+      await env.TOKENS.delete(activeKey(campaignId));
+    }
+  } catch {
+    /* best-effort — a leaked active-set entry self-heals: campaign_do.ts's
+       getHandoverBlob lookup on the next tick will find bridge_confirmed
+       already resolved/gone and no-op it out. */
   }
 }
 
@@ -338,6 +427,9 @@ export async function initiateHandover(
     owner_uid: ctx.ownerUid,
     reserve_ref: reserveRef,
     bridge_confirmed: false,
+    // [AVA-CAMP-P-ENGINE] persisted so onConferenceEvent can add this attempt
+    // to `ho_active:<campaign_id>` at BridgeConfirmed without a D1 lookup.
+    campaign_id: ctx.campaignId,
   });
 
   return { ok: true };
@@ -409,10 +501,6 @@ export async function onConferenceEvent(
   attemptUuid: string,
   event: { leg?: "caller" | "human"; type?: string; callUuid?: string },
 ): Promise<void> {
-  // Vobiz `ConferenceAction` is `enter` | `exit` (see file header) — only a
-  // join ("enter") can confirm the bridge; ignore `exit` and anything else.
-  if (event.type && event.type !== "enter") return;
-
   const blob = await readBlob(env, attemptUuid);
   if (!blob) return; // no handover context to correlate against — nothing to do
 
@@ -421,45 +509,80 @@ export async function onConferenceEvent(
     if (event.callUuid === blob.caller_call_uuid) leg = "caller";
     else if (blob.human_call_uuid && event.callUuid === blob.human_call_uuid) leg = "human";
   }
-  if (leg !== "caller") return; // only the CALLER's join confirms the bridge
 
-  const db = metaDb(env);
-  const now = Date.now();
-  await applyHandoverTransition(db, attemptUuid, "BridgeConfirmed", {
-    trigger: "webhook",
-    correlationId: attemptUuid,
-    patch: { handover_connected_at: now },
-  });
-  await applyHandoverTransition(db, attemptUuid, "AILeaving", { trigger: "system", correlationId: attemptUuid });
+  const isEnter = event.type === "enter";
+  const isExit = event.type === "exit";
+  const wasBridged = !!blob.bridge_confirmed;
 
-  // applyHandoverTransition's own write leaves the FINE-GRAINED state name
-  // ('AILeaving', and eventually 'Completed') in `handover_status`. This
-  // module's own eligibility queries (checkEligibility's daily-limit/"busy"
-  // checks above) and the coarse enum documented on the column
-  // (none|attempted|connected|failed|failed_machine|caller_abandoned) both
-  // expect the literal string 'connected' once bridged — force it here.
-  // deriveHandoverState (lib/call_fsm.ts) already maps 'connected' back to
-  // 'Completed' for the FSM's own re-derivation, so this is loss-free.
-  try {
-    await db.prepare(`UPDATE campaign_call_attempts SET handover_status='connected' WHERE attempt_uuid=?1`).bind(attemptUuid).run();
-  } catch {
-    /* best-effort — the fsm_transitions audit rows above are already durable */
+  // Only the CALLER's own "enter" can confirm the bridge, and only once (a
+  // human-alone "enter" — the owner waiting in the whisper room BEFORE the
+  // caller's transfer lands — must NOT be mistaken for a bridge or start the
+  // single-participant TTL clock; it is a normal 1-participant pre-bridge
+  // state, not a "conference dropped to 1" state).
+  if (isEnter && leg === "caller" && !wasBridged) {
+    const db = metaDb(env);
+    const now = Date.now();
+    await applyHandoverTransition(db, attemptUuid, "BridgeConfirmed", {
+      trigger: "webhook",
+      correlationId: attemptUuid,
+      patch: { handover_connected_at: now },
+    });
+    await applyHandoverTransition(db, attemptUuid, "AILeaving", { trigger: "system", correlationId: attemptUuid });
+
+    // applyHandoverTransition's own write leaves the FINE-GRAINED state name
+    // ('AILeaving', and eventually 'Completed') in `handover_status`. This
+    // module's own eligibility queries (checkEligibility's daily-limit/"busy"
+    // checks above) and the coarse enum documented on the column
+    // (none|attempted|connected|failed|failed_machine|caller_abandoned) both
+    // expect the literal string 'connected' once bridged — force it here.
+    // deriveHandoverState (lib/call_fsm.ts) already maps 'connected' back to
+    // 'Completed' for the FSM's own re-derivation, so this is loss-free.
+    try {
+      await db.prepare(`UPDATE campaign_call_attempts SET handover_status='connected' WHERE attempt_uuid=?1`).bind(attemptUuid).run();
+    } catch {
+      /* best-effort — the fsm_transitions audit rows above are already durable */
+    }
+
+    // Both legs are in the room the instant the bridge is confirmed ->
+    // members=2, no single-participant TTL clock running yet.
+    await writeBlobPatch(env, attemptUuid, blob, {
+      bridge_confirmed: true, connected_at: now, members: 2, single_since: null,
+    });
+
+    // [AVA-CAMP-P-ENGINE] register with the per-campaign active-handover set
+    // so campaign_do.ts's alarm starts servicing rolling top-ups / conf TTL
+    // for this attempt. Best-effort — a missing campaign_id (should not
+    // happen; written at initiateHandover time) just means no top-up/TTL
+    // servicing, not a broken bridge.
+    if (blob.campaign_id) await addActiveHandover(env, blob.campaign_id, attemptUuid, now);
+    return;
   }
 
-  await writeBlobPatch(env, attemptUuid, blob, { bridge_confirmed: true });
+  if (!wasBridged) return; // pre-bridge, non-confirming event — nothing else to do
 
-  // Conference TTL (60s) + destroy-on-single-participant (spec §4) — NOT
-  // actively enforced here; would need a DO alarm/timer polling conference
-  // membership after one side leaves, which this stateless webhook handler
-  // can't do. In practice the common cases are still covered without it:
-  //   - owner hangs up -> humanAnswerXml's `endConferenceOnExit="true"` makes
-  //     Vobiz end the room for everyone (owner is the moderator).
-  //   - caller hangs up -> the existing attempt-level hangup webhook
-  //     (routes/campaign_pstn.ts handleHangup) already finalizes the attempt
-  //     regardless of conference state.
-  // The unhandled sliver is a stuck single-participant room if Vobiz's own
-  // endConferenceOnExit somehow doesn't fire — TODO(fast-follow): a DO-based
-  // watchdog if this is ever observed in production telemetry.
+  // Post-bridge member-count / single-participant-TTL bookkeeping (spec §4
+  // "destroy-on-single-participant"). This is a strictly 2-party room (human
+  // + caller), so `members` only ever ranges 0..2.
+  if (isEnter || isExit) {
+    const prevMembers = Math.max(0, Number(blob.members) || 0);
+    const nextMembers = isEnter ? Math.min(2, prevMembers + 1) : Math.max(0, prevMembers - 1);
+    const singleSince = nextMembers === 1 ? (blob.single_since ?? Date.now()) : null;
+    await writeBlobPatch(env, attemptUuid, blob, { members: nextMembers, single_since: singleSince });
+
+    if (isExit && nextMembers <= 0 && blob.campaign_id) {
+      // Final exit — both parties are gone. Tear down the active-set entry
+      // and release whatever's left of the rolling reservation NOW rather
+      // than waiting for campaign_do.ts's 60s conference-TTL watchdog to
+      // notice on its next tick (that watchdog is the fallback for the case
+      // where Vobiz's own endConferenceOnExit/exit callback doesn't fire
+      // cleanly, not the primary path).
+      await removeActiveHandover(env, blob.campaign_id, attemptUuid);
+      if (blob.owner_uid) {
+        const reserveRef = blob.reserve_ref ?? `${attemptUuid}:ho`;
+        await walletReleaseReservation(env, blob.owner_uid, reserveRef, `${attemptUuid}:ho-release-final-exit`).catch(() => null);
+      }
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -472,7 +595,26 @@ export async function onConferenceEvent(
 
 export async function onHandoverLegHangup(env: Env, attemptUuid: string, which: "human" | "caller"): Promise<void> {
   const blob = await readBlob(env, attemptUuid);
-  if (blob?.bridge_confirmed) return; // post-bridge — not our concern
+
+  if (blob?.bridge_confirmed) {
+    // Post-bridge: this is now an ordinary human-to-human PSTN segment.
+    // Attempt-level settlement (outcome, tokens_spent, the BASE `:ho`
+    // reservation-vs-spend true-up) is owned exclusively by
+    // routes/campaign_pstn.ts's handleHangup -> CampaignDO.onCallEnded — do
+    // NOT duplicate that here. This function's only remaining job post-bridge
+    // is [AVA-CAMP-P-ENGINE] active-handover bookkeeping cleanup: take this
+    // attempt out of `ho_active:<campaign_id>` (so campaign_do.ts's alarm
+    // stops rolling-top-up/TTL-servicing it) and release whatever's left of
+    // the rolling-top-up reservation headroom — best-effort and idempotent
+    // (harmless no-op if onConferenceEvent's final-exit path, or
+    // campaign_do.ts's TTL/credit-exhaustion path, already did this).
+    if (blob.campaign_id) await removeActiveHandover(env, blob.campaign_id, attemptUuid);
+    if (blob.owner_uid) {
+      const reserveRef = blob.reserve_ref ?? `${attemptUuid}:ho`;
+      await walletReleaseReservation(env, blob.owner_uid, reserveRef, `${attemptUuid}:ho-release-hangup`).catch(() => null);
+    }
+    return;
+  }
 
   const db = metaDb(env);
   const ownerUid = blob?.owner_uid ?? (await lookupOwnerUid(env, attemptUuid));
