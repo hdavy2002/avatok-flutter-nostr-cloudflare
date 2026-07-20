@@ -53,6 +53,14 @@ class CallOutcomeMenu extends StatefulWidget {
   /// the button honest and blocks double-starts.
   final bool voicemailInProgress;
 
+  /// [AVACALL-MENU-1] Redial the callee (audio). CallScreen pops this screen and
+  /// re-launches the 1:1 call. null hides the option.
+  final VoidCallback? onCallAgain;
+
+  /// [AVACALL-MENU-1] Open the DM thread with the callee so the caller can send a
+  /// message. CallScreen pops and pushes the chat thread. null hides the option.
+  final VoidCallback? onMessage;
+
   const CallOutcomeMenu({
     super.key,
     required this.session,
@@ -61,6 +69,8 @@ class CallOutcomeMenu extends StatefulWidget {
     required this.onClosed,
     this.onLeaveVoicemail,
     this.voicemailInProgress = false,
+    this.onCallAgain,
+    this.onMessage,
   });
 
   @override
@@ -253,8 +263,39 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
                 textAlign: TextAlign.center, style: ADText.preview()),
             const SizedBox(height: 18),
 
-            // 1) Talk to Ava — audio calls only; greyed at the daily cap.
-            if (!s.video) ...[
+            // [AVACALL-MENU-1] Call again — redial the callee (audio). Top of the
+            // menu because it's the most common follow-up to a declined/busy call.
+            if (widget.onCallAgain != null) ...[
+              AdButton(
+                label: 'Call again',
+                variant: AdButtonVariant.primary,
+                fullWidth: true,
+                fontSize: 16,
+                onPressed: (_sending || _recording) ? null : widget.onCallAgain,
+              ),
+              const SizedBox(height: 10),
+            ],
+
+            // [AVACALL-MENU-1] Message — open the DM thread with the callee.
+            if (widget.onMessage != null) ...[
+              AdButton(
+                label: 'Message',
+                variant: AdButtonVariant.teal,
+                fullWidth: true,
+                fontSize: 16,
+                onPressed: (_sending || _recording) ? null : widget.onMessage,
+              ),
+              const SizedBox(height: 10),
+            ],
+
+            // 1) Talk to Ava — audio calls only, and ONLY when the callee actually
+            // has a receptionist available ([AVACALL-MENU-2] owner decision: hide,
+            // don't show-and-break). A greyed "Talk to Ava" on a callee with no Ava
+            // is a dead-end button, so the option is omitted entirely when
+            // `_avaAvailable` is false. The daily-cap case (`_avaCapped`) is
+            // different — Ava exists but the caller is out of free sessions today —
+            // so that still renders as an honest, disabled "daily limit reached".
+            if (!s.video && _avaAvailable) ...[
               AdButton(
                 label: _avaCapped
                     ? 'Talk to Ava — daily limit reached'
@@ -262,7 +303,7 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
                 variant: AdButtonVariant.primary,
                 fullWidth: true,
                 fontSize: 16,
-                onPressed: (!_avaAvailable || _avaCapped || _sending || _recording)
+                onPressed: (_avaCapped || _sending || _recording)
                     ? null
                     : () {
                         // ignore: unawaited_futures
