@@ -315,6 +315,14 @@ class CallSession {
   /// [CALL-CONNECT-WATCHDOG-1] Direction-agnostic backstop against an infinite
   /// "Connecting…". Armed in [start], cancelled on connect and in [_teardown].
   Timer? _connectWatchdog;
+  /// [AVACALL-WATCHDOG-2] FAST connect-timeout for the accepted (callee) side.
+  /// The 45s [_connectWatchdog] above is the last-resort backstop, but a callee
+  /// who accepted a call whose caller had ALREADY cancelled (2026-07-20 incident)
+  /// has no peer to ever answer — making them wait the full 45s on "connecting"
+  /// is dishonest. This shorter timer ends such a call at ~10s when we are
+  /// incoming/accepted and have seen NO peer AND no SDP answer. Same skip-guards
+  /// as the 45s timer (Ava/menu/agent own long-lived non-connected states).
+  Timer? _connectWatchdogFast;
   final RingbackPlayer _ringback = RingbackPlayer();
   ReceptionistCall? _receptionist;
   bool _receptionistActive = false;
@@ -805,6 +813,47 @@ class CallSession {
       });
       _endWith('network-error', reason: 'connect-timeout');
     });
+    // [AVACALL-WATCHDOG-2 2026-07-20] FAST connect-timeout for the accepted-but-
+    // no-peer case. An incoming/accepted leg that has seen NO peer (_peerGens
+    // empty) AND no SDP answer within ~10s is almost certainly answering a call
+    // whose caller already cancelled (the ring push out-raced the cancel push in
+    // the incident) — there is nobody on the other end to ever connect. End it
+    // honestly at 10s instead of the 45s backstop. This does NOT touch the
+    // outgoing / rich no-answer flow (guarded on !config.outgoing) and reuses the
+    // exact same skip-guards as the 45s timer so it never pre-empts Ava / the
+    // outcome menu / a live agent hand-off.
+    if (!config.outgoing) {
+      _connectWatchdogFast = Timer(const Duration(seconds: 10), () {
+        if (_ended || _connected) return;
+        // Only fire for the genuine "never saw a peer, never got an answer" case.
+        if (_peerGens.isNotEmpty || _gotSdpAnswer) return;
+        final avaOwnsIt =
+            _receptionistActive || _receptionist != null || _avaCountingDown;
+        final menuOwnsIt = _phase == 'outcome-menu';
+        if (avaOwnsIt || menuOwnsIt || _phase == 'agent-handoff') {
+          Analytics.capture('call_connect_watchdog_skipped', {
+            'call_id': config.room,
+            'reason': avaOwnsIt
+                ? 'ava_active'
+                : (menuOwnsIt ? 'outcome_menu' : 'agent_handoff'),
+            'phase': _phase,
+            'variant': 'fast-accept',
+          });
+          return;
+        }
+        Analytics.capture('call_connect_watchdog_fired', {
+          'call_id': config.room,
+          'outgoing': config.outgoing,
+          'phase': _phase,
+          'got_welcome': _gotWelcome,
+          'peer_seen': _peerGens.isNotEmpty,
+          'got_sdp_answer': _gotSdpAnswer,
+          // Distinguishes this 10s accepted-side timeout from the 45s backstop.
+          'variant': 'fast-accept',
+        });
+        _endWith('network-error', reason: 'connect-timeout-fast');
+      });
+    }
     if (config.outgoing) {
       // CALL-GLARE-1: publish our pending outgoing dial for the incoming-push
       // handler's glare detection. Cleared on connect + on teardown.
@@ -1452,6 +1501,7 @@ class CallSession {
         // runs BEFORE `_telemetry.connected()` sets `_connected`, hence cancel
         // rather than relying on the timer's own `_connected` guard.
         _connectWatchdog?.cancel();
+        _connectWatchdogFast?.cancel(); // [AVACALL-WATCHDOG-2]
         _failTimer?.cancel();
         _relayFallbackTimer?.cancel();
         _ringback.stop();
@@ -2743,6 +2793,8 @@ class CallSession {
     // an un-cancelled 45s timer would still hold a reference to this session.
     _connectWatchdog?.cancel();
     _connectWatchdog = null;
+    _connectWatchdogFast?.cancel(); // [AVACALL-WATCHDOG-2]
+    _connectWatchdogFast = null;
     // [BUSY-CARD-1] cancel the abandoned-busy-card safety timer.
     _busyCardTimeout?.cancel();
     _busyCardTimeout = null;
