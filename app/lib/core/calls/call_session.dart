@@ -1990,13 +1990,17 @@ class CallSession {
     // [DIALPAD-BIZ-CALLS Phase C] Same protection for a live agent hand-off.
     if (_phase == 'agent-handoff') return;
     _ringback.stop();
-    // [CALL-OUTCOME-MENU-1] Unified menu replaces the auto-Ava handoff: the
-    // caller heard the ring beeps, now gets an honest status + choices. Applies
-    // to VIDEO too (menu minus Talk to Ava — owner 2026-07-09).
-    if (_menuEnabled && !_ended && !_connected) {
-      _showOutcomeMenu(_callUnreachable ? 'unreachable' : 'no-answer');
-      return;
-    }
+    // [AVACALL-MENU-1 / WS4] Menu vs auto-voicemail SPLIT (owner decision, Phase
+    // WS4 reconciled with WS2). The outcome MENU is reserved for the caller's
+    // ACTIVE-refusal scenarios — an explicit decline (callStatusBus / fast-WS
+    // 'decline'|'decline_ava') and busy (_onBusy) — where the callee is present
+    // and chose not to pick up, so offering Call again / Message / Talk to Ava /
+    // Leave a voicemail makes sense. NO-ANSWER and phone-off/UNREACHABLE do NOT
+    // show the menu: they fall through to the receptionist attempt and then WS2's
+    // `_autoStartFreeVoicemail`, which OWNS that terminal outcome. Popping the
+    // menu here would pre-empt the auto-voicemail and re-introduce the silent
+    // dead-end WS2 fixed. (Previously this block showed the menu for
+    // no-answer/unreachable too; that is intentionally removed.)
     if (!config.video && !_ended) {
       // UNREACHABLE-AVA-1 (owner decision 2026-07-07): when the callee's phone is
       // off / has no data (_callUnreachable), Ava still takes the message — with

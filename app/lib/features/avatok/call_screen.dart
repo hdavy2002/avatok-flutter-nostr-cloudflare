@@ -24,7 +24,9 @@ import '../../core/voicemail_call.dart';
 import '../avaphone/phone_theme.dart';
 import 'busy_card.dart';
 import 'call_outcome_menu.dart';
+import 'chat_thread.dart'; // [AVACALL-MENU-1] Message → open DM thread
 import 'contacts.dart';
+import 'data.dart' show Chat; // [AVACALL-MENU-1] Chat model for the DM thread
 import 'no_answer_card.dart';
 import 'paid_busy_card.dart';
 import 'paid_call_prompt.dart' show CallCountdown;
@@ -473,13 +475,19 @@ class _CallScreenState extends State<CallScreen> {
   /// (or the initial /api/call response) returned for a 'voicemail' outcome —
   /// mirrors how core/receptionist_call.dart's caller-side WS join works, using
   /// the SAME wire protocol (see core/voicemail_call.dart's header comment).
-  Future<void> _leaveVoicemail(Map<String, dynamic> start) async {
+  // [AVACALL-MENU-1] [free] routes through the FREE AvaTOK↔AvaTOK voicemail lane
+  // WS2 added (generic system greeting, accepted under avatokVoicemailFree) —
+  // used by the outcome menu on a plain AvaTOK decline/busy where the paid
+  // voicemailBot line isn't provisioned. false keeps the existing paid
+  // NoAnswerCard business path byte-for-byte unchanged.
+  Future<void> _leaveVoicemail(Map<String, dynamic> start, {bool free = false}) async {
     if (_vmInProgress) return;
     setState(() => _vmInProgress = true);
     final s = await VoicemailApi.start(
       to: (start['to'] ?? widget.seed).toString(),
       callId: (start['call_id'] ?? widget.room).toString(),
       traceId: (start['trace_id'] ?? widget.traceId).toString(),
+      free: free,
     );
     final rtcUrl = s?['rtc_url'] as String?;
     if (s == null || rtcUrl == null) {
@@ -1155,6 +1163,34 @@ class _CallScreenState extends State<CallScreen> {
       name: widget.title,
       peerUid: widget.seed,
       onClosed: _popIfMounted,
+      // [AVACALL-MENU-1] Call again — pop this screen and re-place the 1:1 call
+      // (audio; a declined/busy call is retried as the same modality it started).
+      onCallAgain: () {
+        Analytics.capture('call_menu_option_selected', {
+          'call_id': widget.room, 'option': 'call_again',
+        });
+        final nav = Navigator.of(context);
+        final uidSeed = widget.seed, title = widget.title,
+            avatar = widget.avatarUrl, vid = widget.video;
+        _popIfMounted();
+        place1to1Call(nav.context, uid: uidSeed, name: title, avatarUrl: avatar, video: vid);
+      },
+      // [AVACALL-MENU-1] Message — pop and open the DM thread with the callee.
+      onMessage: () {
+        Analytics.capture('call_menu_option_selected', {
+          'call_id': widget.room, 'option': 'message',
+        });
+        final nav = Navigator.of(context);
+        final chat = Chat(
+          name: widget.title,
+          seed: widget.seed,
+          last: '',
+          time: '',
+          avatarUrl: widget.avatarUrl,
+        );
+        _popIfMounted();
+        nav.push(MaterialPageRoute(builder: (_) => ChatThreadScreen(chat: chat)));
+      },
       // [VM-IN-MENU-1 2026-07-14] Classic voicemail from the outcome menu.
       // Gated ONLY on the voicemailBot flag — never on the routing probe or the
       // callee's device reachability: /api/voicemail/start needs nothing but
@@ -1163,7 +1199,14 @@ class _CallScreenState extends State<CallScreen> {
       // arrived (unreachable / pruned-token callees — the exact case that used
       // to dead-end).
       voicemailInProgress: _vmInProgress,
-      onLeaveVoicemail: RemoteConfig.voicemailBot
+      // [AVACALL-MENU-1] Offer "Leave a voicemail" on the outcome menu whenever
+      // EITHER lane is live: the paid business voicemail (voicemailBot) OR the
+      // FREE AvaTOK↔AvaTOK voicemail WS2 added (avatokVoicemailFree). A plain
+      // AvaTOK decline/busy has no paid line provisioned, so without the free
+      // fallback the button would never appear and the menu would dead-end. When
+      // the paid line isn't available we route through the free lane (free: true),
+      // matching the same VoicemailCall path _autoStartFreeVoicemail uses.
+      onLeaveVoicemail: (RemoteConfig.voicemailBot || RemoteConfig.avatokVoicemailFree)
           ? () {
               Analytics.capture('call_menu_option_selected', {
                 'call_id': widget.room,
@@ -1171,9 +1214,12 @@ class _CallScreenState extends State<CallScreen> {
               });
               final start = _routingInfo?['start'];
               // ignore: unawaited_futures
-              _leaveVoicemail(start is Map
-                  ? start.cast<String, dynamic>()
-                  : const <String, dynamic>{});
+              _leaveVoicemail(
+                start is Map
+                    ? start.cast<String, dynamic>()
+                    : const <String, dynamic>{},
+                free: !RemoteConfig.voicemailBot,
+              );
             }
           : null,
     );
