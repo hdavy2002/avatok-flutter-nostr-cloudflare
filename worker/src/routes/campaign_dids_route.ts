@@ -53,6 +53,27 @@ const DID_FEATURE_KEY = "campaign_did_month";
 const MS_PER_DAY = 24 * 3600 * 1000;
 const RENEWAL_PERIOD_MS = 30 * MS_PER_DAY; // spec §5 "~30 days"
 
+// [AVA-CAMP-Q-BACKEND] Shared test DID — ONE Vobiz number on the owner's own
+// account that every account can select while building a campaign, purely
+// for testing (owner request 2026-07-20). Read from KV (env.TOKENS, the same
+// binding platform_config uses) rather than D1 so the owner can set/clear it
+// without a migration or a deploy. Plain E.164 string value, not JSON.
+const SHARED_TEST_DID_KV_KEY = "campaign_test_did";
+const SHARED_TEST_DID_LABEL = "Test number (shared)";
+
+async function getSharedTestDid(env: Env): Promise<string | null> {
+  try {
+    const v = (await env.TOKENS.get(SHARED_TEST_DID_KV_KEY))?.trim();
+    return v && isE164(v) ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+function sharedTestDidSummary(e164: string) {
+  return { e164, label: SHARED_TEST_DID_LABEL, purpose: "shared_test", status: "active", shared: true };
+}
+
 function periodOf(nowMs: number): string {
   return new Date(nowMs).toISOString().slice(0, 7); // "YYYY-MM"
 }
@@ -131,6 +152,22 @@ async function buyDid(req: Request, env: Env, uid: string): Promise<Response> {
 
   const e164 = String(body.e164 ?? "").trim();
   if (!isE164(e164)) return json({ error: "e164 required, must be E.164 (e.g. +9198xxxxxxx)" }, 400);
+
+  // [AVA-CAMP-Q-BACKEND] Shared test DID — selecting it is NEVER a purchase.
+  // It already exists (on the owner's own account) and is exposed to every
+  // caller purely for testing; charging 700 tokens or attempting
+  // provider.purchaseNumber() on a number that's already live and owned
+  // elsewhere would either double-charge or collide with the provider. Return
+  // success with no D1 write, no wallet charge, no provider call — the
+  // campaign simply stores this e164 as its did_e164 (routes/campaigns.ts's
+  // createCampaign already accepts any did_e164 string) and CampaignDO's
+  // dial-loop admission (do/campaign_do.ts alarmDialLoop) resolves it against
+  // `user_dids` by e164 exactly like any other DID, which already has this
+  // row (owned by the owner's account) as 'active'.
+  const sharedTestDid = await getSharedTestDid(env);
+  if (sharedTestDid && e164 === sharedTestDid) {
+    return json({ ok: true, e164, shared: true, already_owned: true, next_renewal_at: null });
+  }
 
   const now = Date.now();
   const opId = `did:${uid}:${e164}:${periodOf(now)}`;
@@ -288,7 +325,20 @@ async function listDids(env: Env, uid: string): Promise<Response> {
     } catch { /* best-effort — serve the pre-renewal snapshot for this row */ }
   }
 
-  return json({ ok: true, dids: rows.map(didSummary) });
+  const summaries: Array<ReturnType<typeof didSummary> | ReturnType<typeof sharedTestDidSummary>> = rows.map(didSummary);
+
+  // [AVA-CAMP-Q-BACKEND] Append the shared test DID (if the owner has set one
+  // in KV) so every account sees it as a selectable option in the wizard,
+  // without it being a real row in THIS caller's `user_dids` (it belongs to
+  // the owner's account, not each caller's). Skip if this caller already owns
+  // it outright (an active row for the same e164 already in `rows` — avoids a
+  // confusing duplicate entry for the owner's own account).
+  const sharedE164 = await getSharedTestDid(env);
+  if (sharedE164 && !rows.some((r) => r.e164 === sharedE164 && r.status === "active")) {
+    summaries.push(sharedTestDidSummary(sharedE164));
+  }
+
+  return json({ ok: true, dids: summaries });
 }
 
 // ---------------------------------------------------------------------------

@@ -215,11 +215,24 @@ async function computeCampaignMetric(env: Env, metric: CampaignMetric, ownerUid:
       const tokensTotal = Number(aggRow[0]) || 0;
       const nAnswered = Number(aggRow[1]) || 0;
       const nBookings = Number(aggRow[2]) || 0;
+      // [AVA-CAMP-Q-BACKEND] ₹ figures alongside the token figures. 1 AvaCoin
+      // token = ₹1 = $0.01 (worker/src/feature_pricing.ts's coins_per_usd:100 —
+      // 100 tokens per USD, and $1 ≈ ₹1 at token-pricing parity in this app's
+      // wallet model, i.e. tokens and rupees are the SAME number here), so
+      // every *_inr field below is a same-value, clearly-labeled alias of its
+      // token counterpart — no new query, just relabeled output for the
+      // Flutter analytics cards that want to show ₹ instead of raw tokens.
+      const costPerAnswer = nAnswered > 0 ? tokensTotal / nAnswered : null;
+      const costPerBooking = nBookings > 0 ? tokensTotal / nBookings : null;
       return {
         days: days_,
         tokens,
-        cost_per_answer: nAnswered > 0 ? tokensTotal / nAnswered : null,
-        cost_per_booking: nBookings > 0 ? tokensTotal / nBookings : null,
+        cost_per_answer: costPerAnswer,
+        cost_per_booking: costPerBooking,
+        // ₹ (INR) figures — 1 token = ₹1, see comment above.
+        spend_inr: tokens,
+        cost_per_answer_inr: costPerAnswer,
+        cost_per_booking_inr: costPerBooking,
       };
     }
 

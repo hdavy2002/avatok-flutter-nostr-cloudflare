@@ -161,6 +161,10 @@ async function handleAnswer(req: Request, env: Env, secret: string, attemptUuid:
     void track(env, ctx.uid, "call_answered", "avatok", {
       campaign_id: ctx.campaign_id, attempt_uuid: attemptUuid,
       analytics_schema_version: 1, purpose: "LIVE",
+      // [AVA-CAMP-Q-BACKEND] PostHog group-analytics association (§ campaign_do.ts
+      // campaignGroups doc comment for the full rationale) — kept local here since
+      // campaign_pstn.ts doesn't import campaign_do.ts.
+      $groups: { campaign: ctx.campaign_id },
     });
 
     // Minimal compiled prompt for B2 (full compilation is Phase C, §8 "Prompt

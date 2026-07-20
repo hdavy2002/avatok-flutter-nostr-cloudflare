@@ -596,7 +596,7 @@ export interface PlatformConfig {
   campaignKbMaxFiles: number;             // per-campaign KB file cap (10)
   campaignToolBudget: number;             // ToolRuntime call budget per session (6)
   campaignHandoverRingSec: number;        // handover ring window, seconds (25)
-  campaignHandoverTokensPerMin: number;   // handover tariff, tokens/min (2)
+  campaignHandoverTokensPerMin: number;   // handover tariff, tokens/min (3, was 2 — bumped 2026-07-20)
   campaignHandoverTopupMin: number;       // handover rolling-reservation top-up window, minutes (10)
 }
 
@@ -869,7 +869,7 @@ const DEFAULTS: PlatformConfig = {
   campaignKbMaxFiles: 10,
   campaignToolBudget: 6,
   campaignHandoverRingSec: 25,
-  campaignHandoverTokensPerMin: 2,
+  campaignHandoverTokensPerMin: 3,   // [AVA-CAMP-Q-BACKEND] human-takeover tariff bumped 2->3 tokens/min (owner decision 2026-07-20)
   campaignHandoverTopupMin: 10,
 };
 

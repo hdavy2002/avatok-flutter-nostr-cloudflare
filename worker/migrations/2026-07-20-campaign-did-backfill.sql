@@ -1,0 +1,84 @@
+-- [AVA-CAMP-Q-BACKEND] Receptionist-DID backfill into user_dids (Specs/
+-- OUTBOUND-AI-CALLING-CAMPAIGNS.md §5 "DID renewal" / §17 Phase A TODO left
+-- in 2026-07-20-outbound-ai-calling-campaigns.sql: "Backfill receptionist-
+-- purchased numbers into user_dids so both features share one store; reusing
+-- an existing DID is free.").
+--
+-- Apply (once the SELECT below is uncommented/confirmed):
+--   scripts/cf.sh worker d1 execute DB_META --remote \
+--     --file=migrations/2026-07-20-campaign-did-backfill.sql
+-- (staging first; prod requires ALLOW_PROD=1 per CLAUDE.md — never invoke
+-- wrangler directly.) Idempotent via INSERT OR IGNORE + user_dids' own
+-- UNIQUE index on e164 (uq_user_dids_e164, 2026-07-20-outbound-ai-calling-
+-- campaigns.sql) — a re-run only inserts rows that are still missing.
+--
+-- ---------------------------------------------------------------------------
+-- SOURCE-TABLE STATUS: NOT CONFIRMED — do not uncomment the INSERT below
+-- without resolving this first (per this task's explicit instruction: ship
+-- the correct shape with a marked TODO rather than guess wrong).
+--
+-- Candidates checked against the LIVE migrations in this directory:
+--
+--   1. `pstn_dids` (migrations/2026-07-16-pstn-platform.sql) — the Vobiz DID
+--      pool table. Columns: (did TEXT PK, status TEXT, added_ms INTEGER).
+--      NO owner/uid column at all — this table only tracks which DIDs exist
+--      in the shared pool and whether they're active, not who they belong
+--      to. Cannot be the backfill source by itself.
+--
+--   2. `pstn_forwarding` (same file) — per-owner carrier call-forwarding
+--      state. Columns include `uid` (PK) and `did` ("pool DID assigned to
+--      this owner's forwarding"). This is the only table in the repo that
+--      actually maps an owner uid to a DID string, so it is the closest
+--      candidate — BUT the pstn platform's own file-header comment says
+--      explicitly: "Vobiz DIDs in the shared pool (plan §'Cost guardrails':
+--      DIDs are shared, never per-user)". That is the OPPOSITE ownership
+--      model from `user_dids`, which has a UNIQUE index on `e164` (one row
+--      = one dedicated, individually-purchased number, per campaigns'
+--      buyDid() in routes/campaign_dids_route.ts). If `pstn_forwarding.did`
+--      is genuinely a shared pool value (the same DID string assigned to
+--      forwarding for MULTIPLE owners at once, or reassigned over time),
+--      backfilling it 1:1 into `user_dids` would either violate
+--      uq_user_dids_e164 on the second owner sharing a DID, or silently
+--      misattribute a shared receptionist number as one owner's personal
+--      campaign-dialer caller ID — neither is safe to ship unreviewed.
+--
+--   3. `receptionist_settings` (migrations/receptionist.sql / _v2.sql) — has
+--      `owner_uid` but NO did/e164 column at all (the receptionist routes
+--      calls via carrier CFB/CFNRY forwarding to the shared pool, not a
+--      dedicated per-owner number). Not a source either.
+--
+-- CONCLUSION: before this backfill can run, a human needs to confirm on the
+-- LIVE D1 schema (not just these migration files, which may have drifted)
+-- whether `pstn_forwarding.did` is in practice unique-per-owner in current
+-- data (`SELECT did, COUNT(DISTINCT uid) FROM pstn_forwarding GROUP BY did
+-- HAVING COUNT(DISTINCT uid) > 1` — any rows returned means it is NOT safe to
+-- backfill 1:1 into user_dids' UNIQUE-e164 model), and whether `purchased_at`
+-- should map to `consent_ms`/`updated_ms` (pstn_forwarding has no purchase
+-- timestamp of its own — these tables record forwarding SETUP time, not a
+-- Vobiz number purchase time, because receptionist DIDs were never
+-- individually "purchased" per owner the way campaign DIDs are).
+--
+-- Once confirmed, the shape (column list/order) is expected to be:
+--
+-- INSERT OR IGNORE INTO user_dids
+--   (id, uid, e164, provider, purpose, monthly_tokens, status, purchased_at)
+-- SELECT
+--   'did_' || lower(hex(randomblob(8))),
+--   f.uid,
+--   f.did,
+--   'vobiz',
+--   'receptionist',
+--   700,
+--   'active',
+--   COALESCE(f.consent_ms, f.updated_ms)
+-- FROM pstn_forwarding f
+-- WHERE f.did IS NOT NULL
+--   AND f.uid NOT IN (SELECT uid FROM user_dids WHERE purpose = 'receptionist');
+--   -- (the uid-not-in guard is belt-and-braces alongside uq_user_dids_e164 —
+--   -- keeps a second owner sharing the same pool `did` from being silently
+--   -- dropped by the unique index with no record of the conflict)
+--
+-- DO NOT uncomment/run the block above until the pstn_forwarding.did
+-- uniqueness question is answered against live data. Owner will apply this
+-- migration once confirmed (per this task's scope — "Owner will apply it").
+-- ---------------------------------------------------------------------------

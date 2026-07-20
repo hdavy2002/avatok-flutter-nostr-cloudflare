@@ -67,7 +67,8 @@ const HEARTBEAT_MIN_INTERVAL_MS = 60_000; // §15 "every 60-120s while not progr
 const CONFERENCE_TTL_MS = 60_000;          // §4 "conference TTL 60s" single-participant watchdog
 const HANDOVER_SERVICE_TICK_MS = 30_000;   // "~30-60s alarm when only handovers remain"
 const HANDOVER_TOPUP_FALLBACK_MIN = 10;    // mirrors campaignHandoverTopupMin's spec default
-const HANDOVER_TOPUP_TOKENS_PER_MIN_FALLBACK = 2; // mirrors campaignHandoverTokensPerMin's spec default
+const HANDOVER_TOPUP_TOKENS_PER_MIN_FALLBACK = 3; // mirrors campaignHandoverTokensPerMin's spec default (bumped 2->3 on 2026-07-20)
+const HANDOVER_TOKENS_PER_MIN_FALLBACK = 3;        // [AVA-CAMP-Q-BACKEND] onCallEnded's own config-read fallback, same value
 
 type CampaignRow = {
   id: string; uid: string; status: string;
@@ -292,10 +293,15 @@ export class CampaignDO {
     if (bridgeConnectedAt != null && attempt.answered_at) {
       // Connected handover: AI-talk segment (answered -> bridge) billed at
       // 6 tokens/min, bridged human-to-human segment (bridge -> hangup)
-      // billed at 2 tokens/min — no blended rate (§5).
+      // billed at the handover tariff (config `campaignHandoverTokensPerMin`,
+      // default 3 — bumped from a hardcoded 2 on 2026-07-20 so KV is the
+      // single source of truth, matching campaign_handover.ts's own read) —
+      // no blended rate (§5).
+      let handoverTokensPerMin = HANDOVER_TOKENS_PER_MIN_FALLBACK;
+      try { handoverTokensPerMin = (await readConfig(this.env)).campaignHandoverTokensPerMin ?? HANDOVER_TOKENS_PER_MIN_FALLBACK; } catch { /* fall back to default */ }
       const aiSeconds = Math.max(0, (bridgeConnectedAt - Number(attempt.answered_at)) / 1000);
       const humanSeconds = Math.max(0, (now - bridgeConnectedAt) / 1000);
-      tokensSpent = Math.ceil(aiSeconds / 60) * 6 + Math.ceil(humanSeconds / 60) * 2;
+      tokensSpent = Math.ceil(aiSeconds / 60) * 6 + Math.ceil(humanSeconds / 60) * handoverTokensPerMin;
       billedAiDurationS = Math.round(aiSeconds);
       humanSegmentSeconds = Math.round(humanSeconds);
     } else {
@@ -380,6 +386,7 @@ export class CampaignDO {
           tokens_charged: tokensSpent, hangup_cause_raw: hangupCauseRaw,
           retry_attempt: attemptsSoFar,
           analytics_schema_version: 1, purpose: attempt.purpose || "LIVE",
+          $groups: campaignGroups(campaignId),
         });
       }
 
@@ -476,6 +483,7 @@ export class CampaignDO {
         await this.setStatus(campaignId, "paused");
         void track(this.env, row.uid, "circuit_breaker_tripped", "avatok", {
           campaign_id: campaignId, consecutive_failures: CIRCUIT_BREAKER_CONSECUTIVE,
+          $groups: campaignGroups(campaignId),
         });
       }
     }
@@ -572,7 +580,7 @@ export class CampaignDO {
     // 2) Spend cap admission (§5).
     if (row.tokens_spent >= row.spend_cap_tokens) {
       await this.setStatus(campaignId, "out_of_tokens");
-      void track(this.env, row.uid, "dial_denied", "avatok", { campaign_id: campaignId, reason: "spend_cap" });
+      void track(this.env, row.uid, "dial_denied", "avatok", { campaign_id: campaignId, reason: "spend_cap", $groups: campaignGroups(campaignId) });
       await this.heartbeat(campaignId, "out_of_tokens", "wallet", row);
       return; // resumable only via explicit resume() once the owner raises the cap / tops up
     }
@@ -583,34 +591,43 @@ export class CampaignDO {
       await this.heartbeat(campaignId, "paused", "provider", row);
       return;
     }
-    const didRow = await metaDb(this.env)
-      .prepare("SELECT id, uid, e164, status, next_renewal_at FROM user_dids WHERE e164=?1")
-      .bind(row.did_e164)
-      .first<{ id: string; uid: string; e164: string; status: string; next_renewal_at: number | null }>();
-    if (!didRow) {
-      await this.setStatus(campaignId, "paused");
-      void track(this.env, row.uid, "dial_denied", "avatok", { campaign_id: campaignId, reason: "did_inactive" });
-      await this.heartbeat(campaignId, "paused", "provider", row);
-      return;
-    }
-    // [AVA-CAMP-P-ENGINE] lazy monthly renewal, checked at admission time (§5
-    // "lazy renewal... past_due pauses campaigns on that DID"). Best-effort:
-    // a renewal-check failure must never block an otherwise-eligible dial, so
-    // fall back to the DID's already-loaded status on any exception.
-    let didStatus = didRow.status;
-    if (didStatus === "active") {
-      try {
-        const renewal = await maybeRenewDid(this.env, didRow);
-        didStatus = renewal.status;
-      } catch { /* best-effort — admit on the pre-renewal-check status */ }
-    }
-    if (didStatus !== "active") {
-      await this.setStatus(campaignId, "paused");
-      void track(this.env, row.uid, "dial_denied", "avatok", {
-        campaign_id: campaignId, reason: didStatus === "past_due" ? "did_past_due" : "did_inactive",
-      });
-      await this.heartbeat(campaignId, "paused", "provider", row);
-      return;
+    // [AVA-CAMP-Q-BACKEND] Shared test DID (KV `campaign_test_did`): usable by
+    // ANY account for testing. It has NO per-user user_dids row and is never
+    // charged/renewed, so skip the ownership + renewal checks for it — otherwise
+    // a campaign using the shared number would be denied `did_inactive`.
+    let sharedTestDid: string | null = null;
+    try { const s = await this.env.TOKENS.get("campaign_test_did"); sharedTestDid = s ? s.trim() : null; } catch { /* best-effort */ }
+    if (row.did_e164 !== sharedTestDid) {
+      const didRow = await metaDb(this.env)
+        .prepare("SELECT id, uid, e164, status, next_renewal_at FROM user_dids WHERE e164=?1")
+        .bind(row.did_e164)
+        .first<{ id: string; uid: string; e164: string; status: string; next_renewal_at: number | null }>();
+      if (!didRow) {
+        await this.setStatus(campaignId, "paused");
+        void track(this.env, row.uid, "dial_denied", "avatok", { campaign_id: campaignId, reason: "did_inactive", $groups: campaignGroups(campaignId) });
+        await this.heartbeat(campaignId, "paused", "provider", row);
+        return;
+      }
+      // [AVA-CAMP-P-ENGINE] lazy monthly renewal, checked at admission time (§5
+      // "lazy renewal... past_due pauses campaigns on that DID"). Best-effort:
+      // a renewal-check failure must never block an otherwise-eligible dial, so
+      // fall back to the DID's already-loaded status on any exception.
+      let didStatus = didRow.status;
+      if (didStatus === "active") {
+        try {
+          const renewal = await maybeRenewDid(this.env, didRow);
+          didStatus = renewal.status;
+        } catch { /* best-effort — admit on the pre-renewal-check status */ }
+      }
+      if (didStatus !== "active") {
+        await this.setStatus(campaignId, "paused");
+        void track(this.env, row.uid, "dial_denied", "avatok", {
+          campaign_id: campaignId, reason: didStatus === "past_due" ? "did_past_due" : "did_inactive",
+          $groups: campaignGroups(campaignId),
+        });
+        await this.heartbeat(campaignId, "paused", "provider", row);
+        return;
+      }
     }
 
     // 4) Circuit breaker admission.
@@ -630,7 +647,7 @@ export class CampaignDO {
     if (!permit?.permit) {
       const retryAfterMs = Math.max(250, Number(permit?.retryAfterMs) || 1000);
       await this.state.storage.setAlarm(Date.now() + retryAfterMs);
-      void track(this.env, row.uid, "dial_denied", "avatok", { campaign_id: campaignId, reason: permit?.reason ?? "channels" });
+      void track(this.env, row.uid, "dial_denied", "avatok", { campaign_id: campaignId, reason: permit?.reason ?? "channels", $groups: campaignGroups(campaignId) });
       await this.heartbeat(campaignId, "running", permit?.reason === "did_cps" || permit?.reason === "account_cps" ? "cps" : "channels", row);
       return;
     }
@@ -653,7 +670,7 @@ export class CampaignDO {
           return;
         }
         await this.setStatus(campaignId, "completed", { completed_at: Date.now() });
-        void track(this.env, row.uid, "campaign_completed", "avatok", { campaign_id: campaignId, event: "campaign_completed" });
+        void track(this.env, row.uid, "campaign_completed", "avatok", { campaign_id: campaignId, event: "campaign_completed", $groups: campaignGroups(campaignId) });
         return;
       }
       // Either a race was lost (another tick took the last contact) or every
@@ -711,6 +728,7 @@ export class CampaignDO {
         await this.endActiveHandover(campaignId, entry.attempt_uuid, blob, provider, ownerUid, reserveRef, "conf_ttl");
         void track(this.env, ownerUid, "campaign_handover_conf_ttl", "avatok", {
           campaign_id: campaignId, attempt_uuid: entry.attempt_uuid,
+          $groups: campaignGroups(campaignId),
         });
         continue;
       }
@@ -736,6 +754,7 @@ export class CampaignDO {
           await this.endActiveHandover(campaignId, entry.attempt_uuid, blob, provider, ownerUid, reserveRef, "topup_exhausted");
           void track(this.env, ownerUid, "campaign_handover_credit_exhausted", "avatok", {
             campaign_id: campaignId, attempt_uuid: entry.attempt_uuid, window: targetWindowIndex,
+            $groups: campaignGroups(campaignId),
           });
           continue;
         }
@@ -751,6 +770,7 @@ export class CampaignDO {
         } catch { /* best-effort — worst case we just re-call walletReserve (idempotent) next tick */ }
         void track(this.env, ownerUid, "campaign_handover_topup", "avatok", {
           campaign_id: campaignId, attempt_uuid: entry.attempt_uuid, window: targetWindowIndex, tokens: topupTokens,
+          $groups: campaignGroups(campaignId),
         });
       }
     }
@@ -870,12 +890,12 @@ export class CampaignDO {
       await db.prepare("DELETE FROM campaign_call_attempts WHERE attempt_uuid=?1").bind(attemptUuid).run();
       await this.releaseGate(row.uid, campaignId);
       await this.setStatus(campaignId, "out_of_tokens");
-      void track(this.env, row.uid, "dial_denied", "avatok", { campaign_id: campaignId, reason: "wallet" });
+      void track(this.env, row.uid, "dial_denied", "avatok", { campaign_id: campaignId, reason: "wallet", $groups: campaignGroups(campaignId) });
       await this.heartbeat(campaignId, "out_of_tokens", "wallet", row);
       return;
     }
 
-    void track(this.env, row.uid, "dial_permitted", "avatok", { campaign_id: campaignId, attempt_uuid: attemptUuid, contact_id: contact.id });
+    void track(this.env, row.uid, "dial_permitted", "avatok", { campaign_id: campaignId, attempt_uuid: attemptUuid, contact_id: contact.id, $groups: campaignGroups(campaignId) });
 
     const secret = this.env.VOBIZ_WEBHOOK_SECRET || "";
     const answerUrl = `${PUBLIC_BASE}/api/campaign-pstn/answer/${encodeURIComponent(secret)}/${attemptUuid}`;
@@ -891,6 +911,7 @@ export class CampaignDO {
     void track(this.env, row.uid, "dial_requested", "avatok", {
       campaign_id: campaignId, attempt_uuid: attemptUuid, contact_id: contact.id,
       analytics_schema_version: 1, purpose: "LIVE",
+      $groups: campaignGroups(campaignId),
     });
     try {
       const r = await provider.makeCall({
@@ -927,7 +948,7 @@ export class CampaignDO {
       await this.releaseGate(row.uid, campaignId);
       if (tripped) {
         await this.setStatus(campaignId, "paused");
-        void track(this.env, row.uid, "circuit_breaker_tripped", "avatok", { campaign_id: campaignId });
+        void track(this.env, row.uid, "circuit_breaker_tripped", "avatok", { campaign_id: campaignId, $groups: campaignGroups(campaignId) });
       } else {
         await this.state.storage.setAlarm(Date.now() + DIAL_TICK_MS);
       }
@@ -948,7 +969,7 @@ export class CampaignDO {
       .bind(contact.id, Date.now()).run();
 
     this.inFlight.set(attemptUuid, { contactId: contact.id, callUuid, didE164: row.did_e164!, reservedAt: Date.now() });
-    void track(this.env, row.uid, "call_started", "avatok", { campaign_id: campaignId, attempt_uuid: attemptUuid, call_uuid: callUuid });
+    void track(this.env, row.uid, "call_started", "avatok", { campaign_id: campaignId, attempt_uuid: attemptUuid, call_uuid: callUuid, $groups: campaignGroups(campaignId) });
 
     // Keep dialing while capacity remains — the next tick re-checks every
     // admission gate from scratch (spend cap may have just been hit, etc).
@@ -1024,6 +1045,7 @@ export class CampaignDO {
       calling: byStatus["calling"] ?? 0,
       available_channels: row.concurrency,
       next_alarm_at: nextAlarm ?? null,
+      $groups: campaignGroups(campaignId),
     });
   }
 }
@@ -1094,6 +1116,17 @@ function isProviderFailure(hangupCauseRaw: string | null): boolean {
   const cause = (hangupCauseRaw || "").toUpperCase();
   return cause.includes("5") && (cause.includes("ERROR") || cause.includes("SERVER") || cause.includes("CONGEST"))
     || cause.includes("PROVIDER") || cause.includes("TIMEOUT") || cause.startsWith("MAKECALL_ERROR");
+}
+
+/** [AVA-CAMP-Q-BACKEND] PostHog group-analytics association — every campaign
+ *  event also carries `$groups: {campaign: <campaign_id>}` (PostHog's capture
+ *  API convention for associating an event with a Group, alongside the plain
+ *  `campaign_id` property already on every event above, kept for existing
+ *  HogQL queries/back-compat). `consumers/src/index.ts`'s captureBatch()
+ *  passes `props` straight through as the PostHog `properties` object, so
+ *  `$groups` here needs no consumer change to take effect. */
+function campaignGroups(campaignId: string): { campaign: string } {
+  return { campaign: campaignId };
 }
 
 function outcomeCounterColumn(outcome: string): "n_answered" | "n_missed" | "n_busy" | "n_machine" | "n_failed" | "n_dnc" {

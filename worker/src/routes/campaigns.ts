@@ -27,6 +27,7 @@ import { isFail, requireUser } from "../authz";
 import { readConfig } from "./config";
 import { metaDb } from "../db/shard";
 import { compileCampaignPrompt, PROMPT_VERSION, type CampaignPromptInput } from "../lib/campaign_prompt";
+import { track } from "../hooks";
 
 // ---------------------------------------------------------------------------
 // Gating helpers
@@ -245,6 +246,19 @@ async function launchCampaign(env: Env, uid: string, id: string): Promise<Respon
     // consistent with this repo's "D1 is authoritative, DOs reconstruct from
     // D1 on wake" design principle (spec §1.5).
   } catch { /* best-effort — D1 status change is the source of truth */ }
+
+  // [AVA-CAMP-Q-BACKEND] One-time PostHog Group identify — registers the
+  // `campaign` Group's display properties (PostHog's `$groupidentify` capture
+  // convention: $group_type + $group_key + $group_set) so the PostHog UI can
+  // show a readable name for this campaign_id, alongside the per-event
+  // `$groups: {campaign: id}` association campaign_do.ts/campaign_pstn.ts
+  // attach to every subsequent event. Best-effort, fires once at launch (not
+  // on every draft edit) — harmless to re-send on a relaunch, PostHog just
+  // overwrites $group_set with the latest values.
+  void track(env, uid, "$groupidentify", "avatok", {
+    $group_type: "campaign", $group_key: id,
+    $group_set: { name: row.name, owner_uid: uid, launched_at: now },
+  });
 
   return json({ ok: true, id, status: "running", compiled_prompt_hash: compiledPromptHash, prompt_version: promptVersion });
 }
