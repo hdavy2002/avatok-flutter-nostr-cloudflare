@@ -82,17 +82,27 @@ interface AttemptOwnerRow {
   kb_store: string | null;
   language_hint: string | null;
   voice_persona: string | null;
+  // [AVA-CAMP-C-ROOM] added so the handoff KV can carry what
+  // do/vobiz_agent_room.ts's campaign-mode branch needs (buildCampaignTools'
+  // contactName/contactE164/bookingEnabled) — was missing before this edit.
+  booking_enabled: number; // SQLite 0/1
+  contact_name: string | null;
+  contact_e164: string | null;
 }
 
-/** Look up the attempt's campaign/owner context in one join — used by
+/** Look up the attempt's campaign/owner/contact context in one join — used by
  *  answer (handoff seeding) and hangup (CampaignDO notify target). */
 async function lookupAttemptContext(env: Env, attemptUuid: string): Promise<AttemptOwnerRow | null> {
   const row = await metaDb(env)
     .prepare(
       `SELECT a.campaign_id AS campaign_id, a.contact_id AS contact_id,
               c.uid AS uid, c.goal_text AS goal_text, c.compiled_prompt AS compiled_prompt,
-              c.kb_store AS kb_store, c.language_hint AS language_hint, c.voice_persona AS voice_persona
-       FROM campaign_call_attempts a JOIN campaigns c ON c.id = a.campaign_id
+              c.kb_store AS kb_store, c.language_hint AS language_hint, c.voice_persona AS voice_persona,
+              c.booking_enabled AS booking_enabled,
+              ct.name AS contact_name, ct.e164 AS contact_e164
+       FROM campaign_call_attempts a
+       JOIN campaigns c ON c.id = a.campaign_id
+       JOIN campaign_contacts ct ON ct.id = a.contact_id
        WHERE a.attempt_uuid=?1`,
     )
     .bind(attemptUuid)
@@ -174,6 +184,13 @@ async function handleAnswer(req: Request, env: Env, secret: string, attemptUuid:
         language_hint: ctx.language_hint || null,
         voice_persona: ctx.voice_persona || null,
         call_uuid: callUuid || null,
+        // [AVA-CAMP-C-ROOM] added — do/vobiz_agent_room.ts's campaign-mode
+        // branch needs these for buildCampaignTools() (contact name/E.164 for
+        // the booking tool's event description, booking_enabled to gate
+        // whether the calendar tools are declared at all).
+        contact_name: ctx.contact_name || null,
+        contact_e164: ctx.contact_e164 || null,
+        booking_enabled: !!ctx.booking_enabled,
         ts: now,
       }), { expirationTtl: AGENT_KV_TTL_SEC });
     } catch {

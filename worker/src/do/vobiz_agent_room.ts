@@ -49,6 +49,11 @@ import { composeReceptionistPrompt, RECEPTIONIST_MODEL_DEFAULT, AVA_VOICE } from
 import { matchAvatokPhones } from "../routes/api";
 import { recordCallSummary, receptOutcome } from "../lib/recept_stats"; // [RECEPT-STATS-1] canonical call summary
 import { e164Country } from "../lib/e164_country";                      // [RECEPT-STATS-1] caller_country from E.164
+// [AVA-CAMP-C-ROOM] campaign-mode-only imports — never touched by the
+// inbound receptionist path (only referenced inside `if (campaignMode)` /
+// `if (this.campaign)` branches below).
+import { ToolRuntime } from "../lib/tool_runtime";
+import { buildCampaignTools } from "../lib/campaign_tools";
 
 /** Redact secrets from free-text error strings BEFORE telemetry (same scrubber
  *  as reception_room.ts — the Gemini URL carries ?key=AIza…). */
@@ -84,6 +89,33 @@ interface PstnAgentKv {
   caller_e164: string | null;
   call_uuid: string | null;
   ts: number;
+  // [AVA-CAMP-C-ROOM] optional campaign-mode fields, seeded by
+  // routes/campaign_pstn.ts's handleAnswer(). All optional and additive —
+  // an inbound-receptionist KV blob (routes/pstn.ts) never sets `mode`, so
+  // every campaign-only field below is simply absent there.
+  mode?: "campaign";
+  campaign_id?: string;
+  attempt_uuid?: string;
+  compiled_prompt?: string;
+  kb_store?: string | null;
+  billing_ref?: string;
+  tokens_per_min?: number;
+  language_hint?: string | null;
+  voice_persona?: string | null;
+  contact_name?: string | null;
+  contact_e164?: string | null;
+  booking_enabled?: boolean;
+}
+
+/** [AVA-CAMP-C-ROOM] Resolved campaign-mode context for one call attempt —
+ *  set once on this.campaign at init time, null for every inbound call. */
+interface CampaignRoomCtx {
+  campaignId: string;
+  attemptUuid: string;
+  ownerUid: string;
+  contactName: string | null;
+  contactE164: string | null;
+  bookingEnabled: boolean;
 }
 
 interface AgentInit {
@@ -184,6 +216,12 @@ export class VobizAgentRoom {
   private firstAudioSent = false;
   private wrapping = false;
 
+  // [AVA-CAMP-C-ROOM] campaign-mode context — null for every inbound call.
+  // Presence of this.campaign is the ONLY gate every campaign branch below
+  // checks; inbound sessions never set it, so those branches always no-op.
+  private campaign: CampaignRoomCtx | null = null;
+  private toolRuntime: ToolRuntime | null = null;
+
   private inText: string[] = [];
   private outText: string[] = [];
   private dialog: Array<{ who: "ava" | "caller"; text: string }> = [];
@@ -229,38 +267,77 @@ export class VobizAgentRoom {
     // Single-use init record — burn it so the WS can't be re-opened.
     this.env.TOKENS.delete(`pstn_agent:${sid}`).catch(() => {});
 
+    // [AVA-CAMP-C-ROOM] campaign-mode gate. `kv.mode === "campaign"` is the
+    // ONLY way this becomes true — an inbound-receptionist KV blob (written
+    // by routes/pstn.ts) never sets `mode`, so campaignMode is false and
+    // every branch below that checks it takes the exact original code path.
+    const campaignMode = kv.mode === "campaign";
+
     // ── Compose the init server-side (the PSTN lane has no /start route; the
     // minimal KV blob from pstn.ts + the owner's D1 settings are the source).
     const cfg: any = await readConfig(this.env).catch(() => ({} as any));
     let s: any = null;
-    try {
-      s = await metaDb(this.env).prepare("SELECT * FROM receptionist_settings WHERE owner_uid=?1")
-        .bind(kv.owner_uid).first<any>();
-    } catch { /* defaults below */ }
-    if (!s) s = { owner_uid: kv.owner_uid, enabled: 1, voice_name: AVA_VOICE };
+    if (!campaignMode) {
+      try {
+        s = await metaDb(this.env).prepare("SELECT * FROM receptionist_settings WHERE owner_uid=?1")
+          .bind(kv.owner_uid).first<any>();
+      } catch { /* defaults below */ }
+      if (!s) s = { owner_uid: kv.owner_uid, enabled: 1, voice_name: AVA_VOICE };
+    }
 
     // Caller identity best-effort: E.164 → AvaTOK uid/name via matchAvatokPhones
     // (never block the call on it — an unknown cell number just greets generically).
     let callerUid: string | null = null;
     let callerName: string | null = null;
-    if (kv.caller_e164) {
+    if (!campaignMode && kv.caller_e164) {
       try {
         const m = await matchAvatokPhones(this.env, { numbers: [kv.caller_e164] });
         if (m.length > 0) { callerUid = m[0].uid; callerName = m[0].name ?? null; }
       } catch { /* generic greeting */ }
+    } else if (campaignMode) {
+      // No AvaTOK-uid resolution for campaign contacts — the compiled_prompt
+      // already carries whatever the campaign wizard knows about the contact.
+      callerName = kv.contact_name || null;
     }
-    const ownerName = (String(s.display_name || "").trim())
-      || (await nameFor(this.env, kv.owner_uid).catch(() => null)) || null;
+    let ownerName: string | null = null;
     let ownerGender: string | null = null;
-    try {
-      const gr = await metaDb(this.env).prepare("SELECT gender FROM users WHERE uid=?1")
-        .bind(kv.owner_uid).first<{ gender: string | null }>();
-      ownerGender = gr?.gender ?? null;
-    } catch { /* neutral */ }
+    if (!campaignMode) {
+      ownerName = (String(s.display_name || "").trim())
+        || (await nameFor(this.env, kv.owner_uid).catch(() => null)) || null;
+      try {
+        const gr = await metaDb(this.env).prepare("SELECT gender FROM users WHERE uid=?1")
+          .bind(kv.owner_uid).first<{ gender: string | null }>();
+        ownerGender = gr?.gender ?? null;
+      } catch { /* neutral */ }
+    }
 
     const n = (v: unknown, fb: number) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : fb);
     const now = Date.now();
-    this.init = {
+    this.init = campaignMode ? {
+      // ── [AVA-CAMP-C-ROOM] campaign-mode init: compiled_prompt IS the system
+      // instruction (composeReceptionistPrompt is never called here), and
+      // file_search_store comes from the campaign's kb_store, not the
+      // receptionist_settings row (which was never loaded above).
+      sid,
+      owner_uid: kv.owner_uid,
+      caller_uid: null,
+      caller_phone: kv.contact_e164 || null,
+      caller_name: callerName,
+      call_id: kv.call_uuid || null,
+      voice_name: AVA_VOICE,
+      file_search_store: kv.kb_store || null,
+      system_prompt: kv.compiled_prompt || "",
+      model: (this.env as any).RECEPTIONIST_MODEL || RECEPTIONIST_MODEL_DEFAULT,
+      soft_cap_ms: n(cfg.receptCloseMs, DEFAULT_CLOSE_MS),
+      hard_cap_ms: n(cfg.receptHardCapMs, DEFAULT_HARD_CAP_MS),
+      wrap_cue_ms: n(cfg.receptWrapCueMs, DEFAULT_WRAP_CUE_MS),
+      wrap_soft: false,
+      started_at: now,
+      language_code: kv.language_hint || null,
+      activation_mode: "campaign",
+      owner_name: null,
+      ava_name: "Ava",
+    } : {
       sid,
       owner_uid: kv.owner_uid,
       caller_uid: callerUid,
@@ -289,13 +366,39 @@ export class VobizAgentRoom {
     };
     this.startedAt = now;
 
+    // [AVA-CAMP-C-ROOM] resolved campaign context for tool-building + the
+    // tools_used persist in finalize(). Null (unchanged default) on every
+    // inbound call.
+    this.campaign = campaignMode ? {
+      campaignId: kv.campaign_id || "",
+      attemptUuid: kv.attempt_uuid || "",
+      ownerUid: kv.owner_uid,
+      contactName: kv.contact_name || null,
+      contactE164: kv.contact_e164 || null,
+      bookingEnabled: !!kv.booking_enabled,
+    } : null;
+
     // Session row so finalize's UPDATE + the cockpit have a record (best-effort).
+    // Reads from this.init (not raw kv) so this line is identical in both
+    // modes — inbound values match kv byte-for-byte since that's exactly how
+    // this.init was built above.
     try {
       await metaDb(this.env).prepare(
         `INSERT OR IGNORE INTO receptionist_sessions
            (id, owner_uid, caller_uid, caller_phone, caller_name, call_id, activation_mode, status, started_at, created_at, updated_at)
          VALUES (?1,?2,?3,?4,?5,?6,?7,'active',?8,?8,?8)`,
-      ).bind(sid, kv.owner_uid, callerUid, kv.caller_e164 || null, callerName, kv.call_uuid || null, "rings", now).run();
+      ).bind(
+        sid, kv.owner_uid,
+        // [AVA-CAMP-C-ROOM] inbound uses the ORIGINAL literal expressions
+        // (byte-for-byte identical to pre-campaign behavior — activation_mode
+        // stays "rings"); campaign mode uses this.init's resolved values.
+        this.campaign ? this.init.caller_uid : callerUid,
+        this.campaign ? this.init.caller_phone : (kv.caller_e164 || null),
+        this.campaign ? this.init.caller_name : callerName,
+        this.campaign ? this.init.call_id : (kv.call_uuid || null),
+        this.campaign ? this.init.activation_mode : "rings",
+        now,
+      ).run();
     } catch { /* best-effort */ }
 
     try {
@@ -303,11 +406,16 @@ export class VobizAgentRoom {
       this.ownerEmail = c.email; this.ownerPhone = c.phone;
     } catch { /* best-effort */ }
     // [RECEPT-BILLING-3] start-of-call balance read — fail-open (null skips the
-    // zero-stop; the exact settle at finalize still bills).
-    try {
-      const b = await walletOp(this.env, kv.owner_uid, { op: "balance", uid: kv.owner_uid });
-      if (b.status === 200) this.startBalance = Math.max(0, Number(b.body?.balance ?? 0));
-    } catch { /* fail-open */ }
+    // zero-stop; the exact settle at finalize still bills). [AVA-CAMP-C-ROOM]:
+    // SKIPPED entirely in campaign mode — the room must not call any wallet op;
+    // CampaignDO.onCallEnded owns reserve→consume→release. startBalance stays
+    // null, which onAccrualTick already treats as "no zero-stop" (fail-open).
+    if (!campaignMode) {
+      try {
+        const b = await walletOp(this.env, kv.owner_uid, { op: "balance", uid: kv.owner_uid });
+        if (b.status === 200) this.startBalance = Math.max(0, Number(b.body?.balance ?? 0));
+      } catch { /* fail-open */ }
+    }
 
     const pair = new WebSocketPair();
     const client = pair[0], server = pair[1];
@@ -421,6 +529,24 @@ export class VobizAgentRoom {
     const kbDisabled = String((this.env as any).RECEPT_KB_DISABLED || "") === "1";
     if (init.file_search_store && !kbDisabled) {
       tools.push({ fileSearch: { fileSearchStoreNames: [init.file_search_store] } });
+    }
+    // [AVA-CAMP-C-ROOM] campaign-mode tools — ToolRuntime + campaign_tools.ts
+    // declarations are ADDED alongside end_call (never replace it). No-op
+    // (this.campaign is null) on every inbound call.
+    if (this.campaign) {
+      this.toolRuntime = new ToolRuntime(buildCampaignTools(this.env, {
+        ownerUid: this.campaign.ownerUid,
+        attemptUuid: this.campaign.attemptUuid,
+        campaignId: this.campaign.campaignId,
+        contactName: this.campaign.contactName || undefined,
+        contactE164: this.campaign.contactE164 || undefined,
+        bookingEnabled: this.campaign.bookingEnabled,
+        timeZone: "Asia/Kolkata",
+      }));
+      const campaignDecls = this.toolRuntime.declarations();
+      if (campaignDecls.length > 0) {
+        tools[0].functionDeclarations = [...tools[0].functionDeclarations, ...campaignDecls];
+      }
     }
     setup.tools = tools;
     this.sendGem({ setup });
@@ -666,6 +792,18 @@ export class VobizAgentRoom {
         setTimeout(() => { void this.finalize("ava_ended"); }, 1600);
         return;
       }
+      // [AVA-CAMP-C-ROOM] any OTHER declared function call — only reachable
+      // when this.toolRuntime is set (campaign mode declared it above); an
+      // inbound session's setup never declares anything but end_call, so
+      // `calls` here is always empty/end_call-only on that path and this
+      // no-ops. This is the room's first functionResponse send-back path —
+      // there was none before.
+      if (this.toolRuntime && Array.isArray(calls)) {
+        for (const c of calls) {
+          if (!c || c.name === "end_call") continue;
+          void this.handleCampaignToolCall(String(c.id ?? ""), String(c.name ?? ""), c.args ?? {});
+        }
+      }
     }
 
     const sc = msg.serverContent;
@@ -802,6 +940,20 @@ export class VobizAgentRoom {
     try { this.gem?.send(JSON.stringify(obj)); } catch { /* upstream gone */ }
   }
 
+  /** [AVA-CAMP-C-ROOM] Run one campaign-mode tool call through ToolRuntime and
+   *  send the result back to Gemini as a functionResponse. Only ever invoked
+   *  from the toolCall handler above, which only calls it when
+   *  this.toolRuntime is set (campaign mode) — never reachable on the inbound
+   *  path. ToolRuntime.invoke() never throws (documented contract), so no
+   *  try/catch is needed around it here. */
+  private async handleCampaignToolCall(id: string, name: string, args: unknown): Promise<void> {
+    if (!this.toolRuntime || !name) return;
+    const result = await this.toolRuntime.invoke(name, args);
+    this.sendGem({
+      toolResponse: { functionResponses: [{ id, name, response: result }] },
+    });
+  }
+
   private failHard(reason: string): void {
     this.ev("ava_recept_error", { stage: reason, fatal: true, ms: Date.now() - this.startedAt });
     this.finalize(reason);
@@ -871,6 +1023,16 @@ export class VobizAgentRoom {
     const hadConversation = this.firstAudioSent || this.inText.length > 0 || this.pcmBytes > 0;
     try { await this.postMessage(init, summary, transcript, recordingUrl, durationS, hadConversation); } catch { /* best-effort */ }
 
+    // [AVA-CAMP-C-ROOM] persist the mid-call tool audit trail. Only in
+    // campaign mode (this.campaign set) — never runs on the inbound path.
+    if (this.campaign) {
+      try {
+        await metaDb(this.env).prepare(
+          `UPDATE campaign_call_attempts SET tools_used=?1 WHERE attempt_uuid=?2`,
+        ).bind(JSON.stringify(this.toolRuntime?.getLog() ?? []), this.campaign.attemptUuid).run();
+      } catch { /* best-effort */ }
+    }
+
     // Suppress pstn.ts handleHangup's "missed call — no voicemail recorded"
     // fallback card: on the agent lane there is no record-cb, so without this
     // marker the owner would get a bogus missed-call card next to the agent's
@@ -906,7 +1068,11 @@ export class VobizAgentRoom {
     }
     const tokensToCharge = Math.ceil(hundredths / 100);
     let chargedTokens = 0; // [RECEPT-STATS-1] actual tokens charged, for the call summary
-    if (hadConversation && durationS > 0) {
+    // [AVA-CAMP-C-ROOM] Billing is owned by CampaignDO.onCallEnded
+    // (reserve→consume-by-duration→release) — this room must NOT call any
+    // wallet op on the campaign path, so the settle below is skipped entirely
+    // when this.campaign is set (never true on the inbound path).
+    if (!this.campaign && hadConversation && durationS > 0) {
       try {
         const r = await chargeAmount(this.env, init.owner_uid, "ava_receptionist_call", tokensToCharge,
           `${init.sid}:settle`, { forceMeter: cfg.receptBillingLive === true });
