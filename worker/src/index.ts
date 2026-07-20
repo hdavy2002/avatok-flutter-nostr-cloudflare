@@ -87,6 +87,10 @@ import { pstnRoute } from "./routes/pstn";
 import { campaignPstnRoute } from "./routes/campaign_pstn";
 import { campaignsRoute } from "./routes/campaigns";
 import { campaignKbRoute } from "./routes/campaign_kb";
+// [AVA-CAMP-D-*] Campaign contacts ingest, DID provisioning, analytics RPC.
+import { campaignContactsRoute } from "./routes/campaign_contacts_route";
+import { campaignDidsRoute } from "./routes/campaign_dids_route";
+import { campaignAnalyticsRoute } from "./routes/campaign_analytics";
 // [TEL-TIERS-1] Telephony subscription tiers (Teler/Vobiz resale, Phase 4).
 import { telephonySubscribe, telephonyAddon, telephonyCancel, telephonyStatus } from "./routes/telephony_tiers";
 // [AVA-PSTN-AGENT-1] Vobiz bidirectional media-stream WS → VobizAgentRoom DO
@@ -625,6 +629,14 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // [AVA-CAMP-C-WIRE] Campaign KB (per-campaign upload/list/clear) — checked
       // before the broader /api/campaigns CRUD matcher so it isn't swallowed.
       if (/^\/api\/campaigns\/[^/]+\/kb(\/|$|\?|#)/.test(p)) return await campaignKbRoute(req, env, p);
+      // [AVA-CAMP-D-*] specific campaign sub-routes, all checked before the
+      // generic /api/campaigns CRUD matcher so they aren't swallowed. Note
+      // /dids and /analytics/account use fixed literal segments (never a :id),
+      // so they must precede the /:id/... patterns.
+      if (/^\/api\/campaigns\/dids(\/|$|\?|#)/.test(p)) return await campaignDidsRoute(req, env, p);
+      if (/^\/api\/campaigns\/analytics\/account(\/|$|\?|#)/.test(p)) return await campaignAnalyticsRoute(req, env, p);
+      if (/^\/api\/campaigns\/[^/]+\/analytics(\/|$|\?|#)/.test(p)) return await campaignAnalyticsRoute(req, env, p);
+      if (/^\/api\/campaigns\/[^/]+\/contacts(\/|$|\?|#)/.test(p)) return await campaignContactsRoute(req, env, p);
       if (p.startsWith("/api/campaigns")) return await campaignsRoute(req, env, p);
       // [TEL-TIERS-1] Telephony subscription tiers (Phase 4, Specs/PLAN-2026-07-19-
       // tokens-cockpit-pstn-master.md): ₹700 Tier-1 / ₹2,500 Tier-2 / ₹700 add-on,
