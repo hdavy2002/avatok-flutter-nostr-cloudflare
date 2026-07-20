@@ -13,8 +13,35 @@
 //   ledger — { debit, credit, type, ref?, meta? } double-entry row, emitted to
 //            Q_WALLET by the DO itself (single writer) with id = op_id, so
 //            DO-truth and the D1 ledger always correspond.
+//
+// [AVA-CAMP-B1-WALLET] Escrow ops for outbound campaigns (Specs/OUTBOUND-AI-
+// CALLING-CAMPAIGNS.md §2/§5): reserve | consume_reserved | release. These are
+// ADDITIVE — they never touch the `bal`/`acct` schema and never change the
+// behavior of balance/credit/spend/earn/debit_hold/release. A per-ref escrow
+// bucket lives in its own `resv` table:
+//   reserve         — admits if balance >= amount + ALL other outstanding
+//                      reservations for this uid (this DO IS the uid), then
+//                      adds `amount` into resv.reserved for `ref`. Does NOT
+//                      touch bal.balance (money stays "real" until consumed);
+//                      it only shrinks what other reservations may admit.
+//   consume_reserved — moves up to `amount` from resv.reserved into resv.spent
+//                      (clamped so a ref can never over-consume its own
+//                      reservation) and, in the same step, performs the REAL,
+//                      permanent deduction from bal.balance (via setBal),
+//                      mirroring how `spend` already debits real balance.
+//   release          — zeroes out whatever remains in resv.reserved for `ref`
+//                      (marks it released) so that capacity becomes available
+//                      to other reservations again. No bal.balance mutation —
+//                      reserve() never removed it from bal.balance, so nothing
+//                      to refund there; consume_reserved() already made any
+//                      real deduction permanent.
+// betaFreePremium (KV flag, same short-circuit as feature_pricing.ts
+// chargeAmount): while ON, admission never blocks on balance and
+// consume_reserved skips the real bal.balance deduction — mirrors "all
+// services free in beta" without special-casing campaigns.
 import type { Env } from "../types";
 import { json } from "../util";
+import { readConfig } from "../routes/config";
 
 const HOLD_MS = 7 * 86_400_000; // 7-day earnings hold
 const OPS_TTL_MS = 48 * 3_600_000; // dedupe window for op_id replays
@@ -56,6 +83,12 @@ export class WalletDO {
     // allow_free feature costs only, NEVER part of paid `balance`, so it can
     // never fund a payout. Self-migrating column add (throws when it exists).
     try { this.sql.exec("ALTER TABLE acct ADD COLUMN bonus INTEGER NOT NULL DEFAULT 0"); } catch { /* column already exists */ }
+    // [AVA-CAMP-B1-WALLET] Escrow reservations, keyed by caller-supplied `ref`
+    // (e.g. campaign_call_attempts.attempt_uuid). Brand-new table, additive only
+    // — does not touch `bal`/`acct`/`holds`/`ops`.
+    this.sql.exec(
+      "CREATE TABLE IF NOT EXISTS resv (ref TEXT PRIMARY KEY, reserved INTEGER NOT NULL DEFAULT 0, spent INTEGER NOT NULL DEFAULT 0, released INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)",
+    );
   }
 
   /** Replay guard: return the stored result for a seen op_id, else null. */
@@ -125,7 +158,10 @@ export class WalletDO {
 
     // Idempotency at the authority: replay of a seen op_id returns the original
     // result without re-applying (and without re-emitting the ledger row).
-    if (body.op === "credit" || body.op === "spend" || body.op === "earn" || body.op === "debit_hold" || body.op === "promo_credit") {
+    if (
+      body.op === "credit" || body.op === "spend" || body.op === "earn" || body.op === "debit_hold" || body.op === "promo_credit" ||
+      body.op === "reserve" || body.op === "consume_reserved" || body.op === "release_reservation" // [AVA-CAMP-B1-WALLET]
+    ) {
       const dup = this.seenOp(body.op_id);
       if (dup) return dup;
     }
@@ -138,6 +174,11 @@ export class WalletDO {
       case "earn": return this.earn(uid, body);
       case "debit_hold": return this.debitHold(uid, body); // refund clawback within hold
       case "release": { const released = this.releaseMatured(); return json({ released, ...this.bal() }); }
+      // [AVA-CAMP-B1-WALLET] Outbound-campaign escrow (§5). "release_reservation"
+      // (not "release") to avoid colliding with the existing hold-release op above.
+      case "reserve": return this.reserve(uid, body);
+      case "consume_reserved": return this.consumeReserved(uid, body);
+      case "release_reservation": return this.releaseReservation(uid, body);
       default: return json({ error: "unknown op" }, 400);
     }
   }
@@ -244,6 +285,125 @@ export class WalletDO {
     const result = { ok: true, clawed: take, balance: cur.balance, held: cur.held - take };
     this.recordOp(b.op_id, result);
     await this.audit(uid, { type: "refund", amount: -take, balance_after: cur.balance, app_name: b.app_name, ref: b.ref }, b);
+    this.broadcast();
+    return json(result);
+  }
+
+  // ---- [AVA-CAMP-B1-WALLET] outbound-campaign escrow (Specs/OUTBOUND-AI-CALLING-CAMPAIGNS.md §5) ----
+
+  private getResv(ref: string): { ref: string; reserved: number; spent: number; released: number } | null {
+    const rows = this.sql.exec("SELECT ref, reserved, spent, released FROM resv WHERE ref=?1", ref).toArray() as any[];
+    if (!rows.length) return null;
+    const r = rows[0];
+    return { ref: String(r.ref), reserved: Number(r.reserved), spent: Number(r.spent), released: Number(r.released) };
+  }
+
+  /** Sum of currently-outstanding (unreleased) reservations across ALL refs for this uid (= this DO). */
+  private outstandingReservations(): number {
+    const r = this.sql.exec("SELECT COALESCE(SUM(reserved),0) AS t FROM resv WHERE released=0").one() as any;
+    return Number(r.t);
+  }
+
+  /** betaFreePremium short-circuit — mirrors feature_pricing.ts chargeAmount(). Best-effort: a config read failure meters normally. */
+  private async betaFree(): Promise<boolean> {
+    try { return (await readConfig(this.env)).betaFreePremium === true; } catch { return false; }
+  }
+
+  // reserve({opId, uid, amount, ref}): admits if balance >= amount + all other
+  // outstanding reservations, then grows resv.reserved for `ref` by `amount`.
+  // Never touches bal.balance — reserving only shrinks headroom for OTHER
+  // reservations until consumed or released. Idempotent on opId.
+  private async reserve(uid: string, b: any): Promise<Response> {
+    const amount = Math.trunc(Number(b.amount));
+    const ref = String(b.ref || "");
+    if (!(amount > 0)) return json({ error: "amount>0 required" }, 400);
+    if (!ref) return json({ error: "ref required" }, 400);
+
+    const now = Date.now();
+    this.sql.exec(
+      "INSERT INTO resv (ref, reserved, spent, released, created_at, updated_at) VALUES (?1,0,0,0,?2,?2) ON CONFLICT(ref) DO NOTHING",
+      ref, now,
+    );
+    const beta = await this.betaFree();
+    const cur = this.bal();
+    const outstandingBefore = this.outstandingReservations(); // includes this ref's current (possibly 0) reserved
+    if (!beta && cur.balance < outstandingBefore + amount) {
+      const result = { ok: false, error: "insufficient balance", reservedTotal: this.getResv(ref)?.reserved ?? 0, available: Math.max(0, cur.balance - outstandingBefore) };
+      this.recordOp(b.op_id, result);
+      return json(result, 402);
+    }
+
+    this.sql.exec("UPDATE resv SET reserved=reserved+?1, updated_at=?2 WHERE ref=?3", amount, now, ref);
+    const row = this.getResv(ref)!;
+    const available = Math.max(0, cur.balance - (outstandingBefore + amount));
+    const result = { ok: true, ref, reservedTotal: row.reserved, available };
+    this.recordOp(b.op_id, result);
+    await this.audit(uid, { type: "campaign_reserve", amount: 0, balance_after: cur.balance, app_name: b.app_name || "campaign", ref }, b);
+    this.broadcast();
+    return json(result);
+  }
+
+  // consumeReserved({opId, ref, amount}): moves up to `amount` from resv.reserved
+  // into resv.spent (clamped — never over-consumes the reservation) and makes the
+  // REAL, permanent bal.balance deduction in the same step (unless betaFreePremium).
+  // Idempotent on opId. Used per-second during a call (§5).
+  private async consumeReserved(uid: string, b: any): Promise<Response> {
+    const amount = Math.trunc(Number(b.amount));
+    const ref = String(b.ref || "");
+    if (!(amount > 0)) return json({ error: "amount>0 required" }, 400);
+    if (!ref) return json({ error: "ref required" }, 400);
+
+    const row = this.getResv(ref);
+    if (!row || row.released) {
+      const result = { ok: false, error: "no_active_reservation", ref, consumed: 0 };
+      this.recordOp(b.op_id, result);
+      return json(result, 404);
+    }
+
+    const clamp = Math.max(0, Math.min(amount, row.reserved)); // never over-consume the reservation
+    const now = Date.now();
+    this.sql.exec("UPDATE resv SET reserved=reserved-?1, spent=spent+?1, updated_at=?2 WHERE ref=?3", clamp, now, ref);
+
+    const beta = await this.betaFree();
+    let balanceAfter = this.bal().balance;
+    if (!beta && clamp > 0) {
+      const cur = this.bal();
+      balanceAfter = Math.max(0, cur.balance - clamp); // permanent debit — mirrors spend()
+      this.setBal(balanceAfter, cur.held);
+    }
+
+    const after = this.getResv(ref)!;
+    const result = { ok: true, ref, consumed: clamp, reservedRemaining: after.reserved, totalSpent: after.spent, balance: balanceAfter };
+    this.recordOp(b.op_id, result);
+    if (clamp > 0) {
+      await this.audit(uid, { type: "campaign_call", amount: -clamp, balance_after: balanceAfter, app_name: b.app_name || "campaign", ref }, b);
+    }
+    this.broadcast();
+    return json(result);
+  }
+
+  // release({opId, ref}): refunds whatever remains reserved for `ref` back to
+  // "available" — since reserve() never touched bal.balance, this only zeroes the
+  // outstanding-reservation bookkeeping (freeing headroom for other reservations),
+  // it does not credit bal.balance. Idempotent on opId; a ref already released
+  // (or unknown) is a no-op success.
+  private async releaseReservation(uid: string, b: any): Promise<Response> {
+    const ref = String(b.ref || "");
+    if (!ref) return json({ error: "ref required" }, 400);
+
+    const row = this.getResv(ref);
+    const now = Date.now();
+    const refunded = row && !row.released ? row.reserved : 0;
+    if (row && !row.released) {
+      this.sql.exec("UPDATE resv SET reserved=0, released=1, updated_at=?1 WHERE ref=?2", now, ref);
+    }
+    const cur = this.bal();
+    const available = Math.max(0, cur.balance - this.outstandingReservations());
+    const result = { ok: true, ref, refunded, available };
+    this.recordOp(b.op_id, result);
+    if (refunded > 0) {
+      await this.audit(uid, { type: "campaign_release", amount: 0, balance_after: cur.balance, app_name: b.app_name || "campaign", ref }, b);
+    }
     this.broadcast();
     return json(result);
   }

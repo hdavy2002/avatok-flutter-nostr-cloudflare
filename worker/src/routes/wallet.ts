@@ -79,6 +79,32 @@ export async function transferCoins(
   return { ok: true, status: 200, body: debit.body, sellerNet, commission };
 }
 
+// [AVA-CAMP-B1-WALLET] Thin exports for the outbound-campaign escrow ops (Specs/
+// OUTBOUND-AI-CALLING-CAMPAIGNS.md §2/§5), mirroring `transferCoins` above.
+// CampaignDO/VobizAgentRoom call these instead of building the walletOp() body
+// by hand. The DO exposes "release_reservation" (not "release") to avoid
+// colliding with the pre-existing hold-release op of the same name.
+export async function walletReserve(
+  env: Env, uid: string, amount: number, ref: string, opId: string,
+): Promise<{ ok: boolean; status: number; reservedTotal?: number; available?: number; body: any }> {
+  const r = await walletOp(env, uid, { op: "reserve", uid, amount, ref, op_id: opId, app_name: "campaign" });
+  return { ok: r.status === 200 && r.body?.ok === true, status: r.status, reservedTotal: r.body?.reservedTotal, available: r.body?.available, body: r.body };
+}
+
+export async function walletConsumeReserved(
+  env: Env, uid: string, ref: string, amount: number, opId: string,
+): Promise<{ ok: boolean; status: number; consumed?: number; reservedRemaining?: number; body: any }> {
+  const r = await walletOp(env, uid, { op: "consume_reserved", uid, ref, amount, op_id: opId, app_name: "campaign" });
+  return { ok: r.status === 200 && r.body?.ok === true, status: r.status, consumed: r.body?.consumed, reservedRemaining: r.body?.reservedRemaining, body: r.body };
+}
+
+export async function walletReleaseReservation(
+  env: Env, uid: string, ref: string, opId: string,
+): Promise<{ ok: boolean; status: number; refunded?: number; body: any }> {
+  const r = await walletOp(env, uid, { op: "release_reservation", uid, ref, op_id: opId, app_name: "campaign" });
+  return { ok: r.status === 200 && r.body?.ok === true, status: r.status, refunded: r.body?.refunded, body: r.body };
+}
+
 function topupEnabled(env: Env): boolean {
   // Fail closed: also require the webhook signing secret. Without it, a forged
   // webhook would be the only thing between an attacker and free coins, so
