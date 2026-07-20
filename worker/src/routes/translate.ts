@@ -79,8 +79,14 @@ async function mintToken(env: Env, targetLang: string): Promise<{ token: string;
         responseModalities: ["AUDIO"],
         translationConfig: { targetLanguageCode: targetLang, echoTargetLanguage: false },
       },
-      inputAudioTranscription: {},
+      // COST GUARD — inputAudioTranscription is deliberately OFF: the client
+      // (translation_engine.dart) only renders outputTranscription (the
+      // translated caption). A transcript of the ORIGINAL speech is billed at
+      // the text-output rate and nothing consumes it, so we don't request it.
       outputAudioTranscription: {},
+      // Sliding-window compression bounds the re-fed context (Live re-bills the
+      // whole running context each turn). int64 fields are strings.
+      contextWindowCompression: { triggerTokens: "16000", slidingWindow: { targetTokens: "8000" } },
     },
   };
   const r = await fetch("https://generativelanguage.googleapis.com/v1alpha/auth_tokens", {

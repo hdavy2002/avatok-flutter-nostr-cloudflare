@@ -152,8 +152,14 @@ async function mintToken(env: Env, a: AgentRow, limitMin: number, language: stri
       responseModalities: ["AUDIO"],
       speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: a.voice_name } } },
     },
-    inputAudioTranscription: {},
+    // COST GUARD — inputAudioTranscription is deliberately OFF: no consumer reads
+    // the caller's speech transcript (billed at the text-output rate). The client
+    // live audio engine is still being wired; outputTranscription is kept so that
+    // engine can render Ava's caption like its siblings (ava_live/vision/translate).
     outputAudioTranscription: {},
+    // Live re-bills the whole running context each turn — sliding-window
+    // compression bounds it. int64 fields are strings.
+    contextWindowCompression: { triggerTokens: "16000", slidingWindow: { targetTokens: "8000" } },
   };
   if (a.file_search_store) {
     // File Search grounding (verify Live-session support in Phase 0; fallback

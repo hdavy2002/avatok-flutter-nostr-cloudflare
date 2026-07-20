@@ -285,8 +285,14 @@ async function mintToken(env: Env, a: AgentRow, limitMin: number, language: stri
       // resolution/fps and inflate cost (master §2/§4). LOW res, ~1 fps.
       mediaResolution: "MEDIA_RESOLUTION_LOW",
     },
-    inputAudioTranscription: {},
+    // COST GUARD — inputAudioTranscription is deliberately OFF: the client
+    // (vision_engine.dart) only renders outputTranscription (Ava's spoken
+    // caption). The caller's own speech transcript is billed at the text-output
+    // rate and nothing reads it, so we don't request it.
     outputAudioTranscription: {},
+    // Vision streams frames (image tokens are heavy), and Live re-bills the whole
+    // running context each turn — sliding-window compression bounds it. int64=string.
+    contextWindowCompression: { triggerTokens: "16000", slidingWindow: { targetTokens: "8000" } },
   };
   if (a.file_search_store) {
     setup.tools = [{ fileSearch: { fileSearchStoreNames: [a.file_search_store] } }];
