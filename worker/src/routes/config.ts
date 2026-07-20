@@ -365,6 +365,7 @@ export interface PlatformConfig {
   // say-so. While every one of these is false, the whole feature is byte-for-byte
   // dark: no new UI, no new routes, no new event emission.
   businessCallUx: boolean;    // Phase A: channel split UI (named incoming-call screen, no-answer card, tappable numbers)
+  brandedIncomingUi: boolean; // [AVACALL-INUI-1] branded IncomingBusinessCallScreen for ALL AvaTOK calls (friend+business), over the lock screen via full-screen intent. Default TRUE; false = native CallKit everywhere. Client mirror: RemoteConfig.brandedIncomingUi.
   voicemailBot: boolean;      // Phase B: server-side voice-prompt + 25s recording bot in the call room
   paidCalls: boolean;         // Phase B2: caller-pays escrowed calls (§3B)
   voiceAgent: boolean;        // Phase C: Ava AI Voice Agent (Grok realtime session)
@@ -766,6 +767,7 @@ const DEFAULTS: PlatformConfig = {
   // Dialpad business calls + Ava AI Voice Agent — ALL DARK until each phase is
   // device-verified on staging; flip one at a time in KV (never code).
   businessCallUx: false,
+  brandedIncomingUi: true,           // [AVACALL-INUI-1] branded incoming-call screen for ALL AvaTOK calls; false = native CallKit everywhere
   voicemailBot: false,
   paidCalls: false,
   voiceAgent: false,

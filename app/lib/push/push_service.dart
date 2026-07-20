@@ -1081,27 +1081,36 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
   });
   // Preserve the pre-instrumentation contract: a CallKit failure still throws.
   if (showErr != null) throw showErr;
-  // [DIALPAD-BIZ-CALLS] Named business-call screen (Accept · Decline · Send to
-  // Ava AI Agent · Block) shown IN-APP, on top of the native CallKit ring, when
-  // the app is foregrounded for a call that originated on the dialpad
-  // (business channel) — friend-channel calls keep the plain CallKit ring +
-  // CallScreen flow untouched. CallKit still owns background/lockscreen
-  // ringing either way; this is additive UI on top of it.
+  // [AVACALL-INUI-1] Branded incoming-call UI for ALL AvaTOK app-to-app calls
+  // (owner decision 2026-07-20). The polished IncomingBusinessCallScreen
+  // (avatar + Accept · Decline · Block · Send-to-Ava) now replaces the cheap
+  // native CallKit green screen for FRIEND calls as well as business/dialpad
+  // calls — the missing avatar on a plain friend call was the "unbranded" tell
+  // in the prod incident. The native CallKit ring posted just above is KEPT: it
+  // owns the ringtone, it is what `acceptRingingCall` reads back via
+  // `FlutterCallkitIncoming.activeCalls()`, and it is the forced fallback where
+  // Android won't grant a full-screen activity. This branded screen is layered
+  // on top of it, exactly as the DIALPAD-BIZ path always was.
   //
-  // Gated on BOTH `businessCallUx` AND a `via:'dialpad'` marker on the push
-  // payload. [place1to1Call] (the dialpad's only call-placing path) already
-  // sends `via:'dialpad'` on the OUTGOING POST /api/call, ready for the server
-  // to thread it through the ring push once that (separate) Worker routing
-  // work lands — until then `d['via']` is simply absent and this stays dark
-  // even with the flag on, so today's behaviour is unchanged either way.
-  if (RemoteConfig.businessCallUx &&
-      (d['via'] ?? '') == 'dialpad' &&
-      WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+  // Gated by `brandedIncomingUi` (default TRUE). When that flag is OFF we
+  // preserve the older behaviour byte-for-byte: branded only for `businessCallUx`
+  // + a `via:'dialpad'` marker. When ON, every AvaTOK ring (type=='call') is
+  // branded regardless of `via`.
+  //
+  // This (INUI-1) covers the FOREGROUNDED case — the live navigator is on top.
+  // The locked / backgrounded / screen-off case (raising the branded screen over
+  // the lock screen via a full-screen intent) is added separately in INUI-2.
+  final brandedOn = RemoteConfig.brandedIncomingUi ||
+      (RemoteConfig.businessCallUx && (d['via'] ?? '') == 'dialpad');
+  if (brandedOn &&
+      !PushService.wasCallTerminated(ringCallId) &&
+      lifecycle == 'resumed') {
     navigatorKey.currentState?.push(MaterialPageRoute(
       builder: (_) => IncomingBusinessCallScreen(
         callId: (d['callId'] ?? '').toString(),
         fromUid: (d['fromPub'] ?? '').toString(),
         fromName: (d['fromName'] ?? 'AvaTOK').toString(),
+        avatarUrl: (d['avatarUrl'] ?? d['fromAvatar'] ?? '').toString(),
         video: d['kind'] == 'video',
       ),
     ));

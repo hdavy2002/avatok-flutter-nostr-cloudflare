@@ -50,6 +50,32 @@ class IncomingBusinessCallScreen extends StatefulWidget {
 
 class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen> {
   bool _busy = false;
+  StreamSubscription<CallStatusEvent>? _statusSub;
+
+  @override
+  void initState() {
+    super.initState();
+    // [AVACALL-INUI-1] Auto-dismiss when the CALLER cancels / the call ends while
+    // this screen is up. Without this the branded ring lingered as an
+    // un-cancellable screen after the caller hung up (a worse problem now that it
+    // can be raised OVER THE LOCK SCREEN in INUI-2). The native CallKit ring is
+    // ended by push_service's terminal-status handler in parallel; here we just
+    // tear down the branded UI + clear the glare globals.
+    _statusSub = callStatusBus.stream.listen((e) {
+      if (e.callId != widget.callId) return;
+      const terminal = {'cancel', 'ended', 'missed', 'no-answer', 'bye'};
+      if (terminal.contains(e.status)) {
+        _clearRingGlobals();
+        if (mounted) Navigator.of(context).maybePop();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _statusSub?.cancel();
+    super.dispose();
+  }
 
   Map<String, dynamic> get _extra => {
         'callId': widget.callId,

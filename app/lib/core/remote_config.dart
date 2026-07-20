@@ -324,6 +324,14 @@ class RemoteConfig {
   /// tappable AvaTOK numbers → dialpad, the no-answer card, and the named
   /// incoming-business-call screen. Mirrors config.ts `businessCallUx`.
   static bool get businessCallUx => _b('businessCallUx', false);
+  /// [AVACALL-INUI-1] Use the branded IncomingBusinessCallScreen (avatar +
+  /// Accept/Decline/Block/Send-to-Ava) for ALL AvaTOK incoming calls — friend
+  /// AND business — instead of only dialpad business calls, and raise it over
+  /// the lock screen via a full-screen intent when the app isn't foregrounded.
+  /// Default TRUE (owner decision 2026-07-20 — the cheap native CallKit green
+  /// screen was the "friend call looks unbranded" tell). Flip false in KV to
+  /// fall back to native CallKit everywhere. Mirrors config.ts `brandedIncomingUi`.
+  static bool get brandedIncomingUi => _b('brandedIncomingUi', true);
   /// Phase B — the server-side voicemail bot (5-rings → prompt → 25s record).
   /// Mirrors config.ts `voicemailBot`.
   static bool get voicemailBot => _b('voicemailBot', false);
