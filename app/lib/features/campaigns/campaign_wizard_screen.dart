@@ -4,10 +4,12 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/apps_service.dart';
 import '../../core/campaigns_api.dart';
 import '../../core/ui/avatok_dark.dart';
+import 'campaign_voice_picker.dart';
 
 /// Multi-step outbound-campaign creation wizard (Specs/
 /// OUTBOUND-AI-CALLING-CAMPAIGNS.md). Six steps — Goal, Contacts, Number,
@@ -48,14 +50,39 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
 
   // ---- Step 1: Goal -------------------------------------------------------
   final _name = TextEditingController();
+  final _agentName = TextEditingController();
   final _businessName = TextEditingController();
   final _goal = TextEditingController();
   final _offer = TextEditingController();
   final _keyFacts = TextEditingController();
   final _objections = TextEditingController();
   final _persona = TextEditingController();
-  String? _languageHint; // null = auto, else 'hi' / 'en'
+  String? _languageHint; // null = auto, else an ISO code ('hi', 'en', 'ta'…)
   final List<_StagedFile> _kbFiles = [];
+
+  // Language options for the Goal step's language list (AVA-CAMP-Q-WIZARD).
+  // (label, code) — null code = Auto. English/Hindi kept first (existing
+  // defaults), then common Indian languages per the task brief.
+  static const List<(String, String?)> _languages = [
+    ('Auto', null),
+    ('English', 'en'),
+    ('Hindi', 'hi'),
+    ('Tamil', 'ta'),
+    ('Telugu', 'te'),
+    ('Bengali', 'bn'),
+    ('Marathi', 'mr'),
+    ('Gujarati', 'gu'),
+    ('Kannada', 'kn'),
+  ];
+
+  // ---- Voice picker (AVA-CAMP-Q-WIZARD) ------------------------------------
+  List<CampaignVoice> _voices = [];
+  String? _selectedVoiceId;
+
+  // ---- Connectors (AVA-CAMP-Q-WIZARD): Google Calendar (booking) + Google
+  // Sheets (contacts import). Same status/connect plumbing as
+  // avaapps_screen.dart's AppsService, just driven from inside the wizard.
+  bool _sheetsConnected = false;
 
   // ---- Step 2: Contacts -----------------------------------------------------
   _StagedFile? _contactsFile;
@@ -82,7 +109,7 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
   // ---- Step 5: Booking & handover --------------------------------------------
   bool _bookingEnabled = false;
   bool _calendarConnected = false;
-  bool _calendarChecked = false;
+  bool _connectorsChecked = false; // covers both googlecalendar + googlesheets
   bool _handoverEnabled = false;
   final _handoverNumber = TextEditingController();
 
@@ -91,12 +118,14 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
     super.initState();
     _spendCap.text = '$_estimatedCostTokens';
     _searchDids();
-    _checkCalendar();
+    _checkConnectors();
+    _loadVoices();
   }
 
   @override
   void dispose() {
     _name.dispose();
+    _agentName.dispose();
     _businessName.dispose();
     _goal.dispose();
     _offer.dispose();
@@ -139,17 +168,97 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
     }
   }
 
-  Future<void> _checkCalendar() async {
+  /// Checks both connectors the wizard cares about in one call — Google
+  /// Calendar (booking, step 5) and Google Sheets (contacts import, step 2).
+  /// Mirrors `avaapps_screen.dart`'s `_load()` status check; guarded so a
+  /// failed lookup just leaves both connectors "not connected" instead of
+  /// crashing the wizard.
+  Future<void> _checkConnectors({bool fresh = false}) async {
     try {
-      final connected = await AppsService.I.status();
+      final connected = await AppsService.I.status(fresh: fresh);
       if (!mounted) return;
       setState(() {
         _calendarConnected = connected.contains('googlecalendar');
-        _calendarChecked = true;
+        _sheetsConnected = connected.contains('googlesheets');
+        _connectorsChecked = true;
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _calendarChecked = true); // stays "not connected" on failure
+      setState(() => _connectorsChecked = true); // stays "not connected" on failure
+    }
+  }
+
+  /// GET /api/campaigns/voices — guarded per the task brief: a 404/failure
+  /// just leaves [_voices] empty and the picker shows its own "default voice"
+  /// fallback message rather than crashing the wizard.
+  Future<void> _loadVoices() async {
+    final voices = await CampaignsApi.fetchVoices();
+    if (!mounted) return;
+    setState(() => _voices = voices);
+  }
+
+  /// Triggers the same Composio OAuth connect flow `avaapps_screen.dart` uses
+  /// (in-app browser tab → `avatok://connected` deep link back into the app),
+  /// just fired from inside the wizard instead of the AvaApps grid. [slug] is
+  /// `googlecalendar` or `googlesheets`; both are checked outside the AvaApps
+  /// grid's `kEnabledAppSlugs` allow-list (that set only gates which tiles are
+  /// tappable on the AvaApps screen — the connect/status API itself works for
+  /// any Composio toolkit slug).
+  Future<void> _connectConnector(String slug, String label) async {
+    try {
+      final r = await AppsService.I.connectSlug(slug);
+      if (r.premium) {
+        _toast('Top up to connect $label.');
+        return;
+      }
+      if (r.url.isEmpty) {
+        // Already connected server-side — just refresh status.
+        await _checkConnectors(fresh: true);
+        return;
+      }
+      final uri = Uri.parse(r.url);
+      var opened = false;
+      try {
+        opened = await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+      } catch (_) {/* fall back below */}
+      if (!opened) {
+        try {
+          opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+        } catch (_) {/* surfaced via snackbar below */}
+      }
+      if (opened) {
+        _toast('Authorize $label — you’ll come right back here.');
+        // ignore: unawaited_futures
+        _pollConnector(slug);
+      } else {
+        _toast('Couldn’t open the $label sign-in. Please try again.');
+      }
+    } catch (_) {
+      _toast('Couldn’t start the $label connect flow.');
+    }
+  }
+
+  /// After launching the OAuth tab, poll status a few times so the
+  /// green/"Connected" state appears as soon as Composio marks the account
+  /// ACTIVE — same polling cadence as `avaapps_screen.dart`'s `_pollConnected`.
+  Future<void> _pollConnector(String slug) async {
+    for (final delay in const [
+      Duration(seconds: 2),
+      Duration(seconds: 3),
+      Duration(seconds: 4),
+      Duration(seconds: 6),
+    ]) {
+      await Future.delayed(delay);
+      if (!mounted) return;
+      try {
+        final connected = await AppsService.I.status(fresh: true);
+        if (!mounted) return;
+        setState(() {
+          _calendarConnected = connected.contains('googlecalendar');
+          _sheetsConnected = connected.contains('googlesheets');
+        });
+        if (connected.contains(slug)) return;
+      } catch (_) {/* keep polling on a transient failure */}
     }
   }
 
@@ -226,9 +335,11 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
 
   String _compiledGoalText() {
     final parts = <String>[_goal.text.trim()];
+    if (_agentName.text.trim().isNotEmpty) parts.add('Agent name: ${_agentName.text.trim()}');
     if (_offer.text.trim().isNotEmpty) parts.add('Offer: ${_offer.text.trim()}');
     if (_keyFacts.text.trim().isNotEmpty) parts.add('Key facts: ${_keyFacts.text.trim()}');
     if (_objections.text.trim().isNotEmpty) parts.add('If asked: ${_objections.text.trim()}');
+    if (_persona.text.trim().isNotEmpty) parts.add('Persona notes: ${_persona.text.trim()}');
     return parts.where((p) => p.isNotEmpty).join('\n\n');
   }
 
@@ -246,7 +357,10 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
         spendCapTokens: int.tryParse(_spendCap.text.trim()) ?? 0,
         didE164: didE164,
         languageHint: _languageHint,
-        voicePersona: _persona.text.trim().isEmpty ? null : _persona.text.trim(),
+        // Prefer the picked voice id (voice picker, guarded — may be null if
+        // /api/campaigns/voices isn't live yet); fall back to the free-text
+        // persona field so older behavior still sends something meaningful.
+        voicePersona: _selectedVoiceId ?? (_persona.text.trim().isEmpty ? null : _persona.text.trim()),
         concurrency: _concurrency,
         windowStartMin: _windowStartMin,
         windowEndMin: _windowEndMin,
@@ -419,6 +533,13 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
       ),
       const SizedBox(height: 14),
       AdField(
+        controller: _agentName,
+        label: 'AI agent name',
+        hint: 'e.g. Ava, Riya, Priya',
+        textCapitalization: TextCapitalization.words,
+      ),
+      const SizedBox(height: 14),
+      AdField(
         controller: _businessName,
         label: 'Business name (used in the greeting)',
         hint: 'e.g. Sharma Electronics',
@@ -452,14 +573,21 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
       Text('LANGUAGE', style: ADText.sectionLabel()),
       const SizedBox(height: 9),
       Wrap(spacing: 8, runSpacing: 8, children: [
-        AdChip(label: 'Auto', active: _languageHint == null, onTap: () => setState(() => _languageHint = null)),
-        AdChip(label: 'Hindi', active: _languageHint == 'hi', onTap: () => setState(() => _languageHint = 'hi')),
-        AdChip(label: 'English', active: _languageHint == 'en', onTap: () => setState(() => _languageHint = 'en')),
+        for (final (label, code) in _languages)
+          AdChip(label: label, active: _languageHint == code, onTap: () => setState(() => _languageHint = code)),
       ]),
+      const SizedBox(height: 16),
+      Text('VOICE', style: ADText.sectionLabel()),
+      const SizedBox(height: 9),
+      CampaignVoicePicker(
+        voices: _voices,
+        selectedId: _selectedVoiceId,
+        onSelected: (id) => setState(() => _selectedVoiceId = id),
+      ),
       const SizedBox(height: 14),
       AdField(
         controller: _persona,
-        label: 'Voice / persona (optional)',
+        label: 'Persona notes (optional)',
         hint: 'e.g. Friendly, upbeat, keeps calls under 2 minutes',
         textCapitalization: TextCapitalization.sentences,
       ),
@@ -520,6 +648,40 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
     ]);
   }
 
+  /// Shared connect/connected row for a Composio connector (Google Calendar in
+  /// the Booking step, Google Sheets in the Contacts step) — icon+brand color
+  /// mirror `kAvaApps` in `apps_service.dart` so the same app reads the same
+  /// everywhere in the app. Green "Connected" sticker when active, else an
+  /// icon + "Connect" chip that fires [_connectConnector].
+  Widget _connectorRow({
+    required IconData icon,
+    required Color color,
+    required String label,
+    required bool connected,
+    required String slug,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AD.card,
+        borderRadius: BorderRadius.circular(AD.rListCard),
+        border: Border.all(color: AD.borderControl, width: 1),
+      ),
+      child: Row(children: [
+        Icon(icon, size: 20, color: color),
+        const SizedBox(width: 10),
+        Expanded(child: Text(label, style: ADText.rowName())),
+        if (connected)
+          AdSticker('Connected', kind: AdStickerKind.ok, icon: Icons.check)
+        else
+          AdChip(
+            label: _connectorsChecked ? 'Connect' : 'Checking…',
+            onTap: _connectorsChecked ? () => _connectConnector(slug, label) : null,
+          ),
+      ]),
+    );
+  }
+
   // ---- Step 2: Contacts -----------------------------------------------------
 
   Widget _contactsStep() {
@@ -561,6 +723,22 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
         const SizedBox(height: 10),
         AdErrorMsg(_contactsNote!),
       ],
+      const SizedBox(height: 16),
+      Text('OR CONNECT GOOGLE SHEETS', style: ADText.sectionLabel()),
+      const SizedBox(height: 9),
+      _connectorRow(
+        icon: Icons.grid_on,
+        color: const Color(0xFF0F9D58), // matches kAvaApps' googlesheets tile
+        label: 'Google Sheets',
+        connected: _sheetsConnected,
+        slug: 'googlesheets',
+      ),
+      const SizedBox(height: 6),
+      Text(
+        'Connecting lets Ava pull contacts straight from a sheet — coming soon; '
+        'the link above keeps working in the meantime.',
+        style: ADText.preview(c: AD.textTertiary),
+      ),
     ]);
   }
 
@@ -727,11 +905,12 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
       ]),
       if (!_calendarConnected) ...[
         const SizedBox(height: 10),
-        AdChip(
-          label: _calendarChecked ? 'Connect Google Calendar' : 'Checking…',
-          onTap: _calendarChecked
-              ? () => _toast('Open Settings → AvaApps to connect Google Calendar.')
-              : null,
+        _connectorRow(
+          icon: Icons.event,
+          color: const Color(0xFF4285F4), // matches kAvaApps' googlecalendar tile
+          label: 'Google Calendar',
+          connected: _calendarConnected,
+          slug: 'googlecalendar',
         ),
       ],
       const SizedBox(height: 20),
@@ -767,8 +946,10 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
     final cap = int.tryParse(_spendCap.text.trim()) ?? 0;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       _summaryRow('Name', _name.text.trim().isEmpty ? '—' : _name.text.trim()),
+      _summaryRow('Agent name', _agentName.text.trim().isEmpty ? '—' : _agentName.text.trim()),
       _summaryRow('Goal', _goal.text.trim().isEmpty ? '—' : _goal.text.trim()),
-      _summaryRow('Language', _languageHint == null ? 'Auto' : (_languageHint == 'hi' ? 'Hindi' : 'English')),
+      _summaryRow('Language', _languages.firstWhere((l) => l.$2 == _languageHint, orElse: () => _languages.first).$1),
+      _summaryRow('Voice', _selectedVoiceLabel()),
       _summaryRow('Knowledge files', '${_kbFiles.length}'),
       _summaryRow(
         'Contacts',
@@ -819,6 +1000,14 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
         onPressed: _launching ? null : _launch,
       ),
     ]);
+  }
+
+  String _selectedVoiceLabel() {
+    if (_selectedVoiceId == null) return 'Default';
+    for (final v in _voices) {
+      if (v.id == _selectedVoiceId) return v.name;
+    }
+    return _selectedVoiceId!;
   }
 
   Widget _summaryRow(String label, String value) {

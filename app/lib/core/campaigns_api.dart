@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'api_auth.dart';
 import 'config.dart';
@@ -153,6 +154,32 @@ class DidOffer {
         monthlyFee: (j['monthly_fee'] as num?)?.toInt(),
         currency: j['currency'] as String?,
         region: j['region'] as String?,
+      );
+}
+
+/// One selectable AI-agent voice — GET /api/campaigns/voices
+/// (worker/src/routes/campaigns.ts, being built in parallel per
+/// AVA-CAMP-Q-WIZARD). Not mounted at the time this client was written; every
+/// caller ([CampaignsApi.fetchVoices]) degrades to an empty list on a 404 so
+/// the wizard can fall back to a single default option instead of crashing.
+class CampaignVoice {
+  final String id;
+  final String name;
+  final String gender; // 'male'|'female'
+  final String? description;
+
+  const CampaignVoice({
+    required this.id,
+    required this.name,
+    this.gender = 'female',
+    this.description,
+  });
+
+  factory CampaignVoice.fromJson(Map<String, dynamic> j) => CampaignVoice(
+        id: (j['id'] ?? '').toString(),
+        name: (j['name'] ?? '').toString(),
+        gender: (j['gender'] ?? 'female').toString().toLowerCase(),
+        description: j['description'] as String?,
       );
 }
 
@@ -486,6 +513,55 @@ class CampaignsApi {
       rethrow;
     } catch (e) {
       throw ApiException(0, e.toString());
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Voice picker (AVA-CAMP-Q-WIZARD) — GET /api/campaigns/voices +
+  // /api/campaigns/voices/preview, built in parallel on the backend. Guarded
+  // the same way as the DID routes above: a 404/failure here must never
+  // crash the wizard, so [fetchVoices] returns an empty list on any error
+  // and the picker falls back to a single default option.
+  // ---------------------------------------------------------------------
+
+  /// GET /api/campaigns/voices — the selectable AI-agent voice catalog.
+  /// Returns `[]` (never throws) if the route isn't live yet or the request
+  /// fails, so the wizard's voice picker can degrade gracefully.
+  static Future<List<CampaignVoice>> fetchVoices() async {
+    try {
+      final origin = kApiBase; // https://$kSignalingHost/api
+      final r = await ApiAuth.getSigned('$origin/campaigns/voices', timeout: const Duration(seconds: 15));
+      if (r.statusCode != 200) return const [];
+      final j = _decodeMap(r.body);
+      final list = (j['voices'] as List?) ?? const [];
+      return list
+          .whereType<Map>()
+          .map((e) => CampaignVoice.fromJson(e.cast<String, dynamic>()))
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// GET /api/campaigns/voices/preview?voice=<id> — the signed URL for a
+  /// short preview clip of [voiceId]. Callers fetch the bytes themselves via
+  /// [ApiAuth.getBytes] (mirrors the R2-recording pattern in
+  /// campaign_inbox_cards.dart) so playback can go through the shared
+  /// [AudioPlaybackService] player.
+  static String voicePreviewUrl(String voiceId) {
+    final origin = kApiBase;
+    return '$origin/campaigns/voices/preview?voice=${Uri.encodeQueryComponent(voiceId)}';
+  }
+
+  /// Fetches the preview clip bytes for [voiceId]. Returns null (never
+  /// throws) on any non-200 response or transport failure.
+  static Future<Uint8List?> fetchVoicePreviewBytes(String voiceId) async {
+    try {
+      final r = await ApiAuth.getBytes(voicePreviewUrl(voiceId), timeout: const Duration(seconds: 20));
+      if (r.statusCode != 200 || r.bodyBytes.isEmpty) return null;
+      return r.bodyBytes;
+    } catch (_) {
+      return null;
     }
   }
 
