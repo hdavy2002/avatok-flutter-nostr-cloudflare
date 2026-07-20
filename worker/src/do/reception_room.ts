@@ -260,7 +260,14 @@ export class ReceptionRoom {
     // zero-stop is skipped entirely and the exact settle at finalize still bills.
     try {
       const b = await walletOp(this.env, init.owner_uid, { op: "balance", uid: init.owner_uid });
-      if (b.status === 200) this.startBalance = Math.max(0, Number(b.body?.balance ?? 0));
+      // [RECEPT-BAL-SPENDABLE-1] Seed the runway from SPENDABLE tokens (daily free +
+      // welcome/promo bonus + paid), NOT the paid-only `balance`. The receptionist
+      // settle spends with allow_free (free/bonus first), so a user with e.g. 250 free
+      // + 100 bonus = 350 spendable but 0 paid was read as 0 → the zero-stop fired
+      // instantly ("balance finished") AND the settle was capped to 0 (no tokens spent),
+      // even though they had 350 tokens to spend. Fall back to paid balance if spendable
+      // is absent (older wallet). Fail-open unchanged.
+      if (b.status === 200) this.startBalance = Math.max(0, Number(b.body?.spendable ?? b.body?.balance ?? 0));
     } catch { /* fail-open */ }
 
     const pair = new WebSocketPair();
