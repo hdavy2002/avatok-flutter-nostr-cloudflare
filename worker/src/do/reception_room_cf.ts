@@ -81,6 +81,19 @@ function isEnglish(code?: string | null): boolean {
   const b = baseLang(code);
   return b === "" || b === "en";
 }
+// Human language name for the LLM directive (so a small model reliably replies in
+// the session language instead of defaulting to English). Falls back to the raw base
+// code when unmapped.
+const LANG_NAMES: Record<string, string> = {
+  hi: "Hindi", en: "English", es: "Spanish", fr: "French", it: "Italian",
+  pt: "Portuguese", ja: "Japanese", zh: "Chinese", bn: "Bengali", ta: "Tamil",
+  te: "Telugu", mr: "Marathi", gu: "Gujarati", kn: "Kannada", ml: "Malayalam",
+  pa: "Punjabi", ur: "Urdu", ar: "Arabic", de: "German", ru: "Russian",
+};
+function languageName(code?: string | null): string {
+  const b = baseLang(code);
+  return LANG_NAMES[b] || b || "the caller's language";
+}
 // Deepgram Nova-3 STT: multilingual model handles most launch languages; feed the
 // specific BCP-47 tag when we have one so recognition is tuned. English keeps the
 // exact prior behaviour (en-US). Empty/unknown → "multi" (Nova auto language).
@@ -376,7 +389,17 @@ export class ReceptionRoomCf {
       language_code: this.langCode() || null,
       voice: this.cfVoice(), stt_model: this.cfSttModel(), llm_model: this.cfLlmModel(), tts_model: this.cfTtsModel(),
     });
-    this.cfHistory = [{ role: "system", content: init.system_prompt }];
+    // [RECEPT-FORCE-LANG-1] Hard language lock: a small LLM (Qwen3-32B) otherwise
+    // drifts to English even with a "Speak in <lang>" line. When the session language
+    // is non-English, append an explicit directive so EVERY reply is in that language
+    // and native script — matching the forced Hindi STT/voice, so Ava doesn't read
+    // English text with a Hindi voice.
+    let sysPrompt = init.system_prompt;
+    if (!isEnglish(this.langCode())) {
+      const name = languageName(this.langCode());
+      sysPrompt += `\n\nLANGUAGE (STRICT): Reply ONLY in ${name}, in its native script. Do not use English except for unavoidable proper nouns. Keep each reply to one short, natural spoken sentence.`;
+    }
+    this.cfHistory = [{ role: "system", content: sysPrompt }];
     const greeting = (init.greeting || "").trim();
     this.cfBusy = true;
     try {

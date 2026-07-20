@@ -1014,6 +1014,13 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   // ALWAYS-ON (owner decision 2026-07-07): the per-user off switch is retired —
   // a saved enabled=0 row is ignored so Ava can always take the message.
   if (!s) s = defaultSettings(to);
+  // [RECEPT-FORCE-LANG-1] A global RECEPT_CF_FORCE_LANG (e.g. "hi-IN") overrides the
+  // owner's opening language so the DETERMINISTIC GREETING text AND the LLM's
+  // "Speak in <lang>" instruction are composed in that language — matching the DO's
+  // forced STT + Kokoro voice. Without this, force-lang only changed the TTS VOICE,
+  // so Ava read ENGLISH text with a Hindi voice ("English with a Hindi accent").
+  const forceLang = String((env as any).RECEPT_CF_FORCE_LANG || "").trim();
+  if (forceLang) s = { ...s, answer_lang: forceLang };
   // [RECEPT-MODE-1] (owner 2026-07-19): the OWNER's saved mode overrides the global
   // flags. "vm" → zero-cost voicemail flow (CF DO); "agent" → AI voice agent
   // (Gemini Live, billed ava_receptionist_minute); null → global defaults above.
