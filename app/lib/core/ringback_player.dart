@@ -197,9 +197,21 @@ class RingbackPlayer {
       await _ensureCallAudioContext(
           speakerOn: speakerOn, mode: AndroidAudioMode.inCommunication);
       await _p.setReleaseMode(ReleaseMode.loop);
+      // [AVACALL-TONE-1] Pin the tone to full volume — the caller experienced it
+      // as inaudible (2026-07-20) even though `searching_tone_played` was logged.
+      // A stale per-player volume from an earlier tone could leave it near-silent;
+      // asserting 1.0 here makes the beeps reliably audible.
+      try { await _p.setVolume(1.0); } catch (_) {}
       await _p.play(AssetSource(_assetRel(kSearchingToneAsset)));
     } catch (e) {
+      // [AVACALL-TONE-1] A silent searching tone must never be invisible again:
+      // emit an explicit failure event (was log-only) so a broken/missing asset or
+      // a player error is queryable in PostHog next to `searching_tone_played`.
       AvaLog.I.log('call', 'searching tone play failed: $e');
+      Analytics.capture('searching_tone_play_failed', {
+        'error': e.toString(),
+        'asset': kSearchingToneAsset,
+      });
     }
   }
 
