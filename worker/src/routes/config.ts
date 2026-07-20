@@ -505,6 +505,15 @@ export interface PlatformConfig {
   // FALSE (dark) = the voicemail lane is byte-identical to before. This is
   // ALSO the kill switch: flip off and the very next call gets voicemail.
   pstnAgentEnabled: boolean;
+  // [AVA-VM-SELFREC-1] (owner 2026-07-20) Self-record PSTN voicemail over a
+  // Vobiz bidirectional <Stream> instead of the billed <Record> verb. When TRUE,
+  // routes/pstn.ts's answer webhook ends the voicemail XML with a <Stream> →
+  // do/voicemail_stream_room.ts (which captures the caller's audio, encodes MP3
+  // to R2, and delivers the SAME InboxDO voicemail envelope) instead of
+  // <Record>. FALSE (default/dark) = the voicemail lane is byte-identical to
+  // before, still using Vobiz <Record>. This is ALSO the kill switch: flip off
+  // and the very next call falls back to <Record>. Boolean → NOT in numericKeys.
+  pstnVoicemailSelfRecord: boolean;
   // [TEL-TIERS-1] (Phase 4, Specs/PLAN-2026-07-19-tokens-cockpit-pstn-master.md)
   // PSTN channel-concurrency ENFORCEMENT. routes/pstn.ts always TRACKS per-owner
   // active-call gauges + monthly peaks (KV, best-effort); with this FALSE
@@ -817,6 +826,8 @@ const DEFAULTS: PlatformConfig = {
   // streams confirmed enabled on the Vobiz account, and a test owner has
   // mode="agent". Boolean → NOT in numericKeys.
   pstnAgentEnabled: false,
+  pstnVoicemailSelfRecord: false, // [AVA-VM-SELFREC-1] dark by default; flip in KV to self-record voicemail
+
   // [TEL-TIERS-1] Track-only launch state: concurrency gauges run, enforcement
   // (busy fallback above channels_total) stays OFF until peak data says otherwise.
   pstnConcurrencyEnforced: false,

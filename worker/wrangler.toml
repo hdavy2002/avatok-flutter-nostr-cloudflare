@@ -412,6 +412,13 @@ class_name = "AgentVoiceRoom"
 name = "VOBIZ_AGENT_ROOM"
 class_name = "VobizAgentRoom"
 
+# [AVA-VM-SELFREC-1] Self-recorded PSTN voicemail over a Vobiz <Stream> WebSocket
+# — replaces Vobiz's billed <Record> verb. One instance per voicemail session.
+# DARK behind pstnVoicemailSelfRecord (routes/config.ts).
+[[durable_objects.bindings]]
+name = "VOICEMAIL_STREAM_ROOM"
+class_name = "VoicemailStreamRoom"
+
 # [AVA-CAMP-B1-GATE] Per-user outbound-dial admission gate (channel pool +
 # token-bucket rate limit + round-robin fairness) for AI calling campaigns.
 # DARK — nothing calls it yet (campaignDialerEnabled defaults false).
@@ -517,6 +524,13 @@ new_sqlite_classes = ["DialerGateDO"]
 [[migrations]]
 tag = "v18"
 new_sqlite_classes = ["CampaignDO"]
+
+# [AVA-VM-SELFREC-1] Self-recorded voicemail DO. SQLite-backed class for the
+# hibernatable-WebSocket backend, though it stores nothing (in-memory PCM →
+# R2 MP3 at finalize). DARK behind pstnVoicemailSelfRecord.
+[[migrations]]
+tag = "v19"
+new_sqlite_classes = ["VoicemailStreamRoom"]
 
 # Brain reasoning + observability config (vars; secrets set via wrangler):
 #   BRAIN_REASONER_MODEL  — default @cf/meta/llama-3.1-8b-instruct-fp8 (8B)
@@ -806,6 +820,12 @@ class_name = "AgentVoiceRoom"
 name = "VOBIZ_AGENT_ROOM"
 class_name = "VobizAgentRoom"
 
+# [AVA-VM-SELFREC-1] Self-recorded voicemail DO (mirrored from prod). DARK behind
+# pstnVoicemailSelfRecord.
+[[env.staging.durable_objects.bindings]]
+name = "VOICEMAIL_STREAM_ROOM"
+class_name = "VoicemailStreamRoom"
+
 # [AVA-CAMP-B1-GATE] Per-user outbound-dial admission gate DO (mirrored from
 # prod). DARK — campaignDialerEnabled defaults false.
 [[env.staging.durable_objects.bindings]]
@@ -900,3 +920,9 @@ new_sqlite_classes = ["DialerGateDO"]
 [[env.staging.migrations]]
 tag = "v18"
 new_sqlite_classes = ["CampaignDO"]
+
+# [AVA-VM-SELFREC-1] Self-recorded voicemail DO (mirrored from prod). DARK behind
+# pstnVoicemailSelfRecord.
+[[env.staging.migrations]]
+tag = "v19"
+new_sqlite_classes = ["VoicemailStreamRoom"]

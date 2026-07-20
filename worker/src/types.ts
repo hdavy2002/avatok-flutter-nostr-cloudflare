@@ -128,6 +128,13 @@ export interface Env {
   // Gemini Live upstream. DARK behind pstnAgentEnabled (routes/config.ts).
   // Specs/PLAN-2026-07-19-vobiz-media-stream-agent.md.
   VOBIZ_AGENT_ROOM: DurableObjectNamespace;
+  // [AVA-VM-SELFREC-1] Durable Object — self-recorded PSTN voicemail over a
+  // Vobiz bidirectional <Stream> WebSocket (do/voicemail_stream_room.ts),
+  // replacing Vobiz's billed <Record> verb. One instance per voicemail session
+  // (`pstn-vm-<CallUUID>`); captures caller PCM, encodes MP3 to R2, and delivers
+  // the SAME InboxDO voicemail envelope as routes/pstn.ts handleRecordCb. DARK
+  // behind pstnVoicemailSelfRecord (routes/config.ts).
+  VOICEMAIL_STREAM_ROOM: DurableObjectNamespace;
   // [AVA-CAMP-B1-GATE] Durable Object — per-user outbound-dial admission gate
   // for AI calling campaigns (channel pool + token-bucket rate limit + round-
   // robin fairness across a user's running campaigns). One instance per owner

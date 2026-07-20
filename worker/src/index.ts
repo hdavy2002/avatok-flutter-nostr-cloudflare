@@ -96,6 +96,10 @@ import { telephonySubscribe, telephonyAddon, telephonyCancel, telephonyStatus } 
 // [AVA-PSTN-AGENT-1] Vobiz bidirectional media-stream WS → VobizAgentRoom DO
 // (live Gemini agent on cell/DID calls; dark behind pstnAgentEnabled).
 import { pstnAgentStream } from "./routes/pstn_agent";
+// [AVA-VM-SELFREC-1] Vobiz bidirectional media-stream WS → VoicemailStreamRoom DO
+// (self-recorded voicemail replacing Vobiz's billed <Record>; dark behind
+// pstnVoicemailSelfRecord).
+import { pstnVoicemailStream } from "./routes/pstn_voicemail_stream";
 // [WP4] Ava AI Voice Agent — Grok realtime session start (plan §4/§8/§15.1/§15.3).
 import { agentCallStart } from "./routes/agent_voice_routes";
 // [WP4] RAG document pipeline — Grok Collections (plan §5/§9).
@@ -211,6 +215,7 @@ export { ReceptionRoomCf } from "./do/reception_room_cf"; // Ava Receptionist �
 export { VoicemailRoom } from "./do/voicemail_room"; // [WP3] carrier-style voicemail bot (dark behind voicemailBot)
 export { AgentVoiceRoom } from "./do/agent_voice_room"; // [WP4] Ava AI Voice Agent — Grok realtime bridge (dark behind voiceAgent)
 export { VobizAgentRoom } from "./do/vobiz_agent_room"; // [AVA-PSTN-AGENT-1] live Gemini agent on Vobiz DID calls (dark behind pstnAgentEnabled)
+export { VoicemailStreamRoom } from "./do/voicemail_stream_room"; // [AVA-VM-SELFREC-1] self-recorded PSTN voicemail over <Stream> (dark behind pstnVoicemailSelfRecord)
 export { DialerGateDO } from "./do/dialer_gate_do"; // [AVA-CAMP-B1-GATE] per-user outbound-dial channel pool + rate limit (dark — nothing calls it yet, campaignDialerEnabled)
 export { CampaignDO } from "./do/campaign_do"; // [AVA-CAMP-B2-WIRE] per-campaign SQLite-backed DO (call_fsm state, pacing; dark behind campaignDialerEnabled)
 
@@ -381,6 +386,15 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
     // the route; the DO validates the single-use pstn_agent:<sid> KV record.
     if (p.startsWith("/api/pstn-agent/stream/") && req.headers.get("Upgrade") === "websocket") {
       return await pstnAgentStream(req, env, p);
+    }
+
+    // [AVA-VM-SELFREC-1] Vobiz bidirectional media stream → VoicemailStreamRoom DO
+    // (self-recorded voicemail; secret-in-path auth verified in the route, the DO
+    // validates the single-use pstn_vm:<sid> KV record). DARK behind
+    // pstnVoicemailSelfRecord — routes/pstn.ts only emits this <Stream> when the
+    // flag is on, so the route is inert otherwise.
+    if (p.startsWith("/api/pstn-vm/stream/") && req.headers.get("Upgrade") === "websocket") {
+      return await pstnVoicemailStream(req, env, p);
     }
 
     // Voicemail bot bridge → VoicemailRoom DO (WP3, plan §3 step 4 / §7 item 5).

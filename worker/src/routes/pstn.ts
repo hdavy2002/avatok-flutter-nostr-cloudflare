@@ -487,6 +487,40 @@ async function handleAnswer(req: Request, env: Env, secret: string): Promise<Res
             : `The person you are calling is not available. Please leave a message after the beep. You have ${recordSec} seconds.`,
         )}</Speak>`;
 
+    // [AVA-VM-SELFREC-1] SELF-RECORD LANE (owner 2026-07-20, dark behind
+    // pstnVoicemailSelfRecord). For a RESOLVED owner, capture the caller's
+    // message ourselves over a bidirectional <Stream> → do/voicemail_stream_room.ts
+    // instead of Vobiz's billed <Record> verb (the dashboard "Recording" line
+    // item = per-recording storage+retrieval we were paying while ALSO re-storing
+    // the WAV in our own R2). The greeting introBlock above is SHARED verbatim;
+    // only the capture verb changes, and the DO delivers the SAME InboxDO
+    // voicemail envelope handleRecordCb does. Orphan/probe calls always keep
+    // <Record>. ANY error here falls through to the <Record> path below — the
+    // "never lose a call" guarantee stands (worst case is the old behavior).
+    if (!isOrphan && resolved.owner_uid && (cfg as any).pstnVoicemailSelfRecord === true) {
+      try {
+        const sid = `pstn-vm-${callUuid || crypto.randomUUID()}`;
+        await env.TOKENS.put(`pstn_vm:${sid}`, JSON.stringify({
+          owner_uid: resolved.owner_uid,
+          caller_e164: callerFrom || null,
+          call_uuid: callUuid || null,
+          call_id: callId,
+          trace_id: traceId,
+          record_sec: recordSec,
+        }), { expirationTtl: 300 });
+        const wsBase = PUBLIC_BASE.replace(/^https:/, "wss:");
+        const streamUrl = `${wsBase}/api/pstn-vm/stream/${encodeURIComponent(secret)}/${encodeURIComponent(sid)}`;
+        // keepCallAlive REQUIRED (call drops when XML ends); contentType configures
+        // the INBOUND leg (L16@16k). After the DO sends `stop`, Vobiz plays the
+        // trailing goodbye + hangs up. Same shape as the agent lane's <Stream>.
+        return xml(
+          `<?xml version="1.0" encoding="UTF-8"?><Response>${introBlock}` +
+          `<Stream bidirectional="true" keepCallAlive="true" contentType="audio/x-l16;rate=16000">${esc(streamUrl)}</Stream>` +
+          `<Speak>Thank you. Goodbye.</Speak><Hangup/></Response>`,
+        );
+      } catch { /* fall through to <Record> below — never lose a call */ }
+    }
+
     // [AVAVM-TRANSCRIPT-1, investigated 2026-07-16] Deliberately NOT setting
     // `transcriptionType`/`transcriptionUrl` here. Vobiz docs (xml/record
     // attributes) are explicit: "Transcription is available at an additional

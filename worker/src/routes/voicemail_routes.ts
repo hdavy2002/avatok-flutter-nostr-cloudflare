@@ -78,9 +78,15 @@ export async function voicemailRecording(req: Request, env: Env): Promise<Respon
   }
   const obj = await env.BLOBS.get(key);
   if (!obj) return json({ error: "gone" }, 404);
+  // [AVA-VM-SELFREC-1] Serve the object's STORED content-type so both the legacy
+  // Vobiz <Record> WAVs (audio/wav) and the new self-recorded MP3s (audio/mpeg,
+  // do/voicemail_stream_room.ts) play correctly. Fall back to audio/wav for any
+  // older object written without httpMetadata.contentType.
+  const ct = obj.httpMetadata?.contentType
+    || (key.endsWith(".mp3") ? "audio/mpeg" : "audio/wav");
   return new Response(obj.body, {
     headers: {
-      "content-type": "audio/wav",
+      "content-type": ct,
       "cache-control": "private, max-age=86400",
       "accept-ranges": "bytes",
     },
