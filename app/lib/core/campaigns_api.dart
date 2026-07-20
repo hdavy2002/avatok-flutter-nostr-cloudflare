@@ -156,6 +156,33 @@ class DidOffer {
       );
 }
 
+/// A DID number already owned by the caller's account (`user_dids` row) —
+/// GET /api/campaigns/dids. Distinct from [DidOffer] (unpurchased inventory
+/// from the search endpoint).
+class DidInfo {
+  final String e164;
+  final String? purpose;
+  final String status; // active|releasing|released|…
+  final int? nextRenewalAt; // epoch ms
+  final int? monthlyTokens;
+
+  const DidInfo({
+    required this.e164,
+    this.purpose,
+    this.status = 'active',
+    this.nextRenewalAt,
+    this.monthlyTokens,
+  });
+
+  factory DidInfo.fromJson(Map<String, dynamic> j) => DidInfo(
+        e164: (j['e164'] ?? '').toString(),
+        purpose: j['purpose'] as String?,
+        status: (j['status'] ?? 'active').toString(),
+        nextRenewalAt: (j['next_renewal_at'] as num?)?.toInt(),
+        monthlyTokens: (j['monthly_tokens'] as num?)?.toInt(),
+      );
+}
+
 /// Client for the outbound-campaigns Worker API. Auth/base-URL mechanism
 /// mirrors [ReceptionistApi]: Clerk-Bearer signed requests via [ApiAuth]
 /// against `https://$kSignalingHost/api/…`, JSON in/out.
@@ -248,6 +275,66 @@ class CampaignsApi {
       rethrow;
     } catch (e) {
       throw ApiException(0, e.toString());
+    }
+  }
+
+  /// GET /api/campaigns/:id/contacts?status= — per-contact dial status for
+  /// the detail dashboard's contact list. Reuses [CampaignContactStat]
+  /// (already shaped for this exact route, just not wired until now).
+  static Future<List<CampaignContactStat>> listContacts(String id, {String? status}) async {
+    try {
+      final qp = <String, String>{
+        if (status != null && status.isNotEmpty) 'status': status,
+      };
+      final uri = Uri.parse('$_base/${Uri.encodeComponent(id)}/contacts')
+          .replace(queryParameters: qp.isEmpty ? null : qp);
+      final r = await ApiAuth.getSigned(uri.toString(), timeout: const Duration(seconds: 20));
+      final j = _decodeMap(r.body);
+      if (r.statusCode != 200) _throwFor(r.statusCode, j);
+      final list = (j['contacts'] as List?) ?? const [];
+      return list
+          .whereType<Map>()
+          .map((e) => CampaignContactStat.fromJson(e.cast<String, dynamic>()))
+          .toList();
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      throw ApiException(0, e.toString());
+    }
+  }
+
+  /// GET /api/campaigns/:id/analytics?metric=&period= — compact per-campaign
+  /// analytics series/summary for the analytics screen to draw. The caller
+  /// interprets the shape by [metric]; returns `{}` (never throws) when the
+  /// route/metric is unavailable so a chart can render an empty state.
+  static Future<Map<String, dynamic>> fetchAnalytics(String id, String metric,
+      {String period = '30d'}) async {
+    try {
+      final uri = Uri.parse('$_base/${Uri.encodeComponent(id)}/analytics').replace(
+        queryParameters: {'metric': metric, 'period': period},
+      );
+      final r = await ApiAuth.getSigned(uri.toString(), timeout: const Duration(seconds: 20));
+      if (r.statusCode != 200) return const {};
+      return _decodeMap(r.body);
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  /// GET /api/campaigns/analytics/account?metric=&period= — account-wide
+  /// rollup analytics (across all of the caller's campaigns). Same
+  /// empty-on-error contract as [fetchAnalytics].
+  static Future<Map<String, dynamic>> fetchAccountAnalytics(String metric,
+      {String period = '30d'}) async {
+    try {
+      final uri = Uri.parse('$_base/analytics/account').replace(
+        queryParameters: {'metric': metric, 'period': period},
+      );
+      final r = await ApiAuth.getSigned(uri.toString(), timeout: const Duration(seconds: 20));
+      if (r.statusCode != 200) return const {};
+      return _decodeMap(r.body);
+    } catch (_) {
+      return const {};
     }
   }
 
@@ -383,17 +470,35 @@ class CampaignsApi {
     }
   }
 
-  /// TODO(backend): POST /api/dids/buy — purchase a DID from the shared pool
-  /// (`user_dids`, spec §5). Not mounted on the Worker yet. Returns the
-  /// purchased E.164 number.
-  static Future<String> buyDid(String e164) async {
+  /// GET /api/campaigns/dids — DIDs already owned by the caller's account
+  /// (for the detail dashboard's "reassign DID" / renewal views).
+  static Future<List<DidInfo>> listOwnedDids() async {
     try {
-      final origin = kApiBase;
-      final r = await ApiAuth.postJson('$origin/dids/buy', {'e164': e164},
+      final r = await ApiAuth.getSigned('$_base/dids', timeout: const Duration(seconds: 20));
+      final j = _decodeMap(r.body);
+      if (r.statusCode != 200) _throwFor(r.statusCode, j);
+      final list = (j['dids'] as List?) ?? const [];
+      return list
+          .whereType<Map>()
+          .map((e) => DidInfo.fromJson(e.cast<String, dynamic>()))
+          .toList();
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      throw ApiException(0, e.toString());
+    }
+  }
+
+  /// POST /api/campaigns/dids/buy — purchase a DID from the shared pool
+  /// (`user_dids`, spec §5). Returns the purchased DID's full info.
+  static Future<DidInfo> buyDid(String e164) async {
+    try {
+      final r = await ApiAuth.postJson('$_base/dids/buy', {'e164': e164},
           timeout: const Duration(seconds: 20));
       final j = _decodeMap(r.body);
       if (r.statusCode != 200) _throwFor(r.statusCode, j);
-      return (j['e164'] ?? e164).toString();
+      final did = (j['did'] as Map?)?.cast<String, dynamic>();
+      return did != null ? DidInfo.fromJson(did) : DidInfo(e164: (j['e164'] ?? e164).toString());
     } on ApiException {
       rethrow;
     } catch (e) {
