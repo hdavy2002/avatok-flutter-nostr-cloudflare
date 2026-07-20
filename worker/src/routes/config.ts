@@ -59,6 +59,14 @@ export interface PlatformConfig {
   // + PROPOSAL-RECEPTIONIST-V2.md). First real AvaVoice deployment. Gemini Live via CF AI
   // Gateway, 2-min cap.
   receptionistEnabled: boolean;      // master switch for /api/receptionist/* (default OFF until tested)
+  // [AVACALL-VMFREE-1] FREE AvaTOK↔AvaTOK auto-voicemail (owner decision, Phase WS2).
+  // When an AvaTOK→AvaTOK AUDIO call is rejected / unanswered / phone-off and the
+  // callee has NO active AI receptionist, the CALLER auto-fires a pre-recorded
+  // generic voicemail (greeting → beep → ~25s record). FREE for everyone, so this
+  // is NOT gated by the paid `voicemailBot`/`businessCallUx`. Default TRUE (kill
+  // switch): flip false in KV to end no-answer AvaTOK calls silently again. Boolean
+  // → no numericKeys entry. Client mirror: RemoteConfig.avatokVoicemailFree.
+  avatokVoicemailFree: boolean;
   instantCallMountEnabled: boolean;  // [INSTANT-CALL-MOUNT-1] open 1:1 CallScreen instantly, POST /api/call in background (default ON; kill switch)
   receptionistRings: number;         // v2 Mode A: rings before auto-handoff (default 5)
   // Receptionist ENGINE switch (Specs/RECEPTIONIST-CF-PIPELINE.md). false (default)
@@ -628,6 +636,7 @@ const DEFAULTS: PlatformConfig = {
   avavoiceEnabled: false,          // FREE LAUNCH: agent builder hidden
   avavisionEnabled: false,         // FREE LAUNCH: agent builder hidden
   receptionistEnabled: true,       // FREE LAUNCH: AI receptionist ON (Gemini Live)
+  avatokVoicemailFree: true,       // [AVACALL-VMFREE-1] FREE AvaTOK↔AvaTOK auto-voicemail ON. Kill switch — flip false in KV to end no-answer AvaTOK audio calls silently again. NOT gated by the paid voicemailBot.
   instantCallMountEnabled: true,   // [INSTANT-CALL-MOUNT-1] instant 1:1 call screen; POST /api/call runs in background. Kill switch (flip false to restore awaited path)
   receptionistRings: 4,            // [ONE-FLOW-1] owner 2026-07-09: 4 rings (20s) GLOBAL — one flow for everyone; KV can override
   receptionistUseCf: false,        // engine switch: false = Gemini Live (default), true = Cloudflare Workers AI engine

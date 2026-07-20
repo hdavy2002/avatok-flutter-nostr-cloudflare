@@ -146,6 +146,24 @@ class RemoteConfig {
   static bool get billingEnabled => _b('billingEnabled', false);
   /// AI receptionist (Gemini Live) — ON for the free launch. Mirrors KV.
   static bool get receptionistEnabled => _b('receptionistEnabled', true);
+
+  /// [AVACALL-VMFREE-1] FREE AvaTOK↔AvaTOK auto-voicemail (owner decision, Phase
+  /// WS2). Mirrors config.ts `avatokVoicemailFree`, which DECLARES this key in
+  /// BOTH PlatformConfig and DEFAULTS (default true) — without that declaration
+  /// putConfig would 400 `unknown key` and this kill switch could never actually
+  /// be pulled (the inAppUpdateEnabled trap, CLAUDE.md 2026-07-15).
+  ///
+  /// When an AvaTOK→AvaTOK AUDIO call is rejected / unanswered / phone-off and
+  /// the callee has NO active AI receptionist, the caller auto-fires a
+  /// pre-recorded generic voicemail (greeting → beep → ~25s record) instead of a
+  /// silent 'timeout-ringing' teardown. FREE for everyone — deliberately NOT
+  /// gated by the paid `voicemailBot`/`businessCallUx`.
+  ///
+  /// Defaults TRUE: this is a free fallback that only fires AFTER the ring window
+  /// has already elapsed with no answer, so a config-fetch failure falling back
+  /// to "offer a voicemail" is the safe, user-friendly side. Flip false in KV to
+  /// restore the silent no-answer teardown without a build.
+  static bool get avatokVoicemailFree => _b('avatokVoicemailFree', true);
   /// [AVA-CAMP-FL-NAV] Outbound AI-calling campaigns — master switch for the
   /// whole feature (Specs/OUTBOUND-AI-CALLING-CAMPAIGNS.md). Key already
   /// declared in worker DEFAULTS (worker/src/routes/config.ts
