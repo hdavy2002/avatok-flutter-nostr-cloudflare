@@ -369,6 +369,21 @@ class CallSession {
   String _mySeed = 'me';
   String _receptMode = 'rings';
   int _receptRings = 5;
+  // [AVACALL-SET-2] WS3 caller-authoritative call-handling prefs, read from the
+  // callee's dial-time /config probe (_probeReceptionist). Owner decision (WS3):
+  //  - _calleeAiReceptionist: the callee turned the AI Receptionist ON, so Ava
+  //    should take over an unanswered call (AvaTOK + PSTN).
+  //  - _calleePstnVoicemail: the callee turned PSTN Voicemail ON (cell calls only;
+  //    the free AvaTOK↔AvaTOK voicemail is separate + always available).
+  // Both DEFAULT TRUE here as a *legacy-compat fallback only*: they stay true when
+  // the probe never ran or an older worker omits the keys, preserving the prior
+  // always-on behavior; an explicit `false` from a newer worker is authoritative
+  // and routes the no-answer flow to voicemail (or an honest end) instead of Ava.
+  bool _calleeAiReceptionist = true;
+  bool _calleePstnVoicemail = true;
+  // True once the probe actually delivered the WS3 keys, so we only *enforce* the
+  // pref (skip the receptionist) when the callee's real setting is known.
+  bool _calleePrefsKnown = false;
   // [BUSY-CARD-1] Server-provided busy metadata for the personalized busy card.
   // Populated from the 'busy' call-status only when the server sends it; null /
   // false ⇒ old cold "User is busy" behaviour (the card never renders). See
@@ -2001,7 +2016,13 @@ class CallSession {
     // menu here would pre-empt the auto-voicemail and re-introduce the silent
     // dead-end WS2 fixed. (Previously this block showed the menu for
     // no-answer/unreachable too; that is intentionally removed.)
-    if (!config.video && !_ended) {
+    // [AVACALL-SET-2] WS3 precedence: only hand off to the AI receptionist when the
+    // callee actually enabled it. When their prefs are UNKNOWN (probe never ran /
+    // older worker) we keep the legacy always-on behavior so nothing regresses; an
+    // explicit OFF from a newer worker routes straight to voicemail below. Ava
+    // applies to BOTH AvaTOK and PSTN when ON.
+    final receptionistAllowed = !_calleePrefsKnown || _calleeAiReceptionist;
+    if (receptionistAllowed && !config.video && !_ended) {
       // UNREACHABLE-AVA-1 (owner decision 2026-07-07): when the callee's phone is
       // off / has no data (_callUnreachable), Ava still takes the message — with
       // the honest "phone is off or unreachable, can I take a message?" script.
@@ -2010,6 +2031,15 @@ class CallSession {
               ? 'unreachable'
               : (_receptMode == 'first_ring' ? 'first_ring' : 'rings'));
       if (started) return;
+    } else if (_calleePrefsKnown && !_calleeAiReceptionist) {
+      Analytics.capture('ava_recept_skipped', {
+        'call_id': config.room,
+        'reason': 'callee_receptionist_off',
+        'business': config.business,
+        // For a PSTN/business call the pre-recorded PSTN voicemail lane owns the
+        // fallback when this is on; AvaTOK calls always drop to the WS2 free VM.
+        'pstn_voicemail_enabled': _calleePstnVoicemail,
+      });
     }
     // [AVACALL-VMFREE-2] The callee has NO active AI receptionist (the recept
     // attempt above returned false, or this is an unreachable/rejected phone).
@@ -2462,6 +2492,13 @@ class CallSession {
       if (_connected || _ended || cfg == null) return;
       _receptMode = (cfg['mode'] ?? 'rings').toString();
       _receptRings = (cfg['rings'] as num?)?.toInt() ?? 5;
+      // [AVACALL-SET-2] WS3 caller-authoritative prefs. Only enforce them when the
+      // worker actually sent the keys (older workers omit them → legacy always-on).
+      if (cfg.containsKey('aiReceptionistEnabled')) {
+        _calleePrefsKnown = true;
+        _calleeAiReceptionist = cfg['aiReceptionistEnabled'] == true;
+        _calleePstnVoicemail = cfg['pstnVoicemailEnabled'] == true;
+      }
       final Duration window = _receptMode == 'first_ring'
           ? const Duration(seconds: 6)
           : Duration(seconds: (_receptRings * 5).clamp(20, 45));
@@ -2854,7 +2891,7 @@ class CallSession {
 
   /// No ava-live ack within the window. Retry once; on the second miss surface
   /// an honest fallback instead of a frozen "taking your call" with dead air.
-  void _onAvaLiveTimeout(ReceptionistCall call) {
+  Future<void> _onAvaLiveTimeout(ReceptionistCall call) async {
     if (_ended || _avaLiveGateOpen) return;
     Analytics.capture('ava_live_timeout', {
       'call_id': config.room,
@@ -2878,13 +2915,34 @@ class CallSession {
           const Duration(milliseconds: _avaLiveTimeoutMs), () => _onAvaLiveTimeout(call));
       return;
     }
-    // Second miss → honest failure. Do not sit on a fake countdown/dead air.
+    // Second miss → the receptionist connected but never produced audio
+    // (`ava_recept_skipped=unavailable`). This is the incident dead-end: the
+    // caller used to be dropped into a SILENT 'receptionist-unavailable' end.
     Analytics.capture('ava_recept_skipped', {
       'call_id': config.room,
       'reason': 'ava_live_timeout',
       'activation_mode': call.activationMode,
     });
     _clearAvaLiveGate();
+    // Tear down the dead receptionist leg so it can't linger under the fallback.
+    try { call.hangup(); } catch (_) {}
+    _receptionist = null;
+    _receptionistActive = false;
+    // [AVACALL-SET-2] WS3 anti-dead-end: enabled-but-unavailable must fall back to
+    // voicemail, never a silent end. For an AvaTOK↔AvaTOK audio call the WS2 FREE
+    // voicemail is always available, so route there instead of hanging up on dead
+    // air. (Business/PSTN calls keep their own NoAnswerCard voicemail lane; the
+    // free path deliberately excludes them, mirroring `_onNoAnswer`.)
+    if (!_ended &&
+        !_connected &&
+        !config.video &&
+        !config.business &&
+        RemoteConfig.avatokVoicemailFree) {
+      final fired = await _autoStartFreeVoicemail();
+      if (fired) return;
+    }
+    // Nothing else could take over (video, or free VM disabled/unavailable) →
+    // surface an HONEST end state rather than dead air.
     if (!_ended && !_connected) {
       _endWith('receptionist-unavailable', reason: 'ava-live-timeout');
     }
