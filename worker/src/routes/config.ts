@@ -565,6 +565,30 @@ export interface PlatformConfig {
   // this ON beta users are not debited — the machinery lands dark twice over. Read side
   // is worker/src/lib/listing_billing.ts.
   listingFeeEnabled: boolean;
+
+  // --- outbound campaigns ---
+  // Outbound AI Calling Campaigns (Specs/OUTBOUND-AI-CALLING-CAMPAIGNS.md §18).
+  // Master kill switch + per-capability flags/limits, all declared here per the
+  // fake-flag rule so every one is actually flippable via KV (never code).
+  campaignsEnabled: boolean;              // master switch for the whole campaigns feature
+  campaignDialerEnabled: boolean;         // outbound dialer path (provider client + scheduling)
+  campaignOwnerAllowlist: boolean;        // restrict campaign creation to an owner allowlist
+  campaignMachineDetection: boolean;      // AMD advisory + Gemini self-detect (default ON)
+  campaignGoogleSheets: boolean;          // Google Sheets contact ingestion source
+  campaignKbEnabled: boolean;             // per-campaign knowledge-base store/attach
+  campaignToolsEnabled: boolean;          // ToolRuntime (generic tool-calling during a call)
+  campaignBookingEnabled: boolean;        // calendar booking tool
+  campaignHandoverEnabled: boolean;       // AI-to-human handover FSM
+  campaignMaxContacts: number;            // ingestion cap per campaign (2000)
+  campaignCallMaxMin: number;             // hard cap on a single AI call, minutes (10)
+  campaignWrapCueMin: number;             // wrap-up cue before the call cap, minutes (8)
+  campaignTokensPerMin: number;           // AvaCoin cost, tokens/min (6)
+  campaignDidMonthlyTokens: number;       // per-DID monthly token allotment (700)
+  campaignKbMaxFiles: number;             // per-campaign KB file cap (10)
+  campaignToolBudget: number;             // ToolRuntime call budget per session (6)
+  campaignHandoverRingSec: number;        // handover ring window, seconds (25)
+  campaignHandoverTokensPerMin: number;   // handover tariff, tokens/min (2)
+  campaignHandoverTopupMin: number;       // handover rolling-reservation top-up window, minutes (10)
 }
 
 // FREE LAUNCH (2026-06-28, owner-locked Specs/FREE-LAUNCH-DIRECTION.md): ship an
@@ -812,6 +836,30 @@ const DEFAULTS: PlatformConfig = {
   // Compose brain enrichment — DARK. Needs One Brain B4 + the user's listings consent;
   // separate from aiComposeEnabled so compose can be live without account-history recall.
   listingBrainEnrichmentEnabled: false,
+
+  // --- outbound campaigns ---
+  // Outbound AI Calling Campaigns (Specs/OUTBOUND-AI-CALLING-CAMPAIGNS.md §18) — DARK.
+  // Flip campaignsEnabled ON in KV (staging first) once the dialer + billing path
+  // is device/CI-verified; the other flags gate individual capabilities beneath it.
+  campaignsEnabled: false,
+  campaignDialerEnabled: false,
+  campaignOwnerAllowlist: false,
+  campaignMachineDetection: true,   // AMD advisory ships ON by default
+  campaignGoogleSheets: false,
+  campaignKbEnabled: false,
+  campaignToolsEnabled: false,
+  campaignBookingEnabled: false,
+  campaignHandoverEnabled: false,
+  campaignMaxContacts: 2000,
+  campaignCallMaxMin: 10,
+  campaignWrapCueMin: 8,
+  campaignTokensPerMin: 6,
+  campaignDidMonthlyTokens: 700,
+  campaignKbMaxFiles: 10,
+  campaignToolBudget: 6,
+  campaignHandoverRingSec: 25,
+  campaignHandoverTokensPerMin: 2,
+  campaignHandoverTopupMin: 10,
 };
 
 /** Merged config for server-side gates (same blob getConfig serves). */
@@ -868,6 +916,10 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     "agentConcurrencyA", "agentConcurrencyB", "networkReconnectWindowSec",
     // PSTN voicemail platform (Canonical Architecture v1.0).
     "pstnVoicemailRecordSec",
+    // Outbound AI Calling Campaigns (Specs/OUTBOUND-AI-CALLING-CAMPAIGNS.md §18).
+    "campaignMaxContacts", "campaignCallMaxMin", "campaignWrapCueMin", "campaignTokensPerMin",
+    "campaignDidMonthlyTokens", "campaignKbMaxFiles", "campaignToolBudget",
+    "campaignHandoverRingSec", "campaignHandoverTokensPerMin", "campaignHandoverTopupMin",
   ]);
   for (const [k, v] of Object.entries(body)) {
     if (!(k in DEFAULTS)) return json({ error: `unknown key: ${k}` }, 400);
