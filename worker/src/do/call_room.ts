@@ -136,17 +136,20 @@ export class CallRoom {
 
   /** [AVACALL-RING-CANCEL-1] Persist a terminal status (cancel/bye/ended/decline)
    *  for this call so a late accept and an in-flight ring push both learn the
-   *  caller is already gone. Also flips `ended` so GET /state stays consistent.
+   *  caller is already gone. Records ONLY terminalStatus/terminalAt — it must
+   *  NOT flip `ended`, because markEnded() guards billing settlement + brain
+   *  ingest on `wasEnded`; pre-flipping `ended` here would make a normal
+   *  bye/hangup skip stopBilling()/refundUnused() and the call_completed ingest
+   *  ([AVACALL-RING-CANCEL-2] fix). Every terminal-status consumer keys off
+   *  `terminal_status`, not `ended`, so suppression is unaffected.
    *  Idempotent + never throws — a status write must not break signaling. */
   private async markTerminal(status: string): Promise<void> {
     await this.loadCallState();
     const s = (status || "ended").slice(0, 24);
     this.terminalStatus = s;
     this.terminalAt = Date.now();
-    this.ended = true;
     try { await this.state.storage.put("terminalStatus", s); } catch { /* best-effort */ }
     try { await this.state.storage.put("terminalAt", this.terminalAt); } catch { /* best-effort */ }
-    try { await this.state.storage.put("ended", true); } catch { /* best-effort */ }
   }
 
   /** [WP2] `reason` drives the refund event's ReasonCode when this transition
