@@ -420,6 +420,19 @@ function defaultSettings(uid: string): SettingsRow {
   };
 }
 
+// [RECEPT-AI-DEFAULT-ON-1] (owner decision 2026-07-21): the AI receptionist is
+// now OPT-OUT — Ava answers unanswered calls for EVERY user by default. It is ON
+// unless the owner EXPLICITLY turned it off (column === 0). null/undefined — a
+// never-configured account (no row → defaultSettings) OR a pre-migration row whose
+// ai_receptionist_enabled column is still NULL — resolves to ON. This is what the
+// caller's dial-time /config probe reads to decide whether to hand off to Ava, so
+// flipping the default here makes the whole userbase default-on with no per-row
+// backfill. Revert to opt-in by making null → false again.
+function aiReceptOn(s: SettingsRow | null | undefined): boolean {
+  const v = s?.ai_receptionist_enabled;
+  return v === null || v === undefined ? true : v !== 0;
+}
+
 // ── Settings cache (KV) ──────────────────────────────────────────────────────
 // Settings change rarely but are read on EVERY dial-time /config probe and every
 // /start. Cache the row in KV, busted the instant the owner saves (PUT/KB), with
@@ -715,7 +728,7 @@ export async function receptionistGetSettings(req: Request, env: Env): Promise<R
     agent_scope: s?.agent_scope ?? "",
     // [AVACALL-SET-1] WS3 paid call-handling prefs (default OFF). The client greys
     // these toggles behind `premium` and defaults them off for a fresh account.
-    ai_receptionist_enabled: !!(s?.ai_receptionist_enabled),
+    ai_receptionist_enabled: aiReceptOn(s), // [RECEPT-AI-DEFAULT-ON-1] opt-out default
     pstn_voicemail_enabled: !!(s?.pstn_voicemail_enabled),
     premium, // client greys the toggle + shows upsell when false
     soft_cap_ms: SOFT_CAP_MS, hard_cap_ms: HARD_CAP_MS,
@@ -957,7 +970,7 @@ export async function receptionistConfigFor(req: Request, env: Env): Promise<Res
     // BOTH AvaTOK and PSTN; OFF → AvaTOK falls to the WS2 free voicemail, PSTN
     // falls to the pre-recorded voicemail only when pstnVoicemailEnabled is ON.
     // Absent on an older worker → the client keeps its legacy always-on behavior.
-    aiReceptionistEnabled: !!s.ai_receptionist_enabled,
+    aiReceptionistEnabled: aiReceptOn(s), // [RECEPT-AI-DEFAULT-ON-1] opt-out default
     pstnVoicemailEnabled: !!s.pstn_voicemail_enabled,
   });
 }
