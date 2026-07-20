@@ -232,6 +232,16 @@ async function ensureStatusColumns(env: Env): Promise<void> {
     // calls only) | "all". NULL/invalid → treated as "all" (fail-open) so a user
     // who set mode=agent before this shipped keeps both lanes.
     "ALTER TABLE receptionist_settings ADD COLUMN agent_scope TEXT",
+    // [AVACALL-SET-1] (owner decision WS3, 2026-07-20): two PAID per-user call-
+    // handling prefs, DEFAULT OFF (NULL/0). ai_receptionist_enabled → the AI
+    // receptionist takes over on reject/no-answer/phone-off for BOTH AvaTOK-to-
+    // AvaTOK AND PSTN calls. pstn_voicemail_enabled → a pre-recorded voicemail for
+    // PSTN calls only (the free AvaTOK↔AvaTOK voicemail from WS2 is separate and
+    // always available). These are the caller-flow-authoritative toggles: the
+    // dial-time /config probe returns them so the CALLER's session knows what the
+    // callee actually enabled, instead of assuming always-on.
+    "ALTER TABLE receptionist_settings ADD COLUMN ai_receptionist_enabled INTEGER",
+    "ALTER TABLE receptionist_settings ADD COLUMN pstn_voicemail_enabled INTEGER",
     // Self-migration for receptionist_sessions columns:
     "ALTER TABLE receptionist_sessions ADD COLUMN activation_mode TEXT",
     "ALTER TABLE receptionist_sessions ADD COLUMN team_id TEXT",
@@ -373,6 +383,9 @@ interface SettingsRow {
   mode?: string | null;
   // [RECEPT-ONBOARD-1] "cell" | "app" | "all" | null (null/invalid → "all")
   agent_scope?: string | null;
+  // [AVACALL-SET-1] WS3 paid call-handling prefs (default OFF). 1/0/null.
+  ai_receptionist_enabled?: number | null;
+  pstn_voicemail_enabled?: number | null;
 }
 
 async function loadSettings(env: Env, uid: string): Promise<SettingsRow | null> {
@@ -700,6 +713,10 @@ export async function receptionistGetSettings(req: Request, env: Env): Promise<R
     mode: s?.mode ?? "",
     // [RECEPT-ONBOARD-1] where the agent answers: "cell" | "app" | "all" ('' = all).
     agent_scope: s?.agent_scope ?? "",
+    // [AVACALL-SET-1] WS3 paid call-handling prefs (default OFF). The client greys
+    // these toggles behind `premium` and defaults them off for a fresh account.
+    ai_receptionist_enabled: !!(s?.ai_receptionist_enabled),
+    pstn_voicemail_enabled: !!(s?.pstn_voicemail_enabled),
     premium, // client greys the toggle + shows upsell when false
     soft_cap_ms: SOFT_CAP_MS, hard_cap_ms: HARD_CAP_MS,
   });
@@ -773,6 +790,11 @@ export async function receptionistPutSettings(req: Request, env: Env): Promise<R
   // can therefore never silence a lane the owner didn't ask to silence.
   let agentScope: string | null = b.agent_scope == null ? null : String(b.agent_scope).trim().toLowerCase();
   if (agentScope !== "cell" && agentScope !== "app" && agentScope !== "all") agentScope = null;
+  // [AVACALL-SET-1] WS3 paid call-handling prefs (default OFF). Booleans; an
+  // absent field is treated as false (the settings screen always sends both, so a
+  // missing key means an older client → the safe default OFF).
+  const aiReceptionistEnabled = b.ai_receptionist_enabled === true || b.ai_receptionist_enabled === 1 ? 1 : 0;
+  const pstnVoicemailEnabled = b.pstn_voicemail_enabled === true || b.pstn_voicemail_enabled === 1 ? 1 : 0;
   // PAY-PER-USE (owner 2026-07-19): enabling a mode requires token runway —
   // agent ≥3 tokens (1 min), voicemail ≥1 (1 token per voicemail). 402 with the
   // shortfall so the client can deep-link to top-up. Fail-open on wallet errors.
@@ -807,20 +829,23 @@ export async function receptionistPutSettings(req: Request, env: Env): Promise<R
         answer_all, status_preset, status_custom, decline_to_ava,
         status_note, status_expires_at, answer_lang,
         greeting_style, festival_greeting, mode, agent_scope,
+        ai_receptionist_enabled, pstn_voicemail_enabled,
         created_at, updated_at)
-     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?15,?16,?17,?18,?19,?20,?21,?14,?14)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?15,?16,?17,?18,?19,?20,?21,?22,?23,?14,?14)
      ON CONFLICT(owner_uid) DO UPDATE SET
        enabled=?2, instructions_text=?3, voice_name=?4, display_name=?5,
        persona_name=?6, language_code=?7, greeting_text=?8, custom_prompt=?9,
        answer_all=?10, status_preset=?11, status_custom=?12, decline_to_ava=?13,
        status_note=?15, status_expires_at=?16, answer_lang=?17,
        greeting_style=?18, festival_greeting=?19, mode=?20, agent_scope=?21,
+       ai_receptionist_enabled=?22, pstn_voicemail_enabled=?23,
        updated_at=?14`,
   ).bind(ctx.uid, enabled ? 1 : 0, instr, voice, display,
     persona, language, greeting, customPrompt,
     answerAll, statusPreset, statusCustom, declineToAva, now,
     statusNote, statusExpiresAt, answerLang,
-    greetingStyle, festivalGreeting, recMode, agentScope).run();
+    greetingStyle, festivalGreeting, recMode, agentScope,
+    aiReceptionistEnabled, pstnVoicemailEnabled).run();
   // F1 telemetry.
   const ttlBucket = statusExpiresAt == null ? "never"
     : (() => { const d = statusExpiresAt - Date.now();
@@ -920,6 +945,14 @@ export async function receptionistConfigFor(req: Request, env: Env): Promise<Res
     recept_remaining: res.remaining, recept_cap: res.cap,
     soft_cap_ms: menuCaps.close, hard_cap_ms: menuCaps.hard,
     caller_sessions_left: sessionsLeft,
+    // [AVACALL-SET-1/2] WS3: the CALLER-AUTHORITATIVE call-handling prefs. The
+    // caller's session (call_session.dart _probeReceptionist) reads these to
+    // decide the no-answer route: aiReceptionistEnabled ON → hand off to Ava for
+    // BOTH AvaTOK and PSTN; OFF → AvaTOK falls to the WS2 free voicemail, PSTN
+    // falls to the pre-recorded voicemail only when pstnVoicemailEnabled is ON.
+    // Absent on an older worker → the client keeps its legacy always-on behavior.
+    aiReceptionistEnabled: !!s.ai_receptionist_enabled,
+    pstnVoicemailEnabled: !!s.pstn_voicemail_enabled,
   });
 }
 

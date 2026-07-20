@@ -228,6 +228,15 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
   // (server treats ''/invalid as 'all'). Chosen in the onboarding wizard.
   String _agentScope = '';
 
+  // [AVACALL-SET-1] WS3 paid call-handling prefs — DEFAULT OFF, shown to PAID
+  // users only (gated on _premium). These are the CALLER-AUTHORITATIVE toggles:
+  //  - _aiReceptionist: Ava takes over on reject / no-answer / phone-off, for
+  //    BOTH AvaTOK↔AvaTOK and PSTN calls.
+  //  - _pstnVoicemail: a pre-recorded voicemail for PSTN calls only (the free
+  //    AvaTOK↔AvaTOK voicemail is separate and always available).
+  bool _aiReceptionist = false;
+  bool _pstnVoicemail = false;
+
   // F1 — status note expiry. Null = no expiry; else the absolute epoch-ms instant
   // the note lapses. `_customExpiry` mirrors a picked custom instant so its chip
   // stays highlighted.
@@ -303,6 +312,9 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                 s.agentScope == 'all')
             ? s.agentScope
             : '';
+        // [AVACALL-SET-1] WS3 paid call-handling prefs (server authoritative).
+        _aiReceptionist = s.aiReceptionistEnabled;
+        _pstnVoicemail = s.pstnVoicemailEnabled;
       }
       _loading = false;
     });
@@ -330,6 +342,9 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
     _mode = (md == 'agent' || md == 'vm') ? md : '';
     final sc = (m['agent_scope'] ?? '').toString();
     _agentScope = (sc == 'cell' || sc == 'app' || sc == 'all') ? sc : '';
+    // [AVACALL-SET-1] WS3 paid call-handling prefs.
+    _aiReceptionist = m['ai_receptionist'] == true;
+    _pstnVoicemail = m['pstn_voicemail'] == true;
   }
 
   Future<void> _writeMirror() async {
@@ -344,6 +359,8 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
         'greeting_text': _greeting.text,
         'mode': _mode,
         'agent_scope': _agentScope,
+        'ai_receptionist': _aiReceptionist,
+        'pstn_voicemail': _pstnVoicemail,
       }));
     } catch (_) {/* best-effort */}
   }
@@ -419,6 +436,10 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
       mode: _mode,
       // [RECEPT-ONBOARD-1] agent scope chosen in the onboarding wizard.
       agentScope: _agentScope,
+      // [AVACALL-SET-1] WS3 paid call-handling prefs (default OFF). Always sent so
+      // the server's default-OFF is explicit and the caller-side probe is accurate.
+      aiReceptionistEnabled: _aiReceptionist,
+      pstnVoicemailEnabled: _pstnVoicemail,
     );
     if (!mounted) return res.ok;
     setState(() {
@@ -575,6 +596,35 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                   _mode == 'vm',
                   (v) => v ? _startVmOnboarding() : _startAgentOnboarding(),
                 ),
+                // ── [AVACALL-SET-1] WS3 paid call-handling prefs ────────────
+                // Owner decision (WS3): two per-user toggles, DEFAULT OFF, shown
+                // to PAID users only. AI Receptionist governs whether Ava takes
+                // over unanswered calls on BOTH AvaTOK and PSTN; Voicemail (PSTN)
+                // turns on a pre-recorded voicemail for cell calls. The free
+                // AvaTOK↔AvaTOK voicemail is separate and always available, so
+                // turning both OFF never dead-ends an AvaTOK call. Save persists
+                // both to the receptionist config the caller's dial-time probe
+                // reads. Free users don't see the section (server `premium`).
+                if (_premium) ...[
+                  const SizedBox(height: 16),
+                  Text('CALL HANDLING', style: ADText.sectionLabel()),
+                  const SizedBox(height: 6),
+                  _toggleRow(
+                    'AI Receptionist',
+                    'When you reject, miss, or your phone is off, Ava answers for '
+                        'you — on AvaTOK calls and PSTN (cell) calls.',
+                    _aiReceptionist,
+                    (v) => setState(() => _aiReceptionist = v),
+                  ),
+                  const SizedBox(height: 8),
+                  _toggleRow(
+                    'Voicemail (PSTN)',
+                    'For cell (PSTN) calls, play a pre-recorded voicemail and take '
+                        'a message. AvaTOK calls always get free voicemail.',
+                    _pstnVoicemail,
+                    (v) => setState(() => _pstnVoicemail = v),
+                  ),
+                ],
                 const SizedBox(height: 14),
                 // ── The note: tell Ava your availability ───────────────────
                 AdField(

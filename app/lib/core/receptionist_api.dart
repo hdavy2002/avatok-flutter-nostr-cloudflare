@@ -43,6 +43,13 @@ class ReceptionistSettings {
   // [RECEPT-ONBOARD-1] where the agent answers: 'cell' | 'app' | 'all' |
   // '' (server treats empty/invalid as 'all').
   final String agentScope;
+  // [AVACALL-SET-1] WS3 paid call-handling prefs (default OFF).
+  //  - aiReceptionistEnabled: Ava takes over on reject/no-answer/phone-off for
+  //    BOTH AvaTOK↔AvaTOK and PSTN calls.
+  //  - pstnVoicemailEnabled: a pre-recorded voicemail for PSTN calls only (the
+  //    free AvaTOK↔AvaTOK voicemail from WS2 is separate and always available).
+  final bool aiReceptionistEnabled;
+  final bool pstnVoicemailEnabled;
   const ReceptionistSettings({
     required this.enabled,
     required this.instructions,
@@ -68,6 +75,8 @@ class ReceptionistSettings {
     this.festivalGreeting = false,
     this.mode = '',
     this.agentScope = '',
+    this.aiReceptionistEnabled = false,
+    this.pstnVoicemailEnabled = false,
   });
   factory ReceptionistSettings.fromJson(Map<String, dynamic> j) => ReceptionistSettings(
         enabled: j['enabled'] == true,
@@ -94,6 +103,8 @@ class ReceptionistSettings {
         festivalGreeting: j['festival_greeting'] == true,
         mode: (j['mode'] ?? '').toString(),
         agentScope: (j['agent_scope'] ?? '').toString(),
+        aiReceptionistEnabled: j['ai_receptionist_enabled'] == true,
+        pstnVoicemailEnabled: j['pstn_voicemail_enabled'] == true,
       );
 }
 
@@ -156,6 +167,10 @@ class ReceptionistApi {
     String? mode,
     // [RECEPT-ONBOARD-1] 'cell' | 'app' | 'all' (anything else → server null = all).
     String? agentScope,
+    // [AVACALL-SET-1] WS3 paid call-handling prefs (default OFF). Omitted → the
+    // server keeps its default-OFF; the settings screen always sends both.
+    bool? aiReceptionistEnabled,
+    bool? pstnVoicemailEnabled,
   }) async {
     final body = <String, dynamic>{
       'enabled': enabled,
@@ -180,6 +195,8 @@ class ReceptionistApi {
       if (festivalGreeting != null) 'festival_greeting': festivalGreeting,
       if (mode != null) 'mode': mode,
       if (agentScope != null) 'agent_scope': agentScope,
+      if (aiReceptionistEnabled != null) 'ai_receptionist_enabled': aiReceptionistEnabled,
+      if (pstnVoicemailEnabled != null) 'pstn_voicemail_enabled': pstnVoicemailEnabled,
     };
     const maxAttempts = 3;
     for (var attempt = 1; attempt <= maxAttempts; attempt++) {
