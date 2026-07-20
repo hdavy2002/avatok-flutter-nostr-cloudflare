@@ -12,18 +12,31 @@
 // campaign_kb.ts (R2 via env.BLOBS, metaDb, track()). Never throws — every path
 // returns a structured JSON Response.
 //
-// xlsx: NO SheetJS/xlsx package is bundled in worker/package.json (checked —
-// only @breezystack/lamejs is a runtime dep). CSV is implemented fully, natively
-// (no library). An .xlsx upload is detected by extension/content-type and
-// returns 415 "xlsx coming soon" per the task brief, rather than silently
-// mis-parsing binary bytes as text. If an xlsx lib is added later, plug a
-// branch into `parseUpload()` next to the CSV branch.
+// xlsx: [AVA-CAMP-P-CONTACTS] parsed with `fflate` (tiny, Workers-safe pure-JS
+// zip lib — no Node builtins, ~8KB min). worker/package.json gained a new dep
+// ("fflate") — the orchestrator must `npm install` in worker/ before deploy.
+// An .xlsx is a ZIP of XML parts; we unzip with fflate.unzipSync and hand-parse
+// just the two parts we need (xl/worksheets/sheetN.xml + xl/sharedStrings.xml)
+// with small regexes rather than pulling in a full XML DOM parser (Workers has
+// no DOMParser). Parsed rows feed into the SAME buildContacts()/normalization/
+// dedupe pipeline the CSV path already uses — no duplicated business logic.
+// A parse failure returns 400 with a clear message; it never falls through to
+// mis-parsing binary bytes as text and never 500s.
+//
+// Large lists (>CHUNK_THRESHOLD parsed rows): instead of a synchronous D1
+// batch insert on the request, rows are split into CHUNK_SIZE-row chunks and
+// enqueued to env.Q_CONTACTS ({kind:'campaign_contacts_chunk', ...}) for the
+// consumer branch in index.ts's queue() handler to insert asynchronously.
+// contacts_hash is computed once, over the FULL normalized/deduped set,
+// before any chunking decision — chunking only affects how the rows are
+// persisted, never what counts toward the audit hash.
 import type { Env } from "../types";
 import { json } from "../util";
 import { isFail, requireUser } from "../authz";
 import { readConfig } from "./config";
 import { metaDb } from "../db/shard";
 import { track } from "../hooks";
+import { unzipSync, strFromU8 } from "fflate";
 
 const APP = "campaign_contacts";
 
@@ -194,6 +207,118 @@ function parseCsv(text: string): string[][] {
 }
 
 // ---------------------------------------------------------------------------
+// XLSX parsing (native — `fflate` for unzip, hand-rolled regex XML reads).
+// Produces the SAME string[][] row shape parseCsv() produces, so it feeds
+// straight into detectColumns()/buildContacts() unchanged.
+// ---------------------------------------------------------------------------
+function xmlDecodeEntities(s: string): string {
+  return s
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#x([0-9a-fA-F]+);/g, (_m, h: string) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_m, d: string) => String.fromCodePoint(Number(d)))
+    .replace(/&amp;/g, "&");
+}
+
+/** "AB12" -> "AB" -> 0-based column index (A=0, Z=25, AA=26, ...). */
+function colLettersToIndex(letters: string): number {
+  let n = 0;
+  for (let i = 0; i < letters.length; i++) n = n * 26 + (letters.charCodeAt(i) - 64);
+  return n - 1;
+}
+
+/** xl/sharedStrings.xml -> ordered array of strings, indexed by <si> position.
+ *  Rich-text runs (multiple <t> per <si>) are concatenated. */
+function parseSharedStrings(xml: string): string[] {
+  const out: string[] = [];
+  const siRe = /<si\b[^>]*>([\s\S]*?)<\/si>/g;
+  let m: RegExpExecArray | null;
+  while ((m = siRe.exec(xml))) {
+    const block = m[1];
+    const tRe = /<t\b[^>]*>([\s\S]*?)<\/t>/g;
+    let tm: RegExpExecArray | null;
+    let text = "";
+    while ((tm = tRe.exec(block))) text += xmlDecodeEntities(tm[1]);
+    out.push(text);
+  }
+  return out;
+}
+
+/** xl/worksheets/sheetN.xml -> string[][], gaps filled with "" so column
+ *  indexes line up even when a row skips cells (e.g. "A1,C1" with B1 empty). */
+function parseSheetXml(xml: string, sharedStrings: string[]): string[][] {
+  const rows: string[][] = [];
+  const rowRe = /<row\b[^>]*>([\s\S]*?)<\/row>/g;
+  let rm: RegExpExecArray | null;
+  while ((rm = rowRe.exec(xml))) {
+    const rowXml = rm[1];
+    const cellRe = /<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g;
+    let cm: RegExpExecArray | null;
+    const cells: { idx: number; value: string }[] = [];
+    let nextIdx = 0;
+    while ((cm = cellRe.exec(rowXml))) {
+      const attrs = cm[1] || "";
+      const inner = cm[2] || "";
+      const refMatch = attrs.match(/\br="([A-Z]+)\d+"/);
+      const typeMatch = attrs.match(/\bt="([a-zA-Z]+)"/);
+      const type = typeMatch ? typeMatch[1] : "n";
+      const idx = refMatch ? colLettersToIndex(refMatch[1]) : nextIdx;
+      nextIdx = idx + 1;
+
+      let value = "";
+      if (type === "inlineStr") {
+        const tMatch = inner.match(/<t\b[^>]*>([\s\S]*?)<\/t>/);
+        value = tMatch ? xmlDecodeEntities(tMatch[1]) : "";
+      } else {
+        const vMatch = inner.match(/<v\b[^>]*>([\s\S]*?)<\/v>/);
+        const raw = vMatch ? xmlDecodeEntities(vMatch[1]) : "";
+        if (type === "s") {
+          const si = Number(raw);
+          value = Number.isFinite(si) ? (sharedStrings[si] ?? "") : "";
+        } else if (type === "b") {
+          value = raw === "1" ? "TRUE" : "FALSE";
+        } else {
+          value = raw; // numeric cell or cached formula-string result (t="str")
+        }
+      }
+      cells.push({ idx, value });
+    }
+    if (cells.length === 0) { rows.push([]); continue; }
+    const maxIdx = cells.reduce((mx, c) => Math.max(mx, c.idx), 0);
+    const row = new Array<string>(maxIdx + 1).fill("");
+    for (const c of cells) row[c.idx] = c.value;
+    rows.push(row);
+  }
+  return rows;
+}
+
+/** Full .xlsx (zip) bytes -> string[][] using the FIRST worksheet found
+ *  (xl/worksheets/sheet1.xml, or the lowest-numbered sheetN.xml present).
+ *  Throws on any structural problem — callers must catch and return 400. */
+function parseXlsx(buf: ArrayBuffer): string[][] {
+  const unzipped = unzipSync(new Uint8Array(buf));
+  const sheetNames = Object.keys(unzipped).filter((k) => /^xl\/worksheets\/sheet\d+\.xml$/.test(k));
+  if (sheetNames.length === 0) throw new Error("no worksheet found in xlsx");
+  sheetNames.sort((a, b) => {
+    const na = Number(a.match(/sheet(\d+)\.xml/)?.[1] ?? "0");
+    const nb = Number(b.match(/sheet(\d+)\.xml/)?.[1] ?? "0");
+    return na - nb;
+  });
+  const sheetXml = strFromU8(unzipped[sheetNames[0]]);
+
+  let sharedStrings: string[] = [];
+  const sstBytes = unzipped["xl/sharedStrings.xml"];
+  if (sstBytes) sharedStrings = parseSharedStrings(strFromU8(sstBytes));
+
+  const rows = parseSheetXml(sheetXml, sharedStrings);
+  // Drop fully-empty trailing rows, same as parseCsv().
+  while (rows.length && rows[rows.length - 1].every((c) => c.trim() === "")) rows.pop();
+  return rows;
+}
+
+// ---------------------------------------------------------------------------
 // Column auto-detection — header heuristics for name + phone columns.
 // ---------------------------------------------------------------------------
 const NAME_HEADER_HINTS = ["name", "contact", "full name", "customer", "client", "lead"];
@@ -283,12 +408,106 @@ function sheetUrlToCsvExport(sheetUrl: string): string | null {
 // ---------------------------------------------------------------------------
 // Parsed contact rows → normalized/deduped/hashed result
 // ---------------------------------------------------------------------------
-interface ParsedContact {
+export interface ParsedContact {
   source_row: number;
   name: string | null;
   e164_raw: string | null;
   e164: string | null; // null => invalid
   extra: Record<string, string>;
+}
+
+// ---------------------------------------------------------------------------
+// Large-list chunking (§6.2 "large lists chunk through the contacts-chunk
+// queue"). An inline upload of CHUNK_THRESHOLD rows or fewer inserts
+// synchronously (unchanged UX); above that, rows are split into
+// CHUNK_SIZE-row messages on env.Q_CONTACTS for the queue consumer to insert.
+// ---------------------------------------------------------------------------
+const CHUNK_THRESHOLD = 500;
+const CHUNK_SIZE = 200;
+
+export interface CampaignContactsChunkMsg {
+  kind: "campaign_contacts_chunk";
+  campaign_id: string;
+  uid: string;
+  rows: ParsedContact[];
+  source_row_offset: number;
+}
+
+/** Shared insert logic — used by BOTH the synchronous inline upload path and
+ *  the async queue consumer (index.ts queue() -> "campaign_contacts_chunk").
+ *  Never throws-to-500 on a single bad row; a D1 batch failure propagates so
+ *  the caller (inline: 500 response; consumer: msg.retry()) can react. */
+export async function insertCampaignContacts(
+  env: Env,
+  campaignId: string,
+  _uid: string,
+  rows: ParsedContact[],
+): Promise<{ inserted: number; invalid: number }> {
+  const db = metaDb(env);
+  const stmts = rows.map((row) => {
+    const id = crypto.randomUUID();
+    const status = row.e164 ? "pending" : "invalid";
+    return db.prepare(
+      `INSERT INTO campaign_contacts
+         (id, campaign_id, name, e164_raw, e164, extra, source_row, status, attempts)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0)`,
+    ).bind(id, campaignId, row.name, row.e164_raw, row.e164, JSON.stringify(row.extra), row.source_row, status);
+  });
+
+  // D1 batch caps out well above CHUNK_SIZE(200)/maxContacts, but split
+  // defensively in case either constant is bumped past a single batch.
+  const BATCH = 100;
+  for (let i = 0; i < stmts.length; i += BATCH) {
+    await db.batch(stmts.slice(i, i + BATCH));
+  }
+
+  const inserted = rows.filter((r) => r.e164 !== null).length;
+  return { inserted, invalid: rows.length - inserted };
+}
+
+/** Splits the full parsed+deduped contact set into CHUNK_SIZE-row messages
+ *  and enqueues them to env.Q_CONTACTS. Falls back to inserting synchronously
+ *  (chunk-by-chunk, still bounded batches) if the queue binding is absent —
+ *  same "queue when bound, else run inline" pattern as contacts_backup.ts's
+ *  scheduleChunk(), so this path degrades gracefully rather than 500ing. */
+async function enqueueOrInsertChunks(
+  env: Env,
+  campaignId: string,
+  uid: string,
+  rows: ParsedContact[],
+): Promise<{ queued: boolean; inserted: number; invalid: number }> {
+  const chunks: ParsedContact[][] = [];
+  for (let i = 0; i < rows.length; i += CHUNK_SIZE) chunks.push(rows.slice(i, i + CHUNK_SIZE));
+
+  if (env.Q_CONTACTS) {
+    try {
+      for (let i = 0; i < chunks.length; i++) {
+        const msg: CampaignContactsChunkMsg = {
+          kind: "campaign_contacts_chunk",
+          campaign_id: campaignId,
+          uid,
+          rows: chunks[i],
+          source_row_offset: i * CHUNK_SIZE,
+        };
+        await env.Q_CONTACTS.send(msg);
+      }
+      const inserted = rows.filter((r) => r.e164 !== null).length;
+      return { queued: true, inserted, invalid: rows.length - inserted };
+    } catch {
+      // fall through to synchronous fallback below
+    }
+  }
+
+  // No queue bound (or send failed) — insert synchronously in the same
+  // chunk-sized batches so a huge list still can't blow one giant D1 call.
+  let inserted = 0;
+  let invalid = 0;
+  for (const chunk of chunks) {
+    const r = await insertCampaignContacts(env, campaignId, uid, chunk);
+    inserted += r.inserted;
+    invalid += r.invalid;
+  }
+  return { queued: false, inserted, invalid };
 }
 
 interface IngestResult {
@@ -384,6 +603,7 @@ async function uploadContacts(req: Request, env: Env, uid: string, campaignId: s
   const contentType = (req.headers.get("content-type") || "").toLowerCase();
 
   let csvText: string | null = null;
+  let xlsxRows: string[][] | null = null;
   let sourceLabel = nameParam || "upload";
 
   // ---- Path A: JSON {sheetUrl} — Google Sheet link import (§6.2). ----------
@@ -416,7 +636,7 @@ async function uploadContacts(req: Request, env: Env, uid: string, campaignId: s
     csvText = text;
     sourceLabel = "google_sheet";
   } else {
-    // ---- Path B: raw-bytes body — CSV natively; XLSX via lib if present else 415. ----
+    // ---- Path B: raw-bytes body — CSV natively; XLSX via fflate (see header comment). ----
     const buf = await req.arrayBuffer();
     if (buf.byteLength === 0) return json({ error: "empty body" }, 400);
     if (buf.byteLength > MAX_BODY_BYTES) return json({ error: `max ${MAX_BODY_BYTES} bytes` }, 413);
@@ -426,23 +646,31 @@ async function uploadContacts(req: Request, env: Env, uid: string, campaignId: s
       || contentType.includes("spreadsheetml") || contentType.includes("ms-excel");
 
     if (isXlsx) {
-      // No SheetJS/xlsx package is bundled in this Worker (checked
-      // worker/package.json — only @breezystack/lamejs). Fail clearly instead
-      // of mis-parsing binary bytes as text.
-      return json({ error: "xlsx coming soon — please upload CSV, or paste a Google Sheet share link" }, 415);
+      try {
+        xlsxRows = parseXlsx(buf);
+      } catch (e) {
+        // Never mis-parse binary bytes as text, and never 500 on a bad
+        // upload — a malformed/unsupported .xlsx is a 400 with a clear
+        // message, same tier as a broken CSV below.
+        return json({ error: "xlsx parse failed — file may be corrupted or an unsupported format", detail: String(e).slice(0, 200) }, 400);
+      }
+      sourceLabel = sourceLabel === "upload" ? "xlsx_upload" : sourceLabel;
+    } else {
+      csvText = new TextDecoder("utf-8").decode(buf);
     }
-
-    csvText = new TextDecoder("utf-8").decode(buf);
   }
 
-  if (csvText === null) return json({ error: "no parseable content" }, 400);
-  csvText = stripBom(csvText);
-
   let rows: string[][];
-  try {
-    rows = parseCsv(csvText);
-  } catch (e) {
-    return json({ error: "csv parse failed", detail: String(e).slice(0, 200) }, 400);
+  if (xlsxRows !== null) {
+    rows = xlsxRows;
+  } else {
+    if (csvText === null) return json({ error: "no parseable content" }, 400);
+    csvText = stripBom(csvText);
+    try {
+      rows = parseCsv(csvText);
+    } catch (e) {
+      return json({ error: "csv parse failed", detail: String(e).slice(0, 200) }, 400);
+    }
   }
   if (rows.length === 0) return json({ error: "no rows found" }, 400);
 
@@ -451,36 +679,34 @@ async function uploadContacts(req: Request, env: Env, uid: string, campaignId: s
     return json({ error: "no usable rows (no name/phone columns detected)", mapping: result.mapping }, 400);
   }
 
-  // Insert rows: 'pending' for valid, 'invalid' for unparseable phone.
+  // contacts_hash is computed by buildContacts() over the FULL normalized/
+  // deduped set (already true regardless of the sync/chunked decision below —
+  // buildContacts runs once, up-front, over every row up to maxContacts).
   const db = metaDb(env);
-  const stmts = result.contacts.map((row) => {
-    const id = crypto.randomUUID();
-    const status = row.e164 ? "pending" : "invalid";
-    return db.prepare(
-      `INSERT INTO campaign_contacts
-         (id, campaign_id, name, e164_raw, e164, extra, source_row, status, attempts)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0)`,
-    ).bind(id, campaignId, row.name, row.e164_raw, row.e164, JSON.stringify(row.extra), row.source_row, status);
-  });
+  const large = result.contacts.length > CHUNK_THRESHOLD;
 
-  try {
-    // D1 batch caps out well above our maxContacts(2000) default, but split
-    // defensively in case a future maxContacts bump exceeds a single batch.
-    const BATCH = 100;
-    for (let i = 0; i < stmts.length; i += BATCH) {
-      await db.batch(stmts.slice(i, i + BATCH));
+  let insertedValid: number;
+  let queued = false;
+
+  if (large) {
+    const r = await enqueueOrInsertChunks(env, campaignId, uid, result.contacts);
+    insertedValid = r.inserted;
+    queued = r.queued;
+  } else {
+    try {
+      const r = await insertCampaignContacts(env, campaignId, uid, result.contacts);
+      insertedValid = r.inserted;
+    } catch (e) {
+      return json({ error: "insert failed", detail: String(e).slice(0, 200) }, 500);
     }
-  } catch (e) {
-    return json({ error: "insert failed", detail: String(e).slice(0, 200) }, 500);
   }
 
   try {
     await db.prepare(`UPDATE campaigns SET contacts_hash=?1, n_total=?2 WHERE id=?3`)
-      .bind(result.contactsHash, result.contacts.filter((r) => r.e164).length, campaignId)
+      .bind(result.contactsHash, insertedValid, campaignId)
       .run();
-  } catch { /* best-effort — the row insert above is the source of truth */ }
+  } catch { /* best-effort — the row insert(s) above are the source of truth */ }
 
-  const insertedValid = result.contacts.filter((r) => r.e164).length;
   const sample = result.contacts.slice(0, 5).map((r) => ({
     source_row: r.source_row, name: r.name, e164: r.e164, e164_raw: r.e164_raw,
     status: r.e164 ? "pending" : "invalid",
@@ -493,13 +719,20 @@ async function uploadContacts(req: Request, env: Env, uid: string, campaignId: s
     invalid: result.invalidCount,
     duplicates: result.duplicateCount,
     total_rows: rows.length,
+    queued,
   });
 
-  // TODO (fast-follow, §6.2 "Large lists chunk through the existing
-  // contacts-chunk queue pattern"): for lists near/at maxContacts, move the
-  // batch insert above onto env.Q_CONTACTS so the request lifecycle isn't
-  // blocking on a large synchronous D1 batch. Implemented synchronously here
-  // for <=2000 per the task scope.
+  if (queued) {
+    return json({
+      ok: true,
+      queued: true,
+      total: result.contacts.length,
+      invalid: result.invalidCount,
+      duplicates: result.duplicateCount,
+      mapping: result.mapping,
+    });
+  }
+
   return json({
     ok: true,
     inserted: insertedValid,

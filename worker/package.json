@@ -12,7 +12,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@breezystack/lamejs": "^1.2.7"
+    "@breezystack/lamejs": "^1.2.7",
+    "fflate": "^0.8.3"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250510.0",

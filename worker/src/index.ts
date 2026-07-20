@@ -88,7 +88,7 @@ import { campaignPstnRoute } from "./routes/campaign_pstn";
 import { campaignsRoute } from "./routes/campaigns";
 import { campaignKbRoute } from "./routes/campaign_kb";
 // [AVA-CAMP-D-*] Campaign contacts ingest, DID provisioning, analytics RPC.
-import { campaignContactsRoute } from "./routes/campaign_contacts_route";
+import { campaignContactsRoute, insertCampaignContacts, type CampaignContactsChunkMsg } from "./routes/campaign_contacts_route";
 import { campaignDidsRoute } from "./routes/campaign_dids_route";
 import { campaignAnalyticsRoute } from "./routes/campaign_analytics";
 // [TEL-TIERS-1] Telephony subscription tiers (Teler/Vobiz resale, Phase 4).
@@ -241,9 +241,21 @@ export default {
         if (batch.queue.startsWith("money-dlq")) {
           await moneyDlq(env, msg.body);
         } else if (batch.queue.startsWith("contacts-chunk")) {
-          // Contact-book chunking (dormant until a CONTACTS queue is bound; today
-          // the chunk job runs inline via ctx.waitUntil in contacts_backup.ts).
-          await cbook.contactsChunkConsume(env, msg.body);
+          // Shared contacts-chunk queue carries TWO message shapes — discriminate
+          // on `kind` the same way liveness-verify discriminates on `v3` below.
+          // [AVA-CAMP-P-CONTACTS] campaign contact-list chunks (large .csv/.xlsx
+          // uploads split by campaign_contacts_route.ts's enqueueOrInsertChunks)
+          // carry kind==='campaign_contacts_chunk'; everything else is the
+          // pre-existing contact-book chunking job (dormant until a CONTACTS
+          // queue is bound; today that job runs inline via ctx.waitUntil in
+          // contacts_backup.ts).
+          const cm = msg.body as { kind?: string };
+          if (cm?.kind === "campaign_contacts_chunk") {
+            const m = msg.body as CampaignContactsChunkMsg;
+            await insertCampaignContacts(env, m.campaign_id, m.uid, m.rows);
+          } else {
+            await cbook.contactsChunkConsume(env, msg.body);
+          }
         } else if (batch.queue.startsWith("liveness-verify")) {
           // [LIVENESS-V3] the shared liveness-verify queue now carries BOTH V2
           // ({uid,sid}) and V3 ({v3:true,uid,sid}) messages. Discriminate on the
