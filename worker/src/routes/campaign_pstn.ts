@@ -36,6 +36,16 @@ import type { Env } from "../types";
 import { json } from "../util";
 import { metaDb } from "../db/shard";
 import { applyAttemptTransition, type AttemptState } from "../lib/call_fsm";
+// [AVA-CAMP-F4-CTRL] warm-transfer human-handover controller — see
+// lib/campaign_handover.ts for the FSM orchestration; this file only wires
+// its webhook subpaths (secret-check + attempt lookup are reused from above).
+import {
+  humanAnswerXml,
+  callerTransferXml,
+  onHumanAnswered,
+  onHandoverLegHangup,
+  onConferenceEvent,
+} from "../lib/campaign_handover";
 
 const PUBLIC_BASE = "https://api.avatok.ai";
 const AGENT_KV_TTL_SEC = 300; // Vobiz must connect the WS within 5 min (matches pstn.ts's agent lane)
@@ -396,6 +406,107 @@ async function handleStreamCb(req: Request, env: Env, secret: string): Promise<R
 }
 
 // ---------------------------------------------------------------------------
+// [AVA-CAMP-F4-CTRL] Warm-transfer human-handover webhook lane (spec §7, §16
+// H1-H9). All orchestration lives in lib/campaign_handover.ts — these
+// handlers only do secret-check + form-parse + hand the parsed fields off.
+// Path shape matches the rest of this file:
+//   /api/campaign-pstn/ho-answer/<secret>/<attempt_uuid>   — human leg answer_url
+//   /api/campaign-pstn/ho-ring/<secret>/<attempt_uuid>     — human leg ring_url
+//   /api/campaign-pstn/ho-hangup/<secret>/<attempt_uuid>   — human leg hangup_url
+//   /api/campaign-pstn/ho-amd/<secret>/<attempt_uuid>      — human leg machine_detection_url
+//   /api/campaign-pstn/ho-transfer/<secret>/<attempt_uuid> — Transfer-API aleg_url (the CALLER)
+//   /api/campaign-pstn/conf-event/<secret>/<attempt_uuid>  — <Conference callbackUrl>
+// ---------------------------------------------------------------------------
+
+// POST /api/campaign-pstn/ho-answer/<secret>/<attempt_uuid> — the human
+// (owner) leg answered; just return the whisper + hold-in-conference XML.
+// No FSM transition here — that happens off the AMD verdict (ho-amd below),
+// matching spec §7's "AMD enabled on this leg too" (the handover leg, unlike
+// the main campaign leg, gates on AMD rather than treating it as advisory).
+async function handleHoAnswer(env: Env, secret: string, attemptUuid: string): Promise<Response> {
+  if (!secret || secret !== webhookSecret(env)) {
+    return xml(`<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>`, 403);
+  }
+  if (!attemptUuid) return safetyNetXml();
+  try {
+    return xml(await humanAnswerXml(env, attemptUuid));
+  } catch {
+    return safetyNetXml();
+  }
+}
+
+// POST /api/campaign-pstn/ho-ring/<secret>/<attempt_uuid> — best-effort ack,
+// no FSM/state change (mirrors handleRing's shape for the main leg).
+async function handleHoRing(req: Request, env: Env, secret: string): Promise<Response> {
+  if (!secret || secret !== webhookSecret(env)) return xml(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`, 403);
+  try { await parseForm(req); } catch { /* best-effort */ }
+  return xml(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`);
+}
+
+// POST /api/campaign-pstn/ho-hangup/<secret>/<attempt_uuid> — human leg ended
+// (H4 pre-bridge, or a normal post-bridge PSTN hangup that
+// onHandoverLegHangup will itself no-op on — see lib/campaign_handover.ts).
+async function handleHoHangup(req: Request, env: Env, secret: string, attemptUuid: string): Promise<Response> {
+  if (!secret || secret !== webhookSecret(env)) return xml(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`, 403);
+  if (!attemptUuid) return xml(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`);
+  try {
+    await parseForm(req);
+    await onHandoverLegHangup(env, attemptUuid, "human");
+  } catch { /* best-effort — never fail a webhook over our own bug */ }
+  return xml(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`);
+}
+
+// POST /api/campaign-pstn/ho-amd/<secret>/<attempt_uuid> — async
+// machine-detection verdict for the HUMAN leg. Same field-shape fallback as
+// handleAmd above (Vobiz's AnsweredBy/MachineDetection/Type naming varies by
+// account config) but this one gates a real state transition (H5), unlike
+// the main leg's advisory-only handleAmd.
+async function handleHoAmd(req: Request, env: Env, secret: string, attemptUuid: string): Promise<Response> {
+  if (!secret || secret !== webhookSecret(env)) return xml(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`, 403);
+  if (!attemptUuid) return xml(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`);
+  try {
+    const fields = await parseForm(req);
+    const raw = (fields.MachineDetection || fields.Type || fields.AnsweredBy || "").toLowerCase();
+    const amd: "human" | "machine" | null = raw.includes("machine") ? "machine" : raw.includes("human") ? "human" : null;
+    await onHumanAnswered(env, attemptUuid, amd);
+  } catch { /* best-effort — never fail a webhook over our own bug */ }
+  return xml(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`);
+}
+
+// POST /api/campaign-pstn/ho-transfer/<secret>/<attempt_uuid> — the
+// Transfer-API `aleg_url` for the CALLER leg (moved here by
+// provider.transferCall in onHumanAnswered); returns the XML that joins the
+// caller into the same conference room as the human.
+async function handleHoTransfer(env: Env, secret: string, attemptUuid: string): Promise<Response> {
+  if (!secret || secret !== webhookSecret(env)) {
+    return xml(`<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>`, 403);
+  }
+  if (!attemptUuid) return safetyNetXml();
+  try {
+    return xml(callerTransferXml(attemptUuid, secret));
+  } catch {
+    return safetyNetXml();
+  }
+}
+
+// POST /api/campaign-pstn/conf-event/<secret>/<attempt_uuid> — <Conference
+// callbackUrl> participant events (ConferenceAction=enter|exit). Only the
+// CALLER's `enter` confirms the bridge (BridgeConfirmed) — see
+// lib/campaign_handover.ts's onConferenceEvent for the leg-resolution logic.
+async function handleConfEvent(req: Request, env: Env, secret: string, attemptUuid: string): Promise<Response> {
+  if (!secret || secret !== webhookSecret(env)) return xml(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`, 403);
+  if (!attemptUuid) return xml(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`);
+  try {
+    const fields = await parseForm(req);
+    await onConferenceEvent(env, attemptUuid, {
+      type: fields.ConferenceAction || undefined,
+      callUuid: fields.CallUUID || undefined,
+    });
+  } catch { /* best-effort — never fail a webhook over our own bug */ }
+  return xml(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`);
+}
+
+// ---------------------------------------------------------------------------
 // Dispatcher — mount at /api/campaign-pstn/ (wiring agent's job; NOT done
 // here per the task scope — see the report for the exact mount instructions).
 // Path shape: /api/campaign-pstn/<action>/<secret>/<attempt_uuid>
@@ -414,13 +525,23 @@ export async function campaignPstnRoute(req: Request, env: Env, path: string): P
     if (kind === "amd" && req.method === "POST") return await handleAmd(req, env, secret, attemptUuid);
     if (kind === "stream-cb" && req.method === "POST") return await handleStreamCb(req, env, secret);
 
+    // [AVA-CAMP-F4-CTRL] handover subpaths (additive — see the section above).
+    if (kind === "ho-answer" && req.method === "POST") return await handleHoAnswer(env, secret, attemptUuid);
+    if (kind === "ho-ring" && req.method === "POST") return await handleHoRing(req, env, secret);
+    if (kind === "ho-hangup" && req.method === "POST") return await handleHoHangup(req, env, secret, attemptUuid);
+    if (kind === "ho-amd" && req.method === "POST") return await handleHoAmd(req, env, secret, attemptUuid);
+    if (kind === "ho-transfer" && req.method === "POST") return await handleHoTransfer(env, secret, attemptUuid);
+    if (kind === "conf-event" && req.method === "POST") return await handleConfEvent(req, env, secret, attemptUuid);
+
     return json({ error: "not found" }, 404);
   } catch {
     if (
       path.startsWith("/api/campaign-pstn/answer/") ||
       path.startsWith("/api/campaign-pstn/ring/") ||
       path.startsWith("/api/campaign-pstn/hangup/") ||
-      path.startsWith("/api/campaign-pstn/amd/")
+      path.startsWith("/api/campaign-pstn/amd/") ||
+      path.startsWith("/api/campaign-pstn/ho-answer/") ||
+      path.startsWith("/api/campaign-pstn/ho-transfer/")
     ) {
       return safetyNetXml();
     }

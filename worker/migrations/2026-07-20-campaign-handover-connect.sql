@@ -1,0 +1,16 @@
+-- [AVA-CAMP-F4-CTRL] campaign_call_attempts.handover_connected_at — epoch ms
+-- set by lib/campaign_handover.ts's onConferenceEvent() when the CALLER leg's
+-- conference member-join callback lands (spec §7 "caller-leg join event =
+-- BridgeConfirmed"), alongside handover_status='connected' (already a plain
+-- TEXT column from the base migration). Needed because
+-- applyHandoverTransition()'s patch mechanism writes arbitrary columns via a
+-- raw UPDATE — the base migration (2026-07-20-outbound-ai-calling-campaigns.sql)
+-- only carries `handover_status`, not a connect timestamp, and §12.1's
+-- `handover_connected` analytics event / §12.3 "handover analytics" want a
+-- real instant, not just a status string.
+--
+-- IDEMPOTENCY: SQLite/D1 has no `ADD COLUMN IF NOT EXISTS`. This is additive
+-- and safe to run once on a fresh/staging DB; a repeat run fails with
+-- "duplicate column name" (safe no-op, per the drift-columns migration
+-- convention — see 2026-07-18-listings-drift-columns.sql).
+ALTER TABLE campaign_call_attempts ADD COLUMN handover_connected_at INTEGER;
