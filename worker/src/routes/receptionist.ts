@@ -907,7 +907,13 @@ export async function receptionistConfigFor(req: Request, env: Env): Promise<Res
     void ownerTier;
     try {
       const b = await walletOp(env, to, { op: "balance", uid: to });
-      if (b.status === 200 && Number(b.body?.balance ?? 0) < 1) {
+      // [RECEPT-AVAIL-SPENDABLE-1] Gate on SPENDABLE (free daily grant + persistent
+      // bonus + paid), NOT the paid-only `balance`. Every non-premium user gets 250
+      // free AvaCoins/day that receptionist costs draw from first (allow_free), so a
+      // paid-only check made Ava "unavailable" for everyone who hadn't topped up →
+      // caller fell to native voicemail. Fail-open on read errors as before.
+      const spendable = Number(b.body?.spendable ?? b.body?.balance ?? 0);
+      if (b.status === 200 && spendable < 1) {
         checked(false, "insufficient_tokens");
         return json({ available: false, reason: "insufficient_tokens" });
       }
@@ -1020,7 +1026,11 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
     const needTokens = vmMode ? 1 : 3;
     try {
       const b = await walletOp(env, to, { op: "balance", uid: to });
-      if (b.status === 200 && Number(b.body?.balance ?? 0) < needTokens) {
+      // [RECEPT-AVAIL-SPENDABLE-1] Gate on SPENDABLE (free daily grant + bonus +
+      // paid), matching /config — receptionist costs draw the free coins first, so a
+      // paid-only check wrongly blocked every non-topped-up owner. Fail-open as before.
+      const spendable = Number(b.body?.spendable ?? b.body?.balance ?? 0);
+      if (b.status === 200 && spendable < needTokens) {
         skip("insufficient_tokens", { need: needTokens });
         return json({ error: "receptionist_unavailable", reason: "insufficient_tokens", need: needTokens }, 402);
       }
