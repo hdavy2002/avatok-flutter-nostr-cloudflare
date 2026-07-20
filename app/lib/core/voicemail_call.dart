@@ -186,16 +186,26 @@ class VoicemailApi {
 
   /// [to] = the callee (voicemail recipient). Returns the session info
   /// (`rtc_url`, `record_sec`, ...) or null on any failure/flag-off (503).
+  ///
+  /// [free] marks the FREE AvaTOK↔AvaTOK auto-voicemail path (Phase WS2). The
+  /// server uses it to play ONE GENERIC system greeting ("The person you're
+  /// calling isn't available right now…") instead of the per-owner business
+  /// prompt, and to accept the request under `avatokVoicemailFree` rather than
+  /// the paid `voicemailBot`. Harmless on an older server (unknown body field is
+  /// ignored). Defaults false so the existing business NoAnswerCard path is
+  /// byte-for-byte unchanged.
   static Future<Map<String, dynamic>?> start({
     required String to,
     String? callId,
     String? traceId,
+    bool free = false,
   }) async {
     try {
       final r = await ApiAuth.postJson('$kApiBase/voicemail/start', {
         'to': to,
         if (callId != null && callId.isNotEmpty) 'call_id': callId,
         if (traceId != null && traceId.isNotEmpty) 'trace_id': traceId,
+        if (free) 'free': true,
       });
       if (r.statusCode != 200) return null;
       final j = _json(r.body);

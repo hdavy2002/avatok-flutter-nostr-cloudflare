@@ -563,6 +563,27 @@ class _CallScreenState extends State<CallScreen> {
               content: Text('${widget.title} is unreachable right now')));
         }
       },
+      // [AVACALL-VMFREE-2] Free AvaTOK↔AvaTOK auto-voicemail status snackbars. The
+      // session owns the voicemail lifecycle end-to-end; these only surface honest
+      // status so the caller is never left staring at nothing.
+      voicemailRecording: () {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Recording your voicemail…'), duration: Duration(seconds: 3)));
+        }
+      },
+      voicemailSent: () {
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(const SnackBar(content: Text('Voicemail sent')));
+        }
+      },
+      voicemailUnavailable: () {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Voicemail is not available right now')));
+        }
+      },
     );
     _session.revision.addListener(_onSessionChanged);
     _session.uiPhase.addListener(_onSessionChanged);

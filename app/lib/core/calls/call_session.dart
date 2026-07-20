@@ -23,6 +23,7 @@ import '../receptionist_api.dart';
 import '../receptionist_call.dart';
 import '../remote_config.dart';
 import '../ringback_player.dart';
+import '../voicemail_call.dart'; // [AVACALL-VMFREE-2] free AvaTOK↔AvaTOK auto-voicemail
 import '../voice/native_voice_audio.dart';
 import '../../push/push_service.dart';
 // The 1:1 call/glare globals (gInCall, gActiveCallId, gLiveCallScreens,
@@ -326,6 +327,15 @@ class CallSession {
   final RingbackPlayer _ringback = RingbackPlayer();
   ReceptionistCall? _receptionist;
   bool _receptionistActive = false;
+  // [AVACALL-VMFREE-2] Free AvaTOK↔AvaTOK auto-voicemail leg. Owned by THIS
+  // session exactly like _receptionist above: when a no-answer AvaTOK audio call
+  // has no active AI receptionist, the caller records a voicemail instead of a
+  // silent teardown. `_voicemailActive` is the same style of guard as
+  // `_receptionistActive` — it stops the stale-ring/socket-loss paths from
+  // tearing the session down while the caller is mid-record.
+  VoicemailCall? _voicemail;
+  bool _voicemailActive = false;
+  Timer? _voicemailTimeout;
   // [RECEPT-START-409-1] Server refusal reason from the last failed /start.
   String? _receptFailReason;
   int _avaCount = 0;
@@ -1010,6 +1020,10 @@ class CallSession {
       case 'receptionist-connecting':
       case 'receptionist-wrapup':
       case 'ava-countdown':
+      // [AVACALL-VMFREE-2] The free-voicemail record is an active in-progress
+      // state (like the receptionist), not a "still dialing" one.
+      case 'voicemail-connecting':
+      case 'voicemail':
         return CallPhase.connected;
       case 'ended':
       case 'declined':
@@ -1268,15 +1282,27 @@ class CallSession {
   void Function()? _mediaDeniedNotice;
   void Function()? _placeCallFailedNotice;
   void Function()? _unreachableNotice;
+  // [AVACALL-VMFREE-2] Free-voicemail user-facing snackbars (optional niceties —
+  // the voicemail lifecycle itself is fully owned by the session; these only
+  // surface honest status text so the caller is never left staring at nothing).
+  void Function()? _voicemailRecordingNotice;
+  void Function()? _voicemailSentNotice;
+  void Function()? _voicemailUnavailableNotice;
   /// The view registers user-facing snackbar callbacks. Cleared on detach.
   void setNoticeHooks({
     void Function()? mediaDenied,
     void Function()? placeCallFailed,
     void Function()? unreachable,
+    void Function()? voicemailRecording,
+    void Function()? voicemailSent,
+    void Function()? voicemailUnavailable,
   }) {
     _mediaDeniedNotice = mediaDenied;
     _placeCallFailedNotice = placeCallFailed;
     _unreachableNotice = unreachable;
+    _voicemailRecordingNotice = voicemailRecording;
+    _voicemailSentNotice = voicemailSent;
+    _voicemailUnavailableNotice = voicemailUnavailable;
   }
 
   Future<void> _forceRelayRestart() async {
@@ -1304,6 +1330,10 @@ class CallSession {
           {'channel': 'socket_lost', 'call_id': config.room});
       return;
     }
+    // [AVACALL-VMFREE-2] The free-voicemail leg runs on its OWN WebSocket (the
+    // VoicemailRoom bridge). A drop on the signaling socket must not end the call
+    // under the caller mid-record — the voicemail's own done/timeout paths own it.
+    if (_voicemailActive || _voicemail != null) return;
     if (_connected) {
       // CALL-RC-D2: post-connect drop → the exponential-backoff reconnect
       // state machine (phase=reconnecting), not the legacy pre-connect path.
@@ -1954,7 +1984,9 @@ class CallSession {
   Future<void> _onNoAnswer() async {
     // [AVA-RING-BLEED-1] A stale no-answer timer firing while Ava is live must
     // not end the call under her ("no-answer"/timeout-ringing mid-voicemail).
+    // [AVACALL-VMFREE-2] Same immunity while a free voicemail is being recorded.
     if (_receptionistActive || _receptionist != null || _avaCountingDown) return;
+    if (_voicemailActive || _voicemail != null) return;
     // [DIALPAD-BIZ-CALLS Phase C] Same protection for a live agent hand-off.
     if (_phase == 'agent-handoff') return;
     _ringback.stop();
@@ -1975,13 +2007,139 @@ class CallSession {
               : (_receptMode == 'first_ring' ? 'first_ring' : 'rings'));
       if (started) return;
     }
+    // [AVACALL-VMFREE-2] The callee has NO active AI receptionist (the recept
+    // attempt above returned false, or this is an unreachable/rejected phone).
+    // Instead of ending silently with 'timeout-ringing', AUTO-fire the FREE
+    // AvaTOK↔AvaTOK voicemail (owner decision, Phase WS2). Audio-only, and NOT a
+    // business/PSTN call (those have their own paid voicemailBot lane + card).
+    // Gated SOLELY on avatokVoicemailFree — never the paid voicemailBot/
+    // businessCallUx. `_autoStartFreeVoicemail` owns the terminal outcome when it
+    // returns true (either recording, or an honest end if the room can't start),
+    // so it must never fall through to a silent teardown.
+    if (!config.video &&
+        !config.business &&
+        !_ended &&
+        !_connected &&
+        RemoteConfig.avatokVoicemailFree) {
+      final fired = await _autoStartFreeVoicemail();
+      if (fired) return;
+    }
     if (!_ended && !_connected) _endWith('no-answer', reason: 'timeout-ringing');
+  }
+
+  /// [AVACALL-VMFREE-2] Auto-start the FREE AvaTOK↔AvaTOK voicemail on a
+  /// no-answer / rejected / phone-off AUDIO call when the callee has no AI
+  /// receptionist taking over. Owned by this session exactly like
+  /// [_tryReceptionist]: it quiesces the P2P leg, opens the caller-side
+  /// [VoicemailCall] bridge to the server's VoicemailRoom, and drives the call to
+  /// a terminal state.
+  ///
+  /// Returns TRUE when it has taken ownership of the outcome — either the caller
+  /// is now recording, OR (voicemail room refused / connect failed) it has ended
+  /// the session with an HONEST no-answer state. It only returns FALSE when it
+  /// declined to act (a duplicate/non-primary leg), in which case the caller
+  /// falls through to the normal 'timeout-ringing' end. It NEVER leaves the
+  /// session in a silent voicemail limbo — the incident dead-end
+  /// (routing_decision=VOICEMAIL ending in nothing) cannot recur here.
+  Future<bool> _autoStartFreeVoicemail() async {
+    if (_voicemailActive || _voicemail != null) return true;
+    // A duplicate/non-primary leg for a room another live session owns must never
+    // send a 'bye' over the shared room — decline and let it wither (mirrors the
+    // _tryReceptionist / _anotherOwns guard).
+    if (_anotherOwns) {
+      Analytics.capture('avatok_voicemail_suppressed_dup_session', {'call_id': config.room});
+      return false;
+    }
+    _voicemailActive = true;
+    Analytics.capture('avatok_voicemail_autostart', {
+      'call_id': config.room,
+      'to': config.seed,
+    });
+    AvaLog.I.log('voicemail', 'auto-start (no-answer, no receptionist) to=${config.seed}');
+    try {
+      // Quiesce the ringing P2P leg exactly like the receptionist hand-off, so a
+      // late connect / stale watchdog can't tear down the voicemail mid-record.
+      _ringback.stop();
+      _ringTimeout?.cancel();
+      _connectWatchdog?.cancel();
+      _connectWatchdog = null;
+      _connectWatchdogFast?.cancel();
+      _connectWatchdogFast = null;
+      _send({'type': 'bye'});
+      try { _stream?.getTracks().forEach((t) => t.stop()); } catch (_) {}
+      try { await _pc?.close(); } catch (_) {}
+      _pc = null;
+      _notifyCalleeCanceled();
+
+      final start = await VoicemailApi.start(
+        to: config.seed,
+        callId: config.room,
+        traceId: config.traceId,
+        free: true, // [AVACALL-VMFREE-3] generic system greeting, not per-owner
+      );
+      final rtcUrl = start?['rtc_url'] as String?;
+      if (start == null || rtcUrl == null) {
+        // Honest dead-end guard: the voicemail room refused/failed. Do NOT sit in
+        // a silent voicemail-active limbo — surface an honest end state.
+        Analytics.capture('avatok_voicemail_unavailable', {
+          'call_id': config.room,
+          'to': config.seed,
+        });
+        _voicemailActive = false;
+        _voicemailUnavailableNotice?.call();
+        if (!_ended && !_connected) _endWith('no-answer', reason: 'voicemail-unavailable');
+        return true;
+      }
+
+      final vm = VoicemailCall(rtcUrl: rtcUrl);
+      _voicemail = vm;
+      vm.onStatus = (s) {
+        if (_ended) return;
+        if (s == 'connecting') {
+          _setPhase('voicemail-connecting');
+        } else if (s == 'connected') {
+          _setPhase('voicemail');
+          _voicemailRecordingNotice?.call();
+        }
+      };
+      // Safety net: never leak the session if the record window / socket wedges.
+      final recSec = (start['record_sec'] as num?)?.toInt() ?? 25;
+      final graceSec = (start['grace_sec'] as num?)?.toInt() ?? 3;
+      _voicemailTimeout = Timer(Duration(seconds: recSec + graceSec + 15), () {
+        if (!_ended) _endWith('ended', reason: 'voicemail-timeout');
+      });
+      vm.done.then((_) {
+        _voicemailTimeout?.cancel();
+        _voicemailSentNotice?.call();
+        if (!_ended) _endWith('ended', reason: 'voicemail-done');
+      });
+
+      final ok = await vm.start();
+      if (!ok) {
+        _voicemailTimeout?.cancel();
+        _voicemailActive = false;
+        _voicemail = null;
+        _voicemailUnavailableNotice?.call();
+        if (!_ended && !_connected) _endWith('no-answer', reason: 'voicemail-connect-failed');
+        return true;
+      }
+      return true;
+    } catch (e) {
+      _voicemailTimeout?.cancel();
+      _voicemailActive = false;
+      _voicemail = null;
+      AvaLog.I.log('voicemail', 'auto-start failed: $e');
+      if (!_ended && !_connected) _endWith('no-answer', reason: 'voicemail-error');
+      return true;
+    }
   }
 
   Future<void> _onBusy() async {
     if (_ended || _connected) return;
     // [DIALPAD-BIZ-CALLS Phase C] A racing busy must not stomp a live hand-off.
     if (_phase == 'agent-handoff') return;
+    // [AVACALL-VMFREE-2] A racing busy must not stomp a live free-voicemail record.
+    if (_voicemailActive || _voicemail != null) return;
     // [CALL-DUP-SESSION-1] Self-inflicted-busy immunity. A 'busy' that lands on a
     // DUPLICATE/non-primary leg (this session is NOT the one connected, but
     // another live session for the same room IS connected/answered on this
@@ -2798,6 +2956,10 @@ class CallSession {
     // [BUSY-CARD-1] cancel the abandoned-busy-card safety timer.
     _busyCardTimeout?.cancel();
     _busyCardTimeout = null;
+    // [AVACALL-VMFREE-2] Tear down any in-flight free-voicemail leg with the call.
+    _voicemailTimeout?.cancel();
+    _voicemailTimeout = null;
+    try { _voicemail?.hangup(); } catch (_) {}
     try { _receptionist?.hangup(); } catch (_) {}
     try { WakelockPlus.disable(); } catch (_) {}
     await _safeAwait(() => NativeVoiceAudio().stopP2pAudioMode());
@@ -2942,6 +3104,9 @@ class CallSession {
         // [AVA-CLIENT-1] honest fallback when Ava never went live (ack timeout /
         // engine start_failed) — never a frozen countdown with dead air.
         'receptionist-unavailable' => "Couldn't reach Ava — try again",
+        // [AVACALL-VMFREE-2] Free AvaTOK↔AvaTOK auto-voicemail states.
+        'voicemail-connecting' => "$_peerFirst didn't answer — leaving a voicemail…",
+        'voicemail' => 'Recording your voicemail…',
         'reconnecting' => 'Reconnecting…',
         'ended' => 'Call ended',
         // [DIAL-NARRATION-1] connecting: the live narration line when we have one.
