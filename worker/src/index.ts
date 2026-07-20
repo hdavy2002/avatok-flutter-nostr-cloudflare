@@ -86,6 +86,7 @@ import { pstnRoute } from "./routes/pstn";
 // (dark behind campaignDialerEnabled; Specs/OUTBOUND-AI-CALLING-CAMPAIGNS.md).
 import { campaignPstnRoute } from "./routes/campaign_pstn";
 import { campaignsRoute } from "./routes/campaigns";
+import { campaignKbRoute } from "./routes/campaign_kb";
 // [TEL-TIERS-1] Telephony subscription tiers (Teler/Vobiz resale, Phase 4).
 import { telephonySubscribe, telephonyAddon, telephonyCancel, telephonyStatus } from "./routes/telephony_tiers";
 // [AVA-PSTN-AGENT-1] Vobiz bidirectional media-stream WS → VobizAgentRoom DO
@@ -621,6 +622,9 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // the 15th char), but ordering the more specific path first keeps the
       // precedence obviously correct as routes are added later.
       if (p.startsWith("/api/campaign-pstn/")) return await campaignPstnRoute(req, env, p);
+      // [AVA-CAMP-C-WIRE] Campaign KB (per-campaign upload/list/clear) — checked
+      // before the broader /api/campaigns CRUD matcher so it isn't swallowed.
+      if (/^\/api\/campaigns\/[^/]+\/kb(\/|$|\?|#)/.test(p)) return await campaignKbRoute(req, env, p);
       if (p.startsWith("/api/campaigns")) return await campaignsRoute(req, env, p);
       // [TEL-TIERS-1] Telephony subscription tiers (Phase 4, Specs/PLAN-2026-07-19-
       // tokens-cockpit-pstn-master.md): ₹700 Tier-1 / ₹2,500 Tier-2 / ₹700 add-on,

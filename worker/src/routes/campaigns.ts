@@ -26,6 +26,7 @@ import { json } from "../util";
 import { isFail, requireUser } from "../authz";
 import { readConfig } from "./config";
 import { metaDb } from "../db/shard";
+import { compileCampaignPrompt, PROMPT_VERSION, type CampaignPromptInput } from "../lib/campaign_prompt";
 
 // ---------------------------------------------------------------------------
 // Gating helpers
@@ -66,6 +67,11 @@ interface CampaignRow {
   compiled_prompt: string | null;
   compiled_prompt_hash: string | null;
   prompt_version: number | null;
+  language_hint: string | null;
+  voice_persona: string | null;
+  kb_store: string | null;
+  booking_enabled: number; // SQLite 0/1
+  handover_enabled: number; // SQLite 0/1
   n_total: number;
   n_done: number;
   n_answered: number;
@@ -186,14 +192,6 @@ async function createCampaign(req: Request, env: Env, uid: string): Promise<Resp
 // POST /api/campaigns/:id/launch
 // ---------------------------------------------------------------------------
 
-/** Minimal SHA-256 hex hash for the frozen prompt (Web Crypto, available in
- *  Workers) — matches the "hash" half of compiled_prompt_hash without pulling
- *  in a new dependency. */
-async function sha256Hex(s: string): Promise<string> {
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
-  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
 async function launchCampaign(env: Env, uid: string, id: string): Promise<Response> {
   const row = await loadOwnedCampaign(env, id, uid);
   if (row === null) return json({ error: "not found" }, 404);
@@ -202,17 +200,25 @@ async function launchCampaign(env: Env, uid: string, id: string): Promise<Respon
     return json({ error: `cannot launch from status '${row.status}'` }, 409);
   }
 
-  // TODO(Phase C, spec §8): replace this with the real server-side prompt
-  // compiler — immutable identity+purpose disclosure preamble, KB grounding
-  // rules, tool declarations, persona/language, business-KB attach precedence.
-  // For B2 a minimal compiled prompt built from goal_text is sufficient to
-  // unblock the telephony/FSM/CampaignDO wiring; DO NOT treat this as the
-  // final compiled-prompt shape callers should rely on long-term.
-  const disclosurePreamble =
-    "You are an AI calling assistant for this business. Always identify yourself as an AI at the start of the call.";
-  const compiledPrompt = `${disclosurePreamble}\n\nGoal: ${row.goal_text}`;
-  const compiledPromptHash = await sha256Hex(compiledPrompt);
-  const promptVersion = 1;
+  // [AVA-CAMP-C-WIRE] Real server-side prompt compiler (spec §8) — immutable
+  // identity+purpose disclosure preamble, KB grounding, tool declarations,
+  // persona/language, handover. Replaces the B2 minimal inline build.
+  const promptInput: CampaignPromptInput = {
+    name: row.name,
+    goal_text: row.goal_text,
+    language_hint: row.language_hint ?? null,
+    voice_persona: row.voice_persona ?? null,
+    owner_display_name: null, // best-effort; no owner display-name column on campaigns
+    business_name: null, // unknown at this scope
+    hasKb: !!row.kb_store,
+    toolNames: row.booking_enabled ? ["check_availability", "book_appointment"] : [],
+    bookingEnabled: !!row.booking_enabled,
+    handoverEnabled: !!row.handover_enabled,
+  };
+  const compiled = await compileCampaignPrompt(promptInput);
+  const compiledPrompt = compiled.text;
+  const compiledPromptHash = compiled.hash;
+  const promptVersion = compiled.version;
   const now = Date.now();
 
   try {
