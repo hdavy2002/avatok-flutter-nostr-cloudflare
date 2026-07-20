@@ -30,6 +30,7 @@ import { avaReasonRaw } from "../lib/ava_reason"; // One Brain B1: gateway for S
 import { aiRunOpts } from "../lib/ai_gate";       // AI Gateway cost-logging opts
 import { googleSynthesizeForLang } from "../lib/google_tts"; // WaveNet voice, any language (RECEPT-TTS-GOOGLE)
 import { sarvamTtsPcm, sarvamSttTranscribe } from "../lib/sarvam"; // Bulbul TTS + Saarika STT (RECEPT-SARVAM)
+import { deepInfraStt, deepInfraTtsPcm } from "../lib/deepinfra"; // Voxtral STT + Kokoro TTS (RECEPT-DEEPINFRA)
 import { getOrRenderVmGreeting } from "../lib/vm_greeting"; // shared VM greeting cache (also used by PSTN)
 import { chargeFeature } from "../feature_pricing"; // ₹1/voicemail (pay-per-use, owner 2026-07-19)
 import { recordCallSummary, receptOutcome } from "../lib/recept_stats"; // [RECEPT-STATS-1] canonical call summary
@@ -632,9 +633,21 @@ export class ReceptionRoomCf {
   private sttDetectedLang = "";
 
   private async cfStt(wav: Uint8Array): Promise<string> {
+    const sttProvider = String((this.env as any).RECEPT_CF_STT_PROVIDER || "").toLowerCase();
+    // Voxtral-Mini (RECEPT_CF_STT_PROVIDER=deepinfra): transcribe the endpointed
+    // segment on DeepInfra. Falls back to Whisper on any failure.
+    if (sttProvider === "deepinfra") {
+      const res = await deepInfraStt(this.env, wav);
+      if (res) {
+        if (res.lang) this.sttDetectedLang = res.lang;
+        this.ev("ava_recept_cf_stt_provider", { provider: "deepinfra", lang: res.lang || "unknown" });
+        return res.transcript;
+      }
+      this.ev("ava_recept_cf_stt_provider", { provider: "fallback_whisper", lang: "" });
+    }
     // Saarika v2.5 (RECEPT_CF_STT_PROVIDER=sarvam): India-tuned STT with AUTO
     // language detection incl. code-mixed Hindi/English. Falls back to Whisper.
-    if (String((this.env as any).RECEPT_CF_STT_PROVIDER || "").toLowerCase() === "sarvam") {
+    if (sttProvider === "sarvam") {
       const res = await sarvamSttTranscribe(this.env, wav);
       if (res) {
         if (res.lang) this.sttDetectedLang = res.lang;
@@ -660,6 +673,14 @@ export class ReceptionRoomCf {
    *  signal. Best-effort: if it can't connect, the whole-clip Whisper fallback in
    *  processCfTurn keeps the receptionist working (just at higher latency). */
   private async connectStt(): Promise<void> {
+    // DeepInfra STT (Voxtral) is a whole-clip REST call on the endpointed segment,
+    // not a streaming socket — skip Deepgram Nova entirely so each turn transcribes
+    // via cfStt()→Voxtral (RECEPT-DEEPINFRA). Turn-ending relies on the energy-VAD
+    // endpointer, same as the whisper_only path.
+    if (String((this.env as any).RECEPT_CF_STT_PROVIDER || "").toLowerCase() === "deepinfra") {
+      this.ev("ava_recept_cf_stt_stream", { ms: -1, mode: "deepinfra_voxtral" });
+      return;
+    }
     // STT provider switch (RECEPT_CF_STT_STREAM, owner 2026-07-18): set to "off"/
     // "whisper" to SKIP Deepgram Nova streaming and transcribe each turn with the
     // cheaper whole-clip Whisper in processCfTurn (~18× cheaper: $0.0005 vs $0.0092
@@ -722,6 +743,34 @@ export class ReceptionRoomCf {
   /** Chat completion via OpenRouter (Claude); falls back to Workers AI Llama only
    *  if OPENROUTER_API_KEY is unset or the OpenRouter call fails. */
   private async cfChat(messages: Array<{ role: string; content: string }>, maxTokens: number): Promise<string> {
+    const llmProvider = String((this.env as any).RECEPT_CF_LLM_PROVIDER || "").toLowerCase();
+    // DeepInfra brain (RECEPT_CF_LLM_PROVIDER=deepinfra, owner 2026-07-21): Qwen3-32B
+    // on the OpenAI-compatible endpoint. Thinking is disabled (enable_thinking=false)
+    // so no <think> block reaches TTS. Prompt caching is automatic on DeepInfra for the
+    // stable system prefix (system message is first + unchanged across turns). On any
+    // failure we fall through to the OpenRouter/Workers-AI path below.
+    if (llmProvider === "deepinfra") {
+      const dkey = (this.env as any).DEEPINFRA_TOKEN as string | undefined;
+      if (dkey) {
+        try {
+          const r = await fetch("https://api.deepinfra.com/v1/openai/chat/completions", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${dkey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: this.cfLlmModel(), messages, max_tokens: maxTokens, temperature: 0.4,
+              // Qwen3 non-thinking mode: disable the reasoning trace for low latency.
+              chat_template_kwargs: { enable_thinking: false },
+            }),
+          });
+          const j: any = await r.json().catch(() => ({}));
+          const u = j?.usage; if (u) { this.cfLlmTokIn += Number(u.prompt_tokens) || 0; this.cfLlmTokOut += Number(u.completion_tokens) || 0; }
+          // Strip any stray <think> block defensively (in case a model ignores the flag).
+          const txt = String(j?.choices?.[0]?.message?.content ?? "").replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+          if (txt) return txt;
+          this.ev("ava_recept_cf_llm_error", { via: "deepinfra", error_scrubbed: scrubSecrets(JSON.stringify(j?.error ?? j)).slice(0, 160) });
+        } catch (e) { this.ev("ava_recept_cf_llm_error", { via: "deepinfra", error_scrubbed: scrubSecrets(String(e)).slice(0, 160) }); }
+      }
+    }
     // Sarvam-M brain (RECEPT_CF_LLM_PROVIDER=sarvam, owner 2026-07-19): India-tuned,
     // strong Hindi. OpenAI-compatible /v1/chat/completions with the api-subscription-key
     // header. On failure we fall through to the OpenRouter/Llama path below.
@@ -801,7 +850,15 @@ export class ReceptionRoomCf {
       // GOOGLE_TTS_SA_JSON — no redeploy.
       let gPcm: Uint8Array | null = null;
       const ttsProvider = String((this.env as any).RECEPT_CF_TTS_PROVIDER || "").toLowerCase();
-      if (ttsProvider === "sarvam" && (this.env as any).SARVAM_API_KEY) {
+      if (ttsProvider === "deepinfra" && (this.env as any).DEEPINFRA_TOKEN) {
+        // Kokoro-82M renders 24 kHz mono PCM16 — the exact caller-out contract, so it
+        // routes through the same buffered gPcm send path (no resample). A default
+        // warm-female voice unless RECEPT_CF_DEEPINFRA_VOICE overrides (comma-separated).
+        const voices = String((this.env as any).RECEPT_CF_DEEPINFRA_VOICE || "af_bella")
+          .split(",").map((v) => v.trim()).filter(Boolean);
+        gPcm = await deepInfraTtsPcm(this.env, { text: text.slice(0, 2000), voices, outputFormat: "pcm" });
+        this.ev("ava_recept_cf_tts_provider", { provider: gPcm ? "deepinfra" : "fallback", lang: this.langCode() || "auto" });
+      } else if (ttsProvider === "sarvam" && (this.env as any).SARVAM_API_KEY) {
         gPcm = await sarvamTtsPcm(this.env, {
           text: text.slice(0, 2000), langCode: this.langCode(),
           speaker: String((this.env as any).RECEPT_CF_SARVAM_SPEAKER || "anushka"),
