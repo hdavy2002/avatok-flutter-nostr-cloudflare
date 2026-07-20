@@ -69,24 +69,62 @@ Widget? buildCampaignCard(
   }
 }
 
-// Shared bubble tokens — lifted verbatim from `_VoicemailCard`'s "read"
-// (grey) bubble in inbox_thread_screen.dart so campaign cards sit in the same
-// thread without looking like a different app. Campaign cards have no
-// heard/unheard concept, so they always use the neutral grey surface (never
-// the pale-green "unheard" one, which is voicemail-specific read state).
-const _kCardBg = Color(0xFFE7E8EB);
-const _kCardBorder = Color(0xFFCED0D6);
-const _kInk = Color(0xFF14161A);
-const _kSubInk = Color(0xFF3B3D45);
+// [AVA-CAMP-Q-INBOX] Campaign cards get a DISTINCT color from the neutral
+// grey voicemail/receptionist bubbles (`_kCardBg`/`_kCardBorder` used to be
+// the exact same 0xFFE7E8EB/0xFFCED0D6 grey as `_VoicemailCard`'s "read"
+// state — a campaign result was indistinguishable from an ordinary voicemail
+// at a glance). Reuses the existing pale-lavender "incoming" bubble tokens
+// (`AD.bubbleInBg`/`AD.bubbleInInk`/`AD.bubbleInMeta`) rather than inventing
+// new hex — those already read as "AI-authored content" elsewhere in the app
+// (incoming chat bubbles), which is a fitting association for an AI-calling
+// campaign result, and `AD.iconVideo` (the same purple already used inside
+// this file for the duration/dashboard chips) is reused as the accent-bar/
+// header-icon color so the tint and its accent are drawn from one family.
+// Not used by any voicemail/receptionist card, so a campaign card is
+// unmistakable in the shared thread stream.
+const _kCardBg = AD.bubbleInBg; // 0xFFE6E3F6 pale lavender
+const _kCardBorder = Color(0xFFC7BEEA); // deeper lavender edge
+const _kInk = AD.bubbleInInk; // 0xFF2A2640
+const _kSubInk = AD.bubbleInMeta; // 0xFF7B76A0
+const _kAccent = AD.iconVideo; // 0xFFA78BFA — left accent bar + header glyph
+
+/// Small "Campaign" header row (icon + label) shown atop every campaign card
+/// — combined with the left accent bar in [_cardShell] this is the "instantly
+/// see this is a campaign result" affordance from the owner ask, on top of
+/// the background tint alone.
+Widget _campaignHeader() => Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(PhosphorIcons.megaphone(PhosphorIconsStyle.fill), size: 13, color: _kAccent),
+        const SizedBox(width: 4),
+        Text('CAMPAIGN', style: ADText.statCaption(c: _kAccent)),
+      ]),
+    );
 
 Widget _cardShell(Widget child) => Container(
-      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: _kCardBg,
         borderRadius: BorderRadius.circular(AD.rListCard),
         border: Border.all(color: _kCardBorder, width: 1),
       ),
-      child: child,
+      clipBehavior: Clip.antiAlias,
+      child: IntrinsicHeight(
+        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          // Colored left accent bar — the other half of the "distinct at a
+          // glance" ask, alongside the lavender fill above.
+          Container(width: 4, color: _kAccent),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [_campaignHeader(), child],
+              ),
+            ),
+          ),
+        ]),
+      ),
     );
 
 /// t='campaign_call' — one answered outbound call: contact + number, duration

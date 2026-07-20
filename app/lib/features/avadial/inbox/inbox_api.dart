@@ -88,6 +88,44 @@ class InboxCard {
   /// doc). Never true for a voicemail/recept row.
   bool get isCampaign => sender == 'ava_campaign';
 
+  /// [AVA-CAMP-Q-INBOX] Campaign id for a campaign row — envelope key first
+  /// (both `campaign_id`/`campaignId` are checked defensively, no fixed key
+  /// name is pinned anywhere in the campaign lane; same defensive pattern as
+  /// `inbox_thread_screen.dart`'s `_campaignIdFrom`), else parsed off the
+  /// `campaign_<uid>__<campaignId>` conv id (worker/src/do/campaign_do.ts,
+  /// Specs/OUTBOUND-AI-CALLING-CAMPAIGNS.md: "One thread per campaign"). Null
+  /// for any non-campaign card.
+  String? get campaignId {
+    if (!isCampaign) return null;
+    final v = rawBody?['campaign_id'] ?? rawBody?['campaignId'];
+    if (v != null && v.toString().trim().isNotEmpty) return v.toString();
+    const prefix = 'campaign_';
+    if (conv.startsWith(prefix)) {
+      final rest = conv.substring(prefix.length);
+      final sep = rest.lastIndexOf('__');
+      if (sep >= 0) {
+        final id = rest.substring(sep + 2);
+        if (id.isNotEmpty) return id;
+      }
+    }
+    return null;
+  }
+
+  /// Human campaign name IF the envelope happens to carry one
+  /// (`campaign_name`/`campaignName`). TODO(AVA-CAMP-Q-INBOX): none of the
+  /// `campaign_call`/`campaign_missed_digest`/`campaign_status` envelope
+  /// shapes documented in Specs/OUTBOUND-AI-CALLING-CAMPAIGNS.md name this
+  /// key explicitly, so treat this as best-effort; when it's absent, resolve
+  /// [campaignId] -> name via `CampaignsApi.listCampaigns()` instead (see
+  /// `inbox_list_screen.dart`'s `_campaignNames` id->name map) and fall back
+  /// to showing the raw id if that lookup also comes up empty.
+  String? get campaignName {
+    if (!isCampaign) return null;
+    final v = rawBody?['campaign_name'] ?? rawBody?['campaignName'];
+    if (v != null && v.toString().trim().isNotEmpty) return v.toString();
+    return null;
+  }
+
   /// The stable per-card id used for the heard/unheard store and as the
   /// `hide` target — prefers the real `client_id` column, falls back to the
   /// sync-cursor row [id] for any legacy row that somehow lacks one.
@@ -244,6 +282,22 @@ class InboxThread {
   });
 
   InboxCard get latest => cards.last;
+
+  /// [AVA-CAMP-Q-INBOX] True when every card in this thread is a campaign
+  /// row — a campaign conv (`campaign_<uid>__<campaignId>`) only ever holds
+  /// campaign cards, so checking the first card is enough and avoids an
+  /// O(n) scan on every list build.
+  bool get isCampaignThread => cards.isNotEmpty && cards.first.isCampaign;
+
+  /// The campaign id for a [isCampaignThread] thread (see
+  /// [InboxCard.campaignId]), else null.
+  String? get campaignId => isCampaignThread ? cards.first.campaignId : null;
+
+  /// The campaign name straight off the envelope (see [InboxCard.campaignName]
+  /// — best-effort, may be null even for a campaign thread). The Inbox list
+  /// screen falls back to a `CampaignsApi.listCampaigns()` id->name lookup,
+  /// then to the raw id, when this is null.
+  String? get campaignEnvelopeName => isCampaignThread ? cards.first.campaignName : null;
 
   /// True when [callerKey] is a phone number (`tel:<E.164>`).
   bool get isTel => callerKey != null && callerKey!.startsWith('tel:');

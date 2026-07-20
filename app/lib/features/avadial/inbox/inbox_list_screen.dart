@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/analytics.dart';
+import '../../../core/campaigns_api.dart';
 import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../../../shell/v2/shell_chrome.dart';
@@ -58,6 +59,24 @@ class _InboxListScreenState extends State<InboxListScreen> {
   // (no debounce), same idiom as AdSearchDock's other call sites.
   final _searchCtrl = TextEditingController();
   String _query = '';
+
+  // [AVA-CAMP-Q-INBOX] Campaign filter bar — lets the owner separate campaign
+  // result threads (conv = `campaign_<uid>__<campaignId>`, see
+  // `InboxThread.isCampaignThread`) from ordinary voicemail/receptionist
+  // threads, and narrow further to one specific campaign by name. `null` =
+  // "All" (today's unfiltered view — the default, unchanged). The sentinel
+  // string below stands for "Campaigns" (every campaign thread, any id) —
+  // a real campaign id can never collide with it since ids come straight off
+  // the backend's own id scheme.
+  static const _kCampaignsAll = '__all_campaigns__';
+  String? _campaignFilter;
+
+  /// [AVA-CAMP-Q-INBOX] Best-effort campaign id -> name map, used to label a
+  /// campaign thread's chip/row when the message envelope itself didn't carry
+  /// a `campaign_name` (see `InboxCard.campaignName`'s TODO). Populated once
+  /// per load in [_loadThreads]; a failure just leaves ids showing as their
+  /// raw id instead of a friendly name — never blocks the list.
+  Map<String, String> _campaignNames = {};
 
   StreamSubscription<HubEvent>? _liveSub;
   Timer? _liveDebounce;
@@ -203,6 +222,17 @@ class _InboxListScreenState extends State<InboxListScreen> {
       tierCounts[r.tier] = (tierCounts[r.tier] ?? 0) + 1;
     }
     _resolvedNames = resolved;
+    // [AVA-CAMP-Q-INBOX] Best-effort campaign id -> name resolution for the
+    // filter chip labels (and the campaign-thread row label below). Only
+    // fired when there's actually a campaign thread in this batch, and never
+    // blocks/fails the rest of the load — an empty/failed lookup just leaves
+    // those chips/rows showing the raw campaign id instead of its name.
+    if (threads.any((t) => t.isCampaignThread)) {
+      try {
+        final campaigns = await CampaignsApi.listCampaigns();
+        _campaignNames = {for (final c in campaigns) c.id: c.name};
+      } catch (_) {/* chips/rows fall back to raw campaign id */}
+    }
     if (threads.isNotEmpty) {
       // [AVAINBOX-1] Proves the "Unknown caller" fix landed in PRODUCTION
       // (CLAUDE.md Rule 1: never just read the code, go check telemetry) —
@@ -253,6 +283,93 @@ class _InboxListScreenState extends State<InboxListScreen> {
     }).toList();
   }
 
+  /// [AVA-CAMP-Q-INBOX] Narrows [threads] per [_campaignFilter]: `null` (the
+  /// default "All") is a no-op — every existing thread still shows exactly
+  /// as before this lane. `_kCampaignsAll` keeps every campaign thread. A
+  /// specific campaign id keeps only that campaign's thread(s).
+  List<InboxThread> _applyCampaignFilter(List<InboxThread> threads) {
+    final f = _campaignFilter;
+    if (f == null) return threads;
+    if (f == _kCampaignsAll) return threads.where((t) => t.isCampaignThread).toList();
+    return threads.where((t) => t.isCampaignThread && t.campaignId == f).toList();
+  }
+
+  /// True as soon as ANY loaded thread is a campaign thread — gates whether
+  /// the filter bar renders at all, so an owner with no campaigns ever sees
+  /// no new UI (fully additive).
+  bool get _hasCampaigns => (_threads ?? const <InboxThread>[]).any((t) => t.isCampaignThread);
+
+  /// Distinct campaign chips to render, sorted by label. Label prefers the
+  /// envelope's own `campaign_name` ([InboxThread.campaignEnvelopeName]),
+  /// then the `CampaignsApi.listCampaigns()` id->name lookup ([_campaignNames]),
+  /// then falls back to the raw campaign id so a chip never renders blank.
+  List<({String id, String label})> get _campaignOptions {
+    final byId = <String, String>{};
+    for (final t in (_threads ?? const <InboxThread>[])) {
+      if (!t.isCampaignThread) continue;
+      final id = t.campaignId;
+      if (id == null || byId.containsKey(id)) continue;
+      byId[id] = t.campaignEnvelopeName ?? _campaignNames[id] ?? id;
+    }
+    final options = byId.entries.map((e) => (id: e.key, label: e.value)).toList();
+    options.sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
+    return options;
+  }
+
+  /// Horizontally-scrollable "All / Campaigns / <campaign name>…" chip row —
+  /// same [AdChip] + horizontal-[ListView] idiom `avalibrary_screen.dart`'s
+  /// type-filter row already uses. Renders nothing when there are no campaign
+  /// threads loaded, so the default (non-campaign) Inbox view is pixel-identical
+  /// to before this lane.
+  Widget _campaignFilterBar() {
+    if (!_hasCampaigns) return const SizedBox.shrink();
+    final options = _campaignOptions;
+    return SizedBox(
+      height: 40,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: AdChip(
+              label: 'All',
+              active: _campaignFilter == null,
+              onTap: () {
+                setState(() => _campaignFilter = null);
+                Analytics.capture('inbox_campaign_filter', {'filter': 'all'});
+              },
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: AdChip(
+              label: 'Campaigns',
+              icon: PhosphorIcons.megaphone(PhosphorIconsStyle.bold),
+              active: _campaignFilter == _kCampaignsAll,
+              onTap: () {
+                setState(() => _campaignFilter = _kCampaignsAll);
+                Analytics.capture('inbox_campaign_filter', {'filter': 'campaigns_all'});
+              },
+            ),
+          ),
+          for (final c in options)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: AdChip(
+                label: c.label,
+                active: _campaignFilter == c.id,
+                onTap: () {
+                  setState(() => _campaignFilter = c.id);
+                  Analytics.capture('inbox_campaign_filter', {'filter': 'campaign_id', 'campaign_id': c.id});
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   void _open(InboxThread t) {
     Navigator.of(context)
         .push(MaterialPageRoute<void>(builder: (_) => InboxThreadScreen(thread: t)))
@@ -277,6 +394,7 @@ class _InboxListScreenState extends State<InboxListScreen> {
           onChanged: (v) => setState(() => _query = v),
         ),
       ),
+      _campaignFilterBar(),
       Expanded(child: _list(context)),
     ]);
     if (!widget.embedded) {
@@ -306,7 +424,11 @@ class _InboxListScreenState extends State<InboxListScreen> {
       if (_hasError) return _errorState();
       return const Center(child: CircularProgressIndicator(color: AvaDialTheme.accent));
     }
-    final threads = _filtered(allThreads);
+    // [AVA-CAMP-Q-INBOX] Campaign chip filter applied first, then the
+    // existing search-text filter narrows further — default `_campaignFilter
+    // == null` is a no-op, so this is exactly `_filtered(allThreads)` as
+    // before this lane whenever no chip is selected.
+    final threads = _filtered(_applyCampaignFilter(allThreads));
     if (allThreads.isEmpty) {
       // Nothing at all — if the (only) network attempt errored with no cache,
       // show the retry error; otherwise the genuine "no messages" empty state.
@@ -371,6 +493,16 @@ class _InboxListScreenState extends State<InboxListScreen> {
   /// contact book and always said "Unknown caller" for a bare-uid business-
   /// voicemail thread from a saved contact.
   ({String title, String? subtitleNumber}) _labelFor(InboxThread t) {
+    // [AVA-CAMP-Q-INBOX] A campaign thread has no "caller" — labelling it
+    // "Unknown caller" (the resolver's fallback, since it has no phone/uid to
+    // key off) read as broken once the campaign filter made these threads
+    // visible on their own. Show the campaign name/id instead — same
+    // id->name preference order as the filter chips.
+    if (t.isCampaignThread) {
+      final id = t.campaignId;
+      final name = t.campaignEnvelopeName ?? (id != null ? _campaignNames[id] : null) ?? id;
+      return (title: name ?? 'Campaign', subtitleNumber: null);
+    }
     if (t.isAnonymous) return (title: 'Hidden number', subtitleNumber: null);
     final resolved = _resolvedNames[t.conv];
     final phone = t.telPhone ?? t.latest.callerPhone;
@@ -431,38 +563,54 @@ class _InboxListScreenState extends State<InboxListScreen> {
   static const _unreadDot = AD.unreadAccent; // 0xFFF2A65A — the LARGE orange dot
   static const _readTick = AD.iconSearch; // 0xFF6FA8E8 — the 2 blue read ticks
 
+  // [AVA-CAMP-Q-INBOX] Campaign row tint — the SAME pale-lavender family as
+  // `campaign_inbox_cards.dart`'s card shell (AD.bubbleInBg/bubbleInInk/
+  // bubbleInMeta + AD.iconVideo accent), so a campaign thread reads as the
+  // same "kind of thing" in the list as it does once opened.
+  static const _campaignCardBg = AD.bubbleInBg; // 0xFFE6E3F6
+  static const _campaignCardBorder = Color(0xFFC7BEEA);
+  static const _campaignTitleInk = AD.bubbleInInk; // 0xFF2A2640
+  static const _campaignSecondaryInk = AD.bubbleInMeta; // 0xFF7B76A0
+
   Widget _row(InboxThread t) {
     final label = _labelFor(t);
+    final isCampaign = t.isCampaignThread;
     final hasUnread = _unreadCount(t) > 0;
-    final titleInk = hasUnread ? _unreadTitleInk : _readTitleInk;
-    final secondaryInk = hasUnread ? _unreadSecondaryInk : _readSecondaryInk;
+    final titleInk = isCampaign ? _campaignTitleInk : (hasUnread ? _unreadTitleInk : _readTitleInk);
+    final secondaryInk =
+        isCampaign ? _campaignSecondaryInk : (hasUnread ? _unreadSecondaryInk : _readSecondaryInk);
     final preview = t.latest.summaryText ??
         (t.latest.transcript != null && t.latest.transcript!.length > 60
             ? '${t.latest.transcript!.substring(0, 60)}…'
             : t.latest.transcript) ??
         'Left a message';
+    // A campaign thread has no "caller" to have missed — this row is a
+    // campaign result, not a missed call, so skip that copy for it.
+    final titleText = isCampaign ? label.title : 'Missed call from ${label.title}';
     return GestureDetector(
       onTap: () => _open(t),
       onLongPress: () => _showThreadMenu(t),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: hasUnread ? _unreadCardBg : _readCardBg,
+          color: isCampaign ? _campaignCardBg : (hasUnread ? _unreadCardBg : _readCardBg),
           borderRadius: BorderRadius.circular(AD.rListCard),
           border: Border.all(
-            color: hasUnread ? _unreadCardBorder : _readCardBorder,
-            width: hasUnread ? 1.5 : 1,
+            color: isCampaign ? _campaignCardBorder : (hasUnread ? _unreadCardBorder : _readCardBorder),
+            width: (isCampaign || hasUnread) ? 1.5 : 1,
           ),
         ),
         child: Row(children: [
           ZineIconBadge(
-            icon: PhosphorIcons.phoneIncoming(PhosphorIconsStyle.fill),
-            color: AD.iconShield,
+            icon: isCampaign
+                ? PhosphorIcons.megaphone(PhosphorIconsStyle.fill)
+                : PhosphorIcons.phoneIncoming(PhosphorIconsStyle.fill),
+            color: isCampaign ? AD.iconVideo : AD.iconShield,
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Missed call from ${label.title}',
+              Text(titleText,
                   style: ADText.threadName(c: titleInk),
                   maxLines: 1, overflow: TextOverflow.ellipsis),
               const SizedBox(height: 2),
