@@ -252,7 +252,8 @@ export class CampaignDO {
 
     const db = metaDb(this.env);
     const attempt = await db.prepare(
-      "SELECT attempt_uuid, campaign_id, contact_id, outcome, answered_at, ended_at, tokens_reserved, handover_status FROM campaign_call_attempts WHERE attempt_uuid=?1",
+      "SELECT attempt_uuid, campaign_id, contact_id, outcome, answered_at, ended_at, tokens_reserved, handover_status, purpose, " +
+      "summary_text, transcript, transcript_lang, recording_key, booking_event_id FROM campaign_call_attempts WHERE attempt_uuid=?1",
     ).bind(attemptUuid).first<any>();
     if (!attempt) return json({ error: "attempt not found" }, 404);
 
@@ -352,6 +353,27 @@ export class CampaignDO {
       const attemptsSoFar = contact ? Number(contact.attempts) || 0 : 1;
       const willRetry = retryable && attemptsSoFar < policy.maxAttempts;
 
+      // [AVA-CAMP-D-ANALYTICS] call_completed — the single canonical terminal
+      // event (§12.1), fired EXACTLY ONCE here after full PSTN settlement
+      // (§19 seam 2/5), never at AI teardown. conversation_type is derived
+      // from the bridged-handover / machine / human facts already computed
+      // above in this method (bridgeConnectedAt / humanSegmentSeconds /
+      // outcome), never re-queried.
+      if (row) {
+        const conversationType: "human" | "voicemail" | "handover" =
+          humanSegmentSeconds != null || attempt.handover_status === "connected" ? "handover"
+          : outcome === "machine" ? "voicemail"
+          : "human";
+        void track(this.env, row.uid, "call_completed", "avatok", {
+          campaign_id: campaignId, attempt_uuid: attemptUuid,
+          call_outcome: outcome, conversation_type: conversationType,
+          ai_duration_s: billedAiDurationS, pstn_total_duration_s: pstnTotalDurationS,
+          tokens_charged: tokensSpent, hangup_cause_raw: hangupCauseRaw,
+          retry_attempt: attemptsSoFar,
+          analytics_schema_version: 1, purpose: attempt.purpose || "LIVE",
+        });
+      }
+
       let nextContactStatus: string;
       let nextAttemptAt: number | null = null;
       if (willRetry) {
@@ -374,6 +396,68 @@ export class CampaignDO {
         await db.prepare(
           `UPDATE campaigns SET n_done=n_done+1, ${counterCol}=${counterCol}+1, tokens_spent=tokens_spent+?2, seconds_talked=seconds_talked+?3 WHERE id=?1`,
         ).bind(campaignId, tokensSpent, Math.round(aiDurationS)).run();
+      }
+
+      // [AVA-CAMP-D-INBOX] Post ONE campaign-result card to the owner's Inbox
+      // (§9 threading, §11 cards) — additive, best-effort, fires exactly once
+      // per attempt (guarded by the enclosing `!isDuplicate` block). Mirrors
+      // vobiz_agent_room.ts's postMessage() append contract + Q_PUSH notify
+      // EXACTLY: {conv, sender, owner, kind, body, media_ref, scope, created_at}
+      // posted to `env.INBOX.get(idFromName(ownerUid)).fetch('/append', ...)`,
+      // idempotent on client_id = attempt_uuid (InboxDO's partial UNIQUE index
+      // on (conv, client_id) makes a redelivered onCallEnded a guaranteed no-op).
+      if (row) {
+        try {
+          const isAnswered = outcome === "answered"
+            || humanSegmentSeconds != null
+            || attempt.handover_status === "connected";
+          const conv = `campaign_${row.uid}__${campaignId}`;
+          const contactName = contact?.name ?? null;
+          const contactE164 = contact?.e164 ?? null;
+          const kind = isAnswered ? "campaign_call" : "campaign_missed";
+          const body = isAnswered
+            ? JSON.stringify({
+                t: "campaign_call",
+                text: "AI call",
+                contact_name: contactName,
+                contact_e164: contactE164,
+                duration_s: pstnTotalDurationS,
+                summary: attempt.summary_text ?? null,
+                transcript: attempt.transcript ?? null,
+                media_ref: attempt.recording_key ?? null,
+                lang: attempt.transcript_lang ?? null,
+                tokens: tokensSpent,
+                booked: !!attempt.booking_event_id,
+                handover: attempt.handover_status === "connected",
+                purpose: attempt.purpose,
+              })
+            : JSON.stringify({
+                t: "campaign_missed",
+                text: "Not reached",
+                contact_name: contactName,
+                contact_e164: contactE164,
+                reason: outcome,
+                attempts: attemptsSoFar,
+                purpose: attempt.purpose,
+              });
+          const stub = this.env.INBOX.get(this.env.INBOX.idFromName(row.uid));
+          await stub.fetch("https://inbox/append", {
+            method: "POST", headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              conv, sender: "ava_campaign", owner: row.uid, kind, body,
+              media_ref: isAnswered ? (attempt.recording_key ?? null) : null,
+              client_id: attemptUuid, scope: `to:${row.uid}`, created_at: now,
+            }),
+          });
+          try {
+            await this.env.Q_PUSH.send({
+              kind: "notify", to: row.uid, fromName: "Ava",
+              title: isAnswered ? "Ava finished a campaign call" : "Ava couldn't reach a contact",
+              body: isAnswered ? "AI call" : "Not reached",
+              data: { type: kind, conv },
+            });
+          } catch { /* best-effort — push never blocks settlement */ }
+        } catch { /* best-effort — inbox post never blocks settlement */ }
       }
 
       // ── Circuit breaker bookkeeping (§6.5).
@@ -500,7 +584,7 @@ export class CampaignDO {
       const stillOutstanding = await this.contactsRemaining(campaignId);
       if (!stillOutstanding && this.inFlight.size === 0) {
         await this.setStatus(campaignId, "completed", { completed_at: Date.now() });
-        void track(this.env, row.uid, "call_completed", "avatok", { campaign_id: campaignId, event: "campaign_completed" });
+        void track(this.env, row.uid, "campaign_completed", "avatok", { campaign_id: campaignId, event: "campaign_completed" });
         return;
       }
       // Either a race was lost (another tick took the last contact) or every
@@ -623,6 +707,13 @@ export class CampaignDO {
 
     const provider = getTelephonyProvider(this.env, "vobiz");
     let callUuid: string | null = null;
+    // [AVA-CAMP-D-ANALYTICS] dial_requested — the moment the dial is actually
+    // placed to the provider (distinct from dial_permitted above, which only
+    // marks channel/CPS/wallet admission). Additive; §12.1 event taxonomy.
+    void track(this.env, row.uid, "dial_requested", "avatok", {
+      campaign_id: campaignId, attempt_uuid: attemptUuid, contact_id: contact.id,
+      analytics_schema_version: 1, purpose: "LIVE",
+    });
     try {
       const r = await provider.makeCall({
         from: row.did_e164!, to: contact.e164!,
