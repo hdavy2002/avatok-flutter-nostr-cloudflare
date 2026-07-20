@@ -1,11 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' show min;
 
+import 'package:crypto/crypto.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'analytics.dart';
 import 'api_auth.dart';
@@ -13,6 +16,7 @@ import 'ava_log.dart';
 import 'config.dart';
 import 'db.dart';
 import 'referral_service.dart';
+import 'remote_config.dart';
 
 /// Normalize a raw phone to the Worker's E.164-ish shape (digits/+ only, leading
 /// +). Top-level so it can run inside a background isolate.
@@ -344,26 +348,77 @@ class DeviceContactsService {
       await Db.I.pruneDeviceContacts(normSet);
       final dbWriteMs = DateTime.now().millisecondsSinceEpoch - writeT0;
 
-      // 4) Presence probe intentionally NOT done (privacy 2026-06-27).
+      // 4) Presence probe — "who in my address book is already on AvaTOK?".
+      //
+      // HISTORY: this probe was removed on 2026-06-27 for privacy (revealing
+      // presence let a private number be correlated to an AvaTOK identity). The
+      // owner RE-ENABLED it on 2026-07-20 to drive the AvaDialer Contacts tab's
+      // orange "on AvaTOK" marker (same reversal already made on 2026-07-14 for
+      // the missed-call overlay). It rides the SAME server gate + endpoint the
+      // overlay uses — `/api/contacts/match`, gated on `missedCallOverlay` — so
+      // there is ONE kill switch for all phone-presence matching. The raw number
+      // never leaves the device as plaintext: only sha256(E.164) hashes are sent.
       final phones = normSet.toList();
-      // PRIVACY (owner request 2026-06-27): the device address book is kept ONLY
-      // for WhatsApp-style invites — we NO LONGER probe the backend for which
-      // numbers are already on AvaTOK. Revealing that presence let anyone confirm
-      // a private number belongs to an AvaTOK user and, combined with number
-      // search, correlate a private phone → AvaTOK number → identity. We also
-      // clear any previously-cached matches so the old "On AvaTOK" badge/trace
-      // disappears everywhere it used to surface. (`kContactsSyncUrl` / the match
-      // round-trip is intentionally no longer called from this path.)
-      await Db.I.clearDeviceMatches();
-      matchedCount = 0;
-      Analytics.capture('contacts_presence_probe_skipped', {
-        'source': source,
-        'sent_count': phones.length,
-        'reason': 'privacy_no_presence',
-        'match_ms': matchMs,
-        'match_status': matchStatus,
-        if (matchError.isNotEmpty) 'error_type': matchError,
-      });
+      if (!RemoteConfig.missedCallOverlay) {
+        // Gate OFF: behave exactly as the 2026-06-27 privacy build did — never
+        // probe, and clear any stale badge so nothing lingers when the switch flips.
+        await Db.I.clearDeviceMatches();
+        matchedCount = 0;
+        Analytics.capture('contacts_presence_probe_skipped', {
+          'source': source,
+          'sent_count': phones.length,
+          'reason': 'flag_off',
+        });
+      } else {
+        final matchT0 = DateTime.now().millisecondsSinceEpoch;
+        try {
+          // hash(E.164) → phoneNorm, so a returned match maps back to its row.
+          final hashToNorm = <String, String>{};
+          for (final n in phones) {
+            hashToNorm[sha256.convert(utf8.encode(normPhone(n))).toString()] = n;
+          }
+          // Clear first so anyone who LEFT AvaTOK stops showing the badge, then
+          // re-apply this run's hits. Server caps at 500/req; chunk to be safe.
+          await Db.I.clearDeviceMatches();
+          final hashes = hashToNorm.keys.toList();
+          const reqChunk = 400;
+          final nowMs = DateTime.now().millisecondsSinceEpoch;
+          for (var i = 0; i < hashes.length; i += reqChunk) {
+            final slice = hashes.sublist(i, min(i + reqChunk, hashes.length));
+            final res = await ApiAuth.postJson(kContactsMatchUrl, {'hashes': slice},
+                timeout: const Duration(seconds: 20));
+            matchStatus = res.statusCode;
+            if (res.statusCode != 200) continue;
+            final body = jsonDecode(res.body) as Map<String, dynamic>;
+            for (final m in (body['matched'] as List? ?? const []).whereType<Map>()) {
+              final h = (m['hash'] as String?) ?? '';
+              final norm = hashToNorm[h];
+              final uid = (m['uid'] as String?) ?? '';
+              if (norm == null || uid.isEmpty) continue;
+              await Db.I.applyDeviceMatch(
+                phoneNorm: norm,
+                uid: uid,
+                avatarUrl: (m['avatar_url'] as String?) ?? '',
+                displayName: (m['name'] as String?) ?? '',
+                matchedAt: nowMs,
+              );
+              matchedCount++;
+            }
+          }
+        } catch (e) {
+          matchError = e.toString();
+          AvaLog.I.log('contacts', 'presence probe failed: $e');
+        }
+        matchMs = DateTime.now().millisecondsSinceEpoch - matchT0;
+        Analytics.capture('contacts_presence_probe', {
+          'source': source,
+          'sent_count': phones.length,
+          'matched_count': matchedCount,
+          'match_ms': matchMs,
+          'match_status': matchStatus,
+          if (matchError.isNotEmpty) 'error_type': matchError,
+        });
+      }
 
       Analytics.capture('contacts_sync', {
         'result': 'ok',
@@ -423,6 +478,41 @@ class DeviceContactsService {
   /// Generic invite (no specific contact) — used by the drawer "Invite" entry.
   static Future<void> shareGenericInvite({String? myHandle}) async {
     await Share.share(_inviteMessage('there', handle: myHandle), subject: 'Join me on AvaTok');
+  }
+
+  /// Invite copy for the CLOSED (internal) testing track (owner spec 2026-07-20).
+  /// Points at [kInternalTestUrl] and spells out the tester-email requirement —
+  /// Google Play only shows the Download button once the recipient is signed in
+  /// with an email registered in our internal test group.
+  static String testingInviteMessage(String who) =>
+      'Hey $who, join me on AvaTOK 👋\n\n'
+      'Download it here: $kInternalTestUrl\n\n'
+      'Important: open that link on your Android phone and make sure you\'re signed '
+      'into the Google Play Store with the email you gave me for the AvaTOK test '
+      'group — the "Download" button only shows once you\'re logged in with a '
+      'registered tester email.';
+
+  /// The AvaDialer contacts "invite" / share button. Acts like a share button:
+  /// it opens WhatsApp straight to [c]'s number with the testing-track message
+  /// pre-filled (the user just taps Send), and falls back to the OS share sheet
+  /// if WhatsApp can't be opened (not installed / no number). [via] is stamped on
+  /// the telemetry so a failed WhatsApp hand-off is visible per tester.
+  static Future<void> shareTestingInvite(DeviceContact c) async {
+    final who = c.displayName.trim().isNotEmpty ? c.displayName.trim().split(' ').first : 'there';
+    final msg = testingInviteMessage(who);
+    final digits = c.phoneNorm.replaceAll(RegExp(r'[^\d]'), '');
+    if (digits.isNotEmpty) {
+      final wa = Uri.parse('https://wa.me/$digits?text=${Uri.encodeComponent(msg)}');
+      try {
+        if (await canLaunchUrl(wa) &&
+            await launchUrl(wa, mode: LaunchMode.externalApplication)) {
+          Analytics.capture('avadial_contact_invite_shared', {'via': 'whatsapp'});
+          return;
+        }
+      } catch (_) {/* fall through to the OS share sheet */}
+    }
+    await Share.share(msg, subject: 'Join me on AvaTOK');
+    Analytics.capture('avadial_contact_invite_shared', {'via': 'share_sheet'});
   }
 
   static String _inviteMessage(String who, {String? handle, String? myName}) {

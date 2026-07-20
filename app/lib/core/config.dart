@@ -36,6 +36,12 @@ const String kCallUrl = 'https://$kSignalingHost/api/call';
 /// Relay a call status (declined / busy / ended) to the caller via FCM. (NIP-98)
 const String kCallStatusUrl = 'https://$kSignalingHost/api/call-status';
 
+/// [AVACALL-CANCEL-1] Read the DURABLE call state for a room (answered / ended /
+/// terminal_status) from the CallRoom DO, via a thin authed proxy. Used by the
+/// accept path to honor a cancel that arrived before/around the accept so a
+/// callee never sits on "connecting" for a call whose caller is already gone.
+const String kCallStateUrl = 'https://$kSignalingHost/api/call-state';
+
 /// Nudge recipients that a new message arrived (content-less wake). (NIP-98)
 const String kNotifyUrl = 'https://$kSignalingHost/api/notify';
 
@@ -96,6 +102,13 @@ const String kInviteBase = 'https://avatok.ai/i/';
 
 /// Public download / join page shared in invite messages.
 const String kDownloadUrl = 'https://avatok.ai/download';
+
+/// Closed (internal) testing-track install link shared by the AvaDialer contacts
+/// "invite" / share button (owner spec 2026-07-20). The Google Play Download
+/// button only appears once the tester is signed into Play with an email that is
+/// registered in our internal test group — the invite copy tells them so.
+const String kInternalTestUrl =
+    'https://play.google.com/apps/internaltest/4700515298862250296';
 
 /// Device address-book sync + "who's on AvaTok" matching (NIP-98).
 const String kContactsSyncUrl = 'https://$kSignalingHost/api/contacts/sync';   // POST

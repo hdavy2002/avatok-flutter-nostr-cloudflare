@@ -3,12 +3,14 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/call_log_store.dart';
+import '../../core/device_contacts.dart' as coredc;
 import '../../core/remote_config.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/avatok_dark.dart';
@@ -263,16 +265,22 @@ class _CallsTabStrip extends StatelessWidget {
 // reference to this banner/class.
 
 // ── Contacts tab ─────────────────────────────────────────────────────────────
-// [AVADIAL-AVATOK-ONLY-1] 2026-07-16 pivot: this used to be the DEVICE phone
-// book (Truecaller-style: DeviceContacts + ContactOverrides + colour groups +
-// a device-contacts backup card). AvaDial no longer reads the device address
-// book anywhere in this tab. It now shows the same AvaTOK contact book AvaTOK
-// chat/AvaPhone already use — [ContactsStore] (features/avatok/contacts.dart)
-// — filtered to entries that carry an AvaTOK number, i.e. real network members
-// (mirrors features/avaphone/ava_phone_contacts.dart's `_avatok` getter). New
-// contacts are added by resolving an AvaTOK number or email through the same
-// public directory lookup ([Directory.resolve]/[Directory.search]) the rest of
-// the app uses — never by importing the phone's contacts.
+// [AVADIAL-CONTACTS-MERGE 2026-07-20] Owner pivot: MERGE the device address book
+// back into this tab. It now shows TWO sections:
+//   1. "AvaTOK contacts" — the saved AvaTOK contact book ([ContactsStore]),
+//      unchanged from the 2026-07-16 build (green cards, add-by-number/email).
+//   2. "From your phone" — the device address book ([coredc.DeviceContactsService]),
+//      so the user sees ALL their contacts here. Each phone card shows an ORANGE
+//      "on AvaTOK" marker when that number resolves to an AvaTOK account (tap →
+//      call on AvaTOK), or an INVITE/share button when it doesn't (share the
+//      internal-testing install link straight to WhatsApp — see
+//      [coredc.DeviceContactsService.shareTestingInvite]).
+//
+// This REVERSES the 2026-07-16 "AvaTOK contacts only" pivot AND relies on the
+// device-contact presence probe re-enabled on 2026-07-20 (core/device_contacts.dart),
+// which rides the SAME `missedCallOverlay` server gate as the missed-call overlay:
+// the orange markers only light up when that flag is ON in prod KV. Device numbers
+// never leave the device as plaintext — only sha256(E.164) hashes are matched.
 class _ContactsTab extends StatefulWidget {
   const _ContactsTab();
 
@@ -290,10 +298,19 @@ class _ContactsTabState extends State<_ContactsTab> {
   bool _loaded = false;
   String _query = '';
 
+  // [AVADIAL-CONTACTS-MERGE] Device address book (section 2). Bound to the live
+  // SQLite mirror so a background sync + presence probe repaints the orange
+  // markers without a manual refresh.
+  List<coredc.DeviceContact> _device = const [];
+  bool _contactsGranted = false;
+  bool _deviceChecked = false; // have we resolved permission at least once?
+  StreamSubscription<List<coredc.DeviceContact>>? _deviceSub;
+
   @override
   void initState() {
     super.initState();
     _load();
+    _initDevice();
     // A block/unblock from the Block tab (or this tab, on another row) should
     // flip this row's menu label immediately — same cross-tab notifier the
     // Block tab already listens to.
@@ -303,7 +320,61 @@ class _ContactsTabState extends State<_ContactsTab> {
   @override
   void dispose() {
     avaDialRev.removeListener(_onRev);
+    _deviceSub?.cancel();
     super.dispose();
+  }
+
+  /// Bind to the device-contacts mirror and, if permission is already granted,
+  /// kick a background refresh (which re-reads the book and runs the on-AvaTOK
+  /// presence probe). Never prompts here — a first-run prompt would ambush the
+  /// user the instant they open Calls; the "Show my phone contacts" card does it.
+  Future<void> _initDevice() async {
+    _deviceSub = coredc.DeviceContactsService.watch().listen((rows) {
+      if (mounted) setState(() => _device = rows);
+    });
+    // Check WITHOUT prompting — a permission dialog the instant Calls opens would
+    // ambush the user. The "Show my phone contacts" card owns the actual request.
+    final granted = (Platform.isAndroid || Platform.isIOS)
+        ? await Permission.contacts.isGranted
+        : false;
+    // Paint instantly from the cached mirror regardless (it may already hold rows
+    // from a previous grant), then refresh + re-probe in the background.
+    final cached = await coredc.DeviceContactsService.cached();
+    if (!mounted) return;
+    setState(() { _contactsGranted = granted; _deviceChecked = true; _device = cached; });
+    if (granted) {
+      unawaited(coredc.DeviceContactsService.ensureFresh(source: 'avadial_contacts'));
+    }
+  }
+
+  /// "Show my phone contacts" CTA — asks for READ_CONTACTS, then loads + probes.
+  Future<void> _grantContacts() async {
+    final granted = await coredc.DeviceContactsService.requestPermission();
+    if (!mounted) return;
+    setState(() => _contactsGranted = granted);
+    Analytics.capture('avadial_contacts_permission', {'granted': granted});
+    if (granted) {
+      _device = await coredc.DeviceContactsService.cached();
+      if (mounted) setState(() {});
+      unawaited(coredc.DeviceContactsService.refresh(force: true, source: 'avadial_contacts_grant'));
+    }
+  }
+
+  /// Call an on-AvaTOK device contact through the SAME in-app call flow the saved
+  /// AvaTOK contacts use — the presence probe gave us the matched [uid].
+  Future<void> _callDevice(coredc.DeviceContact c) async {
+    if (c.uid.isEmpty) return;
+    Analytics.capture('avadial_device_contact_call', const {});
+    await place1to1Call(context, uid: c.uid,
+        name: c.displayName.isNotEmpty ? c.displayName : c.rawPhone,
+        avatarUrl: c.avatarUrl, dialer: true);
+  }
+
+  /// Invite/share button for an OFF-network device contact — shares the internal
+  /// testing install link straight to WhatsApp (owner spec 2026-07-20).
+  Future<void> _inviteDevice(coredc.DeviceContact c) async {
+    Analytics.capture('avadial_device_contact_invite_tap', const {});
+    await coredc.DeviceContactsService.shareTestingInvite(c);
   }
 
   void _onRev() {
@@ -343,6 +414,37 @@ class _ContactsTabState extends State<_ContactsTab> {
         .toLowerCase()
         .compareTo((b.name.isNotEmpty ? b.name : b.number).toLowerCase()));
     return list;
+  }
+
+  /// Trailing-digit keys of every number already shown in the AvaTOK section, so
+  /// the same person isn't listed twice once we append the device book below.
+  Set<String> get _savedKeys {
+    final keys = <String>{};
+    for (final c in _all) {
+      for (final n in [c.phone, c.number]) {
+        if (n.isEmpty) continue;
+        final k = DeviceContacts.normKey(n);
+        if (k.isNotEmpty) keys.add(k);
+      }
+    }
+    return keys;
+  }
+
+  /// [AVADIAL-CONTACTS-MERGE] The device address book minus anyone already in the
+  /// AvaTOK section, filtered by the search query. On-AvaTOK matches float to the
+  /// top of this section (they're the ones the user can actually call in-app).
+  List<coredc.DeviceContact> get _deviceFiltered {
+    final saved = _savedKeys;
+    final out = _device.where((c) {
+      final k = DeviceContacts.normKey(c.phoneNorm);
+      if (k.isNotEmpty && saved.contains(k)) return false;
+      return _avaDialMatches(_query, number: c.phoneNorm, texts: [c.displayName, c.rawPhone]);
+    }).toList();
+    out.sort((a, b) {
+      if (a.onAvatok != b.onAvatok) return a.onAvatok ? -1 : 1;
+      return a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase());
+    });
+    return out;
   }
 
   Future<void> _addContact() async {
@@ -540,21 +642,20 @@ class _ContactsTabState extends State<_ContactsTab> {
 
   @override
   Widget build(BuildContext context) {
-    final list = _filtered;
     return Stack(children: [
       Column(children: [
-        // Explicit clarification banner (mirrors AvaPhoneContacts, owner spec):
-        // these are AvaTOK-network identities, never the phone's address book.
+        // [AVADIAL-CONTACTS-MERGE] Banner now explains the merged view: an orange
+        // badge = already on AvaTOK (tap to call), everyone else gets an invite.
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
           child: AdCard(
             color: AvaDialTheme.surface2,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
             child: Row(children: [
-              PhosphorIcon(PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill), size: 16, color: AD.online),
+              Icon(Icons.circle, size: 12, color: _kAvatokOrange),
               const SizedBox(width: 8),
               Expanded(child: Text(
-                  'AvaTOK contacts only — not your phone’s address book.',
+                  'Orange = already on AvaTOK (tap to call). Everyone else gets a one-tap invite.',
                   style: ADText.preview(c: AvaDialTheme.textSoft))),
               IconButton(
                 onPressed: _invite,
@@ -600,11 +701,7 @@ class _ContactsTabState extends State<_ContactsTab> {
         Expanded(
           child: !_loaded
               ? const Center(child: CircularProgressIndicator(color: AvaDialTheme.accent))
-              : (list.isEmpty ? _empty() : ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(14, 8, 14, 96),
-                  itemCount: list.length,
-                  itemBuilder: (context, i) => _row(list[i]),
-                )),
+              : _buildMergedList(),
         ),
       ]),
       Positioned(
@@ -669,31 +766,157 @@ class _ContactsTabState extends State<_ContactsTab> {
         ),
       );
 
-  Widget _empty() => ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 24),
-        children: [
-          const SizedBox(height: 72),
-          ZineIconBadge(icon: PhosphorIcons.addressBook(PhosphorIconsStyle.bold), color: AD.iconSearch, size: 56),
-          const SizedBox(height: 16),
-          Text(_query.isEmpty ? 'No AvaTOK contacts yet' : 'No matches',
-              textAlign: TextAlign.center,
-              style: ADText.threadName(c: AvaDialTheme.text).copyWith(fontSize: 18)),
-          const SizedBox(height: 8),
-          Text('Add someone by their AvaTOK number or email, or invite a friend.',
-              textAlign: TextAlign.center,
-              style: ADText.preview(c: AvaDialTheme.textSoft).copyWith(fontSize: 14)),
-          const SizedBox(height: 20),
-          Center(
-            child: AdButton(
-              label: 'Add contact',
+  /// [AVADIAL-CONTACTS-MERGE] The merged, two-section list: saved AvaTOK contacts
+  /// on top, then the device address book. Flattened into a typed item list so a
+  /// large phone book still renders lazily (ListView.builder), not all at once.
+  Widget _buildMergedList() {
+    final saved = _filtered;
+    final device = _deviceFiltered;
+    final items = <Object>[];
+    if (saved.isNotEmpty) {
+      items.add(const _SectionHeader('AvaTOK contacts'));
+      items.addAll(saved);
+    }
+    items.add(const _SectionHeader('From your phone'));
+    if (!_contactsGranted) {
+      items.add(_deviceChecked ? _Marker.grant : _Marker.checking);
+    } else if (device.isEmpty) {
+      items.add(_Marker.deviceEmpty);
+    } else {
+      items.addAll(device);
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(14, 8, 14, 96),
+      itemCount: items.length,
+      itemBuilder: (context, i) {
+        final it = items[i];
+        if (it is _SectionHeader) return _sectionHeader(it.label);
+        if (it is Contact) return _row(it);
+        if (it is coredc.DeviceContact) return _deviceRow(it);
+        if (it == _Marker.grant) return _grantCard();
+        if (it == _Marker.deviceEmpty) return _deviceEmptyCard();
+        if (it == _Marker.checking) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 18),
+            child: Center(child: CircularProgressIndicator(color: AvaDialTheme.accent)),
+          );
+        }
+        return const SizedBox.shrink();
+      },
+    );
+  }
+
+  Widget _sectionHeader(String label) => Padding(
+        padding: const EdgeInsets.fromLTRB(4, 14, 4, 6),
+        child: Text(label.toUpperCase(), style: ADText.statCaption(c: AvaDialTheme.textMute)),
+      );
+
+  /// One device-address-book row. On-AvaTOK numbers get an orange call badge and
+  /// tap-to-call; everyone else gets a share/invite button (WhatsApp).
+  Widget _deviceRow(coredc.DeviceContact c) {
+    final on = c.onAvatok;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: GestureDetector(
+        onTap: on ? () => _callDevice(c) : () => _inviteDevice(c),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            // On-AvaTOK rows get a faint orange wash so they stand out in the book.
+            color: on ? _kAvatokOrange.withValues(alpha: 0.10) : AvaDialTheme.surface2,
+            borderRadius: BorderRadius.circular(AD.rListCard),
+            border: Border.all(
+                color: on ? _kAvatokOrange.withValues(alpha: 0.35) : AvaDialTheme.border, width: 1),
+          ),
+          child: Row(children: [
+            Container(
+              decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: AD.borderAvatar, width: 2)),
+              child: Avatar(seed: c.uid.isNotEmpty ? c.uid : c.phoneNorm, name: c.displayName, size: 44,
+                  avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(c.displayName, maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: ADText.threadName(c: AvaDialTheme.text)),
+                const SizedBox(height: 3),
+                Text(c.rawPhone.isNotEmpty ? c.rawPhone : c.phoneNorm,
+                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: ADText.preview(c: on ? _kAvatokOrange : AvaDialTheme.textSoft)),
+              ]),
+            ),
+            if (on)
+              IconButton(
+                tooltip: 'On AvaTOK — call',
+                onPressed: () => _callDevice(c),
+                icon: Container(
+                  width: 34, height: 34,
+                  decoration: const BoxDecoration(color: _kAvatokOrange, shape: BoxShape.circle),
+                  child: const Icon(Icons.call, size: 18, color: Colors.white),
+                ),
+              )
+            else
+              IconButton(
+                tooltip: 'Invite to AvaTOK',
+                onPressed: () => _inviteDevice(c),
+                icon: PhosphorIcon(PhosphorIcons.paperPlaneTilt(PhosphorIconsStyle.bold),
+                    size: 20, color: AD.online),
+              ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _grantCard() => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: AdCard(
+          color: AvaDialTheme.surface2,
+          padding: const EdgeInsets.all(14),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              PhosphorIcon(PhosphorIcons.addressBook(PhosphorIconsStyle.bold), size: 20, color: AD.iconSearch),
+              const SizedBox(width: 10),
+              Expanded(child: Text('See all your contacts here',
+                  style: ADText.threadName(c: AvaDialTheme.text))),
+            ]),
+            const SizedBox(height: 8),
+            Text('Let AvaTOK show your phone contacts here. Anyone already on AvaTOK '
+                'gets an orange badge you can call in-app; everyone else gets a one-tap invite.',
+                style: ADText.preview(c: AvaDialTheme.textSoft)),
+            const SizedBox(height: 12),
+            AdButton(
+              label: 'Show my phone contacts',
               variant: AdButtonVariant.teal,
               trailingIcon: false,
-              onPressed: _addContact,
+              onPressed: _grantContacts,
             ),
-          ),
-        ],
+          ]),
+        ),
       );
+
+  Widget _deviceEmptyCard() => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Text(
+            _query.isEmpty ? 'No phone contacts found.' : 'No phone contacts match “$_query”.',
+            style: ADText.preview(c: AvaDialTheme.textSoft)),
+      );
+
 }
+
+/// [AVADIAL-CONTACTS-MERGE] Orange accent for the "on AvaTOK" marker on device
+/// phone cards (owner spec 2026-07-20). Distinct from the green (AD.online) the
+/// saved-AvaTOK-contact cards use, so the two sections read differently.
+const Color _kAvatokOrange = Color(0xFFFF7A1A);
+
+/// A section divider in the merged Contacts list.
+class _SectionHeader {
+  final String label;
+  const _SectionHeader(this.label);
+}
+
+/// Non-contact rows in the merged list (permission CTA / empty / loading states).
+enum _Marker { checking, grant, deviceEmpty }
 
 /// "Save contact" — resolves a typed AvaTOK number or email against the public
 /// directory ([Directory.resolve]) exactly like the dialpad and AvaPhoneContacts
