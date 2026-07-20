@@ -15,6 +15,7 @@ library;
 
 import '../features/settings/sections/auto_download_section.dart';
 import '../features/settings/sections/backup_sync_section.dart';
+import '../features/settings/sections/campaigns_section.dart';
 import '../features/avadial/pstn_forwarding_setup.dart';
 // AVA-DIAL-6 → DISABLED 2026-07-16: default-dialer settings section no longer
 // registered (see registerDefaultDialerSection() call site below for why).
@@ -79,6 +80,11 @@ class AvaBootstrap {
     // "Leave Instructions for Ava" box. First real AvaVoice deployment.
     // Spec: Specs/PROPOSAL-AI-RECEPTIONIST.md.
     registerReceptionistSection();
+    // AVA-CAMP-FL-NAV: "Campaigns" settings section — outbound AI-calling
+    // campaigns list/create + account-wide analytics. Hides itself when
+    // RemoteConfig.campaignsEnabled is off (mirrors registerBusinessAgentSection's
+    // gating below). Spec: Specs/OUTBOUND-AI-CALLING-CAMPAIGNS.md.
+    registerCampaignsSection();
     // WP6 (Specs/PLAN-2026-07-11-dialpad-business-calls-ava-voice-agent.md §4/§8
     // Phase C): "Ava Business Agent" settings section — primary-number Mode A
     // agent config + Mode-B service numbers + "My AI calls" entry. Hides itself

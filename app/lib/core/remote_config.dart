@@ -146,6 +146,15 @@ class RemoteConfig {
   static bool get billingEnabled => _b('billingEnabled', false);
   /// AI receptionist (Gemini Live) — ON for the free launch. Mirrors KV.
   static bool get receptionistEnabled => _b('receptionistEnabled', true);
+  /// [AVA-CAMP-FL-NAV] Outbound AI-calling campaigns — master switch for the
+  /// whole feature (Specs/OUTBOUND-AI-CALLING-CAMPAIGNS.md). Key already
+  /// declared in worker DEFAULTS (worker/src/routes/config.ts
+  /// `campaignsEnabled`, default false) and enforced server-side by every
+  /// `/api/campaigns*` route's `gate()` — this getter is a real, flippable
+  /// kill switch, not a client-only flag. Gates the "Campaigns"/"Analytics"
+  /// settings entries; off by default until the dialer + billing path is
+  /// verified in staging.
+  static bool get campaignsEnabled => _b('campaignsEnabled', false);
   /// [INSTANT-CALL-MOUNT-1] When ON, tapping the audio/video call icon in a 1:1
   /// chat thread opens the CallScreen IMMEDIATELY and runs POST /api/call in the
   /// BACKGROUND (instead of awaiting the ~server round-trip before showing any

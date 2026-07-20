@@ -21,6 +21,8 @@ import '../../../core/ui/avatok_dark.dart';
 // breaks the build.
 import '../../avatok/contacts.dart' show Contact, ContactsStore;
 import '../../avatok/media.dart' show MediaService;
+import '../../campaigns/campaign_detail_screen.dart';
+import '../../campaigns/campaign_inbox_cards.dart' show buildCampaignCard;
 import '../avadial_channel.dart';
 import '../avadial_theme.dart';
 import '../block_list.dart';
@@ -503,6 +505,40 @@ class _InboxThreadScreenState extends State<InboxThreadScreen> {
                   );
                 }
                 final card = item.card!;
+                // [AVA-CAMP-FL-NAV] ADDITIVE ONLY: a campaign row (sender ==
+                // 'ava_campaign', see InboxCard.isCampaign/inbox_api.dart)
+                // renders via buildCampaignCard instead of the default
+                // _VoicemailCard. Every non-campaign card falls straight
+                // through to the unchanged path below — card.rawBody is only
+                // ever non-null for a campaign row, so this branch is a no-op
+                // for every voicemail/recept card.
+                if (card.isCampaign && card.rawBody != null) {
+                  final campaignWidget = buildCampaignCard(
+                    card.rawBody!,
+                    onRetryMissed: () {
+                      final id = _campaignIdFrom(card.rawBody!, card.conv);
+                      if (id == null || id.isEmpty) return;
+                      Navigator.of(context).push(MaterialPageRoute<void>(
+                        builder: (_) => CampaignDetailScreen(campaignId: id),
+                      ));
+                    },
+                    onOpenDashboard: () {
+                      final id = _campaignIdFrom(card.rawBody!, card.conv);
+                      if (id == null || id.isEmpty) return;
+                      Navigator.of(context).push(MaterialPageRoute<void>(
+                        builder: (_) => CampaignDetailScreen(campaignId: id),
+                      ));
+                    },
+                  );
+                  if (campaignWidget != null) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: campaignWidget,
+                    );
+                  }
+                  // buildCampaignCard returned null (unrecognized envelope
+                  // `t`) — fall through to the default rendering below.
+                }
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: _VoicemailCard(
@@ -523,6 +559,26 @@ class _InboxThreadScreenState extends State<InboxThreadScreen> {
       ),
     );
   }
+}
+
+/// [AVA-CAMP-FL-NAV] Best-effort campaign-id lookup for a campaign card's
+/// dashboard shortcuts (`onRetryMissed`/`onOpenDashboard` above). Prefers an
+/// explicit id in the envelope (no fixed key name is pinned by the campaign
+/// card's own file — both `campaign_id` and `campaignId` are checked
+/// defensively, same pattern as `campaign_inbox_cards.dart`'s ASSUMPTIONS
+/// note). Falls back to the conv id, in case the backend threads campaign
+/// messages one-conv-per-campaign the same way `voicemail_<owner>__<caller>`
+/// / `recept_<owner>__<caller>` are namespaced (see InboxApi._callerKeyOf).
+String? _campaignIdFrom(Map<String, dynamic> body, String conv) {
+  final v = body['campaign_id'] ?? body['campaignId'];
+  if (v != null && v.toString().trim().isNotEmpty) return v.toString();
+  const prefix = 'campaign_';
+  if (conv.startsWith(prefix)) {
+    final rest = conv.substring(prefix.length);
+    final sep = rest.lastIndexOf('__');
+    if (sep >= 0) return rest.substring(sep + 2);
+  }
+  return null;
 }
 
 /// A flat-list entry for the day-grouped thread view: either a date-separator

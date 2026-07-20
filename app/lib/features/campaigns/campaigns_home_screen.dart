@@ -3,6 +3,9 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/campaigns_api.dart';
 import '../../core/ui/avatok_dark.dart';
+import 'campaign_analytics_screen.dart' show CampaignAnalyticsCards;
+import 'campaign_detail_screen.dart';
+import 'campaign_wizard_screen.dart';
 
 /// Campaigns home — lists the caller's outbound AI-calling campaigns
 /// (Specs/OUTBOUND-AI-CALLING-CAMPAIGNS.md). Talks to [CampaignsApi.listCampaigns].
@@ -13,9 +16,11 @@ import '../../core/ui/avatok_dark.dart';
 /// RefreshIndicator + FutureBuilder pattern from
 /// `features/avaapps/avaapps_screen.dart`.
 ///
-/// NOT wired into the app router/drawer yet — standalone screen only
-/// (AVA-CAMP-FL-HOME). Navigation to a detail screen or the creation wizard
-/// is left as compile-safe TODOs until those screens exist.
+/// [AVA-CAMP-FL-NAV] Wired into Settings → Campaigns (see
+/// features/settings/sections/campaigns_section.dart). The FAB opens
+/// [CampaignWizardScreen] and a tile opens [CampaignDetailScreen] for real
+/// (originally left as compile-safe TODOs in AVA-CAMP-FL-HOME, before those
+/// screens existed).
 class CampaignsHomeScreen extends StatefulWidget {
   const CampaignsHomeScreen({super.key});
   @override
@@ -41,20 +46,48 @@ class _CampaignsHomeScreenState extends State<CampaignsHomeScreen> {
     } catch (_) {/* surfaced by the FutureBuilder's error branch */}
   }
 
+  // [AVA-CAMP-FL-NAV] campaign_wizard_screen.dart now exists — wired for real.
   void _openWizard() {
-    // TODO: Navigator.push(context, MaterialPageRoute(builder: (_) => const CampaignWizardScreen()));
-    // campaign_wizard_screen.dart does not exist yet — compile-safe placeholder.
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Campaign creation is coming soon.')),
-    );
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => const CampaignWizardScreen(),
+    )).then((_) => _refresh());
   }
 
+  // [AVA-CAMP-FL-NAV] campaign_detail_screen.dart now exists — wired for real.
   void _openDetail(Campaign c) {
-    // TODO: Navigator.push(context, MaterialPageRoute(builder: (_) => CampaignDetailScreen(id: c.id)));
-    // campaign_detail_screen.dart does not exist yet — compile-safe placeholder.
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${c.name} — details coming soon.')),
-    );
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => CampaignDetailScreen(
+        campaignId: c.id,
+        onOpenAnalytics: () => _openAnalyticsFor(c.id),
+      ),
+    )).then((_) => _refresh());
+  }
+
+  // [AVA-CAMP-FL-NAV] Per-campaign analytics shortcut for
+  // CampaignDetailScreen's "Open analytics" row — wraps the already-built
+  // CampaignAnalyticsCards (campaign_analytics_screen.dart) in a minimal
+  // scaffold matching this screen's own `_header` styling, since
+  // CampaignAnalyticsScreen itself is the account-wide rollup (no
+  // campaignId), not the per-campaign view.
+  void _openAnalyticsFor(String campaignId) {
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => Scaffold(
+        backgroundColor: AD.bg,
+        appBar: AppBar(
+          backgroundColor: AD.headerFooter,
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+          foregroundColor: AD.textPrimary,
+          title: Text('Campaign analytics', style: ADText.appTitle()),
+        ),
+        body: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: CampaignAnalyticsCards(campaignId: campaignId),
+          ),
+        ),
+      ),
+    ));
   }
 
   @override

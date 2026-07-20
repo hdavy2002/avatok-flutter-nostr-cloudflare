@@ -56,6 +56,13 @@ class InboxCard {
   // `hide` RPC expects: `UPDATE messages SET hidden=?1 WHERE conv=?2 AND
   // client_id=?3` (worker/src/do/inbox.ts `hide()`).
   final String? clientId;
+  // [AVA-CAMP-FL-NAV] The raw `messages.sender` column and the parsed JSON
+  // `body` envelope — ADDITIVE, only ever populated for a campaign row (see
+  // `isCampaign`/`fromRow` below). Every voicemail/recept card keeps `sender:
+  // null, rawBody: null`, exactly as before this lane, so nothing about their
+  // rendering changes.
+  final String? sender;
+  final Map<String, dynamic>? rawBody;
 
   const InboxCard({
     required this.id,
@@ -71,7 +78,15 @@ class InboxCard {
     this.mediaRef,
     this.hasRecording = false,
     this.clientId,
+    this.sender,
+    this.rawBody,
   });
+
+  /// [AVA-CAMP-FL-NAV] True for a campaign result/digest/status row posted by
+  /// the outbound-calling backend into this SAME InboxDO stream (see
+  /// `app/lib/features/campaigns/campaign_inbox_cards.dart`'s file-level
+  /// doc). Never true for a voicemail/recept row.
+  bool get isCampaign => sender == 'ava_campaign';
 
   /// The stable per-card id used for the heard/unheard store and as the
   /// `hide` target — prefers the real `client_id` column, falls back to the
@@ -96,6 +111,8 @@ class InboxCard {
         if (mediaRef != null) 'mediaRef': mediaRef,
         'hasRecording': hasRecording,
         if (clientId != null) 'clientId': clientId,
+        if (sender != null) 'sender': sender,
+        if (rawBody != null) 'rawBody': rawBody,
       };
 
   factory InboxCard.fromJson(Map<String, dynamic> j) => InboxCard(
@@ -112,6 +129,8 @@ class InboxCard {
         mediaRef: j['mediaRef'] as String?,
         hasRecording: j['hasRecording'] == true,
         clientId: j['clientId'] as String?,
+        sender: j['sender'] as String?,
+        rawBody: (j['rawBody'] as Map?)?.cast<String, dynamic>(),
       );
 
   /// Parses one `messages` row from `/api/msg/sync`. Returns null for any row
@@ -119,7 +138,13 @@ class InboxCard {
   /// filtered by `conv` prefix, but this is a second, cheap guard).
   static InboxCard? fromRow(Map<String, dynamic> row) {
     final kind = (row['kind'] ?? '').toString();
-    if (kind != 'voicemail' && kind != 'recept') return null;
+    // [AVA-CAMP-FL-NAV] ADDITIVE OR: a campaign row is identified by
+    // `sender == 'ava_campaign'` (per campaign_inbox_cards.dart's file-level
+    // doc), independent of `kind` — the existing voicemail/recept gate is
+    // untouched for every other row.
+    final sender = row['sender']?.toString();
+    final isCampaign = sender == 'ava_campaign';
+    if (kind != 'voicemail' && kind != 'recept' && !isCampaign) return null;
     Map<String, dynamic> e = const {};
     final rawBody = row['body'];
     try {
@@ -181,6 +206,11 @@ class InboxCard {
       mediaRef: (mediaRef != null && mediaRef.trim().isNotEmpty) ? mediaRef : null,
       hasRecording: hasRecording,
       clientId: (row['client_id'] ?? '').toString().isEmpty ? null : row['client_id'].toString(),
+      // [AVA-CAMP-FL-NAV] Only ever set for a campaign row — every existing
+      // voicemail/recept row keeps sender/rawBody null, unchanged from before
+      // this lane.
+      sender: isCampaign ? sender : null,
+      rawBody: isCampaign ? e : null,
     );
   }
 }
@@ -295,7 +325,11 @@ class InboxApi {
         final conv = (row['conv'] ?? '').toString();
         final rid = int.tryParse('${row['id']}') ?? 0;
         if (rid > maxId) maxId = rid;
-        if (!_isInboxConv(conv)) continue;
+        // [AVA-CAMP-FL-NAV] ADDITIVE OR: a campaign row (sender ==
+        // 'ava_campaign') is admitted even if its conv id doesn't carry the
+        // voicemail_/recept_ prefix — every other row's filtering is unchanged.
+        final isCampaignRow = row['sender']?.toString() == 'ava_campaign';
+        if (!_isInboxConv(conv) && !isCampaignRow) continue;
         if (row['hidden'] == true || row['hidden'] == 1) continue;
         final card = InboxCard.fromRow(row);
         if (card != null) cards.add(card);
