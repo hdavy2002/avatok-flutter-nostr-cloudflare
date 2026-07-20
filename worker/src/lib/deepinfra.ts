@@ -116,6 +116,34 @@ export function splitTtsClauses(text: string, maxLen = 160): string[] {
   return out.length ? out : [clean];
 }
 
+// Streaming TTS via DeepInfra's OpenAI-compatible speech endpoint. Used for
+// realtime models (Inworld realtime-tts, Chatterbox) that stream chunked audio at
+// faster-than-realtime with <130ms first-audio — a huge upgrade over Kokoro's
+// variable 3–8s buffered synth. Returns the raw fetch Response so the caller can
+// forward response.body chunks straight to the phone as they arrive; null on any
+// failure so the engine falls back. response_format "pcm" yields 24 kHz mono PCM16
+// (a WAV header may lead — the caller strips it). Never throws.
+export async function deepInfraSpeechResponse(
+  env: unknown, opts: { text: string; model: string; voice?: string },
+): Promise<Response | null> {
+  try {
+    const key = token(env);
+    if (!key || !opts.text || !opts.model) return null;
+    const r = await fetch(`${DEEPINFRA_BASE}/v1/openai/audio/speech`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: opts.model,
+        input: opts.text.slice(0, 2000),
+        voice: opts.voice || "Ashley",
+        response_format: "pcm",
+      }),
+    });
+    if (!r.ok || !r.body) return null;
+    return r;
+  } catch { return null; }
+}
+
 export interface DeepInfraTtsReq {
   text: string;
   voices?: string[];     // Kokoro preset voice(s); default ["af_bella"] (warm female)
