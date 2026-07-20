@@ -1,11 +1,15 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:web_socket_channel/io.dart';
 
 import '../../core/analytics.dart';
+import '../../core/api_auth.dart';
+import '../../core/config.dart';
 import '../../core/db.dart';
 import '../../core/money_api.dart';
 import '../../core/remote_config.dart';
@@ -140,7 +144,65 @@ class _WalletScreenState extends State<WalletScreen> {
   final _searchCtrl = TextEditingController();
   final _scroll = ScrollController();
 
+  // [WALLET-LIVE-1] Realtime balance + statement over the wallet DO's WebSocket
+  // (/api/wallet/live pushes {type:"balance", spendable,...} on EVERY change — a
+  // receptionist charge, top-up, refund). Without this the balance only moved on
+  // reopen/re-login and a new debit never appeared until a manual refresh.
+  IOWebSocketChannel? _liveWs;
+  StreamSubscription<dynamic>? _liveSub;
+  Timer? _liveRetry;
+  bool _disposed = false;
+
   bool get _filtered => _dirFilter != null || _range != null || _query.isNotEmpty;
+
+  Future<void> _startLive() async {
+    if (_disposed) return;
+    try {
+      final b = await ApiAuth.clerkBearer?.call();
+      if (b == null || b.isEmpty) { _scheduleLiveRetry(); return; }
+      final uri = Uri.parse('wss://$kSignalingHost/api/wallet/live');
+      final ch = IOWebSocketChannel.connect(uri, headers: {'Authorization': 'Bearer $b'});
+      _liveWs = ch;
+      _liveSub = ch.stream.listen(
+        (data) {
+          try {
+            final m = (jsonDecode(data as String) as Map).cast<String, dynamic>();
+            if (m['type'] == 'balance') _onLiveBalance(m);
+          } catch (_) {/* ignore malformed frame */}
+        },
+        onDone: _scheduleLiveRetry,
+        onError: (_) => _scheduleLiveRetry(),
+        cancelOnError: true,
+      );
+    } catch (_) {
+      _scheduleLiveRetry();
+    }
+  }
+
+  void _onLiveBalance(Map<String, dynamic> m) {
+    if (!mounted) return;
+    final spend = ((m['spendable'] ?? m['balance']) as num?)?.toInt();
+    if (spend == null) return;
+    final changed = spend != _balance;
+    setState(() {
+      _balance = spend;
+      if (m['held'] is num) _held = (m['held'] as num).toInt();
+    });
+    WalletBalanceStore.set(_balance); // keep the header chip in sync
+    // A balance change means a new transaction row landed — pull the fresh
+    // statement so the debit/credit appears at the top immediately. Skip while a
+    // filter is active so we don't clobber the user's filtered view.
+    if (changed && !_filtered && !_loading) _refresh();
+  }
+
+  void _scheduleLiveRetry() {
+    _liveSub?.cancel(); _liveSub = null;
+    try { _liveWs?.sink.close(); } catch (_) {/* ignore */}
+    _liveWs = null;
+    if (_disposed || !mounted) return;
+    _liveRetry?.cancel();
+    _liveRetry = Timer(const Duration(seconds: 5), _startLive); // reconnect backoff
+  }
 
   @override
   void initState() {
@@ -154,6 +216,7 @@ class _WalletScreenState extends State<WalletScreen> {
     });
     _paintFromCache();
     _refresh();
+    _startLive(); // [WALLET-LIVE-1] realtime balance + statement updates
     // [ADMIN-GATE] Reuse the admin flag RemoteConfig already resolved at app start
     // (and re-resolves per account switch) instead of firing a fresh /admin/recon
     // probe on every wallet open. PostHog (7d prod) showed ordinary users' clients
@@ -180,6 +243,10 @@ class _WalletScreenState extends State<WalletScreen> {
 
   @override
   void dispose() {
+    _disposed = true;
+    _liveRetry?.cancel();
+    _liveSub?.cancel();
+    try { _liveWs?.sink.close(); } catch (_) {/* ignore */}
     _searchCtrl.dispose();
     _scroll.dispose();
     super.dispose();
