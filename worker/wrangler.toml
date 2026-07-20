@@ -412,6 +412,14 @@ class_name = "AgentVoiceRoom"
 name = "VOBIZ_AGENT_ROOM"
 class_name = "VobizAgentRoom"
 
+# [AVA-CAMP-B1-GATE] Per-user outbound-dial admission gate (channel pool +
+# token-bucket rate limit + round-robin fairness) for AI calling campaigns.
+# DARK — nothing calls it yet (campaignDialerEnabled defaults false).
+# Specs/OUTBOUND-AI-CALLING-CAMPAIGNS.md §2, §6.3.
+[[durable_objects.bindings]]
+name = "DIALER_GATE"
+class_name = "DialerGateDO"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["CallRoom"]
@@ -492,6 +500,12 @@ new_sqlite_classes = ["AgentVoiceRoom"]
 [[migrations]]
 tag = "v16"
 new_sqlite_classes = ["VobizAgentRoom"]
+
+# [AVA-CAMP-B1-GATE] Per-user outbound-dial admission gate DO. DARK behind
+# campaignDialerEnabled.
+[[migrations]]
+tag = "v17"
+new_sqlite_classes = ["DialerGateDO"]
 
 # Brain reasoning + observability config (vars; secrets set via wrangler):
 #   BRAIN_REASONER_MODEL  — default @cf/meta/llama-3.1-8b-instruct-fp8 (8B)
@@ -781,6 +795,12 @@ class_name = "AgentVoiceRoom"
 name = "VOBIZ_AGENT_ROOM"
 class_name = "VobizAgentRoom"
 
+# [AVA-CAMP-B1-GATE] Per-user outbound-dial admission gate DO (mirrored from
+# prod). DARK — campaignDialerEnabled defaults false.
+[[env.staging.durable_objects.bindings]]
+name = "DIALER_GATE"
+class_name = "DialerGateDO"
+
 [[env.staging.migrations]]
 tag = "v1"
 new_sqlite_classes = ["CallRoom"]
@@ -852,3 +872,9 @@ new_sqlite_classes = ["AgentVoiceRoom"]
 [[env.staging.migrations]]
 tag = "v16"
 new_sqlite_classes = ["VobizAgentRoom"]
+
+# [AVA-CAMP-B1-GATE] Per-user outbound-dial admission gate DO (mirrored from
+# prod). DARK behind campaignDialerEnabled.
+[[env.staging.migrations]]
+tag = "v17"
+new_sqlite_classes = ["DialerGateDO"]

@@ -202,6 +202,7 @@ export { ReceptionRoomCf } from "./do/reception_room_cf"; // Ava Receptionist �
 export { VoicemailRoom } from "./do/voicemail_room"; // [WP3] carrier-style voicemail bot (dark behind voicemailBot)
 export { AgentVoiceRoom } from "./do/agent_voice_room"; // [WP4] Ava AI Voice Agent — Grok realtime bridge (dark behind voiceAgent)
 export { VobizAgentRoom } from "./do/vobiz_agent_room"; // [AVA-PSTN-AGENT-1] live Gemini agent on Vobiz DID calls (dark behind pstnAgentEnabled)
+export { DialerGateDO } from "./do/dialer_gate_do"; // [AVA-CAMP-B1-GATE] per-user outbound-dial channel pool + rate limit (dark — nothing calls it yet, campaignDialerEnabled)
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {

@@ -128,6 +128,12 @@ export interface Env {
   // Gemini Live upstream. DARK behind pstnAgentEnabled (routes/config.ts).
   // Specs/PLAN-2026-07-19-vobiz-media-stream-agent.md.
   VOBIZ_AGENT_ROOM: DurableObjectNamespace;
+  // [AVA-CAMP-B1-GATE] Durable Object — per-user outbound-dial admission gate
+  // for AI calling campaigns (channel pool + token-bucket rate limit + round-
+  // robin fairness across a user's running campaigns). One instance per owner
+  // uid. Phase B1 scaffolding — DARK, nothing calls it yet (campaignDialerEnabled
+  // defaults false). Specs/OUTBOUND-AI-CALLING-CAMPAIGNS.md §2, §6.3.
+  DIALER_GATE: DurableObjectNamespace;
 
   // vars
   BLOSSOM_BASE_URL: string;
