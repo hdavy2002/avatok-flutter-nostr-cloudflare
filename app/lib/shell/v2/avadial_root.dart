@@ -14,6 +14,7 @@ import '../../core/device_contacts.dart' as coredc;
 import '../../core/remote_config.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../features/avadial/ava_contact_book.dart';
 import '../../features/avadial/avadial_channel.dart';
 import '../../features/avadial/avadial_refresh.dart';
 import '../../features/avadial/avadial_theme.dart';
@@ -306,6 +307,14 @@ class _ContactsTabState extends State<_ContactsTab> {
   bool _deviceChecked = false; // have we resolved permission at least once?
   StreamSubscription<List<coredc.DeviceContact>>? _deviceSub;
 
+  // [AVADIAL-CONTACTS-MERGE] Server (AvaTOK-directory) search. Local fields —
+  // name, cell, email, company — are matched on-device; only AvaTOK numbers/
+  // emails need this round-trip (owner spec), so it's debounced + gated on the
+  // query looking like an AvaTOK id.
+  List<Contact> _serverHits = const [];
+  bool _serverSearching = false;
+  Timer? _searchDebounce;
+
   @override
   void initState() {
     super.initState();
@@ -321,6 +330,7 @@ class _ContactsTabState extends State<_ContactsTab> {
   void dispose() {
     avaDialRev.removeListener(_onRev);
     _deviceSub?.cancel();
+    _searchDebounce?.cancel();
     super.dispose();
   }
 
@@ -343,8 +353,23 @@ class _ContactsTabState extends State<_ContactsTab> {
     if (!mounted) return;
     setState(() { _contactsGranted = granted; _deviceChecked = true; _device = cached; });
     if (granted) {
-      unawaited(coredc.DeviceContactsService.ensureFresh(source: 'avadial_contacts'));
+      unawaited(_freshenAndBackup(force: false));
     }
+  }
+
+  /// Refresh the device mirror (which also runs the on-AvaTOK presence probe),
+  /// then capture the book into the server backup pipeline. This is the "back up
+  /// the user's local contacts going forward" hook — [AvaContactBook] handles the
+  /// empty-guard, master/sub ownership and debounced upload itself.
+  Future<void> _freshenAndBackup({required bool force}) async {
+    if (force) {
+      await coredc.DeviceContactsService.refresh(force: true, source: 'avadial_contacts_grant');
+    } else {
+      await coredc.DeviceContactsService.ensureFresh(source: 'avadial_contacts');
+    }
+    final rows = await coredc.DeviceContactsService.cached();
+    if (mounted) setState(() => _device = rows);
+    unawaited(AvaContactBook.I.captureFromDeviceBook(rows));
   }
 
   /// "Show my phone contacts" CTA — asks for READ_CONTACTS, then loads + probes.
@@ -356,7 +381,7 @@ class _ContactsTabState extends State<_ContactsTab> {
     if (granted) {
       _device = await coredc.DeviceContactsService.cached();
       if (mounted) setState(() {});
-      unawaited(coredc.DeviceContactsService.refresh(force: true, source: 'avadial_contacts_grant'));
+      unawaited(_freshenAndBackup(force: true));
     }
   }
 
@@ -375,6 +400,54 @@ class _ContactsTabState extends State<_ContactsTab> {
   Future<void> _inviteDevice(coredc.DeviceContact c) async {
     Analytics.capture('avadial_device_contact_invite_tap', const {});
     await coredc.DeviceContactsService.shareTestingInvite(c);
+  }
+
+  /// [AVADIAL-CONTACTS-MERGE] Search input handler. Local fields (name, cell,
+  /// email, company) filter on-device instantly via [_deviceFiltered]/[_filtered];
+  /// only an AvaTOK number or email triggers the debounced SERVER directory
+  /// lookup (owner spec — "only AvaTOK numbers need a server based search").
+  void _onQueryChanged(String v) {
+    setState(() => _query = v);
+    _searchDebounce?.cancel();
+    final q = v.trim();
+    final digits = q.replaceAll(RegExp(r'[^\d]'), '');
+    final looksAvatok = q.contains('@') || digits.length >= 4;
+    if (q.length < 3 || !looksAvatok) {
+      if (_serverHits.isNotEmpty || _serverSearching) {
+        setState(() { _serverHits = const []; _serverSearching = false; });
+      }
+      return;
+    }
+    setState(() => _serverSearching = true);
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () => _runServerSearch(q));
+  }
+
+  Future<void> _runServerSearch(String q) async {
+    List<Contact> hits;
+    try {
+      hits = await Directory.search(q);
+    } catch (_) {
+      hits = const [];
+    }
+    if (!mounted || q != _query.trim()) return; // a newer keystroke superseded this
+    // Only surface people NOT already in the saved AvaTOK section (by uid).
+    final savedUids = _all.map((c) => c.uid).toSet();
+    final fresh = hits.where((c) => c.uid.isNotEmpty && !savedUids.contains(c.uid)).toList();
+    setState(() { _serverHits = fresh; _serverSearching = false; });
+    if (fresh.isNotEmpty) Analytics.capture('avadial_contacts_server_hit', {'count': fresh.length});
+  }
+
+  /// Save a server-search result into the saved AvaTOK contacts.
+  Future<void> _saveServerHit(Contact c) async {
+    final list = await _store.add(c);
+    if (!mounted) return;
+    setState(() {
+      _all = list;
+      _serverHits = _serverHits.where((h) => h.uid != c.uid).toList();
+    });
+    Analytics.capture('avadial_contacts_server_add', const {});
+    ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Saved ${c.name.isNotEmpty ? c.name : c.number}')));
   }
 
   void _onRev() {
@@ -438,7 +511,8 @@ class _ContactsTabState extends State<_ContactsTab> {
     final out = _device.where((c) {
       final k = DeviceContacts.normKey(c.phoneNorm);
       if (k.isNotEmpty && saved.contains(k)) return false;
-      return _avaDialMatches(_query, number: c.phoneNorm, texts: [c.displayName, c.rawPhone]);
+      return _avaDialMatches(_query,
+          number: c.phoneNorm, texts: [c.displayName, c.rawPhone, c.email, c.company]);
     }).toList();
     out.sort((a, b) {
       if (a.onAvatok != b.onAvatok) return a.onAvatok ? -1 : 1;
@@ -683,11 +757,11 @@ class _ContactsTabState extends State<_ContactsTab> {
               const SizedBox(width: 8),
               Expanded(
                 child: TextField(
-                  onChanged: (v) => setState(() => _query = v),
+                  onChanged: _onQueryChanged,
                   cursorColor: AvaDialTheme.searchText,
                   style: const TextStyle(color: AvaDialTheme.searchText, fontSize: 14.5),
                   decoration: const InputDecoration(
-                    hintText: 'Search by AvaTOK number, email or name',
+                    hintText: 'Search name, number, email or company',
                     hintStyle: TextStyle(color: AvaDialTheme.searchHint, fontSize: 14.5),
                     border: InputBorder.none,
                     isDense: true,
@@ -773,6 +847,15 @@ class _ContactsTabState extends State<_ContactsTab> {
     final saved = _filtered;
     final device = _deviceFiltered;
     final items = <Object>[];
+    // Server (AvaTOK-directory) results for a number/email query, on top.
+    if (_query.trim().isNotEmpty) {
+      if (_serverHits.isNotEmpty) {
+        items.add(const _SectionHeader('On AvaTOK network'));
+        items.addAll(_serverHits.map((c) => _ServerHit(c)));
+      } else if (_serverSearching) {
+        items.add(_Marker.serverSearching);
+      }
+    }
     if (saved.isNotEmpty) {
       items.add(const _SectionHeader('AvaTOK contacts'));
       items.addAll(saved);
@@ -791,10 +874,22 @@ class _ContactsTabState extends State<_ContactsTab> {
       itemBuilder: (context, i) {
         final it = items[i];
         if (it is _SectionHeader) return _sectionHeader(it.label);
+        if (it is _ServerHit) return _serverHitRow(it.c);
         if (it is Contact) return _row(it);
         if (it is coredc.DeviceContact) return _deviceRow(it);
         if (it == _Marker.grant) return _grantCard();
         if (it == _Marker.deviceEmpty) return _deviceEmptyCard();
+        if (it == _Marker.serverSearching) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            child: Row(children: [
+              const SizedBox(width: 16, height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: AvaDialTheme.accent)),
+              const SizedBox(width: 10),
+              Text('Searching AvaTOK…', style: ADText.preview(c: AvaDialTheme.textSoft)),
+            ]),
+          );
+        }
         if (it == _Marker.checking) {
           return const Padding(
             padding: EdgeInsets.symmetric(vertical: 18),
@@ -809,6 +904,50 @@ class _ContactsTabState extends State<_ContactsTab> {
   Widget _sectionHeader(String label) => Padding(
         padding: const EdgeInsets.fromLTRB(4, 14, 4, 6),
         child: Text(label.toUpperCase(), style: ADText.statCaption(c: AvaDialTheme.textMute)),
+      );
+
+  /// A server-search (AvaTOK directory) result — someone not yet saved. Call or
+  /// add straight from the row.
+  Widget _serverHitRow(Contact c) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: AD.online.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(AD.rListCard),
+            border: Border.all(color: AD.online.withValues(alpha: 0.35), width: 1),
+          ),
+          child: Row(children: [
+            Container(
+              decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: AD.borderAvatar, width: 2)),
+              child: Avatar(seed: c.uid, name: c.name, size: 44,
+                  avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(c.name.isNotEmpty ? c.name : c.number,
+                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: ADText.threadName(c: AvaDialTheme.text)),
+                const SizedBox(height: 3),
+                Text(c.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: ADText.preview(c: AD.online)),
+              ]),
+            ),
+            IconButton(
+              tooltip: 'Call on AvaTOK',
+              onPressed: () => place1to1Call(context, uid: c.uid,
+                  name: c.name.isNotEmpty ? c.name : c.number, avatarUrl: c.avatarUrl, dialer: true),
+              icon: const Icon(Icons.call, color: AD.incomingCall),
+            ),
+            IconButton(
+              tooltip: 'Add contact',
+              onPressed: () => _saveServerHit(c),
+              icon: PhosphorIcon(PhosphorIcons.userPlus(PhosphorIconsStyle.bold),
+                  size: 20, color: AD.iconSearch),
+            ),
+          ]),
+        ),
       );
 
   /// One device-address-book row. On-AvaTOK numbers get an orange call badge and
@@ -915,8 +1054,15 @@ class _SectionHeader {
   const _SectionHeader(this.label);
 }
 
+/// An AvaTOK-directory (server) search result awaiting call/add — wrapped so it
+/// renders differently from a saved [Contact] row in the merged list.
+class _ServerHit {
+  final Contact c;
+  const _ServerHit(this.c);
+}
+
 /// Non-contact rows in the merged list (permission CTA / empty / loading states).
-enum _Marker { checking, grant, deviceEmpty }
+enum _Marker { checking, grant, deviceEmpty, serverSearching }
 
 /// "Save contact" — resolves a typed AvaTOK number or email against the public
 /// directory ([Directory.resolve]) exactly like the dialpad and AvaPhoneContacts

@@ -130,6 +130,7 @@ class DeviceContactsCache extends Table {
   TextColumn get avatarUrl => text().withDefault(const Constant(''))();
   TextColumn get matchDisplayName => text().withDefault(const Constant(''))(); // profile name
   TextColumn get email => text().withDefault(const Constant(''))(); // first email from the device book (invite-by-email)
+  TextColumn get company => text().withDefault(const Constant(''))(); // first organisation/company from the device book (search-by-company)
   // 1 ⇒ this number is (likely) a WhatsApp contact. Detected from Android contact
   // accounts (`com.whatsapp`); on iOS we can't detect, so it's set to 1 (show it).
   IntColumn get hasWhatsapp => integer().withDefault(const Constant(0))();
@@ -156,7 +157,7 @@ class AppDb extends _$AppDb {
   AppDb() : super(_open());
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   // v2: Chats gained [json]. v3: WalletLedgerCache (Phase 2 wallet). v4:
   // DeviceContactsCache (instant add-contact + on-AvaTOK match). v5: contact
@@ -232,6 +233,13 @@ class AppDb extends _$AppDb {
             // fallback the UI already handles; there is no historical sender to
             // backfill from [payload], unlike v7's [kind]).
             await m.addColumn(messages, messages.senderPub);
+          }
+          if (from < 9) {
+            // [AVADIAL-CONTACTS-MERGE] DeviceContactsCache.company — the contact's
+            // organisation, so the Contacts search can match by company name.
+            // Added with a '' default so existing rows upgrade in place; the next
+            // background contacts sync backfills it from the device book.
+            await m.addColumn(deviceContactsCache, deviceContactsCache.company);
           }
         },
       );

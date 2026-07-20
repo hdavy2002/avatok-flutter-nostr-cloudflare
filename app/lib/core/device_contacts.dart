@@ -37,6 +37,7 @@ List<Map<String, String>> _parseDeviceContacts(List<Map<String, dynamic>> contac
   for (final c in contacts) {
     final name = (c['name'] as String? ?? '').trim();
     final email = (c['email'] as String? ?? '').trim();
+    final company = (c['company'] as String? ?? '').trim();
     for (final raw in (c['phones'] as List? ?? const [])) {
       final rawNum = (raw as String? ?? '').trim();
       if (rawNum.isEmpty) continue;
@@ -44,10 +45,11 @@ List<Map<String, String>> _parseDeviceContacts(List<Map<String, dynamic>> contac
       if (norm.length < 4) continue; // junk
       final existing = byNorm[norm];
       if (existing == null) {
-        byNorm[norm] = {'norm': norm, 'raw': rawNum, 'name': name, 'email': email};
+        byNorm[norm] = {'norm': norm, 'raw': rawNum, 'name': name, 'email': email, 'company': company};
       } else {
         if ((existing['name'] ?? '').isEmpty && name.isNotEmpty) existing['name'] = name;
         if ((existing['email'] ?? '').isEmpty && email.isNotEmpty) existing['email'] = email;
+        if ((existing['company'] ?? '').isEmpty && company.isNotEmpty) existing['company'] = company;
       }
     }
   }
@@ -67,6 +69,7 @@ class DeviceContact {
   final String avatarUrl;
   final String matchDisplayName;
   final String email; // first email saved for this contact in the device book (may be empty)
+  final String company; // first organisation/company from the device book (search-by-company)
   final bool hasWhatsapp; // contact is (likely) on WhatsApp — drives the WhatsApp invite icon
 
   const DeviceContact({
@@ -78,6 +81,7 @@ class DeviceContact {
     this.avatarUrl = '',
     this.matchDisplayName = '',
     this.email = '',
+    this.company = '',
     this.hasWhatsapp = false,
   });
 
@@ -101,6 +105,7 @@ class DeviceContact {
         avatarUrl: r.avatarUrl,
         matchDisplayName: r.matchDisplayName,
         email: r.email,
+        company: r.company,
         hasWhatsapp: r.hasWhatsapp != 0,
       );
 }
@@ -298,6 +303,7 @@ class DeviceContactsService {
         serial.add({
           'name': c.displayName,
           'email': c.emails.isNotEmpty ? c.emails.first.address : '',
+          'company': c.organizations.isNotEmpty ? c.organizations.first.company : '',
           'phones': [for (final p in c.phones) p.number],
         });
         if (++_ser % 500 == 0) await Future<void>.delayed(Duration.zero);
@@ -324,11 +330,13 @@ class DeviceContactsService {
         final prev = existingRows[norm];
         if (prev == null) newCount++;
         final email = v['email'] ?? '';
+        final company = v['company'] ?? '';
         companions.add(DeviceContactsCacheCompanion.insert(
           phoneNorm: norm,
           rawPhone: Value(v['raw'] ?? ''),
           name: Value(v['name'] ?? ''),
           email: Value(email.isNotEmpty ? email : (prev?.email ?? '')),
+          company: Value(company.isNotEmpty ? company : (prev?.company ?? '')),
           // No per-contact WhatsApp detection — wa.me works for anyone.
           hasWhatsapp: const Value(1),
           uid: Value(prev?.uid ?? ''),

@@ -6,6 +6,7 @@ import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
 import '../../core/ava_log.dart';
 import '../../core/config.dart';
+import '../../core/device_contacts.dart' as cdc;
 import '../../core/disk_cache.dart';
 import 'contact_backup_role.dart';
 import 'contact_groups.dart';
@@ -26,6 +27,7 @@ class AvaBookContact {
   final String? personalEmail;
   final String? businessEmail;
   final String? linkedin;
+  final String? company; // organisation from the device book (search-by-company)
   final List<ContactField> customFields;
   final String source; // 'device' | 'avatok'
 
@@ -41,6 +43,7 @@ class AvaBookContact {
     this.personalEmail,
     this.businessEmail,
     this.linkedin,
+    this.company,
     this.customFields = const [],
     this.source = 'device',
     this.groupId,
@@ -53,6 +56,7 @@ class AvaBookContact {
         if (personalEmail != null) 'personalEmail': personalEmail,
         if (businessEmail != null) 'businessEmail': businessEmail,
         if (linkedin != null) 'linkedin': linkedin,
+        if (company != null) 'company': company,
         if (customFields.isNotEmpty)
           'customFields': customFields.map((f) => f.toJson()).toList(),
         'source': source,
@@ -66,6 +70,7 @@ class AvaBookContact {
         personalEmail: j['personalEmail'] as String?,
         businessEmail: j['businessEmail'] as String?,
         linkedin: j['linkedin'] as String?,
+        company: j['company'] as String?,
         customFields: (j['customFields'] as List<dynamic>? ?? const [])
             .whereType<Map>()
             .map((m) => ContactField.fromJson(m.map((k, v) => MapEntry('$k', v))))
@@ -127,6 +132,42 @@ class AvaContactBook {
       await DiskCache.write(_kCache, jsonEncode(out.map((e) => e.toJson()).toList()));
     } catch (e) {
       AvaLog.I.log('avadial', 'contact book capture failed: $e');
+    }
+  }
+
+  /// [AVADIAL-CONTACTS-MERGE 2026-07-20] Capture the DEVICE address book (the
+  /// SQLite mirror the Contacts tab shows, via [cdc.DeviceContactsService]) into
+  /// the local backup book, then kick the normal debounced server sync. This is
+  /// what makes "back up the user's local contacts" happen going forward — the
+  /// pre-2026-07-16 tab used to call [capture]; this is its replacement now that
+  /// the tab reads the core SQLite mirror rather than the channel book.
+  ///
+  /// Device-origin rows carry `source: 'device'`, so the master/sub ownership
+  /// rule in [backupContacts] is unchanged (a SUB still backs up none of the
+  /// phone's book). Skips an EMPTY book for the same reason [uploadBackup] does —
+  /// an empty local mirror means "we don't know" (permission denied / not synced
+  /// yet), never "the user has no contacts", and overwriting a good server copy
+  /// with nothing would destroy it. AvaTOK-created contacts are NOT included here
+  /// on purpose: they live in [ContactsStore] and sync via their own encrypted
+  /// vault, so they are already backed up and must not be duplicated.
+  Future<void> captureFromDeviceBook(List<cdc.DeviceContact> device) async {
+    try {
+      final rows = device.where((c) => c.phoneNorm.isNotEmpty).toList();
+      if (rows.isEmpty) return; // never overwrite a good book with "we don't know"
+      final out = [
+        for (final c in rows)
+          AvaBookContact(
+            name: c.displayName,
+            number: c.rawPhone.isNotEmpty ? c.rawPhone : c.phoneNorm,
+            personalEmail: (c.email.isEmpty) ? null : c.email,
+            company: (c.company.isEmpty) ? null : c.company,
+            source: 'device',
+          ),
+      ];
+      await DiskCache.write(_kCache, jsonEncode(out.map((e) => e.toJson()).toList()));
+      unawaited(autoSyncIfNeeded());
+    } catch (e) {
+      AvaLog.I.log('avadial', 'device-book capture failed: $e');
     }
   }
 
