@@ -60,6 +60,11 @@ import { buildCampaignTools } from "../lib/campaign_tools";
 // FSM's HandoverRequested→DialHuman transition; this room only calls it and
 // polls the KV bridge-confirmed flag it writes.
 import { initiateHandover } from "../lib/campaign_handover";
+// [AVA-CAMP-Q-VOICES] campaign-mode-only voice selection — validates
+// kv.voice_persona (seeded by campaign_pstn.ts from campaigns.voice_persona)
+// against the actual Gemini Live prebuilt-voice catalog before trusting it as
+// this call's voice_name. Never touched by the inbound receptionist path.
+import { CAMPAIGN_VOICE_IDS, CAMPAIGN_VOICE_GENDER } from "../routes/campaign_voices";
 
 /** Redact secrets from free-text error strings BEFORE telemetry (same scrubber
  *  as reception_room.ts — the Gemini URL carries ?key=AIza…). */
@@ -162,6 +167,17 @@ async function ensureCallCostLedger(env: Env): Promise<void> {
       "CREATE TABLE IF NOT EXISTS call_cost_ledger (call_id TEXT PRIMARY KEY, user_id TEXT, mode TEXT, start_ts INTEGER, end_ts INTEGER, duration_seconds INTEGER, tokens_charged REAL, actual_api_cost_inr REAL)",
     ).run();
   } catch { _costLedgerEnsured = false; /* retry on next call */ }
+}
+
+/** [AVA-CAMP-Q-VOICES] campaign-mode-only: resolve the seeded voice_persona
+ *  into a real Gemini Live voice_name, falling back to AVA_VOICE for an
+ *  absent/unknown value (campaigns created before this catalog shipped, or a
+ *  free-text legacy value) — a bad voice_name would otherwise break the
+ *  BidiGenerateContent setup for the whole call. Never reached on the
+ *  inbound path (that branch always uses AVA_VOICE directly, unchanged). */
+function resolveCampaignVoice(voicePersona: string | null | undefined): string {
+  const v = (voicePersona || "").trim();
+  return v && CAMPAIGN_VOICE_IDS.has(v) ? v : AVA_VOICE;
 }
 
 function guessLangFromText(s: string): string {
@@ -341,7 +357,11 @@ export class VobizAgentRoom {
       caller_phone: kv.contact_e164 || null,
       caller_name: callerName,
       call_id: kv.call_uuid || null,
-      voice_name: AVA_VOICE,
+      // [AVA-CAMP-Q-VOICES] the campaign's chosen voice (campaigns.voice_persona,
+      // seeded into this KV blob by campaign_pstn.ts's handleAnswer()), validated
+      // against the real Gemini Live catalog — falls back to AVA_VOICE for an
+      // absent/unrecognized value so a bad seed can never break the call.
+      voice_name: resolveCampaignVoice(kv.voice_persona),
       file_search_store: kv.kb_store || null,
       system_prompt: kv.compiled_prompt || "",
       model: (this.env as any).RECEPTIONIST_MODEL || RECEPTIONIST_MODEL_DEFAULT,
@@ -495,9 +515,13 @@ export class VobizAgentRoom {
   private ev(event: string, props: Record<string, unknown> = {}): void {
     const i = this.init;
     if (!i) return;
+    // [AVA-CAMP-Q-VOICES] campaign calls can now use a male voice — stamp the
+    // real gender instead of assuming Ava's usual "woman" (which stays correct
+    // for every inbound call, still pinned to AVA_VOICE=Aoede).
+    const voiceGender = this.campaign ? (CAMPAIGN_VOICE_GENDER[i.voice_name] ?? "woman") : "woman";
     trackUserContact(this.env, i.owner_uid, this.ownerEmail, this.ownerPhone, event, "receptionist",
       { ...props, transport: "vobiz", call_id: i.call_id, activation_mode: i.activation_mode,
-        model: i.model, voice: i.voice_name, voice_gender: "woman" }, i.sid);
+        model: i.model, voice: i.voice_name, voice_gender: voiceGender }, i.sid);
   }
 
   // -------------------------------------------------------------------------

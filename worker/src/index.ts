@@ -87,6 +87,8 @@ import { pstnRoute } from "./routes/pstn";
 import { campaignPstnRoute } from "./routes/campaign_pstn";
 import { campaignsRoute } from "./routes/campaigns";
 import { campaignKbRoute } from "./routes/campaign_kb";
+// [AVA-CAMP-Q-VOICES] AI-voice catalog + preview.
+import { campaignVoicesRoute } from "./routes/campaign_voices";
 // [AVA-CAMP-D-*] Campaign contacts ingest, DID provisioning, analytics RPC.
 import { campaignContactsRoute, insertCampaignContacts, type CampaignContactsChunkMsg } from "./routes/campaign_contacts_route";
 import { campaignDidsRoute } from "./routes/campaign_dids_route";
@@ -655,6 +657,11 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // [AVA-CAMP-C-WIRE] Campaign KB (per-campaign upload/list/clear) — checked
       // before the broader /api/campaigns CRUD matcher so it isn't swallowed.
       if (/^\/api\/campaigns\/[^/]+\/kb(\/|$|\?|#)/.test(p)) return await campaignKbRoute(req, env, p);
+      // [AVA-CAMP-Q-VOICES] AI-voice catalog + preview — fixed literal segment
+      // ("/voices"), so it must precede the /:id/... patterns just like /dids
+      // and /analytics/account below, and must precede the generic
+      // /api/campaigns CRUD matcher so it isn't swallowed.
+      if (/^\/api\/campaigns\/voices(\/|$|\?|#)/.test(p)) return await campaignVoicesRoute(req, env, p);
       // [AVA-CAMP-D-*] specific campaign sub-routes, all checked before the
       // generic /api/campaigns CRUD matcher so they aren't swallowed. Note
       // /dids and /analytics/account use fixed literal segments (never a :id),
