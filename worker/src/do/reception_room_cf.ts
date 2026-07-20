@@ -30,7 +30,7 @@ import { avaReasonRaw } from "../lib/ava_reason"; // One Brain B1: gateway for S
 import { aiRunOpts } from "../lib/ai_gate";       // AI Gateway cost-logging opts
 import { googleSynthesizeForLang } from "../lib/google_tts"; // WaveNet voice, any language (RECEPT-TTS-GOOGLE)
 import { sarvamTtsPcm, sarvamSttTranscribe } from "../lib/sarvam"; // Bulbul TTS + Saarika STT (RECEPT-SARVAM)
-import { deepInfraStt, deepInfraTtsPcm } from "../lib/deepinfra"; // Voxtral STT + Kokoro TTS (RECEPT-DEEPINFRA)
+import { deepInfraStt, deepInfraTtsPcm, kokoroVoiceForLang, splitTtsClauses } from "../lib/deepinfra"; // Voxtral STT + Kokoro TTS (RECEPT-DEEPINFRA)
 import { getOrRenderVmGreeting } from "../lib/vm_greeting"; // shared VM greeting cache (also used by PSTN)
 import { chargeFeature } from "../feature_pricing"; // ₹1/voicemail (pay-per-use, owner 2026-07-19)
 import { recordCallSummary, receptOutcome } from "../lib/recept_stats"; // [RECEPT-STATS-1] canonical call summary
@@ -828,6 +828,20 @@ export class ReceptionRoomCf {
     return this.cfChat(this.cfHistory, 120); // short replies → faster LLM + TTS
   }
 
+  /** Send one fully-synthesized PCM16 @24k buffer to the caller: record it, fire the
+   *  first-audio ack once, then chunk it out — stopping immediately on barge-in or
+   *  finalize. Returns bytes sent. Shared by the DeepInfra chunked-streaming path. */
+  private cfEmitPcm(pcm: Uint8Array | null): number {
+    if (!pcm || !pcm.byteLength || this.cfBarged || this.finalized) return 0;
+    if (this.pcmBytes < ReceptionRoomCf.MAX_REC_BYTES) { this.pcmOut.push({ caller: false, pcm }); this.pcmBytes += pcm.byteLength; }
+    this.avaBytes += pcm.byteLength;
+    if (!this.firstAudioSent) { this.firstAudioSent = true; this.sendReadyAck(); this.ev("ava_recept_first_audio", { engine: "cf", ms: Date.now() - this.startedAt }); }
+    for (let o = 0; o < pcm.byteLength && !this.cfBarged && !this.finalized; o += 24000) {
+      try { this.client?.send(pcm.subarray(o, Math.min(o + 24000, pcm.byteLength))); } catch { /* caller gone */ }
+    }
+    return pcm.byteLength;
+  }
+
   /** STREAMING TTS: request raw PCM (encoding linear16, container none) with
    *  returnRawResponse so we get a ReadableStream, and forward each chunk to the
    *  client AS IT GENERATES — first audio in ~0.5s instead of waiting for the whole
@@ -849,15 +863,33 @@ export class ReceptionRoomCf {
       // never silences Ava and the whole thing is disabled by unsetting
       // GOOGLE_TTS_SA_JSON — no redeploy.
       let gPcm: Uint8Array | null = null;
+      let streamed = false; // DeepInfra path emits chunks itself → skip the buffered send below
       const ttsProvider = String((this.env as any).RECEPT_CF_TTS_PROVIDER || "").toLowerCase();
       if (ttsProvider === "deepinfra" && (this.env as any).DEEPINFRA_TOKEN) {
-        // Kokoro-82M renders 24 kHz mono PCM16 — the exact caller-out contract, so it
-        // routes through the same buffered gPcm send path (no resample). A default
-        // warm-female voice unless RECEPT_CF_DEEPINFRA_VOICE overrides (comma-separated).
-        const voices = String((this.env as any).RECEPT_CF_DEEPINFRA_VOICE || "af_bella")
-          .split(",").map((v) => v.trim()).filter(Boolean);
-        gPcm = await deepInfraTtsPcm(this.env, { text: text.slice(0, 2000), voices, outputFormat: "pcm" });
-        this.ev("ava_recept_cf_tts_provider", { provider: gPcm ? "deepinfra" : "fallback", lang: this.langCode() || "auto" });
+        // CHUNKED STREAMING (RECEPT-DEEPINFRA-STREAM): Kokoro renders 24kHz PCM16 — the
+        // exact caller-out contract — FASTER than realtime on the buffered endpoint, but
+        // the streaming endpoint is sub-realtime. So we synthesize clause-by-clause and
+        // PREFETCH the next clause while the current one plays: first audio lands after
+        // just the first (short) clause (~1s warm) instead of the whole reply, and later
+        // clauses are ready before the previous finishes → gapless, near speech-to-speech.
+        // Voice is language-aware (Hindi text → a Hindi Kokoro voice) unless
+        // RECEPT_CF_DEEPINFRA_VOICE overrides. If EVERY clause fails, fall through to the
+        // Workers-AI TTS fallback so Ava is never silent.
+        const voices = kokoroVoiceForLang(this.langCode(), String((this.env as any).RECEPT_CF_DEEPINFRA_VOICE || ""));
+        const clauses = splitTtsClauses(text.slice(0, 2000));
+        let produced = false;
+        let pending: Promise<Uint8Array | null> | null =
+          clauses.length ? deepInfraTtsPcm(this.env, { text: clauses[0], voices, outputFormat: "pcm" }) : null;
+        for (let i = 0; i < clauses.length && !this.cfBarged && !this.finalized; i++) {
+          const pcm = await pending;
+          pending = (i + 1 < clauses.length)
+            ? deepInfraTtsPcm(this.env, { text: clauses[i + 1], voices, outputFormat: "pcm" })
+            : null;
+          if (pcm && pcm.byteLength) { if (!firstChunkAt) firstChunkAt = Date.now(); bytesSent += this.cfEmitPcm(pcm); produced = true; }
+        }
+        try { await pending; } catch { /* discard a prefetch we never played */ }
+        streamed = produced;
+        this.ev("ava_recept_cf_tts_provider", { provider: produced ? "deepinfra" : "fallback", lang: this.langCode() || "auto", chunks: clauses.length, streamed: true, voice: voices[0] });
       } else if (ttsProvider === "sarvam" && (this.env as any).SARVAM_API_KEY) {
         gPcm = await sarvamTtsPcm(this.env, {
           text: text.slice(0, 2000), langCode: this.langCode(),
@@ -878,7 +910,7 @@ export class ReceptionRoomCf {
         });
         this.ev("ava_recept_cf_tts_provider", { provider: gPcm ? "google" : "fallback", lang: this.langCode() || "auto" });
       }
-      const resp: any = gPcm ? null : await avaReasonRaw(this.env, {
+      const resp: any = (gPcm || streamed) ? null : await avaReasonRaw(this.env, {
         role: "receptionist", capability: "tts", trigger: "speak", feature: "receptionist_tts",
         verb: "speak", model: this.cfTtsModel(), uid: this.init?.owner_uid,
         raw: { text: text.slice(0, 800), speaker: this.cfVoice(), encoding: "linear16", sample_rate: 24000, container: "none" },
@@ -887,7 +919,9 @@ export class ReceptionRoomCf {
         aiRunOpts: { returnRawResponse: true, ...(aiRunOpts(this.env, this.init?.owner_uid) || {}) },
       });
       const body: any = resp?.body ?? null;
-      if (gPcm && gPcm.byteLength) {
+      if (streamed) {
+        // DeepInfra already synthesized + emitted every clause above — nothing to send.
+      } else if (gPcm && gPcm.byteLength) {
         // Buffered send of the Google PCM (already full LINEAR16 @24kHz). Same
         // record + chunked-send + first-audio-ack shape as the fallback branch below.
         if (this.pcmBytes < ReceptionRoomCf.MAX_REC_BYTES) { this.pcmOut.push({ caller: false, pcm: gPcm }); this.pcmBytes += gPcm.byteLength; }

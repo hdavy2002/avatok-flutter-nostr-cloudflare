@@ -79,6 +79,43 @@ export async function deepInfraStt(
   } catch { return null; }
 }
 
+// Kokoro-82M voice packs are language-specific (the first letter encodes the
+// language: a=US-English, b=UK-English, h=Hindi, e=Spanish, f=French, i=Italian,
+// p=Portuguese, j=Japanese, z=Chinese). Pick a warm female voice for the session
+// language so Hindi text is spoken with Hindi phonemes (not English ones). An
+// explicit RECEPT_CF_DEEPINFRA_VOICE override always wins.
+const KOKORO_VOICE_BY_LANG: Record<string, string> = {
+  hi: "hf_alpha", en: "af_bella", es: "ef_dora", fr: "ff_siwis",
+  it: "if_sara", pt: "pf_dora", ja: "jf_alpha", zh: "zf_xiaobei",
+};
+export function kokoroVoiceForLang(langCode: string | null | undefined, override: string): string[] {
+  const ov = (override || "").split(",").map((v) => v.trim()).filter(Boolean);
+  if (ov.length) return ov;
+  const base = String(langCode || "").split(/[-_]/)[0].toLowerCase();
+  return [KOKORO_VOICE_BY_LANG[base] || "af_bella"];
+}
+
+// Split a reply into small speakable clauses so each can be synthesized and played
+// while the next one is still generating (chunked streaming). Splits on sentence
+// enders — including the Hindi danda "।" — then on commas for any long run, and
+// merges tiny fragments so prosody stays natural. Never returns empty.
+export function splitTtsClauses(text: string, maxLen = 160): string[] {
+  const clean = String(text || "").replace(/\s+/g, " ").trim();
+  if (!clean) return [];
+  const sentences = clean.split(/(?<=[।.!?])\s+/);
+  const parts: string[] = [];
+  for (const s of sentences) {
+    if (s.length <= maxLen) parts.push(s);
+    else for (const c of s.split(/(?<=,)\s+/)) parts.push(c);
+  }
+  const out: string[] = [];
+  for (const p of parts.map((x) => x.trim()).filter(Boolean)) {
+    if (out.length && out[out.length - 1].length < 24) out[out.length - 1] += " " + p;
+    else out.push(p);
+  }
+  return out.length ? out : [clean];
+}
+
 export interface DeepInfraTtsReq {
   text: string;
   voices?: string[];     // Kokoro preset voice(s); default ["af_bella"] (warm female)
