@@ -94,6 +94,28 @@ export async function handlePush(msg: PushMsg, env: Env): Promise<void> {
     mapped_inactive: res.mappedInactive,
     mapped_active_no_token: res.mappedActiveNoToken,
   };
+  // [AVACALL-RING-CANCEL-1] Don't ring a call the caller already cancelled. FCM
+  // fan-out routinely lags the caller's cancel (2026-07-20 incident: the ring
+  // reached the callee 2s AFTER the cancel). Before we hand a `call` push to FCM,
+  // consult the CallRoom DO's strongly-consistent terminal state (set by the
+  // caller's cancel via routes/api.ts callStatus → /mark-terminal). If it's
+  // already terminal, suppress the ring entirely. Best-effort — a DO hiccup must
+  // never block a legitimate ring, so any error falls through to the normal send.
+  if (msg.kind === "call" && msg.callId && env.CALL_ROOMS) {
+    try {
+      const stub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(msg.callId));
+      const r = await stub.fetch("https://call/state", { method: "GET" });
+      if (r.ok) {
+        const st = (await r.json()) as { terminal_status?: string | null; ended?: boolean };
+        if (st && (st.terminal_status || st.ended === true)) {
+          await capturePush(env, "call_ring_suppressed", uid, {
+            call_id: msg.callId, reason: st.terminal_status || "ended", ...resolutionProps,
+          });
+          return; // caller is already gone — do not ring
+        }
+      }
+    } catch { /* best-effort — never block a real ring on a state probe */ }
+  }
   if (!tokens.length) {
     // SEND-side visibility: a push (call/notify/…) that can't be delivered because
     // the recipient has NO registered device. Previously a silent return — the

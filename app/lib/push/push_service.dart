@@ -979,6 +979,26 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
     });
     return;
   }
+  // [AVACALL-RING-CANCEL-1] Don't surface a ring for a call whose caller already
+  // cancelled. The cancel call-status can beat the ring push to this device (or
+  // arrive on its heels); if we've already recorded a terminal status for this
+  // callId, skip the CallKit UI entirely rather than ring for a caller who is
+  // gone — the exact dead-end the 2026-07-20 incident produced.
+  final ringCallId = (d['callId'] ?? '').toString();
+  if (ringCallId.isNotEmpty && PushService.wasCallTerminated(ringCallId)) {
+    Analytics.capture('call_ring_suppressed_cancelled', {
+      'call_id': ringCallId,
+      'route': route,
+    });
+    await _track(CallEvents.callIncomingShown, {
+      'call_id': ringCallId,
+      'route': route,
+      'shown': false,
+      'skip_reason': 'already_cancelled',
+    });
+    try { await FlutterCallkitIncoming.endCall(ringCallId); } catch (_) {}
+    return;
+  }
   AvaLog.I.log('call', 'showing incoming-call UI callId=${d['callId']} kind=${d['kind']} from=${d['fromName']}');
   IceCache.prefetch(); // warm TURN creds while the phone is still ringing
   final params = CallKitParams(

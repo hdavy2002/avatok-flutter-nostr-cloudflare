@@ -101,6 +101,15 @@ export class CallRoom {
   private answeredAt: number | null | undefined; // undefined = not loaded yet
   private answeredBy: string | null | undefined;
   private ended: boolean | undefined;
+  // [AVACALL-RING-CANCEL-1] Durable terminal status for a call that ended BEFORE
+  // (or without) the two peers ever connecting — most importantly a caller
+  // `cancel` sent while the callee's ring push was still in flight. Written by
+  // POST /mark-terminal (from routes/api.ts callStatus) and by an explicit
+  // bye/hangup/decline over the socket. Exposed via GET /state so the callee's
+  // accept path (client [AVACALL-CANCEL-1]) and the push consumer's ring fan-out
+  // can both refuse to ring / connect a call whose caller is already gone.
+  private terminalStatus: string | null | undefined; // undefined = not loaded yet
+  private terminalAt: number | null | undefined;
   // CALL-GEN-1: per-peer generation counter. Each accepted (re)join / reconnect of
   // a peer id bumps its gen; the 'welcome' tells the client its current gen, and it
   // stamps gen on every frame. A frame whose gen is LOWER than the DO's current gen
@@ -120,6 +129,24 @@ export class CallRoom {
     this.answeredAt = (await this.state.storage.get<number>("answeredAt")) ?? null;
     this.answeredBy = (await this.state.storage.get<string>("answeredBy")) ?? null;
     this.ended = (await this.state.storage.get<boolean>("ended")) ?? false;
+    // [AVACALL-RING-CANCEL-1] hydrate durable terminal status alongside the rest.
+    this.terminalStatus = (await this.state.storage.get<string>("terminalStatus")) ?? null;
+    this.terminalAt = (await this.state.storage.get<number>("terminalAt")) ?? null;
+  }
+
+  /** [AVACALL-RING-CANCEL-1] Persist a terminal status (cancel/bye/ended/decline)
+   *  for this call so a late accept and an in-flight ring push both learn the
+   *  caller is already gone. Also flips `ended` so GET /state stays consistent.
+   *  Idempotent + never throws — a status write must not break signaling. */
+  private async markTerminal(status: string): Promise<void> {
+    await this.loadCallState();
+    const s = (status || "ended").slice(0, 24);
+    this.terminalStatus = s;
+    this.terminalAt = Date.now();
+    this.ended = true;
+    try { await this.state.storage.put("terminalStatus", s); } catch { /* best-effort */ }
+    try { await this.state.storage.put("terminalAt", this.terminalAt); } catch { /* best-effort */ }
+    try { await this.state.storage.put("ended", true); } catch { /* best-effort */ }
   }
 
   /** [WP2] `reason` drives the refund event's ReasonCode when this transition
@@ -340,6 +367,11 @@ export class CallRoom {
           answered_at: this.answeredAt ?? null,
           answered_by: this.answeredBy ?? null,
           ended: this.ended === true,
+          // [AVACALL-RING-CANCEL-1] Durable terminal status (e.g. 'cancel') set by
+          // a caller who ended before the callee connected — null when the call is
+          // still live. The accept path + ring fan-out both key off this.
+          terminal_status: this.terminalStatus ?? null,
+          terminal_at: this.terminalAt ?? null,
           // CALL-ANSWERED-LIVE-1: how many transports are on the call RIGHT NOW.
           // `answered` is sticky (set the instant a 2nd socket ever joined), so a
           // transient/zombie join — e.g. an offline callee's FCM-woken socket that
@@ -438,6 +470,18 @@ export class CallRoom {
         const reason = (typeof body.reason === "string" ? body.reason : "NETWORK") as ReasonCode;
         await this.stopBilling(reason);
         return Response.json({ ok: true, disarmed: true });
+      }
+      // [AVACALL-RING-CANCEL-1] Internal-only: record that this call is terminal
+      // (caller cancelled / ended before connect). Called from routes/api.ts
+      // callStatus when the caller POSTs a cancel/bye/ended status. Same trust
+      // boundary as GET /state (only reachable within this Worker). Best-effort,
+      // never touches the 2-peer cap / glare / reconnect-grace state.
+      if (req.method === "POST" && stateUrl.pathname.endsWith("/mark-terminal")) {
+        let body: Record<string, unknown> = {};
+        try { body = (await req.json()) as Record<string, unknown>; } catch { /* empty */ }
+        const status = typeof body.status === "string" ? body.status : "ended";
+        await this.markTerminal(status);
+        return Response.json({ ok: true, terminal_status: this.terminalStatus ?? null });
       }
       if (req.method === "POST") {
         let body: Record<string, unknown> = {};
@@ -670,6 +714,13 @@ export class CallRoom {
     // no grace period, even if the other peer is currently "away". Clear any
     // pending away/alarm state before relaying so a lingering alarm can't fire
     // a stray peer-left after the call already ended cleanly.
+    if (data.type === "bye" || data.type === "hangup" || data.type === "decline" || data.type === "cancel") {
+      await this.setAway(null);
+      // [AVACALL-RING-CANCEL-1] Record the durable terminal status so a late
+      // accept / in-flight ring push learns the call is over even if it never
+      // connected. Only bye/hangup also markEnded (settles billing) below.
+      await this.markTerminal(String(data.type));
+    }
     if (data.type === "bye" || data.type === "hangup") {
       await this.setAway(null);
       await this.markEnded(); // CALL-KV-STATE-1: call is over — GET /state reports ended (also disarms billing → refundUnused)

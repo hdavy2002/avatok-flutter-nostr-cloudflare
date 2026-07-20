@@ -540,6 +540,22 @@ export async function callStatus(req: Request, env: Env): Promise<Response> {
     busy_reason?: string; receptionist_enabled?: boolean | string | number; pronoun?: string;
   };
   if (!b.to || !b.callId || !b.status) return json({ error: "to, callId, status required" }, 400);
+  // [AVACALL-RING-CANCEL-1] Persist a DURABLE terminal marker on the CallRoom DO
+  // BEFORE the (eventually-consistent) FCM fan-out, so a callee who accepts around
+  // the same instant — or whose ring push is still in flight — learns the caller
+  // is gone from strongly-consistent DO state (GET /api/call-state) and never sits
+  // on "connecting". The 2026-07-20 incident: the ring push reached the callee 2s
+  // AFTER this cancel. Best-effort: a DO hiccup must never block the status relay.
+  const TERMINAL_CALL_STATUS = new Set(["cancel", "bye", "ended", "decline", "declined", "missed", "no-answer"]);
+  if (TERMINAL_CALL_STATUS.has(b.status)) {
+    try {
+      const stub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(b.callId));
+      await stub.fetch("https://call/mark-terminal", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ status: b.status }),
+      });
+    } catch { /* best-effort — durable marker is an accelerator, FCM stays the path */ }
+  }
   const re = b.receptionist_enabled;
   await env.Q_PUSH.send({
     kind: "call-status", to: b.to, callId: b.callId, status: b.status, ts: Date.now(),
@@ -548,6 +564,36 @@ export async function callStatus(req: Request, env: Env): Promise<Response> {
     ...(b.pronoun ? { pronoun: String(b.pronoun) } : {}),
   });
   return json({ sent: 1 });
+}
+
+// [AVACALL-RING-CANCEL-1] GET /api/call-state?callId=<id> — thin authed proxy to
+// the CallRoom DO's strongly-consistent state (answered / ended / terminal_status
+// / live peer count). The callee's accept path reads this to honor a cancel that
+// arrived before/around the accept (client [AVACALL-CANCEL-1]). The DO's own GET
+// /state is internal-only (never client-exposed); this is the sanctioned public
+// read. FAIL-OPEN: any DO hiccup returns a benign "unknown" 200 so the client
+// simply proceeds as before rather than blocking a legitimate call.
+export async function callState(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const url = new URL(req.url);
+  const callId = (url.searchParams.get("callId") || "").slice(0, 64);
+  if (!callId) return json({ error: "callId required" }, 400);
+  try {
+    const stub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(callId));
+    const r = await stub.fetch("https://call/state", { method: "GET" });
+    if (!r.ok) return json({ ok: false, terminal_status: null });
+    const j = (await r.json()) as Record<string, unknown>;
+    return json({
+      ok: true,
+      answered: j.answered === true,
+      ended: j.ended === true,
+      terminal_status: (j.terminal_status as string | null) ?? null,
+      peers: typeof j.peers === "number" ? j.peers : null,
+    });
+  } catch {
+    return json({ ok: false, terminal_status: null }); // fail-open
+  }
 }
 
 // [BUSY-CARD-1] "Notify me" — register the caller as a bounded/deduped waiter on
