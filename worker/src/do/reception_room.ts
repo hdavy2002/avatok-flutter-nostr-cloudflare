@@ -378,6 +378,14 @@ export class ReceptionRoom {
       systemInstruction: { parts: [{ text: init.system_prompt }] },
       inputAudioTranscription: {},
       outputAudioTranscription: {},
+      // COST GUARD — cap the compounding per-turn token bill. Live sessions
+      // re-bill the WHOLE running context on every turn, so a long call grows
+      // quadratically. A sliding window evicts old tokens once the context
+      // crosses ~25k: from then on turns are billed on the compressed ~8k
+      // window + the new tokens, not the full history. Transcription stays ON
+      // (the caller's message text, summary, natural-close timing and farewell
+      // detection all depend on it — it is NOT an optional UI extra here).
+      contextWindowCompression: { triggerTokens: "25000", slidingWindow: { targetTokens: "8000" } },
     };
     // Tools: ONLY an end_call function (so Ava can hang up after her goodbye) and
     // the owner's knowledge base (File Search) when configured + not disabled.
