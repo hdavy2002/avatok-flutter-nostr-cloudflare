@@ -54,6 +54,12 @@ import { e164Country } from "../lib/e164_country";                      // [RECE
 // `if (this.campaign)` branches below).
 import { ToolRuntime } from "../lib/tool_runtime";
 import { buildCampaignTools } from "../lib/campaign_tools";
+// [AVA-CAMP-F4-ROOM] campaign-mode-only warm-handover import — never touched
+// by the inbound receptionist path (only referenced inside `if (this.campaign)`
+// branches below). initiateHandover() owns the outbound transfer leg + the
+// FSM's HandoverRequested→DialHuman transition; this room only calls it and
+// polls the KV bridge-confirmed flag it writes.
+import { initiateHandover } from "../lib/campaign_handover";
 
 /** Redact secrets from free-text error strings BEFORE telemetry (same scrubber
  *  as reception_room.ts — the Gemini URL carries ?key=AIza…). */
@@ -108,7 +114,10 @@ interface PstnAgentKv {
 }
 
 /** [AVA-CAMP-C-ROOM] Resolved campaign-mode context for one call attempt —
- *  set once on this.campaign at init time, null for every inbound call. */
+ *  set once on this.campaign at init time, null for every inbound call.
+ *  [AVA-CAMP-F4-ROOM] handoverEnabled/handoverNumber/didE164/campaignName are
+ *  additive fields loaded from the `campaigns` row (the campaign_pstn KV seed
+ *  doesn't carry them) so the room can declare + drive `transfer_to_human`. */
 interface CampaignRoomCtx {
   campaignId: string;
   attemptUuid: string;
@@ -116,6 +125,10 @@ interface CampaignRoomCtx {
   contactName: string | null;
   contactE164: string | null;
   bookingEnabled: boolean;
+  handoverEnabled: boolean;
+  handoverNumber: string | null;
+  didE164: string | null;
+  campaignName: string | null;
 }
 
 interface AgentInit {
@@ -221,6 +234,10 @@ export class VobizAgentRoom {
   // checks; inbound sessions never set it, so those branches always no-op.
   private campaign: CampaignRoomCtx | null = null;
   private toolRuntime: ToolRuntime | null = null;
+  // [AVA-CAMP-F4-ROOM] transfer_to_human's OWN 1/call limit — deliberately NOT
+  // part of ToolRuntime's 6-call budget (spec §19 seam 1). Always false
+  // (unused) on the inbound path.
+  private handoverAttempted = false;
 
   private inText: string[] = [];
   private outText: string[] = [];
@@ -376,7 +393,34 @@ export class VobizAgentRoom {
       contactName: kv.contact_name || null,
       contactE164: kv.contact_e164 || null,
       bookingEnabled: !!kv.booking_enabled,
+      // Filled in by the D1 SELECT immediately below — defaults keep
+      // transfer_to_human undeclared if that lookup fails (fail-closed).
+      handoverEnabled: false,
+      handoverNumber: null,
+      didE164: null,
+      campaignName: null,
     } : null;
+
+    // [AVA-CAMP-F4-ROOM] campaign-mode-only: load handover_enabled,
+    // handover_number, did_e164, name from the campaigns row. The
+    // campaign_pstn KV seed doesn't carry these, so this is a small
+    // additive D1 read at init, gated behind campaignMode/this.campaign —
+    // never reached on the inbound path. Best-effort: a failed/absent read
+    // just leaves handoverEnabled=false, so transfer_to_human is simply not
+    // declared (fail-closed, never a hard failure of the call).
+    if (this.campaign) {
+      try {
+        const cRow = await metaDb(this.env).prepare(
+          "SELECT handover_enabled, handover_number, did_e164, name FROM campaigns WHERE id=?1",
+        ).bind(this.campaign.campaignId).first<any>();
+        if (cRow) {
+          this.campaign.handoverEnabled = !!cRow.handover_enabled && !!cRow.handover_number;
+          this.campaign.handoverNumber = cRow.handover_number || null;
+          this.campaign.didE164 = cRow.did_e164 || null;
+          this.campaign.campaignName = cRow.name || null;
+        }
+      } catch { /* fail-closed: no handover this call */ }
+    }
 
     // Session row so finalize's UPDATE + the cockpit have a record (best-effort).
     // Reads from this.init (not raw kv) so this line is identical in both
@@ -546,6 +590,29 @@ export class VobizAgentRoom {
       const campaignDecls = this.toolRuntime.declarations();
       if (campaignDecls.length > 0) {
         tools[0].functionDeclarations = [...tools[0].functionDeclarations, ...campaignDecls];
+      }
+      // [AVA-CAMP-F4-ROOM] transfer_to_human — a SYSTEM tool, declared
+      // alongside (not through) ToolRuntime, so it never draws from the
+      // 6-call budget (spec §8/§10, §19 seam 1). Only declared when the
+      // campaign has handover enabled AND a handover number was resolved at
+      // init; otherwise the tool simply doesn't exist for the model this
+      // call, which is exactly H9's "handover disabled/ineligible" fallback
+      // (the agent naturally can't call a tool it was never told about).
+      if (this.campaign.handoverEnabled && this.campaign.handoverNumber) {
+        tools[0].functionDeclarations = [...tools[0].functionDeclarations, {
+          name: "transfer_to_human",
+          description: "Transfer this call to a human at the business. Use this ONLY when the caller explicitly asks to speak to a person, or the conversation clearly needs a human (something you cannot resolve). Keep the caller engaged and let them know you're connecting them BEFORE invoking this — do not go silent.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              reason: {
+                type: "STRING",
+                description: "One short phrase: why the caller needs a human (e.g. 'wants to speak to sales directly').",
+              },
+            },
+            required: ["reason"],
+          },
+        }];
       }
     }
     setup.tools = tools;
@@ -792,15 +859,28 @@ export class VobizAgentRoom {
         setTimeout(() => { void this.finalize("ava_ended"); }, 1600);
         return;
       }
+      // [AVA-CAMP-F4-ROOM] transfer_to_human — handled specially, NOT routed
+      // through ToolRuntime (it must not consume the 6-call budget). Only
+      // reachable when this.campaign is set (campaign mode declared it, and
+      // only when handover is enabled) — never reachable on the inbound
+      // path, where the tool was never declared.
+      if (this.campaign && Array.isArray(calls)) {
+        const handoverCall = calls.find((c: any) => c?.name === "transfer_to_human");
+        if (handoverCall) {
+          void this.handleTransferToHuman(String(handoverCall.id ?? ""), handoverCall.args ?? {});
+        }
+      }
       // [AVA-CAMP-C-ROOM] any OTHER declared function call — only reachable
       // when this.toolRuntime is set (campaign mode declared it above); an
       // inbound session's setup never declares anything but end_call, so
       // `calls` here is always empty/end_call-only on that path and this
       // no-ops. This is the room's first functionResponse send-back path —
-      // there was none before.
+      // there was none before. transfer_to_human is excluded here too (it's
+      // handled above and never registered with ToolRuntime in the first
+      // place, but the name is skipped defensively).
       if (this.toolRuntime && Array.isArray(calls)) {
         for (const c of calls) {
-          if (!c || c.name === "end_call") continue;
+          if (!c || c.name === "end_call" || c.name === "transfer_to_human") continue;
           void this.handleCampaignToolCall(String(c.id ?? ""), String(c.name ?? ""), c.args ?? {});
         }
       }
@@ -952,6 +1032,122 @@ export class VobizAgentRoom {
     this.sendGem({
       toolResponse: { functionResponses: [{ id, name, response: result }] },
     });
+  }
+
+  /** [AVA-CAMP-F4-ROOM] transfer_to_human — own 1/call limit, never routed
+   *  through ToolRuntime (spec §19 seam 1). Only ever invoked from the
+   *  toolCall handler above, itself gated on this.campaign — never reachable
+   *  on the inbound path. */
+  private async handleTransferToHuman(id: string, args: any): Promise<void> {
+    if (!this.campaign || !id) return;
+    const reason = String(args?.reason || "").trim() || "caller requested a human";
+
+    if (this.handoverAttempted || !this.campaign.handoverEnabled || !this.campaign.handoverNumber) {
+      this.sendGem({
+        toolResponse: { functionResponses: [{ id, name: "transfer_to_human", response: { success: false, error_code: "unavailable" } }] },
+      });
+      return;
+    }
+    this.handoverAttempted = true;
+
+    // Disable the wrap-up/hard-cap timers so the 8-min cue / 10-min cap
+    // don't fire mid-handover (spec §8 "Wrap timers ... are disabled once a
+    // handover begins"). Re-armed below if initiateHandover fails.
+    if (this.wrapCueTimer) { clearTimeout(this.wrapCueTimer); this.wrapCueTimer = null; }
+    if (this.closeTimer) { clearTimeout(this.closeTimer); this.closeTimer = null; }
+    if (this.hardTimer) { clearTimeout(this.hardTimer); this.hardTimer = null; }
+
+    this.ev("ava_camp_handover_attempt", { attempt_uuid: this.campaign.attemptUuid, reason });
+
+    let result: { ok: boolean; error_code?: string };
+    try {
+      result = await initiateHandover(this.env, {
+        attemptUuid: this.campaign.attemptUuid,
+        campaignId: this.campaign.campaignId,
+        ownerUid: this.campaign.ownerUid,
+        callerCallUuid: this.init?.call_id || "",
+        didE164: this.campaign.didE164 || "",
+        handoverNumber: this.campaign.handoverNumber,
+        reason,
+        contactName: this.campaign.contactName || undefined,
+        campaignName: this.campaign.campaignName || undefined,
+        // 1-line summary of the conversation so far for the human whisper.
+        summary: this.buildTranscript().slice(-600),
+      } as any);
+    } catch (e) {
+      result = { ok: false, error_code: "handover_error" };
+      this.ev("ava_camp_handover_error", {
+        attempt_uuid: this.campaign.attemptUuid,
+        error_scrubbed: scrubSecrets(String(e)).slice(0, 200),
+      });
+    }
+
+    if (!result.ok) {
+      // H9-style graceful fallback: re-enable timers, let the agent continue
+      // (it will apologize/offer a callback per the system prompt's guidance).
+      this.rearmWrapTimers();
+      this.sendGem({
+        toolResponse: { functionResponses: [{ id, name: "transfer_to_human", response: { success: false, error_code: result.error_code || "handover_failed" } }] },
+      });
+      this.ev("ava_camp_handover_failed", { attempt_uuid: this.campaign.attemptUuid, error_code: result.error_code });
+      return;
+    }
+
+    this.sendGem({
+      toolResponse: { functionResponses: [{ id, name: "transfer_to_human", response: { success: true, message: "connecting you now" } }] },
+    });
+    this.ev("ava_camp_handover_initiated", { attempt_uuid: this.campaign.attemptUuid });
+    void this.pollHandoverBridge(this.campaign.attemptUuid);
+  }
+
+  /** Re-arm the wrap-up/session-close/hard-cap timers with their REMAINING
+   *  budget (relative to this.startedAt), used when a handover attempt fails
+   *  and the AI must resume under the normal timeline. No-op past finalize. */
+  private rearmWrapTimers(): void {
+    if (this.finalized || !this.init) return;
+    const elapsed = Date.now() - this.startedAt;
+    if (!this.wrapCueTimer && !this.wrapCueInjected) {
+      this.wrapCueTimer = setTimeout(() => this.onWrapCue(), Math.max(1000, this.init.wrap_cue_ms - elapsed));
+    }
+    if (!this.closeTimer) {
+      this.closeTimer = setTimeout(() => this.onSessionClose(), Math.max(1000, this.init.soft_cap_ms - elapsed));
+    }
+    if (!this.hardTimer) {
+      this.hardTimer = setTimeout(() => this.finalize("hard_cap"), Math.max(1000, this.init.hard_cap_ms - elapsed));
+    }
+  }
+
+  /** [AVA-CAMP-F4-ROOM] Bounded poll of the KV bridge-confirmed flag the
+   *  controller (campaign_handover.ts) writes INSIDE the JSON blob at
+   *  `ho:<attemptUuid>` (field `bridge_confirmed:true` on caller-leg join),
+   *  every ~2s for up to ~30s. On confirmation, finalize
+   *  the AI leg via the normal finalize() path (reason 'handover') — the AI
+   *  leaves only once BridgeConfirmed, never before (spec §4/§7). On
+   *  timeout, CallFSM/CampaignDO (webhook-driven, independent of this room)
+   *  already owns the handover failure path (H1-H9) and will have nudged the
+   *  model or finalized the attempt itself if the human leg failed — this
+   *  room just stops polling and lets the call continue on its own timers/
+   *  end_call. */
+  private async pollHandoverBridge(attemptUuid: string): Promise<void> {
+    const deadline = Date.now() + 30_000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 2000));
+      if (this.finalized) return;
+      let confirmed = false;
+      try {
+        // The controller stores handover state as ONE JSON blob at ho:<uuid>
+        // (campaign_handover.ts writeBlobPatch), with bridge_confirmed:true set
+        // on the caller-leg join — read the blob, not a flat sub-key.
+        const raw = await this.env.TOKENS.get(`ho:${attemptUuid}`);
+        if (raw) { try { confirmed = JSON.parse(raw).bridge_confirmed === true; } catch { /* malformed blob */ } }
+      } catch { /* transient KV read error — keep polling */ }
+      if (confirmed) {
+        this.ev("ava_camp_handover_bridged", { attempt_uuid: attemptUuid });
+        void this.finalize("handover");
+        return;
+      }
+    }
+    if (!this.finalized) this.ev("ava_camp_handover_poll_timeout", { attempt_uuid: attemptUuid });
   }
 
   private failHard(reason: string): void {
