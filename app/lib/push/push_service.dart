@@ -302,6 +302,9 @@ Future<void> _handleBackgroundMessage(RemoteMessage message) async {
       // Caller cancelled / call ended before we answered → stop ringing.
       final callId = (d['callId'] ?? '').toString();
       if (callId.isNotEmpty && _terminalCallStatus((d['status'] ?? '').toString())) {
+        // [AVACALL-CANCEL-1] Record BEFORE we (async) end the CallKit ring, so an
+        // accept that races the cancel still finds the terminal marker.
+        _noteTerminalCall(callId);
         await FlutterCallkitIncoming.endCall(callId);
       }
     } else if (type == 'now_free' || type == 'call_now_free') {
@@ -413,7 +416,30 @@ Future<void> _queuePendingCallOp(Map<String, dynamic> d) async {
 
 /// A call-status that means the call is over and any incoming ring should stop.
 bool _terminalCallStatus(String s) =>
-    s == 'cancel' || s == 'ended' || s == 'missed' || s == 'no-answer';
+    s == 'cancel' || s == 'ended' || s == 'missed' || s == 'no-answer' ||
+    s == 'bye';
+
+/// [AVACALL-CANCEL-1] Last-terminal-status cache keyed by callId. The
+/// `callStatusBus` is a plain broadcast Stream with NO replay, so a cancel/bye/
+/// ended that lands BEFORE a just-accepted call's CallSession attaches its
+/// listener is lost — the callee then paints "connecting" for a caller who is
+/// already gone (2026-07-20 incident: ring push arrived 2s AFTER the cancel).
+/// Every terminal call-status the device sees (FCM bg/fg or WS) is recorded here
+/// with a timestamp; CallSession.start() drains it on the accept path so a
+/// pre-subscription cancel is honored. Short TTL — this only needs to bridge the
+/// accept window, never leak into a later, legitimately re-used callId.
+final Map<String, int> _terminalCallAt = <String, int>{};
+const int _kTerminalCallTtlMs = 90 * 1000;
+
+void _noteTerminalCall(String callId) {
+  if (callId.isEmpty) return;
+  final now = DateTime.now().millisecondsSinceEpoch;
+  _terminalCallAt[callId] = now;
+  // Opportunistic prune so the map can't grow unbounded across a long session.
+  if (_terminalCallAt.length > 64) {
+    _terminalCallAt.removeWhere((_, ts) => now - ts > _kTerminalCallTtlMs);
+  }
+}
 
 // ── [AVANOTIF-VM-1] Recipient-side contact-name resolution for push banners ──
 //
@@ -1536,6 +1562,9 @@ class PushService {
         ));
         // If we're the callee still ringing, dismiss the incoming-call UI.
         if (callId.isNotEmpty && _terminalCallStatus(status)) {
+          // [AVACALL-CANCEL-1] Cache the terminal marker so a call accepted in
+          // the same instant (before its CallSession subscribes) is ended cleanly.
+          _noteTerminalCall(callId);
           FlutterCallkitIncoming.endCall(callId);
           // CALLFIX-14: clear glare tracking when the call is no longer ringing
           if (gIncomingRingingCallId == callId) {
@@ -2218,10 +2247,56 @@ class PushService {
     }
   }
 
+  /// [AVACALL-CANCEL-1] Did we see a terminal call-status (cancel/bye/ended/…)
+  /// for [callId] within the accept window? Synchronous, so the accept path can
+  /// check it before painting "connecting". See [_terminalCallAt].
+  static bool wasCallTerminated(String callId) {
+    final ts = _terminalCallAt[callId];
+    if (ts == null) return false;
+    return DateTime.now().millisecondsSinceEpoch - ts < _kTerminalCallTtlMs;
+  }
+
+  /// [AVACALL-CANCEL-1] Best-effort DURABLE call-status read. Proxies the
+  /// CallRoom DO's strongly-consistent state (answered / ended / terminal_status)
+  /// via GET /api/call-state. Returns the terminal status string ('cancel' |
+  /// 'bye' | 'ended' | …) when the call is already over, else null. FAIL-OPEN:
+  /// any error / missing endpoint / timeout returns null so the accept proceeds
+  /// exactly as before (never blocks a legitimate call on a flaky network).
+  static Future<String?> fetchDurableCallStatus(String callId) async {
+    if (callId.isEmpty) return null;
+    try {
+      final res = await ApiAuth.getSigned(
+        '$kCallStateUrl?callId=${Uri.encodeQueryComponent(callId)}',
+        timeout: const Duration(seconds: 4),
+      );
+      if (res.statusCode != 200) return null;
+      final j = jsonDecode(res.body);
+      if (j is! Map) return null;
+      final terminal = (j['terminal_status'] ?? '').toString();
+      if (terminal.isNotEmpty && _terminalCallStatus(terminal)) {
+        _noteTerminalCall(callId); // fold into the cache for any later checker
+        return terminal;
+      }
+      if (j['ended'] == true) return 'ended';
+      return null;
+    } catch (_) {
+      return null; // fail-open
+    }
+  }
+
   /// CALLFIX-14 (glare): programmatically answer the currently-ringing incoming
   /// call — used when the user taps Call while the same peer is already ringing
   /// in. Dismisses the CallKit ring UI and opens the call like a normal accept.
   static Future<void> acceptRingingCall(String callId) async {
+    // [AVACALL-CANCEL-1] Don't answer into a call the caller already cancelled.
+    if (wasCallTerminated(callId)) {
+      Analytics.capture('call_accepted_dead', {
+        'call_id': callId,
+        'via': 'accept_ringing_cache',
+      });
+      try { await FlutterCallkitIncoming.endCall(callId); } catch (_) {}
+      return;
+    }
     try {
       final calls = await FlutterCallkitIncoming.activeCalls();
       if (calls is List) {

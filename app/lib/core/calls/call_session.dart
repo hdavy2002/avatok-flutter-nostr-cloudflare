@@ -728,6 +728,24 @@ class CallSession {
     videoActive.value = _video;
     cameraOn.value = _camOn;
     speakerOn.value = _speaker;
+    // [AVACALL-CANCEL-1] Honor a durable/late cancel on the ACCEPTED side BEFORE
+    // painting "connecting". The 2026-07-20 incident: the caller (Tiger) pressed
+    // end ~3s after dialing; the callee's ring push arrived 2s AFTER the cancel,
+    // the callee accepted, and the session sat on "connecting" (connected=false,
+    // got_sdp_answer=false) for 18s because the peer was already gone. The cancel
+    // call-status can arrive on the broadcast `callStatusBus` BEFORE this session
+    // subscribes (no replay) — so we consult the last-terminal-status cache the
+    // push handler maintains, synchronously, right here.
+    if (!config.outgoing && PushService.wasCallTerminated(config.room)) {
+      _endPreAcceptCancelled('cache-preaccept');
+      return;
+    }
+    // Belt-and-suspenders: also read the DURABLE (strongly-consistent) call state
+    // from the server in the background — catches a cancel that was persisted but
+    // not yet delivered to this device as an FCM. Fail-open; never blocks setup.
+    if (!config.outgoing) {
+      unawaited(_checkDurablePreAcceptCancel());
+    }
     _setPhase((config.outgoing && !_takeoverGuard) ? 'ringing' : 'connecting');
     // [CALL-CONNECT-WATCHDOG-1 2026-07-14] Never sit on "Connecting…" forever.
     //
@@ -910,6 +928,13 @@ class CallSession {
         _endWith(e.status == 'decline' ? 'declined' : e.status);
       }
     });
+    // [AVACALL-CANCEL-1] Drain a pre-subscription cancel: the broadcast bus has no
+    // replay, so a terminal status delivered between accept and the listen() above
+    // would be lost. Re-check the last-terminal cache the instant we're subscribed.
+    if (!config.outgoing && !_ended && PushService.wasCallTerminated(config.room)) {
+      _endPreAcceptCancelled('drain-on-subscribe');
+      return;
+    }
     // Log to call history.
     CallLogStore().add(CallEntry(
       name: config.title, seed: config.seed, video: config.video,
@@ -1737,6 +1762,34 @@ class CallSession {
     }
     // ignore: unawaited_futures
     _receptionist?.setSpeaker(_speaker);
+  }
+
+  /// [AVACALL-CANCEL-1] End an accepted-but-dead call cleanly: the caller had
+  /// already cancelled/ended before this callee leg could establish. Reported as
+  /// `call_accepted_dead` so recurrence is measurable, then ended honestly (no
+  /// ghost "connecting"). [via] distinguishes the detection path.
+  void _endPreAcceptCancelled(String via) {
+    if (_ended) return;
+    Analytics.capture('call_accepted_dead', {
+      'call_id': config.room,
+      'from': config.seed,
+      'to': _mySeed,
+      'via': via,
+    });
+    _endWith('ended', reason: 'remote-cancelled-preaccept');
+  }
+
+  /// [AVACALL-CANCEL-1] Background durable-state probe for the accept path. Reads
+  /// the CallRoom DO's strongly-consistent status; if the call is already
+  /// terminal (caller cancelled) and we haven't connected, end it. Fail-open.
+  Future<void> _checkDurablePreAcceptCancel() async {
+    try {
+      if (_ended || _connected || config.outgoing) return;
+      final status = await PushService.fetchDurableCallStatus(config.room);
+      if (status != null && !_ended && !_connected && !config.outgoing) {
+        _endPreAcceptCancelled('durable');
+      }
+    } catch (_) {/* fail-open — never block call setup on a probe */}
   }
 
   void _notifyCalleeCanceled() {
