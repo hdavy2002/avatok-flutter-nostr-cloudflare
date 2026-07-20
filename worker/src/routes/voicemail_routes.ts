@@ -4,7 +4,9 @@
 // Mirrors routes/receptionist.ts's receptionistStart() validation + WS URL
 // return shape, but MUCH thinner — VoicemailRoom (do/voicemail_room.ts) has no
 // dialog loop, no LLM, no allowance/tier gating (voicemail is the free
-// fallback everyone gets, never a paid feature). Flag-gated on `voicemailBot`.
+// fallback everyone gets, never a paid feature). Flag-gated on `voicemailBot`
+// (paid business bot, per-owner prompt) OR `avatokVoicemailFree` (the FREE
+// AvaTOK↔AvaTOK auto-voicemail with a generic system greeting — [AVACALL-VMFREE-3]).
 import type { Env } from "../types";
 import { json, normalizePhone } from "../util";
 import { requireUser, isFail } from "../authz";
@@ -18,9 +20,22 @@ export async function voicemailStart(req: Request, env: Env): Promise<Response> 
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const cfg = await readConfig(env);
-  if (cfg.voicemailBot !== true) return json({ error: "disabled", flag: "voicemailBot" }, 503);
+  const b = (await req.json().catch(() => ({}))) as { to?: string; call_id?: string; caller_name?: string; caller_phone?: string; trace_id?: string; free?: boolean };
+  // [AVACALL-VMFREE-3] TWO ways in: the paid business voicemail bot
+  // (`voicemailBot`, per-owner prompt) and the FREE AvaTOK↔AvaTOK auto-voicemail
+  // (`avatokVoicemailFree`, generic system greeting — owner decision, Phase WS2).
+  // The free path must NOT be gated by the paid flag, so accept the request when
+  // EITHER switch is on. `wantFree` selects the generic greeting below.
+  const wantFree = b.free === true;
+  if (cfg.voicemailBot !== true && cfg.avatokVoicemailFree !== true) {
+    return json({ error: "disabled", flags: ["voicemailBot", "avatokVoicemailFree"] }, 503);
+  }
+  // A free-marked request is only honoured when the free switch is on; likewise a
+  // business request needs the paid switch. This stops a client flipping `free`
+  // to route around a disabled paid bot, or vice-versa.
+  if (wantFree && cfg.avatokVoicemailFree !== true) return json({ error: "disabled", flag: "avatokVoicemailFree" }, 503);
+  if (!wantFree && cfg.voicemailBot !== true) return json({ error: "disabled", flag: "voicemailBot" }, 503);
 
-  const b = (await req.json().catch(() => ({}))) as { to?: string; call_id?: string; caller_name?: string; caller_phone?: string; trace_id?: string };
   const to = String(b.to || "");
   if (!to) return json({ error: "to required" }, 400);
 
@@ -32,9 +47,17 @@ export async function voicemailStart(req: Request, env: Env): Promise<Response> 
 
   const recordSec = Math.max(5, Math.round(Number(cfg.voicemailRecordSec) || 25));
   const graceSec = 3;
-  // Fixed carrier-style prompt (plan §3 step 4) — composed server-side, never
-  // client-editable, so the wording is consistent for every voicemail.
-  const greeting = `Hi, ${ownerName} isn't available. Please leave a ${recordSec}-second voicemail after the tone.`;
+  // Fixed prompt — composed server-side, never client-editable, so the wording is
+  // consistent for every voicemail. Two variants:
+  //   • FREE AvaTOK↔AvaTOK path ([AVACALL-VMFREE-3]): ONE generic system greeting
+  //     that names nobody, keeping v1 simple (no per-user recording UI). This is
+  //     the greeting used whenever there is no custom per-callee greeting.
+  //   • Paid business bot: the per-owner carrier-style prompt (plan §3 step 4).
+  // Both cache in R2 keyed by the greeting TEXT hash (voicemail_room.greetingPcm),
+  // so the generic free greeting is synthesized once and replayed for everyone.
+  const greeting = wantFree
+    ? `The person you're calling isn't available right now. Please leave a message after the beep.`
+    : `Hi, ${ownerName} isn't available. Please leave a ${recordSec}-second voicemail after the tone.`;
 
   const sid = crypto.randomUUID();
   const rtcToken = crypto.randomUUID();
@@ -69,7 +92,13 @@ export async function voicemailRecording(req: Request, env: Env): Promise<Respon
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const cfg = await readConfig(env);
-  if (cfg.voicemailBot !== true) return json({ error: "disabled", flag: "voicemailBot" }, 503);
+  // [AVACALL-VMFREE-3] A voicemail recording exists whenever EITHER the paid
+  // business bot OR the free AvaTOK↔AvaTOK path is enabled, so playback must be
+  // reachable under either switch (a free voicemail the callee couldn't play back
+  // would be the same silent dead-end this phase exists to remove).
+  if (cfg.voicemailBot !== true && cfg.avatokVoicemailFree !== true) {
+    return json({ error: "disabled", flags: ["voicemailBot", "avatokVoicemailFree"] }, 503);
+  }
   const key = String(new URL(req.url).searchParams.get("key") || "");
   if (!key) return json({ error: "key required" }, 400);
   const parts = key.split("/");
