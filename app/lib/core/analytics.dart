@@ -314,6 +314,30 @@ class Analytics {
         config.errorTrackingConfig.capturePlatformDispatcherErrors = false;
         config.errorTrackingConfig.inAppIncludes.add('package:avatok_call');
       } catch (_) {/* older SDK without errorTrackingConfig — no-op */}
+      // [REPLAY-1] Session Replay (posthog_flutter 5.x). Masked by default so no
+      // text/image content ever leaves the device; sampled to stay deep inside the
+      // 5K-recordings/mo free tier. Requires wrapping the app in PostHogWidget
+      // (see main.dart). Guarded for older SDKs.
+      try {
+        config.sessionReplay = true;
+        config.sessionReplayConfig.maskAllTexts = true;
+        config.sessionReplayConfig.maskAllImages = true;
+        config.sessionReplayConfig.throttleDelay = const Duration(milliseconds: 1000);
+        config.sessionReplayConfig.sampleRate = 0.2; // 20% of sessions
+      } catch (_) {/* older SDK without sessionReplay — no-op */}
+      // [ERR-NATIVE-1] Defense-in-depth secret scrub. The native crash-capture path
+      // (captureNativeExceptions) builds $exception_list from the raw error+stack,
+      // which can contain an nsec/token/signed-URL. Strip those from every outbound
+      // $exception event before it leaves the device (mirrors [_scrub]). Best-effort;
+      // returns the event unchanged if anything is unexpected.
+      config.beforeSend = [
+        (event) {
+          if (event.event == '\$exception') {
+            try { _scrubExceptionEvent(event.properties); } catch (_) {/* never drop on scrub error */}
+          }
+          return event;
+        },
+      ];
       await Posthog().setup(config);
       _ready = true;
       // Stream diagnostic log lines live to PostHog (batched/flushed by the
@@ -330,6 +354,26 @@ class Analytics {
       // to the local ring buffer (the Diagnostics page) BEFORE calling this
       // sink, so on-device logs stay full-fidelity.
       AvaLog.I.sink = (e) {
+        // [LOGS-1] Forward actionable (non-info) lines to the PostHog Logs
+        // product (5.x captureLog -> OTLP) so severity-filterable "why it broke"
+        // logs sit next to errors + replays, queryable by tag/session/trace.
+        // info/debug/trace narration stays the sampled diag_log event below
+        // (keeps existing dashboards + controls volume). Requires posthog_flutter
+        // 5.x (pubspec pins ^5.30.0). Best-effort — never blocks the log call.
+        if (e.level != 'info' && e.level != 'debug' && e.level != 'trace') {
+          try {
+            Posthog().captureLog(
+              body: e.line,
+              level: _logSeverity(e.level),
+              attributes: {
+                'tag': e.tag,
+                'log_app': AvaLog.I.app,
+                'session': AvaLog.I.session,
+                if (currentTraceId != null) 'trace_id': currentTraceId!,
+              },
+            );
+          } catch (_) {/* logs are best-effort */}
+        }
         final extra = _diagSampler.decide(e);
         if (extra == null) return; // dropped: routine high-frequency line
         capture('diag_log', {
@@ -342,6 +386,27 @@ class Analytics {
         });
       };
     } catch (_) {/* analytics is optional; app runs without it */}
+  }
+
+  /// [LOGS-1] Map AvaLog's string level to the SDK's PostHogLogSeverity for the
+  /// PostHog Logs product. Unknown/empty -> info (honest default); warn/warning
+  /// both map to warn. Requires posthog_flutter 5.x.
+  static PostHogLogSeverity _logSeverity(String level) {
+    switch (level) {
+      case 'fatal':
+        return PostHogLogSeverity.fatal;
+      case 'error':
+        return PostHogLogSeverity.error;
+      case 'warn':
+      case 'warning':
+        return PostHogLogSeverity.warn;
+      case 'debug':
+        return PostHogLogSeverity.debug;
+      case 'trace':
+        return PostHogLogSeverity.trace;
+      default:
+        return PostHogLogSeverity.info;
+    }
   }
 
   static String get _platform =>
@@ -460,6 +525,37 @@ class Analytics {
     } catch (_) {}
   }
 
+  /// [UI-PERF-1] Standardized UI interaction latency (tap -> paint / interactive).
+  /// Use instead of inventing another bespoke `*_ms` event so every screen's
+  /// responsiveness is queryable together under one name + consistent props.
+  /// `screen`, build, release, email/phone all ride via _base automatically.
+  static Future<void> uiInteraction(String name, int latencyMs,
+      {String phase = 'first_paint', String? source, Map<String, Object>? extra}) {
+    return capture('ui_interaction', {
+      'name': name,
+      'latency_ms': latencyMs,
+      'phase': phase, // first_paint | interactive
+      if (source != null) 'source': source, // cache | network
+      ...?extra,
+    });
+  }
+
+  /// [UI-PERF-1] Standardized local-cache event. Collapses the bespoke per-store
+  /// cache-hit events (inbox_cache_hit, chat_list_cache_render_ms, avatar/media,
+  /// entitlement, contact neg-cache, ...) into ONE shape so hit-ratio and
+  /// cache-vs-network render time is chartable per store.
+  static Future<void> cacheEvent(String store, String result,
+      {int? renderMs, int? bytes, bool? accountScoped, Map<String, Object>? extra}) {
+    return capture('cache_event', {
+      'store': store, // avatar | media | disk_image | inbox | chat_list | entitlement | contact
+      'result': result, // hit | miss | stale
+      if (renderMs != null) 'render_ms': renderMs,
+      if (bytes != null) 'bytes': bytes,
+      if (accountScoped != null) 'account_scoped': accountScoped,
+      ...?extra,
+    });
+  }
+
   static Future<void> screen(String name, [Map<String, Object>? properties]) async {
     if (!_ready) return;
     try {
@@ -524,6 +620,35 @@ class Analytics {
         'is_fatal': true,
       }));
     } catch (_) {}
+  }
+
+  /// [ERR-NATIVE-1] In-place scrub of secrets from a $exception event's
+  /// $exception_list (value + raw stack frames) and the flat mirrors, applied via
+  /// beforeSend so even a native/autocaptured crash cannot leak an nsec/token.
+  static void _scrubExceptionEvent(Map<String, Object>? props) {
+    if (props == null) return;
+    final list = props[r'$exception_list'];
+    if (list is List) {
+      for (final item in list) {
+        if (item is Map) {
+          final v = item['value'];
+          if (v is String) item['value'] = _scrub(v);
+          final st = item['stacktrace'];
+          if (st is Map) {
+            final frames = st['frames'];
+            if (frames is List) {
+              for (final f in frames) {
+                if (f is Map && f['raw'] is String) f['raw'] = _scrub(f['raw'] as String);
+              }
+            }
+          }
+        }
+      }
+    }
+    final m = props[r'$exception_message'];
+    if (m is String) props[r'$exception_message'] = _scrub(m);
+    final s = props['stack'];
+    if (s is String) props['stack'] = _scrub(s);
   }
 
   /// Clear the identity on sign-out so the next user starts anonymous.

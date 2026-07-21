@@ -6,6 +6,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:posthog_flutter/posthog_flutter.dart';
 
 import 'auth/clerk_client.dart';
 import 'core/account_gate.dart';
@@ -28,6 +29,7 @@ import 'core/disk_cache.dart';
 import 'core/font_scale.dart';
 import 'core/guest_session.dart';
 import 'core/onboarding_store.dart';
+import 'core/perf_monitor.dart';
 import 'core/prefs_sync.dart';
 import 'core/profile_store.dart';
 import 'core/remote_config.dart';
@@ -117,7 +119,8 @@ void main() async {
     final firstFrameMs = DateTime.now().difference(t0).inMilliseconds;
     unawaited(_deferredInit(firstFrameMs: firstFrameMs));
   });
-  runApp(const AvaTalkApp());
+  // [REPLAY-1] Wrap in PostHogWidget so Session Replay can capture the UI tree.
+  runApp(PostHogWidget(child: const AvaTalkApp()));
 }
 
 /// Post-first-frame initialization. Order preserved from the old pre-runApp
@@ -137,6 +140,10 @@ Future<void> _deferredInit({int? firstFrameMs}) async {
   // Product analytics + error tracking (best-effort) — init FIRST so we can
   // capture a Firebase init failure instead of silently swallowing it.
   await Analytics.init();
+  // [UI-PERF-1] Start app-wide frame-timing (jank/freeze) monitoring once
+  // analytics is ready. Aggregated into periodic ui_frame_stats events, never
+  // per-frame. Idempotent + fully guarded.
+  PerfMonitor.start();
   // Startup performance metric (PERF-6): ms from main() entry to first frame.
   // Proves/regresses the deferred-init work on real devices (target: <1s).
   if (firstFrameMs != null) {

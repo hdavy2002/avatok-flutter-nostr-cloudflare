@@ -121,10 +121,8 @@ class _AvaShellState extends State<AvaShell> {
         _profileComplete = storedComplete == '1';
         _needsNumber = needsNumber;
       });
-      Analytics.capture('shell_gate_ms', {
-        'ms': DateTime.now().difference(gateT0).inMilliseconds,
-        'source': 'cache',
-      });
+      Analytics.uiInteraction('shell_gate', DateTime.now().difference(gateT0).inMilliseconds,
+          source: 'cache');
       // Funnel signal: did the user hit the compulsory number gate?
       if (needsNumber) Analytics.capture('number_gate_shown', const {});
     }
@@ -205,10 +203,8 @@ class _AvaShellState extends State<AvaShell> {
       if (!haveCache) {
         // FIRST RUN: this was the blocking path — reveal the UI now.
         if (mounted) setState(() { _id = id; _profileComplete = complete; _needsNumber = needsNumber; });
-        Analytics.capture('shell_gate_ms', {
-          'ms': DateTime.now().difference(gateT0).inMilliseconds,
-          'source': 'network',
-        });
+        Analytics.uiInteraction('shell_gate', DateTime.now().difference(gateT0).inMilliseconds,
+            source: 'network');
         if (needsNumber) Analytics.capture('number_gate_shown', const {});
       } else if (mounted &&
           (complete != _profileComplete || needsNumber != _needsNumber)) {
@@ -242,10 +238,8 @@ class _AvaShellState extends State<AvaShell> {
         try { localComplete = (await ProfileStore().load()).isComplete; } catch (_) {/* setup */}
         if (_id != null || !mounted) return;
         setState(() { _id = id; _profileComplete = localComplete; _needsNumber = false; });
-        Analytics.capture('shell_gate_ms', {
-          'ms': DateTime.now().difference(gateT0).inMilliseconds,
-          'source': 'local_fallback',
-        });
+        Analytics.uiInteraction('shell_gate', DateTime.now().difference(gateT0).inMilliseconds,
+            source: 'local_fallback');
       });
       try {
         await validateGates(); // first run: correctness over speed

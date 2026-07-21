@@ -150,10 +150,9 @@ class _InboxListScreenState extends State<InboxListScreen> {
     try {
       cached = await InboxThreadCache.I.load();
     } catch (_) {/* fall through to a normal network-first load */}
-    Analytics.capture('inbox_cache_hit', {
-      'hit': cached != null && cached.isNotEmpty,
-      'threads': cached?.length ?? 0,
-    });
+    // [UI-PERF-1] Migrated onto the standardized cache_event helper.
+    Analytics.cacheEvent('inbox', (cached != null && cached.isNotEmpty) ? 'hit' : 'miss',
+        extra: {'threads': cached?.length ?? 0});
     if (cached != null && cached.isNotEmpty && mounted && _threads == null) {
       try {
         _heardIds = await InboxHeardStore.I.loadAll();
@@ -252,6 +251,29 @@ class _InboxListScreenState extends State<InboxListScreen> {
       'had_cache': _threads != null,
       'ms': DateTime.now().millisecondsSinceEpoch - t0,
     });
+    // [UI-PERF-1] Flash detection: if we already painted from cache and the
+    // network result changes the visible list, that's a content swap the user
+    // sees (cache -> network). Cheap ordered-id compare; only emits on a real
+    // change, so a cache that already matched the server stays silent.
+    final shownThreads = _threads;
+    if (shownThreads != null) {
+      var sameOrder = shownThreads.length == threads.length;
+      if (sameOrder) {
+        for (var i = 0; i < shownThreads.length; i++) {
+          if (shownThreads[i].conv != threads[i].conv) { sameOrder = false; break; }
+        }
+      }
+      if (!sameOrder) {
+        Analytics.capture('ui_content_flash', {
+          'screen': 'inbox',
+          'first_source': 'cache',
+          'swapped': true,
+          'before_count': shownThreads.length,
+          'after_count': threads.length,
+          'swap_delta_ms': DateTime.now().millisecondsSinceEpoch - t0,
+        });
+      }
+    }
     if (mounted) {
       setState(() {
         _threads = threads;

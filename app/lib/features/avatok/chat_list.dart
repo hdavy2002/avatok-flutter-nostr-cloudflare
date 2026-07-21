@@ -544,11 +544,9 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       if (ChatListSnapshot.flags.isNotEmpty) _flags = ChatListSnapshot.flags;
       _booted = true;
       renderSw.stop();
-      Analytics.capture('chat_list_cache_render_ms', {
-        'source': 'snapshot',
-        'ms': renderSw.elapsedMicroseconds / 1000.0,
-        'rows': _contacts.length,
-      });
+      Analytics.cacheEvent('chat_list', 'hit',
+          renderMs: (renderSw.elapsedMicroseconds / 1000.0).round(),
+          extra: {'source': 'snapshot', 'rows': _contacts.length});
     } else {
       // True cold start (no in-session snapshot): paint from the local DB with
       // one query before the slower store reads in _bootstrap finish.
@@ -643,11 +641,9 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     }
     if (rows.isEmpty || _authoritativeLoaded || !mounted) return;
     sw.stop();
-    Analytics.capture('chat_list_cache_render_ms', {
-      'source': 'projection',
-      'ms': sw.elapsedMicroseconds / 1000.0,
-      'rows': rows.length,
-    });
+    Analytics.cacheEvent('chat_list', 'hit',
+        renderMs: (sw.elapsedMicroseconds / 1000.0).round(),
+        extra: {'source': 'projection', 'rows': rows.length});
     final contacts = <Contact>[];
     final groups = <Group>[];
     final previews = <String, ({String text, int ts, bool me})>{};
