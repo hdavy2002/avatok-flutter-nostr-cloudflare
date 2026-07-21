@@ -217,6 +217,13 @@ class _WalletScreenState extends State<WalletScreen> {
     _paintFromCache();
     _refresh();
     _startLive(); // [WALLET-LIVE-1] realtime balance + statement updates
+    // [WALLET-REDESIGN-1] Post-first-frame render confirmation → lets us verify
+    // server-side that the list actually painted N rows (fast troubleshooting).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Analytics.capture('wallet_screen_rendered',
+          {'entries': _entries.length, 'balance': _balance, 'loading': _loading});
+    });
     // [ADMIN-GATE] Reuse the admin flag RemoteConfig already resolved at app start
     // (and re-resolves per account switch) instead of firing a fresh /admin/recon
     // probe on every wallet open. PostHog (7d prod) showed ordinary users' clients
@@ -848,7 +855,6 @@ class _WalletScreenState extends State<WalletScreen> {
           padding: EdgeInsets.zero,
           children: [
             _header(inn, out),
-            _breakdown(),
             _filterBar(),
             Padding(
               padding: const EdgeInsets.fromLTRB(18, 14, 18, 6),
@@ -911,13 +917,6 @@ class _WalletScreenState extends State<WalletScreen> {
     final days = ((s?['days'] as num?) ?? 30).toInt();
     final earned = ((s?['earned_total'] as num?) ?? inn).toInt();
     final spent = ((s?['spent_total'] as num?) ?? out).toInt();
-    final net = ((s?['net'] as num?) ?? (earned - spent)).toInt();
-    final burn = ((s?['burn_per_day'] as num?) ?? 0).toDouble();
-    final runwayN = s?['runway_days'] as num?;
-    final minutes = ((s?['minutes_used'] as num?) ?? 0).toInt();
-    final spendable = ((s?['spendable'] as num?) ?? _balance).toInt();
-    // Burn gauge: share of the runway already consumed this window.
-    final burnFraction = (spent + spendable) > 0 ? spent / (spent + spendable) : 0.0;
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 4),
       child: Column(children: [
@@ -938,7 +937,6 @@ class _WalletScreenState extends State<WalletScreen> {
               ),
               const SizedBox(width: 11),
               Expanded(child: Text('Balance', style: ADText.threadName(c: AD.textOnInput))),
-              Text('TOKENS', style: ADText.statCaption(c: AD.textOnInput)),
             ]),
             const SizedBox(height: 14),
             // Hero is the Token count — coins are the wallet's native unit.
@@ -1005,40 +1003,16 @@ class _WalletScreenState extends State<WalletScreen> {
           ]),
         ),
         const SizedBox(height: 14),
-        // ── [WALLET-COCKPIT-1] Instrument row: burn gauge · runway · net delta ──
+        // [WALLET-REDESIGN-1] Plain-English money in / money out over the window —
+        // replaces the burn-rate / runway / net-delta / AI-minute instruments users
+        // found opaque. Green = came in, red = went out. Full per-transaction detail
+        // lives in the list below (tap any row).
         Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Expanded(child: _instrument(
-            'Burn/day',
-            s == null ? '—' : _rate(burn),
-            PhosphorIcons.gauge(PhosphorIconsStyle.bold),
-            AD.danger,
-            fraction: s == null ? null : burnFraction,
-          )),
-          const SizedBox(width: 10),
-          Expanded(child: _instrument(
-            'Runway',
-            s == null ? '—' : (runwayN == null ? '∞' : '~${runwayN.toInt()}d'),
-            PhosphorIcons.hourglass(PhosphorIconsStyle.bold),
-            AD.iconSearch,
-          )),
-          const SizedBox(width: 10),
-          Expanded(child: _instrument(
-            'Net ${days}d',
-            s == null ? '—' : '${net >= 0 ? '+' : '−'}${_coins(net)}',
-            PhosphorIcons.trendUp(PhosphorIconsStyle.bold),
-            net >= 0 ? AD.online : AD.danger,
-          )),
-        ]),
-        const SizedBox(height: 10),
-        Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Expanded(child: _miniCard('${days}d earned', '+${_coins(earned)}',
+          Expanded(child: _miniCard('Money in · ${days}d', '+${_coins(earned)}',
               PhosphorIcons.arrowDownLeft(PhosphorIconsStyle.bold), AD.online, AD.online)),
           const SizedBox(width: 10),
-          Expanded(child: _miniCard('${days}d spent', '−${_coins(spent)}',
+          Expanded(child: _miniCard('Money out · ${days}d', '−${_coins(spent)}',
               PhosphorIcons.arrowUpRight(PhosphorIconsStyle.bold), AD.danger, AD.danger)),
-          const SizedBox(width: 10),
-          Expanded(child: _miniCard('AI minutes', s == null ? '—' : '$minutes m',
-              PhosphorIcons.timer(PhosphorIconsStyle.bold), AD.iconSearch, AD.textPrimary)),
         ]),
       ]),
     );
