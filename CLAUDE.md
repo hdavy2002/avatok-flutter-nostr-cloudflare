@@ -216,6 +216,50 @@ them with `add_memory(group_id="proj_avaflutterapp")`.
 
 ---
 
+## Observability toolset — PostHog (USE FOR DIAGNOSIS + BAKE INTO NEW CODE)
+
+PostHog (project 139917, EU; key `phc_hmYMsHQEYjQU4bYXNdqA4VZVsfHEIkBQdQL0Kv7FIc5`,
+host `https://eu.i.posthog.com`) is now the FULL observability stack, not just
+product events. When diagnosing anything, query it via the **PostHog MCP** BEFORE
+reading code and guessing. When building ANY new feature, wire these in from the start.
+
+**Live products (enabled 2026-07-21):**
+- **Error Tracking** — exception autocapture ON. Client uncaught → `$exception`
+  (main.dart `FlutterError.onError`/`platformDispatcher.onError` →
+  `Analytics.captureException`, scrubbed). Native Android/iOS + isolate crashes via
+  `errorTrackingConfig` (needs posthog_flutter 5.x). Server: uncaught Worker
+  route/queue error → `$exception` via `hooks.trackException` (index.ts fetch/queue).
+  Dig with MCP `query-error-tracking-*`.
+- **Session Replay** — ON, fully masked (text+images). App wrapped in `PostHogWidget`
+  (main.dart); `sessionReplay=true`, sampleRate 0.2. Open a crash -> watch the replay.
+- **Logs** — `AvaLog` non-info lines -> PostHog Logs via `Posthog().captureLog()`
+  (analytics.dart sink). Filter by severity; correlate by tag/session/trace_id.
+- **LLM Analytics** — receptionist LLM spend -> `$ai_generation`
+  (reception_room_cf.ts): `$ai_model/$ai_provider/$ai_input_tokens/$ai_output_tokens/$ai_total_cost_usd/$ai_trace_id`.
+- **UI performance** — `PerfMonitor` (perf_monitor.dart) -> `ui_frame_stats`
+  (jank/freeze per screen); `ui_content_flash` (cache->network swaps); standardized
+  `Analytics.uiInteraction()` + `Analytics.cacheEvent()` helpers. Dashboard
+  "AvaTOK — App Health" (id 836684).
+
+**Bake-in rules for NEW code (do these by default, like per-account scoping):**
+- New async/network path -> failures go through `Analytics.captureException` (client)
+  or `hooks.trackException` (worker). No silent `catch {}`.
+- New LLM call -> emit `$ai_generation` (`$ai_*` schema) at the completion site
+  (mirror reception_room_cf.ts). Wire the Gemini + vobiz lanes the same way.
+- New screen/interaction latency -> `Analytics.uiInteraction(name, ms, ...)`, NOT a
+  new bespoke `*_ms` event.
+- New on-device cache -> `Analytics.cacheEvent(store, 'hit'|'miss'|'stale', renderMs: ...)`.
+- Meaningful runtime decisions/failures -> `AvaLog` warn/error (auto-forwarded to
+  Logs). Secrets stay out — scrubbing is `_scrub` (client) / `scrubServer` (worker) /
+  the `beforeSend` hook.
+
+**PENDING (gates several of the above):** `pubspec.lock` is stale at posthog_flutter
+4.11 while pubspec pins ^5.30.0. Run `flutter pub get` -> 5.x, then a build — Logs,
+Session Replay, native crash capture, and the `captureLog`/replay code only activate
+after that. Alerts deferred (need a Slack/webhook dest, and Issues forming first).
+
+---
+
 ## Code search (graphify-avatok-2-flutter)
 
 This project has a graphify knowledge graph at `graphify-out/graph.json`. The
