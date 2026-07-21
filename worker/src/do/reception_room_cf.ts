@@ -1190,6 +1190,18 @@ export class ReceptionRoomCf {
       tts_chars: this.cfTtsChars, tts_seconds: Math.round(this.cfTtsSeconds * 10) / 10, tts_usd: round6(ttsUsd),
       est_usd: round6(estUsd), cutoff_reason: reason,
     });
+    // [AI-OBS-1] Mirror the LLM spend as a PostHog $ai_generation so LLM Analytics
+    // gets native cost/token dashboards + a trace tree for each receptionist call,
+    // keyed to the session id as $ai_trace_id. Provider is DeepInfra on the CF lane.
+    this.ev("$ai_generation", {
+      "$ai_model": this.cfLlmModel(),
+      "$ai_provider": "deepinfra",
+      "$ai_input_tokens": this.cfLlmTokIn,
+      "$ai_output_tokens": this.cfLlmTokOut,
+      "$ai_total_cost_usd": round6(llmUsd),
+      "$ai_trace_id": init.sid,
+      "$ai_span_name": "receptionist_call",
+    });
     metric(this.env, "ava_recept_cost_usd_micro", [Math.round(estUsd * 1e6)]);
 
     // ── [RECEPT-STATS-1] ONE canonical call summary (event + D1 mirror + 90d
