@@ -99,6 +99,94 @@ export function metric(env: Env, name: string, doubles: number[], blobs: string[
   try { env.ANALYTICS?.writeDataPoint({ blobs: [name, ...blobs].slice(0, 20), doubles: doubles.slice(0, 20), indexes: [name.slice(0, 32)] }); } catch { /* best-effort */ }
 }
 
+// -- Secret scrub for server-side error text (SRV-ERR-TRACK-1) --------------
+// Mirror the client's [Analytics._scrub]: strip anything that looks like a
+// token/secret out of an exception message or stack BEFORE it leaves for
+// PostHog, so a crashed request never leaks a bearer token, nsec, API key, or
+// signed URL. Also caps length so one giant stack can't blow the event budget.
+const _SECRET_PATTERNS: Array<[RegExp, string]> = [
+  [/nsec1[0-9a-z]+/gi, "[redacted]"],                                    // nostr private key
+  [/(bearer\s+)[A-Za-z0-9._-]{10,}/gi, "$1[redacted]"],                  // Authorization: Bearer <jwt>
+  [/\b(?:sk|rk|pk)_[A-Za-z0-9]{10,}/g, "[redacted]"],                    // stripe-style keys
+  [/\bphc_[A-Za-z0-9]{20,}/g, "[redacted]"],                             // posthog project key
+  [/eyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]+/g, "[redacted]"], // JWT
+  [/([?&](?:token|key|sig|signature|secret|password|apikey)=)[^&\s"']+/gi, "$1[redacted]"],
+];
+function scrubServer(input: string): string {
+  let s = input;
+  for (const [re, rep] of _SECRET_PATTERNS) s = s.replace(re, rep);
+  return s.length > 4000 ? `${s.slice(0, 4000)}...[truncated]` : s;
+}
+
+/**
+ * [SRV-ERR-TRACK-1] Emit a server-side `$exception` so an uncaught Worker or
+ * queue-consumer error becomes a grouped PostHog Error-Tracking Issue instead of
+ * a silent Cloudflare 500. Payload mirrors the client schema (analytics.dart
+ * `captureException`): the standard `$exception_list` PostHog fingerprints +
+ * groups on, plus the flat `$exception_type`/`$exception_message` keys existing
+ * HogQL queries already use. Best-effort; never throws.
+ *
+ * Returns the send promise so `fetch` callers can `ctx.waitUntil(...)` it -- an
+ * un-awaited send is cancelled when the response returns (the same footgun the
+ * `track` comment above calls out).
+ */
+export function trackException(
+  env: Env,
+  err: unknown,
+  ctx: {
+    uid?: string;
+    route?: string;
+    method?: string;
+    trace_id?: string;
+    handled?: boolean;   // false (default) = uncaught crash -> level:fatal; true = caught
+    app_name?: string;
+    extra?: Record<string, unknown>;
+  } = {},
+): Promise<void> {
+  try {
+    const e = err as { name?: string; message?: string; stack?: string } | null;
+    const type =
+      (e && e.name ? String(e.name) : undefined) ??
+      (err as { constructor?: { name?: string } })?.constructor?.name ??
+      "Error";
+    const message = scrubServer(e && e.message != null ? String(e.message) : String(err));
+    const stack = e && e.stack ? scrubServer(String(e.stack)) : undefined;
+    const handled = ctx.handled ?? false;
+    return track(
+      env,
+      ctx.uid && ctx.uid.length ? ctx.uid : "server",
+      "$exception",
+      ctx.app_name ?? "avatok",
+      {
+        // Standard PostHog error-tracking schema -> fingerprinted + grouped into an Issue.
+        $exception_list: [
+          {
+            type,
+            value: message,
+            mechanism: { handled, synthetic: false },
+            ...(stack
+              ? { stacktrace: { type: "raw", frames: [{ platform: "node", raw: stack }] } }
+              : {}),
+          },
+        ],
+        $exception_level: handled ? "error" : "fatal",
+        // Flat mirrors (kept for existing HogQL queries, matching the client).
+        $exception_message: message,
+        $exception_type: type,
+        ...(stack ? { stack } : {}),
+        ...(ctx.route ? { route: ctx.route } : {}),
+        ...(ctx.method ? { method: ctx.method } : {}),
+        is_fatal: !handled,
+        ...(ctx.extra ?? {}),
+      },
+      ctx.trace_id,
+    );
+  } catch {
+    /* best-effort: telemetry must never mask the original error */
+  }
+  return Promise.resolve();
+}
+
 /**
  * DEPRECATED shim — feed a derived fact to the brain. Kept so the remaining
  * legacy call sites keep compiling, but every event now flows through the ONE

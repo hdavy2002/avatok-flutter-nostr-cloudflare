@@ -225,7 +225,21 @@ export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const t0 = Date.now();
     const traceId = req.headers.get("x-trace-id") || crypto.randomUUID();
-    const res = await dispatch(req, env, ctx);
+    let res: Response;
+    try {
+      res = await dispatch(req, env, ctx);
+    } catch (err) {
+      // [SRV-ERR-TRACK-1] An uncaught error in any route handler previously became
+      // a silent Cloudflare 500 that never reached PostHog. Capture it as a
+      // server-side $exception (-> grouped Error-Tracking Issue) and still answer a
+      // clean JSON 500. waitUntil so the send survives the response returning.
+      ctx.waitUntil(hooks.trackException(env, err, {
+        route: new URL(req.url).pathname.slice(0, 120),
+        method: req.method,
+        trace_id: traceId,
+      }));
+      res = json({ error: "internal_error", trace_id: traceId }, 500);
+    }
     // Operational metric: route, method, trace, latency, status (Analytics Engine).
     try { env.ANALYTICS?.writeDataPoint({ blobs: [new URL(req.url).pathname.slice(0, 64), req.method, traceId], doubles: [Date.now() - t0, res.status], indexes: ["api"] }); } catch { /* best-effort */ }
     return res;
@@ -277,6 +291,9 @@ export default {
         msg.ack();
       } catch (e) {
         console.error(`[${batch.queue}] settlement retry:`, String(e));
+        // [SRV-ERR-TRACK-1] Surface queue-consumer failures as PostHog $exceptions
+        // too -- a message that exhausts retries used to vanish into logs only.
+        try { await hooks.trackException(env, e, { route: `queue:${batch.queue}`, handled: true, extra: { queue: batch.queue } }); } catch { /* best-effort */ }
         msg.retry();
       }
     }
