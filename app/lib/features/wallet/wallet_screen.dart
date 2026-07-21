@@ -868,7 +868,7 @@ class _WalletScreenState extends State<WalletScreen> {
                           child: Center(child: SizedBox(width: 20, height: 20,
                               child: CircularProgressIndicator(strokeWidth: 2, color: AD.iconSearch))));
                     }
-                    return _row(_entries[i]);
+                    return _safeRow(_entries[i]);
                   },
                 ),
               ),
@@ -1302,6 +1302,37 @@ class _WalletScreenState extends State<WalletScreen> {
   /// human label, relative time, signed tokens (earn green / spend red) and the
   /// running balance when the server stored one. Tolerates both statement rows
   /// (tokens/ts/label) and legacy cached ledger rows (amount/created_at/title).
+  // [WALLET-ROW-SAFE-1] A throw inside an item builder renders as a BLANK box in a
+  // release build — which looks exactly like "my transactions don't show" even though
+  // the rows loaded (telemetry: entries loaded, no error). So build every row behind a
+  // guard: on any exception, report it (with the offending fields) AND paint a plain,
+  // always-visible fallback row so the transaction is never invisible.
+  Widget _safeRow(Map<String, dynamic> e) {
+    try {
+      return _row(e);
+    } catch (err) {
+      Analytics.error(
+        domain: 'wallet', code: 'row_render_error',
+        message: '$err | type=${e['type']} feat=${e['feature_key']} keys=${e.keys.toList()}',
+        screen: 'wallet_main', action: 'row_build',
+      );
+      final tokens = (((e['tokens'] ?? e['amount']) as num?) ?? 0).toInt();
+      final positive = tokens >= 0;
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(children: [
+          Expanded(
+            child: Text('${e['label'] ?? e['type'] ?? 'Transaction'}',
+                maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.rowName()),
+          ),
+          const SizedBox(width: 8),
+          Text('${positive ? '+' : '−'}${tokens.abs()}',
+              style: ADText.rowName(c: positive ? AD.online : AD.danger)),
+        ]),
+      );
+    }
+  }
+
   Widget _row(Map<String, dynamic> e) {
     final tokens = (((e['tokens'] ?? e['amount']) as num?) ?? 0).toInt();
     final ts = (((e['ts'] ?? e['created_at']) as num?) ?? 0).toInt();
