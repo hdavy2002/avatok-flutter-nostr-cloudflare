@@ -844,34 +844,55 @@ class _WalletScreenState extends State<WalletScreen> {
             // what the user earned, per feature, over the summary window.
             SliverToBoxAdapter(child: _breakdown()),
             SliverToBoxAdapter(child: _filterBar()),
+            // [WALLET-LIST-FIX-1] Always-visible transaction section. The prior
+            // SliverFillRemaining empty-branch + item-builder pagination could leave
+            // the list unpainted (loaded rows never appeared on-device despite the
+            // fetch returning them). This makes the count visible on-screen no matter
+            // what, and renders rows unconditionally.
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(18, 14, 18, 2),
+                child: Text(
+                  (_loading && _entries.isEmpty)
+                      ? 'TRANSACTIONS · loading…'
+                      : 'TRANSACTIONS · ${_entries.length}',
+                  style: ADText.sectionLabel(),
+                ),
+              ),
+            ),
             if (_entries.isEmpty && !_loading)
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: Center(
-                  child: _emptyState(
-                    PhosphorIcons.receipt(PhosphorIconsStyle.bold),
-                    'No transactions yet — top up to get rolling.',
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 28, 18, 28),
+                  child: Center(
+                    child: _emptyState(
+                      PhosphorIcons.receipt(PhosphorIconsStyle.bold),
+                      'No transactions yet — top up to get rolling.',
+                    ),
                   ),
                 ),
               )
             else
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(18, 4, 18, 24),
-                sliver: SliverList.separated(
-                  itemCount: _entries.length + (_exhausted ? 0 : 1),
-                  separatorBuilder: (_, __) => const SizedBox(height: 2),
-                  itemBuilder: (c, i) {
-                    if (i >= _entries.length) {
-                      _loadMore();
-                      return const Padding(
-                          padding: EdgeInsets.all(16),
-                          child: Center(child: SizedBox(width: 20, height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: AD.iconSearch))));
-                    }
-                    return _safeRow(_entries[i]);
-                  },
-                ),
+              SliverList.separated(
+                itemCount: _entries.length + (_exhausted ? 0 : 1),
+                separatorBuilder: (_, __) => const SizedBox(height: 2),
+                itemBuilder: (c, i) {
+                  if (i >= _entries.length) {
+                    // Defer to post-frame: calling _loadMore() (which setState()s)
+                    // directly inside a builder throws "setState during build".
+                    WidgetsBinding.instance.addPostFrameCallback((_) => _loadMore());
+                    return const Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Center(child: SizedBox(width: 20, height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: AD.iconSearch))));
+                  }
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 18),
+                    child: _safeRow(_entries[i]),
+                  );
+                },
               ),
+            const SliverPadding(padding: EdgeInsets.only(bottom: 24)),
           ],
         ),
       ),
