@@ -149,6 +149,13 @@ class Analytics {
   static Future<void> screenViewed(String appId, String screenName, {String? from}) {
     app = appId;
     currentScreen = screenName;
+    // [ERR-TRACK-1] Drop a breadcrumb into PostHog Error Tracking: the last few
+    // screens the user visited attach to any crash/exception as $exception_steps,
+    // so a future error arrives with the timeline that led to it. Best-effort;
+    // no-op on older SDKs without addExceptionStep.
+    if (_ready) {
+      try { Posthog().addExceptionStep('screen: $appId/$screenName'); } catch (_) {/* older SDK */}
+    }
     return capture('screen_viewed', {if (from != null) 'from': from});
   }
 
@@ -293,6 +300,20 @@ class Analytics {
         ..host = _host
         ..captureApplicationLifecycleEvents = true // app_opened / backgrounded / installed / updated
         ..debug = kDebugMode;
+      // [ERR-TRACK-1] PostHog Error Tracking (posthog_flutter 5.x). Enable NATIVE
+      // crash capture (Android/iOS) + background-isolate errors — real crashes the
+      // old manual Dart-only $exception path could never reach. Flutter-framework
+      // and PlatformDispatcher autocapture are left OFF on purpose: main.dart already
+      // installs careful handlers (transient-network swallow + scrubbed $exception),
+      // and enabling them here would double-capture and clobber that logic.
+      // inAppIncludes marks our own frames as in-app for error-tracking grouping.
+      try {
+        config.errorTrackingConfig.captureNativeExceptions = true;
+        config.errorTrackingConfig.captureIsolateErrors = true;
+        config.errorTrackingConfig.captureFlutterErrors = false;
+        config.errorTrackingConfig.capturePlatformDispatcherErrors = false;
+        config.errorTrackingConfig.inAppIncludes.add('package:avatok_call');
+      } catch (_) {/* older SDK without errorTrackingConfig — no-op */}
       await Posthog().setup(config);
       _ready = true;
       // Stream diagnostic log lines live to PostHog (batched/flushed by the

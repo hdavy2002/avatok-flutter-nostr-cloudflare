@@ -68,7 +68,7 @@ dependencies:
   # core/update_service.dart.
   in_app_update: ^4.2.3
   # Product analytics + error tracking → PostHog (EU). See lib/core/analytics.dart.
-  posthog_flutter: ^4.10.0
+  posthog_flutter: ^5.30.0
   # Native in-app Stripe PaymentSheet for wallet top-ups (card / Apple Pay /
   # Google Pay) — keeps checkout inside the app, no browser redirect.
   flutter_stripe: ^11.1.0
