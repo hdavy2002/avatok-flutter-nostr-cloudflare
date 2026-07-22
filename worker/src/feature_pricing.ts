@@ -48,6 +48,49 @@ export function featureCost(key: string): number | null {
 }
 
 /**
+ * [WALLET-TXMETA-1] Rich charge metadata supplied by the CALL SITE — the only place
+ * that actually knows what a charge was for and who it was with. It rides the
+ * WalletDO spend body → Q_WALLET → the wallet_transactions row, so the wallet
+ * statement can render context and a Duration × Rate breakdown with NO cross-database
+ * lookup at read time. Purely descriptive: it never affects the amount charged.
+ *
+ *   category        coarse bucket: call|agent|transcribe|ava|video|market|topup|payout
+ *   context         short human string, e.g. "Voicemail from Marcus Reyes" (truncated to 120)
+ *   counterpartyName the other party's DISPLAY NAME (the uid stays counterparty_uid)
+ *   durationSec     metered duration in seconds
+ *   ratePerMin      tokens per minute used for the breakdown
+ *
+ * Wire names are snake_case (`counterparty_name`, `duration_sec`, `rate_per_min`) to
+ * match the D1 columns; this TS shape is camelCase and mapped below.
+ */
+export interface ChargeMeta {
+  category?: string;
+  context?: string;
+  counterpartyName?: string;
+  durationSec?: number;
+  ratePerMin?: number;
+}
+
+export interface ChargeOpts {
+  forceMeter?: boolean;
+  meta?: ChargeMeta;
+}
+
+// Map ChargeMeta (camelCase) → the snake_case wire fields WalletDO reads off the
+// request body. Absent/blank fields are OMITTED, so a caller that passes no meta
+// produces a byte-identical body to before. [WALLET-TXMETA-1]
+function metaWire(meta?: ChargeMeta): Record<string, unknown> {
+  if (!meta) return {};
+  const out: Record<string, unknown> = {};
+  if (meta.category) out.category = String(meta.category);
+  if (meta.context) out.context = String(meta.context).slice(0, 120); // cap at 120 chars
+  if (meta.counterpartyName) out.counterparty_name = String(meta.counterpartyName);
+  if (Number.isFinite(Number(meta.durationSec))) out.duration_sec = Math.max(0, Math.trunc(Number(meta.durationSec)));
+  if (Number.isFinite(Number(meta.ratePerMin))) out.rate_per_min = Number(meta.ratePerMin);
+  return out;
+}
+
+/**
  * Charge the SERVER-set price for a premium feature. Idempotent by [opId]
  * (the WalletDO dedupes the spend). Returns {ok:true,charged} or
  * {ok:false,reason} where reason ∈ 'unknown_feature' | 'insufficient' | 'error'.
@@ -57,10 +100,11 @@ export function featureCost(key: string): number | null {
  */
 export async function chargeFeature(
   env: Env, uid: string, featureKey: string, opId: string,
-  opts?: { forceMeter?: boolean },
+  opts?: ChargeOpts,
 ): Promise<{ ok: boolean; charged?: number; balance?: number; reason?: string }> {
   const cost = featureCost(featureKey);
   if (cost == null) return { ok: false, reason: "unknown_feature" };
+  // opts (including opts.meta) is passed through UNCHANGED. [WALLET-TXMETA-1]
   return chargeAmount(env, uid, featureKey, cost, opId, opts);
 }
 
@@ -75,7 +119,7 @@ export async function chargeFeature(
  */
 export async function chargeAmount(
   env: Env, uid: string, featureKey: string, amount: number, opId: string,
-  opts?: { forceMeter?: boolean },
+  opts?: ChargeOpts,
 ): Promise<{ ok: boolean; charged?: number; balance?: number; reason?: string }> {
   const cost = Math.max(0, Math.ceil(Number(amount) || 0)); // wallet is integer tokens
   if (cost === 0) return { ok: true, charged: 0 };
@@ -92,6 +136,9 @@ export async function chargeAmount(
     // allow_free: feature/AI costs may be paid with the daily FREE coins first
     // (then paid coins). Real marketplace spends omit this → paid-only.
     op: "spend", uid: payer, amount: cost, type: "spend", app_name: featureKey, op_id: opId, allow_free: true,
+    // [WALLET-TXMETA-1] descriptive only — WalletDO forwards these onto the Q_WALLET
+    // message; they take no part in the balance math above or the ledger below.
+    ...metaWire(opts?.meta),
   });
   if (r.status === 402) return { ok: false, reason: "insufficient", balance: r.body?.balance };
   if (r.status !== 200) return { ok: false, reason: "error" };

@@ -128,6 +128,34 @@ function categoryFor(app: string | null | undefined): string {
   return key.startsWith("ava_") ? "agent" : "market";
 }
 
+// ── [WALLET-TXMETA-1] Row-local charge metadata ─────────────────────────────
+// wallet_transactions now carries the columns the charge SITE knew about
+// (category/context/counterparty_name/duration_sec/rate_per_min), written by
+// feature_pricing.ts. Every one is nullable — all rows written before this
+// shipped have NULLs — so each reader coerces to null rather than a guess, and
+// the response fields are always present-but-possibly-null. This replaced the
+// old best-effort cross-database (DB_META) fan-out for duration/rate: the data
+// is now local to the same row, so there is nothing to look up.
+function txStr(v: unknown, max = 200): string | null {
+  const s = v == null ? "" : String(v).trim();
+  return s ? s.slice(0, max) : null;
+}
+function txNum(v: unknown): number | null {
+  if (v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** [WALLET-TXMETA-1] The four new per-row fields, normalized. */
+function txMetaFields(r: any) {
+  return {
+    context: txStr(r?.context, 120),
+    counterparty_name: txStr(r?.counterparty_name, 120),
+    duration_sec: txNum(r?.duration_sec),
+    rate_per_min: txNum(r?.rate_per_min),
+  };
+}
+
 function titleize(key: string): string {
   const words = key.replace(/[_-]+/g, " ").trim();
   if (!words) return "Other";
@@ -243,10 +271,15 @@ export async function walletStatement(req: Request, env: Env): Promise<Response>
   if (dirTypes) { where.push(`type IN (${dirTypes.map(() => `?${i++}`).join(",")})`); binds.push(...dirTypes); }
   if (from > 0) { where.push(`created_at >= ?${i++}`); binds.push(from); }
   if (to > 0) { where.push(`created_at <= ?${i++}`); binds.push(to); }
-  if (q) { where.push(`(ref LIKE ?${i} OR app_name LIKE ?${i})`); binds.push(`%${q}%`); i++; }
+  // [WALLET-TXMETA-1] Search now also covers the human context / counterparty
+  // name, so "marcus" finds "Voicemail from Marcus Reyes". NULL columns simply
+  // don't match (SQL LIKE on NULL is NULL → false), so old rows behave as before.
+  if (q) { where.push(`(ref LIKE ?${i} OR app_name LIKE ?${i} OR context LIKE ?${i} OR counterparty_name LIKE ?${i})`); binds.push(`%${q}%`); i++; }
 
   const rs = await env.DB_WALLET.withSession("first-unconstrained").prepare(
-    `SELECT id, type, amount, balance_after, app_name, counterparty_uid, ref, status, created_at FROM wallet_transactions
+    `SELECT id, type, amount, balance_after, app_name, counterparty_uid, ref, status, created_at,
+            category, context, counterparty_name, duration_sec, rate_per_min
+     FROM wallet_transactions
      WHERE ${where.join(" AND ")} ORDER BY created_at DESC, id DESC LIMIT ${limit + 1}`,
   ).bind(...binds).all();
   const rows = (rs.results ?? []) as any[];
@@ -263,17 +296,28 @@ export async function walletStatement(req: Request, env: Env): Promise<Response>
     const amount = Number(r.amount);
     const type = String(r.type || "");
     const app = r.app_name ? String(r.app_name) : null;
+    // [WALLET-TXMETA-1] `context` is the human sentence the charge site wrote
+    // ("Voicemail from Marcus Reyes"). The SHIPPED app renders `label` as the
+    // row title, so context is promoted into `label` — that is how the richer
+    // string reaches the UI with no app rebuild. The generic feature label is
+    // preserved as `type_label` so nothing is lost, and a NULL context (every
+    // pre-[WALLET-TXMETA-1] row) falls straight back to the old behaviour.
+    const meta = txMetaFields(r);
+    const typeLabel = labelFor(type, app, amount);
     const out: any = {
       id: String(r.id),
       ts: Number(r.created_at),
       type,
       direction: directionFor(type, amount),
       feature_key: app,
-      label: labelFor(type, app, amount),
+      label: meta.context || typeLabel,
+      type_label: typeLabel,
       tokens: amount, // already signed: +credit / -debit
       ref: r.ref ?? null,
+      ...meta, // context, counterparty_name, duration_sec, rate_per_min
       // [WALLET-REDESIGN-1] additive fields for the redesigned wallet screen
-      category: categoryFor(app),
+      // [WALLET-TXMETA-1] the stored category wins when the charge site set one.
+      category: txStr(r.category, 32) || categoryFor(app),
       counterparty_uid: r.counterparty_uid ? String(r.counterparty_uid) : null,
       status: type === "refund" ? "refunded"
         : (String(r.status || "").toLowerCase() === "pending" ? "pending" : "completed"),
@@ -320,16 +364,21 @@ export async function walletStatementExport(req: Request, env: Env): Promise<Res
   if (to > 0) { where.push(`created_at <= ?${i++}`); binds.push(to); }
 
   const rs = await env.DB_WALLET.withSession("first-unconstrained").prepare(
-    `SELECT id, type, amount, balance_after, app_name, counterparty_uid, ref, status, created_at FROM wallet_transactions
+    `SELECT id, type, amount, balance_after, app_name, counterparty_uid, ref, status, created_at,
+            category, context, counterparty_name, duration_sec, rate_per_min
+     FROM wallet_transactions
      WHERE ${where.join(" AND ")} ORDER BY created_at DESC, id DESC LIMIT ${EXPORT_MAX_ROWS}`,
   ).bind(...binds).all();
   const rows = (rs.results ?? []) as any[];
 
-  const lines: string[] = ["Date,Time,Type,Category,Description,Tokens,Balance After,Reference,Status"];
+  // [WALLET-TXMETA-1] Four columns APPENDED at the end so existing importers /
+  // spreadsheets that read by position keep working; blank for old NULL rows.
+  const lines: string[] = ["Date,Time,Type,Category,Description,Tokens,Balance After,Reference,Status,Details,Counterparty,Duration (s),Rate (tokens/min)"];
   for (const r of rows) {
     const amount = Number(r.amount);
     const type = String(r.type || "");
     const app = r.app_name ? String(r.app_name) : null;
+    const meta = txMetaFields(r); // [WALLET-TXMETA-1]
     // Local wall-clock for the reader, using the same offset convention as
     // /summary's daily_spend so an exported day matches the charted day.
     const local = new Date(Number(r.created_at) + tzOffsetMin * 60_000).toISOString();
@@ -337,13 +386,19 @@ export async function walletStatementExport(req: Request, env: Env): Promise<Res
       csvCell(local.slice(0, 10)),
       csvCell(local.slice(11, 19)),
       csvCell(type),
-      csvCell(CATEGORY_LABELS[categoryFor(app)] || categoryFor(app)),
+      csvCell((() => { const c = txStr(r.category, 32) || categoryFor(app); return CATEGORY_LABELS[c] || c; })()),
+      // [WALLET-TXMETA-1] Description keeps the generic feature label; the
+      // human context gets its own "Details" column so both survive the export.
       csvCell(labelFor(type, app, amount)),
       csvCell(amount),
       csvCell(r.balance_after != null ? Number(r.balance_after) : ""),
       csvCell(r.ref ?? ""),
       csvCell(type === "refund" ? "refunded"
         : (String(r.status || "").toLowerCase() === "pending" ? "pending" : "completed")),
+      csvCell(meta.context ?? ""),            // [WALLET-TXMETA-1]
+      csvCell(meta.counterparty_name ?? ""),  // [WALLET-TXMETA-1]
+      csvCell(meta.duration_sec ?? ""),       // [WALLET-TXMETA-1]
+      csvCell(meta.rate_per_min ?? ""),       // [WALLET-TXMETA-1]
     ].join(","));
   }
 
@@ -356,6 +411,69 @@ export async function walletStatementExport(req: Request, env: Env): Promise<Res
       "cache-control": "no-store",
     },
   });
+}
+
+// ── [WALLET-TXMETA-1] Ledger-detail fallback / enrichment ───────────────────
+// GET /api/wallet/ledger/:id reads the DOUBLE-ENTRY wallet_ledger, which has NO
+// row for free/bonus-token spends — so most receptionist charges opened a detail
+// sheet with nothing in it. The shipped app reads its Duration × Rate breakdown
+// from `detail.entry.meta.duration_sec` / `.rate_per_min`, both of which now live
+// on the wallet_transactions row itself.
+//
+// This resolver looks the id up in wallet_transactions and returns an entry in
+// exactly the shape wallet.ts's shapeRow() produces ({ id, type, ref,
+// created_at, debit, credit, amount, title, meta }), so `{ entry, related }`
+// stays byte-compatible with what the app already parses. It is used two ways by
+// walletLedgerDetail: as the whole answer when there is no wallet_ledger row,
+// and as a meta MERGE when there is. Never throws — a missing row/column returns
+// null and the caller 404s exactly as before.
+export async function txDetailFor(
+  env: Env, uid: string, id: string,
+): Promise<{ entry: any; related: any[] } | null> {
+  try {
+    const r = await env.DB_WALLET.withSession("first-unconstrained").prepare(
+      `SELECT id, type, amount, balance_after, app_name, counterparty_uid, ref, status, created_at,
+              category, context, counterparty_name, duration_sec, rate_per_min
+       FROM wallet_transactions WHERE id=?1 AND uid=?2`,
+    ).bind(id, uid).first<any>();
+    if (!r) return null;
+    const amount = Number(r.amount);
+    const type = String(r.type || "");
+    const app = r.app_name ? String(r.app_name) : null;
+    const m = txMetaFields(r);
+    const typeLabel = labelFor(type, app, amount);
+    const title = m.context || typeLabel;
+    const meta: Record<string, unknown> = {
+      title,
+      type_label: typeLabel,
+      feature_key: app,
+      category: txStr(r.category, 32) || categoryFor(app),
+      status: type === "refund" ? "refunded"
+        : (String(r.status || "").toLowerCase() === "pending" ? "pending" : "completed"),
+      // The four fields the app's breakdown reads. Always PRESENT (null when the
+      // row predates this change) so the client never sees `undefined`.
+      context: m.context,
+      counterparty_name: m.counterparty_name,
+      duration_sec: m.duration_sec,
+      rate_per_min: m.rate_per_min,
+      counterparty_uid: r.counterparty_uid ? String(r.counterparty_uid) : null,
+    };
+    if (r.balance_after != null) meta.balance_after = Number(r.balance_after);
+    return {
+      entry: {
+        id: String(r.id),
+        type,
+        ref: r.ref ?? null,
+        created_at: Number(r.created_at),
+        debit: null,
+        credit: null,
+        amount, // already signed in wallet_transactions
+        title,
+        meta,
+      },
+      related: [],
+    };
+  } catch { return null; } // column/table missing — caller falls back
 }
 
 // GET /api/wallet/summary?days=30 — cockpit instrument aggregates. Balance is

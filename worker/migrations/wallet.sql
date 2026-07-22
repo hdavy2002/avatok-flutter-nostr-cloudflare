@@ -25,7 +25,15 @@ CREATE TABLE IF NOT EXISTS wallet_transactions (
   commission        INTEGER NOT NULL DEFAULT 0, -- coins taken as commission (on earns)
   ref               TEXT,                    -- free-form reference (listing id, stream id, session id) — NO PII
   status            TEXT NOT NULL DEFAULT 'settled', -- 'settled'|'pending'|'reversed'
-  created_at        INTEGER NOT NULL
+  created_at        INTEGER NOT NULL,
+  -- [WALLET-TXMETA-1] Rich charge metadata carried from the charge call site, so the
+  -- wallet statement can show what a charge was FOR without a cross-DB lookup at read
+  -- time. All nullable/additive (see 2026-07-22-wallet-tx-metadata.sql for existing DBs).
+  category          TEXT,                    -- call|agent|transcribe|ava|video|market|topup|payout
+  context           TEXT,                    -- short human string, e.g. "Voicemail from Marcus Reyes" (<=120 chars)
+  counterparty_name TEXT,                    -- the other party's display name
+  duration_sec      INTEGER,                 -- metered duration in seconds
+  rate_per_min      REAL                     -- tokens per minute (Duration x Rate breakdown)
 );
 CREATE INDEX IF NOT EXISTS idx_wtx_uid ON wallet_transactions(uid, created_at);
 CREATE INDEX IF NOT EXISTS idx_wtx_type ON wallet_transactions(type, created_at);

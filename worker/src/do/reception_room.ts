@@ -961,15 +961,35 @@ export class ReceptionRoom {
       hundredths = Math.min(hundredths, Math.ceil(this.startBalance * 100));
     }
     const tokensToCharge = Math.ceil(hundredths / 100);
+    // [WALLET-TXMETA-1] The accrual above is 5 token-hundredths per second; the
+    // per-minute rate the wallet statement shows is DERIVED from it so there is
+    // exactly one source of truth (5 * 60 / 100 = 3 tokens/min).
+    const ratePerMin = (5 * 60) / 100;
+    // [WALLET-TXMETA-1] Human row title + counterparty for the wallet statement.
+    const counterpartyName = (init.caller_name || init.caller_phone || "").trim();
+    const missed = /busy|unreachable|unavailable|decline|reject/i.test(String(init.activation_mode || ""));
+    const txContext = counterpartyName
+      ? `${missed ? "Missed call from" : "Voicemail from"} ${counterpartyName}`.slice(0, 120)
+      : (missed ? "Missed call" : "Voicemail");
     let chargedTokens = 0; // [RECEPT-STATS-1] actual tokens charged, for the call summary
     if (hadConversation && durationS > 0) {
       try {
         const r = await chargeAmount(this.env, init.owner_uid, "ava_receptionist_call", tokensToCharge,
-          `${init.sid}:settle`, { forceMeter: cfg.receptBillingLive === true });
+          `${init.sid}:settle`, {
+            forceMeter: cfg.receptBillingLive === true,
+            // [WALLET-TXMETA-1] metadata only — no effect on the amount charged.
+            meta: {
+              category: "call",
+              context: txContext,
+              ...(counterpartyName ? { counterpartyName } : {}),
+              durationSec: Math.round(secondsExact),
+              ratePerMin,
+            },
+          });
         chargedTokens = r.ok ? (r.charged ?? 0) : 0;
         this.ev("ava_recept_billed", {
           seconds: Math.round(secondsExact * 10) / 10, hundredths, tokens_charged: chargedTokens,
-          charge_ok: r.ok, feature: "ava_receptionist_call", rate: 3,
+          charge_ok: r.ok, feature: "ava_receptionist_call", rate: ratePerMin,
           zero_stopped: this.zeroStopFired,
         });
       } catch { /* best-effort */ }

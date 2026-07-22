@@ -154,6 +154,15 @@ export interface WalletTxMsg {
   // legacy field name kept for old in-flight messages. [WELCOME-100-1]
   counterparty_uid?: string | null;
   counterparty_npub?: string | null; commission?: number; ref?: string | null; hold_until?: number;
+  // [WALLET-TXMETA-1] Rich charge metadata from the charge call site, landed on the
+  // wallet_transactions row so the statement can show what a charge was FOR without a
+  // cross-database lookup. ALL optional — messages already in flight carry none of
+  // these and must still insert (the columns are nullable; the consumer binds null).
+  category?: string | null;            // call|agent|transcribe|ava|video|market|topup|payout
+  context?: string | null;             // short human string, e.g. "Voicemail from Marcus Reyes"
+  counterparty_name?: string | null;   // the other party's display name
+  duration_sec?: number | null;        // metered seconds
+  rate_per_min?: number | null;        // tokens per minute
   // Phase 2 double-entry row (id above = op_id = wallet_ledger PK).
   ledger?: { debit: string; credit: string; type: string; ref?: string | null; meta?: string | null };
 }

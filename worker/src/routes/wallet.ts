@@ -25,6 +25,11 @@ import { readConfig } from "./config";
 import { getSub } from "./plans";
 import { subscribeWebhookEvent } from "./subscribe";
 import { verifyPlayProduct } from "../play";
+// [WALLET-TXMETA-1] wallet_statement.ts already imports walletOp from here; this
+// back-reference is only ever CALLED from inside an async handler (never at
+// module-init), so the ESM cycle resolves safely — function declarations are
+// hoisted before either module body runs.
+import { txDetailFor } from "./wallet_statement";
 
 // Token economics — CANONICAL, site-wide (incl. AvaPayout): 1 USD = 100 tokens,
 // i.e. 1 token = $0.01. So 1 token == 1 USD cent and usdCentsForTokens is identity.
@@ -586,12 +591,21 @@ export async function walletLedgerDetail(req: Request, env: Env, id: string): Pr
   const r = await env.DB_WALLET.prepare(
     "SELECT id, debit, credit, amount, type, ref, meta, created_at FROM wallet_ledger WHERE id=?1 AND (debit=?2 OR credit=?2)",
   ).bind(id, acct).first<any>();
-  if (!r) return json({ error: "not found" }, 404);
+  // [WALLET-TXMETA-1] Free/bonus-token spends never produce a wallet_ledger row,
+  // so the detail sheet used to be empty for most receptionist charges. Resolve
+  // the id against wallet_transactions instead (same { entry, related } shape,
+  // entry.meta carries duration_sec / rate_per_min / context).
+  const tx = await txDetailFor(env, ctx.uid, id);
+  if (!r) return tx ? json(tx) : json({ error: "not found" }, 404);
   // Sibling rows on the same ref complete the picture (e.g. the fee row of a release).
   const siblings = r.ref
     ? ((await env.DB_WALLET.prepare("SELECT id, debit, credit, amount, type, created_at FROM wallet_ledger WHERE ref=?1 AND id<>?2 LIMIT 10").bind(r.ref, id).all()).results ?? [])
     : [];
-  return json({ entry: shapeRow(r, acct), related: siblings });
+  // [WALLET-TXMETA-1] Merge: the ledger row's own meta wins on collision, the
+  // transaction row fills in the fields it alone knows (duration/rate/context).
+  const entry = shapeRow(r, acct);
+  if (tx) entry.meta = { ...(tx.entry.meta as Record<string, unknown>), ...(entry.meta ?? {}) };
+  return json({ entry, related: siblings });
 }
 
 // POST /api/wallet/ledger/:id/receipt — "Email me this receipt" (A4 re-send).

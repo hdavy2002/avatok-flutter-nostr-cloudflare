@@ -50,6 +50,23 @@ const OPS_TTL_MS = 48 * 3_600_000; // dedupe window for op_id replays
 // paid. The first top-up flips the user to sticky premium (free grant stops).
 const DAILY_FREE_GRANT = 250;
 
+// [WALLET-TXMETA-1] Rich charge metadata, passed through untouched from the charge
+// call site (feature_pricing.chargeAmount → walletOp body) onto the Q_WALLET message
+// so the consumer can land it on the wallet_transactions row. Purely descriptive —
+// it NEVER participates in balance math. Every field is optional; keys whose value is
+// absent are omitted entirely so old callers produce byte-identical messages.
+function txMeta(b: any): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (typeof b?.category === "string" && b.category) out.category = b.category.slice(0, 40);
+  if (typeof b?.context === "string" && b.context) out.context = b.context.slice(0, 120);
+  if (typeof b?.counterparty_name === "string" && b.counterparty_name) out.counterparty_name = b.counterparty_name.slice(0, 120);
+  const dur = Number(b?.duration_sec);
+  if (Number.isFinite(dur)) out.duration_sec = Math.max(0, Math.trunc(dur));
+  const rate = Number(b?.rate_per_min);
+  if (Number.isFinite(rate)) out.rate_per_min = rate;
+  return out;
+}
+
 export class WalletDO {
   private env: Env;
   private state: DurableObjectState;
@@ -195,7 +212,7 @@ export class WalletDO {
     if (b.type === "topup") this.sql.exec("UPDATE acct SET premium=1, free=0 WHERE k=1");
     const result = { ok: true, ...this.snap() };
     this.recordOp(b.op_id, result);
-    await this.audit(uid, { type: b.type || "topup", amount, balance_after: balance, app_name: b.app_name, ref: b.ref }, b);
+    await this.audit(uid, { type: b.type || "topup", amount, balance_after: balance, app_name: b.app_name, ref: b.ref, ...txMeta(b) }, b);
     this.broadcast();
     return json(result);
   }
@@ -210,7 +227,7 @@ export class WalletDO {
     this.sql.exec("UPDATE acct SET bonus=bonus+?1 WHERE k=1", amount);
     const result = { ok: true, ...this.snap() };
     this.recordOp(b.op_id, result);
-    await this.audit(uid, { type: b.type || "promo", amount, balance_after: this.snap().spendable, app_name: b.app_name, ref: b.ref }, b);
+    await this.audit(uid, { type: b.type || "promo", amount, balance_after: this.snap().spendable, app_name: b.app_name, ref: b.ref, ...txMeta(b) }, b);
     this.broadcast();
     return json(result);
   }
@@ -248,7 +265,7 @@ export class WalletDO {
     const txType = b.type === "payout" || b.type === "refund" ? b.type : "spend";
     const result = { ok: true, ...this.snap(), free_used: freeUsed, bonus_used: bonusUsed, paid_used: paidUsed };
     this.recordOp(b.op_id, result);
-    await this.audit(uid, { type: txType, amount: -amount, balance_after: this.snap().spendable, app_name: b.app_name, counterparty_uid: b.counterparty_uid, ref: b.ref }, b);
+    await this.audit(uid, { type: txType, amount: -amount, balance_after: this.snap().spendable, app_name: b.app_name, counterparty_uid: b.counterparty_uid, ref: b.ref, ...txMeta(b) }, b);
     this.broadcast();
     return json(result);
   }

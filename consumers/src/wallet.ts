@@ -55,13 +55,24 @@ export async function handleWalletTx(msg: WalletTxMsg, env: Env): Promise<void> 
   // starved (prod had 2 rows total, none since 2026-06-20) while wallet_ledger
   // kept filling. The WalletDO also SENDS the field as `counterparty_uid`, so
   // read that first with the legacy key as fallback.
+  //
+  // [WALLET-TXMETA-1] The trailing 5 columns (category … rate_per_min) are the rich
+  // charge metadata threaded from the charge call site. They are NULLABLE and bound
+  // with `?? null`, so an old queue message that carries none of them still inserts
+  // cleanly. Heeding the counterparty_npub lesson above: this column list matches
+  // worker/migrations/2026-07-22-wallet-tx-metadata.sql EXACTLY — if you add a column
+  // here, add it to that migration in the same change, or every insert throws and the
+  // whole table silently starves. Existing columns are untouched and unreordered.
   await env.DB_WALLET.prepare(
-    `INSERT INTO wallet_transactions (id, uid, type, amount, balance_after, app_name, counterparty_uid, commission, ref, status, created_at)
-     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,'settled',?10)
+    `INSERT INTO wallet_transactions (id, uid, type, amount, balance_after, app_name, counterparty_uid, commission, ref, status, created_at,
+                                      category, context, counterparty_name, duration_sec, rate_per_min)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,'settled',?10,?11,?12,?13,?14,?15)
      ON CONFLICT(id) DO NOTHING`,
   ).bind(
     msg.id, msg.uid, msg.type, msg.amount, msg.balance_after ?? null,
     msg.app_name ?? null, msg.counterparty_uid ?? msg.counterparty_npub ?? null, msg.commission ?? 0, msg.ref ?? null, now,
+    msg.category ?? null, msg.context ?? null, msg.counterparty_name ?? null,
+    msg.duration_sec ?? null, msg.rate_per_min ?? null,
   ).run();
 
   // Earnings hold mirror (for the /earnings route).

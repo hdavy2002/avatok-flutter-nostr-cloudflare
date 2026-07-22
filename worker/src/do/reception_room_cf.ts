@@ -1108,7 +1108,18 @@ export class ReceptionRoomCf {
     let vmChargedTokens = 0; // [RECEPT-STATS-1] actual tokens charged, for the call summary
     if (this.init?.vm === true && this.init?.owner_uid) {
       try {
-        const r = await chargeFeature(this.env, this.init.owner_uid, "ava_voicemail", `${this.init.sid}:vm`);
+        // [WALLET-TXMETA-1] Metadata only — the amount (flat per-voicemail fee)
+        // is unchanged. No ratePerMin: this is NOT metered per minute, so
+        // inventing a rate would make the wallet's Duration × Rate line lie.
+        const vmName = (this.init.caller_name || this.init.caller_phone || "").trim();
+        const r = await chargeFeature(this.env, this.init.owner_uid, "ava_voicemail", `${this.init.sid}:vm`, {
+          meta: {
+            category: "call",
+            context: (vmName ? `Voicemail from ${vmName}` : "Voicemail").slice(0, 120),
+            ...(vmName ? { counterpartyName: vmName } : {}),
+            durationSec: Math.max(0, Math.round((Date.now() - this.startedAt) / 1000)),
+          },
+        });
         vmChargedTokens = r.ok ? (r.charged ?? 0) : 0;
       } catch { /* best-effort */ }
     }
