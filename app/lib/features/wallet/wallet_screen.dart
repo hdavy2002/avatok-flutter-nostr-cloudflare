@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show Platform;
+import 'dart:io' show File, Platform;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:web_socket_channel/io.dart';
 
 import '../../core/analytics.dart';
@@ -15,10 +17,11 @@ import '../../core/money_api.dart';
 import '../../core/remote_config.dart';
 import '../../core/wallet_topup_billing.dart';
 import '../../core/ui/avatok_dark.dart';
-import '../../core/ui/zine_widgets.dart';
 import '../payout/payout_screen.dart';
 import 'admin_money_screen.dart';
 import 'wallet_balance_chip.dart' show WalletBalanceStore;
+import 'wallet_theme.dart';
+import 'wallet_widgets.dart';
 
 /// Inline dark v2 header band (replaces the light ZineAppBar): header/footer
 /// surface, hairline bottom border, back button + Nunito title + optional tag.
@@ -65,24 +68,13 @@ PreferredSizeWidget _darkHeader({
   );
 }
 
-// ── AvaWallet (Phase 2) ───────────────────────────────────────────────────────
-// Balance cards + the double-entry ledger trail: infinite scroll on the server's
-// keyset cursor, server-side filters (type chips / date range / search), row
-// detail sheet with the fee breakdown, and the Stripe top-up flow. Local-first:
-// the drift wallet_ledger_cache (per-account DB file) paints instantly, then the
-// network refresh merges in.
-
-final _kTypes = <String, ({String label, IconData icon, bool inflow})>{
-  'topup': (label: 'Top-up', icon: PhosphorIcons.creditCard(PhosphorIconsStyle.bold), inflow: true),
-  'purchase_hold': (label: 'Purchase', icon: PhosphorIcons.shoppingBag(PhosphorIconsStyle.bold), inflow: false),
-  'escrow_release': (label: 'Earning', icon: PhosphorIcons.medal(PhosphorIconsStyle.bold), inflow: true),
-  'refund': (label: 'Refund', icon: PhosphorIcons.arrowCounterClockwise(PhosphorIconsStyle.bold), inflow: true),
-  'fee': (label: 'Fee', icon: PhosphorIcons.percent(PhosphorIconsStyle.bold), inflow: false),
-  'payout': (label: 'Payout', icon: PhosphorIcons.bank(PhosphorIconsStyle.bold), inflow: false),
-  'donation': (label: 'Donation', icon: PhosphorIcons.heart(PhosphorIconsStyle.bold), inflow: false),
-  'storage_charge': (label: 'Storage', icon: PhosphorIcons.cloud(PhosphorIconsStyle.bold), inflow: false),
-  'adjustment': (label: 'Adjustment', icon: PhosphorIcons.wrench(PhosphorIconsStyle.bold), inflow: true),
-};
+// ── AvaWallet ─────────────────────────────────────────────────────────────────
+// [WALLET-REDESIGN-1] The presentation layer is the poster/zine wallet skin
+// (`wallet_theme.dart` + `wallet_widgets.dart`): balance hero, period chips,
+// money in/out, daily-spend bars, where-it-went donut, day-grouped history with
+// search + inline calendar, a full-height transaction detail sheet and a CSV
+// export sheet. Data plumbing (live WS balance, drift cache, keyset pagination,
+// Stripe / Play Billing top-ups) is unchanged.
 
 // Coin economics — CANONICAL, MUST match the server (worker/src/routes/wallet.ts
 // COINS_PER_USD) and AvaPayout. 1 USD = 100 Tokens (1 coin = $0.01). Balances/
@@ -114,10 +106,18 @@ String _coins(num coins) {
   return b.toString();
 }
 
+const List<String> _kMonShort = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
+const List<String> _kMonLong = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
 String _dateShort(int ms) {
   final d = DateTime.fromMillisecondsSinceEpoch(ms);
-  const m = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return '${d.day} ${m[d.month - 1]} ${d.year != DateTime.now().year ? d.year : ''}'.trim();
+  return '${d.day} ${_kMonShort[d.month - 1]} ${d.year != DateTime.now().year ? d.year : ''}'.trim();
 }
 
 class WalletScreen extends StatefulWidget {
@@ -137,12 +137,21 @@ class _WalletScreenState extends State<WalletScreen> {
   // first load lands (instruments render "—" placeholders meanwhile).
   Map<String, dynamic>? _summary;
 
+  // [WALLET-REDESIGN-1] Summary window driven by the 7D/30D chip track.
+  int _days = 30;
+
   // Filters (server-side). Direction is single-select against the statement feed.
+  // null = all, 'in' = money in, 'out' = money out.
   String? _dirFilter;
   DateTimeRange? _range;
   String _query = '';
   final _searchCtrl = TextEditingController();
   final _scroll = ScrollController();
+
+  // [WALLET-REDESIGN-1] Inline day picker state (rendered under the search row).
+  DateTime _calMonth = DateTime.now();
+  int? _selDay;
+  bool _showCal = false;
 
   // [WALLET-LIVE-1] Realtime balance + statement over the wallet DO's WebSocket
   // (/api/wallet/live pushes {type:"balance", spendable,...} on EVERY change — a
@@ -154,6 +163,16 @@ class _WalletScreenState extends State<WalletScreen> {
   bool _disposed = false;
 
   bool get _filtered => _dirFilter != null || _range != null || _query.isNotEmpty;
+
+  /// [WALLET-REDESIGN-1] The statement endpoint now understands coarse `in` /
+  /// `out` buckets (in = earn|donation|gift|hold_release|promo|topup|refund,
+  /// out = spend|payout), so both chips filter SERVER-side. Filtering "in" on
+  /// the client used to break keyset pagination — a page of pure spend rendered
+  /// as an empty list until more pages loaded. 'all' sends no filter.
+  String? get _serverDirection =>
+      (_dirFilter == 'in' || _dirFilter == 'out') ? _dirFilter : null;
+
+  List<Map<String, dynamic>> get _visibleEntries => _entries;
 
   Future<void> _startLive() async {
     if (_disposed) return;
@@ -274,7 +293,9 @@ class _WalletScreenState extends State<WalletScreen> {
     setState(() { _cursor = null; _exhausted = false; });
     final bal = MoneyApi.balance();
     // [WALLET-COCKPIT-1] Refresh the cockpit instruments alongside the statement.
-    final sum = MoneyApi.summary(days: 30);
+    // [WALLET-REDESIGN-1] The window follows the 7D/30D chips, and the tz offset
+    // makes daily_spend buckets line up with the user's local days.
+    final sum = MoneyApi.summary(days: _days, tzOffsetMin: DateTime.now().timeZoneOffset.inMinutes);
     await _fetchPage(reset: true);
     try {
       final s = await sum;
@@ -289,6 +310,8 @@ class _WalletScreenState extends State<WalletScreen> {
           'minutes_used': s['minutes_used'],
           'spend_features': (s['by_feature'] as List?)?.length ?? 0,
           'earn_sources': (s['earn_sources'] as List?)?.length ?? 0,
+          'daily_points': (s['daily_spend'] as List?)?.length ?? 0,
+          'categories': (s['by_category'] as List?)?.length ?? 0,
         });
       } else if (mounted) {
         Analytics.capture('wallet_summary_load_failed', {'reason': '${s['error'] ?? s['status'] ?? 'unknown'}'});
@@ -354,7 +377,7 @@ class _WalletScreenState extends State<WalletScreen> {
       // + feature keys (what each spend actually paid for), not the raw ledger.
       final r = await MoneyApi.statement(
         cursor: reset ? null : _cursor,
-        direction: _dirFilter,
+        direction: _serverDirection,
         from: _range?.start.millisecondsSinceEpoch,
         to: _range == null ? null : _range!.end.add(const Duration(days: 1)).millisecondsSinceEpoch,
         q: _query,
@@ -680,6 +703,9 @@ class _WalletScreenState extends State<WalletScreen> {
     _fetchPage(reset: true);
   }
 
+  /// Legacy full-range picker. Kept as the fallback date UI (the inline
+  /// [WalletCalendar] is the primary path now).
+  // ignore: unused_element
   Future<void> _pickRange() async {
     final now = DateTime.now();
     final r = await showDateRangePicker(
@@ -713,114 +739,193 @@ class _WalletScreenState extends State<WalletScreen> {
     return null;
   }
 
-  Future<void> _showDetail(Map<String, dynamic> e) async {
-    final id = '${e['id']}';
-    Analytics.capture('wallet_txn_opened', {'type': '${e['type']}', 'id': id});
-    Map<String, dynamic> d = {'entry': e};
-    try { d = await MoneyApi.ledgerDetail(id); } catch (_) {/* offline: show row */}
-    if (!mounted) return;
-    final entry = ((d['entry'] as Map?) ?? e).cast<String, dynamic>();
-    final meta = ((entry['meta'] as Map?) ?? const {}).cast<String, dynamic>();
-    final related = ((d['related'] as List?) ?? const []).map((x) => (x as Map).cast<String, dynamic>()).toList();
-    final amount = ((entry['amount'] as num?) ?? 0).toInt();
-    final t = _kTypes['${entry['type']}'];
-    final gross = (meta['gross'] as num?)?.toInt();
-    final fee = (meta['fee'] as num?)?.toInt() ?? related.where((r) => r['type'] == 'fee').fold<int>(0, (s, r) => s + ((r['amount'] as num?) ?? 0).toInt().abs());
-    final net = (meta['net'] as num?)?.toInt();
-    final isTopup = '${entry['type']}' == 'topup';
-    final usdCents = (meta['cents'] as num?)?.toInt();      // exact USD charged (top-ups)
-    final paidWith = _payMethod(meta);                       // card ···4242 / Apple Pay / …
-    final createdMs = ((entry['created_at'] as num?) ?? 0).toInt();
-
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: AD.overlaySheet,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(AD.rSheet))),
-      builder: (c) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              ZineIconBadge(
-                icon: t?.icon ?? PhosphorIcons.swap(PhosphorIconsStyle.bold),
-                color: amount >= 0 ? AD.online : AD.danger,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('${entry['title'] ?? t?.label ?? entry['type']}',
-                      style: ADText.rowName(), maxLines: 2, overflow: TextOverflow.ellipsis),
-                  Text(_fullDate(((entry['created_at'] as num?) ?? 0).toInt()).toUpperCase(),
-                      style: ADText.statCaption(c: AD.textTertiary)),
-                ]),
-              ),
-              Text('${amount >= 0 ? '+' : '−'}${_coins(amount)}',
-                  style: ADText.appTitle(c: amount >= 0 ? AD.online : AD.danger)),
-            ]),
-            const SizedBox(height: 16),
-            Container(height: 1, color: AD.borderHairline),
-            const SizedBox(height: 12),
-            _kv('Date', _fullDate(createdMs)),
-            if (isTopup && usdCents != null) _kv('Amount paid', '${_usdFromCents(usdCents)} USD'),
-            _kv(isTopup ? 'Tokens credited' : 'Tokens', _coins(amount)),
-            if (paidWith != null) _kv('Paid with', paidWith)
-            else if (isTopup) _kv('Paid with', 'Card'),
-            _kv('From', '${entry['debit'] ?? '—'}'),
-            _kv('To', '${entry['credit'] ?? '—'}'),
-            if (gross != null) _kv('Gross', '${_coins(gross)} Tokens'),
-            if (fee > 0) _kv('Platform fee', '− ${_coins(fee)} Tokens'),
-            if (net != null) _kv('Net', '${_coins(net)} Tokens'),
-            if (meta['reason'] != null) _kv('Reason', '${meta['reason']}'),
-            if (entry['ref'] != null) _kv('Reference', '${entry['ref']}'),
-            const SizedBox(height: 16),
-            AdButton(
-              label: 'Email me this receipt',
-              variant: AdButtonVariant.ghost,
-              fullWidth: true,
-              fontSize: 16,
-              trailingIcon: false,
-              icon: PhosphorIcons.envelopeSimple(PhosphorIconsStyle.bold),
-              onPressed: () async {
-                final r = await MoneyApi.resendReceipt(id);
-                Analytics.capture('wallet_receipt_resent', {'id': id, 'sent': r['sent'] == true});
-                if (c.mounted) Navigator.pop(c);
-                _snack(r['sent'] == true ? 'Receipt sent to your email.' : 'Could not send the receipt.');
-              },
-            ),
-          ]),
-        ),
-      ),
-    );
-  }
-
   String _fullDate(int ms) {
     final d = DateTime.fromMillisecondsSinceEpoch(ms);
     String p(int n) => n.toString().padLeft(2, '0');
     return '${_dateShort(ms)} ${d.year == DateTime.now().year ? d.year : ''} · ${p(d.hour)}:${p(d.minute)}'.replaceAll('  ', ' ');
   }
 
-  /// Ledger-style key/value row (§7.10): label + dotted leader + value.
-  Widget _kv(String k, String v) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
-          Text(k, style: ADText.preview()),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text('·' * 80, maxLines: 1, overflow: TextOverflow.clip,
-                style: ADText.preview(c: AD.textTertiary)),
+  /// Relative timestamp for the flight log ("2h ago"); falls back to the short
+  /// date past a week.
+  // ignore: unused_element
+  String _relTime(int ms) {
+    if (ms <= 0) return '';
+    final d = DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(ms));
+    if (d.inMinutes < 1) return 'just now';
+    if (d.inMinutes < 60) return '${d.inMinutes}m ago';
+    if (d.inHours < 24) return '${d.inHours}h ago';
+    if (d.inDays < 7) return '${d.inDays}d ago';
+    return _dateShort(ms);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // [WALLET-REDESIGN-1] Category helpers — the eight coarse categories the
+  // server folds every feature key into (worker/src/routes/wallet_statement.ts
+  // CATEGORY_LABELS). Keep the three switches in lockstep.
+  // ══════════════════════════════════════════════════════════════════════════
+
+  IconData _catIcon(String key) {
+    switch (key) {
+      case 'call':
+        return PhosphorIcons.phone(PhosphorIconsStyle.fill);
+      case 'agent':
+        return PhosphorIcons.sparkle(PhosphorIconsStyle.fill);
+      case 'transcribe':
+        return PhosphorIcons.textAa(PhosphorIconsStyle.fill);
+      case 'ava':
+        return PhosphorIcons.chatCircle(PhosphorIconsStyle.fill);
+      case 'video':
+        return PhosphorIcons.videoCamera(PhosphorIconsStyle.fill);
+      case 'market':
+        return PhosphorIcons.storefront(PhosphorIconsStyle.fill);
+      case 'topup':
+        return PhosphorIcons.arrowDownLeft(PhosphorIconsStyle.bold);
+      case 'payout':
+        return PhosphorIcons.handCoins(PhosphorIconsStyle.fill);
+    }
+    return PhosphorIcons.arrowDownLeft(PhosphorIconsStyle.bold);
+  }
+
+  Color _catColor(String key) {
+    switch (key) {
+      case 'call':
+        return AW.blue;
+      case 'agent':
+        return AW.lilac;
+      case 'transcribe':
+        return AW.mint;
+      case 'ava':
+        return AW.lilac;
+      case 'video':
+        return AW.blue;
+      case 'market':
+        return AW.lime;
+      case 'topup':
+        return AW.mint;
+      case 'payout':
+        return AW.mint;
+    }
+    return AW.mint;
+  }
+
+  String _catLabel(String key) {
+    switch (key) {
+      case 'call':
+        return 'Phone call';
+      case 'agent':
+        return 'AI agent';
+      case 'transcribe':
+        return 'Transcription';
+      case 'ava':
+        return 'Ava AI chat';
+      case 'video':
+        return 'Video call';
+      case 'market':
+        return 'Marketplace';
+      case 'topup':
+        return 'Top up';
+      case 'payout':
+        return 'Affiliate payout';
+    }
+    return 'Transaction';
+  }
+
+  /// Category for a row, tolerating legacy cached rows that predate the
+  /// server's `category` field.
+  String _catOf(Map<String, dynamic> e) {
+    final c = '${e['category'] ?? ''}';
+    if (c.isNotEmpty && c != 'null') return c;
+    final t = '${e['type'] ?? ''}';
+    if (t == 'topup') return 'topup';
+    if (t == 'payout') return 'payout';
+    return 'agent';
+  }
+
+  // ── small formatters ─────────────────────────────────────────────────────
+
+  int _tsOf(Map<String, dynamic> e) => (((e['ts'] ?? e['created_at']) as num?) ?? 0).toInt();
+
+  int _tokensOf(Map<String, dynamic> e) => (((e['tokens'] ?? e['amount']) as num?) ?? 0).toInt();
+
+  String _titleOf(Map<String, dynamic> e) =>
+      '${e['label'] ?? e['title'] ?? e['type'] ?? 'Transaction'}';
+
+  /// "2:30 PM" from an epoch-ms timestamp (local).
+  String _clock(int ms) {
+    if (ms <= 0) return '';
+    final d = DateTime.fromMillisecondsSinceEpoch(ms);
+    final h12 = d.hour % 12 == 0 ? 12 : d.hour % 12;
+    return '$h12:${d.minute.toString().padLeft(2, '0')} ${d.hour < 12 ? 'AM' : 'PM'}';
+  }
+
+  /// Day-group heading: TODAY / YESTERDAY / "JUL 4".
+  String _groupLabel(int ms) {
+    final d = DateTime.fromMillisecondsSinceEpoch(ms);
+    final now = DateTime.now();
+    final day = DateTime(d.year, d.month, d.day);
+    final today = DateTime(now.year, now.month, now.day);
+    final diff = today.difference(day).inDays;
+    if (diff == 0) return 'TODAY';
+    if (diff == 1) return 'YESTERDAY';
+    return '${_kMonShort[d.month - 1].toUpperCase()} ${d.day}';
+  }
+
+  static const List<String> _kDowLetter = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+
+  /// [WALLET-REDESIGN-1] Bars from `daily_spend`. One bar per day reads well at
+  /// 7 days but 30 columns cannot fit across a phone, so longer windows are
+  /// folded into equal consecutive buckets (labelled with the bucket's last
+  /// day-of-month) — the totals stay honest, only the resolution drops.
+  List<({String label, num value})> _spendBars(List<Map<String, dynamic>> daily) {
+    if (daily.isEmpty) return const [];
+    DateTime? parse(String s) => DateTime.tryParse(s);
+    if (daily.length <= 14) {
+      return [
+        for (final d in daily)
+          (
+            label: () {
+              final dt = parse('${d['day']}');
+              return dt == null ? '' : _kDowLetter[dt.weekday - 1];
+            }(),
+            value: ((d['tokens'] as num?) ?? 0),
           ),
-          const SizedBox(width: 6),
-          Flexible(child: Text(v, maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: ADText.rowName())),
-        ]),
-      );
+      ];
+    }
+    const buckets = 10;
+    final size = (daily.length / buckets).ceil();
+    final out = <({String label, num value})>[];
+    for (var i = 0; i < daily.length; i += size) {
+      final end = (i + size) > daily.length ? daily.length : (i + size);
+      num sum = 0;
+      for (var j = i; j < end; j++) {
+        sum += ((daily[j]['tokens'] as num?) ?? 0);
+      }
+      final dt = parse('${daily[end - 1]['day']}');
+      out.add((label: dt == null ? '' : '${dt.day}', value: sum));
+    }
+    return out;
+  }
 
   // ── build ───────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     final (inn, out) = _monthInOut();
+    final s = _summary;
+    final earned = ((s?['earned_total'] as num?) ?? inn).toInt();
+    final spent = ((s?['spent_total'] as num?) ?? out).toInt();
+    final daily = ((s?['daily_spend'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => e.cast<String, dynamic>())
+        .toList();
+    final byCat = ((s?['by_category'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => e.cast<String, dynamic>())
+        .toList();
+    final bars = _spendBars(daily);
+    final rows = _visibleEntries;
+
     return Scaffold(
-      backgroundColor: AD.bg,
+      backgroundColor: AW.bg,
       appBar: _darkHeader(
         title: 'AvaWallet',
         // [WALLET-UX-1] Owner decision: no "AvaCoins" branding in the UI — the
@@ -839,526 +944,745 @@ class _WalletScreenState extends State<WalletScreen> {
             ),
         ],
       ),
-      // [WALLET-LIST-REWRITE-1] Rewritten from a CustomScrollView/slivers layout to a
-      // plain ListView. The previous sliver structure rendered loaded transactions
-      // invisibly on-device (data present, no exception — confirmed via telemetry +
-      // error tracking), and no combination of guards fixed it. A flat ListView lays
-      // out EVERY child normally (header, cockpit, filters, section label, each row),
-      // so the rows cannot be swallowed by sliver-viewport quirks. Pagination is driven
-      // by the existing _scroll listener (initState), not an in-builder setState.
+      // [WALLET-LIST-REWRITE-1] A plain ListView, deliberately NOT slivers: the
+      // previous CustomScrollView rendered loaded transactions invisibly on-device
+      // (data present, no exception). A flat ListView lays out EVERY child
+      // normally, so rows cannot be swallowed by sliver-viewport quirks.
       body: RefreshIndicator(
         onRefresh: () { Analytics.capture('wallet_pull_refresh'); return _refresh(); },
-        color: AD.iconSearch,
+        color: AW.lime,
+        backgroundColor: AW.surf,
         child: ListView(
           controller: _scroll,
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: EdgeInsets.zero,
+          padding: const EdgeInsets.fromLTRB(22, 18, 22, 36),
           children: [
-            _header(inn, out),
-            _filterBar(),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 14, 18, 6),
-              child: Text(
-                (_loading && _entries.isEmpty)
-                    ? 'TRANSACTIONS · loading…'
-                    : 'TRANSACTIONS · ${_entries.length}',
-                style: ADText.sectionLabel(),
+            // 1 — balance hero
+            _balanceHero(),
+            const SizedBox(height: 20),
+
+            // 2 — period row
+            Row(children: [
+              Text('LAST $_days DAYS', style: AWText.caption(c: AW.txMute)),
+              const Spacer(),
+              WalletChipTrack(
+                labels: const ['7D', '30D'],
+                activeIndex: _days == 7 ? 0 : 1,
+                onPick: (i) {
+                  final d = i == 0 ? 7 : 30;
+                  if (d == _days) return;
+                  setState(() => _days = d);
+                  Analytics.capture('wallet_period_changed', {'days': d});
+                  _refresh();
+                },
               ),
-            ),
-            if (_entries.isEmpty && !_loading)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(18, 28, 18, 28),
-                child: Center(
-                  child: _emptyState(
-                    PhosphorIcons.receipt(PhosphorIconsStyle.bold),
-                    'No transactions yet — top up to get rolling.',
+            ]),
+            const SizedBox(height: 12),
+
+            // 3 — money in / money out
+            Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Expanded(child: _moneyTile(true, earned)),
+              const SizedBox(width: 12),
+              Expanded(child: _moneyTile(false, spent)),
+            ]),
+
+            // 4 — daily spend
+            if (bars.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              WalletCard(
+                radius: 20,
+                padding: const EdgeInsets.all(18),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Text('Daily spend', style: AWText.sectionHead()),
+                    const Spacer(),
+                    Flexible(
+                      child: Text(
+                        'last $_days days · ${_coins(spent)} out',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.right,
+                        style: AWText.cardMeta(),
+                      ),
+                    ),
+                  ]),
+                  const SizedBox(height: 16),
+                  WalletBarChart(bars: bars),
+                ]),
+              ),
+            ],
+
+            // 5 — where it went
+            if (byCat.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              WalletCard(
+                radius: 20,
+                padding: const EdgeInsets.all(18),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Text('Where it went', style: AWText.sectionHead()),
+                    const Spacer(),
+                    Text('last $_days days', style: AWText.cardMeta()),
+                  ]),
+                  const SizedBox(height: 14),
+                  Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                    WalletDonut(
+                      segments: [
+                        for (final c in byCat)
+                          (color: _catColor('${c['key']}'), value: ((c['tokens'] as num?) ?? 0)),
+                      ],
+                      centerValue: _coins(spent),
+                    ),
+                    const SizedBox(width: 18),
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (var i = 0; i < byCat.length; i++) ...[
+                            if (i > 0) const SizedBox(height: 9),
+                            WalletLegendRow(
+                              color: _catColor('${byCat[i]['key']}'),
+                              label: '${byCat[i]['label'] ?? _catLabel('${byCat[i]['key']}')}',
+                              value: _coins(((byCat[i]['tokens'] as num?) ?? 0)),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ]),
+                ]),
+              ),
+            ],
+
+            // 6 — history header
+            const SizedBox(height: 26),
+            Row(children: [
+              Text('History', style: AWText.sectionTitle()),
+              const Spacer(),
+              WalletChipTrack(
+                labels: const ['All', 'In', 'Out'],
+                activeIndex: _dirFilter == null ? 0 : (_dirFilter == 'in' ? 1 : 2),
+                onPick: (i) {
+                  final next = i == 0 ? null : (i == 1 ? 'in' : 'out');
+                  if (next == _dirFilter) return;
+                  setState(() => _dirFilter = next);
+                  _applyFilters();
+                },
+              ),
+            ]),
+            const SizedBox(height: 12),
+
+            // 7 — search + calendar + export
+            Row(children: [
+              Expanded(
+                child: WalletSearchField(
+                  controller: _searchCtrl,
+                  onSubmitted: (v) { setState(() => _query = v.trim()); _applyFilters(); },
+                  onClear: _query.isEmpty
+                      ? null
+                      : () { _searchCtrl.clear(); setState(() => _query = ''); _applyFilters(); },
+                ),
+              ),
+              const SizedBox(width: 8),
+              WalletCircleButton(
+                icon: PhosphorIcons.calendarBlank(PhosphorIconsStyle.bold),
+                onTap: () => setState(() => _showCal = !_showCal),
+              ),
+              const SizedBox(width: 8),
+              WalletCircleButton(
+                icon: PhosphorIcons.export(PhosphorIconsStyle.bold),
+                onTap: _showExportSheet,
+              ),
+            ]),
+
+            // Inline day picker (deliberately NOT an absolute popover — a plain
+            // ListView child always paints).
+            if (_showCal) ...[
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerRight,
+                child: WalletCalendar(
+                  month: _calMonth,
+                  selectedDay: _selDay,
+                  onPrev: () => setState(() => _calMonth = DateTime(_calMonth.year, _calMonth.month - 1)),
+                  onNext: () => setState(() => _calMonth = DateTime(_calMonth.year, _calMonth.month + 1)),
+                  onPick: _onPickDay,
+                ),
+              ),
+            ],
+            if (_range != null) ...[
+              const SizedBox(height: 10),
+              Row(children: [
+                Expanded(
+                  child: Text(
+                    'SHOWING ${_dateShort(_range!.start.millisecondsSinceEpoch).toUpperCase()}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AWText.caption(c: AW.txSoft),
                   ),
                 ),
-              )
-            else
-              for (final e in _entries)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 0, 18, 4),
-                  child: _safeRow(e),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    setState(() { _range = null; _selDay = null; });
+                    _applyFilters();
+                  },
+                  child: Text('CLEAR', style: AWText.caption(c: AW.coral)),
                 ),
-            if (!_exhausted && _entries.isNotEmpty)
+              ]),
+            ],
+
+            // 8 — transaction list
+            const SizedBox(height: 18),
+            Text(
+              (_loading && rows.isEmpty) ? 'TRANSACTIONS · loading…' : 'TRANSACTIONS · ${rows.length}',
+              style: AWText.caption(c: AW.txMute),
+            ),
+            const SizedBox(height: 10),
+            if (rows.isEmpty && !_loading)
+              _emptyState()
+            else
+              ..._dayGroups(rows),
+            if (!_exhausted && rows.isNotEmpty)
               const Padding(
                 padding: EdgeInsets.all(16),
                 child: Center(
-                  child: SizedBox(width: 20, height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: AD.iconSearch)),
+                  child: SizedBox(
+                    width: 20, height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: AW.lime),
+                  ),
                 ),
               ),
-            const SizedBox(height: 24),
           ],
         ),
       ),
     );
   }
 
-  /// Dark v2 empty state (dashed glyph tile + one reassuring line).
-  Widget _emptyState(IconData icon, String text) => Column(mainAxisSize: MainAxisSize.min, children: [
-        Container(
-          width: 64, height: 64,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(AD.rListCard),
-            border: Border.all(color: AD.borderControl, width: 1),
-          ),
-          child: Icon(icon, size: 30, color: AD.textTertiary),
-        ),
-        const SizedBox(height: 12),
-        Text(text, style: ADText.preview(), textAlign: TextAlign.center),
-      ]);
+  // ── pieces ──────────────────────────────────────────────────────────────
 
-  Widget _header(int inn, int out) {
-    // [WALLET-COCKPIT-1] Instrument values from the summary; the loaded-trail
-    // month in/out (inn/out) is the offline fallback until the summary lands.
-    final s = _summary;
-    final days = ((s?['days'] as num?) ?? 30).toInt();
-    final earned = ((s?['earned_total'] as num?) ?? inn).toInt();
-    final spent = ((s?['spent_total'] as num?) ?? out).toInt();
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 4),
-      child: Column(children: [
-        // Hero balance — vivid green money card (kept as a colored hero surface
-        // with dark-legible ink on the dark v2 skin).
-        AdCard(
-          color: AD.online,
-          padding: const EdgeInsets.all(20),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Container(
-                width: 34, height: 34,
-                decoration: BoxDecoration(
-                  color: AD.bg,
-                  borderRadius: BorderRadius.circular(AD.rBadge),
-                ),
-                child: Icon(PhosphorIcons.wallet(PhosphorIconsStyle.bold), size: 18, color: AD.online),
-              ),
-              const SizedBox(width: 11),
-              Expanded(child: Text('Balance', style: ADText.threadName(c: AD.textOnInput))),
-            ]),
-            const SizedBox(height: 14),
-            // Hero is the Token count — coins are the wallet's native unit.
-            // USD never shows on the wallet face; it only appears inside a
-            // top-up's detail row ("Amount paid … USD").
-            FittedBox(
+  Widget _balanceHero() {
+    final usd = (_balance / kCoinsPerUsd).toStringAsFixed(2);
+    return WalletCard(
+      color: AW.mint,
+      radius: 24,
+      padding: const EdgeInsets.all(20),
+      hardBorder: true,
+      shadow: const Offset(6, 7),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(
+            width: 36,
+            height: 36,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(11),
+            ),
+            child: Icon(PhosphorIcons.wallet(PhosphorIconsStyle.fill), size: 19, color: AW.glyph),
+          ),
+          const SizedBox(width: 10),
+          Text('BALANCE', style: AWText.cardLabel()),
+        ]),
+        const SizedBox(height: 12),
+        Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          Flexible(
+            child: FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
-              child: Text(_coins(_balance), style: ADText.appTitle(c: AD.textOnInput)),
+              child: Text(_coins(_balance), style: AWText.balanceHuge()),
             ),
-            const SizedBox(height: 4),
-            Text(
-              'Tokens${_held > 0 ? '  ·  ${_coins(_held)} pending (7-day hold)' : ''}',
-              style: ADText.rowName(c: AD.textOnInput),
-            ),
-            const SizedBox(height: 16),
-            // Withdraw/payout is HIDDEN for now — no marketplace/payout flow yet.
-            // Flip _kShowWithdraw back to true to restore the two-button row.
-            // Android tops up via native Google Play Billing (fixed-price tiers),
-            // independent of billingEnabled (that gates subscription paywalls). The
-            // server-side playTopupEnabled flag + Play service account are the real
-            // gate. Non-Android falls back to the Stripe rail, still hidden while
-            // billing is off (everything free).
-            if (!Platform.isAndroid && !RemoteConfig.billingEnabled)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                decoration: BoxDecoration(
-                  color: AD.bg,
-                  borderRadius: BorderRadius.circular(AD.rStatCard),
-                  border: Border.all(color: AD.borderControl, width: 1),
-                ),
-                child: Text('Everything is free right now — no top-ups needed.',
-                    style: ADText.rowName(c: AD.online)),
-              )
-            else
-            Row(children: [
-              Expanded(
-                child: AdButton(
-                  label: 'Top up',
-                  fontSize: 17,
-                  trailingIcon: false,
-                  icon: PhosphorIcons.plus(PhosphorIconsStyle.bold),
-                  onPressed: Platform.isAndroid ? _playTopupFlow : _topupFlow,
-                ),
-              ),
-              if (_kShowWithdraw) ...[
-                const SizedBox(width: 10),
-                Expanded(
-                  child: AdButton(
-                    label: 'Withdraw',
-                    variant: AdButtonVariant.teal,
-                    fontSize: 17,
-                    trailingIcon: false,
-                    icon: PhosphorIcons.bank(PhosphorIconsStyle.bold),
-                    onPressed: () {
-                      Analytics.capture('wallet_withdraw_opened', {'balance_coins': _balance});
-                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PayoutScreen()));
-                    },
-                  ),
-                ),
-              ],
-            ]),
-          ]),
-        ),
-        const SizedBox(height: 14),
-        // [WALLET-REDESIGN-1] Plain-English money in / money out over the window —
-        // replaces the burn-rate / runway / net-delta / AI-minute instruments users
-        // found opaque. Green = came in, red = went out. Full per-transaction detail
-        // lives in the list below (tap any row).
-        Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Expanded(child: _miniCard('Money in · ${days}d', '+${_coins(earned)}',
-              PhosphorIcons.arrowDownLeft(PhosphorIconsStyle.bold), AD.online, AD.online)),
-          const SizedBox(width: 10),
-          Expanded(child: _miniCard('Money out · ${days}d', '−${_coins(spent)}',
-              PhosphorIcons.arrowUpRight(PhosphorIconsStyle.bold), AD.danger, AD.danger)),
+          ),
+          const SizedBox(width: 8),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text('tokens', style: AWText.balanceUnit()),
+          ),
         ]),
+        const SizedBox(height: 7),
+        Text(
+          '≈ \$$usd value · refills monthly'
+          '${_held > 0 ? ' · ${_coins(_held)} on hold' : ''}',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: AWText.balanceSub(),
+        ),
+        const SizedBox(height: 16),
+        // Android tops up via native Google Play Billing (fixed-price tiers),
+        // independent of billingEnabled (that gates subscription paywalls). The
+        // server-side playTopupEnabled flag + Play service account are the real
+        // gate. Non-Android falls back to the Stripe rail, still hidden while
+        // billing is off (everything free).
+        if (!Platform.isAndroid && !RemoteConfig.billingEnabled)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+            decoration: BoxDecoration(
+              color: AW.bg,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AW.ink, width: 2),
+            ),
+            child: Text('Everything is free right now — no top-ups needed.',
+                style: AWText.rowTitle(c: AW.mint)),
+          )
+        else
+          _heroButton(
+            label: 'Top up',
+            icon: PhosphorIcons.plus(PhosphorIconsStyle.bold),
+            fill: AW.coral,
+            ink: Colors.white,
+            onTap: Platform.isAndroid ? _playTopupFlow : _topupFlow,
+          ),
+        // Withdraw/payout is HIDDEN for now — no marketplace/payout flow yet.
+        // Flip _kShowWithdraw back to true to restore the button.
+        if (_kShowWithdraw) ...[
+          const SizedBox(height: 10),
+          _heroButton(
+            label: 'Withdraw',
+            icon: PhosphorIcons.handCoins(PhosphorIconsStyle.fill),
+            fill: AW.lime,
+            ink: AW.glyph,
+            onTap: () {
+              Analytics.capture('wallet_withdraw_opened', {'balance_coins': _balance});
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PayoutScreen()));
+            },
+          ),
+        ],
       ]),
     );
   }
 
-  /// Compact rate readout for the burn instrument (tokens/day).
-  String _rate(double v) {
-    if (v <= 0) return '0';
-    if (v >= 100) return _coins(v.round());
-    return v == v.roundToDouble() ? '${v.round()}' : v.toStringAsFixed(1);
-  }
-
-  /// [WALLET-COCKPIT-1] Instrument card: caption + big readout + optional gauge
-  /// bar (fraction 0..1). Same visual family as [_miniCard], denser.
-  Widget _instrument(String caption, String value, IconData icon, Color accent, {double? fraction}) => AdCard(
-        radius: AD.rStatCard,
-        padding: const EdgeInsets.all(12),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Icon(icon, size: 14, color: accent),
-            const SizedBox(width: 5),
-            Expanded(
-              child: Text(caption.toUpperCase(), maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: ADText.statCaption()),
-            ),
-          ]),
-          const SizedBox(height: 8),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(value, style: ADText.appTitle(c: accent)),
-          ),
-          if (fraction != null) ...[
-            const SizedBox(height: 8),
-            _bar(fraction, accent),
-          ],
-        ]),
-      );
-
-  /// Thin horizontal gauge/breakdown bar (fraction of the track, left-aligned).
-  Widget _bar(double f, Color c) => ClipRRect(
-        borderRadius: BorderRadius.circular(3),
-        child: Container(
-          height: 5,
-          color: AD.bg,
-          alignment: Alignment.centerLeft,
-          child: FractionallySizedBox(
-            widthFactor: f.clamp(0.02, 1.0).toDouble(),
-            child: Container(color: c),
-          ),
+  /// Full-width 54-high poster button (flat fill, black border, hard shadow).
+  Widget _heroButton({
+    required String label,
+    required IconData icon,
+    required Color fill,
+    required Color ink,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        height: 54,
+        width: double.infinity,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: fill,
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(color: AW.ink, width: 2.5),
+          boxShadow: const [BoxShadow(color: AW.ink, offset: Offset(4, 5), blurRadius: 0)],
         ),
-      );
-
-  /// [WALLET-COCKPIT-1] Per-feature breakdown panel: horizontal spend bars
-  /// ("where it went") + earn sources ("what you earned"), from the summary.
-  Widget _breakdown() {
-    final s = _summary;
-    if (s == null) return const SizedBox.shrink();
-    final by = ((s['by_feature'] as List?) ?? const []).map((e) => (e as Map).cast<String, dynamic>()).toList();
-    final earns = ((s['earn_sources'] as List?) ?? const []).map((e) => (e as Map).cast<String, dynamic>()).toList();
-    final minutes = ((s['minutes_used'] as num?) ?? 0).toInt();
-    if (by.isEmpty && earns.isEmpty) return const SizedBox.shrink();
-    final days = ((s['days'] as num?) ?? 30).toInt();
-    int maxOf(List<Map<String, dynamic>> l) {
-      var m = 1;
-      for (final e in l) {
-        final t = ((e['tokens'] as num?) ?? 0).toInt();
-        if (t > m) m = t;
-      }
-      return m;
-    }
-    final maxSpend = maxOf(by), maxEarn = maxOf(earns);
-
-    Widget featRow(Map<String, dynamic> f, int maxT, Color c, String sign) {
-      final t = ((f['tokens'] as num?) ?? 0).toInt();
-      final n = ((f['count'] as num?) ?? 0).toInt();
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Expanded(
-              child: Text('${f['label'] ?? 'Other'}', maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: ADText.rowName()),
-            ),
-            const SizedBox(width: 8),
-            Text('×$n', style: ADText.statCaption()),
-            const SizedBox(width: 8),
-            Text('$sign${_coins(t)}', style: ADText.rowName(c: c)),
-          ]),
-          const SizedBox(height: 5),
-          _bar(t / maxT, c),
-        ]),
-      );
-    }
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 10, 18, 0),
-      child: AdCard(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          if (by.isNotEmpty) ...[
-            Row(children: [
-              ZineIconBadge(icon: PhosphorIcons.chartBar(PhosphorIconsStyle.bold), color: AD.danger, size: 26),
-              const SizedBox(width: 8),
-              Text('WHERE IT WENT · $days DAYS', style: ADText.sectionLabel()),
-            ]),
-            const SizedBox(height: 6),
-            for (final f in by) featRow(f, maxSpend, AD.danger, '−'),
-          ],
-          if (by.isNotEmpty && earns.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Container(height: 1, color: AD.borderHairline),
-            const SizedBox(height: 10),
-          ],
-          if (earns.isNotEmpty) ...[
-            Row(children: [
-              ZineIconBadge(icon: PhosphorIcons.medal(PhosphorIconsStyle.bold), color: AD.online, size: 26),
-              const SizedBox(width: 8),
-              Text('WHAT YOU EARNED · $days DAYS', style: ADText.sectionLabel()),
-            ]),
-            const SizedBox(height: 6),
-            for (final f in earns) featRow(f, maxEarn, AD.online, '+'),
-          ],
-          if (minutes > 0) ...[
-            const SizedBox(height: 6),
-            Text('AI RECEPTIONIST · $minutes MIN USED', style: ADText.statCaption()),
-            const SizedBox(height: 4),
-          ],
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 18, color: ink),
+          const SizedBox(width: 9),
+          Text(label, style: AWText.sectionHead(c: ink)),
         ]),
       ),
     );
   }
 
-  /// Metric card (§7.11): icon badge + Nunito number + caption.
-  Widget _miniCard(String label, String value, IconData icon, Color accent, Color valueColor) => AdCard(
-        radius: AD.rStatCard,
-        padding: const EdgeInsets.all(14),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          ZineIconBadge(icon: icon, color: accent, size: 30),
-          const SizedBox(height: 10),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(value, style: ADText.appTitle(c: valueColor)),
+  Widget _moneyTile(bool isIn, int tokens) {
+    final color = isIn ? AW.mint : AW.coral;
+    return WalletCard(
+      radius: 18,
+      padding: const EdgeInsets.all(14),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        WalletBadge(
+          icon: isIn
+              ? PhosphorIcons.arrowDownLeft(PhosphorIconsStyle.bold)
+              : PhosphorIcons.arrowUpRight(PhosphorIconsStyle.bold),
+          color: color,
+          size: 36,
+          radius: 11,
+        ),
+        const SizedBox(height: 12),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text('${isIn ? '+' : '−'}${_coins(tokens)}', style: AWText.statBig(c: color)),
+        ),
+        const SizedBox(height: 2),
+        Text(isIn ? 'MONEY IN' : 'MONEY OUT', style: AWText.caption(c: AW.txMute)),
+      ]),
+    );
+  }
+
+  Widget _emptyState() => Padding(
+        padding: const EdgeInsets.fromLTRB(0, 26, 0, 26),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            width: 64,
+            height: 64,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: AW.hair, width: 2),
+            ),
+            child: Icon(PhosphorIcons.receipt(PhosphorIconsStyle.bold), size: 28, color: AW.txMute),
           ),
-          const SizedBox(height: 3),
-          Text(label.toUpperCase(), style: ADText.statCaption()),
+          const SizedBox(height: 12),
+          Text(
+            _filtered
+                ? 'Nothing matches those filters.'
+                : 'No transactions yet — top up to get rolling.',
+            textAlign: TextAlign.center,
+            style: AWText.rowSub(c: AW.txMute),
+          ),
         ]),
       );
 
-  Widget _filterBar() {
-    return Column(children: [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(18, 10, 18, 0),
-        child: AdField(
-          controller: _searchCtrl,
-          hint: 'Search by reference or feature',
-          leadIcon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
-          trailing: _query.isEmpty
-              ? null
-              : GestureDetector(
-                  onTap: () { _searchCtrl.clear(); setState(() => _query = ''); _applyFilters(); },
-                  child: PhosphorIcon(PhosphorIcons.x(PhosphorIconsStyle.bold), size: 18, color: AD.textOnInput),
-                ),
-          onSubmitted: (v) { setState(() => _query = v.trim()); _applyFilters(); },
-        ),
-      ),
-      SizedBox(
-        height: 52,
-        child: ListView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+  /// Day-grouped transaction cards (TODAY / YESTERDAY / MMM D).
+  List<Widget> _dayGroups(List<Map<String, dynamic>> rows) {
+    final groups = <({String label, List<Map<String, dynamic>> items})>[];
+    String? cur;
+    for (final e in rows) {
+      final label = _groupLabel(_tsOf(e));
+      if (label != cur) {
+        groups.add((label: label, items: <Map<String, dynamic>>[]));
+        cur = label;
+      }
+      groups.last.items.add(e);
+    }
+
+    final out = <Widget>[];
+    for (final g in groups) {
+      out.add(Padding(
+        padding: const EdgeInsets.fromLTRB(0, 16, 0, 2),
+        child: Text(g.label, style: AWText.caption()),
+      ));
+      out.add(WalletCard(
+        radius: 18,
+        padding: EdgeInsets.zero,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            AdChip(
-              label: _range == null
-                  ? 'Dates'
-                  : '${_dateShort(_range!.start.millisecondsSinceEpoch)} – ${_dateShort(_range!.end.millisecondsSinceEpoch)}',
-              active: _range != null,
-              onTap: _pickRange,
-            ),
-            if (_range != null) ...[
-              const SizedBox(width: 8),
-              AdChip(
-                label: 'Clear dates',
-                onTap: () { setState(() => _range = null); _applyFilters(); },
-              ),
-            ],
-            const SizedBox(width: 8),
-            // [WALLET-COCKPIT-1] Direction chips against the statement feed.
-            for (final d in const [('earn', 'Earned'), ('spend', 'Spent'), ('topup', 'Top-ups'), ('payout', 'Payouts'), ('refund', 'Refunds')]) ...[
-              AdChip(
-                label: d.$2,
-                active: _dirFilter == d.$1,
-                onTap: () {
-                  setState(() => _dirFilter = _dirFilter == d.$1 ? null : d.$1);
-                  _applyFilters();
-                },
-              ),
-              const SizedBox(width: 8),
-            ],
+            for (var i = 0; i < g.items.length; i++) _txnRow(g.items[i], first: i == 0),
           ],
         ),
-      ),
-    ]);
-  }
-
-  /// Relative timestamp for the flight log ("2h ago"); falls back to the short
-  /// date past a week.
-  String _relTime(int ms) {
-    if (ms <= 0) return '';
-    final d = DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(ms));
-    if (d.inMinutes < 1) return 'just now';
-    if (d.inMinutes < 60) return '${d.inMinutes}m ago';
-    if (d.inHours < 24) return '${d.inHours}h ago';
-    if (d.inDays < 7) return '${d.inDays}d ago';
-    return _dateShort(ms);
-  }
-
-  /// [WALLET-COCKPIT-1] Icon per feature key (spends carry the chargeFeature
-  /// key in feature_key); direction icon as the fallback.
-  IconData _featureIcon(String key, String direction) {
-    switch (key) {
-      case 'ava_receptionist_call':
-      case 'ava_receptionist_minute':
-        return PhosphorIcons.phoneCall(PhosphorIconsStyle.bold);
-      case 'ava_voicemail':
-        return PhosphorIcons.voicemail(PhosphorIconsStyle.bold);
-      case 'ava_chat':
-        return PhosphorIcons.chatCircleDots(PhosphorIconsStyle.bold);
-      case 'ava_memory':
-        return PhosphorIcons.brain(PhosphorIconsStyle.bold);
-      case 'ava_image_free':
-      case 'ava_image_generate':
-        return PhosphorIcons.image(PhosphorIconsStyle.bold);
-      case 'ava_voice_reply':
-        return PhosphorIcons.microphone(PhosphorIconsStyle.bold);
-      case 'ava_vision_snapshot':
-        return PhosphorIcons.camera(PhosphorIconsStyle.bold);
-      case 'ava_mcp_tool':
-        return PhosphorIcons.plugsConnected(PhosphorIconsStyle.bold);
-      case 'guardian_always_on':
-        return PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold);
-      case 'listing_post':
-      case 'listing_post_connect':
-      case 'avaolx':
-        return PhosphorIcons.storefront(PhosphorIconsStyle.bold);
-      case 'avalive':
-        return PhosphorIcons.broadcast(PhosphorIconsStyle.bold);
-      case 'translate':
-        return PhosphorIcons.translate(PhosphorIconsStyle.bold);
-      case 'avapayout':
-        return PhosphorIcons.bank(PhosphorIconsStyle.bold);
-      // [WALLET-UX-1] Welcome bonus (type=promo, app_name=welcome_bonus).
-      case 'welcome_bonus':
-        return PhosphorIcons.gift(PhosphorIconsStyle.bold);
+      ));
     }
-    switch (direction) {
-      case 'topup':
-        return PhosphorIcons.creditCard(PhosphorIconsStyle.bold);
-      case 'earn':
-        return PhosphorIcons.medal(PhosphorIconsStyle.bold);
-      case 'payout':
-        return PhosphorIcons.bank(PhosphorIconsStyle.bold);
-      case 'refund':
-        return PhosphorIcons.arrowCounterClockwise(PhosphorIconsStyle.bold);
-      case 'spend':
-        return PhosphorIcons.lightning(PhosphorIconsStyle.bold);
-    }
-    return PhosphorIcons.swap(PhosphorIconsStyle.bold);
+    return out;
   }
 
-  /// [WALLET-COCKPIT-1] Statement row — flight-log style: feature icon badge,
-  /// human label, relative time, signed tokens (earn green / spend red) and the
-  /// running balance when the server stored one. Tolerates both statement rows
-  /// (tokens/ts/label) and legacy cached ledger rows (amount/created_at/title).
-  // [WALLET-ROW-SAFE-1] A throw inside an item builder renders as a BLANK box in a
-  // release build — which looks exactly like "my transactions don't show" even though
-  // the rows loaded (telemetry: entries loaded, no error). So build every row behind a
-  // guard: on any exception, report it (with the offending fields) AND paint a plain,
-  // always-visible fallback row so the transaction is never invisible.
-  Widget _safeRow(Map<String, dynamic> e) {
+  /// [WALLET-ROW-SAFE-1] A throw inside a row builder renders as a BLANK box in a
+  /// release build — indistinguishable from "my transactions don't show". Every
+  /// row is therefore built behind a guard that reports the failure AND paints a
+  /// plain fallback, so a transaction is never invisible.
+  Widget _txnRow(Map<String, dynamic> e, {required bool first}) {
     try {
-      return _row(e);
+      final tokens = _tokensOf(e);
+      final ts = _tsOf(e);
+      final cat = _catOf(e);
+      return WalletTxnRow(
+        icon: _catIcon(cat),
+        color: _catColor(cat),
+        title: _titleOf(e),
+        sub: _catLabel(cat),
+        amountLabel: '${tokens >= 0 ? '+' : '−'}${_coins(tokens.abs())}',
+        isIn: tokens >= 0,
+        time: _clock(ts),
+        showDivider: !first,
+        onTap: () => _showDetail(e),
+      );
     } catch (err) {
       Analytics.error(
         domain: 'wallet', code: 'row_render_error',
-        message: '$err | type=${e['type']} feat=${e['feature_key']} keys=${e.keys.toList()}',
+        message: '$err | type=${e['type']} cat=${e['category']} keys=${e.keys.toList()}',
         screen: 'wallet_main', action: 'row_build',
       );
-      final tokens = (((e['tokens'] ?? e['amount']) as num?) ?? 0).toInt();
-      final positive = tokens >= 0;
+      final tokens = _tokensOf(e);
       return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 14),
         child: Row(children: [
           Expanded(
-            child: Text('${e['label'] ?? e['type'] ?? 'Transaction'}',
-                maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.rowName()),
+            child: Text(_titleOf(e), maxLines: 1, overflow: TextOverflow.ellipsis, style: AWText.rowTitle()),
           ),
           const SizedBox(width: 8),
-          Text('${positive ? '+' : '−'}${tokens.abs()}',
-              style: ADText.rowName(c: positive ? AD.online : AD.danger)),
+          Text('${tokens >= 0 ? '+' : '−'}${_coins(tokens.abs())}',
+              style: AWText.amount(c: tokens >= 0 ? AW.mint : AW.coral)),
         ]),
       );
     }
   }
 
-  Widget _row(Map<String, dynamic> e) {
-    final tokens = (((e['tokens'] ?? e['amount']) as num?) ?? 0).toInt();
-    final ts = (((e['ts'] ?? e['created_at']) as num?) ?? 0).toInt();
-    final dir = '${e['direction'] ?? (tokens >= 0 ? 'earn' : 'spend')}';
-    final label = '${e['label'] ?? e['title'] ?? _kTypes['${e['type']}']?.label ?? e['type'] ?? 'Other'}';
-    final positive = tokens >= 0;
-    final balAfter = (e['balance_after'] as num?)?.toInt();
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => _showDetail(<String, dynamic>{
-        'id': e['id'], 'type': e['type'], 'amount': tokens, 'created_at': ts,
-        'title': label, if (e['ref'] != null) 'ref': e['ref'],
-      }),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 7),
-        child: Row(children: [
-          ZineIconBadge(
-            icon: _featureIcon('${e['feature_key'] ?? ''}', dir),
-            color: positive ? AD.online : AD.danger,
-            size: 34,
-          ),
-          const SizedBox(width: 11),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.rowName()),
-              const SizedBox(height: 2),
-              Text(_relTime(ts).toUpperCase(), style: ADText.statCaption()),
+  /// A calendar day pick narrows the statement to that single local day.
+  void _onPickDay(int day) {
+    final start = DateTime(_calMonth.year, _calMonth.month, day);
+    setState(() {
+      _selDay = day;
+      // _fetchPage widens `to` by a day, so start==end covers 00:00 → 23:59:59.
+      _range = DateTimeRange(start: start, end: start);
+      _showCal = false;
+    });
+    Analytics.capture('wallet_day_filtered', {'day': start.toIso8601String()});
+    _applyFilters();
+  }
+
+  // ── transaction detail ───────────────────────────────────────────────────
+
+  Future<void> _showDetail(Map<String, dynamic> row) async {
+    final id = '${row['id']}';
+    Analytics.capture('wallet_txn_opened', {'type': '${row['type']}', 'id': id});
+    Map<String, dynamic> detail = const {};
+    try {
+      final d = await MoneyApi.ledgerDetail(id);
+      detail = ((d['entry'] as Map?) ?? const {}).cast<String, dynamic>();
+    } catch (_) {/* offline: show the row we already have */}
+    if (!mounted) return;
+
+    final entry = <String, dynamic>{...row, ...detail};
+    final meta = ((entry['meta'] as Map?) ?? const {}).cast<String, dynamic>();
+    final tokens = _tokensOf(entry);
+    final ts = _tsOf(entry);
+    final cat = _catOf(entry);
+    final isIn = tokens >= 0;
+    final amountLabel = '${isIn ? '+' : '−'}${_coins(tokens.abs())}';
+
+    // Cost maths — only rendered when BOTH a duration and a per-minute rate are
+    // present; a half-filled equation is worse than none.
+    final durSec = ((meta['duration_seconds'] ?? meta['duration_sec'] ?? entry['duration_seconds']) as num?)?.toInt();
+    final mins = (meta['minutes'] as num?)?.toDouble();
+    final rate = (meta['rate_per_min'] ?? entry['rate_per_min']) as num?;
+    String? durLabel;
+    if (durSec != null && durSec > 0) {
+      durLabel = '${(durSec / 60).floor()}:${(durSec % 60).toString().padLeft(2, '0')}';
+    } else if (mins != null && mins > 0) {
+      durLabel = mins == mins.roundToDouble() ? '${mins.round()} min' : '${mins.toStringAsFixed(1)} min';
+    }
+
+    final usdCents = (meta['cents'] as num?)?.toInt();
+    final usdLabel = '${entry['usd'] ?? ''}'.trim().isNotEmpty
+        ? '${entry['usd']}'
+        : (usdCents != null ? _usdFromCents(usdCents) : '');
+    final paidWith = _payMethod(meta) ?? '';
+    final status = '${entry['status'] ?? 'completed'}';
+    final balAfter = (entry['balance_after'] as num?)?.toInt();
+    final ref = '${entry['ref'] ?? ''}'.trim();
+
+    final infoRows = <({String label, String value})>[
+      (label: 'Date', value: _fullDate(ts)),
+      (label: 'Type', value: _catLabel(cat)),
+      (label: 'Reference', value: ref),
+      (label: 'Paid', value: usdLabel),
+      (label: 'Paid with', value: paidWith),
+      (label: 'Status', value: status.isEmpty ? '' : status[0].toUpperCase() + status.substring(1)),
+      (label: 'Balance after', value: balAfter == null ? '' : '${_coins(balAfter)} tokens'),
+    ].where((r) => r.value.trim().isNotEmpty).toList();
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AW.bg,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+      ),
+      builder: (c) => SafeArea(
+        top: false,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(c).size.height * 0.9),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(22, 14, 22, 26),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Center(
+                child: Container(
+                  width: 44, height: 5,
+                  decoration: BoxDecoration(color: AW.hair, borderRadius: BorderRadius.circular(100)),
+                ),
+              ),
+              const SizedBox(height: 22),
+              WalletBadge(icon: _catIcon(cat), color: _catColor(cat), size: 66, radius: 20, glyph: 32),
+              const SizedBox(height: 20),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(amountLabel, style: AWText.detailAmount(c: isIn ? AW.mint : AW.coral)),
+              ),
+              const SizedBox(height: 4),
+              Text('tokens · ${_catLabel(cat)}',
+                  textAlign: TextAlign.center, style: AWText.sectionHead(c: AW.txMute)),
+              const SizedBox(height: 14),
+              WalletStatusPill(status: status.isEmpty ? 'completed' : status),
+              const SizedBox(height: 22),
+              Text(_titleOf(entry),
+                  textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis,
+                  style: AWText.rowTitle()),
+              const SizedBox(height: 16),
+              if (durLabel != null && rate != null) ...[
+                WalletBreakdownBox(
+                  duration: durLabel,
+                  rate: _coins(rate),
+                  total: _coins(tokens.abs()),
+                  totalColor: isIn ? AW.mint : AW.coral,
+                ),
+                const SizedBox(height: 14),
+              ],
+              WalletCard(
+                radius: 18,
+                padding: EdgeInsets.zero,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (var i = 0; i < infoRows.length; i++)
+                      WalletInfoRow(
+                        label: infoRows[i].label,
+                        value: infoRows[i].value,
+                        showDivider: i != 0,
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+              _heroButton(
+                label: 'Get receipt',
+                icon: PhosphorIcons.envelopeSimple(PhosphorIconsStyle.bold),
+                fill: AW.blue,
+                ink: AW.glyph,
+                onTap: () async {
+                  final r = await MoneyApi.resendReceipt(id);
+                  Analytics.capture('wallet_receipt_resent', {'id': id, 'sent': r['sent'] == true});
+                  if (c.mounted) Navigator.pop(c);
+                  _snack(r['sent'] == true ? 'Receipt sent to your email.' : 'Could not send the receipt.');
+                },
+              ),
+              const SizedBox(height: 6),
+              Center(
+                child: TextButton(
+                  onPressed: () {
+                    Analytics.capture('wallet_txn_reported', {'id': id, 'type': '${entry['type']}'});
+                    if (c.mounted) Navigator.pop(c);
+                    _snack('Thanks — we\'ll look into it.');
+                  },
+                  child: Text('Report an issue', style: AWText.rowTitle(c: AW.coral)),
+                ),
+              ),
             ]),
           ),
-          const SizedBox(width: 8),
-          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Text('${positive ? '+' : '−'}${_coins(tokens)}',
-                style: ADText.rowName(c: positive ? AD.online : AD.danger)),
-            if (balAfter != null) ...[
-              const SizedBox(height: 2),
-              Text('BAL ${_coins(balAfter)}', style: ADText.statCaption()),
-            ],
+        ),
+      ),
+    );
+  }
+
+  // ── export ───────────────────────────────────────────────────────────────
+
+  void _showExportSheet() {
+    final now = DateTime.now();
+    Analytics.capture('wallet_export_sheet_opened');
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AW.surf,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+      ),
+      builder: (c) => SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(22, 12, 22, 20),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Center(
+              child: Container(
+                width: 44, height: 5,
+                decoration: BoxDecoration(color: AW.hair, borderRadius: BorderRadius.circular(100)),
+              ),
+            ),
+            const SizedBox(height: 18),
+            Text('Export statement', style: AWText.sectionTitle()),
+            const SizedBox(height: 4),
+            Text('Your ${_kMonLong[now.month - 1]} ${now.year} transaction history',
+                style: AWText.rowSub(c: AW.txMute)),
+            const SizedBox(height: 18),
+            _exportTile(c, 'share', 'Share', 'Send via AvaTalk or apps',
+                PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold), AW.blue),
+            const SizedBox(height: 10),
+            _exportTile(c, 'save', 'Save to phone', 'Download CSV statement',
+                PhosphorIcons.downloadSimple(PhosphorIconsStyle.bold), AW.lime),
+            const SizedBox(height: 10),
+            _exportTile(c, 'email', 'Email', 'Send a copy to yourself',
+                PhosphorIcons.envelopeSimple(PhosphorIconsStyle.bold), AW.lilac),
+            const SizedBox(height: 8),
+            Center(
+              child: TextButton(
+                onPressed: () => Navigator.pop(c),
+                child: Text('Cancel', style: AWText.rowTitle(c: AW.txMute)),
+              ),
+            ),
           ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _exportTile(BuildContext sheetCtx, String mode, String label, String sub, IconData icon, Color color) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _runExport(sheetCtx, mode),
+      child: WalletCard(
+        color: AW.surf2,
+        radius: 16,
+        hardBorder: true,
+        shadow: const Offset(3, 3),
+        padding: const EdgeInsets.fromLTRB(15, 13, 15, 13),
+        child: Row(children: [
+          WalletBadge(icon: icon, color: color, size: 38, radius: 11),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+              Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: AWText.rowTitle()),
+              const SizedBox(height: 2),
+              Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: AWText.rowSub(c: AW.txMute)),
+            ]),
+          ),
+          Icon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: AW.txMute),
         ]),
       ),
     );
+  }
+
+  /// Builds the current month's CSV server-side, then shares / saves it. All
+  /// three modes hit the same endpoint; only the disposal differs.
+  Future<void> _runExport(BuildContext sheetCtx, String mode) async {
+    final now = DateTime.now();
+    final from = DateTime(now.year, now.month).millisecondsSinceEpoch;
+    Analytics.capture('wallet_statement_export', {'mode': mode, 'month': now.month, 'year': now.year});
+    String? csv;
+    try {
+      csv = await MoneyApi.statementCsv(
+        from: from,
+        to: now.millisecondsSinceEpoch,
+        tzOffsetMin: now.timeZoneOffset.inMinutes,
+      );
+    } catch (e) {
+      Analytics.error(
+        domain: 'wallet', code: 'statement_export_failed',
+        message: '$e', screen: 'wallet_main', action: 'export_$mode',
+      );
+    }
+    if (sheetCtx.mounted) Navigator.pop(sheetCtx);
+    final body = csv?.trim() ?? '';
+    // A JSON error envelope means the endpoint rejected the window.
+    if (body.isEmpty || body.startsWith('{')) {
+      _snack('Could not build the statement.');
+      return;
+    }
+    final lines = body.split('\n');
+    final count = lines.length > 1 ? lines.length - 1 : 0;
+    try {
+      final dir = await getTemporaryDirectory();
+      final f = File('${dir.path}/avatok_statement_${now.year}_${now.month.toString().padLeft(2, '0')}.csv');
+      await f.writeAsString(body, flush: true);
+      if (mode != 'save') {
+        await Share.shareXFiles(
+          [XFile(f.path, mimeType: 'text/csv')],
+          subject: 'AvaWallet statement — ${_kMonLong[now.month - 1]} ${now.year}',
+        );
+      }
+    } catch (e) {
+      Analytics.error(
+        domain: 'wallet', code: 'statement_share_failed',
+        message: '$e', screen: 'wallet_main', action: 'export_$mode',
+      );
+      _snack('Could not build the statement.');
+      return;
+    }
+    _snack('Statement ready ($count rows).');
   }
 }

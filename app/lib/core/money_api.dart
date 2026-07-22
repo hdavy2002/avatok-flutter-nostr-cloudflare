@@ -119,8 +119,23 @@ class MoneyApi {
 
   /// [WALLET-COCKPIT-1] Cockpit aggregates over the last [days] days: balance,
   /// earned/spent totals, per-feature breakdown, burn/day, runway, AI minutes.
-  static Future<Map<String, dynamic>> summary({int days = 30}) async =>
-      _json((await ApiAuth.getSigned('$kWalletBase/summary?days=$days')).body);
+  /// [WALLET-REDESIGN-1] `tzOffsetMin` (minutes east of UTC, e.g. 330 for IST)
+  /// makes the server bucket `daily_spend` by the user's LOCAL day, so the
+  /// 7-day bar chart doesn't attribute late-night spend to the wrong bar.
+  /// Also returns `by_category` (donut) alongside the existing `by_feature`.
+  static Future<Map<String, dynamic>> summary({int days = 30, int? tzOffsetMin}) async =>
+      _json((await ApiAuth.getSigned(
+        '$kWalletBase/summary?days=$days${tzOffsetMin != null ? '&tz_offset_min=$tzOffsetMin' : ''}',
+      )).body);
+
+  /// [WALLET-REDESIGN-1] CSV statement for a date window — backs the export
+  /// sheet (share / save / email). Returns the raw CSV body.
+  static Future<String> statementCsv({required int from, required int to, int? tzOffsetMin}) async {
+    final qs = 'from=$from&to=$to&format=csv'
+        '${tzOffsetMin != null ? '&tz_offset_min=$tzOffsetMin' : ''}';
+    final r = await ApiAuth.getSigned('$kWalletBase/statement/export?$qs');
+    return r.body;
+  }
 
   static Future<Map<String, dynamic>> resendReceipt(String id) =>
       _post('$kWalletBase/ledger/$id/receipt', const {});

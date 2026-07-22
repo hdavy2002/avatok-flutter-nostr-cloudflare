@@ -21,7 +21,7 @@ import { ingestCallTelemetry } from "./routes/telemetry_calls";
 // minted verification without a Didit check. See LEGACY_GONE in the router.
 import { idStatus, idEmailStart, idEmailVerify, idPasswordStart, idPasswordSet } from "./routes/id";
 import { walletTopup, walletTopupIntent, walletTopupPlayVerify, stripeWebhook, walletSpend, walletBalance, walletTransactions, walletEarnings, walletLive, walletLedger, walletLedgerDetail, walletReceiptResend } from "./routes/wallet";
-import { walletStatement, walletSummary, walletTopupQuote } from "./routes/wallet_statement";
+import { walletStatement, walletStatementExport, walletSummary, walletTopupQuote } from "./routes/wallet_statement";
 import { adminLedger, adminRefund, adminAdjust, adminAccount, adminRecon, adminEscrowHold, adminEscrowRelease, adminTaxExport, adminFailedSettlements, adminRetrySettlement, requireAdmin } from "./routes/admin_money";
 import { welcomeBackfill } from "./routes/welcome_bonus"; // [WELCOME-100-1]
 import { liveStart, liveStop, liveJoin, liveRoom, liveDonate, liveMod, liveState } from "./routes/live";
@@ -842,6 +842,8 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/wallet/transactions" && req.method === "GET") return await walletTransactions(req, env);
       // [WALLET-COCKPIT-1] Cockpit wallet reads: labeled statement + aggregates.
       if (p === "/api/wallet/statement" && req.method === "GET") return await walletStatement(req, env);
+      // [WALLET-REDESIGN-1] CSV export of the statement (share/save from the app).
+      if (p === "/api/wallet/statement/export" && req.method === "GET") return await walletStatementExport(req, env);
       if (p === "/api/wallet/summary" && req.method === "GET") return await walletSummary(req, env);
       // [TOKENS-FX-1] Region-aware top-up quote (INR fixed 1:1 for India; USD elsewhere).
       if (p === "/api/wallet/topup-quote" && req.method === "GET") return await walletTopupQuote(req, env);

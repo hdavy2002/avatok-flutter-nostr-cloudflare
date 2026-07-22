@@ -63,6 +63,71 @@ const FEATURE_LABELS: Record<string, string> = {
   welcome_bonus: "Welcome bonus",
 };
 
+// [WALLET-REDESIGN-1] Feature key → coarse category for the redesigned wallet
+// screen's grouped spend rings. Eight buckets only; the screen renders one card
+// per category, so every feature key MUST land in exactly one of them. Unlisted
+// keys fall back in categoryFor(): `ava_*` → agent, everything else → market.
+const FEATURE_CATEGORIES: Record<string, string> = {
+  // call — anything that is a phone call / phone line
+  call_billing: "call",
+  telephony_tier1: "call",
+  telephony_tier2: "call",
+  telephony_addon: "call",
+  ava_voicemail: "call",
+  // agent — autonomous agents working on the user's behalf
+  ava_receptionist_call: "agent",
+  ava_receptionist_minute: "agent",
+  campaign: "agent",
+  campaign_did_month: "agent",
+  ava_mcp_tool: "agent",
+  guardian_always_on: "agent",
+  // ava — interactive Ava AI usage
+  ava_chat: "ava",
+  avachat: "ava",
+  ava_memory: "ava",
+  ava_voice_reply: "ava",
+  ava_image_free: "ava",
+  ava_image_generate: "ava",
+  // video — live/vision/voice sessions
+  avalive: "video",
+  ava_vision_snapshot: "video",
+  avavision: "video",
+  avavoice: "video",
+  // market — marketplace, listings, escrow, bookings, translation
+  avaolx: "market",
+  listing_post: "market",
+  listing_post_connect: "market",
+  escrow: "market",
+  avacal: "market",
+  avacalendar: "market",
+  translate: "market",
+  // topup / payout — money in and money out
+  avawallet: "topup",
+  welcome_bonus: "topup",
+  avapayout: "payout",
+  avaaffiliate: "payout",
+};
+
+// [WALLET-REDESIGN-1] Human names for the eight category keys above.
+const CATEGORY_LABELS: Record<string, string> = {
+  call: "Phone calls",
+  agent: "AI agents",
+  transcribe: "Transcriptions",
+  ava: "Ava AI chat",
+  video: "Video calls",
+  market: "Marketplace",
+  topup: "Top ups",
+  payout: "Payouts",
+};
+
+/** [WALLET-REDESIGN-1] Category bucket for a feature/app key (never null). */
+function categoryFor(app: string | null | undefined): string {
+  const key = (app || "").trim();
+  const mapped = FEATURE_CATEGORIES[key];
+  if (mapped) return mapped;
+  return key.startsWith("ava_") ? "agent" : "market";
+}
+
 function titleize(key: string): string {
   const words = key.replace(/[_-]+/g, " ").trim();
   if (!words) return "Other";
@@ -113,7 +178,49 @@ const DIRECTION_TYPES: Record<string, string[]> = {
   topup: ["topup"],
   payout: ["payout"],
   refund: ["refund"],
+  // [WALLET-REDESIGN-1] Coarse money-in / money-out buckets backing the wallet's
+  // All · In · Out chips. Without these the client had to filter "In" locally,
+  // which breaks keyset pagination (a page of pure spend renders as an empty
+  // list until more pages load). Server-side filtering keeps every page full.
+  in: ["earn", "donation", "gift", "hold_release", "promo", "topup", "refund"],
+  out: ["spend", "payout"],
 };
+
+// [WALLET-REDESIGN-1] Money formatting for top-up rows. topup_records stores the
+// charged amount in MINOR units (cents for USD, paise for INR) — both divide by
+// 100. Anything we can't confidently format returns null rather than a guess.
+function formatMoney(minor: number, currency: string | null | undefined): string | null {
+  if (!Number.isFinite(minor)) return null;
+  const cur = String(currency || "USD").toUpperCase();
+  const major = minor / 100;
+  if (cur === "INR") return `₹${Math.round(major * 100) % 100 === 0 ? major.toFixed(0) : major.toFixed(2)}`;
+  if (cur === "USD") return `$${major.toFixed(2)}`;
+  return `${major.toFixed(2)} ${cur}`;
+}
+
+// [WALLET-REDESIGN-1] Fiat amount per top-up row. topup_records lives in the same
+// DB (DB_WALLET) and is keyed by stripe_session_id, which the wallet_transactions
+// row carries in `ref`. Done as a second scoped lookup rather than a LEFT JOIN so
+// the keyset WHERE clause above keeps using unqualified column names (a join makes
+// `uid`/`created_at`/`status` ambiguous), and so a failure here can never 500 the
+// statement — it just drops the `usd` field. Returns ref → formatted string.
+async function topupFiatByRef(env: Env, uid: string, refs: string[]): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  if (!refs.length) return out;
+  try {
+    const capped = refs.slice(0, 200);
+    const ph = capped.map((_, n) => `?${n + 2}`).join(",");
+    const rs = await env.DB_WALLET.withSession("first-unconstrained").prepare(
+      `SELECT stripe_session_id, amount_cents, currency FROM topup_records
+       WHERE uid=?1 AND stripe_session_id IN (${ph})`,
+    ).bind(uid, ...capped).all();
+    for (const r of ((rs.results ?? []) as any[])) {
+      const money = formatMoney(Number(r.amount_cents), r.currency as string | null);
+      if (money) out[String(r.stripe_session_id)] = money;
+    }
+  } catch { /* table missing / query failed — statement renders without fiat */ }
+  return out;
+}
 
 // GET /api/wallet/statement?cursor=&limit=50&direction=&from=&to=&q=
 // Newest-first, keyset-paginated, strictly the authed user's rows.
@@ -139,12 +246,18 @@ export async function walletStatement(req: Request, env: Env): Promise<Response>
   if (q) { where.push(`(ref LIKE ?${i} OR app_name LIKE ?${i})`); binds.push(`%${q}%`); i++; }
 
   const rs = await env.DB_WALLET.withSession("first-unconstrained").prepare(
-    `SELECT id, type, amount, balance_after, app_name, ref, created_at FROM wallet_transactions
+    `SELECT id, type, amount, balance_after, app_name, counterparty_uid, ref, status, created_at FROM wallet_transactions
      WHERE ${where.join(" AND ")} ORDER BY created_at DESC, id DESC LIMIT ${limit + 1}`,
   ).bind(...binds).all();
   const rows = (rs.results ?? []) as any[];
   const page = rows.slice(0, limit);
   const last = page[page.length - 1];
+
+  // [WALLET-REDESIGN-1] Fiat amounts for the top-up rows on THIS page only.
+  const fiat = await topupFiatByRef(
+    env, ctx.uid,
+    page.filter((r) => String(r.type || "") === "topup" && r.ref).map((r) => String(r.ref)),
+  );
 
   const entries = page.map((r) => {
     const amount = Number(r.amount);
@@ -159,6 +272,12 @@ export async function walletStatement(req: Request, env: Env): Promise<Response>
       label: labelFor(type, app, amount),
       tokens: amount, // already signed: +credit / -debit
       ref: r.ref ?? null,
+      // [WALLET-REDESIGN-1] additive fields for the redesigned wallet screen
+      category: categoryFor(app),
+      counterparty_uid: r.counterparty_uid ? String(r.counterparty_uid) : null,
+      status: type === "refund" ? "refunded"
+        : (String(r.status || "").toLowerCase() === "pending" ? "pending" : "completed"),
+      usd: type === "topup" && r.ref ? (fiat[String(r.ref)] ?? null) : null,
     };
     if (r.balance_after != null) out.balance_after = Number(r.balance_after);
     return out;
@@ -167,6 +286,75 @@ export async function walletStatement(req: Request, env: Env): Promise<Response>
   return json({
     entries,
     cursor: rows.length > limit && last ? encodeCursor(Number(last.created_at), String(last.id)) : null,
+  });
+}
+
+// ── [WALLET-REDESIGN-1] Statement export ────────────────────────────────────
+// GET /api/wallet/statement/export?from=<ms>&to=<ms>&format=csv[&tz_offset_min=]
+// Same rows and labelling as /api/wallet/statement, flattened to CSV for the
+// "download / share my statement" action. No cursor: newest-first, hard-capped
+// at 1000 rows so one request can never sweep a whole account history.
+const EXPORT_MAX_ROWS = 1000;
+
+function csvCell(v: unknown): string {
+  const s = v == null ? "" : String(v);
+  // Guard against spreadsheet formula injection on =,+,-,@ leading chars.
+  const safe = /^[=+\-@]/.test(s) ? `'${s}` : s;
+  return /[",\n\r]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
+}
+
+export async function walletStatementExport(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const u = new URL(req.url);
+  const format = (u.searchParams.get("format") || "csv").trim().toLowerCase();
+  if (format !== "csv") return json({ error: "unsupported format" }, 400);
+  const from = Number(u.searchParams.get("from") || 0);
+  const to = Number(u.searchParams.get("to") || 0);
+  const tzOffsetMin = Math.max(-840, Math.min(840, Math.trunc(Number(u.searchParams.get("tz_offset_min") || 0)) || 0));
+
+  const where: string[] = ["uid=?1"];
+  const binds: unknown[] = [ctx.uid];
+  let i = 2;
+  if (from > 0) { where.push(`created_at >= ?${i++}`); binds.push(from); }
+  if (to > 0) { where.push(`created_at <= ?${i++}`); binds.push(to); }
+
+  const rs = await env.DB_WALLET.withSession("first-unconstrained").prepare(
+    `SELECT id, type, amount, balance_after, app_name, counterparty_uid, ref, status, created_at FROM wallet_transactions
+     WHERE ${where.join(" AND ")} ORDER BY created_at DESC, id DESC LIMIT ${EXPORT_MAX_ROWS}`,
+  ).bind(...binds).all();
+  const rows = (rs.results ?? []) as any[];
+
+  const lines: string[] = ["Date,Time,Type,Category,Description,Tokens,Balance After,Reference,Status"];
+  for (const r of rows) {
+    const amount = Number(r.amount);
+    const type = String(r.type || "");
+    const app = r.app_name ? String(r.app_name) : null;
+    // Local wall-clock for the reader, using the same offset convention as
+    // /summary's daily_spend so an exported day matches the charted day.
+    const local = new Date(Number(r.created_at) + tzOffsetMin * 60_000).toISOString();
+    lines.push([
+      csvCell(local.slice(0, 10)),
+      csvCell(local.slice(11, 19)),
+      csvCell(type),
+      csvCell(CATEGORY_LABELS[categoryFor(app)] || categoryFor(app)),
+      csvCell(labelFor(type, app, amount)),
+      csvCell(amount),
+      csvCell(r.balance_after != null ? Number(r.balance_after) : ""),
+      csvCell(r.ref ?? ""),
+      csvCell(type === "refund" ? "refunded"
+        : (String(r.status || "").toLowerCase() === "pending" ? "pending" : "completed")),
+    ].join(","));
+  }
+
+  track(env, ctx.uid, "wallet_statement_exported", "avawallet", { n: rows.length, format, from, to });
+  const name = `avatok-statement-${from || 0}-${to || Date.now()}.csv`;
+  return new Response(`${lines.join("\n")}\n`, {
+    headers: {
+      "content-type": "text/csv; charset=utf-8",
+      "content-disposition": `attachment; filename="${name}"`,
+      "cache-control": "no-store",
+    },
   });
 }
 
@@ -180,6 +368,10 @@ export async function walletSummary(req: Request, env: Env): Promise<Response> {
   const u = new URL(req.url);
   const days = Math.min(365, Math.max(1, Math.trunc(Number(u.searchParams.get("days") || 30)) || 30));
   const since = Date.now() - days * 86_400_000;
+  // [WALLET-REDESIGN-1] Minutes offset from UTC for LOCAL-day bucketing of
+  // daily_spend (e.g. 330 = IST). Clamped to ±14h; default 0 (UTC) so existing
+  // callers that omit it keep the old behaviour.
+  const tzOffsetMin = Math.max(-840, Math.min(840, Math.trunc(Number(u.searchParams.get("tz_offset_min") || 0)) || 0));
 
   const bal = await walletOp(env, ctx.uid, { op: "balance", uid: ctx.uid });
   const balance = Number(bal.body?.balance ?? 0);
@@ -197,7 +389,7 @@ export async function walletSummary(req: Request, env: Env): Promise<Response> {
   const spends = await db.prepare(
     `SELECT COALESCE(app_name,'') AS app, COALESCE(SUM(-amount),0) AS tokens, COUNT(*) AS n
      FROM wallet_transactions WHERE uid=?1 AND created_at>=?2 AND type='spend' AND amount<0
-     GROUP BY COALESCE(app_name,'') ORDER BY tokens DESC LIMIT 40`,
+     GROUP BY COALESCE(app_name,'') ORDER BY tokens DESC LIMIT 500`,
   ).bind(ctx.uid, since).all();
   const earns = await db.prepare(
     `SELECT COALESCE(app_name,'') AS app, COALESCE(SUM(amount),0) AS tokens, COUNT(*) AS n
@@ -211,12 +403,31 @@ export async function walletSummary(req: Request, env: Env): Promise<Response> {
     "SELECT COALESCE(SUM(-amount),0) AS t FROM wallet_transactions WHERE uid=?1 AND created_at>=?2 AND type='payout' AND amount<0",
   ).bind(ctx.uid, since).first<{ t: number }>();
 
-  const byFeature = ((spends.results ?? []) as any[]).map((r) => ({
+  // [WALLET-REDESIGN-1] The spend query now pulls the long tail (LIMIT 500) so
+  // category folding below can't silently drop small features; by_feature itself
+  // still emits at most the top 40 rows it always did.
+  const byFeatureAll = ((spends.results ?? []) as any[]).map((r) => ({
     feature_key: String(r.app || "") || null,
     label: labelFor("spend", String(r.app || "") || null, -1),
     tokens: Number(r.tokens),
     count: Number(r.n),
   }));
+  const byFeature = byFeatureAll.slice(0, 40);
+
+  // [WALLET-REDESIGN-1] Fold every spend feature into its coarse category. Done
+  // in TS (not SQL) so the mapping lives in one place next to FEATURE_LABELS.
+  const catAgg = new Map<string, { tokens: number; count: number }>();
+  for (const f of byFeatureAll) {
+    const key = categoryFor(f.feature_key);
+    const cur = catAgg.get(key) || { tokens: 0, count: 0 };
+    cur.tokens += f.tokens;
+    cur.count += f.count;
+    catAgg.set(key, cur);
+  }
+  const byCategory = [...catAgg.entries()]
+    .map(([key, v]) => ({ key, label: CATEGORY_LABELS[key] || titleize(key), tokens: v.tokens, count: v.count }))
+    .sort((a, b) => b.tokens - a.tokens);
+
   const earnSources = ((earns.results ?? []) as any[]).map((r) => ({
     feature_key: String(r.app || "") || null,
     label: labelFor("earn", String(r.app || "") || null, 1),
@@ -228,6 +439,34 @@ export async function walletSummary(req: Request, env: Env): Promise<Response> {
   const earnedTotal = earnSources.reduce((s, f) => s + f.tokens, 0);
   const burnPerDay = Math.round((spentTotal / days) * 100) / 100;
   const runwayDays = burnPerDay > 0 ? Math.floor(spendable / burnPerDay) : null;
+
+  // [WALLET-REDESIGN-1] Per-day spend series for the wallet chart. Bucketed by
+  // LOCAL day (tz_offset_min) in SQLite, then zero-filled in TS so the array is
+  // ALWAYS exactly `days` long, oldest→newest — the chart never has to guess at
+  // gaps. Best-effort: a failure yields an all-zero series, never a 500.
+  const dailySpend: Array<{ day: string; tokens: number }> = [];
+  try {
+    const rs = await db.prepare(
+      `SELECT date((created_at/1000) + (?3 * 60), 'unixepoch') AS d, COALESCE(SUM(-amount),0) AS tokens
+       FROM wallet_transactions WHERE uid=?1 AND created_at>=?2 AND type='spend' AND amount<0
+       GROUP BY d`,
+    ).bind(ctx.uid, since, tzOffsetMin).all();
+    const byDay = new Map<string, number>();
+    for (const r of ((rs.results ?? []) as any[])) {
+      if (r.d) byDay.set(String(r.d), Math.round(Number(r.tokens) || 0));
+    }
+    // Local "today" = now shifted by the offset, read in UTC terms.
+    const localNow = Date.now() + tzOffsetMin * 60_000;
+    for (let k = days - 1; k >= 0; k--) {
+      const day = new Date(localNow - k * 86_400_000).toISOString().slice(0, 10);
+      dailySpend.push({ day, tokens: byDay.get(day) ?? 0 });
+    }
+  } catch {
+    const localNow = Date.now() + tzOffsetMin * 60_000;
+    for (let k = days - 1; k >= 0; k--) {
+      dailySpend.push({ day: new Date(localNow - k * 86_400_000).toISOString().slice(0, 10), tokens: 0 });
+    }
+  }
 
   // Receptionist minutes: aggregate seconds for THIS uid only. The table lives
   // in DB_META and is created lazily by ReceptionRoom — tolerate its absence.
@@ -261,6 +500,10 @@ export async function walletSummary(req: Request, env: Env): Promise<Response> {
     ai_calls: aiCalls,
     by_feature: byFeature,
     earn_sources: earnSources,
+    // [WALLET-REDESIGN-1] additive: chart series + coarse category breakdown
+    tz_offset_min: tzOffsetMin,
+    daily_spend: dailySpend,
+    by_category: byCategory,
   });
 }
 
