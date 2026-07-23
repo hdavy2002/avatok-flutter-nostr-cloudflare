@@ -412,6 +412,11 @@ export interface Env {
   // scheme as WELCOME_BACKFILL_SECRET). Fails CLOSED when unset; set via
   // `wrangler secret put TOKEN_RESET_SECRET` only for the one-time run, then unset.
   TOKEN_RESET_SECRET?: string;
+  // [ADMIN-DELETE-USER-1] Shared secret for the admin "delete ANOTHER user" route
+  // (`POST /api/admin/delete-user/<secret>` — same trailing-path-segment scheme as
+  // TOKEN_RESET_SECRET). Fails CLOSED when unset; set via
+  // `wrangler secret put ADMIN_DELETE_SECRET`.
+  ADMIN_DELETE_SECRET?: string;
   // Vobiz account API credentials — required to fetch recording files from
   // media.vobiz.ai (401 without them; verified 2026-07-16). Set via
   // `wrangler secret put VOBIZ_AUTH_ID` / `VOBIZ_AUTH_TOKEN`.

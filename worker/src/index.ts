@@ -14,6 +14,7 @@ import { streamWebhook } from "./routes/stream";
 import { brain } from "./routes/brain";
 import { brainDomains } from "./routes/brain_domains";
 import { deleteAccount, cancelDeletion, deletionStatus } from "./routes/account";
+import { adminDeleteUser } from "./routes/admin_delete_user"; // [ADMIN-DELETE-USER-1] admin immediate erasure of another user
 // [AVADIAL-CALL-INTEL-1] Call-intelligence ingest. The ONLY place raw E.164 and the
 // HMAC secret meet — the device never holds the key. See routes/telemetry_calls.ts.
 import { ingestCallTelemetry } from "./routes/telemetry_calls";
@@ -972,6 +973,14 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // --- account deletion (right-to-erasure; 30-day grace → queue cascade) ---
       if (p === "/api/account/delete" && (req.method === "POST" || req.method === "DELETE")) return await deleteAccount(req, env);
       if (p === "/api/account/delete/cancel" && req.method === "POST") return await cancelDeletion(req, env);
+      // [ADMIN-DELETE-USER-1] Admin deletes ANOTHER user, IMMEDIATELY (no 30-day grace):
+      // same 15-store cascade for a target {uid}. Bare path = ADMIN_UIDS Clerk bearer;
+      // trailing segment = ADMIN_DELETE_SECRET (fails closed). Refuses to delete admins.
+      if (p === "/api/admin/delete-user" && req.method === "POST") return await adminDeleteUser(req, env);
+      {
+        const du = p.match(/^\/api\/admin\/delete-user\/([A-Za-z0-9_-]{16,128})$/);
+        if (du && req.method === "POST") return await adminDeleteUser(req, env, du[1]);
+      }
       // [AVADIAL-CALL-INTEL-1] Batched call records from the native dialer, uploaded
       // after each call ends (or on next app boot when the user never opened it).
       if (p === "/api/telemetry/calls" && req.method === "POST") return await ingestCallTelemetry(req, env);
