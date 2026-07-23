@@ -50,6 +50,18 @@ class ReceptionistSettings {
   //    free AvaTOK↔AvaTOK voicemail from WS2 is separate and always available).
   final bool aiReceptionistEnabled;
   final bool pstnVoicemailEnabled;
+  // [AVARECEPT-LANES-1] (owner 2026-07-21) voicemail retired; the AI receptionist
+  // is the only unanswered-call handler, split into two per-LANE master toggles +
+  // three per-SCENARIO toggles (apply to BOTH lanes). ALL DEFAULT OFF (opt-in).
+  //  - receptAvatokEnabled: receptionist on AvaTOK↔AvaTOK calls
+  //  - receptPstnEnabled:   receptionist on PSTN (cell) calls
+  //  - receptOnMissed / receptOnRejected / receptOnUnreachable: which trigger(s)
+  //    hand off to Ava.
+  final bool receptAvatokEnabled;
+  final bool receptPstnEnabled;
+  final bool receptOnMissed;
+  final bool receptOnRejected;
+  final bool receptOnUnreachable;
   const ReceptionistSettings({
     required this.enabled,
     required this.instructions,
@@ -77,6 +89,11 @@ class ReceptionistSettings {
     this.agentScope = '',
     this.aiReceptionistEnabled = false,
     this.pstnVoicemailEnabled = false,
+    this.receptAvatokEnabled = false,
+    this.receptPstnEnabled = false,
+    this.receptOnMissed = false,
+    this.receptOnRejected = false,
+    this.receptOnUnreachable = false,
   });
   factory ReceptionistSettings.fromJson(Map<String, dynamic> j) => ReceptionistSettings(
         enabled: j['enabled'] == true,
@@ -105,6 +122,11 @@ class ReceptionistSettings {
         agentScope: (j['agent_scope'] ?? '').toString(),
         aiReceptionistEnabled: j['ai_receptionist_enabled'] == true,
         pstnVoicemailEnabled: j['pstn_voicemail_enabled'] == true,
+        receptAvatokEnabled: j['recept_avatok_enabled'] == true,
+        receptPstnEnabled: j['recept_pstn_enabled'] == true,
+        receptOnMissed: j['recept_on_missed'] == true,
+        receptOnRejected: j['recept_on_rejected'] == true,
+        receptOnUnreachable: j['recept_on_unreachable'] == true,
       );
 }
 
@@ -171,6 +193,13 @@ class ReceptionistApi {
     // server keeps its default-OFF; the settings screen always sends both.
     bool? aiReceptionistEnabled,
     bool? pstnVoicemailEnabled,
+    // [AVARECEPT-LANES-1] per-lane + per-scenario toggles (default OFF). The new
+    // "AI receptionist" settings page always sends all five.
+    bool? receptAvatokEnabled,
+    bool? receptPstnEnabled,
+    bool? receptOnMissed,
+    bool? receptOnRejected,
+    bool? receptOnUnreachable,
   }) async {
     final body = <String, dynamic>{
       'enabled': enabled,
@@ -197,6 +226,11 @@ class ReceptionistApi {
       if (agentScope != null) 'agent_scope': agentScope,
       if (aiReceptionistEnabled != null) 'ai_receptionist_enabled': aiReceptionistEnabled,
       if (pstnVoicemailEnabled != null) 'pstn_voicemail_enabled': pstnVoicemailEnabled,
+      if (receptAvatokEnabled != null) 'recept_avatok_enabled': receptAvatokEnabled,
+      if (receptPstnEnabled != null) 'recept_pstn_enabled': receptPstnEnabled,
+      if (receptOnMissed != null) 'recept_on_missed': receptOnMissed,
+      if (receptOnRejected != null) 'recept_on_rejected': receptOnRejected,
+      if (receptOnUnreachable != null) 'recept_on_unreachable': receptOnUnreachable,
     };
     const maxAttempts = 3;
     for (var attempt = 1; attempt <= maxAttempts; attempt++) {

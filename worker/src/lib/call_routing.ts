@@ -244,7 +244,10 @@ export async function decideRouting(env: Env, input: RoutingDecisionInput): Prom
   const blocked = await isBlocked(env, input.callee_id, input.caller_id);
 
   const agentEnabled = resolved.agent_profile != null; // Mode A/B: an Agent Profile in force = agent is a candidate
-  const voicemailEnabled = cfg.voicemailBot === true;
+  // [VM-KILL-1] the global voicemail kill switch (owner 2026-07-21) forces every
+  // overflow to silent_noanswer instead of voicemail, platform-wide, on top of the
+  // existing per-surface voicemailBot flag.
+  const voicemailEnabled = cfg.voicemailBot === true && (cfg as { voicemailEnabled?: boolean }).voicemailEnabled !== false;
   const schedule = resolved.agent_profile?.business_hours ?? null;
   const inHours = inBusinessHours(schedule);
 
@@ -343,7 +346,7 @@ export async function decideNoAnswerRouting(
   }
   const blocked = await isBlocked(env, input.callee_id, input.caller_id);
   const agentEnabled = resolved.agent_profile != null;
-  const voicemailEnabled = cfg.voicemailBot === true;
+  const voicemailEnabled = cfg.voicemailBot === true && (cfg as { voicemailEnabled?: boolean }).voicemailEnabled !== false; // [VM-KILL-1]
   const numberKey = concurrencyKeyFor(resolved);
   const cap = resolved.is_service_number ? cfg.agentConcurrencyB : cfg.agentConcurrencyA;
   const inUse = await countActiveAgentSessions(env, numberKey, cfg.agentMaxCallSec);

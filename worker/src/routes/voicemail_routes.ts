@@ -27,6 +27,13 @@ export async function voicemailStart(req: Request, env: Env): Promise<Response> 
   // The free path must NOT be gated by the paid flag, so accept the request when
   // EITHER switch is on. `wantFree` selects the generic greeting below.
   const wantFree = b.free === true;
+  // [VM-KILL-1] GLOBAL master kill (owner 2026-07-21): when voicemail is disabled
+  // platform-wide, NO new voicemail session may start on EITHER lane, regardless of
+  // the paid/free per-surface flags. Already-recorded voicemails stay playable
+  // (voicemailRecording below is intentionally NOT gated on this switch).
+  if (cfg.voicemailEnabled === false) {
+    return json({ error: "disabled", flag: "voicemailEnabled" }, 503);
+  }
   if (cfg.voicemailBot !== true && cfg.avatokVoicemailFree !== true) {
     return json({ error: "disabled", flags: ["voicemailBot", "avatokVoicemailFree"] }, 503);
   }

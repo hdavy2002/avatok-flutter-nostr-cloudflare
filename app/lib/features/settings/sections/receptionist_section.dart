@@ -10,9 +10,9 @@ import '../../../core/moderation_service.dart';
 import '../../../core/receptionist_api.dart';
 import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/zine_widgets.dart';
+import '../../../core/voice/google_voice.dart';
 import '../settings_registry.dart';
 import 'receptionist_analytics_page.dart';
-import 'receptionist_onboarding.dart';
 
 /// Availability presets. id → label shown in the dropdown. Must match the
 /// server's STATUS_PRESETS keys in worker/src/routes/receptionist.ts. Default is
@@ -155,9 +155,10 @@ void registerReceptionistSection() {
   SettingsSectionRegistry.register(
     SettingsSection(
       id: 'ava_receptionist',
-      // [RECEPT-MODE-1] merged page: AI voice agent + voicemail in one place.
-      title: 'Receptionist / Voice mail',
-      order: 24, // just above "Ava voice" (25)
+      // [AVARECEPT-LANES-1] voicemail retired; single "AI receptionist" page with
+      // per-lane + per-scenario toggles and the folded-in voice picker.
+      title: 'AI receptionist',
+      order: 24,
       builder: (context) => const _ReceptionistCard(),
     ),
   );
@@ -221,21 +222,14 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
   // the festival auto-greeting toggle.
   String _greetingStyle = 'none';
   bool _festivalGreeting = false;
-  // [RECEPT-MODE-1] answering mode: 'agent' (AI voice agent) | 'vm' (voicemail) |
-  // '' (server/global default). Two exclusive toggles drive this one field.
-  String _mode = '';
-  // [RECEPT-ONBOARD-1] where the agent answers: 'cell' | 'app' | 'all' | ''
-  // (server treats ''/invalid as 'all'). Chosen in the onboarding wizard.
-  String _agentScope = '';
-
-  // [AVACALL-SET-1] WS3 paid call-handling prefs — DEFAULT OFF, shown to PAID
-  // users only (gated on _premium). These are the CALLER-AUTHORITATIVE toggles:
-  //  - _aiReceptionist: Ava takes over on reject / no-answer / phone-off, for
-  //    BOTH AvaTOK↔AvaTOK and PSTN calls.
-  //  - _pstnVoicemail: a pre-recorded voicemail for PSTN calls only (the free
-  //    AvaTOK↔AvaTOK voicemail is separate and always available).
-  bool _aiReceptionist = false;
-  bool _pstnVoicemail = false;
+  // [AVARECEPT-LANES-1] (owner 2026-07-21) voicemail retired. The AI receptionist
+  // is the only unanswered-call handler, split into two per-LANE master toggles
+  // and three per-SCENARIO toggles (apply to BOTH lanes). ALL DEFAULT OFF (opt-in).
+  bool _receptAvatok = false;      // receptionist on AvaTOK↔AvaTOK calls
+  bool _receptPstn = false;        // receptionist on PSTN (cell) calls
+  bool _receptOnMissed = false;    // missed / no-answer
+  bool _receptOnRejected = false;  // rejected / declined
+  bool _receptOnUnreachable = false; // phone off / unreachable
 
   // F1 — status note expiry. Null = no expiry; else the absolute epoch-ms instant
   // the note lapses. `_customExpiry` mirrors a picked custom instant so its chip
@@ -253,6 +247,9 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
   void initState() {
     super.initState();
     _load();
+    // [AVARECEPT-LANES-1] the "Ava voice" picker is folded into this page now.
+    GoogleVoicePref.load().then((_) { if (mounted) setState(() {}); });
+    AvaVoiceLangPref.load().then((_) { if (mounted) setState(() {}); });
   }
 
   @override
@@ -307,14 +304,12 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
             : 'none';
         _festivalGreeting = s.festivalGreeting;
         _greeting.text = s.greetingText;
-        _mode = (s.mode == 'agent' || s.mode == 'vm') ? s.mode : '';
-        _agentScope = (s.agentScope == 'cell' || s.agentScope == 'app' ||
-                s.agentScope == 'all')
-            ? s.agentScope
-            : '';
-        // [AVACALL-SET-1] WS3 paid call-handling prefs (server authoritative).
-        _aiReceptionist = s.aiReceptionistEnabled;
-        _pstnVoicemail = s.pstnVoicemailEnabled;
+        // [AVARECEPT-LANES-1] per-lane + per-scenario toggles (server authoritative).
+        _receptAvatok = s.receptAvatokEnabled;
+        _receptPstn = s.receptPstnEnabled;
+        _receptOnMissed = s.receptOnMissed;
+        _receptOnRejected = s.receptOnRejected;
+        _receptOnUnreachable = s.receptOnUnreachable;
       }
       _loading = false;
     });
@@ -338,13 +333,12 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
     _greetingStyle = kReceptionistGreetingPresets.containsKey(gs) ? gs : 'none';
     _festivalGreeting = m['festival_greeting'] == true;
     _greeting.text = (m['greeting_text'] ?? '').toString();
-    final md = (m['mode'] ?? '').toString();
-    _mode = (md == 'agent' || md == 'vm') ? md : '';
-    final sc = (m['agent_scope'] ?? '').toString();
-    _agentScope = (sc == 'cell' || sc == 'app' || sc == 'all') ? sc : '';
-    // [AVACALL-SET-1] WS3 paid call-handling prefs.
-    _aiReceptionist = m['ai_receptionist'] == true;
-    _pstnVoicemail = m['pstn_voicemail'] == true;
+    // [AVARECEPT-LANES-1] per-lane + per-scenario toggles.
+    _receptAvatok = m['recept_avatok'] == true;
+    _receptPstn = m['recept_pstn'] == true;
+    _receptOnMissed = m['recept_on_missed'] == true;
+    _receptOnRejected = m['recept_on_rejected'] == true;
+    _receptOnUnreachable = m['recept_on_unreachable'] == true;
   }
 
   Future<void> _writeMirror() async {
@@ -357,10 +351,11 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
         'greeting_style': _greetingStyle,
         'festival_greeting': _festivalGreeting,
         'greeting_text': _greeting.text,
-        'mode': _mode,
-        'agent_scope': _agentScope,
-        'ai_receptionist': _aiReceptionist,
-        'pstn_voicemail': _pstnVoicemail,
+        'recept_avatok': _receptAvatok,
+        'recept_pstn': _receptPstn,
+        'recept_on_missed': _receptOnMissed,
+        'recept_on_rejected': _receptOnRejected,
+        'recept_on_unreachable': _receptOnUnreachable,
       }));
     } catch (_) {/* best-effort */}
   }
@@ -432,14 +427,16 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
       // F2 — greeting preset + festival auto-greeting toggle.
       greetingStyle: _greetingStyle,
       festivalGreeting: _festivalGreeting,
-      // [RECEPT-MODE-1] answering mode from the two exclusive toggles.
-      mode: _mode,
-      // [RECEPT-ONBOARD-1] agent scope chosen in the onboarding wizard.
-      agentScope: _agentScope,
-      // [AVACALL-SET-1] WS3 paid call-handling prefs (default OFF). Always sent so
-      // the server's default-OFF is explicit and the caller-side probe is accurate.
-      aiReceptionistEnabled: _aiReceptionist,
-      pstnVoicemailEnabled: _pstnVoicemail,
+      // [AVARECEPT-LANES-1] voicemail retired — pin mode to '' (server default =
+      // live agent) so any legacy per-owner mode='vm' is cleared on the next save.
+      mode: '',
+      // [AVARECEPT-LANES-1] per-lane + per-scenario toggles (default OFF). Always
+      // sent so the server's default-OFF is explicit and the caller probe is exact.
+      receptAvatokEnabled: _receptAvatok,
+      receptPstnEnabled: _receptPstn,
+      receptOnMissed: _receptOnMissed,
+      receptOnRejected: _receptOnRejected,
+      receptOnUnreachable: _receptOnUnreachable,
     );
     if (!mounted) return res.ok;
     setState(() {
@@ -504,38 +501,6 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
   // the save and rolled back if it fails, so a failed save never leaves the
   // toggle lying about what the server has.
 
-  Future<void> _startAgentOnboarding() async {
-    if (_saving) return;
-    await showReceptionistAgentOnboarding(
-      context,
-      initialScope: _agentScope.isEmpty ? 'all' : _agentScope,
-      onFinish: (scope) async {
-        final prevMode = _mode;
-        final prevScope = _agentScope;
-        setState(() { _mode = 'agent'; _agentScope = scope; });
-        final ok = await _save(enabled: true);
-        if (!ok && mounted) {
-          setState(() { _mode = prevMode; _agentScope = prevScope; });
-        }
-        return ok;
-      },
-    );
-  }
-
-  Future<void> _startVmOnboarding() async {
-    if (_saving) return;
-    await showReceptionistVoicemailSheet(
-      context,
-      onConfirm: () async {
-        final prevMode = _mode;
-        setState(() => _mode = 'vm');
-        final ok = await _save(enabled: true);
-        if (!ok && mounted) setState(() => _mode = prevMode);
-        return ok;
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return AdCard(
@@ -555,12 +520,11 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('Receptionist / Voice mail', style: ADText.rowName()),
+                    Text('AI receptionist', style: ADText.rowName()),
                     const SizedBox(height: 2),
                     Text(
-                      'When you miss a call, Ava answers — as a live AI voice '
-                      'agent, or as a voicemail that plays your greeting and '
-                      'records a message.',
+                      'When you don’t take a call, Ava answers for you as a live '
+                      'AI voice agent. Choose which calls she handles and when.',
                       style: ADText.preview(),
                     ),
                   ]),
@@ -569,62 +533,62 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                 // Ava Receptionist can no longer be disabled per user.
               ]),
               ...[
-                const SizedBox(height: 14),
-                // ── [RECEPT-MODE-1] Answering mode: two mutually-exclusive toggles.
-                // Turning one ON turns the other OFF (they map to one server field).
-                // [RECEPT-ONBOARD-1] Any transition INTO a mode goes through its
-                // onboarding flow (wizard for agent, one-screen sheet for vm) —
-                // the toggle only moves once the flow completes AND the save
-                // lands; cancel/back = no change. Turning a toggle OFF is, by the
-                // exclusive-pair design, turning the OTHER mode on — so it runs
-                // the other mode's flow.
-                Text('ANSWERING MODE', style: ADText.sectionLabel()),
+                const SizedBox(height: 16),
+                // ── [AVARECEPT-LANES-1] Which calls Ava answers (per-lane) ──
+                // Two independent master toggles, DEFAULT OFF (opt-in). Turning a
+                // lane on lets Ava take over unanswered calls on that lane; the
+                // SCENARIO toggles below decide *when*. Both off = Ava never
+                // auto-answers (a missed call is just a missed call).
+                Text('WHICH CALLS AVA ANSWERS', style: ADText.sectionLabel()),
                 const SizedBox(height: 6),
                 _toggleRow(
-                  'AI Voice Agent',
-                  'Ava talks with your callers live (AvaTOK and cell calls). '
-                      '3 tokens per minute from your wallet, calls capped at '
-                      '3 minutes.',
-                  _mode == 'agent',
-                  (v) => v ? _startAgentOnboarding() : _startVmOnboarding(),
+                  'AvaTOK calls',
+                  'Ava answers unanswered AvaTOK-to-AvaTOK calls. 3 tokens per '
+                      'minute, capped at 3 minutes.',
+                  _receptAvatok,
+                  (v) => setState(() => _receptAvatok = v),
                 ),
                 const SizedBox(height: 8),
                 _toggleRow(
-                  'Voice mail',
-                  'Callers hear your pre-recorded greeting and leave a message. '
-                      '1 token per voicemail.',
-                  _mode == 'vm',
-                  (v) => v ? _startVmOnboarding() : _startAgentOnboarding(),
+                  'Cell (PSTN) calls',
+                  'Ava answers calls to your cell number that ring through to '
+                      'AvaTOK. 3 tokens per minute, capped at 3 minutes.',
+                  _receptPstn,
+                  (v) => setState(() => _receptPstn = v),
                 ),
-                // ── [AVACALL-SET-1] WS3 paid call-handling prefs ────────────
-                // Owner decision (WS3): two per-user toggles, DEFAULT OFF, shown
-                // to PAID users only. AI Receptionist governs whether Ava takes
-                // over unanswered calls on BOTH AvaTOK and PSTN; Voicemail (PSTN)
-                // turns on a pre-recorded voicemail for cell calls. The free
-                // AvaTOK↔AvaTOK voicemail is separate and always available, so
-                // turning both OFF never dead-ends an AvaTOK call. Save persists
-                // both to the receptionist config the caller's dial-time probe
-                // reads. Free users don't see the section (server `premium`).
-                if (_premium) ...[
-                  const SizedBox(height: 16),
-                  Text('CALL HANDLING', style: ADText.sectionLabel()),
-                  const SizedBox(height: 6),
-                  _toggleRow(
-                    'AI Receptionist',
-                    'When you reject, miss, or your phone is off, Ava answers for '
-                        'you — on AvaTOK calls and PSTN (cell) calls.',
-                    _aiReceptionist,
-                    (v) => setState(() => _aiReceptionist = v),
-                  ),
-                  const SizedBox(height: 8),
-                  _toggleRow(
-                    'Voicemail (PSTN)',
-                    'For cell (PSTN) calls, play a pre-recorded voicemail and take '
-                        'a message. AvaTOK calls always get free voicemail.',
-                    _pstnVoicemail,
-                    (v) => setState(() => _pstnVoicemail = v),
-                  ),
-                ],
+                const SizedBox(height: 16),
+                // ── [AVARECEPT-LANES-1] When Ava answers (per-scenario) ─────
+                // Three independent triggers, DEFAULT OFF, applying to BOTH lanes
+                // above. A call handoff needs its lane ON *and* the matching
+                // scenario ON.
+                Text('WHEN AVA ANSWERS', style: ADText.sectionLabel()),
+                const SizedBox(height: 6),
+                _toggleRow(
+                  'Missed call',
+                  'You didn’t pick up before it stopped ringing.',
+                  _receptOnMissed,
+                  (v) => setState(() => _receptOnMissed = v),
+                ),
+                const SizedBox(height: 8),
+                _toggleRow(
+                  'Rejected call',
+                  'You tapped Decline.',
+                  _receptOnRejected,
+                  (v) => setState(() => _receptOnRejected = v),
+                ),
+                const SizedBox(height: 8),
+                _toggleRow(
+                  'Phone unreachable',
+                  'Your phone is off or has no connection.',
+                  _receptOnUnreachable,
+                  (v) => setState(() => _receptOnUnreachable = v),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'These apply to both cell and AvaTOK calls. If nothing here is '
+                  'on, an unanswered call is simply a missed call.',
+                  style: ADText.preview(),
+                ),
                 const SizedBox(height: 14),
                 // ── The note: tell Ava your availability ───────────────────
                 AdField(
@@ -731,6 +695,13 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                   'another.',
                   style: ADText.preview(),
                 ),
+                const SizedBox(height: 18),
+                const Divider(height: 1, color: AD.borderHairline),
+                const SizedBox(height: 16),
+                // ── [AVARECEPT-LANES-1] Ava's voice (folded in from the old
+                // standalone "Ava voice" page). The voice + call language a
+                // hands-free Ava call speaks with; saved instantly via the prefs.
+                _voiceSection(),
                 const SizedBox(height: 16),
                 AdButton(
                   label: _saving ? 'Saving…' : 'Save',
@@ -886,6 +857,78 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
       ]),
     );
   }
+
+  // ── [AVARECEPT-LANES-1] Ava's voice (folded in from the old "Ava voice" page) ──
+  // The voice + call-language Ava speaks with on a hands-free call. Choices are
+  // persisted instantly via GoogleVoicePref / AvaVoiceLangPref (not the receptionist
+  // PUT), mirroring the standalone section this replaces.
+  Widget _voiceSection() {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text("AVA'S VOICE", style: ADText.sectionLabel()),
+      const SizedBox(height: 4),
+      Text('The voice Ava speaks with on a hands-free call.',
+          style: ADText.preview()),
+      const SizedBox(height: 10),
+      ValueListenableBuilder<String>(
+        valueListenable: GoogleVoicePref.voice,
+        builder: (context, current, _) {
+          final sel = GoogleVoiceCatalog.byName(current);
+          return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (sel != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(
+                  'Selected: ${sel.name} · ${sel.style} '
+                  '(${sel.female ? "female" : "male"})',
+                  style: ADText.preview(c: AD.iconSearch),
+                ),
+              ),
+            Text('FEMALE', style: ADText.sectionLabel()),
+            const SizedBox(height: 8),
+            _voiceWrap(GoogleVoiceCatalog.female, current),
+            const SizedBox(height: 16),
+            Text('MALE', style: ADText.sectionLabel()),
+            const SizedBox(height: 8),
+            _voiceWrap(GoogleVoiceCatalog.male, current),
+          ]);
+        },
+      ),
+      const SizedBox(height: 16),
+      Text('CALL LANGUAGE', style: ADText.sectionLabel()),
+      const SizedBox(height: 4),
+      Text('The language Ava speaks on a call. Auto follows whatever you speak.',
+          style: ADText.preview()),
+      const SizedBox(height: 10),
+      ValueListenableBuilder<String>(
+        valueListenable: AvaVoiceLangPref.lang,
+        builder: (context, code, _) => Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final l in AvaLangCatalog.all)
+              AdChip(
+                label: l.label,
+                active: l.code == code,
+                onTap: () => AvaVoiceLangPref.set(l.code),
+              ),
+          ],
+        ),
+      ),
+    ]);
+  }
+
+  Widget _voiceWrap(List<GoogleVoice> voices, String current) => Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final v in voices)
+            AdChip(
+              label: v.name,
+              active: v.name == current,
+              onTap: () => GoogleVoicePref.set(v.name),
+            ),
+        ],
+      );
 
   // ── Language helpers ────────────────────────────────────────────────────────
 

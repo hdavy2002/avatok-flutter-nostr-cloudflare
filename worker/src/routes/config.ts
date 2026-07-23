@@ -67,6 +67,15 @@ export interface PlatformConfig {
   // switch): flip false in KV to end no-answer AvaTOK calls silently again. Boolean
   // → no numericKeys entry. Client mirror: RemoteConfig.avatokVoicemailFree.
   avatokVoicemailFree: boolean;
+  // [VM-KILL-1] GLOBAL voicemail master kill switch (owner decision 2026-07-21).
+  // Default TRUE = voicemail available (legacy behavior, no change). Flip FALSE in
+  // KV to disable EVERY voicemail lane at once — free AvaTOK↔AvaTOK auto-voicemail
+  // (voicemail_routes.ts), paid voicemail bot, PSTN voicemail (pstn.ts), and the
+  // per-owner mode='vm' receptionist flow (receptionist.ts coerces 'vm'→'agent').
+  // A single reversible switch layered ON TOP of the per-surface flags so voicemail
+  // is off for everyone without ripping out the code. Boolean → no numericKeys entry.
+  // Client mirror: RemoteConfig.voicemailEnabled.
+  voicemailEnabled: boolean;
   instantCallMountEnabled: boolean;  // [INSTANT-CALL-MOUNT-1] open 1:1 CallScreen instantly, POST /api/call in background (default ON; kill switch)
   receptionistRings: number;         // v2 Mode A: rings before auto-handoff (default 5)
   // Receptionist ENGINE switch (Specs/RECEPTIONIST-CF-PIPELINE.md). false (default)
@@ -638,6 +647,7 @@ const DEFAULTS: PlatformConfig = {
   avavisionEnabled: false,         // FREE LAUNCH: agent builder hidden
   receptionistEnabled: true,       // FREE LAUNCH: AI receptionist ON (Gemini Live)
   avatokVoicemailFree: true,       // [AVACALL-VMFREE-1] FREE AvaTOK↔AvaTOK auto-voicemail ON. Kill switch — flip false in KV to end no-answer AvaTOK audio calls silently again. NOT gated by the paid voicemailBot.
+  voicemailEnabled: true,          // [VM-KILL-1] GLOBAL voicemail master switch. Default true = no change. Flip false in prod KV to disable ALL voicemail lanes at once (reversible).
   instantCallMountEnabled: true,   // [INSTANT-CALL-MOUNT-1] instant 1:1 call screen; POST /api/call runs in background. Kill switch (flip false to restore awaited path)
   receptionistRings: 4,            // [ONE-FLOW-1] owner 2026-07-09: 4 rings (20s) GLOBAL — one flow for everyone; KV can override
   receptionistUseCf: false,        // engine switch: false = Gemini Live (default), true = Cloudflare Workers AI engine

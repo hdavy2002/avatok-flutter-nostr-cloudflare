@@ -208,18 +208,39 @@ async function agentStreamXmlOrNull(
   // The agent_scope column self-migrates in receptionist.ts's ensureStatusColumns;
   // until a receptionist route has run post-deploy it may not exist yet, so a
   // failed 2-column SELECT falls back to the mode-only SELECT (scope → "all").
-  let row: { mode: string | null; agent_scope?: string | null } | null = null;
+  // [AVARECEPT-LANES-1] (owner 2026-07-21): the PSTN receptionist lane is now gated
+  // by the per-lane toggle recept_pstn_enabled + a per-scenario toggle. An inbound
+  // Vobiz (carrier-forwarded) call is inherently a "missed" / "unreachable" event,
+  // so the PSTN lane activates when recept_pstn_enabled=1 AND (missed OR unreachable)
+  // is on. The legacy mode='agent' path is kept for back-compat (rows saved before
+  // this shipped). Both DEFAULT OFF → a never-configured owner gets voicemail (or,
+  // once the global kill is on, a graceful not-available hangup upstream).
+  type Row = {
+    mode: string | null; agent_scope?: string | null;
+    recept_pstn_enabled?: number | null; recept_on_missed?: number | null; recept_on_unreachable?: number | null;
+  };
+  let row: Row | null = null;
   try {
     row = await metaDb(env)
-      .prepare("SELECT mode, agent_scope FROM receptionist_settings WHERE owner_uid=?1")
-      .bind(ownerUid).first<{ mode: string | null; agent_scope: string | null }>();
+      .prepare("SELECT mode, agent_scope, recept_pstn_enabled, recept_on_missed, recept_on_unreachable FROM receptionist_settings WHERE owner_uid=?1")
+      .bind(ownerUid).first<Row>();
   } catch {
-    row = await metaDb(env)
-      .prepare("SELECT mode FROM receptionist_settings WHERE owner_uid=?1")
-      .bind(ownerUid).first<{ mode: string | null }>();
+    // Pre-migration (new columns not yet added) → fall back to the legacy mode path.
+    try {
+      row = await metaDb(env)
+        .prepare("SELECT mode, agent_scope FROM receptionist_settings WHERE owner_uid=?1")
+        .bind(ownerUid).first<Row>();
+    } catch {
+      row = await metaDb(env)
+        .prepare("SELECT mode FROM receptionist_settings WHERE owner_uid=?1")
+        .bind(ownerUid).first<Row>();
+    }
   }
-  if (((row?.mode || "") as string).trim().toLowerCase() !== "agent") return null;
-  if (((row?.agent_scope || "") as string).trim().toLowerCase() === "app") return null;
+  const modeAgent = ((row?.mode || "") as string).trim().toLowerCase() === "agent"
+    && ((row?.agent_scope || "") as string).trim().toLowerCase() !== "app";
+  const pstnLane = (row?.recept_pstn_enabled ?? 0) === 1
+    && (((row?.recept_on_missed ?? 0) === 1) || ((row?.recept_on_unreachable ?? 0) === 1));
+  if (!modeAgent && !pstnLane) return null;
 
   // Token runway ≥3 (1 min), mirroring /api/receptionist/start's agent gate.
   // FAIL-OPEN on wallet read errors (a wallet hiccup must not silently demote a
@@ -434,6 +455,15 @@ async function handleAnswer(req: Request, env: Env, secret: string): Promise<Res
           return agentXml;
         }
       } catch { /* any agent-lane failure → voicemail below, never a dropped call */ }
+    }
+
+    // [VM-KILL-1] GLOBAL voicemail kill (owner 2026-07-21): once voicemail is
+    // disabled platform-wide, a PSTN call that the receptionist agent lane above
+    // did NOT take must NOT drop into a voicemail recording. End politely (the same
+    // "unable to take your call" hangup used for over-capacity) — never dead air,
+    // never a billed <Record>. Reversible: flip voicemailEnabled back on in KV.
+    if ((cfg as any).voicemailEnabled === false) {
+      return safetyNetXml();
     }
 
     if (callUuid) {

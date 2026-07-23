@@ -164,6 +164,17 @@ class RemoteConfig {
   /// to "offer a voicemail" is the safe, user-friendly side. Flip false in KV to
   /// restore the silent no-answer teardown without a build.
   static bool get avatokVoicemailFree => _b('avatokVoicemailFree', true);
+
+  /// [VM-KILL-1] GLOBAL voicemail master switch (owner decision 2026-07-21).
+  /// Mirrors config.ts `voicemailEnabled`, DECLARED in BOTH PlatformConfig and
+  /// DEFAULTS (default true) so it is a real, flippable KV kill switch (not an
+  /// unknown-key trap). Default TRUE = voicemail available (no behavior change).
+  /// When flipped FALSE, the client stops auto-firing the free AvaTOK↔AvaTOK
+  /// voicemail on no-answer and the "AI receptionist" settings hide every
+  /// voicemail affordance — the receptionist (opt-in per lane) is the only
+  /// unanswered-call handler. Server enforces the same kill on every voicemail
+  /// route, so an old app build is covered even without this getter.
+  static bool get voicemailEnabled => _b('voicemailEnabled', true);
   /// [AVA-CAMP-FL-NAV] Outbound AI-calling campaigns — master switch for the
   /// whole feature (Specs/OUTBOUND-AI-CALLING-CAMPAIGNS.md). Key already
   /// declared in worker DEFAULTS (worker/src/routes/config.ts

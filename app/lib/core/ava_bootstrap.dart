@@ -29,7 +29,9 @@ import '../features/settings/sections/receptionist_section.dart';
 import '../features/settings/sections/business_agent_section.dart';
 import '../features/settings/sections/ringtone_section.dart';
 import '../features/settings/sections/tools_section.dart';
-import '../features/settings/sections/voice_section.dart';
+// [AVARECEPT-LANES-1] voice_section.dart's standalone section registration is
+// retired (folded into the AI receptionist page); its AvaVoice/AvaVoicePref
+// classes are still imported where the companion "Listen" hook needs them.
 import '../features/ava_generative/image_tool.dart';
 import 'ava_local_mode.dart';
 import 'ava_memory/ava_memory.dart';
@@ -70,7 +72,12 @@ class AvaBootstrap {
     // is free (CompanionHome/CompanionThreadScreen via the existing
     // /api/ava/gemini proxy); only synthesis is gated. Synthesis wiring is
     // deferred (no new worker route) — see voice_section.dart's AvaVoice.
-    registerVoiceSection();
+    // [AVARECEPT-LANES-1] the standalone "Ava voice" settings section is retired —
+    // its voice + call-language picker is now folded into the "AI receptionist"
+    // page (receptionist_section.dart _voiceSection). AvaVoice/AvaVoicePref stay in
+    // voice_section.dart for the companion "Listen" hook; only the section
+    // registration is removed so the picker lives in one place.
+    // registerVoiceSection();  // folded into registerReceptionistSection()
     // If a previous run died inside a native voice call, the on-disk breadcrumb
     // is still there — report it to PostHog now (then it clears itself). This is
     // how native sherpa-onnx crashes (invisible to in-process telemetry) surface.
