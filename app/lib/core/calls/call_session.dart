@@ -384,6 +384,19 @@ class CallSession {
   // True once the probe actually delivered the WS3 keys, so we only *enforce* the
   // pref (skip the receptionist) when the callee's real setting is known.
   bool _calleePrefsKnown = false;
+  // [AVARECEPT-LANES-1] (owner 2026-07-21) per-LANE + per-SCENARIO receptionist
+  // prefs from the callee's /config probe. Voicemail is retired; the AI
+  // receptionist auto-activates only when the callee's AvaTOK lane is ON AND the
+  // matching scenario (missed/rejected/unreachable) is ON. ALL DEFAULT OFF
+  // (opt-in). `_calleeLanesKnown` is true once the probe delivered the new keys;
+  // until then the code falls back to the legacy `_calleeAiReceptionist` path so
+  // an older worker never regresses. The PSTN lane is intentionally NOT read here
+  // — the PSTN no-answer route is decided server-side in pstn.ts.
+  bool _calleeLanesKnown = false;
+  bool _calleeReceptAvatok = false;
+  bool _calleeReceptMissed = false;
+  bool _calleeReceptRejected = false;
+  bool _calleeReceptUnreachable = false;
   // [BUSY-CARD-1] Server-provided busy metadata for the personalized busy card.
   // Populated from the 'busy' call-status only when the server sends it; null /
   // false ⇒ old cold "User is busy" behaviour (the card never renders). See
@@ -995,8 +1008,15 @@ class CallSession {
         }
         if (e.status == 'decline' && !config.video && !_ended) {
           _ringTimeout?.cancel();
-          // ignore: unawaited_futures
-          _handoffToAva('decline');
+          // [AVARECEPT-LANES-1] a plain reject only hands off to Ava when the callee
+          // enabled the AvaTOK lane AND the 'rejected' scenario (both default OFF).
+          // Otherwise it ends as an honest declined call (voicemail is retired).
+          if (_receptionistAllowedFor('rejected')) {
+            // ignore: unawaited_futures
+            _handoffToAva('decline');
+          } else {
+            _endWith('declined', reason: 'decline-recept-off');
+          }
           return;
         }
         _endWith(e.status == 'decline' ? 'declined' : e.status);
@@ -1672,7 +1692,20 @@ class CallSession {
     // regression onto the callee too. Proof in prod telemetry 2026-07-14:
     // `ringback_played_on_receipt` at 15:14:52.543 on an INCOMING call
     // (direction:"incoming"), 200ms before `call_connected` at 15:14:52.746.
-    if (config.outgoing && frameFrom.isNotEmpty) {
+    // [FAKE-RING-HONEST-1] (2026-07-22 incident) Only a GENUINE peer signaling
+    // frame proves the callee's device is actually alive on the wire. This block
+    // used to fire _onDeviceRinging() (real ring narration + ringback) for ANY
+    // inbound frame carrying a `from` — but server-originated frames can carry a
+    // `from` too, so that manufactured a full fake ring with zero evidence the
+    // callee's phone was up. On 2026-07-22 a caller heard "Ah — it's ringing!" +
+    // ringback while the callee was unreachable (delivered_semantics=
+    // fcm_accepted_not_device_receipt). FCM-accepted is NOT device-reached. Only
+    // offer/answer/candidate come from the peer's live device; restrict to those.
+    // (The explicit `case 'device-ringing':` below stays the real receipt path.)
+    final String frameType = d['type']?.toString() ?? '';
+    final bool isPeerSignal =
+        frameType == 'offer' || frameType == 'answer' || frameType == 'candidate';
+    if (config.outgoing && frameFrom.isNotEmpty && isPeerSignal) {
       _onDeviceRinging();
     }
     if (d['country'] is String) _telemetry.setPeerCountry(d['country'] as String);
@@ -2021,7 +2054,12 @@ class CallSession {
     // older worker) we keep the legacy always-on behavior so nothing regresses; an
     // explicit OFF from a newer worker routes straight to voicemail below. Ava
     // applies to BOTH AvaTOK and PSTN when ON.
-    final receptionistAllowed = !_calleePrefsKnown || _calleeAiReceptionist;
+    // [AVARECEPT-LANES-1] Per-lane + per-scenario gating (both default OFF): the
+    // receptionist auto-activates only when the callee turned ON their AvaTOK lane
+    // AND the matching scenario — 'unreachable' (phone off/no data) vs 'missed'
+    // (rang, no answer). Legacy workers fall back to the old always-on pref.
+    final receptionistAllowed = !config.video &&
+        _receptionistAllowedFor(_callUnreachable ? 'unreachable' : 'missed');
     if (receptionistAllowed && !config.video && !_ended) {
       // UNREACHABLE-AVA-1 (owner decision 2026-07-07): when the callee's phone is
       // off / has no data (_callUnreachable), Ava still takes the message — with
@@ -2050,10 +2088,16 @@ class CallSession {
     // businessCallUx. `_autoStartFreeVoicemail` owns the terminal outcome when it
     // returns true (either recording, or an honest end if the room can't start),
     // so it must never fall through to a silent teardown.
+    // [VM-KILL-1] GLOBAL voicemail kill (owner 2026-07-21): when voicemail is
+    // disabled platform-wide, the free AvaTOK↔AvaTOK auto-voicemail no longer fires
+    // — an unanswered call the receptionist didn't take ends as an honest missed
+    // call. The server also 503s /api/voicemail/start, so this just avoids a wasted
+    // round-trip (and covers this build). Reversible via the voicemailEnabled flag.
     if (!config.video &&
         !config.business &&
         !_ended &&
         !_connected &&
+        RemoteConfig.voicemailEnabled &&
         RemoteConfig.avatokVoicemailFree) {
       final fired = await _autoStartFreeVoicemail();
       if (fired) return;
@@ -2499,11 +2543,43 @@ class CallSession {
         _calleeAiReceptionist = cfg['aiReceptionistEnabled'] == true;
         _calleePstnVoicemail = cfg['pstnVoicemailEnabled'] == true;
       }
+      // [AVARECEPT-LANES-1] per-lane + per-scenario prefs (default OFF). Present
+      // only on a newer worker; older workers omit them → legacy fallback stays.
+      if (cfg.containsKey('receptAvatokEnabled')) {
+        _calleeLanesKnown = true;
+        _calleeReceptAvatok = cfg['receptAvatokEnabled'] == true;
+        _calleeReceptMissed = cfg['receptOnMissed'] == true;
+        _calleeReceptRejected = cfg['receptOnRejected'] == true;
+        _calleeReceptUnreachable = cfg['receptOnUnreachable'] == true;
+      }
       final Duration window = _receptMode == 'first_ring'
           ? const Duration(seconds: 6)
           : Duration(seconds: (_receptRings * 5).clamp(20, 45));
       _armNoAnswerWindow(window);
     } catch (_) {}
+  }
+
+  /// [AVARECEPT-LANES-1] Should the AvaTOK receptionist AUTO-activate for this
+  /// unanswered-call [scenario] ('missed' | 'rejected' | 'unreachable')? Requires
+  /// the callee's AvaTOK lane ON **and** the matching scenario ON — both default
+  /// OFF (opt-in). Falls back to the legacy always-on pref only when the worker
+  /// didn't send the new per-lane keys, so an older backend never regresses. An
+  /// EXPLICIT user action ("Talk to Ava" in the outcome menu) bypasses this and
+  /// calls _tryReceptionist directly.
+  bool _receptionistAllowedFor(String scenario) {
+    if (!_calleeLanesKnown) {
+      return !_calleePrefsKnown || _calleeAiReceptionist;
+    }
+    if (!_calleeReceptAvatok) return false;
+    switch (scenario) {
+      case 'unreachable':
+        return _calleeReceptUnreachable;
+      case 'rejected':
+        return _calleeReceptRejected;
+      case 'missed':
+      default:
+        return _calleeReceptMissed;
+    }
   }
 
   void _armNoAnswerWindow(Duration window) {
@@ -2526,8 +2602,23 @@ class CallSession {
     _ringAckFallback = Timer(const Duration(seconds: 5), () {
       if (_ringAckHandled || _connected || _ended || _deviceRinging) return;
       _ringAckHandled = true;
-      Analytics.capture('call_ring_ack', {'call_id': config.room, 'source': 'fallback'});
-      _onDeviceRinging();
+      // [FAKE-RING-HONEST-1] (2026-07-22 incident) A ring sound/status may ONLY
+      // ever be driven by a real device-ringing receipt or a genuine peer
+      // signaling frame (offer/answer/candidate). This 5s fallback fires when the
+      // SERVER never sent a ring-ack — that means we have NO evidence the callee's
+      // device is up, so we must NOT call _onDeviceRinging() (which would narrate
+      // "Ah — it's ringing!", set phase 'ringing', and play a full ringback). On
+      // 2026-07-22 15:10:26 a caller heard a complete fake ring while the callee's
+      // phone was unreachable (4 stale tokenless devices, delivered_semantics=
+      // fcm_accepted_not_device_receipt) — this fallback manufactured it. Instead
+      // keep the honest searching state: leave the searching tone playing, do NOT
+      // start a ringback, and simply arm the no-answer window so the Ava handoff
+      // still fires at timeout. The genuine device-ringing receipt, if it ever
+      // arrives, upgrades us to a real ring via _onDeviceRinging.
+      Analytics.capture('call_ring_ack',
+          {'call_id': config.room, 'source': 'fallback', 'honest': true});
+      _setDialStage('Still trying to reach $_peerFirst…');
+      _startRingWindow(_pendingRingWindow ?? const Duration(seconds: 25));
     });
   }
 
@@ -2590,7 +2681,12 @@ class CallSession {
       if (!_deviceRinging) {
         _startRingWindow(_pendingRingWindow ?? const Duration(seconds: 25));
         // [DIAL-NARRATION-1] The push verifiably reached the network — narrate it.
-        _setDialStage("Found $_peerFirst! Waking the phone up…");
+        // [FAKE-RING-HONEST-1] But an accepted push is NOT proof the device rang
+        // (FCM-accepted != device-reached; delivered_semantics=
+        // fcm_accepted_not_device_receipt). Keep the wording to "reaching the
+        // phone" so it never implies the callee's phone is actually ringing — the
+        // real ring narration/tone comes only from a device-ringing receipt.
+        _setDialStage("Reaching $_peerFirst's phone…");
       }
       Analytics.capture('call_ring_ack',
           {'call_id': config.room, 'ok': ok, 'source': 'server', 'window_extended': true});
