@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -15,14 +14,12 @@ import '../core/remote_config.dart';
 import '../core/ui/avatok_dark.dart';
 import '../features/askava/askava_screen.dart';
 import '../features/avadial/avadial_channel.dart';
-import '../features/avadial/avadial_setup_sheet.dart';
 import '../features/avadial/block_list.dart';
 import '../features/avadial/contact_detail_screen.dart';
 import '../features/avadial/in_call_screen.dart';
 import '../features/avadial/inbox/inbox_list_screen.dart';
 import '../features/avadial/missed_call_service.dart';
 import '../features/avadial/pstn_call_screen.dart';
-import '../features/avadial/pstn_forwarding_intro.dart';
 import '../features/avadial/sms/sms_thread_screen.dart';
 import '../identity/identity.dart';
 import 'v2/app_switcher_bar.dart';
@@ -228,11 +225,6 @@ class _ShellV2State extends State<ShellV2> {
   // this account, Home on first run. Scoped via scopedKey so a parent + child
   // on one phone keep independent last-root state.
   static const _kLastRoot = 'shellv2_last_root';
-  // [DEFAULT-APPS-REPROMPT-1] '1' once this account has been offered the
-  // "make AvaTOK your phone" re-prompt. Account-scoped (see scopedKey): a shared
-  // phone's parent and child hold their own OS roles, so one seeing it must not
-  // silence it for the other.
-  static const _kDefaultAppsReprompt = 'shellv2_default_apps_reprompt_v1';
   static const _ss = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
@@ -248,123 +240,20 @@ class _ShellV2State extends State<ShellV2> {
     _wireIncomingCalls();
     _wireCompose();
     _wireMissedCall();
-    _maybeRepromptDefaultApps();
-    _maybeShowVoicemailIntro();
+    // [ONBOARD-STREAMLINE-1] The post-login "Make AvaTOK your phone app?"
+    // re-prompt is GONE — AvaTOK no longer asks to become the default
+    // dialer/SMS app anywhere. The consolidated onboarding permissions page
+    // now covers every permission the app legitimately needs.
+    // [ONBOARD-CLEANUP-1 2026-07-23] _maybeShowVoicemailIntro() REMOVED — the
+    // existing-user voicemail re-offer is gone along with the voicemail
+    // feature. New signups no longer see a voicemail onboarding step either.
   }
 
-  /// [AVA-RCPT-CONSENT-1] (owner decision 2026-07-16, PLAN-2026-07-16
-  /// receptionist/guardian doc): carrier voicemail forwarding is ON BY
-  /// DEFAULT for every user now, via informed consent rather than silently.
-  /// New signups see this as the onboarding 'voicemail_forwarding' step
-  /// (onboarding_flow.dart); EXISTING users — anyone who signed up, or last
-  /// updated, before this shipped — get the exact same screen once, here,
-  /// post-login. Same three-brake shape as [_maybeRepromptDefaultApps]:
-  ///   1. Flag gate — `avaDialer` && `pstnVoicemail`, the identical pair the
-  ///      Settings row (pstn_forwarding_setup.dart) and the onboarding step
-  ///      both gate on.
-  ///   2. Per-account "seen" marker ([pstnIntroSeen]/[markPstnIntroSeen],
-  ///      pstn_forwarding_intro.dart) — at most once per account, ever.
-  ///   3. Never fights the incoming-call launch path: skipped outright while
-  ///      [AvaDialChannel.incomingScreenOpen] is true (an active
-  ///      [PstnCallScreen] push already owns the screen — the same guard
-  ///      [_openIncoming] checks above) and given a short beat after the
-  ///      first frame so it doesn't collide with [_maybeRepromptDefaultApps]'s
-  ///      own post-frame dialog on the very same cold start.
-  void _maybeShowVoicemailIntro() {
-    if (!Platform.isAndroid || !RemoteConfig.avaDialer || !RemoteConfig.pstnVoicemail) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      try {
-        // Give the default-apps re-prompt (registered in the same initState,
-        // same frame) first crack at the screen — never stack two unrelated
-        // one-time prompts on top of each other on a single cold start.
-        await Future.delayed(const Duration(milliseconds: 600));
-        if (!mounted) return;
-        if (AvaDialChannel.I.incomingScreenOpen) return; // an incoming call owns the screen right now
-        if (await pstnIntroSeen()) return;
-        if (!mounted) return;
-        Analytics.capture('pstn_forward_intro_shown', {'from': 'shell_startup'});
-        await Navigator.of(context, rootNavigator: true).push(MaterialPageRoute<void>(
-          fullscreenDialog: true,
-          builder: (_) => const PstnForwardingIntroScreen(),
-        ));
-      } catch (e) {
-        // A prompt must never be able to break app launch.
-        Analytics.capture('pstn_forward_intro_error', {'error': e.toString()});
-      }
-    });
-  }
-
-  /// [DEFAULT-APPS-REPROMPT-1] (owner request 2026-07-15) Existing users who never
-  /// took the onboarding "make AvaTOK your phone" step get sent, ONCE, to
-  /// Settings → "Default phone & messages" on their next app open.
-  ///
-  /// Three independent brakes, because this interrupts app launch and the owner
-  /// already had the old setup sheet stopped on 2026-07-14 for nagging:
-  ///   1. `defaultAppsReprompt` — server kill switch (declared in config.ts
-  ///      PlatformConfig + DEFAULTS, so it can actually be flipped).
-  ///   2. A persistent account-SCOPED key — at most once per account, ever.
-  ///      Scoped because a parent and child share the phone and hold separate
-  ///      roles; a global key would silence the prompt for everyone after the
-  ///      first person saw it (rulebook rule 1).
-  ///   3. Role check — never shown to anyone who already holds them.
-  ///
-  /// Deliberately NOT the old auto-popping sheet: this is a single dismissible
-  /// prompt that hands off to the settings section and then never returns.
-  void _maybeRepromptDefaultApps() {
-    if (!Platform.isAndroid || !RemoteConfig.avaDialer) return;
-    if (!RemoteConfig.defaultAppsReprompt) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      try {
-        // Once per account, ever.
-        final seen = await readScoped(_ss, _kDefaultAppsReprompt);
-        if (seen == '1') return;
-        // Already the default phone (and SMS, when that surface is live)? Then
-        // there is nothing to ask for — record it and never ask again.
-        final dialer = await AvaDialChannel.I.isDialerRoleHeld();
-        final sms = RemoteConfig.avaSms ? await AvaDialChannel.I.isSmsRoleHeld() : true;
-        if (dialer && sms) {
-          await _ss.write(key: scopedKey(_kDefaultAppsReprompt), value: '1');
-          return;
-        }
-        if (!mounted) return;
-        // Mark BEFORE showing. If the user force-quits on the prompt we must not
-        // re-ask on every launch — one shot is one shot.
-        await _ss.write(key: scopedKey(_kDefaultAppsReprompt), value: '1');
-        Analytics.capture('default_apps_reprompt_shown',
-            {'dialer_held': dialer, 'sms_held': sms});
-        if (!mounted) return;
-        final go = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            backgroundColor: AD.card,
-            title: Text('Make AvaTOK your phone app?',
-                style: ADText.rowName().copyWith(fontSize: 17)),
-            content: Text(
-              'Set AvaTOK as your default phone and messages app so calls and '
-              'texts run through it, with the free scam and spam shield.',
-              style: ADText.preview(c: AD.textSecondary),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: Text('Not now', style: ADText.rowName(c: AD.textSecondary)),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: Text('Set up', style: ADText.rowName(c: AD.primaryBadge)),
-              ),
-            ],
-          ),
-        );
-        Analytics.capture('default_apps_reprompt_choice', {'accepted': go == true});
-        if (go != true || !mounted) return;
-        await showAvaDialSetupSheet(context);
-      } catch (e) {
-        // A prompt must never be able to break app launch.
-        Analytics.capture('default_apps_reprompt_error', {'error': e.toString()});
-      }
-    });
-  }
+  // [ONBOARD-STREAMLINE-1 2026-07-23] _maybeRepromptDefaultApps() REMOVED.
+  // The post-login "Make AvaTOK your phone app?" dialog (which handed off to the
+  // AvaDial setup sheet to request ROLE_DIALER/ROLE_SMS) is gone: AvaTOK no
+  // longer becomes or asks to become the default dialer/SMS app. The
+  // `defaultAppsReprompt` remote flag is now unused by the client.
 
   @override
   void dispose() {

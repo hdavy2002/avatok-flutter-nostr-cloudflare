@@ -11,21 +11,18 @@ import '../../core/admin_tools.dart';
 import '../../core/analytics.dart';
 import '../../core/app_registry.dart';
 import '../../core/apps.dart';
-import '../../core/disk_cache.dart';
+import '../../core/ava_log.dart';
 import '../../core/feature_flags.dart';
 import '../../core/guest_session.dart';
 import '../../core/onboarding_store.dart';
 import '../../core/prefs_sync.dart';
 import '../../core/profile_store.dart';
-import '../../core/remote_config.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
 import '../ava_ai/ava_ai_setup.dart';
 import '../avadial/avadial_channel.dart';
-import '../avadial/device_contacts.dart';
-import '../avadial/pstn_forwarding_intro.dart';
 import '../avatok/contacts.dart';
 
 /// The sign-up flow shown after Clerk auth on a fresh account. Starts by asking
@@ -62,27 +59,22 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   // receptionist/guardian doc): AvaTOK will no longer ask to become the Android
   // default dialer/SMS app — spam can't be filtered well enough as a default
   // handler, and carrier conditional call forwarding to the Vobiz voicemail line
-  // is now the only voicemail path. The 'phone_roles' step is never added to the
-  // flow anymore, so onboarding is byte-for-byte 'terms' → 'notifications' on
-  // every platform. Its builders (_phoneRoles/_phoneResult/_phonePreview etc.)
-  // are left in this file, unrouted, same pattern as the other retired steps
-  // (account_kind, profile, verify_identity, drive_backup, contacts, add_ai,
-  // apps) — do not re-add 'phone_roles' without an explicit owner request.
-  // [AVA-RCPT-CONSENT-1] SAME DAY (owner decision): carrier voicemail
-  // forwarding ships ON BY DEFAULT for every user, via informed consent
-  // rather than silently. 'voicemail_forwarding' is that consent step for
-  // NEW signups — see pstn_forwarding_intro.dart. Gated identically to the
-  // rest of the AvaDial telecom surface (Android + avaDialer + pstnVoicemail,
-  // same flags pstn_forwarding_setup.dart's Settings row uses) so onboarding
-  // stays 'terms' -> 'notifications' only when the feature is dark. Existing
-  // users who never went through onboarding are offered the same intro once,
-  // post-login, from shell_v2.dart's startup wiring.
+  // is now the only voicemail path. [ONBOARD-STREAMLINE-1 2026-07-23] the
+  // 'phone_roles' step and ALL its builders (_phoneRoles/_phoneResult/
+  // _phonePreview/_makePhoneApp/_requestRoleAwait) are now DELETED, not just
+  // unrouted — AvaTOK no longer requests ROLE_DIALER/ROLE_SMS anywhere.
+  // [ONBOARD-STREAMLINE-1] (owner decision 2026-07-23): the scattered runtime
+  // pop-ups are GONE. Onboarding is now 'terms' -> 'permissions' on every
+  // platform. The 'notifications' ("Stay in the loop") page, the
+  // 'voicemail_forwarding' ("Your Ava Voicemail box") page and the
+  // 'phone_roles' ("Make AvaTOK your phone") page are all REMOVED — AvaTOK no
+  // longer asks to become the default dialer/SMS app, and the single
+  // consolidated 'permissions' page (see [_permissions]) requests every OS
+  // permission the app actually needs up front, each with a plain-English
+  // reason. Do NOT re-add 'phone_roles', 'notifications' or
+  // 'voicemail_forwarding' without an explicit owner request.
   static List<String> _composeSteps() {
-    final steps = <String>['terms', 'notifications'];
-    if (Platform.isAndroid && RemoteConfig.pstnVoicemail && RemoteConfig.avaDialer) {
-      steps.add('voicemail_forwarding');
-    }
-    return steps;
+    return <String>['terms', 'permissions'];
   }
   static final List<String> _stepNames = _composeSteps();
   static final int _steps = _stepNames.length;
@@ -102,17 +94,15 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   // Defaults to personal when the step is disabled (kAccountTypeStepEnabled).
   AccountKind? _selectedKind = kAccountTypeStepEnabled ? null : AccountKind.personal;
 
-  bool _notifEnabled = false;
   bool _agreedTerms = false;
 
-  // ---- phone-roles step (AVA-ONBOARD-2) ----
-  bool _phoneBusy = false;      // a role/permission request sequence is running
-  bool _phoneResolved = false;  // sequence finished → show the per-capability result
-  bool _phoneShownLogged = false; // onboarding_phone_step_shown fired once
-  bool _showPhonePreview = false; // after roles, when the dialer role was granted
-  bool? _dialerGranted;
-  bool? _smsGranted;     // null when the SMS layer (avaSms) is off → row hidden
-  bool? _contactsGranted;
+  // ---- consolidated permissions step (ONBOARD-STREAMLINE-1) ----
+  // Live grant status per row, keyed by the row id in [_permRows]. Probed once
+  // in [_bootstrap] and refreshed after each request so the page reflects
+  // anything already granted (re-onboarding, or enabled in system Settings).
+  final Map<String, bool> _permGranted = <String, bool>{};
+  bool _permBusy = false; // a request sequence is running
+
   // Standard-tier apps only (Phase 1): a signup ends with exactly the standard
   // apps — hidden-tier apps stay registered but are not offered or enabled.
   late Set<String> _enabled = kApps
@@ -153,16 +143,12 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     var id = await _idStore.load();
     id ??= await _idStore.createAndStore();
     if (mounted) setState(() => _id = id);
-    // AVA-ONBOARD-1: the onboarding "notifications" step OWNS the single OS
-    // notification-permission ask (PushService.init defers it until onboarding is
-    // done — see the ordering contract there). If the permission is somehow
-    // already granted (re-onboarding, or the user enabled it in system Settings),
-    // render the step as already-on so we never show a redundant second prompt.
-    try {
-      if (await Permission.notification.isGranted && mounted) {
-        setState(() => _notifEnabled = true);
-      }
-    } catch (_) {/* status probe is best-effort — never block onboarding */}
+    // [ONBOARD-STREAMLINE-1] Probe every permission the consolidated page asks
+    // for, so a row already granted (re-onboarding, or enabled in system
+    // Settings) renders as "On" and is skipped by the "Allow all" sequence.
+    // PushService.init still defers the notification ask until onboarding is
+    // done (see the ordering contract there) — this page OWNS that single ask.
+    unawaited(_refreshPermissionStatus());
     // [AVA-IDGATE-1] The isPhoneVerified() probe is gone with phone verification.
     // Handle-first onboarding: prefill the handle the visitor already reserved.
     final gh = await GuestSession.reservedHandle();
@@ -232,11 +218,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     if (_step < _steps - 1) {
       setState(() => _step++);
       Analytics.capture('onboarding_step_viewed', {'step_index': _step, 'step_name': _stepNames[_step]});
-      // AVA-ONBOARD-2: dedicated shown-event for the optional phone step (once).
-      if (_stepNames[_step] == 'phone_roles' && !_phoneShownLogged) {
-        _phoneShownLogged = true;
-        Analytics.capture('onboarding_phone_step_shown', const {});
-      }
     } else {
       _finish();
     }
@@ -306,9 +287,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     // account-type step is flag-disabled.
     switch (_stepNames[_step]) {
       case 'account_kind': return _accountType();
-      case 'notifications': return _notifications();
-      case 'phone_roles': return _phoneRoles();
-      case 'voicemail_forwarding': return _voicemailForwardingStep();
+      case 'permissions': return _permissions();
       case 'terms': return _terms();
       case 'profile': return _profileStep();
       case 'contacts': return _contacts();
@@ -640,363 +619,216 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     ]);
   }
 
-  // ---- Step 1: notifications ----
-  Widget _notifications() {
-    // RESPUI-2: was a fixed Column with Spacer()s sized for a tall screen —
-    // on short screens / high textScale the CTA at the bottom got pushed off
-    // or the layout overflowed. Now a scrollable column with fixed gaps, so
-    // it compresses naturally and the button is always reachable by scrolling.
-    final hPad = ZineBreakpoints.pagePadding(context);
-    return SingleChildScrollView(
-      padding: EdgeInsets.fromLTRB(hPad, 8, hPad, 24),
-      child: Column(
-        children: [
-          const SizedBox(height: 12),
-          Container(
-            width: 116, height: 116,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AD.card,
-              border: Border.all(color: AD.borderControl, width: 1),
-              boxShadow: AD.overlayShadow,
-            ),
-            child: Center(
-              child: PhosphorIcon(
-                  _notifEnabled
-                      ? PhosphorIcons.bellRinging(PhosphorIconsStyle.fill)
-                      : PhosphorIcons.bell(PhosphorIconsStyle.bold),
-                  size: 46, color: AD.textPrimary),
-            ),
-          ),
-          const SizedBox(height: 18),
-          Text.rich(
-            TextSpan(children: [
-              const TextSpan(text: 'Stay in the '),
-              TextSpan(text: 'loop', style: const TextStyle(color: AD.primaryBadge)),
-            ]),
-            textAlign: TextAlign.center,
-            style: ADText.appTitle().copyWith(
-                fontSize: ZineBreakpoints.heroTextSize(context, regular: 32), height: 1.08),
-          ),
-          const SizedBox(height: 12),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 300),
-            child: Text(
-                'Get notified when creators you follow post, when you earn a payout, or when someone tips your work.',
-                textAlign: TextAlign.center, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14.5)),
-          ),
-          const SizedBox(height: 28),
-          _featureRow(PhosphorIcons.heart(PhosphorIconsStyle.bold), AD.danger, 'New followers & tips'),
-          const SizedBox(height: 12),
-          _featureRow(PhosphorIcons.wallet(PhosphorIconsStyle.bold), AD.online, 'Payouts & wallet activity'),
-          const SizedBox(height: 12),
-          _featureRow(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), AD.iconSearch, 'Replies & mentions'),
-          const SizedBox(height: 32),
-          if (_notifEnabled)
-            _primary('Keep going', _next)
-          else ...[
-            _primary('Turn on notifications', () async {
-              await Permission.notification.request();
-              if (Platform.isAndroid) {
-                try { await Permission.ignoreBatteryOptimizations.request(); } catch (_) {}
-              }
-              setState(() => _notifEnabled = true);
-            }, icon: PhosphorIcons.bell(PhosphorIconsStyle.bold)),
-            const SizedBox(height: 14),
-            ZineLink('not now', fontSize: 14, onTap: _next, underline: AD.iconSearch),
-          ],
-        ],
-      ),
-    );
+  // ---- Step: consolidated permissions (ONBOARD-STREAMLINE-1) ----
+  // ONE page that asks up front for every OS permission AvaTOK actually needs,
+  // each with a short plain-English reason — replacing the scattered runtime
+  // pop-ups (notifications, "show calls on lock screen", contacts wall, …).
+  // "Allow all" walks the list in order; a row already granted is skipped and
+  // shows "On". Tapping a single row requests just that one. Nothing here asks
+  // to become the default dialer/SMS app — that flow was removed.
+  //
+  // The "lock screen" row maps to the Android full-screen-intent grant (so an
+  // incoming call rings full-screen while locked), NOT any dialer role. It is
+  // launched via AvaDialChannel, whose method channel tolerates the platform
+  // side being absent, so it stays a safe no-op off-Android / on older builds.
+  List<_PermSpec> get _permRows => <_PermSpec>[
+        _PermSpec('contacts', PhosphorIcons.addressBook(PhosphorIconsStyle.bold), AD.iconSearch,
+            'Contacts', 'Find people you know who are already on AvaTOK and show real '
+                'names on calls. We never upload your contacts.'),
+        _PermSpec('notifications', PhosphorIcons.bell(PhosphorIconsStyle.bold), AD.primaryBadge,
+            'Notifications', 'So you know when you get a call, a message, a new '
+                'follower or a payout.'),
+        if (Platform.isAndroid)
+          _PermSpec('lockscreen', PhosphorIcons.lockKey(PhosphorIconsStyle.bold), AD.iconVideo,
+              'Show calls on lock screen', 'So an incoming call rings full-screen '
+                  'even when your phone is locked.'),
+        _PermSpec('microphone', PhosphorIcons.microphone(PhosphorIconsStyle.bold), AD.danger,
+            'Microphone', 'For voice and video calls and for recording voice notes.'),
+        _PermSpec('camera', PhosphorIcons.camera(PhosphorIconsStyle.bold), AD.online,
+            'Camera', 'For video calls and taking your profile photo.'),
+        if (Platform.isAndroid)
+          _PermSpec('phone_state', PhosphorIcons.phone(PhosphorIconsStyle.bold), AD.iconSearch,
+              'Phone status', 'So AvaTOK can pause a call when a normal mobile call '
+                  'comes in. AvaTOK is not your default phone app.'),
+        if (Platform.isAndroid)
+          _PermSpec('battery', PhosphorIcons.batteryCharging(PhosphorIconsStyle.bold), AD.primaryBadge,
+              'Background activity', 'So your calls still ring when AvaTOK is running '
+                  'in the background.'),
+        _PermSpec('photos', PhosphorIcons.image(PhosphorIconsStyle.bold), AD.iconVideo,
+            'Photos & media', 'To share photos and videos and to set your avatar.'),
+      ];
+
+  /// Best-effort status probe for one row (never requests a permission).
+  Future<bool> _probeOne(String id) async {
+    try {
+      switch (id) {
+        case 'contacts': return await Permission.contacts.isGranted;
+        case 'notifications': return await Permission.notification.isGranted;
+        case 'microphone': return await Permission.microphone.isGranted;
+        case 'camera': return await Permission.camera.isGranted;
+        case 'phone_state': return await Permission.phone.isGranted;
+        case 'battery': return await Permission.ignoreBatteryOptimizations.isGranted;
+        case 'photos': return await Permission.photos.isGranted;
+        case 'lockscreen':
+          if (!Platform.isAndroid) return true;
+          return await AvaDialChannel.I.canUseFullScreenIntent();
+      }
+    } catch (_) {/* status probe is best-effort — never block onboarding */}
+    return false;
   }
 
-  // ---- Step: voicemail forwarding consent (AVA-RCPT-CONSENT-1) — OPTIONAL ----
-  // Embeds the SAME explainer/CTA body the existing-user re-offer route uses
-  // (pstn_forwarding_intro.dart) — do not re-implement the dial sequence or
-  // the "3 circumstances" copy here. onFinished == _next: Continue (after the
-  // three carrier codes are dialed) and "Not now" both just advance the flow,
-  // exactly like every other skippable onboarding step in this file.
-  Widget _voicemailForwardingStep() => PstnForwardingIntroBody(onFinished: _next);
-
-  // ---- Step: make AvaTOK your phone (AVA-ONBOARD-2) — OPTIONAL ----
-  // Only reachable on Android with shellV2 + avaDialer on (see _composeSteps).
-  // Pitches AvaTOK as the default dialer + Messages app + AI contact book. The
-  // primary button sequentially requests ROLE_DIALER, then ROLE_SMS (if avaSms),
-  // then contacts permission — each independent; the user proceeds either way.
-  // 'not now' skips all. All work goes through AvaDialChannel / DeviceContacts —
-  // the SAME native path the AvaDial in-app banners use, so the banners remain the
-  // retry route for anyone who declines here.
-  Widget _phoneRoles() {
-    if (_showPhonePreview) return _phonePreview();
-    if (_phoneResolved) return _phoneResult();
-    final hPad = ZineBreakpoints.pagePadding(context);
-    return SingleChildScrollView(
-      padding: EdgeInsets.fromLTRB(hPad, 8, hPad, 24),
-      child: Column(
-        children: [
-          const SizedBox(height: 12),
-          Container(
-            width: 116, height: 116,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AD.card,
-              border: Border.all(color: AD.borderControl, width: 1),
-              boxShadow: AD.overlayShadow,
-            ),
-            child: Center(
-              child: PhosphorIcon(PhosphorIcons.deviceMobile(PhosphorIconsStyle.fill),
-                  size: 46, color: AD.textPrimary),
-            ),
-          ),
-          const SizedBox(height: 18),
-          Text.rich(
-            TextSpan(children: [
-              const TextSpan(text: 'Make AvaTOK your '),
-              TextSpan(text: 'phone', style: const TextStyle(color: AD.primaryBadge)),
-            ]),
-            textAlign: TextAlign.center,
-            style: ADText.appTitle().copyWith(
-                fontSize: ZineBreakpoints.heroTextSize(context, regular: 32), height: 1.08),
-          ),
-          const SizedBox(height: 12),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 320),
-            child: Text(
-                'Set AvaTOK as your default dialer and your Messages app — send & '
-                'receive SMS with AI spam filtering — plus an AI-powered contact book.',
-                textAlign: TextAlign.center, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14.5)),
-          ),
-          const SizedBox(height: 28),
-          _featureRow(PhosphorIcons.phone(PhosphorIconsStyle.bold), AD.iconSearch,
-              'A smarter dialer with spam protection'),
-          const SizedBox(height: 12),
-          _featureRow(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), AD.iconVideo,
-              'SMS with an AI spam filter'),
-          const SizedBox(height: 12),
-          _featureRow(PhosphorIcons.addressBook(PhosphorIconsStyle.bold), AD.online,
-              'An AI-powered contact book'),
-          const SizedBox(height: 12),
-          _featureRow(PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold), AD.danger,
-              'Community-powered caller ID'),
-          const SizedBox(height: 32),
-          _primary('Make AvaTOK my phone app', _makePhoneApp,
-              icon: PhosphorIcons.deviceMobile(PhosphorIconsStyle.bold), loading: _phoneBusy),
-          const SizedBox(height: 14),
-          ZineLink('not now', fontSize: 14, onTap: _phoneBusy ? null : _skipPhoneRoles, underline: AD.iconSearch),
-        ],
-      ),
-    );
+  /// Request one row's permission. Returns whether it ended up granted.
+  Future<bool> _requestOne(String id) async {
+    try {
+      switch (id) {
+        case 'contacts': return (await Permission.contacts.request()).isGranted;
+        case 'notifications': return (await Permission.notification.request()).isGranted;
+        case 'microphone': return (await Permission.microphone.request()).isGranted;
+        case 'camera': return (await Permission.camera.request()).isGranted;
+        case 'phone_state': return (await Permission.phone.request()).isGranted;
+        case 'battery': return (await Permission.ignoreBatteryOptimizations.request()).isGranted;
+        case 'photos': return (await Permission.photos.request()).isGranted;
+        case 'lockscreen':
+          if (!Platform.isAndroid) return true;
+          // Full-screen-intent is a settings toggle, not a runtime dialog: if the
+          // OS already honours it we're done, otherwise open the settings page and
+          // re-read. We can only launch the page — never force the grant.
+          if (await AvaDialChannel.I.canUseFullScreenIntent()) return true;
+          await AvaDialChannel.I.requestFullScreenIntent();
+          return await AvaDialChannel.I.canUseFullScreenIntent();
+      }
+    } catch (e) {
+      AvaLog.I.warn('onboarding', 'permission request $id failed: $e');
+    }
+    return false;
   }
 
-  // Compact per-capability result — shown after the request sequence. The user
-  // continues regardless of what they granted.
-  Widget _phoneResult() {
-    final hPad = ZineBreakpoints.pagePadding(context);
-    final dialerOk = _dialerGranted == true;
-    return SingleChildScrollView(
-      padding: EdgeInsets.fromLTRB(hPad, 8, hPad, 24),
-      child: Column(
-        children: [
-          const SizedBox(height: 12),
-          Container(
-            width: 116, height: 116,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AD.card,
-              border: Border.all(color: AD.borderControl, width: 1),
-              boxShadow: AD.overlayShadow,
-            ),
-            child: Center(
-              child: PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
-                  size: 46, color: AD.textPrimary),
-            ),
-          ),
-          const SizedBox(height: 18),
-          Text.rich(
-            TextSpan(children: [
-              const TextSpan(text: 'All '),
-              TextSpan(text: 'set', style: const TextStyle(color: AD.primaryBadge)),
-            ]),
-            textAlign: TextAlign.center,
-            style: ADText.appTitle().copyWith(
-                fontSize: ZineBreakpoints.heroTextSize(context, regular: 32), height: 1.08),
-          ),
-          const SizedBox(height: 20),
-          _resultRow(PhosphorIcons.phone(PhosphorIconsStyle.bold), AD.iconSearch,
-              'Default dialer', _dialerGranted),
-          if (_smsGranted != null) ...[
-            const SizedBox(height: 12),
-            _resultRow(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), AD.iconVideo,
-                'Messages (SMS)', _smsGranted),
-          ],
-          const SizedBox(height: 12),
-          _resultRow(PhosphorIcons.addressBook(PhosphorIconsStyle.bold), AD.online,
-              'Contacts', _contactsGranted),
-          const SizedBox(height: 28),
-          _primary('Continue', () {
-            // If the dialer role landed, show the one-screen preview; otherwise
-            // advance straight on (the AvaDial banners remain the retry path).
-            if (dialerOk) {
-              setState(() => _showPhonePreview = true);
-            } else {
-              _next();
-            }
-          }),
-        ],
-      ),
-    );
+  /// Probe every row once so already-granted permissions render as "On" and are
+  /// skipped by "Allow all".
+  Future<void> _refreshPermissionStatus() async {
+    for (final r in _permRows) {
+      if (await _probeOne(r.id)) _permGranted[r.id] = true;
+    }
+    if (mounted) setState(() {});
   }
 
-  Widget _resultRow(IconData icon, Color accent, String label, bool? granted) => AdCard(
-        radius: Zine.rSm,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        child: Row(children: [
-          ZineIconBadge(icon: icon, color: accent),
-          const SizedBox(width: 14),
-          Expanded(child: Text(label, style: ADText.rowName().copyWith(fontSize: 15))),
-          AdSticker(
-            granted == true ? 'On' : 'Not now',
-            kind: granted == true ? AdStickerKind.ok : AdStickerKind.no,
-            icon: granted == true
-                ? PhosphorIcons.checkCircle(PhosphorIconsStyle.fill)
-                : PhosphorIcons.circle(PhosphorIconsStyle.bold),
-          ),
-        ]),
-      );
-
-  // One-screen "Your new phone experience" preview — static Zine cards pointing at
-  // the Dialpad / call screen / Messages (no screenshots). Only shown when the
-  // dialer role was granted. A single Continue finishes the step.
-  Widget _phonePreview() {
-    final hPad = ZineBreakpoints.pagePadding(context);
-    return SingleChildScrollView(
-      padding: EdgeInsets.fromLTRB(hPad, 8, hPad, 24),
-      child: Column(
-        children: [
-          const SizedBox(height: 12),
-          Text.rich(
-            TextSpan(children: [
-              const TextSpan(text: 'Your new '),
-              TextSpan(text: 'phone', style: const TextStyle(color: AD.primaryBadge)),
-            ]),
-            textAlign: TextAlign.center,
-            style: ADText.appTitle().copyWith(
-                fontSize: ZineBreakpoints.heroTextSize(context, regular: 30), height: 1.08),
-          ),
-          const SizedBox(height: 10),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 300),
-            child: Text('AvaTOK now handles your calls and texts. Here’s where to find things.',
-                textAlign: TextAlign.center, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14)),
-          ),
-          const SizedBox(height: 24),
-          _previewCard(PhosphorIcons.phone(PhosphorIconsStyle.bold), AD.iconSearch,
-              'Dialpad', 'Call anyone — spam numbers are flagged before they reach you.'),
-          const SizedBox(height: 12),
-          _previewCard(PhosphorIcons.phoneCall(PhosphorIconsStyle.bold), AD.online,
-              'Call screen', 'A clean full-screen call with a friend or spam label up top.'),
-          const SizedBox(height: 12),
-          _previewCard(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), AD.iconVideo,
-              'Messages', 'Your SMS, sorted by AI into Inbox and Spam.'),
-          const SizedBox(height: 28),
-          _primary('Continue', _next),
-        ],
-      ),
-    );
+  /// Request every not-yet-granted permission in order.
+  Future<void> _requestAllPermissions() async {
+    if (_permBusy) return;
+    setState(() => _permBusy = true);
+    final sw = Stopwatch()..start();
+    final rows = _permRows;
+    for (final r in rows) {
+      if (_permGranted[r.id] == true) continue;
+      final ok = await _requestOne(r.id);
+      if (ok) _permGranted[r.id] = true;
+      if (mounted) setState(() {});
+    }
+    sw.stop();
+    final granted = rows.where((r) => _permGranted[r.id] == true).length;
+    if (mounted) setState(() => _permBusy = false);
+    Analytics.uiInteraction('onboarding_permissions_request', sw.elapsedMilliseconds,
+        phase: 'interactive',
+        extra: {'granted': granted, 'total': rows.length});
+    AvaLog.I.log('onboarding', 'permissions granted $granted/${rows.length}');
   }
 
-  Widget _previewCard(IconData icon, Color accent, String title, String sub) => AdCard(
+  Future<void> _requestRow(_PermSpec r) async {
+    if (_permBusy || _permGranted[r.id] == true) return;
+    final ok = await _requestOne(r.id);
+    if (ok) _permGranted[r.id] = true;
+    if (mounted) setState(() {});
+    Analytics.capture('onboarding_permission_row_tapped', {'id': r.id, 'granted': ok});
+  }
+
+  Widget _permissionRow(_PermSpec r) {
+    final on = _permGranted[r.id] == true;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: (on || _permBusy) ? null : () => _requestRow(r),
+      child: AdCard(
         radius: Zine.rSm,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          ZineIconBadge(icon: icon, color: accent, size: 42),
+          ZineIconBadge(icon: r.icon, color: r.color, size: 42),
           const SizedBox(width: 14),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title, style: ADText.threadName().copyWith(fontSize: 16)),
+              Text(r.title, style: ADText.threadName().copyWith(fontSize: 15.5)),
               const SizedBox(height: 3),
-              Text(sub, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12.5)),
+              Text(r.reason, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12.5)),
             ]),
           ),
+          const SizedBox(width: 10),
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: AdSticker(
+              on ? 'On' : 'Allow',
+              kind: on ? AdStickerKind.ok : AdStickerKind.hint,
+              icon: on
+                  ? PhosphorIcons.checkCircle(PhosphorIconsStyle.fill)
+                  : PhosphorIcons.plusCircle(PhosphorIconsStyle.bold),
+            ),
+          ),
         ]),
-      );
-
-  Future<void> _skipPhoneRoles() async {
-    Analytics.capture('onboarding_phone_roles_result',
-        const {'dialer': false, 'sms': false, 'contacts': false, 'skipped': true});
-    await _markPhoneRolesOffered();
-    _next();
-  }
-
-  Future<void> _makePhoneApp() async {
-    if (_phoneBusy) return;
-    setState(() => _phoneBusy = true);
-    // 1) Default dialer role.
-    final dialer = await _requestRoleAwait(
-      AvaDialChannel.I.requestDialerRole,
-      (r) => r.role.contains('DIALER'),
-      AvaDialChannel.I.isDialerRoleHeld,
+      ),
     );
-    // 2) Default SMS role — only when the SMS layer is enabled (independent role).
-    bool? sms;
-    if (RemoteConfig.avaSms) {
-      sms = await _requestRoleAwait(
-        AvaDialChannel.I.requestSmsRole,
-        (r) => r.role.contains('SMS'),
-        AvaDialChannel.I.isSmsRoleHeld,
-      );
-    }
-    // 3) Contacts permission — reuse the AvaDial device-contacts helper.
-    final contacts = await DeviceContacts.I.ensurePermission();
-    if (!mounted) return;
-    setState(() {
-      _dialerGranted = dialer;
-      _smsGranted = sms;
-      _contactsGranted = contacts;
-      _phoneResolved = true;
-      _phoneBusy = false;
-    });
-    Analytics.capture('onboarding_phone_roles_result', {
-      // Analytics maps are non-nullable; null (role flow unavailable) → false.
-      'dialer': dialer == true,
-      'sms': sms == true,
-      'contacts': contacts,
-    });
-    await _markPhoneRolesOffered();
   }
 
-  /// Request a native role and resolve to whether it ended up held. [request]
-  /// returns `true` (already held), `null` (a system prompt showed — the verdict
-  /// arrives on [AvaDialChannel.roleResults]) or `false` (platform absent/error).
-  /// We await the matching stream verdict, then fall back to a direct held-state
-  /// read on timeout so a missed event never leaves the result wrong.
-  Future<bool> _requestRoleAwait(
-    Future<bool?> Function() request,
-    bool Function(AvaRoleResult) matches,
-    Future<bool> Function() heldCheck,
-  ) async {
-    final immediate = await request();
-    if (immediate == true) return true;
-    // `false` == platform absent / channel error: no system prompt was shown, so
-    // there is no verdict coming — read the live held state and return at once
-    // (never wait on a stream event that can't arrive).
-    if (immediate == false) return await heldCheck();
-    // `null` == a system prompt showed → the verdict lands on roleResults. Await
-    // it, falling back to a direct held-state read if no event arrives in time.
-    try {
-      final r = await AvaDialChannel.I.roleResults
-          .firstWhere(matches)
-          .timeout(const Duration(seconds: 60));
-      return r.granted;
-    } catch (_) {
-      return await heldCheck();
-    }
-  }
-
-  /// Persist that the phone-roles offer was made for this account so the step is a
-  /// one-time thing; the AvaDial in-app banners are the ongoing retry path.
-  Future<void> _markPhoneRolesOffered() async {
-    try { await DiskCache.write('phone_roles_offered', '1'); } catch (_) {/* best-effort */}
+  Widget _permissions() {
+    final hPad = ZineBreakpoints.pagePadding(context);
+    final rows = _permRows;
+    final allGranted = rows.every((r) => _permGranted[r.id] == true);
+    return Column(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(hPad, 12, hPad, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ZineIconBadge(
+                    icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill),
+                    color: AD.online, size: 44),
+                const SizedBox(height: 16),
+                Text.rich(
+                  TextSpan(children: [
+                    const TextSpan(text: 'A few '),
+                    TextSpan(text: 'permissions', style: const TextStyle(color: AD.primaryBadge)),
+                  ]),
+                  textAlign: TextAlign.left,
+                  style: ADText.appTitle().copyWith(
+                      fontSize: ZineBreakpoints.heroTextSize(context, regular: 28), height: 1.08),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                    'AvaTOK asks for everything it needs once, here — with a reason for '
+                    'each. You can change any of these later in Settings.',
+                    style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14.5)),
+                const SizedBox(height: 20),
+                for (final r in rows) ...[
+                  _permissionRow(r),
+                  const SizedBox(height: 12),
+                ],
+              ],
+            ),
+          ),
+        ),
+        Padding(
+          padding: EdgeInsets.fromLTRB(hPad, 8, hPad, 20),
+          child: allGranted
+              ? _primary('Continue', _next)
+              : Column(mainAxisSize: MainAxisSize.min, children: [
+                  _primary('Allow all', _requestAllPermissions,
+                      loading: _permBusy,
+                      icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold)),
+                  const SizedBox(height: 12),
+                  ZineLink('Continue', fontSize: 14,
+                      onTap: _permBusy ? null : _next, underline: AD.iconSearch),
+                ]),
+        ),
+      ],
+    );
   }
 
   // ---- Step 2: terms ----
@@ -1204,16 +1036,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   }
 
   // ---- shared bits ----
-  Widget _featureRow(IconData icon, Color accent, String label) => AdCard(
-        radius: Zine.rSm,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        child: Row(children: [
-          ZineIconBadge(icon: icon, color: accent),
-          const SizedBox(width: 14),
-          Expanded(child: Text(label, style: ADText.rowName().copyWith(fontSize: 15))),
-        ]),
-      );
-
   Widget _primary(String text, VoidCallback? onTap, {IconData? icon, bool loading = false}) =>
       AdButton(
         label: text,
@@ -1224,4 +1046,16 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         icon: icon ?? PhosphorIcons.arrowRight(PhosphorIconsStyle.bold),
         trailingIcon: icon == null,
       );
+}
+
+/// [ONBOARD-STREAMLINE-1] One row on the consolidated permissions page: a
+/// permission id (see [_OnboardingFlowState._requestOne]/[_probeOne]), the
+/// icon/colour to draw, and the short plain-English reason shown to the user.
+class _PermSpec {
+  final String id;
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String reason;
+  const _PermSpec(this.id, this.icon, this.color, this.title, this.reason);
 }

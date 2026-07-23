@@ -8,7 +8,6 @@ import '../../core/remote_config.dart';
 import '../../core/voice/native_voice_audio.dart';
 import 'avadial_channel.dart';
 import 'missed_call_service.dart';
-import 'sms_role_help.dart';
 
 /// [AVADIAL-SETUP-1] + [AVADIAL-SETUP-2] AvaDialer guided device-setup sheet.
 ///
@@ -36,13 +35,14 @@ bool _shownThisSession = false;
 Future<void> maybeShowAvaDialSetup(BuildContext context) async {
   if (_shownThisSession) return;
   try {
+    // [ONBOARD-CLEANUP-1] Default dialer/SMS roles are no longer requested —
+    // AvaTOK does not become the OS default phone/SMS app. Only the still-valid
+    // device capabilities (lock-screen calls, spam screening, contacts) gate the
+    // checklist now.
     final fsi = await NativeVoiceAudio.instance.canUseFullScreenIntent();
-    final dialer = await AvaDialChannel.I.isDialerRoleHeld();
     final screening = await AvaDialChannel.I.isScreeningRoleHeld();
-    final sms =
-        RemoteConfig.avaSms ? await AvaDialChannel.I.isSmsRoleHeld() : true;
     final contacts = await Permission.contacts.isGranted;
-    if (fsi && dialer && screening && sms && contacts) {
+    if (fsi && screening && contacts) {
       return; // nothing missing — don't nag
     }
   } catch (_) {
@@ -81,36 +81,25 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
 
   bool _fsi = false; // full-screen / lock-screen calls
   bool _battery = false; // ignore battery optimisation (reliable delivery)
-  bool _dialer = false; // default phone app
   bool _screening = false; // Caller ID & spam role (replaces Truecaller)
-  bool _sms = false; // default SMS app
   bool _contacts = false; // phone book (READ/WRITE_CONTACTS group)
   bool _overlay = false; // "appear on top" — the floating OTP card
   bool _loading = true;
 
-  // Auto-detected rivals: who currently holds the phone/SMS slots, and which
-  // known overlay apps (Truecaller etc.) are installed so we can deep-link to them.
-  String? _dialerLabel; // current default phone app (null when it's us)
-  String? _smsLabel; // current default SMS app (null when it's us)
+  // Auto-detected rivals: known overlay apps (Truecaller etc.) that draw their
+  // own call pop-ups, so we can deep-link the user to them.
   List<Map<String, dynamic>> _rivals = const [];
-
-  // [AVA-SMS-FIX-1] Detect the OS auto-denying ROLE_SMS without showing the
-  // picker (Android 15+ restricted-settings gate on sideloaded beta installs).
-  DateTime? _smsAskedAt;
-  StreamSubscription<AvaRoleResult>? _roleSub;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _roleSub = AvaDialChannel.I.roleResults.listen(_onRoleVerdict);
     _refresh();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _roleSub?.cancel();
     super.dispose();
   }
 
@@ -122,53 +111,13 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
     if (state == AppLifecycleState.resumed) _refresh();
   }
 
-  void _onRoleVerdict(AvaRoleResult r) {
-    if (!r.role.contains('SMS')) return;
-    final askedAt = _smsAskedAt;
-    _smsAskedAt = null;
-    if (r.granted || askedAt == null || !mounted) return;
-    if (isInstantDenial(askedAt)) {
-      // [AVADIAL-SMS-ROLE-1] An instant denial has TWO causes that look identical
-      // from here, and we shipped a build that guessed wrong:
-      //   (a) the app doesn't QUALIFY as a default-SMS candidate — our manifest bug;
-      //   (b) Android 15+ hard-restricts SMS for sideloads — the user can unlock it.
-      // This sheet has always assumed (b) and shown the restricted-settings help.
-      // On 2026-07-14 the real cause was (a) (SEND_RESPOND_VIA_MESSAGE_SERVICE — no
-      // such permission), so the owner was sent to a ⋮ menu his device never showed,
-      // for a lock that was never engaged. Attach the qualification verdict to the
-      // event so the two are separable in PostHog from now on: `qualified: false`
-      // here means the help dialog is lying and the fix is a build, not a tap.
-      unawaited(() async {
-        final diag = await AvaDialChannel.I.smsRoleDiagnostics();
-        final props = <String, Object>{};
-        diag.forEach((k, v) {
-          if (v != null) props[k] = v as Object;
-        });
-        Analytics.capture('avadial_setup_sms_autodenied', props);
-      }());
-      showSmsRoleRestrictedHelp(context);
-    }
-  }
-
   /// The beta task list, in the order we walk the user through it. Rebuilt on
   /// every refresh; the FIRST row with `done == false` is the "next task" and
   /// gets the highlight.
   List<_SetupStep> get _steps => [
-        _SetupStep('dialer', 'Make AvaTOK your phone app', _dialer,
-            _dialer
-                ? 'AvaTOK handles your calls.'
-                : _dialerLabel != null
-                    ? 'Now: $_dialerLabel. Switching removes it from calls.'
-                    : 'Handle every call through AvaTOK.',
-            _openDialer),
-        if (RemoteConfig.avaSms)
-          _SetupStep('sms', 'Make AvaTOK your SMS manager', _sms,
-              _sms
-                  ? 'AvaTOK sends & receives your texts.'
-                  : _smsLabel != null
-                      ? 'Now: $_smsLabel. Texts, OTPs & spam filtering move to AvaTOK.'
-                      : 'Texts, OTPs and AI spam filtering, in one place.',
-              _openSms),
+        // [ONBOARD-CLEANUP-1] The "Make AvaTOK your phone app" (ROLE_DIALER) and
+        // "Make AvaTOK your SMS manager" (ROLE_SMS) steps were REMOVED — AvaTOK
+        // no longer becomes the OS default phone/SMS handler.
         _SetupStep('screening', 'Spam call & message detector', _screening,
             _screening
                 ? 'AvaTOK screens your calls for spam.'
@@ -212,13 +161,9 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
 
     var fsi = _fsi,
         battery = _battery,
-        dialer = _dialer,
         screening = _screening,
-        sms = _sms,
         contacts = _contacts,
         overlay = _overlay;
-    String? dialerLabel;
-    String? smsLabel;
     var rivals = _rivals;
     try {
       fsi = await NativeVoiceAudio.instance.canUseFullScreenIntent();
@@ -227,13 +172,7 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
       battery = await Permission.ignoreBatteryOptimizations.isGranted;
     } catch (_) {}
     try {
-      dialer = await AvaDialChannel.I.isDialerRoleHeld();
-    } catch (_) {}
-    try {
       screening = await AvaDialChannel.I.isScreeningRoleHeld();
-    } catch (_) {}
-    try {
-      sms = await AvaDialChannel.I.isSmsRoleHeld();
     } catch (_) {}
     try {
       contacts = await Permission.contacts.isGranted;
@@ -242,25 +181,15 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
       overlay = await Permission.systemAlertWindow.isGranted;
     } catch (_) {}
     try {
-      dialerLabel = await AvaDialChannel.I.defaultDialerLabel();
-    } catch (_) {}
-    try {
-      smsLabel = await AvaDialChannel.I.defaultSmsLabel();
-    } catch (_) {}
-    try {
       rivals = await AvaDialChannel.I.detectRivalCallerApps();
     } catch (_) {}
     if (!mounted) return;
     setState(() {
       _fsi = fsi;
       _battery = battery;
-      _dialer = dialer;
       _screening = screening;
-      _sms = sms;
       _contacts = contacts;
       _overlay = overlay;
-      _dialerLabel = dialerLabel;
-      _smsLabel = smsLabel;
       _rivals = rivals;
       _loading = false;
     });
@@ -320,33 +249,11 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
     _refresh();
   }
 
-  Future<void> _openDialer() async {
-    Analytics.capture('avadial_setup_tap', <String, Object>{'step': 'dialer'});
-    try {
-      await AvaDialChannel.I.requestDialerRole();
-    } catch (_) {}
-    _refresh();
-  }
-
   Future<void> _openScreening() async {
     Analytics.capture(
         'avadial_setup_tap', <String, Object>{'step': 'screening'});
     try {
       await AvaDialChannel.I.requestScreeningRole();
-    } catch (_) {}
-    _refresh();
-  }
-
-  Future<void> _openSms() async {
-    Analytics.capture('avadial_setup_tap', <String, Object>{'step': 'sms'});
-    _smsAskedAt = DateTime.now(); // [AVA-SMS-FIX-1]
-    try {
-      final res = await AvaDialChannel.I.requestSmsRole();
-      if (res != null) _smsAskedAt = null; // resolved synchronously
-      if (res == false && mounted) {
-        // The prompt could not even be launched — go manual right away.
-        await showSmsRoleRestrictedHelp(context);
-      }
     } catch (_) {}
     _refresh();
   }
