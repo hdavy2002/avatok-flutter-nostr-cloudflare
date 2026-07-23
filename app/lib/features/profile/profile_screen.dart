@@ -98,9 +98,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // EXCEPTION (owner request 2026-06-29): if the user has explicitly added a
     // private number AND chosen to expose it, that number REPLACES the AvaTOK
     // number on the card (they've opted in — privacy is their choice).
+    // [PROFILE-CARD-NUMBER-1] Prefer the pretty `display`, but FALL BACK to the
+    // canonical digits (`+`E.164) when a lagged D1 /me replica hands back a number
+    // with no formatted display — otherwise the number line under the QR stayed
+    // blank even though the account holds a number. Mirrors the onboarding fix
+    // (PROFILE-DISPLAY-2 in profile_setup_screen.dart). `me`/`_myNum` come from the
+    // per-account, cache-first `avanum_me_v1` blob that AvaNumber.assign() writes
+    // through, so a just-assigned number is already present.
     final number = (prof.showPrivateNumber && prof.privatePhone.trim().isNotEmpty)
         ? prof.privatePhone.trim()
-        : (me.hasNumber ? (me.display ?? '') : '');
+        : (me.hasNumber ? ((me.display ?? '').isNotEmpty ? me.display! : '+${me.number}') : '');
     // Personal email — from the stored profile, else from the known account email.
     final email = prof.email.isNotEmpty ? prof.email : (Analytics.currentEmail ?? '');
     if (prof.email.isEmpty && email.isNotEmpty) _store.setEmail(email);
@@ -118,7 +125,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String get _cardNumber {
     final priv = _privatePhone.text.trim();
     if (_showPrivateNumber && priv.isNotEmpty) return priv;
-    return _myNum?.hasNumber == true ? (_myNum!.display ?? '') : '';
+    // [PROFILE-CARD-NUMBER-1] Same display→digits fallback as _initShare: when the
+    // resolved number has no pretty `display` (lagged /me replica), show the
+    // canonical `+`E.164 digits so the line under the QR is never blank.
+    final m = _myNum;
+    if (m != null && m.hasNumber) {
+      return (m.display ?? '').isNotEmpty ? m.display! : '+${m.number}';
+    }
+    return '';
   }
 
   int? get _birthYearValue {
