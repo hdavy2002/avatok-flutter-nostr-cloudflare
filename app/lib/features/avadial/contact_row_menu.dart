@@ -5,8 +5,9 @@ import '../../core/analytics.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine.dart';
 import '../avatok/contact_actions.dart';
-import '../avatok/contacts.dart' show Contact;
-import 'avadial_channel.dart';
+import '../avatok/contacts.dart' show Contact, Directory;
+import '../avatok/invite_screen.dart';
+import '../avatok/place_1to1_call.dart';
 import 'avadial_theme.dart';
 import 'block_list.dart';
 import 'contact_call_history_screen.dart';
@@ -15,7 +16,6 @@ import 'contact_edit_screen.dart';
 import 'contact_groups.dart';
 import 'contact_overrides.dart';
 import 'device_contacts.dart';
-import 'outgoing_call_screen.dart';
 import 'sms/sms_thread_screen.dart';
 
 /// The shared 3-dot / long-press row menu for the Calls app's Contacts, Logs and
@@ -97,11 +97,29 @@ Future<void> showAvaDialRowMenu(
           label: 'Call',
           onTap: () async {
             Navigator.pop(sheetCtx);
-            final placed = await AvaDialChannel.I.placeCall(number);
-            if (placed && navContext.mounted) {
-              Navigator.push(navContext,
-                  MaterialPageRoute<void>(builder: (_) => OutgoingCallScreen(number: number)));
+            // [AVADIAL-AVATOK-ONLY-1] AvaTOK-only (owner pivot 2026-07-16): resolve
+            // against the AvaTOK directory and place an in-app AvaTOK-to-AvaTOK call
+            // through place1to1Call. The former carrier/PSTN dial
+            // (AvaDialChannel.placeCall) is removed; an off-network number shows a
+            // "Not on AvaTOK" state instead of routing to the system dialer.
+            Analytics.capture('avadial_contact_call', const {'via': 'row_menu'});
+            Contact? hit;
+            try {
+              hit = await Directory.resolve(number);
+            } catch (_) {
+              hit = null;
             }
+            if (!navContext.mounted) return;
+            if (hit == null || hit.uid.isEmpty) {
+              Analytics.capture('avadial_contact_not_on_avatok', const {'via': 'row_menu'});
+              await _showNotOnAvaTok(navContext, number);
+              return;
+            }
+            await place1to1Call(navContext,
+                uid: hit.uid,
+                name: (name?.isNotEmpty ?? false) ? name! : hit.name,
+                avatarUrl: hit.avatarUrl,
+                dialer: true);
           },
         ),
         _row(
@@ -241,6 +259,41 @@ Future<void> showAvaDialRowMenu(
     ),
   );
 }
+
+/// [AVADIAL-AVATOK-ONLY-1] Shown when a Contacts/Logs/Block row's Call resolves to
+/// no AvaTOK account. The dialer never falls back to a carrier call, so this is the
+/// dead-end: a clear message + an Invite shortcut (the same friends-invite flow the
+/// dialpad's "Not on AvaTOK" state uses).
+Future<void> _showNotOnAvaTok(BuildContext context, String number) => showDialog<void>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: AvaDialTheme.surface2,
+        shape: RoundedRectangleBorder(
+          side: const BorderSide(color: AvaDialTheme.border, width: 1),
+          borderRadius: BorderRadius.circular(AD.rListCard),
+        ),
+        title: Text('Not on AvaTOK', style: ZineText.cardTitle(size: 17, color: AvaDialTheme.text)),
+        content: Text(
+          '$number isn\'t an AvaTOK number yet. AvaTOK only calls other AvaTOK '
+          'users — invite them to join.',
+          style: ZineText.sub(size: 13.5, color: AvaDialTheme.textSoft),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: Text('Cancel', style: ZineText.value(size: 14, color: AvaDialTheme.textSoft)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(dialogCtx);
+              Navigator.of(context, rootNavigator: true).push(
+                  MaterialPageRoute<void>(builder: (_) => const InviteScreen()));
+            },
+            child: Text('Invite', style: ZineText.value(size: 14, color: AD.online)),
+          ),
+        ],
+      ),
+    );
 
 Future<bool?> _confirmDelete(BuildContext context, String label) => showDialog<bool>(
       context: context,

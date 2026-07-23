@@ -7,15 +7,16 @@ import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../avatok/chat_thread.dart';
+import '../avatok/contacts.dart' show Contact, Directory;
 import '../avatok/data.dart';
-import 'avadial_channel.dart';
+import '../avatok/invite_screen.dart';
+import '../avatok/place_1to1_call.dart';
 import 'avadial_theme.dart';
 import 'block_list.dart';
 import 'contact_call_history_screen.dart';
 import 'contact_edit_screen.dart';
 import 'contact_overrides.dart';
 import 'contact_row_menu.dart';
-import 'outgoing_call_screen.dart';
 import 'sms/sms_thread_screen.dart';
 
 /// Full contact card for a Calls-app contact (owner spec, pic 3). Header avatar +
@@ -70,12 +71,68 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
     return (a + b).toUpperCase();
   }
 
+  /// [AVADIAL-AVATOK-ONLY-1] AvaTOK-only call (owner pivot 2026-07-16). Resolve
+  /// this contact against the AvaTOK directory and place an in-app AvaTOK-to-AvaTOK
+  /// call through [place1to1Call] — the SAME flow the chat thread / dialpad use.
+  /// The former carrier/PSTN dial (AvaDialChannel.placeCall via TelecomManager) is
+  /// GONE: a number with no AvaTOK account shows a "Not on AvaTOK" state instead of
+  /// falling back to the system dialer. Prefer the saved AvaTOK-number override
+  /// when set, else resolve the phone number itself.
   Future<void> _call() async {
-    final placed = await AvaDialChannel.I.placeCall(widget.number);
-    if (placed && mounted) {
-      Navigator.push(context,
-          MaterialPageRoute<void>(builder: (_) => OutgoingCallScreen(number: widget.number)));
+    final query =
+        (_o?.avatokNumber?.isNotEmpty ?? false) ? _o!.avatokNumber! : widget.number;
+    Analytics.capture('avadial_contact_call', const {'via': 'contact_detail'});
+    Contact? hit;
+    try {
+      hit = await Directory.resolve(query);
+    } catch (_) {
+      hit = null;
     }
+    if (!mounted) return;
+    if (hit == null || hit.uid.isEmpty) {
+      Analytics.capture('avadial_contact_not_on_avatok', const {'via': 'contact_detail'});
+      await _showNotOnAvaTok();
+      return;
+    }
+    await place1to1Call(context,
+        uid: hit.uid,
+        name: _title,
+        avatarUrl: hit.avatarUrl,
+        dialer: true);
+  }
+
+  Future<void> _showNotOnAvaTok() async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: AvaDialTheme.surface2,
+        shape: RoundedRectangleBorder(
+          side: const BorderSide(color: AvaDialTheme.border, width: 1),
+          borderRadius: BorderRadius.circular(AD.rListCard),
+        ),
+        title: Text('Not on AvaTOK', style: ZineText.cardTitle(size: 17, color: AvaDialTheme.text)),
+        content: Text(
+          '${widget.number} isn\'t an AvaTOK number yet. AvaTOK only calls other '
+          'AvaTOK users — invite them to join.',
+          style: ZineText.sub(size: 13.5, color: AvaDialTheme.textSoft),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: Text('Cancel', style: ZineText.value(size: 14, color: AvaDialTheme.textSoft)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(dialogCtx);
+              Navigator.of(context, rootNavigator: true).push(
+                  MaterialPageRoute<void>(builder: (_) => const InviteScreen()));
+            },
+            child: Text('Invite', style: ZineText.value(size: 14, color: AD.online)),
+          ),
+        ],
+      ),
+    );
   }
 
   void _sms() => Navigator.push(context,
