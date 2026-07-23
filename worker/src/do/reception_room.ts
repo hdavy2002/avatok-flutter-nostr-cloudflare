@@ -109,10 +109,16 @@ interface InitBlob {
 // romanized). Conservative: matched against her OWN transcript for the CURRENT
 // turn only, and CLOSING is still cancellable by caller speech, so a false
 // positive costs at most an early-but-clean close after 1.8s of silence.
+// [RECEPT-GREETING-KILL-1] नमस्ते ("namaste") was REMOVED from the Hindi farewell
+// set on 2026-07-22: it is the standard Hindi GREETING as much as a parting word,
+// so Ava's own OPENING line ending in नमस्ते matched here and tripped CLOSING on
+// turn 1 — hanging up ~3s after the greeting, before the caller could speak (see
+// the caller-input guard at the turnComplete handler). Only UNAMBIGUOUS partings
+// remain (अलविदा, फिर मिलेंगे, ध्यान रखिए, etc.).
 function isAvaFarewell(t: string): boolean {
   const s = t.toLowerCase();
   return /\b(good\s?bye|bye(\s?bye)?|take care|talk (to you )?soon|have a (great|good|nice|lovely|wonderful) (day|evening|morning|afternoon|night|one))\b/.test(s)
-    || /(अलविदा|फिर मिलेंगे|ध्यान रखिए|ध्यान रखना|शुभ दिन|आपका दिन (शुभ|अच्छा) (हो|रहे)|नमस्ते।?\s*$)/.test(t)
+    || /(अलविदा|फिर मिलेंगे|ध्यान रखिए|ध्यान रखना|शुभ दिन|आपका दिन (शुभ|अच्छा) (हो|रहे))/.test(t)
     || /\b(alvida|phir milenge|dhyan rakhiye)\b/.test(s);
 }
 
@@ -718,7 +724,12 @@ export class ReceptionRoom {
         // no more idle nudges (silence is now success), and a short grace timer
         // closes the line ourselves if end_call doesn't arrive and the caller
         // stays quiet — kills both the double goodbye and the 5-10s dead tail.
-        if (!this.closing && isAvaFarewell(this.avaTurnText)) {
+        // [RECEPT-GREETING-KILL-1] Guard: a farewell can ONLY close a call in which
+        // the CALLER has actually spoken (this.inText.length > 0). On 2026-07-22
+        // Ava's OWN greeting matched the farewell regex on turn 1 and she hung up
+        // ~3s in, before the caller could leave a message (cutoff_reason=ava_goodbye,
+        // in_chars=0). A goodbye before any caller input is never a real close.
+        if (!this.closing && this.inText.length > 0 && isAvaFarewell(this.avaTurnText)) {
           this.closing = true;
           this.ev("ava_recept_closing_state", { at_ms: Date.now() - this.startedAt, turn: this.turnCount });
           this.goodbyeGraceTimer = setTimeout(() => {

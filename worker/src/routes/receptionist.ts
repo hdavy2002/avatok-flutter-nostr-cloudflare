@@ -242,6 +242,21 @@ async function ensureStatusColumns(env: Env): Promise<void> {
     // callee actually enabled, instead of assuming always-on.
     "ALTER TABLE receptionist_settings ADD COLUMN ai_receptionist_enabled INTEGER",
     "ALTER TABLE receptionist_settings ADD COLUMN pstn_voicemail_enabled INTEGER",
+    // [AVARECEPT-LANES-1] (owner decision 2026-07-21): voicemail is being retired;
+    // the AI receptionist becomes the ONLY unanswered-call handler, split into
+    // two independent per-LANE master toggles (both DEFAULT OFF / opt-in) plus
+    // three per-SCENARIO toggles that apply to BOTH lanes. recept_avatok_enabled
+    // → receptionist on AvaTOK↔AvaTOK calls; recept_pstn_enabled → receptionist on
+    // PSTN (cell) calls. recept_on_missed / recept_on_rejected / recept_on_unreachable
+    // → which trigger(s) hand off to Ava. All NULL/0 = OFF (nothing happens on an
+    // unanswered call). These SUPERSEDE ai_receptionist_enabled/pstn_voicemail_enabled
+    // (kept as columns for back-compat: ai_receptionist_enabled is mirrored FROM
+    // recept_avatok_enabled on save so old app builds still honour the AvaTOK lane).
+    "ALTER TABLE receptionist_settings ADD COLUMN recept_avatok_enabled INTEGER",
+    "ALTER TABLE receptionist_settings ADD COLUMN recept_pstn_enabled INTEGER",
+    "ALTER TABLE receptionist_settings ADD COLUMN recept_on_missed INTEGER",
+    "ALTER TABLE receptionist_settings ADD COLUMN recept_on_rejected INTEGER",
+    "ALTER TABLE receptionist_settings ADD COLUMN recept_on_unreachable INTEGER",
     // Self-migration for receptionist_sessions columns:
     "ALTER TABLE receptionist_sessions ADD COLUMN activation_mode TEXT",
     "ALTER TABLE receptionist_sessions ADD COLUMN team_id TEXT",
@@ -386,6 +401,12 @@ interface SettingsRow {
   // [AVACALL-SET-1] WS3 paid call-handling prefs (default OFF). 1/0/null.
   ai_receptionist_enabled?: number | null;
   pstn_voicemail_enabled?: number | null;
+  // [AVARECEPT-LANES-1] per-lane + per-scenario receptionist toggles (default OFF).
+  recept_avatok_enabled?: number | null;
+  recept_pstn_enabled?: number | null;
+  recept_on_missed?: number | null;
+  recept_on_rejected?: number | null;
+  recept_on_unreachable?: number | null;
 }
 
 async function loadSettings(env: Env, uid: string): Promise<SettingsRow | null> {
@@ -431,6 +452,34 @@ function defaultSettings(uid: string): SettingsRow {
 function aiReceptOn(s: SettingsRow | null | undefined): boolean {
   const v = s?.ai_receptionist_enabled;
   return v === null || v === undefined ? true : v !== 0;
+}
+
+// [AVARECEPT-LANES-1] (owner decision 2026-07-21): voicemail is retired and the AI
+// receptionist becomes the ONLY unanswered-call handler — but now split into two
+// per-LANE master toggles + three per-SCENARIO toggles, ALL DEFAULT OFF (opt-in),
+// SUPERSEDING the always-on/opt-out [RECEPT-AI-DEFAULT-ON-1] default. A user who
+// never touched the new settings gets NOTHING on an unanswered call (silent, per
+// owner). recept_avatok_enabled is the AvaTOK↔AvaTOK lane; if it's still NULL
+// (pre-migration row) we fall back to the legacy ai_receptionist_enabled ONLY when
+// it was EXPLICITLY set to 1, otherwise OFF — so the flip to opt-in is clean and
+// nobody is silently opted in.
+function receptAvatokOn(s: SettingsRow | null | undefined): boolean {
+  const v = s?.recept_avatok_enabled;
+  if (v !== null && v !== undefined) return v !== 0;
+  return s?.ai_receptionist_enabled === 1; // null/undefined/0 → OFF (opt-in)
+}
+function receptPstnOn(s: SettingsRow | null | undefined): boolean {
+  return (s?.recept_pstn_enabled ?? 0) === 1;
+}
+// Which trigger(s) hand off to Ava. Apply to BOTH lanes. All default OFF.
+function receptOnMissed(s: SettingsRow | null | undefined): boolean {
+  return (s?.recept_on_missed ?? 0) === 1;
+}
+function receptOnRejected(s: SettingsRow | null | undefined): boolean {
+  return (s?.recept_on_rejected ?? 0) === 1;
+}
+function receptOnUnreachable(s: SettingsRow | null | undefined): boolean {
+  return (s?.recept_on_unreachable ?? 0) === 1;
 }
 
 // ── Settings cache (KV) ──────────────────────────────────────────────────────
@@ -586,10 +635,13 @@ export function composeReceptionistPrompt(
   const lines: string[] = [
     // 1. Role + caller context
     `You are ${me}, a woman answering ${who}'s phone. You're speaking with ${callerRef}${firstName ? ` (call them ${firstName})` : ""}. Situation: ${scenarioCtx}. ${who} already has their number — never ask for a name, number, or callback details.`,
-    // 1b. OPENING (owner 2026-07-19): Indian callee etiquette — the CALLEE says a
-    // brief hello and WAITS; the caller states their business first. Never open
-    // with "is this X speaking?" — she answered the phone, she knows who called.
-    `OPENING: answer like a real Indian callee — say just a brief hello (in ${who}'s default language), then WAIT for the caller to speak. Build your response on what they say. Never open with a question like "are you ${callerRef} speaking?" — you already know who's calling.`,
+    // 1b. OPENING ([RECEPT-GREETING-KILL-1], owner 2026-07-22): she is a real
+    // receptionist, not a callee who says one word and stalls. The prior "brief
+    // hello then WAIT" rule, combined with the namaste greeting-kill bug, produced
+    // "namaste" + hangup. Now she OPENS the conversation: greet, name herself, say
+    // briefly why the owner can't talk, and invite a message or quick question — 1–2
+    // sentences. Keep the no "are you X speaking?" fragment (she knows who called).
+    `OPENING: greet the caller warmly in ${who}'s default language and introduce yourself in one short line — you are ${me}, ${who}'s assistant. Briefly say why ${who} can't take the call (${scenarioCtx}), then invite them to leave a message or ask a quick question. Keep it to 1–2 spoken sentences, then let them speak. Never open with a question like "are you ${callerRef} speaking?" — you already know who's calling.`,
     note ? `${who}'s availability note: "${note}" — use it naturally, never verbatim.` : ``,
     // Owner-configured profile/role (from the receptionist settings).
     (s.custom_prompt || "").trim() ? `${who} configured your role: "${String(s.custom_prompt).trim()}". Follow it within these rules.` : ``,
@@ -601,6 +653,11 @@ export function composeReceptionistPrompt(
     `Polite Indian phone etiquette: default to "aap", never "tum" first; mirror ji/sir/ma'am lightly (at most one per sentence); use feminine self-reference forms (मैं बोलूंगी, encantada).`,
     // 5. Conversation rhythm
     `Answer, ask at most one question if needed, then stop speaking. Silence is acceptable. If the caller starts speaking, stop immediately.`,
+    // 5b. MISSION ([RECEPT-GREETING-KILL-1], owner 2026-07-22): take a USEFUL message
+    // for the owner — don't say a word or two and quit. Understand who's calling and
+    // what it's about; one short clarifying question if vague; confirm the gist before
+    // goodbye. Never end before the caller has had a chance to speak.
+    `Your mission is to take a useful message for ${who}: understand who's calling and what it's about. If the message is vague, ask ONE short clarifying question. Before you say goodbye, confirm the gist back in one line and assure them you'll pass it to ${who}. Never end the call before the caller has had a chance to speak — if they stay silent after your opening, gently prompt once (in the call's language, e.g. "What would you like me to tell ${who}?") before treating silence as the end.`,
     // 6. Numbers
     `Repeat phone numbers back once for confirmation, using the caller's own digit grouping (e.g. 98 76 54 32 10). If one part was unclear, ask only about that part.`,
     // 7. Goodbye
@@ -728,8 +785,17 @@ export async function receptionistGetSettings(req: Request, env: Env): Promise<R
     agent_scope: s?.agent_scope ?? "",
     // [AVACALL-SET-1] WS3 paid call-handling prefs (default OFF). The client greys
     // these toggles behind `premium` and defaults them off for a fresh account.
-    ai_receptionist_enabled: aiReceptOn(s), // [RECEPT-AI-DEFAULT-ON-1] opt-out default
+    // [AVARECEPT-LANES-1] the legacy field now mirrors the AvaTOK lane (default OFF)
+    // so an old settings screen stays consistent with the new opt-in default.
+    ai_receptionist_enabled: receptAvatokOn(s),
     pstn_voicemail_enabled: !!(s?.pstn_voicemail_enabled),
+    // [AVARECEPT-LANES-1] per-lane + per-scenario toggles (all default OFF). The new
+    // "AI receptionist" settings page reads these.
+    recept_avatok_enabled: receptAvatokOn(s),
+    recept_pstn_enabled: receptPstnOn(s),
+    recept_on_missed: receptOnMissed(s),
+    recept_on_rejected: receptOnRejected(s),
+    recept_on_unreachable: receptOnUnreachable(s),
     premium, // client greys the toggle + shows upsell when false
     soft_cap_ms: SOFT_CAP_MS, hard_cap_ms: HARD_CAP_MS,
   });
@@ -806,8 +872,21 @@ export async function receptionistPutSettings(req: Request, env: Env): Promise<R
   // [AVACALL-SET-1] WS3 paid call-handling prefs (default OFF). Booleans; an
   // absent field is treated as false (the settings screen always sends both, so a
   // missing key means an older client → the safe default OFF).
-  const aiReceptionistEnabled = b.ai_receptionist_enabled === true || b.ai_receptionist_enabled === 1 ? 1 : 0;
   const pstnVoicemailEnabled = b.pstn_voicemail_enabled === true || b.pstn_voicemail_enabled === 1 ? 1 : 0;
+  // [AVARECEPT-LANES-1] per-lane + per-scenario toggles (default OFF). A NEW app
+  // build (the "AI receptionist" page) sends these; an OLD build sends only the
+  // legacy ai_receptionist_enabled. We mirror the two representations so BOTH client
+  // versions stay coherent: the legacy AvaTOK column tracks recept_avatok_enabled.
+  const bit = (v: unknown) => (v === true || v === 1 ? 1 : 0);
+  const hasNewLanes = b.recept_avatok_enabled !== undefined || b.recept_pstn_enabled !== undefined;
+  const receptAvatokEnabled = hasNewLanes ? bit(b.recept_avatok_enabled) : bit(b.ai_receptionist_enabled);
+  const receptPstnEnabled = bit(b.recept_pstn_enabled);
+  const receptOnMissedV = bit(b.recept_on_missed);
+  const receptOnRejectedV = bit(b.recept_on_rejected);
+  const receptOnUnreachableV = bit(b.recept_on_unreachable);
+  // Legacy AvaTOK-lane column kept in sync so old app builds' /config probe still
+  // honours the AvaTOK toggle after a new-build save (and vice-versa).
+  const aiReceptionistEnabled = receptAvatokEnabled;
   // PAY-PER-USE (owner 2026-07-19): enabling a mode requires token runway —
   // agent ≥3 tokens (1 min), voicemail ≥1 (1 token per voicemail). 402 with the
   // shortfall so the client can deep-link to top-up. Fail-open on wallet errors.
@@ -843,8 +922,10 @@ export async function receptionistPutSettings(req: Request, env: Env): Promise<R
         status_note, status_expires_at, answer_lang,
         greeting_style, festival_greeting, mode, agent_scope,
         ai_receptionist_enabled, pstn_voicemail_enabled,
+        recept_avatok_enabled, recept_pstn_enabled,
+        recept_on_missed, recept_on_rejected, recept_on_unreachable,
         created_at, updated_at)
-     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?15,?16,?17,?18,?19,?20,?21,?22,?23,?14,?14)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?14,?14)
      ON CONFLICT(owner_uid) DO UPDATE SET
        enabled=?2, instructions_text=?3, voice_name=?4, display_name=?5,
        persona_name=?6, language_code=?7, greeting_text=?8, custom_prompt=?9,
@@ -852,13 +933,17 @@ export async function receptionistPutSettings(req: Request, env: Env): Promise<R
        status_note=?15, status_expires_at=?16, answer_lang=?17,
        greeting_style=?18, festival_greeting=?19, mode=?20, agent_scope=?21,
        ai_receptionist_enabled=?22, pstn_voicemail_enabled=?23,
+       recept_avatok_enabled=?24, recept_pstn_enabled=?25,
+       recept_on_missed=?26, recept_on_rejected=?27, recept_on_unreachable=?28,
        updated_at=?14`,
   ).bind(ctx.uid, enabled ? 1 : 0, instr, voice, display,
     persona, language, greeting, customPrompt,
     answerAll, statusPreset, statusCustom, declineToAva, now,
     statusNote, statusExpiresAt, answerLang,
     greetingStyle, festivalGreeting, recMode, agentScope,
-    aiReceptionistEnabled, pstnVoicemailEnabled).run();
+    aiReceptionistEnabled, pstnVoicemailEnabled,
+    receptAvatokEnabled, receptPstnEnabled,
+    receptOnMissedV, receptOnRejectedV, receptOnUnreachableV).run();
   // F1 telemetry.
   const ttlBucket = statusExpiresAt == null ? "never"
     : (() => { const d = statusExpiresAt - Date.now();
@@ -970,8 +1055,20 @@ export async function receptionistConfigFor(req: Request, env: Env): Promise<Res
     // BOTH AvaTOK and PSTN; OFF → AvaTOK falls to the WS2 free voicemail, PSTN
     // falls to the pre-recorded voicemail only when pstnVoicemailEnabled is ON.
     // Absent on an older worker → the client keeps its legacy always-on behavior.
-    aiReceptionistEnabled: aiReceptOn(s), // [RECEPT-AI-DEFAULT-ON-1] opt-out default
+    // [AVARECEPT-LANES-1] legacy field = the AvaTOK lane (default OFF now). Old app
+    // builds read this as "hand off to Ava on any no-answer/reject/unreachable".
+    aiReceptionistEnabled: receptAvatokOn(s),
     pstnVoicemailEnabled: !!s.pstn_voicemail_enabled,
+    // [AVARECEPT-LANES-1] per-lane + per-scenario toggles (all default OFF). The
+    // caller's session (call_session.dart _probeReceptionist) reads these: it hands
+    // off to Ava only when the matching LANE (AvaTOK/PSTN) AND the matching SCENARIO
+    // (missed/rejected/unreachable) are both ON. New app builds use these; older
+    // builds ignore them and fall back to aiReceptionistEnabled above.
+    receptAvatokEnabled: receptAvatokOn(s),
+    receptPstnEnabled: receptPstnOn(s),
+    receptOnMissed: receptOnMissed(s),
+    receptOnRejected: receptOnRejected(s),
+    receptOnUnreachable: receptOnUnreachable(s),
   });
 }
 
@@ -1002,7 +1099,12 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   // voicemail flow (cached greeting + beep + 30s record; no STT/LLM/live-TTS).
   // [RECEPT-MODE-1]: these start as the GLOBAL defaults and are overridden per-owner
   // below once the owner's settings row is loaded (mode: "agent" | "vm").
-  let vmMode = (cfg as any).receptionistVmMode === true;
+  // [VM-KILL-1] GLOBAL voicemail kill (owner 2026-07-21): when voicemail is
+  // disabled platform-wide, the deterministic voicemail flow (vmMode) is never
+  // used — the receptionist is always the live conversational agent. This also
+  // neutralizes any per-owner mode='vm' saved before the kill (coerced below).
+  const vmKilled = (cfg as any).voicemailEnabled === false;
+  let vmMode = !vmKilled && (cfg as any).receptionistVmMode === true;
   let useCf = vmMode || (cfg as any).receptionistUseCf === true;
   const sessionCaps = capsFor(cfg); // 3-min menu budget vs legacy 40/60/90s
 
@@ -1025,13 +1127,15 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   // flags. "vm" → zero-cost voicemail flow (CF DO); "agent" → AI voice agent
   // (Gemini Live, billed ava_receptionist_minute); null → global defaults above.
   const ownerMode = ((s.mode || "") as string).trim().toLowerCase();
-  if (ownerMode === "vm") { vmMode = true; useCf = true; }
-  else if (ownerMode === "agent") { vmMode = false; useCf = false; }
+  // [VM-KILL-1] a saved mode='vm' is ignored while voicemail is killed — coerce to
+  // the live agent so the receptionist never runs the deterministic voicemail flow.
+  if (ownerMode === "vm" && !vmKilled) { vmMode = true; useCf = true; }
+  else if (ownerMode === "agent" || (ownerMode === "vm" && vmKilled)) { vmMode = false; useCf = false; }
   // [RECEPT-ONBOARD-1] agent_scope enforcement, APP lane: an owner who scoped the
   // live agent to CELL calls only still gets voicemail on AvaTOK-to-AvaTOK calls
   // (never a dead end). Missing/invalid scope → "all" (fail-open, pre-wizard rows).
   const agentScope = ((s.agent_scope || "") as string).trim().toLowerCase();
-  if (ownerMode === "agent" && agentScope === "cell") { vmMode = true; useCf = true; }
+  if (ownerMode === "agent" && agentScope === "cell" && !vmKilled) { vmMode = true; useCf = true; }
   // Gemini engine needs a Gemini key (dedicated, else global); the CF engine runs
   // entirely on the Workers AI binding and needs no Gemini key.
   if (!useCf && !env.RECEPTIONIST_GEMINI_API_KEY && !env.GEMINI_API_KEY) { skip("no_model_key"); return json({ error: "receptionist_unavailable", reason: "no_model_key" }, 503); }
