@@ -307,7 +307,27 @@ class Outbox {
       // already_processed:true — same as a fresh ACK (the row already exists, no
       // duplicate is created). Treat both as ACK.
       final ok = res.statusCode == 200;
-      if (ok) {
+      if (ok && _isControlOp(entry)) {
+        // [DEL-STORM-1] For a del/gdel CONTROL, the 200 ACK is TERMINAL — remove
+        // the entry here, do NOT hand it to the acked-await-echo path below. A
+        // control is a tombstone: the server retracts the target and never echoes
+        // the control back through cursor sync as an ingestible message carrying
+        // this client_id, so [MSG-ECHO-COMPLETE-1]'s echo-completion contract can
+        // never fire for it. An acked control that waited for its echo therefore
+        // re-POSTed forever via the ack-reverify drain — each retry re-ran
+        // msg_retract_requested/authorized/message_tombstoned and fired a fresh
+        // 'del' FCM push to the recipient (prod 2026-07-22: 2 deletes → 176
+        // retracts + 176 recipient pushes over 4h, one every ~80s). ACK is the
+        // completion point for controls. (Removal is persisted by _persist() in
+        // the finally block; do not add a second persist here.)
+        _q.remove(entry.clientId);
+        Analytics.capture('msg_outbox_control_completed', {
+          'attempt': entry.attempt,
+          'latency_ms': DateTime.now().millisecondsSinceEpoch - startedAt,
+          'conv_kind': entry.convKey.startsWith('g:') ? 'group' : 'dm',
+        });
+        _emit(OutboxStatus(clientId: entry.clientId, convKey: entry.convKey, ok: true));
+      } else if (ok) {
         // [MSG-ECHO-COMPLETE-1] ACK marks the entry `acked` (persisted) — it is
         // NOT deleted here. The single completion point is the durable echo of
         // this client_id returning through cursor sync (SyncHub → completeOnEcho),
