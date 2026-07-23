@@ -21,13 +21,6 @@ class NoAnswerCard extends StatelessWidget {
   final VoidCallback onSaveContact;
   final VoidCallback onClose;
 
-  /// "Leave a voicemail" is a Phase B feature (the server-side voice-prompt +
-  /// 25s recording bot). Until [voicemailAvailable] is true (RemoteConfig
-  /// `voicemailBot`), the button is shown but disabled with a tooltip — the
-  /// caller sees the option exists without a dead callback.
-  final bool voicemailAvailable;
-  final VoidCallback? onLeaveVoicemail;
-
   const NoAnswerCard({
     super.key,
     required this.name,
@@ -36,8 +29,6 @@ class NoAnswerCard extends StatelessWidget {
     required this.onSaveContact,
     required this.onClose,
     this.avatarUrl = '',
-    this.voicemailAvailable = false,
-    this.onLeaveVoicemail,
   });
 
   @override
@@ -77,16 +68,6 @@ class NoAnswerCard extends StatelessWidget {
               fill: AD.primaryBadge,
               fontSize: 16,
               onPressed: onCallAgain,
-            ),
-            const SizedBox(height: 10),
-            Tooltip(
-              message: voicemailAvailable ? '' : 'Voicemail is coming soon',
-              child: _adPillButton(
-                label: 'Leave a voicemail',
-                fill: AD.incomingCall,
-                fontSize: 16,
-                onPressed: voicemailAvailable ? onLeaveVoicemail : null,
-              ),
             ),
             const SizedBox(height: 10),
             _adPillButton(

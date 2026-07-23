@@ -41,18 +41,6 @@ class CallOutcomeMenu extends StatefulWidget {
   /// Pop the call screen (used after a note is sent / menu closed).
   final VoidCallback onClosed;
 
-  /// [VM-IN-MENU-1 2026-07-14] Classic 25s recorded voicemail (VoicemailRoom)
-  /// from INSIDE the outcome menu. Owner report: with callMenuEnabled on, every
-  /// unanswered call lands here — and this menu had no voicemail option, so
-  /// voicemail was effectively unreachable even with voicemailBot=true. null =
-  /// hidden (flag off). The handler lives in CallScreen (_leaveVoicemail), which
-  /// owns the VoicemailCall lifecycle.
-  final VoidCallback? onLeaveVoicemail;
-
-  /// True while CallScreen's voicemail session is connecting/recording — keeps
-  /// the button honest and blocks double-starts.
-  final bool voicemailInProgress;
-
   /// [AVACALL-MENU-1] Redial the callee (audio). CallScreen pops this screen and
   /// re-launches the 1:1 call. null hides the option.
   final VoidCallback? onCallAgain;
@@ -67,8 +55,6 @@ class CallOutcomeMenu extends StatefulWidget {
     required this.name,
     required this.peerUid,
     required this.onClosed,
-    this.onLeaveVoicemail,
-    this.voicemailInProgress = false,
     this.onCallAgain,
     this.onMessage,
   });
@@ -313,28 +299,11 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
               const SizedBox(height: 10),
             ],
 
-            // 2) [VM-IN-MENU-1] Leave a voicemail — the classic recorded
-            // voicemail (25s, lands in the callee's thread as a playable
-            // bubble). ALWAYS offered when the voicemailBot flag is on,
-            // regardless of why the call didn't connect (unreachable / pruned
-            // tokens / no-answer / declined) — leaving a voicemail must never
-            // depend on the callee's device being reachable.
-            if (widget.onLeaveVoicemail != null) ...[
-              AdButton(
-                label: widget.voicemailInProgress
-                    ? 'Recording voicemail…'
-                    : 'Leave a voicemail',
-                variant: AdButtonVariant.teal,
-                fullWidth: true,
-                fontSize: 16,
-                onPressed: (_sending || _recording || widget.voicemailInProgress)
-                    ? null
-                    : widget.onLeaveVoicemail,
-              ),
-              const SizedBox(height: 10),
-            ],
+            // [RECEPT-SETTINGS-1] The classic recorded voicemail option was
+            // removed with the voicemail feature. Callers leave a voice note or
+            // text note below, or talk to Ava (the receptionist) above.
 
-            // 3) Voice note — records in place; tap again to stop & send.
+            // Voice note — records in place; tap again to stop & send.
             AdButton(
               label: _recording
                   ? 'Recording ${_fmtRec(_recSecs)} — tap to send'

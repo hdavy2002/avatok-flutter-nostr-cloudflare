@@ -20,7 +20,6 @@ import '../../core/remote_config.dart';
 import '../../core/ringback_player.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/avatok_dark.dart';
-import '../../core/voicemail_call.dart';
 import '../avaphone/phone_theme.dart';
 import 'busy_card.dart';
 import 'call_outcome_menu.dart';
@@ -245,14 +244,11 @@ class _CallScreenState extends State<CallScreen> {
   bool _popped = false;
 
   // [WP3-ACT-1] After-ring routing (plan §3 step 4) — fetched ONCE when the
-  // outgoing call genuinely goes to 'no-answer' while businessCallUx is on, so
-  // the NoAnswerCard's "Leave a voicemail" button reflects what the server
-  // actually decided (voicemail/agent/none) instead of just the raw
-  // voicemailBot flag. null until the fetch resolves.
+  // outgoing call genuinely goes to 'no-answer' while businessCallUx is on.
+  // [RECEPT-SETTINGS-1] voicemail removed; the routing probe is retained for the
+  // rest of the no-answer UX (busy/agent decisions).
   Map<String, dynamic>? _routingInfo;
   bool _routingFetched = false;
-  VoicemailCall? _vmCall;
-  bool _vmInProgress = false;
 
   // [DIALPAD-BIZ-CALLS Phase C] Caller↔agent Grok bridge state. The bridge
   // itself is core/agent_voice_call.dart; this screen owns starting it (from
@@ -376,7 +372,7 @@ class _CallScreenState extends State<CallScreen> {
     if (!mounted) return;
     final rtcUrl = s?['rtc_url'] as String?;
     if (s == null || rtcUrl == null) {
-      _onAgentFailed(fallbackVoicemail: s?['fallback'] == 'voicemail');
+      _onAgentFailed();
       return;
     }
     final call = AgentVoiceCall(rtcUrl: rtcUrl);
@@ -389,7 +385,7 @@ class _CallScreenState extends State<CallScreen> {
       if (!mounted) return;
       _agentCall = null;
       if (reason == 'agent_fail') {
-        _onAgentFailed(fallbackVoicemail: true);
+        _onAgentFailed();
       } else {
         setState(() => _agentStatus = 'ended');
         // Conversation over — end the session cleanly (pops via onRequestPop).
@@ -398,32 +394,19 @@ class _CallScreenState extends State<CallScreen> {
     });
     final ok = await call.start();
     if (!ok && mounted && _agentStatus != 'failed') {
-      _onAgentFailed(fallbackVoicemail: true);
+      _onAgentFailed();
     }
   }
 
-  void _onAgentFailed({required bool fallbackVoicemail}) {
+  // [RECEPT-SETTINGS-1] voicemail removed — when Ava's live agent can't take the
+  // call there is no voicemail fallback; end the call cleanly with an honest
+  // message. (The `fallbackVoicemail` param is gone with the feature.)
+  void _onAgentFailed() {
     _agentCall = null;
-    final vmOk = fallbackVoicemail &&
-        RemoteConfig.voicemailBot &&
-        (_routingInfo?['voicemail_available'] != false);
     setState(() => _agentStatus = 'failed');
-    if (vmOk) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text("Ava couldn't take this call — you can leave a voicemail instead")));
-      // Surface the voicemail affordance through the normal no-answer card.
-      setState(() {
-        _routingInfo = {
-          'next': 'voicemail',
-          'voicemail_available': true,
-          'start': {'to': widget.seed, 'call_id': widget.room, 'trace_id': widget.traceId},
-        };
-      });
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Couldn't connect to the Ava AI agent")));
-      _session.endByUser();
-    }
+    ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Couldn't connect to the Ava AI agent")));
+    _session.endByUser();
   }
 
   void _hangupAgent() {
@@ -468,54 +451,6 @@ class _CallScreenState extends State<CallScreen> {
     if (left <= 0) return 'Paid time is up';
     final m = left ~/ 60, s = left % 60;
     return 'Paid call · $m:${s.toString().padLeft(2, '0')} left';
-  }
-
-  /// Wires NoAnswerCard's "Leave a voicemail" button to the server's routing
-  /// decision. `start` is the `{to, call_id, trace_id}` blob /api/call/no-answer
-  /// (or the initial /api/call response) returned for a 'voicemail' outcome —
-  /// mirrors how core/receptionist_call.dart's caller-side WS join works, using
-  /// the SAME wire protocol (see core/voicemail_call.dart's header comment).
-  // [AVACALL-MENU-1] [free] routes through the FREE AvaTOK↔AvaTOK voicemail lane
-  // WS2 added (generic system greeting, accepted under avatokVoicemailFree) —
-  // used by the outcome menu on a plain AvaTOK decline/busy where the paid
-  // voicemailBot line isn't provisioned. false keeps the existing paid
-  // NoAnswerCard business path byte-for-byte unchanged.
-  Future<void> _leaveVoicemail(Map<String, dynamic> start, {bool free = false}) async {
-    if (_vmInProgress) return;
-    setState(() => _vmInProgress = true);
-    final s = await VoicemailApi.start(
-      to: (start['to'] ?? widget.seed).toString(),
-      callId: (start['call_id'] ?? widget.room).toString(),
-      traceId: (start['trace_id'] ?? widget.traceId).toString(),
-      free: free,
-    );
-    final rtcUrl = s?['rtc_url'] as String?;
-    if (s == null || rtcUrl == null) {
-      if (mounted) {
-        setState(() => _vmInProgress = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Voicemail is not available right now')));
-      }
-      return;
-    }
-    final call = VoicemailCall(rtcUrl: rtcUrl);
-    _vmCall = call;
-    call.onStatus = (status) {
-      if (!mounted) return;
-      if (status == 'connected') {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Recording your voicemail…'), duration: Duration(seconds: 3)));
-      } else if (status == 'ended') {
-        setState(() => _vmInProgress = false);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Voicemail sent')));
-      }
-    };
-    final ok = await call.start();
-    if (!ok && mounted) {
-      setState(() => _vmInProgress = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Couldn't connect to leave a voicemail")));
-    }
   }
 
   @override
@@ -571,27 +506,7 @@ class _CallScreenState extends State<CallScreen> {
               content: Text('${widget.title} is unreachable right now')));
         }
       },
-      // [AVACALL-VMFREE-2] Free AvaTOK↔AvaTOK auto-voicemail status snackbars. The
-      // session owns the voicemail lifecycle end-to-end; these only surface honest
-      // status so the caller is never left staring at nothing.
-      voicemailRecording: () {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('Recording your voicemail…'), duration: Duration(seconds: 3)));
-        }
-      },
-      voicemailSent: () {
-        if (mounted) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(const SnackBar(content: Text('Voicemail sent')));
-        }
-      },
-      voicemailUnavailable: () {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('Voicemail is not available right now')));
-        }
-      },
+      // [RECEPT-SETTINGS-1] voicemail removed — no voicemail status snackbars.
     );
     _session.revision.addListener(_onSessionChanged);
     _session.uiPhase.addListener(_onSessionChanged);
@@ -666,11 +581,7 @@ class _CallScreenState extends State<CallScreen> {
     // them in initState.
     if (identical(_session.onRequestPop, _popIfMounted)) _session.onRequestPop = null;
     _session.setNoticeHooks();
-    // Don't leave an orphaned voicemail WS open if the screen is torn down
-    // mid-recording (e.g. the user navigates away) — best-effort, the server
-    // DO also self-finalizes on close either way.
-    if (_vmCall != null) unawaited(_vmCall!.hangup());
-    // [DIALPAD-BIZ-CALLS Phase C] Same for an orphaned agent bridge — the
+    // [DIALPAD-BIZ-CALLS Phase C] Tear down an orphaned agent bridge — the
     // AgentVoiceRoom DO finalizes (settle/refund/summary card) on WS close.
     if (_agentCall != null) unawaited(_agentCall!.hangup());
     _agentAutoProbe?.cancel();
@@ -932,14 +843,8 @@ class _CallScreenState extends State<CallScreen> {
                       name: widget.title,
                       seed: widget.seed,
                       avatarUrl: widget.avatarUrl,
-                      // [WP3-ACT-1] Prefer the server's actual routing decision
-                      // (_routingInfo, from /api/call/no-answer) once it's back;
-                      // until then (or if the fetch failed) fall back to the raw
-                      // flag so the button still shows up while the probe is
-                      // in flight — _leaveVoicemail below handles the "start
-                      // info absent" case gracefully either way.
-                      voicemailAvailable: (_routingInfo?['voicemail_available'] == true) ||
-                          (_routingInfo == null && RemoteConfig.voicemailBot),
+                      // [RECEPT-SETTINGS-1] voicemail removed — the card now
+                      // offers Call again / Save contact / Close only.
                       onCallAgain: () {
                         final nav = Navigator.of(context);
                         final uidSeed = widget.seed, title = widget.title,
@@ -949,25 +854,6 @@ class _CallScreenState extends State<CallScreen> {
                         // the ancestor Navigator), so it's safe to push from here.
                         place1to1Call(nav.context, uid: uidSeed, name: title, avatarUrl: avatar, video: vid);
                       },
-                      onLeaveVoicemail: RemoteConfig.voicemailBot && !_vmInProgress
-                          ? () {
-                              final start = _routingInfo?['start'];
-                              if (start is Map) {
-                                // ignore: unawaited_futures
-                                _leaveVoicemail(start.cast<String, dynamic>());
-                              } else {
-                                // TODO(WP3-ACT-1): no start info yet — either the
-                                // /api/call/no-answer probe hasn't resolved, or the
-                                // server decided 'agent'/'none' for this call. A
-                                // richer UX would poll/await the probe before
-                                // enabling the button; for now we degrade to a
-                                // clean "not available yet" message per the
-                                // verification plan's explicit fallback.
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Voicemail is not available for this call')));
-                              }
-                            }
-                          : null,
                       onSaveContact: () async {
                         try {
                           await ContactsStore().add(Contact(
@@ -1191,37 +1077,9 @@ class _CallScreenState extends State<CallScreen> {
         _popIfMounted();
         nav.push(MaterialPageRoute(builder: (_) => ChatThreadScreen(chat: chat)));
       },
-      // [VM-IN-MENU-1 2026-07-14] Classic voicemail from the outcome menu.
-      // Gated ONLY on the voicemailBot flag — never on the routing probe or the
-      // callee's device reachability: /api/voicemail/start needs nothing but
-      // {to, call_id, trace_id}, and _leaveVoicemail's start-map defaults
-      // (widget.seed/room/traceId) cover the case where no routing info ever
-      // arrived (unreachable / pruned-token callees — the exact case that used
-      // to dead-end).
-      voicemailInProgress: _vmInProgress,
-      // [AVACALL-MENU-1] Offer "Leave a voicemail" on the outcome menu whenever
-      // EITHER lane is live: the paid business voicemail (voicemailBot) OR the
-      // FREE AvaTOK↔AvaTOK voicemail WS2 added (avatokVoicemailFree). A plain
-      // AvaTOK decline/busy has no paid line provisioned, so without the free
-      // fallback the button would never appear and the menu would dead-end. When
-      // the paid line isn't available we route through the free lane (free: true),
-      // matching the same VoicemailCall path _autoStartFreeVoicemail uses.
-      onLeaveVoicemail: (RemoteConfig.voicemailBot || RemoteConfig.avatokVoicemailFree)
-          ? () {
-              Analytics.capture('call_menu_option_selected', {
-                'call_id': widget.room,
-                'option': 'voicemail',
-              });
-              final start = _routingInfo?['start'];
-              // ignore: unawaited_futures
-              _leaveVoicemail(
-                start is Map
-                    ? start.cast<String, dynamic>()
-                    : const <String, dynamic>{},
-                free: !RemoteConfig.voicemailBot,
-              );
-            }
-          : null,
+      // [RECEPT-SETTINGS-1] The classic "Leave a voicemail" option was removed
+      // with the voicemail feature. The outcome menu keeps Talk to Ava (the
+      // receptionist), voice note, and text note.
     );
   }
 

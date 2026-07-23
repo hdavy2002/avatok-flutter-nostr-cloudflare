@@ -11,8 +11,17 @@ import '../../../core/receptionist_api.dart';
 import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../../../core/voice/google_voice.dart';
+import '../../wallet/wallet_balance_chip.dart' show WalletBalanceStore;
+import '../../wallet/wallet_screen.dart';
 import '../settings_registry.dart';
 import 'receptionist_analytics_page.dart';
+
+/// [RECEPT-SETTINGS-1] Client-side token gate (must agree with the backend
+/// deduction agent). When the wallet's SPENDABLE token balance is AT OR BELOW
+/// this floor, the receptionist can't be enabled: every toggle refuses to turn
+/// ON and points the user to top up. The server enforces the same cutoff on
+/// hand-off, so a stale client can never overspend past it.
+const int kReceptTokenFloor = 2;
 
 /// Availability presets. id → label shown in the dropdown. Must match the
 /// server's STATUS_PRESETS keys in worker/src/routes/receptionist.ts. Default is
@@ -222,14 +231,20 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
   // the festival auto-greeting toggle.
   String _greetingStyle = 'none';
   bool _festivalGreeting = false;
-  // [AVARECEPT-LANES-1] (owner 2026-07-21) voicemail retired. The AI receptionist
-  // is the only unanswered-call handler, split into two per-LANE master toggles
-  // and three per-SCENARIO toggles (apply to BOTH lanes). ALL DEFAULT OFF (opt-in).
-  bool _receptAvatok = false;      // receptionist on AvaTOK↔AvaTOK calls
-  bool _receptPstn = false;        // receptionist on PSTN (cell) calls
-  bool _receptOnMissed = false;    // missed / no-answer
-  bool _receptOnRejected = false;  // rejected / declined
-  bool _receptOnUnreachable = false; // phone off / unreachable
+  // [RECEPT-SETTINGS-1] (owner 2026-07-23) voicemail retired. The AI receptionist
+  // is the only unanswered-call handler. TWO groups (PSTN + AvaTOK), each with
+  // FOUR INDEPENDENT toggles — every toggle alone decides whether Ava answers in
+  // that scenario for that lane. Defaults: not-picked-up + rejected ON (she
+  // answers and takes a message); phone-off/unreachable + redirect-all OFF
+  // (opt-in). Redirect-all means EVERY call on that lane goes straight to Ava.
+  bool _pstnNotPickedUp = true;
+  bool _pstnRejected = true;
+  bool _pstnUnreachable = false;
+  bool _pstnRedirectAll = false;
+  bool _avatokNotPickedUp = true;
+  bool _avatokRejected = true;
+  bool _avatokUnreachable = false;
+  bool _avatokRedirectAll = false;
 
   // F1 — status note expiry. Null = no expiry; else the absolute epoch-ms instant
   // the note lapses. `_customExpiry` mirrors a picked custom instant so its chip
@@ -250,10 +265,24 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
     // [AVARECEPT-LANES-1] the "Ava voice" picker is folded into this page now.
     GoogleVoicePref.load().then((_) { if (mounted) setState(() {}); });
     AvaVoiceLangPref.load().then((_) { if (mounted) setState(() {}); });
+    // [RECEPT-SETTINGS-1] token gate. Pull the spendable balance and rebuild
+    // whenever it changes (top-up landing, wallet refresh) so the gate + banner
+    // are always live without polling.
+    WalletBalanceStore.spendable.addListener(_onBalance);
+    WalletBalanceStore.load();
   }
+
+  void _onBalance() { if (mounted) setState(() {}); }
+
+  /// [RECEPT-SETTINGS-1] spendable tokens (paid + welcome bonus + daily free) —
+  /// the DO snap()'s `spendable`, the same field the availability gate uses.
+  /// null until the first balance lands; treated as 0 for the gate.
+  int get _tokens => WalletBalanceStore.spendable.value ?? 0;
+  bool get _tokensOk => _tokens > kReceptTokenFloor; // >2 == at least 3
 
   @override
   void dispose() {
+    WalletBalanceStore.spendable.removeListener(_onBalance);
     _note.dispose();
     _greeting.dispose();
     super.dispose();
@@ -304,17 +333,24 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
             : 'none';
         _festivalGreeting = s.festivalGreeting;
         _greeting.text = s.greetingText;
-        // [AVARECEPT-LANES-1] per-lane + per-scenario toggles (server authoritative).
-        _receptAvatok = s.receptAvatokEnabled;
-        _receptPstn = s.receptPstnEnabled;
-        _receptOnMissed = s.receptOnMissed;
-        _receptOnRejected = s.receptOnRejected;
-        _receptOnUnreachable = s.receptOnUnreachable;
+        // [RECEPT-SETTINGS-1] two groups × four independent toggles (server
+        // authoritative).
+        _pstnNotPickedUp = s.receptPstnNotPickedUp;
+        _pstnRejected = s.receptPstnRejected;
+        _pstnUnreachable = s.receptPstnUnreachable;
+        _pstnRedirectAll = s.receptPstnRedirectAll;
+        _avatokNotPickedUp = s.receptAvatokNotPickedUp;
+        _avatokRejected = s.receptAvatokRejected;
+        _avatokUnreachable = s.receptAvatokUnreachable;
+        _avatokRedirectAll = s.receptAvatokRedirectAll;
       }
       _loading = false;
     });
     if (s != null) await _writeMirror();
     await ReceptionistPref.load();
+    // Refresh the spendable balance whenever the settings page opens so the gate
+    // reflects a recent top-up done elsewhere.
+    await WalletBalanceStore.load(force: true);
   }
 
   void _applyMirror(Map<String, dynamic> m) {
@@ -333,12 +369,17 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
     _greetingStyle = kReceptionistGreetingPresets.containsKey(gs) ? gs : 'none';
     _festivalGreeting = m['festival_greeting'] == true;
     _greeting.text = (m['greeting_text'] ?? '').toString();
-    // [AVARECEPT-LANES-1] per-lane + per-scenario toggles.
-    _receptAvatok = m['recept_avatok'] == true;
-    _receptPstn = m['recept_pstn'] == true;
-    _receptOnMissed = m['recept_on_missed'] == true;
-    _receptOnRejected = m['recept_on_rejected'] == true;
-    _receptOnUnreachable = m['recept_on_unreachable'] == true;
+    // [RECEPT-SETTINGS-1] two groups × four independent toggles. ON-by-default
+    // toggles use `!= false` so a mirror written before this field existed still
+    // reads the sensible default; OFF-by-default read plainly.
+    _pstnNotPickedUp = m['pstn_not_picked_up'] != false;
+    _pstnRejected = m['pstn_rejected'] != false;
+    _pstnUnreachable = m['pstn_unreachable'] == true;
+    _pstnRedirectAll = m['pstn_redirect_all'] == true;
+    _avatokNotPickedUp = m['avatok_not_picked_up'] != false;
+    _avatokRejected = m['avatok_rejected'] != false;
+    _avatokUnreachable = m['avatok_unreachable'] == true;
+    _avatokRedirectAll = m['avatok_redirect_all'] == true;
   }
 
   Future<void> _writeMirror() async {
@@ -351,11 +392,14 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
         'greeting_style': _greetingStyle,
         'festival_greeting': _festivalGreeting,
         'greeting_text': _greeting.text,
-        'recept_avatok': _receptAvatok,
-        'recept_pstn': _receptPstn,
-        'recept_on_missed': _receptOnMissed,
-        'recept_on_rejected': _receptOnRejected,
-        'recept_on_unreachable': _receptOnUnreachable,
+        'pstn_not_picked_up': _pstnNotPickedUp,
+        'pstn_rejected': _pstnRejected,
+        'pstn_unreachable': _pstnUnreachable,
+        'pstn_redirect_all': _pstnRedirectAll,
+        'avatok_not_picked_up': _avatokNotPickedUp,
+        'avatok_rejected': _avatokRejected,
+        'avatok_unreachable': _avatokUnreachable,
+        'avatok_redirect_all': _avatokRedirectAll,
       }));
     } catch (_) {/* best-effort */}
   }
@@ -430,13 +474,19 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
       // [AVARECEPT-LANES-1] voicemail retired — pin mode to '' (server default =
       // live agent) so any legacy per-owner mode='vm' is cleared on the next save.
       mode: '',
-      // [AVARECEPT-LANES-1] per-lane + per-scenario toggles (default OFF). Always
-      // sent so the server's default-OFF is explicit and the caller probe is exact.
-      receptAvatokEnabled: _receptAvatok,
-      receptPstnEnabled: _receptPstn,
-      receptOnMissed: _receptOnMissed,
-      receptOnRejected: _receptOnRejected,
-      receptOnUnreachable: _receptOnUnreachable,
+      // [RECEPT-SETTINGS-1] two groups × four independent toggles. Always sent so
+      // the server's stored state is explicit and the token-gated deduction agent
+      // reads exact values. When the wallet is at/below the token floor we force
+      // every toggle OFF on save so a stale ON can't authorise a hand-off the
+      // user can't pay for (the server enforces the same floor as a backstop).
+      receptPstnNotPickedUp: _tokensOk && _pstnNotPickedUp,
+      receptPstnRejected: _tokensOk && _pstnRejected,
+      receptPstnUnreachable: _tokensOk && _pstnUnreachable,
+      receptPstnRedirectAll: _tokensOk && _pstnRedirectAll,
+      receptAvatokNotPickedUp: _tokensOk && _avatokNotPickedUp,
+      receptAvatokRejected: _tokensOk && _avatokRejected,
+      receptAvatokUnreachable: _tokensOk && _avatokUnreachable,
+      receptAvatokRedirectAll: _tokensOk && _avatokRedirectAll,
     );
     if (!mounted) return res.ok;
     setState(() {
@@ -534,59 +584,99 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
               ]),
               ...[
                 const SizedBox(height: 16),
-                // ── [AVARECEPT-LANES-1] Which calls Ava answers (per-lane) ──
-                // Two independent master toggles, DEFAULT OFF (opt-in). Turning a
-                // lane on lets Ava take over unanswered calls on that lane; the
-                // SCENARIO toggles below decide *when*. Both off = Ava never
-                // auto-answers (a missed call is just a missed call).
-                Text('WHICH CALLS AVA ANSWERS', style: ADText.sectionLabel()),
+                // ── [RECEPT-SETTINGS-1] token gate banner ──────────────────
+                // Ava talks to callers on your tokens (3 tokens/min, capped at 3
+                // minutes). At or below the floor she can't answer — the toggles
+                // below are disabled and this banner points to a top-up.
+                if (!_tokensOk) ...[
+                  _TokenGateBanner(
+                    tokens: _tokens,
+                    onTopUp: () async {
+                      Analytics.uiInteraction('recept_topup_cta', 0,
+                          extra: {'tokens': _tokens, 'source': 'gate_banner'});
+                      await Navigator.of(context).push(MaterialPageRoute<void>(
+                          builder: (_) => const WalletScreen()));
+                      if (mounted) await WalletBalanceStore.load(force: true);
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                // ── [RECEPT-SETTINGS-1] Group 1 — Cell (PSTN) calls ─────────
+                // Four INDEPENDENT toggles. Each alone decides whether Ava
+                // answers that scenario for cell calls.
+                Text('CELL (PSTN) CALLS', style: ADText.sectionLabel()),
                 const SizedBox(height: 6),
-                _toggleRow(
-                  'AvaTOK calls',
-                  'Ava answers unanswered AvaTOK-to-AvaTOK calls. 3 tokens per '
-                      'minute, capped at 3 minutes.',
-                  _receptAvatok,
-                  (v) => setState(() => _receptAvatok = v),
+                _receptToggle(
+                  'Call not picked up',
+                  'You didn’t answer before it stopped ringing.',
+                  _pstnNotPickedUp,
+                  'pstn_not_picked_up',
+                  (v) => _pstnNotPickedUp = v,
                 ),
                 const SizedBox(height: 8),
-                _toggleRow(
-                  'Cell (PSTN) calls',
-                  'Ava answers calls to your cell number that ring through to '
-                      'AvaTOK. 3 tokens per minute, capped at 3 minutes.',
-                  _receptPstn,
-                  (v) => setState(() => _receptPstn = v),
+                _receptToggle(
+                  'Call rejected',
+                  'You tapped Decline.',
+                  _pstnRejected,
+                  'pstn_rejected',
+                  (v) => _pstnRejected = v,
+                ),
+                const SizedBox(height: 8),
+                _receptToggle(
+                  'Phone offline / unreachable',
+                  'Your phone is off or has no connection.',
+                  _pstnUnreachable,
+                  'pstn_unreachable',
+                  (v) => _pstnUnreachable = v,
+                ),
+                const SizedBox(height: 8),
+                _receptToggle(
+                  'Redirect ALL calls to Ava',
+                  'Every cell call goes straight to Ava — she always answers first.',
+                  _pstnRedirectAll,
+                  'pstn_redirect_all',
+                  (v) => _pstnRedirectAll = v,
                 ),
                 const SizedBox(height: 16),
-                // ── [AVARECEPT-LANES-1] When Ava answers (per-scenario) ─────
-                // Three independent triggers, DEFAULT OFF, applying to BOTH lanes
-                // above. A call handoff needs its lane ON *and* the matching
-                // scenario ON.
-                Text('WHEN AVA ANSWERS', style: ADText.sectionLabel()),
+                // ── [RECEPT-SETTINGS-1] Group 2 — AvaTOK-to-AvaTOK calls ────
+                Text('AVATOK CALLS', style: ADText.sectionLabel()),
                 const SizedBox(height: 6),
-                _toggleRow(
-                  'Missed call',
-                  'You didn’t pick up before it stopped ringing.',
-                  _receptOnMissed,
-                  (v) => setState(() => _receptOnMissed = v),
+                _receptToggle(
+                  'Call not picked up',
+                  'You didn’t answer before it stopped ringing.',
+                  _avatokNotPickedUp,
+                  'avatok_not_picked_up',
+                  (v) => _avatokNotPickedUp = v,
                 ),
                 const SizedBox(height: 8),
-                _toggleRow(
-                  'Rejected call',
+                _receptToggle(
+                  'Call rejected',
                   'You tapped Decline.',
-                  _receptOnRejected,
-                  (v) => setState(() => _receptOnRejected = v),
+                  _avatokRejected,
+                  'avatok_rejected',
+                  (v) => _avatokRejected = v,
                 ),
                 const SizedBox(height: 8),
-                _toggleRow(
-                  'Phone unreachable',
+                _receptToggle(
+                  'Phone offline / unreachable',
                   'Your phone is off or has no connection.',
-                  _receptOnUnreachable,
-                  (v) => setState(() => _receptOnUnreachable = v),
+                  _avatokUnreachable,
+                  'avatok_unreachable',
+                  (v) => _avatokUnreachable = v,
+                ),
+                const SizedBox(height: 8),
+                _receptToggle(
+                  'Redirect ALL calls to Ava',
+                  'Every AvaTOK call goes straight to Ava — she always answers first.',
+                  _avatokRedirectAll,
+                  'avatok_redirect_all',
+                  (v) => _avatokRedirectAll = v,
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'These apply to both cell and AvaTOK calls. If nothing here is '
-                  'on, an unanswered call is simply a missed call.',
+                  'Each toggle works on its own. If nothing here is on, an '
+                  'unanswered call is simply a missed call. Ava costs 3 tokens '
+                  'per minute, capped at 3 minutes.',
                   style: ADText.preview(),
                 ),
                 const SizedBox(height: 14),
@@ -841,6 +931,61 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
     );
   }
 
+  /// [RECEPT-SETTINGS-1] A receptionist scenario toggle with the client-side
+  /// token gate baked in. [apply] mutates the backing field; [key] tags
+  /// telemetry + the top-up path. When the wallet is at/below [kReceptTokenFloor]
+  /// the row shows OFF and refuses to turn ON — tapping routes to a top-up
+  /// instead of silently enabling a feature the user can't pay for.
+  Widget _receptToggle(
+    String title,
+    String sub,
+    bool value,
+    String key,
+    void Function(bool) apply,
+  ) {
+    final gated = !_tokensOk;
+    return _toggleRow(
+      title,
+      sub,
+      gated ? false : value, // never show ON while gated
+      (v) {
+        if (gated) {
+          // Refuse to enable; point the user at their wallet.
+          Analytics.uiInteraction('recept_toggle_blocked', 0,
+              extra: {'toggle': key, 'tokens': _tokens, 'want': v});
+          AvaLog.I.log('receptionist',
+              'toggle $key blocked (tokens=$_tokens <= $kReceptTokenFloor)');
+          _showTopUp();
+          return;
+        }
+        setState(() => apply(v));
+        Analytics.uiInteraction('recept_toggle', 0,
+            extra: {'toggle': key, 'value': v, 'tokens': _tokens});
+      },
+    );
+  }
+
+  /// [RECEPT-SETTINGS-1] Told the user their wallet is too low to use Ava
+  /// Receptionist, with a one-tap route to top up.
+  void _showTopUp() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: const Text(
+          'Top up your wallet to use Ava Receptionist — she needs tokens to '
+          'answer your calls.'),
+      action: SnackBarAction(
+        label: 'Top up',
+        onPressed: () async {
+          Analytics.uiInteraction('recept_topup_cta', 0,
+              extra: {'tokens': _tokens, 'source': 'toggle_snackbar'});
+          await Navigator.of(context).push(MaterialPageRoute<void>(
+              builder: (_) => const WalletScreen()));
+          if (mounted) await WalletBalanceStore.load(force: true);
+        },
+      ),
+    ));
+  }
+
   Widget _toggleRow(String title, String sub, bool value, ValueChanged<bool> onChanged) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
@@ -1075,6 +1220,52 @@ class _LangPickerSheetState extends State<_LangPickerSheet> {
           ? Icon(PhosphorIcons.check(PhosphorIconsStyle.bold),
               size: 18, color: AD.iconSearch)
           : null,
+    );
+  }
+}
+
+/// [RECEPT-SETTINGS-1] Low-balance banner shown above the receptionist toggles
+/// when the wallet is at/below [kReceptTokenFloor]. Explains why Ava can't
+/// answer and offers a one-tap top-up.
+class _TokenGateBanner extends StatelessWidget {
+  final int tokens;
+  final VoidCallback onTopUp;
+  const _TokenGateBanner({required this.tokens, required this.onTopUp});
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AD.card,
+        borderRadius: BorderRadius.circular(AD.rInput),
+        border: Border.all(color: AD.borderControl, width: 1),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(PhosphorIcons.wallet(PhosphorIconsStyle.fill),
+              size: 18, color: AD.missedCall),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text('Not enough tokens for Ava Receptionist',
+                style: ADText.rowName()),
+          ),
+        ]),
+        const SizedBox(height: 6),
+        Text(
+          'You have $tokens token${tokens == 1 ? '' : 's'}. Ava talks to callers '
+          'on your tokens (3/min), so she can’t answer until you top up. Turning '
+          'a toggle on below is disabled until then.',
+          style: ADText.preview(),
+        ),
+        const SizedBox(height: 12),
+        AdButton(
+          label: 'Top up your wallet',
+          variant: AdButtonVariant.teal,
+          fullWidth: true,
+          fontSize: 14,
+          onPressed: onTopUp,
+        ),
+      ]),
     );
   }
 }

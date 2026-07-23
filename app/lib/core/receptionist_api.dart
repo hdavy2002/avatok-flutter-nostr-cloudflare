@@ -62,6 +62,19 @@ class ReceptionistSettings {
   final bool receptOnMissed;
   final bool receptOnRejected;
   final bool receptOnUnreachable;
+  // [RECEPT-SETTINGS-1] (owner 2026-07-23) supersedes the lane+scenario model
+  // above with TWO groups (PSTN, AvaTOK), each with FOUR INDEPENDENT scenario
+  // toggles. Each toggle alone decides whether Ava answers in that scenario for
+  // that lane. Defaults: not-picked-up + rejected ON, unreachable + redirect-all
+  // OFF. Must match the server keys the token-gated deduction agent reads.
+  final bool receptPstnNotPickedUp;
+  final bool receptPstnRejected;
+  final bool receptPstnUnreachable;
+  final bool receptPstnRedirectAll;   // permanently redirect ALL PSTN calls to Ava
+  final bool receptAvatokNotPickedUp;
+  final bool receptAvatokRejected;
+  final bool receptAvatokUnreachable;
+  final bool receptAvatokRedirectAll; // permanently redirect ALL AvaTOK calls to Ava
   const ReceptionistSettings({
     required this.enabled,
     required this.instructions,
@@ -94,6 +107,16 @@ class ReceptionistSettings {
     this.receptOnMissed = false,
     this.receptOnRejected = false,
     this.receptOnUnreachable = false,
+    // [RECEPT-SETTINGS-1] sensible defaults: answer & take a message when a call
+    // isn't picked up or is rejected; leave phone-off + redirect-all opt-in.
+    this.receptPstnNotPickedUp = true,
+    this.receptPstnRejected = true,
+    this.receptPstnUnreachable = false,
+    this.receptPstnRedirectAll = false,
+    this.receptAvatokNotPickedUp = true,
+    this.receptAvatokRejected = true,
+    this.receptAvatokUnreachable = false,
+    this.receptAvatokRedirectAll = false,
   });
   factory ReceptionistSettings.fromJson(Map<String, dynamic> j) => ReceptionistSettings(
         enabled: j['enabled'] == true,
@@ -127,6 +150,22 @@ class ReceptionistSettings {
         receptOnMissed: j['recept_on_missed'] == true,
         receptOnRejected: j['recept_on_rejected'] == true,
         receptOnUnreachable: j['recept_on_unreachable'] == true,
+        // [RECEPT-SETTINGS-1] the ON-by-default toggles use containsKey so an
+        // older server that doesn't yet return the field falls back to the
+        // sensible default (true) rather than a wrong `false`. The OFF-by-default
+        // toggles read plainly (absent → false).
+        receptPstnNotPickedUp: j.containsKey('recept_pstn_not_picked_up')
+            ? j['recept_pstn_not_picked_up'] == true : true,
+        receptPstnRejected: j.containsKey('recept_pstn_rejected')
+            ? j['recept_pstn_rejected'] == true : true,
+        receptPstnUnreachable: j['recept_pstn_unreachable'] == true,
+        receptPstnRedirectAll: j['recept_pstn_redirect_all'] == true,
+        receptAvatokNotPickedUp: j.containsKey('recept_avatok_not_picked_up')
+            ? j['recept_avatok_not_picked_up'] == true : true,
+        receptAvatokRejected: j.containsKey('recept_avatok_rejected')
+            ? j['recept_avatok_rejected'] == true : true,
+        receptAvatokUnreachable: j['recept_avatok_unreachable'] == true,
+        receptAvatokRedirectAll: j['recept_avatok_redirect_all'] == true,
       );
 }
 
@@ -200,6 +239,17 @@ class ReceptionistApi {
     bool? receptOnMissed,
     bool? receptOnRejected,
     bool? receptOnUnreachable,
+    // [RECEPT-SETTINGS-1] two groups × four independent toggles. The AI
+    // receptionist settings page always sends all eight so the server's stored
+    // state is explicit and the token-gated deduction agent reads exact values.
+    bool? receptPstnNotPickedUp,
+    bool? receptPstnRejected,
+    bool? receptPstnUnreachable,
+    bool? receptPstnRedirectAll,
+    bool? receptAvatokNotPickedUp,
+    bool? receptAvatokRejected,
+    bool? receptAvatokUnreachable,
+    bool? receptAvatokRedirectAll,
   }) async {
     final body = <String, dynamic>{
       'enabled': enabled,
@@ -231,6 +281,15 @@ class ReceptionistApi {
       if (receptOnMissed != null) 'recept_on_missed': receptOnMissed,
       if (receptOnRejected != null) 'recept_on_rejected': receptOnRejected,
       if (receptOnUnreachable != null) 'recept_on_unreachable': receptOnUnreachable,
+      // [RECEPT-SETTINGS-1] two groups × four independent toggles.
+      if (receptPstnNotPickedUp != null) 'recept_pstn_not_picked_up': receptPstnNotPickedUp,
+      if (receptPstnRejected != null) 'recept_pstn_rejected': receptPstnRejected,
+      if (receptPstnUnreachable != null) 'recept_pstn_unreachable': receptPstnUnreachable,
+      if (receptPstnRedirectAll != null) 'recept_pstn_redirect_all': receptPstnRedirectAll,
+      if (receptAvatokNotPickedUp != null) 'recept_avatok_not_picked_up': receptAvatokNotPickedUp,
+      if (receptAvatokRejected != null) 'recept_avatok_rejected': receptAvatokRejected,
+      if (receptAvatokUnreachable != null) 'recept_avatok_unreachable': receptAvatokUnreachable,
+      if (receptAvatokRedirectAll != null) 'recept_avatok_redirect_all': receptAvatokRedirectAll,
     };
     const maxAttempts = 3;
     for (var attempt = 1; attempt <= maxAttempts; attempt++) {

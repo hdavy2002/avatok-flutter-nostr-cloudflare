@@ -21,8 +21,8 @@ import '../../wallet/wallet_screen.dart';
 ///     (cell/app/all) → DID number ("Free in Beta") → forwarding conditions
 ///     (cell scope only; reuses [PstnForwardingSetupScreen], never rebuilt) →
 ///     privacy copy → token summary → save.
-///   • [showReceptionistVoicemailSheet] — the one-screen Voice mail sheet
-///     (1 token per voicemail) → save.
+///   [RECEPT-SETTINGS-1] the one-screen Voice mail sheet was removed with the
+///   voicemail feature.
 ///
 /// Saving is delegated to the caller via `onFinish` so this flow never has to
 /// know the rest of the settings payload (the PUT overwrites every column, so
@@ -65,91 +65,9 @@ Future<String?> showReceptionistAgentOnboarding(
   ));
 }
 
-/// One-screen Voice mail sheet (plan §B, voicemail-mode). Returns true after a
-/// successful save; false/null = cancelled, caller leaves the toggle unchanged.
-Future<bool> showReceptionistVoicemailSheet(
-  BuildContext context, {
-  required Future<bool> Function() onConfirm,
-}) async {
-  Analytics.capture('recept_onboarding_step', {'step': 'vm_cost', 'mode': 'vm'});
-  final ok = await showModalBottomSheet<bool>(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: AD.overlaySheet,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(AD.rSheet)),
-    ),
-    builder: (ctx) => _VoicemailSheet(onConfirm: onConfirm),
-  );
-  Analytics.capture('recept_onboarding_step',
-      {'step': ok == true ? 'done' : 'cancelled', 'mode': 'vm'});
-  return ok == true;
-}
-
-class _VoicemailSheet extends StatefulWidget {
-  final Future<bool> Function() onConfirm;
-  const _VoicemailSheet({required this.onConfirm});
-  @override
-  State<_VoicemailSheet> createState() => _VoicemailSheetState();
-}
-
-class _VoicemailSheetState extends State<_VoicemailSheet> {
-  bool _saving = false;
-
-  Future<void> _continue() async {
-    setState(() => _saving = true);
-    final ok = await widget.onConfirm();
-    if (!mounted) return;
-    setState(() => _saving = false);
-    if (ok) {
-      Navigator.of(context).pop(true);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Couldn’t save — check your connection and try again.')));
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(
-            width: 40, height: 4,
-            decoration: BoxDecoration(
-              color: AD.borderControl,
-              borderRadius: BorderRadius.circular(100),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(children: [
-            ZineIconBadge(
-                icon: PhosphorIcons.voicemail(PhosphorIconsStyle.fill),
-                color: AD.iconVideo, size: 44),
-            const SizedBox(width: 14),
-            Expanded(child: Text('Voice mail', style: _wizTitle())),
-          ]),
-          const SizedBox(height: 14),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              'Each voicemail costs 1 token. All messages appear in your Inbox.',
-              style: _wizBody(c: AD.textPrimary),
-            ),
-          ),
-          const SizedBox(height: 18),
-          AdButton(
-            label: _saving ? 'Saving…' : 'Continue',
-            fullWidth: true,
-            loading: _saving,
-            onPressed: _saving ? null : _continue,
-          ),
-        ]),
-      ),
-    );
-  }
-}
+// [RECEPT-SETTINGS-1] The one-screen "Voice mail" sheet was removed with the
+// voicemail feature. The AI-receptionist settings page is the only receptionist
+// configuration surface now.
 
 // ---------------------------------------------------------------------------
 // Agent wizard
@@ -546,7 +464,7 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
         ),
         const SizedBox(height: 10),
         Text(
-          'You can change these any time in Settings → Voicemail.',
+          'You can change these any time in Settings → AI receptionist.',
           style: _wizBody(),
         ),
       ],
