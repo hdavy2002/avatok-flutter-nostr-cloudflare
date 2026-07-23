@@ -647,10 +647,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         _PermSpec('camera', PhosphorIcons.camera(PhosphorIconsStyle.bold), AD.online,
             'Camera', 'For video calls and taking your profile photo.'),
         if (Platform.isAndroid)
-          _PermSpec('phone_state', PhosphorIcons.phone(PhosphorIconsStyle.bold), AD.iconSearch,
-              'Phone status', 'So AvaTOK can pause a call when a normal mobile call '
-                  'comes in. AvaTOK is not your default phone app.'),
-        if (Platform.isAndroid)
           _PermSpec('battery', PhosphorIcons.batteryCharging(PhosphorIconsStyle.bold), AD.primaryBadge,
               'Background activity', 'So your calls still ring when AvaTOK is running '
                   'in the background.'),
@@ -666,7 +662,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         case 'notifications': return await Permission.notification.isGranted;
         case 'microphone': return await Permission.microphone.isGranted;
         case 'camera': return await Permission.camera.isGranted;
-        case 'phone_state': return await Permission.phone.isGranted;
         case 'battery': return await Permission.ignoreBatteryOptimizations.isGranted;
         case 'photos': return await Permission.photos.isGranted;
         case 'lockscreen':
@@ -685,7 +680,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         case 'notifications': return (await Permission.notification.request()).isGranted;
         case 'microphone': return (await Permission.microphone.request()).isGranted;
         case 'camera': return (await Permission.camera.request()).isGranted;
-        case 'phone_state': return (await Permission.phone.request()).isGranted;
         case 'battery': return (await Permission.ignoreBatteryOptimizations.request()).isGranted;
         case 'photos': return (await Permission.photos.request()).isGranted;
         case 'lockscreen':
