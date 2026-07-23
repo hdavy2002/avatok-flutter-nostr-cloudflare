@@ -228,12 +228,37 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       if (_first.text.trim().isNotEmpty && _gender.isEmpty) _maybeDetectGender();
     });
     // The AvaTOK number was picked in the gate just before this screen — show it
-    // (locked) in place of an editable phone field.
+    // (locked) in place of an editable phone field. AvaNumber.me() reads the
+    // per-account, cache-first `me` blob that AvaNumber.assign() write-through
+    // populated in the gate, so the number the user just chose is already there.
+    // Prefer the pretty `display`, but FALL BACK to the canonical digits when the
+    // server (or a lagged replica) handed back a number with no formatted display
+    // — otherwise the field stayed blank and showed "Assigned just now" even
+    // though a number was assigned.
     AvaNumber.me().then((m) {
-      if (mounted && (m.display ?? '').isNotEmpty) {
-        setState(() { _avatokNumber = m.display!; _phone.text = m.display!; });
+      if (!mounted) return;
+      final shown = (m.display ?? '').isNotEmpty
+          ? m.display!
+          : ((m.number ?? '').isNotEmpty ? '+${m.number}' : '');
+      if (shown.isNotEmpty) {
+        setState(() { _avatokNumber = shown; _phone.text = shown; });
       }
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant ProfileSetupScreen old) {
+    super.didUpdateWidget(old);
+    // The signed-in (Clerk) email can arrive AFTER this screen first mounts: the
+    // shell fetches it via clerk.currentUser() asynchronously, so widget.email is
+    // often still null on the first build and only lands on a later rebuild.
+    // initState reads it exactly once, so without this the locked Email field
+    // would stay blank forever. Fill it here when a non-empty email arrives and
+    // the field is still empty (never clobber a value already shown).
+    final incoming = (widget.email ?? '').trim();
+    if (incoming.isNotEmpty && _email.text.trim().isEmpty) {
+      setState(() => _email.text = incoming);
+    }
   }
 
   @override
