@@ -1077,6 +1077,19 @@ class _CallScreenState extends State<CallScreen> {
         _popIfMounted();
         nav.push(MaterialPageRoute(builder: (_) => ChatThreadScreen(chat: chat)));
       },
+      // [NOANSWER-LEAVE-NOTE-1] Save contact — parity with the phone-style
+      // no-answer card; saves the callee without leaving the card (it stays open
+      // so the caller can still leave a note or redial).
+      onSaveContact: () async {
+        try {
+          await ContactsStore().add(Contact(
+              uid: widget.seed, name: widget.title, avatarUrl: widget.avatarUrl));
+        } catch (_) {/* best-effort */}
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(const SnackBar(content: Text('Contact saved')));
+        }
+      },
       // [RECEPT-SETTINGS-1] The classic "Leave a voicemail" option was removed
       // with the voicemail feature. The outcome menu keeps Talk to Ava (the
       // receptionist), voice note, and text note.

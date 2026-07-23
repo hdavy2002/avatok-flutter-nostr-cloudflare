@@ -109,6 +109,7 @@ import '../identity/public_action_gate.dart'; // [AVA-IDGATE-1] guardian verify 
 import 'live_location.dart';
 import 'group_info_screen.dart';
 import 'media.dart';
+import 'voice_note_waveform.dart';
 import 'media_library_screen.dart';
 import 'unknown_caller.dart';
 import 'video_player_screen.dart';
@@ -8125,7 +8126,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                       child: Text('Paused · tap ▶ to continue',
                           style: ADText.bubbleMeta(c: AD.textSecondary)),
                     )
-                  : _LiveWaveform(levels: _recLevels),
+                  : LiveWaveform(levels: _recLevels),
             ),
           ),
           const SizedBox(width: 4),
@@ -11495,48 +11496,6 @@ class _Dot extends StatelessWidget {
       );
 }
 
-/// The live recording waveform — one bar per amplitude sample, newest on the
-/// right, scrolling left as the buffer fills (WhatsApp's behaviour, pic 5).
-///
-/// This is drawn from the recorder's REAL metering (`onAmplitudeChanged`), not
-/// an animation on a timer. That distinction is the entire feature: a canned
-/// animation would look identical whether or not the mic was working, which is
-/// the exact ambiguity the owner is complaining about. If these bars are flat,
-/// the mic genuinely isn't hearing anything, and that's worth knowing before
-/// you talk for two minutes into a dead recorder.
-class _LiveWaveform extends StatelessWidget {
-  const _LiveWaveform({required this.levels});
-  final List<double> levels;
-
-  @override
-  Widget build(BuildContext context) => CustomPaint(
-        painter: _LiveWaveformPainter(levels),
-        size: Size.infinite,
-      );
-}
-
-class _LiveWaveformPainter extends CustomPainter {
-  _LiveWaveformPainter(this.levels);
-  final List<double> levels;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = AD.iconSearch
-      ..strokeCap = StrokeCap.round
-      ..strokeWidth = 2.6;
-    const gap = 4.5;
-    final mid = size.height / 2;
-    // Right-align: the newest sample sits at the right edge and older samples
-    // march left, so the waveform reads as "now" rather than jumping around.
-    for (var i = 0; i < levels.length; i++) {
-      final x = size.width - (levels.length - i) * gap;
-      if (x < 0) continue;
-      final h = (levels[i] * size.height).clamp(2.0, size.height);
-      canvas.drawLine(Offset(x, mid - h / 2), Offset(x, mid + h / 2), paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(_LiveWaveformPainter old) => true;
-}
+// [NOANSWER-LEAVE-NOTE-1] The live recording waveform moved to the shared
+// `voice_note_waveform.dart` (LiveWaveform) so the call "leave a voice note"
+// card draws the identical waveform from ONE definition. Usage above updated.

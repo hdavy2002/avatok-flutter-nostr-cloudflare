@@ -7,12 +7,15 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
+import '../../core/analytics.dart';
+import '../../core/ava_log.dart';
 import '../../core/calls/call_session.dart';
 import '../../core/db.dart';
 import '../../core/receptionist_api.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../sync/outbox.dart';
 import 'media.dart';
+import 'voice_note_waveform.dart';
 
 /// [CALL-OUTCOME-MENU-1] The unified caller-facing menu shown when a call ends
 /// without a human answer (Specs/CALL-OUTCOME-MENU-SPEC-2026-07-09.md). ONE
@@ -49,6 +52,10 @@ class CallOutcomeMenu extends StatefulWidget {
   /// message. CallScreen pops and pushes the chat thread. null hides the option.
   final VoidCallback? onMessage;
 
+  /// [NOANSWER-LEAVE-NOTE-1] Save the callee as a contact. CallScreen wires this
+  /// to ContactsStore and shows a confirmation. null hides the option.
+  final VoidCallback? onSaveContact;
+
   const CallOutcomeMenu({
     super.key,
     required this.session,
@@ -57,6 +64,7 @@ class CallOutcomeMenu extends StatefulWidget {
     required this.onClosed,
     this.onCallAgain,
     this.onMessage,
+    this.onSaveContact,
   });
 
   @override
@@ -76,6 +84,13 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
   String? _recPath;
   Timer? _recTimer;
   int _recSecs = 0;
+  // [NOANSWER-LEAVE-NOTE-1] Live amplitude samples (0..1) feeding the animated
+  // waveform — the SAME metering + mapping the Messenger recorder uses, so the
+  // "leave a voice note" bar proves the mic is hearing the caller (a flat line
+  // = a dead mic), rather than a static "Recording…" that could be lying.
+  final List<double> _recLevels = [];
+  StreamSubscription<Amplitude>? _recAmpSub;
+  static const int _kRecMaxBars = 46;
 
   // Text note state.
   bool _textOpen = false;
@@ -111,6 +126,7 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
   @override
   void dispose() {
     _recTimer?.cancel();
+    _recAmpSub?.cancel();
     _recorder.dispose();
     _textCtrl.dispose();
     super.dispose();
@@ -155,18 +171,26 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
   Future<void> _toggleRecord() async {
     if (_recording) {
       _recTimer?.cancel();
+      _recAmpSub?.cancel();
       final path = await _recorder.stop();
       setState(() => _recording = false);
       if (path == null) return;
       widget.session.menuLogOption('voice_note');
+      Analytics.uiInteraction('noanswer_note_voice_recorded',
+          _recSecs * 1000, extra: {'peer_uid': widget.peerUid});
       setState(() => _sending = true);
       try {
         final bytes = await File(path).readAsBytes();
         final m = await MediaService.encryptAndUpload(bytes,
             kind: MediaKind.audio, contentType: 'audio/mp4', name: 'voice.m4a');
         await _sendPayload(jsonEncode(m.toEnvelope()));
+        Analytics.uiInteraction('noanswer_note_voice_sent', 0,
+            extra: {'peer_uid': widget.peerUid});
         _finishSent();
-      } catch (_) {
+      } catch (e, st) {
+        Analytics.captureException(e, st,
+            screen: 'noanswer_voice_note_send');
+        AvaLog.I.log('call', 'No-answer voice note send failed: $e');
         if (mounted) {
           setState(() => _sending = false);
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -184,8 +208,25 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
     }
     final dir = await getTemporaryDirectory();
     _recPath = '${dir.path}/cm_vn_${DateTime.now().millisecondsSinceEpoch}.m4a';
+    // Ask the platform for amplitude metering so the live waveform below has
+    // real samples to draw (identical to the Messenger recorder).
     await _recorder.start(const RecordConfig(), path: _recPath!);
     _recSecs = 0;
+    _recLevels.clear();
+    _recAmpSub?.cancel();
+    _recAmpSub = _recorder
+        .onAmplitudeChanged(const Duration(milliseconds: 80))
+        .listen((amp) {
+      if (!mounted) return;
+      // `current` is dBFS: roughly -60 (silence) → 0 (clipping). Map to 0..1 with
+      // a floor so a quiet room shows a living baseline, not a flat dead line.
+      final db = amp.current.isFinite ? amp.current : -60.0;
+      final level = ((db + 60) / 60).clamp(0.05, 1.0);
+      setState(() {
+        _recLevels.add(level);
+        if (_recLevels.length > _kRecMaxBars) _recLevels.removeAt(0);
+      });
+    });
     _recTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => _recSecs++);
     });
@@ -200,8 +241,12 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
     setState(() => _sending = true);
     try {
       await _sendPayload(jsonEncode({'t': 'text', 'body': text}));
+      Analytics.uiInteraction('noanswer_note_text_sent', 0,
+          extra: {'peer_uid': widget.peerUid});
       _finishSent();
-    } catch (_) {
+    } catch (e, st) {
+      Analytics.captureException(e, st, screen: 'noanswer_text_note_send');
+      AvaLog.I.log('call', 'No-answer text note send failed: $e');
       if (mounted) setState(() => _sending = false);
     }
   }
@@ -303,7 +348,10 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
             // removed with the voicemail feature. Callers leave a voice note or
             // text note below, or talk to Ava (the receptionist) above.
 
-            // Voice note — records in place; tap again to stop & send.
+            // Voice note — records in place; tap again to stop & send. While
+            // recording, a live animated waveform (the SAME one the Messenger
+            // composer draws) appears BELOW the button so the caller can see the
+            // mic is hearing them.
             AdButton(
               label: _recording
                   ? 'Recording ${_fmtRec(_recSecs)} — tap to send'
@@ -314,6 +362,37 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
               loading: _sending && !_textOpen,
               onPressed: _sending ? null : _toggleRecord,
             ),
+            if (_recording) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AD.card,
+                  borderRadius: BorderRadius.circular(AD.rInput),
+                  border: Border.all(color: AD.borderControl),
+                ),
+                child: Row(children: [
+                  Container(
+                    width: 9,
+                    height: 9,
+                    decoration: const BoxDecoration(
+                        color: AD.danger, shape: BoxShape.circle),
+                  ),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 40,
+                    child: Text(_fmtRec(_recSecs),
+                        style: ADText.bubbleMeta(c: AD.textSecondary)),
+                  ),
+                  Expanded(
+                    child: SizedBox(
+                      height: 28,
+                      child: LiveWaveform(levels: _recLevels),
+                    ),
+                  ),
+                ]),
+              ),
+            ],
             const SizedBox(height: 10),
 
             // 4) Text note — a box slides open underneath.
@@ -371,6 +450,24 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
             ],
             const SizedBox(height: 10),
 
+            // [NOANSWER-LEAVE-NOTE-1] Save contact — parity with the phone-style
+            // no-answer card so the caller can save the callee without leaving.
+            if (widget.onSaveContact != null) ...[
+              AdButton(
+                label: 'Save contact',
+                variant: AdButtonVariant.ghost,
+                fullWidth: true,
+                fontSize: 16,
+                onPressed: (_sending || _recording)
+                    ? null
+                    : () {
+                        widget.session.menuLogOption('save_contact');
+                        widget.onSaveContact!.call();
+                      },
+              ),
+              const SizedBox(height: 10),
+            ],
+
             // 4) See Listings — intentionally NOT rendered yet: gated behind
             // callMenuListingsEnabled (false until the marketplace goes public).
 
@@ -382,6 +479,7 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
               onPressed: _sending
                   ? null
                   : () {
+                      widget.session.menuLogOption('close');
                       widget.session.menuDismiss();
                       widget.onClosed();
                     },

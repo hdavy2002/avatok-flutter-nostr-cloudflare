@@ -2010,6 +2010,10 @@ class CallSession {
     if (_receptionistActive || _receptionist != null || _avaCountingDown) return;
     // [DIALPAD-BIZ-CALLS Phase C] Same protection for a live agent hand-off.
     if (_phase == 'agent-handoff') return;
+    // [NOANSWER-LEAVE-NOTE-1] The persistent leave-a-note card is already up
+    // (this method is now its entry point) — a second stale ring/timeout firing
+    // must not re-attempt the receptionist under it.
+    if (_phase == 'outcome-menu') return;
     _ringback.stop();
     // [AVACALL-MENU-1 / WS4] The outcome MENU is reserved for the caller's
     // ACTIVE-refusal scenarios — an explicit decline (callStatusBus / fast-WS
@@ -2049,10 +2053,23 @@ class CallSession {
         'pstn_voicemail_enabled': _calleePstnVoicemail,
       });
     }
-    // [RECEPT-SETTINGS-1] voicemail removed — when the callee has no active AI
-    // receptionist, an unanswered call ends as an honest missed call rather than
-    // recording a free auto-voicemail.
-    if (!_ended && !_connected) _endWith('no-answer', reason: 'timeout-ringing');
+    // [NOANSWER-LEAVE-NOTE-1] No answer AND no receptionist handoff (receptionist
+    // off / scenario off / start failed / unreachable / tokens exhausted) →
+    // instead of ending the call as a transient "No answer" that pops after
+    // ~1.4s, park in the PERSISTENT outcome card so the caller can leave a VOICE
+    // or TEXT note (delivered as a normal DM), call again, save the contact, or
+    // close back to the dialer. This is the ONLY terminal that reaches here — the
+    // receptionist attempt above returned early when it took over. Business
+    // (dialpad) calls keep their own no-answer card (businessCallUx), so they are
+    // excluded here. `_showOutcomeMenu` tears down the dial leg (bye + mic
+    // release) and keeps the session alive with the card; it never auto-pops.
+    if (!_ended && !_connected) {
+      if (!_businessFlow) {
+        _showOutcomeMenu(_callUnreachable ? 'unreachable' : 'no-answer');
+      } else {
+        _endWith('no-answer', reason: 'timeout-ringing');
+      }
+    }
   }
 
   Future<void> _onBusy() async {
