@@ -24,6 +24,7 @@ import { walletTopup, walletTopupIntent, walletTopupPlayVerify, stripeWebhook, w
 import { walletStatement, walletStatementExport, walletSummary, walletTopupQuote } from "./routes/wallet_statement";
 import { adminLedger, adminRefund, adminAdjust, adminAccount, adminRecon, adminEscrowHold, adminEscrowRelease, adminTaxExport, adminFailedSettlements, adminRetrySettlement, requireAdmin } from "./routes/admin_money";
 import { welcomeBackfill } from "./routes/welcome_bonus"; // [WELCOME-100-1]
+import { tokenHardResetBackfill } from "./routes/token_reset"; // [TOKENS-100-GRANT-1] one-time hard reset to 100
 import { liveStart, liveStop, liveJoin, liveRoom, liveDonate, liveMod, liveState } from "./routes/live";
 import { consultJoin, consultRoom, consultSfu, consultComplete, consultCancel, consultExtend, consultProbe, consultProbeBlob } from "./routes/consult";
 import { runMoney, moneyDlq, type MoneyMsg } from "./money_engine";
@@ -416,16 +417,14 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       return await pstnVoicemailStream(req, env, p);
     }
 
-    // Voicemail bot bridge → VoicemailRoom DO (WP3, plan §3 step 4 / §7 item 5).
-    // Same thin-router pattern as the receptionist WS above; the DO validates
-    // the one-time rtc token from KV. Dark unless a session was actually
-    // started via POST /api/voicemail/start (which itself 503s when
-    // voicemailBot is off), so this route is inert while the flag is off.
+    // [RECEPT-BACKEND-TOGGLES-1] (owner decision 2026-07-23): VOICEMAIL IS RETIRED.
+    // The VoicemailRoom DO entrypoint is now GONE — voicemailStart() returns 410 so no
+    // rtc token/KV init blob is ever minted, and the AI receptionist is the sole
+    // unanswered-call handler. Refuse the upgrade with 410 instead of spinning up a DO
+    // so a lingering old client can never open a voicemail session. (Recorded voicemail
+    // PLAYBACK stays available via /api/voicemail/recording — an Inbox read path.)
     if (p === "/api/voicemail/rtc" && req.headers.get("Upgrade") === "websocket") {
-      const sid = url.searchParams.get("session") || "";
-      if (!sid) return new Response("session required", { status: 400 });
-      const hint = continentHint(req);
-      return env.VOICEMAIL_ROOM.get(env.VOICEMAIL_ROOM.idFromName(sid), hint ? { locationHint: hint } : undefined).fetch(req);
+      return new Response("voicemail retired", { status: 410 });
     }
 
     // Ava AI Voice Agent bridge → AgentVoiceRoom DO (WP4, plan §4/§7 item 7).
@@ -872,6 +871,14 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       {
         const wb = p.match(/^\/api\/admin\/welcome-backfill\/([A-Za-z0-9_-]{16,128})$/);
         if (wb && req.method === "POST") return await welcomeBackfill(req, env, wb[1]);
+      }
+      // [TOKENS-100-GRANT-1] One-time DESTRUCTIVE token hard reset (every user → 100,
+      // idempotent per uid). Same auth scheme as welcome-backfill: bare path =
+      // ADMIN_UIDS Clerk bearer; trailing segment = TOKEN_RESET_SECRET (fails closed).
+      if (p === "/api/admin/token-hard-reset" && req.method === "POST") return await tokenHardResetBackfill(req, env);
+      {
+        const tr = p.match(/^\/api\/admin\/token-hard-reset\/([A-Za-z0-9_-]{16,128})$/);
+        if (tr && req.method === "POST") return await tokenHardResetBackfill(req, env, tr[1]);
       }
 
       // --- AvaAdmin dashboard (Phase 6) — read-mostly aggregation + alerts/roles. requireAdmin enforced inside. ---

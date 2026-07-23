@@ -208,21 +208,25 @@ async function agentStreamXmlOrNull(
   // The agent_scope column self-migrates in receptionist.ts's ensureStatusColumns;
   // until a receptionist route has run post-deploy it may not exist yet, so a
   // failed 2-column SELECT falls back to the mode-only SELECT (scope → "all").
-  // [AVARECEPT-LANES-1] (owner 2026-07-21): the PSTN receptionist lane is now gated
-  // by the per-lane toggle recept_pstn_enabled + a per-scenario toggle. An inbound
-  // Vobiz (carrier-forwarded) call is inherently a "missed" / "unreachable" event,
-  // so the PSTN lane activates when recept_pstn_enabled=1 AND (missed OR unreachable)
-  // is on. The legacy mode='agent' path is kept for back-compat (rows saved before
-  // this shipped). Both DEFAULT OFF → a never-configured owner gets voicemail (or,
-  // once the global kill is on, a graceful not-available hangup upstream).
+  // [RECEPT-BACKEND-TOGGLES-1] (owner decision 2026-07-23): the PSTN receptionist
+  // lane is gated by the canonical FOUR per-scenario toggles for the PSTN group
+  // (recept_pstn_*). An inbound Vobiz (carrier-forwarded) call is inherently a
+  // "not picked up" / "unreachable" event (the carrier only forwards on no-answer /
+  // phone-off / busy), so the PSTN lane activates when redirect_all is on (Ava answers
+  // first for every call) OR any of not_picked_up / unreachable / rejected is on. NULL
+  // columns resolve to the containsKey-style defaults (not_picked_up + rejected → ON;
+  // unreachable + redirect_all → OFF) — identical to the client and routes/receptionist.ts
+  // — so a never-configured owner gets Ava on a forwarded (not-picked-up) call. The
+  // legacy mode='agent' path is kept for back-compat with rows saved before this shipped.
   type Row = {
     mode: string | null; agent_scope?: string | null;
-    recept_pstn_enabled?: number | null; recept_on_missed?: number | null; recept_on_unreachable?: number | null;
+    recept_pstn_not_picked_up?: number | null; recept_pstn_rejected?: number | null;
+    recept_pstn_unreachable?: number | null; recept_pstn_redirect_all?: number | null;
   };
   let row: Row | null = null;
   try {
     row = await metaDb(env)
-      .prepare("SELECT mode, agent_scope, recept_pstn_enabled, recept_on_missed, recept_on_unreachable FROM receptionist_settings WHERE owner_uid=?1")
+      .prepare("SELECT mode, agent_scope, recept_pstn_not_picked_up, recept_pstn_rejected, recept_pstn_unreachable, recept_pstn_redirect_all FROM receptionist_settings WHERE owner_uid=?1")
       .bind(ownerUid).first<Row>();
   } catch {
     // Pre-migration (new columns not yet added) → fall back to the legacy mode path.
@@ -238,8 +242,12 @@ async function agentStreamXmlOrNull(
   }
   const modeAgent = ((row?.mode || "") as string).trim().toLowerCase() === "agent"
     && ((row?.agent_scope || "") as string).trim().toLowerCase() !== "app";
-  const pstnLane = (row?.recept_pstn_enabled ?? 0) === 1
-    && (((row?.recept_on_missed ?? 0) === 1) || ((row?.recept_on_unreachable ?? 0) === 1));
+  // containsKey-style default: NULL/undefined → the client mirror, never a blanket false.
+  const onDflt = (v: number | null | undefined, dflt: boolean) => (v === null || v === undefined) ? dflt : v !== 0;
+  const pstnLane = onDflt(row?.recept_pstn_redirect_all, false)
+    || onDflt(row?.recept_pstn_not_picked_up, true)
+    || onDflt(row?.recept_pstn_unreachable, false)
+    || onDflt(row?.recept_pstn_rejected, true);
   if (!modeAgent && !pstnLane) return null;
 
   // Token runway ≥3 (1 min), mirroring /api/receptionist/start's agent gate.

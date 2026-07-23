@@ -19,6 +19,16 @@ const INIT_TTL_SEC = 300; // caller must connect the WS within 5 min, same as re
 export async function voicemailStart(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  // [RECEPT-BACKEND-TOGGLES-1] (owner decision 2026-07-23): VOICEMAIL IS RETIRED.
+  // The AI receptionist is now the ONLY unanswered-call handler; the client no longer
+  // calls this endpoint. Return 410 Gone UNCONDITIONALLY so no new voicemail session
+  // can ever start on either lane (paid business bot OR the free AvaTOK↔AvaTOK path),
+  // and any lingering old client that still hits it gets a clean, terminal answer
+  // instead of a live recording session. Already-recorded voicemails remain playable —
+  // voicemailRecording() below (an Inbox read path) is intentionally NOT gated on this.
+  return json({ error: "gone", reason: "voicemail_retired" }, 410);
+  // --- unreachable (kept for reference / quick revert only) ---
+  // eslint-disable-next-line no-unreachable
   const cfg = await readConfig(env);
   const b = (await req.json().catch(() => ({}))) as { to?: string; call_id?: string; caller_name?: string; caller_phone?: string; trace_id?: string; free?: boolean };
   // [AVACALL-VMFREE-3] TWO ways in: the paid business voicemail bot

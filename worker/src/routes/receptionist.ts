@@ -66,6 +66,15 @@ function isPaidTier(tier: number): boolean {
   return tier >= RECEPT_MIN_TIER;
 }
 
+// [TOKENS-100-GRANT-1] (owner decision 2026-07-23): the AI receptionist must NOT
+// operate when the OWNER's spendable balance is AT OR BELOW 2 tokens — the caller
+// gets a plain missed call, Ava never answers and nothing is recorded. Operating
+// requires spendable >= 3 (`< RECEPT_MIN_SPENDABLE` blocks), which is exactly the
+// client's own floor (receptionist_onboarding.dart `_needTokens = 3`, "you need at
+// least 3 tokens — one minute of Ava"). Kept as one constant so the /config probe
+// and /start gate can never drift apart, and to match the client to the token.
+const RECEPT_MIN_SPENDABLE = 3;
+
 const APP = "receptionist";
 
 // AI voice secretary → Gemini 3.1 Flash Live (verified working on the Developer
@@ -257,6 +266,24 @@ async function ensureStatusColumns(env: Env): Promise<void> {
     "ALTER TABLE receptionist_settings ADD COLUMN recept_on_missed INTEGER",
     "ALTER TABLE receptionist_settings ADD COLUMN recept_on_rejected INTEGER",
     "ALTER TABLE receptionist_settings ADD COLUMN recept_on_unreachable INTEGER",
+    // [RECEPT-BACKEND-TOGGLES-1] (owner decision 2026-07-23, client RECEPT-SETTINGS-1):
+    // the shared per-scenario model above (recept_on_*) is SUPERSEDED by TWO
+    // independent groups — PSTN and AvaTOK↔AvaTOK — each with FOUR fully independent
+    // scenario toggles. Each toggle alone decides whether Ava answers in that
+    // scenario for that lane. Column NULL = "owner never set this" and resolves to
+    // the sensible default (not_picked_up + rejected → ON; unreachable + redirect_all
+    // → OFF), so a pre-migration row or an absent field never silences a scenario the
+    // owner would expect Ava on, nor opts them into one they didn't ask for. The old
+    // recept_on_* / recept_*_enabled columns are kept for back-compat echo only; the
+    // routing decision reads these 8 exclusively.
+    "ALTER TABLE receptionist_settings ADD COLUMN recept_pstn_not_picked_up INTEGER",
+    "ALTER TABLE receptionist_settings ADD COLUMN recept_pstn_rejected INTEGER",
+    "ALTER TABLE receptionist_settings ADD COLUMN recept_pstn_unreachable INTEGER",
+    "ALTER TABLE receptionist_settings ADD COLUMN recept_pstn_redirect_all INTEGER",
+    "ALTER TABLE receptionist_settings ADD COLUMN recept_avatok_not_picked_up INTEGER",
+    "ALTER TABLE receptionist_settings ADD COLUMN recept_avatok_rejected INTEGER",
+    "ALTER TABLE receptionist_settings ADD COLUMN recept_avatok_unreachable INTEGER",
+    "ALTER TABLE receptionist_settings ADD COLUMN recept_avatok_redirect_all INTEGER",
     // Self-migration for receptionist_sessions columns:
     "ALTER TABLE receptionist_sessions ADD COLUMN activation_mode TEXT",
     "ALTER TABLE receptionist_sessions ADD COLUMN team_id TEXT",
@@ -407,6 +434,17 @@ interface SettingsRow {
   recept_on_missed?: number | null;
   recept_on_rejected?: number | null;
   recept_on_unreachable?: number | null;
+  // [RECEPT-BACKEND-TOGGLES-1] TWO independent lanes × FOUR scenarios. NULL =
+  // unset → resolved via the containsKey-style defaults in the helpers below
+  // (not_picked_up + rejected → ON; unreachable + redirect_all → OFF).
+  recept_pstn_not_picked_up?: number | null;
+  recept_pstn_rejected?: number | null;
+  recept_pstn_unreachable?: number | null;
+  recept_pstn_redirect_all?: number | null;
+  recept_avatok_not_picked_up?: number | null;
+  recept_avatok_rejected?: number | null;
+  recept_avatok_unreachable?: number | null;
+  recept_avatok_redirect_all?: number | null;
 }
 
 async function loadSettings(env: Env, uid: string): Promise<SettingsRow | null> {
@@ -480,6 +518,54 @@ function receptOnRejected(s: SettingsRow | null | undefined): boolean {
 }
 function receptOnUnreachable(s: SettingsRow | null | undefined): boolean {
   return (s?.recept_on_unreachable ?? 0) === 1;
+}
+
+// [RECEPT-BACKEND-TOGGLES-1] (owner decision 2026-07-23): the canonical per-lane +
+// per-scenario resolvers. Each reads its own column; a NULL/undefined column (owner
+// never set it, or a pre-migration row) falls back to the mirror the client uses —
+// not_picked_up + rejected → ON, unreachable + redirect_all → OFF — NEVER to a blanket
+// `false` (which would silently silence a scenario the owner expects Ava on). This is
+// exactly the client's `containsKey ? value : default` behaviour, kept in lock-step so
+// the two can never drift. These 8 are the SOLE source of truth for routing; the legacy
+// recept_on_* / recept_*_enabled columns are derived FROM these on save, for old-client
+// echo only.
+const _onDefault = (v: number | null | undefined, dflt: boolean): boolean =>
+  (v === null || v === undefined) ? dflt : v !== 0;
+function receptPstnNotPickedUp(s: SettingsRow | null | undefined): boolean { return _onDefault(s?.recept_pstn_not_picked_up, true); }
+function receptPstnRejectedNew(s: SettingsRow | null | undefined): boolean { return _onDefault(s?.recept_pstn_rejected, true); }
+function receptPstnUnreachableNew(s: SettingsRow | null | undefined): boolean { return _onDefault(s?.recept_pstn_unreachable, false); }
+function receptPstnRedirectAll(s: SettingsRow | null | undefined): boolean { return _onDefault(s?.recept_pstn_redirect_all, false); }
+function receptAvatokNotPickedUp(s: SettingsRow | null | undefined): boolean { return _onDefault(s?.recept_avatok_not_picked_up, true); }
+function receptAvatokRejectedNew(s: SettingsRow | null | undefined): boolean { return _onDefault(s?.recept_avatok_rejected, true); }
+function receptAvatokUnreachableNew(s: SettingsRow | null | undefined): boolean { return _onDefault(s?.recept_avatok_unreachable, false); }
+function receptAvatokRedirectAll(s: SettingsRow | null | undefined): boolean { return _onDefault(s?.recept_avatok_redirect_all, false); }
+
+// A LANE is "active" (Ava may answer at least one scenario) iff any of its four
+// toggles is on. Used for the legacy `recept_*_enabled` / `ai_receptionist_enabled`
+// back-compat echo an old app build reads.
+function avatokLaneActive(s: SettingsRow | null | undefined): boolean {
+  return receptAvatokNotPickedUp(s) || receptAvatokRejectedNew(s) || receptAvatokUnreachableNew(s) || receptAvatokRedirectAll(s);
+}
+function pstnLaneActive(s: SettingsRow | null | undefined): boolean {
+  return receptPstnNotPickedUp(s) || receptPstnRejectedNew(s) || receptPstnUnreachableNew(s) || receptPstnRedirectAll(s);
+}
+
+// AvaTOK↔AvaTOK hand-off decision (the lane THIS worker's /start + /config serve).
+// Maps the caller's `activation_mode` to a scenario and returns whether the owner
+// enabled Ava for it. redirect_all ON → Ava answers first for EVERY call. `menu`
+// (the caller explicitly pressed "Talk to Ava") and self-calls (owner testing) always
+// pass — an explicit human choice is never gated by a scenario toggle.
+function avatokHandoffAllowed(s: SettingsRow | null | undefined, activationMode: string, isSelf: boolean): boolean {
+  if (isSelf || activationMode === "menu") return true;
+  if (receptAvatokRedirectAll(s)) return true;
+  switch (activationMode) {
+    case "decline":      return receptAvatokRejectedNew(s);      // caller was Declined → rejected
+    case "unreachable":  return receptAvatokUnreachableNew(s);   // phone off / no data
+    case "first_ring":   return false;                           // answer-all lives on redirect_all above
+    case "busy":                                                 // owner on another call ≈ couldn't pick up
+    case "rings":
+    default:             return receptAvatokNotPickedUp(s);      // no answer
+  }
 }
 
 // ── Settings cache (KV) ──────────────────────────────────────────────────────
@@ -785,17 +871,27 @@ export async function receptionistGetSettings(req: Request, env: Env): Promise<R
     agent_scope: s?.agent_scope ?? "",
     // [AVACALL-SET-1] WS3 paid call-handling prefs (default OFF). The client greys
     // these toggles behind `premium` and defaults them off for a fresh account.
-    // [AVARECEPT-LANES-1] the legacy field now mirrors the AvaTOK lane (default OFF)
-    // so an old settings screen stays consistent with the new opt-in default.
-    ai_receptionist_enabled: receptAvatokOn(s),
+    // [RECEPT-BACKEND-TOGGLES-1] the legacy scalars are now DERIVED from the 8-key
+    // model so an old app build stays coherent: the lane is "enabled" when any of its
+    // four scenarios is on, and the shared scenario echoes mirror the AvaTOK lane.
+    ai_receptionist_enabled: avatokLaneActive(s),
     pstn_voicemail_enabled: !!(s?.pstn_voicemail_enabled),
-    // [AVARECEPT-LANES-1] per-lane + per-scenario toggles (all default OFF). The new
-    // "AI receptionist" settings page reads these.
-    recept_avatok_enabled: receptAvatokOn(s),
-    recept_pstn_enabled: receptPstnOn(s),
-    recept_on_missed: receptOnMissed(s),
-    recept_on_rejected: receptOnRejected(s),
-    recept_on_unreachable: receptOnUnreachable(s),
+    // [AVARECEPT-LANES-1] legacy per-lane + per-scenario echoes (derived).
+    recept_avatok_enabled: avatokLaneActive(s),
+    recept_pstn_enabled: pstnLaneActive(s),
+    recept_on_missed: receptAvatokNotPickedUp(s),
+    recept_on_rejected: receptAvatokRejectedNew(s),
+    recept_on_unreachable: receptAvatokUnreachableNew(s),
+    // [RECEPT-BACKEND-TOGGLES-1] canonical TWO-lane × FOUR-scenario toggles. The new
+    // "AI receptionist" settings page (RECEPT-SETTINGS-1) reads/writes exactly these.
+    recept_pstn_not_picked_up: receptPstnNotPickedUp(s),
+    recept_pstn_rejected: receptPstnRejectedNew(s),
+    recept_pstn_unreachable: receptPstnUnreachableNew(s),
+    recept_pstn_redirect_all: receptPstnRedirectAll(s),
+    recept_avatok_not_picked_up: receptAvatokNotPickedUp(s),
+    recept_avatok_rejected: receptAvatokRejectedNew(s),
+    recept_avatok_unreachable: receptAvatokUnreachableNew(s),
+    recept_avatok_redirect_all: receptAvatokRedirectAll(s),
     premium, // client greys the toggle + shows upsell when false
     soft_cap_ms: SOFT_CAP_MS, hard_cap_ms: HARD_CAP_MS,
   });
@@ -873,19 +969,39 @@ export async function receptionistPutSettings(req: Request, env: Env): Promise<R
   // absent field is treated as false (the settings screen always sends both, so a
   // missing key means an older client → the safe default OFF).
   const pstnVoicemailEnabled = b.pstn_voicemail_enabled === true || b.pstn_voicemail_enabled === 1 ? 1 : 0;
-  // [AVARECEPT-LANES-1] per-lane + per-scenario toggles (default OFF). A NEW app
-  // build (the "AI receptionist" page) sends these; an OLD build sends only the
-  // legacy ai_receptionist_enabled. We mirror the two representations so BOTH client
-  // versions stay coherent: the legacy AvaTOK column tracks recept_avatok_enabled.
   const bit = (v: unknown) => (v === true || v === 1 ? 1 : 0);
-  const hasNewLanes = b.recept_avatok_enabled !== undefined || b.recept_pstn_enabled !== undefined;
-  const receptAvatokEnabled = hasNewLanes ? bit(b.recept_avatok_enabled) : bit(b.ai_receptionist_enabled);
-  const receptPstnEnabled = bit(b.recept_pstn_enabled);
-  const receptOnMissedV = bit(b.recept_on_missed);
-  const receptOnRejectedV = bit(b.recept_on_rejected);
-  const receptOnUnreachableV = bit(b.recept_on_unreachable);
-  // Legacy AvaTOK-lane column kept in sync so old app builds' /config probe still
-  // honours the AvaTOK toggle after a new-build save (and vice-versa).
+  // [RECEPT-BACKEND-TOGGLES-1] (owner decision 2026-07-23): persist the canonical
+  // TWO-lane × FOUR-scenario toggles. PRESERVE-OR-DEFAULT per key so neither an
+  // absent field nor an OLD app build (which sends none of these) ever RESETS the
+  // owner's saved choices: a field present in the body wins; else the current stored
+  // value is kept; else the sensible default (not_picked_up + rejected → ON;
+  // unreachable + redirect_all → OFF) applies. This is the write-side mirror of the
+  // containsKey-style read defaults, so a new build round-trips exactly and an old
+  // build leaves the 8 columns untouched. The old recept_on_* / recept_*_enabled body
+  // keys are IGNORED here (dropped) — the legacy columns are DERIVED below instead.
+  const existingRow = await loadSettings(env, ctx.uid); // fresh read for preserve-on-absence
+  const toggle = (key: string, cur: number | null | undefined, dflt: boolean): number =>
+    (b as Record<string, unknown>)[key] !== undefined
+      ? bit((b as Record<string, unknown>)[key])
+      : (cur !== null && cur !== undefined ? (cur ? 1 : 0) : (dflt ? 1 : 0));
+  const receptPstnNotPickedUpV = toggle("recept_pstn_not_picked_up", existingRow?.recept_pstn_not_picked_up, true);
+  const receptPstnRejectedV = toggle("recept_pstn_rejected", existingRow?.recept_pstn_rejected, true);
+  const receptPstnUnreachableNewV = toggle("recept_pstn_unreachable", existingRow?.recept_pstn_unreachable, false);
+  const receptPstnRedirectAllV = toggle("recept_pstn_redirect_all", existingRow?.recept_pstn_redirect_all, false);
+  const receptAvatokNotPickedUpV = toggle("recept_avatok_not_picked_up", existingRow?.recept_avatok_not_picked_up, true);
+  const receptAvatokRejectedV = toggle("recept_avatok_rejected", existingRow?.recept_avatok_rejected, true);
+  const receptAvatokUnreachableNewV = toggle("recept_avatok_unreachable", existingRow?.recept_avatok_unreachable, false);
+  const receptAvatokRedirectAllV = toggle("recept_avatok_redirect_all", existingRow?.recept_avatok_redirect_all, false);
+  // Legacy columns DERIVED from the new model so old app builds' /config probe + the
+  // PSTN lane's old SELECT stay coherent after a new-build save: a lane is "enabled"
+  // when any of its four scenarios is on; the shared scenario mirrors the AvaTOK lane.
+  const avatokLaneOn = receptAvatokNotPickedUpV || receptAvatokRejectedV || receptAvatokUnreachableNewV || receptAvatokRedirectAllV;
+  const pstnLaneOn = receptPstnNotPickedUpV || receptPstnRejectedV || receptPstnUnreachableNewV || receptPstnRedirectAllV;
+  const receptAvatokEnabled = avatokLaneOn ? 1 : 0;
+  const receptPstnEnabled = pstnLaneOn ? 1 : 0;
+  const receptOnMissedV = receptAvatokNotPickedUpV;
+  const receptOnRejectedV = receptAvatokRejectedV;
+  const receptOnUnreachableV = receptAvatokUnreachableNewV;
   const aiReceptionistEnabled = receptAvatokEnabled;
   // PAY-PER-USE (owner 2026-07-19): enabling a mode requires token runway —
   // agent ≥3 tokens (1 min), voicemail ≥1 (1 token per voicemail). 402 with the
@@ -924,8 +1040,10 @@ export async function receptionistPutSettings(req: Request, env: Env): Promise<R
         ai_receptionist_enabled, pstn_voicemail_enabled,
         recept_avatok_enabled, recept_pstn_enabled,
         recept_on_missed, recept_on_rejected, recept_on_unreachable,
+        recept_pstn_not_picked_up, recept_pstn_rejected, recept_pstn_unreachable, recept_pstn_redirect_all,
+        recept_avatok_not_picked_up, recept_avatok_rejected, recept_avatok_unreachable, recept_avatok_redirect_all,
         created_at, updated_at)
-     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?14,?14)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,?31,?32,?33,?34,?35,?36,?14,?14)
      ON CONFLICT(owner_uid) DO UPDATE SET
        enabled=?2, instructions_text=?3, voice_name=?4, display_name=?5,
        persona_name=?6, language_code=?7, greeting_text=?8, custom_prompt=?9,
@@ -935,6 +1053,8 @@ export async function receptionistPutSettings(req: Request, env: Env): Promise<R
        ai_receptionist_enabled=?22, pstn_voicemail_enabled=?23,
        recept_avatok_enabled=?24, recept_pstn_enabled=?25,
        recept_on_missed=?26, recept_on_rejected=?27, recept_on_unreachable=?28,
+       recept_pstn_not_picked_up=?29, recept_pstn_rejected=?30, recept_pstn_unreachable=?31, recept_pstn_redirect_all=?32,
+       recept_avatok_not_picked_up=?33, recept_avatok_rejected=?34, recept_avatok_unreachable=?35, recept_avatok_redirect_all=?36,
        updated_at=?14`,
   ).bind(ctx.uid, enabled ? 1 : 0, instr, voice, display,
     persona, language, greeting, customPrompt,
@@ -943,7 +1063,9 @@ export async function receptionistPutSettings(req: Request, env: Env): Promise<R
     greetingStyle, festivalGreeting, recMode, agentScope,
     aiReceptionistEnabled, pstnVoicemailEnabled,
     receptAvatokEnabled, receptPstnEnabled,
-    receptOnMissedV, receptOnRejectedV, receptOnUnreachableV).run();
+    receptOnMissedV, receptOnRejectedV, receptOnUnreachableV,
+    receptPstnNotPickedUpV, receptPstnRejectedV, receptPstnUnreachableNewV, receptPstnRedirectAllV,
+    receptAvatokNotPickedUpV, receptAvatokRejectedV, receptAvatokUnreachableNewV, receptAvatokRedirectAllV).run();
   // F1 telemetry.
   const ttlBucket = statusExpiresAt == null ? "never"
     : (() => { const d = statusExpiresAt - Date.now();
@@ -1010,8 +1132,10 @@ export async function receptionistConfigFor(req: Request, env: Env): Promise<Res
       // free AvaCoins/day that receptionist costs draw from first (allow_free), so a
       // paid-only check made Ava "unavailable" for everyone who hadn't topped up →
       // caller fell to native voicemail. Fail-open on read errors as before.
+      // [TOKENS-100-GRANT-1] Block at spendable <= 2 (was < 1): the receptionist
+      // does not operate on a near-empty wallet, matching the client's >=3 floor.
       const spendable = Number(b.body?.spendable ?? b.body?.balance ?? 0);
-      if (b.status === 200 && spendable < 1) {
+      if (b.status === 200 && spendable < RECEPT_MIN_SPENDABLE) {
         checked(false, "insufficient_tokens");
         return json({ available: false, reason: "insufficient_tokens" });
       }
@@ -1057,18 +1181,30 @@ export async function receptionistConfigFor(req: Request, env: Env): Promise<Res
     // Absent on an older worker → the client keeps its legacy always-on behavior.
     // [AVARECEPT-LANES-1] legacy field = the AvaTOK lane (default OFF now). Old app
     // builds read this as "hand off to Ava on any no-answer/reject/unreachable".
-    aiReceptionistEnabled: receptAvatokOn(s),
+    aiReceptionistEnabled: avatokLaneActive(s),
     pstnVoicemailEnabled: !!s.pstn_voicemail_enabled,
-    // [AVARECEPT-LANES-1] per-lane + per-scenario toggles (all default OFF). The
-    // caller's session (call_session.dart _probeReceptionist) reads these: it hands
-    // off to Ava only when the matching LANE (AvaTOK/PSTN) AND the matching SCENARIO
-    // (missed/rejected/unreachable) are both ON. New app builds use these; older
-    // builds ignore them and fall back to aiReceptionistEnabled above.
-    receptAvatokEnabled: receptAvatokOn(s),
-    receptPstnEnabled: receptPstnOn(s),
-    receptOnMissed: receptOnMissed(s),
-    receptOnRejected: receptOnRejected(s),
-    receptOnUnreachable: receptOnUnreachable(s),
+    // [AVARECEPT-LANES-1] legacy per-lane + per-scenario echoes, now DERIVED from the
+    // 8-key model below so an older app build stays coherent (lane active = any of its
+    // four scenarios; the shared scenario echoes mirror the AvaTOK lane).
+    receptAvatokEnabled: avatokLaneActive(s),
+    receptPstnEnabled: pstnLaneActive(s),
+    receptOnMissed: receptAvatokNotPickedUp(s),
+    receptOnRejected: receptAvatokRejectedNew(s),
+    receptOnUnreachable: receptAvatokUnreachableNew(s),
+    // [RECEPT-BACKEND-TOGGLES-1] canonical TWO-lane × FOUR-scenario toggles. The
+    // caller's session (call_session.dart) reads these to decide the no-answer route:
+    // it hands off to Ava only when the matching lane+scenario toggle is ON, or when
+    // that lane's redirect_all is ON (Ava answers first for EVERY call). The SERVER
+    // also enforces the same decision at /start (see avatokHandoffAllowed) so an older
+    // client can't route to Ava for a scenario the owner disabled.
+    recept_pstn_not_picked_up: receptPstnNotPickedUp(s),
+    recept_pstn_rejected: receptPstnRejectedNew(s),
+    recept_pstn_unreachable: receptPstnUnreachableNew(s),
+    recept_pstn_redirect_all: receptPstnRedirectAll(s),
+    recept_avatok_not_picked_up: receptAvatokNotPickedUp(s),
+    recept_avatok_rejected: receptAvatokRejectedNew(s),
+    recept_avatok_unreachable: receptAvatokUnreachableNew(s),
+    recept_avatok_redirect_all: receptAvatokRedirectAll(s),
   });
 }
 
@@ -1147,7 +1283,12 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   // ≥3 tokens (1 minute of runway), voicemail needs ≥1 (1 token per voicemail).
   // Replaces the retired subscription-tier gate. Fail-open on wallet errors.
   if (!freeLaunch) {
-    const needTokens = vmMode ? 1 : 3;
+    // [TOKENS-100-GRANT-1] Enforce the <=2 floor for BOTH modes: the receptionist
+    // (agent OR voicemail) must not operate at or below 2 spendable tokens, so the
+    // effective need is max(mode need, RECEPT_MIN_SPENDABLE) = at least 3. This
+    // matches the /config probe and the client onboarding floor exactly; a caller
+    // hitting a near-empty owner gets a plain missed call (no answer, no recording).
+    const needTokens = Math.max(vmMode ? 1 : 3, RECEPT_MIN_SPENDABLE);
     try {
       const b = await walletOp(env, to, { op: "balance", uid: to });
       // [RECEPT-AVAIL-SPENDABLE-1] Gate on SPENDABLE (free daily grant + bonus +
@@ -1354,6 +1495,22 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   const VALID_MODES = new Set(["rings", "first_ring", "decline", "busy", "unreachable", "menu"]);
   let activationMode = String(b.activation_mode || "rings");
   if (!VALID_MODES.has(activationMode)) activationMode = "rings";
+
+  // [RECEPT-BACKEND-TOGGLES-1] (owner decision 2026-07-23): SERVER-SIDE per-lane +
+  // per-scenario hand-off gate for the AvaTOK↔AvaTOK lane (this endpoint's lane; the
+  // PSTN lane is gated in routes/pstn.ts). The caller's `activation_mode` maps to a
+  // scenario and Ava only takes the call when the owner enabled that scenario for the
+  // AvaTOK lane (or that lane's redirect_all is on → Ava answers first for EVERY call).
+  // If the toggle is OFF we do NOT hand off — the call ends as a plain missed/rejected
+  // call. This runs AFTER the [TOKENS-100-GRANT-1] spendable<=2 floor above, so the
+  // token floor always wins (a near-empty owner never hands off regardless of toggles).
+  // `menu` (caller pressed "Talk to Ava") and self-calls (owner testing) always pass —
+  // an explicit human choice is never gated by a scenario toggle. Nothing has been
+  // persisted for this session yet at this point, so the early return needs no cleanup.
+  if (!avatokHandoffAllowed(s, activationMode, ctx.uid === to)) {
+    skip("scenario_disabled", { activation_mode: activationMode });
+    return json({ error: "receptionist_unavailable", reason: "scenario_disabled", activation_mode: activationMode }, 403);
+  }
 
   // DETERMINISTIC GREETING (owner decision 2026-06-29): composed server-side and
   // spoken immediately by the CF engine — NO LLM round-trip — so there's no dead

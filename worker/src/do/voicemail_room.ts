@@ -73,6 +73,13 @@ export class VoicemailRoom {
   }
 
   async fetch(req: Request): Promise<Response> {
+    // [RECEPT-BACKEND-TOGGLES-1] (owner decision 2026-07-23): VOICEMAIL IS RETIRED.
+    // The DO entrypoint is now GONE — the /api/voicemail/rtc route already refuses the
+    // upgrade with 410 and voicemailStart() no longer mints an rtc token, so this DO is
+    // unreachable in practice. This guard makes that terminal at the DO boundary too, so
+    // no voicemail session can ever spin up even if a stale token/route reappeared.
+    return new Response("voicemail retired", { status: 410 });
+    // eslint-disable-next-line no-unreachable
     if (req.headers.get("Upgrade") !== "websocket") return new Response("expected websocket", { status: 426 });
     const url = new URL(req.url);
     const sid = url.searchParams.get("session") || "";
