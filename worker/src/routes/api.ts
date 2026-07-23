@@ -192,6 +192,33 @@ export async function call(req: Request, env: Env): Promise<Response> {
   // Read the callee's device count from the PRIMARY (plain prepare), not an
   // unconstrained replica — avoids a stale 0-token false-404 on a registered device.
   const n = await tokenCount(env.DB_META, b.to);
+  // [DEVMAP-PRUNE-1 2026-07-22] Stale "active" account_devices mappings whose FCM
+  // token has rotated away (device_tokens row gone, e.g. reinstall / OS token
+  // rotation) were never cleaned, so they inflated the reachability snapshot and
+  // the send-time fan-out (real case 2026-07-22: a callee with 1 live token but 4
+  // stale active-no-token mappings). Dial time is the moment reachability truth
+  // matters, so we prune the CALLEE's stale mappings opportunistically right here,
+  // before the snapshot below reads them. A 7-day last_seen grace avoids racing a
+  // device mid-token-rotation (token briefly absent but the device is still real).
+  // Best-effort and self-contained: it must NEVER block or fail the call, and
+  // pre-migration D1s lacking these tables are caught just like the snapshot.
+  try {
+    const cutoff = Date.now() - 7 * 86400000; // 7 days unseen
+    const pr = await env.DB_META.prepare(
+      "UPDATE account_devices SET active=0 WHERE account_id=?1 AND active=1 AND last_seen < ?2 " +
+      "AND device_id NOT IN (SELECT device_id FROM device_tokens WHERE token IS NOT NULL)",
+    ).bind(b.to, cutoff).run();
+    const pruned = pr?.meta?.changes ?? 0;
+    if (pruned > 0) {
+      void env.Q_ANALYTICS.send({
+        event: "device_mappings_pruned", uid: ctx.uid, ts: Date.now(),
+        props: {
+          to: b.to, pruned, trace_id: traceId,
+          app_name: "avatok", service_name: "avatok-api", worker: true, account_id: ctx.uid,
+        },
+      });
+    }
+  } catch { /* pre-migration or transient: prune must never block the call */ }
   // [CALL-TELEMETRY-1 2026-07-14] Always-on callee reachability snapshot at dial
   // time — one event per call attempt that says exactly what the callee's device/
   // token state looked like WHEN the caller dialed. Motivation: the 2026-07-11
