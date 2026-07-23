@@ -407,6 +407,11 @@ export interface Env {
   // scheme as VOBIZ_WEBHOOK_SECRET). Fails CLOSED when unset; set via
   // `wrangler secret put WELCOME_BACKFILL_SECRET`.
   WELCOME_BACKFILL_SECRET?: string;
+  // [TOKENS-100-GRANT-1] Shared secret for the one-time DESTRUCTIVE token hard-reset
+  // route (`POST /api/admin/token-hard-reset/<secret>` — same trailing-path-segment
+  // scheme as WELCOME_BACKFILL_SECRET). Fails CLOSED when unset; set via
+  // `wrangler secret put TOKEN_RESET_SECRET` only for the one-time run, then unset.
+  TOKEN_RESET_SECRET?: string;
   // Vobiz account API credentials — required to fetch recording files from
   // media.vobiz.ai (401 without them; verified 2026-07-16). Set via
   // `wrangler secret put VOBIZ_AUTH_ID` / `VOBIZ_AUTH_TOKEN`.

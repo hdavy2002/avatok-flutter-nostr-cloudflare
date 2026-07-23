@@ -277,6 +277,18 @@ export class ReceptionRoom {
       if (b.status === 200) this.startBalance = Math.max(0, Number(b.body?.spendable ?? b.body?.balance ?? 0));
     } catch { /* fail-open */ }
 
+    // [TOKENS-100-GRANT-1] Pre-answer balance floor (defense in depth behind the
+    // /start route gate): if the owner's SPENDABLE balance is AT OR BELOW 2 tokens
+    // at connect time, Ava does NOT answer and NOTHING is recorded — the WS never
+    // upgrades, so the caller's client falls back to a plain missed call. Fires only
+    // on a confident read (startBalance != null); a failed read stays fail-open so a
+    // transient wallet error never silences a paid user. Mirrors the client >=3 floor.
+    if (this.startBalance != null && this.startBalance <= 2) {
+      this.ev("ava_recept_dropped_low_balance", { start_balance: this.startBalance, floor: 2 });
+      this.env.TOKENS.delete(`recept_rtc:${sid}`).catch(() => {}); // burn the single-use init blob
+      return new Response("insufficient balance", { status: 403 });
+    }
+
     const pair = new WebSocketPair();
     const client = pair[0], server = pair[1];
     server.accept();

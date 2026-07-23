@@ -45,10 +45,17 @@ import { readConfig } from "../routes/config";
 
 const HOLD_MS = 7 * 86_400_000; // 7-day earnings hold
 const OPS_TTL_MS = 48 * 3_600_000; // dedupe window for op_id replays
-// AvaCoins granted free each UTC day (no rollover). Non-premium users only.
-// See Specs/AVA-AI-COIN-PRICING-PROPOSAL.md. Spend draws free coins first, then
-// paid. The first top-up flips the user to sticky premium (free grant stops).
-const DAILY_FREE_GRANT = 250;
+// [TOKENS-100-GRANT-1] (owner decision 2026-07-23): the daily renewable free-coin
+// grant is RETIRED. New users now get a SINGLE, one-time, non-renewable 100-token
+// "join and explore" grant — the persistent welcome bonus (`acct.bonus`, credited
+// once at signup by routes/welcome_bonus.ts). Setting this to 0 means maybeGrant()
+// never tops the daily `free` bucket back up, so the balance never refills daily or
+// monthly. The old value was 250, which stacked with the 100 welcome bonus to show
+// a "350" starting balance that then reset every UTC day; both behaviours are gone.
+// Spend still draws free -> bonus -> paid (see spend()); with free pinned at 0 the
+// welcome bonus is the first thing consumed. Do NOT raise this above 0 without an
+// explicit owner decision — a non-zero value re-introduces a renewing grant.
+const DAILY_FREE_GRANT = 0;
 
 // [WALLET-TXMETA-1] Rich charge metadata, passed through untouched from the charge
 // call site (feature_pricing.chargeAmount → walletOp body) onto the Q_WALLET message
@@ -177,6 +184,7 @@ export class WalletDO {
     // result without re-applying (and without re-emitting the ledger row).
     if (
       body.op === "credit" || body.op === "spend" || body.op === "earn" || body.op === "debit_hold" || body.op === "promo_credit" ||
+      body.op === "hard_reset" || // [TOKENS-100-GRANT-1] one-time balance reset (idempotent per op_id)
       body.op === "reserve" || body.op === "consume_reserved" || body.op === "release_reservation" // [AVA-CAMP-B1-WALLET]
     ) {
       const dup = this.seenOp(body.op_id);
@@ -187,6 +195,7 @@ export class WalletDO {
       case "balance": return json({ ...this.snap(), uid });
       case "credit": return this.credit(uid, body);
       case "promo_credit": return this.promoCredit(uid, body); // [WELCOME-100-1] persistent promo bucket
+      case "hard_reset": return this.hardReset(uid, body); // [TOKENS-100-GRANT-1] one-time balance reset to a fixed amount
       case "spend": return this.spend(uid, body);
       case "earn": return this.earn(uid, body);
       case "debit_hold": return this.debitHold(uid, body); // refund clawback within hold
@@ -228,6 +237,28 @@ export class WalletDO {
     const result = { ok: true, ...this.snap() };
     this.recordOp(b.op_id, result);
     await this.audit(uid, { type: b.type || "promo", amount, balance_after: this.snap().spendable, app_name: b.app_name, ref: b.ref, ...txMeta(b) }, b);
+    this.broadcast();
+    return json(result);
+  }
+
+  // [TOKENS-100-GRANT-1] HARD RESET the entire wallet to exactly `amount` spendable
+  // tokens, delivered as the persistent welcome/promo bucket (so it behaves like the
+  // one-time "join and explore" grant and never funds a payout). This is a
+  // DESTRUCTIVE operation used ONLY by the one-time owner-directed reset (routes/
+  // token_reset.ts, admin/secret-gated) — it ZEROES paid `balance`, `held`, the daily
+  // `free` bucket AND all outstanding 7-day earning holds, then sets `bonus` = amount.
+  // premium is cleared so every account lands in the same fresh "explore" state.
+  // last_grant_day is pinned to today so maybeGrant() cannot re-grant on this touch.
+  // Idempotent on op_id (`hardreset:v1:<uid>`), so a re-run of the backfill no-ops.
+  private async hardReset(uid: string, b: any): Promise<Response> {
+    const amount = Math.max(0, Math.trunc(Number(b.amount ?? 100)));
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD (UTC)
+    this.setBal(0, 0);
+    this.sql.exec("DELETE FROM holds");
+    this.sql.exec("UPDATE acct SET free=0, premium=0, bonus=?1, last_grant_day=?2 WHERE k=1", amount, today);
+    const result = { ok: true, ...this.snap() };
+    this.recordOp(b.op_id, result);
+    await this.audit(uid, { type: "adjustment", amount, balance_after: this.snap().spendable, app_name: "token_hard_reset", ref: b.ref }, b);
     this.broadcast();
     return json(result);
   }
