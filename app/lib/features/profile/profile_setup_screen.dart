@@ -35,6 +35,12 @@ class ProfileSetupScreen extends StatefulWidget {
   /// The email the user signed in with (from Clerk) — shown locked, and used to
   /// satisfy the required-email validation so "Save & continue" enables.
   final String? email;
+  /// The AvaTOK number the user just picked in the compulsory number gate, handed
+  /// straight through so this screen shows it LOCKED without waiting on
+  /// [AvaNumber.me] (cache/replica) to land — the deterministic fix for the
+  /// "Assigned just now" blank. Falls back to [AvaNumber.me] when absent (e.g. an
+  /// existing user diverted here without re-running the gate).
+  final String? avatokNumber;
   /// Auto-fill values from the Google sign-in (owner request 2026-07-08). Applied
   /// only when the corresponding local field is still empty, so they never clobber
   /// something the user already typed. Birthday/phone would arrive here too once the
@@ -47,6 +53,7 @@ class ProfileSetupScreen extends StatefulWidget {
     required this.onDone,
     required this.onSignOut,
     this.email,
+    this.avatokNumber,
     this.prefillFirstName,
     this.prefillLastName,
   });
@@ -175,10 +182,25 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         duration: const Duration(milliseconds: 300), curve: Curves.ease, alignment: 0.1);
   }
 
+  /// Resolve the locked email from every source we have, newest-wins but never
+  /// clobbering a value already shown. Called from initState, didUpdateWidget and
+  /// a post-frame retry so a late Clerk/telemetry email still lands in the field.
+  void _resolveEmailInto() {
+    if (_email.text.trim().isNotEmpty) return;
+    final candidate = (widget.email ?? '').trim().isNotEmpty
+        ? widget.email!.trim()
+        : ((Analytics.currentEmail ?? '').trim().isNotEmpty ? Analytics.currentEmail!.trim() : '');
+    if (candidate.isNotEmpty && mounted) setState(() => _email.text = candidate);
+  }
+
   @override
   void initState() {
     super.initState();
     _id = widget.identity;
+    // Deterministic: the number just picked in the gate is handed straight in, so
+    // show it immediately (locked) instead of waiting on the me() cache/network.
+    final passedNum = (widget.avatokNumber ?? '').trim();
+    if (passedNum.isNotEmpty) { _avatokNumber = passedNum; _phone.text = passedNum; }
     if (_id == null) {
       IdentityStore().load().then((id) { if (mounted && id != null) setState(() => _id = id); });
     }
@@ -237,12 +259,28 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     // though a number was assigned.
     AvaNumber.me().then((m) {
       if (!mounted) return;
+      // Never overwrite the deterministic value handed in via widget.avatokNumber.
+      if (_phone.text.trim().isNotEmpty) return;
       final shown = (m.display ?? '').isNotEmpty
           ? m.display!
           : ((m.number ?? '').isNotEmpty ? '+${m.number}' : '');
       if (shown.isNotEmpty) {
         setState(() { _avatokNumber = shown; _phone.text = shown; });
       }
+    });
+    // Late-email safety net: Clerk/telemetry email can resolve a beat after mount.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _resolveEmailInto();
+      // [PROFILE-DISPLAY-2] Diagnostic: did the locked email + AvaTOK number
+      // actually populate on this onboarding screen? Tagged with the email so a
+      // future pull can tell whose device left either field blank.
+      Analytics.capture('profile_setup_prefill', {
+        'email_shown': _email.text.trim().isNotEmpty,
+        'number_shown': _phone.text.trim().isNotEmpty,
+        'number_source': (widget.avatokNumber ?? '').trim().isNotEmpty ? 'gate_handoff' : 'me_or_none',
+        'had_widget_email': (widget.email ?? '').trim().isNotEmpty,
+        'email': _email.text.trim(),
+      });
     });
   }
 
@@ -255,9 +293,11 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     // initState reads it exactly once, so without this the locked Email field
     // would stay blank forever. Fill it here when a non-empty email arrives and
     // the field is still empty (never clobber a value already shown).
-    final incoming = (widget.email ?? '').trim();
-    if (incoming.isNotEmpty && _email.text.trim().isEmpty) {
-      setState(() => _email.text = incoming);
+    _resolveEmailInto();
+    // The number can likewise arrive on a later rebuild (gate → shell → here).
+    final incomingNum = (widget.avatokNumber ?? '').trim();
+    if (incomingNum.isNotEmpty && _phone.text.trim().isEmpty) {
+      setState(() { _avatokNumber = incomingNum; _phone.text = incomingNum; });
     }
   }
 

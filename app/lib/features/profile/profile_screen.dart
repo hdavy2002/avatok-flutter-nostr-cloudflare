@@ -54,6 +54,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // AvaTOK Number — the stable QR share link + my current number.
   MyNumber? _myNum;
   String _shareLink = '';
+  // Email shown UNDER the QR alongside the number (both are what a contact scans
+  // to reach you). Resolved in _initShare from the stored profile / account email.
+  String _cardEmail = '';
 
   @override
   void initState() {
@@ -103,7 +106,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (prof.email.isEmpty && email.isNotEmpty) _store.setEmail(email);
     final res = await AvaNumber.shareCard(firstName: first, lastName: last, email: email, number: number);
     if (!mounted) return;
-    setState(() { _myNum = me; _shareLink = res?.link ?? ''; });
+    setState(() { _myNum = me; _shareLink = res?.link ?? ''; _cardEmail = email; });
   }
 
   @override
@@ -728,6 +731,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Center(child: Text(
               _cardNumber.isNotEmpty ? _cardNumber : 'Scan to add me on AvaTOK',
               style: ADText.rowName(c: AD.iconSearch).copyWith(fontSize: 15))),
+            // Email under the number — the other identifier people use to add you.
+            // Restored 2026-07-23 [PROFILE-DISPLAY-2] after it went missing from the card.
+            if (_cardEmail.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 3),
+                child: Center(child: Text(_cardEmail,
+                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13))),
+              ),
             if (_cardNumber.isEmpty && _myNum != null && !_myNum!.hasNumber)
               Padding(padding: const EdgeInsets.only(top: 4), child: Center(child:
                 Text('Generate your AvaTOK number in Settings → Your number to share it, '

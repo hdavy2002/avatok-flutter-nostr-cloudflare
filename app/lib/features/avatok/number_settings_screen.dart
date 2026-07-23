@@ -23,8 +23,13 @@ class NumberSettingsScreen extends StatefulWidget {
   /// escape is shown so a user is never fully trapped (owner decision 2026-06-27).
   final bool gate;
   final VoidCallback? onAssigned;
+  /// Fired alongside [onAssigned] with the pretty display of the number the user
+  /// just picked, so the very next screen (the profile setup) can show it LOCKED
+  /// without depending on the `me` cache/network round-trip landing first — the
+  /// deterministic source that fixes the "Assigned just now" blank on onboarding.
+  final ValueChanged<String>? onAssignedNumber;
   final VoidCallback? onSignOut;
-  const NumberSettingsScreen({super.key, this.gate = false, this.onAssigned, this.onSignOut});
+  const NumberSettingsScreen({super.key, this.gate = false, this.onAssigned, this.onAssignedNumber, this.onSignOut});
   @override
   State<NumberSettingsScreen> createState() => _NumberSettingsScreenState();
 }
@@ -169,6 +174,9 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Your number is now ${res.display}')));
       if (widget.gate) {
         Analytics.capture('number_gate_completed', {'country': _country!.iso2, 'plan': paid ? 'paid' : 'free'});
+        // Hand the just-assigned number straight to the profile step (deterministic,
+        // no cache/replica dependency), THEN leave the mandatory gate.
+        widget.onAssignedNumber?.call(newDisplay);
         widget.onAssigned?.call(); // leave the mandatory gate
       }
     } else {

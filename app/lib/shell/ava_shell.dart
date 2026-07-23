@@ -84,6 +84,10 @@ class _AvaShellState extends State<AvaShell> {
   String? _authEmail; // email the user signed in with (Clerk) → shown locked in profile
   String? _authFirst; // first name from the Google sign-in → prefills the profile
   String? _authLast;  // last name from the Google sign-in → prefills the profile
+  // The AvaTOK number the user just picked in the compulsory gate THIS session —
+  // handed straight to the profile step so it shows locked without waiting on the
+  // `me` cache/network (fixes the onboarding "Assigned just now" blank).
+  String? _assignedNumberDisplay;
 
   @override
   void initState() {
@@ -132,7 +136,11 @@ class _AvaShellState extends State<AvaShell> {
       // email field and satisfy its required-email validation.
       try {
         final u = await widget.clerk.currentUser();
-        final email = u?.email;
+        // Clerk's /client can transiently return a user with no email_addresses
+        // (or currentUser() itself can null out on a flaky resume). Fall back to
+        // the email PostHog already stamped at sign-in so the locked Email field
+        // on the profile step is never left blank when we do know who this is.
+        final email = (u?.email ?? '').isNotEmpty ? u!.email : Analytics.currentEmail;
         // Capture email + Google-provided name for the profile (prefill + lock).
         if (mounted && (email != _authEmail || u?.firstName != _authFirst || u?.lastName != _authLast)) {
           setState(() {
@@ -508,6 +516,7 @@ class _AvaShellState extends State<AvaShell> {
       return NumberSettingsScreen(
         gate: true,
         onSignOut: widget.onSignOut,
+        onAssignedNumber: (display) => _assignedNumberDisplay = display,
         onAssigned: () {
           // Mark sticky + persist the "has number" flag IMMEDIATELY so the
           // post-profile onDone→_load() reads '1' and never re-shows this gate.
@@ -521,6 +530,7 @@ class _AvaShellState extends State<AvaShell> {
       return ProfileSetupScreen(
         identity: _id,
         email: _authEmail,
+        avatokNumber: _assignedNumberDisplay,
         prefillFirstName: _authFirst,
         prefillLastName: _authLast,
         onSignOut: widget.onSignOut,
