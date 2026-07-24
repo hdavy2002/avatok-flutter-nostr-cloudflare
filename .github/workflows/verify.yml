@@ -1,0 +1,102 @@
+# [CI-VERIFY-1] Full verify gate: unit tests (worker + consumers, incl. the new
+# ai_billing / fanout / fault-injection coverage) + a Flutter static-analysis
+# pass, all in CI — this repo's toolchains are broken locally BY DESIGN
+# (CLAUDE.md "No local build tools"), so this is the only place any of it runs.
+#
+# TRIGGER: workflow_dispatch ONLY. Deliberately NOT `push:` and NOT
+# `pull_request:` — the repo is manual-build-only by owner decision (2026-07-04)
+# and scripts/git_safe_push.py refuses to push when ANY workflow has an active
+# `push:` trigger. typecheck.yml already gates `tsc --noEmit` on every PR
+# (pull_request); this workflow is the deeper, slower check (vitest + flutter
+# analyze) that runs on demand instead of on every push, so it never becomes a
+# reason git_safe_push.py blocks a push. This workflow BUILDS NOTHING and
+# DEPLOYS NOTHING — no artifact upload, no wrangler/cf.sh call, no Play/Release
+# step. Run it by hand from the Actions tab or `gh workflow run verify.yml`.
+name: verify
+
+on:
+  workflow_dispatch:
+
+jobs:
+  worker-ts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install worker deps
+        working-directory: worker
+        run: npm ci --no-audit --no-fund --silent
+      - name: Type-check worker (tsc --noEmit)
+        working-directory: worker
+        run: npm run typecheck
+      - name: Unit tests (vitest)
+        working-directory: worker
+        run: npx vitest run
+
+  consumers-ts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install consumers deps
+        working-directory: consumers
+        run: npm ci --no-audit --no-fund --silent
+      - name: Type-check consumers (tsc --noEmit)
+        working-directory: consumers
+        run: npm run typecheck
+      - name: Unit tests (vitest)
+        working-directory: consumers
+        run: npx vitest run
+
+  flutter-analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Same pins as .github/workflows/android.yml — analyze must see the same
+      # generated android/ platform files and build_runner output the real APK
+      # build sees, or it can pass here and fail there (or vice versa).
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          # Pin matches android.yml: last stable BEFORE Flutter 3.44 (which marked
+          # IconData `final` and breaks phosphor_flutter 2.1.0). See android.yml's
+          # "Set up Flutter" step comment for the full explanation.
+          flutter-version: 3.41.x
+          channel: stable
+          cache: true
+
+      - name: Generate android/ platform files
+        working-directory: app
+        run: flutter create --platforms=android --org ai.avatok --project-name avatok_call .
+
+      - name: Configure Android (permissions, minSdk)
+        working-directory: app
+        run: python3 tool/postcreate.py
+
+      - name: Pub get
+        working-directory: app
+        run: flutter pub get
+
+      - name: Generate code (drift / build_runner)
+        working-directory: app
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      # BLOCKING here (unlike android.yml's non-blocking analyze step) — this
+      # workflow's whole purpose is to catch what the build workflow doesn't.
+      # --no-fatal-infos keeps lint-level infos non-blocking; warnings and errors
+      # remain fatal (non-zero exit fails the job).
+      - name: Analyze (fatal on warnings/errors)
+        working-directory: app
+        run: flutter analyze --no-fatal-infos
