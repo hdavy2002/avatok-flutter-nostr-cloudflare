@@ -23,6 +23,7 @@
 //   server → {type:'receipt', conv, peer, delivered_id?, read_id?}
 import type { Env } from "../types";
 import { type MessageScope, scopeAudience } from "../lib/ava_kinds";
+import { shouldFail } from "../lib/fault_inject";
 
 const SYNC_LIMIT = 500;
 
@@ -582,6 +583,8 @@ export class InboxDO {
     body?: string; media_ref?: string; client_id?: string; created_at?: number;
     device_id?: string; scope?: MessageScope; mid?: string;
   }): Response {
+    // [TEST-FAILURE-INJECT-1] no-op unless FAULT_INJECT=inbox_append is set.
+    if (shouldFail(this.env, "inbox_append")) throw new Error("fault_inject:inbox_append");
     const created = b.created_at || Date.now();
     const audience = scopeAudience(b.scope); // null = thread-scoped (default)
     // [MSG-DELETE-1] Global canonical id used by the thread-clear cursor. Absent for

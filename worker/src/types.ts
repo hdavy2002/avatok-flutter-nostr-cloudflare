@@ -149,6 +149,10 @@ export interface Env {
   FCM_PROJECT: string;
   // Comma-separated Clerk uids allowed to PUT /api/admin/config (Phase 1, A2).
   ADMIN_UIDS?: string;
+  // [TEST-FAILURE-INJECT-1] Comma-separated fault-injection point names, ENV-ONLY
+  // (never a KV/config flag — see worker/src/lib/fault_inject.ts). Unset in every
+  // deployed environment today.
+  FAULT_INJECT?: string;
   BRAIN_REASONER_MODEL?: string;
   BRAIN_EMBED_MODEL?: string;
   // Phase 9 — "1" → toggling a guardrail OFF also retro-deletes already-indexed

@@ -85,6 +85,10 @@ export interface Env {
   // Prefers the receptionist project's key; falls back to the general one.
   RECEPTIONIST_GEMINI_API_KEY?: string;
   GEMINI_API_KEY?: string;
+  // [TEST-FAILURE-INJECT-1] Comma-separated fault-injection point names, ENV-ONLY
+  // (never a KV/config flag — see consumers/src/fault_inject.ts). Unset in every
+  // deployed environment today.
+  FAULT_INJECT?: string;
 }
 
 // Marketplace voice-render message (producer: avatok-api runNegotiationJob). The

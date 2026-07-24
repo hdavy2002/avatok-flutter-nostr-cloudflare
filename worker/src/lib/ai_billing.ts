@@ -45,6 +45,7 @@ import type { Env } from "../types";
 import { readConfig } from "../routes/config";
 import { walletOp } from "../routes/wallet";
 import { track, trackException } from "../hooks";
+import { shouldFail } from "./fault_inject";
 
 // ---------------------------------------------------------------------------
 // Price catalog — versioned, in-code, server-owned. The client never chooses
@@ -290,6 +291,8 @@ async function writeLedgerRow(env: Env, row: LedgerRowInput): Promise<void> {
  */
 export async function reserveAiJob(env: Env, input: ReserveAiJobInput): Promise<ReserveAiJobResult> {
   const ref = `aijob:${input.opId}`;
+  // [TEST-FAILURE-INJECT-1] no-op unless FAULT_INJECT=ai_reserve is set.
+  if (shouldFail(env, "ai_reserve")) throw new Error("fault_inject:ai_reserve");
 
   if (isSafetyCapability(input.capability)) {
     return { ok: true, metered: false, reserved_tokens: 0, ref };
@@ -371,6 +374,8 @@ function jobTagsSettle(input: SettleAiJobInput, extra: Record<string, unknown>):
  * a double charge.
  */
 export async function settleAiJob(env: Env, reservation: ReserveAiJobResult, input: SettleAiJobInput): Promise<SettleAiJobResult> {
+  // [TEST-FAILURE-INJECT-1] no-op unless FAULT_INJECT=ai_settle is set.
+  if (shouldFail(env, "ai_settle")) throw new Error("fault_inject:ai_settle");
   if (!reservation.metered) {
     void track(env, input.uid, "ai_job_completed", "ai_billing", jobTagsSettle(input, { metered: false, charged_tokens: 0 }));
     return { ok: true, metered: false, charged_tokens: 0, provider_cost_micro_usd: 0 };

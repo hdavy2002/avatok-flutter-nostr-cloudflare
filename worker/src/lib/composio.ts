@@ -14,6 +14,7 @@
 import type { Env } from "../types";
 import { trackUserContact } from "../hooks";
 import { contactFor } from "./identity";
+import { shouldFail } from "./fault_inject";
 
 const B = "https://backend.composio.dev/api/v3";
 
@@ -749,6 +750,8 @@ async function orStep(
   if (tools.length) body.tools = tools;
   if (opts?.toolChoice) body.tool_choice = opts.toolChoice;
   const timeoutMs = opts?.timeoutMs ?? OR_STEP_TIMEOUT_MS;
+  // [TEST-FAILURE-INJECT-1] no-op unless FAULT_INJECT=openrouter_call is set.
+  if (shouldFail(env, "openrouter_call")) throw new Error("fault_inject:openrouter_call");
 
   // Same-model retry ONLY for a transient 429/5xx (max one retry). A timeout or
   // network failure is NOT retried here — it throws straight away so the caller

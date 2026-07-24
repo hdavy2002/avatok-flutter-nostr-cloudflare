@@ -7,6 +7,7 @@ import { requireUser, isFail } from "../authz";
 import { walletOp } from "./wallet";
 import { checkUploadAllowed, afterRegisterFile } from "../storage";
 import { brainIngest } from "../lib/brain_ingest";
+import { shouldFail } from "../lib/fault_inject";
 // [AVA-IDGATE-1] identity_gate import removed — /upload/public is no longer gated
 // (avatars must upload during onboarding; the public ACTION is gated at its endpoint).
 
@@ -84,6 +85,8 @@ export async function uploadPublic(req: Request, env: Env, exec: ExecutionContex
 export async function uploadPrivate(req: Request, env: Env, exec?: ExecutionContext): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  // [TEST-FAILURE-INJECT-1] no-op unless FAULT_INJECT=media_upload_private is set.
+  if (shouldFail(env, "media_upload_private")) throw new Error("fault_inject:media_upload_private");
   const bytes = await req.arrayBuffer();
   if (!bytes.byteLength) return json({ error: "empty body" }, 400);
   const hash = await sha256Hex(bytes);
