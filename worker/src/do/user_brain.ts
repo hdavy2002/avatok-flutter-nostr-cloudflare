@@ -3,17 +3,91 @@
 // knowledge graph from DB_BRAIN, recalls semantically-similar memories from
 // Vectorize (uid-scoped), and answers with Gemma 4 26B-A4B (MoE: ~4B-class cost,
 // native thinking-mode for better reasoning). Importance is decayed LAZILY at read
-// time. It holds no in-memory state, so it idles to nothing between requests.
+// time. It holds no JS-heap in-memory state between requests, so it idles to
+// nothing when unused — but it now DOES use its own transactional
+// `state.storage` (AVABRAIN-SESSION-1: canonical session records + a bounded-TTL
+// recentFacts cache), which is durable KV, not memory, and costs nothing while idle.
 import type { Env } from "../types";
 import { json, aiText, geminiRun } from "../util";
 import { avaReasonRaw } from "../lib/ava_reason"; // One Brain B1: gateway for embeddings
 import { aiRunOpts } from "../lib/ai_gate";       // AI Gateway cost-logging opts
+// AVABRAIN-SESSION-1: consent gating for the citation-bearing recall packet
+// (recallPacket() below) — the registry is the ONLY authority for domain scope/
+// basis (bible §2.1); we never trust a caller-supplied domain string.
+import { isBrainDomain, basisFor, consentKeyFor } from "../lib/brain_domains";
 
 const DECAY_PER_DAY = 0.995;
 
+// ── AVABRAIN-SESSION-1 wire shapes ───────────────────────────────────────────
+// One canonical AvaBrainSession + recall-packet contract shared by every
+// personal-AI surface (Ask Ava / Companion / @ava thread / voice — bible §9.3).
+// Sessions persist in THIS DO's own transactional storage (state.storage),
+// keyed by (surface, sub_key) — never a new store, never cross-account (this DO
+// is already idFromName(uid)-scoped). History is hard-bounded so a long-running
+// companion thread can never grow an unbounded prompt. lib/ava_session.ts is the
+// thin service other routes call; it imports ONLY these types (no runtime
+// import of this DO class — `import type` is erased at build time).
+const SESSION_HISTORY_MAX = 20;
+const RECALL_TOKEN_BUDGET = 1200;   // bible §4.2/§P1.4 hard cap
+const LOW_CONFIDENCE_THRESHOLD = 0.55;
+const FACTS_CACHE_TTL_MS = 60_000;  // bible §11 — never recompute all memory per turn
+
+// ── AVABRAIN-SESSION-1 (SHOULD-FIX 8): bounded session growth ───────────────
+// One `session:<surface>:<subKey>` storage key per (surface, subKey) — thread
+// (conv id) and voice (call id) subKeys accumulate one key per distinct
+// thread/call FOREVER with no eviction, so a long-lived account slowly grows
+// an unbounded storage footprint in this DO. This DO has no alarm handler
+// anywhere today (checked — grep for "alarm" in this file returns nothing),
+// so bolting on an alarm-based sweep would be a new lifecycle primitive for a
+// DO that has otherwise stayed alarm-free by design (idles to nothing between
+// requests, per the file header). An opportunistic sweep piggybacked on the
+// one op that already touches session storage (sessionGetOrCreate) is the
+// cleaner fit: no new wake-up path, no risk of an alarm firing after the DO
+// would otherwise have gone fully idle, and the cost is trivially bounded
+// (see pruneSessions below) so it's cheap enough to run on every call.
+const SESSION_MAX_AGE_MS = 30 * 86_400_000; // 30 days
+const SESSION_MAX_TOTAL = 200;              // cap per user (this DO is already uid-scoped)
+const SESSION_SWEEP_LIMIT = 20;             // max keys deleted per call — amortized, O(small)
+
+export interface SessionTurnWire { role: "user" | "assistant"; text: string; ts: number; trace_id?: string; }
+export interface ModelUsageWire {
+  provider: string; model: string; input_tokens: number; output_tokens: number;
+  latency_ms: number; operation_id: string; ts: number;
+}
+export interface AvaBrainSessionWire {
+  session_id: string;
+  uid: string;
+  surface: string;           // 'companion' | 'ask_ava' | 'thread' | 'voice'
+  sub_key: string;           // '' for companion/ask_ava; conv id (thread) / call id (voice)
+  context_hint: string;
+  privacy_mode: string;      // 'standard' | 'private_export' | 'restricted'
+  created_at: number;
+  updated_at: number;
+  turn_count: number;
+  history: SessionTurnWire[];
+  wallet_op_ids: string[];
+  last_usage: ModelUsageWire | null;
+}
+export interface RecallCitationWire {
+  source_domain: string;
+  source_id: string;
+  snippet: string;           // ≤200 chars
+  confidence: number;        // 0..1
+  ts: number | null;
+  low_confidence: boolean;
+}
+export interface RecallPacketWire {
+  hits: RecallCitationWire[];
+  token_estimate: number;
+  degraded: boolean;
+  degraded_reason?: string;
+  latency_ms: number;
+}
+
 export class UserBrain {
   private env: Env;
-  constructor(_state: DurableObjectState, env: Env) { this.env = env; }
+  private state: DurableObjectState;
+  constructor(state: DurableObjectState, env: Env) { this.state = state; this.env = env; }
 
   async fetch(req: Request): Promise<Response> {
     let body: any = {};
@@ -30,6 +104,28 @@ export class UserBrain {
       case "forget": return json(await this.forget(uid, String(body.entity_id || "")));
       case "entities": return json({ entities: await this.topEntities(uid, 50) });
       case "timeline": return json({ events: await this.timeline(uid) });
+      // ── AVABRAIN-SESSION-1: canonical session + recall-packet ops. Additive —
+      // no existing op's request/response shape is touched. ──────────────────
+      case "session_get_or_create":
+        return json(await this.sessionGetOrCreate(uid, String(body.surface || "companion"), {
+          sub_key: body.sub_key, context_hint: body.context_hint, privacy_mode: body.privacy_mode,
+        }));
+      case "session_record_turn": {
+        const s = await this.sessionRecordTurn(
+          String(body.session_id || ""), String(body.surface || ""), String(body.sub_key || ""),
+          String(body.role || "user"), String(body.text || ""), body.trace_id ? String(body.trace_id) : undefined,
+        );
+        return s ? json(s) : json({ error: "session not found" }, 404);
+      }
+      case "session_note_usage": {
+        const s = await this.sessionNoteUsage(
+          String(body.session_id || ""), String(body.surface || ""), String(body.sub_key || ""),
+          body.usage || {}, body.op_id ? String(body.op_id) : undefined,
+        );
+        return s ? json(s) : json({ error: "session not found" }, 404);
+      }
+      case "recall_packet":
+        return json(await this.recallPacket(uid, String(body.query || ""), { domains: body.domains, k: body.k }));
       default: return json({ error: "unknown op" }, 400);
     }
   }
@@ -52,10 +148,32 @@ export class UserBrain {
   }
 
   private async recentFacts(uid: string, limit: number): Promise<any[]> {
+    // `id` added (AVABRAIN-SESSION-1) so the recall packet can cite a stable
+    // fact id — purely additive column; existing callers (ask/briefing/chat)
+    // only read `.content` and are unaffected.
     const rs = await this.env.DB_BRAIN.prepare(
-      "SELECT fact_type, content, scope, source_app, confidence, updated_at FROM brain_facts WHERE uid=?1 ORDER BY updated_at DESC LIMIT ?2",
+      "SELECT id, fact_type, content, scope, source_app, confidence, updated_at FROM brain_facts WHERE uid=?1 ORDER BY updated_at DESC LIMIT ?2",
     ).bind(uid, limit).all();
     return (rs.results ?? []) as any[];
+  }
+
+  // ── AVABRAIN-SESSION-1: bounded-TTL cache of recentFacts in DO storage ──────
+  // bible §11: "cache stable profile/memory summaries in UserBrainDO storage;
+  // never recompute all memory per turn." recentFacts() is query-independent
+  // (unlike the Vectorize ANN lookup), so it is the one piece of the recall
+  // packet's cost we CAN cache across turns. Invalidated by TTL and by
+  // remember() (a new fact should be visible on the next recall, not up to 60s
+  // stale). This does not change recentFacts()'s own behavior/contract.
+  private async cachedRecentFacts(uid: string, limit: number): Promise<any[]> {
+    const key = "cache:recent_facts";
+    const now = Date.now();
+    try {
+      const cached = await this.state.storage.get<{ ts: number; rows: any[] }>(key);
+      if (cached && now - cached.ts < FACTS_CACHE_TTL_MS) return cached.rows;
+    } catch { /* fall through to a live read */ }
+    const rows = await this.recentFacts(uid, limit);
+    try { await this.state.storage.put(key, { ts: now, rows }); } catch { /* best-effort cache */ }
+    return rows;
   }
 
   private async recentSummaries(uid: string, limit: number): Promise<any[]> {
@@ -289,6 +407,10 @@ export class UserBrain {
       }
       stored++;
     }
+    // AVABRAIN-SESSION-1: a newly-remembered fact must be visible on the very
+    // next recall, not up to FACTS_CACHE_TTL_MS stale — drop the cache rather
+    // than waiting it out.
+    if (stored) { try { await this.state.storage.delete("cache:recent_facts"); } catch { /* best-effort */ } }
     return { stored };
   }
 
@@ -323,6 +445,259 @@ export class UserBrain {
       "You are a technical support AI. Given the user complaint and their recent event log, identify the likely root cause and a concrete next step. Be specific, brief, and reassuring. If the log shows no relevant errors, say it looks healthy.",
       `Complaint: "${complaint}"\n\nRecent events (last 24h): ${events}`,
     );
+  }
+
+  // ── AVABRAIN-SESSION-1: canonical session storage (state.storage) ───────────
+  // One session per (surface, sub_key). sub_key is '' for companion/ask_ava
+  // (one session per user per surface) and a conv/call id for thread/voice
+  // (one session per thread/call). No new store — this DO's own transactional
+  // storage, already uid-scoped by idFromName(uid).
+  private sessionKey(surface: string, subKey: string): string {
+    return `session:${surface}:${subKey || "_"}`;
+  }
+
+  // ── SHOULD-FIX 8: bounded, amortized sweep ──────────────────────────────────
+  // Two independent bounds, both capped to SESSION_SWEEP_LIMIT deletes per call
+  // so a single sessionGetOrCreate never does more than one small bounded read
+  // + up to 20 deletes of local DO storage (no network I/O, no D1/Vectorize
+  // involved) — cheap enough to run unconditionally rather than sampling it:
+  //   1. TTL — anything not touched in 30 days is swept first (it is very
+  //      unlikely to ever be read again — a stale thread/call session).
+  //   2. Cap — if the user is still over SESSION_MAX_TOTAL after the TTL pass,
+  //      evict the oldest-by-updated_at survivors until back under the cap
+  //      (bounded by whatever sweep budget the TTL pass didn't use).
+  // storage.list({prefix, limit}) itself is capped to MAX_TOTAL + SWEEP_LIMIT + 1
+  // keys/values so the read side is bounded too — this never scans the user's
+  // entire session history no matter how large it has grown historically.
+  private async pruneSessions(): Promise<void> {
+    try {
+      const all = await this.state.storage.list<AvaBrainSessionWire>({
+        prefix: "session:", limit: SESSION_MAX_TOTAL + SESSION_SWEEP_LIMIT + 1,
+      });
+      if (all.size === 0) return;
+      const now = Date.now();
+      const entries = Array.from(all.entries());
+
+      const toDelete: string[] = [];
+      for (const [k, v] of entries) {
+        if (toDelete.length >= SESSION_SWEEP_LIMIT) break;
+        if (now - (v?.updated_at ?? 0) > SESSION_MAX_AGE_MS) toDelete.push(k);
+      }
+
+      const survivingCount = entries.length - toDelete.length;
+      if (survivingCount > SESSION_MAX_TOTAL && toDelete.length < SESSION_SWEEP_LIMIT) {
+        const deleted = new Set(toDelete);
+        const survivors = entries
+          .filter(([k]) => !deleted.has(k))
+          .sort((a, b) => (a[1]?.updated_at ?? 0) - (b[1]?.updated_at ?? 0));
+        const overBy = survivingCount - SESSION_MAX_TOTAL;
+        const budget = SESSION_SWEEP_LIMIT - toDelete.length;
+        for (const [k] of survivors.slice(0, Math.min(overBy, budget))) toDelete.push(k);
+      }
+
+      if (toDelete.length) await this.state.storage.delete(toDelete);
+    } catch { /* best-effort — pruning must never block a session read/write */ }
+  }
+
+  private async sessionGetOrCreate(
+    uid: string, surface: string, opts: { sub_key?: unknown; context_hint?: unknown; privacy_mode?: unknown },
+  ): Promise<AvaBrainSessionWire> {
+    const subKey = String(opts.sub_key ?? "").slice(0, 128);
+    const key = this.sessionKey(surface, subKey);
+    const now = Date.now();
+    // Opportunistic, amortized sweep (SHOULD-FIX 8) — runs before the read/write
+    // below so a freshly-created session never gets swept as its own oldest
+    // entry, and so the cap check reflects storage state as of THIS call.
+    await this.pruneSessions();
+    const existing = await this.state.storage.get<AvaBrainSessionWire>(key);
+    if (existing) {
+      let changed = false;
+      if (opts.context_hint != null) { existing.context_hint = String(opts.context_hint).slice(0, 500); changed = true; }
+      if (opts.privacy_mode != null) { existing.privacy_mode = String(opts.privacy_mode).slice(0, 40); changed = true; }
+      if (changed) { existing.updated_at = now; await this.state.storage.put(key, existing); }
+      return existing;
+    }
+    const fresh: AvaBrainSessionWire = {
+      session_id: crypto.randomUUID(), uid, surface, sub_key: subKey,
+      context_hint: String(opts.context_hint ?? "").slice(0, 500),
+      privacy_mode: String(opts.privacy_mode ?? "standard").slice(0, 40),
+      created_at: now, updated_at: now, turn_count: 0, history: [], wallet_op_ids: [], last_usage: null,
+    };
+    await this.state.storage.put(key, fresh);
+    return fresh;
+  }
+
+  private async sessionRecordTurn(
+    sessionId: string, surface: string, subKey: string, role: string, text: string, traceId?: string,
+  ): Promise<AvaBrainSessionWire | null> {
+    if (!sessionId || !surface) return null;
+    const key = this.sessionKey(surface, subKey);
+    const existing = await this.state.storage.get<AvaBrainSessionWire>(key);
+    if (!existing || existing.session_id !== sessionId) return null;
+    existing.history.push({
+      role: role === "user" ? "user" : "assistant",
+      text: String(text).slice(0, 2000),
+      ts: Date.now(),
+      ...(traceId ? { trace_id: traceId } : {}),
+    });
+    if (existing.history.length > SESSION_HISTORY_MAX) existing.history = existing.history.slice(-SESSION_HISTORY_MAX);
+    existing.turn_count += 1;
+    existing.updated_at = Date.now();
+    await this.state.storage.put(key, existing);
+    return existing;
+  }
+
+  private async sessionNoteUsage(
+    sessionId: string, surface: string, subKey: string, usage: any, opId?: string,
+  ): Promise<AvaBrainSessionWire | null> {
+    if (!sessionId || !surface) return null;
+    const key = this.sessionKey(surface, subKey);
+    const existing = await this.state.storage.get<AvaBrainSessionWire>(key);
+    if (!existing || existing.session_id !== sessionId) return null;
+    existing.last_usage = {
+      provider: String(usage?.provider ?? ""), model: String(usage?.model ?? ""),
+      input_tokens: Number(usage?.input_tokens ?? 0), output_tokens: Number(usage?.output_tokens ?? 0),
+      latency_ms: Number(usage?.latency_ms ?? 0), operation_id: String(usage?.operation_id ?? opId ?? ""),
+      ts: Date.now(),
+    };
+    if (opId) {
+      existing.wallet_op_ids.push(String(opId).slice(0, 80));
+      if (existing.wallet_op_ids.length > 20) existing.wallet_op_ids = existing.wallet_op_ids.slice(-20);
+    }
+    existing.updated_at = Date.now();
+    await this.state.storage.put(key, existing);
+    return existing;
+  }
+
+  // ── AVABRAIN-SESSION-1: consent-gated recall packet (bible §4.2/§P1.4) ──────
+  // Per-hit consent check against brain_consent, registry-derived (never a
+  // caller-supplied scope — bible §2.1). Legal-basis domains (safety/guardian)
+  // are excluded unconditionally: they are never routed through brainIngest/
+  // Vectorize in the first place (brain_domains.ts), but this is a deliberate
+  // belt-and-suspenders filter so a future accidental producer can't leak one
+  // into a citation. This is a SEPARATE method from serverRecall()/recall() —
+  // the existing "recall" op's response shape is a live client contract
+  // (routes/brain.ts, B4-app device-lane merge) and is deliberately left
+  // untouched; this new op is additive.
+  private async consentMap(uid: string): Promise<Map<string, boolean>> {
+    const m = new Map<string, boolean>();
+    try {
+      const rs = await this.env.DB_BRAIN.prepare(
+        "SELECT capability, enabled FROM brain_consent WHERE uid=?1",
+      ).bind(uid).all();
+      for (const r of (rs.results ?? []) as any[]) m.set(String(r.capability), Number(r.enabled) === 1);
+    } catch { /* default-ON (opt-out model) applies below when the map is empty */ }
+    return m;
+  }
+
+  private domainConsentOk(domain: string, consent: Map<string, boolean>): boolean {
+    if (consent.get("master") === false) return false;
+    if (!isBrainDomain(domain)) return true; // internally-derived (e.g. generic 'memory' entity) — governed by master only
+    if (basisFor(domain) === "legal") return false; // safety/guardian — never recallable here (§10.3)
+    const key = consentKeyFor(domain);
+    if (!key) return true;
+    return consent.get(key) !== false; // absent row = default ON (opt-out model)
+  }
+
+  private async recallPacket(
+    uid: string, query: string, opts: { domains?: unknown; k?: unknown },
+  ): Promise<RecallPacketWire> {
+    const t0 = Date.now();
+    const q = (query || "").trim();
+    if (!q) return { hits: [], token_estimate: 0, degraded: false, latency_ms: Date.now() - t0 };
+    const k = Math.max(1, Math.min(16, Number(opts.k) || 6));
+    const domainSet = Array.isArray(opts.domains) && (opts.domains as unknown[]).length
+      ? new Set((opts.domains as unknown[]).map((d) => String(d)))
+      : null;
+
+    let consent: Map<string, boolean>;
+    let matches: any[];
+    let facts: any[];
+    let degraded = false;
+    let degradedReason: string | undefined;
+    try {
+      [consent, matches, facts] = await Promise.all([
+        this.consentMap(uid),
+        this.rawMatches(uid, q, Math.max(k * 2, 16)),
+        this.cachedRecentFacts(uid, 60),
+      ]);
+    } catch (e: any) {
+      // rawMatches/cachedRecentFacts already swallow their own errors → [];
+      // this catch is belt-and-suspenders so a packet is ALWAYS returned
+      // (never throws) with a truthful degraded flag instead of a 500.
+      consent = new Map(); matches = []; facts = [];
+      degraded = true; degradedReason = String(e?.message ?? e).slice(0, 160);
+    }
+
+    type Cand = { domain: string; source_id: string; text: string; score: number; ts: number | null };
+    const cands: Cand[] = [];
+
+    for (const m of matches) {
+      const md = (m as any).metadata ?? {};
+      // NIT 9: media_memory vectors (consumers/src/brain.ts ingestMediaMemory,
+      // ~line 847: `{ kind: "media_memory", app: "media_memory", media_id, type:
+      // "media_memory", ... }`) carry media_id JUST like an AvaLibrary file
+      // vector — so without this branch they fell into the generic media_id
+      // check below and were mislabeled domain:'files'. That's the WRONG
+      // consent key (files vs. media_memory — two separate Settings toggles,
+      // BRAIN_DOMAINS in lib/brain_domains.ts) and the wrong citation tag
+      // ([files:<id>] instead of [media_memory:<id>]) in the prompt block.
+      // Check media_memory BEFORE the media_id/library fallback so it wins.
+      const domain = md.kind === "voicemail" || md.type === "voicemail" ? "voicemail"
+        : md.kind === "media_memory" || md.type === "media_memory" ? "media_memory"
+        : md.media_id || md.type === "library" ? "files"
+        : "memory";
+      if (domainSet && !domainSet.has(domain)) continue;
+      if (!this.domainConsentOk(domain, consent)) continue;
+      const text = String(md.snippet ?? md.summary ?? [md.name, md.summary].filter(Boolean).join(": ")).trim();
+      if (!text) continue;
+      const sourceId = md.media_id ? String(md.media_id) : md.conv ? String(md.conv) : String((m as any).id ?? "");
+      cands.push({ domain, source_id: sourceId, text, score: Number((m as any).score ?? 0), ts: md.ts != null ? Number(md.ts) : null });
+    }
+
+    const terms = q.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 2);
+    if (terms.length) {
+      for (const f of facts as any[]) {
+        const content = String(f.content ?? "");
+        if (!content) continue;
+        const domain = String(f.source_app ?? "memory");
+        if (domainSet && !domainSet.has(domain)) continue;
+        if (!this.domainConsentOk(domain, consent)) continue;
+        const lc = content.toLowerCase();
+        let overlap = 0;
+        for (const t of terms) if (lc.includes(t)) overlap++;
+        const score = overlap / terms.length;
+        if (score <= 0) continue; // lexical matches only — the vector lane covers semantics
+        cands.push({
+          domain, source_id: f.id ? String(f.id) : `fact:${domain}:${cands.length}`,
+          text: content, score: 0.3 + 0.4 * score, ts: f.updated_at != null ? Number(f.updated_at) : null,
+        });
+      }
+    }
+
+    cands.sort((a, b) => b.score - a.score);
+
+    const hits: RecallCitationWire[] = [];
+    let tokenBudget = RECALL_TOKEN_BUDGET;
+    for (const c of cands) {
+      const snippet = c.text.slice(0, 200);
+      const estTokens = Math.ceil(snippet.length / 4) + 8; // + small per-citation overhead (tag/braces)
+      if (tokenBudget - estTokens < 0) break;
+      const confidence = Math.max(0, Math.min(1, c.score));
+      hits.push({
+        source_domain: c.domain,
+        source_id: c.source_id || `${c.domain}:${hits.length}`,
+        snippet, confidence, ts: c.ts,
+        low_confidence: confidence < LOW_CONFIDENCE_THRESHOLD,
+      });
+      tokenBudget -= estTokens;
+      if (hits.length >= k) break;
+    }
+
+    return {
+      hits, token_estimate: RECALL_TOKEN_BUDGET - tokenBudget, degraded, degraded_reason: degradedReason,
+      latency_ms: Date.now() - t0,
+    };
   }
 
   private async reason(system: string, user: string): Promise<string> {
