@@ -54,6 +54,15 @@ export default {
         msg.ack(); ok++;
       } catch (e) {
         console.error(`[${batch.queue}] retry:`, String(e));
+        // [WALLET-LEDGER-OBS-1] Queue retries were previously visible only in
+        // wrangler logs. Emit a grouped PostHog Error-Tracking exception with
+        // queue/message identity so D1 starvation can be diagnosed from the
+        // same place as client call failures. Never let telemetry affect retry.
+        await captureConsumerException(env, e, {
+          queue: batch.queue,
+          uid: String((msg.body as any)?.uid ?? "server"),
+          tx_id: String((msg.body as any)?.id ?? ""),
+        });
         msg.retry(); fail++;
       }
     }
@@ -231,6 +240,41 @@ function parseSender(from?: string): { name: string; email: string } {
   const m = from.match(/^\s*(.*?)\s*<\s*([^>]+)\s*>\s*$/);
   if (m) return { name: (m[1] || def.name).trim(), email: m[2].trim() };
   return { name: def.name, email: from.trim() };
+}
+
+async function captureConsumerException(
+  env: Env,
+  err: unknown,
+  meta: { queue: string; uid: string; tx_id?: string },
+): Promise<void> {
+  if (!env.POSTHOG_API_KEY || !env.POSTHOG_HOST) return;
+  try {
+    const message = String(err).slice(0, 2000);
+    await fetch(`${env.POSTHOG_HOST}/capture/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        api_key: env.POSTHOG_API_KEY,
+        event: "$exception",
+        distinct_id: meta.uid || "server",
+        properties: {
+          $exception_list: [{
+            type: "QueueConsumerError",
+            value: message,
+            mechanism: { handled: true, synthetic: false },
+          }],
+          $exception_type: "QueueConsumerError",
+          $exception_message: message,
+          $exception_level: "error",
+          service_name: "avatok-consumers",
+          queue: meta.queue,
+          tx_id: meta.tx_id ?? "",
+          app_name: "avatok",
+          app_version: "server",
+        },
+      }),
+    });
+  } catch { /* error telemetry must never mask queue retry */ }
 }
 
 async function sendEmail(msg: EmailMsg, env: Env): Promise<void> {

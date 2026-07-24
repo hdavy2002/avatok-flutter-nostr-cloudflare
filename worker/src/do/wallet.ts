@@ -42,6 +42,7 @@
 import type { Env } from "../types";
 import { json } from "../util";
 import { readConfig } from "../routes/config";
+import { track, trackException } from "../hooks";
 
 const HOLD_MS = 7 * 86_400_000; // 7-day earnings hold
 const OPS_TTL_MS = 48 * 3_600_000; // dedupe window for op_id replays
@@ -469,14 +470,70 @@ export class WalletDO {
   }
 
   async alarm(): Promise<void> {
+    const outboxFailed = await this.retryAuditOutbox();
     const released = this.releaseMatured();
     if (released > 0) this.broadcast();
     // Reschedule for the next pending hold, if any.
     const next = this.sql.exec("SELECT MIN(available_at) AS t FROM holds WHERE released=0").one() as any;
-    if (next?.t) await this.state.storage.setAlarm(Number(next.t));
+    const pending = await this.state.storage.list({ prefix: "wallet:audit:", limit: 1 });
+    // Keep the outbox alive even when there are no earning holds. A failed
+    // queue send must never disappear merely because the DO had no other alarm.
+    if (next?.t || pending.size > 0) {
+      // Modest backoff while the outbox keeps failing (still bounded so a hold
+      // release is never delayed past its own due time): 30s, 60s, 120s, ...
+      // capped at 5 minutes. Resets to 30s the moment a retry round is clean.
+      const backoffMs = outboxFailed ? Math.min(5 * 60_000, 30_000 * Math.pow(2, Math.min(4, await this.outboxFailStreak()))) : 30_000;
+      await this.state.storage.setAlarm(Math.min(
+        next?.t ? Number(next.t) : Date.now() + backoffMs,
+        Date.now() + backoffMs,
+      ));
+    }
   }
 
-  // D1 audit trail via the wallet-transactions queue (never blocks the user).
+  /** Consecutive failed alarm rounds for the outbox (for modest backoff only; not correctness-critical). */
+  private async outboxFailStreak(): Promise<number> {
+    return (await this.state.storage.get<number>("wallet:outbox_fail_streak")) ?? 0;
+  }
+
+  /** Retries pending outbox messages oldest-first (by original enqueue ts). Returns true if any retry still failed. */
+  private async retryAuditOutbox(): Promise<boolean> {
+    const rows = await this.state.storage.list({ prefix: "wallet:audit:", limit: 100 });
+    const entries = [...rows.entries()].sort(
+      (a, b) => Number((a[1] as any)?.ts ?? 0) - Number((b[1] as any)?.ts ?? 0),
+    );
+    let anyFailed = false;
+    for (const [key, value] of entries) {
+      try {
+        await this.env.Q_WALLET.send(value as Record<string, unknown>);
+        await this.state.storage.delete(key);
+        await track(this.env, String((value as any).uid ?? "server"), "wallet_ledger_outbox_sent", "avatok", {
+          call_path: "wallet_do_alarm", tx_id: String((value as any).id ?? ""),
+        });
+      } catch (e) {
+        anyFailed = true;
+        await trackException(this.env, e, {
+          uid: String((value as any).uid ?? "server"), route: "WalletDO.alarm",
+          method: "Q_WALLET.send", handled: true,
+          extra: {
+            subsystem: "wallet_ledger_outbox", tx_id: String((value as any).id ?? ""),
+            txid: String((value as any).id ?? ""), outbox_persisted: true, stage: "alarm_retry",
+          },
+        });
+      }
+    }
+    if (anyFailed) {
+      const streak = (await this.outboxFailStreak()) + 1;
+      await this.state.storage.put("wallet:outbox_fail_streak", streak);
+    } else {
+      await this.state.storage.delete("wallet:outbox_fail_streak");
+    }
+    return anyFailed;
+  }
+
+  // D1 audit trail via the wallet-transactions queue. The DO remains the
+  // balance authority, but every queue message is first persisted in a small
+  // DO-local outbox. This closes the old best-effort loss window between a
+  // successful balance mutation and a transient Queue API failure.
   // Phase 2: the DO is the SINGLE WRITER of double-entry ledger rows for user
   // accounts — when the op carries `ledger`, the message id is the op_id so the
   // consumer's wallet_ledger insert is a PK no-op on any replay.
@@ -485,7 +542,23 @@ export class WalletDO {
     const ledger = b?.ledger && b.ledger.debit && b.ledger.credit
       ? { debit: String(b.ledger.debit), credit: String(b.ledger.credit), type: String(b.ledger.type || tx.type), ref: b.ledger.ref ?? tx.ref ?? null, meta: b.ledger.meta ?? null }
       : undefined;
-    try { await this.env.Q_WALLET.send({ uid, id, ts: Date.now(), ...tx, ...(ledger ? { ledger } : {}) }); } catch { /* best-effort */ }
+    const msg = { uid, id, ts: Date.now(), ...tx, ...(ledger ? { ledger } : {}) };
+    const key = `wallet:audit:${id}`;
+    await this.state.storage.put(key, msg);
+    try {
+      await this.env.Q_WALLET.send(msg);
+      await this.state.storage.delete(key);
+      await track(this.env, uid, "wallet_ledger_enqueued", "avatok", { tx_id: id, source: "wallet_do" });
+    } catch (e) {
+      await trackException(this.env, e, {
+        uid, route: "WalletDO.audit", method: "Q_WALLET.send", handled: true,
+        extra: { subsystem: "wallet_ledger_outbox", tx_id: id, txid: id, outbox_persisted: true, stage: "enqueue" },
+      });
+      await track(this.env, uid, "wallet_ledger_enqueue_deferred", "avatok", {
+        tx_id: id, source: "wallet_do", retry: "durable_outbox",
+      });
+      await this.state.storage.setAlarm(Date.now() + 30_000);
+    }
   }
 
   // ---- live balance over WebSocket ----
