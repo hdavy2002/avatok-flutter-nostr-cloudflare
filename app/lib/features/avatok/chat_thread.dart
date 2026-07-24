@@ -724,6 +724,22 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   // renders at zero.
   Duration _audioPos = Duration.zero;
   Duration? _audioDur;
+  // [CHAT-UI-ROW-EXTRACT-1] (Opus gate-A fix) `_MessageRow` caches its bubble
+  // on `widget.revision == _msgsRev`, but `_onAudioStateChanged`/`_seekAudio`/
+  // `_cycleAudioSpeed` below only `setState()` — they never touch `_msgsRev`,
+  // so once a voice note's row is cached, the playhead/duration/speed baked
+  // into its `VoiceNoteBubble` froze at whatever they were the first time that
+  // row built. `_audioTick` is a second, cheap counter bumped alongside those
+  // `setState()`s; the itemBuilder below folds it into the row's revision ONLY
+  // for the currently playing/open row (and the previously playing/open row,
+  // for one extra build after a transition), so a scrub/play/pause/speed
+  // change repaints just that one bubble per tick instead of routing through
+  // `_mutMsgs` and invalidating (and re-filtering) the whole visible list.
+  int _audioTick = 0;
+  // The row that was playing/open immediately before the current change, kept
+  // for exactly one extra build so the bubble that just stopped commits its
+  // final (idle) state instead of staying frozen mid-scrub/mid-play forever.
+  int? _prevAudioRowId;
   // [AVAVM-PLAYER-1] Bridges the shared `AudioPlaybackService.state` back onto
   // the local `_playingAudioId`/`_openAudioId`/`_audioPos`/`_audioDur` fields
   // above so every existing `_mediaContent`/`VoiceNoteBubble` call site below
@@ -1259,7 +1275,15 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       if (_meId != null) names[_meId!.uid] = 'You';
       // Merge (don't replace): keep any names/avatars already learned from
       // early live reactions / messages (keyed by uid) — Phase 5.
-      if (mounted) setState(() { _memberNames.addAll(names); _memberAvatars.addAll(avatars); });
+      // [CHAT-UI-ROW-EXTRACT-1] (Opus gate-A fix) bump `_msgsRev` here too:
+      // `_memberNames`/`_memberAvatars` are read inside `_bubble()` (sender
+      // name/avatar), but `_MessageRow` only re-invokes `_bubble()` when
+      // `_msgsRev` changes — a plain `setState()` left every already-cached
+      // group row showing the placeholder initial/uid forever, even after
+      // resolution completed. This is coarse (invalidates every cached row,
+      // same as any other `_msgsRev` bump) but cheap and rare — it fires once
+      // per thread open, not per message.
+      if (mounted) setState(() { _memberNames.addAll(names); _memberAvatars.addAll(avatars); _msgsRev++; });
       // [AVA-GRP-UI] Members you haven't saved as contacts have no local photo,
       // so their bubbles showed a bare initial. Resolve their profile photo from
       // the directory in the background and load it via the cached Avatar pipeline.
@@ -1300,9 +1324,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       final gotName = c.name.isNotEmpty &&
           (_memberNames[uid] == null || _memberNames[uid]!.isEmpty);
       if (gotPhoto || gotName) {
+        // [CHAT-UI-ROW-EXTRACT-1] (Opus gate-A fix) same reasoning as the
+        // `_loadChatExtras` merge above — bump `_msgsRev` so cached rows for
+        // this member re-render with the resolved photo/name.
         setState(() {
           if (gotPhoto) _memberAvatars[uid] = c!.avatarUrl;
           if (gotName) _memberNames[uid] = c!.name;
+          _msgsRev++;
         });
       }
     }
@@ -6302,8 +6330,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     if (st == null) {
       if (_playingAudioId != null || _openAudioId != null) {
         setState(() {
+          _prevAudioRowId = _playingAudioId ?? _openAudioId;
           _playingAudioId = null;
           _openAudioId = null;
+          _audioTick++;
         });
       }
       return;
@@ -6314,17 +6344,21 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       // OURS is open, even if something elsewhere is playing.
       if (_playingAudioId != null || _openAudioId != null) {
         setState(() {
+          _prevAudioRowId = _playingAudioId ?? _openAudioId;
           _playingAudioId = null;
           _openAudioId = null;
+          _audioTick++;
         });
       }
       return;
     }
     setState(() {
+      if (_openAudioId != msgId) _prevAudioRowId = _openAudioId ?? _playingAudioId;
       _openAudioId = msgId;
       _playingAudioId = st.playing ? msgId : null;
       _audioPos = st.position;
       _audioDur = st.duration;
+      _audioTick++;
     });
   }
 
@@ -6340,7 +6374,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     if (_openAudioId != m.id) return;
     // Paint the new position immediately rather than waiting for the next
     // position callback, so the red playhead lands under the finger.
-    if (mounted) setState(() => _audioPos = to);
+    if (mounted) setState(() { _audioPos = to; _audioTick++; });
     await AudioPlaybackService.I.seek(to);
   }
 
@@ -6404,7 +6438,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   void _cycleAudioSpeed() {
     const steps = [1.0, 1.5, 2.0];
     final next = steps[(steps.indexOf(_audioSpeed) + 1) % steps.length];
-    setState(() => _audioSpeed = next);
+    setState(() { _audioSpeed = next; _audioTick++; });
     if (_playingAudioId != null) {
       AudioPlaybackService.I.setSpeed(next);
     }
@@ -8336,7 +8370,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                 // (no messages, nothing left to page in from the archive) used to
                 // render a blank white canvas — indistinguishable from "still
                 // loading" or a bug. WhatsApp-style nudge instead.
-                if (visible.isEmpty && !searching && !showArchiveHeader && !_archiveLoading) {
+                // [CHAT-UI-ROW-EXTRACT-1] (Opus gate-A fix) `!showTyping` guard
+                // added: if the peer is mid-typing in an otherwise-empty thread,
+                // the list (with its synthetic typing bubble item) must render
+                // instead of the empty-state nudge — without this the FIRST
+                // message of a new conversation could start with the peer typing
+                // and the thread would show "no messages yet" while it happened.
+                if (visible.isEmpty && !searching && !showArchiveHeader && !_archiveLoading && !showTyping) {
                   return _emptyThreadState();
                 }
                 // [AVA-CHAT-INSTANT] Keep the list laid out but invisible + inert
@@ -8407,13 +8447,23 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                     // id below, so an unrelated rebuild (typing indicator,
                     // clock tick, keystroke) reuses the cached bubble instead
                     // of re-running the ~900-line bubble builder for every row.
+                    // [CHAT-UI-ROW-EXTRACT-1] (Opus gate-A fix) Fold `_audioTick`
+                    // into ONLY this row's revision when it's the currently
+                    // playing/open voice note (or was, for one extra build after
+                    // it stopped) — every other row's revision stays exactly
+                    // `_msgsRev`, so a scrub/play/pause/speed tick repaints at
+                    // most one bubble instead of the whole visible window.
+                    final isAudioTickRow = m.id == _playingAudioId ||
+                        m.id == _openAudioId ||
+                        m.id == _prevAudioRowId;
+                    final rowRevision = isAudioTickRow ? _msgsRev + _audioTick : _msgsRev;
                     final bubble = _SwipeToReply(
                       mine: m.me,
                       onReply: canSwipeReply ? () => setState(() => _replyTo = m) : null,
                       child: _MessageRow(
                         key: ValueKey('row_${m.id}'),
                         msg: m,
-                        revision: _msgsRev,
+                        revision: rowRevision,
                         buildBubble: _bubble,
                       ),
                     );
@@ -10306,7 +10356,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     final meta = extra['meta'];
     if (meta is Map && (meta['guardian'] == true || meta['red_flag'] == true)) {
       final ts = meta['flagged_created_at'];
-      if (ts is num && ts > 0) _flaggedTs.add(ts.toInt());
+      // [CHAT-UI-ROW-EXTRACT-1] (Opus gate-A fix) route through `_mutMsgs`
+      // instead of mutating `_flaggedTs` bare — `_bubble()` paints a bubble
+      // red via `_flaggedTs.contains(m.ts)`, but with the row cache in place
+      // an unrouted mutation left the flagged bubble showing its stale
+      // (unflagged) cached row until some UNRELATED `_msgsRev` bump happened
+      // to come along later.
+      if (ts is num && ts > 0) _mutMsgs(() => _flaggedTs.add(ts.toInt()));
     }
   }
 
