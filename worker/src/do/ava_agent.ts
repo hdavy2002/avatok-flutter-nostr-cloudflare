@@ -117,10 +117,25 @@ function stripReasoning(s: string): string {
 // leaked API key/token, and hard-cap output length so a runaway/adversarial
 // completion can't return an unbounded blob. TODO(F8): replace with the real
 // structured-output gateway contract described in the audit.
-const SECRET_LIKE = /\b(?:sk-[A-Za-z0-9_-]{10,}|AKIA[0-9A-Z]{12,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|[A-Za-z0-9_\-+/]{32,})\b/g;
+//
+// AVA-KIMI-GATEWAY-1 (Opus review fix, 2026-07-24): the original pattern ended
+// in a generic `[A-Za-z0-9_\-+/]{32,}` catch-all that redacted ANY long
+// alphanumeric run — UUIDs, git SHAs, Drive/S3 URLs, base64 blobs, ETH
+// addresses, etc — from every @ava reply. Narrowed to known secret PREFIXES
+// only (OpenAI/Anthropic sk-, AWS AKIA, GitHub gh*_, Slack xox*, Google AIza,
+// JWT eyJ header). A long opaque token is only redacted when it sits right
+// after a key/token/secret/password/bearer label, since that's the only case
+// where a bare high-entropy string is actually more likely a leaked credential
+// than legitimate content.
+const SECRET_LIKE = /\b(?:sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16,}|gh[pousr]_[A-Za-z0-9]{30,}|xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{30,}|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]*)\b/g;
+// Contextual: only flag a bare long token when labelled key/token/secret/
+// password/bearer within a short prefix (e.g. `api_key: abcdEF12...`).
+const CONTEXT_SECRET_LIKE = /(?:key|token|secret|password|bearer)\s*[:=]\s*['"]?([A-Za-z0-9_\-+/]{20,})/gi;
 
 function redactSecrets(s: string): string {
-  return (s || "").replace(SECRET_LIKE, "[redacted]");
+  let out = (s || "").replace(SECRET_LIKE, "[redacted]");
+  out = out.replace(CONTEXT_SECRET_LIKE, (m, tok) => m.replace(tok, "[redacted]"));
+  return out;
 }
 
 function capOutput(s: string, max = MAX_OUTPUT_CHARS): string {
