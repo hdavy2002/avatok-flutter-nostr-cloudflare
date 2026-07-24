@@ -379,6 +379,15 @@ class CallSession {
   WebSocketChannel? _ws;
   RTCPeerConnection? _pc;
   MediaStream? _stream;
+  // [CF-CALL-P2P-1] Monotonic generation stamped on every PC created by
+  // [_newPC] / promoted by [_promoteMigratedPc]. Event closures (onTrack in
+  // particular) capture the generation they were installed under and bail if
+  // it's since been superseded — the same "don't bind a stale PC's stream"
+  // problem the relay-migration cutover already solves for itself via
+  // `identical(_activeMigration, attempt)`, generalized to the ordinary
+  // connect/reconnect paths where `_newPC()` can legitimately run more than
+  // once per call (fresh 'welcome', relay fallback, offer/answer races).
+  int _pcGeneration = 0;
   bool _ended = false; // guard: teardown runs exactly once
   bool _started = false; // guard: start() runs exactly once (re-attach safe)
   String? _remoteId;
@@ -388,6 +397,14 @@ class CallSession {
   bool _video = true;
   bool _camOn = true;
   bool _muted = false;
+  // [CF-CALL-P2P-1] Serializes mid-call video renegotiation (enabling video on
+  // an audio call) so it never races a concurrent offer from another path.
+  // Checked BY the ICE-recovery/relay-migration triggers below so they defer
+  // to an in-flight video upgrade instead of sending a competing offer.
+  bool _videoRenegoInFlight = false;
+  // [CF-CALL-P2P-1] Serializes camera-flip requests (front/back) so a rapid
+  // double-tap can't issue two concurrent `Helper.switchCamera` calls.
+  bool _flippingCamera = false;
   bool _speaker = true;
   String? _lastAudioRouteRequestId;
   bool _connected = false;
@@ -773,6 +790,10 @@ class CallSession {
   double? _phTotalAudioEnergy;
   int _noRtpStreak = 0;
   int _noPlayoutStreak = 0;
+  // [CF-CALL-P2P-1] Extends this sampler with inbound-VIDEO decode/render
+  // confirmation for 1:1 video calls (proposal Phase 5: "video decode/render
+  // confirmation telemetry" — same 5s sampler, same flag gate, additive).
+  int? _phVideoBytes, _phVideoFramesDecoded, _phVideoFramesDropped;
 
   // [CALL-REL-5] Recovery evidence (two consecutive healthy playout samples)
   // depends on this sampler, so callIceRecoveryV2 also starts it even if the
@@ -798,6 +819,7 @@ class CallSession {
     _phTotalAudioEnergy = null;
     _noRtpStreak = 0;
     _noPlayoutStreak = 0;
+    _phVideoBytes = _phVideoFramesDecoded = _phVideoFramesDropped = null;
     _lastPlayoutHealthClass = MediaHealthClass.unknown;
     _playoutHealthTimer =
         Timer.periodic(const Duration(seconds: 5), (_) => _pollPlayoutHealth());
@@ -832,6 +854,9 @@ class CallSession {
       int? lastPacketReceivedTsMs;
       String? candidatePairId, localCandType, remoteCandType, relayProtocol;
       bool foundInboundAudio = false;
+      // [CF-CALL-P2P-1] Inbound-VIDEO decode counters, video calls only.
+      bool foundInboundVideo = false;
+      int? videoBytesReceived, videoFramesDecoded, videoFramesDropped;
 
       final stats = await pc.getStats();
       final pairs = <String, Map<dynamic, dynamic>>{};
@@ -842,6 +867,20 @@ class CallSession {
         final v = s.values;
         if (s.type == 'inbound-rtp') {
           final kind = (v['kind'] ?? v['mediaType'])?.toString();
+          if (kind == 'video') {
+            // [CF-CALL-P2P-1] video decode/render confirmation — only sampled
+            // for video calls; harmless no-op (never observed) on audio calls.
+            if (config.video) {
+              foundInboundVideo = true;
+              final vb = v['bytesReceived'];
+              if (vb is num) videoBytesReceived = vb.toInt();
+              final fd = v['framesDecoded'];
+              if (fd is num) videoFramesDecoded = fd.toInt();
+              final fdr = v['framesDropped'];
+              if (fdr is num) videoFramesDropped = fdr.toInt();
+            }
+            continue;
+          }
           if (kind != 'audio') continue;
           foundInboundAudio = true;
           final b = v['bytesReceived'];
@@ -913,6 +952,34 @@ class CallSession {
         nativeFocusHeld = !_onFocusHold;
       }
 
+      // [CF-CALL-P2P-1] video decode/render confirmation — computed once so
+      // both the early-return "no inbound audio" snapshot below and the main
+      // one further down carry the same values. Stays null/'unknown' for
+      // audio-only calls (config.video == false) and for the first sample of
+      // a video call (no prior baseline for the delta yet).
+      int? videoFramesDecodedDelta, videoFramesDroppedDelta;
+      bool? videoDecodeProgressing, rendererBound;
+      if (config.video) {
+        if (foundInboundVideo) {
+          if (_phVideoFramesDecoded != null && videoFramesDecoded != null) {
+            videoFramesDecodedDelta = videoFramesDecoded - _phVideoFramesDecoded!;
+          }
+          if (_phVideoFramesDropped != null && videoFramesDropped != null) {
+            videoFramesDroppedDelta = videoFramesDropped - _phVideoFramesDropped!;
+          }
+          if (videoFramesDecodedDelta != null) {
+            videoDecodeProgressing = videoFramesDecodedDelta > 0;
+          }
+          _phVideoBytes = videoBytesReceived;
+          _phVideoFramesDecoded = videoFramesDecoded;
+          _phVideoFramesDropped = videoFramesDropped;
+        }
+        try {
+          final remoteStream = remoteRenderer.srcObject;
+          rendererBound = remoteStream != null && remoteStream.getVideoTracks().isNotEmpty;
+        } catch (_) {/* renderer disposed mid-poll — stays unknown */}
+      }
+
       if (!foundInboundAudio) {
         // No inbound-audio stat exists yet at all — unknown, never inferred.
         _telemetry.mediaHealth(MediaHealthSnapshot(
@@ -921,6 +988,10 @@ class CallSession {
           activeAudioRoute: activeAudioRoute,
           routeConfirmed: routeConfirmed,
           nativeFocusHeld: nativeFocusHeld,
+          videoFramesDecodedDelta: videoFramesDecodedDelta,
+          videoFramesDroppedDelta: videoFramesDroppedDelta,
+          videoDecodeProgressing: videoDecodeProgressing,
+          rendererBound: rendererBound,
         ));
         return;
       }
@@ -1038,6 +1109,10 @@ class CallSession {
         activeAudioRoute: activeAudioRoute,
         routeConfirmed: routeConfirmed,
         nativeFocusHeld: nativeFocusHeld,
+        videoFramesDecodedDelta: videoFramesDecodedDelta,
+        videoFramesDroppedDelta: videoFramesDroppedDelta,
+        videoDecodeProgressing: videoDecodeProgressing,
+        rendererBound: rendererBound,
       ));
       if (sampleMigration) {
         // [CALL-REL-6] This sample is for the migration's NEW pc — feed the
@@ -1064,6 +1139,10 @@ class CallSession {
             !_migrationAttempted &&
             _activeMigration == null &&
             _activeRecovery == null &&
+            // [CF-CALL-P2P-1] Don't start a migration offer while a
+            // video-enable renegotiation is in flight — the next sample 5s
+            // later re-evaluates the streak.
+            !_videoRenegoInFlight &&
             _connected &&
             !_ended) {
           _relayThresholdStreak = 0;
@@ -1617,10 +1696,33 @@ class CallSession {
   RTCSessionDescription _tuned(RTCSessionDescription d) =>
       RTCSessionDescription(_tuneOpusSdp(d.sdp), d.type);
 
+  /// [CF-CALL-P2P-1] Best-effort network-class check used ONLY to pick a
+  /// conservative capture resolution / sender bitrate ceiling for 1:1 video
+  /// (proposal Phase 5: "prefer 960x540 on cellular if network class known").
+  /// Never blocks call setup; any failure (or an unknown/mixed result) falls
+  /// back to treating the network as non-cellular — the higher, pre-existing
+  /// bound — so this can only make behavior MORE conservative, never less.
+  Future<bool> _isLikelyCellular() async {
+    try {
+      final results = await Connectivity().checkConnectivity();
+      final hasWifiOrEthernet = results.contains(ConnectivityResult.wifi) ||
+          results.contains(ConnectivityResult.ethernet);
+      final hasMobile = results.contains(ConnectivityResult.mobile);
+      return hasMobile && !hasWifiOrEthernet;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> _bootMedia() async {
     await localRenderer.initialize();
     await remoteRenderer.initialize();
     await _fetchIce();
+    // [CF-CALL-P2P-1] Decide the initial capture resolution before opening the
+    // camera — cheaper than capturing high-res then downscaling, and the
+    // sender-side bitrate cap in [_preferResolutionOnVideo] uses the same
+    // network-class check so capture and encoding bounds agree.
+    final cellularCapture = config.video ? await _isLikelyCellular() : false;
     try {
       _stream = await navigator.mediaDevices.getUserMedia({
         'audio': {
@@ -1635,7 +1737,20 @@ class CallSession {
           },
           'optional': [],
         },
-        'video': config.video ? {'facingMode': 'user'} : false,
+        // [CF-CALL-P2P-1] Explicit, bounded capture constraints (proposal
+        // Phase 5 "camera constraints"): 1280x720@30 max on wifi/unknown,
+        // 960x540@30 on a detected cellular network. `ideal` lets the camera
+        // pick a supported mode near this; `max` is the hard ceiling so a
+        // high-end camera never captures (and encodes) far above what a 1:1
+        // call needs.
+        'video': config.video
+            ? {
+                'facingMode': 'user',
+                'width': {'ideal': cellularCapture ? 960 : 1280, 'max': 1280},
+                'height': {'ideal': cellularCapture ? 540 : 720, 'max': 720},
+                'frameRate': {'ideal': 30, 'max': 30},
+              }
+            : false,
       });
     } catch (e, st) {
       Analytics.error(
@@ -2048,13 +2163,36 @@ class CallSession {
     try { _ws?.sink.add(jsonEncode(o)); } catch (_) {/* socket closed / gone */}
   }
 
-  Future<void> _preferResolutionOnVideo(RTCPeerConnection pc) async {
+  /// [CF-CALL-P2P-1] Bounded 1:1-video sender encoding (proposal Phase 5:
+  /// "sender bitrate limits" + "use balanced degradation"). Two behavior
+  /// changes from the pre-existing version, both UNGATED (deterministic
+  /// quality fixes, no legacy-equivalence requirement per the proposal):
+  ///  - `degradationPreference` MAINTAIN_RESOLUTION → BALANCED. The old
+  ///    setting told the encoder to protect resolution at any framerate cost,
+  ///    which on a thin link meant near-frozen high-res video instead of
+  ///    smooth lower-res video. THIS IS THE ONE-LINE, EASILY REVERTABLE
+  ///    CHANGE called out in the CF-CALL-P2P-1 report — revert by restoring
+  ///    `RTCDegradationPreference.MAINTAIN_RESOLUTION` below.
+  ///  - a `maxBitrate` cap per encoding: 1.2 Mbps on wifi/unknown, 800 kbps on
+  ///    a detected cellular network — previously unbounded, so a strong link
+  ///    could push an outbound bitrate the callee's link (or ours, on the way
+  ///    back down after a network change) couldn't sustain.
+  Future<void> _preferResolutionOnVideo(RTCPeerConnection pc, {bool cellular = false}) async {
     try {
       final senders = await pc.getSenders();
+      final maxBitrateBps = cellular ? 800000 : 1200000;
       for (final s in senders) {
         if (s.track?.kind != 'video') continue;
         final params = s.parameters;
-        params.degradationPreference = RTCDegradationPreference.MAINTAIN_RESOLUTION;
+        params.degradationPreference = RTCDegradationPreference.BALANCED;
+        final encodings = params.encodings;
+        if (encodings == null || encodings.isEmpty) {
+          params.encodings = [RTCRtpEncoding(active: true, maxBitrate: maxBitrateBps)];
+        } else {
+          for (final e in encodings) {
+            e.maxBitrate = maxBitrateBps;
+          }
+        }
         await s.setParameters(params);
       }
     } catch (e, st) {
@@ -2062,8 +2200,31 @@ class CallSession {
         stage: 'video_sender_parameters_failed',
         error: e,
         stack: st,
-        extra: const {'operation': 'maintain_resolution'},
+        extra: {'operation': 'bounded_encoding', 'cellular': cellular},
       );
+    }
+  }
+
+  /// [CF-CALL-P2P-1] Await every `addTrack` call and report a failure through
+  /// call telemetry instead of the pre-existing fire-and-forget `forEach`,
+  /// where a rejected `addTrack` Future was silently dropped — no signal
+  /// anywhere that a sender never got installed.
+  Future<void> _addStreamTracks(
+    RTCPeerConnection pc,
+    MediaStream stream, {
+    required String stage,
+  }) async {
+    for (final t in stream.getTracks()) {
+      try {
+        await pc.addTrack(t, stream);
+      } catch (e, st) {
+        _telemetry.runtimeError(
+          stage: stage,
+          error: e,
+          stack: st,
+          extra: {'track_kind': t.kind ?? 'unknown'},
+        );
+      }
     }
   }
 
@@ -2079,8 +2240,14 @@ class CallSession {
       'iceCandidatePoolSize': 2,
       if (CallDiag.turnOnly || forceRelay) 'iceTransportPolicy': 'relay',
     });
-    _stream!.getTracks().forEach((t) => pc.addTrack(t, _stream!));
-    if (config.video) await _preferResolutionOnVideo(pc);
+    // [CF-CALL-P2P-1] Stamp this PC's generation BEFORE installing any
+    // callback closure below, so every closure's guard check is meaningful
+    // from the moment it can first fire.
+    final myPcGen = ++_pcGeneration;
+    await _addStreamTracks(pc, _stream!, stage: 'add_track_failed');
+    if (config.video) {
+      await _preferResolutionOnVideo(pc, cellular: await _isLikelyCellular());
+    }
     _telemetry.onIceGatheringStart();
     pc.onIceCandidate = (c) {
       _telemetry.onLocalCandidate(_candTypeOf(c.candidate));
@@ -2092,6 +2259,11 @@ class CallSession {
       }
     };
     pc.onTrack = (e) async {
+      // [CF-CALL-P2P-1] A superseded PC (e.g. a second `_newPC()` from a
+      // relay-fallback or a racing offer/answer) can still have a pending
+      // `onTrack` in flight; never let it clobber the renderer out from under
+      // the CURRENT PC's own stream.
+      if (myPcGen != _pcGeneration) return;
       if (e.streams.isNotEmpty) {
         remoteRenderer.srcObject = e.streams[0];
         _ringTimeout?.cancel();
@@ -2186,6 +2358,10 @@ class CallSession {
   Future<void> _tryIceRestart(String why) async {
     final pc = _pc;
     if (pc == null || _ended || !_weOffered || _remoteId == null) return;
+    // [CF-CALL-P2P-1] Defer to an in-flight video-enable renegotiation rather
+    // than racing it with a competing offer — the caller's own watchdog/tick
+    // will re-invoke this shortly after the upgrade (bounded to ~4s) finishes.
+    if (_videoRenegoInFlight) return;
     if (_iceRestarts >= 3) return;
     _iceRestarts++;
     _telemetry.onIceRestart();
@@ -2213,6 +2389,10 @@ class CallSession {
   Future<void> _requestRecovery(RecoveryReason why) async {
     if (!RemoteConfig.callIceRecoveryV2) return;
     if (_ended || !_connected) return;
+    // [CF-CALL-P2P-1] Defer to an in-flight video-enable renegotiation —
+    // [_pollPlayoutHealth]'s next 5s tick will re-request recovery if it's
+    // still needed once the (bounded, ~4s max) upgrade settles.
+    if (_videoRenegoInFlight) return;
     if (_activeRecovery != null) return; // one attempt at a time
     final id = const Uuid().v4();
     _recoveryAttemptCount++;
@@ -2632,7 +2812,14 @@ class CallSession {
         'iceTransportPolicy': 'relay',
       });
       attempt.newPc = newPc;
-      _stream!.getTracks().forEach((t) => newPc.addTrack(t, _stream!));
+      // [CF-CALL-P2P-1] Await installation and apply the same bounded
+      // encoding as the primary PC — a relay migration is already on the
+      // constrained TURN-relay path, so an unbounded video sender here is
+      // even more likely to starve the link than on the direct path.
+      await _addStreamTracks(newPc, _stream!, stage: 'migration_add_track_failed');
+      if (config.video) {
+        await _preferResolutionOnVideo(newPc, cellular: true);
+      }
       newPc.onIceCandidate = (c) {
         if (!identical(_activeMigration, attempt) || attempt.completed) return;
         _send({
@@ -2711,7 +2898,14 @@ class CallSession {
         'iceTransportPolicy': 'relay',
       });
       attempt.newPc = newPc;
-      _stream!.getTracks().forEach((t) => newPc.addTrack(t, _stream!));
+      // [CF-CALL-P2P-1] Await installation and apply the same bounded
+      // encoding as the primary PC — a relay migration is already on the
+      // constrained TURN-relay path, so an unbounded video sender here is
+      // even more likely to starve the link than on the direct path.
+      await _addStreamTracks(newPc, _stream!, stage: 'migration_add_track_failed');
+      if (config.video) {
+        await _preferResolutionOnVideo(newPc, cellular: true);
+      }
       newPc.onIceCandidate = (c) {
         if (!identical(_activeMigration, attempt) || attempt.completed) return;
         _send({
@@ -2891,10 +3085,15 @@ class CallSession {
   /// this is a v1-relay-migration PC, and any further transport failure on it
   /// is owned by the CALL-REL-5 coordinator when that flag is also on).
   void _promoteMigratedPc(RTCPeerConnection pc) {
+    // [CF-CALL-P2P-1] This PC is about to become `_pc` — give it its own
+    // generation so any STILL-pending event from whatever `_pc` it's
+    // replacing can no longer bind the renderer after this point.
+    final myPcGen = ++_pcGeneration;
     pc.onIceCandidate = (c) {
       if (_remoteId != null) _send({'type': 'candidate', 'to': _remoteId, 'candidate': c.toMap()});
     };
     pc.onTrack = (e) {
+      if (myPcGen != _pcGeneration) return;
       if (e.streams.isNotEmpty) remoteRenderer.srcObject = e.streams[0];
     };
     pc.onConnectionState = (s) {
@@ -3328,6 +3527,7 @@ class CallSession {
     if (!_video) {
       _video = true; _camOn = true; _speaker = true;
       videoActive.value = true; cameraOn.value = true; speakerOn.value = true;
+      // ignore: unawaited_futures
       _restartWithVideo();
       return;
     }
@@ -3336,24 +3536,118 @@ class CallSession {
     cameraOn.value = _camOn;
   }
 
+  /// [CF-CALL-P2P-1] Mid-call video-enable renegotiation, serialized so it can
+  /// never race a concurrent offer from ICE recovery or relay migration
+  /// (proposal Phase 5: "serialize renegotiation and ICE recovery"). Reuses
+  /// the SAME kind of single-attempt guard the existing recovery/migration
+  /// coordinators already use — [_videoRenegoInFlight] is, in turn, checked by
+  /// [_requestRecovery]/[_tryIceRestart]/the relay-threshold trigger so THEY
+  /// also defer to an in-flight video upgrade rather than racing it.
   Future<void> _restartWithVideo() async {
     if (_ended) return;
+    if (_videoRenegoInFlight) {
+      _telemetry.runtimeError(
+        stage: 'video_upgrade_skipped_concurrent',
+        error: StateError('a video-enable renegotiation is already in flight'),
+      );
+      return;
+    }
+    _videoRenegoInFlight = true;
     try {
-      final v = await navigator.mediaDevices
-          .getUserMedia({'video': {'facingMode': 'user'}, 'audio': false});
+      // Give any in-flight ICE recovery / relay migration a bounded window to
+      // finish before we send a competing offer of our own.
+      var waitedMs = 0;
+      while (!_ended &&
+          (_activeRecovery != null || _activeMigration != null) &&
+          waitedMs < 4000) {
+        await Future.delayed(const Duration(milliseconds: 250));
+        waitedMs += 250;
+      }
+      if (_ended) return;
+      if (_activeRecovery != null || _activeMigration != null) {
+        _telemetry.runtimeError(
+          stage: 'video_upgrade_deferred_negotiation_busy',
+          error: StateError('recovery/relay-migration still active after 4s wait'),
+        );
+        return;
+      }
+      final pcAtStart = _pc;
+      final cellular = await _isLikelyCellular();
+      MediaStream v;
+      try {
+        v = await navigator.mediaDevices.getUserMedia({
+          'video': {
+            'facingMode': 'user',
+            'width': {'ideal': cellular ? 960 : 1280, 'max': 1280},
+            'height': {'ideal': cellular ? 540 : 720, 'max': 720},
+            'frameRate': {'ideal': 30, 'max': 30},
+          },
+          'audio': false,
+        });
+      } catch (e, st) {
+        _telemetry.runtimeError(stage: 'video_upgrade_get_user_media_failed', error: e, stack: st);
+        return;
+      }
+      if (_ended || !identical(_pc, pcAtStart)) return; // superseded mid-capture
       final track = v.getVideoTracks().first;
-      await _stream?.addTrack(track);
+      try {
+        await _stream?.addTrack(track);
+      } catch (e, st) {
+        _telemetry.runtimeError(stage: 'video_upgrade_add_local_track_failed', error: e, stack: st);
+      }
+      if (_ended) return;
       localRenderer.srcObject = _stream;
-      if (_stream != null) await _pc?.addTrack(track, _stream!);
-      if (_pc != null) await _preferResolutionOnVideo(_pc!);
-      if (!_ended && _pc != null && _remoteId != null) {
+      if (_stream != null && _pc != null) {
+        try {
+          await _pc!.addTrack(track, _stream!);
+        } catch (e, st) {
+          _telemetry.runtimeError(stage: 'video_upgrade_add_track_failed', error: e, stack: st);
+        }
+      }
+      if (_pc != null) await _preferResolutionOnVideo(_pc!, cellular: cellular);
+      if (!_ended && _pc != null && identical(_pc, pcAtStart) && _remoteId != null) {
         final offer = _tuned(await _pc!.createOffer());
         await _pc!.setLocalDescription(offer);
         _send({'type': 'offer', 'to': _remoteId, 'sdp': offer.toMap()});
         Analytics.capture('call_video_upgraded', {'call_id': config.room});
       }
-    } catch (_) {}
+    } catch (e, st) {
+      _telemetry.runtimeError(stage: 'video_upgrade_failed', error: e, stack: st);
+    } finally {
+      _videoRenegoInFlight = false;
+    }
     _bump();
+  }
+
+  /// [CF-CALL-P2P-1] Front/back camera flip. flutter_webrtc's `Helper.switchCamera`
+  /// swaps the physical camera feeding the EXISTING local video track in
+  /// place — no new track, no renegotiation, no SDP round-trip — so it can't
+  /// race the offer/answer serialization above; it only needs its own
+  /// re-entrancy guard against a rapid double-tap. Reported via telemetry
+  /// either way so a flip that silently no-ops on some device/OS combination
+  /// is visible instead of being a cold support report.
+  Future<void> flipCamera() async {
+    if (_ended || !_video || !_camOn || _flippingCamera) return;
+    final videoTracks = _stream?.getVideoTracks() ?? const [];
+    if (videoTracks.isEmpty) return;
+    final track = videoTracks.first;
+    _flippingCamera = true;
+    final pcAtStart = _pc;
+    try {
+      await Helper.switchCamera(track);
+      // A stale/superseded call (ended, or the PC was swapped mid-flip by a
+      // recovery/migration cutover) still performed the OS-level switch —
+      // harmless either way since it operates on the local capture device,
+      // not the PC — but only count/report it against the call that's still
+      // live and on the same PC generation it started on.
+      if (!_ended && identical(_pc, pcAtStart)) {
+        Analytics.capture('call_camera_flipped', {'call_id': config.room});
+      }
+    } catch (e, st) {
+      _telemetry.runtimeError(stage: 'camera_flip_failed', error: e, stack: st);
+    } finally {
+      _flippingCamera = false;
+    }
   }
 
   /// Red button / notification "Hang up".

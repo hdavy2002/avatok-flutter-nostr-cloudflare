@@ -68,6 +68,21 @@ class MediaHealthSnapshot {
   final String activeAudioRoute; // 'unknown' when the controller is off/unavailable
   final bool routeConfirmed; // requested route == active route
   final bool? nativeFocusHeld; // null = unknown (controller off)
+  // [CF-CALL-P2P-1] Inbound-VIDEO decode/render confirmation, extending this
+  // (audio-only) sampler for 1:1 video calls. Only ever populated when the
+  // call is a video call AND the underlying stat/state was observable — null
+  // means "not yet known", NEVER inferred as healthy or broken (same
+  // "never infer zero/unknown" rule the audio fields already follow).
+  final int? videoFramesDecodedDelta;
+  final int? videoFramesDroppedDelta;
+  /// True once inbound video RTP is actually advancing to decoded frames this
+  /// interval (framesDecoded delta > 0); false when RTP/bytes are arriving but
+  /// decode isn't progressing; null = unknown (no video stat yet / audio call).
+  final bool? videoDecodeProgressing;
+  /// True once the remote renderer's `srcObject` is bound to a stream that
+  /// actually carries a live video track (i.e. the surface has something to
+  /// paint), false if bound to nothing/audio-only, null = unknown/not video.
+  final bool? rendererBound;
 
   const MediaHealthSnapshot({
     required this.cls,
@@ -93,6 +108,10 @@ class MediaHealthSnapshot {
     this.activeAudioRoute = 'unknown',
     this.routeConfirmed = false,
     this.nativeFocusHeld,
+    this.videoFramesDecodedDelta,
+    this.videoFramesDroppedDelta,
+    this.videoDecodeProgressing,
+    this.rendererBound,
   });
 
   Map<String, Object> toTelemetryMap() => {
@@ -126,6 +145,18 @@ class MediaHealthSnapshot {
         'active_audio_route': activeAudioRoute,
         'route_confirmed': routeConfirmed,
         'native_focus_held': nativeFocusHeld?.toString() ?? 'unknown',
+        // [CF-CALL-P2P-1] video decode/render confirmation — 'unknown' unless
+        // this sample actually observed a video stat (video calls only).
+        if (videoFramesDecodedDelta != null)
+          'video_frames_decoded_delta': videoFramesDecodedDelta!
+        else
+          'video_frames_decoded_delta': 'unknown',
+        if (videoFramesDroppedDelta != null)
+          'video_frames_dropped_delta': videoFramesDroppedDelta!
+        else
+          'video_frames_dropped_delta': 'unknown',
+        'video_decode_progressing': videoDecodeProgressing?.toString() ?? 'unknown',
+        'renderer_bound': rendererBound?.toString() ?? 'unknown',
       };
 }
 
@@ -281,6 +312,11 @@ class CallTelemetry {
   bool? _audioPlayoutOk; // null = unknown
   double? _concealmentPctInterval;
   double? _jitterBufferMsInterval;
+  // [CF-CALL-P2P-1] last-known video decode/render confirmation, surfaced onto
+  // call_progress the same way the audio playout fields above are — null stays
+  // 'unknown' (audio-only calls, or before the first video sample lands).
+  bool? _videoDecodeProgressing;
+  bool? _rendererBound;
   // ── [CALL-REL-5] recovery state surfaced onto call_progress ─────────────────
   String _recoveryState = 'none'; // none|recovering_ice|migrating_relay|recovered|failed
   int _recoveryAttemptCount = 0;
@@ -624,6 +660,10 @@ class CallTelemetry {
       'audio_jitter_buffer_ms_interval': _jitterBufferMsInterval ?? 'unknown',
       'recovery_state': _recoveryState,
       'recovery_attempt_count': _recoveryAttemptCount,
+      // [CF-CALL-P2P-1] video decode/render confirmation (video calls only —
+      // stays 'unknown' for audio calls, matching the audio playout fields).
+      'video_decode_progressing': _videoDecodeProgressing?.toString() ?? 'unknown',
+      'renderer_bound': _rendererBound?.toString() ?? 'unknown',
     });
   }
 
@@ -663,6 +703,15 @@ class CallTelemetry {
     }
     if (snapshot.jitterBufferDelayMsAvg != null) {
       _jitterBufferMsInterval = snapshot.jitterBufferDelayMsAvg;
+    }
+    // [CF-CALL-P2P-1] Cache the latest known value; only overwrite when this
+    // sample actually observed it, so a momentary "unknown" sample doesn't
+    // blank out the last real reading on call_progress.
+    if (snapshot.videoDecodeProgressing != null) {
+      _videoDecodeProgressing = snapshot.videoDecodeProgressing;
+    }
+    if (snapshot.rendererBound != null) {
+      _rendererBound = snapshot.rendererBound;
     }
     if (snapshot.cls == _lastHealthClass) return;
     _lastHealthClass = snapshot.cls;

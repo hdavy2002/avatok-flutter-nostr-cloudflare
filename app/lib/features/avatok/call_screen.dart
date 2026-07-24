@@ -953,6 +953,13 @@ class _CallScreenState extends State<CallScreen> {
                       ? PhosphorIcons.videoCamera(PhosphorIconsStyle.bold)
                       : PhosphorIcons.videoCameraSlash(PhosphorIconsStyle.bold),
                   active: video && camOn, onTap: s.toggleCamera),
+              // [CF-CALL-P2P-1] Front/back camera flip — only meaningful (and
+              // only shown) while a live camera feed is actually being sent.
+              if (video && camOn) ...[
+                const SizedBox(width: 14),
+                _btn(PhosphorIcons.cameraRotate(PhosphorIconsStyle.bold),
+                    onTap: s.flipCamera),
+              ],
               const SizedBox(width: 14),
               _btn(
                   muted
