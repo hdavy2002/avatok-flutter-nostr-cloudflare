@@ -28,17 +28,23 @@ import { brainIngest } from "../lib/brain_ingest";
 import { isBrainDomain, basisFor, consentKeyFor } from "../lib/brain_domains";
 import { emailFor } from "../lib/identity";
 import { trackUser, trackException, metric } from "../hooks";
+import { readConfig } from "./config"; // [AVABRAIN-FLAGS-1] KV-config-driven caps
 
 // ── cost-control flags — read defensively off `env` (AVABRAIN-FLAGS-1 is the
 // agent that wires these into routes/config.ts DEFAULTS + KV; until then a
 // missing/undefined flag NEVER means "unlimited" — same convention as
 // routes/brain_media.ts flagBool/flagNum below). ──────────────────────────────
-function flagNum(env: Env, name: string, def: number): number {
-  const v = (env as unknown as Record<string, unknown>)[name];
+// [AVABRAIN-FLAGS-1] KV platform_config first (declared in config.ts DEFAULTS,
+// owner-tunable via scripts/flags.sh), env var second, hard default last.
+async function exportDailyCap(env: Env): Promise<number> {
+  try {
+    const c = Number(((await readConfig(env)) as unknown as Record<string, unknown>).avaBrainExportDailyCap);
+    if (Number.isFinite(c) && c > 0) return c;
+  } catch { /* fall through to env/default */ }
+  const v = (env as unknown as Record<string, unknown>).avaBrainExportDailyCap;
   const n = Number(v);
-  return v !== undefined && v !== null && Number.isFinite(n) && n > 0 ? n : def;
+  return v !== undefined && v !== null && Number.isFinite(n) && n > 0 ? n : 50;
 }
-function exportDailyCap(env: Env): number { return flagNum(env, "avaBrainExportDailyCap", 50); }
 
 const MAX_ITEMS_PER_CALL = 20;
 const MAX_ITEM_CHARS = 2000;
@@ -108,7 +114,7 @@ export async function brainExport(req: Request, env: Env): Promise<Response> {
   // Per-user DAILY export cap (Bible: flag avaBrainExportDailyCap, default 50
   // items; read defensively, undefined -> 50). Counts items already exported
   // today (UTC) via the audit table, so the cap survives across multiple calls.
-  const cap = exportDailyCap(env);
+  const cap = await exportDailyCap(env);
   const cutoff = startOfDayMs(Date.now());
   let usedToday = 0;
   try {

@@ -22,6 +22,7 @@
 // report). Every flag is `(env as any).<name>` so this file compiles without a
 // worker/src/types.ts edit; AVABRAIN-FLAGS-1 lands the real KV-backed flags.
 import type { Env } from "../types";
+import { readConfig } from "./config"; // [AVABRAIN-FLAGS-1] flags are KV-config-driven, env is the fallback
 import { json, sha256Hex } from "../util";
 import { requireUser, isFail } from "../authz";
 import { brainIngest } from "../lib/brain_ingest";
@@ -31,13 +32,25 @@ import { trackUser, trackException } from "../hooks";
 // ---- cost-control flags (Bible §5.3) — reported to AVABRAIN-FLAGS-1, not wired
 // into config.ts by this change. Read via env with hard-coded safe fallbacks so a
 // missing flag NEVER means "unlimited". ----
-function flagBool(env: Env, name: string, def: boolean): boolean {
+// [AVABRAIN-FLAGS-1] Flags now resolve KV platform_config FIRST (declared in
+// routes/config.ts DEFAULTS — owner-tunable via scripts/flags.sh), then a
+// wrangler env var, then the hard-coded safe default. cfgSafe never throws: a
+// KV outage degrades to env/default, never to "unlimited".
+type Cfg = Record<string, unknown>;
+async function cfgSafe(env: Env): Promise<Cfg> {
+  try { return (await readConfig(env)) as unknown as Cfg; } catch { return {}; }
+}
+function flagBool(env: Env, cfg: Cfg, name: string, def: boolean): boolean {
+  const c = cfg[name];
+  if (typeof c === "boolean") return c;
   const v = (env as unknown as Record<string, unknown>)[name];
   if (v === undefined || v === null) return def;
   if (typeof v === "boolean") return v;
   return String(v) === "1" || String(v).toLowerCase() === "true";
 }
-function flagNum(env: Env, name: string, def: number): number {
+function flagNum(env: Env, cfg: Cfg, name: string, def: number): number {
+  const c = Number(cfg[name]);
+  if (cfg[name] !== undefined && cfg[name] !== null && Number.isFinite(c) && c > 0) return c;
   const v = (env as unknown as Record<string, unknown>)[name];
   const n = Number(v);
   return v !== undefined && v !== null && Number.isFinite(n) && n > 0 ? n : def;
@@ -46,8 +59,8 @@ function flagNum(env: Env, name: string, def: number): number {
 // mediaMemoryEnabled — SHIPS DARK (default false). Flip only after the AVABRAIN-
 // FLAGS-1 agent has verified the flag round-trips through config.ts + KV (per the
 // CLAUDE.md "prove it" rule — a flag config.ts doesn't declare is a fake flag).
-function mediaMemoryEnabled(env: Env): boolean { return flagBool(env, "mediaMemoryEnabled", false); }
-function maxSec(env: Env): number { return flagNum(env, "mediaMemoryMaxSec", 900); }        // 15 min
+function mediaMemoryEnabled(env: Env, cfg: Cfg): boolean { return flagBool(env, cfg, "mediaMemoryEnabled", false); }
+function maxSec(env: Env, cfg: Cfg): number { return flagNum(env, cfg, "mediaMemoryMaxSec", 900); }        // 15 min
 // NIT 12 (Opus review): default LOWERED from 64 MB (which mirrored the VIDPOL-2
 // video cap) to 24 MB / 25165824 bytes — that ceiling matches transcribeVoice's
 // hard Whisper limit in consumers/src/brain.ts (`if (buf.byteLength > 24_000_000)
@@ -58,12 +71,12 @@ function maxSec(env: Env): number { return flagNum(env, "mediaMemoryMaxSec", 900
 // not just missing error handling). Report to AVABRAIN-FLAGS-1: set
 // mediaMemoryMaxBytes=25165824 as the KV default (or raise it only once the
 // consumer chunks oversized recordings instead of hard-capping transcribeVoice).
-function maxBytes(env: Env): number { return flagNum(env, "mediaMemoryMaxBytes", 25_165_824); }
-function frameBudget(env: Env): number { return flagNum(env, "mediaMemoryFrameBudget", 20); }
-function dailyPerUser(env: Env): number { return flagNum(env, "mediaMemoryDailyPerUser", 10); }
+function maxBytes(env: Env, cfg: Cfg): number { return flagNum(env, cfg, "mediaMemoryMaxBytes", 25_165_824); }
+function frameBudget(env: Env, cfg: Cfg): number { return flagNum(env, cfg, "mediaMemoryFrameBudget", 20); }
+function dailyPerUser(env: Env, cfg: Cfg): number { return flagNum(env, cfg, "mediaMemoryDailyPerUser", 10); }
 // Per-user concurrency bound (Bible §5.3 "queue concurrency per user"). Not in the
 // bible's named-flag list but required by the task; small + conservative default.
-function concurrencyPerUser(env: Env): number { return flagNum(env, "mediaMemoryConcurrency", 2); }
+function concurrencyPerUser(env: Env, cfg: Cfg): number { return flagNum(env, cfg, "mediaMemoryConcurrency", 2); }
 
 const KINDS = new Set(["audio", "video"]);
 const ACTIVE_STATES = ["queued", "transcribing", "summarizing", "embedding"];
@@ -140,11 +153,12 @@ interface MediaRow {
 // respect before it starts the upload (Bible §5.1 "never block the composer" —
 // this call happens in the background AFTER the local bubble already renders).
 export async function brainMediaPrepare(req: Request, env: Env): Promise<Response> {
+  const cfg = await cfgSafe(env);
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const uid = ctx.uid;
 
-  if (!mediaMemoryEnabled(env)) return json({ allowed: false, decision: "disabled" });
+  if (!mediaMemoryEnabled(env, cfg)) return json({ allowed: false, decision: "disabled" });
 
   const b = (await req.json().catch(() => ({}))) as {
     contentHash?: string; mime?: string; sizeBytes?: number; durationSec?: number; kind?: string;
@@ -155,8 +169,8 @@ export async function brainMediaPrepare(req: Request, env: Env): Promise<Respons
   const durationSec = b.durationSec != null ? Number(b.durationSec) : null;
   const contentHash = String(b.contentHash || "").toLowerCase();
 
-  const capBytes = maxBytes(env);
-  const capSec = maxSec(env);
+  const capBytes = maxBytes(env, cfg);
+  const capSec = maxSec(env, cfg);
   if (sizeBytes > capBytes) {
     return json({ allowed: false, decision: "too_large", max_bytes: capBytes });
   }
@@ -185,7 +199,7 @@ export async function brainMediaPrepare(req: Request, env: Env): Promise<Respons
       "SELECT COUNT(*) AS n FROM brain_media WHERE uid=?1 AND created_at>=?2",
     ).bind(uid, cutoff).first<{ n: number }>();
     const used = Number(row?.n ?? 0);
-    const cap = dailyPerUser(env);
+    const cap = dailyPerUser(env, cfg);
     if (used >= cap) return json({ allowed: false, decision: "daily_cap_reached", used, cap });
   } catch { /* fail-open on the READ (not a consent/security gate) — a D1 hiccup
               shouldn't block a legitimate recording; the daily cap is a cost
@@ -207,12 +221,13 @@ export async function brainMediaPrepare(req: Request, env: Env): Promise<Respons
 // Idempotent: re-completing the SAME (uid, sha256(bytes)) returns the existing row
 // instead of re-queuing processing (Bible §5.2/§5.3 "never process twice").
 export async function brainMediaComplete(req: Request, env: Env, exec: ExecutionContext): Promise<Response> {
+  const cfg = await cfgSafe(env);
   void exec; // no longer used: NIT 10 removed the Q_MODERATION waitUntil (see below) — kept
              // in the signature so the (out-of-scope) index.ts call site needs no change.
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const uid = ctx.uid;
-  if (!mediaMemoryEnabled(env)) return json({ error: "media_memory disabled" }, 403);
+  if (!mediaMemoryEnabled(env, cfg)) return json({ error: "media_memory disabled" }, 403);
 
   const kind = (req.headers.get("x-kind") || "").toLowerCase();
   if (!KINDS.has(kind)) return json({ error: "x-kind header must be audio|video" }, 400);
@@ -223,9 +238,9 @@ export async function brainMediaComplete(req: Request, env: Env, exec: Execution
   const bytes = await req.arrayBuffer();
   if (!bytes.byteLength) return json({ error: "empty body" }, 400);
 
-  const capBytes = maxBytes(env);
+  const capBytes = maxBytes(env, cfg);
   if (bytes.byteLength > capBytes) return json({ error: "too_large", max_bytes: capBytes }, 413);
-  if (durationSec != null && durationSec > maxSec(env)) return json({ error: "too_long", max_sec: maxSec(env) }, 413);
+  if (durationSec != null && durationSec > maxSec(env, cfg)) return json({ error: "too_long", max_sec: maxSec(env, cfg) }, 413);
 
   // Content hash IS the dedup + idempotency key (Bible §5.3, §9.2). Computed
   // server-side from the actual bytes — never trust a client-declared hash for
@@ -261,7 +276,7 @@ export async function brainMediaComplete(req: Request, env: Env, exec: Execution
         "SELECT COUNT(*) AS n FROM brain_media WHERE uid=?1 AND created_at>=?2",
       ).bind(uid, cutoff).first<{ n: number }>();
       const used = Number(capRow?.n ?? 0);
-      const cap = dailyPerUser(env);
+      const cap = dailyPerUser(env, cfg);
       if (used >= cap) {
         return json({ error: "daily_cap_reached", decision: "daily_cap_reached", used, cap }, 429);
       }
@@ -282,7 +297,7 @@ export async function brainMediaComplete(req: Request, env: Env, exec: Execution
   const activeRow = await mdb.prepare(
     `SELECT COUNT(*) AS n FROM brain_media WHERE uid=?1 AND state IN (${activePh})`,
   ).bind(uid, ...ACTIVE_STATES).first<{ n: number }>();
-  if (Number(activeRow?.n ?? 0) >= concurrencyPerUser(env)) {
+  if (Number(activeRow?.n ?? 0) >= concurrencyPerUser(env, cfg)) {
     return json({ error: "too_many_pending", retry_after_sec: 30 }, 429);
   }
 
