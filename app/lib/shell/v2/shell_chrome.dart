@@ -159,7 +159,7 @@ class ShellSidebar extends StatelessWidget {
                   PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), AD.online),
               appRow(RootId.avaDial, 'AvaDialer', 'Phone, spam shield & device contacts',
                   PhosphorIcons.phone(PhosphorIconsStyle.bold), AD.iconSearch),
-              appRow(RootId.services, 'Marketplace', 'Browse & wallet',
+              appRow(RootId.services, 'Services', 'Marketplace, wallet & more',
                   PhosphorIcons.storefront(PhosphorIconsStyle.bold), AD.danger),
               _SidebarRow(
                 icon: PhosphorIcons.sparkle(PhosphorIconsStyle.bold),

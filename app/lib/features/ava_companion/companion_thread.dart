@@ -17,6 +17,7 @@ import '../../core/local_brain/local_brain.dart';
 import '../../core/ava_ondevice_rag.dart';
 import '../../core/brain_recall.dart';
 import '../avabrain/brain_settings_screen.dart';
+import '../avachat/voice_call/ai_voice_agent_screen.dart';
 import '../../core/avatar_cache.dart';
 import '../../core/cached_image.dart';
 import '../../core/ava_prompt_budget.dart';
@@ -614,6 +615,12 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
             Text('${widget.persona.glyph} ${widget.persona.name}',
                 style: ADText.preview()),
           ]),
+        ),
+        IconButton(
+          tooltip: 'Call AvaBrain',
+          icon: PhosphorIcon(PhosphorIcons.phoneCall(PhosphorIconsStyle.bold), color: AD.iconVideo),
+          onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AiVoiceAgentScreen())),
         ),
       ]),
     );

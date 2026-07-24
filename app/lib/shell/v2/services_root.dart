@@ -28,7 +28,7 @@ class ServicesRoot extends StatelessWidget {
         extra: [
           Padding(
             padding: const EdgeInsets.fromLTRB(6, 8, 6, 4),
-            child: Text('MARKETPLACE', style: ADText.sectionLabel()),
+            child: Text('SERVICES', style: ADText.sectionLabel()),
           ),
           ShellMenuRow(
             icon: PhosphorIcons.storefront(PhosphorIconsStyle.bold),

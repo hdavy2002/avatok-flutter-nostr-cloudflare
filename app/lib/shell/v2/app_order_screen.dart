@@ -22,7 +22,7 @@ class AppOrderScreen extends StatelessWidget {
     // 2026-07-14 owner rename: 'AvaTOK' → 'AvaTalk' (display-only; RootId.key
     // stays 'avatalk'). Mirror of shell/v2/app_switcher_bar.dart `_meta`.
     RootId.avaTalk: (Icons.chat_bubble, 'AvaTalk', 'Messages & in-network calls', AD.online),
-    RootId.services: (Icons.storefront, 'Marketplace', 'Browse & wallet', AD.danger),
+    RootId.services: (Icons.storefront, 'Services', 'Marketplace, wallet & more', AD.danger),
   };
 
   @override

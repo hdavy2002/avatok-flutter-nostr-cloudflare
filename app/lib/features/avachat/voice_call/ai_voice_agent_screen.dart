@@ -1,5 +1,5 @@
-/// AiVoiceAgentScreen — the "AI Voice Agent" home (sidebar entry). A simple dial
-/// screen: tap "Call Ava" → opens the live hands-free call (Gemini Live native
+/// AiVoiceAgentScreen — the AvaBrain voice-conversation screen. A simple dial
+/// screen: tap "Call AvaBrain" → opens the live hands-free call (Gemini Live native
 /// audio). Ava greets the user by name and the 5-minute guardrail runs in-call.
 ///
 /// PREMIUM-GATED (owner decision 2026-06-27): talking to Ava by voice requires a
@@ -67,7 +67,7 @@ class _AiVoiceAgentScreenState extends State<AiVoiceAgentScreen> {
     final locked = unavailable || !_premium;
     return Scaffold(
       backgroundColor: Zine.paper,
-      appBar: ZineAppBar(title: 'AI Voice Agent', markWord: 'Voice', tag: 'PREMIUM'),
+      appBar: ZineAppBar(title: 'AvaBrain Voice', markWord: 'Voice', tag: 'AI'),
       body: ZinePaper(
         child: SafeArea(
           top: false,
@@ -95,7 +95,7 @@ class _AiVoiceAgentScreenState extends State<AiVoiceAgentScreen> {
               ),
             ),
             const SizedBox(height: 28),
-            Text('Talk to Ava', style: ZineText.value(size: 20)),
+            Text('Talk to AvaBrain', style: ZineText.value(size: 20)),
             const SizedBox(height: 8),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 36),
@@ -104,9 +104,9 @@ class _AiVoiceAgentScreenState extends State<AiVoiceAgentScreen> {
                     ? 'Voice calling with Ava is currently unavailable. Please check '
                         'back soon.'
                     : locked
-                        ? 'Calling Ava by voice is a premium feature. Subscribe to have '
+                        ? 'Voice calling will use AvaBrain tokens. Add tokens to have '
                             'hands-free, real-time conversations with Ava.'
-                        : 'Tap to call Ava and have a hands-free conversation. She knows your '
+                        : 'Tap to call AvaBrain and have a hands-free conversation. It knows your '
                             'name and answers in real time.',
                 textAlign: TextAlign.center,
                 style: ZineText.sub(size: 13.5),
@@ -132,7 +132,7 @@ class _AiVoiceAgentScreenState extends State<AiVoiceAgentScreen> {
                       onPressed: _loaded ? _goSubscribe : null,
                     )
                   : ZineButton(
-                      label: 'Call Ava',
+                      label: 'Call AvaBrain',
                       icon: PhosphorIcons.phoneCall(PhosphorIconsStyle.fill),
                       trailingIcon: false,
                       onPressed: () => _dial(context),

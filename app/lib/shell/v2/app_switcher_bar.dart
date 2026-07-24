@@ -9,7 +9,7 @@ import '../shell_v2.dart';
 
 /// The persistent, shell-level app switcher (2026-07-12 nav rebrand — supersedes
 /// the old Home-only footer / `HomeAppSwitcherBar`). Renders the three root icons
-/// — **AvaTOK** (avaTalk), **Calls** (avaDial), **Marketplace** (services) — in the
+/// — **AvaTOK** (avaTalk), **Calls** (avaDial), **Services** (services) — in the
 /// user's chosen [order], each LONG-PRESS DRAGGABLE to a new position, plus a FIXED
 /// "Inbox" action inserted right after the AvaDialer slot (never
 /// draggable/targetable — a push, not a root switch), gated on
@@ -94,10 +94,9 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
   }
 
   // icon · selectedIcon · label per root.
-  // 2026-07-12 rebrand: AvaDial → "Calls", AvaTalk → "AvaTOK", Services →
-  // "Marketplace"; Home root retired.
-  // 2026-07-14 rebrand (owner): AvaTalk label "AvaTOK" → "AvaTalk", and the
-  // fixed AI action "Ava" → "AvaBrain". AvaDialer + Marketplace unchanged.
+  // 2026-07-24 product rebrand: the third root is Services, not Marketplace.
+  // AvaBrain is a fixed global action so it is reachable in one tap from every
+  // root; it is deliberately not draggable because it is not a root navigator.
   // These are DISPLAY-ONLY — `RootId.key` ('avatalk'/'avadial'/'services') still
   // drives analytics, persisted order and restoration IDs, so the rename is safe.
   // NOTE: this map is duplicated in shell/v2/app_order_screen.dart and
@@ -105,7 +104,7 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
   static const Map<RootId, (IconData, IconData, String)> _meta = {
     RootId.avaDial: (Icons.phone_outlined, Icons.phone, 'AvaDialer'),
     RootId.avaTalk: (Icons.chat_bubble_outline, Icons.chat_bubble, 'AvaTalk'),
-    RootId.services: (Icons.storefront_outlined, Icons.storefront, 'Marketplace'),
+    RootId.services: (Icons.storefront_outlined, Icons.storefront, 'Services'),
   };
 
   Color get _indicator => widget.indicatorColor ?? AD.primaryBadge;
@@ -149,6 +148,7 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
                 if (widget.order[i] == RootId.avaDial && RemoteConfig.pstnVoicemail)
                   Expanded(child: _inboxSlot()),
               ],
+              Expanded(child: _avaBrainSlot()),
             ],
           ),
         ),
@@ -231,6 +231,19 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
         // the slot is not a root, but the user IS "in" Inbox, so the footer
         // must say so (owner bug 2026-07-16; same fix as [askAvaActive]).
         selected: widget.inboxActive,
+      ),
+    );
+  }
+
+  Widget _avaBrainSlot() {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: widget.onAskAva,
+      child: _labelledIcon(
+        icon: Icons.auto_awesome_outlined,
+        selectedIcon: Icons.auto_awesome,
+        label: 'AvaBrain',
+        selected: widget.askAvaActive,
       ),
     );
   }
