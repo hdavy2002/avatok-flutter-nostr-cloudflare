@@ -134,6 +134,16 @@ export interface PlatformConfig {
   // ringback playback. OFF → generation 503s and callers fall back to today's
   // silent ring + system busy. Client mirror: kRingbackEnabledDefault.
   ringbackEnabled: boolean;
+  // Call-reliability program (Specs, 2026-07-24) — rollout flags for the
+  // call-audio/ICE/relay-migration/receptionist-reconnect work. All ship
+  // dark (default false) and are flipped one at a time per milestone as each
+  // piece is device-verified. Boolean → no numericKeys entry.
+  callAudioControllerV2: boolean;      // new unified audio controller path
+  callPlayoutHealthV2: boolean;        // playout/media health monitoring v2
+  callIceRecoveryV2: boolean;          // ICE restart / recovery v2
+  callRelayMigrationV1: boolean;       // relay migration during a live call
+  receptionistReconnectV1: boolean;    // receptionist reattach-on-reconnect
+  callRingAudibilityV1: boolean;       // REL-10 ring audibility fix
   // BETA PHASE (2026-06-21, owner): open EVERYTHING at premium tier, free for all.
   // When true: isPremiumAI is true for every user (all AI tools unlocked, daily cap
   // bypassed), chargeFeature deducts nothing (no AvaCoin metering), and the wallet
@@ -675,6 +685,12 @@ const DEFAULTS: PlatformConfig = {
   generativeEnabled: false,        // FREE LAUNCH: premium image gen — hidden
   imageDailyCap: 100,              // fair-use backstop per user/day — applies even to "unlimited" packages
   ringbackEnabled: true,           // AI ringback + busy tone (free, our AI key)
+  callAudioControllerV2: false,    // call-reliability program — ships dark
+  callPlayoutHealthV2: false,      // call-reliability program — ships dark
+  callIceRecoveryV2: false,        // call-reliability program — ships dark
+  callRelayMigrationV1: false,     // call-reliability program — ships dark
+  receptionistReconnectV1: false,  // call-reliability program — ships dark
+  callRingAudibilityV1: false,     // call-reliability program — ships dark
   betaFreePremium: true,           // FREE LAUNCH: no paywalls — everyone premium, no metering
   billingEnabled: false,           // FREE LAUNCH: subscriptions/checkout off
   playTopupEnabled: true,          // AvaWallet Google Play top-up (gated also by Play service account)

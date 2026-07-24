@@ -268,6 +268,15 @@ class RemoteConfig {
   /// AI Ringback Tones + Busy Tone — master switch (server panic off). Default
   /// mirrors kRingbackEnabledDefault so a fetch failure keeps the feature on.
   static bool get ringbackEnabled => _b('ringbackEnabled', kRingbackEnabledDefault);
+  /// Call-reliability program (Specs, 2026-07-24) — rollout flags for the
+  /// call-audio/ICE/relay-migration/receptionist-reconnect work. All default
+  /// OFF; flipped one at a time per milestone via KV once device-verified.
+  static bool get callAudioControllerV2 => _b('callAudioControllerV2', false);
+  static bool get callPlayoutHealthV2 => _b('callPlayoutHealthV2', false);
+  static bool get callIceRecoveryV2 => _b('callIceRecoveryV2', false);
+  static bool get callRelayMigrationV1 => _b('callRelayMigrationV1', false);
+  static bool get receptionistReconnectV1 => _b('receptionistReconnectV1', false);
+  static bool get callRingAudibilityV1 => _b('callRingAudibilityV1', false);
   /// In-chat AI image generation (ChatAVA "make an image"). Server kill switch
   /// mirrors the compile default [kGenerativeEnabledDefault]. When false the
   /// client short-circuits every image request to a canned "coming soon" reply
