@@ -1261,8 +1261,12 @@ Future<void> _emitRingAudibilityAndMaybeFallback(
   // repeat POST is safe. Data-plumbing only in this pass: the CallRoom DO does
   // not yet branch on these fields (follow-up), and caller-side "phone is on
   // silent" UI honesty is explicitly NOT built here — see the report.
+  // [CALL-REL-9] Gated behind `callRingAudibilityV1`: with the flag off this
+  // second POST must not fire at all, so the network path is byte-equivalent
+  // to before this feature existed. `call_ring_audibility` above is emitted
+  // either way — only this audibility-echo POST is gated.
   final ringToken = (d['ringReceiptToken'] ?? '').toString();
-  if (ringToken.isNotEmpty) {
+  if (RemoteConfig.callRingAudibilityV1 && ringToken.isNotEmpty) {
     unawaited(PushService.reportRinging(
       callId,
       ringToken,
@@ -1280,8 +1284,13 @@ Future<void> _emitRingAudibilityAndMaybeFallback(
   // volume > 0 — i.e. the user never chose silent/vibrate/DND. Never plays
   // for a user who deliberately silenced their phone; that would be the exact
   // regression this feature must not cause.
+  // [CALL-REL-9] `callkitShown` is now part of the start gate: if
+  // `showCallkitIncoming` above threw (no native ring UI at all), starting the
+  // in-app fallback anyway would leave a looping sound with no incoming-call UI
+  // behind it — worse than the failure it's meant to cover for.
   if (RemoteConfig.callRingAudibilityV1 &&
       !BadgeService.inBackgroundIsolate &&
+      callkitShown &&
       lifecycle == 'resumed' &&
       ok &&
       ringerMode == 'normal' &&
@@ -2370,6 +2379,19 @@ class PushService {
           }
           break;
         case Event.actionCallEnded:
+          // [CALL-REL-9] A call ending — for any reason (remote hangup, our own
+          // programmatic endCall, another leg winning glare, etc.) — must never
+          // leave the in-app fallback ringtone looping into what is now either
+          // a connected call or a dead one. This event was previously a no-op
+          // here, which was the gap: `actionCallAccept`/`Decline`/`Timeout` all
+          // stopped the fallback, but a call that simply ENDED (without going
+          // through one of those three) did not.
+          final endedExtra = event.body['extra'];
+          final endedId = (endedExtra is Map
+                  ? (endedExtra['callId'] ?? '')
+                  : (event.body['id'] ?? event.body['callId'] ?? ''))
+              .toString();
+          unawaited(_stopRingtoneFallback(endedId.isEmpty ? null : endedId));
           break;
         default:
           break;
@@ -2397,6 +2419,10 @@ class PushService {
     unawaited(_dismissBrandedFsi()); // [AVACALL-INUI-2] clear the lock-screen FSI banner
     final callId = (extra['callId'] ?? '').toString();
     final from = (extra['from'] ?? '').toString();
+    // [CALL-REL-9] This branded-screen action ends the ring but never routes
+    // through `_declineRouting` or the CallKit event listener, so it needs its
+    // own stop — otherwise "Send to Ava" left the fallback looping.
+    unawaited(_stopRingtoneFallback(callId));
     _signalStatus(callId, 'decline_agent', from);
     // CALL-GLARE-1: same dedupe key as decline — the two are mutually exclusive
     // outcomes of one ring, and CallKit can double-fire either.
@@ -2417,6 +2443,12 @@ class PushService {
     unawaited(_dismissBrandedFsi()); // [AVACALL-INUI-2] clear the lock-screen FSI banner
     final callId = (extra['callId'] ?? '').toString();
     final from = (extra['from'] ?? '').toString();
+    // [CALL-REL-9] Covers both the native CallKit decline (which also stops it
+    // at the event-listener call site — harmless idempotent double-stop) and
+    // the branded in-app screen's decline/block, which reaches this method
+    // directly via the public `declineIncomingCall` wrapper and never goes
+    // through the CallKit event listener at all.
+    unawaited(_stopRingtoneFallback(callId));
     var status = 'decline';
     try {
       final isAudio = extra['kind'] != 'video';
@@ -2734,6 +2766,13 @@ class PushService {
       final e = (extra as Map);
       final room = (e['callId'] ?? '').toString();
       if (room.isEmpty) return;
+      // [CALL-REL-9] Single choke point every accept path funnels through
+      // (native CallKit `actionCallAccept`, the branded in-app screen via
+      // `acceptRingingCall`, and CALLFIX-14 glare auto-accept) — stop the
+      // in-app fallback ringtone here so it can never survive into a
+      // connected call. Idempotent/no-op if it was already stopped or never
+      // started.
+      unawaited(_stopRingtoneFallback(room));
       // [CALL-DUP-SESSION-2] SYNCHRONOUS reservation BEFORE any await. This is the
       // last duplicate-session construction leak: on a CallKit accept while the app
       // is backgrounded, the first accept pushed a CallScreen route whose initState
