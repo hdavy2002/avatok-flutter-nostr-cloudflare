@@ -250,8 +250,10 @@ class MediaOutbox {
       if (envelopeClientId != null) { sets.add('envelope_client_id = ?'); vars.add(envelopeClientId); }
       if (attempts != null) { sets.add('attempts = ?'); vars.add(attempts); }
       vars.add(clientId);
+      // Bare '?' placeholders throughout (never mixed with numbered '?N') —
+      // SQLite binds them strictly in statement order, matching `vars`.
       await Db.I.customStatement(
-        'UPDATE media_outbox SET ${sets.join(', ')} WHERE client_id = ?${vars.length}',
+        'UPDATE media_outbox SET ${sets.join(', ')} WHERE client_id = ?',
         vars,
       );
     } catch (e) {
