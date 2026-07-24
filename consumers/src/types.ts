@@ -216,6 +216,16 @@ export interface PushMsg {
   event_kind?: number; event_id?: string; ts?: number;
   // kind === "fanout" (large-group delivery; router never loops >25 sync DO calls):
   recipients?: string[]; payload?: Record<string, unknown>;
+  // [MSG-FANOUT-DURABLE-1] (Specs/AUDIT-MESSENGER-AI-MEDIA-UI-2026-07-24.md §J2/J6)
+  // Durable job identity for a "fanout" message. `fanout_id` is stable across
+  // retries (hash of conv + client message id + sender, minted once by the
+  // producer in worker/src/routes/messaging.ts). `attempt` starts at 1 and is
+  // incremented by the consumer each time it re-enqueues a payload containing
+  // ONLY the recipients that still failed after a retryable error. Both are
+  // optional so an older/unrelated "fanout" producer message (pre-migration)
+  // still processes — handleFanout falls back to a fresh id + attempt=1.
+  fanout_id?: string;
+  attempt?: number;
 }
 // attachments: Brevo transactional attachment shape — content is base64 (Phase 5 ICS).
 export interface EmailMsg { to: string; subject: string; html: string; from?: string; replyTo?: { email: string; name?: string }; attachments?: { name: string; content: string }[]; }

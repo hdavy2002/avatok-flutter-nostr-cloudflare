@@ -286,19 +286,88 @@ async function capturePush(env: Env, event: string, uid: string, props: Record<s
 // Scale proposal Phase 1: never loop sync DO calls in the request path). Appends
 // the message to each recipient's InboxDO (cross-script binding) and wakes
 // offline devices via the proven high-priority notify path. Recipients are
-// processed in parallel chunks; a single failed append never poisons the batch.
+// processed in parallel chunks.
+//
+// [MSG-FANOUT-DURABLE-1] (Specs/AUDIT-MESSENGER-AI-MEDIA-UI-2026-07-24.md §J2/J6)
+// A single failed append used to be swallowed by a bare try/catch and the queue
+// message was ACKed regardless — a group could show "sent" while a member never
+// received it, with no retry and no record. Now: per-recipient outcomes are
+// classified retryable (network/DO transient — 5xx/429/thrown) vs permanent
+// (any other non-2xx — treated as dead_letter immediately, so one bad uid can't
+// loop forever). Retryable recipients are re-enqueued as a NEW "fanout" message
+// containing ONLY themselves, same fanout_id, attempt+1 — never the whole batch,
+// so an already-delivered recipient is never re-pushed (InboxDO append is
+// dedup'd by client id anyway, so even a full-batch queue-native retry — e.g.
+// the re-enqueue call itself failing, see below — stays idempotent).
 const FANOUT_PARALLEL = 10;
+const FANOUT_MAX_ATTEMPTS = 5;
+
+type FanoutOutcome = { uid: string; status: "delivered" | "retryable" | "dead_letter"; error?: string };
+
+// Stable job identity: prefer the producer-minted fanout_id; if a message
+// arrives without one (pre-migration producer, or a non-"fanout" caller),
+// derive the SAME hash the producer computes (conv + client id + sender) so an
+// unlabeled message still gets a consistent, non-random id.
+async function resolveFanoutId(msg: PushMsg): Promise<string> {
+  if (msg.fanout_id) return msg.fanout_id;
+  const conv = String((msg.payload as any)?.conv ?? "");
+  const clientId = String((msg.payload as any)?.client_id ?? "");
+  const sender = String(msg.from ?? "");
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${conv}|${clientId}|${sender}`));
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 32);
+}
+
+// Non-reversible conversation-id hash for telemetry (never a raw conv id).
+async function hashShort(s: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return Array.from(new Uint8Array(digest)).slice(0, 8).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+// ONE batched D1 write per chunk (not one per recipient) so accounting stays
+// cheap at scale. Best-effort: a D1 hiccup here must never block real delivery
+// or cause the queue message to retry (that's decided separately, below).
+async function writeFanoutDeliveries(env: Env, fanoutId: string, attempt: number, outcomes: FanoutOutcome[]): Promise<void> {
+  if (!outcomes.length) return;
+  try {
+    const now = Date.now();
+    await env.DB_META.batch(outcomes.map((o) =>
+      env.DB_META.prepare(
+        `INSERT INTO fanout_deliveries (fanout_id, recipient_uid, status, attempt, error, updated_at)
+         VALUES (?1,?2,?3,?4,?5,?6)
+         ON CONFLICT(fanout_id, recipient_uid) DO UPDATE SET
+           status=excluded.status, attempt=excluded.attempt, error=excluded.error, updated_at=excluded.updated_at`,
+      ).bind(fanoutId, o.uid, o.status, attempt, o.error ?? null, now),
+    ));
+  } catch (e) {
+    console.warn("fanout_deliveries write failed", String(e));
+  }
+}
+
 async function handleFanout(msg: PushMsg, env: Env): Promise<void> {
   if (!env.INBOX || !msg.payload || !Array.isArray(msg.recipients)) return;
+  const attempt = msg.attempt && msg.attempt > 0 ? msg.attempt : 1;
+  const isFinalAttempt = attempt >= FANOUT_MAX_ATTEMPTS;
+  const fid = await resolveFanoutId(msg);
+  const retryableRecipients: string[] = [];
+  let deliveredCount = 0, deadLetterCount = 0;
+
   for (let i = 0; i < msg.recipients.length; i += FANOUT_PARALLEL) {
     const chunk = msg.recipients.slice(i, i + FANOUT_PARALLEL);
-    await Promise.all(chunk.map(async (uid) => {
+    const outcomes: FanoutOutcome[] = await Promise.all(chunk.map(async (uid): Promise<FanoutOutcome> => {
       try {
         const stub = env.INBOX!.get(env.INBOX!.idFromName(uid));
         const res = await stub.fetch("https://inbox/append", {
           method: "POST", headers: { "content-type": "application/json" },
           body: JSON.stringify({ ...msg.payload, owner: uid }),
         });
+        if (!res.ok) {
+          // 5xx / 429 = transient DO overload or throttling; anything else is
+          // treated as a permanent rejection of THIS recipient (never loop a
+          // structurally bad request forever).
+          const retryable = (res.status >= 500 || res.status === 429) && !isFinalAttempt;
+          console.warn("fanout append non-ok", uid, res.status, retryable ? "retryable" : "dead_letter");
+          return { uid, status: retryable ? "retryable" : "dead_letter", error: `http_${res.status}` };
+        }
         const r = (await res.json()) as { live?: boolean };
         // Forward the sender name + preview the router attached so offline (group)
         // recipients get the WhatsApp-style banner, not a bare "AvaTOK" (regression
@@ -317,10 +386,59 @@ async function handleFanout(msg: PushMsg, env: Env): Promise<void> {
           ...(msg.fromPhone ? { fromPhone: msg.fromPhone } : {}),
           ...(msg.preview ? { preview: msg.preview } : {}),
         }, env);
+        return { uid, status: "delivered" };
       } catch (e) {
+        // Network / DO-dispatch exception — transient by construction.
         console.warn("fanout append failed", uid, String(e));
+        return { uid, status: isFinalAttempt ? "dead_letter" : "retryable", error: String(e).slice(0, 180) };
       }
     }));
+
+    for (const o of outcomes) {
+      if (o.status === "delivered") deliveredCount++;
+      else if (o.status === "retryable") retryableRecipients.push(o.uid);
+      else deadLetterCount++;
+    }
+    await writeFanoutDeliveries(env, fid, attempt, outcomes);
+  }
+
+  const convHash = await hashShort(String((msg.payload as any)?.conv ?? ""));
+  if (retryableRecipients.length > 0) {
+    // Re-enqueue ONLY the still-failed recipients under the SAME fanout_id, one
+    // attempt higher. Never re-deliver to a recipient that already succeeded or
+    // was already dead-lettered on this attempt.
+    if (!env.Q_PUSH) {
+      // No push queue bound to re-enqueue onto — throw so the QUEUE'S OWN retry
+      // re-runs this whole message rather than silently losing the recipients
+      // (InboxDO append is client-id deduped, so re-running the full batch is
+      // safe, just coarser than a targeted per-recipient retry).
+      throw new Error(`fanout retry: Q_PUSH unbound, ${retryableRecipients.length} recipients unretried`);
+    }
+    try {
+      await env.Q_PUSH.send({
+        kind: "fanout", payload: msg.payload, fromName: msg.fromName, preview: msg.preview,
+        from: msg.from, fromPhone: msg.fromPhone, recipients: retryableRecipients,
+        fanout_id: fid, attempt: attempt + 1,
+      });
+      await capturePush(env, "group_fanout_recipient_retry", "server", {
+        fanout_id: fid, conv_hash: convHash, retry_count: retryableRecipients.length, attempt,
+      });
+    } catch (e) {
+      // The re-enqueue itself failed — throw so the Queue retries THIS message
+      // (same recipients, same attempt) instead of silently dropping them.
+      console.error("fanout re-enqueue failed", String(e));
+      throw e;
+    }
+  }
+
+  await capturePush(env, "group_fanout_job_completed", "server", {
+    fanout_id: fid, conv_hash: convHash, attempt, delivered: deliveredCount,
+    dead_letter: deadLetterCount, retried: retryableRecipients.length, total: msg.recipients.length,
+  });
+  if (deadLetterCount > 0) {
+    await capturePush(env, "group_fanout_recipient_dead_letter", "server", {
+      fanout_id: fid, conv_hash: convHash, dead_letter_count: deadLetterCount, attempt,
+    });
   }
 }
 
