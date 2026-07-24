@@ -249,6 +249,15 @@ export class ReceptionRoom {
   private reconnectTokenExpiresAt = 0;             // epoch ms; ≤90s from session start, capped by hard cap
   private reconnectGraceTimer: ReturnType<typeof setTimeout> | null = null;
   private disconnectedAtMs: number | null = null;
+  // [CALL-REL-7] Defensive belt-and-suspenders: set the instant an explicit
+  // terminal control frame arrives (currently just {"t":"yield"}) so a close
+  // that races ahead of (or arrives with a bad/absent code alongside) the
+  // finalize() it triggers is still treated as a clean, client-intended end —
+  // never the unclean-drop reconnect-grace path. finalize()'s own
+  // `if (this.finalized) return;` guard already covers the common case where
+  // finalize runs synchronously before the close event lands; this flag covers
+  // any ordering where it doesn't.
+  private clientSentTerminalFrame = false;
   // Bounded server→client PCM ring buffer (Ava's audio only — caller mic frames
   // already delivered to Gemini are NEVER replayed). ~1–2s of 24kHz mono PCM16.
   private audioRing: Array<{ seq: number; pcm: Uint8Array }> = [];
@@ -537,6 +546,7 @@ export class ReceptionRoom {
       try {
         const j = JSON.parse(d);
         if (j && j.t === "yield") {
+          this.clientSentTerminalFrame = true; // [CALL-REL-7] belt-and-suspenders — see onCallerSocketClosed
           void this.finalize("owner_answered");
         }
       } catch { /* ignore malformed control */ }
@@ -939,9 +949,14 @@ export class ReceptionRoom {
     if (this.finalized) return;
     this.client = null;
     this.disconnectedAtMs = Date.now();
-    const clean = code === 1000;
+    // [CALL-REL-7] A prior explicit terminal control frame (currently just
+    // {"t":"yield"}) means the client already told us this end is intentional —
+    // treat the close as clean regardless of what code (or lack of one) the
+    // transport reports, rather than opening a pointless reconnect-grace window
+    // for a call that isn't coming back.
+    const clean = code === 1000 || this.clientSentTerminalFrame;
     this.ev("ava_recept_socket_lost", { code, clean, at_ms: Date.now() - this.startedAt });
-    if (clean) { void this.finalize("caller_hangup"); return; }
+    if (clean) { void this.finalize(this.clientSentTerminalFrame ? "owner_answered" : "caller_hangup"); return; }
     const remain = this.reconnectToken ? Math.max(0, this.reconnectTokenExpiresAt - Date.now()) : 0;
     const graceMs = this.reconnectToken ? Math.min(ReceptionRoom.RECONNECT_GRACE_MS, remain) : 0;
     if (graceMs <= 0) { void this.finalize("caller_reconnect_timeout"); return; }

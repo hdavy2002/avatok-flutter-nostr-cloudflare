@@ -570,9 +570,12 @@ class ReceptionistCall {
       final res = await _attemptReattach();
       if (_ended) {
         // hangup()/yieldToOwner() finished the call while this attempt was in
-        // flight — don't resurrect a socket for an already-ended session.
+        // flight — don't resurrect a socket for an already-ended session. The
+        // reattach succeeded (socket is live and DO-confirmed "resumed"), so
+        // this is a deliberate discard, not a drop — close it clean (1000) so
+        // the DO doesn't open another reattach grace window on it.
         if (res == _ReattachResult.success) {
-          try { await _ws?.sink.close(); } catch (_) {}
+          try { await _ws?.sink.close(1000); } catch (_) {}
         }
         return;
       }
@@ -713,7 +716,21 @@ class ReceptionistCall {
       try { await _player.stop(); } catch (_) {}
       await _playSub?.cancel();
     }
-    try { await _ws?.sink.close(); } catch (_) {}
+    // [CALL-REL-7] Explicit clean-close code. A no-arg close() surfaces to the
+    // server as 1005 (no status received) — the DO's reattach grace window
+    // (commit d8a9790) treats any non-1000 caller-socket close as an unclean
+    // drop and holds Gemini alive up to 8s before finalizing, which turned
+    // EVERY normal hangup into a delayed voicemail + a misleading terminal
+    // reason of caller_reconnect_timeout instead of caller_hangup. Every path
+    // that reaches _finish() (hangup/caller_hangup, yieldToOwner/owner_answered,
+    // ended_remote, no_mic, hard_cap, recept_reconnect_timeout, ...) is either a
+    // deliberate client-initiated close (socket still open — code now lands) or
+    // fires after the transport already died in onDone/onError via
+    // _handleTransportDown (socket already gone — this call is a no-op, so the
+    // 1005 the server saw for that drop is untouched). _handleTransportDown
+    // itself never calls close() directly, so unexpected drops keep whatever
+    // code the transport actually reported.
+    try { await _ws?.sink.close(1000); } catch (_) {}
     await _wsSub?.cancel();
     // The DO finalizes (posts message + recording) on WS close. Only hit the
     // safety finalize route if the socket never actually connected.
