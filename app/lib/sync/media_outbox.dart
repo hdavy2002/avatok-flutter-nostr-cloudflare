@@ -387,6 +387,8 @@ class MediaOutbox {
     _reconciling = true;
     try {
       await _ensureSchema();
+      // [isPending] below is only accurate once Outbox's own queue is loaded.
+      await Outbox.I.ensureLoaded();
       final rows = await _allRows();
       final now = DateTime.now().millisecondsSinceEpoch;
       for (final row in rows) {
