@@ -139,6 +139,77 @@ class ChatThreadScreen extends StatefulWidget {
   State<ChatThreadScreen> createState() => _ChatThreadScreenState();
 }
 
+/// [CHAT-UI-GESTURES-1] Swipe-to-reply. A horizontal drag on a bubble toward
+/// its "inner" edge (left for my own right-aligned bubbles, right for a
+/// peer's left-aligned ones) past a ~40px threshold arms the same Reply
+/// action the long-press menu already invokes (`_replyTo = m`); releasing
+/// past the threshold fires it, with a light haptic the moment it arms. The
+/// bubble itself translates with the drag and a small reply-arrow fades in on
+/// the revealed side. `onReply == null` disables the gesture entirely (system
+/// pills, soft-deleted rows, the transient "Ava is thinking…" chip) and the
+/// wrapper becomes a transparent passthrough — the existing long-press menu
+/// (owned by the child) is completely untouched either way.
+class _SwipeToReply extends StatefulWidget {
+  const _SwipeToReply({required this.mine, required this.onReply, required this.child});
+  final bool mine;
+  final VoidCallback? onReply;
+  final Widget child;
+
+  @override
+  State<_SwipeToReply> createState() => _SwipeToReplyState();
+}
+
+class _SwipeToReplyState extends State<_SwipeToReply> {
+  static const double _threshold = 40;
+  static const double _maxDrag = 72;
+  double _dx = 0;
+  bool _armed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final onReply = widget.onReply;
+    if (onReply == null) return widget.child;
+    final progress = (_dx.abs() / _threshold).clamp(0.0, 1.0);
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onHorizontalDragUpdate: (d) {
+        final raw = _dx + d.delta.dx;
+        final clamped = widget.mine ? raw.clamp(-_maxDrag, 0.0) : raw.clamp(0.0, _maxDrag);
+        setState(() => _dx = clamped);
+        final crossed = clamped.abs() >= _threshold;
+        if (crossed && !_armed) {
+          _armed = true;
+          HapticFeedback.lightImpact();
+        } else if (!crossed && _armed) {
+          _armed = false;
+        }
+      },
+      onHorizontalDragEnd: (_) {
+        final fire = _armed;
+        setState(() { _dx = 0; _armed = false; });
+        if (fire) onReply();
+      },
+      onHorizontalDragCancel: () => setState(() { _dx = 0; _armed = false; }),
+      child: Stack(clipBehavior: Clip.none, children: [
+        if (_dx != 0)
+          Positioned(
+            top: 0,
+            bottom: 0,
+            right: widget.mine ? 6 : null,
+            left: widget.mine ? null : 6,
+            child: Center(
+              child: Opacity(
+                opacity: progress,
+                child: Icon(PhosphorIcons.arrowBendUpLeft(PhosphorIconsStyle.bold), size: 18, color: AD.iconSearch),
+              ),
+            ),
+          ),
+        Transform.translate(offset: Offset(_dx, 0), child: widget.child),
+      ]),
+    );
+  }
+}
+
 class _Msg {
   final int id;
   final bool me;
@@ -8003,16 +8074,26 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                     // the first message of each new calendar day.
                     final needsSep = m.ts != 0 &&
                         (vi == 0 || !_sameDay(visible[vi - 1].ts, m.ts));
+                    // [CHAT-UI-GESTURES-1] Swipe-to-reply on any normal bubble
+                    // (mirrors the long-press menu's 'Reply' action). System
+                    // pills / soft-deleted / the transient "Ava is thinking…"
+                    // chip don't get it — they have no long-press menu either.
+                    final canSwipeReply = !m.system && !m.hidden && m.special != 'ava_status';
+                    final bubble = _SwipeToReply(
+                      mine: m.me,
+                      onReply: canSwipeReply ? () => setState(() => _replyTo = m) : null,
+                      child: _bubble(m),
+                    );
                     // [CHAT-UI-LIST-1b] Stable key per item (message id) so a
                     // single new/changed message doesn't force Flutter to rebind
                     // every row below it.
                     if (!needsSep) {
-                      return KeyedSubtree(key: ValueKey('msg_${m.id}'), child: _bubble(m));
+                      return KeyedSubtree(key: ValueKey('msg_${m.id}'), child: bubble);
                     }
                     return Column(
                       key: ValueKey('msg_${m.id}'),
                       crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [_daySeparator(_dayLabel(m.ts)), _bubble(m)],
+                      children: [_daySeparator(_dayLabel(m.ts)), bubble],
                     );
                   },
                 )));
