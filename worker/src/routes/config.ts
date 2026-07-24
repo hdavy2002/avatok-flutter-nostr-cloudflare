@@ -384,6 +384,15 @@ export interface PlatformConfig {
   avaSessionsPerCallerPerDay: number;   // Talk-to-Ava cap per caller per owner per UTC day (owner 2026-07-09: 2)
   strangerVoiceNotesPerDay: number;     // stranger voice notes per caller per owner per day
   strangerTextNotesPerDay: number;      // stranger text notes per caller per owner per day
+  // [MSG-GROUP-CAP-1] (Specs/AUDIT-MESSENGER-AI-MEDIA-UI-2026-07-24.md §J4) — the
+  // product caps CONFERENCE size (≤25 via LiveKit/CF SFU), but until this flag
+  // ordinary messaging groups had no comparable ceiling: create/adopt/add-member/
+  // invite-accept in worker/src/routes/messaging.ts all expanded a client-supplied
+  // member list into unbounded D1 writes + one queued fan-out job per 80 members
+  // per message. Enforced server-side, before any D1 write, in convCreate,
+  // convAdopt, convAddMembers, and the accept branch of convInviteRespond. Numeric
+  // KV key — also in numericKeys below.
+  maxGroupMembers: number;
   // Dialpad business calls + Ava AI Voice Agent (Specs/PLAN-2026-07-11-dialpad-
   // business-calls-ava-voice-agent.md §7/§15.6). One kill switch per phase — ALL
   // default OFF, staging first, prod flags flipped one at a time on the owner's
@@ -798,6 +807,7 @@ const DEFAULTS: PlatformConfig = {
   avaSessionsPerCallerPerDay: 2,     // owner 2026-07-09: 2 Ava sessions/caller/owner/day, then greyed out
   strangerVoiceNotesPerDay: 5,       // stranger voice-note cap (known contacts unlimited)
   strangerTextNotesPerDay: 10,       // stranger text-note cap (known contacts unlimited)
+  maxGroupMembers: 256,               // [MSG-GROUP-CAP-1] ordinary-group member ceiling (conference cap is separate, unaffected)
   // Dialpad business calls + Ava AI Voice Agent — ALL DARK until each phase is
   // device-verified on staging; flip one at a time in KV (never code).
   businessCallUx: false,
@@ -965,7 +975,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     "receptWrapCueMs", "receptCloseMs", "receptHardCapMs",
     "usdInrRate", "receptMarginAlertPaise", // [RECEPT-BILLING-3] cost-ledger FX + margin alert threshold
     "guardianInlineBudgetMs", "callProtocolVersion", "avaSessionsPerCallerPerDay", "strangerVoiceNotesPerDay",
-    "strangerTextNotesPerDay",
+    "strangerTextNotesPerDay", "maxGroupMembers",
     // Dialpad business calls + Ava AI Voice Agent — §11/§15 numeric constants.
     "minServiceRate", "agentRateAPerMin", "platformFeePerMin", "serviceLineFeePerMin", "agentMaxCallSec",
     "ringTimeoutSec", "agentAutoanswerSec", "voicemailRecordSec", "escrowPromptTimeoutSec", "offlineDetectSec",
