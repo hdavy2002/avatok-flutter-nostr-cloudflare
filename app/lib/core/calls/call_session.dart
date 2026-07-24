@@ -646,6 +646,279 @@ class CallSession {
     }
   }
 
+  // ── [CALL-REL-4] playout-aware media health, OBSERVE-ONLY ──────────────────
+  // A SECOND, independent 5s sampler gated behind RemoteConfig.callPlayoutHealthV2.
+  // It does NOT replace, read from, or influence [_pollMediaWatchdog] above —
+  // that watchdog (and its recovery/end decisions) stays fully active and
+  // unchanged in this commit. This sampler only classifies + reports (plan
+  // §7.1/§7.2); nothing here can end a call or trigger a restart. CALL-REL-5
+  // later reads [_lastPlayoutHealthClass] to decide when to act, behind its OWN
+  // separate flag (callIceRecoveryV2).
+  Timer? _playoutHealthTimer;
+  MediaHealthClass _lastPlayoutHealthClass = MediaHealthClass.unknown;
+  int? _phBytes, _phPackets, _phLost;
+  int? _phJbufEmitted;
+  double? _phJbufDelaySec;
+  double? _phConcealed, _phSilentConcealed, _phTotalSamples;
+  double? _phTotalAudioEnergy;
+  int _noRtpStreak = 0;
+  int _noPlayoutStreak = 0;
+
+  void _startPlayoutHealthSampler() {
+    if (!RemoteConfig.callPlayoutHealthV2) return;
+    _playoutHealthTimer?.cancel();
+    _phBytes = _phPackets = _phLost = null;
+    _phJbufEmitted = null;
+    _phJbufDelaySec = null;
+    _phConcealed = _phSilentConcealed = _phTotalSamples = null;
+    _phTotalAudioEnergy = null;
+    _noRtpStreak = 0;
+    _noPlayoutStreak = 0;
+    _lastPlayoutHealthClass = MediaHealthClass.unknown;
+    _playoutHealthTimer =
+        Timer.periodic(const Duration(seconds: 5), (_) => _pollPlayoutHealth());
+  }
+
+  void _stopPlayoutHealthSampler() {
+    _playoutHealthTimer?.cancel();
+    _playoutHealthTimer = null;
+  }
+
+  Future<void> _pollPlayoutHealth() async {
+    if (!RemoteConfig.callPlayoutHealthV2) return;
+    try {
+      if (_ended || !_connected) return;
+      if (isReceptDuo || _onCellularHold) return;
+      final pc = _pc;
+      if (pc == null) return;
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+
+      int? bytesReceived, packetsReceived, packetsLost;
+      double? jitterSec, audioLevel, totalAudioEnergy;
+      int? jbufEmitted;
+      double? jbufDelaySec;
+      double? concealedSamples, silentConcealedSamples, totalSamplesReceived;
+      int? lastPacketReceivedTsMs;
+      String? candidatePairId, localCandType, remoteCandType, relayProtocol;
+      bool foundInboundAudio = false;
+
+      final stats = await pc.getStats();
+      final pairs = <String, Map<dynamic, dynamic>>{};
+      final locals = <String, Map<dynamic, dynamic>>{};
+      final remotes = <String, Map<dynamic, dynamic>>{};
+      String? selectedPairId;
+      for (final s in stats) {
+        final v = s.values;
+        if (s.type == 'inbound-rtp') {
+          final kind = (v['kind'] ?? v['mediaType'])?.toString();
+          if (kind != 'audio') continue;
+          foundInboundAudio = true;
+          final b = v['bytesReceived'];
+          if (b is num) bytesReceived = b.toInt();
+          final pr = v['packetsReceived'];
+          if (pr is num) packetsReceived = pr.toInt();
+          final pl = v['packetsLost'];
+          if (pl is num) packetsLost = pl.toInt();
+          final j = v['jitter'];
+          if (j is num) jitterSec = j.toDouble();
+          final al = v['audioLevel'];
+          if (al is num) audioLevel = al.toDouble();
+          final tae = v['totalAudioEnergy'];
+          if (tae is num) totalAudioEnergy = tae.toDouble();
+          final jbe = v['jitterBufferEmittedCount'];
+          if (jbe is num) jbufEmitted = jbe.toInt();
+          final jbd = v['jitterBufferDelay'];
+          if (jbd is num) jbufDelaySec = jbd.toDouble();
+          final cs = v['concealedSamples'];
+          if (cs is num) concealedSamples = cs.toDouble();
+          final scs = v['silentConcealedSamples'];
+          if (scs is num) silentConcealedSamples = scs.toDouble();
+          final tsr = v['totalSamplesReceived'];
+          if (tsr is num) totalSamplesReceived = tsr.toDouble();
+          final lprt = v['lastPacketReceivedTimestamp'];
+          if (lprt is num) lastPacketReceivedTsMs = lprt.toInt();
+        } else if (s.type == 'transport') {
+          final id = v['selectedCandidatePairId'];
+          if (id is String && id.isNotEmpty) selectedPairId = id;
+        } else if (s.type == 'candidate-pair') {
+          pairs[s.id] = v;
+          if (v['selected'] == true) selectedPairId ??= s.id;
+        } else if (s.type == 'local-candidate') {
+          locals[s.id] = v;
+        } else if (s.type == 'remote-candidate') {
+          remotes[s.id] = v;
+        }
+      }
+      if (selectedPairId != null) {
+        candidatePairId = selectedPairId;
+        final pair = pairs[selectedPairId];
+        final localId = pair?['localCandidateId'];
+        final cand = localId is String ? locals[localId] : null;
+        final t = cand?['candidateType'];
+        if (t is String) localCandType = t;
+        final rp = cand?['relayProtocol'] ?? cand?['protocol'];
+        if (rp is String) relayProtocol = rp.toString().toLowerCase();
+        final remoteId = pair?['remoteCandidateId'];
+        final rcand = remoteId is String ? remotes[remoteId] : null;
+        final rt = rcand?['candidateType'];
+        if (rt is String) remoteCandType = rt;
+      }
+
+      // Native active route + confirmation — 'unknown' when the controller is
+      // off. Best-effort mapping of CallSession's binary speaker/earpiece
+      // intent onto the richer native route; a mismatch (e.g. user is on
+      // Bluetooth, which this session doesn't separately track) reads as
+      // "not confirmed" rather than a false "healthy".
+      String activeAudioRoute = 'unknown';
+      bool routeConfirmed = false;
+      bool? nativeFocusHeld;
+      if (RemoteConfig.callAudioControllerV2) {
+        try {
+          final r = await NativeVoiceAudio.instance.getActiveRoute();
+          activeAudioRoute = r.toString().split('.').last;
+          final requested = _speaker ? 'speaker' : 'earpiece';
+          routeConfirmed = activeAudioRoute == requested;
+        } catch (_) {}
+        nativeFocusHeld = !_onFocusHold;
+      }
+
+      if (!foundInboundAudio) {
+        // No inbound-audio stat exists yet at all — unknown, never inferred.
+        _telemetry.mediaHealth(MediaHealthSnapshot(
+          cls: MediaHealthClass.unknown,
+          atMs: nowMs,
+          activeAudioRoute: activeAudioRoute,
+          routeConfirmed: routeConfirmed,
+          nativeFocusHeld: nativeFocusHeld,
+        ));
+        return;
+      }
+
+      int? bytesDelta, packetsDelta, lostDelta, jbufEmittedDelta;
+      double? concealedDelta, silentConcealedDelta, totalSamplesDelta, energyDelta;
+      double? jbufDelayMsAvg, lossPctInterval, concealmentPctInterval;
+      if (_phBytes != null && bytesReceived != null) bytesDelta = bytesReceived - _phBytes!;
+      if (_phPackets != null && packetsReceived != null) {
+        packetsDelta = packetsReceived - _phPackets!;
+      }
+      if (_phLost != null && packetsLost != null) lostDelta = packetsLost - _phLost!;
+      if (_phJbufEmitted != null && jbufEmitted != null) {
+        jbufEmittedDelta = jbufEmitted - _phJbufEmitted!;
+      }
+      if (_phConcealed != null && concealedSamples != null) {
+        concealedDelta = concealedSamples - _phConcealed!;
+      }
+      if (_phSilentConcealed != null && silentConcealedSamples != null) {
+        silentConcealedDelta = silentConcealedSamples - _phSilentConcealed!;
+      }
+      if (_phTotalSamples != null && totalSamplesReceived != null) {
+        totalSamplesDelta = totalSamplesReceived - _phTotalSamples!;
+      }
+      if (_phTotalAudioEnergy != null && totalAudioEnergy != null) {
+        energyDelta = totalAudioEnergy - _phTotalAudioEnergy!;
+      }
+      if (_phJbufDelaySec != null &&
+          jbufDelaySec != null &&
+          jbufEmittedDelta != null &&
+          jbufEmittedDelta > 0) {
+        jbufDelayMsAvg = 1000.0 * (jbufDelaySec - _phJbufDelaySec!) / jbufEmittedDelta;
+      }
+      if (lostDelta != null && packetsDelta != null && (lostDelta + packetsDelta) > 0) {
+        lossPctInterval = 100.0 * lostDelta / (lostDelta + packetsDelta);
+      }
+      if (concealedDelta != null && totalSamplesDelta != null && totalSamplesDelta > 0) {
+        concealmentPctInterval = 100.0 * concealedDelta / totalSamplesDelta;
+      }
+
+      _phBytes = bytesReceived;
+      _phPackets = packetsReceived;
+      _phLost = packetsLost;
+      _phJbufEmitted = jbufEmitted;
+      _phJbufDelaySec = jbufDelaySec;
+      _phConcealed = concealedSamples;
+      _phSilentConcealed = silentConcealedSamples;
+      _phTotalSamples = totalSamplesReceived;
+      _phTotalAudioEnergy = totalAudioEnergy;
+
+      // ── Classification (plan §7.2, thresholds hardcoded) ────────────────────
+      const lossWarn = 3.0, concealWarn = 2.0, jitterWarnMs = 80.0;
+      final jitterMs = jitterSec != null ? jitterSec * 1000.0 : null;
+      final noRtp = bytesDelta != null && bytesDelta <= 0;
+      // "No playout": RTP advances but the jitter-buffer emitted-count AND
+      // audio energy both fail to advance, or route is broken (checked below).
+      final playoutStalled = !noRtp &&
+          jbufEmittedDelta != null &&
+          jbufEmittedDelta <= 0 &&
+          (energyDelta == null || energyDelta <= 0);
+      final routeBroken = RemoteConfig.callAudioControllerV2 &&
+          activeAudioRoute != 'unknown' &&
+          (!routeConfirmed || nativeFocusHeld == false);
+
+      MediaHealthClass cls;
+      if (noRtp) {
+        _noRtpStreak++;
+        _noPlayoutStreak = 0;
+        cls = MediaHealthClass.noRtp;
+      } else if (routeBroken) {
+        _noRtpStreak = 0;
+        _noPlayoutStreak = 0;
+        cls = MediaHealthClass.routeBroken;
+      } else if (playoutStalled) {
+        _noRtpStreak = 0;
+        _noPlayoutStreak++;
+        cls = MediaHealthClass.noPlayout;
+      } else {
+        _noRtpStreak = 0;
+        _noPlayoutStreak = 0;
+        final degraded = (lossPctInterval != null && lossPctInterval >= lossWarn) ||
+            (concealmentPctInterval != null && concealmentPctInterval >= concealWarn) ||
+            (jitterMs != null && jitterMs >= jitterWarnMs);
+        if (degraded) {
+          cls = MediaHealthClass.networkDegraded;
+        } else if (audioLevel != null && audioLevel < 0.01) {
+          cls = MediaHealthClass.remoteQuiet;
+        } else {
+          cls = MediaHealthClass.healthy;
+        }
+      }
+      _lastPlayoutHealthClass = cls;
+
+      _telemetry.mediaHealth(MediaHealthSnapshot(
+        cls: cls,
+        atMs: nowMs,
+        bytesDelta: bytesDelta,
+        packetsDelta: packetsDelta,
+        lostDelta: lostDelta,
+        jitterMs: jitterMs,
+        audioLevel: audioLevel,
+        totalAudioEnergyDelta: energyDelta,
+        jitterBufferEmittedDelta: jbufEmittedDelta,
+        jitterBufferDelayMsAvg: jbufDelayMsAvg,
+        concealedSamplesDelta: concealedDelta?.round(),
+        silentConcealedSamplesDelta: silentConcealedDelta?.round(),
+        totalSamplesReceivedDelta: totalSamplesDelta?.round(),
+        concealmentPctInterval: concealmentPctInterval,
+        lossPctInterval: lossPctInterval,
+        lastPacketReceivedTimestampMs: lastPacketReceivedTsMs,
+        selectedCandidatePairId: candidatePairId,
+        localCandidateType: localCandType,
+        remoteCandidateType: remoteCandType,
+        relayProtocol: relayProtocol,
+        activeAudioRoute: activeAudioRoute,
+        routeConfirmed: routeConfirmed,
+        nativeFocusHeld: nativeFocusHeld,
+      ));
+    } catch (e, st) {
+      // OBSERVE-ONLY: never throw, never touch call state. Reported the same
+      // deduplicated way the existing watchdog reports its own failures.
+      _telemetry.runtimeError(
+        stage: 'playout_health_poll_failed',
+        error: e,
+        stack: st,
+      );
+    }
+  }
+
   /// [CALL-NETHUD-1] Turn cumulative byte/packet counters into an instantaneous
   /// up/down kbps + loss %, bucket a 0–4 quality, and publish to [netStats].
   /// Runs off the media-watchdog poll — never adds its own timer.
@@ -1480,6 +1753,7 @@ class CallSession {
     // stop polling stats so the watchdog can't race it with its own ICE
     // restart / end-call decision. Re-armed in _completeReconnect.
     _stopMediaWatchdog();
+    _stopPlayoutHealthSampler(); // [CALL-REL-4]
     if (!_reconnecting) {
       _reconnecting = true;
       _reconnectAttempt = 0;
@@ -1552,6 +1826,7 @@ class CallSession {
       // [CALL-MEDIA-WATCH-1] re-arm now that the reconnect ladder has handed
       // control back; fresh baseline avoids judging staleness across the gap.
       _startMediaWatchdog();
+      _startPlayoutHealthSampler(); // [CALL-REL-4]
     }
   }
 
@@ -1647,6 +1922,8 @@ class CallSession {
         _setPhase('connected');
         // [CALL-MEDIA-WATCH-1] arm the media-flow watchdog now that we're live.
         _startMediaWatchdog();
+        // [CALL-REL-4] independent, flag-gated, observe-only playout sampler.
+        _startPlayoutHealthSampler();
       }
     };
     pc.onConnectionState = (s) {
@@ -3218,6 +3495,7 @@ class CallSession {
     _stopPingTimer();
     // [CALL-MEDIA-WATCH-1]
     _stopMediaWatchdog();
+    _stopPlayoutHealthSampler(); // [CALL-REL-4]
     await _safeAwait(() => FlutterCallkitIncoming.endCall(config.room));
     try { _stream?.getTracks().forEach((t) => t.stop()); } catch (_) {}
     await _safeAwait(() => _pc?.close(), ms: 3000);

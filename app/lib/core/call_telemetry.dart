@@ -8,6 +8,127 @@ import 'analytics.dart';
 import 'ava_log.dart';
 import 'ice_cache.dart' show CallDiag;
 
+/// [CALL-REL-4] Playout-aware media-health classification (plan §7.2). Kept in
+/// this file (not call_session.dart) so the Milestone C recovery coordinator
+/// (CALL-REL-5) and relay migration (CALL-REL-6) can both consume it without a
+/// second definition. OBSERVE-ONLY in the CALL-REL-4 commit — classification is
+/// reported via [CallTelemetry.mediaHealth] but nothing acts on it until
+/// CALL-REL-5 (gated separately behind RemoteConfig.callIceRecoveryV2).
+enum MediaHealthClass {
+  /// Not yet sampled, or a required stat was unavailable — never inferred as a
+  /// healthy/degraded value.
+  unknown,
+  healthy,
+  remoteQuiet,
+  networkDegraded,
+  noRtp,
+  noPlayout,
+  routeBroken,
+}
+
+extension MediaHealthClassWire on MediaHealthClass {
+  String get wire => switch (this) {
+        MediaHealthClass.unknown => 'unknown',
+        MediaHealthClass.healthy => 'healthy',
+        MediaHealthClass.remoteQuiet => 'remote_quiet',
+        MediaHealthClass.networkDegraded => 'network_degraded',
+        MediaHealthClass.noRtp => 'no_rtp',
+        MediaHealthClass.noPlayout => 'no_playout',
+        MediaHealthClass.routeBroken => 'route_broken',
+      };
+}
+
+/// One 5s `getStats()` sampling pass over the inbound AUDIO stream only (plan
+/// §7.1). Every numeric field is nullable — a stat the platform didn't expose
+/// is `null` ("unknown"), NEVER coerced to 0 (plan: "never infer zero").
+class MediaHealthSnapshot {
+  final MediaHealthClass cls;
+  final int atMs;
+  // Interval deltas (this sample vs the previous one). Null on the first
+  // sample of a call/segment (no prior baseline) or if the underlying stat
+  // was absent from the report.
+  final int? bytesDelta;
+  final int? packetsDelta;
+  final int? lostDelta;
+  final double? jitterMs; // instantaneous, not a delta
+  final double? audioLevel; // instantaneous 0..1
+  final double? totalAudioEnergyDelta;
+  final int? jitterBufferEmittedDelta;
+  final double? jitterBufferDelayMsAvg; // derived: Δdelay / Δemitted, this interval
+  final int? concealedSamplesDelta;
+  final int? silentConcealedSamplesDelta;
+  final int? totalSamplesReceivedDelta;
+  final double? concealmentPctInterval; // 100 * concealedDelta / totalSamplesDelta
+  final double? lossPctInterval; // 100 * lostDelta / (lostDelta + packetsDelta)
+  final int? lastPacketReceivedTimestampMs;
+  final String? selectedCandidatePairId;
+  final String? localCandidateType;
+  final String? remoteCandidateType;
+  final String? relayProtocol;
+  final String activeAudioRoute; // 'unknown' when the controller is off/unavailable
+  final bool routeConfirmed; // requested route == active route
+  final bool? nativeFocusHeld; // null = unknown (controller off)
+
+  const MediaHealthSnapshot({
+    required this.cls,
+    required this.atMs,
+    this.bytesDelta,
+    this.packetsDelta,
+    this.lostDelta,
+    this.jitterMs,
+    this.audioLevel,
+    this.totalAudioEnergyDelta,
+    this.jitterBufferEmittedDelta,
+    this.jitterBufferDelayMsAvg,
+    this.concealedSamplesDelta,
+    this.silentConcealedSamplesDelta,
+    this.totalSamplesReceivedDelta,
+    this.concealmentPctInterval,
+    this.lossPctInterval,
+    this.lastPacketReceivedTimestampMs,
+    this.selectedCandidatePairId,
+    this.localCandidateType,
+    this.remoteCandidateType,
+    this.relayProtocol,
+    this.activeAudioRoute = 'unknown',
+    this.routeConfirmed = false,
+    this.nativeFocusHeld,
+  });
+
+  Map<String, Object> toTelemetryMap() => {
+        'class': cls.wire,
+        if (bytesDelta != null) 'audio_bytes_delta': bytesDelta! else 'audio_bytes_delta': 'unknown',
+        if (packetsDelta != null) 'audio_packets_delta': packetsDelta! else 'audio_packets_delta': 'unknown',
+        if (lostDelta != null) 'audio_lost_delta': lostDelta! else 'audio_lost_delta': 'unknown',
+        if (jitterMs != null) 'jitter_ms': jitterMs! else 'jitter_ms': 'unknown',
+        if (lossPctInterval != null) 'loss_pct_interval': lossPctInterval! else 'loss_pct_interval': 'unknown',
+        if (audioLevel != null) 'audio_level': audioLevel! else 'audio_level': 'unknown',
+        if (concealmentPctInterval != null)
+          'concealment_pct_interval': concealmentPctInterval!
+        else
+          'concealment_pct_interval': 'unknown',
+        if (jitterBufferDelayMsAvg != null)
+          'jitter_buffer_ms_interval': jitterBufferDelayMsAvg!
+        else
+          'jitter_buffer_ms_interval': 'unknown',
+        if (jitterBufferEmittedDelta != null)
+          'jitter_buffer_emitted_delta': jitterBufferEmittedDelta!
+        else
+          'jitter_buffer_emitted_delta': 'unknown',
+        if (lastPacketReceivedTimestampMs != null)
+          'last_packet_received_ms_ago': atMs - lastPacketReceivedTimestampMs!
+        else
+          'last_packet_received_ms_ago': 'unknown',
+        'candidate_pair_id': selectedCandidatePairId ?? 'unknown',
+        'local_candidate_type': localCandidateType ?? 'unknown',
+        'remote_candidate_type': remoteCandidateType ?? 'unknown',
+        'relay_protocol': relayProtocol ?? 'unknown',
+        'active_audio_route': activeAudioRoute,
+        'route_confirmed': routeConfirmed,
+        'native_focus_held': nativeFocusHeld?.toString() ?? 'unknown',
+      };
+}
+
 /// Per-call quality telemetry (Scale proposal Phase 0 — "you can't tune what you
 /// don't measure"). One instance per CallScreen lifetime.
 ///
@@ -149,6 +270,20 @@ class CallTelemetry {
   final Set<String> _reportedRuntimeErrorStages = <String>{};
   // bitrate deltas
   int _lastRecvBytes = 0, _lastSendBytes = 0, _lastBytesAt = 0;
+
+  // ── [CALL-REL-4] playout-aware media health (plan §7.1/§7.2/§9) ─────────────
+  // Cached "last known" values so call_progress can amend itself with the
+  // compact fields the plan asks for, without publishing every raw 5s sample.
+  MediaHealthClass _lastHealthClass = MediaHealthClass.unknown;
+  String _mediaPath = 'direct'; // direct | relay — set by CALL-REL-5/6
+  String _activeAudioRoute = 'unknown';
+  bool _routeConfirmed = false;
+  bool? _audioPlayoutOk; // null = unknown
+  double? _concealmentPctInterval;
+  double? _jitterBufferMsInterval;
+  // ── [CALL-REL-5] recovery state surfaced onto call_progress ─────────────────
+  String _recoveryState = 'none'; // none|recovering_ice|migrating_relay|recovered|failed
+  int _recoveryAttemptCount = 0;
 
   CallTelemetry({
     required this.callId,
@@ -479,11 +614,77 @@ class CallTelemetry {
       if (video && _framesDropped > 0) 'frames_dropped': _framesDropped,
       // device memory footprint
       if (_rssMb.isNotEmpty) 'rss_mb': _rssMb.last.round(),
+      // [CALL-REL-4/CALL-REL-5 — plan §9 "Amend call_progress"] last-known
+      // playout/route/recovery fields — economical (not raw per-5s samples).
+      'media_path': _mediaPath,
+      'active_audio_route': _activeAudioRoute,
+      'route_confirmed': _routeConfirmed,
+      'audio_playout_ok': _audioPlayoutOk?.toString() ?? 'unknown',
+      'audio_concealment_pct_interval': _concealmentPctInterval ?? 'unknown',
+      'audio_jitter_buffer_ms_interval': _jitterBufferMsInterval ?? 'unknown',
+      'recovery_state': _recoveryState,
+      'recovery_attempt_count': _recoveryAttemptCount,
     });
   }
 
   void onIceRestart() => iceRestarts++;
   void onNetChange() => netChanges++;
+
+  /// [CALL-REL-4] Report one classified playout-health sample. Emits
+  /// `call_media_health` ONLY when [snapshot.cls] differs from the previously
+  /// reported class (plan §7.1: "Emit ... ONLY on class transitions"); every
+  /// call still refreshes the cached fields [call_progress] amends with, so
+  /// the 30s heartbeat always carries the latest known state even between
+  /// transitions.
+  void mediaHealth(MediaHealthSnapshot snapshot) {
+    _activeAudioRoute = snapshot.activeAudioRoute;
+    _routeConfirmed = snapshot.routeConfirmed;
+    // audio_playout_ok: true once we've seen jitter-buffer emission or audio
+    // energy advance this interval; false when RTP/route is provably broken;
+    // null/unknown otherwise. Never inferred from bytes alone (REL-1).
+    switch (snapshot.cls) {
+      case MediaHealthClass.healthy:
+      case MediaHealthClass.remoteQuiet:
+        _audioPlayoutOk = true;
+        break;
+      case MediaHealthClass.noRtp:
+      case MediaHealthClass.noPlayout:
+      case MediaHealthClass.routeBroken:
+        _audioPlayoutOk = false;
+        break;
+      case MediaHealthClass.networkDegraded:
+      case MediaHealthClass.unknown:
+        // Degraded still has playout; unknown stays unknown — never guessed.
+        if (snapshot.cls == MediaHealthClass.networkDegraded) _audioPlayoutOk = true;
+        break;
+    }
+    if (snapshot.concealmentPctInterval != null) {
+      _concealmentPctInterval = snapshot.concealmentPctInterval;
+    }
+    if (snapshot.jitterBufferDelayMsAvg != null) {
+      _jitterBufferMsInterval = snapshot.jitterBufferDelayMsAvg;
+    }
+    if (snapshot.cls == _lastHealthClass) return;
+    _lastHealthClass = snapshot.cls;
+    Analytics.capture('call_media_health', {
+      'call_id': callId,
+      'video': video,
+      'outgoing': outgoing,
+      'media_path': _mediaPath,
+      ...snapshot.toTelemetryMap(),
+    });
+  }
+
+  /// [CALL-REL-6] Direct vs relay, surfaced onto call_media_health/call_progress.
+  void setMediaPath(String path) {
+    _mediaPath = path;
+  }
+
+  /// [CALL-REL-5] Recovery-coordinator state, surfaced onto call_progress.
+  void setRecoveryState(String state, {int? attemptCount}) {
+    _recoveryState = state;
+    if (attemptCount != null) _recoveryAttemptCount = attemptCount;
+  }
 
   /// Low-volume media breadcrumb: emit only on a state transition. RTP receipt
   /// is reported as receipt, never mislabeled as proof the user heard audio.
