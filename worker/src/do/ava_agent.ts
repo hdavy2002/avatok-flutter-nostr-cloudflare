@@ -33,7 +33,10 @@ import { json, aiText, geminiRun } from "../util";
 import type { MessageScope } from "../lib/ava_kinds";
 import { runGated, webSearchAllowed, aiRunOpts, type AiTier } from "../lib/ai_gate"; // P2 gate
 import { brainSearchTyped } from "../lib/ava_memory"; // F1 — typed retrieval (available/source/degraded_reason)
-import { runAppsToolLoop, runAgentLoop, connectedToolkits, looksLikeImageRequest } from "../lib/composio"; // AvaApps + unified agentic loop
+import {
+  runAppsToolLoop, runAgentLoop, connectedToolkits, looksLikeImageRequest,
+  guardOutput, newAgentLoopStats, type AgentLoopStats, // AVA-KIMI-TOOLS-1: shared output guard + tool-lane model telemetry
+} from "../lib/composio"; // AvaApps + unified agentic loop
 import * as openrouterAdapter from "../lib/ava_reason/adapters/openrouter"; // AVA-KIMI-GATEWAY-1: reuse the existing OpenRouter fetch client
 import type { BodyOpts, ReasonReq } from "../lib/ava_reason/types";
 import { runAvaImage } from "../routes/ava_image"; // P9 — in-thread image gen (Nano Banana 2), shared gate
@@ -83,7 +86,6 @@ const MAX_TOKENS = 300;
 const DEFAULT_THREAD_MODEL = "moonshotai/kimi-k3";
 const DEFAULT_THREAD_MODEL_ALT = "google/gemini-2.5-flash-lite";
 const THREAD_TIMEOUT_MS = 30_000;
-const MAX_OUTPUT_CHARS = 4000; // F8 minimal output guard — hard cap independent of maxTokens
 
 interface Member { uid: string; }
 
@@ -113,39 +115,12 @@ function stripReasoning(s: string): string {
 
 // F8 (Specs/AUDIT-MESSENGER-AI-MEDIA-UI-2026-07-24.md §F8): safe() below is a
 // documented no-op — full output moderation (structured kind/risk/confidence,
-// prompt-injection boundary enforcement) is deliberately NOT built here. This is
-// a MINIMAL belt-and-suspenders guard only: redact anything that reads like a
-// leaked API key/token, and hard-cap output length so a runaway/adversarial
-// completion can't return an unbounded blob. TODO(F8): replace with the real
-// structured-output gateway contract described in the audit.
-//
-// AVA-KIMI-GATEWAY-1 (Opus review fix, 2026-07-24): the original pattern ended
-// in a generic `[A-Za-z0-9_\-+/]{32,}` catch-all that redacted ANY long
-// alphanumeric run — UUIDs, git SHAs, Drive/S3 URLs, base64 blobs, ETH
-// addresses, etc — from every @ava reply. Narrowed to known secret PREFIXES
-// only (OpenAI/Anthropic sk-, AWS AKIA, GitHub gh*_, Slack xox*, Google AIza,
-// JWT eyJ header). A long opaque token is only redacted when it sits right
-// after a key/token/secret/password/bearer label, since that's the only case
-// where a bare high-entropy string is actually more likely a leaked credential
-// than legitimate content.
-const SECRET_LIKE = /\b(?:sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16,}|gh[pousr]_[A-Za-z0-9]{30,}|xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{30,}|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]*)\b/g;
-// Contextual: only flag a bare long token when labelled key/token/secret/
-// password/bearer within a short prefix (e.g. `api_key: abcdEF12...`).
-const CONTEXT_SECRET_LIKE = /(?:key|token|secret|password|bearer)\s*[:=]\s*['"]?([A-Za-z0-9_\-+/]{20,})/gi;
-
-function redactSecrets(s: string): string {
-  let out = (s || "").replace(SECRET_LIKE, "[redacted]");
-  out = out.replace(CONTEXT_SECRET_LIKE, (m, tok) => m.replace(tok, "[redacted]"));
-  return out;
-}
-
-function capOutput(s: string, max = MAX_OUTPUT_CHARS): string {
-  return s.length > max ? `${s.slice(0, max)}…` : s;
-}
-
-function guardOutput(s: string): string {
-  return capOutput(redactSecrets(s || ""));
-}
+// prompt-injection boundary enforcement) is deliberately NOT built here.
+// AVA-KIMI-TOOLS-1: guardOutput (redact-known-secret-prefixes + 4000-char cap)
+// moved to ../lib/composio.ts so BOTH the plain-chat lane here AND composio.ts's
+// own tool-calling loops (runAppsToolLoop/runAgentLoop) can apply the SAME guard
+// at their own return points, instead of only wherever a caller remembers to call
+// it. Imported above; see composio.ts for the implementation + history.
 
 export class AvaAgentDO {
   private env: Env;
@@ -969,13 +944,17 @@ export class AvaAgentDO {
         });
       };
 
+      // AVA-KIMI-TOOLS-1: per-turn model telemetry for the tool-calling lane
+      // (mirrors the plain-chat lane's ava_thread_turn_model, see below).
+      const modelStats: AgentLoopStats = newAgentLoopStats();
+      const loopT0 = Date.now();
       let answer = "";
       try {
         answer = await runAgentLoop(
           this.env, uid, userText, ctx,
           (q) => this.brainSearch(uid, q),
           {
-            apps: appsCap && premium, onTool, ...(streaming ? { onDelta } : {}),
+            apps: appsCap && premium, onTool, modelStats, ...(streaming ? { onDelta } : {}),
             // In-thread image gen. All gating (premium + per-user daily allowance)
             // lives in runAvaImage, keyed to THIS caller. PRIVACY: pass `private`
             // so a @ava image goes ONLY to the requester (private), and a #ava image
@@ -1001,6 +980,19 @@ export class AvaAgentDO {
       // already sent live via streamFrame above; the guard does not retroactively
       // scrub it — only the persisted final message. TODO(F8): full gateway.
       else answer = guardOutput(answer);
+
+      // AVA-KIMI-TOOLS-1: model/token/fallback telemetry for the TOOL-calling
+      // lane — the counterpart to the plain-chat lane's ava_thread_turn_model
+      // (emitted from callThreadModel's call site above). No message content,
+      // no raw conv id — same fields, tagged lane:'tools' so PostHog can split
+      // Kimi-vs-fallback reliability by lane.
+      trackUserContact(this.env, uid, email, phone, "ava_thread_turn_model", "avaai", {
+        conv_kind: convKind, lane: "tools",
+        model_requested: modelStats.model_requested, model_actual: modelStats.model_actual || modelStats.model_requested,
+        provider: modelStats.provider, input_tokens: modelStats.input_tokens, output_tokens: modelStats.output_tokens,
+        latency_ms: Date.now() - loopT0, fallback_reason: modelStats.fallback_reason,
+        tool_calls_count: toolCount,
+      });
 
       // When we streamed a live preview the summoner already saw the chip vanish
       // under the growing bubble, so SKIP the persisted ava_status 'end' (it would
