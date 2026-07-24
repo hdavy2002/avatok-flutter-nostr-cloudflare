@@ -249,7 +249,7 @@ export async function avaLiveHeartbeat(req: Request, env: Env): Promise<Response
   // stops per `metered` from /token.
   if (!r.ok && r.error === "not_owner") return json({ error: r.error }, 404);
 
-  return json({ ok: true, metered: r.metered, found: r.found, tokens_charged: r.tokensCharged, elapsed_sec: r.elapsedSec, lease_timeout_ms: r.leaseTimeoutMs });
+  return json({ ok: true, metered: r.metered, found: r.found, tokens_charged: r.tokensCharged, elapsed_sec: r.elapsedSec, lease_timeout_ms: "leaseTimeoutMs" in r ? r.leaseTimeoutMs : undefined });
 }
 
 // POST /api/ava/live/close { session_id, reason? } — auth required. The client

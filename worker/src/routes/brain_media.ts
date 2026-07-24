@@ -318,7 +318,7 @@ export async function brainMediaComplete(req: Request, env: Env, exec: Execution
     const enc = await encryptMediaBytes(bytes);
     ciphertext = enc.ciphertext; keyB64 = enc.keyB64; ivB64 = enc.ivB64;
   } catch (e) {
-    await trackException(env, e, { uid, route: "brain_media_complete", method: "POST", stage: "encrypt" });
+    await trackException(env, e, { uid, route: "brain_media_complete", method: "POST", extra: { stage: "encrypt" } });
     return json({ error: "encryption failure" }, 500);
   }
 
