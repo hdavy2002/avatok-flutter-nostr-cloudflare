@@ -120,6 +120,16 @@ export interface PlatformConfig {
   // BYO/our-keys connection state, separate from `aiEnabled` (which is the
   // platform-wide master switch / panic button).
   aiEnabled: boolean;                // master switch for ALL Ava features (panic off)
+  // [AI-BILLING-CORE-1] Master switch for the universal AIJob reserve/settle/
+  // release wallet-metering contract (worker/src/lib/ai_billing.ts, Specs/
+  // AUDIT-MESSENGER-AI-MEDIA-UI-2026-07-24.md §H2/H3/H6/J13). DEFAULT FALSE:
+  // while off, reserveAiJob/settleAiJob/releaseAiJob are all no-op pass-throughs
+  // (the AI job runs exactly as it does today, nothing is reserved or debited,
+  // telemetry still fires with metered:false) — so declaring and wiring this
+  // flag changes NOTHING in production until the owner explicitly flips it.
+  // Guardian/safety capabilities NEVER go through this gate regardless of its
+  // value — they bypass reserveAiJob entirely (see isSafetyCapability()).
+  aiWalletMeteringEnabled: boolean;
   focusMode: boolean;                // hide non-AvaTOK apps in the drawer (reversible)
   webSearchEnabled: boolean;         // premium-only; our-keys free tier never gets it
   fileAnalysisEnabled: boolean;      // premium-only
@@ -711,6 +721,7 @@ const DEFAULTS: PlatformConfig = {
   affiliateAssetKitEnabled: false, // v2 asset kit (Gemini) — defined, not built
   // Ava in-chat AI defaults (proposal §7.1 anti-abuse tiering).
   aiEnabled: true,                 // basic free Ava chat ON
+  aiWalletMeteringEnabled: false,  // [AI-BILLING-CORE-1] DARK — flip ON only after the owner reviews H4's route-by-route premium-gate audit; see interface comment above
   focusMode: true,
   webSearchEnabled: false,         // FREE LAUNCH: premium AI cost — hidden
   fileAnalysisEnabled: false,      // premium unlocks

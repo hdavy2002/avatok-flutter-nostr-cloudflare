@@ -43,6 +43,20 @@ export const FEATURE_COSTS: Record<string, number> = {
   listing_post_connect: 100, // $1.00 — connect (dating/matrimony) listing, 30 days
 };
 
+// [AI-BILLING-CORE-1] NEW AI workloads should target worker/src/lib/ai_billing.ts
+// (reserveAiJob/settleAiJob/releaseAiJob), NOT the AI_MODEL_RATES/reserveAiUsage/
+// settleAiUsage/meterAiUsage functions below. That file is the richer, versioned,
+// flag-gated (`aiWalletMeteringEnabled`) contract: a per-model kill switch, an
+// effectiveDate per catalog row, explicit fields for image/OCR/audio-video
+// modality units, and a durable D1 ledger (ai_billing_ledger) carrying model
+// requested/actual + usage + provider cost + markup + terminal status for
+// support/reconciliation — none of which AI_MODEL_RATES below carries. Both
+// paths reuse the SAME underlying WalletDO primitives (reserve/consume_reserved/
+// release_reservation, [AVA-CAMP-B1-WALLET]), so they compose safely; this block
+// is NOT deleted because ava_agent.ts (Composio/@ava agentic loop) still calls
+// reserveAiUsage/settleAiUsage/meterAiUsage directly — migrating that call site
+// to ai_billing.ts is a separate, later change, not part of [AI-BILLING-CORE-1].
+//
 // [AI-WALLET-METER-1] Provider list prices in USD per million tokens. These are
 // deliberately server-owned: the client can display an estimate, but it can
 // never choose a cheaper price or submit a fabricated usage value. Keep this
