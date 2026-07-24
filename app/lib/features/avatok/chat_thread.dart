@@ -933,7 +933,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     }
     final i = _msgs.indexWhere((m) => m.evId == mid);
     if (i < 0) return;
-    setState(() {
+    _mutMsgs(() {
       final msg = _msgs[i];
       final c = msg.reactCounts;
       c[emoji] = ((c[emoji] ?? 0) + (add ? 1 : -1)).clamp(0, 9999);
@@ -1032,8 +1032,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     // Load cross-device soft-delete flags, then re-apply to anything already shown.
     HiddenStore().load().then((m) {
       if (!mounted || m.isEmpty) return;
-      setState(() {
-        _hiddenIds.addAll(m);
+      _hiddenIds.addAll(m);
+      _mutMsgs(() {
         for (final msg in _msgs) {
           if (msg.evId != null && m[msg.evId] == true) msg.hidden = true;
         }
@@ -1043,8 +1043,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     // anything already on screen that a peer deleted while this thread was closed.
     DeletedStore().load().then((s) {
       if (!mounted || s.isEmpty) return;
-      setState(() {
-        _deletedIds.addAll(s);
+      _deletedIds.addAll(s);
+      _mutMsgs(() {
         for (final msg in _msgs) {
           if (msg.evId != null && s.contains(msg.evId)) _tombstone(msg);
         }
@@ -1077,7 +1077,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     _pruneTimer = Timer.periodic(const Duration(seconds: 20), (_) {
       final nowS = DateTime.now().millisecondsSinceEpoch ~/ 1000;
       if (mounted && _msgs.any((m) => m.expireAt != null && m.expireAt! < nowS)) {
-        setState(() => _msgs.removeWhere((m) => m.expireAt != null && m.expireAt! < nowS));
+        _mutMsgs(() => _msgs.removeWhere((m) => m.expireAt != null && m.expireAt! < nowS));
       }
     });
     // Group conferencing (Phase 10, Cloudflare Realtime A/V as of CF-CALL-007):
@@ -1097,7 +1097,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     final peerHex = seed;
     if (peerHex.isEmpty) return; // no addressable peer id → keep local echo
     _realMode = true;
-    setState(() => _msgs.clear()); // drop demo seed; history loads from relay
+    _mutMsgs(() => _msgs.clear()); // drop demo seed; history loads from relay
     _nostr = SyncHub.I.ensure(id.uid, id.uid); // shared app-lifetime client (no per-thread socket/REQ)
     _dm = AvaDm(client: _nostr!, myPriv: id.uid, myPub: id.uid, peerPub: peerHex);
     _dm!.messages.listen(_onDm);
@@ -1164,7 +1164,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     _isTelThread = true;
     _telPhone = phone;
     _convKey = receptTelConvKey(id.uid, phone);
-    setState(() => _msgs.clear());
+    _mutMsgs(() => _msgs.clear());
     // Seed from the in-memory hub store, then durable history from SQLite.
     for (final m in SyncHub.I.messagesFor(_convKey!)) _onDm(m, seed: true);
     Db.I.messagesFor(_convKey!).then((rows) {
@@ -1383,7 +1383,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       }
 
       if (patch.isNotEmpty) {
-        setState(() {
+        _mutMsgs(() {
           for (final m in stuck) {
             final s = patch[m.evId];
             if (s == null) continue;
@@ -1438,7 +1438,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       final polls = (jsonDecode(res.body)['polls'] as Map?) ?? const {};
       if (polls.isEmpty) return;
       final myUid = _meId?.uid ?? '';
-      setState(() {
+      _mutMsgs(() {
         for (final m in _msgs) {
           if (m.special != 'poll') continue;
           final id = m.extra?['id']?.toString();
@@ -1473,7 +1473,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     _isGroup = true;
     _group = g;
     Analytics.capture('group_thread_opened', {'gid': g.id, 'member_count': g.members.length});
-    setState(() => _msgs.clear());
+    _mutMsgs(() => _msgs.clear());
     _nostr = SyncHub.I.ensure(id.uid, id.uid); // shared app-lifetime client (no per-thread socket/REQ)
     _gdm = AvaGroupDm(group: g);
     _gdm!.messages.listen(_onGroupMsg);
@@ -1569,7 +1569,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       final body = jsonDecode(res.body);
       final receipts = (body is Map ? body['receipts'] : null);
       if (receipts is! List) return;
-      setState(() {
+      _mutMsgs(() {
         for (final r in receipts) {
           if (r is! Map) continue;
           final mid = (r['msg_id'] ?? '').toString();
@@ -1878,7 +1878,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     if (_deletedIds.contains(m.rumorId)) {
       text = 'This message was deleted'; media = null; special = null; extra = null; replyMeta = null;
     }
-    setState(() {
+    _mutMsgs(() {
       // Durable Ava answer landed — drop any live streaming preview for this turn.
       if (special == 'ava' || special == 'ava_private') _clearAvaStreamPreview(extra);
       _msgs.add(_Msg(_seq++, m.mine, text, _fmtTime(m.createdAt),
@@ -1960,7 +1960,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     // (interim retries stay silent), so `!s.ok` here is authoritative "not sent".
     // Record it so a genuine give-up survives a restart as failed, while a
     // delivered-but-un-ACKed group bubble is never mistaken for one on reopen.
-    setState(() { m.failed = !s.ok; m.sent = s.ok; m.sendGaveUp = !s.ok; });
+    _mutMsgs(() { m.failed = !s.ok; m.sent = s.ok; m.sendGaveUp = !s.ok; });
     // [AVA-CHAT-INSTANT] Confirm/fail telemetry (email auto-attached by
     // Analytics._base). msg_send_confirmed carries the true send→ACK round-trip;
     // guard on !alreadySent so a re-emitted ACK doesn't double-count.
@@ -2171,7 +2171,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     if (_deletedIds.contains(m.rumorId)) {
       text = 'This message was deleted'; media = null; special = null; extra = null; replyMeta = null;
     }
-    setState(() {
+    _mutMsgs(() {
       // Durable Ava answer landed — drop any live streaming preview for this turn.
       if (special == 'ava' || special == 'ava_private') _clearAvaStreamPreview(extra);
       _msgs.add(_Msg(_seq++, m.mine, text, _fmtTime(m.createdAt),
@@ -2228,7 +2228,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
 
   void _applyEdit(String target, String body) {
     final i = _msgs.indexWhere((x) => x.evId == target);
-    if (i >= 0 && mounted) { setState(() { _msgs[i].text = body; _msgs[i].edited = true; }); _schedulePersist(); }
+    if (i >= 0 && mounted) { _mutMsgs(() { _msgs[i].text = body; _msgs[i].edited = true; }); _schedulePersist(); }
   }
 
   /// [AVAGRP-BUBBLE-2] Apply an incoming per-message group receipt
@@ -2248,7 +2248,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     if (mid.isEmpty || uid.isEmpty || (status != 'read' && status != 'delivered')) return;
     final i = _msgs.indexWhere((x) => x.evId == mid);
     if (i < 0 || !mounted) return;
-    setState(() {
+    _mutMsgs(() {
       if (status == 'read') {
         _msgs[i].readBy[uid] = ts;
         _msgs[i].deliveredTo.putIfAbsent(uid, () => ts);
@@ -2375,7 +2375,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       loaded.add(msg);
     }
     if (loaded.isEmpty || !mounted) return;
-    setState(() {
+    _mutMsgs(() {
       _msgs.addAll(loaded);
       _msgs.sort((a, b) => a.ts.compareTo(b.ts));
     });
@@ -2788,6 +2788,41 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       );
 
   final List<_Msg> _msgs = [];
+  // [CHAT-UI-VISIBLE-MEMO-1] Bumped by _mutMsgs on every `_msgs` collection
+  // mutation (add/addAll/removeWhere/sort/clear) AND every in-place `_Msg`
+  // field mutation that affects rendering (text/hidden/failed/uploading/
+  // transcoding/media/reaction/receipts/poll votes/evId/...). The Builder in
+  // build() memoizes its computed `visible` list keyed on
+  // (_msgsRev, search query, filter toggles) so an UNRELATED setState
+  // (composer keystroke, clock tick, audio position, typing indicator) does
+  // NOT re-filter/re-sort/re-day-separate the entire history — only an actual
+  // message mutation invalidates the memo.
+  int _msgsRev = 0;
+  // Fallback safety net for [_mutMsgs]: a few async media closures deep in
+  // upload/retry code (`_upload`, `_stopAndSendRecording`, the retry-tap
+  // GestureDetector inside `_bubble`) mutate a captured `_Msg` reference many
+  // frames after the widget tree that created it — auditing every one of
+  // those with full confidence is not realistic, so the memo below ALSO
+  // recomputes whenever `_msgs.length` changes or the identity of the last
+  // element changes, even if a caller forgot to route through `_mutMsgs`.
+  List<_Msg>? _visibleCache;
+  int _visibleCacheRev = -1;
+  int _visibleCacheLen = -1;
+  int _visibleCacheLastHash = 0;
+  String _visibleCacheQuery = '';
+  bool _visibleCacheHideDeleted = false;
+
+  /// [CHAT-UI-VISIBLE-MEMO-1] Route EVERY `_msgs` collection mutation (add/
+  /// addAll/removeWhere/sort/clear) and every in-place `_Msg` field mutation
+  /// that affects rendering through here instead of a bare `setState`. `fn`
+  /// performs the actual mutation; this then bumps `_msgsRev` (invalidating
+  /// the visible-list memo built in `build()`) and repaints — a mechanical,
+  /// same-semantics drop-in for `setState(() { ...mutate _msgs/_Msg... })`.
+  void _mutMsgs(void Function() fn) {
+    fn();
+    _msgsRev++;
+    if (mounted) setState(() {});
+  }
 
   /// [VOICE-REC-1] (owner report 2026-07-16, pic 5) Auto-pause a recording when
   /// the app leaves the foreground, and let the user resume when they come back.
@@ -2978,7 +3013,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     _localAvaSub = AvaLocalReplies.I.stream.listen((r) {
       if (!mounted || r.convKey != key) return;
       final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-      setState(() {
+      _mutMsgs(() {
         // The on-device answer is here — drop the transient "thinking" chip.
         _msgs.removeWhere((m) => m.special == 'ava_status');
         _msgs.add(_Msg(_seq++, false, r.text, _fmtTime(now),
@@ -3000,7 +3035,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     if (r.surface != null) {
       final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
       final body = r.ok ? '' : r.answer;
-      setState(() {
+      _mutMsgs(() {
         _msgs.add(_Msg(_seq++, false, body, _fmtTime(now),
             ts: now, special: 'ava', extra: {'a2ui': r.surface, 'text': body}));
         _msgs.sort((a, b) => a.ts.compareTo(b.ts));
@@ -3027,7 +3062,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       final delta = (m['delta'] ?? '').toString();
       final evId = 'stream_$sid';
       final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-      setState(() {
+      _mutMsgs(() {
         final i = _msgs.indexWhere((x) => x.evId == evId);
         if (phase == 'end') return; // keep the preview; durable answer replaces it
         if (i >= 0) {
@@ -3065,7 +3100,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final nowS = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-      setState(() {
+      _mutMsgs(() {
         _msgs.add(_Msg(_seq++, false, 'Ava is thinking…', _fmtTime(nowS),
             ts: nowS, special: 'ava_status'));
       });
@@ -3129,7 +3164,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
           if (privateAva) {
             _ragAddLine('You', t);
             _composerFocus.requestFocus();
-            setState(() {
+            _mutMsgs(() {
               // aiLocal: rendered locally only, never sent → no delivery ticks.
               _msgs.add(_Msg(_seq++, true, t, _fmtTime(now), ts: now, aiLocal: true));
               _ctrl.clear(); _hasText = false; _replyTo = null;
@@ -3159,7 +3194,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       } else if (_realMode && _dm != null) {
         _dm!.send(jsonEncode({'t': 'edit', 'target': target, 'body': t}));
       }
-      setState(() { m.text = t; m.edited = true; _editing = null; _ctrl.clear(); _hasText = false; });
+      _mutMsgs(() { m.text = t; m.edited = true; _editing = null; _ctrl.clear(); _hasText = false; });
       _schedulePersist();
       return;
     }
@@ -3187,7 +3222,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         t: t, now: now, replyMeta: replyMeta, expire: expire, isGroup: false);
       return;
     }
-    setState(() {
+    _mutMsgs(() {
       _msgs.add(_Msg(_seq++, true, t, 'now', replyTo: replyMeta));
       _ctrl.clear(); _hasText = false; _replyTo = null;
     });
@@ -3229,7 +3264,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         ts: now, replyTo: replyMeta, expireAt: expire,
         extra: composeHit == null ? null : {'preview': composeHit})
       ..sendStartedMs = tShownStart; // [AVA-CHAT-INSTANT] round-trip anchor
-    setState(() {
+    _mutMsgs(() {
       _msgs.add(localMsg);
       _ctrl.clear();
       _hasText = false;
@@ -3298,7 +3333,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     if (preview == null && url != null && !composeDismissed) {
       unawaited(_unfurl(url).then((p) {
         if (p == null || !mounted) return;
-        setState(() => localMsg.extra = {...?localMsg.extra, 'preview': p});
+        _mutMsgs(() => localMsg.extra = {...?localMsg.extra, 'preview': p});
         _schedulePersist();
       }));
     }
@@ -3947,7 +3982,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       id = 'local-${DateTime.now().microsecondsSinceEpoch}';
     }
     _seenEv.add(id);
-    setState(() => _msgs.add(_Msg(_seq++, true, caption, _fmtTime(now),
+    _mutMsgs(() => _msgs.add(_Msg(_seq++, true, caption, _fmtTime(now),
         ts: now, evId: id, special: type, extra: data)));
     _jump(force: true); // [CHAT-UI-LIST-1e] own send — always jump
     _schedulePersist();
@@ -3971,7 +4006,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     } else {
       opts = const [];
     }
-    setState(() {
+    _mutMsgs(() {
       final m = _msgs[i];
       if (voter.isEmpty) {
         // Legacy anonymous vote (no voter id) — best-effort increment only.
@@ -4010,7 +4045,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       if (mine.contains(opt)) { mine.clear(); } else { mine.clear(); mine.add(opt); }
     }
     // Optimistic local update (server fan-out will re-affirm).
-    setState(() {
+    _mutMsgs(() {
       if (myUid.isNotEmpty) {
         for (final entry in poll.pollBy.entries.toList()) {
           if (entry.value.remove(myUid)) {
@@ -5026,7 +5061,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       ..pendingMime = ct
       ..pendingFilename = name
       ..mediaClientId = _newMediaClientId(); // [MEDIA-OUTBOX-DURABLE-1] stable id, assigned here so the durable outbox row (added next commit) can key off the SAME id the bubble already carries.
-    setState(() => _msgs.add(msg));
+    _mutMsgs(() => _msgs.add(msg));
     _jump(force: true); // [CHAT-UI-LIST-1e] own send — always jump
     // [AVA-CHAT-INSTANT] Heavy media shows its bubble (local preview + uploading
     // clock) instantly, BEFORE the upload — record how fast (email auto-attached).
@@ -5207,7 +5242,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
 
   Future<void> _upload(_Msg msg, Uint8List bytes, MediaKind kind, String ct, String name,
       {String caption = '', String? sourcePath}) async {
-    setState(() { msg.uploading = true; msg.failed = false; });
+    _mutMsgs(() { msg.uploading = true; msg.failed = false; });
     final tUploadStart = DateTime.now().millisecondsSinceEpoch;
     int? transcodeMs;
     // [MEDIA-OUTBOX-DURABLE-1] Stage the PLAINTEXT bytes + record a `queued`
@@ -5247,7 +5282,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       // compressed clip. `sourcePath` is only passed for a fresh video pick
       // (not for a retry, which already has whatever bytes were staged/kept).
       if (kind == MediaKind.video && sourcePath != null) {
-        if (mounted) setState(() => msg.transcoding = true);
+        if (mounted) _mutMsgs(() => msg.transcoding = true);
         final tCompressStart = DateTime.now().millisecondsSinceEpoch;
         try {
           final info = await VideoCompress.compressVideo(
@@ -5269,7 +5304,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
           AvaLog.I.log('media', 'video compress failed, using original: $e');
         }
         transcodeMs = DateTime.now().millisecondsSinceEpoch - tCompressStart;
-        if (mounted) setState(() => msg.transcoding = false);
+        if (mounted) _mutMsgs(() => msg.transcoding = false);
         Analytics.capture('video_upload_compressed', {
           'in_bytes': bytes.length, 'out_bytes': uploadBytes.length, 'transcode_ms': transcodeMs,
         });
@@ -5281,7 +5316,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       // cap at all. Hoisted here so it applies to EVERY video upload
       // regardless of whether this call transcoded anything.
       if (kind == MediaKind.video && uploadBytes.length > _kVideoMaxBytes) {
-        if (mounted) setState(() { msg.uploading = false; msg.failed = true; });
+        if (mounted) _mutMsgs(() { msg.uploading = false; msg.failed = true; });
         _capNote(_kVideoTooBigMsg);
         Analytics.capture('video_upload_rejected', {'bytes': uploadBytes.length});
         // Permanent rejection, not a transient failure — nothing to retry.
@@ -5300,7 +5335,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       // referencing it" orphan window).
       unawaited(MediaOutbox.I.markUploaded(mediaClientId, jsonEncode(m.toEnvelope())));
       if (!mounted) return;
-      setState(() { msg.media = m; msg.uploading = false; });
+      _mutMsgs(() { msg.media = m; msg.uploading = false; });
       // [MEDIA-INSTANT-1f] Richer chat_media_sent — kind/bytes plus the two
       // perceived-latency legs the audit asked to make measurable, and
       // transcode_ms (null when this attachment never transcoded).
@@ -5349,7 +5384,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     } catch (e) {
       if (!mounted) return;
       AvaLog.I.log('media', 'send media FAILED kind=${kind.name}: $e');
-      setState(() { msg.uploading = false; msg.failed = true; msg.transcoding = false; });
+      _mutMsgs(() { msg.uploading = false; msg.failed = true; msg.transcoding = false; });
       // [MEDIA-OUTBOX-DURABLE-1] Auto-retry with backoff instead of leaving
       // this ONLY as a manual tap-to-retry — [MediaOutbox.reconcile] (run on
       // the next thread open / app boot) picks a `queued` row back up. Manual
@@ -6125,7 +6160,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       ..pendingMime = 'audio/mp4'
       ..pendingFilename = 'voice.m4a'
       ..mediaClientId = _newMediaClientId();
-    setState(() => _msgs.add(msg));
+    _mutMsgs(() => _msgs.add(msg));
     _jump(force: true); // [CHAT-UI-LIST-1e] own send — always jump
     Analytics.capture('msg_optimistic_shown', {
       'kind': 'audio', 'conv_kind': _isGroup ? 'group' : 'dm',
@@ -6136,13 +6171,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       bytes = await File(path).readAsBytes();
     } catch (e) {
       AvaLog.I.log('media', 'voice read FAILED: $e');
-      if (mounted) setState(() { msg.uploading = false; msg.failed = true; });
+      if (mounted) _mutMsgs(() { msg.uploading = false; msg.failed = true; });
       Analytics.capture('voice_note_record_sent', {
         ..._voiceTelemetry(), 'seconds': seconds, 'ok': false, 'error': e.toString(),
       });
       return;
     }
-    if (mounted) setState(() => msg.localBytes = bytes);
+    if (mounted) _mutMsgs(() => msg.localBytes = bytes);
     Analytics.capture('voice_note_record_sent', {
       ..._voiceTelemetry(), 'seconds': seconds, 'bytes': bytes.length,
     });
@@ -6651,9 +6686,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   }
 
   Future<void> _toggleStar(_Msg m) async {
-    if (m.evId == null) { setState(() => m.starred = !m.starred); return; }
+    if (m.evId == null) { _mutMsgs(() => m.starred = !m.starred); return; }
     final set = await _starStore.toggle(m.evId!);
-    if (mounted) setState(() { _starred = set; m.starred = set.contains(m.evId); });
+    if (mounted) _mutMsgs(() { _starred = set; m.starred = set.contains(m.evId); });
   }
 
   void _startEdit(_Msg m) {
@@ -6723,7 +6758,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     final adding = m.reaction != emoji;
     final prev = m.reaction;
     final myUidTag = _meId?.uid ?? 'me';
-    setState(() {
+    _mutMsgs(() {
       // Maintain MY single reaction + the aggregate count shown on the bubble.
       if (prev != null) { // remove my previous emoji from the tally
         m.reactCounts[prev] = ((m.reactCounts[prev] ?? 1) - 1).clamp(0, 9999);
@@ -7011,7 +7046,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   // DELETE FOR ME — soft-hide on MY device only. The content is RETAINED (not
   // erased) so I can Undo to recover it later (copy something I lost, then re-hide).
   void _deleteForMe(_Msg m) {
-    setState(() => m.hidden = true);
+    _mutMsgs(() => m.hidden = true);
     _persistHidden(m.evId, true); // durable on THIS device — survives app updates
     _schedulePersist();
     _syncHidden(m, true); // mirror the hide to my other devices
@@ -7063,7 +7098,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     _persistHidden(target, hidden); // keep this device's durable state current
     final i = _msgs.indexWhere((x) => x.evId == target);
     if (i >= 0 && mounted) {
-      setState(() => _msgs[i].hidden = hidden);
+      _mutMsgs(() => _msgs[i].hidden = hidden);
       _schedulePersist();
     }
   }
@@ -7095,7 +7130,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         });
       }
     }
-    setState(() => m.hidden = true); // retained — Undo brings it back for ME only
+    _mutMsgs(() => m.hidden = true); // retained — Undo brings it back for ME only
     _persistHidden(m.evId, true); // durable on THIS device — survives app updates
     _schedulePersist();
     _syncHidden(m, true); // mirror the hide to my other devices
@@ -7115,7 +7150,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   // Undo MY own soft-delete — restore the message in my view only (never re-sent to
   // anyone). Owner-only recovery: a peer's hard-deleted copy has no Undo.
   void _undoDelete(_Msg m) {
-    setState(() => m.hidden = false);
+    _mutMsgs(() => m.hidden = false);
     _persistHidden(m.evId, false); // clear the durable hide on THIS device too
     _schedulePersist();
     _syncHidden(m, false); // mirror the Undo to my other devices
@@ -7142,7 +7177,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       'group': _group != null, 'on_screen': i >= 0,
     });
     if (i >= 0 && mounted) {
-      setState(() => _tombstone(_msgs[i]));
+      _mutMsgs(() => _tombstone(_msgs[i]));
       _schedulePersist();
     }
   }
@@ -7388,7 +7423,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     setState(() => _groupTranslateOn = turningOn);
     if (!turningOn) {
       // Revert: drop the translations so bubbles show the original again.
-      setState(() { for (final m in _msgs) { m.extra?.remove('translated'); m.extra?.remove('translated_lang'); } });
+      _mutMsgs(() { for (final m in _msgs) { m.extra?.remove('translated'); m.extra?.remove('translated_lang'); } });
       Analytics.capture('group_translate_enabled', {'lang': _transLang.code, 'on': false});
       return;
     }
@@ -7414,7 +7449,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     ];
     final out = await AiChatApi.groupTranslate(conv, lang, batch);
     if (!mounted) { return; }
-    setState(() {
+    _mutMsgs(() {
       _groupTranslateBusy = false;
       for (final m in targets) {
         final t = out[m.evId ?? '${m.id}'];
@@ -7526,7 +7561,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   /// Stash the translation on the message's `extra` so the bubble can render it
   /// under the original (via TranslatedText) without touching Stream K geometry.
   void _showInlineTranslation(_Msg m, String translated, String lang) {
-    setState(() {
+    _mutMsgs(() {
       (m.extra ??= <String, dynamic>{})['translated'] = translated;
       m.extra!['translated_lang'] = lang;
     });
@@ -7553,7 +7588,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     // 2) Per-account disk cache (never re-transcribe on reopen).
     final cached = await _msgStore.readTranscript(key);
     if (cached != null && cached.trim().isNotEmpty) {
-      if (mounted) setState(() => (m.extra ??= <String, dynamic>{})['transcript'] = cached);
+      if (mounted) _mutMsgs(() => (m.extra ??= <String, dynamic>{})['transcript'] = cached);
       return cached;
     }
     // 3) Transcribe: decrypted bytes → /api/stt/transcribe (same route the
@@ -7584,7 +7619,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       Analytics.capture('voice_transcribe', {'ok': text.isNotEmpty, 'ms': ms, 'chars': text.length});
       if (text.isEmpty) return '';
       try { await _msgStore.writeTranscript(key, text); } catch (_) {}
-      if (mounted) setState(() => (m.extra ??= <String, dynamic>{})['transcript'] = text);
+      if (mounted) _mutMsgs(() => (m.extra ??= <String, dynamic>{})['transcript'] = text);
       return text;
     } catch (e) {
       final ms = DateTime.now().millisecondsSinceEpoch - t0;
@@ -7686,7 +7721,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   /// Stash the transcript translation on the message so the bubble renders it
   /// as "translated (Language)" below the voice waveform. Viewer-only.
   void _showVoiceTranslation(_Msg m, String translated, String langLabel) {
-    setState(() {
+    _mutMsgs(() {
       (m.extra ??= <String, dynamic>{})['transcript_translated'] = translated;
       m.extra!['transcript_translated_lang'] = langLabel;
     });
@@ -8160,34 +8195,66 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                 decoration: BoxDecoration(gradient: _threadGradient),
                 child: Builder(builder: (_) {
                 final nowS = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-                var visible = _msgs
-                    .where((m) => m.expireAt == null || m.expireAt! >= nowS)
-                    // Never render control envelopes (read/delivered/typing
-                    // receipts) as chat bubbles — they leaked through as raw
-                    // JSON "{t:read,…}" green messages that multiplied on reopen.
-                    .where((m) => !_isControlEnvelope(m.text))
-                    .toList();
-                // "Ava is working…" chips are transient: only the MOST RECENT
-                // message may be one. A real reply (or anything later) makes
-                // earlier chips stale, so they collapse instead of sticking.
-                if (visible.isNotEmpty) {
-                  final lastIdx = visible.length - 1;
-                  visible = [
-                    for (var i = 0; i < visible.length; i++)
-                      if (visible[i].special != 'ava_status' || i == lastIdx) visible[i],
-                  ];
-                }
-                // "Hide deleted messages" — drop my soft-deleted pills and peer
-                // "This message was deleted" tombstones so they don't clutter.
-                if (_hideDeleted) {
-                  visible = visible
-                      .where((m) => !m.hidden && m.text != 'This message was deleted')
-                      .toList();
-                }
                 final searching = _searchMode && _searchQuery.trim().isNotEmpty;
+                // [CHAT-UI-VISIBLE-MEMO-1] Memoize the filtered/sorted visible
+                // list instead of recomputing (.where/.toList chains + the
+                // ava_status collapse + hideDeleted + search filter) on EVERY
+                // rebuild — a bare keystroke, clock tick, or typing-indicator
+                // flip used to re-walk the entire message history. Only
+                // recompute when something that can actually change the
+                // result changed: an `_mutMsgs`-tracked message mutation
+                // (`_msgsRev`), the search query/mode, or the hideDeleted
+                // toggle — plus the fallback safety net documented on
+                // `_visibleCache` above (`_msgs.length` / last-element
+                // identity) for any mutation that slipped past `_mutMsgs`.
+                final cacheQueryKey = searching ? _searchQuery : '';
+                final lastHash = _msgs.isEmpty ? 0 : identityHashCode(_msgs.last);
+                List<_Msg> visible;
+                final cacheValid = _visibleCache != null &&
+                    _visibleCacheRev == _msgsRev &&
+                    _visibleCacheQuery == cacheQueryKey &&
+                    _visibleCacheHideDeleted == _hideDeleted &&
+                    _visibleCacheLen == _msgs.length &&
+                    _visibleCacheLastHash == lastHash;
+                if (cacheValid) {
+                  visible = _visibleCache!;
+                } else {
+                  visible = _msgs
+                      .where((m) => m.expireAt == null || m.expireAt! >= nowS)
+                      // Never render control envelopes (read/delivered/typing
+                      // receipts) as chat bubbles — they leaked through as raw
+                      // JSON "{t:read,…}" green messages that multiplied on reopen.
+                      .where((m) => !_isControlEnvelope(m.text))
+                      .toList();
+                  // "Ava is working…" chips are transient: only the MOST RECENT
+                  // message may be one. A real reply (or anything later) makes
+                  // earlier chips stale, so they collapse instead of sticking.
+                  if (visible.isNotEmpty) {
+                    final lastIdx = visible.length - 1;
+                    visible = [
+                      for (var i = 0; i < visible.length; i++)
+                        if (visible[i].special != 'ava_status' || i == lastIdx) visible[i],
+                    ];
+                  }
+                  // "Hide deleted messages" — drop my soft-deleted pills and peer
+                  // "This message was deleted" tombstones so they don't clutter.
+                  if (_hideDeleted) {
+                    visible = visible
+                        .where((m) => !m.hidden && m.text != 'This message was deleted')
+                        .toList();
+                  }
+                  if (searching) {
+                    final q = _foldSearch(_searchQuery);
+                    visible = visible.where((m) => _foldSearch(m.text).contains(q)).toList();
+                  }
+                  _visibleCache = visible;
+                  _visibleCacheRev = _msgsRev;
+                  _visibleCacheQuery = cacheQueryKey;
+                  _visibleCacheHideDeleted = _hideDeleted;
+                  _visibleCacheLen = _msgs.length;
+                  _visibleCacheLastHash = lastHash;
+                }
                 if (searching) {
-                  final q = _foldSearch(_searchQuery);
-                  visible = visible.where((m) => _foldSearch(m.text).contains(q)).toList();
                   // No literal hit → keep the user IN the thread and offer BOTH the
                   // on-device "Discuss with Ava" find AND the server-side smart
                   // (semantic) search over their own consented index.
@@ -10858,7 +10925,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                               // returns 200 for this client_id.
                               final newId = _dm!.send(jsonEncode({'t': 'text', 'body': m.text,
                                   if (m.replyTo != null) 'replyTo': m.replyTo, if (m.expireAt != null) 'exp': m.expireAt}));
-                              setState(() { m.evId = newId; m.failed = false; m.sent = false; _seenEv.add(newId); });
+                              _mutMsgs(() { m.evId = newId; m.failed = false; m.sent = false; _seenEv.add(newId); });
                             }
                           },
                           child: row,
@@ -11353,7 +11420,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
               height: 160,
               onFetched: (bytes) {
                 if (!mounted) return;
-                setState(() => m.localBytes = bytes);
+                _mutMsgs(() => m.localBytes = bytes);
               },
             );
           }
@@ -11385,7 +11452,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                           cacheWidth: (220 * MediaQuery.of(context).devicePixelRatio * 2).round(),
                           errorBuilder: (_, __, ___) => _brokenMediaPlaceholder(
                               m: m, kind: 'image', reason: 'decode_failed',
-                              onRetry: () { setState(() => m.localBytes = null); })),
+                              onRetry: () { _mutMsgs(() => m.localBytes = null); })),
                     ),
                   ),
                 );
@@ -11430,7 +11497,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
             compact: true,
             onFetched: (bytes) {
               if (!mounted) return;
-              setState(() => m.localBytes = bytes);
+              _mutMsgs(() => m.localBytes = bytes);
             },
           );
         }
@@ -11550,7 +11617,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       'kind': 'file',
       'mime': m.media?.contentType ?? '',
     });
-    setState(() => m.fileOpening = true);
+    _mutMsgs(() => m.fileOpening = true);
     try {
       final bytes = m.localBytes ??
           (m.media != null ? await MediaService.downloadAndDecrypt(m.media!) : null);
@@ -11560,6 +11627,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
             .showSnackBar(SnackBar(content: Text("Couldn't load $name")));
         return;
       }
+      _msgsRev++; // m.localBytes assigned directly below (no setState needed here — the finally block's _mutMsgs repaints)
       m.localBytes = bytes;
       final mime = m.media?.contentType ?? '';
       if (FileViewerScreen.canView(mime, name)) {
@@ -11580,7 +11648,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
             .showSnackBar(SnackBar(content: Text("Couldn't open $name")));
       }
     } finally {
-      if (mounted) setState(() => m.fileOpening = false);
+      if (mounted) _mutMsgs(() => m.fileOpening = false);
     }
   }
 
