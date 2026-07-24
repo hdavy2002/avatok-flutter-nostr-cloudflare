@@ -344,6 +344,12 @@ export interface PlatformConfig {
   // ships an update loop, this switch is the only thing between a bad release and
   // every device retrying it. Declaring it makes the brake real.
   inAppUpdateEnabled: boolean;
+  // Cloudflare-only media migration Wave-0 scaffold (Specs/CLOUDFLARE-ONLY-REALTIME-MEDIA-MIGRATION-PROPOSAL-2026-07-24.md).
+  // Both dormant/legacy-safe defaults: Cloudflare conference path is not built yet
+  // (stays OFF), LiveKit remains the live conference provider (stays ON) until the
+  // migration flips them.
+  cloudflareConferenceEnabled: boolean;
+  livekitConferenceEnabled: boolean;
   // Call-state control-plane authority (Specs/CALL-CONTROL-PLANE-UNIFIED-PLAN.md
   // §5 — protocol-v1/v2 shadow rollout). All default OFF/legacy: CallStateAuthorityDO
   // is wired (wrangler binding + v13 migration) but fully dormant until these flip.
@@ -767,6 +773,8 @@ const DEFAULTS: PlatformConfig = {
   minAppBuild: 0,
   latestAppBuild: 0,                     // newest published build; >installed → soft "update available" popup (opens Play Store). Owner bumps in KV per release. 0 = never prompt.
   inAppUpdateEnabled: true,              // [AVA-UPDATE-AUTO] emergency brake for the auto-updater. TRUE (matches the client's own fallback default, so declaring it changes nothing today) — set false in KV to stop every device update-checking.
+  cloudflareConferenceEnabled: false,    // [CF-CALL-000] Cloudflare-only media migration — DARK until Wave-N builds the CF conference path
+  livekitConferenceEnabled: true,        // [CF-CALL-000] LiveKit is the live conference provider today; stays ON until migration cuts over
   // Call-state control-plane authority (Specs/CALL-CONTROL-PLANE-UNIFIED-PLAN.md §5)
   // — Phase A plumbing only. All OFF/legacy: CallStateAuthorityDO is bound but dark.
   authorityShadowEnabled: true,   // CALL-AUTH-LIVE-1: authority observes + records vs legacy

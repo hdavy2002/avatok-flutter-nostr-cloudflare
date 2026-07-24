@@ -97,6 +97,9 @@ class RemoteConfig {
   static bool get liveEnabled => _b('liveEnabled', false);
   static bool get consultEnabled => _b('consultEnabled', false);
   static bool get conferenceEnabled => _b('conferenceEnabled', true);
+  // Cloudflare-only media migration Wave-0 scaffold (Specs/CLOUDFLARE-ONLY-REALTIME-MEDIA-MIGRATION-PROPOSAL-2026-07-24.md).
+  static bool get cloudflareConferenceEnabled => _b('cloudflareConferenceEnabled', false);
+  static bool get livekitConferenceEnabled => _b('livekitConferenceEnabled', true);
   // [AVA-VM-NOCOUNTDOWN-1] 3-2-1 Ava warm-up countdown before voicemail. Default ON
   // (legacy behavior); prod KV flips it OFF because the cached VM greeting is instant.
   static bool get avaCountdownEnabled => _b('avaCountdownEnabled', true);
