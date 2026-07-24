@@ -94,6 +94,24 @@ export const BRAIN_DOMAINS = {
   // row added to consumers/src/brain.ts DOMAIN_CONSENT (the consumer can't
   // cross-import this file).
   media_memory:{ basis: "consent", consent: "media_memory", label: "Daily recordings", default: true, scope: "account_private" },
+  // [AVABRAIN-EXPORT-1] (Bible §6.1, §9.2) — explicit, user-initiated export of
+  // device_private content (private Messenger DM/group excerpts, notes) into the
+  // cloud Brain. This is the ONLY path by which device_private content may ever
+  // become account_private: the user reviews the excerpt and taps "Remember this"
+  // (POST /api/brain/export), which calls brainIngest with domain:'private_export'
+  // — a NORMAL account_private domain from that point on (scope is derived by the
+  // registry like every other row; there is no special-cased bypass anywhere).
+  // UNLIKE every other domain, this one is OPT-IN (default: false) — every other
+  // domain default:true is an "opt-OUT of already-happening server visibility"
+  // toggle for content that was ALREADY account_private (calls, files, listings,
+  // ...). Private chat content is device_private by design (§6.1) and must never
+  // cross that boundary silently; default:false means a user who has never
+  // visited the export screen has contributed ZERO private-chat content to the
+  // cloud Brain, matching the bible's "explicit, bounded, auditable" requirement.
+  // Own consent key = own Settings guardrail toggle. Mirror row added to
+  // consumers/src/brain.ts DOMAIN_CONSENT (the consumer can't cross-import this
+  // file). ONE producer: routes/brain_export.ts (POST /api/brain/export).
+  private_export: { basis: "consent", consent: "private_export", label: "Private chat export", default: false, scope: "account_private" },
   // ── §10 Guardian (SPEC-2026-07-17 §10.1-10.3) — the SAFETY store ────────────
   // basis:'legal' (legitimate interest / legal obligation), NOT consent: it is a
   // DISCLOSURE in Settings, never a toggle (§10.1). consent:null (nothing to gate).

@@ -14,6 +14,7 @@ import { streamWebhook } from "./routes/stream";
 import { brain } from "./routes/brain";
 import { brainDomains } from "./routes/brain_domains";
 import { brainMediaPrepare, brainMediaComplete, brainMediaStatus, brainMediaDelete } from "./routes/brain_media"; // [AVABRAIN-MEDIA-1]
+import { brainExport, brainMemoryList, brainMemoryConfirm, brainMemoryCorrect, brainMemoryDelete, brainMemoryExport } from "./routes/brain_export"; // [AVABRAIN-EXPORT-1]
 import { deleteAccount, cancelDeletion, deletionStatus } from "./routes/account";
 import { adminDeleteUser } from "./routes/admin_delete_user"; // [ADMIN-DELETE-USER-1] admin immediate erasure of another user
 // [AVADIAL-CALL-INTEL-1] Call-intelligence ingest. The ONLY place raw E.164 and the
@@ -1034,6 +1035,12 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // [ONEBRAIN-B0] Registry contract for the Settings UI (must precede the
       // generic /api/brain/:op matcher below, which would 404 a GET 'domains').
       if (p === "/api/brain/domains" && req.method === "GET") return await brainDomains(req, env);
+      // [AVABRAIN-EXPORT-1] (Bible §6.1, §9.2) — must precede the generic
+      // /api/brain/:op matcher below: 'export' would otherwise match that
+      // single-segment pattern and 404 inside brain()'s switch (which has no
+      // 'export' case, and must not gain one — this is its own opt-in-consent
+      // producer, not a generic brain op).
+      if (p === "/api/brain/export" && req.method === "POST") return await brainExport(req, env);
       const bm = p.match(/^\/api\/brain\/([a-z_]+)$/);
       if (bm) {
         const op = bm[1];
@@ -1055,6 +1062,19 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
           if (req.method === "GET") return await brainMediaStatus(req, env, bmm[1]);
           if (req.method === "DELETE") return await brainMediaDelete(req, env, bmm[1]);
         }
+      }
+
+      // --- [AVABRAIN-EXPORT-1] memory review/correction/forget/export screens ---
+      // (Bible §P1.5, §9.3). Exact matches for the fixed-name sub-paths MUST
+      // precede the /:id regex below, or "list"/"confirm"/"correct"/"export"
+      // would themselves be captured as an :id.
+      if (p === "/api/brain/memory/list" && req.method === "GET") return await brainMemoryList(req, env);
+      if (p === "/api/brain/memory/confirm" && req.method === "POST") return await brainMemoryConfirm(req, env);
+      if (p === "/api/brain/memory/correct" && req.method === "POST") return await brainMemoryCorrect(req, env);
+      if (p === "/api/brain/memory/export" && req.method === "POST") return await brainMemoryExport(req, env);
+      {
+        const bmem = p.match(/^\/api\/brain\/memory\/([A-Za-z0-9-]{1,64})$/);
+        if (bmem && req.method === "DELETE") return await brainMemoryDelete(req, env, bmem[1]);
       }
 
       // --- ICE (public read) ---
