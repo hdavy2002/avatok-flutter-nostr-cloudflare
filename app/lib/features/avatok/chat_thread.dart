@@ -85,6 +85,9 @@ import 'ava_email.dart';
 import 'file_viewer_screen.dart';
 import '../genui/a2ui_renderer.dart';
 import '../../core/apps_service.dart';
+import '../conference/cloudflare_conference_api.dart';
+import '../conference/cloudflare_conference_controller.dart';
+import '../conference/cloudflare_conference_screen.dart';
 import '../conference/conference_api.dart';
 import '../conference/conference_screen.dart';
 import '../conference/mesh_api.dart';
@@ -3479,6 +3482,19 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
           content: Text('Group calls are temporarily unavailable')));
       return;
     }
+    // [CF-CALL-004] Provider selection: when cloudflareConferenceEnabled is on,
+    // BOTH audio and video group calls route through the ticket-authenticated
+    // Cloudflare Realtime A/V path (worker/src/routes/groupcall.ts's /join
+    // always returns provider:"cloudflare_realtime" — there is no other value
+    // it can return, so "the ticket says cloudflare_realtime" and "the flag is
+    // on" are the same check here). This takes priority over the legacy
+    // audio-only groupAudioSfuEnabled path below. LiveKit (ConferenceScreen)
+    // stays completely untouched as the fallback when the flag is off.
+    if (RemoteConfig.cloudflareConferenceEnabled) {
+      if (_groupMemberCount > 25) { _confLimitNotice(video); return; }
+      await _cfGroupCall(video);
+      return;
+    }
     // FREE LAUNCH: when the CF Realtime SFU group-audio path is enabled, AUDIO
     // group calls run on Cloudflare Realtime SFU (≤32, active-speaker). Video
     // group calls and the dormant (flag-off) case fall through to LiveKit/mesh.
@@ -3549,6 +3565,29 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not start the call')));
       }
     }
+  }
+
+  /// [CF-CALL-004] Cloudflare Realtime A/V group call launch site (audio OR
+  /// video, ≤25 — parity with the LiveKit conference cap). Reached from
+  /// _groupCall when RemoteConfig.cloudflareConferenceEnabled is on.
+  Future<void> _cfGroupCall(bool video) async {
+    final gid = widget.chat.gid;
+    if (gid == null) return;
+    if (CloudflareConferenceController.activeGid != null || OngoingConference.active != null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('You are already in a call — leave it first')));
+      return;
+    }
+    final s = await CloudflareConferenceApi.status(gid);
+    final starting = !s.live;
+    if (starting) {
+      _sendSpecial('gcall', {'state': 'start', 'kind': video ? 'video' : 'audio', 'gid': gid, 'cf': true},
+          video ? '📹 Video call started — tap 📞 to join' : '🎙️ Audio call started — tap 📞 to join');
+    }
+    if (!mounted) return;
+    await Navigator.push(context, MaterialPageRoute(
+        builder: (_) => CloudflareConferenceScreen(gid: gid, title: widget.chat.name, video: video, starter: starting)));
+    _refreshConfStatus();
   }
 
   /// FREE LAUNCH group AUDIO via Cloudflare Realtime SFU (≤32, active-speaker).
