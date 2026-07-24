@@ -2523,6 +2523,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   /// Scroll listener: when the viewport nears the TOP of the loaded thread (older
   /// end), pull the next archive page. Guarded by restoreV2 + one-in-flight.
   void _maybePageArchive() {
+    // [CHAT-UI-LIST-1e] Cheap piggyback on this existing scroll listener: if
+    // the reader has manually scrolled back within ~120px of the newest
+    // message, the unseen badge no longer reflects reality — clear it here
+    // too (not just on a force:true jump / FAB tap) so scrolling down by
+    // hand also dismisses the badge, WhatsApp-style.
+    if (_unseenCount != 0 && _scroll.hasClients) {
+      final pos = _scroll.position;
+      if (pos.maxScrollExtent - pos.pixels <= 120 && mounted) {
+        setState(() => _unseenCount = 0);
+      }
+    }
     if (!RemoteConfig.restoreV2 || _archiveDone || _archiveLoading) return;
     if (!_scroll.hasClients) return;
     // extentBefore is how much is scrolled off the TOP; near 0 ⇒ at the oldest
@@ -3346,6 +3357,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
+      // [CHAT-UI-LIST-1e] force:true jumps (own sends) land the reader on the
+      // newest message, so any unseen badge from before the jump no longer
+      // applies — clear it here too (not just on the FAB tap) so an own-send
+      // jump never leaves a stale badge behind.
+      if (_unseenCount != 0 && mounted) setState(() => _unseenCount = 0);
     });
   }
 
