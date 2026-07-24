@@ -5262,7 +5262,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     m.retryAttempt = (m.retryAttempt ?? 0) + 1;
     Analytics.capture('chat_media_retry_started', {
       'kind': kind.name, 'mime': mime, 'bytes': m.localBytes!.length,
-      'attempt': m.retryAttempt, 'client_id': clientId,
+      'attempt': m.retryAttempt ?? 0, 'client_id': clientId,
     });
     _upload(m, m.localBytes!, kind, mime, filename, caption: m.mediaCaption);
   }
@@ -5428,12 +5428,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         'ms_bubble_to_uploaded': DateTime.now().millisecondsSinceEpoch - tUploadStart,
         if (msg.pickStartedMs != null && msg.sendStartedMs != null)
           'ms_pick_to_bubble': msg.sendStartedMs! - msg.pickStartedMs!,
-        'transcode_ms': transcodeMs,
+        if (transcodeMs != null) 'transcode_ms': transcodeMs,
       });
       if (msg.retryAttempt != null) {
         Analytics.capture('chat_media_retry_succeeded', {
           'kind': kind.name, 'mime': uploadCt, 'bytes': uploadBytes.length,
-          'attempt': msg.retryAttempt, 'client_id': msg.mediaClientId ?? '',
+          'attempt': msg.retryAttempt!, 'client_id': msg.mediaClientId ?? '',
         });
       }
       final keyShort = m.id.length > 12 ? m.id.substring(m.id.length - 8) : m.id;
@@ -5473,7 +5473,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       if (msg.retryAttempt != null) {
         Analytics.capture('chat_media_retry_failed', {
           'kind': kind.name, 'mime': ct, 'bytes': bytes.length,
-          'attempt': msg.retryAttempt, 'client_id': msg.mediaClientId ?? '',
+          'attempt': msg.retryAttempt!, 'client_id': msg.mediaClientId ?? '',
           'reason': e.toString(),
         });
       }
@@ -8494,6 +8494,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                     ),
                 ]);
               }),
+              ),
             ),
             if (_mentionMatches.isNotEmpty) _mentionBar(),
             // Unknown-number threads are a one-way voicemail record (no live peer
