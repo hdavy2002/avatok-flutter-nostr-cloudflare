@@ -18,6 +18,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../../core/analytics.dart';
 import '../../../core/ui/zine.dart';
 import '../../../core/ui/zine_widgets.dart';
+import '../../wallet/wallet_screen.dart';
 import 'live_voice_controller.dart';
 import 'voice_call_api.dart';
 
@@ -60,6 +61,11 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
     _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 2200))
       ..repeat();
     _call.state.addListener(_onState);
+    // [AVABRAIN-VOICE-BILL-1] Fires at most once, only for a metered session,
+    // when the server's heartbeat advises the balance ran out. The controller
+    // has already ended the call by the time this runs; this just offers the
+    // top-up path.
+    _call.onInsufficientBalance = _showTopUpPrompt;
     // If this screen is re-presented for an already-running call (tap the
     // notification / tap the pill to return), clear minimized instead of
     // starting a second call.
@@ -68,6 +74,27 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
     } else {
       _call.start();
     }
+  }
+
+  void _showTopUpPrompt() {
+    if (!mounted) return;
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Out of AvaBrain voice balance'),
+        content: const Text('Top up to keep talking to Ava.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Not now')),
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WalletScreen()));
+            },
+            child: const Text('Top up'),
+          ),
+        ],
+      ),
+    );
   }
 
   // Start the segment timer once the call is actually live.

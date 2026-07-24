@@ -84,6 +84,19 @@ class LiveVoiceController with WidgetsBindingObserver implements VoiceCallApi {
   DateTime? _connectedAt;
   Timer? _reconnect;
 
+  // ── [AVABRAIN-VOICE-BILL-1] personal Live-voice metering ────────────────────
+  // Feature-detected off `token()`'s response — an older worker omits these
+  // fields entirely, in which case this whole block stays inert and the call
+  // behaves exactly as it did before metering existed.
+  String _sessionId = '';
+  bool _metered = false;
+  Timer? _heartbeatTimer;
+  bool _billingClosed = false; // guards close() to exactly-once per session
+  /// Set by [VoiceCallScreen] to show a top-up UI when the server advises
+  /// insufficient balance. Not part of [VoiceCallApi] — only the metered Live
+  /// path can fire it. Called at most once, then the call ends.
+  void Function()? onInsufficientBalance;
+
   // ── CALL-GLIVE-E: background/minimize survival ──────────────────────────────
   /// True while the call is shown as a minimized pill instead of the full
   /// [VoiceCallScreen] (back-navigated away, but not ended). Mirrors
@@ -234,6 +247,13 @@ class LiveVoiceController with WidgetsBindingObserver implements VoiceCallApi {
         });
       }
       _backgroundedWhileConnected = false;
+    } else if (state == AppLifecycleState.detached) {
+      // [AVABRAIN-VOICE-BILL-1] The process is going away — `dispose()` may
+      // never get to run its normal await chain, so settle billing here,
+      // best-effort, from whichever lifecycle hook gets there first. Guarded
+      // by the same `_billingClosed` flag, so a subsequent normal dispose()
+      // (if the engine gives us the time) is a harmless no-op.
+      _closeBilling('app_detached');
     }
   }
 
@@ -269,6 +289,15 @@ class LiveVoiceController with WidgetsBindingObserver implements VoiceCallApi {
       return false;
     }
     _model = t['model']?.toString() ?? _model;
+    // [AVABRAIN-VOICE-BILL-1] Feature-detect metering. An older worker's
+    // response simply has no `metered` key, so `_metered` stays false and
+    // every line below this block is a no-op — zero behavior change.
+    _sessionId = (t['session_id'] ?? '').toString();
+    _metered = t['metered'] == true && _sessionId.isNotEmpty;
+    if (_metered) {
+      final hbMs = (t['heartbeat_interval_ms'] as num?)?.toInt() ?? 20000;
+      _startHeartbeat(hbMs);
+    }
     // CALL-GLIVE-E2: start the SAME ongoing-call foreground service + native
     // communication audio mode the P2P path uses, at call setup (not on first
     // audio), so the OS shows the ongoing-call notification + green mic dot and
@@ -292,6 +321,64 @@ class LiveVoiceController with WidgetsBindingObserver implements VoiceCallApi {
     state.value = CallState.error;
     status.value = msg;
     _ev('voice_live_error', {'stage': stage, 'error': msg, 'ms': _callSw.elapsedMilliseconds});
+  }
+
+  // ── [AVABRAIN-VOICE-BILL-1] metered-session heartbeat ────────────────────────
+  // Only ever running when `_metered` is true (feature-detected in `start()`).
+  // One session_id survives across Gemini WS reconnects within this call — the
+  // reconnect path re-mints a Gemini token but does NOT re-open a new billing
+  // session, so this timer is started exactly once per call.
+  void _startHeartbeat(int intervalMs) {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = Timer.periodic(Duration(milliseconds: intervalMs), (_) => _sendHeartbeat());
+  }
+
+  Future<void> _sendHeartbeat() async {
+    if (_disposed || !_metered || _sessionId.isEmpty) return;
+    try {
+      final r = await AvaLiveApi.heartbeat(_sessionId);
+      // Server never sends an `insufficient_balance: true` boolean — it
+      // returns HTTP 402 with {error:'insufficient_balance', action:'top_up'}
+      // (worker/src/routes/ava_live.ts avaLiveHeartbeat). `status` here is the
+      // real HTTP status AvaLiveApi.heartbeat stamps onto the map.
+      final isInsufficientBalance = (r['status'] as num?)?.toInt() == 402 ||
+          r['error'] == 'insufficient_balance';
+      if (isInsufficientBalance) {
+        _ev('avabrain_voice_heartbeat_402', {
+          'session_id': _sessionId,
+          'ms': _callSw.elapsedMilliseconds,
+        });
+        Analytics.uiInteraction('avabrain_voice_heartbeat_402', _callSw.elapsedMilliseconds, extra: {
+          'call_id': _callId,
+        });
+        onInsufficientBalance?.call();
+        _fail('You’re out of AvaBrain voice balance — top up to keep talking.', stage: 'insufficient_balance');
+        // ignore: unawaited_futures
+        dispose();
+        return;
+      }
+      final ok = (r['status'] as num?)?.toInt() == 200;
+      if (!ok) {
+        _ev('voice_live_heartbeat_error', {'status': r['status'], 'error': (r['error'] ?? '').toString()});
+      }
+    } catch (e, st) {
+      await Analytics.captureException(e, st, screen: 'live_voice_controller', handled: true);
+    }
+  }
+
+  void _stopHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+  }
+
+  /// Best-effort final settlement — guarded so it only ever fires once per
+  /// session, from whichever end path gets there first (hangup, error, token
+  /// expiry, or an app-lifecycle pause/detached hook).
+  void _closeBilling(String reason) {
+    if (!_metered || _sessionId.isEmpty || _billingClosed) return;
+    _billingClosed = true;
+    // ignore: unawaited_futures
+    AvaLiveApi.close(_sessionId, reason: reason);
   }
 
   Future<bool> _connect(String token) async {
@@ -640,6 +727,11 @@ class LiveVoiceController with WidgetsBindingObserver implements VoiceCallApi {
     if (_torndown) return;
     _torndown = true;
     _disposed = true;
+    _stopHeartbeat();
+    // [AVABRAIN-VOICE-BILL-1] Every end path funnels through this one-shot
+    // dispose() (hangup, _fail-then-dispose on error/insufficient-balance,
+    // token expiry) — settle here so close() genuinely fires exactly once.
+    _closeBilling(state.value == CallState.error ? 'error' : 'hangup');
     WidgetsBinding.instance.removeObserver(this);
     if (NativeVoiceAudio.isSupported) {
       if (NativeVoiceAudio.instance.onNotificationHangup != null) {
