@@ -612,6 +612,22 @@ class _CallScreenState extends State<CallScreen> {
   void _minimize() {
     if (_popped) return;
     if (_session.isEnded || _session.phase.value == CallPhase.ended) {
+      // [CALL-MENU-FIX-2] Back-nav — the header back button, the system back
+      // gesture (PopScope), and the control row's chat-minimize icon all funnel
+      // through here — while a terminal outcome surface (outcome-menu / busy /
+      // no-answer / declined / network-error) owns the screen. `_popIfMounted()`
+      // below is a PURE navigation pop; it never touches the session (dispose()
+      // is view-detach only by design). Before this fix that meant backing out
+      // of the outcome menu never reached the session's teardown, leaking the
+      // SAME one-call guard slot as an un-dismissed "Call again" tap.
+      // `dismissOutcomeAndWait` checks `_ended` first, so this is a safe no-op
+      // for a session whose own terminal path already fully closed it.
+      if (_session.isOutcomeSurface) {
+        Analytics.capture('call_menu_option_selected', {
+          'call_id': widget.room, 'option': 'back_nav',
+        });
+      }
+      unawaited(_session.dismissOutcomeAndWait(reason: 'back-nav'));
       _popIfMounted();
       return;
     }
@@ -824,12 +840,24 @@ class _CallScreenState extends State<CallScreen> {
                     PaidBusyCard(
                       name: widget.title,
                       message: (_postRingBusy!['message'] ?? '').toString(),
-                      onTryAgain: () {
+                      onTryAgain: () async {
+                        Analytics.capture('call_menu_option_selected', {
+                          'call_id': widget.room, 'option': 'call_again',
+                        });
                         final nav = Navigator.of(context);
                         final uidSeed = widget.seed, title = widget.title,
                             avatar = widget.avatarUrl, vid = widget.video;
+                        // [CALL-MENU-FIX-2] Serialized teardown BEFORE redial — same
+                        // leaked-guard-slot bug as the unified menu's Call again, just
+                        // on the legacy business post-ring-busy card.
+                        try {
+                          await s.dismissOutcomeAndWait(reason: 'call-again');
+                        } catch (e, st) {
+                          Analytics.captureException(e, st, handled: true,
+                              screen: 'call_screen', extra: {'stage': 'paid_busy_try_again'});
+                        }
                         _popIfMounted();
-                        place1to1Call(nav.context, uid: uidSeed, name: title, avatarUrl: avatar, video: vid);
+                        unawaited(place1to1Call(nav.context, uid: uidSeed, name: title, avatarUrl: avatar, video: vid, business: widget.business));
                       },
                       onClose: _popIfMounted,
                     )
@@ -845,14 +873,26 @@ class _CallScreenState extends State<CallScreen> {
                       avatarUrl: widget.avatarUrl,
                       // [RECEPT-SETTINGS-1] voicemail removed — the card now
                       // offers Call again / Save contact / Close only.
-                      onCallAgain: () {
+                      onCallAgain: () async {
+                        Analytics.capture('call_menu_option_selected', {
+                          'call_id': widget.room, 'option': 'call_again',
+                        });
                         final nav = Navigator.of(context);
                         final uidSeed = widget.seed, title = widget.title,
                             avatar = widget.avatarUrl, vid = widget.video;
+                        // [CALL-MENU-FIX-2] Serialized teardown BEFORE redial — the
+                        // legacy business no-answer card has the same shape as the
+                        // unified menu's Call again and leaked the same guard slot.
+                        try {
+                          await s.dismissOutcomeAndWait(reason: 'call-again');
+                        } catch (e, st) {
+                          Analytics.captureException(e, st, handled: true,
+                              screen: 'call_screen', extra: {'stage': 'no_answer_call_again'});
+                        }
                         _popIfMounted();
                         // nav.context stays mounted after this route pops (it's
                         // the ancestor Navigator), so it's safe to push from here.
-                        place1to1Call(nav.context, uid: uidSeed, name: title, avatarUrl: avatar, video: vid);
+                        unawaited(place1to1Call(nav.context, uid: uidSeed, name: title, avatarUrl: avatar, video: vid, business: widget.business));
                       },
                       onSaveContact: () async {
                         try {
@@ -914,7 +954,11 @@ class _CallScreenState extends State<CallScreen> {
             ),
           ),
 
-        // control row — bordered zine circles; hang-up = coral circle.
+        // [CALL-MENU-UI-1] The outcome surface owns the screen after the
+        // dialing leg has ended. Do not leave live-call controls underneath it:
+        // they look tappable but the peer connection and tracks are already
+        // stopped, which caused speaker/audio state to appear broken.
+        if (!s.showOutcomeMenu && !s.showBusyCard && phase != 'no-answer' && phase != 'agent-handoff')
         Positioned(
           left: 0, right: 0, bottom: 0,
           child: Container(
@@ -1055,18 +1099,24 @@ class _CallScreenState extends State<CallScreen> {
       session: _session,
       name: widget.title,
       peerUid: widget.seed,
-      onClosed: _popIfMounted,
+      onClosed: () {
+        // Notes call menuDismiss internally; this is idempotent and also
+        // covers an ordinary close/contact action.
+        unawaited(_session.dismissOutcomeAndWait(reason: 'menu-closed'));
+        _popIfMounted();
+      },
       // [AVACALL-MENU-1] Call again — pop this screen and re-place the 1:1 call
       // (audio; a declined/busy call is retried as the same modality it started).
-      onCallAgain: () {
+      onCallAgain: () async {
         Analytics.capture('call_menu_option_selected', {
           'call_id': widget.room, 'option': 'call_again',
         });
         final nav = Navigator.of(context);
         final uidSeed = widget.seed, title = widget.title,
             avatar = widget.avatarUrl, vid = widget.video;
+        await _session.dismissOutcomeAndWait(reason: 'menu-call-again');
         _popIfMounted();
-        place1to1Call(nav.context, uid: uidSeed, name: title, avatarUrl: avatar, video: vid);
+        unawaited(place1to1Call(nav.context, uid: uidSeed, name: title, avatarUrl: avatar, video: vid, business: widget.business));
       },
       // [AVACALL-MENU-1] Message — pop and open the DM thread with the callee.
       onMessage: () {
@@ -1081,6 +1131,7 @@ class _CallScreenState extends State<CallScreen> {
           time: '',
           avatarUrl: widget.avatarUrl,
         );
+        unawaited(_session.dismissOutcomeAndWait(reason: 'menu-message'));
         _popIfMounted();
         nav.push(MaterialPageRoute(builder: (_) => ChatThreadScreen(chat: chat)));
       },
