@@ -33,9 +33,11 @@ jobs:
         run: npm run typecheck
       - name: Unit tests (vitest)
         working-directory: worker
-        # Scoped to test/ — src/spam/scoring.test.ts is a pre-existing stub with
-        # no test suite, which vitest's default glob treats as a failure.
-        run: npx vitest run test
+        # Scoped to test/ via --dir — src/spam/scoring.test.ts is a pre-existing
+        # stub with no test suite, which vitest's default glob treats as a
+        # failure. (A bare positional "test" is a NAME FILTER and still matches
+        # that stub's filename — must be --dir.)
+        run: npx vitest run --dir test
   consumers-ts:
     runs-on: ubuntu-latest
     steps:
