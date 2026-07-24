@@ -2806,7 +2806,12 @@ class CallSession {
   }
 
   Future<void> _handoffToAva(String activationMode) async {
-    _ringback.stop();
+    // CALL-REL-3: wait for the tone to actually stop (confirmed via the
+    // ringback player's own generation counter) before handing audio to the
+    // receptionist — a late/superseded tone completion must never bleed into
+    // Ava's speech. See Specs/PERMANENT-P2P-CALL-RELIABILITY-IMPLEMENTATION-
+    // PLAN-2026-07-24.md §6.
+    await _ringback.stop(reason: 'receptionist_handoff');
     final started = await _tryReceptionist(activationMode: activationMode);
     if (!started && !_connected) {
       // [RECEPT-START-409-1] A 409 reattach_blocked means Ava is ALREADY live on
