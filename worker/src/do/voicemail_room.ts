@@ -87,14 +87,19 @@ export class VoicemailRoom {
 
     const raw = await this.env.TOKENS.get(`voicemail_rtc:${sid}`, "json").catch(() => null);
     const init = raw as InitBlob | null;
-    if (!init || init.rtc_token !== token) return new Response("forbidden", { status: 403 });
+    // Non-null assertions below: this whole method is unreachable (retired, see the
+    // 410 return above) — dead code after an unconditional `return` loses TS's normal
+    // control-flow narrowing (verified: a minimal repro reproduces the exact TS18047
+    // even with the identical `if (!x) return` guard), so the compiler can't see what
+    // is still true at runtime — `init` guarded non-null by the very check on this line.
+    if (!init || init!.rtc_token !== token) return new Response("forbidden", { status: 403 });
     if (this.finalized) return new Response("gone", { status: 410 });
     this.init = init;
     this.startedAt = Date.now();
     // Single-use token — remove it immediately so a replay can't reopen this session.
     this.env.TOKENS.delete(`voicemail_rtc:${sid}`).catch(() => {});
     try {
-      const c = await contactFor(this.env, init.owner_uid);
+      const c = await contactFor(this.env, init!.owner_uid);
       this.ownerEmail = c.email; this.ownerPhone = c.phone;
     } catch { /* best-effort */ }
 

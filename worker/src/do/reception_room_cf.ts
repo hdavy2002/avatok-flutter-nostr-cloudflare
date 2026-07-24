@@ -27,6 +27,7 @@ import { trackUserContact, metric } from "../hooks";
 import { dmConvId } from "../authz";
 import { contactFor } from "../lib/identity";
 import { avaReasonRaw } from "../lib/ava_reason"; // One Brain B1: gateway for STT/LLM/TTS
+import type { Verb } from "../lib/ava_reason/types";
 import { aiRunOpts } from "../lib/ai_gate";       // AI Gateway cost-logging opts
 import { googleSynthesizeForLang } from "../lib/google_tts"; // WaveNet voice, any language (RECEPT-TTS-GOOGLE)
 import { sarvamTtsPcm, sarvamSttTranscribe } from "../lib/sarvam"; // Bulbul TTS + Saarika STT (RECEPT-SARVAM)
@@ -527,7 +528,11 @@ export class ReceptionRoomCf {
       if (pcm.byteLength > tail) pcm = pcm.subarray(pcm.byteLength - tail);
       const out: any = await avaReasonRaw(this.env, {
         role: "receptionist", capability: "stt", trigger: "turn_check", feature: "receptionist_smart_turn",
-        verb: "detect", model: "@cf/pipecat-ai/smart-turn-v2", uid: this.init?.owner_uid,
+        // "detect" isn't in the shared Verb union — this call pins an `@cf/` model, so
+        // ava_reason/policy.ts short-circuits routing before verb is ever switched on
+        // (see plan()'s `pinnedCf.startsWith("@cf/")` branch); `verb` here only labels
+        // the telemetry event, so the cast is a type-only fix with no routing effect.
+        verb: "detect" as Verb, model: "@cf/pipecat-ai/smart-turn-v2", uid: this.init?.owner_uid,
         raw: { audio: b64encode(pcm16ToWavMono(pcm, 16000)) }, aiRunOpts: aiRunOpts(this.env, this.init?.owner_uid),
       });
       const complete = out?.is_complete ?? out?.result?.is_complete;

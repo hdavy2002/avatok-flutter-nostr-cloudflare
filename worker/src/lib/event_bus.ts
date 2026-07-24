@@ -75,7 +75,7 @@ export async function emit(env: Env, e: BusEvent): Promise<void> {
     // Telemetry mirror (Analytics is one of the documented subscribers). Shaped
     // like the rest of the codebase's Q_ANALYTICS events (event/uid/ts/props) so
     // it lands in the same PostHog project without a new pipeline.
-    if ((env as { Q_ANALYTICS?: { send(m: unknown): Promise<void> } }).Q_ANALYTICS) {
+    if ((env as unknown as { Q_ANALYTICS?: { send(m: unknown): Promise<void> } }).Q_ANALYTICS) {
       void env.Q_ANALYTICS.send({
         event: "bus_event",
         uid: e.identity_id ?? e.uid ?? "",

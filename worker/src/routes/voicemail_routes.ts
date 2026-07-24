@@ -9,7 +9,7 @@
 // AvaTOK↔AvaTOK auto-voicemail with a generic system greeting — [AVACALL-VMFREE-3]).
 import type { Env } from "../types";
 import { json, normalizePhone } from "../util";
-import { requireUser, isFail } from "../authz";
+import { requireUser, isFail, type UserCtx } from "../authz";
 import { readConfig } from "./config";
 import { contactFor, nameFor } from "../lib/identity";
 import { trackUserContact } from "../hooks";
@@ -29,6 +29,12 @@ export async function voicemailStart(req: Request, env: Env): Promise<Response> 
   return json({ error: "gone", reason: "voicemail_retired" }, 410);
   // --- unreachable (kept for reference / quick revert only) ---
   // eslint-disable-next-line no-unreachable
+  // `u`: code after the unconditional 410 return above is provably unreachable,
+  // which loses TS's normal `isFail` narrowing of `ctx` (verified via a minimal
+  // repro — dead code after an unconditional early return drops control-flow
+  // narrowing even though the exact same `if (!x) return` guard precedes it);
+  // cast once here rather than at each `ctx.uid` use below.
+  const u = ctx as UserCtx;
   const cfg = await readConfig(env);
   const b = (await req.json().catch(() => ({}))) as { to?: string; call_id?: string; caller_name?: string; caller_phone?: string; trace_id?: string; free?: boolean };
   // [AVACALL-VMFREE-3] TWO ways in: the paid business voicemail bot
@@ -56,9 +62,9 @@ export async function voicemailStart(req: Request, env: Env): Promise<Response> 
   const to = String(b.to || "");
   if (!to) return json({ error: "to required" }, 400);
 
-  const caller = await contactFor(env, ctx.uid).catch(() => ({ email: null, phone: null }));
+  const caller = await contactFor(env, u.uid).catch(() => ({ email: null, phone: null }));
   const callerPhone = (b.caller_phone ? normalizePhone(String(b.caller_phone)) : null) || caller.phone || null;
-  const callerName = (b.caller_name == null ? null : String(b.caller_name).slice(0, 80)) || await nameFor(env, ctx.uid).catch(() => null);
+  const callerName = (b.caller_name == null ? null : String(b.caller_name).slice(0, 80)) || await nameFor(env, u.uid).catch(() => null);
   const ownerName = (await nameFor(env, to).catch(() => null)) || "your contact";
   const callId = b.call_id == null ? null : String(b.call_id).slice(0, 64);
 
@@ -79,13 +85,13 @@ export async function voicemailStart(req: Request, env: Env): Promise<Response> 
   const sid = crypto.randomUUID();
   const rtcToken = crypto.randomUUID();
   const init = {
-    sid, owner_uid: to, caller_uid: ctx.uid, caller_name: callerName, caller_phone: callerPhone,
+    sid, owner_uid: to, caller_uid: u.uid, caller_name: callerName, caller_phone: callerPhone,
     call_id: callId, rtc_token: rtcToken, greeting, owner_name: ownerName,
     record_sec: recordSec, grace_sec: graceSec, trace_id: b.trace_id || null,
   };
   await env.TOKENS.put(`voicemail_rtc:${sid}`, JSON.stringify(init), { expirationTtl: INIT_TTL_SEC });
 
-  trackUserContact(env, ctx.uid, caller.email, caller.phone, "voicemail_triggered", "voicemail",
+  trackUserContact(env, u.uid, caller.email, caller.phone, "voicemail_triggered", "voicemail",
     { owner: to, has_phone: !!callerPhone, call_id: callId }, sid);
 
   return json({

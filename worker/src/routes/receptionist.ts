@@ -21,7 +21,7 @@
 //   (WS) /api/receptionist/rtc?session=&t=       → ReceptionRoom DO (handled in index.ts)
 import type { Env } from "../types";
 import { json, normalizePhone } from "../util";
-import { requireUser, isFail } from "../authz";
+import { requireUser, isFail, type UserCtx } from "../authz";
 import { metaDb } from "../db/shard";
 import { readConfig } from "./config";
 import { track, trackUserContact, metric } from "../hooks";
@@ -691,7 +691,6 @@ export function composeReceptionistPrompt(
   }
   // End mechanism differs per engine: Gemini hangs up via the end_call tool; the
   // CF engine ends on a silent <END_CALL> marker. Keep the branch so Gemini is unchanged.
-  // @ts-expect-error pre-existing: CF-engine ('cf') branch vs narrowed type — the branch must stay live, needs domain review
   const endWith = ctx?.engine === "cf"
     ? `end your reply with the marker <END_CALL> on its own line (never say it aloud)`
     : `immediately call the end_call function`;
@@ -913,7 +912,11 @@ export async function receptionistPutSettings(req: Request, env: Env): Promise<R
     const cfg = await readConfig(env);
     if ((cfg as any).betaFreePremium !== true) {
       const tier = await tierOf(env, ctx.uid);
-      if (false && !isPaidTier(tier)) return premiumUpsell(env, ctx.uid, "receptionist"); // PAY-PER-USE: tier gate retired (owner 2026-07-19)
+      // (ctx as UserCtx): `if (false && …)` makes this branch provably unreachable,
+      // which — like the other dead-code sites in this pass — loses TS's normal
+      // `isFail` narrowing (verified via a minimal repro); cast, don't rewrite the
+      // still-retired gate.
+      if (false && !isPaidTier(tier)) return premiumUpsell(env, (ctx as UserCtx).uid, "receptionist"); // PAY-PER-USE: tier gate retired (owner 2026-07-19)
     }
   }
   const instr = b.instructions_text == null ? "" : String(b.instructions_text).slice(0, MAX_INSTRUCTIONS);
@@ -1306,7 +1309,9 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   const { tier, res } = await receptAllowance(env, to, false); // PAY-PER-USE: no daily-cap commit
   if (false && !freeLaunch && !res.allowed) { // retired — tokens meter usage
     skip("plan_limit", { tier, cap: res.cap, used: res.used });
-    trackUserContact(env, ctx.uid, caller.email, caller.phone, "ava_recept_plan_block", APP,
+    // (ctx as UserCtx): same provably-unreachable `if (false && …)` narrowing loss
+    // as above.
+    trackUserContact(env, (ctx as UserCtx).uid, caller.email, caller.phone, "ava_recept_plan_block", APP,
       { owner: to, tier, cap: res.cap, used: res.used });
     return json({ error: "receptionist_unavailable", reason: "plan_limit", ...planLimitBody(res) }, 402);
   }

@@ -23,6 +23,10 @@ export function track(
     // Return the send promise so callers can `ctx.waitUntil(...)` it. Without
     // that, an un-awaited send is cancelled when the response returns — which is
     // why server analytics (incl. signup_server) reached PostHog only sporadically.
+    // `.then(() => {})`: Queue#send resolves QueueSendResponse (per current
+    // @cloudflare/workers-types); this fn's contract is Promise<void> (callers only
+    // `ctx.waitUntil(...)` it for completion, never read a value) — adapt the
+    // resolved type without changing when/whether the promise settles.
     return env.Q_ANALYTICS.send({
       event,
       uid,
@@ -43,7 +47,7 @@ export function track(
         worker: true,
         account_id: uid,
       },
-    });
+    }).then(() => {});
   } catch { /* best-effort */ }
   return Promise.resolve();
 }

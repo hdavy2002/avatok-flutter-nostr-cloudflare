@@ -57,7 +57,9 @@ export async function sarvamSttTranscribe(env: unknown, wav: Uint8Array): Promis
     const fd = new FormData();
     fd.append("model", "saarika:v2.5");
     fd.append("language_code", "unknown"); // auto-detect, incl. code-mixed speech
-    fd.append("file", new Blob([wav as unknown as BlobPart], { type: "audio/wav" }), "turn.wav");
+    // See deepinfra.ts's deepInfraStt for why the BlobPart cast is dropped, not
+    // widened: workers-types' Blob ctor already accepts Uint8Array directly.
+    fd.append("file", new Blob([wav], { type: "audio/wav" }), "turn.wav");
     const r = await fetch("https://api.sarvam.ai/speech-to-text", {
       method: "POST", headers: { "api-subscription-key": key }, body: fd,
     });

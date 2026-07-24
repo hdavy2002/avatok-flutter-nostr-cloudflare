@@ -60,7 +60,12 @@ export async function deepInfraStt(
     const key = token(env);
     if (!key || !wav?.byteLength) return null;
     const fd = new FormData();
-    fd.append("audio", new Blob([wav as unknown as BlobPart], { type: "audio/wav" }), "turn.wav");
+    // workers-types' Blob ctor takes (ArrayBuffer | ArrayBufferView | string | Blob)[]
+    // — Uint8Array is an ArrayBufferView, so it's directly assignable with no cast.
+    // (`BlobPart` is a DOM-lib name not present under this worker's ES2022-only lib
+    // config; referencing it was the TS2304 — dropping the cast fixes the type error
+    // with zero behavior change, same bytes/mime type passed to Blob.)
+    fd.append("audio", new Blob([wav], { type: "audio/wav" }), "turn.wav");
     const r = await fetch(`${DEEPINFRA_BASE}/v1/inference/${VOXTRAL_MODEL}`, {
       method: "POST",
       headers: { Authorization: `Bearer ${key}` },
