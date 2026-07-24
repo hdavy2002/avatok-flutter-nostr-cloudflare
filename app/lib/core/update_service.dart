@@ -601,6 +601,32 @@ class UpdateService {
 
   /// Called by the lifecycle observer on foreground resume.
   static void onAppResumed() => unawaited(_maybeDetect(trigger: 'resume'));
+
+  /// [AVA-UPDATE-PUSH-1] A server push (FCM `type=app_update`) told us a new
+  /// build was JUST published — prompt right away, even mid-use, instead of
+  /// waiting for the 30-min timer or a background/foreground bounce (the owner's
+  /// report 2026-07-24: "the popup only shows after I swipe the app out and back
+  /// in, then hit the Update menu").
+  ///
+  /// A real release IS the reason to re-ask, so this clears this session's "Not
+  /// now" latch and the inter-prompt throttle before detecting. It does NOT
+  /// bypass the honest guards inside [_maybeDetect] / [_resolvePath]: the kill
+  /// switch ([RemoteConfig.inAppUpdateEnabled]), the up-to-date short-circuit
+  /// (the device that just installed this very build gets the push too and must
+  /// stay silent), and the side-loaded suppression all still apply.
+  ///
+  /// [build] is the freshly-published build number carried by the push, used for
+  /// telemetry only — the authoritative "newer exists" decision is re-derived
+  /// from a fresh [RemoteConfig.latestAppBuild] inside [_maybeDetect]. Best-effort
+  /// like everything else here; a failure never throws into the push handler.
+  static Future<void> onUpdatePush({int? build}) async {
+    Analytics.capture('update_push_received', {'build': build ?? 0});
+    if (!_supported) return;
+    _ensureObservers();
+    _dismissedThisSession = false; // a new release overrides an earlier "Not now"
+    _lastPromptAtMs = 0; // this is an explicit, freshly-triggered check — don't throttle it
+    await _maybeDetect(trigger: 'push');
+  }
 }
 
 /// Detects foreground resume so we can check for a new build while the user is

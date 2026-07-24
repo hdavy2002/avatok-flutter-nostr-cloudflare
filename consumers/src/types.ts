@@ -176,7 +176,7 @@ export interface WalletTxMsg {
 // scan is a follow-up — handler no-ops gracefully when hash is empty).
 export interface ModerationMsg { type: "image" | "stream_recording"; hash: string; uid: string; media_id: string; r2_key: string; }
 export interface PushMsg {
-  kind: "call" | "notify" | "call-status" | "relay-event" | "fanout" | "del" | "hide" | "call_del" | "call_clear" | "group_invite";
+  kind: "call" | "notify" | "call-status" | "relay-event" | "fanout" | "del" | "hide" | "call_del" | "call_clear" | "group_invite" | "app_update_broadcast";
   to?: string; to_uid?: string | null; from?: string; from_pubkey?: string;
   callType?: string; room?: string | null; status?: string;
   fromName?: string; callId?: string;
@@ -230,6 +230,15 @@ export interface PushMsg {
   // still processes — handleFanout falls back to a fresh id + attempt=1.
   fanout_id?: string;
   attempt?: number;
+  // [AVA-UPDATE-PUSH-1] kind === "app_update_broadcast": fan out a silent
+  // `type=app_update` wake to EVERY registered device so running apps prompt to
+  // update the instant a new build is published. `build` is the newly-published
+  // versionCode (telemetry + client display). Paged by `phase` ("device" →
+  // device_tokens, then "legacy" → push_tokens_v2) + a rowid `cursor`, so a large
+  // install base fans out across many queue messages instead of one CPU-bound run.
+  build?: number;
+  phase?: "device" | "legacy";
+  cursor?: number;
 }
 // attachments: Brevo transactional attachment shape — content is base64 (Phase 5 ICS).
 export interface EmailMsg { to: string; subject: string; html: string; from?: string; replyTo?: { email: string; name?: string }; attachments?: { name: string; content: string }[]; }

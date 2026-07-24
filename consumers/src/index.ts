@@ -6,7 +6,7 @@ import { handleAutoReply, handleAutoDigest, sweepAutoDigest } from "./auto_reply
 import { sweepAbandonedLiveness } from "./liveness_sweep"; // STREAM H — abandoned-liveness sweep (ported from worker/routes/liveness_audit)
 import { sweepRetention } from "./retention"; // [AVA-IDGATE-1] +256d biometric purge
 import { handleModeration } from "./moderation";
-import { handlePush } from "./fcm";
+import { handlePush, maybeBroadcastAppUpdate } from "./fcm";
 import { handleBrain, purgeChurnedBrains, rollupDailySummaries, runBrainRetention } from "./brain";
 import { handleArchive } from "./archive";
 import { handleDeletion } from "./deletion";
@@ -72,6 +72,13 @@ export default {
   // Cron — money sweep every minute (Phase 7); reminders every 15m
   // (lightweight); heavy cleanup only on the 6h tick.
   async scheduled(event: ScheduledController, env: Env): Promise<void> {
+    // [AVA-UPDATE-PUSH-1] Every-minute check: has latestAppBuild risen since we
+    // last broadcast? If so, fan out a silent `app_update` wake so running apps
+    // prompt to update within ~60s of a release — no swipe-out/in, no manual
+    // Update tap (owner report 2026-07-24). Cheap (one KV read), gated, idempotent,
+    // and best-effort so it can never disrupt the rest of the cron.
+    try { await maybeBroadcastAppUpdate(env); } catch (e) { console.error("[app-update-broadcast]", String(e)); }
+
     // Phase 7: refund/settlement SWEEP — catches missed DO alarms + settles
     // ended sessions (enqueue-only; the engine in avatok-api is idempotent, so
     // the system is alarm-precise AND cron-safe).

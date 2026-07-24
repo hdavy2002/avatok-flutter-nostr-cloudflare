@@ -30,6 +30,7 @@ import '../core/disk_cache.dart';
 import '../core/ice_cache.dart';
 import '../core/onboarding_store.dart';
 import '../core/remote_config.dart';
+import '../core/update_service.dart'; // [AVA-UPDATE-PUSH-1] instant app-update prompt on release
 import '../core/voice/native_voice_audio.dart';
 import '../features/avadial/contact_overrides.dart' show ContactOverrides;
 import '../features/avadial/device_contacts.dart' show DeviceContacts;
@@ -101,6 +102,21 @@ const _incomingCallChannel = AndroidNotificationChannel(
   description: 'Branded incoming-call screen', importance: Importance.max,
   playSound: false, enableVibration: false,
 );
+// [AVA-UPDATE-PUSH-1] App-update channel — the low-key "A new version is
+// available" banner posted when an `app_update` push arrives while the app is
+// BACKGROUND/terminated (the foreground case shows the in-app dialog instead).
+// Deliberately NOT high-importance and sound/vibration OFF: a new build is not
+// urgent like a call or message, so it must never wake the screen or ring. A
+// distinct id so the user can mute updates independently.
+const _updatesChannel = AndroidNotificationChannel(
+  'avatok_updates', 'App updates',
+  description: 'A new version of AvaTOK is available',
+  importance: Importance.defaultImportance,
+  playSound: false, enableVibration: false,
+);
+// Fixed notification id for the app-update banner (distinct from message 8000 /
+// group 8001 / missed-call 8002 / now-free 8003 / branded-incoming 8005 ids).
+const int _kUpdateNotifId = 8006;
 // Fixed notification id for the branded incoming-call FSI (distinct from the
 // message 8000 / group 8001 / missed-call 8002 / now-free 8003 ids). One live
 // incoming ring at a time, so a single reused id is correct.
@@ -130,6 +146,7 @@ Future<void> _ensureLocalInit() async {
     await android?.createNotificationChannel(_msgChannel);
     await android?.createNotificationChannel(_callsChannel);
     await android?.createNotificationChannel(_incomingCallChannel); // [AVACALL-INUI-2]
+    await android?.createNotificationChannel(_updatesChannel); // [AVA-UPDATE-PUSH-1]
     _localReady = true;
   } catch (_) {/* leave false so the next push retries init */}
 }
@@ -244,6 +261,14 @@ void _onNotifTap(String? payload) {
     _handleNowFreeCallback(payload);
     return;
   }
+  // [AVA-UPDATE-PUSH-1] Tapping the "Update available" banner (app was in the
+  // background/terminated when the release push landed) brings us to the front
+  // and runs a detection pass, which shows the in-app update dialog.
+  if (payload == 'app_update') {
+    navigatorKey.currentState?.popUntil((r) => r.isFirst);
+    unawaited(UpdateService.onUpdatePush());
+    return;
+  }
   // CALLFIX-R7: 'chat' payload opens inbox (main notification tap on missed-call or message).
   // Callback action is handled separately in _handleMissedCallCallback.
   if (payload != 'chat') return;
@@ -276,6 +301,32 @@ Future<void> _showGroupInviteNotif(Map<String, dynamic> d) async {
     payload: conv.isNotEmpty ? 'group:$conv' : 'group',
   );
   await _bgTrack('push_shown', {'channel': 'messages', 'type': 'group_invite'});
+}
+
+/// [AVA-UPDATE-PUSH-1] "Update available" banner for a release push that arrived
+/// while the app was BACKGROUND/terminated. Quiet channel (no sound/vibration).
+/// Tapping it (payload 'app_update') resumes the app and runs the update flow via
+/// [_onNotifTap]. Best-effort — a failure here never breaks the bg handler.
+Future<void> _showUpdateNotif(Map<String, dynamic> d) async {
+  final b = (d['build'] ?? '').toString();
+  await _ensureLocalInit(); // bg isolate: plugin isn't init'd here otherwise → crash
+  await _local.show(
+    _kUpdateNotifId,
+    'Update available',
+    'A new version of AvaTOK is ready. Tap to update.',
+    NotificationDetails(
+      android: AndroidNotificationDetails(
+        _updatesChannel.id, _updatesChannel.name,
+        channelDescription: _updatesChannel.description,
+        importance: Importance.defaultImportance, priority: Priority.defaultPriority,
+        category: AndroidNotificationCategory.recommendation,
+        onlyAlertOnce: true, // updating the banner for a newer build must not re-alert
+        ticker: 'AvaTOK update available',
+      ),
+    ),
+    payload: 'app_update',
+  );
+  await _bgTrack('app_update_push_bg', {'build': b});
 }
 
 /// Background/terminated FCM handler — must be a top-level entry point.
@@ -312,6 +363,10 @@ Future<void> _handleBackgroundMessage(RemoteMessage message) async {
       await _showMessageNotif(d);
     } else if (type == 'group_invite') {
       await _showGroupInviteNotif(d);
+    } else if (type == 'app_update') {
+      // [AVA-UPDATE-PUSH-1] A new build was published and the app is asleep — post
+      // a quiet "Update available" banner; the tap resumes us and prompts to update.
+      await _showUpdateNotif(d);
     } else if (type == 'del') {
       // Delete-for-everyone — silent. Park it for the app to apply on next foreground.
       await _queuePendingDelete(d);
@@ -2001,6 +2056,17 @@ class PushService {
           'state': 'foreground',
         });
         _showNowFreeNotif(d);
+        return;
+      }
+      // [AVA-UPDATE-PUSH-1] A new build was just published and the app is in the
+      // FOREGROUND (in use). Show the in-app "Update available" dialog immediately
+      // — no banner, no waiting for the 30-min timer or a resume. UpdateService
+      // re-checks the authoritative latestAppBuild and stays silent if this device
+      // already carries it.
+      if (d['type'] == 'app_update') {
+        final b = int.tryParse((d['build'] ?? '').toString()) ?? 0;
+        Analytics.capture('app_update_push_fg', {'build': b});
+        unawaited(UpdateService.onUpdatePush(build: b));
         return;
       }
       if (d['type'] == 'message') {

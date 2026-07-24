@@ -82,6 +82,7 @@ async function resolveTokens(env: Env, uid: string): Promise<TokenResolution> {
 
 export async function handlePush(msg: PushMsg, env: Env): Promise<void> {
   if (msg.kind === "fanout") return handleFanout(msg, env);
+  if (msg.kind === "app_update_broadcast") return handleAppUpdateBroadcast(msg, env);
   const uid = msg.to_uid || msg.to;
   if (!uid) return;
   const res = await resolveTokens(env, uid);
@@ -466,6 +467,122 @@ async function handleFanout(msg: PushMsg, env: Env): Promise<void> {
       fanout_id: fid, conv_hash: convHash, dead_letter_count: deadLetterCount, attempt,
     });
   }
+}
+
+// ── [AVA-UPDATE-PUSH-1] Instant app-update fan-out ──────────────────────────
+//
+// A new build was published (latestAppBuild bumped in KV by CI's "ship it" or a
+// hand `flags.sh set latestAppBuild=…`). maybeBroadcastAppUpdate() — called from
+// the consumers' minute cron — notices the increase and enqueues ONE
+// "app_update_broadcast" onto Q_PUSH; this handler pages every registered device
+// and sends a silent high-priority `type=app_update` DATA wake. The client's push
+// handler turns that into an immediate in-app "Update available" dialog while the
+// app is in use (or a quiet banner when backgrounded). The device that just
+// installed this very build receives it too and stays silent (its installed build
+// already == latestAppBuild — the client's own up-to-date short-circuit).
+//
+// Idempotent by construction: an app_update wake only tells a device to re-check
+// latestAppBuild, so a duplicate (overlapping tick, queue retry, a token in both
+// tables) is harmless. We therefore favour "never miss a device" over "never send
+// twice" everywhere below.
+const UPDATE_BCAST_PAGE = 300;       // device tokens per queue message
+const UPDATE_BCAST_PARALLEL = 25;    // FCM sends in flight per chunk
+
+async function handleAppUpdateBroadcast(msg: PushMsg, env: Env): Promise<void> {
+  const build = Number(msg.build ?? 0);
+  const phase: "device" | "legacy" = msg.phase === "legacy" ? "legacy" : "device";
+  const cursor = Number(msg.cursor ?? 0);
+  const payload = {
+    // High priority so a backgrounded/dozing device gets the wake promptly rather
+    // than Doze deferring it for minutes — "instant" is the whole point.
+    highPriority: true,
+    data: { type: "app_update", build: build > 0 ? String(build) : "" } as Record<string, string>,
+  };
+
+  // Page tokens by rowid (both tables keep an implicit rowid — neither is WITHOUT
+  // ROWID). device_tokens is the modern per-device store; push_tokens_v2 is the
+  // legacy uid-keyed one. We sweep device first, then legacy, so no live install
+  // is missed on either store.
+  const table = phase === "device" ? "device_tokens" : "push_tokens_v2";
+  let rows: Array<{ rowid: number; token: string; platform: string }> = [];
+  try {
+    const rs = await env.DB_META.prepare(
+      `SELECT rowid AS rowid, token, platform FROM ${table} WHERE rowid > ?1 ORDER BY rowid LIMIT ?2`,
+    ).bind(cursor, UPDATE_BCAST_PAGE).all();
+    rows = (rs.results ?? []) as Array<{ rowid: number; token: string; platform: string }>;
+  } catch (e) {
+    await capturePush(env, "app_update_broadcast_error", "app_update", {
+      build, phase, cursor, error: String(e).slice(0, 180),
+    });
+    return; // table missing / query failed — stop this phase, never throw into the queue
+  }
+
+  let sent = 0, failed = 0, lastRowid = cursor;
+  for (let i = 0; i < rows.length; i += UPDATE_BCAST_PARALLEL) {
+    const chunk = rows.slice(i, i + UPDATE_BCAST_PARALLEL);
+    await Promise.all(chunk.map(async (r) => {
+      if (Number(r.rowid) > lastRowid) lastRowid = Number(r.rowid);
+      try {
+        if (r.platform === "apns") { await sendApns(env, r.token, payload); sent++; return; }
+        // Reuse sendFcm — it also prunes a genuinely-dead token (UNREGISTERED/404),
+        // so a broadcast naturally GCs stale tokens as a side effect. distinct_id
+        // "app_update" keeps these sends out of any real user's event stream.
+        const res = await sendFcm(env, r.token, payload, "app_update", { source: phase });
+        if (res.ok) sent++; else failed++;
+      } catch {
+        failed++; // one bad token must never abort the whole page
+      }
+    }));
+  }
+
+  await capturePush(env, "app_update_broadcast_page", "app_update", {
+    build, phase, cursor, rows: rows.length, sent, failed, last_rowid: lastRowid,
+  });
+
+  // Continuation: more rows in THIS phase → next page; else device→legacy; else done.
+  if (rows.length === UPDATE_BCAST_PAGE) {
+    await env.Q_PUSH?.send({ kind: "app_update_broadcast", build, phase, cursor: lastRowid });
+  } else if (phase === "device") {
+    await env.Q_PUSH?.send({ kind: "app_update_broadcast", build, phase: "legacy", cursor: 0 });
+  }
+}
+
+// KV marker: the last build we've already broadcast for (per environment — prod
+// and staging use separate KV namespaces). Guards the diff so a bump fans out
+// EXACTLY once.
+const UPDATE_BCAST_MARKER = "update_broadcast_last_build";
+
+// Called every minute from the consumers cron. Reads latestAppBuild from the SAME
+// KV blob the app config is served from; when it rises above the marker, enqueues
+// one broadcast and advances the marker. First run after deploy adopts the current
+// build SILENTLY (never spam a build users already have) — only future increases
+// fan out. Best-effort: any failure leaves the marker untouched so the next tick
+// retries. Returns the build it broadcast (or 0).
+export async function maybeBroadcastAppUpdate(env: Env): Promise<number> {
+  if (!env.Q_PUSH) return 0;
+  const cfg = (await env.TOKENS.get("platform_config", "json")) as Record<string, unknown> | null;
+  const latest = Number((cfg?.latestAppBuild as number | string | undefined) ?? 0);
+  if (!Number.isFinite(latest) || latest <= 0) return 0;
+  // Mirror the client kill switch: if in-app updates are turned OFF in KV, don't
+  // wake anyone. (Default is ON, so an absent key still broadcasts.)
+  if (cfg?.inAppUpdateEnabled === false) return 0;
+
+  const markerRaw = await env.TOKENS.get(UPDATE_BCAST_MARKER);
+  const marker = Number(markerRaw ?? "0");
+  if (!marker) {
+    // First observation in this environment — adopt silently, broadcast nothing.
+    await env.TOKENS.put(UPDATE_BCAST_MARKER, String(latest));
+    return 0;
+  }
+  if (latest <= marker) return 0;
+
+  // A newer build was published. Enqueue the fan-out FIRST, then advance the
+  // marker — a duplicate broadcast (if the marker write races a second tick) is
+  // harmless, a lost one is not.
+  await env.Q_PUSH.send({ kind: "app_update_broadcast", build: latest, phase: "device", cursor: 0 });
+  await env.TOKENS.put(UPDATE_BCAST_MARKER, String(latest));
+  await capturePush(env, "app_update_broadcast_started", "app_update", { build: latest, prev_build: marker });
+  return latest;
 }
 
 // Field names match what the Flutter app reads in its FCM handler (push_service):
