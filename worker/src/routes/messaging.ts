@@ -77,6 +77,45 @@ const FANOUT_SYNC_MAX = 25;
 const FANOUT_QUEUE_CHUNK = 80; // recipients per queue message (well under 128KB)
 const BLOCKS_CHUNK = 90;       // D1 100-bound-param limit (SCALE_AUDIT P0-2)
 
+// [MSG-CTX-WAITUNTIL-1] Background-work helper (J3). A promise that is neither
+// awaited nor attached to ctx.waitUntil() may be terminated by the Workers
+// runtime the instant the response is returned — the route comments used to say
+// "no ctx.waitUntil" as if that were a feature; it meant guardian scans, archive
+// writes, and analytics could silently vanish. `bg()` is the ONE place that
+// decides how a detached job survives: if the caller threaded ExecutionContext
+// through, the job rides ctx.waitUntil(); otherwise (older call sites not yet
+// migrated) it falls back to the previous best-effort fire-and-forget so nothing
+// regresses. Never rethrows — a background failure is recorded, not propagated.
+function bg(ctx: ExecutionContext | undefined, env: Env | undefined, job: string, p: Promise<unknown>): void {
+  const guarded = p.catch((e) => {
+    console.error(`background_job_failed: ${job}`, String(e));
+    try {
+      void env?.Q_ANALYTICS?.send({
+        event: "background_job_failed", uid: "server", ts: Date.now(),
+        props: { job, error: String(e).slice(0, 300), app_name: "avatok", service_name: "avatok-api", worker: true },
+      });
+    } catch { /* best-effort */ }
+  });
+  if (ctx) ctx.waitUntil(guarded); else void guarded;
+}
+
+// [MSG-FANOUT-DURABLE-1] Deterministic fan-out job identity (J2 + J6). Hashing
+// (conv, message client id, sender uid) means a queue retry after a consumer
+// timeout, and a partial-failure re-enqueue of only the still-failed
+// recipients, both address the SAME job — never a brand-new, indistinguishable
+// one. Stable across attempts; the consumer forwards it unchanged on retry.
+async function fanoutId(conv: string, clientId: string | null, sender: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${conv}|${clientId ?? ""}|${sender}`));
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 32);
+}
+
+// Short, non-reversible conversation-id hash for telemetry (never a raw conv id
+// in new events, per the fan-out durability spec).
+async function hashShort(s: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return Array.from(new Uint8Array(digest)).slice(0, 8).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 /** Which of `candidates` have blocked `sender`? ONE chunked query, not N round-trips. */
 async function blockersOf(env: Env, sender: string, candidates: string[]): Promise<Set<string>> {
   const out = new Set<string>();
@@ -194,17 +233,15 @@ function msgPreview(kind: string, text: string | null, mediaRef: string | null):
 // tombstone — instead of waiting for the next manual sync (the "deleted after 2h
 // or never" bug). Online recipients already get it instantly over the DO socket
 // broadcast in inbox.append(), so this path is offline-only.
-async function pushDelete(env: Env, toUid: string, conv: string, target: string): Promise<void> {
+async function pushDelete(env: Env, toUid: string, conv: string, target: string, ctx?: ExecutionContext): Promise<void> {
   try {
     await env.Q_PUSH.send({ kind: "del", to: toUid, conv, target });
   } catch (e) {
     // The offline path failed to enqueue → the recipient can ONLY get this delete
     // on their next sync. Record it so a stuck delete is attributable, not silent.
-    try {
-      void env.Q_ANALYTICS.send({ event: "chat_delete_push_failed", uid: toUid, ts: Date.now(),
-        props: { delete_id: target, conv, account_id: toUid, app_name: "avatok",
-          service_name: "avatok-api", worker: true, err: String(e).slice(0, 200) } });
-    } catch { /* best-effort */ }
+    bg(ctx, env, "chat_delete_push_failed", env.Q_ANALYTICS.send({ event: "chat_delete_push_failed", uid: toUid, ts: Date.now(),
+      props: { delete_id: target, conv, account_id: toUid, app_name: "avatok",
+        service_name: "avatok-api", worker: true, err: String(e).slice(0, 200) } }));
   }
 }
 
@@ -276,7 +313,7 @@ async function maybeEnqueueAutoReply(
 }
 
 // ---- POST /api/msg/send -----------------------------------------------------
-export async function sendMsg(req: Request, env: Env): Promise<Response> {
+export async function sendMsg(req: Request, env: Env, execCtx?: ExecutionContext): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   // KYC gate is flag-gated OFF until Stripe Identity ships (set KYC_REQUIRED=1 to enforce).
@@ -421,10 +458,8 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
           const cKey = `usage:cmnote:${noteKind}:${ctx.uid}:${peer}:${day}`;
           const used = Math.max(0, parseInt((await env.TOKENS.get(cKey)) ?? "0", 10) || 0);
           if (used >= cap) {
-            try {
-              void env.Q_ANALYTICS.send({ event: "stranger_note_rate_limited", uid: ctx.uid, ts: Date.now(),
-                props: { kind: noteKind, cap, peer, email: (req.headers.get("x-user-email") || ""), account_id: ctx.uid, app_name: "avatok", service_name: "avatok-api", worker: true } });
-            } catch { /* best-effort */ }
+            bg(execCtx, env, "stranger_note_rate_limited", env.Q_ANALYTICS.send({ event: "stranger_note_rate_limited", uid: ctx.uid, ts: Date.now(),
+              props: { kind: noteKind, cap, peer, email: (req.headers.get("x-user-email") || ""), account_id: ctx.uid, app_name: "avatok", service_name: "avatok-api", worker: true } }));
             return json({ error: "note_rate_limited", kind: noteKind, cap, retry: "tomorrow" }, 429);
           }
           await env.TOKENS.put(cKey, String(used + 1), { expirationTtl: 2 * 86_400 });
@@ -440,27 +475,21 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
   // thread-clear branch) and never take this path.
   const _email = (req.headers.get("x-user-email") || "").toString();
   if (delTarget) {
-    try {
-      void env.Q_ANALYTICS.send({ event: "msg_retract_requested", uid: ctx.uid, ts: Date.now(),
-        props: { message_id: delTarget, author_uid: ctx.uid, target_uid: others[0] ?? null, op_id: clientId ?? "",
-          message_age_seconds: 0, trace_id: traceId, email: _email, account_id: ctx.uid,
-          app_name: "avatok", app_version: "", service_name: "avatok-api", worker: true } });
-    } catch { /* best-effort */ }
+    bg(execCtx, env, "msg_retract_requested", env.Q_ANALYTICS.send({ event: "msg_retract_requested", uid: ctx.uid, ts: Date.now(),
+      props: { message_id: delTarget, author_uid: ctx.uid, target_uid: others[0] ?? null, op_id: clientId ?? "",
+        message_age_seconds: 0, trace_id: traceId, email: _email, account_id: ctx.uid,
+        app_name: "avatok", app_version: "", service_name: "avatok-api", worker: true } }));
     const t0 = Date.now();
     const authored = await verifyAuthor(env, ctx.uid, conv, delTarget);
     if (!authored) {
-      try {
-        void env.Q_ANALYTICS.send({ event: "msg_retract_rejected", uid: ctx.uid, ts: Date.now(),
-          props: { message_id: delTarget, reason: "not_author", op_id: clientId ?? "", trace_id: traceId,
-            email: _email, account_id: ctx.uid, app_name: "avatok", app_version: "", service_name: "avatok-api", worker: true } });
-      } catch { /* best-effort */ }
+      bg(execCtx, env, "msg_retract_rejected", env.Q_ANALYTICS.send({ event: "msg_retract_rejected", uid: ctx.uid, ts: Date.now(),
+        props: { message_id: delTarget, reason: "not_author", op_id: clientId ?? "", trace_id: traceId,
+          email: _email, account_id: ctx.uid, app_name: "avatok", app_version: "", service_name: "avatok-api", worker: true } }));
       return json({ error: "not_author", message: "Only the author can unsend this message." }, 403);
     }
-    try {
-      void env.Q_ANALYTICS.send({ event: "msg_retract_authorized", uid: ctx.uid, ts: Date.now(),
-        props: { message_id: delTarget, author_verified: true, message_owner_uid: ctx.uid, authorization_ms: Date.now() - t0,
-          trace_id: traceId, email: _email, account_id: ctx.uid, app_name: "avatok", app_version: "", service_name: "avatok-api", worker: true } });
-    } catch { /* best-effort */ }
+    bg(execCtx, env, "msg_retract_authorized", env.Q_ANALYTICS.send({ event: "msg_retract_authorized", uid: ctx.uid, ts: Date.now(),
+      props: { message_id: delTarget, author_verified: true, message_owner_uid: ctx.uid, authorization_ms: Date.now() - t0,
+        trace_id: traceId, email: _email, account_id: ctx.uid, app_name: "avatok", app_version: "", service_name: "avatok-api", worker: true } }));
   }
 
   // Append to the sender's own log first (its id anchors the client's cursor).
@@ -481,13 +510,11 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
     archiveLegacySuppressedOnce(); // log once per isolate
   }
   if (env.CHAT_ARCHIVE === "1" && env.CHAT_ARCHIVE_V2 !== "1" && env.Q_ARCHIVE) {
-    try {
-      void env.Q_ARCHIVE.send({
-        conv, serial: mid, sender: ctx.uid, kind,
-        body: text, media_ref: mediaRef, client_id: clientId, created_at: created,
-        group: mem.length > 2,
-      });
-    } catch { /* best-effort; the message still delivered live + via InboxDO */ }
+    bg(execCtx, env, "chat_archive_send", env.Q_ARCHIVE.send({
+      conv, serial: mid, sender: ctx.uid, kind,
+      body: text, media_ref: mediaRef, client_id: clientId, created_at: created,
+      group: mem.length > 2,
+    }));
   }
 
   // Sender's origin geo/network (from req.cf) — reused by both the inline fast lane
@@ -523,9 +550,9 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
           (payload as any).safety = { category: _fs.flag.category, severity: _fs.flag.severity };
         }
         if (_fs.timed_out || _fs.ms > _budget) {
-          void env.Q_ANALYTICS?.send({ event: "guardian_inline_latency_budget_breach", uid: ctx.uid, ts: Date.now(),
+          if (env.Q_ANALYTICS) bg(execCtx, env, "guardian_inline_latency_budget_breach", env.Q_ANALYTICS.send({ event: "guardian_inline_latency_budget_breach", uid: ctx.uid, ts: Date.now(),
             props: { conv, ms: _fs.ms, budget_ms: _budget, lane: "fast", timed_out: _fs.timed_out,
-              account_id: ctx.uid, app_name: "avatok", service_name: "avatok-api", worker: true } });
+              account_id: ctx.uid, app_name: "avatok", service_name: "avatok-api", worker: true } }));
         }
       }
     }
@@ -544,21 +571,20 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
         // Realtime telemetry: per recipient, did the redaction go out over the
         // live DO socket (instant) or fall back to a high-priority FCM push
         // (recipient asleep)? This is the signal for "why was a delete slow".
-        if (r.live) delLive++; else { delPush++; await pushDelete(env, m, conv, delTarget); }
-        try {
-          void env.Q_ANALYTICS.send({ event: "chat_delete_delivery", uid: ctx.uid, ts: Date.now(),
-            props: { delete_id: delTarget, conv, to: m, path: r.live ? "live" : "push",
-              app_name: "avatok", service_name: "avatok-api", worker: true } });
-        } catch { /* best-effort */ }
+        if (r.live) delLive++; else { delPush++; await pushDelete(env, m, conv, delTarget, execCtx); }
+        bg(execCtx, env, "chat_delete_delivery", env.Q_ANALYTICS.send({ event: "chat_delete_delivery", uid: ctx.uid, ts: Date.now(),
+          props: { delete_id: delTarget, conv, to: m, path: r.live ? "live" : "push",
+            app_name: "avatok", service_name: "avatok-api", worker: true } }));
       } else if (!r.live) {
         // [MSG-SEND-TIMEOUT-1] Do NOT await the offline FCM push in the sender's
         // request path. Durability is already guaranteed by the appendTo() above
         // (the recipient's InboxDO has the message); the push is a wake-up hint.
         // Awaiting it added FCM's tail latency to every offline-recipient send and
         // pushed slow-network senders past their client timeout (PostHog
-        // /api/msg/send TimeoutException x57). Same fire-and-forget pattern as
-        // maybeEnqueueAutoReply / the brain scans below.
-        void pushOffline(env, m, ctx.uid, fromName, preview).catch(() => {});
+        // /api/msg/send TimeoutException x57). [MSG-CTX-WAITUNTIL-1] Still
+        // detached from the response, but now riding ctx.waitUntil so the Workers
+        // runtime can't kill it mid-flight once the response returns.
+        bg(execCtx, env, "push_offline", pushOffline(env, m, ctx.uid, fromName, preview));
       }
       // STREAM F — auto-responder hook. DM-only (isDm), regular messages only (not a
       // delete-for-everyone control). Fires independent of socket liveness because
@@ -569,29 +595,33 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
       // only after the cheap KV config read says the responder is active — so a
       // non-away recipient never pays the extra DO fetch.
       if (isDm && !delTarget) {
-        void maybeEnqueueAutoReply(env, {
+        bg(execCtx, env, "auto_reply_enqueue", maybeEnqueueAutoReply(env, {
           recipient: m, sender: ctx.uid, conv, text, kind, senderKnown: dmPreexisted, mid,
-        });
+        }));
       }
     }));
     if (delTarget) {
-      try {
-        void env.Q_ANALYTICS.send({ event: "chat_delete_fanout", uid: ctx.uid, ts: Date.now(),
-          props: { delete_id: delTarget, conv, recipients: recipients.length,
-            live: delLive, push: delPush, app_name: "avatok", service_name: "avatok-api", worker: true } });
-      } catch { /* best-effort */ }
+      bg(execCtx, env, "chat_delete_fanout", env.Q_ANALYTICS.send({ event: "chat_delete_fanout", uid: ctx.uid, ts: Date.now(),
+        props: { delete_id: delTarget, conv, recipients: recipients.length,
+          live: delLive, push: delPush, app_name: "avatok", service_name: "avatok-api", worker: true } }));
       // [MSG-DELETE-1] Author-only unsend committed + fanned out to the peer(s).
-      try {
-        void env.Q_ANALYTICS.send({ event: "msg_retract_committed", uid: ctx.uid, ts: Date.now(),
-          props: { message_id: delTarget, visible: false, reason: "author_retract", peer_fanout: true,
-            peer_count: recipients.length, live: delLive, push: delPush, trace_id: traceId, email: _email,
-            account_id: ctx.uid, app_name: "avatok", app_version: "", service_name: "avatok-api", worker: true } });
-      } catch { /* best-effort */ }
+      bg(execCtx, env, "msg_retract_committed", env.Q_ANALYTICS.send({ event: "msg_retract_committed", uid: ctx.uid, ts: Date.now(),
+        props: { message_id: delTarget, visible: false, reason: "author_retract", peer_fanout: true,
+          peer_count: recipients.length, live: delLive, push: delPush, trace_id: traceId, email: _email,
+          account_id: ctx.uid, app_name: "avatok", app_version: "", service_name: "avatok-api", worker: true } }));
     }
   } else {
     // Large fan-out: hand to Queues — consumers append to each InboxDO + FCM
     // offline. The router NEVER loops >FANOUT_SYNC_MAX synchronous DO calls.
+    //
+    // [MSG-FANOUT-DURABLE-1] (J2 + J6) Every chunk carries the SAME fanout_id
+    // (hash of conv + client message id + sender — stable across retries) and
+    // starts at attempt=1. The consumer (consumers/src/fcm.ts handleFanout) is
+    // the ONLY place that decides whether a job is done: on a partial failure it
+    // re-enqueues ONLY the still-failed recipients with attempt+1 under the same
+    // fanout_id, so a queue retry can never silently ACK away a lost recipient.
     deliveryPath = "queue";
+    const fid = await fanoutId(conv, clientId, ctx.uid);
     const sends: Promise<unknown>[] = [];
     for (let i = 0; i < recipients.length; i += FANOUT_QUEUE_CHUNK) {
       sends.push(env.Q_PUSH.send({
@@ -601,20 +631,25 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
         // forward from THIS producer before now.
         kind: "fanout", payload, fromName, preview, from: ctx.uid,
         recipients: recipients.slice(i, i + FANOUT_QUEUE_CHUNK),
+        fanout_id: fid, attempt: 1,
       }));
     }
     await Promise.all(sends);
+    if (env.Q_ANALYTICS) {
+      bg(execCtx, env, "group_fanout_job_created", env.Q_ANALYTICS.send({ event: "group_fanout_job_created", uid: ctx.uid, ts: Date.now(),
+        props: { fanout_id: fid, conv_hash: await hashShort(conv), recipients: recipients.length,
+          chunks: Math.ceil(recipients.length / FANOUT_QUEUE_CHUNK), attempt: 1,
+          account_id: ctx.uid, app_name: "avatok", service_name: "avatok-api", worker: true } }));
+    }
   }
 
   // Telemetry: every send records its delivery path + latency so we can SEE the
   // Ably-first win (ably_async) vs the legacy sync/queue paths on the dashboard.
-  try {
-    void env.Q_ANALYTICS.send({ event: "chat_message_sent", uid: ctx.uid, ts: Date.now(),
-      props: { conv, kind, path: deliveryPath, recipients: recipients.length,
-        group: mem.length > 2, archived: env.CHAT_ARCHIVE === "1",
-        latency_ms: Date.now() - created, account_id: ctx.uid,
-        app_name: "avatok", service_name: "avatok-api", worker: true } });
-  } catch { /* best-effort */ }
+  bg(execCtx, env, "chat_message_sent", env.Q_ANALYTICS.send({ event: "chat_message_sent", uid: ctx.uid, ts: Date.now(),
+    props: { conv, kind, path: deliveryPath, recipients: recipients.length,
+      group: mem.length > 2, archived: env.CHAT_ARCHIVE === "1",
+      latency_ms: Date.now() - created, account_id: ctx.uid,
+      app_name: "avatok", service_name: "avatok-api", worker: true } }));
 
   // ── One Brain B3 (SPEC-2026-07-17 §8-B3, B-D1) — METADATA-ONLY chat activity ──
   // The old dark `brainEnabled`-gated full-CONTENT ingestion path was REMOVED here
@@ -626,62 +661,62 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
   // consent CLOSED, and the consumer treats `msg_meta` as D1-event-only (no
   // Vectorize embed, no LLM fact-extraction — per-message embedding is wasteful and
   // there is no content to embed). A delete-for-everyone control is not activity.
-  // Runs detached so the extra work never adds latency to the send (best-effort,
-  // same fire-and-forget posture as the guardian scans below).
+  // Runs detached so the extra work never adds latency to the send. [MSG-CTX-
+  // WAITUNTIL-1] Now riding ctx.waitUntil (via bg()) instead of a bare `void`
+  // IIFE, so the runtime can't reap it after the response is written.
   if (!delTarget) {
-    void (async () => {
-      try {
-        const isGroup = mem.length > 2;
-        const peerUid = isGroup ? null : (others[0] ?? null);
-        const mediaType = kind && kind !== "text" ? kind : undefined;
-        // Peer display name for the audit one-liner ONLY (never embedded). Best-effort.
-        const peerName = isGroup
-          ? "a group"
-          : (peerUid ? await senderDisplayName(env, peerUid).catch(() => "a contact") : "a contact");
-        // Sender's own brain — outgoing activity.
-        await brainIngest(env, {
-          uid: ctx.uid, domain: "msg_meta", kind: "message_sent", sourceId: String(mid),
-          text: `Message to ${peerName}`,
-          meta: { peer: peerUid, conv, direction: "out", group: isGroup, ...(mediaType ? { mediaType } : {}) },
-          ts: created, email: _email || null,
-        });
-        // Each recipient's own brain — incoming activity. Mirrors the legacy dual
-        // emit; bounded to the sync fan-out cap (large fan-outs skip per-recipient
-        // brain events, exactly as the removed path did).
-        if (recipients.length <= FANOUT_SYNC_MAX) {
-          for (const m of recipients) {
-            await brainIngest(env, {
-              uid: m, domain: "msg_meta", kind: "message_received", sourceId: String(mid),
-              text: `Message from ${fromName}`,
-              meta: { peer: ctx.uid, conv, direction: "in", group: isGroup, ...(mediaType ? { mediaType } : {}) },
-              ts: created,
-            });
-          }
+    bg(execCtx, env, "brain_ingest_msg_meta", (async () => {
+      const isGroup = mem.length > 2;
+      const peerUid = isGroup ? null : (others[0] ?? null);
+      const mediaType = kind && kind !== "text" ? kind : undefined;
+      // Peer display name for the audit one-liner ONLY (never embedded). Best-effort.
+      const peerName = isGroup
+        ? "a group"
+        : (peerUid ? await senderDisplayName(env, peerUid).catch(() => "a contact") : "a contact");
+      // Sender's own brain — outgoing activity.
+      await brainIngest(env, {
+        uid: ctx.uid, domain: "msg_meta", kind: "message_sent", sourceId: String(mid),
+        text: `Message to ${peerName}`,
+        meta: { peer: peerUid, conv, direction: "out", group: isGroup, ...(mediaType ? { mediaType } : {}) },
+        ts: created, email: _email || null,
+      });
+      // Each recipient's own brain — incoming activity. Mirrors the legacy dual
+      // emit; bounded to the sync fan-out cap (large fan-outs skip per-recipient
+      // brain events, exactly as the removed path did).
+      if (recipients.length <= FANOUT_SYNC_MAX) {
+        for (const m of recipients) {
+          await brainIngest(env, {
+            uid: m, domain: "msg_meta", kind: "message_received", sourceId: String(mid),
+            text: `Message from ${fromName}`,
+            meta: { peer: ctx.uid, conv, direction: "in", group: isGroup, ...(mediaType ? { mediaType } : {}) },
+            ts: created,
+          });
         }
-      } catch { /* brain feed is best-effort, never blocks the send */ }
-    })();
+      }
+    })());
   }
 
   // Ava delegate (P7) + guardian (P8) post-fanout scans. Both self-gate on cheap
-  // string heuristics → ZERO model cost for clean / non-monitored messages. Run
-  // detached (no ctx.waitUntil in this route signature) so they never block the
-  // send. `payload` is the exact fanned-out object; `mem` the member list.
-  void delegateScan(env, { conv, message: payload, members: mem, senderUid: ctx.uid });
+  // string heuristics → ZERO model cost for clean / non-monitored messages.
+  // [MSG-CTX-WAITUNTIL-1] Run via ctx.waitUntil (bg()) — detached from the
+  // response but no longer at the mercy of the runtime reaping an unattached
+  // promise. `payload` is the exact fanned-out object; `mem` the member list.
+  bg(execCtx, env, "delegate_scan", delegateScan(env, { conv, message: payload, members: mem, senderUid: ctx.uid }));
   // Deep (slow) guardian lane. Runs detached AFTER fan-out. Pass the sender's origin
   // geo/network for telemetry, and (G3) the fast-lane verdict so the deep lane never
   // double-warns for a category the inline fast lane already surfaced.
-  void guardianScan(env, {
+  bg(execCtx, env, "guardian_scan", guardianScan(env, {
     conv, message: { ...payload, client_id: payload.client_id ?? undefined }, members: mem, senderUid: ctx.uid,
     geo: _guardGeo,
     fastVerdict: _fastVerdict as any,
-  });
+  }));
 
   // P13-B PartyKit delivery hint (dark until PARTY_ENABLED=1): nudge anyone with
   // this thread open to do a targeted fetch instantly, instead of waiting on the
   // hub frame. HINT ONLY — InboxDO stays the source of truth, so a lost hint
   // changes nothing. Best-effort; never blocks the send. Zero cost while dark.
   if (env.PARTY_ENABLED === "1") {
-    void partyEmit(env, `thread:${conv}`, { t: "new", conv, seq: mine.id });
+    bg(execCtx, env, "party_emit", partyEmit(env, `thread:${conv}`, { t: "new", conv, seq: mine.id }));
   }
 
   // [SRV-MSG-IDEMP-1] Surface the dedup verdict so the client outbox treats a
@@ -729,7 +764,7 @@ async function bumpForwardCount(env: Env, uid: string, by: number): Promise<void
 // (no row ⇒ allowed), so it never actually gated a new user. forwardMsg now uses
 // gatePublicAction('forward'), which fails CLOSED against identity_proofs.
 
-export async function forwardMsg(req: Request, env: Env): Promise<Response> {
+export async function forwardMsg(req: Request, env: Env, execCtx?: ExecutionContext): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
 
@@ -818,11 +853,15 @@ export async function forwardMsg(req: Request, env: Env): Promise<Response> {
         if (!r.live) await pushOffline(env, m, ctx.uid, fromName, preview);
       }));
     } else {
+      // [MSG-FANOUT-DURABLE-1] Same durable-identity contract as sendMsg's large
+      // fan-out: one fanout_id per target job, attempt=1, so the consumer can
+      // retry only the failed recipients under the same job id.
+      const fid = await fanoutId(job.conv, payload.client_id, ctx.uid);
       const sends: Promise<unknown>[] = [];
       for (let i = 0; i < job.recipients.length; i += FANOUT_QUEUE_CHUNK) {
         // [AVANOTIF-VM-2] from: ctx.uid — same fix as the send() fanout path above.
         sends.push(env.Q_PUSH.send({ kind: "fanout", payload, fromName, preview, from: ctx.uid,
-          recipients: job.recipients.slice(i, i + FANOUT_QUEUE_CHUNK) }));
+          recipients: job.recipients.slice(i, i + FANOUT_QUEUE_CHUNK), fanout_id: fid, attempt: 1 }));
       }
       await Promise.all(sends);
     }
@@ -831,13 +870,13 @@ export async function forwardMsg(req: Request, env: Env): Promise<Response> {
   await bumpForwardCount(env, ctx.uid, nTargets);
 
   // Telemetry (FWD-4): forward_sent with the shape the spec asks for.
-  try {
+  if (env.Q_ANALYTICS) {
     const email = (req.headers.get("x-user-email") || "").toString();
-    void env.Q_ANALYTICS?.send({ event: "forward_sent", uid: ctx.uid, ts: Date.now(),
+    bg(execCtx, env, "forward_sent", env.Q_ANALYTICS.send({ event: "forward_sent", uid: ctx.uid, ts: Date.now(),
       props: { n_targets: nTargets, n_groups: nGroups, total_recipients: totalRecipients,
         media_kind: mediaRef ? kind : "text", cross_context: true, email,
-        account_id: ctx.uid, app_name: "avatok", service_name: "avatok-api", worker: true } });
-  } catch { /* best-effort */ }
+        account_id: ctx.uid, app_name: "avatok", service_name: "avatok-api", worker: true } }));
+  }
 
   return json({ ok: true, n_targets: nTargets, total_recipients: totalRecipients });
 }
@@ -1297,17 +1336,16 @@ async function wakeOwnDevices(env: Env, uid: string, data: { kind: "call_del"; e
 // change reach the user's other devices LIVE (a socket was open) and/or via an FCM
 // WAKE (asleep devices)? `account_id`/`uid` make it pullable per user, alongside
 // the standard worker tags used across the codebase.
-function trackCallLog(env: Env, uid: string, op: "append" | "delete" | "clear", props: Record<string, unknown>): void {
-  try {
-    void env.Q_ANALYTICS?.send({
-      event: "call_log_sync", uid, ts: Date.now(),
-      props: { op, account_id: uid, app_name: "avatok", service_name: "avatok-api", worker: true, ...props },
-    });
-  } catch { /* telemetry is best-effort, never blocks the op */ }
+function trackCallLog(env: Env, uid: string, op: "append" | "delete" | "clear", props: Record<string, unknown>, ctx?: ExecutionContext): void {
+  if (!env.Q_ANALYTICS) return;
+  bg(ctx, env, "call_log_sync", env.Q_ANALYTICS.send({
+    event: "call_log_sync", uid, ts: Date.now(),
+    props: { op, account_id: uid, app_name: "avatok", service_name: "avatok-api", worker: true, ...props },
+  }));
 }
 
 // ---- POST /api/call-log/append  { entry_id, name, seed, video, dir, ts } -----
-export async function callLogAppend(req: Request, env: Env): Promise<Response> {
+export async function callLogAppend(req: Request, env: Env, execCtx?: ExecutionContext): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
@@ -1319,12 +1357,12 @@ export async function callLogAppend(req: Request, env: Env): Promise<Response> {
   });
   // A new entry is not urgent for asleep devices (it shows on their next open/sync),
   // so no FCM wake here — only deletes/clears wake, per the product requirement.
-  trackCallLog(env, ctx.uid, "append", { live: r.live, woke_devices: false, video: b.video === true, dir: String(b.dir ?? "outgoing") });
+  trackCallLog(env, ctx.uid, "append", { live: r.live, woke_devices: false, video: b.video === true, dir: String(b.dir ?? "outgoing") }, execCtx);
   return json({ ok: true });
 }
 
 // ---- POST /api/call-log/delete  { entry_id } --------------------------------
-export async function callLogDelete(req: Request, env: Env): Promise<Response> {
+export async function callLogDelete(req: Request, env: Env, execCtx?: ExecutionContext): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
@@ -1332,17 +1370,17 @@ export async function callLogDelete(req: Request, env: Env): Promise<Response> {
   const entryId = String(b.entry_id);
   const r = await callOp(env, ctx.uid, "delete", { entry_id: entryId });
   const woke = await wakeOwnDevices(env, ctx.uid, { kind: "call_del", entry_id: entryId });
-  trackCallLog(env, ctx.uid, "delete", { live: r.live, woke_devices: woke, entry_id: entryId });
+  trackCallLog(env, ctx.uid, "delete", { live: r.live, woke_devices: woke, entry_id: entryId }, execCtx);
   return json({ ok: true });
 }
 
 // ---- POST /api/call-log/clear  {} -------------------------------------------
-export async function callLogClear(req: Request, env: Env): Promise<Response> {
+export async function callLogClear(req: Request, env: Env, execCtx?: ExecutionContext): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const r = await callOp(env, ctx.uid, "clear", {});
   const woke = await wakeOwnDevices(env, ctx.uid, { kind: "call_clear" });
-  trackCallLog(env, ctx.uid, "clear", { live: r.live, woke_devices: woke });
+  trackCallLog(env, ctx.uid, "clear", { live: r.live, woke_devices: woke }, execCtx);
   return json({ ok: true });
 }
 
@@ -1401,6 +1439,11 @@ export async function convCreate(req: Request, env: Env): Promise<Response> {
   // immediately). When ON, invitees get a PENDING invite and only become members
   // on Accept — so the router/fan-out is untouched (they aren't members yet).
   const cfg = await readConfig(env);
+  // [MSG-GROUP-CAP-1] (J4) Reject an oversized group BEFORE any D1 write. The
+  // owner counts as one member, so the resulting size is invitees + 1.
+  if (invitees.length + 1 > (Number(cfg.maxGroupMembers) || 256)) {
+    return json({ error: "group_too_large", max_members: Number(cfg.maxGroupMembers) || 256 }, 400);
+  }
   const stmts = [
     env.DB_META.prepare("INSERT INTO conversations (id, kind, title, created_by, created_at, updated_at) VALUES (?1,'group',?2,?3,?4,?4)")
       .bind(conv, b.title ? String(b.title) : null, ctx.uid, now),
@@ -1438,11 +1481,17 @@ export async function convAdopt(req: Request, env: Env): Promise<Response> {
   if (existing) return json({ conv: id, kind: "group", adopted: false, already: true });
   const members: string[] = Array.isArray(b.members) ? b.members.map(String) : [];
   const now = Date.now();
+  // [MSG-GROUP-CAP-1] (J4) Reject an oversized adopt payload before any D1 write.
+  const uniqueMembers = Array.from(new Set(members.filter((u) => u && u !== ctx.uid)));
+  const cfg = await readConfig(env);
+  if (uniqueMembers.length + 1 > (Number(cfg.maxGroupMembers) || 256)) {
+    return json({ error: "group_too_large", max_members: Number(cfg.maxGroupMembers) || 256 }, 400);
+  }
   const stmts = [
     env.DB_META.prepare("INSERT OR IGNORE INTO conversations (id, kind, title, created_by, created_at, updated_at) VALUES (?1,'group',?2,?3,?4,?4)")
       .bind(id, b.title ? String(b.title) : null, ctx.uid, now),
     env.DB_META.prepare("INSERT OR IGNORE INTO conversation_members (conv_id, uid, role, joined_at) VALUES (?1,?2,'owner',?3)").bind(id, ctx.uid, now),
-    ...members.filter((u) => u && u !== ctx.uid).map((u) =>
+    ...uniqueMembers.map((u) =>
       env.DB_META.prepare("INSERT OR IGNORE INTO conversation_members (conv_id, uid, role, joined_at) VALUES (?1,?2,'member',?3)").bind(id, u, now)),
   ];
   await env.DB_META.batch(stmts);
@@ -1518,11 +1567,10 @@ async function recordGroupInvites(env: Env, conv: string, inviter: string, group
   } catch { /* table missing (pre-migration) → best-effort */ }
 }
 
-function trackGroup(env: Env, uid: string, event: string, props: Record<string, unknown>): void {
-  try {
-    void env.Q_ANALYTICS?.send({ event, uid, ts: Date.now(),
-      props: { ...props, account_id: uid, app_name: "avatok", service_name: "avatok-api", worker: true } });
-  } catch { /* best-effort */ }
+function trackGroup(env: Env, uid: string, event: string, props: Record<string, unknown>, ctx?: ExecutionContext): void {
+  if (!env.Q_ANALYTICS) return;
+  bg(ctx, env, event, env.Q_ANALYTICS.send({ event, uid, ts: Date.now(),
+    props: { ...props, account_id: uid, app_name: "avatok", service_name: "avatok-api", worker: true } }));
 }
 
 // ---- GET /api/conversations/members?conv=ID ---------------------------------
@@ -1564,6 +1612,16 @@ export async function convAddMembers(req: Request, env: Env): Promise<Response> 
   // Pending-membership kill switch (default OFF). When ON, added users get a
   // PENDING invite instead of immediate membership (they join on Accept).
   const cfg = await readConfig(env);
+  // [MSG-GROUP-CAP-1] (J4) Reject before any D1 write if the RESULTING member
+  // count (current members + this add batch) would exceed the cap. Applies
+  // whether the add lands immediately or as a pending invite — an accepted
+  // invite must not be able to push the group over the line either (see the
+  // accept-path check in convInviteRespond below).
+  const cap = Number(cfg.maxGroupMembers) || 256;
+  const currentCount = await env.DB_META.prepare("SELECT COUNT(*) AS n FROM conversation_members WHERE conv_id=?1").bind(conv).first<{ n: number }>();
+  if ((currentCount?.n ?? 0) + add.length > cap) {
+    return json({ error: "group_too_large", max_members: cap }, 400);
+  }
   const stmts = [
     env.DB_META.prepare("UPDATE conversations SET updated_at=?2 WHERE id=?1").bind(conv, now),
     ...(cfg.groupInvitesEnabled ? [] : add.map((u) =>
@@ -1617,6 +1675,14 @@ export async function convInviteRespond(req: Request, env: Env): Promise<Respons
   if (accept) { const g = await gatePublicAction(env, ctx.uid, await emailOf(env, ctx.uid), "group_join"); if (g) return g; }
   const now = Date.now();
   if (accept) {
+    // [MSG-GROUP-CAP-1] (J4) An accepted invite must not be able to push a group
+    // over the cap either — reject before the membership INSERT.
+    const cfg = await readConfig(env);
+    const cap = Number(cfg.maxGroupMembers) || 256;
+    const currentCount = await env.DB_META.prepare("SELECT COUNT(*) AS n FROM conversation_members WHERE conv_id=?1").bind(conv).first<{ n: number }>();
+    if ((currentCount?.n ?? 0) + 1 > cap) {
+      return json({ error: "group_too_large", max_members: cap }, 400);
+    }
     // Become a real member → the router now fans group messages to this user.
     await env.DB_META.batch([
       env.DB_META.prepare("INSERT OR IGNORE INTO conversation_members (conv_id, uid, role, joined_at) VALUES (?1,?2,'member',?3)").bind(conv, ctx.uid, now),

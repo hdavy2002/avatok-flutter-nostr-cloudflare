@@ -453,7 +453,11 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
 
     try {
       // --- messaging (Cloudflare-native; Clerk-JWT auth, server-readable) ---
-      if (p === "/api/msg/send" && req.method === "POST") return await sendMsg(req, env);
+      // [MSG-CTX-WAITUNTIL-1] ctx threaded through so post-response work (archive/
+      // analytics queue sends, delegateScan, guardianScan, brainIngest, auto-reply,
+      // Party events) rides ctx.waitUntil instead of a detached promise the
+      // runtime can reap after the response is written (J3).
+      if (p === "/api/msg/send" && req.method === "POST") return await sendMsg(req, env, ctx);
       if (p === "/api/msg/sync" && req.method === "GET") return await syncMsg(req, env);
       // Phase 3 (ABLY-R2-3): deep history from R2/D1 (older than Ably's window).
       if (p === "/api/msg/archive" && req.method === "GET") return await archiveList(req, env);
@@ -473,9 +477,9 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/poll/vote" && req.method === "POST") return await pollVote(req, env);
       if (p === "/api/poll/state" && req.method === "GET") return await pollState(req, env);
       // Call-log multi-device sync (owner's own InboxDO; delete/clear wake asleep devices).
-      if (p === "/api/call-log/append" && req.method === "POST") return await callLogAppend(req, env);
-      if (p === "/api/call-log/delete" && req.method === "POST") return await callLogDelete(req, env);
-      if (p === "/api/call-log/clear" && req.method === "POST") return await callLogClear(req, env);
+      if (p === "/api/call-log/append" && req.method === "POST") return await callLogAppend(req, env, ctx);
+      if (p === "/api/call-log/delete" && req.method === "POST") return await callLogDelete(req, env, ctx);
+      if (p === "/api/call-log/clear" && req.method === "POST") return await callLogClear(req, env, ctx);
       if (p === "/api/conversations" && req.method === "GET") return await convList(req, env);
       if (p === "/api/conversations" && req.method === "POST") return await convCreate(req, env);
       if (p === "/api/conversations/adopt" && req.method === "POST") return await convAdopt(req, env);
@@ -505,7 +509,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/conversations/delete" && req.method === "POST") return await convDelete(req, env);
       // --- AI Messenger Batch 2026-07-03 route mounts ---
       // STREAM I: unlimited forwarding (no-copy fan-out; requires liveness when gate ON)
-      if (p === "/api/msg/forward" && req.method === "POST") return await forwardMsg(req, env);
+      if (p === "/api/msg/forward" && req.method === "POST") return await forwardMsg(req, env, ctx);
       // STREAM B: stranger safety gate (accept/block/report + accept-state)
       if (p === "/api/conversations/accept" && req.method === "POST") return await convAccept(req, env);
       if (p === "/api/conversations/block" && req.method === "POST") return await convBlock(req, env);
