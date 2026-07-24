@@ -26,6 +26,13 @@ import { generateAvaImageSync } from "./ava_image";    // synchronous image gen 
 import { brainSearchLines } from "../lib/ava_memory";  // the ONE Cloudflare AI Search store per user
 import { searchForUser } from "../lib/ava_search";     // sharded tenancy boundary (folder-filtered per user)
 import { avaReason } from "../lib/ava_reason";         // the ONE reasoning gateway (AVA-CORE-3)
+// [AI-BILLING-CORE-1] universal AIJob reserve/settle/release contract, flag-gated
+// DARK behind aiWalletMeteringEnabled (routes/config.ts) — see worker/src/lib/
+// ai_billing.ts for the full contract. While the flag is off every call below is
+// a no-op pass-through, so wiring it in here changes nothing today.
+import {
+  reserveAiJob, settleAiJob, releaseAiJob, estimateInputTokensFromChars,
+} from "../lib/ai_billing";
 
 // Ava chat text model: Gemini 3 Flash (preview) as a Workers-AI THIRD-PARTY model
 // ({author}/{model} id), called through env.AI.run so it flows via our CF AI
@@ -281,6 +288,28 @@ export async function avaGemini(req: Request, env: Env): Promise<Response> {
   const runChat = (steer?: string): Promise<string> =>
     generate(env, ctx.uid, email, system, history, message, premium ? images : [], steer);
 
+  // [AI-BILLING-CORE-1] Reserve the worst-case wallet amount BEFORE the provider
+  // call (§H3 steps 1-4). opId is fresh per turn (chat is not naturally
+  // idempotent). While aiWalletMeteringEnabled is off this is a no-op that
+  // always admits — see ai_billing.ts.
+  const opId = crypto.randomUUID();
+  const chatModel = openRouterModel(env);
+  const historyChars = history.reduce((n, t) => n + t.text.length, 0);
+  const promptChars = system.length + message.length + historyChars;
+  const reservation = await reserveAiJob(env, {
+    uid: ctx.uid, opId, capability: "chat_ava", modality: "text", model: chatModel,
+    maxInputTokens: estimateInputTokensFromChars(promptChars), maxOutputTokens: MAX_TOKENS, email,
+  });
+  if (!reservation.ok) {
+    trackUser(env, ctx.uid, email, "ava_chat_blocked", "avaai", {
+      source, route: "chat", reason: "insufficient_tokens", premium, needed: reservation.needed, balance: reservation.balance,
+    });
+    return json({
+      error: reservation.error, needed: reservation.needed, balance: reservation.balance,
+      timings: { total_ms: Date.now() - t0, setup_ms: setupMs, gen_ms: 0, tool_calls: 0 },
+    }, 402);
+  }
+
   const tGen0 = Date.now();
   let result;
   try {
@@ -291,6 +320,8 @@ export async function avaGemini(req: Request, env: Env): Promise<Response> {
       skipQuota: premium,
     });
   } catch (e: any) {
+    // Provider call failed before any billable usage — full unbilled release.
+    await releaseAiJob(env, reservation, { uid: ctx.uid, opId, capability: "chat_ava", reason: "provider_error" });
     const cls = friendlyAiError(e);
     trackUser(env, ctx.uid, email, "ai_error", "avaai", {
       source, route: "chat", reason: cls.kind, detail: String(e?.message ?? e).slice(0, 200),
@@ -310,6 +341,9 @@ export async function avaGemini(req: Request, env: Env): Promise<Response> {
   const timings = { total_ms: totalMs, setup_ms: setupMs, gen_ms: genMs, tool_calls: toolCalls };
 
   if (result.blocked) {
+    // Blocked by the gate (daily cap / disabled / moderation) BEFORE the model
+    // ran — no billable usage occurred, so this is a full release, not a settle.
+    await releaseAiJob(env, reservation, { uid: ctx.uid, opId, capability: "chat_ava", reason: result.reason ?? "blocked" });
     if (result.reason === "daily_cap") trackUser(env, ctx.uid, email, "free_chat_cap_hit", "avaai", {});
     trackUser(env, ctx.uid, email, "ava_chat_blocked", "avaai", {
       source, route: "chat", reason: result.reason, premium, latency_ms: totalMs,
@@ -319,6 +353,18 @@ export async function avaGemini(req: Request, env: Env): Promise<Response> {
     return json({ answer: result.answer, blocked: true, reason: result.reason, timings, ...(result.remaining != null ? { remaining: result.remaining } : {}) },
       result.reason === "ai_disabled" ? 503 : 200);
   }
+
+  // [AI-BILLING-CORE-1] Settle against usage. avaReason()/runGated() do not
+  // currently surface the provider's real token counts to this call site (a
+  // follow-up would thread OpenRouter's usage block through the shared
+  // ava_reason gateway), so this settles from a conservative chars/4 estimate
+  // of the real prompt/answer text. Exact (nothing charged) while the flag is
+  // off; an approximation only once the flag is later enabled.
+  await settleAiJob(env, reservation, {
+    opId, uid: ctx.uid, capability: "chat_ava", modality: "text",
+    modelRequested: chatModel, modelActual: chatModel,
+    usage: { inputTokens: estimateInputTokensFromChars(promptChars), outputTokens: Math.ceil((result.answer ?? "").length / 4) },
+  });
 
   trackUser(env, ctx.uid, email, "ava_chat_completed", "avaai", {
     source, route: "chat", tier: premium ? "premium" : "free", premium, premium_via: via,
@@ -365,6 +411,21 @@ export async function avaGeminiStream(req: Request, env: Env): Promise<Response>
     memory ? `Things you remember about this user (use only if relevant):\n${memory}` : "",
   ].filter(Boolean).join("\n\n");
 
+  // [AI-BILLING-CORE-1] Same reserve-before-call contract as the non-streaming
+  // handler above. A stream that can't be reserved never opens — the client
+  // gets a normal 402 instead of an SSE stream. No-op while the flag is off.
+  const opId = crypto.randomUUID();
+  const chatModel = openRouterModel(env);
+  const historyChars = history.reduce((n, t) => n + t.text.length, 0);
+  const promptChars = system.length + message.length + historyChars;
+  const reservation = await reserveAiJob(env, {
+    uid: ctx.uid, opId, capability: "chat_ava", modality: "text", model: chatModel,
+    maxInputTokens: estimateInputTokensFromChars(promptChars), maxOutputTokens: MAX_TOKENS,
+  });
+  if (!reservation.ok) {
+    return json({ error: reservation.error, needed: reservation.needed, balance: reservation.balance }, 402);
+  }
+
   const enc = new TextEncoder();
   const out = new ReadableStream({
     async start(controller) {
@@ -372,9 +433,10 @@ export async function avaGeminiStream(req: Request, env: Env): Promise<Response>
         try { controller.enqueue(enc.encode(`data: ${JSON.stringify(obj)}\n\n`)); } catch { /* closed */ }
       };
       let streamedAny = false;
+      let streamedChars = 0;
       try {
         await streamGenerate(env, system, history, message, premium ? images : [],
-          (t) => { if (t) { streamedAny = true; send({ delta: t }); } });
+          (t) => { if (t) { streamedAny = true; streamedChars += t.length; send({ delta: t }); } });
       } catch (e) {
         // On a hard failure before any token streamed, send a truthful reason
         // (quota/safety) so the chat bubble isn't a bare "couldn't generate".
@@ -382,6 +444,19 @@ export async function avaGeminiStream(req: Request, env: Env): Promise<Response>
           const cls = friendlyAiError(e);
           if (cls.message) { try { send({ delta: cls.message }); } catch { /* closed */ } }
         }
+      }
+      // [AI-BILLING-CORE-1] settle from what was actually streamed (chars/4
+      // estimate — see the non-streaming handler's comment on avaReason not
+      // surfacing real usage yet); a hard failure with nothing streamed is a
+      // full unbilled release instead.
+      if (streamedAny) {
+        await settleAiJob(env, reservation, {
+          opId, uid: ctx.uid, capability: "chat_ava", modality: "text",
+          modelRequested: chatModel, modelActual: chatModel,
+          usage: { inputTokens: estimateInputTokensFromChars(promptChars), outputTokens: Math.ceil(streamedChars / 4) },
+        }).catch(() => {});
+      } else {
+        await releaseAiJob(env, reservation, { uid: ctx.uid, opId, capability: "chat_ava", reason: "provider_error" }).catch(() => {});
       }
       try { controller.enqueue(enc.encode("data: [DONE]\n\n")); } catch { /* ignore */ }
       controller.close();

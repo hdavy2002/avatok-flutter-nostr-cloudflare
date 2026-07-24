@@ -23,6 +23,14 @@ import { emailFor } from "../lib/identity";
 import { readConfig } from "./config";
 import { moderate } from "../lib/moderation";
 import { avaReason } from "../lib/ava_reason";
+// [AI-BILLING-CORE-1] universal AIJob reserve/settle/release contract, flag-gated
+// DARK behind aiWalletMeteringEnabled (routes/config.ts). All the one-shot "util"
+// helpers below (catchup/smart-replies/translate/group-translate/bio/gender)
+// share the llm() wrapper, so the metering hook lives there once instead of at
+// every call site. No-op while the flag is off — see worker/src/lib/ai_billing.ts.
+import {
+  reserveAiJob, settleAiJob, releaseAiJob, estimateInputTokensFromChars,
+} from "../lib/ai_billing";
 
 // Cheap chat model for these utility calls. Override via env.OPENROUTER_UTIL_MODEL.
 // (Distinct from ChatAVA's model — these are one-shot, latency-sensitive.)
@@ -38,19 +46,54 @@ function utilModel(env: Env): string {
 /// is attributable — Specs/AVA-ENGINEERING-LAW.md).
 interface LlmTags { role: string; capability: string; trigger: string; uid?: string; email?: string | null; appName?: string }
 
+// [AI-BILLING-CORE-1] Thrown by llm() when reserveAiJob refuses the job for
+// insufficient wallet balance. Call sites check `e instanceof AiInsufficientTokensError`
+// to return the structured 402 the spec calls for, instead of the generic 502/
+// fail-soft path used for every other llm() failure. Never thrown while
+// aiWalletMeteringEnabled is off (reserveAiJob is a no-op admit in that case).
+export class AiInsufficientTokensError extends Error {
+  readonly code = "AI_INSUFFICIENT_TOKENS" as const;
+  constructor(readonly needed: number, readonly balance: number) {
+    super("AI_INSUFFICIENT_TOKENS");
+  }
+}
+
 /// One-shot completion via the ONE reasoning gateway (AVA-CORE-2). Returns
 /// trimmed text, or throws on hard fail — same contract the old direct
-/// OpenRouter `llm()` had, so all call-site try/catch behavior is unchanged.
+/// OpenRouter `llm()` had, so all call-site try/catch behavior is unchanged for
+/// every failure EXCEPT insufficient tokens (AiInsufficientTokensError, new).
+///
+/// [AI-BILLING-CORE-1] Wraps the call in reserve → generate → settle/release
+/// (capability 'util'), flag-gated DARK behind aiWalletMeteringEnabled — a
+/// no-op pass-through while the flag is off, so this changes nothing today.
+/// Skips metering entirely when no uid is available (defensive; every real
+/// call site here passes uid: ctx.uid).
 async function llm(env: Env, tags: LlmTags, system: string, user: string, maxTokens = 400, temperature = 0.3): Promise<string> {
-  return avaReason(env, {
-    ...tags,
-    appName: tags.appName ?? "messaging",
-    system,
-    user,
-    maxTokens,
-    temperature,
-    legacyModel: utilModel(env), // behavior-preserving pin (see utilModel note)
+  const model = utilModel(env);
+  const uid = tags.uid;
+  if (!uid) {
+    return avaReason(env, { ...tags, appName: tags.appName ?? "messaging", system, user, maxTokens, temperature, legacyModel: model });
+  }
+
+  const opId = crypto.randomUUID();
+  const reservation = await reserveAiJob(env, {
+    uid, opId, capability: "util", modality: "text", model,
+    maxInputTokens: estimateInputTokensFromChars(system.length + user.length), maxOutputTokens: maxTokens, email: tags.email,
   });
+  if (!reservation.ok) throw new AiInsufficientTokensError(reservation.needed ?? 0, reservation.balance ?? 0);
+
+  let text: string;
+  try {
+    text = await avaReason(env, { ...tags, appName: tags.appName ?? "messaging", system, user, maxTokens, temperature, legacyModel: model });
+  } catch (e) {
+    await releaseAiJob(env, reservation, { uid, opId, capability: "util", reason: "provider_error" }).catch(() => {});
+    throw e;
+  }
+  await settleAiJob(env, reservation, {
+    opId, uid, capability: "util", modality: "text", modelRequested: model, modelActual: model,
+    usage: { inputTokens: estimateInputTokensFromChars(system.length + user.length), outputTokens: Math.ceil(text.length / 4) },
+  }).catch(() => {});
+  return text;
 }
 
 // ---------------------------------------------------------------------------
@@ -142,6 +185,10 @@ export async function aiCatchup(req: Request, env: Env): Promise<Response> {
   try {
     raw = await llm(env, { role: "copilot", capability: "catchup", trigger: "user_request", uid: ctx.uid, email }, system, transcript, 350, 0.2);
   } catch (e: any) {
+    if (e instanceof AiInsufficientTokensError) {
+      trackUser(env, ctx.uid, email, "ai_catchup_error", "messaging", { conv, msg_count: msgs.length, reason: "insufficient_tokens" });
+      return json({ error: "AI_INSUFFICIENT_TOKENS", needed: e.needed, balance: e.balance }, 402);
+    }
     trackUser(env, ctx.uid, email, "ai_catchup_error", "messaging", { conv, msg_count: msgs.length, reason: String(e?.message ?? e).slice(0, 160) });
     return json({ error: "summary failed", detail: String(e?.message ?? e).slice(0, 200) }, 502);
   }
@@ -228,6 +275,7 @@ export async function aiTranslate(req: Request, env: Env): Promise<Response> {
   try {
     translated = await llm(env, { role: "copilot", capability: "translate", trigger: "user_request", uid: ctx.uid, email }, system, text, 600, 0.2);
   } catch (e: any) {
+    if (e instanceof AiInsufficientTokensError) return json({ error: "AI_INSUFFICIENT_TOKENS", needed: e.needed, balance: e.balance }, 402);
     return json({ error: "translate failed", detail: String(e?.message ?? e).slice(0, 200) }, 502);
   }
 
@@ -397,6 +445,7 @@ export async function aiBio(req: Request, env: Env): Promise<Response> {
   try {
     bio = await llm(env, { role: "copilot", capability: "bio", trigger: "user_request", uid: ctx.uid, email, appName: "profile" }, system, seed, 120, 0.7);
   } catch (e: any) {
+    if (e instanceof AiInsufficientTokensError) return json({ error: "AI_INSUFFICIENT_TOKENS", needed: e.needed, balance: e.balance }, 402);
     trackUser(env, ctx.uid, email, "profile_bio_ai_error", "profile", { reason: String(e?.message ?? e).slice(0, 160), email });
     return json({ error: "bio generation failed", detail: String(e?.message ?? e).slice(0, 200) }, 502);
   }
