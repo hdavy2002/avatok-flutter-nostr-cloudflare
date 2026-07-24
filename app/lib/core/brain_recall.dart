@@ -212,6 +212,46 @@ Future<String> brainRecallContext(String query, {int k = 4}) async {
   return hits.map((h) => '• ${h.text}').join('\n');
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Citation chips API — [AVABRAIN-CLIENT-MEM-1] (Product Bible §P1.4). A small,
+// standalone shape the `source_chips.dart` widget renders; NOT wired into any
+// chat/thread screen here (that integration belongs to the screen owners —
+// see the integration note in source_chips.dart).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// One recall citation for the UI's source chips: a source domain, a short
+/// snippet, and a confidence in 0..1.
+class BrainCitation {
+  final String sourceDomain;
+  final String snippet;
+  final double confidence;
+  const BrainCitation({
+    required this.sourceDomain,
+    required this.snippet,
+    required this.confidence,
+  });
+
+  /// §4.2 hedge threshold — mirrors [BrainMemoryItem.isLowConfidence] in
+  /// ava_ai_client.dart so both surfaces agree on what "low confidence" means.
+  bool get isLowConfidence => confidence < 0.55;
+}
+
+/// Derive citation chips from a recall result. [hits] is normally the output of
+/// [brainRecall]. `BrainHit` does not (yet) carry a server-computed confidence
+/// value per hit, so this approximates it from the merged rank score (already
+/// normalised 0..1 by [_rank]) — when the server recall payload starts
+/// returning an explicit per-hit `confidence`, thread that through here instead.
+List<BrainCitation> citationsFromHits(List<BrainHit> hits, {int max = 4}) {
+  return hits
+      .take(max)
+      .map((h) => BrainCitation(
+            sourceDomain: h.domain.isEmpty ? h.source : h.domain,
+            snippet: h.text,
+            confidence: h.score.clamp(0.0, 1.0),
+          ))
+      .toList(growable: false);
+}
+
 String _deviceDomain(String convKey) {
   if (convKey.isEmpty) return 'device';
   if (convKey.startsWith('1:') || convKey.startsWith('g:')) return 'msg_content';

@@ -172,6 +172,188 @@ class AvaAiClient {
   Future<bool> isByoConnected() => _store.isConnected();
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// AvaBrain memory API — [AVABRAIN-CLIENT-MEM-1] (Product Bible §P1.4/§P1.5).
+// Client for the paged memory review/correct/forget/export surfaces. These
+// server routes (`/api/brain/memory/*`, `/api/brain/export`) are being built in
+// parallel by another agent; every call here FEATURE-DETECTS a 404 (route not
+// live yet) or any network failure and degrades to an empty/failed result
+// rather than throwing, so the UI never crashes on a not-yet-shipped backend.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// One derived memory row (Product Bible §4.2 fact-quality shape, client view).
+class BrainMemoryItem {
+  final String id;
+  final String content;
+  /// 'preference' | 'goal' | 'habit' | 'deadline' | 'decision' | 'reminder' |
+  /// 'insight' | ... — used to group the list.
+  final String type;
+  final double confidence;
+  final String sourceDomain;
+  final bool userConfirmed;
+  final int createdAt; // epoch ms, 0 when unknown
+
+  const BrainMemoryItem({
+    required this.id,
+    required this.content,
+    required this.type,
+    required this.confidence,
+    required this.sourceDomain,
+    required this.userConfirmed,
+    required this.createdAt,
+  });
+
+  /// §4.2 — "The model must say 'I found a note suggesting…' when confidence is
+  /// low." The UI applies the same threshold to the row's hedge styling.
+  bool get isLowConfidence => confidence < 0.55;
+
+  factory BrainMemoryItem.fromJson(Map<String, dynamic> j) => BrainMemoryItem(
+        id: (j['id'] ?? '').toString(),
+        content: (j['content'] ?? '').toString(),
+        type: (j['type'] ?? 'insight').toString(),
+        confidence: (j['confidence'] as num?)?.toDouble() ?? 0.0,
+        sourceDomain: (j['source_domain'] ?? '').toString(),
+        userConfirmed: j['user_confirmed'] == true,
+        createdAt: (j['created_at'] as num?)?.toInt() ?? 0,
+      );
+}
+
+/// One page of [BrainMemoryItem]s. `ok == false` means the fetch failed or the
+/// route 404'd (server not shipped yet) — the UI should show a graceful empty
+/// state, not an error banner, in that case.
+class BrainMemoryPage {
+  final List<BrainMemoryItem> items;
+  final String? nextCursor;
+  final bool ok;
+  const BrainMemoryPage(this.items, this.nextCursor, this.ok);
+  static const empty = BrainMemoryPage(<BrainMemoryItem>[], null, false);
+}
+
+class BrainMemoryApi {
+  BrainMemoryApi._();
+
+  static String get _base => '$kBrainBase/memory';
+
+  /// GET /api/brain/memory/list?cursor=
+  static Future<BrainMemoryPage> list({String? cursor}) async {
+    final url = (cursor == null || cursor.isEmpty)
+        ? '$_base/list'
+        : '$_base/list?cursor=${Uri.encodeQueryComponent(cursor)}';
+    try {
+      final res = await ApiAuth.getSigned(url, timeout: const Duration(seconds: 15));
+      if (res.statusCode != 200) return BrainMemoryPage.empty; // incl. 404 = not shipped yet
+      final j = jsonDecode(res.body) as Map<String, dynamic>;
+      final items = ((j['items'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((e) => BrainMemoryItem.fromJson(e.cast<String, dynamic>()))
+          .toList(growable: false);
+      return BrainMemoryPage(items, j['next_cursor']?.toString(), true);
+    } catch (_) {
+      return BrainMemoryPage.empty;
+    }
+  }
+
+  /// POST /api/brain/memory/confirm {id}
+  static Future<bool> confirm(String id) async {
+    try {
+      final res = await ApiAuth.postJson('$_base/confirm', {'id': id});
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// POST /api/brain/memory/correct {id, text}
+  static Future<bool> correct(String id, String text) async {
+    try {
+      final res = await ApiAuth.postJson('$_base/correct', {'id': id, 'content': text});
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// DELETE /api/brain/memory/:id ("Forget").
+  static Future<bool> forget(String id) async {
+    try {
+      final res = await ApiAuth.deleteSigned('$_base/${Uri.encodeComponent(id)}');
+      return res.statusCode == 200 || res.statusCode == 204;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// POST /api/brain/memory/export — export the user's full memory set. Returns
+  /// the raw JSON response body on success (the caller saves/share-sheets it),
+  /// or null on failure/404.
+  static Future<String?> exportAll() async {
+    try {
+      final res = await ApiAuth.postJson('$_base/export', const {},
+          timeout: const Duration(seconds: 20));
+      if (res.statusCode != 200) return null;
+      return res.body;
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
+/// One selected message being offered for explicit private-content export
+/// (Product Bible §6.1 — bounded, opt-in, clear non-E2E disclosure).
+class BrainExportItem {
+  final String text;
+  final String source; // category the server validates: 'dm' | 'group' | 'note'
+  final String contextHint; // e.g. peer/group label, for the user's own reference
+  const BrainExportItem({required this.text, this.source = '', this.contextHint = ''});
+
+  Map<String, dynamic> toJson() => {
+        'text': text,
+        if (source.isNotEmpty) 'source': source,
+        if (contextHint.isNotEmpty) 'context_hint': contextHint,
+      };
+}
+
+/// Typed outcome of [BrainExportApi.exportItems] — the sheet needs the HTTP
+/// status and server `error` string (not just a bare bool) to tell "consent not
+/// turned on" (403 consent_required) apart from "daily cap hit" (429
+/// daily_cap_reached) apart from a generic failure, and show the right message.
+class BrainExportResult {
+  final bool ok;
+  final int status;
+  final String? error;
+  const BrainExportResult({required this.ok, required this.status, this.error});
+}
+
+/// Explicit private-content export — distinct from [BrainMemoryApi.exportAll]:
+/// this sends SPECIFIC user-selected message texts (e.g. from a private
+/// Messenger thread) to cloud Brain after the §6.1 disclosure, never a
+/// background/automatic export.
+class BrainExportApi {
+  BrainExportApi._();
+
+  /// POST /api/brain/export {items:[{text, source, context_hint}]}
+  static Future<BrainExportResult> exportItems(List<BrainExportItem> items) async {
+    if (items.isEmpty) return const BrainExportResult(ok: false, status: 0, error: 'empty');
+    try {
+      final res = await ApiAuth.postJson(
+        '$kBrainBase/export',
+        {'items': items.map((e) => e.toJson()).toList()},
+        timeout: const Duration(seconds: 20),
+      );
+      if (res.statusCode == 200) {
+        return BrainExportResult(ok: true, status: res.statusCode);
+      }
+      String? error;
+      try {
+        error = (jsonDecode(res.body) as Map<String, dynamic>)['error'] as String?;
+      } catch (_) {/* non-JSON error body */}
+      return BrainExportResult(ok: false, status: res.statusCode, error: error);
+    } catch (_) {
+      return const BrainExportResult(ok: false, status: 0, error: 'network');
+    }
+  }
+}
+
 /// The result of an [AvaAiClient.ask] call.
 class AvaAnswer {
   const AvaAnswer({

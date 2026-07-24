@@ -13,6 +13,7 @@ import '../../core/ui/zine_widgets.dart';
 import '../avachat/discuss_seed.dart';
 import '../avachat/thread_context.dart';
 import '../identity/ladder_api.dart';
+import 'brain_memory_screen.dart';
 import 'companion_session_store.dart';
 import 'companion_thread.dart';
 import 'persona.dart';
@@ -92,6 +93,13 @@ class _CompanionHomeState extends State<CompanionHome> {
     await Navigator.push(context,
         MaterialPageRoute(builder: (_) => CompanionThreadScreen(persona: persona)));
     await _loadSessions(); // refresh after the thread closes (it may have saved)
+  }
+
+  /// Entry point to the "AvaBrain Memory" review/correct/forget/export screen
+  /// (Product Bible §P1.5). [AVABRAIN-CLIENT-MEM-1].
+  Future<void> _openMemory() async {
+    Analytics.uiInteraction('avabrain_memory_entry_tapped', 0, source: 'avachat_home');
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => const BrainMemoryScreen()));
   }
 
   /// "Discuss a chat" — pick one of the user's Messenger conversations (from the
@@ -495,13 +503,20 @@ class _CompanionHomeState extends State<CompanionHome> {
             Text(_showArchived ? 'Archived chats' : 'Your conversations', style: ADText.preview()),
           ]),
         ),
-        if (!_showArchived)
+        if (!_showArchived) ...[
+          IconButton(
+            tooltip: 'AvaBrain Memory',
+            icon: PhosphorIcon(PhosphorIcons.brain(PhosphorIconsStyle.bold),
+                color: AD.textSecondary, size: 22),
+            onPressed: _openMemory,
+          ),
           IconButton(
             tooltip: 'Discuss a chat',
             icon: PhosphorIcon(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold),
                 color: AD.textSecondary, size: 22),
             onPressed: _discussAChat,
           ),
+        ],
         IconButton(
           tooltip: _showArchived ? 'Back to chats' : 'Archived',
           icon: PhosphorIcon(
