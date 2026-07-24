@@ -11,6 +11,7 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.media.AudioAttributes
+import android.media.AudioDeviceInfo
 import android.media.AudioFocusRequest
 import android.media.AudioFormat
 import android.media.AudioManager
@@ -22,13 +23,16 @@ import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
 import android.os.Build
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.Looper
 import android.os.PowerManager
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
@@ -91,6 +95,17 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
     private var telephonyEventChannel: EventChannel? = null
     private var appContext: Context? = null
     private val main = Handler(Looper.getMainLooper())
+
+    // CALL-REL-2: Flutter's MethodChannel handler runs on the MAIN thread.
+    // `trySetCommunicationDevice` blocks (bounded) on a CountDownLatch waiting
+    // for AudioDeviceCallback confirmation — if that callback were delivered
+    // via `main` we would deadlock (the main thread would be blocked waiting
+    // for a message it can only process once unblocked). This dedicated
+    // HandlerThread receives the AudioDeviceCallback instead, and
+    // `setAudioRoute` itself always runs off the main thread (see the
+    // "setAudioRoute" case in onMethodCall).
+    private val audioCbThread = HandlerThread("ava-audio-cb").apply { start() }
+    private val audioCbHandler = Handler(audioCbThread.looper)
 
     private var micSink: EventChannel.EventSink? = null
 
@@ -185,6 +200,7 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         stopEngine()
         stopTelephonyMonitoring()
+        try { audioCbThread.quitSafely() } catch (_: Throwable) {}
         if (activeInstance === this) activeInstance = null
         methodChannel?.setMethodCallHandler(null)
         eventChannel?.setStreamHandler(null)
@@ -245,10 +261,20 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                 result.success(getCurrentRoute())
             }
             "setAudioRoute" -> {
-                // CALLFIX-18: set audio route by name
+                // CALLFIX-18 / CALL-REL-2: set audio route by name; returns the
+                // CONFIRMED active route + backend + exact/fallback_reason so the
+                // Dart controller never has to assume the request succeeded.
+                // Runs off the main thread — `setAudioRoute` can block (bounded,
+                // 3s) waiting for the AudioDeviceCallback confirmation and must
+                // never freeze the UI thread.
                 val route = call.argument<String>("route") ?: "earpiece"
-                setAudioRoute(route)
-                result.success(null)
+                Thread {
+                    val map = try { setAudioRoute(route) } catch (e: Throwable) {
+                        mapOf("active" to currentRoute, "exact" to false,
+                            "backend" to "legacy_sco", "fallback_reason" to "exception")
+                    }
+                    main.post { try { result.success(map) } catch (_: Throwable) {} }
+                }.also { it.isDaemon = true; it.start() }
             }
             "startBluetoothSco" -> {
                 // CALLFIX-18: start Bluetooth SCO (audio data exchange)
@@ -317,7 +343,100 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                 stopEngine()
                 result.success(stats)
             }
+            "getRingAudibilityInfo" -> {
+                // [CALL-REL-9] REL-10: read at RING TIME, not cached — see the
+                // function doc below for why this can't just live in `isSupported`.
+                result.success(getRingAudibilityInfo())
+            }
             else -> result.notImplemented()
+        }
+    }
+
+    /**
+     * [CALL-REL-9] REL-10 (Specs/FINAL-CALL-RELIABILITY-PLAN-2026-07-24.md §2
+     * item 10): read the device's ring-audibility signals AT RING TIME —
+     * ringer mode, Do Not Disturb (NotificationManager interruption filter),
+     * the STREAM_RING volume + max, and the incoming-call notification
+     * channel's importance. None of this PROVES the ring was heard (we cannot
+     * observe the speaker), but it is the strongest available proxy for
+     * whether it even COULD have been: silent mode, an active DND filter,
+     * ring volume 0, or a suppressed notification channel all produce a
+     * completely silent "ring" that `call_incoming_shown` cannot distinguish
+     * from a real one — which is exactly the gap the 2026-07-23 "Tiger heard
+     * NO ring with the phone in his hand" incident exposed.
+     *
+     * Deliberately a fresh read every call, not a cached probe like
+     * `canUseFullScreenIntent`: ringer mode / DND / volume are the kind of
+     * setting a user flips constantly (silencing the phone for a meeting,
+     * then unsilencing it later), so a value captured at app-start would be
+     * stale by the time a call actually rings.
+     */
+    private fun getRingAudibilityInfo(): Map<String, Any?> {
+        val ctx = appContext ?: return mapOf("ok" to false, "reason" to "no_context")
+        return try {
+            val am = ctx.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE)
+                as? android.app.NotificationManager
+
+            val ringerMode = when (am?.ringerMode) {
+                AudioManager.RINGER_MODE_SILENT -> "silent"
+                AudioManager.RINGER_MODE_VIBRATE -> "vibrate"
+                AudioManager.RINGER_MODE_NORMAL -> "normal"
+                else -> "unknown"
+            }
+            val ringVolume = am?.getStreamVolume(AudioManager.STREAM_RING) ?: -1
+            val ringVolumeMax = am?.getStreamMaxVolume(AudioManager.STREAM_RING) ?: -1
+
+            // INTERRUPTION_FILTER_ALL = no DND. PRIORITY/ALARMS/NONE all narrow
+            // what's allowed to make sound; NONE and ALARMS block a plain call
+            // notification outright (a priority-mode allowlist for calls is a
+            // per-app/per-contact user setting we can't read generically here,
+            // so PRIORITY is reported but NOT treated as blocking — conservative:
+            // we'd rather under-claim "silent" than tell the caller "on silent"
+            // when the callee actually allowed calls through).
+            val interruptionFilter = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                when (nm?.currentInterruptionFilter) {
+                    android.app.NotificationManager.INTERRUPTION_FILTER_ALL -> "all"
+                    android.app.NotificationManager.INTERRUPTION_FILTER_PRIORITY -> "priority"
+                    android.app.NotificationManager.INTERRUPTION_FILTER_NONE -> "none"
+                    android.app.NotificationManager.INTERRUPTION_FILTER_ALARMS -> "alarms"
+                    else -> "unknown"
+                }
+            } else "unsupported"
+            val dndBlocking = interruptionFilter == "none" || interruptionFilter == "alarms"
+
+            // The BRANDED incoming-call FSI channel (id must match push_service.dart's
+            // `_incomingCallChannel` = 'avatok_incoming_calls'). That channel ships
+            // playSound/enableVibration OFF ON PURPOSE (native CallKit owns the
+            // ringtone underneath) — its importance still gates whether Android even
+            // raises the heads-up/full-screen presentation for it, which is a
+            // distinct failure mode from "no sound".
+            var channelImportance = "unknown"
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && nm != null) {
+                val ch = nm.getNotificationChannel("avatok_incoming_calls")
+                channelImportance = when (ch?.importance) {
+                    android.app.NotificationManager.IMPORTANCE_NONE -> "none"
+                    android.app.NotificationManager.IMPORTANCE_MIN -> "min"
+                    android.app.NotificationManager.IMPORTANCE_LOW -> "low"
+                    android.app.NotificationManager.IMPORTANCE_DEFAULT -> "default"
+                    android.app.NotificationManager.IMPORTANCE_HIGH -> "high"
+                    android.app.NotificationManager.IMPORTANCE_MAX -> "max"
+                    null -> "channel_missing"
+                    else -> "unknown"
+                }
+            }
+
+            mapOf(
+                "ok" to true,
+                "ringer_mode" to ringerMode,
+                "ring_volume" to ringVolume,
+                "ring_volume_max" to ringVolumeMax,
+                "interruption_filter" to interruptionFilter,
+                "dnd_blocking" to dndBlocking,
+                "channel_importance" to channelImportance
+            )
+        } catch (e: Throwable) {
+            mapOf("ok" to false, "reason" to (e.message ?: "error"))
         }
     }
 
@@ -500,16 +619,23 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
     // 'onAudioFocusRegained' → Dart resumes. The RTC session is kept alive
     // throughout; we never end the call from a focus change.
     private var focusRequest: AudioFocusRequest? = null
+
+    // CALL-REL-2 plan §5: LOSS/LOSS_TRANSIENT is a real systemHeld hold —
+    // capture should pause and userMuted must be tracked separately so we
+    // don't clobber it on regain. LOSS_TRANSIENT_CAN_DUCK must NOT auto-mute;
+    // Android may just lower our stream, so we only request an active-route
+    // readback (`onAudioFocusDuck`) rather than holding the call.
     private val focusListener = AudioManager.OnAudioFocusChangeListener { change ->
         when (change) {
             AudioManager.AUDIOFOCUS_LOSS,
-            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT ->
+                emit("onAudioFocusLost", mapOf("change" to change, "route" to currentRoute))
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK ->
-                emit("onAudioFocusLost", mapOf("change" to change))
+                emit("onAudioFocusDuck", mapOf("change" to change, "route" to currentRoute))
             AudioManager.AUDIOFOCUS_GAIN,
             AudioManager.AUDIOFOCUS_GAIN_TRANSIENT,
             AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK ->
-                emit("onAudioFocusRegained", mapOf("change" to change))
+                emit("onAudioFocusRegained", mapOf("change" to change, "route" to currentRoute))
         }
     }
 
@@ -552,6 +678,12 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
     private fun stopP2pAudioMode() {
         try {
             val am = audioManager() ?: return
+            // CALL-REL-2 plan §5 step 6: clear the communication device BEFORE
+            // restoring normal mode so a stale route selection cannot survive
+            // into the next call/app.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                try { am.clearCommunicationDevice() } catch (_: Throwable) {}
+            }
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     focusRequest?.let { am.abandonAudioFocusRequest(it) }
@@ -565,54 +697,199 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         } catch (_: Throwable) {}
     }
 
-    // CALLFIX-18: Audio routing — Bluetooth, wired headset, earpiece, speaker.
+    // CALLFIX-18 / CALL-REL-2: Audio routing — Bluetooth, wired headset,
+    // earpiece, speaker. API 31+ uses the confirmed communication-device APIs
+    // (`availableCommunicationDevices` / `setCommunicationDevice` /
+    // `clearCommunicationDevice`) with an `AudioDeviceCallback` confirmation
+    // wait; API < 31 keeps the legacy speaker/SCO toggle path, reported as
+    // `route_backend: legacy_sco`. See Specs/PERMANENT-P2P-CALL-RELIABILITY-
+    // IMPLEMENTATION-PLAN-2026-07-24.md §5.
     private fun getCurrentRoute(): String = currentRoute
 
-    private fun setAudioRoute(route: String) {
+    // Bounded wait for a `setCommunicationDevice` selection to be confirmed by
+    // the platform. 3s is a UI-facing acknowledgement bound (plan §5); it is
+    // not the 30s absolute platform ceiling, which we do not need here because
+    // a failed confirmation just falls back rather than blocking indefinitely.
+    private val communicationDeviceConfirmTimeoutMs = 3000L
+
+    private fun deviceTypeForRoute(route: String): List<Int> = when (route) {
+        "earpiece" -> listOf(AudioDeviceInfo.TYPE_BUILTIN_EARPIECE)
+        "speaker" -> listOf(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER)
+        "bluetooth" -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            listOf(AudioDeviceInfo.TYPE_BLE_HEADSET, AudioDeviceInfo.TYPE_BLUETOOTH_SCO)
+        } else {
+            listOf(AudioDeviceInfo.TYPE_BLUETOOTH_SCO)
+        }
+        "headset" -> listOf(AudioDeviceInfo.TYPE_WIRED_HEADSET, AudioDeviceInfo.TYPE_WIRED_HEADPHONES)
+        else -> emptyList()
+    }
+
+    private fun routeForDeviceType(type: Int): String = when (type) {
+        AudioDeviceInfo.TYPE_BUILTIN_EARPIECE -> "earpiece"
+        AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> "speaker"
+        AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> "bluetooth"
+        AudioDeviceInfo.TYPE_WIRED_HEADSET, AudioDeviceInfo.TYPE_WIRED_HEADPHONES -> "headset"
+        else -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            type == AudioDeviceInfo.TYPE_BLE_HEADSET
+        ) "bluetooth" else "unknown"
+    }
+
+    /// CALL-REL-2: select and CONFIRM a communication device on API 31+.
+    /// Returns null on failure (caller falls back). Registers a transient
+    /// [AudioDeviceCallback] and waits (bounded) for
+    /// `AudioManager.communicationDevice` to match the selected device, so we
+    /// return the ACTUAL confirmed route rather than assuming the request
+    /// succeeded.
+    private fun trySetCommunicationDevice(am: AudioManager, route: String): AudioDeviceInfo? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return null
+        val wantedTypes = deviceTypeForRoute(route)
+        if (wantedTypes.isEmpty()) return null
+        val available = try { am.availableCommunicationDevices } catch (_: Throwable) { emptyList() }
+        val device = wantedTypes.firstNotNullOfOrNull { t -> available.firstOrNull { it.type == t } }
+            ?: return null
+
+        val latch = CountDownLatch(1)
+        var confirmed = false
+        // `AudioManager.OnCommunicationDeviceChangedListener` (API 31+) is the
+        // correct confirmation signal for a `setCommunicationDevice` request —
+        // unlike `AudioDeviceCallback`, which fires on device hotplug, not on
+        // route selection.
+        val listener = AudioManager.OnCommunicationDeviceChangedListener { changed ->
+            if (changed?.id == device.id) { confirmed = true; latch.countDown() }
+        }
+        val executor = java.util.concurrent.Executor { r -> audioCbHandler.post(r) }
         try {
-            val am = audioManager() ?: return
+            am.addOnCommunicationDeviceChangedListener(executor, listener)
+            val ok = try { am.setCommunicationDevice(device) } catch (_: Throwable) { false }
+            if (!ok) {
+                am.removeOnCommunicationDeviceChangedListener(listener)
+                return null
+            }
+            // The platform may confirm synchronously (communicationDevice already
+            // matches) — check before waiting on the callback/latch.
+            if (am.communicationDevice?.id == device.id) confirmed = true
+            if (!confirmed) {
+                try { latch.await(communicationDeviceConfirmTimeoutMs, TimeUnit.MILLISECONDS) } catch (_: InterruptedException) {}
+                if (am.communicationDevice?.id == device.id) confirmed = true
+            }
+        } finally {
+            try { am.removeOnCommunicationDeviceChangedListener(listener) } catch (_: Throwable) {}
+        }
+        return if (confirmed) device else null
+    }
+
+    /// CALL-REL-2: request [route]; returns the map the Dart controller
+    /// expects to build its `CallAudioRouteResult` from: `active` (the ACTUAL
+    /// confirmed route, never assumed), `exact`, `backend`
+    /// (`communication_device` on API 31+, `legacy_sco` below), and an
+    /// optional `fallback_reason`. Fallback order on failure: requested ->
+    /// earpiece -> speaker (plan §5).
+    private fun setAudioRoute(route: String): Map<String, Any?> {
+        val am = audioManager() ?: return mapOf(
+            "active" to currentRoute, "exact" to false, "backend" to "legacy_sco",
+            "fallback_reason" to "no_audio_manager"
+        )
+        var backend = "legacy_sco"
+        var active: String? = null
+        var fallbackReason: String? = null
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            backend = "communication_device"
+            // SCO must only be started when Bluetooth is the SELECTED route —
+            // starting it unconditionally at every setup caused needless async
+            // route changes after the app already requested earpiece/speaker.
+            if (route != "bluetooth") stopBluetoothScoIfRunning()
+            val device = trySetCommunicationDevice(am, route)
+            if (device != null) {
+                active = routeForDeviceType(device.type)
+            } else {
+                fallbackReason = "communication_device_unavailable_or_unconfirmed"
+                try { am.clearCommunicationDevice() } catch (_: Throwable) {}
+                // Fallback order: requested -> earpiece -> speaker.
+                val fbEarpiece = if (route != "earpiece") trySetCommunicationDevice(am, "earpiece") else null
+                active = if (fbEarpiece != null) {
+                    "earpiece"
+                } else {
+                    val fbSpeaker = trySetCommunicationDevice(am, "speaker")
+                    if (fbSpeaker != null) "speaker" else {
+                        // Absolute last resort — legacy speakerphone toggle so the
+                        // call is never silently routed nowhere.
+                        try {
+                            @Suppress("DEPRECATION")
+                            am.isSpeakerphoneOn = (route == "speaker")
+                        } catch (_: Throwable) {}
+                        backend = "legacy_sco"
+                        if (route == "speaker") "speaker" else "earpiece"
+                    }
+                }
+            }
+        } else {
+            // API < 31: legacy compatibility path, isolated to this branch.
             when (route) {
                 "speaker" -> {
-                    stopBluetoothSco()
+                    stopBluetoothScoIfRunning()
                     @Suppress("DEPRECATION")
                     am.isSpeakerphoneOn = true
-                    currentRoute = "speaker"
+                    active = "speaker"
                 }
                 "earpiece" -> {
-                    stopBluetoothSco()
+                    stopBluetoothScoIfRunning()
                     @Suppress("DEPRECATION")
                     am.isSpeakerphoneOn = false
-                    currentRoute = "earpiece"
+                    active = "earpiece"
                 }
                 "bluetooth" -> {
                     startBluetoothSco()
                     @Suppress("DEPRECATION")
                     am.isSpeakerphoneOn = false
-                    currentRoute = "bluetooth"
+                    active = "bluetooth"
                 }
+                else -> active = currentRoute
             }
-            emit("audio_route_changed", mapOf("route" to currentRoute))
-        } catch (_: Throwable) {}
+        }
+
+        currentRoute = active ?: currentRoute
+        val exact = (active == route)
+        val result = mapOf(
+            "active" to currentRoute,
+            "exact" to exact,
+            "backend" to backend,
+            "fallback_reason" to fallbackReason
+        )
+        emit("audio_route_changed", mapOf(
+            "route" to currentRoute,
+            "requested_route" to route,
+            "exact" to exact,
+            "route_backend" to backend,
+            "fallback_reason" to fallbackReason
+        ))
+        return result
     }
+
+    // SCO started ONLY when Bluetooth is selected+connected (CALL-REL-2) —
+    // never unconditionally at P2P setup.
+    private var scoStarted = false
 
     private fun startBluetoothSco() {
         try {
             val am = audioManager() ?: return
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                // API 31+: setCommunicationDevice with DEVICE_OUT_BLUETOOTH_SCO
-                // (implementation requires Android device config; for now, use startBluetoothSco)
-            }
             am.startBluetoothSco()
+            scoStarted = true
         } catch (_: Throwable) {}
+    }
+
+    private fun stopBluetoothScoIfRunning() {
+        if (scoStarted) stopBluetoothSco()
     }
 
     private fun stopBluetoothSco() {
         try {
             val am = audioManager() ?: return
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                // API 31+: clearCommunicationDevice
+                try { am.clearCommunicationDevice() } catch (_: Throwable) {}
             }
             am.stopBluetoothSco()
+            scoStarted = false
         } catch (_: Throwable) {}
     }
 

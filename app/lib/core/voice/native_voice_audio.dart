@@ -460,14 +460,17 @@ class NativeVoiceAudio {
     CallAudioRoute active = requested;
     String? fallbackReason;
     try {
-      await _m.invokeMethod('setAudioRoute', {'route': _routeToWire(requested)});
-      final readback = await _m.invokeMethod<String>('getAudioRoute');
-      active = _routeFromWire(readback) == CallAudioRoute.unknown
-          ? requested
-          : _routeFromWire(readback);
-      if (active != requested) {
-        fallbackReason = 'native_reported_different_route';
-      }
+      // CALL-REL-2: the native side now CONFIRMS the route (API 31+
+      // setCommunicationDevice + AudioDeviceCallback, or the legacy path on
+      // API<31) and returns the ACTUAL active route in one round trip —
+      // never assume the request landed.
+      final r = await _m.invokeMethod<dynamic>(
+          'setAudioRoute', {'route': _routeToWire(requested)});
+      final map = r is Map ? Map<String, dynamic>.from(r) : const <String, dynamic>{};
+      final activeWire = map['active'] as String?;
+      active = activeWire == null ? requested : _routeFromWire(activeWire);
+      backend = (map['backend'] as String?) ?? backend;
+      fallbackReason = map['fallback_reason'] as String?;
     } catch (e) {
       active = priorActive == CallAudioRoute.unknown ? CallAudioRoute.earpiece : priorActive;
       fallbackReason = 'invoke_failed';
