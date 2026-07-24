@@ -564,6 +564,21 @@ class _CallScreenState extends State<CallScreen> {
     nav.pushReplacement(MaterialPageRoute(builder: (_) => const RootFlow()));
   }
 
+  /// Close a legacy terminal card without abandoning the CallSession. These
+  /// cards are visually terminal, but the session deliberately stays alive for
+  /// the Talk-to-Ava decision, so navigation must use the same serialized
+  /// teardown as Call again and Message.
+  Future<void> _closeOutcomeAndPop({required String reason}) async {
+    try {
+      await _session.dismissOutcomeAndWait(reason: reason);
+    } catch (e, st) {
+      Analytics.captureException(e, st, handled: true,
+          screen: 'call_screen', extra: {'stage': 'outcome_close', 'reason': reason});
+    } finally {
+      _popIfMounted();
+    }
+  }
+
   @override
   void dispose() {
     // View detach ONLY — never tears down the call. The session (owned by the
@@ -859,7 +874,9 @@ class _CallScreenState extends State<CallScreen> {
                         _popIfMounted();
                         unawaited(place1to1Call(nav.context, uid: uidSeed, name: title, avatarUrl: avatar, video: vid, business: widget.business));
                       },
-                      onClose: _popIfMounted,
+                      onClose: () {
+                        unawaited(_closeOutcomeAndPop(reason: 'paid-busy-close'));
+                      },
                     )
                   // [DIALPAD-BIZ-CALLS] Phone-style "no answer" card for the
                   // CALLER on an outgoing business (dialpad) call — replaces
@@ -905,7 +922,9 @@ class _CallScreenState extends State<CallScreen> {
                               .showSnackBar(const SnackBar(content: Text('Contact saved')));
                         }
                       },
-                      onClose: _popIfMounted,
+                      onClose: () {
+                        unawaited(_closeOutcomeAndPop(reason: 'no-answer-close'));
+                      },
                     )
                   else ...[
                     AdSticker(
