@@ -31,6 +31,7 @@ import '../../core/audio_playback_service.dart'; // [AVAVM-PLAYER-1]
 import '../../core/avatar_cache.dart';
 import '../../core/badge_service.dart'; // [ISSUE-BADGE-UNREAD-1]
 import '../../core/ava_ai_client.dart';
+import '../../core/ava_group_client.dart'; // [AVABRAIN-COMPANION-UI-1] draft-card client
 import '../../core/composer_ai.dart';
 import '../translation/ondevice_translate.dart';
 import '../../core/ava_contracts.dart';
@@ -686,6 +687,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   int _catchupCount = 0;
   bool _catchupDismissed = false;
   bool _catchupLoading = false;
+  // [AVABRAIN-COMPANION-UI-1] Group Companion pending draft cards — group
+  // threads only, shown ABOVE the composer (not in the message list, so it
+  // never touches _MessageRow/list indexing). One card at a time, oldest
+  // first; "+N more" for the rest.
+  List<AvaGroupDraft> _companionDrafts = const [];
+  bool _companionDraftBusy = false;
   // STREAM G [GROUP-AI-4] smart replies (DMs). Chips above the input bar.
   List<String> _smartReplies = const [];
   Timer? _smartReplyDebounce;
@@ -1569,6 +1576,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     _startPresenceHeartbeat();
     _memberUids = g.members.where((m) => m != id.uid).toList();
     _convKey = 'g:${g.id}';
+    // [AVABRAIN-COMPANION-UI-1] Group Companion draft cards — group threads
+    // only, fetched once on open (feature-detects a 404 → does nothing if the
+    // server route/flag isn't live).
+    unawaited(_fetchCompanionDrafts());
     _loadGuardian();
     onSummonAva = AvaInvoke.makeHandler(_convKey!); // Phase 11: @ava → in-thread turn
     _initAvaChatState(); // Phase A: load "Ava in this chat" + reset ava_unread
@@ -2924,6 +2935,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
+    // [AVABRAIN-COMPANION-UI-1] Re-check pending Companion drafts on resume —
+    // no periodic timer, just thread-open + resume + post-decision refetch.
+    if (state == AppLifecycleState.resumed && _isGroup) {
+      unawaited(_fetchCompanionDrafts());
+    }
     if (!_recording || _recPaused) return;
     // `inactive` also covers the transient states (a call banner, the app
     // switcher, the screen locking) — precisely the cases the owner hit.
@@ -7591,6 +7607,129 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
 
   void _dismissCatchup() => setState(() { _catchupDismissed = true; _catchupBullets = const []; });
 
+  // ---- [AVABRAIN-COMPANION-UI-1] Group Companion draft cards ----
+  /// Fetch pending drafts for this group. Group threads only; feature-detects
+  /// a 404/network failure (AvaGroupApi.listDrafts already degrades to []),
+  /// so this is safe to call unconditionally on open/resume/after-decision.
+  Future<void> _fetchCompanionDrafts() async {
+    if (!_isGroup) return;
+    final conv = _serverConvId;
+    if (conv == null) return;
+    try {
+      final drafts = await AvaGroupApi.listDrafts(conv);
+      if (!mounted) return;
+      final hadNone = _companionDrafts.isEmpty;
+      setState(() => _companionDrafts = drafts);
+      if (hadNone && drafts.isNotEmpty) {
+        Analytics.uiInteraction('companion_draft_shown', 0, extra: {
+          'conv': conv, 'count': drafts.length, 'capability': drafts.first.capability,
+        });
+      }
+    } catch (e, st) {
+      Analytics.captureException(e, st, screen: 'chat_thread', handled: true,
+          extra: {'action': 'companion_drafts_fetch'});
+    }
+  }
+
+  Future<void> _approveCompanionDraft(AvaGroupDraft d) async {
+    if (_companionDraftBusy) return;
+    setState(() => _companionDraftBusy = true);
+    try {
+      final ok = await AvaGroupApi.approveDraft(d.decisionId);
+      if (ok) {
+        Analytics.uiInteraction('companion_draft_approved', 0, extra: {
+          'decision_id': d.decisionId, 'capability': d.capability, 'scope': d.scope,
+        });
+      } else if (mounted) {
+        _toast('Could not approve — please try again.');
+      }
+    } catch (e, st) {
+      Analytics.captureException(e, st, screen: 'chat_thread', handled: true,
+          extra: {'action': 'companion_draft_approve', 'decision_id': d.decisionId});
+    } finally {
+      if (mounted) setState(() => _companionDraftBusy = false);
+      await _fetchCompanionDrafts(); // card disappears; the real message arrives via normal sync
+    }
+  }
+
+  Future<void> _rejectCompanionDraft(AvaGroupDraft d) async {
+    if (_companionDraftBusy) return;
+    setState(() => _companionDraftBusy = true);
+    try {
+      final ok = await AvaGroupApi.rejectDraft(d.decisionId);
+      if (ok) {
+        Analytics.uiInteraction('companion_draft_rejected', 0, extra: {
+          'decision_id': d.decisionId, 'capability': d.capability, 'scope': d.scope,
+        });
+      } else if (mounted) {
+        _toast('Could not dismiss — please try again.');
+      }
+    } catch (e, st) {
+      Analytics.captureException(e, st, screen: 'chat_thread', handled: true,
+          extra: {'action': 'companion_draft_reject', 'decision_id': d.decisionId});
+    } finally {
+      if (mounted) setState(() => _companionDraftBusy = false);
+      await _fetchCompanionDrafts();
+    }
+  }
+
+  /// "Ava suggests" card — rendered ABOVE the composer (never in the message
+  /// list, so it can't shift `_MessageRow` indexing). Shows the oldest pending
+  /// draft; Approve is disabled unless the server said `can_decide` for me.
+  Widget _companionDraftCard() {
+    if (_companionDrafts.isEmpty) return const SizedBox.shrink();
+    final d = _companionDrafts.first;
+    final more = _companionDrafts.length - 1;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+      decoration: BoxDecoration(
+        color: AD.card,
+        border: Border.all(color: AD.borderControl, width: 1),
+        borderRadius: BorderRadius.circular(AD.rStatCard),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill), size: 15, color: AD.iconVideo),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              'AVA SUGGESTS · ${d.capability.isEmpty ? "message" : d.capability}'
+                  '${d.scope == "private" ? " · only you see this" : ""}',
+              style: ADText.statCaption(c: AD.textSecondary),
+            ),
+          ),
+          if (more > 0)
+            Text('+$more more', style: ADText.statCaption(c: AD.textTertiary)),
+        ]),
+        const SizedBox(height: 8),
+        Text(d.draftText, style: ADText.preview(c: AD.textPrimary)),
+        const SizedBox(height: 10),
+        Row(children: [
+          Expanded(
+            child: AdButton(
+              label: 'Dismiss',
+              variant: AdButtonVariant.ghost,
+              fullWidth: true,
+              trailingIcon: false,
+              onPressed: _companionDraftBusy ? null : () => _rejectCompanionDraft(d),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: AdButton(
+              label: d.canDecide ? 'Approve' : 'Needs admin',
+              variant: AdButtonVariant.teal,
+              fullWidth: true,
+              trailingIcon: false,
+              onPressed: (_companionDraftBusy || !d.canDecide) ? null : () => _approveCompanionDraft(d),
+            ),
+          ),
+        ]),
+      ]),
+    );
+  }
+
   // ---- STREAM G [GROUP-AI-4] smart replies (DMs) ----
   /// Debounced fetch after an incoming DM. Only fires for 1:1 threads when the
   /// screen is mounted (open + foreground). Guardrail + flag are enforced server-side.
@@ -8497,6 +8636,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
               ),
             ),
             if (_mentionMatches.isNotEmpty) _mentionBar(),
+            // [AVABRAIN-COMPANION-UI-1] Ava's pending suggestion — group threads
+            // only, ABOVE the composer (never inside the message list).
+            if (_isGroup && _companionDrafts.isNotEmpty) _companionDraftCard(),
             // Unknown-number threads are a one-way voicemail record (no live peer
             // to reply to), so the composer is replaced with a read-only note.
             // STREAM G [GROUP-AI-4]: smart-reply chips above the input (DMs only).

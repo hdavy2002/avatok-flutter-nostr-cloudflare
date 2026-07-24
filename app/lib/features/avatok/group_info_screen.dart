@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
+import '../../core/ava_group_client.dart'; // [AVABRAIN-COMPANION-UI-1] Ava Companion mode toggle
 import '../../core/avatar.dart';
 import '../../core/avatar_cache.dart';
 import '../../core/chat_state.dart';
@@ -41,6 +42,11 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
   // [GROUP-AVATAR-1] Separate from _busy: _busy gates member-management controls,
   // and a photo upload must not disable them (or vice versa).
   bool _photoBusy = false;
+  // [AVABRAIN-COMPANION-UI-1] Ava Companion mode ('off'|'assistant'|'companion').
+  // Read by any member; only owner/admin may change it (server-enforced too).
+  String _companionMode = 'off';
+  bool _companionModeLoaded = false;
+  bool _companionModeBusy = false;
 
   @override
   void initState() {
@@ -100,6 +106,34 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     // State is in-memory only (`_avatars`/`_names`) — nothing to per-account
     // scope. Fire-and-forget: a failure just leaves the initials fallback.
     unawaited(_backfillMemberAvatars());
+    unawaited(_loadCompanionMode());
+  }
+
+  /// [AVABRAIN-COMPANION-UI-1] GET /api/ava/group/mode — feature-detects a
+  /// 404/network failure (AvaGroupApi.getMode returns null) and just leaves
+  /// the row hidden-as-loading rather than throwing.
+  Future<void> _loadCompanionMode() async {
+    final m = await AvaGroupApi.getMode(_group.id);
+    if (!mounted || m == null) return;
+    setState(() { _companionMode = m.mode; _companionModeLoaded = true; });
+  }
+
+  /// POST /api/ava/group/mode — owner/admin only (server also enforces this;
+  /// `_amAdmin` here only gates whether the row is interactive).
+  Future<void> _setCompanionMode(String mode) async {
+    if (_companionModeBusy || mode == _companionMode) return;
+    setState(() => _companionModeBusy = true);
+    final ok = await AvaGroupApi.setMode(_group.id, mode);
+    if (!mounted) return;
+    setState(() {
+      _companionModeBusy = false;
+      if (ok) _companionMode = mode;
+    });
+    if (ok) {
+      Analytics.capture('avabrain_companion_mode_set', {'gid': _group.id, 'mode': mode});
+    } else {
+      _toast('Could not change Ava Companion mode — please try again.');
+    }
   }
 
   /// [AVA-GRPINFO-PROFILES] Resolve directory photos/names for members missing a
@@ -675,6 +709,9 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                 title: Text('Add members', style: ADText.rowName()),
                 onTap: _busy ? null : _pickToAdd,
               ),
+            // [AVABRAIN-COMPANION-UI-1] Ava Companion mode (bible §6.2/§6.3) —
+            // any member sees the current mode; only owner/admin can change it.
+            if (_companionModeLoaded) _companionModeSection(),
             Padding(
               padding: const EdgeInsets.fromLTRB(18, 14, 18, 4),
               child: Text('MEMBERS', style: ADText.sectionLabel()),
@@ -761,6 +798,73 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
         ),
         child: Center(child: PhosphorIcon(icon, size: size * 0.53, color: Colors.white)),
       );
+
+  /// [AVABRAIN-COMPANION-UI-1] Ava Companion mode row — three states
+  /// (off/assistant/companion), bible §6.2/§6.3. Read-only pill display for a
+  /// non-admin member; tappable chips for owner/admin.
+  Widget _companionModeSection() {
+    const modes = [
+      ('off', 'Off'),
+      ('assistant', 'Assistant'),
+      ('companion', 'Companion'),
+    ];
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AD.card,
+          borderRadius: BorderRadius.circular(AD.rListCard),
+          border: Border.all(color: AD.borderCard, width: 1),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill), size: 16, color: AD.iconVideo),
+            const SizedBox(width: 8),
+            Text('Ava Companion', style: ADText.rowName()),
+          ]),
+          const SizedBox(height: 4),
+          Text(
+            _amAdmin
+                ? 'Off: no observation. Assistant: replies only when @ava\'d. '
+                  'Companion: Ava may privately suggest things to members or, within '
+                  'this group\'s own limits, propose a group post — always shown as a '
+                  'draft someone approves before it sends.'
+                : 'Current mode for this group. Only a group admin can change it.',
+            style: ADText.preview(),
+          ),
+          const SizedBox(height: 10),
+          Row(children: [
+            for (final m in modes) ...[
+              Expanded(child: _companionModeChip(m.$1, m.$2)),
+              if (m != modes.last) const SizedBox(width: 8),
+            ],
+          ]),
+        ]),
+      ),
+    );
+  }
+
+  Widget _companionModeChip(String value, String label) {
+    final selected = _companionMode == value;
+    final enabled = _amAdmin && !_companionModeBusy;
+    return GestureDetector(
+      onTap: enabled ? () => _setCompanionMode(value) : null,
+      child: Opacity(
+        opacity: (_amAdmin || selected) ? 1 : 0.55,
+        child: Container(
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(vertical: 9),
+          decoration: BoxDecoration(
+            color: selected ? AD.newGroup.withValues(alpha: 0.22) : AD.headerFooter,
+            borderRadius: BorderRadius.circular(AD.rChip),
+            border: Border.all(color: selected ? AD.newGroup : AD.borderControl, width: 1),
+          ),
+          child: Text(label, style: ADText.statCaption(c: selected ? AD.newGroup : AD.textSecondary)),
+        ),
+      ),
+    );
+  }
 
   /// Small "admin" pill (replaces ZineSticker).
   Widget _adminPill() => Container(
