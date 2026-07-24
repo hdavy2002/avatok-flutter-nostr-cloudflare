@@ -70,6 +70,7 @@ import '../../core/device_contacts.dart';
 import '../../core/disk_cache.dart'; // [AVAGRP-SENDERPUB-BACKFILL-1] per-account scoped repair marker
 import '../../sync/dm.dart';
 import '../../sync/outbox.dart';
+import '../../sync/media_outbox.dart';
 import '../../sync/group_dm.dart';
 import '../../sync/party/party_hub.dart';
 import '../../sync/legacy_stubs.dart';
@@ -737,6 +738,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     // when it landed, the thread would look empty. This probes/reconnects so the
     // missing message pulls in right as you open the chat.
     try { SyncHub.I.onAppResumed(); } catch (_) {}
+    // [MEDIA-OUTBOX-DURABLE-1] Resume any media upload/envelope-send left
+    // mid-flight by a previous run (app kill, crash, force-close). Mirrors
+    // Outbox's own "a thread open is also a retry trigger" pattern
+    // (`AvaDm.start`/`AvaGroupDm.start`) — best-effort, never blocks open.
+    unawaited(MediaOutbox.I.reconcile(resumeUpload: _resumeMediaUpload).catchError((e) {
+      AvaLog.I.log('media_outbox', 'reconcile failed: $e');
+    }));
     // STREAM J (D17): resolve whether incoming media should auto-download in this
     // thread (mode + connectivity + accept_state). Non-blocking; repaints once
     // known so media bubbles render either the real preview or a tap-to-download
@@ -4744,11 +4752,68 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     await _upload(msg, bytes, kind, ct, name, caption: caption, sourcePath: sourcePath);
   }
 
+  /// [MEDIA-OUTBOX-DURABLE-1] The `resumeUpload` callback [MediaOutbox.reconcile]
+  /// calls for a row that never made it past `uploaded` in a PREVIOUS run of
+  /// the app. Re-runs the exact same pipeline `_upload` runs for a fresh send
+  /// (transcode-if-video, then encrypt+upload) from the STAGED plaintext bytes
+  /// — the thread this row belonged to may not even be open, so this talks to
+  /// `MediaService` directly rather than through any `_Msg`/bubble.
+  Future<({String? mediaId, String toEnvelopeJson})?> _resumeMediaUpload(
+      MediaOutboxRow row, Uint8List bytes) async {
+    try {
+      var uploadBytes = bytes;
+      var uploadCt = row.mime;
+      final kind = MediaKind.values.byName(row.kind);
+      if (kind == MediaKind.video) {
+        try {
+          final dir = await getTemporaryDirectory();
+          final tmp = File('${dir.path}/resume_${row.clientId}.mp4');
+          await tmp.writeAsBytes(bytes, flush: true);
+          final info = await VideoCompress.compressVideo(tmp.path,
+              quality: VideoQuality.Res1280x720Quality, deleteOrigin: false, includeAudio: true);
+          final outPath = info?.file?.path;
+          if (outPath != null) {
+            final out = await File(outPath).readAsBytes();
+            if (out.isNotEmpty) { uploadBytes = out; uploadCt = 'video/mp4'; }
+          }
+        } catch (e) {
+          AvaLog.I.log('media', 'resume transcode failed ${row.clientId}, using staged bytes: $e');
+        }
+      }
+      final live = CallSessionManager.instance.current;
+      final inCall = live != null && !live.isEnded;
+      final m = await MediaService.encryptAndUpload(uploadBytes,
+          kind: kind, contentType: uploadCt, name: row.filename, caption: row.caption, inCall: inCall);
+      return (mediaId: m.id, toEnvelopeJson: jsonEncode(m.toEnvelope()));
+    } catch (e) {
+      AvaLog.I.log('media', 'resume upload FAILED ${row.clientId}: $e');
+      return null;
+    }
+  }
+
   Future<void> _upload(_Msg msg, Uint8List bytes, MediaKind kind, String ct, String name,
       {String caption = '', String? sourcePath}) async {
     setState(() { msg.uploading = true; msg.failed = false; });
     final tUploadStart = DateTime.now().millisecondsSinceEpoch;
     int? transcodeMs;
+    // [MEDIA-OUTBOX-DURABLE-1] Stage the PLAINTEXT bytes + record a `queued`
+    // row BEFORE encryption/upload starts, so a kill mid-upload can resume
+    // from disk instead of losing the attachment (F3/J7: previously the R2
+    // object could exist with no message ever referencing it, or the bubble
+    // could vanish entirely with the bytes only ever in memory).
+    final mediaClientId = msg.mediaClientId ?? _newMediaClientId();
+    msg.mediaClientId = mediaClientId;
+    unawaited(MediaOutbox.I.stage(
+      clientId: mediaClientId,
+      bytes: bytes,
+      convKey: _convKey ?? '',
+      kind: kind.name,
+      mime: ct,
+      filename: name,
+      caption: caption,
+      toUid: _isGroup ? '' : (_peerNpub ?? ''),
+      gid: _isGroup ? (_group?.id ?? '') : '',
+    ).then((_) => MediaOutbox.I.markUploading(mediaClientId)));
     try {
       var uploadBytes = bytes;
       var uploadCt = ct;
@@ -4787,6 +4852,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
           if (mounted) setState(() { msg.uploading = false; msg.failed = true; });
           _capNote(_kVideoTooBigMsg);
           Analytics.capture('video_upload_rejected', {'bytes': uploadBytes.length});
+          // Permanent rejection, not a transient failure — nothing to retry.
+          unawaited(MediaOutbox.I.giveUp(mediaClientId, reason: 'video_too_big'));
           return;
         }
         Analytics.capture('video_upload_compressed', {
@@ -4799,6 +4866,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       final live = CallSessionManager.instance.current;
       final inCall = live != null && !live.isEnded;
       final m = await MediaService.encryptAndUpload(uploadBytes, kind: kind, contentType: uploadCt, name: uploadName, caption: caption, inCall: inCall);
+      // [MEDIA-OUTBOX-DURABLE-1] Ciphertext is durably on R2 now — record the
+      // exact envelope reference so a kill BEFORE the message send below still
+      // has something to resend from (closes the "R2 object with nothing
+      // referencing it" orphan window).
+      unawaited(MediaOutbox.I.markUploaded(mediaClientId, jsonEncode(m.toEnvelope())));
       if (!mounted) return;
       setState(() { msg.media = m; msg.uploading = false; });
       // [MEDIA-INSTANT-1f] Richer chat_media_sent — kind/bytes plus the two
@@ -4827,6 +4899,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         final id = _gdm!.send(jsonEncode({...m.toEnvelope(), 't': 'gmedia', 'gid': _group!.id, 'fromName': _fromNameTag}));
         msg.evId = id;
         _seenEv.add(id);
+        // [MEDIA-OUTBOX-DURABLE-1] The envelope leg is now owned by the
+        // EXISTING durable [Outbox] (`_gdm!.send` already enqueues into it) —
+        // this store just watches Outbox's ACK for `id` to know when it's
+        // safe to delete the staged plaintext + row. See media_outbox.dart's
+        // class doc for why there's no second retry/backoff implementation
+        // for this leg.
+        unawaited(MediaOutbox.I.markEnvelopeSent(mediaClientId, id));
         Analytics.capture('group_message_sent', {
           'gid': _group!.id, 'member_count': _group!.members.length, 'kind': kind.name,
         });
@@ -4835,6 +4914,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         final id = _dm!.send(jsonEncode(m.toEnvelope()));
         msg.evId = id;
         _seenEv.add(id);
+        unawaited(MediaOutbox.I.markEnvelopeSent(mediaClientId, id));
         AvaLog.I.log('media', 'sent dm media kind=${kind.name} ${uploadBytes.length}B key=…$keyShort rumor=${id.length >= 8 ? id.substring(0, 8) : id}');
       }
       _schedulePersist(); // cache the media message so it survives reopen
@@ -4842,6 +4922,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       if (!mounted) return;
       AvaLog.I.log('media', 'send media FAILED kind=${kind.name}: $e');
       setState(() { msg.uploading = false; msg.failed = true; msg.transcoding = false; });
+      // [MEDIA-OUTBOX-DURABLE-1] Auto-retry with backoff instead of leaving
+      // this ONLY as a manual tap-to-retry — [MediaOutbox.reconcile] (run on
+      // the next thread open / app boot) picks a `queued` row back up. Manual
+      // tap-to-retry still works too ("retry now" — see the retry sites).
+      unawaited(MediaOutbox.I.scheduleRetry(mediaClientId, reason: e.toString()));
       if (msg.retryAttempt != null) {
         Analytics.capture('chat_media_retry_failed', {
           'kind': kind.name, 'mime': ct, 'bytes': bytes.length,
