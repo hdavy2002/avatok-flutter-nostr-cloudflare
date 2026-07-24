@@ -617,7 +617,25 @@ class ChatImageCard extends StatelessWidget {
               // Fill the bubble width; cover-crop only the vertical excess.
               width: double.infinity,
               fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+              // [MEDIA-RETRY-KIND-1] A failed decode used to render as
+              // literally nothing (`SizedBox.shrink()`) — confirmed in prod as
+              // "the message vanished". Show a broken-image placeholder and
+              // report it instead of silently dropping the bubble's content.
+              errorBuilder: (_, __, ___) {
+                Analytics.capture('chat_media_load_failed', {
+                  'kind': 'image', 'reason': 'decode_failed', 'stage': 'bubble_card',
+                });
+                return Container(
+                  color: Colors.black12,
+                  alignment: Alignment.center,
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    PhosphorIcon(PhosphorIcons.imageBroken(PhosphorIconsStyle.bold),
+                        size: 26, color: Colors.white70),
+                    const SizedBox(height: 6),
+                    const Text("Couldn't load", style: TextStyle(color: Colors.white70, fontSize: 12)),
+                  ]),
+                );
+              },
             ),
           ),
           ...overlays,

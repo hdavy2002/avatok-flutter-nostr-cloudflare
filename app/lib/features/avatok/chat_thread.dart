@@ -4514,7 +4514,19 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
             child: InteractiveViewer(
               minScale: 0.8,
               maxScale: 5,
-              child: Center(child: Image.memory(bytes, errorBuilder: (_, __, ___) => const SizedBox.shrink())),
+              child: Center(child: Image.memory(bytes, errorBuilder: (_, __, ___) {
+                // [MEDIA-RETRY-KIND-1] No `_Msg` in scope in this raw-bytes
+                // viewer (it's shared by generated + chat images) — still emit
+                // the same telemetry and never render literally nothing.
+                Analytics.capture('chat_media_load_failed', {
+                  'kind': 'image', 'reason': 'decode_failed', 'stage': 'fullscreen_view',
+                  'conv_kind': _isGroup ? 'group' : 'dm',
+                });
+                return const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Text("Couldn't load image", style: TextStyle(color: Colors.white)),
+                );
+              })),
             ),
           ),
           // X — close the viewer.
@@ -4750,6 +4762,97 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       {String caption = '', String? sourcePath, int? pickStartMs}) async {
     final msg = _addMediaBubble(kind, bytes, ct, name, caption: caption, pickStartMs: pickStartMs);
     await _upload(msg, bytes, kind, ct, name, caption: caption, sourcePath: sourcePath);
+  }
+
+  /// [MEDIA-RETRY-KIND-1] Dedup guard so a broken bubble that rebuilds
+  /// repeatedly (list scroll, setState elsewhere) only reports
+  /// `chat_media_load_failed` ONCE per message+kind instead of on every build.
+  final Set<String> _reportedBrokenMedia = {};
+
+  /// [MEDIA-RETRY-KIND-1] Compact "broken media" placeholder — replaces the
+  /// old `errorBuilder: (_, __, ___) => const SizedBox.shrink()` sites, which
+  /// made a failed decode/load render as literally NOTHING (confirmed in prod:
+  /// 4 image bubbles that "vanished" on 2026-07-23). Shows an icon + "Tap to
+  /// retry" when [onRetry] is given, else "Couldn't load", and always emits
+  /// `chat_media_load_failed` with a reason so it's diagnosable remotely.
+  Widget _brokenMediaPlaceholder({
+    required _Msg m,
+    required String kind,
+    required String reason,
+    VoidCallback? onRetry,
+    double width = 220,
+    double height = 140,
+  }) {
+    final dedupeKey = '${m.id}_$kind';
+    if (_reportedBrokenMedia.add(dedupeKey)) {
+      Analytics.capture('chat_media_load_failed', {
+        'kind': kind, 'reason': reason, 'client_id': m.mediaClientId ?? '',
+        'conv_kind': _isGroup ? 'group' : 'dm',
+      });
+    }
+    return GestureDetector(
+      onTap: onRetry,
+      child: Container(
+        width: width,
+        height: height,
+        decoration: BoxDecoration(
+          color: AD.card,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AD.borderControl, width: 2),
+        ),
+        alignment: Alignment.center,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          PhosphorIcon(PhosphorIcons.imageBroken(PhosphorIconsStyle.bold),
+              size: 26, color: AD.textTertiary),
+          const SizedBox(height: 6),
+          Text(onRetry != null ? 'Tap to retry' : "Couldn't load",
+              style: ADText.bubbleMeta(c: AD.textTertiary)),
+        ]),
+      ),
+    );
+  }
+
+  /// [MEDIA-RETRY-KIND-1] Whether [mime] is a plausible content-type for
+  /// [kind] — the guard that stops a retry from silently reclassifying an
+  /// attachment (e.g. re-uploading a failed voice note tagged `video/mp4`,
+  /// which would upload-succeed but render wrong for both sender and peer).
+  static bool _kindMimeCompatible(MediaKind kind, String mime) {
+    final m = mime.toLowerCase();
+    if (m.isEmpty) return false;
+    switch (kind) {
+      case MediaKind.image: return m.startsWith('image/');
+      case MediaKind.video: return m.startsWith('video/');
+      case MediaKind.audio: return m.startsWith('audio/') || m == 'video/mp4' /* .m4a rides on mp4 container */;
+      case MediaKind.file: return true; // generic files have no fixed mime family
+    }
+  }
+
+  /// [MEDIA-RETRY-KIND-1] Manual "retry now" for a failed media send. Reads
+  /// the EXACT kind/mime/filename/caption the original attempt used off the
+  /// message itself (stamped at bubble-creation time — see `_addMediaBubble`/
+  /// `_stopAndSendRecording`) instead of guessing. Rejects (with telemetry, no
+  /// upload attempt) a kind/mime pair that doesn't make sense together.
+  void _retryMediaUpload(_Msg m) {
+    if (m.localBytes == null) return;
+    final kind = m.pendingKind ?? m.media?.kind ?? MediaKind.file;
+    final mime = m.pendingMime ?? m.media?.contentType ?? '';
+    final filename = m.pendingFilename ?? m.media?.name ?? m.text;
+    final clientId = m.mediaClientId ?? '';
+    if (!_kindMimeCompatible(kind, mime)) {
+      Analytics.capture('chat_media_retry_failed', {
+        'kind': kind.name, 'mime': mime, 'bytes': m.localBytes!.length,
+        'attempt': (m.retryAttempt ?? 0) + 1, 'client_id': clientId,
+        'reason': 'incompatible_kind_mime',
+      });
+      _capNote("Couldn't retry — this attachment's type is unknown.");
+      return;
+    }
+    m.retryAttempt = (m.retryAttempt ?? 0) + 1;
+    Analytics.capture('chat_media_retry_started', {
+      'kind': kind.name, 'mime': mime, 'bytes': m.localBytes!.length,
+      'attempt': m.retryAttempt, 'client_id': clientId,
+    });
+    _upload(m, m.localBytes!, kind, mime, filename, caption: m.mediaCaption);
   }
 
   /// [MEDIA-OUTBOX-DURABLE-1] The `resumeUpload` callback [MediaOutbox.reconcile]
@@ -10335,13 +10438,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                               'has_media': m.localBytes != null || m.media != null,
                             });
                             if (m.localBytes != null) {
-                              // [AVAVM-PLAYER-1] Prefer the real `pendingKind`
-                              // over a blind `MediaKind.file` fallback — a
-                              // failed voice-note retry was re-uploading as a
-                              // generic file, which upload-succeeds but then
-                              // renders wrong on the recipient's side too.
-                              final kind = m.pendingKind ?? m.media?.kind ?? MediaKind.file;
-                              _upload(m, m.localBytes!, kind, 'application/octet-stream', m.text);
+                              // [MEDIA-RETRY-KIND-1] Retry with the EXACT kind/
+                              // mime/filename the original attempt used — never
+                              // the generic 'application/octet-stream' fallback
+                              // that let a failed voice note silently re-upload
+                              // and render as a different kind on both sides.
+                              _retryMediaUpload(m);
                             } else if (_realMode && _dm != null && m.media == null && m.special == null) {
                               // Resend a failed text message; track the new wrap.
                               // [AVA-IDGATE-1 / CSAM-GATE-1] Do NOT optimistically mark this
@@ -10818,7 +10920,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
             onTap: () => _openImageBytes(m.localBytes!, mime: m.media?.contentType),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(14),
-              child: Image.memory(m.localBytes!, width: 220, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+              child: Image.memory(m.localBytes!, width: 220, fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => _brokenMediaPlaceholder(m: m, kind: 'image', reason: 'decode_failed')),
             ),
           );
         }
@@ -10856,7 +10959,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                   onTap: () => _openImageBytes(snap.data!, mime: m.media?.contentType),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(14),
-                    child: Image.memory(snap.data!, width: 220, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+                    child: Image.memory(snap.data!, width: 220, fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => _brokenMediaPlaceholder(
+                            m: m, kind: 'image', reason: 'decode_failed',
+                            onRetry: () { setState(() => m.localBytes = null); })),
                   ),
                 );
               }
@@ -10884,9 +10990,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         if (m.media == null && m.failed) {
           return FailedVoiceNoteBubble(
             onRight: m.me && !_isAvaBubble(m),
-            onRetry: m.localBytes == null
-                ? null
-                : () => _upload(m, m.localBytes!, MediaKind.audio, 'audio/mp4', 'voice.m4a'),
+            // [MEDIA-RETRY-KIND-1] Same exact-kind retry path the status-row
+            // "tap to retry" affordance uses.
+            onRetry: m.localBytes == null ? null : () => _retryMediaUpload(m),
             theme: t,
           );
         }
