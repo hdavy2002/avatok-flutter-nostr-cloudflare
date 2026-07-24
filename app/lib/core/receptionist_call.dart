@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:collection';
 import 'dart:io' show ProcessInfo;
+import 'dart:math' show min;
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show ValueNotifier;
@@ -12,7 +13,12 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import 'analytics.dart';
 import 'ava_log.dart';
 import 'receptionist_api.dart';
+import 'remote_config.dart';
 import 'voice/native_voice_audio.dart';
+
+/// [CALL-REL-7] Outcome of one reattach attempt (Specs/PERMANENT-P2P-CALL-
+/// RELIABILITY-IMPLEMENTATION-PLAN-2026-07-24.md §4.3/§8).
+enum _ReattachResult { success, retry, terminal }
 
 /// ReceptionistCall — caller-side bridge for "Ava answers after N rings".
 /// Spec: Specs/PROPOSAL-AI-RECEPTIONIST.md (+ RECEPTIONIST-V2).
@@ -84,6 +90,17 @@ class ReceptionistCall {
   bool _wsConnected = false;
   bool _ended = false;
   bool _firstAudio = false;
+  // ── [CALL-REL-7] receptionist WS reattach (gated: RemoteConfig.receptionistReconnectV1) ──
+  // Flag OFF (default) → every field below stays unused and behavior is
+  // byte-for-byte the pre-existing onDone/onError → _finish() path.
+  String? _rtcUrlBase;        // relative rtc_url from /start, reused to build the reattach URL
+  String? _reconnectToken;    // opaque, single-session, never logged
+  int _reconnectExpiresAt = 0; // epoch ms — server-issued reconnect_token TTL
+  int _hardCapDeadlineMs = 0;  // epoch ms — the receptionist's own hard cap; reconnect never extends it
+  int _lastServerSeq = 0;      // count of Ava PCM frames received — sent back as last_seq on reattach
+  bool _reconnecting = false;  // RECONNECTING state (STARTING→CONNECTED→RECONNECTING→CONNECTED)
+  int _reconnectAttempts = 0;
+  int _micDiscardedReconnect = 0; // mic frames dropped while the socket was down (never uploaded)
   // Echo guard. `_aecOk` = the native hardware AEC confirmed attached → safe to
   // run FULL-DUPLEX on speaker (Ava's voice is cancelled from the mic, so real
   // barge-in works and she never hears herself). When AEC is NOT confirmed and
@@ -184,6 +201,13 @@ class ReceptionistCall {
       return false;
     }
     final hardCapMs = (s['hard_cap_ms'] as num?)?.toInt() ?? 70000;
+    // [CALL-REL-7] Reattach contract fields (server always sends them now; only
+    // consumed when the flag is on). rtc_url is kept as-is for the reattach URL
+    // builder — never mutated on the connect path below.
+    _rtcUrlBase = rtcUrl;
+    _reconnectToken = s['reconnect_token'] as String?;
+    _reconnectExpiresAt = (s['reconnect_expires_at'] as num?)?.toInt() ?? 0;
+    _hardCapDeadlineMs = _connectMs + hardCapMs;
 
     try {
       onStatus?.call('connecting');
@@ -198,7 +222,7 @@ class ReceptionistCall {
             'ws_connected': _wsConnected,
             if (callId case final id?) 'call_id': id,
           });
-          _finish('model_closed');
+          _handleTransportDown('model_closed');
         },
         onError: (Object e, StackTrace st) {
           final context = <String, Object>{
@@ -211,7 +235,7 @@ class ReceptionistCall {
           Analytics.error(domain: 'receptionist', code: 'websocket_error',
               message: e.toString(), action: 'finish_session', extra: context);
           Analytics.captureException(e, st, screen: 'call', handled: true, extra: context);
-          _finish('error');
+          _handleTransportDown('error');
         },
       );
 
@@ -313,6 +337,9 @@ class ReceptionistCall {
     _lastMicAtMs = now; // a frame arrived → mic is alive
     final mp = _pcmPeak(chunk); // drive the caller-speaking animation
     if (mp > micLevel.value) micLevel.value = mp;
+    // [CALL-REL-7] Socket is down and we're waiting on a reattach — never upload
+    // into the void; count what we drop instead (§4.3/§8 client requirement 3).
+    if (_reconnecting) { _micDiscardedReconnect++; return; }
     if (speaker && !_aecOk && now - _lastAvaAudioAtMs < _echoTailMs) {
       _echoSuppressed++;
       return;
@@ -346,6 +373,7 @@ class ReceptionistCall {
       }
       _bytesIn += data.length;
       _avaChunks++;
+      _lastServerSeq++; // [CALL-REL-7] 1:1 with the DO's server audio seq — sent back as last_seq on reattach
       _lastAvaAudioAtMs = DateTime.now().millisecondsSinceEpoch; // echo-gate timing
       final bytes = data is Uint8List ? data : Uint8List.fromList(data);
       final ap = _pcmPeak(bytes); // drive the Ava-speaking animation
@@ -489,6 +517,183 @@ class ReceptionistCall {
     await _finish('owner_answered');
   }
 
+  // ── [CALL-REL-7] receptionist WS reattach ───────────────────────────────────
+  // Plan §4.3: STARTING → CONNECTED → RECONNECTING → CONNECTED, or → FINALIZING
+  // → ENDED. Server contract: Specs/PERMANENT-P2P-CALL-RELIABILITY-
+  // IMPLEMENTATION-PLAN-2026-07-24.md §8. Incident this fixes: AVATOK-CALL-
+  // SYSTEM-BIBLE-2026-07-24.md Part 9 — a 32s caller WS blip killed the audio
+  // leg immediately even though the DO kept Ava talking server-side.
+
+  /// Single entry point for "the transport just went away". Flag OFF (or no
+  /// reattach credentials from /start) is EXACTLY today's behavior: finish
+  /// immediately. Flag ON attempts a bounded reattach before ever finishing.
+  void _handleTransportDown(String reason) {
+    if (_ended) return;
+    if (!RemoteConfig.receptionistReconnectV1 || _reconnectToken == null || _rtcUrlBase == null) {
+      _finish(reason);
+      return;
+    }
+    if (_reconnecting) return; // an attempt is already in flight for this drop
+    unawaited(_onSocketLost(reason));
+  }
+
+  Future<void> _onSocketLost(String reason) async {
+    if (_ended || _reconnecting) return;
+    _reconnecting = true;
+    _reconnectAttempts = 0;
+    final startMs = DateTime.now().millisecondsSinceEpoch;
+    final sessionHash = (_sessionId ?? callId ?? '').hashCode.toString();
+    Analytics.capture('receptionist_reconnect_started', {
+      'session_hash': sessionHash,
+      'reason': reason,
+      if (callId case final id?) 'call_id': id,
+    });
+    onStatus?.call('reconnecting');
+    await _wsSub?.cancel();
+    _wsConnected = false;
+
+    const backoffsMs = [250, 500, 1000, 2000, 2000];
+    const maxBudgetMs = 8000;
+    var idx = 0;
+    while (true) {
+      if (_ended) return;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final hardRemainMs = _hardCapDeadlineMs - now;
+      if (hardRemainMs <= 0) { _reconnectFail('hard_cap', startMs, sessionHash); return; }
+      final budgetLeftMs = maxBudgetMs - (now - startMs);
+      if (budgetLeftMs <= 0) { _reconnectFail('recept_reconnect_timeout', startMs, sessionHash); return; }
+      final waitMs = min(min(idx < backoffsMs.length ? backoffsMs[idx] : 2000, budgetLeftMs), hardRemainMs);
+      if (waitMs > 0) await Future.delayed(Duration(milliseconds: waitMs));
+      if (_ended) return;
+      idx++;
+      _reconnectAttempts++;
+      final res = await _attemptReattach();
+      if (_ended) {
+        // hangup()/yieldToOwner() finished the call while this attempt was in
+        // flight — don't resurrect a socket for an already-ended session.
+        if (res == _ReattachResult.success) {
+          try { await _ws?.sink.close(); } catch (_) {}
+        }
+        return;
+      }
+      if (res == _ReattachResult.success) {
+        _reconnecting = false;
+        Analytics.capture('receptionist_reconnect_completed', {
+          'session_hash': sessionHash,
+          'attempts': _reconnectAttempts,
+          'elapsed_ms': DateTime.now().millisecondsSinceEpoch - startMs,
+          if (callId case final id?) 'call_id': id,
+        });
+        onStatus?.call('reconnected');
+        return;
+      }
+      if (res == _ReattachResult.terminal) {
+        _reconnectFail('recept_reconnect_denied', startMs, sessionHash);
+        return;
+      }
+      // retry — loop again within the remaining backoff/budget/hard-cap window
+    }
+  }
+
+  void _reconnectFail(String terminalReason, int startMs, String sessionHash) {
+    Analytics.capture('receptionist_reconnect_failed', {
+      'session_hash': sessionHash,
+      'attempts': _reconnectAttempts,
+      'elapsed_ms': DateTime.now().millisecondsSinceEpoch - startMs,
+      'terminal_reason': terminalReason,
+      if (callId case final id?) 'call_id': id,
+    });
+    // Always finish with the one contractual reason (plan §8 client req. 6);
+    // the specific terminal_reason above is what dashboards slice by.
+    _finish('recept_reconnect_timeout');
+  }
+
+  /// One reattach attempt: connect, wait for the server's `{t:"resumed"}` ack,
+  /// then wait for either real post-resume audio or a bounded quiet period
+  /// before declaring success (never claim "connected" off stale/buffered
+  /// frames alone). A `{t:"terminal",...}` response or a 403/410-shaped close
+  /// is [_ReattachResult.terminal] — never worth retrying (bad/expired token or
+  /// the session already finalized). Anything else bounded-timeout → retry.
+  Future<_ReattachResult> _attemptReattach() async {
+    final url = _buildReattachUrl();
+    if (url == null) return _ReattachResult.terminal;
+    WebSocketChannel ch;
+    try {
+      ch = WebSocketChannel.connect(Uri.parse(ReceptionistApi.wsUrl(url)));
+    } catch (_) {
+      return _ReattachResult.retry;
+    }
+    final completer = Completer<_ReattachResult>();
+    var first = true;
+    var resumedSeen = false;
+    Timer? quietTimer;
+    late final StreamSubscription sub;
+    sub = ch.stream.listen((data) {
+      if (first) {
+        first = false;
+        if (data is String && data.contains('"terminal"')) {
+          if (!completer.isCompleted) completer.complete(_ReattachResult.terminal);
+          return;
+        }
+        if (data is String && data.contains('"resumed"')) {
+          resumedSeen = true;
+          // Bounded quiet period: the server confirmed resume even if Ava
+          // stays silent for a moment (she may just be listening).
+          quietTimer = Timer(const Duration(milliseconds: 1200), () {
+            if (!completer.isCompleted) completer.complete(_ReattachResult.success);
+          });
+          return;
+        }
+        // Unexpected first frame — still a live socket, treat as resumed.
+        if (!completer.isCompleted) completer.complete(_ReattachResult.success);
+      }
+      if (resumedSeen && data is List<int> && !completer.isCompleted) {
+        quietTimer?.cancel();
+        completer.complete(_ReattachResult.success);
+      }
+      _onWs(data);
+    }, onDone: () {
+      if (!completer.isCompleted) completer.complete(_ReattachResult.retry);
+      _handleTransportDown('model_closed');
+    }, onError: (Object e, StackTrace st) {
+      if (!completer.isCompleted) completer.complete(_ReattachResult.retry);
+      _handleTransportDown('error');
+    });
+
+    final result = await completer.future
+        .timeout(const Duration(seconds: 3), onTimeout: () => _ReattachResult.retry);
+    quietTimer?.cancel();
+    if (result != _ReattachResult.success) {
+      await sub.cancel();
+      try { await ch.sink.close(); } catch (_) {}
+      return result;
+    }
+    await _wsSub?.cancel();
+    _ws = ch;
+    _wsSub = sub;
+    _wsConnected = true;
+    return result;
+  }
+
+  /// Rebuild the reattach WS URL from the ORIGINAL /start rtc_url — swap the
+  /// single-use `t` for `reattach=1&rt=<reconnect_token>&last_seq=<n>`, keeping
+  /// any other param (e.g. `engine=cf`) untouched. Reuses [ReceptionistApi.wsUrl]
+  /// (the existing generic relative→absolute WS helper) rather than adding a
+  /// second one.
+  String? _buildReattachUrl() {
+    final base = _rtcUrlBase;
+    final token = _reconnectToken;
+    if (base == null || token == null || _sessionId == null) return null;
+    if (_reconnectExpiresAt > 0 && DateTime.now().millisecondsSinceEpoch > _reconnectExpiresAt) return null;
+    final orig = Uri.parse(base);
+    final params = Map<String, String>.from(orig.queryParameters);
+    params.remove('t');
+    params['reattach'] = '1';
+    params['rt'] = token;
+    params['last_seq'] = _lastServerSeq.toString();
+    return orig.replace(queryParameters: params).toString();
+  }
+
   Future<void> _finish(String reason) async {
     if (_ended) return;
     _ended = true;
@@ -535,6 +740,9 @@ class ReceptionistCall {
       'ava_chunks': _avaChunks,
       'segments': _segments,
       'play_errors': _playErrors,
+      // [CALL-REL-7]
+      'reconnect_attempts': _reconnectAttempts,
+      'mic_discarded_reconnect': _micDiscardedReconnect,
       'echo_suppressed': _echoSuppressed,
       // final mic health — mic_captured:0 = dead mic / no input the whole call
       'mic_captured': _micCaptured,

@@ -2889,6 +2889,20 @@ class CallSession {
             // 'ava_live_timeout' (AVA-RECEPT-UNREACHABLE-WATCHDOG-RACE).
             _openAvaLiveGate();
             break;
+          case 'reconnecting':
+            // [CALL-REL-7] The caller's WS to the receptionist DO dropped, but
+            // Ava keeps listening/talking server-side — this is a transient
+            // transport state, never an immediate end. Reuses the existing
+            // 'Reconnecting…' phase label (call_session.dart _phaseLabel).
+            _setPhase('reconnecting');
+            break;
+          case 'reconnected':
+            // [CALL-REL-7] Socket reattached — resume whichever receptionist
+            // phase we were honestly showing before the drop.
+            if (_phase == 'reconnecting') {
+              _setPhase(_avaLiveGateOpen ? 'receptionist' : 'receptionist-connecting');
+            }
+            break;
           case 'wrapup':
             // Ava reached her soft-cap → she is unambiguously live: open the
             // gate (if not already) then show the wrap-up line.

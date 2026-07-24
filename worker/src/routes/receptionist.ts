@@ -1462,6 +1462,11 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
 
   const sid = crypto.randomUUID();
   const rtcToken = crypto.randomUUID();
+  // [CALL-REL-7] Opaque, single-session reattach credential (Specs/PERMANENT-
+  // P2P-CALL-RELIABILITY-IMPLEMENTATION-PLAN-2026-07-24.md §8). Minted once here,
+  // carried to the DO in the init blob, and handed to the caller in the /start
+  // response. NEVER logged — kept out of every trackUserContact/ev() call below.
+  const reconnectToken = crypto.randomUUID();
   const now = Date.now();
   // Caller's number for the owner's voicemail label — client value, else the
   // caller's own number resolved server-side (so the card isn't "Unknown caller").
@@ -1577,6 +1582,7 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   const init = {
     sid, owner_uid: to, caller_uid: ctx.uid, caller_phone: callerPhone,
     caller_name: callerName, call_id: callId, rtc_token: rtcToken,
+    reconnect_token: reconnectToken, // [CALL-REL-7] — Gemini engine (reception_room.ts) reads + pins this
     // CF engine uses ONE fixed female Aura voice; Gemini uses the owner's pick.
     voice_name: useCf ? AVA_CF_VOICE : AVA_VOICE, // P12: Gemini path pinned to Ava's one voice
     // LANGUAGE (RECEPT-1): the DO threads this end-to-end (STT lang, TTS voice/model,
@@ -1665,6 +1671,12 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
     rtc_token: rtcToken,
     voice_name: init.voice_name, model: init.model,
     soft_cap_ms: sessionCaps.close, hard_cap_ms: sessionCaps.hard,
+    // [CALL-REL-7] Reattach contract (currently honored by the Gemini engine,
+    // reception_room.ts, only — receptionistUseCf=false is the live path). The
+    // CF engine ignores this field today; a client never sends `reattach=1`
+    // unless RemoteConfig.receptionistReconnectV1 is on.
+    reconnect_token: reconnectToken,
+    reconnect_expires_at: now + Math.min(90_000, sessionCaps.hard),
   });
 }
 

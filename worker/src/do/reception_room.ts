@@ -93,6 +93,10 @@ interface InitBlob {
   rtc_token: string; voice_name: string; file_search_store: string | null;
   system_prompt: string; model: string;
   soft_cap_ms: number; hard_cap_ms: number; wrap_cue_ms?: number; wrap_soft?: boolean; started_at: number;
+  // [CALL-REL-7] opaque single-session reattach token, minted by /start and
+  // handed back to the DO in the init blob. Never logged, never exposed via
+  // any read API — only compared byte-for-byte on a reattach request.
+  reconnect_token?: string | null;
   // v2
   language_code?: string | null; activation_mode?: string | null;
   owner_name?: string | null; // owner's display name, for the caller-side ack
@@ -234,6 +238,25 @@ export class ReceptionRoom {
   private static IDLE_MS = 10_000;
   private static MAX_REC_BYTES = 12 * 1024 * 1024; // safety cap (~4 min @24k)
 
+  // [CALL-REL-7] Receptionist WS reattach (Specs/PERMANENT-P2P-CALL-RELIABILITY-
+  // IMPLEMENTATION-PLAN-2026-07-24.md §4.3/§8; incident: AVATOK-CALL-SYSTEM-
+  // BIBLE-2026-07-24.md Part 9 — a 32s caller WS blip killed the audio leg while
+  // server-side Ava kept talking to nobody). The DO instance is keyed by session
+  // id (index.ts idFromName(sid)) and is NOT hibernated for the life of the call,
+  // so the SAME in-memory object survives a caller socket drop — that is what
+  // makes a bounded reattach possible without any extra storage.
+  private reconnectToken: string | null = null;   // opaque; NEVER logged
+  private reconnectTokenExpiresAt = 0;             // epoch ms; ≤90s from session start, capped by hard cap
+  private reconnectGraceTimer: ReturnType<typeof setTimeout> | null = null;
+  private disconnectedAtMs: number | null = null;
+  // Bounded server→client PCM ring buffer (Ava's audio only — caller mic frames
+  // already delivered to Gemini are NEVER replayed). ~1–2s of 24kHz mono PCM16.
+  private audioRing: Array<{ seq: number; pcm: Uint8Array }> = [];
+  private audioRingBytes = 0;
+  private serverSeq = 0;
+  private static REATTACH_BUFFER_BYTES = 96_000; // ~2s @ 24kHz mono PCM16
+  private static RECONNECT_GRACE_MS = 8_000;      // bounded wait for a reattach after a non-clean close
+
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
     this.env = env;
@@ -244,6 +267,13 @@ export class ReceptionRoom {
       return new Response("expected websocket", { status: 426 });
     }
     const url = new URL(req.url);
+    // [CALL-REL-7] Reattach path — a caller whose WS dropped reconnects to the
+    // SAME DO instance (routing is keyed by session id) with the session's
+    // reconnect_token + the last server→client audio seq it saw. Handled before
+    // the normal one-time-token path below, which stays byte-for-byte unchanged.
+    if (url.searchParams.get("reattach") === "1") {
+      return this.handleReattach(url);
+    }
     const sid = url.searchParams.get("session") || "";
     const token = url.searchParams.get("t") || "";
 
@@ -254,6 +284,13 @@ export class ReceptionRoom {
     }
     this.init = init;
     this.startedAt = Date.now();
+    // [CALL-REL-7] Pin the reattach token + its expiry once, from the init blob
+    // /start minted. ≤90s from session start, and never past the session's own
+    // hard cap — a reconnect can never extend a call past its existing budget.
+    this.reconnectToken = init.reconnect_token || null;
+    this.reconnectTokenExpiresAt = this.reconnectToken
+      ? Math.min(this.startedAt + 90_000, this.startedAt + (init.hard_cap_ms || 90_000))
+      : 0;
     // Resolve owner contact once (best-effort) so all events are pullable by
     // email/phone. The caller's app emits its own client-side voice_live_* +
     // ava_recept_* events (already stamped with email/phone by Analytics).
@@ -292,11 +329,7 @@ export class ReceptionRoom {
     const pair = new WebSocketPair();
     const client = pair[0], server = pair[1];
     server.accept();
-    this.client = server;
-
-    server.addEventListener("message", (ev) => this.onClientMessage(ev));
-    server.addEventListener("close", () => this.finalize("caller_hangup"));
-    server.addEventListener("error", () => this.finalize("error"));
+    this.attachClientSocket(server);
 
     // Single-use init blob — burn it so the WS can't be re-opened.
     this.env.TOKENS.delete(`recept_rtc:${sid}`).catch(() => {});
@@ -804,7 +837,7 @@ export class ReceptionRoom {
               this.firstAudioSent = true;
               this.ev("ava_recept_first_audio", { ms: Date.now() - this.startedAt });
             }
-            try { this.client?.send(pcm); } catch { /* caller gone */ }
+            this.sendAudioToClient(pcm); // [CALL-REL-7] buffered + sent (bounded ring for reattach replay)
           }
         }
       }
@@ -875,6 +908,99 @@ export class ReceptionRoom {
     try { this.gem?.send(JSON.stringify(obj)); } catch { /* upstream gone */ }
   }
 
+  // -------------------------------------------------------------------------
+  // [CALL-REL-7] Receptionist WS reattach.
+  // -------------------------------------------------------------------------
+
+  /** Wire the standard message/close/error listeners onto whichever socket is
+   *  currently serving the caller — used for BOTH the initial connect and every
+   *  successful reattach so behavior (including the grace-window logic below)
+   *  is identical regardless of how the client got here. */
+  private attachClientSocket(server: WebSocket): void {
+    this.client = server;
+    this.disconnectedAtMs = null;
+    server.addEventListener("message", (ev) => this.onClientMessage(ev));
+    server.addEventListener("close", (ev) => {
+      const code = Number((ev as any)?.code ?? 1005) || 1005;
+      this.onCallerSocketClosed(code);
+    });
+    server.addEventListener("error", () => this.onCallerSocketClosed(1011));
+  }
+
+  /** The caller's socket just went away (close or error). A CLEAN close
+   *  (code 1000 — the client explicitly hung up / yielded) finalizes right away,
+   *  exactly like before. Anything else is treated as a transient drop: the
+   *  Gemini connection, transcript, and timers all keep running (§8 — "the hard
+   *  cap continues while disconnected"); we give the client a bounded window to
+   *  reattach before finalizing as a real end. This is what fixes the 2026-07-23
+   *  incident (a 32s WiFi blip silently killed the audio leg client-side while
+   *  server-side Ava kept talking). */
+  private onCallerSocketClosed(code: number): void {
+    if (this.finalized) return;
+    this.client = null;
+    this.disconnectedAtMs = Date.now();
+    const clean = code === 1000;
+    this.ev("ava_recept_socket_lost", { code, clean, at_ms: Date.now() - this.startedAt });
+    if (clean) { void this.finalize("caller_hangup"); return; }
+    const remain = this.reconnectToken ? Math.max(0, this.reconnectTokenExpiresAt - Date.now()) : 0;
+    const graceMs = this.reconnectToken ? Math.min(ReceptionRoom.RECONNECT_GRACE_MS, remain) : 0;
+    if (graceMs <= 0) { void this.finalize("caller_reconnect_timeout"); return; }
+    if (this.reconnectGraceTimer) clearTimeout(this.reconnectGraceTimer);
+    this.reconnectGraceTimer = setTimeout(() => {
+      if (!this.finalized) void this.finalize("caller_reconnect_timeout");
+    }, graceMs);
+  }
+
+  /** Buffer + forward one chunk of AVA's audio to the caller. Buffering happens
+   *  UNCONDITIONALLY (even with no client attached) so a reattach can replay the
+   *  short tail the caller missed; the ring is bounded to ~1-2s of audio, never
+   *  unbounded (§8). Caller MIC frames are never buffered here — they're either
+   *  already delivered to Gemini or dropped, and are never replayed. */
+  private sendAudioToClient(pcm: Uint8Array): void {
+    this.serverSeq++;
+    this.audioRing.push({ seq: this.serverSeq, pcm });
+    this.audioRingBytes += pcm.byteLength;
+    while (this.audioRingBytes > ReceptionRoom.REATTACH_BUFFER_BYTES && this.audioRing.length > 1) {
+      const dropped = this.audioRing.shift();
+      if (dropped) this.audioRingBytes -= dropped.pcm.byteLength;
+    }
+    try { this.client?.send(pcm); } catch { /* caller gone — buffered above for a reattach */ }
+  }
+
+  /** GET .../rtc?...&reattach=1&session=<sid>&rt=<reconnect_token>&last_seq=<n>
+   *  Routing is unchanged (index.ts keys the DO by session id), so this request
+   *  lands on the exact same live instance as long as the session hasn't
+   *  finalized yet. Resumed → replays only the bounded server→client audio after
+   *  [last_seq]; any other outcome is terminal (never a bare socket drop). */
+  private async handleReattach(url: URL): Promise<Response> {
+    const sid = url.searchParams.get("session") || "";
+    const rt = url.searchParams.get("rt") || "";
+    const lastSeq = Number(url.searchParams.get("last_seq") || "0") || 0;
+    if (!this.init || this.init.sid !== sid || this.finalized) {
+      // No PII/token in this event — just the terminal shape.
+      return new Response(JSON.stringify({ t: "terminal", reason: "session_ended" }), { status: 410 });
+    }
+    if (!this.reconnectToken || rt !== this.reconnectToken || Date.now() > this.reconnectTokenExpiresAt) {
+      this.ev("ava_recept_reattach_rejected", { at_ms: Date.now() - this.startedAt });
+      return new Response(JSON.stringify({ t: "terminal", reason: "reconnect_denied" }), { status: 403 });
+    }
+    const pair = new WebSocketPair();
+    const client = pair[0], server = pair[1];
+    server.accept();
+    if (this.reconnectGraceTimer) { clearTimeout(this.reconnectGraceTimer); this.reconnectGraceTimer = null; }
+    const gapMs = this.disconnectedAtMs != null ? Date.now() - this.disconnectedAtMs : 0;
+    this.attachClientSocket(server);
+    const toReplay = this.audioRing.filter((e) => e.seq > lastSeq);
+    this.ev("ava_recept_reattach_succeeded", {
+      gap_ms: gapMs, replayed_chunks: toReplay.length, replayed_bytes: toReplay.reduce((n, e) => n + e.pcm.byteLength, 0),
+    });
+    try {
+      server.send(JSON.stringify({ t: "resumed", next_server_seq: this.serverSeq }));
+      for (const entry of toReplay) server.send(entry.pcm);
+    } catch { /* best-effort — client can still request more via last_seq on a retry */ }
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
   private failHard(reason: string): void {
     this.ev("ava_recept_error", { stage: reason, fatal: true, ms: Date.now() - this.startedAt });
     try { this.client?.send(JSON.stringify({ t: "error", reason })); } catch { /* ignore */ }
@@ -888,6 +1014,7 @@ export class ReceptionRoom {
     if (this.finalized) return;
     this.finalized = true;
     if (this.goodbyeGraceTimer) { clearTimeout(this.goodbyeGraceTimer); this.goodbyeGraceTimer = null; }
+    if (this.reconnectGraceTimer) { clearTimeout(this.reconnectGraceTimer); this.reconnectGraceTimer = null; } // [CALL-REL-7]
     if (this.wrapCueTimer) clearTimeout(this.wrapCueTimer);
     if (this.closeTimer) clearTimeout(this.closeTimer);
     if (this.hardTimer) clearTimeout(this.hardTimer);
