@@ -613,15 +613,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   final _searchCtrl = TextEditingController(); // in-thread search box (literal + AI)
   final _composerFocus = FocusNode(); // keep the keyboard up after each send
   final _scroll = ScrollController();
-  // [AVA-CHAT-INSTANT] The message list is laid out but kept invisible until the
-  // first jump-to-end lands, so a thread OPENS already pinned to the newest
-  // message instead of painting at the top and then visibly snapping down through
-  // history (owner: "it scrolls from the top to the last message"). Flipped true by
-  // [_jumpToEndSettled]'s first post-frame jump, with a hard safety-net in
-  // initState so a thread that never calls it (demo / edge paths) can never stay
-  // blank. jumpTo needs a laid-out viewport, so we gate VISIBILITY (Opacity), not
-  // layout (Offstage) — the extent is measurable while hidden.
-  bool _openReveal = false;
+  // [CHAT-UI-REVERSE-1] The old `_openReveal` flag + Opacity/IgnorePointer
+  // hack ("keep the list invisible until the first jump-to-end lands, so a
+  // thread OPENS already pinned to the newest message instead of painting at
+  // the top and visibly snapping down through history") is GONE. `_scroll`'s
+  // ListView now builds with `reverse: true`, which renders the newest
+  // message at scroll offset 0 NATIVELY — a freshly-opened thread is already
+  // anchored on the newest message on the very first frame, with nothing to
+  // jump to and nothing to hide while it lands.
   // [CHAT-UI-LIST-1e] Gated autoscroll: an inbound/Ava message only force-jumps
   // the view when the reader is already near the newest edge; otherwise it
   // bumps this counter and the scroll-to-bottom FAB appears. Cleared when the
@@ -1009,13 +1008,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     // dashboard by name.
     Analytics.screenViewed('avatok', 'chat_thread');
     WidgetsBinding.instance.addObserver(this); // [VOICE-REC-1] recorder auto-pause
-    // [AVA-CHAT-INSTANT] Safety net for the open-at-bottom reveal gate: normally
-    // _jumpToEndSettled reveals the list the instant it lands on the newest
-    // message, but a thread that never reaches that path (demo / non-real modes)
-    // must still become visible. Reveal unconditionally after a short beat.
-    Future.delayed(const Duration(milliseconds: 450), () {
-      if (mounted && !_openReveal) setState(() => _openReveal = true);
-    });
+    // [CHAT-UI-REVERSE-1] The old 450ms "reveal unconditionally" safety-net
+    // timer for `_openReveal` is gone along with the field itself — the
+    // reverse:true list has nothing to reveal; see the `_scroll` field doc.
     // Opening a thread nudges a catch-up sync: a server-injected message (e.g. a
     // marketplace agent-deal card, or a receptionist card) is appended directly to
     // the InboxDO and only arrives on a fresh sync — if the socket wasn't connected
@@ -2583,17 +2578,22 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     // message, the unseen badge no longer reflects reality — clear it here
     // too (not just on a force:true jump / FAB tap) so scrolling down by
     // hand also dismisses the badge, WhatsApp-style.
+    // [CHAT-UI-REVERSE-1] "near the newest message" is now "near offset 0"
+    // (see `_jump`).
     if (_unseenCount != 0 && _scroll.hasClients) {
       final pos = _scroll.position;
-      if (pos.maxScrollExtent - pos.pixels <= 120 && mounted) {
+      if (pos.pixels <= 120 && mounted) {
         setState(() => _unseenCount = 0);
       }
     }
     if (!RemoteConfig.restoreV2 || _archiveDone || _archiveLoading) return;
     if (!_scroll.hasClients) return;
-    // extentBefore is how much is scrolled off the TOP; near 0 ⇒ at the oldest
-    // message currently loaded → fetch older history.
-    if (_scroll.position.extentBefore <= 240) {
+    // [CHAT-UI-REVERSE-1] The oldest loaded message used to sit at the TOP of
+    // a non-reversed list (near scroll offset 0 / `extentBefore`). With
+    // reverse:true it sits at the FAR end of the scroll range instead — near
+    // `maxScrollExtent`, i.e. `extentAfter` near 0 — so the "load older when
+    // close to the oldest loaded edge" trigger now watches `extentAfter`.
+    if (_scroll.position.extentAfter <= 240) {
       unawaited(_fetchArchivePage());
     }
   }
@@ -2606,10 +2606,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     final serverConv = serverConvFromKey(key, myUid);
     if (serverConv == null) return;
     setState(() => _archiveLoading = true);
-    // Preserve the scroll position across the prepend so the view doesn't jump:
-    // remember distance-from-bottom, restore it after the new rows lay out.
-    final beforeMax = _scroll.hasClients ? _scroll.position.maxScrollExtent : 0.0;
-    final beforePix = _scroll.hasClients ? _scroll.position.pixels : 0.0;
+    // [CHAT-UI-REVERSE-1] The old beforeMax/beforePix + post-frame jumpTo
+    // dance ("preserve the scroll position across the prepend so the view
+    // doesn't jump") is DELETED. It existed because a non-reversed ListView
+    // PREPENDS older messages at index 0 (the TOP), which physically shifts
+    // every already-rendered row down and yanks the viewport unless the
+    // offset is manually corrected. With reverse:true, older archive rows are
+    // appended to `_msgs` and land at the FAR end of the index range (see the
+    // `vi`/`msgSlot` mapping in the itemBuilder) — i.e. the far/oldest visual
+    // edge, away from the current viewport. Extending a sliver list at the
+    // far end never moves the pixels already on screen, so there is nothing
+    // to restore.
     try {
       final before = _archiveCursor; // null ⇒ start from newest segment
       final uri = '$kArchivePageUrl?conv=$serverConv&limit=30'
@@ -2643,13 +2650,6 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         _archiveLoading = false;
       });
       Analytics.capture('archive_page_loaded', {'rows': rows.length, 'done': _archiveDone});
-      // Restore the scroll offset so the freshly-prepended history doesn't yank
-      // the user away from where they were reading.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || !_scroll.hasClients) return;
-        final grew = _scroll.position.maxScrollExtent - beforeMax;
-        if (grew > 0) _scroll.jumpTo((beforePix + grew).clamp(0.0, _scroll.position.maxScrollExtent));
-      });
     } catch (e) {
       if (mounted) setState(() => _archiveLoading = false);
       Analytics.capture('archive_page_error', {'error': e.toString()});
@@ -3437,16 +3437,21 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   /// unconditional jump that fired from all 13 call sites and yanked the view
   /// out from under anyone reading back through history.
   void _jump({bool force = false}) {
+    // [CHAT-UI-REVERSE-1] With reverse:true, scroll offset 0 is the newest/
+    // bottom edge (it used to be maxScrollExtent) — "near bottom" is now
+    // simply "near offset 0".
     if (!force && _scroll.hasClients) {
       final pos = _scroll.position;
-      final nearBottom = pos.maxScrollExtent - pos.pixels <= 120;
+      final nearBottom = pos.pixels <= 120;
       if (!nearBottom) {
         if (mounted) setState(() => _unseenCount++);
         return;
       }
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
+      // [CHAT-UI-REVERSE-1] "jump to the newest message" is `jumpTo(0)` now,
+      // not `jumpTo(maxScrollExtent)`.
+      if (_scroll.hasClients) _scroll.jumpTo(0);
       // [CHAT-UI-LIST-1e] force:true jumps (own sends) land the reader on the
       // newest message, so any unseen badge from before the jump no longer
       // applies — clear it here too (not just on the FAB tap) so an own-send
@@ -3492,23 +3497,15 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     );
   }
 
-  /// Robust "land on the latest message" used when a thread first opens. A single
-  /// post-frame jump can miss because rows/media are still laying out (the extent
-  /// grows after the first frame), leaving the view mid-thread. So we jump after
-  /// the frame AND again after a short settle so we reliably end at the bottom.
-  void _jumpToEndSettled() {
-    void toEnd() { if (mounted && _scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent); }
-    // [AVA-CHAT-INSTANT] Jump to the newest message on the first frame, THEN reveal
-    // the (until now invisible) list — so the thread appears already anchored at the
-    // bottom with no visible top-to-bottom scroll-through of history. The later
-    // settle-jumps only nudge the offset if media grows the extent after reveal.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      toEnd();
-      if (mounted && !_openReveal) setState(() => _openReveal = true);
-    });
-    Future.delayed(const Duration(milliseconds: 250), toEnd);
-    Future.delayed(const Duration(milliseconds: 600), toEnd);
-  }
+  /// [CHAT-UI-REVERSE-1] Used to be "land on the latest message" via a
+  /// post-frame `jumpTo(maxScrollExtent)` plus two settle-timer retries (rows/
+  /// media still laying out could leave the view mid-thread) — all needed
+  /// because a NON-reversed list opens at offset 0 (the TOP/oldest message)
+  /// and had to be dragged down to the newest one, invisibly, before reveal.
+  /// With `reverse: true` the newest message IS offset 0 natively, so a
+  /// freshly-opened thread needs no jump at all. Kept as a no-op so the two
+  /// existing call sites (history-load completion) don't need to change.
+  void _jumpToEndSettled() {}
 
   // ---- calls ----
   // 1:1 = P2P (CallRoom DO) via _call(). Groups = Cloudflare Realtime A/V
@@ -8345,24 +8342,59 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                 // [AVA-CHAT-INSTANT] Keep the list laid out but invisible + inert
                 // until the first jump-to-end lands, so the thread opens already
                 // anchored on the newest message (no visible scroll-through).
-                final listView = Opacity(
-                  opacity: _openReveal ? 1.0 : 0.0,
-                  child: IgnorePointer(
-                  ignoring: !_openReveal,
-                  child: ListView.builder(
+                // [CHAT-UI-REVERSE-1] `reverse:true` renders list index 0 at the
+                // visual BOTTOM (nearest/newest edge) and grows UPWARD from
+                // there — this is what gives a thread an open-at-bottom start
+                // for free, natively, at scroll offset 0. It replaces the old
+                // `_openReveal` Opacity/IgnorePointer "stay invisible until the
+                // first jump-to-end lands" hack (deleted — see `_jumpToEndSettled`
+                // and the removed `_openReveal` field) — there is no jump to
+                // wait for anymore, so there is nothing to hide while it lands.
+                final listView = ListView.builder(
                   controller: _scroll,
+                  reverse: true,
                   // [UI-BUBBLE-1] Symmetric 12dp horizontal thread padding for both
                   // incoming & outgoing (bubbles cap at 78% of the thread width).
+                  // Note: EdgeInsets sides are PHYSICAL (top/bottom of the
+                  // viewport), not affected by `reverse` — top:16 still sits
+                  // above the visually-topmost item (archive header / oldest
+                  // message) and bottom:8 still sits below the visually-bottom
+                  // item (typing bubble / newest message), exactly as before.
                   padding: const EdgeInsets.fromLTRB(12, 16, 12, 8),
                   itemCount: visible.length + headerCount + footerCount + typingCount,
                   itemBuilder: (c, i) {
-                    if (showArchiveHeader && i == 0) return _olderMessagesDivider();
-                    final vi = i - headerCount;
-                    if (showAiFooter && vi == visible.length) return _aiSearchFooter();
-                    if (showTyping && vi == visible.length) return _typingBubble();
+                    // [CHAT-UI-REVERSE-1] Trailing synthetic items (typing
+                    // bubble / AI search footer) used to be appended AFTER the
+                    // last message — visually the very bottom in the old
+                    // non-reversed list. With reverse:true the visual bottom is
+                    // index 0, so they move there. They're mutually exclusive
+                    // (never both showing at once), so trailingCount is 0 or 1.
+                    final trailingCount = footerCount + typingCount;
+                    if (trailingCount == 1 && i == 0) {
+                      return showAiFooter ? _aiSearchFooter() : _typingBubble();
+                    }
+                    // msgSlot: 0 = newest message row, increasing toward the
+                    // visual top (older messages).
+                    final msgSlot = i - trailingCount;
+                    // The archive-header divider used to be prepended BEFORE
+                    // the first (oldest) message — visually the very top. With
+                    // reverse:true the visual top is the LAST index, i.e. the
+                    // slot right after the oldest message row.
+                    if (showArchiveHeader && msgSlot == visible.length) {
+                      return _olderMessagesDivider();
+                    }
+                    final vi = visible.length - 1 - msgSlot;
                     final m = visible[vi];
-                    // Phase 5: insert a "Today / Yesterday / date" separator above
-                    // the first message of each new calendar day.
+                    // Phase 5: insert a "Today / Yesterday / date" separator
+                    // ABOVE the first message of each new calendar day, in
+                    // CHRONOLOGICAL terms — compare against the message one
+                    // position EARLIER in the (still ascending-by-ts) `visible`
+                    // array. This formula is UNCHANGED by reverse:true: which
+                    // ListView index a message renders at changed (`vi` above),
+                    // but which message chronologically precedes it did not,
+                    // and the separator lives inside THIS row's own Column
+                    // (Column itself is never reversed), so it still paints
+                    // directly above this row's bubble on screen.
                     final needsSep = m.ts != 0 &&
                         (vi == 0 || !_sameDay(visible[vi - 1].ts, m.ts));
                     // [CHAT-UI-GESTURES-1] Swipe-to-reply on any normal bubble
@@ -8397,8 +8429,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                       children: [_daySeparator(_dayLabel(m.ts)), bubble],
                     );
                   },
-                )));
-                // [AVA-CHAT-INSTANT] close ListView.builder / IgnorePointer / Opacity
+                );
                 return Stack(children: [
                   listView,
                   // [CHAT-UI-LIST-1e] Scroll-to-bottom FAB — appears once an
