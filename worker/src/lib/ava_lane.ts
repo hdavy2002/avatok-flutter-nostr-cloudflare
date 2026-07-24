@@ -19,6 +19,18 @@ import type { Env } from "../types";
 import { postAvaMessage } from "../routes/ava_thread";
 import { track, trackUser } from "../hooks";
 
+// FNV-1a (32-bit) → hex, for telemetry-safe conv hashing (I7: "never send raw
+// gid"). Same local-copy idiom as ava_odl.ts/ava_group_policy.ts — see those
+// files' headers for why it isn't a shared import.
+function fnv1aHex(s: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+  }
+  return h.toString(16).padStart(8, "0");
+}
+
 export interface AvaPrivatePost {
   /** The user whose private lane receives the row (and ONLY this user). */
   uid: string;
@@ -78,6 +90,106 @@ export async function postAvaPrivate(env: Env, args: AvaPrivatePost): Promise<{ 
     const props = { capability: args.capability ?? args.source ?? "copilot", conv: args.conv, ok: res.ok };
     if (args.email) void trackUser(env, args.uid, args.email, "ava_private_lane_posted", "ava_core", props);
     else void track(env, args.uid, "ava_private_lane_posted", "ava_core", props);
+  } catch { /* best-effort */ }
+
+  return res;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [AVA-GROUP-COMPANION-1] postAvaGroup — the PUBLIC group-post primitive (I2:
+// "Public group output must use a group-scoped message envelope with gid,
+// source=ava, lane=group, decision_id, and a visible Ava sender identity. It
+// must never impersonate a human group member.").
+//
+// CHOSEN FAN-OUT MECHANISM: this reuses the EXISTING production fan-out —
+// postAvaMessage(..., private:false) → AvaAgentDO.postAva() (worker/src/do/
+// ava_agent.ts, NOT in this issue's file set, so it is called, never edited).
+// postAva() already does exactly what I2/I7 require for a group post:
+//   • re-reads CURRENT membership from D1 (`this.members(conv, uid)`) at post
+//     time — never a stale/cached member list;
+//   • fans out via each member's InboxDO append (the same primitive the
+//     normal group message path uses);
+//   • stamps the envelope `sender:"ava", kind:"ava"` — a distinct identity
+//     the client already renders specially (never a member's uid/kind).
+// An alternative was hand-rolling a second InboxDO fan-out loop directly in
+// this file (or exporting messaging.ts's private `appendTo`/`members`
+// helpers, which this issue's file set does not permit touching). That would
+// duplicate — and risk drifting from — the ALREADY-TESTED group fan-out
+// AvaAgentDO owns. Reusing it is strictly less code and less risk.
+//
+// `ownerUid` (the AvaAgentDO instance that performs the fan-out) is resolved
+// to the group's owner, falling back to any current member — postAva()'s own
+// membership re-read means the choice of DO instance does not change WHO
+// receives the message, only whose DO namespace momentarily executes it.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface AvaGroupPost {
+  /** Server group conversation id (g_<uuid>). */
+  conv: string;
+  /** Ava's message text. */
+  text: string;
+  /** The ODL decision ledger id this post fulfills (ava_odl.ts groupDecisionIdFor). */
+  decisionId: string;
+  /** Producing capability (ava_capabilities.ts id), for the client's "why" chip + telemetry. */
+  capability?: string;
+  /** Optional Moment payload — carries provenance:'current_message' (I3/I6). */
+  moment?: Record<string, unknown>;
+}
+
+async function authorUidFor(env: Env, conv: string): Promise<string | null> {
+  try {
+    const owner = await env.DB_META.prepare(
+      `SELECT uid FROM conversation_members WHERE conv_id=?1 AND role='owner' LIMIT 1`,
+    ).bind(conv).first<{ uid: string }>();
+    if (owner?.uid) return owner.uid;
+    const any = await env.DB_META.prepare(
+      `SELECT uid FROM conversation_members WHERE conv_id=?1 LIMIT 1`,
+    ).bind(conv).first<{ uid: string }>();
+    return any?.uid ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Post a group-visible Ava message into every CURRENT member's InboxDO for
+ * `conv`. Never impersonates a member (sender:"ava", kind:"ava" — see the
+ * header). Returns { ok } — failures are reported, never thrown; the caller
+ * (ava_odl.ts) leaves the ledger row 'reserved' on failure so the 24h TTL
+ * sweep can reclaim it for a future retry, exactly like the 1:1 private path.
+ */
+export async function postAvaGroup(env: Env, args: AvaGroupPost): Promise<{ ok: boolean; error?: string }> {
+  if (!args.conv || !args.text || !args.decisionId) return { ok: false, error: "conv, text, decision_id required" };
+
+  const ownerUid = await authorUidFor(env, args.conv);
+  if (!ownerUid) return { ok: false, error: "no_members" };
+
+  const meta: Record<string, unknown> = { lane: "group", decision_id: args.decisionId };
+  if (args.capability) meta.capability = args.capability;
+  if (args.moment) meta.moment = args.moment;
+
+  const res = await postAvaMessage(env, {
+    ownerUid,
+    conv: args.conv,
+    text: args.text,
+    private: false, // → AvaAgentDO.postAva() fans out to every CURRENT member, kind:"ava"
+    source: "group_companion",
+    meta,
+  });
+
+  // Lane-level telemetry (mirrors postAvaPrivate's "ava_private_lane_posted"
+  // below) — a distinct event from the domain-level "group_ava_posted" (I7)
+  // that ava_odl.ts emits itself AFTER it confirms the ledger row flipped to
+  // 'posted', exactly mirroring how "ava_moment_posted" is emitted from
+  // odlProcess rather than from postAvaPrivate for the 1:1 path.
+  try {
+    const props = {
+      capability: args.capability ?? "group_companion",
+      conv_hash: fnv1aHex(args.conv), // I7 — never send raw gid
+      decision_id: args.decisionId,
+      ok: res.ok,
+    };
+    void track(env, ownerUid, "ava_group_lane_posted", "ava_core", props);
   } catch { /* best-effort */ }
 
   return res;

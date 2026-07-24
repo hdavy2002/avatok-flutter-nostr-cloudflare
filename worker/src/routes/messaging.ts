@@ -23,6 +23,10 @@ import { inboxAcceptState } from "./safety"; // STREAM B — read-receipt suppre
 // (canned/AI reply generation + append) runs in the avatok-consumers auto_reply
 // consumer. Reading the recipient's config is a single KV-mirror get (fast).
 import { readAutoResponderConfig, isActiveNow } from "./auto_responder";
+// [AVA-GROUP-COMPANION-1] group Ava state + member prefs (I1/I2). New routes
+// only — none of the existing routes above are touched by this import.
+import { getGroupState, setGroupState, getMemberPrefs, setMemberPrefs, type GroupAvaMode } from "../lib/ava_group_policy";
+import { postAvaMessage } from "./ava_thread"; // I1 disclosure notice — same fan-out AvaAgentDO already uses for a group Ava turn
 
 // ---- WebSocket: client live socket → the caller's InboxDO --------------------
 export async function wsInbox(req: Request, env: Env): Promise<Response> {
@@ -1522,6 +1526,112 @@ async function convIsGroup(env: Env, conv: string): Promise<boolean> {
   const r = await env.DB_META
     .prepare("SELECT kind FROM conversations WHERE id=?1").bind(conv).first<{ kind: string }>();
   return r?.kind === "group";
+}
+
+// ---- [AVA-GROUP-COMPANION-1] Group Ava state + member prefs (I1/I2) ---------
+// NEW endpoints only — nothing above this block is modified. These
+// GET/PUT handlers are cheap D1 reads/writes on the new ava_group_state /
+// ava_group_member_prefs tables (worker/migrations/ava_group_companion.sql)
+// and are reachable regardless of the platform-wide odlEnabled /
+// avaMomentsEnabled / avaGroupCompanionEnabled flags — so a client can render
+// the toggle UI ahead of the feature shipping — but ava_odl.ts's group path
+// (the thing that actually posts anything) additionally requires ALL THREE of
+// those flags true AND this conv's own mode==='companion' (see ava_odl.ts's
+// 4g gate). Writing 'companion' here with the platform flags still off is a
+// complete no-op for user-visible behavior.
+//
+// NOT YET WIRED into worker/src/index.ts's route dispatcher — see this
+// issue's final report for the exact lines to add
+// (/api/conversations/ava/state, /api/conversations/ava/member-prefs);
+// index.ts is outside this issue's declared file set.
+
+// ---- GET /api/conversations/ava/state?conv=ID --------------------------------
+export async function convAvaGroupStateGet(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const conv = new URL(req.url).searchParams.get("conv") || "";
+  if (!conv) return json({ error: "conv required" }, 400);
+  if (!(await convRoleOf(env, conv, ctx.uid))) return json({ error: "not a member" }, 403);
+  const state = await getGroupState(env, conv);
+  return json({
+    conv, mode: state.mode, budget_tokens_daily: state.budgetTokensDaily,
+    cooldown_s: state.cooldownS, policy_version: state.policyVersion,
+    updated_by: state.updatedBy, updated_at: state.updatedAt,
+  });
+}
+
+// ---- PUT /api/conversations/ava/state  { conv, mode, budget_tokens_daily?, cooldown_s? } ----
+// Admin/owner ONLY — same gate idiom as convAddMembers/convSetRole above
+// (myRole !== "owner" && myRole !== "admin" → 403). On an ACTUAL mode change,
+// posts a member-visible disclosure notice (I1: "every member must see a
+// system notice that Ava is present and what it can observe") through
+// postAvaMessage(..., private:false) — the SAME AvaAgentDO fan-out
+// ava_lane.ts's postAvaGroup uses for real interventions, so the notice
+// itself carries a clear "Ava" identity (sender:"ava", kind:"ava"), never the
+// admin's.
+export async function convAvaGroupStatePut(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
+  const conv = String(b.conv || "");
+  const mode = String(b.mode || "");
+  if (!conv || (mode !== "off" && mode !== "assistant" && mode !== "companion")) {
+    return json({ error: "conv and mode(off|assistant|companion) required" }, 400);
+  }
+  if (!(await convIsGroup(env, conv))) return json({ error: "not a group" }, 400);
+  const myRole = await convRoleOf(env, conv, ctx.uid);
+  if (myRole !== "owner" && myRole !== "admin") return json({ error: "forbidden" }, 403);
+
+  const before = await getGroupState(env, conv);
+  const patch: { mode: GroupAvaMode; budgetTokensDaily?: number; cooldownS?: number } = { mode: mode as GroupAvaMode };
+  if (typeof b.budget_tokens_daily === "number" && b.budget_tokens_daily >= 0) patch.budgetTokensDaily = Math.floor(b.budget_tokens_daily);
+  if (typeof b.cooldown_s === "number" && b.cooldown_s >= 0) patch.cooldownS = Math.floor(b.cooldown_s);
+  const next = await setGroupState(env, conv, patch, ctx.uid);
+
+  if (before.mode !== next.mode) {
+    trackGroup(env, ctx.uid, next.mode === "companion" ? "group_ava_enabled" : "group_ava_disabled", { conv, prev_mode: before.mode, mode: next.mode });
+    const notice = next.mode === "companion"
+      ? "Ava Companion mode is now ON for this group. Ava may observe messages here to privately suggest things to individual members (like meeting or reminder nudges), and — within this group's own daily limit and cooldown — occasionally post in the group itself (e.g. a birthday or celebration comment), always clearly marked as Ava. Any member can mute Ava for themselves in group settings."
+      : next.mode === "assistant"
+        ? "Ava Companion mode is now OFF for this group. Ava will only respond when directly mentioned (@ava)."
+        : "Ava is now fully OFF for this group — no observation, suggestions, or memory.";
+    try {
+      await postAvaMessage(env, { ownerUid: ctx.uid, conv, text: notice, private: false, source: "group_companion_disclosure" });
+    } catch { /* best-effort — the state change itself already succeeded */ }
+  }
+
+  return json({ conv, mode: next.mode, budget_tokens_daily: next.budgetTokensDaily, cooldown_s: next.cooldownS, updated_by: next.updatedBy, updated_at: next.updatedAt });
+}
+
+// ---- GET /api/conversations/ava/member-prefs?conv=ID -------------------------
+// Any current member — reads their OWN prefs only (uid is always ctx.uid).
+export async function convAvaMemberPrefsGet(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const conv = new URL(req.url).searchParams.get("conv") || "";
+  if (!conv) return json({ error: "conv required" }, 400);
+  if (!(await convRoleOf(env, conv, ctx.uid))) return json({ error: "not a member" }, 403);
+  const prefs = await getMemberPrefs(env, conv, ctx.uid);
+  return json({ conv, uid: ctx.uid, muted: prefs.muted, muted_capabilities: prefs.mutedCapabilities, updated_at: prefs.updatedAt });
+}
+
+// ---- PUT /api/conversations/ava/member-prefs  { conv, muted?, muted_capabilities? } ----
+// Any member, SELF ONLY (I1: mute/hide-Ava/report controls). `uid` is ALWAYS
+// ctx.uid — a member can only ever write their own row, never another
+// member's, regardless of what the request body contains.
+export async function convAvaMemberPrefsPut(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
+  const conv = String(b.conv || "");
+  if (!conv) return json({ error: "conv required" }, 400);
+  if (!(await convRoleOf(env, conv, ctx.uid))) return json({ error: "not a member" }, 403);
+  const patch: { muted?: boolean; mutedCapabilities?: string[] } = {};
+  if (typeof b.muted === "boolean") patch.muted = b.muted;
+  if (Array.isArray(b.muted_capabilities)) patch.mutedCapabilities = b.muted_capabilities.map(String).filter(Boolean).slice(0, 50);
+  const next = await setMemberPrefs(env, conv, ctx.uid, patch);
+  trackGroup(env, ctx.uid, "group_ava_member_muted", { conv, muted: next.muted, muted_capabilities_count: next.mutedCapabilities.length });
+  return json({ conv, uid: ctx.uid, muted: next.muted, muted_capabilities: next.mutedCapabilities, updated_at: next.updatedAt });
 }
 
 // Notify newly-added group members: a dedicated FCM "group_invite" wake (taps

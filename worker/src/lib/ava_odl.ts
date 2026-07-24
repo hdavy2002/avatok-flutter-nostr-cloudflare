@@ -41,11 +41,16 @@ import { track } from "../hooks";
 import { readConfig } from "../routes/config";
 import { matchTriggers, matchedCategories, TRIGGER_BANK_VERSION } from "./ava_triggers";
 import { opportunityScore } from "./ava_opportunity";
-import { getCapability, CATEGORY_TO_CAPABILITY } from "./ava_capabilities";
+import { getCapability, CATEGORY_TO_CAPABILITY, type Capability } from "./ava_capabilities";
 import { checkAndSpend, spendMoment, getTrust, isMuted } from "./ava_budget";
 import { governorGate } from "./ava_governor";
 import { guessLang, hasTemplate, pickTemplate, fillTemplate } from "./ava_templates";
-import { postAvaPrivate } from "./ava_lane";
+import { postAvaPrivate, postAvaGroup } from "./ava_lane";
+// [AVA-GROUP-COMPANION-1] group Ava state + member prefs (I1/I2/I4/I5).
+import {
+  getGroupState, isCurrentGroupMember, isMemberMuted, checkGroupCooldownAndBudget,
+  groupScopeOf, type GroupAvaState,
+} from "./ava_group_policy";
 
 const SLEEP_SAMPLE = 100; // 1:100 sampling for ava_odl_sleep
 
@@ -86,8 +91,34 @@ function fnv1aHex(s: string): string {
  * double spend, no double post). See the migration header for the accepted
  * trade-off this implies.
  */
-function decisionIdFor(uid: string, conv: string, capId: string, text: string): string {
-  return `${fnv1aHex(`${uid}|${conv}|${capId}`)}_${fnv1aHex(text)}`;
+function decisionIdFor(uid: string, conv: string, capId: string, text: string, messageId?: string): string {
+  // messageId is an OPTIONAL forward hook (F7: "extend the decision_id input
+  // with the source message id if one is available at the call site"). The
+  // current Guardian call site (ava_guardian.ts, outside this issue's file
+  // set) does not pass one, so this stays byte-for-byte identical to the
+  // pre-existing 1:1 behavior whenever messageId is undefined.
+  const base = messageId ? `${uid}|${conv}|${capId}|${messageId}` : `${uid}|${conv}|${capId}`;
+  return `${fnv1aHex(base)}_${fnv1aHex(text)}`;
+}
+
+/**
+ * [AVA-GROUP-COMPANION-1] Group-scoped PUBLIC decision id — deliberately
+ * EXCLUDES uid (I5: "one decision per source message"). odlProcess runs once
+ * per (recipient, message) — Guardian calls it once for EACH of a group's N
+ * members for the same incoming message. opportunityScore/category/capability
+ * are pure functions of `text` alone (not of uid), so all N of those calls
+ * independently compute the SAME public candidate. Keying the decision on
+ * (conv, capability, text) — instead of (uid, conv, capability, text) like
+ * the private decisionIdFor above — means the FIRST recipient's odlProcess
+ * call to reach the ledger INSERT reserves the row; every other recipient's
+ * call for the identical message sees the row already exists (INSERT OR
+ * IGNORE no-ops) and stops. That is what makes "at most ONE public candidate
+ * post per source message" a structural property of the key, not something
+ * that needs its own coordination.
+ */
+function groupDecisionIdFor(conv: string, capId: string, text: string, messageId?: string): string {
+  const base = messageId ? `${conv}|${capId}|${messageId}` : `${conv}|${capId}`;
+  return `g_${fnv1aHex(base)}_${fnv1aHex(text)}`;
 }
 
 const INTERVENTION_TTL_MS = 24 * 60 * 60 * 1000; // F7: 24h reserved→expired
@@ -130,6 +161,11 @@ export interface OdlInput {
   text: string;
   senderUid: string;
   isGroup?: boolean;
+  // [AVA-GROUP-COMPANION-1] optional forward hook (F7/I5) — NOT populated by
+  // the current Guardian call site. When a future change threads a real
+  // message/event id through, decisionIdFor/groupDecisionIdFor fold it in
+  // automatically; until then this is always undefined and changes nothing.
+  messageId?: string;
 }
 
 export interface OdlResult {
@@ -237,6 +273,26 @@ export async function odlProcess(env: Env, input: OdlInput): Promise<OdlResult> 
     // 4e. Opportunity floor (Constitution 1: threshold AND min-opportunity).
     if (!gateReason && opportunity < cap.min_opportunity) gateReason = "below_min_opportunity";
 
+    // 4g. [AVA-GROUP-COMPANION-1] Group Companion gate (I1: "require
+    //     mode=='companion' for any unsolicited candidate"). Only runs for
+    //     group convs; DMs are completely unaffected. Requires the
+    //     platform-wide avaGroupCompanionEnabled flag (default false, stacked
+    //     ON TOP of odlEnabled/avaMomentsEnabled which already gated getting
+    //     this far) AND this SPECIFIC group's own ava_group_state.mode ===
+    //     'companion' (per-group owner/admin opt-in — see ava_group_policy.ts
+    //     and the new PUT /api/conversations/ava/state route in
+    //     messaging.ts). Fails CLOSED: any D1 read problem resolves to
+    //     mode:'off' inside getGroupState(), which sets gateReason here too.
+    let groupState: GroupAvaState | null = null;
+    if (!gateReason && input.isGroup) {
+      if (cfg.avaGroupCompanionEnabled !== true) {
+        gateReason = "group_companion_disabled";
+      } else {
+        groupState = await getGroupState(env, conv);
+        if (groupState.mode !== "companion") gateReason = "group_mode_off";
+      }
+    }
+
     let wouldFire = !gateReason;
 
     // 4f. Account-wide unsolicited-Moments budget (Constitution 2: 500/day).
@@ -287,6 +343,19 @@ export async function odlProcess(env: Env, input: OdlInput): Promise<OdlResult> 
     }
     if (!tpl || !templateText) {
       return { woke: true, capability: cap.id, opportunity, would_fire: true, reason: "no_template", templateText };
+    }
+
+    // [AVA-GROUP-COMPANION-1] Group path (I2/I3/I5/I6) — everything below in
+    // this branch is NEW. `groupState` is guaranteed non-null here: the only
+    // way `input.isGroup` is true AND we reached this line (wouldFire=true)
+    // is if 4g's gate ran and set it to a real 'companion' state (otherwise
+    // gateReason would have made wouldFire false and we'd have returned at
+    // "if (!wouldFire) return ..." above). The 1:1 branch below (6b/6c) is
+    // BYTE-FOR-BYTE UNCHANGED from before this issue.
+    if (input.isGroup) {
+      return await postGroupCandidate(env, {
+        uid, conv, text, templateText, cap, opportunity, category, lang, groupState: groupState as GroupAvaState,
+      });
     }
 
     // 6b. Decision ledger (F7, worker/migrations/ava_interventions.sql). The
@@ -373,4 +442,160 @@ export async function odlProcess(env: Env, input: OdlInput): Promise<OdlResult> 
     // FAIL-SILENT — the ODL may never surface an error to any caller.
     return { woke: false, reason: "error" };
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [AVA-GROUP-COMPANION-1] Group candidate handling (I1–I7). Called ONLY from
+// odlProcess's production branch, ONLY when input.isGroup is true, ONLY after
+// 4g's gate has already confirmed avaGroupCompanionEnabled AND this group's
+// own mode === 'companion'. Classifies the capability public vs private
+// (I2), then either:
+//   • private → posts to `uid` ONLY, gated on current membership (I2/J5-lite)
+//     and per-member mute prefs (I5), billed to nobody but that recipient's
+//     own opt-in (payer:'recipient', I4);
+//   • public  → gated additionally on group cooldown + daily budget (I5),
+//     deduplicated by a UID-INDEPENDENT decision id so a single trigger
+//     message yields at most one post regardless of how many members'
+//     odlProcess calls reach this function for it (I5), billed to the
+//     group's own budget (payer:'group', I4), and fanned out via
+//     ava_lane.ts's postAvaGroup — never impersonating a member (I2).
+// Group memory (I3) is explicitly NOT touched anywhere in this function —
+// there is no memory read of any kind in the ODL path (odlProcess remains
+// zero-AI, regex+template only, per the file header); the only I3 obligation
+// this v1 satisfies is stamping provenance:'current_message' on every posted
+// moment so a future memory-aware Ava can tell "from this message" apart from
+// "from group/private memory" once that exists.
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function postGroupCandidate(env: Env, args: {
+  uid: string; conv: string; text: string; templateText: string; cap: Capability;
+  opportunity: number; category: string; lang: string; groupState: GroupAvaState;
+}): Promise<OdlResult> {
+  const { uid, conv, text, templateText, cap, opportunity, category, lang, groupState } = args;
+  const convHash = fnv1aHex(conv);
+  const scope = groupScopeOf(cap.id);
+
+  if (scope === "private") {
+    // Private nudge: ONLY to `uid` — the specific recipient this odlProcess
+    // call is evaluating for. Re-verify membership right before acting (I2:
+    // "a removed member must never receive a group-derived nudge") — Guardian
+    // may have queued this evaluation before a removal landed.
+    const stillMember = await isCurrentGroupMember(env, conv, uid);
+    if (!stillMember) {
+      return { woke: true, capability: cap.id, opportunity, would_fire: true, reason: "not_a_member", templateText };
+    }
+    const muted = await isMemberMuted(env, conv, uid, cap.id);
+    if (muted) {
+      return { woke: true, capability: cap.id, opportunity, would_fire: true, reason: "member_muted", templateText };
+    }
+
+    void track(env, uid, "group_ava_private_nudge", "ava_odl", {
+      capability: cap.id, conv_hash: convHash, opportunity, trigger_category: category, lang_guess: lang,
+    });
+
+    // Ledger row keyed per-uid (same decisionIdFor as the 1:1 path — DM and
+    // group conv ids never collide, so no cross-lane PK risk) with
+    // payer:'recipient' (I4: "a private suggestion is charged to the
+    // recipient only after the recipient has opted into Companion mode" —
+    // "opted in" here = the group is in Companion mode AND this member has
+    // not muted the capability, both already checked above).
+    const decisionId = decisionIdFor(uid, conv, cap.id, text);
+    let reservedHere = false;
+    try {
+      const ins = await env.DB_META.prepare(
+        `INSERT OR IGNORE INTO ava_interventions
+           (decision_id, uid, conv_hash, capability, policy_version, budget_reserved, status, payer, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, 1, 'reserved', 'recipient', ?6, ?6)`,
+      ).bind(decisionId, uid, convHash, cap.id, TRIGGER_BANK_VERSION, Date.now()).run();
+      reservedHere = ((ins as any)?.meta?.changes ?? 0) > 0;
+    } catch {
+      return { woke: true, capability: cap.id, opportunity, would_fire: true, templateText }; // fail CLOSED on posting, same as 1:1 path
+    }
+    if (!reservedHere) {
+      void track(env, uid, "group_ava_duplicate_suppressed", "ava_odl", { capability: cap.id, conv_hash: convHash, lane: "private" });
+      return { woke: true, capability: cap.id, opportunity, would_fire: true, reason: "already_decided", templateText };
+    }
+
+    const postRes = await postAvaPrivate(env, {
+      uid, conv, text: templateText,
+      moment: { kind: "ava_moment", capability: cap.id, decision_id: decisionId, provenance: "current_message" },
+      capability: cap.id,
+      source: "odl_group",
+    });
+
+    if (postRes.ok) {
+      try {
+        await env.DB_META.prepare(
+          `UPDATE ava_interventions SET status = 'posted', updated_at = ?1 WHERE decision_id = ?2 AND status = 'reserved'`,
+        ).bind(Date.now(), decisionId).run();
+      } catch { /* best-effort — self-heals via the 24h TTL sweep */ }
+      void track(env, uid, "group_ava_posted", "ava_odl", {
+        decision_id: decisionId, capability: cap.id, conv_hash: convHash, lane: "private",
+        opportunity, trigger_category: category, lang_guess: lang,
+      });
+    } else {
+      void track(env, uid, "ava_moment_post_failed", "ava_odl", {
+        decision_id: decisionId, capability: cap.id, conv_hash: convHash, lane: "private", error: postRes.error ?? null,
+      });
+    }
+    return { woke: true, capability: cap.id, opportunity, would_fire: true, templateText };
+  }
+
+  // scope === "public" ─────────────────────────────────────────────────────
+  const budgetCheck = await checkGroupCooldownAndBudget(env, conv, groupState);
+  if (!budgetCheck.allowed) {
+    void track(env, uid, "group_ava_budget_blocked", "ava_odl", { capability: cap.id, conv_hash: convHash, reason: budgetCheck.reason });
+    return { woke: true, capability: cap.id, opportunity, would_fire: true, reason: budgetCheck.reason, templateText };
+  }
+
+  void track(env, uid, "group_ava_public_candidate", "ava_odl", {
+    capability: cap.id, conv_hash: convHash, opportunity, trigger_category: category, lang_guess: lang,
+  });
+
+  // Group-scoped decision id — see groupDecisionIdFor's header for why it
+  // structurally guarantees "at most ONE candidate post per source message"
+  // (I5) across however many of a group's members' odlProcess calls reach
+  // this line for the same message.
+  const decisionId = groupDecisionIdFor(conv, cap.id, text);
+  let reservedHere = false;
+  try {
+    const ins = await env.DB_META.prepare(
+      `INSERT OR IGNORE INTO ava_interventions
+         (decision_id, uid, conv_hash, capability, policy_version, budget_reserved, status, payer, created_at, updated_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, 1, 'reserved', 'group', ?6, ?6)`,
+    ).bind(decisionId, uid, convHash, cap.id, TRIGGER_BANK_VERSION, Date.now()).run();
+    reservedHere = ((ins as any)?.meta?.changes ?? 0) > 0;
+  } catch {
+    return { woke: true, capability: cap.id, opportunity, would_fire: true, templateText };
+  }
+  if (!reservedHere) {
+    // Either already posted, or another recipient's odlProcess call for this
+    // SAME message won the reservation first (see groupDecisionIdFor) — both
+    // are exactly the outcome I5 requires: no second public post.
+    void track(env, uid, "group_ava_duplicate_suppressed", "ava_odl", { capability: cap.id, conv_hash: convHash, lane: "group" });
+    return { woke: true, capability: cap.id, opportunity, would_fire: true, reason: "already_decided", templateText };
+  }
+
+  const postRes = await postAvaGroup(env, {
+    conv, text: templateText, decisionId, capability: cap.id,
+    moment: { kind: "ava_moment", capability: cap.id, decision_id: decisionId, provenance: "current_message" },
+  });
+
+  if (postRes.ok) {
+    try {
+      await env.DB_META.prepare(
+        `UPDATE ava_interventions SET status = 'posted', updated_at = ?1 WHERE decision_id = ?2 AND status = 'reserved'`,
+      ).bind(Date.now(), decisionId).run();
+    } catch { /* best-effort — self-heals via the 24h TTL sweep */ }
+    void track(env, uid, "group_ava_posted", "ava_odl", {
+      decision_id: decisionId, capability: cap.id, conv_hash: convHash, lane: "group",
+      opportunity, trigger_category: category, lang_guess: lang,
+    });
+  } else {
+    void track(env, uid, "ava_moment_post_failed", "ava_odl", {
+      decision_id: decisionId, capability: cap.id, conv_hash: convHash, lane: "group", error: postRes.error ?? null,
+    });
+  }
+
+  return { woke: true, capability: cap.id, opportunity, would_fire: true, templateText };
 }

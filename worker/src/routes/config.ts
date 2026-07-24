@@ -385,6 +385,13 @@ export interface PlatformConfig {
   // Ava Copilot Phases C+D (ODL — Opportunity Detection Layer, shadow-mode).
   odlEnabled: boolean;        // Phase C: ODL wake scan from guardianScan (shadow-mode telemetry only)
   avaMomentsEnabled: boolean; // Phase C: master gate for user-visible Moments (nothing posts while false)
+  // [AVA-GROUP-COMPANION-1] Group Ava (Specs/AUDIT-MESSENGER-AI-MEDIA-UI-2026-07-24.md
+  // §I). Third gate stacked ON TOP of odlEnabled + avaMomentsEnabled — ALL
+  // THREE must be true before ava_odl.ts's group path can post anything, and
+  // even then only for groups whose OWN ava_group_state.mode === 'companion'
+  // (per-group owner/admin opt-in, worker/migrations/ava_group_companion.sql).
+  // Default false — group Companion mode ships fully dark.
+  avaGroupCompanionEnabled: boolean;
   // [AVA-ODL-POST-1] Per-capability kill switches (ava_capabilities.ts
   // CAPABILITY_SEED[i].kill_switch). MUST be declared here — an undeclared
   // kill_switch key is a FAKE flag (putConfig 400s "unknown key" on any
@@ -831,6 +838,7 @@ const DEFAULTS: PlatformConfig = {
   // Ava Copilot Phases C+D — ODL ships DARK; flip via scripts/flags.sh set odlEnabled=true
   odlEnabled: false,          // ODL wake scan (shadow telemetry only; zero AI, zero user-visible output)
   avaMomentsEnabled: false,   // no user-visible Moments until a capability is production AND this is on
+  avaGroupCompanionEnabled: false, // [AVA-GROUP-COMPANION-1] group Ava — dark; each group ALSO needs its own ava_group_state.mode='companion'
   // [AVA-ODL-POST-1] Per-capability kill switches — default true (no EXTRA
   // restriction beyond odlEnabled/avaMomentsEnabled/lifecycle, all of which
   // already keep this dark in prod). Explicit false in KV turns ONE
