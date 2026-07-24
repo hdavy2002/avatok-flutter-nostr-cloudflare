@@ -86,6 +86,14 @@ class MediaService {
   // ~200 KB/s so the call keeps its bandwidth; off-call we upload full speed.
   static const int _kInCallUploadBytesPerSec = 200 * 1024;
 
+  // [MEDIA-INSTANT-1c] The off-main-thread `compute()` encryption path used to
+  // be gated ONLY on `inCall` — so a large photo/video sent off-call encrypted
+  // synchronously on the UI isolate and janked right after its bubble
+  // appeared (audit F item 4). Any attachment over this size now takes the
+  // isolate path regardless of call state; small attachments stay on the
+  // cheap async path (isolate spin-up cost isn't worth it for a few KB).
+  static const int _kIsolateEncryptThresholdBytes = 1536 * 1024; // 1.5 MB
+
   static Future<ChatMedia> encryptAndUpload(
     Uint8List bytes, {
     required MediaKind kind,
@@ -97,9 +105,11 @@ class MediaService {
     final secretKey = await _aes.newSecretKey();
     final nonce = _aes.newNonce();
     final keyBytes = await secretKey.extractBytes();
-    // (a) Encrypt off the main thread when a call is live so the isolate crunch
-    // never janks the call UI. Off-call we stay on the async path (cheap enough).
-    final _EncResult enc = inCall
+    // (a) Encrypt off the main thread when a call is live (never jank the call
+    // UI) OR when the payload is large enough that synchronous AES-GCM would
+    // jank the UI thread right after the bubble appears [MEDIA-INSTANT-1c].
+    final bool useIsolate = inCall || bytes.length > _kIsolateEncryptThresholdBytes;
+    final _EncResult enc = useIsolate
         ? await compute(_encryptInIsolate,
             _EncInput(bytes: bytes, key: Uint8List.fromList(keyBytes), nonce: Uint8List.fromList(nonce)))
         : await () async {

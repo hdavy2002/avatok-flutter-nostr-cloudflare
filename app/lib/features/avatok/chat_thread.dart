@@ -221,6 +221,29 @@ class _Msg {
   // so the send→server-ACK round-trip can be reported (msg_send_confirmed). Null
   // for received/system/AI-local bubbles that never go through the send pipeline.
   int? sendStartedMs;
+  // [MEDIA-INSTANT-1] Epoch ms when the user's PICK action started (picker
+  // invoked / record-stop tapped) — the anchor for `ms_pick_to_bubble`
+  // telemetry. Null when the send didn't originate from a picker (gif/sticker/
+  // library-attach), in which case that metric is simply omitted.
+  int? pickStartedMs;
+  // [MEDIA-INSTANT-1a] True while a video bubble's background 720p transcode
+  // is still running (upload hasn't started yet) — lets the bubble show a
+  // "processing" label instead of a bare spinner.
+  bool transcoding = false;
+  // [MEDIA-OUTBOX-DURABLE-1] This attachment's row key in `MediaOutbox` (the
+  // durable upload-leg ledger) — set at bubble creation, before encryption/
+  // upload starts. Null for non-media bubbles.
+  String? mediaClientId;
+  // [MEDIA-RETRY-KIND-1] The EXACT mime + filename the attachment was sent
+  // with, captured at send time (before `media` exists) so a retry — manual
+  // or auto — re-uploads with the identical kind/mime/name instead of the old
+  // generic 'application/octet-stream' fallback that could silently reclass a
+  // failed voice note as a generic file.
+  String? pendingMime;
+  String? pendingFilename;
+  // [MEDIA-RETRY-KIND-1] Non-null once a retry has been attempted; feeds the
+  // `attempt` property on chat_media_retry_* telemetry.
+  int? retryAttempt;
   _Msg(this.id, this.me, this.text, this.time,
       {this.ts = 0, this.evId, this.senderLabel, this.senderPub, this.reaction, this.media, this.pendingKind, this.mediaCaption = '', this.localBytes,
        this.uploading = false, this.failed = false, this.sent = false, this.replyTo, this.edited = false,
@@ -2969,18 +2992,18 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     _jump();
     if (_convKey != null) DraftStore().set(_convKey!, '');
 
-    // Preview resolution order:
-    //   1. the compose-time card the user just saw (instant, already fetched)
-    //   2. the user explicitly ✕'d it → send with no preview
-    //   3. no compose card (e.g. sent before the debounce fired) → unfurl now
-    Map<String, dynamic>? preview = composeHit;
-    if (preview == null && url != null && !composeDismissed) {
-      preview = await _unfurl(url);
-      if (preview != null && mounted) {
-        // Show the card on the sender's own bubble too.
-        setState(() => localMsg.extra = {...?localMsg.extra, 'preview': preview});
-      }
-    }
+    // [MEDIA-INSTANT-1e / F5] The recipient's delivery must NEVER wait on a
+    // network unfurl fetch (up to the 6s timeout in [_unfurl]) — a preview is
+    // presentation metadata, not a delivery prerequisite. Only a preview
+    // already resolved at COMPOSE time (while the user was typing) rides in
+    // the envelope; everything else sends with no preview now and is patched
+    // into the SENDER's own bubble asynchronously below, if/when it resolves.
+    // Documented limitation (no cross-device `message_patch` protocol here):
+    // a recipient only ever sees a card when the compose-time cache already
+    // had one — a preview that resolves AFTER dispatch is visible to the
+    // sender only. Building a durable patch broadcast is out of scope for this
+    // change; see F5 in the messenger audit.
+    final Map<String, dynamic>? preview = (composeHit != null && !composeDismissed) ? composeHit : null;
 
     final env = <String, dynamic>{
       't': isGroup ? 'gtext' : 'text',
@@ -3014,6 +3037,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
           preview: t, conv: meUid.isNotEmpty ? '1:$meUid' : null);
     }
     _schedulePersist();
+
+    // [MEDIA-INSTANT-1e / F5] Fire the unfurl AFTER dispatch, never before —
+    // this is the fix for "link previews gate peer dispatch up to 6s". Only
+    // ever patches the SENDER's own local bubble; see the doc note above.
+    if (preview == null && url != null && !composeDismissed) {
+      unawaited(_unfurl(url).then((p) {
+        if (p == null || !mounted) return;
+        setState(() => localMsg.extra = {...?localMsg.extra, 'preview': p});
+        _schedulePersist();
+      }));
+    }
   }
 
   /// First http(s) URL in [text], or null. Mirrors the worker/card regex.
@@ -4645,7 +4679,23 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${e['name']} added')));
   }
 
-  Future<void> _sendMedia(MediaKind kind, Uint8List bytes, String ct, String name, {String caption = ''}) async {
+  /// A short random id for a media bubble's durable-outbox row / staged file
+  /// name. Independent of the message's eventual `evId` (assigned once the
+  /// envelope is actually sent) — this one exists from the moment the bubble
+  /// appears, so [MediaOutbox] can key off it before there's anything else to
+  /// key off.
+  static String _newMediaClientId() {
+    final r = math.Random.secure();
+    return 'mc_${List<int>.generate(10, (_) => r.nextInt(256)).map((b) => b.toRadixString(16).padLeft(2, '0')).join()}';
+  }
+
+  /// [MEDIA-INSTANT-1] Create the optimistic bubble SYNCHRONOUSLY and return it
+  /// immediately — split out of `_sendMedia` so a caller sending several items
+  /// at once (multi-photo) can insert every bubble FIRST, then fan uploads out
+  /// through a bounded pool, instead of the old "bubble N+1 waits on upload N"
+  /// sequential loop.
+  _Msg _addMediaBubble(MediaKind kind, Uint8List bytes, String ct, String name,
+      {String caption = '', int? pickStartMs}) {
     // Stamp the message with a real send time. Without this it defaulted to ts=0,
     // so any list re-sort floated the bubble to the very TOP of the thread and it
     // appeared to "disappear" from the bottom where it was just added.
@@ -4654,7 +4704,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     final msg = _Msg(_seq++, true, _caption(kind, name), _fmtTime(now),
         ts: now, localBytes: bytes, uploading: true, mediaCaption: caption,
         pendingKind: kind) // [AVAVM-PLAYER-1] real kind, known before `media` exists
-      ..sendStartedMs = tShownStart; // [AVA-CHAT-INSTANT] round-trip anchor
+      ..sendStartedMs = tShownStart // [AVA-CHAT-INSTANT] round-trip anchor
+      ..pickStartedMs = pickStartMs
+      ..pendingMime = ct
+      ..pendingFilename = name
+      ..mediaClientId = _newMediaClientId(); // [MEDIA-OUTBOX-DURABLE-1] stable id, assigned here so the durable outbox row (added next commit) can key off the SAME id the bubble already carries.
     setState(() => _msgs.add(msg));
     _jump();
     // [AVA-CHAT-INSTANT] Heavy media shows its bubble (local preview + uploading
@@ -4681,26 +4735,92 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       ts: now,
       sourceId: 'chatfile_${DateTime.now().microsecondsSinceEpoch}',
     );
-    Analytics.capture('chat_media_sent', {
-      'kind': kind.name,
-      'has_caption': caption.trim().isNotEmpty,
-      'size': bytes.length,
-      'conv_kind': _isGroup ? 'group' : 'dm',
-    });
-    await _upload(msg, bytes, kind, ct, name, caption: caption);
+    return msg;
   }
 
-  Future<void> _upload(_Msg msg, Uint8List bytes, MediaKind kind, String ct, String name, {String caption = ''}) async {
+  Future<void> _sendMedia(MediaKind kind, Uint8List bytes, String ct, String name,
+      {String caption = '', String? sourcePath, int? pickStartMs}) async {
+    final msg = _addMediaBubble(kind, bytes, ct, name, caption: caption, pickStartMs: pickStartMs);
+    await _upload(msg, bytes, kind, ct, name, caption: caption, sourcePath: sourcePath);
+  }
+
+  Future<void> _upload(_Msg msg, Uint8List bytes, MediaKind kind, String ct, String name,
+      {String caption = '', String? sourcePath}) async {
     setState(() { msg.uploading = true; msg.failed = false; });
+    final tUploadStart = DateTime.now().millisecondsSinceEpoch;
+    int? transcodeMs;
     try {
+      var uploadBytes = bytes;
+      var uploadCt = ct;
+      var uploadName = name;
+      // [MEDIA-INSTANT-1a] The 720p transcode now runs HERE, on the background
+      // upload path — AFTER the bubble is already on screen, never before it.
+      // The bubble keeps showing the ORIGINAL bytes as its local preview the
+      // whole time; only the bytes actually PUT to R2 are swapped for the
+      // compressed clip. `sourcePath` is only passed for a fresh video pick
+      // (not for a retry, which already has whatever bytes were staged/kept).
+      if (kind == MediaKind.video && sourcePath != null) {
+        if (mounted) setState(() => msg.transcoding = true);
+        final tCompressStart = DateTime.now().millisecondsSinceEpoch;
+        try {
+          final info = await VideoCompress.compressVideo(
+            sourcePath,
+            quality: VideoQuality.Res1280x720Quality, // 720p H.264
+            deleteOrigin: false,
+            includeAudio: true,
+          );
+          final outPath = info?.file?.path;
+          if (outPath != null) {
+            final out = await File(outPath).readAsBytes();
+            if (out.isNotEmpty) {
+              uploadBytes = out;
+              uploadCt = 'video/mp4';
+              if (!uploadName.toLowerCase().endsWith('.mp4')) uploadName = '$uploadName.mp4';
+            }
+          }
+        } catch (e) {
+          AvaLog.I.log('media', 'video compress failed, using original: $e');
+        }
+        transcodeMs = DateTime.now().millisecondsSinceEpoch - tCompressStart;
+        if (mounted) setState(() => msg.transcoding = false);
+        if (uploadBytes.length > _kVideoMaxBytes) {
+          if (mounted) setState(() { msg.uploading = false; msg.failed = true; });
+          _capNote(_kVideoTooBigMsg);
+          Analytics.capture('video_upload_rejected', {'bytes': uploadBytes.length});
+          return;
+        }
+        Analytics.capture('video_upload_compressed', {
+          'in_bytes': bytes.length, 'out_bytes': uploadBytes.length, 'transcode_ms': transcodeMs,
+        });
+      }
       // [CHAT-UPLOAD-1] A live 1:1 call shares this device's uplink. Encrypt off
       // the main thread + pace the ciphertext PUT so the upload never starves
       // WebRTC (which previously forced both-sides reconnects). Full speed off-call.
       final live = CallSessionManager.instance.current;
       final inCall = live != null && !live.isEnded;
-      final m = await MediaService.encryptAndUpload(bytes, kind: kind, contentType: ct, name: name, caption: caption, inCall: inCall);
+      final m = await MediaService.encryptAndUpload(uploadBytes, kind: kind, contentType: uploadCt, name: uploadName, caption: caption, inCall: inCall);
       if (!mounted) return;
       setState(() { msg.media = m; msg.uploading = false; });
+      // [MEDIA-INSTANT-1f] Richer chat_media_sent — kind/bytes plus the two
+      // perceived-latency legs the audit asked to make measurable, and
+      // transcode_ms (null when this attachment never transcoded).
+      Analytics.capture('chat_media_sent', {
+        'kind': kind.name,
+        'has_caption': caption.trim().isNotEmpty,
+        'size': uploadBytes.length,
+        'bytes': uploadBytes.length,
+        'conv_kind': _isGroup ? 'group' : 'dm',
+        'ms_bubble_to_uploaded': DateTime.now().millisecondsSinceEpoch - tUploadStart,
+        if (msg.pickStartedMs != null && msg.sendStartedMs != null)
+          'ms_pick_to_bubble': msg.sendStartedMs! - msg.pickStartedMs!,
+        'transcode_ms': transcodeMs,
+      });
+      if (msg.retryAttempt != null) {
+        Analytics.capture('chat_media_retry_succeeded', {
+          'kind': kind.name, 'mime': uploadCt, 'bytes': uploadBytes.length,
+          'attempt': msg.retryAttempt, 'client_id': msg.mediaClientId ?? '',
+        });
+      }
       final keyShort = m.id.length > 12 ? m.id.substring(m.id.length - 8) : m.id;
       // Deliver the media reference + key inside an encrypted DM / group fan-out.
       if (_isGroup && _gdm != null) {
@@ -4710,18 +4830,25 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         Analytics.capture('group_message_sent', {
           'gid': _group!.id, 'member_count': _group!.members.length, 'kind': kind.name,
         });
-        AvaLog.I.log('media', 'sent gmedia kind=${kind.name} ${bytes.length}B key=…$keyShort rumor=${id.length >= 8 ? id.substring(0, 8) : id}');
+        AvaLog.I.log('media', 'sent gmedia kind=${kind.name} ${uploadBytes.length}B key=…$keyShort rumor=${id.length >= 8 ? id.substring(0, 8) : id}');
       } else if (_realMode && _dm != null) {
         final id = _dm!.send(jsonEncode(m.toEnvelope()));
         msg.evId = id;
         _seenEv.add(id);
-        AvaLog.I.log('media', 'sent dm media kind=${kind.name} ${bytes.length}B key=…$keyShort rumor=${id.length >= 8 ? id.substring(0, 8) : id}');
+        AvaLog.I.log('media', 'sent dm media kind=${kind.name} ${uploadBytes.length}B key=…$keyShort rumor=${id.length >= 8 ? id.substring(0, 8) : id}');
       }
       _schedulePersist(); // cache the media message so it survives reopen
     } catch (e) {
       if (!mounted) return;
       AvaLog.I.log('media', 'send media FAILED kind=${kind.name}: $e');
-      setState(() { msg.uploading = false; msg.failed = true; });
+      setState(() { msg.uploading = false; msg.failed = true; msg.transcoding = false; });
+      if (msg.retryAttempt != null) {
+        Analytics.capture('chat_media_retry_failed', {
+          'kind': kind.name, 'mime': ct, 'bytes': bytes.length,
+          'attempt': msg.retryAttempt, 'client_id': msg.mediaClientId ?? '',
+          'reason': e.toString(),
+        });
+      }
     }
   }
 
@@ -5040,6 +5167,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
 
   // Gallery → up to 8 photos in one go; each capped at 25 MB.
   Future<void> _pickPhotos() async {
+    final pickStart = DateTime.now().millisecondsSinceEpoch;
     final xs = await _picker.pickMultiImage(imageQuality: 85);
     if (xs.isEmpty) return;
     final take = xs.length > _kMaxPhotosPerPick ? xs.sublist(0, _kMaxPhotosPerPick) : xs;
@@ -5056,15 +5184,30 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     final seed = _ctrl.text.trim();
     var firstSent = true;
     var skipped = 0;
+    // [MEDIA-INSTANT-1b] Insert EVERY bubble first (synchronously, pick order),
+    // THEN fan the uploads out through a bounded pool — bubble N+1 must never
+    // sit waiting on upload N to finish (the old sequential await-in-a-loop).
+    final jobs = <({_Msg msg, Uint8List bytes, String name})>[];
     for (final x in take) {
       final bytes = await x.readAsBytes();
       if (bytes.length > _kMediaMaxBytes) { skipped++; continue; }
-      await _sendMedia(MediaKind.image, bytes, 'image/jpeg', x.name,
-          caption: firstSent ? seed : '');
+      final msg = _addMediaBubble(MediaKind.image, bytes, 'image/jpeg', x.name,
+          caption: firstSent ? seed : '', pickStartMs: pickStart);
+      jobs.add((msg: msg, bytes: bytes, name: x.name));
       firstSent = false;
     }
     _consumeComposer(seed);
     if (skipped > 0) _capNote('$skipped photo(s) skipped — over the 25 MB limit.');
+    if (jobs.isEmpty) return;
+    const poolSize = 3;
+    var next = 0;
+    Future<void> worker() async {
+      while (next < jobs.length) {
+        final j = jobs[next++];
+        await _upload(j.msg, j.bytes, MediaKind.image, 'image/jpeg', j.name, caption: j.msg.mediaCaption);
+      }
+    }
+    await Future.wait(List.generate(math.min(poolSize, jobs.length), (_) => worker()));
   }
 
   // VIDPOL-1: chat videos are transcoded to 720p H.264 on-device, then held to a
@@ -5075,65 +5218,34 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   static const String _kVideoTooBigMsg =
       'Videos are limited to 64 MB (about 3–5 minutes). Trim it and try again.';
 
+  // [MEDIA-INSTANT-1a] The transcode used to run HERE, BEFORE the bubble ever
+  // appeared — a long clip meant seconds of "Optimising video…" dead UI before
+  // anything showed up. It now runs on the background upload path (`_upload`)
+  // AFTER the bubble is already visible; this picker only reads the ORIGINAL
+  // bytes and hands them straight to the caption step + send.
   Future<void> _pickVideo(ImageSource source) async {
+    final pickStart = DateTime.now().millisecondsSinceEpoch;
     // Recording auto-stops at the clip cap; gallery picks an existing clip.
     final x = await _picker.pickVideo(source: source, maxDuration: kVideoClipMax);
     if (x == null) return;
     final inBytes = await x.readAsBytes();
-    final inLen = inBytes.length;
-
-    // Compress to 720p H.264 via the platform encoder. Best-effort: if the
-    // transcode fails/returns nothing, fall back to the original bytes and let
-    // the 64 MB cap below decide.
-    Uint8List bytes = inBytes;
-    String name = x.name;
-    double? durationS;
-    if (mounted) _capNote('Optimising video…');
-    try {
-      final info = await VideoCompress.compressVideo(
-        x.path,
-        quality: VideoQuality.Res1280x720Quality, // 720p H.264
-        deleteOrigin: false,
-        includeAudio: true,
-      );
-      durationS = info?.duration == null ? null : (info!.duration! / 1000.0);
-      final outPath = info?.file?.path;
-      if (outPath != null) {
-        final out = await File(outPath).readAsBytes();
-        if (out.isNotEmpty) {
-          bytes = out;
-          if (!name.toLowerCase().endsWith('.mp4')) name = '$name.mp4';
-        }
-      }
-    } catch (e) {
-      AvaLog.I.log('media', 'video compress failed, using original: $e');
-    }
-
-    if (bytes.length > _kVideoMaxBytes) {
-      _capNote(_kVideoTooBigMsg);
-      // Email rides in the envelope (Analytics._base); support can pull why a
-      // video never sent, keyed by user + byte size. (VIDPOL telemetry)
-      Analytics.capture('video_upload_rejected', {'bytes': bytes.length});
-      return;
-    }
-    Analytics.capture('video_upload_compressed', {
-      'in_bytes': inLen,
-      'out_bytes': bytes.length,
-      if (durationS != null) 'duration_s': durationS,
-    });
-    await _sendVideoWithCaption(bytes, name);
+    await _sendVideoWithCaption(inBytes, x.name, sourcePath: x.path, pickStartMs: pickStart);
   }
 
   // Videos get the same caption/instruction step as photos + files, so any text
   // typed in the composer rides INSIDE the video's message (one bubble) and an
   // `@ava` instruction stays attached to the clip it refers to.
-  Future<void> _sendVideoWithCaption(Uint8List bytes, String name) async {
+  Future<void> _sendVideoWithCaption(Uint8List bytes, String name, {String? sourcePath, int? pickStartMs}) async {
     final seed = _ctrl.text.trim();
     final caption = await _fileCaptionSheet(name, initial: seed, label: 'Video');
     if (caption == null) return;
     _consumeComposer(seed);
     final c = caption.trim();
-    await _sendMedia(MediaKind.video, bytes, 'video/mp4', name, caption: c);
+    // [MEDIA-INSTANT-1a] Bubble goes out on the ORIGINAL bytes right away;
+    // `_upload` does the 720p transcode in the background from `sourcePath`
+    // and swaps in the compressed bytes for the actual upload.
+    await _sendMedia(MediaKind.video, bytes, 'video/mp4', name,
+        caption: c, sourcePath: sourcePath, pickStartMs: pickStartMs);
     if (c.isEmpty) return;
     _ragAddLine('You', c);
     if (_editing == null && onSummonAva != null) {
@@ -5477,6 +5589,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     });
   }
 
+  // [MEDIA-INSTANT-1d / F10] The optimistic bubble is now created the INSTANT
+  // the recorder hands back a file path — the bytes are read into memory
+  // asynchronously right after, not before. This is the fix for "stop-to-
+  // bubble still waits for the file to be read into memory" (F10): the visual
+  // contract now matches "release to send" — the bubble shows immediately.
   Future<void> _stopAndSendRecording() async {
     final seconds = _recElapsed.inSeconds;
     String? path;
@@ -5485,11 +5602,36 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     }
     await _endRecordingSession();
     if (path == null) return;
-    final bytes = await File(path).readAsBytes();
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final tShownStart = DateTime.now().millisecondsSinceEpoch;
+    final msg = _Msg(_seq++, true, _caption(MediaKind.audio, 'voice.m4a'), _fmtTime(now),
+        ts: now, uploading: true, pendingKind: MediaKind.audio)
+      ..sendStartedMs = tShownStart
+      ..pendingMime = 'audio/mp4'
+      ..pendingFilename = 'voice.m4a'
+      ..mediaClientId = _newMediaClientId();
+    setState(() => _msgs.add(msg));
+    _jump();
+    Analytics.capture('msg_optimistic_shown', {
+      'kind': 'audio', 'conv_kind': _isGroup ? 'group' : 'dm',
+      'ms_to_bubble': DateTime.now().millisecondsSinceEpoch - tShownStart,
+    });
+    Uint8List bytes;
+    try {
+      bytes = await File(path).readAsBytes();
+    } catch (e) {
+      AvaLog.I.log('media', 'voice read FAILED: $e');
+      if (mounted) setState(() { msg.uploading = false; msg.failed = true; });
+      Analytics.capture('voice_note_record_sent', {
+        ..._voiceTelemetry(), 'seconds': seconds, 'ok': false, 'error': e.toString(),
+      });
+      return;
+    }
+    if (mounted) setState(() => msg.localBytes = bytes);
     Analytics.capture('voice_note_record_sent', {
       ..._voiceTelemetry(), 'seconds': seconds, 'bytes': bytes.length,
     });
-    await _sendMedia(MediaKind.audio, bytes, 'audio/mp4', 'voice.m4a');
+    await _upload(msg, bytes, MediaKind.audio, 'audio/mp4', 'voice.m4a');
   }
 
   /// The single teardown path for a recording session — every exit routes here
