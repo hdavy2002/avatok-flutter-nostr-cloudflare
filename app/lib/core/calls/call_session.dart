@@ -309,6 +309,7 @@ class CallSession {
   bool _camOn = true;
   bool _muted = false;
   bool _speaker = true;
+  String? _lastAudioRouteRequestId;
   bool _connected = false;
   String _phase = 'connecting';
   Timer? _ringTimeout;
@@ -582,6 +583,10 @@ class CallSession {
       _lastInboundAudioBytes = inboundAudioBytes;
       if (prev != null && inboundAudioBytes <= prev) {
         _mediaStaleCount++;
+        _telemetry.mediaFlowState(
+          state: 'rtp_stalled',
+          inboundAudioBytesDelta: inboundAudioBytes - prev,
+        );
       } else {
         if (_mediaStaleCount > 0) {
           // Recovered.
@@ -596,6 +601,10 @@ class CallSession {
             _setPhase('connected');
           }
         }
+        _telemetry.mediaFlowState(
+          state: prev == null ? 'rtp_observed' : 'rtp_flowing',
+          inboundAudioBytesDelta: prev == null ? null : inboundAudioBytes - prev,
+        );
         _mediaStaleCount = 0;
         _mediaStalledFlagged = false;
         _mediaStallStartMs = null;
@@ -625,8 +634,15 @@ class CallSession {
           _endWith('ended', reason: 'media-stalled');
         }
       }
-    } catch (_) {
-      // Never let watchdog polling throw or keep a call alive.
+    } catch (e, st) {
+      // Never let watchdog polling throw or keep a call alive, but make the
+      // failure a grouped handled PostHog issue so broken stats providers are
+      // distinguishable from a genuinely bad media path.
+      _telemetry.runtimeError(
+        stage: 'media_stats_poll_failed',
+        error: e,
+        stack: st,
+      );
     }
   }
 
@@ -1158,13 +1174,19 @@ class CallSession {
         },
         'video': config.video ? {'facingMode': 'user'} : false,
       });
-    } catch (e) {
+    } catch (e, st) {
       Analytics.error(
         domain: 'call_setup',
         code: 'media_denied',
         message: e.toString(),
         action: config.video ? 'getUserMedia_av' : 'getUserMedia_audio',
         extra: {'call_id': config.room, 'video': config.video},
+      );
+      _telemetry.runtimeError(
+        stage: 'get_user_media_failed',
+        error: e,
+        stack: st,
+        extra: {'video_requested': config.video},
       );
       _mediaDeniedNotice?.call();
       _endWith('ended', reason: 'media-denied');
@@ -1198,6 +1220,41 @@ class CallSession {
           at: config.outgoing ? 'dial' : 'accept',
         );
       } catch (_) {}
+    }
+    // Native audio failures used to be visible only in logcat. Keep this
+    // listener on the shared singleton (the platform MethodChannel has one
+    // global handler) and forward only structured, scrub-safe diagnostics.
+    if (NativeVoiceAudio.isSupported) {
+      NativeVoiceAudio.instance.onEvent = (event) {
+        final name = (event['name'] ?? event['kind'] ?? 'unknown').toString();
+        final context = <String, Object>{
+          'call_id': config.room,
+          'native_event': name,
+          if (event['route'] != null) 'route': event['route'].toString(),
+          if (event['change'] != null) 'focus_change': event['change'].toString(),
+        };
+        Analytics.capture('call_native_audio_event', context);
+        if (name == 'audio_route_changed' && event['route'] != null) {
+          Analytics.capture('call_audio_route_result', {
+            ...context,
+            if (_lastAudioRouteRequestId != null)
+              'request_id': _lastAudioRouteRequestId!,
+            'source': 'native_confirmed',
+            'requested_route': _speaker ? 'speaker' : 'earpiece',
+            'active_route': event['route'].toString(),
+            'phase': _phase,
+            'connected': _connected,
+          });
+        }
+        final rawError = event['error'];
+        if (rawError != null && rawError.toString().isNotEmpty) {
+          _telemetry.runtimeError(
+            stage: 'native_audio_$name',
+            error: StateError(rawError.toString()),
+            extra: context,
+          );
+        }
+      };
     }
     // CALL-FOCUS-1: hold the call while another app owns audio focus. Wired on
     // NativeVoiceAudio.instance — the same singleton that started the FGS and
@@ -1334,7 +1391,14 @@ class CallSession {
       final offer = _tuned(await pc.createOffer());
       await pc.setLocalDescription(offer);
       _send({'type': 'offer', 'to': _remoteId, 'sdp': offer.toMap()});
-    } catch (_) {}
+    } catch (e, st) {
+      _telemetry.runtimeError(
+        stage: 'relay_fallback_failed',
+        error: e,
+        stack: st,
+        extra: {'remote_present': _remoteId != null},
+      );
+    }
   }
 
   void _onSocketLost() {
@@ -1506,7 +1570,14 @@ class CallSession {
         params.degradationPreference = RTCDegradationPreference.MAINTAIN_RESOLUTION;
         await s.setParameters(params);
       }
-    } catch (_) {}
+    } catch (e, st) {
+      _telemetry.runtimeError(
+        stage: 'video_sender_parameters_failed',
+        error: e,
+        stack: st,
+        extra: const {'operation': 'maintain_resolution'},
+      );
+    }
   }
 
   static String _candTypeOf(String? cand) {
@@ -1559,13 +1630,31 @@ class CallSession {
     };
     pc.onConnectionState = (s) {
       if (_ended || !_connected) return;
+      _telemetry.mediaFlowState(
+        state: 'transport_${s.toString().split('.').last.toLowerCase()}',
+        transportState: s.toString(),
+      );
       if (s == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
+        _telemetry.runtimeError(
+          stage: 'pc_closed',
+          error: StateError('Peer connection closed during an active call'),
+          extra: {'transport_state': s.toString()},
+        );
         _endWith('ended');
       } else if (s == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
                  s == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
         final isFailed = s == RTCPeerConnectionState.RTCPeerConnectionStateFailed;
         final canRestart = _weOffered && _iceRestarts < 3 && _remoteId != null;
         if (isFailed && !canRestart) {
+          _telemetry.runtimeError(
+            stage: 'pc_failed_no_restart',
+            error: StateError('Peer connection failed and no ICE restart was available'),
+            extra: {
+              'transport_state': s.toString(),
+              'ice_restarts': _iceRestarts,
+              'remote_present': _remoteId != null,
+            },
+          );
           _endWith('ended', reason: 'rtc-failed');
           return;
         }
@@ -1575,6 +1664,14 @@ class CallSession {
           final st = _pc?.connectionState;
           if (!_ended && _connected &&
               st != RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
+            _telemetry.runtimeError(
+              stage: 'pc_reconnect_timeout',
+              error: StateError('Peer connection did not recover within 10 seconds'),
+              extra: {
+                'transport_state': st.toString(),
+                'restart_attempted': true,
+              },
+            );
             _endWith('ended', reason: isFailed ? 'rtc-failed' : 'rtc-disconnected');
           }
         });
@@ -1597,7 +1694,14 @@ class CallSession {
       final offer = _tuned(await pc.createOffer({'iceRestart': true}));
       await pc.setLocalDescription(offer);
       _send({'type': 'offer', 'to': _remoteId, 'sdp': offer.toMap()});
-    } catch (_) {}
+    } catch (e, st) {
+      _telemetry.runtimeError(
+        stage: 'ice_restart_failed',
+        error: e,
+        stack: st,
+        extra: {'reason': why, 'restart_number': _iceRestarts},
+      );
+    }
   }
 
   Future<void> _flushCandidates() async {
@@ -1849,8 +1953,21 @@ class CallSession {
   }
 
   void toggleSpeaker() {
+    final prior = _speaker;
     _speaker = !_speaker;
+    final requestId = const Uuid().v4();
+    _lastAudioRouteRequestId = requestId;
     speakerOn.value = _speaker;
+    Analytics.capture('call_audio_route_requested', {
+      'call_id': config.room,
+      'request_id': requestId,
+      'source': 'user_toggle',
+      'requested_route': _speaker ? 'speaker' : 'earpiece',
+      'prior_requested_route': prior ? 'speaker' : 'earpiece',
+      'phase': _phase,
+      'connected': _connected,
+      'receptionist_active': _receptionistActive,
+    });
     // [CALL-SPEAKER-RAMP 2026-07-12] Drive BOTH the WebRTC helper AND the native
     // engine. Helper.setSpeakerphoneOn alone flips isSpeakerphoneOn "cold", so
     // Android ramps the volume up from quiet on the communication-device switch
@@ -2976,6 +3093,7 @@ class CallSession {
       NativeVoiceAudio.instance.onAudioFocusLost = null;
       NativeVoiceAudio.instance.onAudioFocusRegained = null;
     }
+    NativeVoiceAudio.instance.onEvent = null;
     _ended = true;
     if (gLiveCallScreens > 0) gLiveCallScreens--;
     // [AVATOK-DIAL-GUARD-1] Clear the staleness anchor the instant the counter

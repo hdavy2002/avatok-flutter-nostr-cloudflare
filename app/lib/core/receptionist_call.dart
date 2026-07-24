@@ -188,8 +188,32 @@ class ReceptionistCall {
     try {
       onStatus?.call('connecting');
       _ws = WebSocketChannel.connect(Uri.parse(ReceptionistApi.wsUrl(rtcUrl)));
-      _wsSub = _ws!.stream.listen(_onWs,
-          onDone: () => _finish('model_closed'), onError: (_) => _finish('error'));
+      _wsSub = _ws!.stream.listen(
+        _onWs,
+        onDone: () {
+          Analytics.capture('ava_recept_transport_closed', {
+            'stage': 'websocket_done',
+            'had_first_audio': _firstAudio,
+            'audio_chunks': _avaChunks,
+            'ws_connected': _wsConnected,
+            if (callId case final id?) 'call_id': id,
+          });
+          _finish('model_closed');
+        },
+        onError: (Object e, StackTrace st) {
+          final context = <String, Object>{
+            'stage': 'receptionist_websocket_error',
+            'engine': _useNative ? 'native' : 'fallback',
+            'activation_mode': activationMode,
+            if (callId case final id?) 'call_id': id,
+          };
+          Analytics.capture('ava_recept_transport_error', context);
+          Analytics.error(domain: 'receptionist', code: 'websocket_error',
+              message: e.toString(), action: 'finish_session', extra: context);
+          Analytics.captureException(e, st, screen: 'call', handled: true, extra: context);
+          _finish('error');
+        },
+      );
 
       final micOk = await _startAudio();
       if (!micOk) {
@@ -220,8 +244,17 @@ class ReceptionistCall {
       });
       AvaLog.I.log('receptionist', 'session started ${_sessionId ?? "?"} engine=${_useNative ? "native" : "fallback"}');
       return true;
-    } catch (e) {
+    } catch (e, st) {
       AvaLog.I.log('receptionist', 'start failed: $e');
+      final context = <String, Object>{
+        'stage': 'receptionist_start_failed',
+        'activation_mode': activationMode,
+        if (callId case final id?) 'call_id': id,
+      };
+      Analytics.capture('ava_recept_transport_error', context);
+      Analytics.error(domain: 'receptionist', code: 'start_failed',
+          message: e.toString(), action: 'finish_session', extra: context);
+      Analytics.captureException(e, st, screen: 'call', handled: true, extra: context);
       _finish('error');
       return false;
     }
@@ -354,9 +387,16 @@ class ReceptionistCall {
     final seg = _playQueue.removeFirst();
     try {
       await _player.play(BytesSource(seg, mimeType: 'audio/wav'));
-    } catch (_) {
+    } catch (e, st) {
       _playErrors++;
       _playing = false;
+      final context = <String, Object>{
+        'stage': 'receptionist_fallback_playback_failed',
+        'segments': _segments,
+        if (callId case final id?) 'call_id': id,
+      };
+      Analytics.capture('ava_recept_playback_error', context);
+      Analytics.captureException(e, st, screen: 'call', handled: true, extra: context);
     }
   }
 

@@ -130,6 +130,20 @@ class RingbackPlayer {
         'ok': false,
         'error': e.toString(),
       });
+      Analytics.error(
+        domain: 'call_audio',
+        code: 'audio_context_set_failed',
+        message: e.toString(),
+        action: 'ringback_context',
+        extra: {'audio_mode': mode.name, 'speaker_on': speakerOn},
+      );
+      Analytics.captureException(
+        e,
+        StackTrace.current,
+        screen: 'call',
+        handled: true,
+        extra: {'stage': 'ringback_audio_context_set', 'audio_mode': mode.name},
+      );
     }
   }
 
@@ -173,6 +187,19 @@ class RingbackPlayer {
       await _p.play(src);
     } catch (e) {
       AvaLog.I.log('call', 'ringback play failed ($value): $e — using default');
+      Analytics.error(
+        domain: 'call_audio',
+        code: 'ringback_play_failed',
+        message: e.toString(),
+        action: 'fallback_default_ringback',
+      );
+      Analytics.captureException(
+        e,
+        StackTrace.current,
+        screen: 'call',
+        handled: true,
+        extra: const {'stage': 'ringback_play'},
+      );
       await _playDefaultRingback(speakerOn: speakerOn);
     }
   }
@@ -212,6 +239,13 @@ class RingbackPlayer {
         'error': e.toString(),
         'asset': kSearchingToneAsset,
       });
+      Analytics.captureException(
+        e,
+        StackTrace.current,
+        screen: 'call',
+        handled: true,
+        extra: const {'stage': 'searching_tone_play'},
+      );
     }
   }
 
@@ -229,6 +263,13 @@ class RingbackPlayer {
       await _p.play(AssetSource(_assetRel(kBusyToneAsset)));
     } catch (e) {
       AvaLog.I.log('call', 'busy tone play failed: $e');
+      Analytics.captureException(
+        e,
+        StackTrace.current,
+        screen: 'call',
+        handled: true,
+        extra: const {'stage': 'busy_tone_play'},
+      );
     }
   }
 

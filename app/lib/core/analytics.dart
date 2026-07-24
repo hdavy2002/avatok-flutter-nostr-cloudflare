@@ -587,8 +587,17 @@ class Analytics {
     });
   }
 
-  /// Uncaught crash → $exception (wire FlutterError.onError to this in main).
-  static Future<void> captureException(Object error, StackTrace? stack, {String? screen}) async {
+  /// Report an exception to PostHog Error Tracking. [handled] is for a failure
+  /// the app recovered from (for example, a failed ICE restart); it remains a
+  /// grouped Issue without being misclassified as an application crash.
+  /// [extra] must be structured, non-secret diagnostic context only.
+  static Future<void> captureException(
+    Object error,
+    StackTrace? stack, {
+    String? screen,
+    bool handled = false,
+    Map<String, Object>? extra,
+  }) async {
     if (!_ready) return;
     try {
       final type = error.runtimeType.toString();
@@ -603,7 +612,7 @@ class Analytics {
           {
             'type': type,
             'value': value,
-            'mechanism': {'handled': false, 'synthetic': false},
+            'mechanism': {'handled': handled, 'synthetic': false},
             if (stack != null)
               'stacktrace': {
                 'type': 'raw',
@@ -617,7 +626,9 @@ class Analytics {
         '\$exception_type': type,
         if (stack != null) 'stack': stack.toString(),
         if (screen != null) 'screen': screen,
-        'is_fatal': true,
+        r'$exception_level': handled ? 'error' : 'fatal',
+        'is_fatal': !handled,
+        ...?extra,
       }));
     } catch (_) {}
   }

@@ -18,7 +18,7 @@
 // MUST be verified against a live session on first deploy (cannot be unit-tested
 // here). All paths are guarded; failures finalize gracefully with a text message.
 import type { Env } from "../types";
-import { trackUserContact, metric } from "../hooks";
+import { trackUserContact, trackException, metric } from "../hooks";
 import { dmConvId } from "../authz";
 import { contactFor } from "../lib/identity";
 import { chargeAmount } from "../feature_pricing"; // [RECEPT-BILLING-3] exact per-second settle (was per-minute chargeFeature)
@@ -305,6 +305,7 @@ export class ReceptionRoom {
     // captures the connect failure WITH via_gateway — this is the signature of
     // the AI-Gateway-401 case (gateway authenticated but AI_GATEWAY_TOKEN unset).
     this.connectGemini().catch((e) => {
+      this.exception(e, "gemini_connect_failed", { via_gateway: false });
       this.ev("ava_recept_gemini_connect_failed", {
         via_gateway: false,
         error_scrubbed: scrubSecrets(String(e)).slice(0, 200),
@@ -337,6 +338,30 @@ export class ReceptionRoom {
     trackUserContact(this.env, i.owner_uid, this.ownerEmail, this.ownerPhone, event, "receptionist",
       { ...props, call_id: i.call_id, activation_mode: i.activation_mode ?? null,
         model: i.model, voice: i.voice_name, voice_gender: voiceGender(i.voice_name) }, i.sid);
+  }
+
+  /** Send a grouped, scrubbed PostHog Error Tracking Issue for a receptionist
+   * failure while retaining the normal call/session correlation fields. This
+   * is deliberately best-effort and never sits on the media path. */
+  private exception(err: unknown, stage: string, extra: Record<string, unknown> = {}): void {
+    const i = this.init;
+    if (!i) return;
+    void trackException(this.env, err, {
+      uid: i.owner_uid,
+      route: "ReceptionRoom",
+      method: "websocket",
+      trace_id: i.sid,
+      handled: true,
+      app_name: "receptionist",
+      extra: {
+        stage,
+        call_id: i.call_id,
+        sid: i.sid,
+        ...(this.ownerEmail ? { email: this.ownerEmail } : {}),
+        ...(this.ownerPhone ? { phone: this.ownerPhone } : {}),
+        ...extra,
+      },
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -925,6 +950,7 @@ export class ReceptionRoom {
         });
       }
     } catch (e) {
+      this.exception(e, "recording_store_failed", { storage: "r2" });
       this.ev("ava_recept_delivery_failed", { stage: "r2", error_scrubbed: scrubSecrets(String(e)).slice(0, 200) });
     }
 
@@ -1256,6 +1282,7 @@ export class ReceptionRoom {
       });
       this.ev("ava_recept_push_sent", { ok: true });
     } catch (e) {
+      this.exception(e, "owner_push_failed", { delivery: "push" });
       this.ev("ava_recept_delivery_failed", { stage: "push", error_scrubbed: scrubSecrets(String(e)).slice(0, 200) });
     }
     // v2 telemetry: did the message reach the caller's real DM thread?

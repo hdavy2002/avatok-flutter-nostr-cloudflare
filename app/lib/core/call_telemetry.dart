@@ -145,6 +145,8 @@ class CallTelemetry {
   int _frameW = 0, _frameH = 0;
   int _freezeCount = 0; // cumulative video freezes
   double _audioGlitchPct = 0; // cumulative concealment %
+  String _lastMediaFlowState = 'unknown';
+  final Set<String> _reportedRuntimeErrorStages = <String>{};
   // bitrate deltas
   int _lastRecvBytes = 0, _lastSendBytes = 0, _lastBytesAt = 0;
 
@@ -466,6 +468,8 @@ class CallTelemetry {
       if (_mos.isNotEmpty) 'mos': _round2(_mos.last),
       'ice_type': _iceType,
       'relay_used': _iceType == 'relay',
+      'media_flow_state': _lastMediaFlowState,
+      'rtc_error_count': _reportedRuntimeErrorStages.length,
       // live bandwidth headroom (congestion-control estimate)
       if (_availOutKbps.isNotEmpty) 'avail_out_kbps': _availOutKbps.last.round(),
       if (_availInKbps.isNotEmpty) 'avail_in_kbps': _availInKbps.last.round(),
@@ -480,6 +484,54 @@ class CallTelemetry {
 
   void onIceRestart() => iceRestarts++;
   void onNetChange() => netChanges++;
+
+  /// Low-volume media breadcrumb: emit only on a state transition. RTP receipt
+  /// is reported as receipt, never mislabeled as proof the user heard audio.
+  void mediaFlowState({
+    required String state,
+    int? inboundAudioBytesDelta,
+    String? transportState,
+  }) {
+    if (_lastMediaFlowState == state) return;
+    final prior = _lastMediaFlowState;
+    _lastMediaFlowState = state;
+    Analytics.capture('call_media_flow_state', {
+      'call_id': callId,
+      'from_state': prior,
+      'to_state': state,
+      if (inboundAudioBytesDelta != null) 'inbound_audio_bytes_delta': inboundAudioBytesDelta,
+      if (transportState != null) 'transport_state': transportState,
+      'ice_type': _iceType,
+      'relay_used': _iceType == 'relay',
+      'video': video,
+      'outgoing': outgoing,
+    });
+  }
+
+  /// One grouped handled PostHog Error Tracking issue per stage per call, plus
+  /// a query-friendly rtc_error event. No caller content or connection secrets.
+  void runtimeError({
+    required String stage,
+    required Object error,
+    StackTrace? stack,
+    Map<String, Object>? extra,
+  }) {
+    if (!_reportedRuntimeErrorStages.add(stage)) return;
+    final context = <String, Object>{
+      'call_id': callId,
+      'stage': stage,
+      'video': video,
+      'outgoing': outgoing,
+      'connected': _tConnected != null,
+      'ice_type': _iceType,
+      'relay_used': _iceType == 'relay',
+      ...?extra,
+    };
+    Analytics.capture('rtc_error', context);
+    Analytics.error(domain: 'call_rtc', code: stage, message: error.toString(),
+        action: 'recoverable', extra: context);
+    Analytics.captureException(error, stack, screen: 'call', handled: true, extra: context);
+  }
 
   /// Call exactly once from the call's end path with the teardown reason
   /// (ended | declined | busy | no-answer | failed | error | local-hangup |
@@ -527,6 +579,8 @@ class CallTelemetry {
       if (video) 'freeze_count': _freezeCount,
       // audio health
       'audio_glitch_pct': _round2(_audioGlitchPct),
+      'media_flow_state': _lastMediaFlowState,
+      'rtc_error_count': _reportedRuntimeErrorStages.length,
       // perceived quality
       if (avgMos != null) 'mos_avg': _round2(avgMos),
       if (_mos.isNotEmpty) 'mos_min': _round2(_mos.reduce(math.min)),
