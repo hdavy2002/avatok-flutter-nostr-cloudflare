@@ -75,10 +75,25 @@ class CloudflareConferenceController extends ChangeNotifier {
     this.maxVideoSubs = kDefaultMaxVideoSubs,
   });
 
+  // Local placeholder id used only before the server's `welcome` frame
+  // arrives (op-queue bookkeeping pre-join). Once the WS handshake completes,
+  // `_selfUid` (the ticket-authenticated uid the server actually assigns,
+  // `d['you']` on the welcome frame) is the one true self identity — every
+  // roster/pull/policy/telemetry self-filter MUST use `_isSelf`, never
+  // compare against `_myId` directly, or the controller pulls its own
+  // audio/video back (echo + duplicate self tile).
   final String _myId = const Uuid().v4().substring(0, 12);
-  String get myId => _myId;
+  String? _selfUid;
+  String get myId => _selfUid ?? _myId;
+  bool _isSelf(String uid) => uid == (_selfUid ?? _myId);
 
   RTCPeerConnection? _pc;
+  // Held during a ticket-expiry rejoin: the PC being retired in favor of a
+  // freshly-created one. Field (not a local var) so leave()/dispose() and a
+  // bounded timer can always find and close it, even if the new PC never
+  // sees remote media or `_publish` throws mid-rejoin (BLOCKER 2 leak fix).
+  RTCPeerConnection? _pendingRetirePc;
+  Timer? _retireTimer;
   MediaStream? _localStream;
   WebSocketChannel? _ws;
   CfJoinResult? _join;
@@ -181,7 +196,12 @@ class CloudflareConferenceController extends ChangeNotifier {
     pc.onConnectionState = (s) {
       if (generationAtStart != _generation || _ended) return; // stale-generation guard
       if (s == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
-        unawaited(_attemptReconnect(reason: 'socket_error'));
+        // ICE/ DTLS actually died here — reopening just the WS with a fresh
+        // ticket (the "ticket still fresh" fast path) would report
+        // Connected while media stays dead. A PC Failed must always go
+        // through the full rejoin/PC-recreate path, regardless of ticket
+        // age (FOLLOW-UP 3).
+        unawaited(_attemptReconnect(reason: 'pc_failed', forceRecreate: true));
       }
     };
 
@@ -313,13 +333,23 @@ class CloudflareConferenceController extends ChangeNotifier {
     try { d = jsonDecode(raw) as Map<String, dynamic>; } catch (_) { return; }
     switch (d['t']) {
       case 'welcome':
+        // The ticket uid the server actually assigned us — the ONLY correct
+        // self identity. `_myId` is a random local placeholder and is never
+        // equal to this; relying on it left self unfiltered from the roster
+        // (self audio echo, duplicate self video tile, self as dominant
+        // speaker, participantJoined firing for self).
+        final you = d['you']?.toString();
+        if (you != null && you.isNotEmpty) _selfUid = you;
         _applyRoster((d['roster'] as List?) ?? const []);
         break;
       case 'roster':
         _applyRoster((d['roster'] as List?) ?? const []);
         break;
       case 'speakers':
-        final uids = ((d['uids'] as List?) ?? const []).map((e) => e.toString()).toList();
+        final uids = ((d['uids'] as List?) ?? const [])
+            .map((e) => e.toString())
+            .where((u) => !_isSelf(u))
+            .toList();
         _dominantSpeakerUid = uids.isNotEmpty ? uids.first : null;
         await _applyVideoSubscriptionPolicy();
         _safeNotify();
@@ -349,6 +379,11 @@ class CloudflareConferenceController extends ChangeNotifier {
     for (final r in raw) {
       if (r is Map && r['uid'] != null) {
         final uid = r['uid'].toString();
+        // Never insert self into the local roster — self is filtered here
+        // once, at the source, so every consumer (screen participant count,
+        // pull sites, video policy, telemetry) is automatically correct
+        // without needing its own self-guard.
+        if (_isSelf(uid)) continue;
         _roster[uid] = CfParticipant(
           uid: uid,
           session: r['session']?.toString() ?? '',
@@ -360,7 +395,7 @@ class CloudflareConferenceController extends ChangeNotifier {
     }
     final nowUids = _roster.keys.toSet();
     for (final uid in nowUids.difference(prevUids)) {
-      if (uid == _myId) continue;
+      if (_isSelf(uid)) continue; // defense-in-depth; _roster never holds self
       _tel?.participantJoined(subjectUid: uid, rosterSizeAfter: _roster.length);
     }
     unawaited(_pullAudioForRoster());
@@ -372,7 +407,7 @@ class CloudflareConferenceController extends ChangeNotifier {
   // to the ticket-authenticated pull contract).
   Future<void> _pullAudioForRoster() async {
     for (final p in _roster.values) {
-      if (p.uid == _myId || p.audioTrack == null || p.audioTrack!.isEmpty) continue;
+      if (_isSelf(p.uid) || p.audioTrack == null || p.audioTrack!.isEmpty) continue;
       if (_pulledAudioMid.containsKey(p.uid)) continue;
       await _pullTrack(p, kind: 'audio', trackName: p.audioTrack!, qualityPolicy: 'high', reason: 'active_speaker_audio');
     }
@@ -387,6 +422,10 @@ class CloudflareConferenceController extends ChangeNotifier {
   //   aware; caller sets this via the constructor). Never pulls every 25 videos
   //   at full quality — the Worker/DO also hard-cap at 12 regardless.
   void setVisibleTiles(Set<String> uids) {
+    // The screen re-registers the visible set on every frame
+    // (`addPostFrameCallback`), so without this guard an unchanged set still
+    // re-runs the full pull/stop policy pass every frame.
+    if (setEquals(_visibleUids, uids)) return;
     _visibleUids = uids;
     unawaited(_applyVideoSubscriptionPolicy());
   }
@@ -397,13 +436,13 @@ class CloudflareConferenceController extends ChangeNotifier {
     final wanted = <String>{
       if (dominant != null) dominant,
       ..._visibleUids,
-    }..remove(_myId);
+    }..removeWhere(_isSelf);
 
     // Cap: dominant speaker always wins a slot; fill remaining slots with
     // visible tiles in roster order.
     final ordered = <String>[
       if (dominant != null && wanted.contains(dominant)) dominant,
-      ..._visibleUids.where((u) => u != dominant && u != _myId),
+      ..._visibleUids.where((u) => u != dominant && !_isSelf(u)),
     ];
     final capped = ordered.take(maxVideoSubs).toSet();
 
@@ -506,24 +545,38 @@ class CloudflareConferenceController extends ChangeNotifier {
 
   void _onRemoteVideoTrack(RTCTrackEvent e) {
     if (e.streams.isEmpty) return;
-    // Match the incoming track to a roster uid via the remote stream id, which
-    // Cloudflare Realtime sets to the publisher's sessionId (same correlation
-    // `consult_room_screen.dart._onSfuTrack` relies on) — far more reliable
-    // than mid, since CF Realtime does not echo trackName on onTrack.
-    final streamId = e.streams.first.id;
+    // FOLLOW-UP 4: correlate by transceiver mid against the mid CF Realtime's
+    // /pull response already gave us in `_pulledVideoMid[uid]`. The previous
+    // `p.session == e.streams.first.id` check assumed CF Realtime echoes the
+    // publisher's sessionId as the remote stream's msid — it does not; msid
+    // is unrelated to sessionId for this transport, so that match essentially
+    // never hit and silently fell through to the "first pending pull without
+    // a renderer" fallback for every track. Mid is the value CF Realtime
+    // actually correlates pulls by, so match on it first and keep the old
+    // best-effort fallback only as a last resort for a mid CF didn't echo.
+    final trackMid = e.transceiver?.mid;
     String? uid;
-    for (final p in _roster.values) {
-      if (p.session == streamId && _pulledVideoMid.containsKey(p.uid)) { uid = p.uid; break; }
+    if (trackMid != null) {
+      for (final entry in _pulledVideoMid.entries) {
+        if (entry.value == trackMid) { uid = entry.key; break; }
+      }
     }
-    // Fall back to the first pending video-pull without a renderer yet.
+    // Last-resort fallback: first pending video-pull without a renderer yet.
     uid ??= _pulledVideoMid.keys.firstWhere((u) => !_remoteVideoRenderers.containsKey(u), orElse: () => '');
     if (uid.isEmpty) return;
+    final resolvedUid = uid;
+    final generationAtBind = _generation;
+    // Dispose a pre-existing renderer for this uid before overwriting it
+    // (FOLLOW-UP 6) — otherwise a re-pull (e.g. quality change) leaks the
+    // old renderer's platform texture.
+    final stale = _remoteVideoRenderers.remove(resolvedUid);
+    if (stale != null) unawaited(stale.dispose());
     final renderer = RTCVideoRenderer();
     _tel?.rendererState(state: 'binding');
     renderer.initialize().then((_) {
-      if (_ended) { renderer.dispose(); return; }
+      if (_ended || generationAtBind != _generation) { renderer.dispose(); return; }
       renderer.srcObject = e.streams.first;
-      _remoteVideoRenderers[uid!] = renderer;
+      _remoteVideoRenderers[resolvedUid] = renderer;
       _tel?.rendererState(state: 'bound');
       _safeNotify();
     });
@@ -582,7 +635,29 @@ class CloudflareConferenceController extends ChangeNotifier {
 
   bool _reconnecting = false;
 
-  Future<void> _attemptReconnect({required String reason}) async {
+  /// Bounded window (BLOCKER 2) for a pending-retire PC: if the new path
+  /// never produces remote-media evidence (or `_publish` throws before it
+  /// can), the old PC is force-closed anyway instead of leaking forever.
+  static const Duration _pendingRetireTimeout = Duration(seconds: 5);
+
+  void _armPendingRetireTimer() {
+    _retireTimer?.cancel();
+    _retireTimer = Timer(_pendingRetireTimeout, () {
+      final pc = _pendingRetirePc;
+      _pendingRetirePc = null;
+      if (pc != null) unawaited(pc.close());
+    });
+  }
+
+  void _retirePendingPcNow() {
+    _retireTimer?.cancel();
+    _retireTimer = null;
+    final pc = _pendingRetirePc;
+    _pendingRetirePc = null;
+    if (pc != null) unawaited(pc.close());
+  }
+
+  Future<void> _attemptReconnect({required String reason, bool forceRecreate = false}) async {
     if (_ended || _reconnecting) return;
     _reconnecting = true;
     state = CfConnState.reconnecting;
@@ -590,9 +665,13 @@ class CloudflareConferenceController extends ChangeNotifier {
     _safeNotify();
     final attemptId = const Uuid().v4();
     final ticketAge = DateTime.now().millisecondsSinceEpoch - _ticketIssuedAtMs;
-    // Ticket TTL is 60s; if still fresh, just reopen the SAME socket/ticket —
-    // media (PC/tracks) is untouched (media_kept_alive:true, pc_recreated:false).
-    final ticketFresh = ticketAge < 55000 && _join != null;
+    // Ticket TTL is 60s; if still fresh AND the PC itself is healthy, just
+    // reopen the SAME socket/ticket — media (PC/tracks) is untouched
+    // (media_kept_alive:true, pc_recreated:false). A PC-Failed reconnect
+    // (forceRecreate:true) always takes the full rejoin/recreate path below,
+    // even with a fresh ticket, because "fresh ticket" says nothing about
+    // whether ICE/DTLS on the existing PC is still alive.
+    final ticketFresh = !forceRecreate && ticketAge < 55000 && _join != null;
     _tel?.reconnectStarted(attemptId: attemptId, reason: reason, mediaKeptAlive: true);
     final t0 = DateTime.now().millisecondsSinceEpoch;
     try {
@@ -602,26 +681,51 @@ class CloudflareConferenceController extends ChangeNotifier {
             attemptId: attemptId, mediaKeptAlive: true,
             elapsedMs: DateTime.now().millisecondsSinceEpoch - t0, pcRecreated: false);
       } else {
-        // Ticket expired: mint a fresh one via /join, reusing the existing PC —
-        // we only recreate the PC once the NEW path has produced remote media
-        // evidence (a track event), never eagerly.
+        // Ticket expired (or PC Failed): mint a fresh ticket via /join,
+        // reusing the existing PC — we only recreate the PC once the NEW
+        // path has produced remote media evidence (a track event), never
+        // eagerly. The old PC is held in `_pendingRetirePc`, a field (not a
+        // local var), so it can never be silently forgotten: a bounded timer
+        // force-closes it if remote media never shows up, the catch block
+        // below closes it if `_publish` throws, and leave()/dispose() close
+        // it as a last resort.
+        _retirePendingPcNow(); // safety: retire any earlier still-pending PC first
         final rejoin = await CloudflareConferenceApi.join(gid, video: wantVideo);
         if (_ended) return;
-        final oldPc = _pc;
+        _pendingRetirePc = _pc;
+        _armPendingRetireTimer();
         _join = rejoin;
         _ticketIssuedAtMs = DateTime.now().millisecondsSinceEpoch;
         _generation = rejoin.generation;
-        _tel = CloudflareConferenceTelemetry(
-          groupId: gid, callId: rejoin.callId, callTraceId: rejoin.callTraceId,
-          generation: rejoin.generation, mediaKindRequested: rejoin.mediaVideo ? 'audio_video' : 'audio',
-        );
-        bool sawRemoteMedia = false;
+        // Mutate the existing telemetry instance's identity fields rather
+        // than reallocating it (FOLLOW-UP 5) — a fresh instance would reset
+        // the §0.5 error-dedup map, so a genuinely-repeating failure across a
+        // reconnect would re-emit as a brand-new Issue instead of bumping
+        // repeat_count on the same one.
+        _tel?.callId = rejoin.callId;
+        _tel?.callTraceId = rejoin.callTraceId;
+        _tel?.generation = rejoin.generation;
         final newPc = await createPeerConnection({'iceServers': rejoin.iceServers, 'sdpSemantics': 'unified-plan'});
+        final generationAtRecreate = _generation;
+        // Wire the same Failed-state handler onto the recreated PC — without
+        // this, a second ICE/DTLS failure after a rejoin would go completely
+        // undetected (the old PC's handler is gone once it's closed/retired).
+        newPc.onConnectionState = (s) {
+          if (generationAtRecreate != _generation || _ended) return;
+          if (s == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
+            unawaited(_attemptReconnect(reason: 'pc_failed', forceRecreate: true));
+          }
+        };
         newPc.onTrack = (e) {
-          if (!sawRemoteMedia) {
-            sawRemoteMedia = true;
+          if (generationAtRecreate != _generation || _ended) return;
+          if (_pendingRetirePc != null) {
             // Evidence of remote media on the new path: safe to retire the old PC.
-            unawaited(oldPc?.close());
+            _retirePendingPcNow();
+          }
+          if (e.track.kind == 'video') {
+            _onRemoteVideoTrack(e);
+          } else if (e.track.kind == 'audio') {
+            AvaLog.I.log('cfconf', 'remote audio track bound (post-rejoin)');
           }
         };
         for (final t in _localStream?.getAudioTracks() ?? const <MediaStreamTrack>[]) {
@@ -646,6 +750,9 @@ class CloudflareConferenceController extends ChangeNotifier {
       state = CfConnState.connected;
       statusText = 'Connected';
     } catch (e, st) {
+      // `_publish` (or an earlier await) threw mid-rejoin: the old PC must
+      // not leak just because the new path failed to complete.
+      _retirePendingPcNow();
       _tel?.reconnectFailed(
           attemptId: attemptId, elapsedMs: DateTime.now().millisecondsSinceEpoch - t0,
           terminalReason: 'socket_reconnect_timeout');
@@ -792,6 +899,8 @@ class CloudflareConferenceController extends ChangeNotifier {
     _levelTimer?.cancel();
     _billingTimer?.cancel();
     _healthTimer?.cancel();
+    _retireTimer?.cancel();
+    _retireTimer = null;
 
     try {
       final senders = await _pc?.getSenders() ?? const [];
@@ -803,6 +912,11 @@ class CloudflareConferenceController extends ChangeNotifier {
       await CloudflareConferenceApi.close(gid, _join!.sessionId, const []);
     }
     try { await _pc?.close(); } catch (_) {}
+    // Last-resort close for a still-pending retired PC (BLOCKER 2): normally
+    // already closed by the bounded timer or by remote-media evidence, but
+    // guard the case where leave() races the rejoin flow.
+    try { await _pendingRetirePc?.close(); } catch (_) {}
+    _pendingRetirePc = null;
 
     for (final r in _remoteVideoRenderers.values) { try { r.dispose(); } catch (_) {} }
     _remoteVideoRenderers.clear();
