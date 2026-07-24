@@ -79,9 +79,6 @@ const String kLiveEndUrl = 'https://$kCallsHost/live/end';
 /// 1:1 calls connect off-Wi-Fi / on cellular.
 const String kIceUrl = 'https://$kSignalingHost/api/ice';
 
-/// AvaTalk group conferencing (Phase 10 — LiveKit, ≤25 participants).
-/// POST $kConferenceBase/<gid>/start|join|end · GET $kConferenceBase/<gid>/status
-const String kConferenceBase = 'https://$kSignalingHost/api/conference';
 
 /// AvaTok public directory (NIP-05-style) — find people by @handle / name / uid.
 const String kProfileUrl = 'https://$kSignalingHost/api/profile'; // POST upsert (NIP-98)

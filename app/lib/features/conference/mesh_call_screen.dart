@@ -5,8 +5,9 @@
 // CallScreen uses — generalized here to N peers.
 //
 // Mesh role rule (avoids glare): the NEWCOMER offers to each existing peer (the
-// `welcome.peers` list); existing peers only answer. Paid tiers use the LiveKit
-// SFU ConferenceScreen instead — this screen is the Free path.
+// `welcome.peers` list); existing peers only answer. Paid tiers use the
+// Cloudflare Realtime A/V CloudflareConferenceScreen instead — this screen is
+// the Free path.
 //
 // Zine: paper chrome; participant tiles get 2px ink borders (lime when speaking
 // is not tracked in mesh, so border stays ink); control bar = paper-2 band with

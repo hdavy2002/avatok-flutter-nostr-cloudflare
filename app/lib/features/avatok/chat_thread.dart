@@ -88,12 +88,6 @@ import '../../core/apps_service.dart';
 import '../conference/cloudflare_conference_api.dart';
 import '../conference/cloudflare_conference_controller.dart';
 import '../conference/cloudflare_conference_screen.dart';
-import '../conference/conference_api.dart';
-import '../conference/conference_screen.dart';
-import '../conference/mesh_api.dart';
-import '../conference/mesh_call_screen.dart';
-import '../conference/sfu_group_call_api.dart';
-import '../conference/sfu_group_call_screen.dart';
 import '../../core/analytics.dart';
 import '../../core/money_api.dart';
 import '../../core/live_location_service.dart';
@@ -826,8 +820,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         setState(() => _msgs.removeWhere((m) => m.expireAt != null && m.expireAt! < nowS));
       }
     });
-    // Group conferencing (Phase 10): poll for an ongoing LiveKit call so the
-    // "tap to join" banner appears/disappears while the thread is open.
+    // Group conferencing (Phase 10, Cloudflare Realtime A/V as of CF-CALL-007):
+    // poll for an ongoing call so the "tap to join" banner appears/disappears
+    // while the thread is open.
     if (widget.chat.gid != null || widget.chat.group) _startConfPolling();
   }
 
@@ -3078,14 +3073,15 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   }
 
   // ---- calls ----
-  // 1:1 = P2P (CallRoom DO) via _call(). Groups = LiveKit conference via
-  // _groupCall() — RULE CHANGE 2026-06-10 (Phase 10): group conferences are
-  // allowed, ≤25 participants. The CallRoom DO 2-peer cap stays untouched.
+  // 1:1 = P2P (CallRoom DO) via _call(). Groups = Cloudflare Realtime A/V
+  // conference via _groupCall() — RULE CHANGE 2026-06-10 (Phase 10): group
+  // conferences are allowed, ≤25 participants. The CallRoom DO 2-peer cap
+  // stays untouched.
   bool _dialing = false; // debounce: blocks a second call_started while dialing
 
   Future<void> _call(String kind) async {
     // This path is 1:1 P2P ONLY — group threads route through _groupCall()
-    // (LiveKit) and must NEVER reach the CallRoom DO.
+    // (Cloudflare Realtime A/V) and must NEVER reach the CallRoom DO.
     if (widget.chat.group || widget.chat.gid != null) return;
     // Debounce double-taps / re-entrancy: a single video-button tap was firing
     // TWO POST /api/call + two CallScreens ~1s apart, and the colliding second
@@ -3435,15 +3431,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     }
   }
 
-  // ---- group conferencing (Phase 10 — LiveKit, ≤25 participants) ----
+  // ---- group conferencing (Phase 10, ≤25 participants — Cloudflare Realtime
+  // A/V only as of CF-CALL-007) ----
   Timer? _confTimer;
   bool _confLive = false;
-  bool _confIsMesh = false; // the live call's transport: true=P2P mesh, false=SFU
   int _confCount = 0;
 
   int get _groupMemberCount => _group?.members.length ?? widget.chat.members;
-  bool get _confAllowed => RemoteConfig.conferenceEnabled && _groupMemberCount <= 25;
-  bool get _confOngoingHere => OngoingConference.active?.gid == widget.chat.gid && widget.chat.gid != null;
+  bool get _confAllowed =>
+      RemoteConfig.conferenceEnabled && RemoteConfig.cloudflareConferenceEnabled && _groupMemberCount <= 25;
+  bool get _confOngoingHere =>
+      CloudflareConferenceController.activeGid == widget.chat.gid && widget.chat.gid != null;
 
   void _startConfPolling() {
     if (!_isGroup && widget.chat.gid == null) return;
@@ -3451,25 +3449,24 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     _refreshConfStatus();
   }
 
+  /// [CF-CALL-007] Cloudflare Realtime status probe (drives the in-chat
+  /// "ongoing call" banner). LiveKit/SFU/mesh status probes are gone with
+  /// those transports.
   Future<void> _refreshConfStatus() async {
     final gid = widget.chat.gid;
-    if (gid == null || !RemoteConfig.conferenceEnabled) return;
-    if (_confOngoingHere) {
-      // We're connected to the SFU room — count comes straight from it, no HTTP.
-      final n = OngoingConference.active!.participantCount;
-      if (mounted) setState(() { _confLive = true; _confCount = n; _confIsMesh = false; });
-      return;
-    }
-    final s = await ConferenceApi.status(gid);
-    if (s.live) {
-      if (mounted) setState(() { _confLive = true; _confCount = s.count; _confIsMesh = false; });
-      return;
-    }
-    // No SFU call live → check for a free-tier P2P mesh call so its banner shows.
-    final m = await MeshApi.status(gid);
-    if (mounted) setState(() { _confLive = m.live; _confCount = m.count; _confIsMesh = m.live; });
+    if (gid == null || !RemoteConfig.conferenceEnabled || !RemoteConfig.cloudflareConferenceEnabled) return;
+    final s = await CloudflareConferenceApi.status(gid);
+    if (mounted) setState(() { _confLive = s.live; _confCount = s.count; });
   }
 
+  /// [CF-CALL-007] Group-call launch — Cloudflare Realtime A/V is the ONLY
+  /// transport now. LiveKit (ConferenceScreen), the legacy audio-only SFU path
+  /// (SfuGroupCallScreen, gated by the now-removed groupAudioSfuEnabled), and
+  /// the free-tier P2P mesh fallback (MeshCallScreen) are all removed —
+  /// Specs/CLOUDFLARE-ONLY-REALTIME-MEDIA-MIGRATION-PROPOSAL-2026-07-24.md.
+  /// When cloudflareConferenceEnabled is off, group calls are simply
+  /// unavailable (the same notice as the pre-existing conferenceEnabled-off
+  /// case) — this never falls back to any legacy transport.
   Future<void> _groupCall(bool video) async {
     final gid = widget.chat.gid;
     if (gid == null) {
@@ -3477,103 +3474,21 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
           content: Text('This group needs to sync once before it can hold calls')));
       return;
     }
-    if (!RemoteConfig.conferenceEnabled) {
+    if (!RemoteConfig.conferenceEnabled || !RemoteConfig.cloudflareConferenceEnabled) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('Group calls are temporarily unavailable')));
       return;
     }
-    // [CF-CALL-004] Provider selection: when cloudflareConferenceEnabled is on,
-    // BOTH audio and video group calls route through the ticket-authenticated
-    // Cloudflare Realtime A/V path (worker/src/routes/groupcall.ts's /join
-    // always returns provider:"cloudflare_realtime" — there is no other value
-    // it can return, so "the ticket says cloudflare_realtime" and "the flag is
-    // on" are the same check here). This takes priority over the legacy
-    // audio-only groupAudioSfuEnabled path below. LiveKit (ConferenceScreen)
-    // stays completely untouched as the fallback when the flag is off.
-    if (RemoteConfig.cloudflareConferenceEnabled) {
-      if (_groupMemberCount > 25) { _confLimitNotice(video); return; }
-      await _cfGroupCall(video);
-      return;
-    }
-    // FREE LAUNCH: when the CF Realtime SFU group-audio path is enabled, AUDIO
-    // group calls run on Cloudflare Realtime SFU (≤32, active-speaker). Video
-    // group calls and the dormant (flag-off) case fall through to LiveKit/mesh.
-    if (RemoteConfig.groupAudioSfuEnabled && !video) {
-      await _sfuGroupCall();
-      return;
-    }
     if (_groupMemberCount > 25) { _confLimitNotice(video); return; }
-
-    // Already in THIS group's call (minimized) → just re-open the room screen.
-    if (_confOngoingHere) {
-      await Navigator.push(context, MaterialPageRoute(
-          builder: (_) => ConferenceScreen.resume(OngoingConference.active!)));
-      _refreshConfStatus();
-      return;
-    }
-    // In a DIFFERENT call → one call at a time.
-    if (OngoingConference.active != null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('You are already in a call — leave it first')));
-      return;
-    }
-
-    // ONE live call per group. Joiners follow whatever transport is already
-    // running, so a free P2P-mesh call and a paid SFU call can never run in
-    // parallel for the same group — only the STARTER picks the transport.
-    await _refreshConfStatus();
-    if (_confLive && _confIsMesh) {
-      await _meshCall(video); // a mesh call is live → everyone joins the mesh
-      return;
-    }
-
-    try {
-      final live = _confLive; // an SFU call is live (mesh case handled above)
-      final ticket = live
-          ? await ConferenceApi.join(gid)
-          : await ConferenceApi.start(gid, video: video);
-      // In-thread system row so the group sees the call started (the worker
-      // webhook also posts rows for server-registered groups).
-      if (!live) {
-        _sendSpecial('gcall', {'state': 'start', 'kind': ticket.kind, 'gid': gid},
-            ticket.kind == 'audio' ? '🎙️ Audio call started — tap 📞 to join' : '📹 Video call started — tap 📞 to join');
-      }
-      if (!mounted) return;
-      await Navigator.push(context, MaterialPageRoute(
-          builder: (_) => ConferenceScreen.connect(
-              ticket: ticket, gid: gid, title: widget.chat.name, starter: !live)));
-      _refreshConfStatus();
-    } on MeshRequiredException catch (_) {
-      // Server refused this user an SFU seat (free / no Tokens).
-      if (_confLive) {
-        // An SFU call is already live → do NOT fork a separate mesh call.
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('This call needs Tokens to join — top up your wallet or wait for your daily free Tokens')));
-        }
-      } else {
-        // Nobody is in a call → start a FREE P2P mesh call (≤5).
-        await _meshCall(video);
-      }
-    } on ConferenceException catch (e) {
-      if (!mounted) return;
-      if (e.status == 403 && e.message.contains('25')) { _confLimitNotice(video); return; }
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
-    } catch (e) {
-      AvaLog.I.log('conference', 'group call failed: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not start the call')));
-      }
-    }
+    await _cfGroupCall(video);
   }
 
   /// [CF-CALL-004] Cloudflare Realtime A/V group call launch site (audio OR
-  /// video, ≤25 — parity with the LiveKit conference cap). Reached from
-  /// _groupCall when RemoteConfig.cloudflareConferenceEnabled is on.
+  /// video, ≤25). The ONLY group-call transport as of CF-CALL-007.
   Future<void> _cfGroupCall(bool video) async {
     final gid = widget.chat.gid;
     if (gid == null) return;
-    if (CloudflareConferenceController.activeGid != null || OngoingConference.active != null) {
+    if (CloudflareConferenceController.activeGid != null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('You are already in a call — leave it first')));
       return;
@@ -3587,65 +3502,6 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     if (!mounted) return;
     await Navigator.push(context, MaterialPageRoute(
         builder: (_) => CloudflareConferenceScreen(gid: gid, title: widget.chat.name, video: video, starter: starting)));
-    _refreshConfStatus();
-  }
-
-  /// FREE LAUNCH group AUDIO via Cloudflare Realtime SFU (≤32, active-speaker).
-  /// Reached from _groupCall when RemoteConfig.groupAudioSfuEnabled is ON and the
-  /// call is audio. Audio-only by design (no group video on this path).
-  Future<void> _sfuGroupCall() async {
-    final gid = widget.chat.gid;
-    if (gid == null) return;
-    if (_groupMemberCount > SfuGroupCallApi.maxParticipants) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
-          'This group has more than ${SfuGroupCallApi.maxParticipants} members, '
-          'so group audio is not available')));
-      return;
-    }
-    if (OngoingConference.active != null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('You are already in a call — leave it first')));
-      return;
-    }
-    final s = await SfuGroupCallApi.status(gid);
-    final starting = !s.live;
-    if (starting) {
-      _sendSpecial('gcall', {'state': 'start', 'kind': 'audio', 'gid': gid, 'sfu': true},
-          '🎙️ Audio call started — tap 📞 to join');
-    }
-    if (!mounted) return;
-    await Navigator.push(context, MaterialPageRoute(
-        builder: (_) => SfuGroupCallScreen(gid: gid, title: widget.chat.name, starter: starting)));
-    _refreshConfStatus();
-  }
-
-  /// FREE-tier group call: P2P mesh (≤5) via MeshCallScreen. Reached when the SFU
-  /// endpoint refuses a token with `mode:"mesh"` (the caller is on the Free plan).
-  Future<void> _meshCall(bool video) async {
-    final gid = widget.chat.gid;
-    if (gid == null) return;
-    // One call at a time (the SFU minimize-holder also blocks here).
-    if (OngoingConference.active != null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('You are already in a call — leave it first')));
-      return;
-    }
-    final s = await MeshApi.status(gid);
-    if (s.live && s.count >= MeshApi.maxMesh) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('This free call is full (max 5) — upgrade for larger calls')));
-      }
-      return;
-    }
-    final starting = !s.live;
-    if (starting) {
-      _sendSpecial('gcall', {'state': 'start', 'kind': video ? 'video' : 'audio', 'gid': gid, 'mesh': true},
-          video ? '📹 Video call started — tap 📞 to join' : '🎙️ Audio call started — tap 📞 to join');
-    }
-    if (!mounted) return;
-    await Navigator.push(context, MaterialPageRoute(
-        builder: (_) => MeshCallScreen(gid: gid, title: widget.chat.name, video: video, starter: starting)));
     _refreshConfStatus();
   }
 
@@ -7611,7 +7467,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                   _headerAction(PhosphorIcons.phone(PhosphorIconsStyle.bold), () => _call('voice'), color: AD.iconPhone),
                   _headerAction(PhosphorIcons.videoCamera(PhosphorIconsStyle.bold), () => _call('video'), color: AD.iconVideo),
                 ] else if (RemoteConfig.conferenceEnabled) ...[
-                  // Phase 10 RULE CHANGE: group conferences (LiveKit, ≤25).
+                  // Phase 10 RULE CHANGE: group conferences (Cloudflare Realtime A/V, ≤25).
                   // >25 members → greyed icons; tapping pops the limit notice.
                   _headerAction(PhosphorIcons.phone(PhosphorIconsStyle.bold),
                       () => _confAllowed ? _groupCall(false) : _confLimitNotice(false),

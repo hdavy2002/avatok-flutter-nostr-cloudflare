@@ -183,9 +183,10 @@ class CallTelemetry {
   final String callId;
   final bool video;
   final bool outgoing;
-  /// Media topology: 'p2p' (direct), 'relay' (via TURN), or 'sfu' (a conference
-  /// routed through the LiveKit SFU). 1:1 calls pass 'p2p'; it's promoted to
-  /// 'relay' automatically once we see the selected pair went through a relay.
+  /// Media topology: 'p2p' (direct), 'relay' (via TURN), or 'sfu' (a group
+  /// conference routed through the Cloudflare Realtime SFU). 1:1 calls pass
+  /// 'p2p'; it's promoted to 'relay' automatically once we see the selected
+  /// pair went through a relay.
   String transportMode;
   final int _t0 = DateTime.now().millisecondsSinceEpoch;
 

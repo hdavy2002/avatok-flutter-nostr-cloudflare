@@ -1,13 +1,12 @@
-// [CF-CALL-003] Cloudflare Realtime A/V group-call screen — the Cloudflare
-// counterpart to `conference_screen.dart` (LiveKit). Reuses the same Zine UI
-// conventions (paper chrome, bordered circle controls, lime speaking border,
-// grid/paginated-grid tiles) so switching provider is visually seamless; all
+// [CF-CALL-003/007] Cloudflare Realtime A/V group-call screen — the ONLY
+// group-call screen as of CF-CALL-007 (the prior `conference_screen.dart`
+// provider was removed). Zine UI conventions (paper chrome, bordered circle
+// controls, lime speaking border, grid/paginated-grid tiles); all
 // media/session logic lives in `CloudflareConferenceController`.
 //
-// Reached only when RemoteConfig.cloudflareConferenceEnabled is true AND the
-// server ticket's provider is 'cloudflare_realtime' (see the chat_thread.dart
-// launch-site branch). The LiveKit ConferenceScreen is untouched and remains
-// the path when the flag is off or the ticket says otherwise.
+// Reached only when RemoteConfig.cloudflareConferenceEnabled is true (see the
+// chat_thread.dart launch-site branch). When the flag is off, group calls are
+// simply unavailable — there is no other transport to fall back to.
 import 'dart:async';
 
 import 'package:flutter/material.dart';

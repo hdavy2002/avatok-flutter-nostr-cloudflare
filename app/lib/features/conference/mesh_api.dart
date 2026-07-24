@@ -3,7 +3,8 @@
 //   • WS  wss://<host>/mesh/<gid>?id=<peerId>   — join the mesh signaling room
 //   • GET https://<host>/api/mesh/<gid>          — presence probe (live? count)
 // Media is true P2P between devices (ICE via Cloudflare STUN/TURN); nothing is
-// routed through our servers. Paid tiers use the LiveKit SFU instead.
+// routed through our servers. Paid tiers use the Cloudflare Realtime A/V
+// group-call path instead (cloudflare_conference_api.dart).
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;

@@ -58,9 +58,9 @@ const int kDefaultMaxVideoSubs = 9;
 
 class CloudflareConferenceController extends ChangeNotifier {
   /// The gid of the one CF conference this device is currently in (a phone is
-  /// in <=1 call at a time, same rule as OngoingConference for LiveKit). No
-  /// minimize/resume support in this pass (deviation — see CF-CALL-003 report);
-  /// leaving the screen always leaves the call.
+  /// in <=1 call at a time — the only group-call transport as of CF-CALL-007).
+  /// No minimize/resume support in this pass (deviation — see CF-CALL-003
+  /// report); leaving the screen always leaves the call.
   static String? activeGid;
 
   final String gid;
