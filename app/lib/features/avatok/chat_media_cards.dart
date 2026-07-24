@@ -650,6 +650,7 @@ class ChatImageCard extends StatelessWidget {
     this.overlays = const [],
     this.maxHeight = 320,
     this.theme,
+    this.heroTag,
   });
   final Uint8List bytes;
   final VoidCallback? onTap;
@@ -660,6 +661,12 @@ class ChatImageCard extends StatelessWidget {
   /// bubble (no inner fill/ink of its own to theme); the pale bubble fill and
   /// border are painted by the caller's outer bubble container.
   final BubbleTheme? theme;
+
+  /// [CHAT-UI-VIEWER-1] When set, wraps the image in a `Hero` with this tag so
+  /// tapping through to the fullscreen viewer (which must use the SAME tag)
+  /// animates instead of hard-cutting. Null keeps the old plain `Image.memory`
+  /// (e.g. any caller that hasn't wired a matching fullscreen Hero yet).
+  final Object? heroTag;
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
@@ -669,7 +676,7 @@ class ChatImageCard extends StatelessWidget {
         child: Stack(children: [
           ConstrainedBox(
             constraints: BoxConstraints(maxHeight: maxHeight),
-            child: Image.memory(
+            child: _maybeHero(Image.memory(
               bytes,
               // Fill the bubble width; cover-crop only the vertical excess.
               width: double.infinity,
@@ -693,13 +700,16 @@ class ChatImageCard extends StatelessWidget {
                   ]),
                 );
               },
-            ),
+            )),
           ),
           ...overlays,
         ]),
       ),
     );
   }
+
+  Widget _maybeHero(Widget child) =>
+      heroTag == null ? child : Hero(tag: heroTag!, child: child);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

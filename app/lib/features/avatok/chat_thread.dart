@@ -210,6 +210,98 @@ class _SwipeToReplyState extends State<_SwipeToReply> {
   }
 }
 
+/// [CHAT-UI-VIEWER-1] Fullscreen, pinch-to-zoom image viewer pushed via a
+/// fade `PageRouteBuilder` from `_openImageBytes` (replacing the old bare
+/// `showDialog`). `heroTag` — when it matches the tag on the thumbnail that
+/// was tapped — lets the platform Navigator's HeroController fly the image
+/// from its list position into the fullscreen frame instead of a hard cut.
+/// Swipe-down-to-dismiss: a vertical drag translates + fades the image; past
+/// ~120px (or a fast downward fling) the viewer pops itself.
+class _FullscreenImageViewer extends StatefulWidget {
+  const _FullscreenImageViewer({
+    required this.bytes,
+    required this.heroTag,
+    required this.onCopy,
+    this.onDecodeError,
+  });
+  final Uint8List bytes;
+  final Object? heroTag;
+  final VoidCallback onCopy;
+  final VoidCallback? onDecodeError;
+
+  @override
+  State<_FullscreenImageViewer> createState() => _FullscreenImageViewerState();
+}
+
+class _FullscreenImageViewerState extends State<_FullscreenImageViewer> {
+  double _dy = 0;
+
+  static const double _dismissDrag = 120;
+
+  Widget _btn(IconData icon, String tooltip, VoidCallback onTap) => DecoratedBox(
+        decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+        child: IconButton(
+          tooltip: tooltip,
+          icon: Icon(icon, color: Colors.white),
+          onPressed: onTap,
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final h = MediaQuery.of(context).size.height;
+    final progress = (_dy.abs() / (h * 0.4)).clamp(0.0, 1.0);
+    final image = Image.memory(widget.bytes, errorBuilder: (_, __, ___) {
+      widget.onDecodeError?.call();
+      return const Padding(
+        padding: EdgeInsets.all(24),
+        child: Text("Couldn't load image", style: TextStyle(color: Colors.white)),
+      );
+    });
+    return Scaffold(
+      backgroundColor: Colors.black.withOpacity(1 - progress * 0.7),
+      body: GestureDetector(
+        onVerticalDragUpdate: (d) => setState(() => _dy += d.delta.dy),
+        onVerticalDragEnd: (d) {
+          final fling = (d.primaryVelocity ?? 0).abs() > 800;
+          if (_dy.abs() > _dismissDrag || fling) {
+            Navigator.of(context).maybePop();
+          } else {
+            setState(() => _dy = 0);
+          }
+        },
+        child: Stack(children: [
+          Positioned.fill(
+            child: Transform.translate(
+              offset: Offset(0, _dy),
+              child: Opacity(
+                opacity: 1 - progress * 0.7,
+                child: InteractiveViewer(
+                  minScale: 0.8,
+                  maxScale: 5,
+                  child: Center(
+                    child: widget.heroTag == null
+                        ? image
+                        : Hero(tag: widget.heroTag!, child: image),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 40, right: 8,
+            child: _btn(Icons.close, 'Close', () => Navigator.of(context).maybePop()),
+          ),
+          Positioned(
+            top: 40, left: 8,
+            child: _btn(Icons.copy, 'Copy', widget.onCopy),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
 class _Msg {
   final int id;
   final bool me;
@@ -4641,63 +4733,35 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   /// Full-screen, pinch-to-zoom view of a DECRYPTED chat photo (received or
   /// sent). Tap any photo bubble to open it in-session; an X closes it and a
   /// copy button puts the image on the clipboard so it can be pasted elsewhere.
-  void _openImageBytes(Uint8List bytes, {String? mime}) {
+  /// [CHAT-UI-VIEWER-1] Fullscreen viewer. When [heroTag] matches the tag on
+  /// the thumbnail that was tapped (see `_mediaContent`'s image branches), the
+  /// push animates as a Hero flight (fade + grow from the thumbnail's rect)
+  /// instead of a hard-cut dialog; swipe-down-to-dismiss and pinch-to-zoom
+  /// both work regardless of whether a hero tag was supplied.
+  void _openImageBytes(Uint8List bytes, {String? mime, Object? heroTag}) {
     Analytics.capture('chat_image_open', {
       'conv_kind': _isGroup ? 'group' : 'dm',
       'size': bytes.length,
     });
-    showDialog<void>(
-      context: context,
+    Navigator.of(context).push(PageRouteBuilder<void>(
+      opaque: false,
       barrierColor: Colors.black,
-      builder: (dctx) => Dialog(
-        backgroundColor: Colors.black,
-        insetPadding: EdgeInsets.zero,
-        child: Stack(children: [
-          Positioned.fill(
-            child: InteractiveViewer(
-              minScale: 0.8,
-              maxScale: 5,
-              child: Center(child: Image.memory(bytes, errorBuilder: (_, __, ___) {
-                // [MEDIA-RETRY-KIND-1] No `_Msg` in scope in this raw-bytes
-                // viewer (it's shared by generated + chat images) — still emit
-                // the same telemetry and never render literally nothing.
-                Analytics.capture('chat_media_load_failed', {
-                  'kind': 'image', 'reason': 'decode_failed', 'stage': 'fullscreen_view',
-                  'conv_kind': _isGroup ? 'group' : 'dm',
-                });
-                return const Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Text("Couldn't load image", style: TextStyle(color: Colors.white)),
-                );
-              })),
-            ),
-          ),
-          // X — close the viewer.
-          Positioned(
-            top: 40, right: 8,
-            child: _viewerButton(Icons.close, 'Close',
-                () => Navigator.of(dctx).maybePop()),
-          ),
-          // Copy the image to the system clipboard (paste into any app).
-          Positioned(
-            top: 40, left: 8,
-            child: _viewerButton(Icons.copy, 'Copy',
-                () => _copyImageBytes(bytes, mime: mime)),
-          ),
-        ]),
-      ),
-    );
-  }
-
-  Widget _viewerButton(IconData icon, String tooltip, VoidCallback onTap) =>
-      DecoratedBox(
-        decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
-        child: IconButton(
-          tooltip: tooltip,
-          icon: Icon(icon, color: Colors.white),
-          onPressed: onTap,
+      transitionDuration: const Duration(milliseconds: 220),
+      reverseTransitionDuration: const Duration(milliseconds: 180),
+      pageBuilder: (pctx, anim, __) => FadeTransition(
+        opacity: anim,
+        child: _FullscreenImageViewer(
+          bytes: bytes,
+          heroTag: heroTag,
+          onCopy: () => _copyImageBytes(bytes, mime: mime),
+          onDecodeError: () => Analytics.capture('chat_media_load_failed', {
+            'kind': 'image', 'reason': 'decode_failed', 'stage': 'fullscreen_view',
+            'conv_kind': _isGroup ? 'group' : 'dm',
+          }),
         ),
-      );
+      ),
+    ));
+  }
 
   /// Put a chat image on the system clipboard so it can be pasted into another
   /// app. Flutter's built-in Clipboard is text-only, so this uses super_clipboard
@@ -11113,27 +11177,34 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       case MediaKind.image:
         if (m.localBytes != null) {
           // [UI-BUBBLE-2] edge-to-edge, 78%-wide, ≤320dp, overlaid meta.
+          // [CHAT-UI-VIEWER-1] Shared Hero tag between this thumbnail and the
+          // fullscreen viewer it opens into.
+          final heroTag = 'chat_img_${m.id}';
           if (overlayMeta) {
             return ChatImageCard(
               bytes: m.localBytes!,
-              onTap: () => _openImageBytes(m.localBytes!, mime: m.media?.contentType),
+              onTap: () => _openImageBytes(m.localBytes!, mime: m.media?.contentType, heroTag: heroTag),
               overlays: _mediaMetaOverlays(m),
               theme: t,
+              heroTag: heroTag,
             );
           }
           // Tap → full-screen, pinch-to-zoom viewer with an X to close (and a
           // Copy button). Long-press still opens the message action sheet.
           return GestureDetector(
-            onTap: () => _openImageBytes(m.localBytes!, mime: m.media?.contentType),
+            onTap: () => _openImageBytes(m.localBytes!, mime: m.media?.contentType, heroTag: heroTag),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(14),
               // [CHAT-UI-MEDIA-1] cacheWidth bounds the decoded bitmap to ~2x the
               // 220dp layout width (DPR-aware) instead of decoding at full source
               // resolution — a scrolling thread of full-res photos was a memory
               // spike + jank source per the audit.
-              child: Image.memory(m.localBytes!, width: 220, fit: BoxFit.cover,
-                  cacheWidth: (220 * MediaQuery.of(context).devicePixelRatio * 2).round(),
-                  errorBuilder: (_, __, ___) => _brokenMediaPlaceholder(m: m, kind: 'image', reason: 'decode_failed')),
+              child: Hero(
+                tag: heroTag,
+                child: Image.memory(m.localBytes!, width: 220, fit: BoxFit.cover,
+                    cacheWidth: (220 * MediaQuery.of(context).devicePixelRatio * 2).round(),
+                    errorBuilder: (_, __, ___) => _brokenMediaPlaceholder(m: m, kind: 'image', reason: 'decode_failed')),
+              ),
             ),
           );
         }
@@ -11159,25 +11230,30 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
               if (snap.hasData) {
                 m.localBytes = snap.data; // cache decrypted bytes
                 // [UI-BUBBLE-2] edge-to-edge, 78%-wide, ≤320dp, overlaid meta.
+                final heroTag = 'chat_img_${m.id}';
                 if (overlayMeta) {
                   return ChatImageCard(
                     bytes: snap.data!,
-                    onTap: () => _openImageBytes(snap.data!, mime: m.media?.contentType),
+                    onTap: () => _openImageBytes(snap.data!, mime: m.media?.contentType, heroTag: heroTag),
                     overlays: _mediaMetaOverlays(m),
                     theme: t,
+                    heroTag: heroTag,
                   );
                 }
                 return GestureDetector(
-                  onTap: () => _openImageBytes(snap.data!, mime: m.media?.contentType),
+                  onTap: () => _openImageBytes(snap.data!, mime: m.media?.contentType, heroTag: heroTag),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(14),
                     // [CHAT-UI-MEDIA-1] Same cacheWidth bound as the local-bytes
                     // branch above.
-                    child: Image.memory(snap.data!, width: 220, fit: BoxFit.cover,
-                        cacheWidth: (220 * MediaQuery.of(context).devicePixelRatio * 2).round(),
-                        errorBuilder: (_, __, ___) => _brokenMediaPlaceholder(
-                            m: m, kind: 'image', reason: 'decode_failed',
-                            onRetry: () { setState(() => m.localBytes = null); })),
+                    child: Hero(
+                      tag: heroTag,
+                      child: Image.memory(snap.data!, width: 220, fit: BoxFit.cover,
+                          cacheWidth: (220 * MediaQuery.of(context).devicePixelRatio * 2).round(),
+                          errorBuilder: (_, __, ___) => _brokenMediaPlaceholder(
+                              m: m, kind: 'image', reason: 'decode_failed',
+                              onRetry: () { setState(() => m.localBytes = null); })),
+                    ),
                   ),
                 );
               }
