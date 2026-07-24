@@ -2,8 +2,10 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:audioplayers/audioplayers.dart' as ap;
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show MethodChannel;
 import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -1105,6 +1107,190 @@ Future<void> _routeToBrandedIncoming(Map<String, dynamic> d) async {
   Analytics.capture('call_branded_fsi_route_timeout', {'call_id': callId});
 }
 
+// ── [CALL-REL-9] REL-10: callee ring audibility ─────────────────────────────
+// `call_incoming_shown` only proves the incoming-call UI was SHOWN — never
+// that a ring was AUDIBLE. CallKit owns the ringtone; silent/vibrate mode, an
+// active DND filter, ring volume 0, or OEM heads-up-only behavior while the
+// phone is in active use all produce a completely silent "ring" that looks
+// identical in that event (2026-07-23 incident: Tiger heard nothing with the
+// phone in his hand). See Specs/FINAL-CALL-RELIABILITY-PLAN-2026-07-24.md §2
+// item 10 / Specs/AVATOK-CALL-SYSTEM-BIBLE-2026-07-24.md Part 3 + Part 9.
+//
+// Reuses the ALREADY-REGISTERED `avatok/voice_audio` platform channel (see
+// [NativeVoiceAudio] / AvaVoiceAudioPlugin.kt's `canUseFullScreenIntent`)
+// rather than adding a new plugin — this file only needs one extra method on
+// an existing, already-attached channel, not a new MainActivity registration.
+const MethodChannel _ringAudibilityChannel = MethodChannel('avatok/voice_audio');
+
+/// Native probe: ringer mode, DND/interruption-filter state, ring-stream
+/// volume + max, and the incoming-call channel's importance — AT RING TIME
+/// (not cached; see the Kotlin doc comment on `getRingAudibilityInfo`).
+/// Android-only in this pass; iOS/desktop return `ok:false` so callers treat
+/// the result as 'unknown' rather than silently guessing.
+Future<Map<String, dynamic>> _probeRingAudibility() async {
+  if (!Platform.isAndroid) {
+    return {'ok': false, 'reason': 'unsupported_platform'};
+  }
+  try {
+    final r = await _ringAudibilityChannel
+        .invokeMapMethod<String, dynamic>('getRingAudibilityInfo');
+    return r ?? {'ok': false, 'reason': 'null_result'};
+  } catch (e) {
+    return {'ok': false, 'reason': e.toString()};
+  }
+}
+
+// The current in-app ringtone-fallback player (at most one at a time — only
+// one call can be ringing on this device). Tracked with the callId it's
+// serving so a fast glare sequence (call A's teardown racing call B's ring)
+// can't cross-silence the wrong call.
+ap.AudioPlayer? _fallbackRingtonePlayer;
+String? _fallbackRingtoneCallId;
+
+/// [CALL-REL-9] Play a bundled ringtone through the app's OWN audio path as a
+/// backup, looping until [_stopRingtoneFallback] is called. Gated by the
+/// caller to ONLY the case where the phone is foreground/unlocked, the user's
+/// OWN ringer setting is NORMAL (never overrides silent/vibrate/DND), and
+/// nothing confirms CallKit's native ring is actually making sound — the
+/// in-hand/OEM heads-up-only failure mode REL-10 targets. Reuses the bundled
+/// ringtone catalog asset (assets/audio/catalog/) already shipped for the
+/// ringback picker — no new asset, no new audio plugin.
+Future<void> _startRingtoneFallback(String callId) async {
+  if (_fallbackRingtonePlayer != null) return; // already running for this or another call
+  try {
+    final player = ap.AudioPlayer();
+    _fallbackRingtonePlayer = player;
+    _fallbackRingtoneCallId = callId;
+    await player.setReleaseMode(ap.ReleaseMode.loop);
+    await player.play(ap.AssetSource('audio/catalog/classic.mp3'));
+    await _track('call_ring_fallback_played', {
+      'call_id': callId,
+      'reason': 'foreground_normal_ringer_no_confirmed_sound',
+    });
+  } catch (e) {
+    _fallbackRingtonePlayer = null;
+    _fallbackRingtoneCallId = null;
+  }
+}
+
+/// Stop the fallback ringtone (best-effort, idempotent). When [callId] is
+/// given it only stops if it matches the call the fallback is currently
+/// serving — see the glare note above.
+Future<void> _stopRingtoneFallback([String? callId]) async {
+  final player = _fallbackRingtonePlayer;
+  if (player == null) return;
+  if (callId != null && _fallbackRingtoneCallId != null && callId != _fallbackRingtoneCallId) {
+    return;
+  }
+  _fallbackRingtonePlayer = null;
+  _fallbackRingtoneCallId = null;
+  try {
+    await player.stop();
+    await player.dispose();
+  } catch (_) {/* best-effort */}
+}
+
+/// Emit `call_ring_audibility` and, gated by `RemoteConfig.callRingAudibilityV1`,
+/// start the in-app fallback ringtone. Fired unawaited from [_showIncoming] —
+/// telemetry/fallback must never delay or block the ring path itself.
+///
+/// `audible`:
+///  · `'false'`   — ringer mode silent/vibrate, DND is blocking, OR the ring
+///                  stream volume is 0. The device CANNOT have rung audibly.
+///  · `'true'`    — ringer mode normal, DND not blocking, ring volume > 0, AND
+///                  `showCallkitIncoming` returned without error. Still a
+///                  proxy (actual speaker output isn't observable) — not a
+///                  hard guarantee the human heard it.
+///  · `'unknown'` — the native probe failed (iOS/desktop, plugin error) or
+///                  CallKit never even reported showing.
+Future<void> _emitRingAudibilityAndMaybeFallback(
+  Map<String, dynamic> d, {
+  required bool callkitShown,
+  required String route,
+  required String lifecycle,
+  required bool fsiGranted,
+}) async {
+  final callId = (d['callId'] ?? '').toString();
+  if (callId.isEmpty) return;
+  final info = await _probeRingAudibility();
+  final ok = info['ok'] == true;
+  final ringerMode = (info['ringer_mode'] ?? 'unknown').toString();
+  final interruptionFilter = (info['interruption_filter'] ?? 'unknown').toString();
+  final dndBlocking = info['dnd_blocking'] == true;
+  final ringVolume = info['ring_volume'] is int ? info['ring_volume'] as int : -1;
+  final ringVolumeMax = info['ring_volume_max'] is int ? info['ring_volume_max'] as int : -1;
+  final channelImportance = (info['channel_importance'] ?? 'unknown').toString();
+  // What Android actually granted at ring time — the same signal the branded
+  // FSI decision in [_showIncoming] uses (`lifecycle == 'resumed'` → a live
+  // navigator in-app; else FSI vs the plain native CallKit fallback screen).
+  final presentation = lifecycle == 'resumed'
+      ? 'in_app_foreground'
+      : (fsiGranted ? 'full_screen_intent' : 'heads_up_or_none');
+  final silentOrVibrate = ringerMode == 'silent' || ringerMode == 'vibrate';
+  final volumeZero = ringVolume == 0;
+  final String audible;
+  if (!ok || !callkitShown) {
+    audible = 'unknown';
+  } else if (silentOrVibrate || dndBlocking || volumeZero) {
+    audible = 'false';
+  } else {
+    audible = 'true';
+  }
+  await _track('call_ring_audibility', {
+    'call_id': callId,
+    'trace_id': (d['trace_id'] ?? '').toString(),
+    'route': route,
+    'ringer_mode': ringerMode,
+    'interruption_filter': interruptionFilter,
+    'dnd_blocking': dndBlocking,
+    'ring_volume': ringVolume,
+    'ring_volume_max': ringVolumeMax,
+    'channel_importance': channelImportance,
+    'callkit_shown': callkitShown,
+    'presentation': presentation,
+    'probe_ok': ok,
+    if (!ok) 'probe_error': (info['reason'] ?? '').toString(),
+    'audible': audible,
+  });
+  // [CALL-REL-9] Attach a compact echo of this to whatever ring receipt the
+  // callee already sends the server (PushService.reportRinging /
+  // /api/call/ringing → CallRoom DO device-ringing). Fired as a SECOND,
+  // best-effort call with the SAME token — the initial (audibility-free) call
+  // already fired immediately at ring time for caller-ringback latency and is
+  // UNCHANGED; the token is re-validated but not consumed server-side, so a
+  // repeat POST is safe. Data-plumbing only in this pass: the CallRoom DO does
+  // not yet branch on these fields (follow-up), and caller-side "phone is on
+  // silent" UI honesty is explicitly NOT built here — see the report.
+  final ringToken = (d['ringReceiptToken'] ?? '').toString();
+  if (ringToken.isNotEmpty) {
+    unawaited(PushService.reportRinging(
+      callId,
+      ringToken,
+      audible: audible,
+      ringerMode: ok ? ringerMode : null,
+      dndBlocking: ok ? dndBlocking : null,
+      ringVolume: ok && ringVolume >= 0 ? ringVolume : null,
+      ringVolumeMax: ok && ringVolumeMax >= 0 ? ringVolumeMax : null,
+    ));
+  }
+  // ── In-app ringtone fallback (gated) ────────────────────────────────────
+  // Only when: flag on, this is the MAIN isolate with a live navigator
+  // ('resumed' can't happen in the bg isolate anyway, but be explicit), the
+  // probe succeeded, ringer mode is NORMAL, DND isn't blocking, and ring
+  // volume > 0 — i.e. the user never chose silent/vibrate/DND. Never plays
+  // for a user who deliberately silenced their phone; that would be the exact
+  // regression this feature must not cause.
+  if (RemoteConfig.callRingAudibilityV1 &&
+      !BadgeService.inBackgroundIsolate &&
+      lifecycle == 'resumed' &&
+      ok &&
+      ringerMode == 'normal' &&
+      !dndBlocking &&
+      ringVolume > 0) {
+    await _startRingtoneFallback(callId);
+  }
+}
+
 /// Show the native full-screen incoming-call UI (CallKit / ConnectionService),
 /// which rings and wakes the screen even when locked or the app is killed.
 Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) async {
@@ -1221,6 +1407,16 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
     'latency_ms': DateTime.now().difference(swShown).inMilliseconds,
     'trace_id': (d['trace_id'] ?? '').toString(),
   });
+  // [CALL-REL-9] REL-10: capture ring-audibility signals AT RING TIME and,
+  // gated by callRingAudibilityV1, start the in-app fallback ringtone.
+  // Unawaited — telemetry/fallback must never delay or block the ring path.
+  unawaited(_emitRingAudibilityAndMaybeFallback(
+    d,
+    callkitShown: showErr == null,
+    route: route,
+    lifecycle: lifecycle,
+    fsiGranted: fsiGranted,
+  ));
   // Preserve the pre-instrumentation contract: a CallKit failure still throws.
   if (showErr != null) throw showErr;
   // [AVACALL-INUI-1] Branded incoming-call UI for ALL AvaTOK app-to-app calls
@@ -1578,7 +1774,24 @@ class PushService {
   /// Notify the server that this device has received the incoming call push
   /// and is ringing, so the caller can play ringback and start the ring window.
   /// Unauthenticated since it runs in the background isolate where Clerk auth is offline.
-  static Future<void> reportRinging(String callId, String ringReceiptToken) async {
+  ///
+  /// [CALL-REL-9] The audibility params are OPTIONAL and purely additive — the
+  /// original near-instant, audibility-free call this file fires the moment a
+  /// ring push lands is UNCHANGED (see the two existing call sites above). A
+  /// SECOND call carrying the compact audibility fields follows once the
+  /// on-device probe completes, from [_emitRingAudibilityAndMaybeFallback].
+  /// The server re-validates the stored ring-receipt token but does not
+  /// consume it (worker/src/do/call_room.ts `device-ringing`), so a repeat
+  /// POST with the same token is safe.
+  static Future<void> reportRinging(
+    String callId,
+    String ringReceiptToken, {
+    String? audible,
+    String? ringerMode,
+    bool? dndBlocking,
+    int? ringVolume,
+    int? ringVolumeMax,
+  }) async {
     if (callId.isEmpty || ringReceiptToken.isEmpty) return;
     try {
       final client = HttpClient();
@@ -1588,6 +1801,11 @@ class PushService {
       request.write(jsonEncode({
         'callId': callId,
         'ringReceiptToken': ringReceiptToken,
+        if (audible != null) 'audible': audible,
+        if (ringerMode != null) 'ringerMode': ringerMode,
+        if (dndBlocking != null) 'dndBlocking': dndBlocking,
+        if (ringVolume != null) 'ringVolume': ringVolume,
+        if (ringVolumeMax != null) 'ringVolumeMax': ringVolumeMax,
       }));
       final response = await request.close();
       await response.drain();
@@ -1754,6 +1972,7 @@ class PushService {
           _noteTerminalCall(callId);
           FlutterCallkitIncoming.endCall(callId);
           _dismissBrandedFsi(); // [AVACALL-INUI-2] tear down the lock-screen branded FSI too
+          unawaited(_stopRingtoneFallback(callId)); // [CALL-REL-9] caller cancelled — stop the fallback too
           // CALLFIX-14: clear glare tracking when the call is no longer ringing
           if (gIncomingRingingCallId == callId) {
             gIncomingRingingFrom = null;
@@ -2119,6 +2338,8 @@ class PushService {
                 'kind': acc['kind'] == 'video' ? 'video' : 'audio',
               });
             }
+            // [CALL-REL-9] Stop the in-app ringtone fallback (if it was playing).
+            unawaited(_stopRingtoneFallback(accId));
           }
           // CALLFIX-R6: Clear glare state when accept is tapped
           gIncomingRingingFrom = null;
@@ -2133,6 +2354,8 @@ class PushService {
             // instead of getting a plain decline. Else signal a normal decline.
             // ignore: unawaited_futures
             _declineRouting(extra);
+            // [CALL-REL-9] Stop the in-app ringtone fallback (if it was playing).
+            unawaited(_stopRingtoneFallback((extra['callId'] ?? '').toString()));
           }
           // CALLFIX-R6: Clear glare state when decline is tapped
           gIncomingRingingFrom = null;
@@ -2140,7 +2363,11 @@ class PushService {
           break;
         case Event.actionCallTimeout:
           final ex = event.body['extra'];
-          if (ex is Map) _logMissed(ex);
+          if (ex is Map) {
+            _logMissed(ex);
+            // [CALL-REL-9] Stop the in-app ringtone fallback (if it was playing).
+            unawaited(_stopRingtoneFallback((ex['callId'] ?? '').toString()));
+          }
           break;
         case Event.actionCallEnded:
           break;

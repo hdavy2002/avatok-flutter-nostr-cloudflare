@@ -1409,20 +1409,55 @@ export async function callNoAnswer(req: Request, env: Env): Promise<Response> {
   });
 }
 
+// [CALL-REL-9] REL-10: compact device-side ring-audibility fields, carried on
+// the SAME device-ringing receipt the callee already sends here (see
+// PushService.reportRinging in push_service.dart). Data-plumbing only in this
+// pass — CallRoom DO does not yet branch on these; they ride along on the
+// existing /control POST so the fields reach the backend and are queryable
+// once a follow-up teaches the DO (and/or an analytics sink) to read them.
+// `audible` mirrors the client's own tri-state classification: 'true' | 'false'
+// | 'unknown' — see call_ring_audibility (client telemetry) for the full
+// signal set this is a compact echo of.
+interface RingAudibilityFields {
+  audible?: string;        // 'true' | 'false' | 'unknown'
+  ringerMode?: string;     // 'normal' | 'vibrate' | 'silent' | 'unknown'
+  dndBlocking?: boolean;
+  ringVolume?: number;
+  ringVolumeMax?: number;
+}
+
 export async function callRinging(req: Request, env: Env): Promise<Response> {
-  const b = (await req.json().catch(() => ({}))) as { callId?: string; ringReceiptToken?: string };
+  const b = (await req.json().catch(() => ({}))) as {
+    callId?: string;
+    ringReceiptToken?: string;
+  } & RingAudibilityFields;
   const callId = String(b.callId ?? "").trim();
   const token = String(b.ringReceiptToken ?? "").trim();
   if (!callId) return json({ error: "callId required" }, 400);
   if (!token) return json({ error: "ringReceiptToken required" }, 400);
   if (!env.CALL_ROOMS) return json({ error: "CALL_ROOMS binding missing" }, 500);
 
+  // [CALL-REL-9] Only forward the audibility fields when the client actually
+  // sent at least one — keeps the payload byte-identical for any client build
+  // that predates this change (no fake/half-populated fields).
+  const audibility: RingAudibilityFields = {};
+  if (typeof b.audible === "string") audibility.audible = b.audible;
+  if (typeof b.ringerMode === "string") audibility.ringerMode = b.ringerMode;
+  if (typeof b.dndBlocking === "boolean") audibility.dndBlocking = b.dndBlocking;
+  if (typeof b.ringVolume === "number") audibility.ringVolume = b.ringVolume;
+  if (typeof b.ringVolumeMax === "number") audibility.ringVolumeMax = b.ringVolumeMax;
+
   try {
     const stub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(callId));
     const r = await stub.fetch("https://call-room/control", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ type: "device-ringing", callId, token }),
+      body: JSON.stringify({
+        type: "device-ringing",
+        callId,
+        token,
+        ...(Object.keys(audibility).length ? { ringAudibility: audibility } : {}),
+      }),
     });
     if (!r.ok) {
       const err = await r.json().catch(() => ({ error: "failed to relay ringing to CallRoom" }));
