@@ -126,7 +126,7 @@ export async function adminOverview(req: Request, env: Env): Promise<Response> {
   return json({
     ts: now,
     sessions: {
-      live_streams: liveStreams, consults, conference: null, // conference live-count fetched in /live (LiveKit)
+      live_streams: liveStreams, consults, conference: null, // conference live-count: see conference_rooms in /live
       voice_calls: voiceCalls, vision_calls: visionCalls, translation: null,
       total: liveStreams + consults + voiceCalls + visionCalls,
     },
@@ -165,17 +165,12 @@ export async function adminLive(req: Request, env: Env): Promise<Response> {
     "SELECT agent_id, COUNT(*) AS active FROM avavoice_sessions WHERE status='active' AND last_beat_at>?1 GROUP BY agent_id ORDER BY active DESC LIMIT 10",
   ).bind(fresh).all());
 
-  // Conference rooms — LiveKit server API (best-effort; null if creds unset).
-  let conference_rooms: { count: number | null; rooms: any[] } = { count: null, rooms: [] };
-  try {
-    const url = (env as any).LIVEKIT_URL as string | undefined;
-    if (url && env.LIVEKIT_API_KEY && env.LIVEKIT_API_SECRET) {
-      // We only surface the cap + a degraded note here; the LiveKit Twirp API
-      // requires a signed JWT — Phase Z can wire the real ListRooms call. For
-      // now report null (UI shows "—") rather than guess.
-      conference_rooms = { count: null, rooms: [] };
-    }
-  } catch { /* leave null */ }
+  // Conference rooms — LiveKit REMOVED [CF-CALL-007A] (2026-07-24). This tile
+  // always reported null/[] even before removal (never wired to a real
+  // ListRooms call), so there is no functional loss here; group-call live
+  // counts for the CF Realtime SFU path live under /api/groupcall/:id/status
+  // instead, not in this admin surface.
+  const conference_rooms: { count: number | null; rooms: any[] } = { count: null, rooms: [] };
 
   return json({
     ts: now,

@@ -110,7 +110,7 @@ import { agentCallStart } from "./routes/agent_voice_routes";
 import { uploadAgentDoc, listAgentDocs, deleteAgentDoc } from "./routes/agent_docs";
 import { featureCostsRoute } from "./feature_pricing";
 import { googleAuth } from "./routes/google_auth";
-import { conferenceStart, conferenceJoin, conferenceStatus, conferenceEnd, conferenceWebhook, conferenceBeat } from "./routes/conference";
+import { conferenceStart, conferenceJoin, conferenceStatus, conferenceEnd, conferenceBeat } from "./routes/conference";
 import { groupCallJoin, groupCallPublish, groupCallPull, groupCallRenegotiate, groupCallClose, groupCallStatus } from "./routes/groupcall";
 import { translateStart, translateBeat, translateStop, translateToken, translateQuote } from "./routes/translate";
 import { sttTranscribe } from "./routes/stt";
@@ -339,16 +339,22 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
     // FREE-tier P2P mesh group-call signaling → MeshRoom DO (≤5). Keyed by group
     // id so all members of one group meet on the same mesh instance. WS = join
     // the mesh; plain GET = presence probe for the "ongoing call" banner. Paid
-    // tiers use the LiveKit SFU (/api/conference/*) instead.
+    // tiers use the CF Realtime SFU (/api/groupcall/*) instead — LiveKit
+    // (formerly /api/conference/*) was removed [CF-CALL-007A] (2026-07-24).
     const mesh = p.match(/^\/(?:api\/)?mesh\/([A-Za-z0-9_:.-]{1,64})$/);
     if (mesh) {
       const hint = continentHint(req);
       return env.MESH_ROOMS.get(env.MESH_ROOMS.idFromName(mesh[1]), hint ? { locationHint: hint } : undefined).fetch(req);
     }
 
-    // AvaTalk group conferencing (Phase 10 — LiveKit, ≤25; RULE CHANGE 2026-06-10).
-    // 1:1 calls stay on the CallRoom DO above — these routes never touch it.
-    if (p === "/api/conference/webhook" && req.method === "POST") return await conferenceWebhook(req, env);
+    // AvaTalk group conferencing — LiveKit REMOVED [CF-CALL-007A] (2026-07-24).
+    // /api/conference/* now always returns a 410 "provider_removed" so any
+    // still-installed old client fails cleanly instead of hanging; group calls
+    // moved to the CF Realtime SFU path below (/api/groupcall/*). The old
+    // /api/conference/webhook (LiveKit → worker) route is gone entirely — no
+    // LiveKit deployment will ever call it again. See
+    // worker/src/routes/conference.ts header and rollback tag
+    // pre-livekit-removal-2026-07-24 for the removed implementation.
     const conf = p.match(/^\/api\/conference\/([A-Za-z0-9_:.-]{1,64})\/(start|join|status|end|beat)$/);
     if (conf) {
       if (conf[2] === "start" && req.method === "POST") return await conferenceStart(req, env, conf[1]);
@@ -366,8 +372,8 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
     // migration rule #4). HTTP → SFU session/track proxy (routes/groupcall.ts,
     // CF_RT_SFU_APP_TOKEN + CONF_TICKET_SECRET stay server-side). Gated by
     // groupAudioSfuEnabled (legacy, audio-only) or cloudflareConferenceEnabled
-    // ([CF-CALL-001/002] audio+video); LiveKit /api/conference/* stays live until
-    // livekitConferenceEnabled is explicitly turned off. Keyed by group id so all
+    // ([CF-CALL-001/002] audio+video); LiveKit /api/conference/* was removed
+    // [CF-CALL-007A] (2026-07-24) and now always 410s. Keyed by group id so all
     // members meet on one room instance.
     const gc = p.match(/^\/api\/groupcall\/([A-Za-z0-9_:.-]{1,64})\/(join|publish|pull|renegotiate|close|status|ws)$/);
     if (gc) {

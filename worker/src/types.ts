@@ -287,21 +287,14 @@ export interface Env {
   WISE_PROFILE_ID?: string;
   WISE_ENV?: string;               // "production" | (default sandbox)
 
-  // AvaTalk group conferencing (Phase 10 — LiveKit, ≤25 participants). Gated:
-  // unset → /api/conference/* returns 503. LIVEKIT_URL = project URL
-  // (wss://<project>.livekit.cloud); key/secret via `wrangler secret put`.
-  LIVEKIT_URL?: string;
-  LIVEKIT_API_KEY?: string;
-  LIVEKIT_API_SECRET?: string;
-  // Self-hosted multi-region SFU (Specs/AVA-SFU-SELFHOST-PLAYBOOK.md). A single
-  // JSON secret mapping region key → creds, e.g.
-  //   {"eu":{"url":"wss://eu.sfu.avatok.ai","key":"…","secret":"…"},
-  //    "us":{…},"ap":{…},"cloud":{…}}
-  // When unset/empty the worker synthesizes a single `cloud` region from the
-  // legacy LIVEKIT_URL/API_KEY/API_SECRET above (so nothing changes until you
-  // populate it). Adding a region = edit this one secret. `cloud` is always the
-  // default + fallback. Set via `wrangler secret put LIVEKIT_REGIONS`.
-  LIVEKIT_REGIONS?: string;
+  // AvaTalk group conferencing — LiveKit REMOVED [CF-CALL-007A] (2026-07-24).
+  // The Env interface no longer declares LIVEKIT_URL / LIVEKIT_API_KEY /
+  // LIVEKIT_API_SECRET / LIVEKIT_REGIONS; group calls run on the Cloudflare
+  // Realtime SFU path instead (CF_RT_SFU_APP_ID/CF_RT_SFU_APP_TOKEN, declared
+  // above, consumed by routes/groupcall.ts). The underlying wrangler secrets/vars are
+  // intentionally left orphaned in each environment (not git-recoverable once
+  // deleted) — see Specs/CF-CUTOVER-AND-LIVEKIT-REMOVAL-RUNBOOK-2026-07-24.md
+  // §4.4 for the deliberate later `wrangler secret delete` cleanup step.
 
   // R2-archive rollout flag (Specs/ABLY-TRANSPORT-R2-ARCHIVE-PROPOSAL.md).
   CHAT_ARCHIVE?: string;     // "1" → enqueue every sent message to R2 + D1 message_index (Phase 1)
