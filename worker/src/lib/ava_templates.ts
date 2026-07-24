@@ -137,7 +137,47 @@ export const TEMPLATE_BANK: Record<string, LangBank> = {
       { register: "formal", text: "Ye yaad rakhne layak lagta hai. Chahein to {when} ka reminder set kar deti hoon." },
     ],
   },
+  // humor — v1.1, SHADOW ONLY (ava_capabilities.ts). Tasteful, brief, never
+  // "As an AI…" (Constitution 14). Reuses the `festival` trigger class (see
+  // the capability-seed comment); templates exist now so promotion is a pure
+  // lifecycle flip with zero copy work left.
+  humor: {
+    en: [
+      { register: "casual", text: "Okay that's a good one 😄" },
+      { register: "formal", text: "That was a nice moment to celebrate." },
+    ],
+    hi: [
+      { register: "casual", text: "वाह, ये तो मज़ेदार था 😄" },
+      { register: "formal", text: "यह एक सुखद पल था।" },
+    ],
+    hinglish: [
+      { register: "casual", text: "Arre wah, ye to mast tha 😄" },
+      { register: "formal", text: "Ye ek achha pal tha." },
+    ],
+  },
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// auto_sticker — v1.1, SHADOW ONLY. Not a text template: the capability
+// returns a sticker ASSET ID for the client's existing sticker renderer
+// (app/lib/features/messaging/widgets/sticker_packs.dart — kStickerPacks).
+// Kept in this module (not a new file) because it is the same "cheapest
+// reply path, zero AI" concept as TEMPLATE_BANK, just a different payload
+// shape. Picks from the built-in celebratory packs only — never an
+// AI-generated or user-uploaded asset.
+// ─────────────────────────────────────────────────────────────────────────────
+export const AUTO_STICKER_ASSETS: string[] = [
+  "assets/stickers/ava_hearts/s1.webp",
+  "assets/stickers/ava_reactions/s2.webp",
+  "assets/stickers/ava_paws/s1.webp",
+];
+
+/** Deterministic-enough pick (no AI, no RNG dependency beyond Math.random —
+ *  telemetry only in v1, never posted). Returns null if the bank is empty. */
+export function pickSticker(assets: string[] = AUTO_STICKER_ASSETS): string | null {
+  if (!assets.length) return null;
+  return assets[Math.floor(Math.random() * assets.length)];
+}
 
 /** Does the bank have ANY template for this capability + language? */
 export function hasTemplate(capability: string, lang: TemplateLang): boolean {

@@ -6,7 +6,8 @@
 // deterministic funnel head:
 //
 //   per-chat toggle → matchTriggers (regex) → Opportunity Score → Capability
-//   Registry → budget gate → Governor gate → SHADOW: telemetry only.
+//   Registry → budget gate → Governor gate → SHADOW: telemetry only, or
+//   [AVA-ODL-POST-1] PRODUCTION: decision ledger → private-lane post.
 //
 // HARD RULES:
 //   • ZERO AI calls anywhere in this path. Regex + templates + KV only. The
@@ -17,11 +18,23 @@
 //   • SHADOW lifecycle (D27) → NO user-visible output, ever. The PostHog
 //     `ava_moment_shadow` events ARE the deliverable: would_fire + outcome
 //     projections decide shadow → beta promotion (D25).
+//   • PRODUCTION lifecycle ([AVA-ODL-POST-1]) → posts ONLY into the target
+//     user's own private Ava lane (ava_lane.ts postAvaPrivate — structural
+//     privacy, never fans out), and ONLY when odlEnabled AND
+//     avaMomentsEnabled are both true in KV (both default false in prod —
+//     see worker/src/routes/config.ts DEFAULTS). Every post is durably
+//     reserved in `ava_interventions` (worker/migrations/ava_interventions.sql,
+//     DB_META) BEFORE it happens, so a crash mid-post can never silently
+//     spend budget without a trace, and a retry of the same message can never
+//     double-post (F7, Specs/AUDIT-MESSENGER-AI-MEDIA-UI-2026-07-24.md).
 //
 // TELEMETRY (app_name "ava_odl"):
 //   ava_odl_wake          every trigger match (the ~10–20% wake rate)
 //   ava_odl_sleep         no-match messages, SAMPLED 1:100 (stay cheap)
 //   ava_moment_shadow     the shadow projection event (per woke capability)
+//   ava_moment_candidate  production capability reached the template step
+//   ava_moment_posted     [AVA-ODL-POST-1] private-lane post acknowledged
+//   ava_moment_post_failed [AVA-ODL-POST-1] reserved but InboxDO append failed
 
 import type { Env } from "../types";
 import { track } from "../hooks";
@@ -32,8 +45,72 @@ import { getCapability, CATEGORY_TO_CAPABILITY } from "./ava_capabilities";
 import { checkAndSpend, spendMoment, getTrust, isMuted } from "./ava_budget";
 import { governorGate } from "./ava_governor";
 import { guessLang, hasTemplate, pickTemplate, fillTemplate } from "./ava_templates";
+import { postAvaPrivate } from "./ava_lane";
 
 const SLEEP_SAMPLE = 100; // 1:100 sampling for ava_odl_sleep
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [AVA-ODL-POST-1] The decision ledger (F7, worker/migrations/ava_interventions.sql,
+// DB_META). ONE additive table, ONE deterministic key, ONE status machine:
+// reserved → posted (InboxDO ack'd) | expired (24h lazy TTL sweep). See the
+// migration file for the full "why" — kept here to the mechanics only.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// FNV-1a (32-bit) → hex. Same pattern as worker/src/lib/brain_ingest.ts and
+// worker/src/do/inbox.ts's local fnv1aHex: synchronous (no crypto.subtle
+// await on the hot ODL path), deterministic, collision-resistant ENOUGH for
+// an idempotency key — not cryptographic, and doesn't need to be.
+function fnv1aHex(s: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+  }
+  return h.toString(16).padStart(8, "0");
+}
+
+/**
+ * decision_id — deterministic, NOT random (F7: "retry by decision_id, never a
+ * fresh random id"). odlProcess has no message/event id at its call site
+ * (ava_guardian.ts passes only {uid, conv, text, senderUid, isGroup}), so the
+ * triggering TEXT stands in for "trigger event id": the same (uid, conv,
+ * capability, text) always yields the same decision, so a retried odlProcess
+ * call for the SAME message hits the same row (INSERT OR IGNORE no-ops, no
+ * double spend, no double post). See the migration header for the accepted
+ * trade-off this implies.
+ */
+function decisionIdFor(uid: string, conv: string, capId: string, text: string): string {
+  return `${fnv1aHex(`${uid}|${conv}|${capId}`)}_${fnv1aHex(text)}`;
+}
+
+const INTERVENTION_TTL_MS = 24 * 60 * 60 * 1000; // F7: 24h reserved→expired
+const SWEEP_SAMPLE = 50; // lazy TTL sweep — only 1:50 wakes pay the extra D1 write, and only when the ledger is actually in use
+
+/**
+ * Lazy TTL sweep (F7: "do the sweep lazily at the top of odlProcess — cheap
+ * DELETE/UPDATE with a LIMIT"). Sampled + best-effort: a late sweep just means
+ * a stale 'reserved' row sits a little longer before being marked 'expired' —
+ * it is never read as "posted" and never blocks a fresh decision (a NEW
+ * message text yields a NEW decision_id regardless of old rows). Only runs
+ * once the ledger can actually contain rows (both flags on), so it is a
+ * complete no-op — not even a D1 call — everywhere the feature is dark.
+ */
+async function sweepExpiredInterventions(env: Env): Promise<void> {
+  if (Math.floor(Math.random() * SWEEP_SAMPLE) !== 0) return; // cheap check FIRST — no I/O on 49/50 calls
+  try {
+    const cfg: any = await readConfig(env);
+    if (cfg.odlEnabled !== true || cfg.avaMomentsEnabled !== true) return; // ledger can't be growing while dark
+    const cutoff = Date.now() - INTERVENTION_TTL_MS;
+    await env.DB_META.prepare(
+      `UPDATE ava_interventions SET status = 'expired', updated_at = ?1
+       WHERE decision_id IN (
+         SELECT decision_id FROM ava_interventions
+         WHERE status = 'reserved' AND created_at < ?2
+         LIMIT 50
+       )`,
+    ).bind(Date.now(), cutoff).run();
+  } catch { /* best-effort — never affects the funnel */ }
+}
 
 export interface OdlInput {
   uid: string;        // the RECIPIENT whose Ava is evaluating (per-account)
@@ -49,8 +126,8 @@ export interface OdlResult {
   opportunity?: number;
   would_fire?: boolean;
   reason?: string;
-  // Populated ONLY for lifecycle "production" capabilities (none in v1) — the
-  // future posting path picks this up; shadow never sets it.
+  // Populated ONLY for lifecycle "production" capabilities (meeting,
+  // reminder — [AVA-ODL-POST-1]); shadow capabilities never set it.
   templateText?: string;
 }
 
@@ -60,6 +137,11 @@ export interface OdlResult {
  */
 export async function odlProcess(env: Env, input: OdlInput): Promise<OdlResult> {
   try {
+    // 0. Lazy TTL sweep for the decision ledger (F7) — sampled, best-effort,
+    //    a complete no-op (not even a KV read) on 49/50 calls and a no-op D1
+    //    call whenever the feature is dark. See sweepExpiredInterventions().
+    void sweepExpiredInterventions(env);
+
     const uid = String(input.uid ?? "");
     const conv = String(input.conv ?? "");
     const text = String(input.text ?? "");
@@ -111,9 +193,12 @@ export async function odlProcess(env: Env, input: OdlInput): Promise<OdlResult> 
     //    verdict feeds telemetry; nothing user-visible happens either way.
     let gateReason: string | null = null;
 
-    // 4a. Capability kill switch (flag blob; explicitly false = OFF).
+    // 4a. Capability kill switch (flag blob; explicitly false = OFF). `cfg` is
+    //     hoisted so step 6 (production post path) reuses this same read
+    //     instead of hitting KV a second time for avaMomentsEnabled.
+    let cfg: any = {};
     try {
-      const cfg: any = await readConfig(env);
+      cfg = await readConfig(env);
       if (cfg[cap.kill_switch] === false) gateReason = "kill_switch";
     } catch { /* fail-open */ }
 
@@ -165,10 +250,13 @@ export async function odlProcess(env: Env, input: OdlInput): Promise<OdlResult> 
       return { woke: true, capability: cap.id, opportunity, would_fire: wouldFire, reason: gateReason ?? undefined };
     }
 
-    // 6. PRODUCTION lifecycle (NONE in v1 — reached only after a D25-gated
-    //    promotion). Templates first (Constitution 7); the actual private-lane
-    //    post lands with the posting phase — until then production behaves like
-    //    shadow-with-a-template so promotion is a pure registry flip.
+    // 6. PRODUCTION lifecycle ([AVA-ODL-POST-1]: `meeting`/`reminder` in v1 —
+    //    ava_capabilities.ts). Templates first (Constitution 7). Reachable at
+    //    all ONLY when odlEnabled is true (guaranteed — ava_guardian.ts never
+    //    calls odlProcess otherwise) AND avaMomentsEnabled is true (checked
+    //    below, default false in prod) AND the capability's own kill_switch
+    //    isn't explicitly false (4a). Every one of those stays dark by
+    //    default, so this whole block is unreached in production today.
     if (!wouldFire) return { woke: true, capability: cap.id, opportunity, would_fire: false, reason: gateReason ?? undefined };
     const tpl = pickTemplate(cap.id, lang);
     const templateText = tpl ? fillTemplate(tpl.text, {}) : undefined;
@@ -176,8 +264,93 @@ export async function odlProcess(env: Env, input: OdlInput): Promise<OdlResult> 
       conv, is_group: !!input.isGroup, capability: cap.id, opportunity,
       trigger_category: category, lang_guess: lang, template_used: !!tpl,
     });
-    // (future) postAvaMessage private Moment goes here — deliberately NOT wired
-    // in Phase C/D: no capability is production, and posting needs its own review.
+
+    // 6a. avaMomentsEnabled — the master "may Ava post anything user-visible"
+    //     switch (default false in prod). False → behave exactly like
+    //     shadow-with-a-template (unchanged from before this issue): return
+    //     templateText for callers that want it, post NOTHING, write NO
+    //     ledger row (nothing was reserved toward a post that cannot happen).
+    if (cfg.avaMomentsEnabled !== true) {
+      return { woke: true, capability: cap.id, opportunity, would_fire: true, templateText };
+    }
+    if (!tpl || !templateText) {
+      return { woke: true, capability: cap.id, opportunity, would_fire: true, reason: "no_template", templateText };
+    }
+
+    // 6b. Decision ledger (F7, worker/migrations/ava_interventions.sql). The
+    //     Moments-budget unit for THIS wake was already spent at 4f — that
+    //     spend location is UNCHANGED by this issue (see the migration
+    //     header for why: shadow-mode budget accounting must stay
+    //     byte-for-byte identical so D25 acceptance-rate projections stay
+    //     comparable pre/post promotion). What's new is durability: this
+    //     INSERT records that already-spent unit against a specific,
+    //     deterministic decision — reserved BEFORE the private-lane post, so
+    //     a crash right after this line always leaves an inspectable
+    //     'reserved' row instead of a silently lost charge. decision_id is
+    //     deterministic (decisionIdFor), so a retried odlProcess call for the
+    //     SAME message hits the SAME row via INSERT OR IGNORE and stops
+    //     below — no second spend, no second post.
+    const decisionId = decisionIdFor(uid, conv, cap.id, text);
+    const convHash = fnv1aHex(conv);
+    let reservedHere = false;
+    try {
+      const ins = await env.DB_META.prepare(
+        `INSERT OR IGNORE INTO ava_interventions
+           (decision_id, uid, conv_hash, capability, policy_version, budget_reserved, status, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, 1, 'reserved', ?6, ?6)`,
+      ).bind(decisionId, uid, convHash, cap.id, TRIGGER_BANK_VERSION, Date.now()).run();
+      reservedHere = ((ins as any)?.meta?.changes ?? 0) > 0;
+    } catch {
+      // D1 unavailable — fail CLOSED on posting (no durable record = no
+      // post). The Moments-budget unit spent at 4f is not refunded here
+      // (soft budget by design — see ava_budget.ts header); it is the same
+      // trade-off shadow mode has always made.
+      return { woke: true, capability: cap.id, opportunity, would_fire: true, templateText };
+    }
+    if (!reservedHere) {
+      // A row for this EXACT decision already exists — posted, still
+      // in-flight, or expired. F7: "a retry must not double-post." Stop.
+      return { woke: true, capability: cap.id, opportunity, would_fire: true, reason: "already_decided", templateText };
+    }
+
+    // 6c. Render + post via the SAME private-lane helper Guardian warnings
+    //     and doc-actions already use (ava_lane.ts postAvaPrivate → the
+    //     private:true postAvaMessage path) — structural privacy: the row is
+    //     written ONLY to uid's own InboxDO, nobody else's. `moment` carries
+    //     kind:'ava_moment' + capability + decision_id in `meta` so a future
+    //     client card renderer can key off it; today's client has no such
+    //     renderer and simply shows the lilac "Ava" text bubble — graceful
+    //     degradation, not a forced client upgrade (bible §5).
+    const postRes = await postAvaPrivate(env, {
+      uid, conv, text: templateText,
+      moment: { kind: "ava_moment", capability: cap.id, decision_id: decisionId },
+      capability: cap.id,
+      source: "odl",
+    });
+
+    if (postRes.ok) {
+      try {
+        await env.DB_META.prepare(
+          `UPDATE ava_interventions SET status = 'posted', updated_at = ?1 WHERE decision_id = ?2 AND status = 'reserved'`,
+        ).bind(Date.now(), decisionId).run();
+      } catch { /* best-effort — a stuck 'reserved' row still self-heals via the 24h TTL sweep */ }
+      void track(env, uid, "ava_moment_posted", "ava_odl", {
+        decision_id: decisionId, capability: cap.id, conv_hash: convHash,
+        opportunity, trigger_category: category, lang_guess: lang,
+      });
+    } else {
+      // F7: "on failure leave 'reserved'" — do NOT flip to 'rejected' or
+      // 'expired' here. The row is the durable proof this decision spent
+      // budget without producing a card; the 24h sweep expires it if nothing
+      // ever resolves it. v1 does not auto-retry the post (no queue exists
+      // for that here) — a retried odlProcess call for this same message
+      // will see reservedHere=false above and stop, by design.
+      void track(env, uid, "ava_moment_post_failed", "ava_odl", {
+        decision_id: decisionId, capability: cap.id, conv_hash: convHash,
+        opportunity, trigger_category: category, lang_guess: lang, error: postRes.error ?? null,
+      });
+    }
+
     return { woke: true, capability: cap.id, opportunity, would_fire: true, templateText };
   } catch {
     // FAIL-SILENT — the ODL may never surface an error to any caller.

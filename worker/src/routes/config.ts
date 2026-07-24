@@ -375,6 +375,19 @@ export interface PlatformConfig {
   // Ava Copilot Phases C+D (ODL — Opportunity Detection Layer, shadow-mode).
   odlEnabled: boolean;        // Phase C: ODL wake scan from guardianScan (shadow-mode telemetry only)
   avaMomentsEnabled: boolean; // Phase C: master gate for user-visible Moments (nothing posts while false)
+  // [AVA-ODL-POST-1] Per-capability kill switches (ava_capabilities.ts
+  // CAPABILITY_SEED[i].kill_switch). MUST be declared here — an undeclared
+  // kill_switch key is a FAKE flag (putConfig 400s "unknown key" on any
+  // attempt to set it, so it can never actually be pulled; see the
+  // 2026-07-15 inAppUpdateEnabled lesson in CLAUDE.md). Only the two
+  // lifecycle:"production" capabilities (meeting, reminder) can currently
+  // reach the post path this flag gates; humor/auto_sticker stay shadow
+  // (unreachable via CATEGORY_TO_CAPABILITY in v1) but are declared now so a
+  // future lifecycle promotion never repeats the fake-flag mistake.
+  avaCapMeetingEnabled: boolean;
+  avaCapReminderEnabled: boolean;
+  avaCapHumorEnabled: boolean;
+  avaCapAutoStickerEnabled: boolean;
   // CALL OUTCOME MENU (Specs/CALL-OUTCOME-MENU-SPEC-2026-07-09.md). One server-
   // driven menu for every non-answered call (declined / no-answer / unreachable /
   // phone-off / Ava-mode / busy): Talk to Ava, voice note, text note, See Listings.
@@ -799,6 +812,14 @@ const DEFAULTS: PlatformConfig = {
   // Ava Copilot Phases C+D — ODL ships DARK; flip via scripts/flags.sh set odlEnabled=true
   odlEnabled: false,          // ODL wake scan (shadow telemetry only; zero AI, zero user-visible output)
   avaMomentsEnabled: false,   // no user-visible Moments until a capability is production AND this is on
+  // [AVA-ODL-POST-1] Per-capability kill switches — default true (no EXTRA
+  // restriction beyond odlEnabled/avaMomentsEnabled/lifecycle, all of which
+  // already keep this dark in prod). Explicit false in KV turns ONE
+  // capability off without touching the other seven.
+  avaCapMeetingEnabled: true,
+  avaCapReminderEnabled: true,
+  avaCapHumorEnabled: true,
+  avaCapAutoStickerEnabled: true,
   // Call Outcome Menu (Specs/CALL-OUTCOME-MENU-SPEC-2026-07-09.md) — ships DARK;
   // flip callMenuEnabled=true in KV (scripts/flags.sh) on staging first.
   callMenuEnabled: false,            // master switch for the unified call outcome menu
