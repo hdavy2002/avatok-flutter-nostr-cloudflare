@@ -2335,8 +2335,11 @@ class CallSession {
   }
 
   /// Fed by [_pollPlayoutHealth] on every classification while a recovery is
-  /// active. Offerer: counts consecutive healthy samples toward completion.
-  /// Non-offerer: sends its own `recovery-ready` once playout resumes.
+  /// active. Offerer: counts consecutive healthy samples toward completion,
+  /// gated on the peer's `recovery-ready` ack (see [_maybeCompleteRecovery]).
+  /// Non-offerer: sends its own `recovery-ready` once playout resumes, THEN
+  /// completes locally on its own evidence — see [_completeRecoveryLocally]
+  /// for why (BLOCKER-1, plan §7.3).
   void _onPlayoutHealthForRecovery(MediaHealthClass cls) {
     final a = _activeRecovery;
     if (a == null || a.completed) return;
@@ -2348,9 +2351,22 @@ class CallSession {
       } else {
         a.healthySamplesSinceStart = 0;
       }
-    } else if (playoutOk && !a.selfReadySent && _remoteId != null) {
+      return;
+    }
+    // Non-offerer branch. `healthySamplesSinceStart` is reused here as "our
+    // own consecutive healthy playout samples" — nothing offerer-specific
+    // depends on it on this branch.
+    if (playoutOk) {
+      a.healthySamplesSinceStart++;
+    } else {
+      a.healthySamplesSinceStart = 0;
+    }
+    if (!a.selfReadySent && playoutOk && _remoteId != null) {
       a.selfReadySent = true;
       _send({'type': 'recovery-ready', 'to': _remoteId, 'attemptId': a.id});
+    }
+    if (a.selfReadySent && a.healthySamplesSinceStart >= 2) {
+      _completeRecoveryLocally(a);
     }
   }
 
@@ -2376,6 +2392,37 @@ class CallSession {
       'path_after': _relayForced ? 'relay' : 'direct',
       'elapsed_ms': elapsedMs,
       'two_side_ack': true,
+    });
+    if (identical(_activeRecovery, attempt)) _activeRecovery = null;
+    _telemetry.setRecoveryState('none', attemptCount: _recoveryAttemptCount);
+    if (!_ended && _connected) _setPhase('connected');
+  }
+
+  /// [BLOCKER-1 fix] The non-offerer's completion path. The protocol never
+  /// sends the non-offerer an ack back FROM the offerer — `recovery-ready`
+  /// only flows non-offerer -> offerer, and the offerer's own
+  /// [_completeRecovery] never replies with anything. Before this fix, the
+  /// non-offerer had NO way to clear its `_activeRecovery`/cancel its own
+  /// [_recoveryDeadlineTimer], so 30s after every SUCCESSFUL recovery it hit
+  /// its own deadline timer and called `_failRecovery('recovery_timeout_no_playout')`,
+  /// dropping an otherwise-healthy call. The non-offerer instead completes on
+  /// its own evidence: it already sent `recovery-ready`, and it has
+  /// independently observed 2 consecutive healthy playout samples. Telemetry
+  /// is marked `two_side_ack: false` / `local_complete: true` so this is
+  /// distinguishable from the offerer's bilaterally-acknowledged completion.
+  void _completeRecoveryLocally(RecoveryAttempt attempt) {
+    if (attempt.completed) return;
+    attempt.completed = true;
+    _recoveryDeadlineTimer?.cancel();
+    final elapsedMs = DateTime.now().millisecondsSinceEpoch - attempt.startedAtMs;
+    Analytics.capture('call_recovery_completed', {
+      'call_id': config.room,
+      'attempt_id': attempt.id,
+      'path_before': attempt.targetPath,
+      'path_after': _relayForced ? 'relay' : 'direct',
+      'elapsed_ms': elapsedMs,
+      'two_side_ack': false,
+      'local_complete': true,
     });
     if (identical(_activeRecovery, attempt)) _activeRecovery = null;
     _telemetry.setRecoveryState('none', attemptCount: _recoveryAttemptCount);
