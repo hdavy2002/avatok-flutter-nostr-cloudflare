@@ -32,8 +32,10 @@ import type { Env } from "../types";
 import { json, aiText, geminiRun } from "../util";
 import type { MessageScope } from "../lib/ava_kinds";
 import { runGated, webSearchAllowed, aiRunOpts, type AiTier } from "../lib/ai_gate"; // P2 gate
-import { brainSearchLines } from "../lib/ava_memory"; // P4 RAG (Phase 11 swap)
-import { runAppsToolLoop, runAgentLoop, connectedToolkits } from "../lib/composio"; // AvaApps + unified agentic loop
+import { brainSearchTyped } from "../lib/ava_memory"; // F1 — typed retrieval (available/source/degraded_reason)
+import { runAppsToolLoop, runAgentLoop, connectedToolkits, looksLikeImageRequest } from "../lib/composio"; // AvaApps + unified agentic loop
+import * as openrouterAdapter from "../lib/ava_reason/adapters/openrouter"; // AVA-KIMI-GATEWAY-1: reuse the existing OpenRouter fetch client
+import type { BodyOpts, ReasonReq } from "../lib/ava_reason/types";
 import { runAvaImage } from "../routes/ava_image"; // P9 — in-thread image gen (Nano Banana 2), shared gate
 import { fetchInbox } from "../lib/gmail"; // in-chat email cards (Composio Gmail)
 import { fetchOutlookInbox } from "../lib/outlook"; // same cards for Outlook-only users
@@ -71,6 +73,17 @@ const WINDOW = 12;          // recent turns fed to the model (bounded context)
 const SUMMARY_EVERY = 8;    // refresh the rolling summary roughly every N messages
 const MAX_TOKENS = 300;
 
+// ---- AVA-KIMI-GATEWAY-1: OUR-KEYS plain-chat model gateway ------------------
+// Env-configurable OpenRouter target for the in-thread @ava turn (Kimi K3 by
+// default). This is a SEPARATE lane from the agentic tool loop below (apps/
+// image/attachments still run through composio.ts's runAgentLoop, which is
+// Gemini-via-OpenRouter and out of this file's scope) — see turn()'s
+// `wantsTools` gate and the report for why tool-calling turns are NOT migrated.
+const DEFAULT_THREAD_MODEL = "moonshotai/kimi-k3";
+const DEFAULT_THREAD_MODEL_ALT = "google/gemini-2.5-flash-lite";
+const THREAD_TIMEOUT_MS = 30_000;
+const MAX_OUTPUT_CHARS = 4000; // F8 minimal output guard — hard cap independent of maxTokens
+
 interface Member { uid: string; }
 
 // A file/photo/voice note shared IN the chat. `caption` is any text typed in the
@@ -95,6 +108,27 @@ function stripReasoning(s: string): string {
     .replace(/<thinking>[\s\S]*?<\/thinking>/gi, "")
     .replace(/^\s*<\/?think(ing)?>\s*/gi, "")
     .trim();
+}
+
+// F8 (Specs/AUDIT-MESSENGER-AI-MEDIA-UI-2026-07-24.md §F8): safe() below is a
+// documented no-op — full output moderation (structured kind/risk/confidence,
+// prompt-injection boundary enforcement) is deliberately NOT built here. This is
+// a MINIMAL belt-and-suspenders guard only: redact anything that reads like a
+// leaked API key/token, and hard-cap output length so a runaway/adversarial
+// completion can't return an unbounded blob. TODO(F8): replace with the real
+// structured-output gateway contract described in the audit.
+const SECRET_LIKE = /\b(?:sk-[A-Za-z0-9_-]{10,}|AKIA[0-9A-Z]{12,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|[A-Za-z0-9_\-+/]{32,})\b/g;
+
+function redactSecrets(s: string): string {
+  return (s || "").replace(SECRET_LIKE, "[redacted]");
+}
+
+function capOutput(s: string, max = MAX_OUTPUT_CHARS): string {
+  return s.length > max ? `${s.slice(0, max)}…` : s;
+}
+
+function guardOutput(s: string): string {
+  return capOutput(redactSecrets(s || ""));
 }
 
 export class AvaAgentDO {
@@ -299,15 +333,19 @@ export class AvaAgentDO {
     // in ava_memory.ts by a HARD `filter: { uid }` on the Vectorize query — a user
     // can NEVER retrieve another user's vectors (the one non-negotiable security
     // invariant of AvaBrain). This wrapper only adds retrieval observability.
+    // F1: uses the TYPED result so `ava_memory_context` can tell a legitimately
+    // empty memory apart from a degraded one (source/available/degraded_reason) —
+    // the exact ambiguity the audit called out ("degraded Ava looks amnesiac").
     const t0 = Date.now();
-    const lines = await brainSearchLines(this.env, uid, query, 5);
+    const r = await brainSearchTyped(this.env, uid, query, 5);
     try {
       trackUser(this.env, uid, null, "ava_memory_context", "avaai", {
-        hits: lines.length, sources_used: lines.length,
+        hits: r.hits, sources_used: r.hits, source: r.source, available: r.available,
+        degraded_reason: r.degraded_reason ?? null,
         retrieval_ms: Date.now() - t0, query_len: query.length,
       });
     } catch { /* best-effort — telemetry never blocks a turn */ }
-    return lines;
+    return r.lines;
   }
 
   // ---- generation -------------------------------------------------------------
@@ -513,6 +551,96 @@ export class AvaAgentDO {
     return "";
   }
 
+  // ---- AVA-KIMI-GATEWAY-1: OUR-KEYS plain-chat model gateway ------------------
+  // Reuses the SAME OpenRouter fetch client the shared ava_reason gateway already
+  // uses (lib/ava_reason/adapters/openrouter.ts) instead of writing a new one.
+  // Ladder: OpenRouter primary (AVA_THREAD_MODEL, default Kimi K3) → retry ONCE
+  // on 429/5xx/timeout → OpenRouter ALT (AVA_THREAD_MODEL_ALT) → direct Gemini
+  // (geminiRun, the pre-existing last-resort path) so @ava never goes fully dark.
+  // Scope: plain-answer turns only — see turn()'s `wantsTools` gate. Tool-calling
+  // turns (apps actions, image generation, attachments) stay on the existing
+  // Gemini-via-OpenRouter agentic loop in composio.ts (out of this file's scope;
+  // see the report for why that lane was not migrated).
+  private threadModel(): string {
+    return String((this.env as any).AVA_THREAD_MODEL || "").trim() || DEFAULT_THREAD_MODEL;
+  }
+  private threadAltModel(): string {
+    return String((this.env as any).AVA_THREAD_MODEL_ALT || "").trim() || DEFAULT_THREAD_MODEL_ALT;
+  }
+
+  // Classify an OpenRouter adapter failure for fallback_reason telemetry. The
+  // adapter throws `Error("openrouter <status>: <detail>")` on a non-2xx response,
+  // or an AbortError-shaped rejection when the request hits THREAD_TIMEOUT_MS.
+  private classifyOrError(e: unknown): "timeout" | "429" | "5xx" | "parse" {
+    const name = String((e as any)?.name ?? "");
+    const msg = String((e as any)?.message ?? e ?? "");
+    if (/abort|timeout/i.test(name) || /abort|timeout/i.test(msg)) return "timeout";
+    if (/\b429\b/.test(msg)) return "429";
+    if (/\b5\d\d\b/.test(msg)) return "5xx";
+    return "parse";
+  }
+
+  private async callThreadModel(sys: string, user: string): Promise<{
+    text: string; model: string; provider: string;
+    tokensIn: number | null; tokensOut: number | null;
+    fallbackReason: string | null; latencyMs: number;
+  }> {
+    const t0 = Date.now();
+    const key = (this.env as any).OPENROUTER_API_KEY as string | undefined;
+    const primary = this.threadModel();
+    const alt = this.threadAltModel();
+    const bodyOpts: BodyOpts = { applyDefaults: true, allowRaw: false, allowJson: false, allowAiOptions: false };
+    const req: ReasonReq = {
+      role: "thread", capability: "chat", trigger: "ava_thread_turn",
+      system: sys, user, maxTokens: MAX_TOKENS, temperature: 0.7, timeoutMs: THREAD_TIMEOUT_MS,
+    };
+    let fallbackReason: string | null = null;
+
+    if (key) {
+      // Primary model — retry ONCE on a transient failure (429/5xx/timeout).
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const out = await openrouterAdapter.run(this.env as any, { model: primary, req, body: bodyOpts, title: "AvaTOK Thread" });
+          return {
+            text: stripReasoning(out.text), model: primary, provider: "openrouter",
+            tokensIn: out.tokensIn ?? null, tokensOut: out.tokensOut ?? null,
+            fallbackReason, latencyMs: Date.now() - t0,
+          };
+        } catch (e) {
+          const reason = this.classifyOrError(e);
+          if (attempt === 0 && (reason === "429" || reason === "5xx" || reason === "timeout")) {
+            fallbackReason = reason;
+            continue;
+          }
+          fallbackReason = fallbackReason || reason;
+          break;
+        }
+      }
+      // ALT model.
+      try {
+        const out = await openrouterAdapter.run(this.env as any, { model: alt, req, body: bodyOpts, title: "AvaTOK Thread" });
+        return {
+          text: stripReasoning(out.text), model: alt, provider: "openrouter",
+          tokensIn: out.tokensIn ?? null, tokensOut: out.tokensOut ?? null,
+          fallbackReason: fallbackReason || "5xx", latencyMs: Date.now() - t0,
+        };
+      } catch (e) {
+        fallbackReason = fallbackReason || this.classifyOrError(e);
+      }
+    } else {
+      fallbackReason = "no_key";
+    }
+
+    // Last resort: the pre-existing direct-Gemini path. Never throws (returns ""
+    // on total failure); @ava must never go fully dark.
+    const text = stripReasoning(await geminiRun(this.env, sys, user, MAX_TOKENS, 0.7));
+    return {
+      text, model: "gemini-direct", provider: "google_direct",
+      tokensIn: null, tokensOut: null,
+      fallbackReason: fallbackReason || "parse", latencyMs: Date.now() - t0,
+    };
+  }
+
   // ---- the turn ---------------------------------------------------------------
   private async turn(b: { conv: string; uid: string; text: string; private?: boolean; key?: string; store?: string }): Promise<any> {
     const conv = String(b.conv || "");
@@ -681,6 +809,42 @@ export class AvaAgentDO {
         }
       }
 
+      // AVA-KIMI-GATEWAY-1: OUR-KEYS plain-chat turns (no tool need) run through
+      // the configurable OpenRouter gateway (Kimi K3 by default; see
+      // callThreadModel) instead of the Gemini tool-loop below. This is
+      // deliberately narrow: a turn needs the agentic loop the moment it might
+      // touch attachments, connected apps, or image generation, because that loop
+      // does OpenAI-style function-calling that this simpler lane does not attempt
+      // to reproduce (see the report for why). BYO-key users are UNCHANGED — this
+      // lane never applies to them, preserving that path exactly as it runs today.
+      const wantsTools = attachments.length > 0
+        || (appsCap && premium && this.looksLikeApps(userText))
+        || looksLikeImageRequest(userText);
+      if (!byoKey && !wantsTools) {
+        const snippets = await this.brainSearch(uid, userText); // F1 — also emits ava_memory_context
+        const summaryNow = this.summaryRow(conv).summary;
+        const { sys, user } = this.buildPrompt(summaryNow, window, userText, snippets, false, attachments);
+        const g = await this.callThreadModel(sys, user);
+        let answer = guardOutput(g.text); // F8 minimal output guard
+        if (!answer) answer = "Ava is unavailable right now. Please try again shortly.";
+        await this.postStatus(conv, uid, priv, "Ava is working…", statusId, "end");
+        await this.postAva({ conv, uid, text: answer, private: priv, source: "chat" });
+        trackUserContact(this.env, uid, email, phone, "ava_thread_turn_model", "avaai", {
+          conv_kind: convKind, lane: tier,
+          model_requested: this.threadModel(), model_actual: g.model, provider: g.provider,
+          input_tokens: g.tokensIn, output_tokens: g.tokensOut,
+          latency_ms: g.latencyMs, fallback_reason: g.fallbackReason,
+        });
+        trackUserContact(this.env, uid, email, phone, "ava_thread_completed", "avaai", {
+          conv_kind: convKind, tier, agentic: false, streamed: false, genui: false,
+          ttfb_ms: null, stream_frames: 0, stream_chars: 0,
+          answer_len: answer.length, latency_ms: Date.now() - t0,
+          tools_called: 0, tool_names: "", tools_ms: 0, tool_error: false,
+          attachments: 0, attachments_captioned: 0,
+        });
+        return { ok: true, status_id: statusId };
+      }
+
       // THE single agentic call: Gemini chats directly, calls search_memory for
       // the user's own data, or acts on connected apps — its own choice, one loop.
       let ctx = window.map((w) => `${w.ava ? "Ava" : (w.mine ? "User" : "Other")}: ${w.text}`).join("\n");
@@ -775,6 +939,10 @@ export class AvaAgentDO {
       }
       if (streaming) { await flush(); if (started) await this.streamFrame(uid, conv, statusId, "end", ""); }
       if (!answer) answer = "Ava is unavailable right now. Please try again shortly.";
+      // F8 minimal output guard (see guardOutput doc). NOTE: a streamed preview was
+      // already sent live via streamFrame above; the guard does not retroactively
+      // scrub it — only the persisted final message. TODO(F8): full gateway.
+      else answer = guardOutput(answer);
 
       // When we streamed a live preview the summoner already saw the chip vanish
       // under the growing bubble, so SKIP the persisted ava_status 'end' (it would
