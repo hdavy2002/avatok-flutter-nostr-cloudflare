@@ -51,9 +51,16 @@ const SLEEP_SAMPLE = 100; // 1:100 sampling for ava_odl_sleep
 
 // ─────────────────────────────────────────────────────────────────────────────
 // [AVA-ODL-POST-1] The decision ledger (F7, worker/migrations/ava_interventions.sql,
-// DB_META). ONE additive table, ONE deterministic key, ONE status machine:
-// reserved → posted (InboxDO ack'd) | expired (24h lazy TTL sweep). See the
-// migration file for the full "why" — kept here to the mechanics only.
+// DB_META). ONE additive table, ONE deterministic key: reserved → posted
+// (InboxDO ack'd). decision_id is the PRIMARY KEY and reservation is
+// INSERT OR IGNORE, so a 'reserved' row that never resolves (crash mid-post,
+// InboxDO down) must eventually be DELETED, not merely relabelled — an
+// 'expired' row would still occupy the PK forever and permanently block a
+// retry of the identical (uid, conv, capability, text) decision. The 24h TTL
+// sweep therefore DELETEs stale 'reserved' rows outright (see
+// sweepExpiredInterventions below); it never touches 'posted' rows. The
+// 'expired' status name lives on only as a legacy enum value that may still
+// appear in old telemetry/rows written before this fix — new code never sets it.
 // ─────────────────────────────────────────────────────────────────────────────
 
 // FNV-1a (32-bit) → hex. Same pattern as worker/src/lib/brain_ingest.ts and
@@ -88,12 +95,17 @@ const SWEEP_SAMPLE = 50; // lazy TTL sweep — only 1:50 wakes pay the extra D1 
 
 /**
  * Lazy TTL sweep (F7: "do the sweep lazily at the top of odlProcess — cheap
- * DELETE/UPDATE with a LIMIT"). Sampled + best-effort: a late sweep just means
- * a stale 'reserved' row sits a little longer before being marked 'expired' —
- * it is never read as "posted" and never blocks a fresh decision (a NEW
- * message text yields a NEW decision_id regardless of old rows). Only runs
- * once the ledger can actually contain rows (both flags on), so it is a
- * complete no-op — not even a D1 call — everywhere the feature is dark.
+ * DELETE with a LIMIT"). Sampled + best-effort: a late sweep just means a
+ * crash-stuck 'reserved' row sits a little longer before being reclaimed.
+ * DELETEs — does NOT relabel to 'expired' — because decision_id is the
+ * PRIMARY KEY and reservation is INSERT OR IGNORE (decisionIdFor): if a
+ * stale row were merely marked 'expired' it would still occupy the PK, so a
+ * crash-stuck reservation (or a repeated identical trigger for the same
+ * uid/conv/capability/text) could NEVER re-reserve and could never post
+ * again. DELETE frees the PK so the same decision can be retried cleanly.
+ * 'posted' rows are never touched (status = 'reserved' in the WHERE below).
+ * Only runs once the ledger can actually contain rows (both flags on), so it
+ * is a complete no-op — not even a D1 call — everywhere the feature is dark.
  */
 async function sweepExpiredInterventions(env: Env): Promise<void> {
   if (Math.floor(Math.random() * SWEEP_SAMPLE) !== 0) return; // cheap check FIRST — no I/O on 49/50 calls
@@ -102,13 +114,13 @@ async function sweepExpiredInterventions(env: Env): Promise<void> {
     if (cfg.odlEnabled !== true || cfg.avaMomentsEnabled !== true) return; // ledger can't be growing while dark
     const cutoff = Date.now() - INTERVENTION_TTL_MS;
     await env.DB_META.prepare(
-      `UPDATE ava_interventions SET status = 'expired', updated_at = ?1
+      `DELETE FROM ava_interventions
        WHERE decision_id IN (
          SELECT decision_id FROM ava_interventions
-         WHERE status = 'reserved' AND created_at < ?2
+         WHERE status = 'reserved' AND created_at < ?1
          LIMIT 50
        )`,
-    ).bind(Date.now(), cutoff).run();
+    ).bind(cutoff).run();
   } catch { /* best-effort — never affects the funnel */ }
 }
 
@@ -308,8 +320,11 @@ export async function odlProcess(env: Env, input: OdlInput): Promise<OdlResult> 
       return { woke: true, capability: cap.id, opportunity, would_fire: true, templateText };
     }
     if (!reservedHere) {
-      // A row for this EXACT decision already exists — posted, still
-      // in-flight, or expired. F7: "a retry must not double-post." Stop.
+      // A row for this EXACT decision already exists — posted, or still
+      // 'reserved' and in-flight / crash-stuck (the latter self-heals via
+      // the 24h sweep DELETE above, which frees the PK for a future retry
+      // rather than leaving it permanently blocked). F7: "a retry must not
+      // double-post." Stop.
       return { woke: true, capability: cap.id, opportunity, would_fire: true, reason: "already_decided", templateText };
     }
 
@@ -341,10 +356,12 @@ export async function odlProcess(env: Env, input: OdlInput): Promise<OdlResult> 
     } else {
       // F7: "on failure leave 'reserved'" — do NOT flip to 'rejected' or
       // 'expired' here. The row is the durable proof this decision spent
-      // budget without producing a card; the 24h sweep expires it if nothing
-      // ever resolves it. v1 does not auto-retry the post (no queue exists
-      // for that here) — a retried odlProcess call for this same message
-      // will see reservedHere=false above and stop, by design.
+      // budget without producing a card; the 24h sweep DELETEs it (freeing
+      // decision_id's PK) if nothing ever resolves it, so a crash-stuck
+      // reservation can eventually be retried instead of blocking forever.
+      // v1 does not auto-retry the post (no queue exists for that here) — a
+      // retried odlProcess call for this same message will see
+      // reservedHere=false above and stop, by design.
       void track(env, uid, "ava_moment_post_failed", "ava_odl", {
         decision_id: decisionId, capability: cap.id, conv_hash: convHash,
         opportunity, trigger_category: category, lang_guess: lang, error: postRes.error ?? null,

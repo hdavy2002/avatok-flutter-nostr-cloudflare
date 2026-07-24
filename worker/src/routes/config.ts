@@ -388,6 +388,14 @@ export interface PlatformConfig {
   avaCapReminderEnabled: boolean;
   avaCapHumorEnabled: boolean;
   avaCapAutoStickerEnabled: boolean;
+  // Remaining shadow-lifecycle capabilities (CAPABILITY_SEED) — declared for
+  // the same fake-flag reason as above, even though shadow mode never posts.
+  avaCapExpenseSplitEnabled: boolean;
+  avaCapBirthdayEnabled: boolean;
+  avaCapOtpGuardEnabled: boolean;
+  avaCapOrderTrackingEnabled: boolean;
+  avaCapTravelPlanEnabled: boolean;
+  avaCapCelebrationEnabled: boolean;
   // CALL OUTCOME MENU (Specs/CALL-OUTCOME-MENU-SPEC-2026-07-09.md). One server-
   // driven menu for every non-answered call (declined / no-answer / unreachable /
   // phone-off / Ava-mode / busy): Talk to Ava, voice note, text note, See Listings.
@@ -820,6 +828,12 @@ const DEFAULTS: PlatformConfig = {
   avaCapReminderEnabled: true,
   avaCapHumorEnabled: true,
   avaCapAutoStickerEnabled: true,
+  avaCapExpenseSplitEnabled: true,
+  avaCapBirthdayEnabled: true,
+  avaCapOtpGuardEnabled: true,
+  avaCapOrderTrackingEnabled: true,
+  avaCapTravelPlanEnabled: true,
+  avaCapCelebrationEnabled: true,
   // Call Outcome Menu (Specs/CALL-OUTCOME-MENU-SPEC-2026-07-09.md) — ships DARK;
   // flip callMenuEnabled=true in KV (scripts/flags.sh) on staging first.
   callMenuEnabled: false,            // master switch for the unified call outcome menu
