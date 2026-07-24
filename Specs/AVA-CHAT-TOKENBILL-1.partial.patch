@@ -1,0 +1,155 @@
+diff --git a/worker/src/do/ava_agent.ts b/worker/src/do/ava_agent.ts
+index 4e31814..a3b15c2 100644
+--- a/worker/src/do/ava_agent.ts
++++ b/worker/src/do/ava_agent.ts
+@@ -45,6 +45,8 @@ import { resolveAffordances, affordanceToAction } from "../lib/capabilities"; //
+ import { isPremiumAI } from "../lib/premium"; // premium gate (topped-up wallet)
+ import { trackUser, trackUserContact } from "../hooks"; // PostHog telemetry (email/phone-stamped)
+ import { contactFor } from "../lib/identity"; // uid → {email, phone} (KV-cached) for telemetry
++import { chargeAmount } from "../feature_pricing"; // [AVA-CHAT-TOKENBILL-1] per-MTok wallet deduction
++import { readConfig } from "../routes/config"; // [AVA-CHAT-TOKENBILL-1] rates + compression knobs
+ 
+ // One classified route per turn. Ava reads intent, THEN acts (no keyword gates):
+ //   chat  — answer directly in conversation
+@@ -79,8 +81,11 @@ const MAX_TOKENS = 300;
+ // image/attachments still run through composio.ts's runAgentLoop, which is
+ // Gemini-via-OpenRouter and out of this file's scope) — see turn()'s
+ // `wantsTools` gate and the report for why tool-calling turns are NOT migrated.
+-const DEFAULT_THREAD_MODEL = "moonshotai/kimi-k3";
+-const DEFAULT_THREAD_MODEL_ALT = "google/gemini-2.5-flash-lite";
++// [AVA-CHAT-TOKENBILL-1] owner decision 2026-07-24: cheapest MULTIMODAL model
++// as primary (Gemini 2.5 Flash-Lite, ~$0.10/M in / $0.40/M out); Kimi K3 demoted
++// to ALT. env AVA_THREAD_MODEL / AVA_THREAD_MODEL_ALT still override both.
++const DEFAULT_THREAD_MODEL = "google/gemini-2.5-flash-lite";
++const DEFAULT_THREAD_MODEL_ALT = "moonshotai/kimi-k3";
+ const THREAD_TIMEOUT_MS = 30_000;
+ const MAX_OUTPUT_CHARS = 4000; // F8 minimal output guard — hard cap independent of maxTokens
+ 
+@@ -167,6 +172,87 @@ export class AvaAgentDO {
+          updated_at INTEGER NOT NULL DEFAULT 0
+        );`,
+     );
++    // [AVA-CHAT-TOKENBILL-1] Per-user chat-token accrual. `accrued` = model
++    // tokens (in+out) not yet billed; `charge_seq` = monotonic counter so every
++    // wallet spend gets a unique, idempotent op_id (a DO replay can never
++    // double-charge — WalletDO dedupes on op_id). Coins are integer (1 = $0.01),
++    // so we accrue until at least one whole coin is owed, then charge.
++    this.sql.exec(
++      `CREATE TABLE IF NOT EXISTS ava_token_billing (
++         uid TEXT PRIMARY KEY,
++         accrued INTEGER NOT NULL DEFAULT 0,
++         charge_seq INTEGER NOT NULL DEFAULT 0,
++         updated_at INTEGER NOT NULL DEFAULT 0
++       );`,
++    );
++  }
++
++  // ---- [AVA-CHAT-TOKENBILL-1] chat token metering → wallet ----------------------
++  private billingRow(uid: string): { accrued: number; charge_seq: number } {
++    const r = this.sql.exec(
++      "SELECT accrued, charge_seq FROM ava_token_billing WHERE uid = ?", uid,
++    ).toArray()[0] as any;
++    return r ? { accrued: Number(r.accrued) || 0, charge_seq: Number(r.charge_seq) || 0 }
++             : { accrued: 0, charge_seq: 0 };
++  }
++
++  private saveBillingRow(uid: string, accrued: number, chargeSeq: number): void {
++    this.sql.exec(
++      `INSERT INTO ava_token_billing (uid, accrued, charge_seq, updated_at)
++       VALUES (?1, ?2, ?3, ?4)
++       ON CONFLICT(uid) DO UPDATE SET accrued=?2, charge_seq=?3, updated_at=?4`,
++      uid, Math.max(0, Math.trunc(accrued)), Math.max(0, Math.trunc(chargeSeq)), Date.now(),
++    );
++  }
++
++  /**
++   * Accrue `used` model tokens for `uid` and deduct whole coins from the wallet
++   * once ≥ 1 coin is owed. Rate: cfg.avaChatCoinsPerMTok coins per 1M tokens
++   * (default 100 → 1 coin per 10,000 tokens). Runs AFTER the reply is delivered
++   * — a billing hiccup never blacks out @ava; unbilled tokens stay accrued and
++   * are collected on a later turn (see the debt gate in turn()).
++   * Charging is a no-op while betaFreePremium is on unless avaChatBillingLive
++   * (forceMeter — same pattern as [RECEPT-BILLING-LIVE-1]).
++   */
++  private async meterChatTokens(
++    uid: string, email: string, phone: string, used: number,
++    cfg: { avaChatCoinsPerMTok: number; avaChatBillingLive: boolean },
++  ): Promise<void> {
++    const add = Math.max(0, Math.trunc(used));
++    if (!add) return;
++    const perMTok = Math.max(1, Number(cfg.avaChatCoinsPerMTok) || 100);
++    const tokensPerCoin = Math.max(1, Math.floor(1_000_000 / perMTok));
++    const row = this.billingRow(uid);
++    let accrued = row.accrued + add;
++    const coins = Math.floor(accrued / tokensPerCoin);
++    if (coins <= 0) { this.saveBillingRow(uid, accrued, row.charge_seq); return; }
++    const seq = row.charge_seq + 1;
++    // Persist the seq BEFORE the network call so a DO restart mid-charge reuses
++    // the SAME op_id on retry (WalletDO dedupes) instead of minting a new one.
++    this.saveBillingRow(uid, accrued, seq);
++    const opId = `avachat:${uid}:${seq}`;
++    try {
++      const r = await chargeAmount(this.env, uid, "ava_chat_tokens", coins, opId, {
++        forceMeter: !!cfg.avaChatBillingLive,
++        meta: { category: "ava", context: `Ava chat — ${coins * tokensPerCoin} AI tokens` },
++      });
++      if (r.ok) {
++        accrued -= coins * tokensPerCoin;
++        this.saveBillingRow(uid, accrued, seq);
++      }
++      trackUserContact(this.env, uid, email, phone, "ava_chat_billing", "avaai", {
++        tokens_used: add, tokens_accrued: accrued, coins_due: coins,
++        charged: r.ok ? (r.charged ?? 0) : 0, ok: r.ok, reason: r.reason ?? null,
++        live: !!cfg.avaChatBillingLive, coins_per_mtok: perMTok,
++      });
++    } catch (e: any) {
++      // Accrual (incl. seq) is already persisted — tokens are owed, not lost.
++      trackUserContact(this.env, uid, email, phone, "ava_chat_billing", "avaai", {
++        tokens_used: add, tokens_accrued: accrued, coins_due: coins,
++        charged: 0, ok: false, reason: String(e?.message ?? e).slice(0, 160),
++        live: !!cfg.avaChatBillingLive, coins_per_mtok: perMTok,
++      });
++    }
+   }
+ 
+   async fetch(req: Request): Promise<Response> {
+diff --git a/worker/src/routes/config.ts b/worker/src/routes/config.ts
+index fa57573..e767f82 100644
+--- a/worker/src/routes/config.ts
++++ b/worker/src/routes/config.ts
+@@ -102,6 +102,17 @@ export interface PlatformConfig {
+   // betaFreePremium is on (forceMeter) — lets the owner live-test token deduction
+   // without ending the free beta platform-wide. Default false (beta stays free).
+   receptBillingLive: boolean;
++  // [AVA-CHAT-TOKENBILL-1] AvaBrain in-thread chat token metering. Coins are
++  // deducted per MILLION model tokens (input + output; estimated at chars/4 when
++  // the provider omits usage counts). 100 coins/MTok = $1.00/M — covers the
++  // Gemini 2.5 Flash-Lite blended API cost (~$0.10–0.40/M) with margin.
++  // avaChatBillingLive mirrors receptBillingLive: forceMeter so the owner can
++  // live-test deduction during beta without ending free beta platform-wide.
++  // Voice calls with AvaBrain (Gemini Live, when built) bill the EXISTING
++  // ava_receptionist_minute key (3 tokens/min) — owner decision 2026-07-24.
++  avaChatCoinsPerMTok: number;       // coins charged per 1M chat model tokens
++  avaChatBillingLive: boolean;       // charge for real even while betaFreePremium
++  avaChatCompressAfterTurns: number; // once a summary exists, feed only last N turns
+   // P1 call-reliability (Specs/MASTER-PROMPT-LAUNCH-READINESS-2026-07-02.md, Phase 1).
+   // When ON, the caller's Ava-takeover countdown does NOT start until the server
+   // confirms the incoming-call FCM push outcome over the CallRoom socket
+@@ -679,6 +690,9 @@ const DEFAULTS: PlatformConfig = {
+   receptionistVmMode: false,       // zero-cost voicemail: cached Bulbul greeting + beep + 30s record (overrides engines while ON)
+   avaCountdownEnabled: true,       // client 3-2-1 Ava countdown; prod KV flips false (VM greeting is instant)
+   receptBillingLive: false,        // [RECEPT-BILLING-LIVE-1] real receptionist token deduction during beta (test switch)
++  avaChatCoinsPerMTok: 100,        // [AVA-CHAT-TOKENBILL-1] $1.00 per 1M chat tokens (1 coin per 10k tokens)
++  avaChatBillingLive: false,       // [AVA-CHAT-TOKENBILL-1] real chat token deduction during beta (test switch)
++  avaChatCompressAfterTurns: 6,    // [AVA-CHAT-TOKENBILL-1] context compression: last N turns + rolling summary
+   receptWrapCueMs: 120_000,        // [AVA-CONVO-BUDGET-1] wrap-up cue at 2:00 (was 40s when menu off → double sign-off)
+   receptCloseMs: 160_000,          // graceful close by ~2:40
+   receptHardCapMs: 180_000,        // stall backstop 3:00
+@@ -974,6 +988,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
+     "minAppBuild", "latestAppBuild", "dailyAvaTurnLimit", "receptionistRings", "agentDailyCap", "livenessAuditSampleRate",
+     "receptWrapCueMs", "receptCloseMs", "receptHardCapMs",
+     "usdInrRate", "receptMarginAlertPaise", // [RECEPT-BILLING-3] cost-ledger FX + margin alert threshold
++    "avaChatCoinsPerMTok", "avaChatCompressAfterTurns", // [AVA-CHAT-TOKENBILL-1] chat token metering + compression
+     "guardianInlineBudgetMs", "callProtocolVersion", "avaSessionsPerCallerPerDay", "strangerVoiceNotesPerDay",
+     "strangerTextNotesPerDay", "maxGroupMembers",
+     // Dialpad business calls + Ava AI Voice Agent — §11/§15 numeric constants.
