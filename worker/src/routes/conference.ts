@@ -70,7 +70,9 @@ async function providerRemoved(req: Request, env: Env, groupId: string): Promise
   const email = await emailFor(env, u.uid).catch(() => null);
   await emitProviderRemoved(env, req, u.uid, email, groupId);
   return json({
-    error: "provider_removed",
+    // Old clients surface j['error'] verbatim in a snackbar — keep it human-readable.
+    error: "Group calls have moved. Please update AvaTOK.",
+    code: "provider_removed",
     message: "Group calls have moved. Please update AvaTOK.",
     update: true,
   }, 410);
