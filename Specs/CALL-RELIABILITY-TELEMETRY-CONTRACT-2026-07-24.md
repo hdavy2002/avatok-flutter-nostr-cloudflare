@@ -117,6 +117,38 @@ route — i.e., the closing half of `ROUTE_REQUESTED -> ROUTE_ACTIVE|ROUTE_FALLB
 | `elapsed_ms` | number | request→confirm latency |
 | `fallback_reason` | string\|null | fixed vocabulary: `device_unavailable`, `timeout`, `platform_rejected`, `bluetooth_disconnected`, `null` when `exact` |
 
+### 1.2b `call_audio_context_set` (legacy, `callAudioControllerV2`-off path)
+
+Pre-existing event, not new to this contract — documented here for
+completeness per this doc's own rule that drift must be reconciled. Emitted
+by the legacy `RingbackPlayer._ensureCallAudioContext`
+(`app/lib/core/ringback_player.dart:105-152`) whenever it applies (or fails to
+apply) the platform `AudioContext` (speakerphone state + `AndroidAudioMode`)
+before playing a ringback/searching tone. This is the audio-context call this
+doc's Milestone B (`callAudioControllerV2`) is intended to eventually replace
+with `CallAudioController`/native `AudioTrack` route ownership — until that
+flag is on for a given call, this is the only event that observes ringback
+audio-context application. Idempotent: only re-applied (and re-emitted) when
+`speakerOn` or `mode` actually changes from the cached `_ctxSet` state.
+
+| Property | Type | Notes |
+|---|---|---|
+| `speaker_on` | bool | requested speakerphone state |
+| `audio_mode` | enum | `AndroidAudioMode.name` (e.g. `callScreening`, `inCommunication`, `normal`) |
+| `ok` | bool | `true` on success; `false` when `setAudioContext` threw |
+| `error` | string | failure path only — `e.toString()`; NOT scrubbed at the call site itself, relies on the downstream `_scrub`/`beforeSend` pipeline (rule 3's "last line of defense") — do not add SDP/ICE/token content to this path |
+
+**Not yet carrying `call_id`/`trace_id`.** Unlike every other event in this
+contract, this call site does not currently pass `call_id`/`trace_id` — it
+relies on the surrounding `Analytics.capture` envelope and proximity to the
+paired `call_audio` domain error (`Analytics.error(domain: 'call_audio', code:
+'audio_context_set_failed', ...)`) and `Analytics.captureException(...,
+extra: {stage: 'ringback_audio_context_set', ...})` also emitted on failure)
+for correlation. Add `call_id`/`trace_id` to the emit site before relying on
+this event for the cross-call joins the rest of this contract assumes (rule 2).
+
+**Forbidden:** no SDP/ICE/token content in `error` (rule 3).
+
 ### 1.3 `call_audio_focus`
 
 Emitted on every Android audio-focus transition observed by the controller
@@ -287,17 +319,27 @@ device audio recording of the actual ring.
 
 ### 6.2 `call_ring_fallback_played`
 
-Emitted when the app plays its own in-app ringtone fallback because the ring
-would otherwise have been silent per §6.1 heuristics (silent mode/DND/volume 0)
-and the foreground/channel policy allowed a fallback (plan REL-10 / FINAL plan
-§2 item 10).
+Emitted from `_startRingtoneFallback` (`app/lib/push/push_service.dart:1166`)
+the instant the app starts its own bundled ringtone (`assets/audio/catalog/classic.mp3`)
+as a fallback. Gated entirely by the caller before this fires — foreground/
+unlocked, the callee's OWN ringer mode is NORMAL (never overrides silent/
+vibrate/DND — this event never fires for those states), and nothing confirms
+CallKit's native ring is actually making sound (the in-hand/OEM heads-up-only
+failure mode REL-10 targets). The event is only emitted on successful start
+(inside the `try`, after `player.play(...)` — a failure to start throws and is
+caught without emitting this event).
 
 | Property | Type | Notes |
 |---|---|---|
-| `call_id`, `trace_id` | string | required |
-| `trigger_reason` | enum (`ringer_silent`\|`ringer_vibrate`\|`ring_volume_zero`\|`dnd_blocking`) | which §6.1 signal caused the fallback |
-| `foreground` | bool | app was foregrounded/unlocked, i.e. eligible to play its own tone |
-| `played` | bool | fallback actually started (false if policy still blocked it — report why via `error_code` on a paired `call_tone_failed`, kind=`searching`, if applicable) |
+| `call_id` | string | required |
+| `reason` | string | currently always `foreground_normal_ringer_no_confirmed_sound`; treat as a fixed vocabulary — add new values here first if a second fallback trigger is ever introduced |
+
+**Not currently emitted (do not rely on until code changes):** `trace_id` is
+not plumbed into this call site yet; `trigger_reason`/`played`/`foreground` do
+not exist as properties — the single `reason` value already encodes
+"foreground + normal ringer + no confirmed sound," so there is nothing left to
+disambiguate. If a future revision adds finer-grained trigger reasons or a
+`played=false` (attempted-but-blocked) case, extend this table then.
 
 **Caller-side honesty companion (not a new event, an amendment):** when
 `call_ring_audibility` reports a silent/DND/zero-volume condition, the caller's
@@ -559,6 +601,7 @@ events have shipped yet; that is expected per the note above.
 | Event(s) | Defect(s) closed |
 |---|---|
 | `call_audio_route_requested/result`, `call_audio_focus` | REL-5, REL-6, REL-7 |
+| `call_audio_context_set` (legacy, pre-existing) | REL-5, REL-6, REL-7 (observability for the flag-off path pending `callAudioControllerV2`) |
 | `call_tone_*` | REL-5 (ducking/ownership) |
 | `call_media_health`, amended `call_progress` | REL-1, REL-9 |
 | `call_recovery_started/offer/completed/failed` | REL-2, REL-3, REL-4 |
