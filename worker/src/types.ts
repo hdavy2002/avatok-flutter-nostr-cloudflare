@@ -239,6 +239,14 @@ export interface Env {
   // (no Clerk JWT available cold-start). Falls back to JOIN_LINK_SECRET.
   MISSEDCALL_TOKEN_SECRET?: string;
 
+  // [CF-CALL-001] HMAC secret for the short-lived Cloudflare Realtime group-call
+  // join ticket (routes/groupcall.ts mintJoinTicket/verifyJoinTicket). Dedicated —
+  // does NOT fall back to any other secret. Unset ⇒ ticket minting fails closed
+  // (503 from /join) and do/group_call_room.ts refuses every WS upgrade, so the
+  // whole authenticated call-authority path is a safe no-op until this is set.
+  // `wrangler secret put CONF_TICKET_SECRET`.
+  CONF_TICKET_SECRET?: string;
+
   // Progressive Identity ladder (PROPOSAL-PROGRESSIVE-IDENTITY.md).
   GUEST_TOKEN_SECRET?: string;     // HMAC for L0 guest tokens (falls back to JOIN_LINK_SECRET)
   // [M-D1 2026-07-17 / M-D11 2026-07-18] TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN removed.

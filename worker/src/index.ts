@@ -358,11 +358,17 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (conf[2] === "beat" && req.method === "POST") return await conferenceBeat(req, env, conf[1]);
     }
 
-    // CF Realtime SFU group AUDIO (≤32, audio-only, active-speaker). WS →
-    // GroupCallRoom DO (roster + active-speaker fan-out); HTTP → SFU session/
-    // track proxy (routes/groupcall.ts, app token stays server-side). Gated by
-    // groupAudioSfuEnabled (dormant; LiveKit /api/conference/* stays live until
-    // flipped). Keyed by group id so all members meet on one room instance.
+    // CF Realtime SFU group calls (≤32 legacy audio-only / ≤25 authenticated A/V).
+    // WS → GroupCallRoom DO, which is now the authenticated call authority
+    // (call_id/generation/state, [CF-CALL-001]) — the WS upgrade below is a bare
+    // pass-through; the DO itself verifies the signed `ticket` query param BEFORE
+    // touching any state (never a raw uid/session query param — Non-negotiable
+    // migration rule #4). HTTP → SFU session/track proxy (routes/groupcall.ts,
+    // CF_RT_SFU_APP_TOKEN + CONF_TICKET_SECRET stay server-side). Gated by
+    // groupAudioSfuEnabled (legacy, audio-only) or cloudflareConferenceEnabled
+    // ([CF-CALL-001/002] audio+video); LiveKit /api/conference/* stays live until
+    // livekitConferenceEnabled is explicitly turned off. Keyed by group id so all
+    // members meet on one room instance.
     const gc = p.match(/^\/api\/groupcall\/([A-Za-z0-9_:.-]{1,64})\/(join|publish|pull|renegotiate|close|status|ws)$/);
     if (gc) {
       const groupId = gc[1];

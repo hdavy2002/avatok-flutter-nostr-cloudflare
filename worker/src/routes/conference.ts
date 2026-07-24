@@ -30,7 +30,7 @@
 // + room metadata, and join/end/status read it back so every participant lands on
 // the SAME node. NAT traversal uses Cloudflare Calls TURN (minted per call).
 import type { Env } from "../types";
-import { json } from "../util";
+import { json, sha256Hex } from "../util";
 import { isFail, requireUser } from "../authz";
 import { PLANS, tierOf } from "./plans";
 import { enforceAllowance, planLimitBody } from "../lib/usage";
@@ -158,6 +158,42 @@ async function conferenceEnabled(env: Env): Promise<boolean> {
   } catch { return true; }
 }
 
+// [CF-CALL-000/001] Phase-0 provider-drift assertion, ADAPTED for safety
+// (owner-approved deviation from the literal proposal text): reject LiveKit
+// issuance ONLY when `livekitConferenceEnabled===false`. We deliberately do NOT
+// gate this on `cloudflareConferenceEnabled===true` — old installed clients that
+// haven't picked up the Cloudflare A/V path yet must keep working while BOTH
+// flags are on during the migration window. Flipping `livekitConferenceEnabled`
+// off is the explicit, single kill switch for "no more LiveKit tokens."
+async function livekitConferenceEnabled(env: Env): Promise<boolean> {
+  try {
+    const cfg = (await env.TOKENS.get("platform_config", "json")) as { livekitConferenceEnabled?: boolean } | null;
+    return cfg?.livekitConferenceEnabled !== false; // default ON (matches routes/config.ts DEFAULTS)
+  } catch { return true; }
+}
+
+async function cloudflareConferenceEnabled(env: Env): Promise<boolean> {
+  try {
+    const cfg = (await env.TOKENS.get("platform_config", "json")) as { cloudflareConferenceEnabled?: boolean } | null;
+    return cfg?.cloudflareConferenceEnabled === true; // default OFF (matches routes/config.ts DEFAULTS)
+  } catch { return false; }
+}
+
+/** conference_provider_selected — the decision-boundary telemetry event required
+ *  by the migration proposal's PostHog contract, emitted every time this module
+ *  decides to issue (or refuse) a LiveKit credential. */
+async function emitProviderSelected(
+  env: Env, req: Request, uid: string, email: string | null, groupId: string,
+  decision: "livekit_cloud" | "livekit_selfhost" | "rejected_disabled", extra: Record<string, unknown> = {},
+): Promise<void> {
+  const [groupHash, uidHash] = await Promise.all([sha256Hex(groupId), sha256Hex(uid)]);
+  await trackUser(env, uid, email, "conference_provider_selected", "avatok", {
+    transport: decision.startsWith("livekit") ? "livekit" : "none",
+    decision, group_id_hash: groupHash.slice(0, 16), participant_hash: uidHash.slice(0, 16),
+    ...confGeo(req), ...extra,
+  });
+}
+
 /** Group members from D1 (Cloudflare-native conversations). Empty = unregistered legacy group. */
 async function groupMembers(env: Env, groupId: string): Promise<string[]> {
   const rows = await env.DB_META
@@ -186,6 +222,14 @@ async function issue(req: Request, env: Env, groupId: string, create: boolean): 
   const g = confGeo(req);
   const email = await emailFor(env, u.uid).catch(() => null);
 
+  // [CF-CALL-001] Phase-0 assertion (adapted): LiveKit issuance is refused ONLY
+  // when the owner has explicitly turned it off. See livekitConferenceEnabled()
+  // header comment for why this is NOT also gated on cloudflareConferenceEnabled.
+  if (!(await livekitConferenceEnabled(env))) {
+    await emitProviderSelected(env, req, u.uid, email, groupId, "rejected_disabled", { stage: create ? "start" : "join" });
+    return json({ error: "LiveKit conferencing has been retired for this app — use the Cloudflare call path" }, 410);
+  }
+
   // Plan gate. RULE CHANGE 2026-06-28 (owner): Free (tier 0) NOW uses the SFU
   // too — on LiveKit Cloud, max 5 participants, metered to 60 min/day (6×10-min
   // calls ≈ one hour). Previously free was P2P-mesh only; the mesh path stays as
@@ -204,6 +248,9 @@ async function issue(req: Request, env: Env, groupId: string, create: boolean): 
   const lk = credsFor(env, region);
   if (!lk) return json({ error: "conference backend not configured" }, 503);
   const provider = region === "cloud" ? "livekit_cloud" : "livekit_selfhost";
+  await emitProviderSelected(env, req, u.uid, email, groupId, provider, {
+    stage: create ? "start" : "join", region, cf_conf_enabled: await cloudflareConferenceEnabled(env),
+  });
 
   // Daily minute allowance (conf_min) enforced at ENTRY so a tapped-out user
   // can't start/join (the per-minute beat keeps consuming once inside). Peek only
