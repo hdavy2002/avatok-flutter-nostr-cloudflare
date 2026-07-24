@@ -355,6 +355,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   // blank. jumpTo needs a laid-out viewport, so we gate VISIBILITY (Opacity), not
   // layout (Offstage) — the extent is measurable while hidden.
   bool _openReveal = false;
+  // [CHAT-UI-LIST-1e] Gated autoscroll: an inbound/Ava message only force-jumps
+  // the view when the reader is already near the newest edge; otherwise it
+  // bumps this counter and the scroll-to-bottom FAB appears. Cleared when the
+  // FAB is tapped (which also performs the jump). Own sends always jump
+  // (`_jump(force: true)`) — WhatsApp always shows you your own outgoing text.
+  int _unseenCount = 0;
+  // [CHAT-UI-LIST-1c] One-shot guard for the 'chat_group_sender_unresolved'
+  // telemetry so it fires once per message id instead of on every rebuild of
+  // `_bubble` (a keystroke/tick/reaction anywhere in the thread used to
+  // re-emit it for every unresolved-sender bubble on screen).
+  final Set<int> _unresolvedSenderLogged = {};
   final _picker = ImagePicker();
   // [AVAVM-PLAYER-1] Voice-note playback now goes through the shared,
   // app-wide `AudioPlaybackService` (survives navigation + backgrounding)
@@ -2888,7 +2899,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
               _msgs.add(_Msg(_seq++, true, t, _fmtTime(now), ts: now, aiLocal: true));
               _ctrl.clear(); _hasText = false; _replyTo = null;
             });
-            _jump();
+            _jump(force: true); // [CHAT-UI-LIST-1e] own send — always jump
             if (_convKey != null) DraftStore().set(_convKey!, '');
             _schedulePersist();
             return;
@@ -2945,7 +2956,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       _msgs.add(_Msg(_seq++, true, t, 'now', replyTo: replyMeta));
       _ctrl.clear(); _hasText = false; _replyTo = null;
     });
-    _jump();
+    _jump(force: true); // [CHAT-UI-LIST-1e] own send — always jump
     _schedulePersist();
   }
 
@@ -2997,7 +3008,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     });
     _clearComposePreview();
     _composePreviewDismissed.clear();
-    _jump();
+    _jump(force: true); // [CHAT-UI-LIST-1e] own send — always jump
     if (_convKey != null) DraftStore().set(_convKey!, '');
 
     // [MEDIA-INSTANT-1e / F5] The recipient's delivery must NEVER wait on a
@@ -3092,9 +3103,64 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     }
   }
 
-  void _jump() => WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
-      });
+  /// [CHAT-UI-LIST-1e] Gated autoscroll. `force:true` (every OWN send site)
+  /// always jumps — WhatsApp always shows you your own outgoing message. For
+  /// everything else (inbound DM/group messages, Ava replies, history loads)
+  /// we only steal the reader's scroll position if they're already within
+  /// ~120px of the newest edge; otherwise we count it as unseen and let the
+  /// FAB (see `_scrollToBottomFab`) do the jump on tap. This replaces the old
+  /// unconditional jump that fired from all 13 call sites and yanked the view
+  /// out from under anyone reading back through history.
+  void _jump({bool force = false}) {
+    if (!force && _scroll.hasClients) {
+      final pos = _scroll.position;
+      final nearBottom = pos.maxScrollExtent - pos.pixels <= 120;
+      if (!nearBottom) {
+        if (mounted) setState(() => _unseenCount++);
+        return;
+      }
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
+    });
+  }
+
+  /// [CHAT-UI-LIST-1e] Small circular scroll-to-bottom button with an unread
+  /// badge — WhatsApp-style. Shown only while `_unseenCount > 0` (i.e. the
+  /// reader was scrolled up when something new arrived). Tapping jumps to the
+  /// newest message and clears the counter.
+  Widget _scrollToBottomFab() {
+    return GestureDetector(
+      onTap: () {
+        setState(() => _unseenCount = 0);
+        _jump(force: true);
+      },
+      child: Stack(clipBehavior: Clip.none, children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: AD.sendActiveBg,
+            shape: BoxShape.circle,
+            boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 2))],
+          ),
+          child: Icon(Icons.keyboard_arrow_down_rounded, color: AD.sendActiveInk, size: 26),
+        ),
+        Positioned(
+          right: -4,
+          top: -4,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+            constraints: const BoxConstraints(minWidth: 18),
+            decoration: const BoxDecoration(color: AD.unreadAccent, shape: BoxShape.circle),
+            child: Text(_unseenCount > 99 ? '99+' : '$_unseenCount',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700)),
+          ),
+        ),
+      ]),
+    );
+  }
 
   /// Robust "land on the latest message" used when a thread first opens. A single
   /// post-frame jump can miss because rows/media are still laying out (the extent
@@ -3643,7 +3709,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     _seenEv.add(id);
     setState(() => _msgs.add(_Msg(_seq++, true, caption, _fmtTime(now),
         ts: now, evId: id, special: type, extra: data)));
-    _jump();
+    _jump(force: true); // [CHAT-UI-LIST-1e] own send — always jump
     _schedulePersist();
     _notifyRecipients();
   }
@@ -4730,7 +4796,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       ..pendingFilename = name
       ..mediaClientId = _newMediaClientId(); // [MEDIA-OUTBOX-DURABLE-1] stable id, assigned here so the durable outbox row (added next commit) can key off the SAME id the bubble already carries.
     setState(() => _msgs.add(msg));
-    _jump();
+    _jump(force: true); // [CHAT-UI-LIST-1e] own send — always jump
     // [AVA-CHAT-INSTANT] Heavy media shows its bubble (local preview + uploading
     // clock) instantly, BEFORE the upload — record how fast (email auto-attached).
     Analytics.capture('msg_optimistic_shown', {
@@ -5829,7 +5895,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       ..pendingFilename = 'voice.m4a'
       ..mediaClientId = _newMediaClientId();
     setState(() => _msgs.add(msg));
-    _jump();
+    _jump(force: true); // [CHAT-UI-LIST-1e] own send — always jump
     Analytics.capture('msg_optimistic_shown', {
       'kind': 'audio', 'conv_kind': _isGroup ? 'group' : 'dm',
       'ms_to_bubble': DateTime.now().millisecondsSinceEpoch - tShownStart,
@@ -7912,7 +7978,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                 // [AVA-CHAT-INSTANT] Keep the list laid out but invisible + inert
                 // until the first jump-to-end lands, so the thread opens already
                 // anchored on the newest message (no visible scroll-through).
-                return Opacity(
+                final listView = Opacity(
                   opacity: _openReveal ? 1.0 : 0.0,
                   child: IgnorePointer(
                   ignoring: !_openReveal,
@@ -7931,15 +7997,34 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                     // the first message of each new calendar day.
                     final needsSep = m.ts != 0 &&
                         (vi == 0 || !_sameDay(visible[vi - 1].ts, m.ts));
-                    if (!needsSep) return _bubble(m);
+                    // [CHAT-UI-LIST-1b] Stable key per item (message id) so a
+                    // single new/changed message doesn't force Flutter to rebind
+                    // every row below it.
+                    if (!needsSep) {
+                      return KeyedSubtree(key: ValueKey('msg_${m.id}'), child: _bubble(m));
+                    }
                     return Column(
+                      key: ValueKey('msg_${m.id}'),
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [_daySeparator(_dayLabel(m.ts)), _bubble(m)],
                     );
                   },
-                ))); // [AVA-CHAT-INSTANT] close ListView.builder / IgnorePointer / Opacity
+                )));
+                // [AVA-CHAT-INSTANT] close ListView.builder / IgnorePointer / Opacity
+                return Stack(children: [
+                  listView,
+                  // [CHAT-UI-LIST-1e] Scroll-to-bottom FAB — appears once an
+                  // inbound/Ava message was gated (reader was scrolled up), so
+                  // they never lose their place but can still jump to the new
+                  // content with one tap. Small unread-count badge, WhatsApp-style.
+                  if (_unseenCount > 0)
+                    Positioned(
+                      right: 12,
+                      bottom: 12,
+                      child: _scrollToBottomFab(),
+                    ),
+                ]);
               }),
-              ),
             ),
             if (_mentionMatches.isNotEmpty) _mentionBar(),
             // Unknown-number threads are a one-way voicemail record (no live peer
@@ -10236,8 +10321,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     // AND no learned avatar is exactly the failure mode that used to render the
     // bare '?' avatar — flag it once per message so a future regression is
     // diagnosable from PostHog alone, without needing a screenshot report.
+    // [CHAT-UI-LIST-1c] Fire at most once per message id — `_bubble` reruns on
+    // every rebuild of the thread State (any keystroke/tick/reaction), and this
+    // used to re-emit the event for every unresolved-sender bubble on screen
+    // each time, not once per actual unresolved sender.
     if (widget.chat.group && !m.me && (m.senderPub?.isNotEmpty ?? false) &&
-        _memberNames[m.senderPub] == null && _memberAvatars[m.senderPub] == null) {
+        _memberNames[m.senderPub] == null && _memberAvatars[m.senderPub] == null &&
+        _unresolvedSenderLogged.add(m.id)) {
       Analytics.capture('chat_group_sender_unresolved', {
         // Analytics.capture already stamps the account's email/phone on every
         // event (Analytics._base) — no need to pass them explicitly here.
