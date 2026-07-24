@@ -81,6 +81,19 @@ export const BRAIN_DOMAINS = {
   // lib/recept_stats.ts recordCallSummary → brainIngest. Mirror row added to
   // consumers/src/brain.ts DOMAIN_CONSENT (the consumer can't cross-import).
   receptionist:{ basis: "consent", consent: "receptionist", label: "Receptionist calls", default: true, scope: "account_private" },
+  // [AVABRAIN-MEDIA-1] (Bible §5) — daily audio/video recordings the user chooses
+  // to "Remember in AvaBrain" (voice/video notes captured in the recorder, NOT
+  // AvaLibrary files and NOT DM voicemail — those already have their own domains/
+  // rows above). Its OWN consent key = its OWN Settings guardrail toggle, same
+  // opt-out-ON model as every other domain. account_private: transcripts/frame
+  // captions/facts derived from a recording are server-readable once the user has
+  // opted in (owner-approved, mirrors voicemail). Ships DARK behind the
+  // `mediaMemoryEnabled` config flag (reported separately — config.ts not edited
+  // here) until the processing pipeline is verified end-to-end. ONE producer:
+  // routes/brain_media.ts (POST /api/brain/media/complete) → brainIngest. Mirror
+  // row added to consumers/src/brain.ts DOMAIN_CONSENT (the consumer can't
+  // cross-import this file).
+  media_memory:{ basis: "consent", consent: "media_memory", label: "Daily recordings", default: true, scope: "account_private" },
   // ── §10 Guardian (SPEC-2026-07-17 §10.1-10.3) — the SAFETY store ────────────
   // basis:'legal' (legitimate interest / legal obligation), NOT consent: it is a
   // DISCLOSURE in Settings, never a toggle (§10.1). consent:null (nothing to gate).

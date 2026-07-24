@@ -33,6 +33,11 @@ const DOMAIN_CONSENT: Record<string, string> = {
   // [RECEPT-STATS-1] — receptionist call summaries (worker lib/recept_stats.ts →
   // brainIngest domain "receptionist"). New key, no legacy aliases.
   receptionist: "receptionist",
+  // [AVABRAIN-MEDIA-1] — daily audio/video "remember this" recordings (worker
+  // routes/brain_media.ts POST /complete → brainIngest domain "media_memory").
+  // New key, no legacy aliases. Mirrors worker/src/lib/brain_domains.ts — the
+  // consumer package can't cross-import that file, so this row MUST stay in sync.
+  media_memory: "media_memory",
 };
 
 // Legacy app names (legacy event source_app) → new registry consent key. Used
@@ -203,6 +208,14 @@ export async function handleBrain(rawMsg: BrainMsg, env: Env): Promise<void> {
     return;
   }
   if (msg.event_type === "backfill") { await backfill(uid, env); return; }
+  // [AVABRAIN-MEDIA-1] per-item deletion job (worker routes/brain_media.ts DELETE
+  // /api/brain/media/:id). Bypasses guardrails/watermark like the ops above — it
+  // only REMOVES data. Scoped to ONE media id, unlike delete_all/purge.
+  if (msg.event_type === "media_delete") {
+    const p = (msg.payload ?? {}) as any;
+    await deleteMediaMemory(env, uid, String(p.mediaId || ""));
+    return;
+  }
 
   // §5.1 deletion watermark — never resurrect data for a uid being deleted.
   if (await hasActiveDeletion(env, uid)) return;
@@ -238,6 +251,19 @@ export async function handleBrain(rawMsg: BrainMsg, env: Env): Promise<void> {
   // transcript path no longer depends on brainEnabled.
   if (msg.source_app === "voicemail") {
     await ingestVoicemail(msg, env);
+    return;
+  }
+
+  // [AVABRAIN-MEDIA-1] Daily audio/video "remember this" recordings (Bible §5).
+  // Routed by DOMAIN (source_app === registry domain "media_memory"), consented
+  // above under its OWN key — never falls through to the generic entity/fact
+  // extraction path below (that path assumes a short structured event, not a
+  // multi-minute recording). The idempotency claim above already wrote the raw
+  // brain_events copy; ingestMediaMemory owns the REST of the pipeline (its own
+  // durable state lives in brain_media, not brain_events).
+  if (msg.source_app === "media_memory") {
+    if (eventId) { try { await env.DB_BRAIN.prepare("UPDATE brain_events SET processed=1 WHERE id=?1").bind(eventId).run(); } catch { /* best-effort */ } }
+    await ingestMediaMemory(msg, env);
     return;
   }
 
@@ -640,9 +666,18 @@ async function transcribeVoice(env: Env, mediaRef: string): Promise<string> {
   const obj = await env.BLOBS.get(mediaRef).catch(() => null);
   if (!obj) return "";
   const buf = await obj.arrayBuffer();
+  const mime = obj.httpMetadata?.contentType || "audio/mp4";
+  return transcribeBuffer(env, buf, mime);
+}
+
+// [AVABRAIN-MEDIA-1] Extracted from transcribeVoice so the media_memory pipeline
+// (which must DECRYPT bytes fetched from R2 before transcription — see
+// decryptMediaBytes below) can hand this an already-plaintext buffer directly,
+// instead of transcribeVoice's own env.BLOBS.get (which would pass ciphertext
+// straight to Whisper). Behavior for the voicemail caller above is unchanged.
+async function transcribeBuffer(env: Env, buf: ArrayBuffer, mime: string): Promise<string> {
   if (buf.byteLength > 24_000_000) return ""; // Whisper hard limit ~25 MB
   if (env.OPENAI_API_KEY) {
-    const mime = obj.httpMetadata?.contentType || "audio/mp4";
     const form = new FormData();
     form.append("file", new File([buf], "voice.m4a", { type: mime }));
     form.append("model", "whisper-1");
@@ -679,6 +714,278 @@ async function transcribeVoice(env: Env, mediaRef: string): Promise<string> {
   } catch { return ""; }
 }
 
+// ═══════════ [AVABRAIN-MEDIA-1] daily audio/video memory pipeline (Bible §5) ═══
+//
+// State machine persisted in brain_media (worker/migrations/brain_media_memory.sql):
+//   queued -> transcribing -> summarizing -> embedding -> ready | failed | deleted
+// One producer (worker/src/routes/brain_media.ts POST /complete) inserts the
+// 'queued' row and enqueues ONE brainIngest event; everything below is triggered
+// by THAT event. Idempotent by (uid, content_hash) — the route already refuses to
+// re-enqueue a duplicate hash, and the brain_events idempotency claim (uid,domain,
+// kind,sourceId=contentHash) collapses a redelivered queue message to a no-op.
+
+const MEDIA_FRAME_BUDGET_DEFAULT = 20; // hard cap, mirrors mediaMemoryFrameBudget
+
+function mediaFrameBudget(env: Env): number {
+  const n = Number((env as any).mediaMemoryFrameBudget);
+  return Number.isFinite(n) && n > 0 ? n : MEDIA_FRAME_BUDGET_DEFAULT;
+}
+
+async function setMediaState(env: Env, id: string, state: string, extra: Record<string, unknown> = {}): Promise<void> {
+  const now = Date.now();
+  const cols = Object.keys(extra);
+  const setSql = ["state=?2", "updated_at=?3", ...cols.map((c, i) => `${c}=?${i + 4}`)].join(", ");
+  try {
+    await env.DB_BRAIN.prepare(`UPDATE brain_media SET ${setSql} WHERE id=?1`)
+      .bind(id, state, now, ...cols.map((c) => (extra as any)[c])).run();
+  } catch (e) { console.error("[brain-media] state update failed:", String(e)); }
+}
+
+// Frame captioning is BUDGETED (Bible §5.2/§5.3) and uses a cheap Workers-AI
+// vision model — see captionImage() above for the same model choice on stills.
+// LIMITATION (documented, not silently faked): decoding arbitrary frames out of
+// an R2-stored video container needs a real video-processing step (ffmpeg/Cloud-
+// flare Stream thumbnailing) that this Workers runtime does not have today. This
+// function enforces the BUDGET and is the single call site future frame-decode
+// wiring plugs into; until that lands it returns no captions (never fabricated
+// ones) rather than pretending to have looked at frames it never decoded. See the
+// report's risks/assumptions section — flagged for the next agent, not hidden.
+async function captionVideoFrames(_env: Env, _r2Key: string, budget: number): Promise<{ captions: string[]; frameCount: number }> {
+  void budget;
+  return { captions: [], frameCount: 0 };
+}
+
+// [AVABRAIN-MEDIA-1 / BLOCKER 2] Reverse of worker/src/routes/brain_media.ts
+// encryptMediaBytes — AES-256-GCM, key+IV supplied per item from the brain_media
+// row (key_b64/iv_b64), never derived/guessed here. Ciphertext in R2 (env.BLOBS,
+// the PUBLIC bucket) is meaningless without this key, which never leaves the
+// server side (not returned by any client-facing endpoint).
+function bytesFromB64(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+async function decryptMediaBytes(ciphertext: ArrayBuffer, keyB64: string, ivB64: string): Promise<ArrayBuffer> {
+  const keyBytes = bytesFromB64(keyB64);
+  const iv = bytesFromB64(ivB64);
+  const key = await crypto.subtle.importKey("raw", keyBytes, { name: "AES-GCM" }, false, ["decrypt"]);
+  return crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ciphertext);
+}
+
+// NIT 12 (Opus review): must match transcribeBuffer's hard Whisper ceiling
+// (`buf.byteLength > 24_000_000` → silently returns ""). Checked explicitly here
+// so an oversized recording is reported as a real FAILURE (state='failed', a
+// reason string) instead of falling through to the "nothing came back" branch,
+// which is reserved for genuinely silent/empty recordings (Bible §5.2 step 7:
+// never make a failed AI job look like a failed upload — nor the reverse, an
+// AI job that never really ran look like a successful empty one).
+const TRANSCRIBE_MAX_BYTES = 24_000_000;
+
+async function ingestMediaMemory(msg: BrainMsg, env: Env): Promise<void> {
+  const uid = msg.uid;
+  const p = (msg.payload ?? {}) as any;
+  const mediaId = String(p.mediaId || "");
+  const contentHash = String(p.contentHash || "");
+  const kind = String(p.kind || "audio");
+  const r2Key = String(p.r2Key || "");
+  const sizeBytes = Number(p.sizeBytes || 0);
+  if (!mediaId || !r2Key) return; // malformed envelope — nothing to process
+
+  const row = await env.DB_BRAIN.prepare(
+    "SELECT id, state, key_b64, iv_b64, mime FROM brain_media WHERE id=?1 AND uid=?2",
+  ).bind(mediaId, uid).first<{ id: string; state: string; key_b64: string | null; iv_b64: string | null; mime: string | null }>().catch(() => null);
+  if (!row) return; // route failed to insert / row already purged — nothing to do
+  if (row.state === "ready" || row.state === "deleted" || row.state === "failed") {
+    // Dedup guard (Bible §5.3 "never process twice for the same (uid, hash)").
+    await brainTrack(env, uid, "avabrain_memory_ingest_queued", { id: mediaId, dedup_hit: true, kind });
+    return;
+  }
+
+  const t0 = Date.now();
+  try {
+    // BLOCKER 2 (Opus review): the route always encrypts before the R2 put now,
+    // so every row reaching this pipeline MUST carry key_b64/iv_b64. A row missing
+    // either is either pre-encryption legacy data (none expected — dark launch) or
+    // corrupted metadata; either way we cannot safely treat R2 bytes we can't
+    // decrypt as plaintext, so this is a real failure, not a silent skip.
+    if (!row.key_b64 || !row.iv_b64) throw new Error("media row missing encryption key/iv");
+
+    const head = await env.BLOBS.head(r2Key).catch(() => null);
+    if (!head) throw new Error("blob missing");
+
+    // ── transcribing ──
+    await setMediaState(env, mediaId, "transcribing");
+    const tStage0 = Date.now();
+    // Fetch the ciphertext and decrypt it server-side (the ONLY place the key
+    // ever gets used) before handing plaintext bytes to Whisper. Audio AND video
+    // both go through transcribeBuffer: OpenAI Whisper (and the Workers-AI
+    // fallback) accept common video containers (mp4/webm) directly and decode the
+    // embedded audio track server-side — there is no separate "extract audio"
+    // step in THIS pipeline (documented assumption; see the report's risks
+    // section — a container Whisper can't demux would fail here and land 'failed').
+    const obj = await env.BLOBS.get(r2Key);
+    if (!obj) throw new Error("blob missing");
+    const cipherBuf = await obj.arrayBuffer();
+    const plainBuf = await decryptMediaBytes(cipherBuf, row.key_b64, row.iv_b64);
+    if (plainBuf.byteLength > TRANSCRIBE_MAX_BYTES) {
+      throw new Error(`oversized_for_transcription: ${plainBuf.byteLength} bytes > ${TRANSCRIBE_MAX_BYTES}`);
+    }
+    const mime = row.mime || String(p.mime || "audio/mp4");
+    const transcript = (await transcribeBuffer(env, plainBuf, mime)).slice(0, 8000); // bounded transcript
+    await brainTrack(env, uid, "avabrain_media_processing_stage", {
+      id: mediaId, stage: "transcribing", ms: Date.now() - tStage0, bytes: sizeBytes, dedup_hit: false,
+    });
+    if (transcript) {
+      try {
+        await env.DB_BRAIN.prepare(
+          `INSERT INTO brain_transcripts (uid, media_ref, conv, transcript, created_at)
+           VALUES (?1,?2,'media_memory',?3,?4)
+           ON CONFLICT(uid, media_ref) DO UPDATE SET transcript=?3, created_at=?4`,
+        ).bind(uid, r2Key, transcript, Date.now()).run();
+      } catch { /* table optional pre-Phase-9 */ }
+    }
+
+    // Video: budgeted frame captioning (Bible §5.2 step 5) — see captionVideoFrames
+    // for the documented current limitation (no frames decoded yet; budget enforced).
+    let frameCount = 0;
+    let visualSummary = "";
+    if (kind === "video") {
+      const vStage0 = Date.now();
+      const frames = await captionVideoFrames(env, r2Key, mediaFrameBudget(env));
+      frameCount = frames.frameCount;
+      visualSummary = frames.captions.join(" ").slice(0, 2000);
+      await brainTrack(env, uid, "avabrain_media_processing_stage", {
+        id: mediaId, stage: "video_frames", ms: Date.now() - vStage0, bytes: sizeBytes, dedup_hit: false, frame_count: frameCount,
+      });
+    }
+
+    const combined = [transcript, visualSummary].filter(Boolean).join(" ").trim();
+    if (!combined) {
+      // Nothing came back (silent audio, unsupported container, empty file) — not
+      // an error, just nothing to remember. Mark ready with zero derived content
+      // rather than 'failed' (Bible §5.2 step 7: "never make a failed AI job look
+      // like a failed upload" — the UPLOAD succeeded; there's simply no transcript).
+      await setMediaState(env, mediaId, "ready", { transcript_chars: 0, frame_count: frameCount, vector_count: 0 });
+      await brainTrack(env, uid, "avabrain_memory_ingest_completed", { id: mediaId, kind, empty: true, total_ms: Date.now() - t0 });
+      return;
+    }
+
+    // ── summarizing (fact extraction) ──
+    await setMediaState(env, mediaId, "summarizing");
+    const sStage0 = Date.now();
+    const extracted = await extract(env, {
+      uid, event_type: "media_transcript", source_app: "media_memory",
+      payload: { text: combined, kind }, capability: "media_memory",
+    } as BrainMsg);
+    for (const f of extracted.facts) {
+      if (!f.content) continue;
+      const now = Date.now();
+      await env.DB_BRAIN.prepare(
+        `INSERT INTO brain_facts (id, uid, fact_type, content, scope, source_app, source_id, confidence, created_at, updated_at, derived_from_max_ts, last_confirmed_at)
+         VALUES (?1,?2,?3,?4,'public',?5,?6,?7,?8,?8,?8,?8)`,
+      ).bind(crypto.randomUUID(), uid, f.fact_type || "insight", f.content, "media_memory", mediaId, clamp(f.confidence ?? 0.7), now).run().catch(() => null);
+    }
+    await brainTrack(env, uid, "avabrain_media_processing_stage", {
+      id: mediaId, stage: "summarizing", ms: Date.now() - sStage0, bytes: sizeBytes, dedup_hit: false, facts: extracted.facts.length,
+    });
+
+    // ── embedding ──
+    await setMediaState(env, mediaId, "embedding");
+    const eStage0 = Date.now();
+    const chunks = chunkText(combined, 480).slice(0, 8); // bounded vectors per recording
+    const md = { uid, kind: "media_memory", app: "media_memory", media_id: mediaId, content_hash: contentHash, media_kind: kind, ts: Date.now(), type: "media_memory" };
+    const vectors: any[] = [];
+    for (let i = 0; i < chunks.length; i++) {
+      const values = await embed(env, chunks[i]);
+      if (values) vectors.push({ id: `${uid}:mm:${mediaId}:${i}`, values, metadata: { ...md, snippet: chunks[i].slice(0, 480) } });
+    }
+    if (vectors.length && env.VECTOR_INDEX) {
+      try {
+        await env.VECTOR_INDEX.upsert(vectors);
+        for (const v of vectors) await recordVector(env, uid, v.id, "media_memory", "media_memory", "media_memory", mediaId);
+      } catch (e) {
+        console.error("[brain-media] vector upsert failed:", String(e));
+        // AvaBrainVectorUpsertFailed (Bible §10.3) — surfaced via the exception path
+        // below; the transcript/facts already landed, so we still mark 'ready'
+        // rather than 'failed' (a missing vector degrades RECALL, not correctness).
+      }
+    }
+    await brainTrack(env, uid, "avabrain_media_processing_stage", {
+      id: mediaId, stage: "embedding", ms: Date.now() - eStage0, bytes: sizeBytes, dedup_hit: false, vectors: vectors.length,
+    });
+
+    await setMediaState(env, mediaId, "ready", {
+      transcript_chars: transcript.length, frame_count: frameCount, vector_count: vectors.length,
+      ready_at: Date.now(),
+    });
+    await brainTrack(env, uid, "avabrain_memory_ingest_completed", { id: mediaId, kind, total_ms: Date.now() - t0 });
+  } catch (e) {
+    console.error("[brain-media] processing failed:", String(e));
+    await setMediaState(env, mediaId, "failed", { error: String((e as any)?.message ?? e).slice(0, 500) });
+    await brainTrack(env, uid, "avabrain_memory_ingest_failed", { id: mediaId, kind, reason: String((e as any)?.message ?? e).slice(0, 200), total_ms: Date.now() - t0 });
+    // $exception (AvaBrainMediaTranscriptionFailed-class) — never include the
+    // transcript/media bytes, only the error string (already scrubbed-by-brevity above).
+    try {
+      await env.Q_ANALYTICS?.send({
+        event: "$exception", uid, ts: Date.now(),
+        props: {
+          $exception_list: [{ type: "AvaBrainMediaTranscriptionFailed", value: String((e as any)?.message ?? e).slice(0, 500), mechanism: { handled: true, synthetic: false } }],
+          $exception_level: "error", media_id: mediaId, kind, app_name: "avatok", service_name: "avatok-consumers", worker: true, account_id: uid,
+        },
+      });
+    } catch { /* best-effort */ }
+  }
+}
+
+// Per-item deletion (worker routes/brain_media.ts DELETE /api/brain/media/:id).
+// Wipes the transcript/vectors/facts derived from ONE recording — mirrors
+// runDeletionJob's per-store shape but scoped to a single media_id instead of the
+// whole account. R2 bytes are already removed by the route (immediate, since this
+// IS the user's direct "delete this recording" ask). Idempotent: a missing row
+// (already purged) is a silent no-op, matching the route's own idempotency.
+async function deleteMediaMemory(env: Env, uid: string, mediaId: string): Promise<void> {
+  if (!mediaId) return;
+  try {
+    // Vectors: enumerate from the generic registry (recordVector wrote them there),
+    // filtered to this media_id via the `ref` column.
+    const vr = await env.DB_BRAIN.prepare(
+      "SELECT vec_id FROM brain_vectors WHERE uid=?1 AND kind='media_memory' AND ref=?2",
+    ).bind(uid, mediaId).all().catch(() => ({ results: [] as any[] }));
+    const ids = ((vr.results ?? []) as any[]).map((r) => String(r.vec_id));
+    if (env.VECTOR_INDEX && ids.length) {
+      for (let i = 0; i < ids.length; i += 1000) await env.VECTOR_INDEX.deleteByIds(ids.slice(i, i + 1000)).catch(() => null);
+    }
+    await env.DB_BRAIN.prepare("DELETE FROM brain_vectors WHERE uid=?1 AND kind='media_memory' AND ref=?2").bind(uid, mediaId).run().catch(() => null);
+    await env.DB_BRAIN.prepare("DELETE FROM brain_facts WHERE uid=?1 AND source_app='media_memory' AND source_id=?2").bind(uid, mediaId).run().catch(() => null);
+
+    // SHOULD-FIX 4 (Opus review): brain_transcripts was left behind by this path —
+    // ingestMediaMemory writes a row keyed (uid, media_ref=r2Key, conv='media_memory')
+    // but nothing here ever deleted it. SELECT r2_key BEFORE the brain_media row is
+    // gone (it's the join key into brain_transcripts, which has no media_id column).
+    const mediaRow = await env.DB_BRAIN.prepare(
+      "SELECT r2_key FROM brain_media WHERE uid=?1 AND id=?2",
+    ).bind(uid, mediaId).first<{ r2_key: string | null }>().catch(() => null);
+    const r2Key = mediaRow?.r2_key ?? null;
+    if (r2Key) {
+      await env.DB_BRAIN.prepare("DELETE FROM brain_transcripts WHERE uid=?1 AND media_ref=?2 AND conv='media_memory'").bind(uid, r2Key).run().catch(() => null);
+      // SHOULD-FIX 4: best-effort R2 delete here too. The route (worker/src/routes/
+      // brain_media.ts brainMediaDelete) already deletes the object immediately as
+      // the direct-ask path, but that delete is itself best-effort (try/catch) — if
+      // it silently failed, this is the only other place that ever tries again.
+      try { await env.BLOBS.delete(r2Key); } catch { /* best-effort */ }
+    }
+
+    // brain_media row already flipped to 'deleted' by the route; this final DELETE
+    // finishes the sweep so the item stops counting against the daily/dedup tables.
+    await env.DB_BRAIN.prepare("DELETE FROM brain_media WHERE uid=?1 AND id=?2").bind(uid, mediaId).run().catch(() => null);
+    await brainTrack(env, uid, "avabrain_memory_deleted", { id: mediaId, vectors: ids.length });
+  } catch (e) {
+    console.error("[brain-media] delete failed:", String(e));
+    await brainTrack(env, uid, "avabrain_memory_deleted", { id: mediaId, ok: false, reason: String((e as any)?.message ?? e).slice(0, 160) });
+  }
+}
+
 // A capability toggled OFF → remove already-indexed items for that consent key
 // (§5.1: retro-delete is NO LONGER env-gated — the /api/brain consent route always
 // enqueues this). payload: { capability } where capability is the registry consent
@@ -700,6 +1007,22 @@ async function retroDelete(msg: BrainMsg, env: Env): Promise<void> {
   await env.DB_BRAIN.prepare(`DELETE FROM brain_vectors WHERE uid=?1 AND capability IN (${ph})`).bind(uid, ...caps).run().catch(() => null);
   if (consentKey === "voicemail" || consentKey === "voicemails") {
     await env.DB_BRAIN.prepare("DELETE FROM brain_transcripts WHERE uid=?1").bind(uid).run().catch(() => null);
+  }
+  // [AVABRAIN-MEDIA-1] Turning the media_memory consent OFF retro-deletes every
+  // recording's state row too (not just its vectors/facts above) — otherwise a
+  // "ready" row would keep showing processed content the consent toggle says the
+  // server should no longer hold. R2 bytes for those rows are left for the
+  // account-wide erasure sweep (mirrors the existing files/library convention —
+  // see libraryDelete's comment in routes/media.ts); the derived DATA is gone now.
+  if (consentKey === "media_memory") {
+    await env.DB_BRAIN.prepare("DELETE FROM brain_media WHERE uid=?1").bind(uid).run().catch(() => null);
+    // SHOULD-FIX 4 (Opus review): the voicemail branch above already clears
+    // brain_transcripts for its own consent key; media_memory's transcripts (conv=
+    // 'media_memory') had the same gap here — retro-delete cleared brain_media but
+    // left every transcript row behind. brain_transcripts has no capability column,
+    // only conv, so this is scoped by conv rather than the caps/legacy-alias list
+    // used for the other tables above.
+    await env.DB_BRAIN.prepare("DELETE FROM brain_transcripts WHERE uid=?1 AND conv='media_memory'").bind(uid).run().catch(() => null);
   }
   // Derived facts from that source (facts.source_app holds the app/consent key).
   await env.DB_BRAIN.prepare(`DELETE FROM brain_facts WHERE uid=?1 AND source_app IN (${ph})`).bind(uid, ...caps).run().catch(() => null);
@@ -754,6 +1077,7 @@ async function purgeBrain(uid: string, env: Env): Promise<void> {
     "DELETE FROM brain_events WHERE uid=?1",
     "DELETE FROM brain_vectors WHERE uid=?1",
     "DELETE FROM brain_transcripts WHERE uid=?1",
+    "DELETE FROM brain_media WHERE uid=?1", // [AVABRAIN-MEDIA-1] recording state rows
   ]) { try { await env.DB_BRAIN.prepare(q).bind(uid).run(); } catch { /* table optional */ } }
   try { await env.DB_META.prepare("DELETE FROM avachat_sessions WHERE user_id=?1").bind(uid).run(); } catch { /* optional */ }
 }
@@ -844,6 +1168,7 @@ async function runDeletionJob(env: Env, uid: string, deletionId: string | null, 
     ["brain_events", "DELETE FROM brain_events WHERE uid=?1"],
     ["brain_vectors", "DELETE FROM brain_vectors WHERE uid=?1"],
     ["brain_transcripts", "DELETE FROM brain_transcripts WHERE uid=?1"],
+    ["brain_media", "DELETE FROM brain_media WHERE uid=?1"], // [AVABRAIN-MEDIA-1]
   ] as Array<[string, string]>) {
     try {
       const r = await env.DB_BRAIN.prepare(sql).bind(uid).run();

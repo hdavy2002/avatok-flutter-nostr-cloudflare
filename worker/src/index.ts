@@ -13,6 +13,7 @@ import { getStorageSummary } from "./storage";
 import { streamWebhook } from "./routes/stream";
 import { brain } from "./routes/brain";
 import { brainDomains } from "./routes/brain_domains";
+import { brainMediaPrepare, brainMediaComplete, brainMediaStatus, brainMediaDelete } from "./routes/brain_media"; // [AVABRAIN-MEDIA-1]
 import { deleteAccount, cancelDeletion, deletionStatus } from "./routes/account";
 import { adminDeleteUser } from "./routes/admin_delete_user"; // [ADMIN-DELETE-USER-1] admin immediate erasure of another user
 // [AVADIAL-CALL-INTEL-1] Call-intelligence ingest. The ONLY place raw E.164 and the
@@ -167,7 +168,7 @@ import { affiliateAssetsGenerate, affiliateAssetsList } from "./routes/affiliate
 // is expected and accepted for Phase 0 (Phase 11 reconciles). See
 // Specs/ava-build/INTEGRATION-NOTES.md.
 import { avaGemini, avaGeminiStream } from "./routes/ava_gemini";        // P2
-import { avaLiveToken } from "./routes/ava_live";                        // fast online voice
+import { avaLiveToken, avaLiveHeartbeat, avaLiveClose } from "./routes/ava_live"; // fast online voice + [AVABRAIN-VOICE-BILL-1] lease lifecycle
 import { avaRagIngest, avaRagStore, avaRagSearch, avaRagBackfill, avaThreadSearch } from "./routes/ava_rag"; // RAG (Cloudflare AI Search)
 import { avaAppsCatalog, avaAppsConnect, avaAppsDisconnect, avaAppsStatus, avaAppsRun, avaGenuiAction } from "./routes/ava_apps"; // AvaApps (Composio)
 import { avaGenuiThumb } from "./routes/genui_thumb"; // GenUI preview-thumbnail proxy
@@ -557,6 +558,10 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/ava/gemini" && req.method === "POST") return await avaGemini(req, env);          // P2
       if (p === "/api/ava/gemini/stream" && req.method === "POST") return await avaGeminiStream(req, env); // P2 streaming
       if (p === "/api/ava/live/token" && req.method === "POST") return await avaLiveToken(req, env);   // fast online voice call
+      // [AVABRAIN-VOICE-BILL-1] session-lease heartbeat/close — see routes/ava_live.ts
+      // header + worker/src/lib/voice_billing.ts. No-ops while avaBrainVoiceBillingEnabled is off.
+      if (p === "/api/ava/live/heartbeat" && req.method === "POST") return await avaLiveHeartbeat(req, env);
+      if (p === "/api/ava/live/close" && req.method === "POST") return await avaLiveClose(req, env);
       if (p === "/api/ava/thread/turn" && req.method === "POST") return await avaThreadTurn(req, env); // P3
       if (p === "/api/ava/rag/ingest" && req.method === "POST") return await avaRagIngest(req, env);   // RAG
       if (p === "/api/ava/rag/store" && req.method === "GET") return await avaRagStore(req, env);      // RAG
@@ -1036,6 +1041,19 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
         if ((op === "consent" || op === "settings") && (req.method === "GET" || req.method === "POST" || req.method === "PUT")) return await brain(req, env, op);
         if ((readOp && req.method === "GET") || (!readOp && req.method === "POST") || (op === "forget" && req.method === "DELETE")) {
           return await brain(req, env, op);
+        }
+      }
+
+      // --- [AVABRAIN-MEDIA-1] daily audio/video "remember this" recordings ---
+      // (Bible §9.2). Precede nothing else — these paths have an extra segment so
+      // they never collide with the generic /api/brain/:op matcher above.
+      if (p === "/api/brain/media/prepare" && req.method === "POST") return await brainMediaPrepare(req, env);
+      if (p === "/api/brain/media/complete" && req.method === "POST") return await brainMediaComplete(req, env, ctx);
+      {
+        const bmm = p.match(/^\/api\/brain\/media\/([A-Za-z0-9-]{1,64})$/);
+        if (bmm) {
+          if (req.method === "GET") return await brainMediaStatus(req, env, bmm[1]);
+          if (req.method === "DELETE") return await brainMediaDelete(req, env, bmm[1]);
         }
       }
 
