@@ -947,6 +947,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   @override
   void initState() {
     super.initState();
+    // [CHAT-UI-TELEMETRY-1] This screen never called screenViewed, so every
+    // `ui_frame_stats` window from the thread rolled up under `screen:
+    // 'unknown'` (PerfMonitor keys its flush off `Analytics.currentScreen`) —
+    // the single highest-traffic screen in the app was invisible to the jank
+    // dashboard by name.
+    Analytics.screenViewed('avatok', 'chat_thread');
     WidgetsBinding.instance.addObserver(this); // [VOICE-REC-1] recorder auto-pause
     // [AVA-CHAT-INSTANT] Safety net for the open-at-bottom reveal gate: normally
     // _jumpToEndSettled reveals the list the instant it lands on the newest
@@ -8191,6 +8197,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                 // trailing-item cases are mutually exclusive).
                 final showTyping = _peerTyping && !searching;
                 final typingCount = showTyping ? 1 : 0;
+                // [CHAT-UI-TELEMETRY-1] A genuinely empty, non-searching thread
+                // (no messages, nothing left to page in from the archive) used to
+                // render a blank white canvas — indistinguishable from "still
+                // loading" or a bug. WhatsApp-style nudge instead.
+                if (visible.isEmpty && !searching && !showArchiveHeader && !_archiveLoading) {
+                  return _emptyThreadState();
+                }
                 // [AVA-CHAT-INSTANT] Keep the list laid out but invisible + inert
                 // until the first jump-to-end lands, so the thread opens already
                 // anchored on the newest message (no visible scroll-through).
@@ -9781,6 +9794,25 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   /// Ava" that was its own small hole punched in the page. Swapped to the
   /// wallpaper-aware `_canvas*`/`_sysPill*` getters (same fix class as
   /// `_hiddenBubble`).
+  /// [CHAT-UI-TELEMETRY-1] Centered nudge for a genuinely empty, non-searching
+  /// thread — a blank canvas used to be indistinguishable from "still loading".
+  Widget _emptyThreadState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('Say hi 👋', style: ADText.threadName(c: _canvasInk)),
+          const SizedBox(height: 8),
+          Text(
+            'Messages here are end-to-end encrypted. Nobody outside this chat — not even AvaTOK — can read them.',
+            textAlign: TextAlign.center,
+            style: ADText.preview(c: _canvasMeta),
+          ),
+        ]),
+      ),
+    );
+  }
+
   Widget _searchEmptyState(String query) {
     final q = query.trim();
     final ranForThisQuery = _aiSearchedQuery == q &&
