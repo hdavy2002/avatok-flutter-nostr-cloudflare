@@ -17,6 +17,7 @@ import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 
 import '../analytics.dart';
+import '../remote_config.dart';
 
 /// CALL-REL-1: confirmed Android call-audio route. `unknown` means the
 /// native/platform side has not reported (or does not support) a specific
@@ -126,6 +127,26 @@ class NativeVoiceAudio {
   /// session should RESUME (unmute capture, clear the "on hold" state).
   void Function()? onAudioFocusRegained;
 
+  /// [CALL-REL-2 2026-07-24] Fired when Android reports
+  /// `AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK` (Kotlin emits `onAudioFocusDuck`
+  /// for this case, distinct from the full-loss `onAudioFocusLost`).
+  ///
+  /// Only invoked when `RemoteConfig.callAudioControllerV2` is TRUE — see
+  /// plan §5 ("Focus policy"): a can-duck signal must NOT auto-mute the
+  /// call; Android may not actually duck/move the communication stream, so
+  /// the handler in [_ensureHandler] requests an active-route readback and
+  /// emits `call_audio_focus` telemetry BEFORE calling this, and leaves
+  /// hold/mute decisions to the (future) controller subscriber rather than
+  /// treating duck as loss.
+  ///
+  /// When the flag is FALSE, this callback is never invoked — flag-off
+  /// preserves the pre-CALL-REL-2 behavior, where the platform distinction
+  /// did not exist on the Dart side and a duck was already routed to
+  /// [onAudioFocusLost] (hold the call). That is intentional: the legacy
+  /// call-hold UX for flag-off users must not change just because Kotlin
+  /// started reporting a signal Dart previously could not see.
+  void Function()? onAudioFocusDuck;
+
   bool _handlerSet = false;
 
   void _ensureHandler() {
@@ -148,6 +169,24 @@ class NativeVoiceAudio {
             onAudioFocusLost?.call();
           } else if (name == 'onAudioFocusRegained') {
             onAudioFocusRegained?.call();
+          } else if (name == 'onAudioFocusDuck') {
+            // [CALL-REL-2] Kotlin now distinguishes AUDIOFOCUS_LOSS_TRANSIENT_
+            // CAN_DUCK from full loss. Gate the NEW (no-auto-mute) semantics
+            // behind the same flag as the rest of the controller rollout so
+            // flag-off users keep the exact hold behavior they had before
+            // Kotlin could tell the two apart.
+            if (RemoteConfig.callAudioControllerV2) {
+              // Plan §5: do not auto-mute on a can-duck signal — confirm the
+              // route Android actually applied instead of assuming a duck
+              // happened, then let the subscriber decide.
+              unawaited(_reportDuckFocus());
+              onAudioFocusDuck?.call();
+            } else {
+              // Legacy hold semantics: flag-off path treats duck exactly like
+              // full focus loss, matching pre-CALL-REL-2 behavior (the only
+              // signal Dart ever saw was onAudioFocusLost).
+              onAudioFocusLost?.call();
+            }
           } else {
             onEvent?.call(args);
           }
@@ -227,6 +266,21 @@ class NativeVoiceAudio {
     } catch (_) {
       return null;
     }
+  }
+
+  /// [CALL-REL-2] Plan §5 active-route readback for a can-duck focus signal:
+  /// AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK does not guarantee Android actually
+  /// ducked/moved the communication stream, so confirm the real route rather
+  /// than assume one, and record it as `call_audio_focus` telemetry. Only
+  /// called from the `callAudioControllerV2` flag-on path.
+  Future<void> _reportDuckFocus() async {
+    try {
+      final route = await getAudioRoute();
+      Analytics.capture('call_audio_focus', {
+        'type': 'duck',
+        'active_route': route ?? 'unknown',
+      });
+    } catch (_) {}
   }
 
   /// CALLFIX-18: Set the audio route by name (earpiece|speaker|bluetooth|headset).
