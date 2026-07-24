@@ -389,6 +389,8 @@ class CallSession {
   // once per call (fresh 'welcome', relay fallback, offer/answer races).
   int _pcGeneration = 0;
   bool _ended = false; // guard: teardown runs exactly once
+  bool _teardownStarted = false; // [CALL-MENU-TEARDOWN-1] closes the async race
+  Future<void>? _teardownFuture;
   bool _started = false; // guard: start() runs exactly once (re-attach safe)
   String? _remoteId;
   List<Map<String, dynamic>> _ice = kIceServers;
@@ -1590,8 +1592,15 @@ class CallSession {
   }
 
   /// Sync the coarse enum + fine label + view tick from a fine phase string.
+  // [CALL-MENU-FIX-2] When the CURRENT `_phase` was entered — feeds
+  // `call_outcome_session_reaped`'s `age_ms` so a reap can be judged "the menu
+  // sat abandoned for minutes" vs "reaped almost immediately".
+  int _phaseEnteredMs = DateTime.now().millisecondsSinceEpoch;
+  int get phaseAgeMs => DateTime.now().millisecondsSinceEpoch - _phaseEnteredMs;
+
   void _setPhase(String p) {
     _phase = p;
+    _phaseEnteredMs = DateTime.now().millisecondsSinceEpoch;
     uiPhase.value = p;
     phase.value = _coarse(p);
     _bump();
@@ -3677,6 +3686,12 @@ class CallSession {
   /// [CALL-EXCL-1] Is this session currently talking to the receptionist (Ava)?
   bool get hasLiveReceptionist => _receptionist != null && !_ended;
 
+  /// A terminal UI that is allowed to remain mounted for follow-up actions.
+  /// It is safe to reap; an active human/receptionist leg is never included.
+  bool get isOutcomeSurface => !_ended &&
+      (_phase == 'outcome-menu' || _phase == 'no-answer' ||
+       _phase == 'busy');
+
   /// [CALL-EXCL-1] Single-audio-authority yield: the device owner just accepted a
   /// real incoming call. If THIS session is a live receptionist leg, end it via
   /// the DO `owner_answered` path (no voicemail, no caller ack) and tear down.
@@ -3960,6 +3975,49 @@ class CallSession {
     if (_ended) return;
     _menuTimeout?.cancel();
     _endWith('ended', reason: reason);
+  }
+
+  /// [CALL-MENU-TEARDOWN-1] Awaitable terminal-menu teardown for actions that
+  /// immediately start another call or navigate into another call surface.
+  ///
+  /// `menuDismiss()` intentionally remains synchronous for the existing note
+  /// and close callbacks, but its fire-and-forget `_teardown()` used to leave
+  /// `gLiveCallScreens` and the manager registry occupied while Call again was
+  /// already constructing the next CallScreen. That deterministic overlap is
+  /// the source of the recurring "Already on a call" lock. This method is the
+  /// serialized path for redial/navigation actions.
+  Future<void> dismissOutcomeAndWait({required String reason}) async {
+    if (_ended) {
+      // Still honor the memoized teardown so a caller that raced past `_ended`
+      // (e.g. the reaper and a widget close callback firing the same frame)
+      // gets the same completed future instead of assuming nothing to await.
+      final f = _teardownFuture;
+      if (f != null) {
+        try {
+          await f;
+        } catch (e, st) {
+          Analytics.captureException(e, st, handled: true,
+              screen: 'call_session', extra: {'stage': 'dismiss_outcome_already_ended', 'reason': reason});
+        }
+      }
+      return;
+    }
+    _menuTimeout?.cancel();
+    _telemetry.ended(reason);
+    _ringback.stop();
+    try {
+      // [CALL-MENU-FIX-2] `_teardown` memoizes `_teardownFuture` internally
+      // (`_teardownFuture ??= _teardownImpl(...)`), so two concurrent callers —
+      // e.g. a voice-note completion callback and this widget-close callback —
+      // both await the SAME single native teardown instead of racing two
+      // independent closes of the same PC/audio route/FGS/camera (the "No
+      // active stream to cancel" double EventChannel teardown class).
+      await _teardown(reason: reason);
+    } catch (e, st) {
+      Analytics.captureException(e, st, handled: true,
+          screen: 'call_session', extra: {'stage': 'dismiss_outcome_teardown', 'reason': reason});
+    }
+    if (_phase != 'ended') _setPhase('ended');
   }
 
   /// The widget logs option taps that it handles itself (notes).
@@ -4669,8 +4727,15 @@ class CallSession {
     } catch (_) {}
   }
 
-  Future<void> _teardown({String? reason}) async {
-    if (_ended) return;
+  /// Memoize teardown so menu close, redial, and a terminal timer can all await
+  /// the same native-resource shutdown rather than launching competing closes.
+  Future<void> _teardown({String? reason}) {
+    return _teardownFuture ??= _teardownImpl(reason: reason);
+  }
+
+  Future<void> _teardownImpl({String? reason}) async {
+    if (_ended || _teardownStarted) return;
+    _teardownStarted = true;
     final sw = Stopwatch()..start();
     // [AVA-CLIENT-1] cancel the ava-live watchdog + detach the avaLevel listener
     // so nothing keeps firing after teardown (no leaked timers/listeners).

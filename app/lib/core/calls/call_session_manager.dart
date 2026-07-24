@@ -72,6 +72,36 @@ class CallSessionManager with WidgetsBindingObserver {
     return (s != null && !s.isEnded) ? s : null;
   }
 
+  /// [CALL-MENU-TEARDOWN-1] Reap terminal outcome surfaces before a new dial.
+  /// A menu is visually finished but deliberately remains alive for
+  /// Talk-to-Ava; if a navigation/retry callback bypasses its close handler,
+  /// the old session must not block the next dial forever.
+  Future<int> reapOutcomeSessions({String reason = 'dial-reaped-outcome'}) async {
+    final candidates = _byRoom.values
+        .where((s) => !s.isEnded && s.isOutcomeSurface)
+        .toList(growable: false);
+    for (final s in candidates) {
+      // Captured BEFORE dismissOutcomeAndWait tears down and flips phase to
+      // 'ended', so the event reports what surface was actually reaped and how
+      // long it had been sitting abandoned — not the post-teardown state.
+      final phaseAtReap = s.uiPhase.value;
+      final ageMs = s.phaseAgeMs;
+      try {
+        await s.dismissOutcomeAndWait(reason: reason);
+        Analytics.capture('call_outcome_session_reaped', {
+          'call_id': s.room,
+          'phase': phaseAtReap,
+          'reason': reason,
+          'age_ms': ageMs,
+        });
+      } catch (e, st) {
+        Analytics.captureException(e, st, handled: true,
+            screen: 'call_session_reap', extra: {'call_id': s.room, 'phase': phaseAtReap});
+      }
+    }
+    return candidates.length;
+  }
+
   bool _observing = false;
   // Tracks whether the active call was backgrounded while connected, so we can
   // fire call_bg_survived exactly once on the next resume if it's still alive.
