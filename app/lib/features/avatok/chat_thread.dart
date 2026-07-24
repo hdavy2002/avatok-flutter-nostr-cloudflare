@@ -3088,6 +3088,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     // call busied out the first right after it connected — so the connected
     // call tore down and video never rendered ("audio worked, no video came
     // through"). One dial in flight, and none while already on a call.
+    if (!_dialing && gLiveCallScreens > 0) {
+      // [CALL-MENU-TEARDOWN-1] A terminal outcome menu is intentionally kept
+      // alive for Talk to Ava. Reap it before evaluating the one-call guard so
+      // Call again from a chat can never inherit a dead session's lock.
+      await CallSessionManager.instance.reapOutcomeSessions();
+    }
     if (_dialing || gLiveCallScreens > 0) {
       // [AVATOK-DIAL-GUARD-1] gLiveCallScreens has no staleness bound like its
       // siblings gInCallSince/gOutgoingSince, so a leaked CallSession teardown

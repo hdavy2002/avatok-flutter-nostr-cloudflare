@@ -52,6 +52,9 @@ Future<void> place1to1Call(
   // thread. Only themes CallScreen with the dialer's PhoneTheme palette so the
   // dialer feels like its own app; the call engine/logic is identical.
   bool dialer = false,
+  // The dialer uses the business after-ring UX; chat retries must preserve
+  // their original generic UX instead of inheriting that older default.
+  bool business = true,
   // [CALL-ROOM-ID-1] Pre-minted room id, for callers that must know the call id
   // BEFORE dialing. Today that is only the PAID (Mode B) flow: `showPaidCallPrompt`
   // takes the escrow hold keyed to the CallRoom id, so the prompt and the call
@@ -63,6 +66,7 @@ Future<void> place1to1Call(
   String? roomOverride,
 }) async {
   if (uid.isEmpty) return;
+  await CallSessionManager.instance.reapOutcomeSessions();
   // [CALL-ROOM-ID-1 2026-07-14] Was `'avatok-$uid'` — a STABLE room id per
   // callee, so every dialer call to the same person reused one call id and one
   // CallRoom DO. The callee's `_isCallIdProcessed` cache (disk-persisted, no
@@ -92,7 +96,7 @@ Future<void> place1to1Call(
         video: video,
         outgoing: true,
         avatarUrl: avatarUrl,
-        business: true, // §3 after-ring flow (agent hand-off / post-ring busy)
+        business: business,
         dialer: dialer,
         deferRing: true, // [INSTANT-CALL-MOUNT-1] honest guard flow until placed
       ),
@@ -101,7 +105,7 @@ Future<void> place1to1Call(
     // this function alive until the call screen pops (same await semantics as the
     // classic path below).
     // ignore: unawaited_futures
-    _dialerPlaceInBackground(context, uid: uid, name: name, room: room, video: video, avatarUrl: avatarUrl, dialer: dialer);
+    _dialerPlaceInBackground(context, uid: uid, name: name, room: room, video: video, avatarUrl: avatarUrl, dialer: dialer, business: business);
     await nav;
     return;
   }
@@ -236,7 +240,7 @@ Future<void> place1to1Call(
       initialRoutingStart: routingStart,
       // [DIALPAD-BIZ-CALLS Phase C] business channel → §3 after-ring flow
       // (agent hand-off, post-ring busy) instead of the generic outcome menu.
-      business: true,
+      business: business,
       // [DIALER-UI-SPLIT 2026-07-12] dialer-styled call screen for dialpad calls.
       dialer: dialer,
       // [WP6 §3B] arms the in-call countdown + end-of-time beeps on connect.
@@ -261,6 +265,7 @@ Future<void> _dialerPlaceInBackground(
   required bool video,
   required String avatarUrl,
   required bool dialer,
+  required bool business,
 }) async {
   final callKind = video ? 'video' : 'audio';
   // Caller display name for the callee's incoming-call push (cosmetic). Loaded
@@ -297,7 +302,7 @@ Future<void> _dialerPlaceInBackground(
         Navigator.push(context, MaterialPageRoute(
           builder: (_) => CallScreen(
             room: glareJoin, title: name.isNotEmpty ? name : uid, seed: uid, video: video,
-            outgoing: false, avatarUrl: avatarUrl, business: true, dialer: dialer,
+            outgoing: false, avatarUrl: avatarUrl, business: business, dialer: dialer,
           ),
         ));
       });
