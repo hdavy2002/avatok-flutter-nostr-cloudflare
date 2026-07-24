@@ -71,13 +71,24 @@ export class AiInsufficientTokensError extends Error {
 async function llm(env: Env, tags: LlmTags, system: string, user: string, maxTokens = 400, temperature = 0.3): Promise<string> {
   const model = utilModel(env);
   const uid = tags.uid;
+  // [AI-BILLING-CORE-1] Opus H4 fix: use the CALL SITE's own capability tag for
+  // billing (reserve/settle/release), not a hardcoded "util". Every call site
+  // already sets a real capability (catchup/smart_replies/translate/
+  // group_translate/safety_score/bio/gender_infer) via LlmTags.capability — the
+  // old hardcode meant a) safety_score jobs would be billed the moment
+  // aiWalletMeteringEnabled flips on (isSafetyCapability checks the STRING we
+  // pass here, so "util" bypassed the safety exemption entirely), and b) every
+  // other lane's ledger rows collapsed into one undifferentiated "util" bucket.
+  // "util" remains only as a defensive fallback for a call site that forgot to
+  // set one — never the deliberate value.
+  const capability = tags.capability || "util";
   if (!uid) {
     return avaReason(env, { ...tags, appName: tags.appName ?? "messaging", system, user, maxTokens, temperature, legacyModel: model });
   }
 
   const opId = crypto.randomUUID();
   const reservation = await reserveAiJob(env, {
-    uid, opId, capability: "util", modality: "text", model,
+    uid, opId, capability, modality: "text", model,
     maxInputTokens: estimateInputTokensFromChars(system.length + user.length), maxOutputTokens: maxTokens, email: tags.email,
   });
   if (!reservation.ok) throw new AiInsufficientTokensError(reservation.needed ?? 0, reservation.balance ?? 0);
@@ -86,11 +97,11 @@ async function llm(env: Env, tags: LlmTags, system: string, user: string, maxTok
   try {
     text = await avaReason(env, { ...tags, appName: tags.appName ?? "messaging", system, user, maxTokens, temperature, legacyModel: model });
   } catch (e) {
-    await releaseAiJob(env, reservation, { uid, opId, capability: "util", reason: "provider_error" }).catch(() => {});
+    await releaseAiJob(env, reservation, { uid, opId, capability, reason: "provider_error" }).catch(() => {});
     throw e;
   }
   await settleAiJob(env, reservation, {
-    opId, uid, capability: "util", modality: "text", modelRequested: model, modelActual: model,
+    opId, uid, capability, modality: "text", modelRequested: model, modelActual: model,
     usage: { inputTokens: estimateInputTokensFromChars(system.length + user.length), outputTokens: Math.ceil(text.length / 4) },
   }).catch(() => {});
   return text;
@@ -241,7 +252,14 @@ export async function aiSmartReplies(req: Request, env: Env): Promise<Response> 
   let out = "";
   try {
     out = await llm(env, { role: "copilot", capability: "smart_replies", trigger: "auto", uid: ctx.uid, email }, system, transcript, 60, 0.6);
-  } catch {
+  } catch (e: any) {
+    // [AI-BILLING-CORE-1] finding 4: surface insufficient-tokens as the structured
+    // 402 rather than silently swallowing it into "no chips" — the client already
+    // treats ANY non-200 response as "don't show chips" (fail-soft preserved),
+    // so a 402 body here changes nothing visually but makes the reason inspectable.
+    if (e instanceof AiInsufficientTokensError) {
+      return json({ error: "AI_INSUFFICIENT_TOKENS", needed: e.needed, balance: e.balance }, 402);
+    }
     return json({ suggestions: [] }); // silent — chips just don't show
   }
   const suggestions = out.split("\n").map((s) => s.replace(/^[-*\d.\)\s"]+/, "").replace(/"$/, "").trim()).filter(Boolean).slice(0, 3);
@@ -329,7 +347,16 @@ export async function aiGroupTranslate(req: Request, env: Env): Promise<Response
       const t = await llm(env, { role: "copilot", capability: "group_translate", trigger: "auto", uid: ctx.uid, email }, `Translate the user's message into ${lang}. Output ONLY the translation.`, m.text, 600, 0.2);
       try { await env.TOKENS.put(kvKey, t, { expirationTtl: TR_TTL }); } catch { /* best-effort cache */ }
       items.push({ id: m.id, text: t, cached: false });
-    } catch {
+    } catch (e: any) {
+      // [AI-BILLING-CORE-1] finding 4: an empty wallet won't recover for the NEXT
+      // message in this same batch either (same uid, same reservation refusal) —
+      // stop and return the structured 402 for the whole batch instead of
+      // degrading every remaining message to its untranslated original. OTHER
+      // per-message failures (provider hiccup etc.) keep the original fail-soft
+      // fallback-to-original behavior.
+      if (e instanceof AiInsufficientTokensError) {
+        return json({ error: "AI_INSUFFICIENT_TOKENS", needed: e.needed, balance: e.balance }, 402);
+      }
       items.push({ id: m.id, text: m.text, cached: false }); // fall back to original on failure
     }
   }
@@ -493,6 +520,13 @@ export async function aiGender(req: Request, env: Env): Promise<Response> {
   try {
     out = await llm(env, { role: "copilot", capability: "gender_infer", trigger: "user_request", uid: ctx.uid, email, appName: "profile" }, system, name, 40, 0.0);
   } catch (e: any) {
+    // [AI-BILLING-CORE-1] finding 4: insufficient-tokens is a distinct, actionable
+    // condition — surface the structured 402 instead of masking it as "unknown".
+    // Every OTHER failure keeps the original fail-soft behavior (client lets the
+    // user pick a pronoun manually).
+    if (e instanceof AiInsufficientTokensError) {
+      return json({ error: "AI_INSUFFICIENT_TOKENS", needed: e.needed, balance: e.balance }, 402);
+    }
     trackUser(env, ctx.uid, email, "profile_gender_ai_error", "profile", { reason: String(e?.message ?? e).slice(0, 160), email });
     return json({ gender: "unknown", confidence: 0 }); // fail soft → client lets user pick
   }

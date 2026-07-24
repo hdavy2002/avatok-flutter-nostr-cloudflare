@@ -114,6 +114,11 @@ export class WalletDO {
     this.sql.exec(
       "CREATE TABLE IF NOT EXISTS resv (ref TEXT PRIMARY KEY, reserved INTEGER NOT NULL DEFAULT 0, spent INTEGER NOT NULL DEFAULT 0, released INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)",
     );
+    // [AI-BILLING-CORE-1] finding 3: additive column so the lazy reaper (below)
+    // can emit a real uid on its audit/telemetry rows instead of a synthetic
+    // "server" actor. Self-migrating (ALTER throws once the column exists;
+    // that's expected and swallowed), same pattern as acct.bonus above.
+    try { this.sql.exec("ALTER TABLE resv ADD COLUMN uid TEXT NOT NULL DEFAULT ''"); } catch { /* column already exists */ }
   }
 
   /** Replay guard: return the stored result for a seen op_id, else null. */
@@ -368,10 +373,16 @@ export class WalletDO {
     if (!(amount > 0)) return json({ error: "amount>0 required" }, 400);
     if (!ref) return json({ error: "ref required" }, 400);
 
+    // [AI-BILLING-CORE-1] finding 3: lazy reaper runs BEFORE admission on every
+    // reserve() call — a crashed/abandoned aijob reservation must not eat into
+    // this (or anyone else's, since outstandingReservations() sums ALL refs for
+    // this uid) headroom forever. Cheap: bounded to this uid's own resv rows.
+    await this.reapStaleAiJobReservations();
+
     const now = Date.now();
     this.sql.exec(
-      "INSERT INTO resv (ref, reserved, spent, released, created_at, updated_at) VALUES (?1,0,0,0,?2,?2) ON CONFLICT(ref) DO NOTHING",
-      ref, now,
+      "INSERT INTO resv (ref, reserved, spent, released, created_at, updated_at, uid) VALUES (?1,0,0,0,?2,?2,?3) ON CONFLICT(ref) DO UPDATE SET uid=excluded.uid",
+      ref, now, uid,
     );
     const beta = await this.betaFree();
     const cur = this.bal();
@@ -457,6 +468,52 @@ export class WalletDO {
     return json(result);
   }
 
+  // [AI-BILLING-CORE-1] finding 3: reservations have no TTL, so a crash between
+  // reserveAiJob() and settleAiJob()/releaseAiJob() (worker/src/lib/ai_billing.ts)
+  // strands headroom forever — outstandingReservations() would keep counting a
+  // dead reservation against this uid's balance indefinitely. This lazily
+  // releases any reservation older than AIJOB_RESV_TTL_MS.
+  //
+  // SCOPE: STRICTLY `ref LIKE 'aijob:%'` (the exact prefix reserveAiJob() uses,
+  // `aijob:<opId>`). Campaign escrow reservations ([AVA-CAMP-B1-WALLET], ref =
+  // the call's attempt_uuid, no prefix) are NEVER touched here — a live outbound
+  // call can legitimately hold its reservation open for the call's full
+  // multi-minute duration, campaigns already have their own explicit
+  // release/consume path on call end, and reaping them early would let a
+  // still-running call's cost blow past its escrowed budget. Only ai_billing's
+  // own aijob refs are provably safe to time out this way, since ai_billing
+  // itself always resolves (settle or release) within one HTTP request.
+  //
+  // Idempotent by construction: a reaped row flips released=1, dropping it out
+  // of the WHERE clause, so it can never be reaped twice — no op_id needed.
+  private readonly AIJOB_RESV_TTL_MS = 6 * 3_600_000; // 6 hours
+  private async reapStaleAiJobReservations(): Promise<number> {
+    const cutoff = Date.now() - this.AIJOB_RESV_TTL_MS;
+    const rows = this.sql.exec(
+      "SELECT ref, reserved, uid FROM resv WHERE released=0 AND reserved>0 AND created_at<?1 AND ref LIKE 'aijob:%'",
+      cutoff,
+    ).toArray() as any[];
+    if (!rows.length) return 0;
+    const now = Date.now();
+    for (const r of rows) {
+      const ref = String(r.ref);
+      const refunded = Number(r.reserved);
+      const uid = String(r.uid || "") || "server"; // pre-migration rows may predate the uid column
+      // Guard against a race with a concurrent settle/release between the SELECT
+      // above and this UPDATE — only flip rows still outstanding.
+      this.sql.exec("UPDATE resv SET reserved=0, released=1, updated_at=?1 WHERE ref=?2 AND released=0", now, ref);
+      Promise.resolve(track(this.env, uid, "ai_budget_released", "ai_billing", {
+        ref, reserved: refunded, used: 0, released: refunded, reason: "reaper",
+      })).catch(() => {});
+      await this.audit(uid, {
+        type: "ai_reservation_reaped", amount: 0, balance_after: this.bal().balance,
+        app_name: "ai_job_reaper", ref, reason: "reaper",
+      });
+    }
+    this.broadcast();
+    return rows.length;
+  }
+
   private releaseMatured(): number {
     const now = Date.now();
     const rows = this.sql.exec("SELECT id, amount FROM holds WHERE released=0 AND available_at<=?1", now).toArray() as any[];
@@ -472,6 +529,12 @@ export class WalletDO {
   async alarm(): Promise<void> {
     const outboxFailed = await this.retryAuditOutbox();
     const released = this.releaseMatured();
+    // [AI-BILLING-CORE-1] finding 3: piggyback the aijob reaper on the DO's
+    // existing alarm (holds release / outbox retry) so a DO that never gets
+    // another reserve() call (e.g. the crash that stranded the reservation was
+    // the user's LAST-ever call) still eventually self-heals instead of relying
+    // solely on the next reserve() to trigger it.
+    await this.reapStaleAiJobReservations();
     if (released > 0) this.broadcast();
     // Reschedule for the next pending hold, if any.
     const next = this.sql.exec("SELECT MIN(available_at) AS t FROM holds WHERE released=0").one() as any;

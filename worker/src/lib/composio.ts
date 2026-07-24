@@ -673,7 +673,15 @@ function classifyOrErr(e: unknown): "timeout" | "429" | "5xx" | "parse" | "empty
 function parseToolArgsStrict(a: any): any {
   if (a == null) return {};
   if (typeof a === "object") return a;
-  return JSON.parse(String(a)); // throws — caller classifies as "parse" and falls back
+  // [AI-BILLING-CORE-1] finding 2: some providers emit `arguments:""` (or
+  // whitespace-only) for a genuinely no-arg tool call — that is valid, not
+  // malformed. The old code threw on it, which the caller classifies as
+  // "parse" and burns the whole step on a fallback-model retry for a tool call
+  // that needed no args at all. Only a NON-EMPTY string that still fails to
+  // parse as JSON is truly malformed.
+  const s = String(a).trim();
+  if (!s) return {};
+  return JSON.parse(s); // throws — caller classifies as "parse" and falls back
 }
 // Phase 3 model routing (heuristic, NOT another LLM call): a short, single-verb
 // read ("check my inbox", "list today's events") is routed to the cheaper
