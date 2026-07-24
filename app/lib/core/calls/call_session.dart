@@ -1197,16 +1197,37 @@ class CallSession {
     // (MODE_IN_COMMUNICATION + audio focus) BEFORE selecting the speaker route,
     // so the route is applied once inside an established session instead of
     // triggering a cold re-route + volume ramp at the very start of the call.
-    try { await NativeVoiceAudio().startP2pAudioMode(); } catch (_) {}
-    try { await Helper.setSpeakerphoneOn(_speaker); } catch (_) {}
-    try { await NativeVoiceAudio().startBluetoothSco(); } catch (_) {}
-    if (NativeVoiceAudio.isSupported) {
-      final route = (await NativeVoiceAudio().getAudioRoute()) ?? 'unknown';
-      if (route == 'earpiece') {
-        Analytics.capture('call_audio_route', {'route': 'earpiece', 'auto': true});
-        try { await NativeVoiceAudio().startProximitySensor(); } catch (_) {}
-      } else {
-        Analytics.capture('call_audio_route', {'route': route, 'auto': true});
+    //
+    // CALL-REL-1: when callAudioControllerV2 is on, NativeVoiceAudio.instance
+    // is the ONLY thing that starts the P2P audio session / picks the route —
+    // CallSession no longer calls Helper.setSpeakerphoneOn, startBluetoothSco,
+    // or the proximity sensor directly. Flag off preserves the exact prior
+    // behavior below.
+    if (RemoteConfig.callAudioControllerV2) {
+      await NativeVoiceAudio.instance
+          .beginP2pSession(callId: config.room, video: config.video);
+      final result = await NativeVoiceAudio.instance.selectRoute(
+        config.video ? CallAudioRoute.speaker : CallAudioRoute.earpiece,
+        source: 'initial',
+      );
+      _speaker = result.active == CallAudioRoute.speaker;
+      speakerOn.value = _speaker;
+      Analytics.capture('call_audio_route', {
+        'route': result.active.name,
+        'auto': true,
+      });
+    } else {
+      try { await NativeVoiceAudio().startP2pAudioMode(); } catch (_) {}
+      try { await Helper.setSpeakerphoneOn(_speaker); } catch (_) {}
+      try { await NativeVoiceAudio().startBluetoothSco(); } catch (_) {}
+      if (NativeVoiceAudio.isSupported) {
+        final route = (await NativeVoiceAudio().getAudioRoute()) ?? 'unknown';
+        if (route == 'earpiece') {
+          Analytics.capture('call_audio_route', {'route': 'earpiece', 'auto': true});
+          try { await NativeVoiceAudio().startProximitySensor(); } catch (_) {}
+        } else {
+          Analytics.capture('call_audio_route', {'route': route, 'auto': true});
+        }
       }
     }
     // WS-B: start the foreground service at call SETUP (not on connect) so a call
@@ -1953,6 +1974,22 @@ class CallSession {
   }
 
   void toggleSpeaker() {
+    if (RemoteConfig.callAudioControllerV2) {
+      // CALL-REL-1: the controller is the only route owner. toggleSpeaker is
+      // now an awaited/serialized request; `speakerOn` is only updated once
+      // the route event confirms the ACTUAL active route (never merely the
+      // last button press). UI may optimistically show the pending intent —
+      // it does not do so here to avoid a second, possibly wrong, UI update.
+      final target = _speaker ? CallAudioRoute.earpiece : CallAudioRoute.speaker;
+      // ignore: unawaited_futures
+      NativeVoiceAudio.instance.selectRoute(target, source: 'user').then((result) {
+        _speaker = result.active == CallAudioRoute.speaker;
+        speakerOn.value = _speaker;
+        // ignore: unawaited_futures
+        _receptionist?.setSpeaker(_speaker);
+      });
+      return;
+    }
     final prior = _speaker;
     _speaker = !_speaker;
     final requestId = const Uuid().v4();
@@ -3079,9 +3116,16 @@ class CallSession {
     _busyCardTimeout = null;
     try { _receptionist?.hangup(); } catch (_) {}
     try { WakelockPlus.disable(); } catch (_) {}
-    await _safeAwait(() => NativeVoiceAudio().stopP2pAudioMode());
-    await _safeAwait(() => NativeVoiceAudio().stopBluetoothSco());
-    await _safeAwait(() => NativeVoiceAudio().stopProximitySensor());
+    // CALL-REL-1: one `endP2pSession` call replaces the scattered stop calls
+    // when the controller owns the session. It is safe even if setup only
+    // partially completed. Flag off keeps the exact prior teardown sequence.
+    if (RemoteConfig.callAudioControllerV2) {
+      await _safeAwait(() => NativeVoiceAudio.instance.endP2pSession(callId: config.room));
+    } else {
+      await _safeAwait(() => NativeVoiceAudio().stopP2pAudioMode());
+      await _safeAwait(() => NativeVoiceAudio().stopBluetoothSco());
+      await _safeAwait(() => NativeVoiceAudio().stopProximitySensor());
+    }
     await _safeAwait(() => NativeVoiceAudio.instance
         .stopCallForegroundService(reason: reason ?? 'hangup'));
     await _safeAwait(() => NativeVoiceAudio().stopTelephonyMonitoring());

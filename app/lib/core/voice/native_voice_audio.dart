@@ -8,13 +8,75 @@
 /// falls back to the record + flutter_pcm_sound + half-duplex path.
 library;
 
+import 'dart:async';
 import 'dart:io' show Platform;
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:uuid/uuid.dart';
 
 import '../analytics.dart';
+
+/// CALL-REL-1: confirmed Android call-audio route. `unknown` means the
+/// native/platform side has not reported (or does not support) a specific
+/// route yet — callers must not assume `earpiece` in that case.
+enum CallAudioRoute { earpiece, speaker, bluetooth, wiredHeadset, unknown }
+
+String _routeToWire(CallAudioRoute r) {
+  switch (r) {
+    case CallAudioRoute.earpiece:
+      return 'earpiece';
+    case CallAudioRoute.speaker:
+      return 'speaker';
+    case CallAudioRoute.bluetooth:
+      return 'bluetooth';
+    case CallAudioRoute.wiredHeadset:
+      return 'headset';
+    case CallAudioRoute.unknown:
+      return 'unknown';
+  }
+}
+
+CallAudioRoute _routeFromWire(String? s) {
+  switch (s) {
+    case 'earpiece':
+      return CallAudioRoute.earpiece;
+    case 'speaker':
+      return CallAudioRoute.speaker;
+    case 'bluetooth':
+      return CallAudioRoute.bluetooth;
+    case 'headset':
+    case 'wired_headset':
+      return CallAudioRoute.wiredHeadset;
+    default:
+      return CallAudioRoute.unknown;
+  }
+}
+
+/// CALL-REL-1: outcome of a [NativeVoiceAudio.selectRoute] request. `active`
+/// is the route Android actually confirmed — the UI must render this, not
+/// merely the last button press. See Specs/PERMANENT-P2P-CALL-RELIABILITY-
+/// IMPLEMENTATION-PLAN-2026-07-24.md §4.2/§5.
+class CallAudioRouteResult {
+  final String requestId;
+  final CallAudioRoute requested;
+  final CallAudioRoute active;
+  final bool exact;
+  final String? fallbackReason;
+  final String backend;
+  final int elapsedMs;
+
+  const CallAudioRouteResult({
+    required this.requestId,
+    required this.requested,
+    required this.active,
+    required this.exact,
+    required this.backend,
+    required this.elapsedMs,
+    this.fallbackReason,
+  });
+}
 
 class NativeVoiceAudio {
   static const MethodChannel _m = MethodChannel('avatok/voice_audio');
@@ -287,5 +349,169 @@ class NativeVoiceAudio {
     } catch (_) {
       return false;
     }
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // CALL-REL-1: CallAudioController facade — the ONLY code path that may
+  // start/stop the P2P communication session, request focus/mode, or select
+  // a communication route. Gated behind RemoteConfig.callAudioControllerV2;
+  // when the flag is off, [CallSession] must not call any of the methods
+  // below and the app behaves exactly as before. See Specs/PERMANENT-P2P-
+  // CALL-RELIABILITY-IMPLEMENTATION-PLAN-2026-07-24.md §5.
+  // ───────────────────────────────────────────────────────────────────────
+
+  String? _p2pCallId;
+  bool _p2pSessionActive = false;
+  CallAudioRoute _activeRoute = CallAudioRoute.unknown;
+
+  /// Serializes [selectRoute] calls so native writes never interleave. A
+  /// later request supersedes an earlier one only in effect (the last write
+  /// wins on the native side); this queue guarantees they are never issued
+  /// concurrently.
+  Future<void> _routeQueue = Future<void>.value();
+
+  final StreamController<CallAudioRouteResult> _routeEvents =
+      StreamController<CallAudioRouteResult>.broadcast();
+
+  /// Confirmed route transitions — requested, user toggle, fallback, etc.
+  /// The UI should render [CallAudioRouteResult.active], not merely the
+  /// last-requested route.
+  Stream<CallAudioRouteResult> get routeEvents => _routeEvents.stream;
+
+  /// CALL-REL-1: begin the single P2P call-audio session — activates the
+  /// native `p2pActive` gate (proximity/telephony monitoring), the
+  /// communication audio mode, and audio focus. Safe to call twice for the
+  /// same [callId] (idempotent); does not itself pick a route — callers must
+  /// follow with [selectRoute].
+  Future<void> beginP2pSession({required String callId, required bool video}) async {
+    _ensureHandler();
+    if (_p2pSessionActive && _p2pCallId == callId) return;
+    _p2pCallId = callId;
+    _p2pSessionActive = true;
+    _activeRoute = CallAudioRoute.unknown;
+    try {
+      await _m.invokeMethod('startP2pCall');
+    } catch (_) {}
+    // Establish MODE_IN_COMMUNICATION + audio focus BEFORE any route request
+    // so the route change lands inside an already-open session instead of
+    // triggering a cold re-route + volume ramp.
+    await startP2pAudioMode();
+    try {
+      await startTelephonyMonitoring();
+    } catch (_) {}
+  }
+
+  /// CALL-REL-1: end the P2P call-audio session. Stops monitoring, clears
+  /// the communication device, abandons focus, stops proximity, and restores
+  /// the prior mode exactly once. Safe to call after only partial setup or
+  /// more than once.
+  Future<void> endP2pSession({required String callId}) async {
+    if (!_p2pSessionActive && _p2pCallId == null) return;
+    _p2pSessionActive = false;
+    _p2pCallId = null;
+    _activeRoute = CallAudioRoute.unknown;
+    try {
+      await stopP2pAudioMode();
+    } catch (_) {}
+    try {
+      await stopBluetoothSco();
+    } catch (_) {}
+    try {
+      await stopProximitySensor();
+    } catch (_) {}
+    try {
+      await stopTelephonyMonitoring();
+    } catch (_) {}
+    try {
+      await _m.invokeMethod('stopP2pCall');
+    } catch (_) {}
+  }
+
+  /// CALL-REL-1: request a communication route. Serialized — a call made
+  /// while a previous one is still in flight waits its turn rather than
+  /// interleaving native writes. [source] is telemetry-only
+  /// (`user`, `initial`, `bluetooth_connected`, `system`, `fallback`).
+  Future<CallAudioRouteResult> selectRoute(
+    CallAudioRoute requested, {
+    String source = 'user',
+  }) {
+    final op = _routeQueue.then((_) => _selectRouteInternal(requested, source));
+    // Swallow errors in the chain link itself so one failed request cannot
+    // permanently wedge the queue for subsequent callers.
+    _routeQueue = op.then((_) => null, onError: (_) => null);
+    return op;
+  }
+
+  Future<CallAudioRouteResult> _selectRouteInternal(
+    CallAudioRoute requested,
+    String source,
+  ) async {
+    final requestId = const Uuid().v4();
+    final startMs = DateTime.now().millisecondsSinceEpoch;
+    final priorActive = _activeRoute;
+    Analytics.capture('call_audio_route_requested', {
+      'call_id': _p2pCallId ?? '',
+      'request_id': requestId,
+      'requested_route': _routeToWire(requested),
+      'source': source,
+      'prior_active_route': _routeToWire(priorActive),
+    });
+    String backend = 'legacy_sco';
+    CallAudioRoute active = requested;
+    String? fallbackReason;
+    try {
+      await _m.invokeMethod('setAudioRoute', {'route': _routeToWire(requested)});
+      final readback = await _m.invokeMethod<String>('getAudioRoute');
+      active = _routeFromWire(readback) == CallAudioRoute.unknown
+          ? requested
+          : _routeFromWire(readback);
+      if (active != requested) {
+        fallbackReason = 'native_reported_different_route';
+      }
+    } catch (e) {
+      active = priorActive == CallAudioRoute.unknown ? CallAudioRoute.earpiece : priorActive;
+      fallbackReason = 'invoke_failed';
+    }
+    // Proximity is only meaningful for earpiece; keep it in step with route
+    // selection so CallSession no longer has to manage it directly.
+    try {
+      if (active == CallAudioRoute.earpiece) {
+        await startProximitySensor();
+      } else {
+        await stopProximitySensor();
+      }
+    } catch (_) {}
+    _activeRoute = active;
+    final elapsedMs = DateTime.now().millisecondsSinceEpoch - startMs;
+    final result = CallAudioRouteResult(
+      requestId: requestId,
+      requested: requested,
+      active: active,
+      exact: active == requested,
+      backend: backend,
+      elapsedMs: elapsedMs,
+      fallbackReason: fallbackReason,
+    );
+    Analytics.capture('call_audio_route_result', {
+      'call_id': _p2pCallId ?? '',
+      'request_id': requestId,
+      'requested_route': _routeToWire(requested),
+      'active_route': _routeToWire(active),
+      'exact': result.exact,
+      'backend': backend,
+      'elapsed_ms': elapsedMs,
+      if (fallbackReason != null) 'fallback_reason': fallbackReason,
+    });
+    if (!_routeEvents.isClosed) _routeEvents.add(result);
+    return result;
+  }
+
+  /// CALL-REL-1: the last confirmed route, querying native if this
+  /// controller has not observed one yet (e.g. right after app start).
+  Future<CallAudioRoute> getActiveRoute() async {
+    if (_activeRoute != CallAudioRoute.unknown) return _activeRoute;
+    final r = await getAudioRoute();
+    _activeRoute = _routeFromWire(r);
+    return _activeRoute;
   }
 }
