@@ -269,17 +269,34 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
   Widget _greenButton() {
     final send = widget.hasText;
     // Send = green send pill; idle = lilac mic (dark v2).
+    // [CHAT-UI-COMPOSER-1] Mic<->send morph: the fill colour animates via
+    // AnimatedContainer and the glyph cross-fades + scales via AnimatedSwitcher
+    // instead of hard-swapping — this button used to instant-swap despite a
+    // "morphs" comment that was never actually implemented.
     return GestureDetector(
       onTap: send ? widget.onSend : widget.onMic,
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
         width: 46,
         height: 46,
         decoration: BoxDecoration(
           color: send ? AD.sendActiveBg : AD.micIdleBg,
           shape: BoxShape.circle,
         ),
-        child: Icon(send ? Icons.send_rounded : Icons.mic_rounded,
-            color: send ? AD.sendActiveInk : AD.micIdleInk, size: 22),
+        child: Center(
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 180),
+            transitionBuilder: (child, anim) =>
+                ScaleTransition(scale: anim, child: FadeTransition(opacity: anim, child: child)),
+            child: Icon(
+              send ? Icons.send_rounded : Icons.mic_rounded,
+              key: ValueKey(send),
+              color: send ? AD.sendActiveInk : AD.micIdleInk,
+              size: 22,
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -302,6 +302,55 @@ class _FullscreenImageViewerState extends State<_FullscreenImageViewer> {
   }
 }
 
+/// [CHAT-UI-COMPOSER-1] Three dots that bounce in a staggered wave — the
+/// classic "someone is typing" indicator. No new package: a single
+/// AnimationController driving three `sin`-offset dots.
+class _TypingDots extends StatefulWidget {
+  const _TypingDots({required this.color});
+  final Color color;
+
+  @override
+  State<_TypingDots> createState() => _TypingDotsState();
+}
+
+class _TypingDotsState extends State<_TypingDots> with SingleTickerProviderStateMixin {
+  late final AnimationController _c =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 900))..repeat();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (context, _) {
+        return Row(mainAxisSize: MainAxisSize.min, children: [
+          for (var i = 0; i < 3; i++) ...[
+            if (i > 0) const SizedBox(width: 4),
+            Builder(builder: (context) {
+              // Stagger each dot by a third of the cycle; bounce via |sin|.
+              final phase = (_c.value + i / 3) % 1.0;
+              final lift = (math.sin(phase * math.pi * 2).abs()) * 4;
+              return Transform.translate(
+                offset: Offset(0, -lift),
+                child: Container(
+                  width: 7,
+                  height: 7,
+                  decoration: BoxDecoration(color: widget.color.withValues(alpha: 0.65), shape: BoxShape.circle),
+                ),
+              );
+            }),
+          ],
+        ]);
+      },
+    );
+  }
+}
+
 class _Msg {
   final int id;
   final bool me;
@@ -4626,6 +4675,25 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     );
   }
 
+  /// [CHAT-UI-COMPOSER-1] Animated three-bouncing-dots typing bubble — a
+  /// synthetic last list item shown while `_peerTyping` is true, replacing the
+  /// old "header text only" signal with something WhatsApp-shaped.
+  Widget _typingBubble() {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: kBubbleTheirs.bg,
+          borderRadius: kBubbleTheirs.radius,
+          border: Border.all(color: kBubbleTheirs.border, width: 1),
+        ),
+        child: _TypingDots(color: kBubbleTheirs.ink),
+      ),
+    );
+  }
+
   /// ChatGPT-style placeholder shown WHILE Ava generates an image: a blank,
   /// image-shaped card with a spinner and a status line. Replaced by the real
   /// picture (a normal ava media_ref bubble) when generation finishes.
@@ -8116,6 +8184,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                     (_hasArchived || _archiveLoading);
                 final headerCount = showArchiveHeader ? 1 : 0;
                 final footerCount = showAiFooter ? 1 : 0;
+                // [CHAT-UI-COMPOSER-1] Animated three-dot typing bubble as a
+                // synthetic last list item — replaces the header's plain
+                // "typing…" text with something that actually reads as "someone
+                // is composing a message" (search mode never shows it; the two
+                // trailing-item cases are mutually exclusive).
+                final showTyping = _peerTyping && !searching;
+                final typingCount = showTyping ? 1 : 0;
                 // [AVA-CHAT-INSTANT] Keep the list laid out but invisible + inert
                 // until the first jump-to-end lands, so the thread opens already
                 // anchored on the newest message (no visible scroll-through).
@@ -8128,11 +8203,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                   // [UI-BUBBLE-1] Symmetric 12dp horizontal thread padding for both
                   // incoming & outgoing (bubbles cap at 78% of the thread width).
                   padding: const EdgeInsets.fromLTRB(12, 16, 12, 8),
-                  itemCount: visible.length + headerCount + footerCount,
+                  itemCount: visible.length + headerCount + footerCount + typingCount,
                   itemBuilder: (c, i) {
                     if (showArchiveHeader && i == 0) return _olderMessagesDivider();
                     final vi = i - headerCount;
                     if (showAiFooter && vi == visible.length) return _aiSearchFooter();
+                    if (showTyping && vi == visible.length) return _typingBubble();
                     final m = visible[vi];
                     // Phase 5: insert a "Today / Yesterday / date" separator above
                     // the first message of each new calendar day.
@@ -8568,13 +8644,22 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
 
   // Lime circular send button — ink border, hard shadow (the screen's one
   // lime primary action).
+  // [CHAT-UI-COMPOSER-1] Legacy composer's mic<->send morph — same
+  // AnimatedSwitcher cross-fade+scale as the rich input bar's `_greenButton`.
+  // Every call site benefits; sites that always pass the same icon (plain
+  // "send") simply see no transition since the ValueKey never changes.
   Widget _sendCircle(IconData icon, VoidCallback onTap) => GestureDetector(
         onTap: onTap,
         child: Container(width: 44, height: 44,
             decoration: BoxDecoration(
                 color: AD.sendActiveBg, shape: BoxShape.circle,
                 border: Border.all(color: AD.borderControl, width: 1), boxShadow: const []),
-            child: Icon(icon, color: AD.sendActiveInk, size: 20)),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 180),
+              transitionBuilder: (child, anim) =>
+                  ScaleTransition(scale: anim, child: FadeTransition(opacity: anim, child: child)),
+              child: Icon(icon, key: ValueKey(icon), color: AD.sendActiveInk, size: 20),
+            )),
       );
 
   /// [VOICE-REC-1] (owner report 2026-07-16, pic 5) The recording bar.
