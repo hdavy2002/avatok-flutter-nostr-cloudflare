@@ -1775,6 +1775,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     if (m.failed) {
       return (icon: PhosphorIcons.warningCircle(PhosphorIconsStyle.bold), color: AD.danger, label: 'Not sent · tap to retry');
     }
+    // [CHAT-UI-MEDIA-1] Background video transcode (moved off the pre-bubble
+    // path by [MEDIA-INSTANT-1]) is otherwise invisible — the bubble just sits
+    // there. Surface it explicitly instead of a bare "Sending…".
+    if (m.transcoding) {
+      return (icon: PhosphorIcons.filmSlate(PhosphorIconsStyle.bold), color: AD.bubbleOutMeta, label: 'Processing video…');
+    }
     if (m.uploading) {
       return (icon: PhosphorIcons.clock(PhosphorIconsStyle.bold), color: AD.bubbleOutMeta, label: 'Sending…');
     }
@@ -11040,7 +11046,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
             onTap: () => _openImageBytes(m.localBytes!, mime: m.media?.contentType),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(14),
+              // [CHAT-UI-MEDIA-1] cacheWidth bounds the decoded bitmap to ~2x the
+              // 220dp layout width (DPR-aware) instead of decoding at full source
+              // resolution — a scrolling thread of full-res photos was a memory
+              // spike + jank source per the audit.
               child: Image.memory(m.localBytes!, width: 220, fit: BoxFit.cover,
+                  cacheWidth: (220 * MediaQuery.of(context).devicePixelRatio * 2).round(),
                   errorBuilder: (_, __, ___) => _brokenMediaPlaceholder(m: m, kind: 'image', reason: 'decode_failed')),
             ),
           );
@@ -11079,7 +11090,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                   onTap: () => _openImageBytes(snap.data!, mime: m.media?.contentType),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(14),
+                    // [CHAT-UI-MEDIA-1] Same cacheWidth bound as the local-bytes
+                    // branch above.
                     child: Image.memory(snap.data!, width: 220, fit: BoxFit.cover,
+                        cacheWidth: (220 * MediaQuery.of(context).devicePixelRatio * 2).round(),
                         errorBuilder: (_, __, ___) => _brokenMediaPlaceholder(
                             m: m, kind: 'image', reason: 'decode_failed',
                             onRetry: () { setState(() => m.localBytes = null); })),
@@ -11087,10 +11101,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                 );
               }
               if (snap.hasError) return _fileChip(m, PhosphorIcons.imageBroken(PhosphorIconsStyle.bold), 'Photo');
-              return Container(
-                width: 220, height: 140, alignment: Alignment.center,
-                child: const CircularProgressIndicator(strokeWidth: 2),
-              );
+              // [CHAT-UI-MEDIA-1] Fixed-size shimmer instead of a bare spinner —
+              // the box is already fixed 220x140 so the row never resizes when
+              // the decrypted image lands; the shimmer just reads as "loading"
+              // rather than "stuck".
+              return const MediaShimmerPlaceholder(width: 220, height: 140);
             },
           );
         }

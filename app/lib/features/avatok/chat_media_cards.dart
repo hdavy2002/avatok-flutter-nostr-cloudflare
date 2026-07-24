@@ -1,6 +1,7 @@
 // NOTE: `dart:async` was dropped with [VOICE-SCRUB-1] — the voice bubble's local
 // 1s Timer is gone, replaced by real position/duration streamed from the parent's
 // AudioPlayer, and nothing else in this file needs it.
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -131,6 +132,62 @@ class ChatLinkText extends StatelessWidget {
     }
     if (cursor < text.length) children.add(TextSpan(text: text.substring(cursor)));
     return Text.rich(TextSpan(style: style, children: children));
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [CHAT-UI-MEDIA-1] Fixed-size shimmer placeholder — swapped in wherever media
+// is loading/decrypting/downloading in place of a bare `CircularProgressIndicator`
+// so a media-heavy thread reads as "content incoming" rather than "stuck", and
+// (paired with a fixed-size box at every call site) the row never resizes when
+// the real media lands. No new package — a small AnimatedBuilder gradient sweep.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class MediaShimmerPlaceholder extends StatefulWidget {
+  const MediaShimmerPlaceholder({super.key, required this.width, required this.height, this.borderRadius = 14});
+  final double width;
+  final double height;
+  final double borderRadius;
+
+  @override
+  State<MediaShimmerPlaceholder> createState() => _MediaShimmerPlaceholderState();
+}
+
+class _MediaShimmerPlaceholderState extends State<MediaShimmerPlaceholder>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))..repeat();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(widget.borderRadius),
+      child: SizedBox(
+        width: widget.width,
+        height: widget.height,
+        child: AnimatedBuilder(
+          animation: _c,
+          builder: (context, _) {
+            final t = _c.value; // 0..1 sweep
+            return DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment(-1 + 2 * t - 0.6, 0),
+                  end: Alignment(-1 + 2 * t + 0.6, 0),
+                  colors: const [Color(0xFFE7E7EC), Color(0xFFF4F4F7), Color(0xFFE7E7EC)],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
   }
 }
 
@@ -678,6 +735,33 @@ class ChatVideoCard extends StatefulWidget {
 }
 
 class _ChatVideoCardState extends State<ChatVideoCard> {
+  // [CHAT-UI-MEDIA-1] In-memory LRU cache for generated first-frame thumbnails,
+  // keyed by media id (falls back to a cheap content fingerprint for a
+  // not-yet-uploaded local send). Before this, EVERY card mount — i.e. every
+  // scroll back onto a video bubble — rewrote a temp .mp4 and re-ran the native
+  // thumbnail decode from scratch (audit finding D6). Process-lifetime only;
+  // deliberately small so it never competes meaningfully with real media memory.
+  static final LinkedHashMap<String, Uint8List> _thumbCache = LinkedHashMap();
+  static const int _thumbCacheMax = 40;
+
+  static void _thumbCachePut(String key, Uint8List bytes) {
+    _thumbCache.remove(key);
+    _thumbCache[key] = bytes;
+    while (_thumbCache.length > _thumbCacheMax) {
+      _thumbCache.remove(_thumbCache.keys.first);
+    }
+  }
+
+  String? get _thumbKey {
+    final id = widget.media?.id;
+    if (id != null && id.isNotEmpty) return 'm_$id';
+    final lb = widget.localBytes;
+    if (lb != null && lb.isNotEmpty) {
+      return 'lb_${lb.length}_${lb.first}_${lb[lb.length ~/ 2]}_${lb.last}';
+    }
+    return null;
+  }
+
   Uint8List? _thumb;
   bool _thumbTried = false;
   VideoPlayerController? _ctrl;
@@ -689,6 +773,13 @@ class _ChatVideoCardState extends State<ChatVideoCard> {
   @override
   void initState() {
     super.initState();
+    final key = _thumbKey;
+    final cached = key == null ? null : _thumbCache[key];
+    if (cached != null) {
+      _thumb = cached;
+      _thumbTried = true;
+      return;
+    }
     // STREAM J (D17): only eagerly fetch (to build the first-frame thumbnail)
     // when auto-download is on or we already have local bytes. Otherwise show a
     // tap-to-download placeholder; a tap fetches and then plays.
@@ -746,10 +837,15 @@ class _ChatVideoCardState extends State<ChatVideoCard> {
 
   void _thumbDone(Uint8List? bytes, String? err) {
     if (!mounted) return;
+    final ok = bytes != null && bytes.isNotEmpty;
     setState(() {
-      _thumb = (bytes != null && bytes.isNotEmpty) ? bytes : null;
+      _thumb = ok ? bytes : null;
       _thumbTried = true;
     });
+    if (ok) {
+      final key = _thumbKey;
+      if (key != null) _thumbCachePut(key, bytes);
+    }
     if (err != null) {
       Analytics.capture('chat_media_preview_failed', {
         'kind': 'video',
@@ -844,7 +940,15 @@ class _ChatVideoCardState extends State<ChatVideoCard> {
         child: Stack(alignment: Alignment.center, children: [
           if (_thumb != null)
             Image.memory(_thumb!, width: widget.width, fit: BoxFit.cover,
+                // [CHAT-UI-MEDIA-1] cacheWidth bound, same reasoning as the
+                // chat_thread.dart image bubble sites.
+                cacheWidth: (widget.width * MediaQuery.of(context).devicePixelRatio * 2).round(),
                 errorBuilder: (_, __, ___) => const SizedBox.shrink())
+          else if (!_thumbTried)
+            // [CHAT-UI-MEDIA-1] Fixed-size shimmer instead of a spinner-on-dark-
+            // square while the thumbnail decodes — the box is already fixed
+            // (widget.width x 9:16), so this never resizes the row.
+            MediaShimmerPlaceholder(width: widget.width, height: widget.width * 9 / 16, borderRadius: 0)
           else
             Container(
               width: widget.width,
@@ -854,17 +958,9 @@ class _ChatVideoCardState extends State<ChatVideoCard> {
               // the bubble once the canvas/bubbles went pale/white).
               color: widget.theme != null ? AD.mediaPlaceholderBg : AD.card,
               alignment: Alignment.center,
-              child: _thumbTried
-                  ? PhosphorIcon(PhosphorIcons.filmSlate(PhosphorIconsStyle.fill),
-                      color: widget.theme != null ? AD.mediaPlaceholderLabel : Colors.white,
-                      size: 34)
-                  : SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: widget.theme != null ? AD.mediaPlaceholderLabel : Colors.white),
-                    ),
+              child: PhosphorIcon(PhosphorIcons.filmSlate(PhosphorIconsStyle.fill),
+                  color: widget.theme != null ? AD.mediaPlaceholderLabel : Colors.white,
+                  size: 34),
             ),
           if (_starting)
             const SizedBox(
@@ -1044,6 +1140,8 @@ class _ChatFileCardState extends State<ChatFileCard> {
           borderRadius: BorderRadius.circular(14),
           child: Stack(children: [
             Image.memory(_pdfThumb!, width: widget.width, fit: BoxFit.cover,
+                // [CHAT-UI-MEDIA-1] Same cacheWidth bound as the other list thumbs.
+                cacheWidth: (widget.width * MediaQuery.of(context).devicePixelRatio * 2).round(),
                 errorBuilder: (_, __, ___) => const SizedBox.shrink()),
             Positioned(
               left: 0,
