@@ -358,3 +358,43 @@ The provider switch is complete only after commit `CF-CALL-007` is staged,
 validated, and production rollout is explicitly authorized. Until then, the
 existing LiveKit group-video path must remain available only as a controlled
 staging rollback, never as an unannounced production fallback.
+
+---
+
+## `groupAudioSfuEnabled` is SUPERSEDED (2026-07-24, post `707337f`/`CF-CALL-001`)
+
+As of `CF-CALL-001` (commit `707337f`), `POST /api/groupcall/:groupId/*` now
+**requires** `CONF_TICKET_SECRET` to be configured and every WebSocket upgrade
+to carry a valid, server-minted, signed join ticket (`verifyJoinTicket` in
+`worker/src/routes/groupcall.ts`, checked in `do/group_call_room.ts` before the
+DO does anything with the connection). The `/join` response's field names also
+changed to the ticket-authenticated contract (`join_ticket`, `ws_url`,
+`call_id`, `call_trace_id`, `generation`, `session_id`, `ice_servers`, `media`,
+`max_participants`) — this is not backward-compatible with the pre-`CF-CALL-001`
+response shape.
+
+The **shipped** audio-only client (`sfu_group_call_api.dart`) predates this
+change: it does not mint or send a join ticket, and it does not parse the new
+response fields. It cannot speak to the current `/api/groupcall` endpoints.
+
+**Consequence: `groupAudioSfuEnabled` must NEVER be flipped `true` for any
+build shipped before `CF-CALL-001` lands in that build's code.** Turning the
+flag on for an old build does not degrade gracefully to something that half-
+works — the WS upgrade is rejected outright (no ticket ⇒ `verifyJoinTicket`
+fails closed), so the call fails immediately for every user on that build. The
+flag is not a safe universal kill switch anymore; it is scoped to builds that
+actually contain the ticket-aware client.
+
+The Cloudflare A/V path (`cloudflareConferenceEnabled`, `CF-CALL-002` onward)
+was designed for this ticket-authenticated contract from the start and has no
+legacy client to be incompatible with — it requires the new Flutter A/V
+controller from `CF-CALL-003`/`CF-CALL-004`, which is not yet built (see
+"Recommended implementation commits" above; Phase 3 status tracked separately).
+
+**Operationally:** before enabling either group-call flag in any environment,
+confirm (a) the Worker has `CONF_TICKET_SECRET` set, and (b) the client build
+being targeted actually contains the ticket-minting/`ws_url`-parsing code —
+not just that the flag name matches. `scripts/flags.sh` will happily flip a
+flag whose effective behavior is "every group call in this cohort fails
+closed"; the flag system has no awareness of which client build a cohort is
+running.

@@ -46,15 +46,16 @@ const TICKET_TTL_S = 60; // short-lived: only needs to cover the WS-upgrade race
 
 // ---- config / membership (mirrors conference.ts, kept local) -------------------
 
-async function flags(env: Env): Promise<{ conf: boolean; sfu: boolean; cfConf: boolean; enabled: boolean }> {
+async function flags(env: Env): Promise<{ conf: boolean; sfu: boolean; cfConf: boolean; lkConf: boolean; enabled: boolean }> {
   try {
     const c = (await env.TOKENS.get("platform_config", "json")) as
-      { conferenceEnabled?: boolean; groupAudioSfuEnabled?: boolean; cloudflareConferenceEnabled?: boolean } | null;
+      { conferenceEnabled?: boolean; groupAudioSfuEnabled?: boolean; cloudflareConferenceEnabled?: boolean; livekitConferenceEnabled?: boolean } | null;
     const conf = c?.conferenceEnabled !== false;
     const sfu = c?.groupAudioSfuEnabled === true;
     const cfConf = c?.cloudflareConferenceEnabled === true;
-    return { conf, sfu, cfConf, enabled: sfu || cfConf };
-  } catch { return { conf: true, sfu: false, cfConf: false, enabled: false }; }
+    const lkConf = c?.livekitConferenceEnabled !== false;
+    return { conf, sfu, cfConf, lkConf, enabled: sfu || cfConf };
+  } catch { return { conf: true, sfu: false, cfConf: false, lkConf: true, enabled: false }; }
 }
 
 function sfuConfigured(env: Env): boolean {
@@ -148,6 +149,21 @@ function fromB64u(s: string): Uint8Array {
   const pad = s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4);
   return Uint8Array.from(atob(pad), (c) => c.charCodeAt(0));
 }
+/** Constant-time comparison of two base64url-encoded HMAC signatures, over the
+ *  raw decoded bytes (never the encoded string, and never short-circuiting on
+ *  the first mismatching byte) — a plain `!==` on the encoded strings leaks
+ *  timing information proportional to the matching prefix length, which is a
+ *  known HMAC-verification side channel. */
+function constantTimeEqual(aEncoded: string, bEncoded: string): boolean {
+  let a: Uint8Array, b: Uint8Array;
+  try { a = fromB64u(aEncoded); } catch { return false; }
+  try { b = fromB64u(bEncoded); } catch { return false; }
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
+  return diff === 0;
+}
+
 async function hmacTicket(secret: string, data: string): Promise<Uint8Array> {
   const key = await crypto.subtle.importKey(
     "raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"],
@@ -173,7 +189,7 @@ export async function verifyJoinTicket(env: Env, token: string): Promise<JoinTic
   const [body, sig] = (token || "").split(".");
   if (!body || !sig) return null;
   const expect = b64u(await hmacTicket(secret, body));
-  if (expect.length !== sig.length || expect !== sig) return null;
+  if (!constantTimeEqual(expect, sig)) return null;
   try {
     const t = JSON.parse(new TextDecoder().decode(fromB64u(body))) as JoinTicket;
     if (!t.call_id || !t.uid || !t.session_id || !t.exp || !t.nonce) return null;
@@ -191,23 +207,27 @@ async function emitConf(
   env: Env, req: Request, uid: string, email: string | null, event: string,
   ctx: { groupId: string; call_id?: string | null; call_trace_id?: string | null; generation?: number | null; extra?: Record<string, unknown> },
 ): Promise<void> {
-  const [groupHash, uidHash] = await Promise.all([sha256Hex(ctx.groupId), sha256Hex(uid)]);
-  await trackUser(env, uid, email, event, "avatok", {
-    call_id: ctx.call_id ?? null,
-    call_trace_id: ctx.call_trace_id ?? null,
-    transport: PROVIDER,
-    group_id_hash: groupHash.slice(0, 16),
-    participant_hash: uidHash.slice(0, 16),
-    generation: ctx.generation ?? null,
-    provider: PROVIDER,
-    ...confGeo(req),
-    ...(ctx.extra ?? {}),
-  });
+  // Defensive: an analytics reject must never surface on the join/publish/pull
+  // path — this whole function is best-effort telemetry, not call-critical.
+  try {
+    const [groupHash, uidHash] = await Promise.all([sha256Hex(ctx.groupId), sha256Hex(uid)]);
+    await trackUser(env, uid, email, event, "avatok", {
+      call_id: ctx.call_id ?? null,
+      call_trace_id: ctx.call_trace_id ?? null,
+      transport: PROVIDER,
+      group_id_hash: groupHash.slice(0, 16),
+      participant_hash: uidHash.slice(0, 16),
+      generation: ctx.generation ?? null,
+      provider: PROVIDER,
+      ...confGeo(req),
+      ...(ctx.extra ?? {}),
+    });
+  } catch { /* telemetry is never allowed to fail the call path */ }
 }
 
 // ---- guard shared by every endpoint -------------------------------------------
 
-type Guard = { uid: string; email: string | null; cfConf: boolean } | Response;
+type Guard = { uid: string; email: string | null; cfConf: boolean; lkConf: boolean } | Response;
 
 async function guard(req: Request, env: Env, groupId: string, opts: { checkCap?: boolean } = {}): Promise<Guard> {
   const f = await flags(env);
@@ -241,21 +261,38 @@ async function guard(req: Request, env: Env, groupId: string, opts: { checkCap?:
       return json({ error: `call is full (${cap})`, cap }, 409);
     }
   }
-  return { uid: u.uid, email, cfConf: f.cfConf };
+  return { uid: u.uid, email, cfConf: f.cfConf, lkConf: f.lkConf };
 }
 
 // ---- POST /join ------------------------------------------------------------------
 
 export async function groupCallJoin(req: Request, env: Env, groupId: string): Promise<Response> {
+  const t0 = Date.now();
   const g = await guard(req, env, groupId, { checkCap: true });
   if (g instanceof Response) return g;
-
-  await emitConf(env, req, g.uid, g.email, "conference_provider_selected", { groupId, extra: { decision: "cloudflare_realtime", cf_conf: g.cfConf } });
-  await emitConf(env, req, g.uid, g.email, "cloudflare_conference_join_started", { groupId });
 
   let wantVideo = false;
   try { const b = (await req.json()) as { video?: boolean }; wantVideo = b?.video === true; } catch { /* optional body */ }
   const mediaKind = g.cfConf && wantVideo ? "audio_video" : "audio";
+
+  // Roster size before this joiner is admitted — cheaply available from the
+  // same DO presence read already used for the capacity check above, reused
+  // here for cloudflare_conference_ticket_issued.existing_participant_count
+  // and cloudflare_conference_joined.roster_size_on_join per the telemetry
+  // contract (Specs/CF-CONFERENCE-TELEMETRY-CONTRACT-2026-07-24.md §2, §3).
+  const preJoin = await presence(env, groupId);
+
+  await emitConf(env, req, g.uid, g.email, "conference_provider_selected", {
+    groupId,
+    extra: {
+      decided_provider: "cloudflare_realtime",
+      decision_source: "worker",
+      media_kind_requested: mediaKind,
+      cloudflare_conference_enabled: g.cfConf,
+      livekit_conference_enabled: g.lkConf,
+    },
+  });
+  await emitConf(env, req, g.uid, g.email, "cloudflare_conference_join_started", { groupId, extra: { route: "join" } });
 
   const s = await sfu(env, "POST", "/sessions/new");
   if (!s.ok || !s.data?.sessionId) {
@@ -289,8 +326,16 @@ export async function groupCallJoin(req: Request, env: Env, groupId: string): Pr
     });
     return json({ error: "call ticketing not configured" }, 503);
   }
+  const sessionIdHash = (await sha256Hex(sessionId)).slice(0, 16);
   await emitConf(env, req, g.uid, g.email, "cloudflare_conference_ticket_issued", {
     groupId, call_id: authority.call_id, call_trace_id: authority.call_trace_id, generation: authority.generation,
+    extra: {
+      route: "join",
+      session_id_hash: sessionIdHash,
+      ttl_ms: TICKET_TTL_S * 1000,
+      max_participants: authority.max_participants,
+      existing_participant_count: preJoin.count,
+    },
   });
 
   const iceServers = await mintIceServers(env, ICE_TTL_S);
@@ -299,7 +344,12 @@ export async function groupCallJoin(req: Request, env: Env, groupId: string): Pr
 
   await emitConf(env, req, g.uid, g.email, "cloudflare_conference_joined", {
     groupId, call_id: authority.call_id, call_trace_id: authority.call_trace_id, generation: authority.generation,
-    extra: { session_id: sessionId, media_kind: authority.media_kind },
+    extra: {
+      session_id_hash: sessionIdHash,
+      media_kind: authority.media_kind,
+      elapsed_ms: Date.now() - t0,
+      roster_size_on_join: preJoin.count,
+    },
   });
   await trackUser(env, g.uid, g.email, "groupcall_join", "avatok",
     { session_id: sessionId, call_id: authority.call_id, group_id: groupId, provider: PROVIDER, ...confGeo(req) });
@@ -324,19 +374,15 @@ const MAX_TRACK_NAME_LEN = 128;
 const ALLOWED_KINDS = new Set(["audio", "video"]);
 
 export async function groupCallPublish(req: Request, env: Env, groupId: string): Promise<Response> {
+  const t0 = Date.now();
   const g = await guard(req, env, groupId);
   if (g instanceof Response) return g;
   let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
   if (!b?.sessionId || !b?.offer?.sdp) return json({ error: "sessionId + offer required" }, 400);
 
-  const check = await roomFetch<{ ok: boolean; generation: number; media_kind: string; call_id: string; error?: string }>(
-    env, groupId, "/authority/session_check", { uid: g.uid, session_id: b.sessionId },
-  );
-  if (!check.ok || !check.data?.ok) {
-    await emitConf(env, req, g.uid, g.email, "cloudflare_track_publish_failed", { groupId, extra: { stage: "session_check", status: check.status } });
-    return json({ error: check.data?.error ?? "not connected to this call" }, check.status === 409 ? 409 : 404);
-  }
-  const { generation, media_kind, call_id } = check.data;
+  // Best-effort attempt counter: client increments on a retried publish (e.g.
+  // after generation_conflict) per the telemetry contract §3.1; default 1.
+  const attempt = Number.isFinite(b?.attempt) && b.attempt >= 1 ? Math.trunc(b.attempt) : 1;
 
   // Explicit track metadata (Phase 2): one local offer, audio + optional video.
   // Never trust anything beyond kind/trackName/mid from the client; location is
@@ -344,6 +390,26 @@ export async function groupCallPublish(req: Request, env: Env, groupId: string):
   const rawTracks: any[] = Array.isArray(b.tracks) && b.tracks.length
     ? b.tracks
     : [{ location: "local", mid: b.mid ?? "0", kind: "audio", trackName: b.trackName ?? `mic-${g.uid}` }];
+  const midCount = rawTracks.length;
+  const requestedKinds = new Set(rawTracks.map((t) => (ALLOWED_KINDS.has(t?.kind) ? t.kind : "audio")));
+  const trackKind = requestedKinds.has("video") && requestedKinds.has("audio")
+    ? "audio_video" : requestedKinds.has("video") ? "video" : "audio";
+
+  const check = await roomFetch<{ ok: boolean; generation: number; media_kind: string; call_id: string; error?: string }>(
+    env, groupId, "/authority/session_check", { uid: g.uid, session_id: b.sessionId },
+  );
+  if (!check.ok || !check.data?.ok) {
+    await emitConf(env, req, g.uid, g.email, "cloudflare_track_publish_failed", {
+      groupId,
+      extra: {
+        stage: "session_check", status: check.status, track_kind: trackKind, attempt,
+        elapsed_ms: Date.now() - t0,
+        failure_code: check.status === 409 ? "generation_conflict" : "publish_track_rejected",
+      },
+    });
+    return json({ error: check.data?.error ?? "not connected to this call" }, check.status === 409 ? 409 : 404);
+  }
+  const { generation, media_kind, call_id } = check.data;
 
   let audioCount = 0, videoCount = 0;
   const tracks: { location: "local"; mid: string; trackName: string }[] = [];
@@ -351,7 +417,10 @@ export async function groupCallPublish(req: Request, env: Env, groupId: string):
     const kind = ALLOWED_KINDS.has(t?.kind) ? t.kind : "audio";
     if (kind === "video") {
       if (media_kind === "audio") {
-        await emitConf(env, req, g.uid, g.email, "cloudflare_track_publish_failed", { groupId, call_id, generation, extra: { reason: "video_not_enabled" } });
+        await emitConf(env, req, g.uid, g.email, "cloudflare_track_publish_failed", {
+          groupId, call_id, generation,
+          extra: { reason: "video_not_enabled", track_kind: trackKind, attempt, elapsed_ms: Date.now() - t0, failure_code: "publish_track_rejected" },
+        });
         return json({ error: "video is not enabled for this call" }, 400);
       }
       videoCount++;
@@ -364,19 +433,26 @@ export async function groupCallPublish(req: Request, env: Env, groupId: string):
   }
   if (audioCount > 1 || videoCount > 1) return json({ error: "at most one audio and one video track per publish" }, 400);
 
-  await emitConf(env, req, g.uid, g.email, "cloudflare_track_publish_started", { groupId, call_id, generation });
+  await emitConf(env, req, g.uid, g.email, "cloudflare_track_publish_started", {
+    groupId, call_id, generation, extra: { track_kind: trackKind, mid_count: midCount, attempt },
+  });
 
   const r = await sfu(env, "POST", `/sessions/${b.sessionId}/tracks/new`, {
     sessionDescription: { type: "offer", sdp: b.offer.sdp },
     tracks,
   });
   if (!r.ok || !r.data?.sessionDescription) {
-    await emitConf(env, req, g.uid, g.email, "cloudflare_track_publish_failed", { groupId, call_id, generation, extra: { status: r.status } });
+    await emitConf(env, req, g.uid, g.email, "cloudflare_track_publish_failed", {
+      groupId, call_id, generation,
+      extra: { status: r.status, track_kind: trackKind, attempt, elapsed_ms: Date.now() - t0, failure_code: "publish_sdp_failed" },
+    });
     await trackUser(env, g.uid, g.email, "groupcall_error", "avatok",
       { stage: "publish", status: r.status, group_id: groupId, provider: PROVIDER });
     return json({ error: "could not publish track", detail: r.data }, 502);
   }
-  await emitConf(env, req, g.uid, g.email, "cloudflare_track_publish_completed", { groupId, call_id, generation });
+  await emitConf(env, req, g.uid, g.email, "cloudflare_track_publish_completed", {
+    groupId, call_id, generation, extra: { track_kind: trackKind, attempt, elapsed_ms: Date.now() - t0 },
+  });
   await trackUser(env, g.uid, g.email, "groupcall_publish", "avatok", { group_id: groupId, provider: PROVIDER });
   return json({ answer: r.data.sessionDescription, tracks: r.data.tracks ?? [] });
 }
@@ -384,6 +460,7 @@ export async function groupCallPublish(req: Request, env: Env, groupId: string):
 // ---- POST /pull (a remote participant's track) -----------------------------------
 
 export async function groupCallPull(req: Request, env: Env, groupId: string): Promise<Response> {
+  const t0 = Date.now();
   const g = await guard(req, env, groupId);
   if (g instanceof Response) return g;
   let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
@@ -392,21 +469,28 @@ export async function groupCallPull(req: Request, env: Env, groupId: string): Pr
   if (!b?.sessionId || !b?.remoteSessionId || !trackName) {
     return json({ error: "sessionId + remoteSessionId + trackName required" }, 400);
   }
-  const kind = b?.kind === "video" ? "video" : "audio";
+  const trackKind = b?.kind === "video" ? "video" : "audio";
+  const attempt = Number.isFinite(b?.attempt) && b.attempt >= 1 ? Math.trunc(b.attempt) : 1;
 
   // Server-side authorization: the subscriber must be a live participant of THIS
   // call and the publisher must actually be publishing that exact track — and
   // bounded per-client pull caps are enforced here (audio existing N; video
   // configurable, default 9, hard ceiling 12).
   const authz = await roomFetch<{ ok: boolean; error?: string }>(env, groupId, "/authority/pull", {
-    uid: g.uid, session_id: b.sessionId, remote_uid: remoteUid ?? null, kind, track_name: trackName, max_video: b?.maxVideo ?? b?.max_video,
+    uid: g.uid, session_id: b.sessionId, remote_uid: remoteUid ?? null, kind: trackKind, track_name: trackName, max_video: b?.maxVideo ?? b?.max_video,
   });
   if (!authz.ok || !authz.data?.ok) {
-    await emitConf(env, req, g.uid, g.email, "cloudflare_track_pull_failed", { groupId, extra: { stage: "authorize", status: authz.status, kind } });
+    await emitConf(env, req, g.uid, g.email, "cloudflare_track_pull_failed", {
+      groupId,
+      extra: {
+        stage: "authorize", status: authz.status, track_kind: trackKind, attempt,
+        elapsed_ms: Date.now() - t0, failure_code: "pull_track_rejected",
+      },
+    });
     return json({ error: authz.data?.error ?? "pull not authorized" }, authz.status >= 400 ? authz.status : 403);
   }
 
-  await emitConf(env, req, g.uid, g.email, "cloudflare_track_pull_started", { groupId, extra: { kind } });
+  await emitConf(env, req, g.uid, g.email, "cloudflare_track_pull_started", { groupId, extra: { track_kind: trackKind, attempt } });
 
   // Simulcast RID passthrough (best-effort — Cloudflare Realtime SFU simulcast,
   // https://developers.cloudflare.com/realtime/sfu/simulcast/). If the caller
@@ -419,12 +503,20 @@ export async function groupCallPull(req: Request, env: Env, groupId: string): Pr
 
   const r = await sfu(env, "POST", `/sessions/${b.sessionId}/tracks/new`, { tracks: [remoteTrack] });
   if (!r.ok) {
-    await emitConf(env, req, g.uid, g.email, "cloudflare_track_pull_failed", { groupId, extra: { stage: "sfu", status: r.status, kind } });
+    await emitConf(env, req, g.uid, g.email, "cloudflare_track_pull_failed", {
+      groupId,
+      extra: {
+        stage: "sfu", status: r.status, track_kind: trackKind, attempt,
+        elapsed_ms: Date.now() - t0, failure_code: "pull_sdp_failed",
+      },
+    });
     await trackUser(env, g.uid, g.email, "groupcall_error", "avatok",
       { stage: "pull", status: r.status, group_id: groupId, provider: PROVIDER });
     return json({ error: "could not pull track", detail: r.data }, 502);
   }
-  await emitConf(env, req, g.uid, g.email, "cloudflare_track_pull_completed", { groupId, extra: { kind } });
+  await emitConf(env, req, g.uid, g.email, "cloudflare_track_pull_completed", {
+    groupId, extra: { track_kind: trackKind, attempt, elapsed_ms: Date.now() - t0 },
+  });
   return json({
     offer: r.data?.sessionDescription ?? null,
     tracks: r.data?.tracks ?? [],

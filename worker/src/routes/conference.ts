@@ -180,18 +180,37 @@ async function cloudflareConferenceEnabled(env: Env): Promise<boolean> {
 }
 
 /** conference_provider_selected — the decision-boundary telemetry event required
- *  by the migration proposal's PostHog contract, emitted every time this module
- *  decides to issue (or refuse) a LiveKit credential. */
+ *  by the migration proposal's PostHog contract (reconciled to
+ *  Specs/CF-CONFERENCE-TELEMETRY-CONTRACT-2026-07-24.md §1.1), emitted every
+ *  time this module decides to issue (or refuse) a LiveKit credential.
+ *  `decision` keeps the finer-grained internal detail (cloud vs self-hosted
+ *  region, or why it was rejected); `decided_provider` is the contract's
+ *  fixed enum derived from it. Best-effort: an analytics reject must never
+ *  surface on the join/start path. */
 async function emitProviderSelected(
   env: Env, req: Request, uid: string, email: string | null, groupId: string,
-  decision: "livekit_cloud" | "livekit_selfhost" | "rejected_disabled", extra: Record<string, unknown> = {},
+  decision: "livekit_cloud" | "livekit_selfhost" | "rejected_disabled",
+  opts: {
+    decisionSource?: "client" | "worker";
+    mediaKindRequested?: "audio" | "video" | "audio_video";
+    cloudflareConferenceEnabled?: boolean;
+    livekitConferenceEnabled?: boolean;
+    extra?: Record<string, unknown>;
+  } = {},
 ): Promise<void> {
-  const [groupHash, uidHash] = await Promise.all([sha256Hex(groupId), sha256Hex(uid)]);
-  await trackUser(env, uid, email, "conference_provider_selected", "avatok", {
-    transport: decision.startsWith("livekit") ? "livekit" : "none",
-    decision, group_id_hash: groupHash.slice(0, 16), participant_hash: uidHash.slice(0, 16),
-    ...confGeo(req), ...extra,
-  });
+  try {
+    const [groupHash, uidHash] = await Promise.all([sha256Hex(groupId), sha256Hex(uid)]);
+    const decidedProvider = decision.startsWith("livekit") ? "livekit" : "disabled";
+    await trackUser(env, uid, email, "conference_provider_selected", "avatok", {
+      transport: decision.startsWith("livekit") ? "livekit" : "none",
+      decision, decided_provider: decidedProvider, decision_source: opts.decisionSource ?? "worker",
+      media_kind_requested: opts.mediaKindRequested ?? null,
+      cloudflare_conference_enabled: opts.cloudflareConferenceEnabled ?? null,
+      livekit_conference_enabled: opts.livekitConferenceEnabled ?? null,
+      group_id_hash: groupHash.slice(0, 16), participant_hash: uidHash.slice(0, 16),
+      ...confGeo(req), ...(opts.extra ?? {}),
+    });
+  } catch { /* telemetry is never allowed to fail the conference start/join path */ }
 }
 
 /** Group members from D1 (Cloudflare-native conversations). Empty = unregistered legacy group. */
@@ -222,11 +241,23 @@ async function issue(req: Request, env: Env, groupId: string, create: boolean): 
   const g = confGeo(req);
   const email = await emailFor(env, u.uid).catch(() => null);
 
+  // Parsed once, up front (the request body stream can only be read once), so
+  // it's available both for conference_provider_selected.media_kind_requested
+  // at the decision boundary and for the actual room kind further down.
+  let kind = "video";
+  try { const b = (await req.json()) as { kind?: string }; if (b?.kind === "audio") kind = "audio"; } catch { /* optional body */ }
+  const mediaKindRequested = kind === "audio" ? "audio" : "video";
+
+  const [lkConfFlag, cfConfFlag] = await Promise.all([livekitConferenceEnabled(env), cloudflareConferenceEnabled(env)]);
+
   // [CF-CALL-001] Phase-0 assertion (adapted): LiveKit issuance is refused ONLY
   // when the owner has explicitly turned it off. See livekitConferenceEnabled()
   // header comment for why this is NOT also gated on cloudflareConferenceEnabled.
-  if (!(await livekitConferenceEnabled(env))) {
-    await emitProviderSelected(env, req, u.uid, email, groupId, "rejected_disabled", { stage: create ? "start" : "join" });
+  if (!lkConfFlag) {
+    await emitProviderSelected(env, req, u.uid, email, groupId, "rejected_disabled", {
+      mediaKindRequested, cloudflareConferenceEnabled: cfConfFlag, livekitConferenceEnabled: lkConfFlag,
+      extra: { stage: create ? "start" : "join" },
+    });
     return json({ error: "LiveKit conferencing has been retired for this app — use the Cloudflare call path" }, 410);
   }
 
@@ -249,7 +280,8 @@ async function issue(req: Request, env: Env, groupId: string, create: boolean): 
   if (!lk) return json({ error: "conference backend not configured" }, 503);
   const provider = region === "cloud" ? "livekit_cloud" : "livekit_selfhost";
   await emitProviderSelected(env, req, u.uid, email, groupId, provider, {
-    stage: create ? "start" : "join", region, cf_conf_enabled: await cloudflareConferenceEnabled(env),
+    mediaKindRequested, cloudflareConferenceEnabled: cfConfFlag, livekitConferenceEnabled: lkConfFlag,
+    extra: { stage: create ? "start" : "join", region },
   });
 
   // Daily minute allowance (conf_min) enforced at ENTRY so a tapped-out user
@@ -281,8 +313,6 @@ async function issue(req: Request, env: Env, groupId: string, create: boolean): 
   }
 
   const room = roomName(groupId);
-  let kind = "video";
-  try { const b = (await req.json()) as { kind?: string }; if (b?.kind === "audio") kind = "audio"; } catch { /* optional body */ }
 
   if (create) {
     // Idempotent: CreateRoom on an existing name returns the room. The per-plan
