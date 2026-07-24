@@ -204,6 +204,22 @@ class RecoveryAttempt {
   });
 }
 
+/// [CALL-REL-6] One dual-PC mid-call relay-migration attempt (plan §7.4).
+/// Distinct from [RecoveryAttempt] because it owns a SECOND, separate
+/// `RTCPeerConnection` that must coexist with the live `_pc` until cutover.
+class RelayMigrationAttempt {
+  final String id; // UUID, sent in signaling — NO SDP secrets beyond the SDP itself
+  final int startedAtMs;
+  RTCPeerConnection? newPc;
+  bool remoteTrackSeen = false;
+  int healthySamplesOnNewPc = 0;
+  bool readySent = false;
+  bool peerReady = false;
+  bool completed = false;
+
+  RelayMigrationAttempt({required this.id, required this.startedAtMs});
+}
+
 class CallSession {
   /// [CALL-REG-SEAL-1] Sealed construction. A [CallSession] may be built ONLY by
   /// [CallSessionManager], which is the sole holder of a [CallSessionToken]
@@ -492,6 +508,14 @@ class CallSession {
   RecoveryAttempt? _activeRecovery;
   int _recoveryAttemptCount = 0;
   Timer? _recoveryDeadlineTimer;
+  // ── [CALL-REL-6] mid-call relay migration ─────────────────────────────────
+  // Entirely inert unless RemoteConfig.callRelayMigrationV1 is on. Escalation
+  // target when direct ICE recovery fails, or when §7.2 relay thresholds are
+  // hit directly (loss >= 8% for 3 samples). MAX one migration per call.
+  bool _migrationAttempted = false;
+  RelayMigrationAttempt? _activeMigration;
+  Timer? _migrationDeadlineTimer;
+  int _relayThresholdStreak = 0;
   StreamSubscription? _netSub;
   int _wsReconnects = 0;
   Timer? _wsReconnectTimer;
@@ -773,7 +797,14 @@ class CallSession {
     try {
       if (_ended || !_connected) return;
       if (isReceptDuo || _onCellularHold) return;
-      final pc = _pc;
+      // [CALL-REL-6] Once a migration's new PC has produced a remote track,
+      // sample IT (not the old `_pc`) — completion is judged on the new PC's
+      // own playout, per plan §7.4.5.
+      final migratingPc = _activeMigration?.newPc;
+      final sampleMigration = migratingPc != null &&
+          !(_activeMigration?.completed ?? true) &&
+          (_activeMigration?.remoteTrackSeen ?? false);
+      final pc = sampleMigration ? migratingPc : _pc;
       if (pc == null) return;
       final nowMs = DateTime.now().millisecondsSinceEpoch;
 
@@ -992,10 +1023,38 @@ class CallSession {
         routeConfirmed: routeConfirmed,
         nativeFocusHeld: nativeFocusHeld,
       ));
-      // [CALL-REL-5] Feed the recovery coordinator with this classification.
-      // No-op (and no recovery side effects) unless callIceRecoveryV2 is on AND
-      // a recovery is actually in flight.
-      if (RemoteConfig.callIceRecoveryV2) _onPlayoutHealthForRecovery(cls);
+      if (sampleMigration) {
+        // [CALL-REL-6] This sample is for the migration's NEW pc — feed the
+        // migration coordinator only (never the direct-path recovery one,
+        // which reasons about the OLD `_pc`).
+        if (RemoteConfig.callRelayMigrationV1) _onPlayoutHealthForMigration(cls);
+      } else {
+        // [CALL-REL-5] Feed the recovery coordinator with this classification.
+        // No-op (and no recovery side effects) unless callIceRecoveryV2 is on
+        // AND a recovery is actually in flight.
+        if (RemoteConfig.callIceRecoveryV2) _onPlayoutHealthForRecovery(cls);
+        // [CALL-REL-6 §7.2 relay thresholds] "loss >= 8% for 3 samples" can
+        // escalate straight to relay migration without waiting for a direct
+        // ICE recovery attempt to fail first (plan §7.4: "escalation target
+        // when direct recovery fails OR §7.2 relay thresholds hit").
+        if (lossPctInterval != null && lossPctInterval >= 8.0) {
+          _relayThresholdStreak++;
+        } else {
+          _relayThresholdStreak = 0;
+        }
+        if (RemoteConfig.callRelayMigrationV1 &&
+            _relayThresholdStreak >= 3 &&
+            !_relayForced &&
+            !_migrationAttempted &&
+            _activeMigration == null &&
+            _activeRecovery == null &&
+            _connected &&
+            !_ended) {
+          _relayThresholdStreak = 0;
+          // ignore: unawaited_futures
+          _migrateToRelay(RecoveryReason.highConcealment);
+        }
+      }
     } catch (e, st) {
       // OBSERVE-ONLY: never throw, never touch call state. Reported the same
       // deduplicated way the existing watchdog reports its own failures.
@@ -2324,9 +2383,9 @@ class CallSession {
   }
 
   /// Every terminal path here names the exact failed invariant (plan §7.3.7),
-  /// never a generic 'error'/'socket-lost'. [CALL-REL-6] adds a relay-migration
-  /// escalation branch here in a later commit; this commit ends the call
-  /// honestly with the terminal reason once direct recovery fails.
+  /// never a generic 'error'/'socket-lost'. [CALL-REL-6] escalates to relay
+  /// migration here when direct ICE recovery fails — "escalate to relay
+  /// migration; do not loop direct ICE restarts indefinitely" (plan §7.3.6).
   void _failRecovery(String reason) {
     final a = _activeRecovery;
     if (a == null || a.completed) return;
@@ -2342,6 +2401,19 @@ class CallSession {
     });
     if (identical(_activeRecovery, a)) _activeRecovery = null;
     _telemetry.setRecoveryState('failed', attemptCount: _recoveryAttemptCount);
+    // [CALL-REL-6] Escalate to relay migration instead of ending the call, IF
+    // migration is enabled, not already relay, and not already used (MAX one
+    // per call — plan §7.4.8: "a second unrecovered failure ends cleanly
+    // after the standard recovery deadline", i.e. falls through below).
+    if (RemoteConfig.callRelayMigrationV1 &&
+        !_relayForced &&
+        !_migrationAttempted &&
+        !_ended &&
+        _connected) {
+      // ignore: unawaited_futures
+      _migrateToRelay(a.reason);
+      return;
+    }
     if (!_ended) {
       _endWith('ended', reason: reason);
     }
@@ -2355,6 +2427,328 @@ class CallSession {
     _pendingCandidates.clear();
     for (final c in pending) {
       try { await pc.addCandidate(c); } catch (_) {}
+    }
+  }
+
+  // ── [CALL-REL-6] mid-call relay migration ─────────────────────────────────
+  // Entirely inert unless RemoteConfig.callRelayMigrationV1 is on. See plan
+  // §7.4: dual-PC cutover, one migration per call, 20s deadline, old PC stays
+  // live/audible until the new PC proves itself.
+
+  /// Initiator side: fresh TURN creds, brand-new relay-only PC, existing
+  /// tracks re-added, offer sent via `relay-migrate-offer`. The OLD `_pc`
+  /// keeps running (still audible) until [_maybeCompleteMigration] cuts over.
+  Future<void> _migrateToRelay(RecoveryReason why) async {
+    if (!RemoteConfig.callRelayMigrationV1) {
+      if (!_ended) _endWith('ended', reason: 'recovery_timeout_no_playout');
+      return;
+    }
+    if (_ended || !_connected) return;
+    if (_migrationAttempted || _activeMigration != null) {
+      // MAX one migration per call already used, or one already in flight.
+      if (!_ended) _endWith('ended', reason: 'relay_migration_unavailable');
+      return;
+    }
+    final remoteId = _remoteId;
+    if (remoteId == null || _stream == null) {
+      if (!_ended) _endWith('ended', reason: 'relay_migration_no_peer');
+      return;
+    }
+    _migrationAttempted = true;
+    final id = const Uuid().v4();
+    final attempt = RelayMigrationAttempt(
+        id: id, startedAtMs: DateTime.now().millisecondsSinceEpoch);
+    _activeMigration = attempt;
+    _telemetry.setRecoveryState('migrating_relay', attemptCount: _recoveryAttemptCount);
+    Analytics.capture('call_recovery_started', {
+      'call_id': config.room,
+      'attempt_id': id,
+      'reason': why.wire,
+      'kind': 'relay',
+      'source_endpoint': _myId,
+      'current_path': 'direct',
+    });
+    try {
+      // plan §7.4.1: fresh ICE, credentials may be short-lived.
+      _ice = await IceCache.get(forceRefresh: true);
+      final newPc = await createPeerConnection({
+        'iceServers': _ice,
+        'iceCandidatePoolSize': 2,
+        'iceTransportPolicy': 'relay',
+      });
+      attempt.newPc = newPc;
+      _stream!.getTracks().forEach((t) => newPc.addTrack(t, _stream!));
+      newPc.onIceCandidate = (c) {
+        if (!identical(_activeMigration, attempt) || attempt.completed) return;
+        _send({
+          'type': 'relay-migrate-candidate',
+          'to': remoteId,
+          'attemptId': id,
+          'candidate': c.toMap(),
+        });
+      };
+      newPc.onTrack = (e) {
+        if (!identical(_activeMigration, attempt) || attempt.completed) return;
+        if (e.streams.isNotEmpty) attempt.remoteTrackSeen = true;
+      };
+      final offer = _tuned(await newPc.createOffer());
+      await newPc.setLocalDescription(offer);
+      _send({
+        'type': 'relay-migrate-offer',
+        'to': remoteId,
+        'attemptId': id,
+        'sdp': offer.toMap(),
+      });
+    } catch (e, st) {
+      _telemetry.runtimeError(
+        stage: 'relay_migration_offer_failed',
+        error: e,
+        stack: st,
+        extra: {'attempt_id': id},
+      );
+      _failMigration(attempt, 'relay_migration_offer_failed');
+      return;
+    }
+    _migrationDeadlineTimer?.cancel();
+    _migrationDeadlineTimer = Timer(const Duration(seconds: 20), () {
+      if (identical(_activeMigration, attempt) && !attempt.completed) {
+        _failMigration(attempt, 'relay_migration_timeout');
+      }
+    });
+  }
+
+  /// Receiver side: gets `relay-migrate-offer`, builds its OWN new relay-only
+  /// PC, and answers. Symmetric with [_migrateToRelay] above.
+  Future<void> _onRelayMigrateOffer(Map<String, dynamic> d) async {
+    if (!RemoteConfig.callRelayMigrationV1 || _ended || !_connected) return;
+    final id = d['attemptId']?.toString();
+    if (id == null || id.isEmpty) return;
+    if (_migrationAttempted && (_activeMigration == null || _activeMigration!.id != id)) {
+      return; // MAX one migration per call — a stale/second offer is ignored
+    }
+    final remoteId = d['from']?.toString();
+    if (remoteId == null || remoteId.isEmpty || _stream == null) return;
+    _remoteId ??= remoteId;
+    _migrationAttempted = true;
+    final attempt = RelayMigrationAttempt(
+        id: id, startedAtMs: DateTime.now().millisecondsSinceEpoch);
+    _activeMigration = attempt;
+    _telemetry.setRecoveryState('migrating_relay', attemptCount: _recoveryAttemptCount);
+    try {
+      _ice = await IceCache.get(forceRefresh: true);
+      final newPc = await createPeerConnection({
+        'iceServers': _ice,
+        'iceCandidatePoolSize': 2,
+        'iceTransportPolicy': 'relay',
+      });
+      attempt.newPc = newPc;
+      _stream!.getTracks().forEach((t) => newPc.addTrack(t, _stream!));
+      newPc.onIceCandidate = (c) {
+        if (!identical(_activeMigration, attempt) || attempt.completed) return;
+        _send({
+          'type': 'relay-migrate-candidate',
+          'to': remoteId,
+          'attemptId': id,
+          'candidate': c.toMap(),
+        });
+      };
+      newPc.onTrack = (e) {
+        if (!identical(_activeMigration, attempt) || attempt.completed) return;
+        if (e.streams.isNotEmpty) attempt.remoteTrackSeen = true;
+      };
+      await newPc.setRemoteDescription(
+          RTCSessionDescription(d['sdp']['sdp'], d['sdp']['type']));
+      final ans = _tuned(await newPc.createAnswer());
+      await newPc.setLocalDescription(ans);
+      _send({
+        'type': 'relay-migrate-answer',
+        'to': remoteId,
+        'attemptId': id,
+        'sdp': ans.toMap(),
+      });
+    } catch (e, st) {
+      _telemetry.runtimeError(
+        stage: 'relay_migration_answer_failed',
+        error: e,
+        stack: st,
+        extra: {'attempt_id': id},
+      );
+      _failMigration(attempt, 'relay_migration_answer_failed');
+      return;
+    }
+    _migrationDeadlineTimer?.cancel();
+    _migrationDeadlineTimer = Timer(const Duration(seconds: 20), () {
+      if (identical(_activeMigration, attempt) && !attempt.completed) {
+        _failMigration(attempt, 'relay_migration_timeout');
+      }
+    });
+  }
+
+  Future<void> _onRelayMigrateAnswer(Map<String, dynamic> d) async {
+    final a = _activeMigration;
+    if (a == null || a.completed) return;
+    if (d['attemptId']?.toString() != a.id) return;
+    final pc = a.newPc;
+    if (pc == null) return;
+    try {
+      await pc.setRemoteDescription(RTCSessionDescription(d['sdp']['sdp'], d['sdp']['type']));
+    } catch (e, st) {
+      _telemetry.runtimeError(
+        stage: 'relay_migration_set_answer_failed',
+        error: e,
+        stack: st,
+        extra: {'attempt_id': a.id},
+      );
+      _failMigration(a, 'relay_migration_set_answer_failed');
+    }
+  }
+
+  Future<void> _onRelayMigrateCandidate(Map<String, dynamic> d) async {
+    final a = _activeMigration;
+    if (a == null || a.completed) return;
+    if (d['attemptId']?.toString() != a.id) return;
+    final pc = a.newPc;
+    if (pc == null) return;
+    try {
+      final c = d['candidate'];
+      await pc.addCandidate(RTCIceCandidate(c['candidate'], c['sdpMid'], c['sdpMLineIndex']));
+    } catch (_) {/* best-effort, matches the existing candidate-add pattern */}
+  }
+
+  void _onRelayMigrateReady(Map<String, dynamic> d) {
+    final a = _activeMigration;
+    if (a == null || a.completed) return;
+    if (d['attemptId']?.toString() != a.id) return;
+    a.peerReady = true;
+    _maybeCompleteMigration(a);
+  }
+
+  void _onRelayMigrateReject(Map<String, dynamic> d) {
+    final a = _activeMigration;
+    if (a == null || a.completed) return;
+    if (d['attemptId']?.toString() != a.id) return;
+    _failMigration(a, (d['reason']?.toString() ?? 'relay_migration_rejected'));
+  }
+
+  /// Fed by [_pollPlayoutHealth] once a migration's new PC has a remote track
+  /// — counts consecutive healthy samples ON THE NEW PC (plan §7.4.5: "must
+  /// not close the old PC until the new one produces a remote track and two
+  /// healthy playout samples").
+  void _onPlayoutHealthForMigration(MediaHealthClass cls) {
+    final a = _activeMigration;
+    if (a == null || a.completed || !a.remoteTrackSeen) return;
+    final ok = cls == MediaHealthClass.healthy || cls == MediaHealthClass.remoteQuiet;
+    if (ok) {
+      a.healthySamplesOnNewPc++;
+      if (a.healthySamplesOnNewPc >= 2 && !a.readySent) {
+        a.readySent = true;
+        if (_remoteId != null) {
+          _send({'type': 'relay-migrate-ready', 'to': _remoteId, 'attemptId': a.id});
+        }
+        _maybeCompleteMigration(a);
+      }
+    } else {
+      a.healthySamplesOnNewPc = 0;
+    }
+  }
+
+  /// plan §7.4.6: "Both peers exchange relay-migrate-ready. Only then close
+  /// the old PC and promote the new PC to `_pc`."
+  Future<void> _maybeCompleteMigration(RelayMigrationAttempt a) async {
+    if (a.completed) return;
+    if (!a.readySent || !a.peerReady) return;
+    if (a.healthySamplesOnNewPc < 2 || !a.remoteTrackSeen) return;
+    final newPc = a.newPc;
+    if (newPc == null) return;
+    a.completed = true;
+    _migrationDeadlineTimer?.cancel();
+    final oldPc = _pc;
+    _promoteMigratedPc(newPc);
+    _pc = newPc;
+    _relayForced = true;
+    _telemetry.setMediaPath('relay');
+    try { await oldPc?.close(); } catch (_) {}
+    if (identical(_activeMigration, a)) _activeMigration = null;
+    final elapsedMs = DateTime.now().millisecondsSinceEpoch - a.startedAtMs;
+    Analytics.capture('call_recovery_completed', {
+      'call_id': config.room,
+      'attempt_id': a.id,
+      'kind': 'relay',
+      'path_before': 'direct',
+      'path_after': 'relay',
+      'elapsed_ms': elapsedMs,
+      'two_side_ack': true,
+    });
+    _telemetry.setRecoveryState('none', attemptCount: _recoveryAttemptCount);
+    if (!_ended && _connected) _setPhase('connected');
+  }
+
+  /// Re-wires the standard candidate/track/connection-state handlers onto the
+  /// PC being promoted after a migration cutover, so future ICE candidates,
+  /// remote-track updates, and CALL-REL-5 recovery keep working exactly as
+  /// they did on the original `_pc`. Deliberately a lighter ladder than
+  /// [_newPC] (no legacy 10s `_failTimer` hard-end/`_tryIceRestart` path —
+  /// this is a v1-relay-migration PC, and any further transport failure on it
+  /// is owned by the CALL-REL-5 coordinator when that flag is also on).
+  void _promoteMigratedPc(RTCPeerConnection pc) {
+    pc.onIceCandidate = (c) {
+      if (_remoteId != null) _send({'type': 'candidate', 'to': _remoteId, 'candidate': c.toMap()});
+    };
+    pc.onTrack = (e) {
+      if (e.streams.isNotEmpty) remoteRenderer.srcObject = e.streams[0];
+    };
+    pc.onConnectionState = (s) {
+      if (_ended || !_connected) return;
+      _telemetry.mediaFlowState(
+        state: 'transport_${s.toString().split('.').last.toLowerCase()}',
+        transportState: s.toString(),
+      );
+      if (s == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
+        _telemetry.runtimeError(
+          stage: 'pc_closed',
+          error: StateError('Peer connection closed during an active call'),
+          extra: {'transport_state': s.toString(), 'post_migration': true},
+        );
+        _endWith('ended');
+      } else if ((s == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
+              s == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) &&
+          RemoteConfig.callIceRecoveryV2) {
+        // ignore: unawaited_futures
+        _requestRecovery(RecoveryReason.transportDisconnected);
+      }
+    };
+  }
+
+  /// plan §7.4.7: "if it fails, keep the old direct PC if it still has
+  /// playout. A failed upgrade must not create an outage." §7.4.8: "cap at
+  /// one migration per call. A second unrecovered failure ends cleanly after
+  /// the standard recovery deadline" — [_migrationAttempted] enforces the cap
+  /// (never reset), so a later failure falls through [_failRecovery]'s own
+  /// end path instead of retrying migration.
+  void _failMigration(RelayMigrationAttempt a, String reason) {
+    if (a.completed) return;
+    a.completed = true;
+    _migrationDeadlineTimer?.cancel();
+    final elapsedMs = DateTime.now().millisecondsSinceEpoch - a.startedAtMs;
+    Analytics.capture('call_recovery_failed', {
+      'call_id': config.room,
+      'attempt_id': a.id,
+      'kind': 'relay',
+      'terminal_reason': reason,
+      'elapsed_ms': elapsedMs,
+    });
+    try { a.newPc?.close(); } catch (_) {}
+    if (identical(_activeMigration, a)) _activeMigration = null;
+    final oldPc = _pc;
+    final oldPcAlive = oldPc != null &&
+        oldPc.connectionState != RTCPeerConnectionState.RTCPeerConnectionStateClosed &&
+        oldPc.connectionState != RTCPeerConnectionState.RTCPeerConnectionStateFailed;
+    _telemetry.setRecoveryState(oldPcAlive ? 'none' : 'failed', attemptCount: _recoveryAttemptCount);
+    if (!oldPcAlive) {
+      if (!_ended) _endWith('ended', reason: reason);
+    } else if (!_ended && _connected) {
+      // Old PC still has playout — a failed upgrade must not create an outage.
+      _setPhase('connected');
     }
   }
 
@@ -2583,6 +2977,26 @@ class CallSession {
         break;
       case 'recovery-ready':
         _onRecoveryReady(d);
+        break;
+      // [CALL-REL-6] Mid-call relay migration. No-ops unless
+      // RemoteConfig.callRelayMigrationV1 is on (guarded inside the handlers).
+      case 'relay-migrate-offer':
+        // ignore: unawaited_futures
+        _onRelayMigrateOffer(d);
+        break;
+      case 'relay-migrate-answer':
+        // ignore: unawaited_futures
+        _onRelayMigrateAnswer(d);
+        break;
+      case 'relay-migrate-candidate':
+        // ignore: unawaited_futures
+        _onRelayMigrateCandidate(d);
+        break;
+      case 'relay-migrate-ready':
+        _onRelayMigrateReady(d);
+        break;
+      case 'relay-migrate-reject':
+        _onRelayMigrateReject(d);
         break;
       case 'ping':
       case 'pong':
@@ -3856,6 +4270,9 @@ class CallSession {
     _stopPlayoutHealthSampler(); // [CALL-REL-4]
     _recoveryDeadlineTimer?.cancel(); // [CALL-REL-5]
     _activeRecovery = null;
+    _migrationDeadlineTimer?.cancel(); // [CALL-REL-6]
+    await _safeAwait(() => _activeMigration?.newPc?.close());
+    _activeMigration = null;
     await _safeAwait(() => FlutterCallkitIncoming.endCall(config.room));
     try { _stream?.getTracks().forEach((t) => t.stop()); } catch (_) {}
     await _safeAwait(() => _pc?.close(), ms: 3000);

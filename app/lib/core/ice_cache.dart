@@ -30,10 +30,14 @@ class IceCache {
     get().ignore();
   }
 
-  static Future<List<Map<String, dynamic>>> get() async {
-    if (_fresh) return _servers!;
+  /// [CALL-REL-6] [forceRefresh]: bypass the cache and fetch fresh TURN
+  /// credentials even if the cached ones are still within TTL. Relay
+  /// migration needs this — credentials may be short-lived and a stale-but-
+  /// "fresh by TTL" set is exactly what plan §7.4 step 1 says not to reuse.
+  static Future<List<Map<String, dynamic>>> get({bool forceRefresh = false}) async {
+    if (!forceRefresh && _fresh) return _servers!;
     final inflight = _inflight;
-    if (inflight != null) return inflight;
+    if (!forceRefresh && inflight != null) return inflight;
     final f = _fetch();
     _inflight = f;
     try {
