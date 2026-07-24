@@ -212,6 +212,15 @@ class RelayMigrationAttempt {
   final int startedAtMs;
   RTCPeerConnection? newPc;
   bool remoteTrackSeen = false;
+  /// [CALL-REL-6 SHOULD-FIX-4] The new PC's remote stream, captured the
+  /// moment its `onTrack` first fires. Cutover repoints `remoteRenderer` to
+  /// THIS stream directly instead of relying on a fresh `onTrack` firing
+  /// again after promotion — the track event that proved this attempt
+  /// healthy already happened once, on the migration PC's own `onTrack`
+  /// handler (not the one installed later by `_promoteMigratedPc`), so
+  /// waiting for a second one would leave the renderer bound to the old
+  /// (closed) PC's stream indefinitely.
+  MediaStream? remoteStream;
   int healthySamplesOnNewPc = 0;
   bool readySent = false;
   bool peerReady = false;
@@ -769,8 +778,15 @@ class CallSession {
   // depends on this sampler, so callIceRecoveryV2 also starts it even if the
   // observe-only flag is off. callPlayoutHealthV2 alone still runs the exact
   // same observe-only sampler as CALL-REL-4 introduced.
+  // [CALL-REL-6 SHOULD-FIX-3] callRelayMigrationV1 also needs it running: an
+  // INBOUND migration (we're the receiver, answering a peer's
+  // relay-migrate-offer) can start with callRelayMigrationV1 on but
+  // callIceRecoveryV2/callPlayoutHealthV2 off, and [_onPlayoutHealthForMigration]
+  // has nothing to validate the new PC's playout against without this sampler.
   bool get _playoutSamplerWanted =>
-      RemoteConfig.callPlayoutHealthV2 || RemoteConfig.callIceRecoveryV2;
+      RemoteConfig.callPlayoutHealthV2 ||
+      RemoteConfig.callIceRecoveryV2 ||
+      RemoteConfig.callRelayMigrationV1;
 
   void _startPlayoutHealthSampler() {
     if (!_playoutSamplerWanted) return;
@@ -1051,8 +1067,15 @@ class CallSession {
             _connected &&
             !_ended) {
           _relayThresholdStreak = 0;
-          // ignore: unawaited_futures
-          _migrateToRelay(RecoveryReason.highConcealment);
+          // [BLOCKER-2 fix] Both peers sample loss independently and can hit
+          // this threshold at the same time — only the deterministic
+          // initiator starts the migration; the other side requests it.
+          if (_isMigrationInitiator) {
+            // ignore: unawaited_futures
+            _migrateToRelay(RecoveryReason.highConcealment);
+          } else {
+            _requestRelayMigration(RecoveryReason.highConcealment);
+          }
         }
       }
     } catch (e, st) {
@@ -2457,8 +2480,17 @@ class CallSession {
         !_migrationAttempted &&
         !_ended &&
         _connected) {
-      // ignore: unawaited_futures
-      _migrateToRelay(a.reason);
+      // [BLOCKER-2 fix] Both peers can reach this same escalation
+      // independently (each arms its own 30s recovery deadline — see
+      // BLOCKER-1 above). Only the deterministic initiator actually starts
+      // `_migrateToRelay`; the other side asks it to instead of racing it
+      // into a second `relay-migrate-offer` the DO would reject anyway.
+      if (_isMigrationInitiator) {
+        // ignore: unawaited_futures
+        _migrateToRelay(a.reason);
+      } else {
+        _requestRelayMigration(a.reason);
+      }
       return;
     }
     if (!_ended) {
@@ -2482,6 +2514,77 @@ class CallSession {
   // §7.4: dual-PC cutover, one migration per call, 20s deadline, old PC stays
   // live/audible until the new PC proves itself.
 
+  /// [BLOCKER-2 fix] True if THIS endpoint is the deterministic relay-migration
+  /// initiator. Reuses the exact same election rule the plan specifies for
+  /// ICE-recovery offerer selection (§7.3.3): the original call offerer
+  /// initiates unless it is away, otherwise the lexicographically lower
+  /// stable peer id initiates. Both `_migrateToRelay` call sites (the
+  /// loss-threshold path and `_failRecovery`'s escalation) run on BOTH peers
+  /// independently — without this gate both could call `_migrateToRelay`
+  /// for the same degraded call at the same time. The DO already grants only
+  /// one `relay-migrate-offer` and rejects the other (`migration_already_used`
+  /// / `migration_in_progress`), but the LOSER had already set
+  /// `_migrationAttempted`/`_activeMigration`, so it used to ignore the
+  /// winner's real offer in [_onRelayMigrateOffer] and both sides just sat
+  /// out their independent 20s deadlines. Electing a single initiator up
+  /// front avoids the race instead of only cleaning up after it.
+  bool get _isMigrationInitiator {
+    if (_weOffered) return true; // we are the original offerer — not "away" from our own view.
+    final remote = _remoteId;
+    if (remote == null) return true; // no peer id known yet; safe local default.
+    if (peerAway.value) {
+      // The original offerer (the peer, since we didn't offer) is away —
+      // fall back to the lexicographically-lower stable id, same as §7.3.3.
+      return _myId.compareTo(remote) < 0;
+    }
+    return false; // original offerer is present and it isn't us — defer to it.
+  }
+
+  /// [BLOCKER-2 fix] Non-initiator half of the glare fix: instead of racing
+  /// the peer into our own `_migrateToRelay` (which the DO would reject),
+  /// ask the deterministic initiator to start one. One-shot signal, reusing
+  /// the generic `to`-scoped relay `CallRoom` already applies to every other
+  /// signaling message type — no server change needed.
+  void _requestRelayMigration(RecoveryReason why) {
+    if (_migrationAttempted || _activeMigration != null) return;
+    final remoteId = _remoteId;
+    if (remoteId == null) return;
+    _send({'type': 'relay-migrate-request', 'to': remoteId, 'reason': why.wire});
+  }
+
+  /// [BLOCKER-2 fix] The deterministic initiator's side of
+  /// [_requestRelayMigration]: the peer decided (via its own
+  /// [_isMigrationInitiator]) that WE should start the migration. Starts one
+  /// if we agree we're the initiator and are otherwise eligible; a silent
+  /// no-op if not (e.g. a stale/duplicate request after migration already
+  /// completed).
+  void _onRelayMigrateRequest(Map<String, dynamic> d) {
+    if (!RemoteConfig.callRelayMigrationV1 || _ended || !_connected) return;
+    if (!_isMigrationInitiator) return; // peer mis-elected us; don't race it.
+    if (_migrationAttempted || _activeMigration != null || _relayForced) return;
+    // ignore: unawaited_futures
+    _migrateToRelay(_reasonFromWire(d['reason']?.toString()));
+  }
+
+  /// [BLOCKER-2 fix] Glare cleanup for the LOSING side: this endpoint started
+  /// (or answered) its own migration attempt, but the deterministic winner
+  /// turned out to be the peer instead (DO rejected our offer with
+  /// `migration_already_used`/`migration_in_progress`, or we received a
+  /// genuinely different attempt id from the peer). Tears down OUR half
+  /// WITHOUT burning the one-migration-per-call cap and WITHOUT ending the
+  /// call — the plan's cap (§7.4.8) means one COMPLETED/terminal migration,
+  /// not one send attempt, so the surviving winner's attempt still gets its
+  /// full shot at fixing the call.
+  void _abandonOwnMigrationAttempt(RelayMigrationAttempt attempt) {
+    if (attempt.completed) return;
+    attempt.completed = true;
+    if (identical(_activeMigration, attempt)) {
+      _activeMigration = null;
+      _migrationDeadlineTimer?.cancel();
+    }
+    try { attempt.newPc?.close(); } catch (_) {}
+  }
+
   /// Initiator side: fresh TURN creds, brand-new relay-only PC, existing
   /// tracks re-added, offer sent via `relay-migrate-offer`. The OLD `_pc`
   /// keeps running (still audible) until [_maybeCompleteMigration] cuts over.
@@ -2501,7 +2604,12 @@ class CallSession {
       if (!_ended) _endWith('ended', reason: 'relay_migration_no_peer');
       return;
     }
-    _migrationAttempted = true;
+    // [BLOCKER-2 fix] `_migrationAttempted` (the one-per-call CAP) is now set
+    // only at a TERMINAL outcome — see [_maybeCompleteMigration] and
+    // [_failMigration] — not here at send time. `_activeMigration` (set
+    // just below) is what guards against a second local call while this one
+    // is in flight; burning the cap here would make [_abandonOwnMigrationAttempt]
+    // unable to let the actual winner's attempt still run to completion.
     final id = const Uuid().v4();
     final attempt = RelayMigrationAttempt(
         id: id, startedAtMs: DateTime.now().millisecondsSinceEpoch);
@@ -2536,7 +2644,12 @@ class CallSession {
       };
       newPc.onTrack = (e) {
         if (!identical(_activeMigration, attempt) || attempt.completed) return;
-        if (e.streams.isNotEmpty) attempt.remoteTrackSeen = true;
+        if (e.streams.isNotEmpty) {
+          attempt.remoteTrackSeen = true;
+          // [CALL-REL-6 SHOULD-FIX-4] Capture the stream now — cutover in
+          // _maybeCompleteMigration repoints remoteRenderer to it directly.
+          attempt.remoteStream = e.streams[0];
+        }
       };
       final offer = _tuned(await newPc.createOffer());
       await newPc.setLocalDescription(offer);
@@ -2570,13 +2683,22 @@ class CallSession {
     if (!RemoteConfig.callRelayMigrationV1 || _ended || !_connected) return;
     final id = d['attemptId']?.toString();
     if (id == null || id.isEmpty) return;
-    if (_migrationAttempted && (_activeMigration == null || _activeMigration!.id != id)) {
-      return; // MAX one migration per call — a stale/second offer is ignored
+    if (_migrationAttempted) return; // cap already used by a terminal migration this call.
+    final existing = _activeMigration;
+    if (existing != null && existing.id != id) {
+      // [BLOCKER-2 fix] We already started (or answered) our OWN attempt,
+      // but this offer is for a DIFFERENT attempt id — the deterministic
+      // initiator election should normally prevent this, but if it still
+      // happens (e.g. a stale client, or both sides raced before either
+      // saw the other's election inputs), trust the peer's real offer:
+      // abandon ours and answer theirs instead of the old behavior, which
+      // silently dropped the winner's offer and stranded both sides at
+      // their independent 20s deadlines.
+      _abandonOwnMigrationAttempt(existing);
     }
     final remoteId = d['from']?.toString();
     if (remoteId == null || remoteId.isEmpty || _stream == null) return;
     _remoteId ??= remoteId;
-    _migrationAttempted = true;
     final attempt = RelayMigrationAttempt(
         id: id, startedAtMs: DateTime.now().millisecondsSinceEpoch);
     _activeMigration = attempt;
@@ -2601,7 +2723,12 @@ class CallSession {
       };
       newPc.onTrack = (e) {
         if (!identical(_activeMigration, attempt) || attempt.completed) return;
-        if (e.streams.isNotEmpty) attempt.remoteTrackSeen = true;
+        if (e.streams.isNotEmpty) {
+          attempt.remoteTrackSeen = true;
+          // [CALL-REL-6 SHOULD-FIX-4] Capture the stream now — cutover in
+          // _maybeCompleteMigration repoints remoteRenderer to it directly.
+          attempt.remoteStream = e.streams[0];
+        }
       };
       await newPc.setRemoteDescription(
           RTCSessionDescription(d['sdp']['sdp'], d['sdp']['type']));
@@ -2674,7 +2801,18 @@ class CallSession {
     final a = _activeMigration;
     if (a == null || a.completed) return;
     if (d['attemptId']?.toString() != a.id) return;
-    _failMigration(a, (d['reason']?.toString() ?? 'relay_migration_rejected'));
+    final reason = d['reason']?.toString() ?? 'relay_migration_rejected';
+    if (reason == 'migration_already_used' || reason == 'migration_in_progress') {
+      // [BLOCKER-2 fix] The DO already granted the OTHER peer's offer — this
+      // is glare, not a real failure. The winner's migration may still
+      // succeed, so abandon quietly (no cap burn, no call-ending) and wait
+      // to adopt their offer/ready via [_onRelayMigrateOffer] instead of
+      // calling [_failMigration], which could otherwise end a call whose
+      // OTHER migration attempt is about to fix it.
+      _abandonOwnMigrationAttempt(a);
+      return;
+    }
+    _failMigration(a, reason);
   }
 
   /// Fed by [_pollPlayoutHealth] once a migration's new PC has a remote track
@@ -2708,10 +2846,25 @@ class CallSession {
     final newPc = a.newPc;
     if (newPc == null) return;
     a.completed = true;
+    // [BLOCKER-2 fix] The one-migration-per-call CAP is burned HERE, at a
+    // genuine terminal success — not at send/answer time (see _migrateToRelay
+    // and _onRelayMigrateOffer for why).
+    _migrationAttempted = true;
     _migrationDeadlineTimer?.cancel();
     final oldPc = _pc;
     _promoteMigratedPc(newPc);
     _pc = newPc;
+    // [CALL-REL-6 SHOULD-FIX-4] Repoint the renderer to the NEW PC's remote
+    // stream at cutover. `attempt.remoteTrackSeen` (required above) proves
+    // `onTrack` already fired once on the migration PC — that already
+    // happened on the pre-promotion handler installed in
+    // `_migrateToRelay`/`_onRelayMigrateOffer`, not on `_promoteMigratedPc`'s
+    // handler, so without this line the renderer would keep showing the OLD
+    // (closed) PC's stream until/unless a brand-new track event happens to
+    // fire post-promotion, which may never occur.
+    if (a.remoteStream != null) {
+      remoteRenderer.srcObject = a.remoteStream;
+    }
     _relayForced = true;
     _telemetry.setMediaPath('relay');
     try { await oldPc?.close(); } catch (_) {}
@@ -2775,6 +2928,10 @@ class CallSession {
   void _failMigration(RelayMigrationAttempt a, String reason) {
     if (a.completed) return;
     a.completed = true;
+    // [BLOCKER-2 fix] Genuine terminal failure (not glare — glare rejects go
+    // through [_abandonOwnMigrationAttempt] instead, which does NOT set this)
+    // — burn the one-migration-per-call cap here.
+    _migrationAttempted = true;
     _migrationDeadlineTimer?.cancel();
     final elapsedMs = DateTime.now().millisecondsSinceEpoch - a.startedAtMs;
     Analytics.capture('call_recovery_failed', {
@@ -3044,6 +3201,11 @@ class CallSession {
         break;
       case 'relay-migrate-reject':
         _onRelayMigrateReject(d);
+        break;
+      // [BLOCKER-2 fix] Non-initiator asking the deterministic initiator to
+      // start a migration instead of racing it with its own attempt.
+      case 'relay-migrate-request':
+        _onRelayMigrateRequest(d);
         break;
       case 'ping':
       case 'pong':
