@@ -64,7 +64,7 @@ import { olxCreate, olxBrowse, olxGet, olxUpdate, olxDelete, olxUploadFile, olxB
 import { listPersonas, upsertPersona, converse, getInbox, getInboxItem, approveInbox, agentTask } from "./routes/agent";
 import { agentTts, agentAudio } from "./routes/agent_tts";
 import { listNotifications, unreadCount, markRead, clearNotifications } from "./routes/notifications";
-import { wsInbox, wsParty, sendMsg, syncMsg, receiptMsg, msgReceiptBatch, msgSeenState, readMsg, hideMsg, reactMsg, stateMsg, pollVote, pollState, convList, convCreate, convAdopt, convMembers, convAddMembers, convRemoveMember, convSetRole, convSetAvatar, convLeave, convDelete, convInvites, convInviteRespond, callLogAppend, callLogDelete, callLogClear } from "./routes/messaging";
+import { wsInbox, wsParty, sendMsg, syncMsg, receiptMsg, msgReceiptBatch, msgSeenState, readMsg, hideMsg, reactMsg, stateMsg, pollVote, pollState, convList, convCreate, convAdopt, convMembers, convAddMembers, convRemoveMember, convSetRole, convSetAvatar, convLeave, convDelete, convInvites, convInviteRespond, callLogAppend, callLogDelete, callLogClear, convAvaGroupStateGet, convAvaGroupStatePut, convAvaMemberPrefsGet, convAvaMemberPrefsPut } from "./routes/messaging"; // [AVA-GROUP-COMPANION-1]: group-Ava state + member-prefs handlers
 import { archiveList, archivePage } from "./routes/archive";
 import { getAutoResponder, putAutoResponder } from "./routes/auto_responder"; // STREAM F — away auto-responder settings
 import { getConfig, putConfig, readConfig } from "./routes/config";
@@ -507,6 +507,13 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/conversations/avatar" && req.method === "POST") return await convSetAvatar(req, env);
       if (p === "/api/conversations/leave" && req.method === "POST") return await convLeave(req, env);
       if (p === "/api/conversations/delete" && req.method === "POST") return await convDelete(req, env);
+      // [AVA-GROUP-COMPANION-1] Group Ava state + member prefs (I1/I2). Auth +
+      // membership/role checks live inside each handler (requireUser +
+      // convRoleOf/convIsGroup), same idiom as the group-membership routes above.
+      if (p === "/api/conversations/ava/state" && req.method === "GET") return await convAvaGroupStateGet(req, env);
+      if (p === "/api/conversations/ava/state" && req.method === "PUT") return await convAvaGroupStatePut(req, env);
+      if (p === "/api/conversations/ava/member-prefs" && req.method === "GET") return await convAvaMemberPrefsGet(req, env);
+      if (p === "/api/conversations/ava/member-prefs" && req.method === "PUT") return await convAvaMemberPrefsPut(req, env);
       // --- AI Messenger Batch 2026-07-03 route mounts ---
       // STREAM I: unlimited forwarding (no-copy fan-out; requires liveness when gate ON)
       if (p === "/api/msg/forward" && req.method === "POST") return await forwardMsg(req, env, ctx);
