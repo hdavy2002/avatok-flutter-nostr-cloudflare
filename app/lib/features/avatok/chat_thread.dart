@@ -4882,6 +4882,16 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         } catch (e) {
           AvaLog.I.log('media', 'resume transcode failed ${row.clientId}, using staged bytes: $e');
         }
+        // [MEDIA-OUTBOX-DURABLE-1] Same cap omission as the live `_upload`
+        // path (fixed above) existed here too: a reconciled video row that
+        // re-transcodes over the cap uploaded anyway with nothing to reject
+        // it. Fail the row TERMINALLY (not a retryable error — the bytes
+        // will never get smaller on the next reconcile pass) instead of
+        // silently uploading an oversized file or hanging.
+        if (uploadBytes.length > _kVideoMaxBytes) {
+          Analytics.capture('video_upload_rejected', {'bytes': uploadBytes.length, 'source': 'resume'});
+          throw MediaOutboxTerminalReject('video_too_big');
+        }
       }
       final live = CallSessionManager.instance.current;
       final inCall = live != null && !live.isEnded;
@@ -4889,6 +4899,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
           kind: kind, contentType: uploadCt, name: row.filename, caption: row.caption, inCall: inCall);
       return (mediaId: m.id, toEnvelopeJson: jsonEncode(m.toEnvelope()));
     } catch (e) {
+      // Let a terminal rejection (video cap) propagate to `reconcile()`,
+      // which gives the row up instead of scheduling a doomed retry — see
+      // [MediaOutboxTerminalReject]'s doc.
+      if (e is MediaOutboxTerminalReject) rethrow;
       AvaLog.I.log('media', 'resume upload FAILED ${row.clientId}: $e');
       return null;
     }
@@ -4917,6 +4931,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       toUid: _isGroup ? '' : (_peerNpub ?? ''),
       gid: _isGroup ? (_group?.id ?? '') : '',
     ).then((_) => MediaOutbox.I.markUploading(mediaClientId)));
+    // [MEDIA-OUTBOX-DURABLE-1 / reconcile-race] Register this id as having a
+    // LIVE upload for the lifetime of this call, cleared in the `finally`
+    // below no matter how this exits. `MediaOutbox.reconcile()` (which can
+    // run concurrently — e.g. a second thread opens while THIS upload is
+    // still in flight) checks this set and skips the row, so it never
+    // re-drives the same staged bytes through the pipeline with a different
+    // envelope id (duplicate R2 object + duplicate delivered message).
+    MediaOutbox.liveUploads.add(mediaClientId);
     try {
       var uploadBytes = bytes;
       var uploadCt = ct;
@@ -4951,17 +4973,23 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         }
         transcodeMs = DateTime.now().millisecondsSinceEpoch - tCompressStart;
         if (mounted) setState(() => msg.transcoding = false);
-        if (uploadBytes.length > _kVideoMaxBytes) {
-          if (mounted) setState(() { msg.uploading = false; msg.failed = true; });
-          _capNote(_kVideoTooBigMsg);
-          Analytics.capture('video_upload_rejected', {'bytes': uploadBytes.length});
-          // Permanent rejection, not a transient failure — nothing to retry.
-          unawaited(MediaOutbox.I.giveUp(mediaClientId, reason: 'video_too_big'));
-          return;
-        }
         Analytics.capture('video_upload_compressed', {
           'in_bytes': bytes.length, 'out_bytes': uploadBytes.length, 'transcode_ms': transcodeMs,
         });
+      }
+      // [MEDIA-OUTBOX-DURABLE-1] The cap check used to live ONLY inside the
+      // `sourcePath != null` transcode block above, so a manual retry
+      // (`_retryMediaUpload` → `_upload` with `sourcePath: null`) skipped it
+      // entirely and uploaded the ORIGINAL un-transcoded bytes with no size
+      // cap at all. Hoisted here so it applies to EVERY video upload
+      // regardless of whether this call transcoded anything.
+      if (kind == MediaKind.video && uploadBytes.length > _kVideoMaxBytes) {
+        if (mounted) setState(() { msg.uploading = false; msg.failed = true; });
+        _capNote(_kVideoTooBigMsg);
+        Analytics.capture('video_upload_rejected', {'bytes': uploadBytes.length});
+        // Permanent rejection, not a transient failure — nothing to retry.
+        unawaited(MediaOutbox.I.giveUp(mediaClientId, reason: 'video_too_big'));
+        return;
       }
       // [CHAT-UPLOAD-1] A live 1:1 call shares this device's uplink. Encrypt off
       // the main thread + pace the ciphertext PUT so the upload never starves
@@ -5037,6 +5065,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
           'reason': e.toString(),
         });
       }
+    } finally {
+      MediaOutbox.liveUploads.remove(mediaClientId);
     }
   }
 

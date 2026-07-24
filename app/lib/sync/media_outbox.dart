@@ -53,6 +53,17 @@ import '../core/db.dart';
 import '../identity/identity.dart';
 import 'outbox.dart';
 
+/// Thrown by a `resumeUpload` callback (chat_thread.dart's
+/// `_resumeMediaUpload`) to signal a PERMANENT, non-retryable rejection (e.g.
+/// the video size cap on a re-transcode) — [MediaOutbox.reconcile] gives the
+/// row up on this instead of scheduling a retry that can never succeed.
+class MediaOutboxTerminalReject implements Exception {
+  final String reason;
+  MediaOutboxTerminalReject(this.reason);
+  @override
+  String toString() => 'MediaOutboxTerminalReject($reason)';
+}
+
 /// One media-outbox row, as read back from SQLite.
 class MediaOutboxRow {
   final String clientId;
@@ -96,11 +107,32 @@ class MediaOutbox {
   static final MediaOutbox I = MediaOutbox._();
   MediaOutbox._();
 
-  bool _schemaReady = false;
+  // [MEDIA-OUTBOX-DURABLE-1] The scope this schema was last ensured for.
+  // `Db.I` REBUILDS a brand-new per-account sqlite handle whenever
+  // `AccountScope.id` changes (see `core/db.dart`'s `Db.I` getter) — the new
+  // handle does NOT carry over the `media_outbox` table a previous account's
+  // schema-ensure created on ITS handle. A bare `bool _schemaReady` therefore
+  // went stale the moment a second account switched in: every subsequent
+  // write silently failed (`customStatement` against a table that was never
+  // created on the NEW handle). Tracking the scope the schema was ensured
+  // for lets `_ensureSchema` detect the switch and re-run `CREATE TABLE IF
+  // NOT EXISTS` against the account's actual current handle.
+  String? _schemaScope;
   bool _statusHooked = false;
   // clientId (media outbox row) → envelope client_id, for rows currently
   // waiting on Outbox's ACK. Populated on markEnvelopeSent + on reconcile().
   final Map<String, String> _watchingEnvelope = {}; // envelopeClientId -> mediaClientId
+
+  // [MEDIA-OUTBOX-DURABLE-1 / reconcile-race] Media client ids with a LIVE
+  // `_upload` (chat_thread.dart) currently running for this process. The
+  // caller registers an id here the instant an upload starts and clears it
+  // in a `finally` when it exits (success or failure). `reconcile()` MUST
+  // skip any id in this set — without it, opening a second thread (or the
+  // same thread via a stray rebuild) while thread A's `_upload` is still
+  // mid-flight re-drives the SAME staged row through the resume pipeline
+  // with a DIFFERENT envelope clientId, producing a duplicate R2 object and
+  // a duplicate delivered message.
+  static final Set<String> liveUploads = {};
 
   /// A fresh id for a new media-outbox row / staged-file name.
   static String newId() {
@@ -109,7 +141,8 @@ class MediaOutbox {
   }
 
   Future<void> _ensureSchema() async {
-    if (_schemaReady) return;
+    final scope = AccountScope.id == null || AccountScope.id!.isEmpty ? 'default' : AccountScope.id!;
+    if (_schemaScope == scope) return;
     final db = Db.I;
     await db.customStatement('''
       CREATE TABLE IF NOT EXISTS media_outbox (
@@ -131,7 +164,12 @@ class MediaOutbox {
         media_json TEXT NOT NULL DEFAULT ''
       );
     ''');
-    _schemaReady = true;
+    // An envelope client id watched under the PREVIOUS account's scope points
+    // at a row that lives (if at all) in a DIFFERENT sqlite file now — never
+    // let it dangle across an account switch and never let a completion for
+    // the old account touch the new account's rows.
+    if (_schemaScope != null) _watchingEnvelope.clear();
+    _schemaScope = scope;
     _hookOutboxStatus();
   }
 
@@ -139,14 +177,26 @@ class MediaOutbox {
   /// row whose envelope has already been handed to it can complete (delete
   /// staged file + row) the instant Outbox reports the send ACKed — without
   /// this store re-implementing any retry/ack logic of its own for that leg.
+  /// Also handles a terminal `gaveUp` (Outbox exhausted its own retries) by
+  /// giving the row up here too, instead of leaving it wedged in
+  /// `envelope_sent` forever with a staged file that never gets cleaned up.
+  /// Global/account-agnostic by design: `Outbox.I.status` itself is a single
+  /// process-wide stream (Outbox reloads its OWN queue per account, but the
+  /// status stream and this listener don't need to be re-armed on switch —
+  /// `_watchingEnvelope` is what's scope-sensitive, and that's cleared above).
   void _hookOutboxStatus() {
     if (_statusHooked) return;
     _statusHooked = true;
     Outbox.I.status.listen((s) {
-      if (!s.ok) return;
-      final mediaClientId = _watchingEnvelope.remove(s.clientId);
+      final mediaClientId = _watchingEnvelope[s.clientId];
       if (mediaClientId == null) return;
-      unawaited(_completeAcked(mediaClientId));
+      if (s.ok) {
+        _watchingEnvelope.remove(s.clientId);
+        unawaited(_completeAcked(mediaClientId));
+      } else if (s.gaveUp) {
+        _watchingEnvelope.remove(s.clientId);
+        unawaited(giveUp(mediaClientId, reason: 'envelope_gave_up'));
+      }
     });
   }
 
@@ -367,6 +417,14 @@ class MediaOutbox {
 
   bool _reconciling = false;
 
+  // [MEDIA-OUTBOX-DURABLE-1 / reconcile-race] A row stuck in `uploading` is
+  // only trusted to be "abandoned, safe to resume" once it's been sitting
+  // there longer than this — a fresh `uploading` row is presumed to belong to
+  // a live `_upload` this process just doesn't have in [liveUploads] yet
+  // (e.g. a race on the very first tick, or a second isolate). 2 minutes is
+  // comfortably longer than any real upload leg takes end to end.
+  static const int _kUploadingStaleMs = 2 * 60 * 1000;
+
   /// Resume every non-terminal row. Called best-effort from
   /// `ChatThreadScreen.initState` (a thread open is also Outbox's own retry
   /// trigger — this mirrors that). A row in `uploaded`/`envelope_sent` whose
@@ -392,6 +450,17 @@ class MediaOutbox {
       final rows = await _allRows();
       final now = DateTime.now().millisecondsSinceEpoch;
       for (final row in rows) {
+        // [MEDIA-OUTBOX-DURABLE-1 / reconcile-race] Never resume a row whose
+        // ORIGINATING `_upload` is still running in this process — see
+        // [liveUploads]'s doc for why re-driving it here duplicates both the
+        // R2 object and the delivered message.
+        if (liveUploads.contains(row.clientId)) continue;
+        if (row.state == 'uploading' && (now - row.updatedTs) < _kUploadingStaleMs) {
+          // Recently marked `uploading` — even if [liveUploads] somehow
+          // missed it (e.g. registered on a different isolate), treat it as
+          // still owned by a live attempt until it's been stale a while.
+          continue;
+        }
         if (row.state == 'envelope_sent' && row.envelopeClientId.isNotEmpty) {
           // Already handed to Outbox in a PREVIOUS run of this process (or this
           // one, before a hot-restart re-created the listener). Re-arm the
@@ -442,8 +511,15 @@ class MediaOutbox {
           );
           unawaited(_resendFromRow(reRow));
         } catch (e) {
-          AvaLog.I.log('media_outbox', 'resume upload FAILED ${row.clientId}: $e');
-          await scheduleRetry(row.clientId, reason: e.toString());
+          if (e is MediaOutboxTerminalReject) {
+            // Permanent rejection (e.g. the video cap on a re-transcode) —
+            // give the row up instead of scheduling a retry that can never
+            // succeed.
+            await giveUp(row.clientId, reason: e.reason);
+          } else {
+            AvaLog.I.log('media_outbox', 'resume upload FAILED ${row.clientId}: $e');
+            await scheduleRetry(row.clientId, reason: e.toString());
+          }
         }
       }
     } finally {
@@ -457,9 +533,20 @@ class MediaOutbox {
   /// the server's client_id dedup make a duplicate enqueue harmless.
   Future<void> _resendFromRow(MediaOutboxRow row) async {
     if (row.mediaJson.isEmpty) return;
+    final isGroup = row.gid.isNotEmpty;
+    // [MEDIA-OUTBOX-DURABLE-1] A DM row with no destination uid would call
+    // `Outbox.enqueue(to: '', conv: '')` below — a no-op the outbox silently
+    // drops (see `Outbox.enqueue`'s own `to.isEmpty && conv.isEmpty` guard),
+    // which left the row wedged in `envelope_sent` forever with nothing ever
+    // retrying it. Fail it terminally instead so it's diagnosable and the
+    // staged file gets cleaned up.
+    if (!isGroup && row.toUid.isEmpty) {
+      // [giveUp] already emits `outbox_terminal_failure{reason, queue: 'media'}`.
+      await giveUp(row.clientId, reason: 'no_destination');
+      return;
+    }
     try {
       final env = jsonDecode(row.mediaJson) as Map<String, dynamic>;
-      final isGroup = row.gid.isNotEmpty;
       final wire = <String, dynamic>{
         ...env,
         't': isGroup ? 'gmedia' : 'media',
