@@ -182,6 +182,7 @@ import { moderateText } from "./routes/moderate";        // save-time content va
 import { avaImage } from "./routes/ava_image";          // P9
 import { avaDocSummarize, avaDocTranslate, avaDocTranslateFile, avaChatToggle } from "./routes/ava_copilot"; // Copilot A+B (doc actions + per-chat toggle)
 import { avaTriggersGet, avaLedgerGet, avaMomentOutcome } from "./routes/ava_odl_routes"; // Copilot C+D (ODL trigger sync D31 + cost ledger D25 + learning loop)
+import { avaGroupModeGet, avaGroupModePost, avaGroupPolicyGet, avaGroupDraftApprove, avaGroupDraftReject, avaGroupDraftsGet } from "./routes/ava_group"; // [AVABRAIN-COMPANION-2]/[AVABRAIN-COMPANION-UI-1] group Companion mode + effective policy + draft approval + pending-draft list
 import { backupGet, backupPut, backupStatus } from "./routes/backup"; // P10
 import { ringtone } from "./routes/ringtone"; // AI ringback tones + busy tone
 import { spamReport, spamLookup, spamBloom, spamRescore } from "./routes/spam"; // AvaDial spam shield (Phase 2a, dark behind spamShield)
@@ -605,6 +606,24 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/ava/triggers" && req.method === "GET") return await avaTriggersGet(req, env);        // ODL: on-device trigger bank sync (D31)
       if (p === "/api/ava/ledger" && req.method === "GET") return await avaLedgerGet(req, env);            // ODL: capability cost ledger snapshot (D25)
       if (p === "/api/ava/moment-outcome" && req.method === "POST") return await avaMomentOutcome(req, env); // ODL: learning loop outcome (Constitution 11)
+      // [AVABRAIN-COMPANION-2] group Companion mode + effective policy + draft approval (routes/ava_group.ts)
+      if (p === "/api/ava/group/mode" && req.method === "GET") return await avaGroupModeGet(req, env);
+      if (p === "/api/ava/group/mode" && req.method === "POST") return await avaGroupModePost(req, env);
+      if (p.startsWith("/api/ava/group/policy/") && req.method === "GET") {
+        return await avaGroupPolicyGet(req, env, decodeURIComponent(p.slice("/api/ava/group/policy/".length)));
+      }
+      if (p.startsWith("/api/ava/group/draft/") && p.endsWith("/approve") && req.method === "POST") {
+        const id = p.slice("/api/ava/group/draft/".length, p.length - "/approve".length);
+        return await avaGroupDraftApprove(req, env, decodeURIComponent(id));
+      }
+      if (p.startsWith("/api/ava/group/draft/") && p.endsWith("/reject") && req.method === "POST") {
+        const id = p.slice("/api/ava/group/draft/".length, p.length - "/reject".length);
+        return await avaGroupDraftReject(req, env, decodeURIComponent(id));
+      }
+      // [AVABRAIN-COMPANION-UI-1] pending-draft list for the draft-card UI (member-only)
+      if (p.startsWith("/api/ava/group/drafts/") && req.method === "GET") {
+        return await avaGroupDraftsGet(req, env, decodeURIComponent(p.slice("/api/ava/group/drafts/".length)));
+      }
       // Backup & sync (P10): GET pull, PUT push, GET status.
       if (p === "/api/backup/status" && req.method === "GET") return await backupStatus(req, env);
       if (p === "/api/backup" && req.method === "GET") return await backupGet(req, env);

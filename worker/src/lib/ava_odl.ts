@@ -45,12 +45,17 @@ import { getCapability, CATEGORY_TO_CAPABILITY, type Capability } from "./ava_ca
 import { checkAndSpend, spendMoment, getTrust, isMuted } from "./ava_budget";
 import { governorGate } from "./ava_governor";
 import { guessLang, hasTemplate, pickTemplate, fillTemplate } from "./ava_templates";
-import { postAvaPrivate, postAvaGroup } from "./ava_lane";
+import { postAvaPrivate } from "./ava_lane"; // postAvaGroup moved to routes/ava_group.ts's approve endpoint (see [AVABRAIN-COMPANION-2])
 // [AVA-GROUP-COMPANION-1] group Ava state + member prefs (I1/I2/I4/I5).
 import {
   getGroupState, isCurrentGroupMember, isMemberMuted, checkGroupCooldownAndBudget,
   groupScopeOf, type GroupAvaState,
 } from "./ava_group_policy";
+// [AVABRAIN-COMPANION-2] draft/approval layer — group Companion candidates no
+// longer post directly (see postGroupCandidate below); they become a DRAFT
+// requiring explicit human approval (bible §6.3). The 1:1 path (6b/6c above)
+// is completely untouched by this import.
+import { evaluate as companionEvaluate, createDraft, trackPolicyBlocked } from "./companion_policy";
 
 const SLEEP_SAMPLE = 100; // 1:100 sampling for ava_odl_sleep
 
@@ -353,8 +358,12 @@ export async function odlProcess(env: Env, input: OdlInput): Promise<OdlResult> 
     // "if (!wouldFire) return ..." above). The 1:1 branch below (6b/6c) is
     // BYTE-FOR-BYTE UNCHANGED from before this issue.
     if (input.isGroup) {
+      // [AVABRAIN-COMPANION-2] fixed, deterministic template identifier — NEVER
+      // free text (bible §6.2). Position in TEMPLATE_BANK, not a hash of the
+      // rendered string, so it stays stable across re-renders of the same slot data.
+      const templateId = `${cap.id}:${lang}:${tpl.register}`;
       return await postGroupCandidate(env, {
-        uid, conv, text, templateText, cap, opportunity, category, lang, groupState: groupState as GroupAvaState,
+        uid, conv, text, templateText, templateId, cap, opportunity, category, lang, groupState: groupState as GroupAvaState,
       });
     }
 
@@ -468,10 +477,10 @@ export async function odlProcess(env: Env, input: OdlInput): Promise<OdlResult> 
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function postGroupCandidate(env: Env, args: {
-  uid: string; conv: string; text: string; templateText: string; cap: Capability;
+  uid: string; conv: string; text: string; templateText: string; templateId: string; cap: Capability;
   opportunity: number; category: string; lang: string; groupState: GroupAvaState;
 }): Promise<OdlResult> {
-  const { uid, conv, text, templateText, cap, opportunity, category, lang, groupState } = args;
+  const { uid, conv, text, templateText, templateId, cap, opportunity, category, lang, groupState } = args;
   const convHash = fnv1aHex(conv);
   const scope = groupScopeOf(cap.id);
 
@@ -487,6 +496,17 @@ async function postGroupCandidate(env: Env, args: {
     const muted = await isMemberMuted(env, conv, uid, cap.id);
     if (muted) {
       return { woke: true, capability: cap.id, opportunity, would_fire: true, reason: "member_muted", templateText };
+    }
+
+    // [AVABRAIN-COMPANION-2] additional draft-cooldown/daily-budget gate
+    // (companion_policy.ts evaluate) — on TOP of the mode/membership/mute
+    // checks above. This is what caps how often Companion mode can generate
+    // ANY draft (public or private) for a group, independent of the older
+    // public-post-only budget in ava_group_state.
+    const verdict = await companionEvaluate(env, conv, { capability: cap.id, scope: "private", targetUid: uid });
+    if (!verdict.allowed) {
+      void trackPolicyBlocked(env, conv, cap.id, verdict.reason ?? "blocked");
+      return { woke: true, capability: cap.id, opportunity, would_fire: true, reason: verdict.reason, templateText };
     }
 
     void track(env, uid, "group_ava_private_nudge", "ava_odl", {
@@ -516,29 +536,18 @@ async function postGroupCandidate(env: Env, args: {
       return { woke: true, capability: cap.id, opportunity, would_fire: true, reason: "already_decided", templateText };
     }
 
-    const postRes = await postAvaPrivate(env, {
-      uid, conv, text: templateText,
-      moment: { kind: "ava_moment", capability: cap.id, decision_id: decisionId, provenance: "current_message" },
-      capability: cap.id,
-      source: "odl_group",
+    // [AVABRAIN-COMPANION-2] NO AUTONOMOUS POST — the reservation above only
+    // holds the ava_interventions PK; the actual candidate content becomes a
+    // DRAFT (ava_companion_drafts) that stays 'reserved'/'pending_approval'
+    // until a human calls POST /api/ava/group/draft/:id/approve (routes/
+    // ava_group.ts), which is the ONLY caller of ava_lane.ts's
+    // postAvaPrivate for this decision. This block used to post directly —
+    // that direct call is now gone.
+    await createDraft(env, {
+      decisionId, conv, capability: cap.id, templateId, draftText: templateText,
+      scope: "private", targetUid: uid,
     });
-
-    if (postRes.ok) {
-      try {
-        await env.DB_META.prepare(
-          `UPDATE ava_interventions SET status = 'posted', updated_at = ?1 WHERE decision_id = ?2 AND status = 'reserved'`,
-        ).bind(Date.now(), decisionId).run();
-      } catch { /* best-effort — self-heals via the 24h TTL sweep */ }
-      void track(env, uid, "group_ava_posted", "ava_odl", {
-        decision_id: decisionId, capability: cap.id, conv_hash: convHash, lane: "private",
-        opportunity, trigger_category: category, lang_guess: lang,
-      });
-    } else {
-      void track(env, uid, "ava_moment_post_failed", "ava_odl", {
-        decision_id: decisionId, capability: cap.id, conv_hash: convHash, lane: "private", error: postRes.error ?? null,
-      });
-    }
-    return { woke: true, capability: cap.id, opportunity, would_fire: true, templateText };
+    return { woke: true, capability: cap.id, opportunity, would_fire: true, reason: "draft_pending_approval", templateText };
   }
 
   // scope === "public" ─────────────────────────────────────────────────────
@@ -546,6 +555,15 @@ async function postGroupCandidate(env: Env, args: {
   if (!budgetCheck.allowed) {
     void track(env, uid, "group_ava_budget_blocked", "ava_odl", { capability: cap.id, conv_hash: convHash, reason: budgetCheck.reason });
     return { woke: true, capability: cap.id, opportunity, would_fire: true, reason: budgetCheck.reason, templateText };
+  }
+
+  // [AVABRAIN-COMPANION-2] draft-cooldown/daily-budget gate (see the private
+  // branch above for why this is IN ADDITION TO checkGroupCooldownAndBudget,
+  // not a replacement for it).
+  const verdict = await companionEvaluate(env, conv, { capability: cap.id, scope: "public" });
+  if (!verdict.allowed) {
+    void trackPolicyBlocked(env, conv, cap.id, verdict.reason ?? "blocked");
+    return { woke: true, capability: cap.id, opportunity, would_fire: true, reason: verdict.reason, templateText };
   }
 
   void track(env, uid, "group_ava_public_candidate", "ava_odl", {
@@ -576,26 +594,13 @@ async function postGroupCandidate(env: Env, args: {
     return { woke: true, capability: cap.id, opportunity, would_fire: true, reason: "already_decided", templateText };
   }
 
-  const postRes = await postAvaGroup(env, {
-    conv, text: templateText, decisionId, capability: cap.id,
-    moment: { kind: "ava_moment", capability: cap.id, decision_id: decisionId, provenance: "current_message" },
+  // [AVABRAIN-COMPANION-2] NO AUTONOMOUS POST — same draft substitution as
+  // the private branch above; POST /api/ava/group/draft/:id/approve (an
+  // ADMIN only, for public scope) is the only path that ever calls
+  // ava_lane.ts's postAvaGroup for this decision.
+  await createDraft(env, {
+    decisionId, conv, capability: cap.id, templateId, draftText: templateText,
+    scope: "public",
   });
-
-  if (postRes.ok) {
-    try {
-      await env.DB_META.prepare(
-        `UPDATE ava_interventions SET status = 'posted', updated_at = ?1 WHERE decision_id = ?2 AND status = 'reserved'`,
-      ).bind(Date.now(), decisionId).run();
-    } catch { /* best-effort — self-heals via the 24h TTL sweep */ }
-    void track(env, uid, "group_ava_posted", "ava_odl", {
-      decision_id: decisionId, capability: cap.id, conv_hash: convHash, lane: "group",
-      opportunity, trigger_category: category, lang_guess: lang,
-    });
-  } else {
-    void track(env, uid, "ava_moment_post_failed", "ava_odl", {
-      decision_id: decisionId, capability: cap.id, conv_hash: convHash, lane: "group", error: postRes.error ?? null,
-    });
-  }
-
-  return { woke: true, capability: cap.id, opportunity, would_fire: true, templateText };
+  return { woke: true, capability: cap.id, opportunity, would_fire: true, reason: "draft_pending_approval", templateText };
 }
