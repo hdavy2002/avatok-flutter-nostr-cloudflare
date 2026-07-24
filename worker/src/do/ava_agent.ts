@@ -45,6 +45,7 @@ import { resolveAffordances, affordanceToAction } from "../lib/capabilities"; //
 import { isPremiumAI } from "../lib/premium"; // premium gate (topped-up wallet)
 import { trackUser, trackUserContact } from "../hooks"; // PostHog telemetry (email/phone-stamped)
 import { contactFor } from "../lib/identity"; // uid → {email, phone} (KV-cached) for telemetry
+import { reserveAiUsage, settleAiUsage, releaseAiUsage, type AiUsageMeterInput } from "../feature_pricing"; // AI-WALLET-METER-1
 
 // One classified route per turn. Ava reads intent, THEN acts (no keyword gates):
 //   chat  — answer directly in conversation
@@ -839,9 +840,51 @@ export class AvaAgentDO {
         const snippets = await this.brainSearch(uid, userText); // F1 — also emits ava_memory_context
         const summaryNow = this.summaryRow(conv).summary;
         const { sys, user } = this.buildPrompt(summaryNow, window, userText, snippets, false, attachments);
-        const g = await this.callThreadModel(sys, user);
+        const meterInput: AiUsageMeterInput = {
+          uid, opId: `ava-thread:${statusId}`, model: this.threadModel(), capability: "ava_chat",
+          inputTokens: 0, outputTokens: 0,
+          reserveInputTokens: Math.max(4000, Math.ceil((sys.length + user.length) / 4)),
+          reserveOutputTokens: MAX_TOKENS,
+          meta: { category: "ava", context: "In-chat Ava response" },
+        };
+        const reservation = await reserveAiUsage(this.env, meterInput).catch((e) => ({
+          ok: false, payer: uid, ref: `ai:${meterInput.opId}`, reserved: 0,
+          reason: String(e?.message ?? e).slice(0, 120),
+        }));
+        if (!reservation.ok) {
+          const message = reservation.reason === "insufficient"
+            ? "You have run out of AI tokens. Top up your wallet to continue using Ava."
+            : "Ava billing is temporarily unavailable. Please try again shortly.";
+          await this.postStatus(conv, uid, priv, "Ava is working…", statusId, "end");
+          await this.postAva({ conv, uid, text: message, private: priv, source: "billing" });
+          trackUserContact(this.env, uid, email, phone, "ai_wallet_blocked", "avaai", {
+            conv_kind: convKind, capability: "ava_chat", reason: reservation.reason ?? "unknown",
+          });
+          return { ok: false, status_id: statusId, error: reservation.reason ?? "ai_wallet_blocked" };
+        }
+        let g: any;
+        try {
+          g = await this.callThreadModel(sys, user);
+        } catch (e) {
+          await releaseAiUsage(this.env, meterInput, reservation);
+          throw e;
+        }
         let answer = guardOutput(g.text); // F8 minimal output guard
         if (!answer) answer = "Ava is unavailable right now. Please try again shortly.";
+        // AI-WALLET-METER-1: settle actual provider usage once the Kimi/fallback
+        // response is known. The operation id is deterministic for this turn,
+        // so retries cannot double-charge. Direct emergency Gemini responses
+        // without usage metadata are conservatively estimated from text size.
+        const meterIn = g.tokensIn ?? Math.ceil((sys.length + user.length) / 4);
+        const meterOut = g.tokensOut ?? Math.ceil(answer.length / 4);
+        const meter = await settleAiUsage(this.env, { ...meterInput, model: g.model, inputTokens: meterIn, outputTokens: meterOut }, reservation)
+          .catch((e) => ({ ok: false, charged: 0, reserved: reservation.reserved, providerCostUsd: 0, reason: String(e?.message ?? e).slice(0, 120) }));
+        trackUserContact(this.env, uid, email, phone, "ai_wallet_settlement", "avaai", {
+          conv_kind: convKind, capability: "ava_chat", model: g.model,
+          input_tokens: meterIn, output_tokens: meterOut, charged_tokens: meter.charged,
+          provider_cost_usd: meter.providerCostUsd, reserve_tokens: meter.reserved,
+          ok: meter.ok, reason: meter.reason ?? null,
+        });
         await this.postStatus(conv, uid, priv, "Ava is working…", statusId, "end");
         await this.postAva({ conv, uid, text: answer, private: priv, source: "chat" });
         trackUserContact(this.env, uid, email, phone, "ava_thread_turn_model", "avaai", {

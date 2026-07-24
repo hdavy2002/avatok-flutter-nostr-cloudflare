@@ -43,6 +43,152 @@ export const FEATURE_COSTS: Record<string, number> = {
   listing_post_connect: 100, // $1.00 — connect (dating/matrimony) listing, 30 days
 };
 
+// [AI-WALLET-METER-1] Provider list prices in USD per million tokens. These are
+// deliberately server-owned: the client can display an estimate, but it can
+// never choose a cheaper price or submit a fabricated usage value. Keep this
+// table conservative; unknown models use the configured safety rate below.
+const AI_MODEL_RATES: Record<string, { input: number; output: number }> = {
+  "moonshotai/kimi-k3": { input: 3, output: 15 },
+  "anthropic/claude-haiku-4.5": { input: 1, output: 5 },
+  "x-ai/grok-4.20": { input: 1.25, output: 2.5 },
+  "google/gemini-2.5-flash-lite": { input: 0.1, output: 0.4 },
+  "google/gemini-3-flash-preview": { input: 0.5, output: 3 },
+};
+const AI_UNKNOWN_RATE = { input: 5, output: 20 };
+const AI_MARKUP = 1.30;
+const AI_TOKENS_PER_USD = 100;
+
+export interface AiUsageMeterInput {
+  uid: string;
+  opId: string;
+  model: string;
+  capability: string;
+  inputTokens: number;
+  outputTokens: number;
+  // A reserve must be made before the provider call. Callers should provide
+  // their worst-case estimate; settlement uses actual provider usage.
+  reserveInputTokens?: number;
+  reserveOutputTokens?: number;
+  meta?: ChargeMeta;
+}
+
+export interface AiUsageMeterResult {
+  ok: boolean;
+  charged: number;
+  reserved: number;
+  providerCostUsd: number;
+  reason?: string;
+}
+
+export interface AiUsageReservation {
+  ok: boolean;
+  payer: string;
+  ref: string;
+  reserved: number;
+  reason?: string;
+}
+
+function aiRate(model: string): { input: number; output: number } {
+  const exact = AI_MODEL_RATES[String(model || "").trim()];
+  if (exact) return exact;
+  // Prefix matching keeps versioned provider IDs safe without making the
+  // client responsible for maintaining a pricing table.
+  const lower = String(model || "").toLowerCase();
+  if (lower.includes("haiku")) return AI_MODEL_RATES["anthropic/claude-haiku-4.5"];
+  if (lower.includes("grok")) return AI_MODEL_RATES["x-ai/grok-4.20"];
+  if (lower.includes("kimi")) return AI_MODEL_RATES["moonshotai/kimi-k3"];
+  if (lower.includes("gemini")) return AI_MODEL_RATES["google/gemini-3-flash-preview"];
+  return AI_UNKNOWN_RATE;
+}
+
+function aiCostTokens(model: string, inputTokens: number, outputTokens: number): number {
+  const r = aiRate(model);
+  const input = Math.max(0, Math.trunc(Number(inputTokens) || 0));
+  const output = Math.max(0, Math.trunc(Number(outputTokens) || 0));
+  // Provider USD cost → 30% markup → wallet tokens. Always round up so the
+  // platform never under-recovers due to fractional cents.
+  return Math.max(1, Math.ceil((((input * r.input) + (output * r.output)) / 1_000_000) * AI_TOKENS_PER_USD * AI_MARKUP));
+}
+
+/** Reserve before the provider call. This is the hard wallet gate. */
+export async function reserveAiUsage(env: Env, input: AiUsageMeterInput): Promise<AiUsageReservation> {
+  const uid = String(input.uid || "");
+  const opId = String(input.opId || "");
+  if (!uid || !opId) return { ok: false, payer: uid, ref: `ai:${opId}`, reserved: 0, reason: "invalid_meter_request" };
+  const payer = await billingUidFor(env, uid).catch(() => uid);
+  const reserve = aiCostTokens(input.model, input.reserveInputTokens ?? input.inputTokens, input.reserveOutputTokens ?? input.outputTokens);
+  const ref = `ai:${opId}`;
+  const reserved = await walletOp(env, payer, {
+    op: "reserve", uid: payer, amount: reserve, ref, op_id: `${opId}:reserve`, app_name: input.capability,
+  });
+  if (reserved.status !== 200 || reserved.body?.ok !== true) {
+    return { ok: false, payer, ref, reserved: 0, reason: "insufficient" };
+  }
+  return { ok: true, payer, ref, reserved: reserve };
+}
+
+/** Settle actual provider usage and release the unused reservation. */
+export async function settleAiUsage(env: Env, input: AiUsageMeterInput, reservation: AiUsageReservation): Promise<AiUsageMeterResult> {
+  if (!reservation.ok) return { ok: false, charged: 0, reserved: 0, providerCostUsd: 0, reason: reservation.reason };
+  const uid = String(input.uid || "");
+  const opId = String(input.opId || "");
+  const payer = reservation.payer;
+  const ref = reservation.ref;
+  const actual = aiCostTokens(input.model, input.inputTokens, input.outputTokens);
+  const consumed = Math.min(actual, reservation.reserved);
+  const beta = await readConfig(env).then((c) => c.betaFreePremium === true).catch(() => false);
+  let charged = 0;
+  if (consumed > 0) {
+    const settled = await walletOp(env, payer, {
+      op: "consume_reserved", uid: payer, ref, amount: consumed,
+      op_id: `${opId}:settle`, app_name: input.capability, ...metaWire(input.meta),
+    });
+    if (settled.status !== 200 || settled.body?.ok !== true) {
+      // Release the untouched reservation if settlement failed. The operation
+      // remains observable through the AI telemetry and can be retried by the
+      // caller with the same opId.
+      await walletOp(env, payer, { op: "release_reservation", uid: payer, ref, op_id: `${opId}:release-error`, app_name: input.capability }).catch(() => null);
+      return { ok: false, charged: 0, reserved: reservation.reserved, providerCostUsd: 0, reason: "settlement_failed" };
+    }
+    charged = beta ? 0 : Number(settled.body?.consumed ?? consumed);
+    if (!beta && charged > 0) {
+      try {
+        await env.Q_WALLET.send({
+          id: `${opId}:fee`, ts: Date.now(),
+          ledger: {
+            debit: `user:${payer}`, credit: "platform:fees", type: "ai_usage", ref: opId,
+            meta: JSON.stringify({ capability: input.capability, model: input.model, input_tokens: input.inputTokens, output_tokens: input.outputTokens, markup: AI_MARKUP, member: payer === uid ? undefined : uid }),
+          },
+        });
+      } catch { /* reconciliation catches a missing audit row */ }
+    }
+  }
+  await walletOp(env, payer, {
+    op: "release_reservation", uid: payer, ref, op_id: `${opId}:release`, app_name: input.capability,
+  }).catch(() => null);
+  const rate = aiRate(input.model);
+  const providerCostUsd = ((Math.max(0, input.inputTokens) * rate.input) + (Math.max(0, input.outputTokens) * rate.output)) / 1_000_000;
+  return { ok: true, charged, reserved: reservation.reserved, providerCostUsd };
+}
+
+export async function releaseAiUsage(env: Env, input: AiUsageMeterInput, reservation: AiUsageReservation): Promise<void> {
+  if (!reservation.ok) return;
+  await walletOp(env, reservation.payer, {
+    op: "release_reservation", uid: reservation.payer, ref: reservation.ref,
+    op_id: `${input.opId}:release-failed`, app_name: input.capability,
+  }).catch(() => null);
+}
+
+/**
+ * Reserve/settle/release one AI operation through the existing WalletDO.
+ * This convenience path is for non-streaming jobs that already completed; the
+ * latency-sensitive chat path should call reserveAiUsage before the provider.
+ */
+export async function meterAiUsage(env: Env, input: AiUsageMeterInput): Promise<AiUsageMeterResult> {
+  const reservation = await reserveAiUsage(env, input);
+  return settleAiUsage(env, input, reservation);
+}
+
 export function featureCost(key: string): number | null {
   return Object.prototype.hasOwnProperty.call(FEATURE_COSTS, key) ? FEATURE_COSTS[key] : null;
 }
