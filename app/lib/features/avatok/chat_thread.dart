@@ -524,6 +524,61 @@ abstract class ChatThreadRegistry {
   }
 }
 
+// [CHAT-UI-ROW-EXTRACT-1] Per-message row wrapper around `_bubble(m)`.
+//
+// EXTRACTION DECISION: `_bubble()` (~900 lines) reads a huge amount of
+// `_ChatThreadScreenState` — theme/wallpaper getters, ~20 callbacks
+// (`_react`, `_forward`, `_toggleStar`, `_openImageFull`, `_retryMediaUpload`,
+// translation/transcription helpers, `_statusFor`, group receipt lookups,
+// `_memberAvatars`/`_memberNames`, safety-flag maps, `_mediaAutoFetch`, audio
+// playback service state, …) and itself derives theme/isMine/grouping from
+// `m` internally. Lifting all of that into a standalone widget + a parameter
+// object in this pass would mean re-threading ~20 call sites and is exactly
+// the "full decoupling is too risky" case this task called out — done wrong
+// it silently drops a callback and breaks reactions/translate/retry/etc. with
+// no compiler to catch it (no local builds in this repo's workflow).
+//
+// So this is a THIN extraction: `_MessageRow` is a real widget with its own
+// `State`, but it still closes over a `buildBubble` function reference
+// (`_bubble` itself, passed from the State) rather than duplicating any of
+// `_bubble`'s body. The win is still real: `_MessageRowState.build()` only
+// calls `buildBubble(msg)` again when `revision` (the `_msgsRev` counter from
+// [CHAT-UI-VISIBLE-MEMO-1], stamped onto the row at itemBuilder time) has
+// changed since the LAST time this row (keyed by message id, so the Element
+// is reused across rebuilds) built its bubble. An unrelated setState — a
+// composer keystroke, the typing indicator, the 30s clock tick, an audio
+// scrub position — no longer re-invokes `_bubble()` for every row on screen;
+// only an actual `_mutMsgs`-tracked mutation does. `_msgsRev` is coarse (one
+// counter for the whole thread, not per-message), so ANY message mutation
+// invalidates every row's cache on the next build — a real but strictly
+// smaller cost than before (every row, every rebuild, of which there were far
+// more). Per-message revision tracking would tighten this further; left as a
+// documented follow-up rather than risked in this pass.
+class _MessageRow extends StatefulWidget {
+  const _MessageRow({required Key key, required this.msg, required this.revision, required this.buildBubble})
+      : super(key: key);
+  final _Msg msg;
+  final int revision;
+  final Widget Function(_Msg) buildBubble;
+
+  @override
+  State<_MessageRow> createState() => _MessageRowState();
+}
+
+class _MessageRowState extends State<_MessageRow> {
+  int? _builtRev;
+  Widget? _cached;
+
+  @override
+  Widget build(BuildContext context) {
+    if (_cached == null || _builtRev != widget.revision) {
+      _cached = widget.buildBubble(widget.msg);
+      _builtRev = widget.revision;
+    }
+    return _cached!;
+  }
+}
+
 /// One semantic ("smart search") hit returned by /api/brain/thread-search and
 /// resolved against the local transcript. [localId] is the matched `_Msg.id` when
 /// the snippet fuzzy-matches a message loaded in THIS thread (tappable → scrolls
@@ -8315,10 +8370,20 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                     // pills / soft-deleted / the transient "Ava is thinking…"
                     // chip don't get it — they have no long-press menu either.
                     final canSwipeReply = !m.system && !m.hidden && m.special != 'ava_status';
+                    // [CHAT-UI-ROW-EXTRACT-1] The actual `_bubble(m)` build is
+                    // deferred into `_MessageRow`'s own State, keyed by message
+                    // id below, so an unrelated rebuild (typing indicator,
+                    // clock tick, keystroke) reuses the cached bubble instead
+                    // of re-running the ~900-line bubble builder for every row.
                     final bubble = _SwipeToReply(
                       mine: m.me,
                       onReply: canSwipeReply ? () => setState(() => _replyTo = m) : null,
-                      child: _bubble(m),
+                      child: _MessageRow(
+                        key: ValueKey('row_${m.id}'),
+                        msg: m,
+                        revision: _msgsRev,
+                        buildBubble: _bubble,
+                      ),
                     );
                     // [CHAT-UI-LIST-1b] Stable key per item (message id) so a
                     // single new/changed message doesn't force Flutter to rebind
