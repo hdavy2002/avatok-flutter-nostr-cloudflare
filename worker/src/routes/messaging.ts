@@ -104,14 +104,18 @@ function bg(ctx: ExecutionContext | undefined, env: Env | undefined, job: string
 // timeout, and a partial-failure re-enqueue of only the still-failed
 // recipients, both address the SAME job — never a brand-new, indistinguishable
 // one. Stable across attempts; the consumer forwards it unchanged on retry.
-async function fanoutId(conv: string, clientId: string | null, sender: string): Promise<string> {
+// [TEST-FANOUT-1] Exported (no behavior change) so vitest can assert this stays
+// byte-for-byte identical to consumers/src/fcm.ts's resolveFanoutId fallback —
+// the two MUST agree, since the consumer re-derives this id when a message
+// arrives without a producer-minted fanout_id.
+export async function fanoutId(conv: string, clientId: string | null, sender: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${conv}|${clientId ?? ""}|${sender}`));
   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 32);
 }
 
 // Short, non-reversible conversation-id hash for telemetry (never a raw conv id
 // in new events, per the fan-out durability spec).
-async function hashShort(s: string): Promise<string> {
+export async function hashShort(s: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
   return Array.from(new Uint8Array(digest)).slice(0, 8).map((b) => b.toString(16).padStart(2, "0")).join("");
 }

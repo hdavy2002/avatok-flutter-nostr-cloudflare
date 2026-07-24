@@ -4,6 +4,7 @@
 // high-priority DATA messages so the app can raise a CallStyle / full-screen UI.
 import type { Env, PushMsg } from "./types";
 import { sendApns } from "./apns";
+import { shouldFail } from "./fault_inject";
 
 // [MULTIACCT-2] Resolve a callee's live device tokens. PREFERS the device-mapped
 // join (device_tokens ⨝ account_devices WHERE active=1) so a token orphaned by an
@@ -304,11 +305,30 @@ const FANOUT_MAX_ATTEMPTS = 5;
 
 type FanoutOutcome = { uid: string; status: "delivered" | "retryable" | "dead_letter"; error?: string };
 
+// [TEST-FANOUT-1] Pure per-recipient outcome classifier, extracted verbatim from
+// the inline logic previously duplicated in the HTTP-non-ok branch and the
+// thrown-exception branch of handleFanout's chunk.map below — same rule, same
+// behavior, now independently testable and impossible for the two call sites to
+// drift apart on. `kind:"http"` = the InboxDO /append fetch resolved with a
+// non-2xx status (5xx/429 transient, anything else permanent); `kind:"exception"`
+// = the fetch/dispatch itself threw (always transient by construction, i.e.
+// "retryable", UNLESS this is already the final attempt).
+export function classifyFanoutOutcome(
+  kind: "http" | "exception",
+  status: number | undefined,
+  isFinalAttempt: boolean,
+): "retryable" | "dead_letter" {
+  if (isFinalAttempt) return "dead_letter";
+  if (kind === "exception") return "retryable";
+  const s = status ?? 0;
+  return s >= 500 || s === 429 ? "retryable" : "dead_letter";
+}
+
 // Stable job identity: prefer the producer-minted fanout_id; if a message
 // arrives without one (pre-migration producer, or a non-"fanout" caller),
 // derive the SAME hash the producer computes (conv + client id + sender) so an
 // unlabeled message still gets a consistent, non-random id.
-async function resolveFanoutId(msg: PushMsg): Promise<string> {
+export async function resolveFanoutId(msg: PushMsg): Promise<string> {
   if (msg.fanout_id) return msg.fanout_id;
   const conv = String((msg.payload as any)?.conv ?? "");
   const clientId = String((msg.payload as any)?.client_id ?? "");
@@ -318,7 +338,7 @@ async function resolveFanoutId(msg: PushMsg): Promise<string> {
 }
 
 // Non-reversible conversation-id hash for telemetry (never a raw conv id).
-async function hashShort(s: string): Promise<string> {
+export async function hashShort(s: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
   return Array.from(new Uint8Array(digest)).slice(0, 8).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
@@ -355,6 +375,10 @@ async function handleFanout(msg: PushMsg, env: Env): Promise<void> {
     const chunk = msg.recipients.slice(i, i + FANOUT_PARALLEL);
     const outcomes: FanoutOutcome[] = await Promise.all(chunk.map(async (uid): Promise<FanoutOutcome> => {
       try {
+        // [TEST-FAILURE-INJECT-1] no-op unless FAULT_INJECT=fanout_recipient is
+        // set. Thrown here so it exercises the SAME catch/classify path as a real
+        // network/DO-dispatch failure below.
+        if (shouldFail(env, "fanout_recipient")) throw new Error("fault_inject:fanout_recipient");
         const stub = env.INBOX!.get(env.INBOX!.idFromName(uid));
         const res = await stub.fetch("https://inbox/append", {
           method: "POST", headers: { "content-type": "application/json" },
@@ -363,10 +387,11 @@ async function handleFanout(msg: PushMsg, env: Env): Promise<void> {
         if (!res.ok) {
           // 5xx / 429 = transient DO overload or throttling; anything else is
           // treated as a permanent rejection of THIS recipient (never loop a
-          // structurally bad request forever).
-          const retryable = (res.status >= 500 || res.status === 429) && !isFinalAttempt;
-          console.warn("fanout append non-ok", uid, res.status, retryable ? "retryable" : "dead_letter");
-          return { uid, status: retryable ? "retryable" : "dead_letter", error: `http_${res.status}` };
+          // structurally bad request forever). [TEST-FANOUT-1] classification
+          // extracted to classifyFanoutOutcome — same rule, now unit-tested.
+          const status = classifyFanoutOutcome("http", res.status, isFinalAttempt);
+          console.warn("fanout append non-ok", uid, res.status, status);
+          return { uid, status, error: `http_${res.status}` };
         }
         const r = (await res.json()) as { live?: boolean };
         // Forward the sender name + preview the router attached so offline (group)
@@ -389,8 +414,9 @@ async function handleFanout(msg: PushMsg, env: Env): Promise<void> {
         return { uid, status: "delivered" };
       } catch (e) {
         // Network / DO-dispatch exception — transient by construction.
+        // [TEST-FANOUT-1] classification extracted to classifyFanoutOutcome.
         console.warn("fanout append failed", uid, String(e));
-        return { uid, status: isFinalAttempt ? "dead_letter" : "retryable", error: String(e).slice(0, 180) };
+        return { uid, status: classifyFanoutOutcome("exception", undefined, isFinalAttempt), error: String(e).slice(0, 180) };
       }
     }));
 
