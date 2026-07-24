@@ -149,6 +149,61 @@ class CallNetStats {
   double get dataMb => bytesTotal / (1024 * 1024);
 }
 
+/// [CALL-REL-5] Why a recovery attempt was requested (plan §4.1). Gated
+/// entirely behind RemoteConfig.callIceRecoveryV2 — with the flag off, none of
+/// this is reachable and behavior is identical to the pre-existing watchdog.
+enum RecoveryReason {
+  noPlayout,
+  highConcealment,
+  transportDisconnected,
+  networkChanged,
+  peerRejoined,
+  routeMismatch,
+}
+
+extension RecoveryReasonWire on RecoveryReason {
+  String get wire => switch (this) {
+        RecoveryReason.noPlayout => 'no_playout',
+        RecoveryReason.highConcealment => 'high_concealment',
+        RecoveryReason.transportDisconnected => 'transport_disconnected',
+        RecoveryReason.networkChanged => 'network_changed',
+        RecoveryReason.peerRejoined => 'peer_rejoined',
+        RecoveryReason.routeMismatch => 'route_mismatch',
+      };
+}
+
+/// [CALL-REL-5] The single active recovery attempt (plan §4.1: "owns exactly
+/// one attempt token and one deadline"). Never more than one instance is live
+/// on a [CallSession] at a time — see [CallSession._activeRecovery].
+class RecoveryAttempt {
+  final String id; // UUID, sent in signaling — NO SDP, NO PII (plan §7.3.2)
+  final RecoveryReason reason;
+  final String targetPath; // 'direct' | 'relay' — path this attempt targets
+  final int startedAtMs;
+  final int attempt; // 1-based ordinal within this call
+  bool completed = false;
+  /// True once THIS endpoint was chosen (by the DO) as the ICE-restart offerer
+  /// for this attempt. Either side may have REQUESTED recovery (REL-3 fix);
+  /// only the chosen offerer restarts.
+  bool isOfferer = false;
+  /// Consecutive healthy playout samples observed by the OFFERER since this
+  /// attempt's ICE restart went out. Completion requires >= 2 (plan §7.3.5).
+  int healthySamplesSinceStart = 0;
+  /// True once the peer sent `recovery-ready` for this attempt id.
+  bool peerReady = false;
+  /// True once THIS (non-offerer) endpoint has sent its own `recovery-ready`
+  /// for this attempt — guards against sending it more than once.
+  bool selfReadySent = false;
+
+  RecoveryAttempt({
+    required this.id,
+    required this.reason,
+    required this.targetPath,
+    required this.startedAtMs,
+    required this.attempt,
+  });
+}
+
 class CallSession {
   /// [CALL-REG-SEAL-1] Sealed construction. A [CallSession] may be built ONLY by
   /// [CallSessionManager], which is the sole holder of a [CallSessionToken]
@@ -428,6 +483,15 @@ class CallSession {
   bool _weOffered = false;
   int _iceRestarts = 0;
   Timer? _failTimer;
+  // ── [CALL-REL-5] serialized ICE recovery coordinator ─────────────────────
+  // Entirely inert unless RemoteConfig.callIceRecoveryV2 is on. Replaces the
+  // old watchdog's own restart/hard-end decisions (REL-2 fix: the watchdog no
+  // longer hard-ends a call at ~20s while a restart may still be in flight —
+  // termination is owned by [_recoveryDeadlineTimer], 30s from recovery start,
+  // with the exact failed invariant per plan §7.3.7).
+  RecoveryAttempt? _activeRecovery;
+  int _recoveryAttemptCount = 0;
+  Timer? _recoveryDeadlineTimer;
   StreamSubscription? _netSub;
   int _wsReconnects = 0;
   Timer? _wsReconnectTimer;
@@ -621,16 +685,29 @@ class CallSession {
           'stale_s': 10,
           'video': config.video,
         });
-        _setPhase('reconnecting');
-        // ignore: unawaited_futures
-        _tryIceRestart('media-stalled');
+        if (RemoteConfig.callIceRecoveryV2) {
+          // [CALL-REL-5] The recovery coordinator owns phase + timers from
+          // here (30s deadline from recovery START, not the watchdog's own
+          // 20s stale-count clock — the REL-2 fix).
+          // ignore: unawaited_futures
+          _requestRecovery(RecoveryReason.transportDisconnected);
+        } else {
+          _setPhase('reconnecting');
+          // ignore: unawaited_futures
+          _tryIceRestart('media-stalled');
+        }
       } else if (_mediaStaleCount >= 4) {
         Analytics.capture('call_media_stalled', {
           'call_id': config.room,
           'stale_s': 20,
           'video': config.video,
         });
-        if (!_reconnecting) {
+        // [CALL-REL-5] Flag on: do nothing here. This 20s watchdog clock is
+        // exactly the "hard-kill a call while an ICE restart is still in
+        // flight" bug (REL-2) — termination is now owned solely by
+        // [_recoveryDeadlineTimer] (30s from recovery START). Flag off:
+        // unchanged prior behavior.
+        if (!RemoteConfig.callIceRecoveryV2 && !_reconnecting) {
           _endWith('ended', reason: 'media-stalled');
         }
       }
@@ -664,8 +741,15 @@ class CallSession {
   int _noRtpStreak = 0;
   int _noPlayoutStreak = 0;
 
+  // [CALL-REL-5] Recovery evidence (two consecutive healthy playout samples)
+  // depends on this sampler, so callIceRecoveryV2 also starts it even if the
+  // observe-only flag is off. callPlayoutHealthV2 alone still runs the exact
+  // same observe-only sampler as CALL-REL-4 introduced.
+  bool get _playoutSamplerWanted =>
+      RemoteConfig.callPlayoutHealthV2 || RemoteConfig.callIceRecoveryV2;
+
   void _startPlayoutHealthSampler() {
-    if (!RemoteConfig.callPlayoutHealthV2) return;
+    if (!_playoutSamplerWanted) return;
     _playoutHealthTimer?.cancel();
     _phBytes = _phPackets = _phLost = null;
     _phJbufEmitted = null;
@@ -685,7 +769,7 @@ class CallSession {
   }
 
   Future<void> _pollPlayoutHealth() async {
-    if (!RemoteConfig.callPlayoutHealthV2) return;
+    if (!_playoutSamplerWanted) return;
     try {
       if (_ended || !_connected) return;
       if (isReceptDuo || _onCellularHold) return;
@@ -908,6 +992,10 @@ class CallSession {
         routeConfirmed: routeConfirmed,
         nativeFocusHeld: nativeFocusHeld,
       ));
+      // [CALL-REL-5] Feed the recovery coordinator with this classification.
+      // No-op (and no recovery side effects) unless callIceRecoveryV2 is on AND
+      // a recovery is actually in flight.
+      if (RemoteConfig.callIceRecoveryV2) _onPlayoutHealthForRecovery(cls);
     } catch (e, st) {
       // OBSERVE-ONLY: never throw, never touch call state. Reported the same
       // deduplicated way the existing watchdog reports its own failures.
@@ -1047,7 +1135,27 @@ class CallSession {
     _netSub = Connectivity().onConnectivityChanged.listen((_) {
       if (_connected && !_ended) {
         _telemetry.onNetChange();
-        _tryIceRestart('net-change');
+        if (RemoteConfig.callIceRecoveryV2) {
+          // [CALL-REL-5 §7.5] connectivity_plus proves the reported network
+          // CLASS changed, not that the media path failed. Take ONE immediate
+          // health sample and recover only if it's actually unhealthy —
+          // avoids a needless renegotiation on a harmless metadata change.
+          // ignore: unawaited_futures
+          _pollPlayoutHealth().then((_) {
+            if (_ended || !_connected) return;
+            final cls = _lastPlayoutHealthClass;
+            final unhealthy = cls == MediaHealthClass.noRtp ||
+                cls == MediaHealthClass.noPlayout ||
+                cls == MediaHealthClass.routeBroken ||
+                cls == MediaHealthClass.networkDegraded;
+            if (unhealthy) {
+              // ignore: unawaited_futures
+              _requestRecovery(RecoveryReason.networkChanged);
+            }
+          });
+        } else {
+          _tryIceRestart('net-change');
+        }
       }
     });
     _video = config.video;
@@ -1675,6 +1783,7 @@ class CallSession {
     if (!_weOffered || _remoteId == null) return;
     _relayForced = true;
     _telemetry.onIceRestart();
+    _telemetry.setMediaPath('relay'); // [CALL-REL-4/5] amends call_progress/call_media_health
     Analytics.capture('call_relay_fallback', {'call_id': config.room, 'video': config.video});
     try {
       try { await _pc?.close(); } catch (_) {}
@@ -1913,6 +2022,7 @@ class CallSession {
         _relayFallbackTimer?.cancel();
         _ringback.stop();
         _telemetry.connected(pc);
+        _telemetry.setMediaPath(_relayForced ? 'relay' : 'direct'); // [CALL-REL-4/5]
         HapticFeedback.mediumImpact();
         if (gOutgoingCallId == config.room) {
           gOutgoingCallTo = null; gOutgoingCallId = null; gOutgoingSince = 0;
@@ -1942,6 +2052,16 @@ class CallSession {
       } else if (s == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
                  s == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
         final isFailed = s == RTCPeerConnectionState.RTCPeerConnectionStateFailed;
+        if (RemoteConfig.callIceRecoveryV2) {
+          // [CALL-REL-5 / REL-3 fix] Either endpoint may now request recovery
+          // — no longer gated on `_weOffered`. The coordinator's own 30s
+          // deadline (from recovery START, not this handler) owns
+          // termination; the legacy 10s hard-end `_failTimer` below is not
+          // armed on this path.
+          // ignore: unawaited_futures
+          _requestRecovery(RecoveryReason.transportDisconnected);
+          return;
+        }
         final canRestart = _weOffered && _iceRestarts < 3 && _remoteId != null;
         if (isFailed && !canRestart) {
           _telemetry.runtimeError(
@@ -1999,6 +2119,231 @@ class CallSession {
         stack: st,
         extra: {'reason': why, 'restart_number': _iceRestarts},
       );
+    }
+  }
+
+  // ── [CALL-REL-5] serialized ICE recovery coordinator ─────────────────────
+  // Entirely inert unless RemoteConfig.callIceRecoveryV2 is on; every entry
+  // point below is called ONLY from flag-gated call sites. See plan §7.3.
+
+  /// Either endpoint may request recovery (REL-3 fix). Guards to exactly one
+  /// active attempt at a time (plan §4.1: "no overlapping restarts").
+  Future<void> _requestRecovery(RecoveryReason why) async {
+    if (!RemoteConfig.callIceRecoveryV2) return;
+    if (_ended || !_connected) return;
+    if (_activeRecovery != null) return; // one attempt at a time
+    final id = const Uuid().v4();
+    _recoveryAttemptCount++;
+    final attempt = RecoveryAttempt(
+      id: id,
+      reason: why,
+      targetPath: _relayForced ? 'relay' : 'direct',
+      startedAtMs: DateTime.now().millisecondsSinceEpoch,
+      attempt: _recoveryAttemptCount,
+    );
+    _activeRecovery = attempt;
+    _telemetry.setRecoveryState('recovering_ice', attemptCount: _recoveryAttemptCount);
+    if (!_ended && _connected) _setPhase('reconnecting');
+    Analytics.capture('call_recovery_started', {
+      'call_id': config.room,
+      'attempt_id': id,
+      'reason': why.wire,
+      'source_endpoint': _myId,
+      'current_path': attempt.targetPath,
+      // Health summary: last classified interval, no SDP/ICE credentials/PII.
+      'last_health_class': _lastPlayoutHealthClass.wire,
+    });
+    // Ask the CallRoom DO to pick a deterministic offerer (plan §7.3.3). No
+    // `to` — the DO special-cases this type and answers both peers directly
+    // rather than relaying it. Contains NO SDP, NO PII.
+    _send({
+      'type': 'recovery-request',
+      'attemptId': id,
+      'reason': why.wire,
+      'path': attempt.targetPath,
+    });
+    // Deadline (plan §7.2: "terminate: 30 seconds after recovery begins with
+    // no recovered playout") — owned here, NOT by the old watchdog.
+    _recoveryDeadlineTimer?.cancel();
+    _recoveryDeadlineTimer = Timer(const Duration(seconds: 30), () {
+      if (_activeRecovery?.id == id && !_activeRecovery!.completed) {
+        _failRecovery('recovery_timeout_no_playout');
+      }
+    });
+  }
+
+  /// The CallRoom DO answered a `recovery-request` (from us or our peer) with
+  /// the chosen offerer. Only the chosen offerer ICE-restarts; the other side
+  /// waits and reports `recovery-ready` once its own playout resumes.
+  void _onRecoveryOffer(Map<String, dynamic> d) {
+    if (!RemoteConfig.callIceRecoveryV2 || _ended) return;
+    final id = d['attemptId']?.toString();
+    final offererId = d['offererId']?.toString();
+    if (id == null || id.isEmpty || offererId == null) return;
+    var attempt = _activeRecovery;
+    if (attempt == null) {
+      // Peer requested recovery; we didn't — adopt the DO's attempt so both
+      // sides share one attempt id/deadline.
+      final reason = _reasonFromWire(d['reason']?.toString());
+      _recoveryAttemptCount++;
+      attempt = RecoveryAttempt(
+        id: id,
+        reason: reason,
+        targetPath: (d['path']?.toString() == 'relay') ? 'relay' : (_relayForced ? 'relay' : 'direct'),
+        startedAtMs: DateTime.now().millisecondsSinceEpoch,
+        attempt: _recoveryAttemptCount,
+      );
+      _activeRecovery = attempt;
+      _telemetry.setRecoveryState('recovering_ice', attemptCount: _recoveryAttemptCount);
+      if (!_ended && _connected) _setPhase('reconnecting');
+      _recoveryDeadlineTimer?.cancel();
+      _recoveryDeadlineTimer = Timer(const Duration(seconds: 30), () {
+        if (_activeRecovery?.id == id && !_activeRecovery!.completed) {
+          _failRecovery('recovery_timeout_no_playout');
+        }
+      });
+    } else if (attempt.id != id) {
+      return; // stale/foreign attempt id — ignore
+    }
+    attempt.isOfferer = offererId == _myId;
+    Analytics.capture('call_recovery_offer', {
+      'call_id': config.room,
+      'attempt_id': id,
+      'coordinator_peer': offererId,
+      'kind': 'ice',
+    });
+    if (attempt.isOfferer) {
+      // ignore: unawaited_futures
+      _startIceRecovery(attempt);
+    }
+    // Non-offerer: nothing to do yet — waits for the inbound `offer` (handled
+    // by the existing 'offer' case) and reports readiness once its own
+    // playout resumes (see [_onPlayoutHealthForRecovery]).
+  }
+
+  static RecoveryReason _reasonFromWire(String? w) {
+    switch (w) {
+      case 'no_playout':
+        return RecoveryReason.noPlayout;
+      case 'high_concealment':
+        return RecoveryReason.highConcealment;
+      case 'network_changed':
+        return RecoveryReason.networkChanged;
+      case 'peer_rejoined':
+        return RecoveryReason.peerRejoined;
+      case 'route_mismatch':
+        return RecoveryReason.routeMismatch;
+      default:
+        return RecoveryReason.transportDisconnected;
+    }
+  }
+
+  /// The chosen offerer performs the actual ICE restart (plan §7.3.4). Does
+  /// NOT check `_weOffered` — that is precisely the REL-3 bug this replaces:
+  /// either endpoint may become the recovery offerer.
+  Future<void> _startIceRecovery(RecoveryAttempt attempt) async {
+    final pc = _pc;
+    if (pc == null || _ended || _remoteId == null) {
+      _failRecovery('recovery_no_peer_connection');
+      return;
+    }
+    try {
+      _ice = await IceCache.get();
+      final offer = _tuned(await pc.createOffer({'iceRestart': true}));
+      await pc.setLocalDescription(offer);
+      _send({'type': 'offer', 'to': _remoteId, 'sdp': offer.toMap()});
+      _iceRestarts++;
+      _telemetry.onIceRestart();
+    } catch (e, st) {
+      _telemetry.runtimeError(
+        stage: 'ice_recovery_offer_failed',
+        error: e,
+        stack: st,
+        extra: {'attempt_id': attempt.id, 'reason': attempt.reason.wire},
+      );
+      _failRecovery('recovery_offer_failed');
+    }
+  }
+
+  /// Peer's `recovery-ready` for our active attempt (offerer side only —
+  /// meaningless if we're not the offerer, so harmless either way).
+  void _onRecoveryReady(Map<String, dynamic> d) {
+    final a = _activeRecovery;
+    if (a == null || a.completed) return;
+    if (d['attemptId']?.toString() != a.id) return;
+    a.peerReady = true;
+    _maybeCompleteRecovery();
+  }
+
+  /// Fed by [_pollPlayoutHealth] on every classification while a recovery is
+  /// active. Offerer: counts consecutive healthy samples toward completion.
+  /// Non-offerer: sends its own `recovery-ready` once playout resumes.
+  void _onPlayoutHealthForRecovery(MediaHealthClass cls) {
+    final a = _activeRecovery;
+    if (a == null || a.completed) return;
+    final playoutOk = cls == MediaHealthClass.healthy || cls == MediaHealthClass.remoteQuiet;
+    if (a.isOfferer) {
+      if (playoutOk) {
+        a.healthySamplesSinceStart++;
+        _maybeCompleteRecovery();
+      } else {
+        a.healthySamplesSinceStart = 0;
+      }
+    } else if (playoutOk && !a.selfReadySent && _remoteId != null) {
+      a.selfReadySent = true;
+      _send({'type': 'recovery-ready', 'to': _remoteId, 'attemptId': a.id});
+    }
+  }
+
+  /// Success = two consecutive healthy playout samples on the initiating
+  /// endpoint AND one `recovery-ready` from the peer (plan §7.3.5).
+  void _maybeCompleteRecovery() {
+    final a = _activeRecovery;
+    if (a == null || a.completed || !a.isOfferer) return;
+    if (a.healthySamplesSinceStart >= 2 && a.peerReady) {
+      _completeRecovery(a);
+    }
+  }
+
+  void _completeRecovery(RecoveryAttempt attempt) {
+    if (attempt.completed) return;
+    attempt.completed = true;
+    _recoveryDeadlineTimer?.cancel();
+    final elapsedMs = DateTime.now().millisecondsSinceEpoch - attempt.startedAtMs;
+    Analytics.capture('call_recovery_completed', {
+      'call_id': config.room,
+      'attempt_id': attempt.id,
+      'path_before': attempt.targetPath,
+      'path_after': _relayForced ? 'relay' : 'direct',
+      'elapsed_ms': elapsedMs,
+      'two_side_ack': true,
+    });
+    if (identical(_activeRecovery, attempt)) _activeRecovery = null;
+    _telemetry.setRecoveryState('none', attemptCount: _recoveryAttemptCount);
+    if (!_ended && _connected) _setPhase('connected');
+  }
+
+  /// Every terminal path here names the exact failed invariant (plan §7.3.7),
+  /// never a generic 'error'/'socket-lost'. [CALL-REL-6] adds a relay-migration
+  /// escalation branch here in a later commit; this commit ends the call
+  /// honestly with the terminal reason once direct recovery fails.
+  void _failRecovery(String reason) {
+    final a = _activeRecovery;
+    if (a == null || a.completed) return;
+    a.completed = true;
+    _recoveryDeadlineTimer?.cancel();
+    final elapsedMs = DateTime.now().millisecondsSinceEpoch - a.startedAtMs;
+    Analytics.capture('call_recovery_failed', {
+      'call_id': config.room,
+      'attempt_id': a.id,
+      'terminal_reason': reason,
+      'elapsed_ms': elapsedMs,
+      'last_health_class': _lastPlayoutHealthClass.wire,
+    });
+    if (identical(_activeRecovery, a)) _activeRecovery = null;
+    _telemetry.setRecoveryState('failed', attemptCount: _recoveryAttemptCount);
+    if (!_ended) {
+      _endWith('ended', reason: reason);
     }
   }
 
@@ -2206,10 +2551,15 @@ class CallSession {
           peerAway.value = false;
           Analytics.capture('call_peer_rejoined', {'call_id': config.room});
           // The peer's transport blipped and recovered; proactively re-offer
-          // an ICE restart from our side too (harmless if already healthy —
-          // _tryIceRestart no-ops unless we're the offerer with a live pc).
-          // ignore: unawaited_futures
-          _tryIceRestart('peer-rejoined');
+          // an ICE restart from our side too (harmless if already healthy).
+          if (RemoteConfig.callIceRecoveryV2) {
+            // ignore: unawaited_futures
+            _requestRecovery(RecoveryReason.peerRejoined);
+          } else {
+            // _tryIceRestart no-ops unless we're the offerer with a live pc.
+            // ignore: unawaited_futures
+            _tryIceRestart('peer-rejoined');
+          }
         }
         break;
       case 'peer-left':
@@ -2225,6 +2575,14 @@ class CallSession {
       case 'bye':
         remoteRenderer.srcObject = null;
         _endWith('ended', reason: 'remote-bye');
+        break;
+      // [CALL-REL-5] Server-coordinated ICE recovery. Both are no-ops unless
+      // RemoteConfig.callIceRecoveryV2 is on (guarded inside the handlers).
+      case 'recovery-offer':
+        _onRecoveryOffer(d);
+        break;
+      case 'recovery-ready':
+        _onRecoveryReady(d);
         break;
       case 'ping':
       case 'pong':
@@ -3496,6 +3854,8 @@ class CallSession {
     // [CALL-MEDIA-WATCH-1]
     _stopMediaWatchdog();
     _stopPlayoutHealthSampler(); // [CALL-REL-4]
+    _recoveryDeadlineTimer?.cancel(); // [CALL-REL-5]
+    _activeRecovery = null;
     await _safeAwait(() => FlutterCallkitIncoming.endCall(config.room));
     try { _stream?.getTracks().forEach((t) => t.stop()); } catch (_) {}
     await _safeAwait(() => _pc?.close(), ms: 3000);

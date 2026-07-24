@@ -117,6 +117,68 @@ export class CallRoom {
   // gen-1 zombie socket can never disrupt a gen-2 call. Persisted so it survives
   // hibernation/eviction (a re-hydrated DO must not hand out a lower gen).
   private gens: Record<string, number> | undefined; // undefined = not loaded yet
+  // [CALL-REL-5] The peer id that sent the very FIRST 'offer' in this room —
+  // the "original offerer" for deterministic recovery-offerer selection
+  // (plan §7.3.3). Persisted so it survives hibernation/eviction.
+  private originalOffererId: string | null | undefined; // undefined = not loaded yet
+  // [CALL-REL-5] attemptId of the currently in-flight recovery request, or
+  // null. A NEW 'recovery-request' reuses this exact id if it matches (both
+  // peers requesting the same drop) or starts a fresh attempt otherwise.
+  private activeRecoveryAttemptId: string | null | undefined;
+  // [CALL-REL-6] attemptId of the currently in-flight relay migration, or
+  // null; relay-migrate-* messages carrying any OTHER attemptId are dropped
+  // (stale-attempt rejection, plan §7.4). `migrationUsed` enforces "MAX one
+  // migration per call" even after the active attempt finishes/fails.
+  private activeMigrationAttemptId: string | null | undefined;
+  private migrationUsed: boolean | undefined;
+
+  /** [CALL-REL-5/6] Hydrate the recovery/migration coordination fields from DO
+   *  storage on first use. Does NOT touch generation state, the 2-peer cap, or
+   *  reconnect-grace — entirely separate persisted keys. */
+  private async loadRecoveryState(): Promise<void> {
+    if (this.originalOffererId !== undefined) return;
+    this.originalOffererId = (await this.state.storage.get<string>("originalOffererId")) ?? null;
+    this.activeRecoveryAttemptId = (await this.state.storage.get<string>("activeRecoveryAttemptId")) ?? null;
+    this.activeMigrationAttemptId = (await this.state.storage.get<string>("activeMigrationAttemptId")) ?? null;
+    this.migrationUsed = (await this.state.storage.get<boolean>("migrationUsed")) ?? false;
+  }
+
+  /** [CALL-REL-5] A peer requested recovery. Picks the offerer deterministically
+   *  (plan §7.3.3: "original offerer unless it is away; otherwise the
+   *  connected peer with lexicographically lower stable peer id") and notifies
+   *  BOTH peers with `recovery-offer`. Never relays the raw request — this
+   *  fully replaces the generic `to`-scoped relay for this one message type.
+   *  Contains NO SDP and NO PII, matching the generic relay's own payload
+   *  shape (peer ids only). */
+  private async handleRecoveryRequest(fromId: string, data: Record<string, unknown>): Promise<void> {
+    await this.loadRecoveryState();
+    const attemptId = typeof data.attemptId === "string" ? data.attemptId.slice(0, 64) : "";
+    if (!attemptId || !fromId) return;
+    if (this.activeRecoveryAttemptId === attemptId) return; // duplicate request, already answered
+    this.activeRecoveryAttemptId = attemptId;
+    try { await this.state.storage.put("activeRecoveryAttemptId", attemptId); } catch { /* best-effort */ }
+
+    const all = this.state.getWebSockets();
+    const ids = all
+      .map((w) => this.state.getTags(w)[0])
+      .filter((id): id is string => typeof id === "string" && id.length > 0);
+    const away = await this.loadAway();
+    const awayId = away?.id ?? null;
+
+    let offererId: string | null =
+      this.originalOffererId && this.originalOffererId !== awayId ? this.originalOffererId : null;
+    if (!offererId) {
+      const candidates = ids.filter((id) => id !== awayId);
+      candidates.sort();
+      offererId = candidates[0] ?? fromId;
+    }
+
+    const reason = typeof data.reason === "string" ? data.reason.slice(0, 40) : "unknown";
+    const path = typeof data.path === "string" ? data.path.slice(0, 16) : "unknown";
+    const payload = { type: "recovery-offer", attemptId, offererId, reason, path };
+    for (const w of all) this.sendTo(w, payload);
+  }
+
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
     this.env = env;
@@ -708,6 +770,63 @@ export class CallRoom {
       // that never got a `welcome` gen has cur===0, and we leave the frame gen-less
       // so old receivers behave exactly as before (fully backward compatible).
       if (cur > 0) data.gen = cur;
+    }
+
+    // [CALL-REL-5] Record the FIRST offerer seen in this room (used to pick
+    // the deterministic recovery offerer). Never overwritten once set — the
+    // "original offerer" is fixed for the life of the call. Untouched: the
+    // generation protection and 2-peer cap above/below.
+    if (data.type === "offer" && fromId) {
+      await this.loadRecoveryState();
+      if (!this.originalOffererId) {
+        this.originalOffererId = fromId;
+        try { await this.state.storage.put("originalOffererId", fromId); } catch { /* best-effort */ }
+      }
+    }
+
+    // [CALL-REL-5] `recovery-request` is answered by the DO directly (it picks
+    // the offerer) — it is NEVER relayed like a normal `to`-scoped message.
+    if (data.type === "recovery-request") {
+      await this.handleRecoveryRequest(fromId, data);
+      return;
+    }
+
+    // [CALL-REL-6] Mid-call relay migration: forward these message types
+    // exactly like SDP/candidates (scoped by `to`, via the generic relay
+    // below), but reject a stale/unknown `attemptId` and enforce "MAX one
+    // migration per call" (plan §7.4) BEFORE they're relayed. Preserves the
+    // 2-peer cap / generation protection above untouched — this only adds an
+    // attemptId gate on top.
+    if (data.type === "relay-migrate-offer") {
+      await this.loadRecoveryState();
+      const attemptId = typeof data.attemptId === "string" ? data.attemptId.slice(0, 64) : "";
+      if (!attemptId) return;
+      if (this.migrationUsed && this.activeMigrationAttemptId !== attemptId) {
+        this.sendTo(ws, { type: "relay-migrate-reject", attemptId, reason: "migration_already_used" });
+        return;
+      }
+      if (this.activeMigrationAttemptId && this.activeMigrationAttemptId !== attemptId) {
+        this.sendTo(ws, { type: "relay-migrate-reject", attemptId, reason: "migration_in_progress" });
+        return;
+      }
+      this.activeMigrationAttemptId = attemptId;
+      this.migrationUsed = true;
+      try {
+        await this.state.storage.put("activeMigrationAttemptId", attemptId);
+        await this.state.storage.put("migrationUsed", true);
+      } catch { /* best-effort */ }
+      // fall through to the generic `to`-scoped relay below
+    } else if (
+      data.type === "relay-migrate-answer" ||
+      data.type === "relay-migrate-candidate" ||
+      data.type === "relay-migrate-ready"
+    ) {
+      await this.loadRecoveryState();
+      const attemptId = typeof data.attemptId === "string" ? data.attemptId.slice(0, 64) : "";
+      if (!attemptId || attemptId !== this.activeMigrationAttemptId) {
+        return; // stale/unknown attempt — drop silently, never relayed
+      }
+      // fall through to the generic `to`-scoped relay below
     }
 
     const all = this.state.getWebSockets();
