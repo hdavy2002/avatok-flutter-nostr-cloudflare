@@ -506,19 +506,20 @@ export class WalletDO {
       try {
         await this.env.Q_WALLET.send(value as Record<string, unknown>);
         await this.state.storage.delete(key);
-        await track(this.env, String((value as any).uid ?? "server"), "wallet_ledger_outbox_sent", "avatok", {
+        // Telemetry must never throw out of the alarm (Q_ANALYTICS.send rejection).
+        Promise.resolve(track(this.env, String((value as any).uid ?? "server"), "wallet_ledger_outbox_sent", "avatok", {
           call_path: "wallet_do_alarm", tx_id: String((value as any).id ?? ""),
-        });
+        })).catch(() => {});
       } catch (e) {
         anyFailed = true;
-        await trackException(this.env, e, {
+        Promise.resolve(trackException(this.env, e, {
           uid: String((value as any).uid ?? "server"), route: "WalletDO.alarm",
           method: "Q_WALLET.send", handled: true,
           extra: {
             subsystem: "wallet_ledger_outbox", tx_id: String((value as any).id ?? ""),
             txid: String((value as any).id ?? ""), outbox_persisted: true, stage: "alarm_retry",
           },
-        });
+        })).catch(() => {});
       }
     }
     if (anyFailed) {
@@ -548,15 +549,18 @@ export class WalletDO {
     try {
       await this.env.Q_WALLET.send(msg);
       await this.state.storage.delete(key);
-      await track(this.env, uid, "wallet_ledger_enqueued", "avatok", { tx_id: id, source: "wallet_do" });
+      // Telemetry must never throw out of the balance path (Q_ANALYTICS.send rejection
+      // would 500 a succeeded wallet op) — fire-and-forget with swallow.
+      Promise.resolve(track(this.env, uid, "wallet_ledger_enqueued", "avatok", { tx_id: id, source: "wallet_do" })).catch(() => {});
     } catch (e) {
-      await trackException(this.env, e, {
+      Promise.resolve(trackException(this.env, e, {
         uid, route: "WalletDO.audit", method: "Q_WALLET.send", handled: true,
         extra: { subsystem: "wallet_ledger_outbox", tx_id: id, txid: id, outbox_persisted: true, stage: "enqueue" },
-      });
-      await track(this.env, uid, "wallet_ledger_enqueue_deferred", "avatok", {
+      })).catch(() => {});
+      Promise.resolve(track(this.env, uid, "wallet_ledger_enqueue_deferred", "avatok", {
         tx_id: id, source: "wallet_do", retry: "durable_outbox",
-      });
+      })).catch(() => {});
+      // The alarm MUST be scheduled regardless of telemetry outcome.
       await this.state.storage.setAlarm(Date.now() + 30_000);
     }
   }
