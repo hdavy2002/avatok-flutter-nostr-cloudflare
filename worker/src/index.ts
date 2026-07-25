@@ -181,6 +181,8 @@ import { avaGuardianScan } from "./routes/ava_guardian"; // P8
 import { moderateText } from "./routes/moderate";        // save-time content validation (Nemotron)
 import { avaImage } from "./routes/ava_image";          // P9
 import { avaDocSummarize, avaDocTranslate, avaDocTranslateFile, avaChatToggle } from "./routes/ava_copilot"; // Copilot A+B (doc actions + per-chat toggle)
+import { aiMediaJobsCreate, aiMediaJobsGet, aiMediaJobsCancel, aiMediaJobsList } from "./routes/ai_media_jobs"; // [AVA-MEDIA-JOB-1] durable AI media job state machine
+import { runAiMediaJobMessage, type AiMediaJobQueueMsg } from "./queues/ai_media"; // [AVA-MEDIA-JOB-1] self-consumed, same pattern as money-settlements/liveness-verify below
 import { avaTriggersGet, avaLedgerGet, avaMomentOutcome } from "./routes/ava_odl_routes"; // Copilot C+D (ODL trigger sync D31 + cost ledger D25 + learning loop)
 import { avaGroupModeGet, avaGroupModePost, avaGroupPolicyGet, avaGroupDraftApprove, avaGroupDraftReject, avaGroupDraftsGet } from "./routes/ava_group"; // [AVABRAIN-COMPANION-2]/[AVABRAIN-COMPANION-UI-1] group Companion mode + effective policy + draft approval + pending-draft list
 import { backupGet, backupPut, backupStatus } from "./routes/backup"; // P10
@@ -282,6 +284,11 @@ export default {
           } else {
             await cbook.contactsChunkConsume(env, msg.body);
           }
+        } else if (batch.queue.startsWith("ai-media-jobs")) {
+          // [AVA-MEDIA-JOB-1] self-consumed, same pattern as money-settlements/
+          // liveness-verify below — ai_media_jobs.ts needs this worker's D1/
+          // WalletDO bindings, which consumers/ (separate package) can't reach.
+          await runAiMediaJobMessage(env, msg.body as AiMediaJobQueueMsg);
         } else if (batch.queue.startsWith("liveness-verify")) {
           // [LIVENESS-V3] the shared liveness-verify queue now carries BOTH V2
           // ({uid,sid}) and V3 ({v3:true,uid,sid}) messages. Discriminate on the
@@ -606,6 +613,11 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/ava/triggers" && req.method === "GET") return await avaTriggersGet(req, env);        // ODL: on-device trigger bank sync (D31)
       if (p === "/api/ava/ledger" && req.method === "GET") return await avaLedgerGet(req, env);            // ODL: capability cost ledger snapshot (D25)
       if (p === "/api/ava/moment-outcome" && req.method === "POST") return await avaMomentOutcome(req, env); // ODL: learning loop outcome (Constitution 11)
+      // [AVA-MEDIA-JOB-1] durable AI media job state machine (image/doc/audio jobs)
+      if (p === "/api/ai/jobs" && req.method === "POST") return await aiMediaJobsCreate(req, env, ctx);
+      if (p === "/api/ai/jobs" && req.method === "GET") return await aiMediaJobsList(req, env);
+      { const m = p.match(/^\/api\/ai\/jobs\/([A-Za-z0-9_-]{1,128})\/cancel$/); if (m && req.method === "POST") return await aiMediaJobsCancel(req, env, m[1]); }
+      { const m = p.match(/^\/api\/ai\/jobs\/([A-Za-z0-9_-]{1,128})$/); if (m && req.method === "GET") return await aiMediaJobsGet(req, env, m[1]); }
       // [AVABRAIN-COMPANION-2] group Companion mode + effective policy + draft approval (routes/ava_group.ts)
       if (p === "/api/ava/group/mode" && req.method === "GET") return await avaGroupModeGet(req, env);
       if (p === "/api/ava/group/mode" && req.method === "POST") return await avaGroupModePost(req, env);
