@@ -190,6 +190,9 @@ export interface PlatformConfig {
   companionEnabled: boolean;         // blank "New chat with Ava" + personas
   generativeEnabled: boolean;        // in-thread image gen (each gen is a PaidFeature)
   imageDailyCap: number;             // per-USER/day image-gen fair-use backstop (ALL tiers, incl. unlimited)
+  // Dedicated gate for the durable derived-media API. It remains dark until a
+  // real queue is provisioned and at least one kind handler is implemented.
+  aiMediaJobsEnabled: boolean;
   // AI Ringback Tones + Busy Tone (Specs/proposals/PROPOSAL-AI-RINGBACK-TONES.md).
   // Master switch for /api/ringtone/* (generation/library) AND the caller-side
   // ringback playback. OFF → generation 503s and callers fall back to today's
@@ -811,6 +814,7 @@ const DEFAULTS: PlatformConfig = {
   companionEnabled: true,          // basic free Ava chat
   generativeEnabled: false,        // FREE LAUNCH: premium image gen — hidden
   imageDailyCap: 100,              // fair-use backstop per user/day — applies even to "unlimited" packages
+  aiMediaJobsEnabled: false,       // five media handlers are intentionally dark until individually production-ready
   ringbackEnabled: true,           // AI ringback + busy tone (free, our AI key)
   callAudioControllerV2: false,    // call-reliability program — ships dark
   callPlayoutHealthV2: false,      // call-reliability program — ships dark

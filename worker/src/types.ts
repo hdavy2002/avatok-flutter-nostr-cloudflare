@@ -41,6 +41,9 @@ export interface Env {
   // Bind "contacts-chunk" (producer + self-consumer) once created to move the
   // chunk job off the request lifecycle for very large books at 1M-user scale.
   Q_CONTACTS?: Queue;
+  // Durable derived-media work. Required when aiMediaJobsEnabled is flipped;
+  // unlike short local bookkeeping this must never fall back to waitUntil.
+  Q_AI_MEDIA: Queue<{ job_id: string; kind: string }>;
 
   // Workers AI — image moderation (public uploads)
   AI: Ai;

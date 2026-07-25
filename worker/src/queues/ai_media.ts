@@ -14,17 +14,9 @@
 // implemented here — migrating them onto this backbone is the explicit scope
 // of the follow-on issues named on each KIND_HANDLERS entry below (§50 items
 // 2-4 of Specs/ROOT-CAUSE-REPORT-RECURRING-ISSUES-2026-07-25.md). Until a
-// handler is replaced, every job of that kind fails fast with error_code
-// NOT_IMPLEMENTED and its reservation is released — it never hangs and it
-// never charges.
-//
-// QUEUE BINDING (Q_AI_MEDIA / queue "ai-media-jobs"): NOT YET declared in
-// wrangler.toml or worker/src/types.ts's Env (out of this issue's file
-// ownership — see the implementing agent's HANDOFF). Until the binding
-// exists, enqueueAiMediaJob() below falls back to ctx.waitUntil(...) inline
-// processing, exactly like the existing LIVENESS_QUEUE fallback
-// (worker/src/routes/liveness.ts) — job creation is never blocked on queue
-// infra existing yet.
+// handler is replaced, the public create route rejects that kind before a job
+// or wallet reservation exists. No live endpoint knowingly enqueues a
+// NOT_IMPLEMENTED handler.
 import type { Env } from "../types";
 import {
   claimAiMediaJob, completeAiMediaJob, failAiMediaJob, requeueAiMediaJob,
@@ -87,20 +79,18 @@ const KIND_HANDLERS: Record<AiMediaJobKind, KindHandler> = {
   audio_translate: handleAudioTranslate,
 };
 
-/** Best-effort producer-side enqueue with an inline-waitUntil fallback —
- * mirrors worker/src/routes/liveness.ts's LIVENESS_QUEUE pattern exactly.
- * `env.Q_AI_MEDIA` is read via an `any` cast because the binding is not yet
- * declared on Env (see file header / HANDOFF) — this keeps the code correct
- * and functional (via the fallback) whether or not the binding exists. */
-export async function enqueueAiMediaJob(env: Env, ctx: ExecutionContext | undefined, jobId: string, kind: AiMediaJobKind): Promise<void> {
-  try {
-    const q = (env as any).Q_AI_MEDIA as Queue | undefined;
-    if (q) { await q.send({ job_id: jobId, kind } as AiMediaJobQueueMsg); return; }
-  } catch (e) {
-    console.error("[ai_media] Q_AI_MEDIA.send failed, falling back to waitUntil:", String(e));
-  }
-  const run = runAiMediaJobMessage(env, { job_id: jobId, kind }).catch(() => {});
-  if (ctx) ctx.waitUntil(run); else await run;
+// Add a kind only in the same commit that replaces its stub with a tested
+// provider pipeline. The route checks this before creating/reserving a job.
+const IMPLEMENTED_KINDS = new Set<AiMediaJobKind>([]);
+
+export function isAiMediaKindImplemented(kind: AiMediaJobKind): boolean {
+  return IMPLEMENTED_KINDS.has(kind);
+}
+
+/** Queue-only producer. Long provider work must outlive the request and must
+ * not silently fall back to waitUntil when infrastructure is missing. */
+export async function enqueueAiMediaJob(env: Env, _ctx: ExecutionContext | undefined, jobId: string, kind: AiMediaJobKind): Promise<void> {
+  await env.Q_AI_MEDIA.send({ job_id: jobId, kind });
 }
 
 /**
@@ -116,7 +106,7 @@ export async function enqueueAiMediaJob(env: Env, ctx: ExecutionContext | undefi
  * worker/src/index.ts's existing queue() catch -> msg.retry() path
  * redelivers it (same idiom as money-settlements/liveness-verify there).
  */
-export async function runAiMediaJobMessage(env: Env, msg: AiMediaJobQueueMsg): Promise<void> {
+export async function runAiMediaJobMessage(env: Env, msg: AiMediaJobQueueMsg, attempts = 1): Promise<void> {
   const jobId = String(msg?.job_id || "");
   if (!jobId) return; // malformed message — nothing to do, ack and move on
 
@@ -133,6 +123,18 @@ export async function runAiMediaJobMessage(env: Env, msg: AiMediaJobQueueMsg): P
     await completeAiMediaJob(env, { jobId, artifact: result.artifact, settlement: result.settlement });
   } catch (e: any) {
     if (e instanceof RetryableJobError) {
+      if (attempts >= 3) {
+        await failAiMediaJob(env, {
+          jobId,
+          errorCode: "PROVIDER_TIMEOUT",
+          reason: "Provider timed out after maximum queue attempts",
+        });
+        void trackException(env, e, {
+          uid: job.owner_uid, route: "queues.ai_media", handled: true,
+          extra: { job_id: jobId, kind: job.kind, retryable: false, attempts },
+        });
+        return;
+      }
       await requeueAiMediaJob(env, jobId);
       void trackException(env, e, { uid: job.owner_uid, route: "queues.ai_media", handled: true, extra: { job_id: jobId, kind: job.kind, retryable: true } });
       throw e; // let index.ts's existing catch -> msg.retry() redeliver

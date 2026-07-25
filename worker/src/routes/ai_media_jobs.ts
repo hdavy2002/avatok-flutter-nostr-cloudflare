@@ -20,10 +20,10 @@ import { requireUser, isFail } from "../authz";
 import { readConfig } from "./config";
 import { emailFor } from "../lib/identity";
 import {
-  createAiMediaJob, getAiMediaJob, cancelAiMediaJob, listAiMediaJobs,
+  createAiMediaJob, getAiMediaJob, cancelAiMediaJob, listAiMediaJobs, failAiMediaJob,
   type AiMediaJobKind, type AiMediaJobStatus,
 } from "../lib/ai_media_jobs";
-import { enqueueAiMediaJob } from "../queues/ai_media";
+import { enqueueAiMediaJob, isAiMediaKindImplemented } from "../queues/ai_media";
 
 const VALID_KINDS = new Set<AiMediaJobKind>([
   "image_generate", "doc_summarize", "doc_translate", "audio_transcribe", "audio_translate",
@@ -34,6 +34,9 @@ const VALID_STATUSES = new Set<AiMediaJobStatus>(["queued", "running", "succeede
 export async function aiMediaJobsCreate(req: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
   const cfg = await readConfig(env);
   if (cfg.aiEnabled === false) return json({ error: "ai disabled", flag: "aiEnabled" }, 503);
+  if (!cfg.aiMediaJobsEnabled) {
+    return json({ error: "AI media jobs are not live", code: "AI_MEDIA_NOT_LIVE", flag: "aiMediaJobsEnabled" }, 503);
+  }
 
   const ctxUser = await requireUser(req, env);
   if (isFail(ctxUser)) return json({ error: ctxUser.error }, ctxUser.status);
@@ -45,6 +48,9 @@ export async function aiMediaJobsCreate(req: Request, env: Env, ctx?: ExecutionC
   const kind = String(b?.kind ?? "").trim() as AiMediaJobKind;
   if (!conv) return json({ error: "conv required" }, 400);
   if (!VALID_KINDS.has(kind)) return json({ error: "invalid kind" }, 400);
+  if (!isAiMediaKindImplemented(kind)) {
+    return json({ error: "This AI media action is not available yet", code: "AI_MEDIA_KIND_NOT_LIVE", kind }, 503);
+  }
 
   const email = await emailFor(env, ctxUser.uid);
   const result = await createAiMediaJob(env, {
@@ -71,7 +77,16 @@ export async function aiMediaJobsCreate(req: Request, env: Env, ctx?: ExecutionC
   // Only enqueue a freshly-created job — a replayed idempotent create() that
   // returned an already-running/terminal job must never re-enqueue work.
   if (result.job.status === "queued") {
-    await enqueueAiMediaJob(env, ctx, result.job.job_id, result.job.kind);
+    try {
+      await enqueueAiMediaJob(env, ctx, result.job.job_id, result.job.kind);
+    } catch {
+      await failAiMediaJob(env, {
+        jobId: result.job.job_id,
+        errorCode: "QUEUE_UNAVAILABLE",
+        reason: "AI media queue unavailable",
+      });
+      return json({ error: "AI media queue unavailable", code: "AI_MEDIA_QUEUE_UNAVAILABLE" }, 503);
+    }
   }
   return json({ ok: true, job: result.job });
 }

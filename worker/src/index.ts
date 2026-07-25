@@ -288,7 +288,7 @@ export default {
           // [AVA-MEDIA-JOB-1] self-consumed, same pattern as money-settlements/
           // liveness-verify below — ai_media_jobs.ts needs this worker's D1/
           // WalletDO bindings, which consumers/ (separate package) can't reach.
-          await runAiMediaJobMessage(env, msg.body as AiMediaJobQueueMsg);
+          await runAiMediaJobMessage(env, msg.body as AiMediaJobQueueMsg, Number((msg as any).attempts ?? 1));
         } else if (batch.queue.startsWith("liveness-verify")) {
           // [LIVENESS-V3] the shared liveness-verify queue now carries BOTH V2
           // ({uid,sid}) and V3 ({v3:true,uid,sid}) messages. Discriminate on the
