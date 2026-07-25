@@ -330,8 +330,14 @@ export async function startVoiceLease(env: Env, input: { uid: string; email: str
   let reserveAmount = 0;
   if (state.reservationsActive) {
     reserveAmount = RESERVE_BUFFER_TOKENS; // 1 minute of runway held upfront
+    // [AI-WALLET-SPENDABLE-2] allow_free:true — the REAL charge at settle
+    // (settleOnce -> chargeAmount -> spend, above) already draws free/bonus
+    // coins first via allow_free:true; this runway HOLD must admit against
+    // the SAME headroom (free+bonus+paid), or a bonus-only wallet would get a
+    // spurious 402 on call start even though the call would ultimately have
+    // cost it nothing — the exact bug class Part I §2 documents for AI chat.
     const reserved = await walletOp(env, payer, {
-      op: "reserve", uid: payer, amount: reserveAmount, ref,
+      op: "reserve", uid: payer, amount: reserveAmount, ref, allow_free: true,
       op_id: `avalive:${sessionId}:reserve:to:${reserveAmount}`, app_name: "avabrain_voice",
     }).catch((e) => {
       void trackException(env, e, { uid: input.uid, route: "voice_billing.startVoiceLease", method: "walletOp.reserve", handled: true, extra: { session_id: sessionId, payer_uid: payer } });
@@ -412,8 +418,12 @@ export async function heartbeatVoiceLease(env: Env, input: { uid: string; sessio
     const reserveTarget = projectedDue + RESERVE_BUFFER_TOKENS;
     const topUp = Math.max(0, reserveTarget - lease.tokens_reserved_cum);
     if (topUp > 0) {
+      // [AI-WALLET-SPENDABLE-2] allow_free:true — same reasoning as
+      // startVoiceLease's initial reserve above; this top-up must match the
+      // policy the ref was originally reserved under, or the DO refuses with
+      // 409 (policy_mismatch).
       const reserved = await walletOp(env, lease.payer_uid, {
-        op: "reserve", uid: lease.payer_uid, amount: topUp, ref,
+        op: "reserve", uid: lease.payer_uid, amount: topUp, ref, allow_free: true,
         op_id: `avalive:${input.sessionId}:reserve:to:${reserveTarget}`, app_name: "avabrain_voice",
       }).catch((e) => {
         void trackException(env, e, { uid: input.uid, route: "voice_billing.heartbeatVoiceLease", method: "walletOp.reserve", handled: true, extra: { session_id: input.sessionId, payer_uid: lease.payer_uid } });

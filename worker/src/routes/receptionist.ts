@@ -1013,8 +1013,16 @@ export async function receptionistPutSettings(req: Request, env: Env): Promise<R
     const needTokens = recMode === "agent" ? 3 : 1;
     try {
       const bal = await walletOp(env, ctx.uid, { op: "balance", uid: ctx.uid });
-      if (bal.status === 200 && Number(bal.body?.balance ?? 0) < needTokens) {
-        return json({ error: "insufficient_tokens", need: needTokens, balance: Number(bal.body?.balance ?? 0), mode: recMode }, 402);
+      // [AI-WALLET-SPENDABLE-2] Read SPENDABLE (free + bonus + paid), with
+      // `balance` only as a backward-compatible fallback for an older
+      // WalletDO response shape — mirrors the already-correct pattern at
+      // receptionistConfigFor() below (:~1140). A paid-only read here
+      // reproduces the exact "402 on a spendable wallet" bug documented in
+      // Part I §2 of Specs/ROOT-CAUSE-REPORT-RECURRING-ISSUES-2026-07-25.md,
+      // just on the SAVE path instead of the dial-time availability probe.
+      const spendable = Number(bal.body?.spendable ?? bal.body?.balance ?? 0);
+      if (bal.status === 200 && spendable < needTokens) {
+        return json({ error: "insufficient_tokens", need: needTokens, balance: spendable, mode: recMode }, 402);
       }
     } catch { /* fail-open */ }
   }

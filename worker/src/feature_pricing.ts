@@ -52,10 +52,33 @@ export const FEATURE_COSTS: Record<string, number> = {
 // requested/actual + usage + provider cost + markup + terminal status for
 // support/reconciliation — none of which AI_MODEL_RATES below carries. Both
 // paths reuse the SAME underlying WalletDO primitives (reserve/consume_reserved/
-// release_reservation, [AVA-CAMP-B1-WALLET]), so they compose safely; this block
-// is NOT deleted because ava_agent.ts (Composio/@ava agentic loop) still calls
-// reserveAiUsage/settleAiUsage/meterAiUsage directly — migrating that call site
-// to ai_billing.ts is a separate, later change, not part of [AI-BILLING-CORE-1].
+// release_reservation, [AVA-CAMP-B1-WALLET]), so they compose safely.
+//
+// [AI-WALLET-SPENDABLE-2] (2026-07-25) DEPRECATED, NOT REMOVED THIS SESSION.
+// The doc comment above (and originally in [AI-BILLING-CORE-1]) claimed
+// "ava_agent.ts (Composio/@ava agentic loop) still calls reserveAiUsage/
+// settleAiUsage/meterAiUsage directly" — that claim is STALE. Verified by
+// grep across worker/src (2026-07-25): reserveAiUsage/settleAiUsage/
+// releaseAiUsage/meterAiUsage have ZERO call sites anywhere in worker/src
+// outside this file's own definitions. `ava_agent.ts` does not import
+// feature_pricing at all for AI metering. These four functions are therefore
+// DEAD CODE in production today — kept only so nothing currently importing
+// this file (there is no such caller, but this file is otherwise still live
+// for FEATURE_COSTS/chargeFeature/chargeAmount) breaks, and so a future
+// migration has a documented, working reference implementation to delete
+// outright once nobody could possibly still be pointed at it. Do NOT add a
+// new call site here — use worker/src/lib/ai_billing.ts's
+// reserveAiJob/settleAiJob/releaseAiJob instead. The separate `AI_MARKUP =
+// 1.30` constant below (~:72) is ALSO dead by the same grep — it is used
+// ONLY by aiCostTokens(), which is used ONLY by these four now-deprecated
+// functions, so it is left in place (removing it would break code this
+// change is explicitly told not to delete) rather than removed per Part
+// VIII §61's "remove after call-site verification," since "verification"
+// here found zero LIVE call sites but the constant is still referenced by
+// the (intentionally retained) dead functions themselves. FEATURE_COSTS
+// below is UNRELATED and untouched — those are deliberate fixed retail
+// prices (receptionist minute, voicemail, listings, …) per the owner
+// pricing decision recorded in Part VIII §61, not usage-priced AI costs.
 //
 // [AI-WALLET-METER-1] Provider list prices in USD per million tokens. These are
 // deliberately server-owned: the client can display an estimate, but it can
@@ -124,7 +147,12 @@ function aiCostTokens(model: string, inputTokens: number, outputTokens: number):
   return Math.max(1, Math.ceil((((input * r.input) + (output * r.output)) / 1_000_000) * AI_TOKENS_PER_USD * AI_MARKUP));
 }
 
-/** Reserve before the provider call. This is the hard wallet gate. */
+/**
+ * @deprecated [AI-WALLET-SPENDABLE-2] Zero live call sites in worker/src as of
+ * 2026-07-25 (verified by grep — see the file-header doc comment above). Use
+ * worker/src/lib/ai_billing.ts's reserveAiJob() for any new AI metering.
+ * Reserve before the provider call. This is the hard wallet gate.
+ */
 export async function reserveAiUsage(env: Env, input: AiUsageMeterInput): Promise<AiUsageReservation> {
   const uid = String(input.uid || "");
   const opId = String(input.opId || "");
@@ -132,8 +160,10 @@ export async function reserveAiUsage(env: Env, input: AiUsageMeterInput): Promis
   const payer = await billingUidFor(env, uid).catch(() => uid);
   const reserve = aiCostTokens(input.model, input.reserveInputTokens ?? input.inputTokens, input.reserveOutputTokens ?? input.outputTokens);
   const ref = `ai:${opId}`;
+  // [AI-WALLET-SPENDABLE-2] allow_free:true — this path (like ai_billing.ts's
+  // reserveAiJob) is an internal AI/feature cost, never campaign escrow.
   const reserved = await walletOp(env, payer, {
-    op: "reserve", uid: payer, amount: reserve, ref, op_id: `${opId}:reserve`, app_name: input.capability,
+    op: "reserve", uid: payer, amount: reserve, ref, allow_free: true, op_id: `${opId}:reserve`, app_name: input.capability,
   });
   if (reserved.status !== 200 || reserved.body?.ok !== true) {
     return { ok: false, payer, ref, reserved: 0, reason: "insufficient" };
@@ -141,7 +171,12 @@ export async function reserveAiUsage(env: Env, input: AiUsageMeterInput): Promis
   return { ok: true, payer, ref, reserved: reserve };
 }
 
-/** Settle actual provider usage and release the unused reservation. */
+/**
+ * @deprecated [AI-WALLET-SPENDABLE-2] Zero live call sites in worker/src as of
+ * 2026-07-25 (verified by grep — see the file-header doc comment above). Use
+ * worker/src/lib/ai_billing.ts's settleAiJob() for any new AI metering.
+ * Settle actual provider usage and release the unused reservation.
+ */
 export async function settleAiUsage(env: Env, input: AiUsageMeterInput, reservation: AiUsageReservation): Promise<AiUsageMeterResult> {
   if (!reservation.ok) return { ok: false, charged: 0, reserved: 0, providerCostUsd: 0, reason: reservation.reason };
   const uid = String(input.uid || "");
@@ -153,8 +188,10 @@ export async function settleAiUsage(env: Env, input: AiUsageMeterInput, reservat
   const beta = await readConfig(env).then((c) => c.betaFreePremium === true).catch(() => false);
   let charged = 0;
   if (consumed > 0) {
+    // [AI-WALLET-SPENDABLE-2] allow_free:true — must match reserveAiUsage's
+    // reserve() policy above, or the DO refuses with 409 (policy_mismatch).
     const settled = await walletOp(env, payer, {
-      op: "consume_reserved", uid: payer, ref, amount: consumed,
+      op: "consume_reserved", uid: payer, ref, amount: consumed, allow_free: true,
       op_id: `${opId}:settle`, app_name: input.capability, ...metaWire(input.meta),
     });
     if (settled.status !== 200 || settled.body?.ok !== true) {
@@ -185,6 +222,10 @@ export async function settleAiUsage(env: Env, input: AiUsageMeterInput, reservat
   return { ok: true, charged, reserved: reservation.reserved, providerCostUsd };
 }
 
+/**
+ * @deprecated [AI-WALLET-SPENDABLE-2] Zero live call sites in worker/src as of
+ * 2026-07-25. Use worker/src/lib/ai_billing.ts's releaseAiJob() instead.
+ */
 export async function releaseAiUsage(env: Env, input: AiUsageMeterInput, reservation: AiUsageReservation): Promise<void> {
   if (!reservation.ok) return;
   await walletOp(env, reservation.payer, {
@@ -194,6 +235,10 @@ export async function releaseAiUsage(env: Env, input: AiUsageMeterInput, reserva
 }
 
 /**
+ * @deprecated [AI-WALLET-SPENDABLE-2] Zero live call sites in worker/src as of
+ * 2026-07-25. Use worker/src/lib/ai_billing.ts's reserveAiJob/settleAiJob
+ * pair instead (this convenience wrapper can't do a real pre-provider-call
+ * reserve anyway — see its own doc comment below).
  * Reserve/settle/release one AI operation through the existing WalletDO.
  * This convenience path is for non-streaming jobs that already completed; the
  * latency-sensitive chat path should call reserveAiUsage before the provider.

@@ -19,7 +19,7 @@
 // ADDITIVE — they never touch the `bal`/`acct` schema and never change the
 // behavior of balance/credit/spend/earn/debit_hold/release. A per-ref escrow
 // bucket lives in its own `resv` table:
-//   reserve         — admits if balance >= amount + ALL other outstanding
+//   reserve         — admits if headroom >= amount + ALL other outstanding
 //                      reservations for this uid (this DO IS the uid), then
 //                      adds `amount` into resv.reserved for `ref`. Does NOT
 //                      touch bal.balance (money stays "real" until consumed);
@@ -27,17 +27,56 @@
 //   consume_reserved — moves up to `amount` from resv.reserved into resv.spent
 //                      (clamped so a ref can never over-consume its own
 //                      reservation) and, in the same step, performs the REAL,
-//                      permanent deduction from bal.balance (via setBal),
-//                      mirroring how `spend` already debits real balance.
+//                      permanent deduction from bal.balance/acct (via setBal/
+//                      free/bonus), mirroring how `spend` already debits.
 //   release          — zeroes out whatever remains in resv.reserved for `ref`
 //                      (marks it released) so that capacity becomes available
 //                      to other reservations again. No bal.balance mutation —
 //                      reserve() never removed it from bal.balance, so nothing
 //                      to refund there; consume_reserved() already made any
 //                      real deduction permanent.
+//
+// [AI-WALLET-SPENDABLE-2] (2026-07-25, Part VIII §52 of Specs/ROOT-CAUSE-REPORT-
+// RECURRING-ISSUES-2026-07-25.md) — `reserve`/`consume_reserved` now carry an
+// EXPLICIT, REQUIRED `allow_free` policy (no default, enforced both at compile
+// time via the WalletOperation union in routes/wallet.ts AND here at runtime,
+// because the DO parses `req.json()` as `any` and TypeScript's enforcement
+// evaporates at that boundary):
+//   allow_free:false — headroom/drawdown from PAID `balance` only (campaign
+//                      escrow, payouts — real, withdrawable money).
+//   allow_free:true  — headroom/drawdown from `free + bonus + balance`
+//                      (internal AI/feature cost — can NEVER fund a payout).
+// §58's cross-policy correctness fix: outstandingReservations() sums ALL
+// unreleased reservations REGARDLESS of policy, and BOTH headroom checks
+// subtract that same global sum. A same-policy-only subtraction would let an
+// AI job and a campaign escrow both ultimately commit the SAME paid token —
+// campaign escrow is real, withdrawable money, so it is the one that would
+// lose. This conservative "subtract everything from both" rule is the
+// specified launch behavior; the asymmetric optimization in §58 is deferred
+// behind property tests, not implemented here.
+// A reservation's policy is persisted (`resv.allow_free`) and a consume under
+// a different policy than the ref was created with is rejected (409).
+//
+// AI reservations (`ref LIKE 'aijob:%'`) now carry a caller-supplied bounded
+// `expires_at`, and `reserve()` schedules the DO alarm for it (preserving any
+// earlier hold/outbox alarm) — previously `reserve()` scheduled NO alarm at
+// all, which is why a crashed job's reservation could strand a user's own
+// headroom for up to 6 hours with no scheduled wakeup.
+//
+// `settle_ai_cost` is the new ATOMIC AI-accrual settlement op — one DO round
+// trip, so there is no Worker-side read-modify-write race across two separate
+// walletOp calls (the real race §57 identified: read debt, compute, write
+// debt, with a second job's settle landing in between). It folds the actual
+// marked-up provider cost into `acct.debt_micro_usd` (a STRICT remainder,
+// invariant 0 <= debt_micro_usd < 10,000 micro-USD = 1 wallet token), charges
+// only the whole tokens now due, and reports any shortfall as
+// `unrecovered_micro_usd` — platform loss, NEVER hidden user debt, NEVER a
+// claim on a future top-up. See computeAiSettlement() below (pure, exported,
+// unit-testable independent of the DO runtime).
+//
 // betaFreePremium (KV flag, same short-circuit as feature_pricing.ts
 // chargeAmount): while ON, admission never blocks on balance and
-// consume_reserved skips the real bal.balance deduction — mirrors "all
+// consume_reserved/settle_ai_cost skip the real deduction — mirrors "all
 // services free in beta" without special-casing campaigns.
 import type { Env } from "../types";
 import { json } from "../util";
@@ -57,6 +96,65 @@ const OPS_TTL_MS = 48 * 3_600_000; // dedupe window for op_id replays
 // welcome bonus is the first thing consumed. Do NOT raise this above 0 without an
 // explicit owner decision — a non-zero value re-introduces a renewing grant.
 const DAILY_FREE_GRANT = 0;
+
+// [AI-WALLET-SPENDABLE-2] 1 wallet token == $0.01 == 10,000 micro-USD. Matches
+// the canonical site-wide rate documented in routes/wallet.ts (TOKENS_PER_USD =
+// 100) and worker/src/lib/ai_billing.ts (AI_TOKENS_PER_USD = 100). Defined
+// locally (not imported) because do/wallet.ts is the Durable Object module and
+// must not import from lib/ai_billing.ts or routes/wallet.ts at module scope —
+// this is a pure numeric constant duplicated by definition, not by accident;
+// if the site-wide rate ever changes, all three call sites must change together.
+export const TOKEN_MICRO_USD = 10_000;
+
+export interface AiSettlementInput {
+  /** acct.debt_micro_usd BEFORE this settlement — a running sub-cent remainder. */
+  debtMicroUsdBefore: number;
+  /** The ALREADY marked-up actual provider cost for this one job, in micro-USD. */
+  actualCostMicroUsd: number;
+  /** resv.reserved for this ref, in whole wallet tokens, at settle time. */
+  reservedTokens: number;
+  /** free + bonus + paid balance, in whole wallet tokens, at settle time. */
+  spendableTokens: number;
+}
+export interface AiSettlementResult {
+  chargedTokens: number;
+  debtMicroUsdAfter: number;
+  unrecoveredMicroUsd: number;
+}
+
+/**
+ * [AI-WALLET-SPENDABLE-2] Pure accrual math for the `settle_ai_cost` op (Part
+ * VIII §52 of Specs/ROOT-CAUSE-REPORT-RECURRING-ISSUES-2026-07-25.md). Folds
+ * `actualCostMicroUsd` into the running sub-cent `debtMicroUsdBefore`
+ * remainder, then charges only the WHOLE tokens now due from the COMBINED
+ * total — so a run of sub-token jobs (e.g. 100 tiny chat turns) is billed at
+ * its correct cumulative price instead of each one independently rounding UP
+ * to a whole token (the old microUsdToTokens-per-job behavior). Never charges
+ * more than THIS job's own reservation, and never more than the account's
+ * CURRENT spendable funds — whatever is due beyond both is UNRECOVERED
+ * PLATFORM LOSS, never carried forward as `debt_micro_usd` (that field is a
+ * strictly-<1-token remainder by construction: `debtMicroUsdAfter` is always
+ * `totalMicroUsd mod TOKEN_MICRO_USD`, so `0 <= debtMicroUsdAfter <
+ * TOKEN_MICRO_USD` unconditionally) and never a claim on a future top-up.
+ *
+ * Pure and side-effect-free by design so it is unit-testable independent of
+ * the DO/SQLite runtime — see worker/test/ai_billing_accrual.test.ts.
+ */
+export function computeAiSettlement(input: AiSettlementInput): AiSettlementResult {
+  const debtBefore = Math.max(0, Math.trunc(input.debtMicroUsdBefore || 0));
+  const actualCost = Math.max(0, Math.trunc(input.actualCostMicroUsd || 0));
+  const reserved = Math.max(0, Math.trunc(input.reservedTokens || 0));
+  const spendable = Math.max(0, Math.trunc(input.spendableTokens || 0));
+
+  const totalMicroUsd = debtBefore + actualCost;
+  const tokensDue = Math.floor(totalMicroUsd / TOKEN_MICRO_USD);
+  const debtMicroUsdAfter = totalMicroUsd - tokensDue * TOKEN_MICRO_USD;
+
+  const chargedTokens = Math.max(0, Math.min(tokensDue, reserved, spendable));
+  const unrecoveredMicroUsd = Math.max(0, tokensDue - chargedTokens) * TOKEN_MICRO_USD;
+
+  return { chargedTokens, debtMicroUsdAfter, unrecoveredMicroUsd };
+}
 
 // [WALLET-TXMETA-1] Rich charge metadata, passed through untouched from the charge
 // call site (feature_pricing.chargeAmount → walletOp body) onto the Q_WALLET message
@@ -108,6 +206,13 @@ export class WalletDO {
     // allow_free feature costs only, NEVER part of paid `balance`, so it can
     // never fund a payout. Self-migrating column add (throws when it exists).
     try { this.sql.exec("ALTER TABLE acct ADD COLUMN bonus INTEGER NOT NULL DEFAULT 0"); } catch { /* column already exists */ }
+    // [AI-WALLET-SPENDABLE-2] Sub-cent AI-cost remainder ONLY — invariant
+    // 0 <= debt_micro_usd < TOKEN_MICRO_USD at all times. Never hidden user
+    // debt beyond that: any shortfall a settlement cannot cover from the
+    // reservation + current spendable funds is recorded as platform
+    // `unrecovered_micro_usd` telemetry/ledger instead, never accumulated
+    // here. Self-migrating column add, same pattern as acct.bonus above.
+    try { this.sql.exec("ALTER TABLE acct ADD COLUMN debt_micro_usd INTEGER NOT NULL DEFAULT 0"); } catch { /* column already exists */ }
     // [AVA-CAMP-B1-WALLET] Escrow reservations, keyed by caller-supplied `ref`
     // (e.g. campaign_call_attempts.attempt_uuid). Brand-new table, additive only
     // — does not touch `bal`/`acct`/`holds`/`ops`.
@@ -119,6 +224,17 @@ export class WalletDO {
     // "server" actor. Self-migrating (ALTER throws once the column exists;
     // that's expected and swallowed), same pattern as acct.bonus above.
     try { this.sql.exec("ALTER TABLE resv ADD COLUMN uid TEXT NOT NULL DEFAULT ''"); } catch { /* column already exists */ }
+    // [AI-WALLET-SPENDABLE-2] Persist the admission POLICY a reservation was
+    // created under (0 = allow_free:false / paid-only escrow, 1 = allow_free:
+    // true / internal AI-and-feature cost) so `consume_reserved`/`settle_ai_cost`
+    // can reject an attempt to consume it under a DIFFERENT policy than it was
+    // reserved with — the exact cross-policy confusion §58 warns about.
+    try { this.sql.exec("ALTER TABLE resv ADD COLUMN allow_free INTEGER NOT NULL DEFAULT 0"); } catch { /* column already exists */ }
+    // [AI-WALLET-SPENDABLE-2] Bounded, caller-supplied expiry for AI-job
+    // reservations (`ref LIKE 'aijob:%'`). 0 = no explicit expiry (campaign
+    // escrow keeps its own explicit release/consume lifecycle and is NEVER
+    // reaped by expires_at or the aijob-only reaper below).
+    try { this.sql.exec("ALTER TABLE resv ADD COLUMN expires_at INTEGER NOT NULL DEFAULT 0"); } catch { /* column already exists */ }
   }
 
   /** Replay guard: return the stored result for a seen op_id, else null. */
@@ -145,9 +261,12 @@ export class WalletDO {
     this.sql.exec("UPDATE bal SET balance=?1, held=?2 WHERE k=1", balance, held);
   }
 
-  private acct(): { free: number; premium: number; last_grant_day: string; bonus: number } {
-    const r = this.sql.exec("SELECT free, premium, last_grant_day, bonus FROM acct WHERE k=1").one() as any;
-    return { free: Number(r.free), premium: Number(r.premium), last_grant_day: String(r.last_grant_day), bonus: Number(r.bonus ?? 0) };
+  private acct(): { free: number; premium: number; last_grant_day: string; bonus: number; debt_micro_usd: number } {
+    const r = this.sql.exec("SELECT free, premium, last_grant_day, bonus, debt_micro_usd FROM acct WHERE k=1").one() as any;
+    return {
+      free: Number(r.free), premium: Number(r.premium), last_grant_day: String(r.last_grant_day),
+      bonus: Number(r.bonus ?? 0), debt_micro_usd: Number(r.debt_micro_usd ?? 0),
+    };
   }
 
   // Free-coin daily grant. Non-premium users get DAILY_FREE_GRANT reset (NOT added
@@ -168,11 +287,17 @@ export class WalletDO {
   // Full balance snapshot the client sees: paid `balance`, `held`, promo `free`
   // (daily grant + persistent bonus combined, so existing clients render the
   // welcome bonus with no change), `bonus` (the persistent slice alone),
-  // `premium`, and `spendable` = free + bonus + paid.
-  private snap(): { balance: number; held: number; free: number; bonus: number; premium: number; spendable: number } {
+  // `premium`, `spendable` = free + bonus + paid, and `debt_micro_usd` (a
+  // sub-cent AI-cost remainder, invariant 0 <= debt_micro_usd < 10,000 —
+  // exposed for observability/support; it does NOT reduce `spendable`, since
+  // by construction it can never reach a whole token).
+  private snap(): { balance: number; held: number; free: number; bonus: number; premium: number; spendable: number; debt_micro_usd: number } {
     const b = this.bal();
     const a = this.acct();
-    return { balance: b.balance, held: b.held, free: a.free + a.bonus, bonus: a.bonus, premium: a.premium, spendable: a.free + a.bonus + b.balance };
+    return {
+      balance: b.balance, held: b.held, free: a.free + a.bonus, bonus: a.bonus, premium: a.premium,
+      spendable: a.free + a.bonus + b.balance, debt_micro_usd: a.debt_micro_usd,
+    };
   }
 
   async fetch(req: Request): Promise<Response> {
@@ -191,7 +316,8 @@ export class WalletDO {
     if (
       body.op === "credit" || body.op === "spend" || body.op === "earn" || body.op === "debit_hold" || body.op === "promo_credit" ||
       body.op === "hard_reset" || // [TOKENS-100-GRANT-1] one-time balance reset (idempotent per op_id)
-      body.op === "reserve" || body.op === "consume_reserved" || body.op === "release_reservation" // [AVA-CAMP-B1-WALLET]
+      body.op === "reserve" || body.op === "consume_reserved" || body.op === "release_reservation" || // [AVA-CAMP-B1-WALLET]
+      body.op === "settle_ai_cost" || body.op === "clear_ai_remainder" // [AI-WALLET-SPENDABLE-2]
     ) {
       const dup = this.seenOp(body.op_id);
       if (dup) return dup;
@@ -211,6 +337,9 @@ export class WalletDO {
       case "reserve": return this.reserve(uid, body);
       case "consume_reserved": return this.consumeReserved(uid, body);
       case "release_reservation": return this.releaseReservation(uid, body);
+      // [AI-WALLET-SPENDABLE-2]
+      case "settle_ai_cost": return this.settleAiCost(uid, body);
+      case "clear_ai_remainder": return this.clearAiRemainder(uid, body);
       default: return json({ error: "unknown op" }, 400);
     }
   }
@@ -255,16 +384,35 @@ export class WalletDO {
   // `free` bucket AND all outstanding 7-day earning holds, then sets `bonus` = amount.
   // premium is cleared so every account lands in the same fresh "explore" state.
   // last_grant_day is pinned to today so maybeGrant() cannot re-grant on this touch.
+  // [AI-WALLET-SPENDABLE-2] A hard reset means a genuinely FRESH grant: it also
+  // zeroes the sub-cent `debt_micro_usd` remainder and releases every outstanding
+  // AI-job reservation (`ref LIKE 'aijob:%'`) for this uid, so neither can eat into
+  // the new balance via a later settle_ai_cost/consume_reserved call. Campaign
+  // escrow reservations are NEVER touched here — they keep their own explicit
+  // lifecycle. The cleared remainder is recorded in the audit metadata.
   // Idempotent on op_id (`hardreset:v1:<uid>`), so a re-run of the backfill no-ops.
   private async hardReset(uid: string, b: any): Promise<Response> {
     const amount = Math.max(0, Math.trunc(Number(b.amount ?? 100)));
     const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD (UTC)
+    const clearedDebtMicroUsd = this.acct().debt_micro_usd;
     this.setBal(0, 0);
     this.sql.exec("DELETE FROM holds");
-    this.sql.exec("UPDATE acct SET free=0, premium=0, bonus=?1, last_grant_day=?2 WHERE k=1", amount, today);
-    const result = { ok: true, ...this.snap() };
+    this.sql.exec("UPDATE acct SET free=0, premium=0, bonus=?1, last_grant_day=?2, debt_micro_usd=0 WHERE k=1", amount, today);
+    const releasedRows = this.sql.exec(
+      "SELECT ref FROM resv WHERE released=0 AND reserved>0 AND ref LIKE 'aijob:%'",
+    ).toArray() as any[];
+    if (releasedRows.length) {
+      this.sql.exec("UPDATE resv SET reserved=0, released=1, updated_at=?1 WHERE released=0 AND ref LIKE 'aijob:%'", Date.now());
+    }
+    const result = {
+      ok: true, ...this.snap(),
+      cleared_debt_micro_usd: clearedDebtMicroUsd, released_ai_reservations: releasedRows.length,
+    };
     this.recordOp(b.op_id, result);
-    await this.audit(uid, { type: "adjustment", amount, balance_after: this.snap().spendable, app_name: "token_hard_reset", ref: b.ref }, b);
+    await this.audit(uid, {
+      type: "adjustment", amount, balance_after: this.snap().spendable, app_name: "token_hard_reset", ref: b.ref,
+      cleared_debt_micro_usd: clearedDebtMicroUsd, released_ai_reservations: releasedRows.length,
+    }, b);
     this.broadcast();
     return json(result);
   }
@@ -344,15 +492,19 @@ export class WalletDO {
   }
 
   // ---- [AVA-CAMP-B1-WALLET] outbound-campaign escrow (Specs/OUTBOUND-AI-CALLING-CAMPAIGNS.md §5) ----
+  // ---- [AI-WALLET-SPENDABLE-2] now shared, policy-gated, with AI accrual settlement ----
 
-  private getResv(ref: string): { ref: string; reserved: number; spent: number; released: number } | null {
-    const rows = this.sql.exec("SELECT ref, reserved, spent, released FROM resv WHERE ref=?1", ref).toArray() as any[];
+  private getResv(ref: string): { ref: string; reserved: number; spent: number; released: number; allow_free: number; expires_at: number } | null {
+    const rows = this.sql.exec("SELECT ref, reserved, spent, released, allow_free, expires_at FROM resv WHERE ref=?1", ref).toArray() as any[];
     if (!rows.length) return null;
     const r = rows[0];
-    return { ref: String(r.ref), reserved: Number(r.reserved), spent: Number(r.spent), released: Number(r.released) };
+    return {
+      ref: String(r.ref), reserved: Number(r.reserved), spent: Number(r.spent), released: Number(r.released),
+      allow_free: Number(r.allow_free ?? 0), expires_at: Number(r.expires_at ?? 0),
+    };
   }
 
-  /** Sum of currently-outstanding (unreleased) reservations across ALL refs for this uid (= this DO). */
+  /** Sum of currently-outstanding (unreleased) reservations across ALL refs for this uid (= this DO), REGARDLESS of policy — see §58 in the header comment for why this must NOT be filtered to "same policy only". */
   private outstandingReservations(): number {
     const r = this.sql.exec("SELECT COALESCE(SUM(reserved),0) AS t FROM resv WHERE released=0").one() as any;
     return Number(r.t);
@@ -363,15 +515,35 @@ export class WalletDO {
     try { return (await readConfig(this.env)).betaFreePremium === true; } catch { return false; }
   }
 
-  // reserve({opId, uid, amount, ref}): admits if balance >= amount + all other
-  // outstanding reservations, then grows resv.reserved for `ref` by `amount`.
-  // Never touches bal.balance — reserving only shrinks headroom for OTHER
-  // reservations until consumed or released. Idempotent on opId.
+  /** Schedules the DO alarm for `candidateMs` UNLESS an earlier alarm (a pending earning hold, an audit-outbox retry, or another reservation's own earlier expiry) is already scheduled — never pushes a wakeup LATER than one already set. Best-effort: never blocks a reserve on alarm-scheduling failure. */
+  private async scheduleEarliestAlarm(candidateMs: number): Promise<void> {
+    try {
+      const current = await this.state.storage.getAlarm();
+      if (current == null || candidateMs < current) {
+        await this.state.storage.setAlarm(candidateMs);
+      }
+    } catch { /* best-effort */ }
+  }
+
+  // reserve({opId, uid, amount, ref, allow_free}): admits if headroom (paid-only
+  // when allow_free:false, else free+bonus+paid) covers amount + ALL other
+  // outstanding reservations (§58 — conservative, cross-policy-safe), then grows
+  // resv.reserved for `ref` by `amount` and persists the ref's policy. Never
+  // touches bal.balance/acct — reserving only shrinks headroom for OTHER
+  // reservations until consumed or released. Idempotent on opId. `expires_at`
+  // (if >0, used by AI-job refs) schedules the DO alarm so an abandoned
+  // reservation self-heals without waiting for this uid's next request.
   private async reserve(uid: string, b: any): Promise<Response> {
     const amount = Math.trunc(Number(b.amount));
     const ref = String(b.ref || "");
     if (!(amount > 0)) return json({ error: "amount>0 required" }, 400);
     if (!ref) return json({ error: "ref required" }, 400);
+    // [AI-WALLET-SPENDABLE-2] REQUIRED, no default — a missing/non-boolean
+    // allow_free fails safe with 400 rather than silently picking a policy.
+    // This is the runtime half of the enforcement; routes/wallet.ts's typed
+    // WalletOperation union is the compile-time half.
+    if (typeof b.allow_free !== "boolean") return json({ error: "allow_free (boolean) required" }, 400);
+    const allowFree = b.allow_free === true;
 
     // [AI-BILLING-CORE-1] finding 3: lazy reaper runs BEFORE admission on every
     // reserve() call — a crashed/abandoned aijob reservation must not eat into
@@ -379,39 +551,66 @@ export class WalletDO {
     // this uid) headroom forever. Cheap: bounded to this uid's own resv rows.
     await this.reapStaleAiJobReservations();
 
+    const existing = this.getResv(ref);
+    if (existing && !existing.released && existing.allow_free !== (allowFree ? 1 : 0)) {
+      const result = { ok: false, error: "policy_mismatch", ref };
+      this.recordOp(b.op_id, result);
+      return json(result, 409);
+    }
+
     const now = Date.now();
+    const expiresAt = Math.max(0, Math.trunc(Number(b.expires_at || 0)));
     this.sql.exec(
-      "INSERT INTO resv (ref, reserved, spent, released, created_at, updated_at, uid) VALUES (?1,0,0,0,?2,?2,?3) ON CONFLICT(ref) DO UPDATE SET uid=excluded.uid",
-      ref, now, uid,
+      "INSERT INTO resv (ref, reserved, spent, released, created_at, updated_at, uid, allow_free, expires_at) VALUES (?1,0,0,0,?2,?2,?3,?4,?5) " +
+      "ON CONFLICT(ref) DO UPDATE SET uid=excluded.uid, allow_free=excluded.allow_free, " +
+      "expires_at=CASE WHEN excluded.expires_at>0 THEN excluded.expires_at ELSE resv.expires_at END",
+      ref, now, uid, allowFree ? 1 : 0, expiresAt,
     );
+
     const beta = await this.betaFree();
     const cur = this.bal();
-    const outstandingBefore = this.outstandingReservations(); // includes this ref's current (possibly 0) reserved
-    if (!beta && cur.balance < outstandingBefore + amount) {
-      const result = { ok: false, error: "insufficient balance", reservedTotal: this.getResv(ref)?.reserved ?? 0, available: Math.max(0, cur.balance - outstandingBefore) };
+    const a = this.acct();
+    // [§58] Conservative, cross-policy-safe: subtract ALL outstanding
+    // reservations (any policy) from BOTH headroom kinds.
+    const outstandingAll = this.outstandingReservations(); // includes this ref's current (possibly 0) reserved
+    const headroom = allowFree ? (a.free + a.bonus + cur.balance) : cur.balance;
+    if (!beta && headroom < outstandingAll + amount) {
+      const result = {
+        ok: false, error: "insufficient balance", reservedTotal: this.getResv(ref)?.reserved ?? 0,
+        available: Math.max(0, headroom - outstandingAll),
+      };
       this.recordOp(b.op_id, result);
       return json(result, 402);
     }
 
     this.sql.exec("UPDATE resv SET reserved=reserved+?1, updated_at=?2 WHERE ref=?3", amount, now, ref);
     const row = this.getResv(ref)!;
-    const available = Math.max(0, cur.balance - (outstandingBefore + amount));
-    const result = { ok: true, ref, reservedTotal: row.reserved, available };
+    const available = Math.max(0, headroom - (outstandingAll + amount));
+    const result = { ok: true, ref, reservedTotal: row.reserved, available, allow_free: allowFree };
     this.recordOp(b.op_id, result);
     await this.audit(uid, { type: "campaign_reserve", amount: 0, balance_after: cur.balance, app_name: b.app_name || "campaign", ref }, b);
+    // [AI-WALLET-SPENDABLE-2] reserve() previously scheduled NO alarm at all —
+    // schedule one now for this reservation's own expiry (created OR extended),
+    // preserving any earlier hold/outbox alarm already pending.
+    if (expiresAt > 0) await this.scheduleEarliestAlarm(expiresAt);
     this.broadcast();
     return json(result);
   }
 
-  // consumeReserved({opId, ref, amount}): moves up to `amount` from resv.reserved
-  // into resv.spent (clamped — never over-consumes the reservation) and makes the
-  // REAL, permanent bal.balance deduction in the same step (unless betaFreePremium).
-  // Idempotent on opId. Used per-second during a call (§5).
+  // consumeReserved({opId, ref, amount, allow_free}): moves up to `amount` from
+  // resv.reserved into resv.spent (clamped — never over-consumes the
+  // reservation) and makes the REAL, permanent deduction in the same step
+  // (unless betaFreePremium): allow_free:false draws PAID balance only;
+  // allow_free:true draws free -> bonus -> paid, exactly mirroring spend().
+  // Rejects consuming a reservation under a DIFFERENT policy than it was
+  // reserved with (409). Idempotent on opId. Used per-second during a call (§5).
   private async consumeReserved(uid: string, b: any): Promise<Response> {
     const amount = Math.trunc(Number(b.amount));
     const ref = String(b.ref || "");
     if (!(amount > 0)) return json({ error: "amount>0 required" }, 400);
     if (!ref) return json({ error: "ref required" }, 400);
+    if (typeof b.allow_free !== "boolean") return json({ error: "allow_free (boolean) required" }, 400);
+    const allowFree = b.allow_free === true;
 
     const row = this.getResv(ref);
     if (!row || row.released) {
@@ -419,24 +618,46 @@ export class WalletDO {
       this.recordOp(b.op_id, result);
       return json(result, 404);
     }
+    if (row.allow_free !== (allowFree ? 1 : 0)) {
+      const result = { ok: false, error: "policy_mismatch", ref, consumed: 0 };
+      this.recordOp(b.op_id, result);
+      return json(result, 409);
+    }
 
     const clamp = Math.max(0, Math.min(amount, row.reserved)); // never over-consume the reservation
     const now = Date.now();
     this.sql.exec("UPDATE resv SET reserved=reserved-?1, spent=spent+?1, updated_at=?2 WHERE ref=?3", clamp, now, ref);
 
     const beta = await this.betaFree();
+    let freeUsed = 0, bonusUsed = 0, paidUsed = 0;
     let balanceAfter = this.bal().balance;
     if (!beta && clamp > 0) {
-      const cur = this.bal();
-      balanceAfter = Math.max(0, cur.balance - clamp); // permanent debit — mirrors spend()
-      this.setBal(balanceAfter, cur.held);
+      if (allowFree) {
+        const a = this.acct();
+        freeUsed = Math.min(a.free, clamp);
+        bonusUsed = Math.min(a.bonus, clamp - freeUsed);
+        paidUsed = clamp - freeUsed - bonusUsed;
+        if (freeUsed > 0) this.sql.exec("UPDATE acct SET free=free-?1 WHERE k=1", freeUsed);
+        if (bonusUsed > 0) this.sql.exec("UPDATE acct SET bonus=bonus-?1 WHERE k=1", bonusUsed);
+        const cur = this.bal();
+        balanceAfter = Math.max(0, cur.balance - paidUsed);
+        this.setBal(balanceAfter, cur.held);
+      } else {
+        paidUsed = clamp;
+        const cur = this.bal();
+        balanceAfter = Math.max(0, cur.balance - clamp); // permanent debit — mirrors spend()
+        this.setBal(balanceAfter, cur.held);
+      }
     }
 
     const after = this.getResv(ref)!;
-    const result = { ok: true, ref, consumed: clamp, reservedRemaining: after.reserved, totalSpent: after.spent, balance: balanceAfter };
+    const result = {
+      ok: true, ref, consumed: clamp, reservedRemaining: after.reserved, totalSpent: after.spent, balance: balanceAfter,
+      free_used: freeUsed, bonus_used: bonusUsed, paid_used: paidUsed,
+    };
     this.recordOp(b.op_id, result);
     if (clamp > 0) {
-      await this.audit(uid, { type: "campaign_call", amount: -clamp, balance_after: balanceAfter, app_name: b.app_name || "campaign", ref }, b);
+      await this.audit(uid, { type: "campaign_call", amount: -clamp, balance_after: balanceAfter, app_name: b.app_name || "campaign", ref, ...txMeta(b) }, b);
     }
     this.broadcast();
     return json(result);
@@ -468,11 +689,148 @@ export class WalletDO {
     return json(result);
   }
 
-  // [AI-BILLING-CORE-1] finding 3: reservations have no TTL, so a crash between
+  // [AI-WALLET-SPENDABLE-2] settle_ai_cost({opId, ref, allow_free-only,
+  // actual_cost_micro_usd}): the ONE atomic AI-accrual settlement op — a
+  // single DO round trip so there is no Worker-side read-modify-write race
+  // between two separate walletOp calls (§57). Validates the ref is an
+  // ACTIVE allow_free:true reservation (never campaign escrow/payouts/seller
+  // earnings — those never carry allow_free:true), folds the actual
+  // marked-up provider cost into acct.debt_micro_usd via the pure
+  // computeAiSettlement(), charges only the whole tokens now due (clamped to
+  // this ref's own reservation AND current spendable funds), deducts
+  // free -> bonus -> paid, releases the reservation, and reports any shortfall
+  // as unrecovered_micro_usd (platform loss — never hidden debt, never a
+  // claim on the next top-up). Idempotent on opId.
+  private async settleAiCost(uid: string, b: any): Promise<Response> {
+    const ref = String(b.ref || "");
+    if (!ref) return json({ error: "ref required" }, 400);
+    const rawCost = Number(b.actual_cost_micro_usd);
+    if (!Number.isFinite(rawCost) || rawCost < 0) return json({ error: "actual_cost_micro_usd>=0 required" }, 400);
+    const actualCostMicroUsd = Math.trunc(rawCost);
+
+    const row = this.getResv(ref);
+    if (!row || row.released) {
+      const result = { ok: false, error: "no_active_reservation", ref };
+      this.recordOp(b.op_id, result);
+      return json(result, 404);
+    }
+    // settle_ai_cost is EXCLUSIVELY for AI-metered (allow_free:true)
+    // reservations — never campaign escrow, payouts, seller earnings, or any
+    // other transferable value.
+    if (row.allow_free !== 1) {
+      const result = { ok: false, error: "not_an_ai_reservation", ref };
+      this.recordOp(b.op_id, result);
+      return json(result, 409);
+    }
+
+    const beta = await this.betaFree();
+    const a = this.acct();
+    const debtBefore = a.debt_micro_usd;
+
+    if (beta) {
+      // Beta: no real charge (mirrors chargeAmount's own betaFreePremium
+      // short-circuit elsewhere), but still fold the accrual so the remainder
+      // stays meaningful the moment beta ends, and always release the
+      // reservation (terminal either way).
+      const settlement = computeAiSettlement({
+        debtMicroUsdBefore: debtBefore, actualCostMicroUsd, reservedTokens: Number.MAX_SAFE_INTEGER, spendableTokens: Number.MAX_SAFE_INTEGER,
+      });
+      this.sql.exec("UPDATE resv SET reserved=0, spent=spent+?1, released=1, updated_at=?2 WHERE ref=?3 AND released=0", 0, Date.now(), ref);
+      this.sql.exec("UPDATE acct SET debt_micro_usd=?1 WHERE k=1", settlement.debtMicroUsdAfter);
+      const result = {
+        ok: true, charged_tokens: 0, debt_micro_usd_before: debtBefore, debt_micro_usd_after: settlement.debtMicroUsdAfter,
+        // [AI-WALLET-SPENDABLE-2] `actualCostMicroUsd` arrives ALREADY marked up
+        // (cost x AI_MARKUP_BPS). Naming it provider_cost_micro_usd here would
+        // re-introduce the exact raw-vs-marked-up swap the settle path was fixed
+        // for. The RAW provider cost is reported by ai_billing.ts, not by the DO.
+        charged_cost_micro_usd: actualCostMicroUsd, unrecovered_micro_usd: 0,
+      };
+      this.recordOp(b.op_id, result);
+      await this.audit(uid, { type: "ai_settle", amount: 0, balance_after: this.bal().balance, app_name: b.app_name || "ai_billing", ref, beta: true }, b);
+      this.broadcast();
+      return json(result);
+    }
+
+    const cur = this.bal();
+    const spendableTokens = a.free + a.bonus + cur.balance;
+    const settlement = computeAiSettlement({
+      debtMicroUsdBefore: debtBefore, actualCostMicroUsd, reservedTokens: row.reserved, spendableTokens,
+    });
+    const chargedTokens = settlement.chargedTokens;
+
+    let freeUsed = 0, bonusUsed = 0, paidUsed = 0;
+    if (chargedTokens > 0) {
+      freeUsed = Math.min(a.free, chargedTokens);
+      bonusUsed = Math.min(a.bonus, chargedTokens - freeUsed);
+      paidUsed = chargedTokens - freeUsed - bonusUsed;
+      if (freeUsed > 0) this.sql.exec("UPDATE acct SET free=free-?1 WHERE k=1", freeUsed);
+      if (bonusUsed > 0) this.sql.exec("UPDATE acct SET bonus=bonus-?1 WHERE k=1", bonusUsed);
+      if (paidUsed > 0) this.setBal(Math.max(0, cur.balance - paidUsed), cur.held);
+    }
+    this.sql.exec("UPDATE acct SET debt_micro_usd=?1 WHERE k=1", settlement.debtMicroUsdAfter);
+    // Terminal for this ref either way — settle_ai_cost folds what used to be
+    // TWO separate walletOp calls (consume_reserved + release_reservation)
+    // into ONE DO round trip, closing the race window between them.
+    this.sql.exec(
+      "UPDATE resv SET reserved=0, spent=spent+?1, released=1, updated_at=?2 WHERE ref=?3 AND released=0",
+      Math.min(chargedTokens, row.reserved), Date.now(), ref,
+    );
+
+    const result = {
+      ok: true, charged_tokens: chargedTokens, debt_micro_usd_before: debtBefore, debt_micro_usd_after: settlement.debtMicroUsdAfter,
+      // [AI-WALLET-SPENDABLE-2] ALREADY marked-up — see the beta branch above.
+      charged_cost_micro_usd: actualCostMicroUsd, unrecovered_micro_usd: settlement.unrecoveredMicroUsd,
+      free_used: freeUsed, bonus_used: bonusUsed, paid_used: paidUsed,
+    };
+    this.recordOp(b.op_id, result);
+    await this.audit(uid, {
+      type: "ai_settle", amount: -chargedTokens, balance_after: this.snap().spendable, app_name: b.app_name || "ai_billing", ref,
+      unrecovered_micro_usd: settlement.unrecoveredMicroUsd, ...txMeta(b),
+    }, b);
+    // [AI-WALLET-SPENDABLE-2] Deliberately NOT emitting `ai_cost_unrecovered`
+    // here. ai_billing.recordUnrecoveredLoss() already fires that event with the
+    // RAW provider cost, the per-account day counters and the platform-alert
+    // threshold. A second emission from the DO would double-count every
+    // platform-loss dashboard, and the DO only has the marked-up figure.
+    // `unrecovered_micro_usd` is returned in `result` for the caller to report.
+    this.broadcast();
+    return json(result);
+  }
+
+  // [AI-WALLET-SPENDABLE-2] clear_ai_remainder({opId}): account-deletion
+  // cascade hook. Clears the sub-cent debt_micro_usd remainder and releases
+  // every outstanding AI-job reservation WITHOUT touching balance/free/bonus
+  // (unlike hardReset(), which is a full destructive reset) — see
+  // BUG-account-delete-not-cascading.md and the HANDOFF note to the
+  // coordinator for wiring this into consumers/src/deletion.ts's wallet step.
+  private async clearAiRemainder(uid: string, b: any): Promise<Response> {
+    const clearedDebtMicroUsd = this.acct().debt_micro_usd;
+    this.sql.exec("UPDATE acct SET debt_micro_usd=0 WHERE k=1");
+    const releasedRows = this.sql.exec(
+      "SELECT ref FROM resv WHERE released=0 AND reserved>0 AND ref LIKE 'aijob:%'",
+    ).toArray() as any[];
+    if (releasedRows.length) {
+      this.sql.exec("UPDATE resv SET reserved=0, released=1, updated_at=?1 WHERE released=0 AND ref LIKE 'aijob:%'", Date.now());
+    }
+    const result = { ok: true, cleared_debt_micro_usd: clearedDebtMicroUsd, released_ai_reservations: releasedRows.length };
+    this.recordOp(b.op_id, result);
+    await this.audit(uid, {
+      type: "adjustment", amount: 0, balance_after: this.bal().balance, app_name: "account_delete_ai_remainder_clear", ref: b.ref,
+      cleared_debt_micro_usd: clearedDebtMicroUsd, released_ai_reservations: releasedRows.length,
+    }, b);
+    this.broadcast();
+    return json(result);
+  }
+
+  // [AI-BILLING-CORE-1] finding 3, [AI-WALLET-SPENDABLE-2]: a crash between
   // reserveAiJob() and settleAiJob()/releaseAiJob() (worker/src/lib/ai_billing.ts)
-  // strands headroom forever — outstandingReservations() would keep counting a
-  // dead reservation against this uid's balance indefinitely. This lazily
-  // releases any reservation older than AIJOB_RESV_TTL_MS.
+  // would otherwise strand headroom forever — outstandingReservations() would
+  // keep counting a dead reservation against this uid's balance indefinitely.
+  // This lazily releases any reservation past its OWN bounded `expires_at`
+  // (the normal case now that reserve() always sets one for AI-job refs), and
+  // falls back to the legacy fixed AIJOB_RESV_TTL_MS age cutoff only for rows
+  // with no expires_at (expires_at=0 — pre-migration rows, or any caller that
+  // didn't supply one).
   //
   // SCOPE: STRICTLY `ref LIKE 'aijob:%'` (the exact prefix reserveAiJob() uses,
   // `aijob:<opId>`). Campaign escrow reservations ([AVA-CAMP-B1-WALLET], ref =
@@ -486,15 +844,16 @@ export class WalletDO {
   //
   // Idempotent by construction: a reaped row flips released=1, dropping it out
   // of the WHERE clause, so it can never be reaped twice — no op_id needed.
-  private readonly AIJOB_RESV_TTL_MS = 6 * 3_600_000; // 6 hours
+  private readonly AIJOB_RESV_TTL_MS = 6 * 3_600_000; // legacy fallback only (rows with no expires_at)
   private async reapStaleAiJobReservations(): Promise<number> {
-    const cutoff = Date.now() - this.AIJOB_RESV_TTL_MS;
+    const now = Date.now();
+    const legacyCutoff = now - this.AIJOB_RESV_TTL_MS;
     const rows = this.sql.exec(
-      "SELECT ref, reserved, uid FROM resv WHERE released=0 AND reserved>0 AND created_at<?1 AND ref LIKE 'aijob:%'",
-      cutoff,
+      "SELECT ref, reserved, uid FROM resv WHERE released=0 AND reserved>0 AND ref LIKE 'aijob:%' " +
+      "AND ((expires_at>0 AND expires_at<?1) OR (expires_at=0 AND created_at<?2))",
+      now, legacyCutoff,
     ).toArray() as any[];
     if (!rows.length) return 0;
-    const now = Date.now();
     for (const r of rows) {
       const ref = String(r.ref);
       const refunded = Number(r.reserved);
@@ -529,27 +888,32 @@ export class WalletDO {
   async alarm(): Promise<void> {
     const outboxFailed = await this.retryAuditOutbox();
     const released = this.releaseMatured();
-    // [AI-BILLING-CORE-1] finding 3: piggyback the aijob reaper on the DO's
-    // existing alarm (holds release / outbox retry) so a DO that never gets
-    // another reserve() call (e.g. the crash that stranded the reservation was
-    // the user's LAST-ever call) still eventually self-heals instead of relying
-    // solely on the next reserve() to trigger it.
+    // [AI-BILLING-CORE-1] finding 3, [AI-WALLET-SPENDABLE-2]: piggyback the
+    // aijob reaper on the DO's existing alarm (holds release / outbox retry /
+    // AI reservation expiry) so a DO that never gets another reserve() call
+    // (e.g. the crash that stranded the reservation was the user's LAST-ever
+    // call) still eventually self-heals instead of relying solely on the next
+    // reserve() to trigger it. This is the path the "expired AI reservation is
+    // released by a scheduled alarm with no further request" test exercises.
     await this.reapStaleAiJobReservations();
     if (released > 0) this.broadcast();
-    // Reschedule for the next pending hold, if any.
+    // Reschedule for the next pending hold or the next outstanding AI-job
+    // reservation expiry, whichever is sooner.
     const next = this.sql.exec("SELECT MIN(available_at) AS t FROM holds WHERE released=0").one() as any;
+    const nextResv = this.sql.exec(
+      "SELECT MIN(expires_at) AS t FROM resv WHERE released=0 AND reserved>0 AND ref LIKE 'aijob:%' AND expires_at>0",
+    ).one() as any;
     const pending = await this.state.storage.list({ prefix: "wallet:audit:", limit: 1 });
     // Keep the outbox alive even when there are no earning holds. A failed
     // queue send must never disappear merely because the DO had no other alarm.
-    if (next?.t || pending.size > 0) {
+    if (next?.t || nextResv?.t || pending.size > 0) {
       // Modest backoff while the outbox keeps failing (still bounded so a hold
       // release is never delayed past its own due time): 30s, 60s, 120s, ...
       // capped at 5 minutes. Resets to 30s the moment a retry round is clean.
       const backoffMs = outboxFailed ? Math.min(5 * 60_000, 30_000 * Math.pow(2, Math.min(4, await this.outboxFailStreak()))) : 30_000;
-      await this.state.storage.setAlarm(Math.min(
-        next?.t ? Number(next.t) : Date.now() + backoffMs,
-        Date.now() + backoffMs,
-      ));
+      const candidates = [next?.t ? Number(next.t) : null, nextResv?.t ? Number(nextResv.t) : null, Date.now() + backoffMs]
+        .filter((t): t is number => t != null);
+      await this.state.storage.setAlarm(Math.min(...candidates));
     }
   }
 

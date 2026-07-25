@@ -48,7 +48,59 @@ const MIN_TOPUP = 100, MAX_TOPUP = 50_000; // in TOKENS: $1 (= ₹100) .. $500
 function walletStub(env: Env, uid: string) {
   return env.WALLET_DO.get(env.WALLET_DO.idFromName(uid));
 }
-export async function walletOp(env: Env, uid: string, op: object): Promise<{ status: number; body: any }> {
+
+// ---------------------------------------------------------------------------
+// [AI-WALLET-SPENDABLE-2] Typed WalletDO operation union (Part VIII §52/§57 of
+// Specs/ROOT-CAUSE-REPORT-RECURRING-ISSUES-2026-07-25.md — "a required
+// allow_free param gives no compile-time safety... walletOp takes an untyped
+// object and the DO does body = await req.json() as any, so TypeScript
+// enforcement evaporates at the fetch boundary"). This union restores
+// COMPILE-TIME enforcement at every call site: `allow_free` is a REQUIRED,
+// NO-DEFAULT boolean on `reserve` and `consume_reserved` — every caller must
+// explicitly choose `true` (internal AI/feature cost — free/bonus/paid
+// headroom) or `false` (campaign escrow/payouts — real, withdrawable money,
+// paid-only headroom). do/wallet.ts ALSO rejects a missing/non-boolean
+// allow_free at RUNTIME with 400, because a stale/generated client can still
+// send an untyped body over the wire — this union is the compile-time half,
+// not a replacement for it.
+//
+// Every OTHER field is intentionally loose (`Record<string, unknown>`
+// intersected in via WalletOpBase) rather than exhaustively typed, because
+// dozens of call sites across worker/src (ledger.ts, referral.ts,
+// affiliate.ts, payout.ts, translate.ts, avavision.ts, avavoice.ts, …) build
+// these objects with call-site-specific extra fields (ledger rows, meta,
+// counterparty_uid, commission, …) that this change does not own or need to
+// re-type. The index signature deliberately disables TypeScript's excess-
+// property check for object literals so none of those call sites need to
+// change — ONLY the two fields that were the actual, provable bug
+// (allow_free on reserve/consume_reserved) are now enforced.
+// ---------------------------------------------------------------------------
+type WalletOpBase = Record<string, unknown> & { uid?: string; op_id?: string; app_name?: string; ref?: string };
+
+export type WalletOperation =
+  | (WalletOpBase & { op: "balance" })
+  | (WalletOpBase & { op: "credit"; amount: number })
+  | (WalletOpBase & { op: "promo_credit"; amount: number })
+  | (WalletOpBase & { op: "hard_reset"; amount?: number })
+  | (WalletOpBase & { op: "spend"; amount: number; allow_free?: boolean })
+  | (WalletOpBase & { op: "earn"; amount: number })
+  | (WalletOpBase & { op: "debit_hold"; amount: number })
+  | (WalletOpBase & { op: "release" })
+  // [AVA-CAMP-B1-WALLET] escrow ops — `allow_free` is MANDATORY on both
+  // `reserve` and `consume_reserved`, with NO DEFAULT.
+  | (WalletOpBase & { op: "reserve"; amount: number; ref: string; allow_free: boolean; expires_at?: number })
+  | (WalletOpBase & { op: "consume_reserved"; amount: number; ref: string; allow_free: boolean })
+  | (WalletOpBase & { op: "release_reservation"; ref: string })
+  // [AI-WALLET-SPENDABLE-2] atomic AI-accrual settlement — ONE DO round trip,
+  // never a Worker-side read-modify-write across two separate walletOp calls.
+  // Exclusively for allow_free:true (AI-metered) reservations — the DO
+  // refuses to settle a campaign/payout reservation this way.
+  | (WalletOpBase & { op: "settle_ai_cost"; ref: string; actual_cost_micro_usd: number; capability?: string })
+  // Account-deletion cascade hook — clears the sub-cent AI remainder and
+  // releases any stray AI-job reservations WITHOUT touching balance/free/bonus.
+  | (WalletOpBase & { op: "clear_ai_remainder" });
+
+export async function walletOp(env: Env, uid: string, op: WalletOperation): Promise<{ status: number; body: any }> {
   const r = await walletStub(env, uid).fetch("https://wallet/op", {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(op),
   });
@@ -92,14 +144,18 @@ export async function transferCoins(
 export async function walletReserve(
   env: Env, uid: string, amount: number, ref: string, opId: string,
 ): Promise<{ ok: boolean; status: number; reservedTotal?: number; available?: number; body: any }> {
-  const r = await walletOp(env, uid, { op: "reserve", uid, amount, ref, op_id: opId, app_name: "campaign" });
+  // [AI-WALLET-SPENDABLE-2] allow_free:false — campaign escrow is real,
+  // withdrawable money; it must only ever admit against PAID balance.
+  const r = await walletOp(env, uid, { op: "reserve", uid, amount, ref, allow_free: false, op_id: opId, app_name: "campaign" });
   return { ok: r.status === 200 && r.body?.ok === true, status: r.status, reservedTotal: r.body?.reservedTotal, available: r.body?.available, body: r.body };
 }
 
 export async function walletConsumeReserved(
   env: Env, uid: string, ref: string, amount: number, opId: string,
 ): Promise<{ ok: boolean; status: number; consumed?: number; reservedRemaining?: number; body: any }> {
-  const r = await walletOp(env, uid, { op: "consume_reserved", uid, ref, amount, op_id: opId, app_name: "campaign" });
+  // [AI-WALLET-SPENDABLE-2] allow_free:false — must match the policy this ref
+  // was reserved with (walletReserve above), or the DO refuses with 409.
+  const r = await walletOp(env, uid, { op: "consume_reserved", uid, ref, amount, allow_free: false, op_id: opId, app_name: "campaign" });
   return { ok: r.status === 200 && r.body?.ok === true, status: r.status, consumed: r.body?.consumed, reservedRemaining: r.body?.reservedRemaining, body: r.body };
 }
 

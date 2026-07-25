@@ -10,37 +10,55 @@
 // before it is ever billable.
 //
 // STORAGE DECISION — reservation admission reuses the WalletDO's EXISTING
-// generic escrow primitives (`reserve` / `consume_reserved` / `release_reservation`,
-// worker/src/do/wallet.ts, tag [AVA-CAMP-B1-WALLET]), keyed by ref =
-// `aijob:<opId>`. That mechanism already gives exactly what H3 asks for:
-// atomic per-uid admission (balance >= amount + all other outstanding
-// reservations), op_id-deduped idempotency, and a real permanent debit only at
-// consume time with the untouched remainder released back to headroom. Reusing
-// it means this file makes ZERO changes to wallet.ts — the reservation layer is
-// additive by construction, not by promise. (worker/src/feature_pricing.ts
-// already leans on the same three ops for its own reserveAiUsage/settleAiUsage/
-// releaseAiUsage — this file is a parallel, flag-gated, richer-catalog contract
-// for the ChatAVA + util lanes; see the doc comment added to feature_pricing.ts.)
+// generic escrow primitives (`reserve` / `consume_reserved` / `release_reservation`
+// / `settle_ai_cost`, worker/src/do/wallet.ts, tag [AVA-CAMP-B1-WALLET] /
+// [AI-WALLET-SPENDABLE-2]), keyed by ref = `aijob:<opId>`. That mechanism
+// already gives exactly what H3 asks for: atomic per-uid admission
+// (spendable/paid headroom >= amount + all other outstanding reservations,
+// §58's conservative cross-policy rule), op_id-deduped idempotency, and a
+// real permanent debit only at settle time with the untouched remainder
+// released back to headroom. Reusing it means this file makes NO schema
+// changes to wallet.ts's core primitives — it composes on top.
+// (worker/src/feature_pricing.ts leans on the SAME primitives for its own,
+// now-deprecated, reserveAiUsage/settleAiUsage/releaseAiUsage — see the doc
+// comment there.)
 //
 // The one thing the generic WalletDO resv table does NOT carry is AI-specific
 // billing detail (model requested/actual, usage breakdown, provider cost,
-// markup, terminal status) — that is what the durable D1 ledger
-// (worker/migrations/2026-07-24-ai-billing-ledger.sql, table
-// `ai_billing_ledger`, DB_WALLET binding) is for. It is written/updated by
-// op_id (PK), independent of and reconcilable against WalletDO's own audit
-// trail (wallet_ledger / wallet_transactions).
+// markup, terminal status, unrecovered loss, cost provenance) — that is what
+// the durable D1 ledger (worker/migrations/2026-07-24-ai-billing-ledger.sql +
+// 2026-07-25-ai-billing-ledger-unrecovered.sql, table `ai_billing_ledger`,
+// DB_WALLET binding) is for. It is written/updated by op_id (PK), independent
+// of and reconcilable against WalletDO's own audit trail (wallet_ledger /
+// wallet_transactions).
 //
 // MATH — all money math is done in integer MICRO-USD (USD * 1e6) to avoid
 // floating-point rounding drift. See costMicroUsd / userChargeMicroUsd /
 // microUsdToTokens below for the three pure steps of §H2's formula:
 //   provider_cost_usd = tokens * price_per_M / 1e6
-//   user_cost_usd      = provider_cost_usd * 1.30            (ceil)
+//   user_cost_usd      = provider_cost_usd * 1.20            (ceil)
 //   wallet_debit_tokens = user_cost_usd * 100 tokens/USD      (ceil)
+// [AI-WALLET-SPENDABLE-2] (2026-07-25) the RESERVE-time estimate above still
+// uses this per-job ceil-to-whole-token pipeline (it must be conservative).
+// The SETTLE-time charge no longer ceils per job — it accrues into
+// WalletDO's acct.debt_micro_usd via the atomic `settle_ai_cost` op
+// (do/wallet.ts, computeAiSettlement()) so a run of sub-cent jobs is billed
+// at its correct CUMULATIVE price instead of each one rounding up alone.
 //
 // SAFETY — Guardian/moderation/safety-classifier capabilities NEVER go through
 // this contract; reserveAiJob short-circuits to an unmetered success for them
 // (isSafetyCapability), so a safety scan can never be blocked or billed by a
 // wallet balance (H4).
+//
+// [AI-WALLET-SPENDABLE-2] FREE CAPABILITIES — `chat_ava` (Ask Ava) and
+// `chat_thread` (#ava/@ava in Messenger) are FREE TEXT CHAT, never metered,
+// REGARDLESS of `aiWalletMeteringEnabled` (Part I §2 / Part VIII §52/§65 of
+// Specs/ROOT-CAUSE-REPORT-RECURRING-ISSUES-2026-07-25.md — this is the exact
+// bug that made every non-paying user's AI chat return a silent 402 rendered
+// as "Sorry, I could not find an answer"). isFreeCapability() short-circuits
+// BOTH reserveAiJob() and settleAiJob() before any config read, catalog
+// lookup, or wallet call — a free capability must NEVER consult the price
+// catalog and must NEVER touch the wallet.
 import type { Env } from "../types";
 import { readConfig } from "../routes/config";
 import { walletOp } from "../routes/wallet";
@@ -57,8 +75,10 @@ export interface ModelRate {
   inPerM: number;
   /** USD per 1,000,000 output tokens, expressed in MICRO-USD. */
   outPerM: number;
-  /** USD per generated image (image-generation modality), in MICRO-USD. Unset = modality not priced yet. */
+  /** USD per generated image (image-generation modality), in MICRO-USD. Unset = modality not priced yet. Prefer `imageOutputPerM` for providers (OpenRouter) that bill generated images as image_output TOKENS rather than a flat per-image price. */
   imageUnitMicroUsd?: number;
+  /** USD per 1,000,000 "image_output" tokens (OpenRouter's generated-image billing unit — varies by resolution/provider, NOT a flat per-image constant), in MICRO-USD. */
+  imageOutputPerM?: number;
   /** USD per OCR'd page (document/OCR modality), in MICRO-USD. */
   ocrPageMicroUsd?: number;
   /** USD per second of audio/video processed, in MICRO-USD. */
@@ -106,12 +126,49 @@ export const AI_PRICE_CATALOG: Record<string, ModelRate> = {
     inPerM: Math.round(0.7546 * USD), outPerM: Math.round(2.372 * USD), effectiveDate: "2026-07-24",
     todoVerifyPrice: true, source: "https://openrouter.ai/z-ai/glm-5.2 (promo price — re-verify after the promo window ends)",
   },
+  // [AI-WALLET-SPENDABLE-2 / AI-PRICE-CATALOG-1] Verified 2026-07-25 — added in
+  // the SAME commit that routes to it (Part III §59a: routing a model before
+  // cataloguing it bills at the ~100x-expensive AI_DEFAULT_RATE fallback).
+  "deepseek/deepseek-v4-flash": {
+    inPerM: Math.round(0.0938 * USD), outPerM: Math.round(0.1876 * USD), effectiveDate: "2026-07-25",
+    source: "verified 2026-07-25 for [AI-WALLET-SPENDABLE-2] catalog prerequisite (free-chat lane candidate, Part II §11a)",
+  },
+  "google/gemma-3-12b-it": {
+    inPerM: Math.round(0.05 * USD), outPerM: Math.round(0.15 * USD), effectiveDate: "2026-07-25",
+    source: "verified 2026-07-25 for [AI-WALLET-SPENDABLE-2] catalog prerequisite (vision-capable lane candidate)",
+  },
+  "google/gemma-3-4b-it": {
+    inPerM: Math.round(0.05 * USD), outPerM: Math.round(0.10 * USD), effectiveDate: "2026-07-25",
+    source: "verified 2026-07-25 for [AI-WALLET-SPENDABLE-2] catalog prerequisite",
+  },
+  "mistralai/mistral-nemo": {
+    inPerM: Math.round(0.019 * USD), outPerM: Math.round(0.030 * USD), effectiveDate: "2026-07-25",
+    source: "verified 2026-07-25 for [AI-WALLET-SPENDABLE-2] catalog prerequisite",
+  },
+  // Image generation — OpenRouter bills generated images as `image_output`
+  // TOKENS, not a flat per-image constant (see UsageUnits.imageOutputTokens /
+  // imageOutputPerM below); the count MUST be read from the provider's own
+  // reported usage at settle time, never hardcoded tokens-per-image.
+  "openai/gpt-5-image-mini": {
+    inPerM: Math.round(2.50 * USD), outPerM: Math.round(2.00 * USD), imageOutputPerM: Math.round(8.00 * USD),
+    effectiveDate: "2026-07-25", source: "verified 2026-07-25 for [AI-WALLET-SPENDABLE-2] catalog prerequisite (image-generation lane candidate)",
+  },
 };
 
-/** Conservative default for any model not in the catalog — deliberately expensive so an unpriced model never under-charges. */
+/**
+ * Conservative default for any model not in the catalog — deliberately
+ * expensive so an unpriced model's RESERVE never under-reserves headroom.
+ * [AI-WALLET-SPENDABLE-2 / §65] This rate MUST NEVER be used to actually BILL
+ * a user (that would be the exact ~100x overcharge Part III §59a warns
+ * about). It is the reserve-time estimator only. The CHARGE always prefers
+ * provider-reported `usage.cost` (ground truth); when neither that nor a
+ * catalog entry exists at settle time, the result is delivered free (charge
+ * zero) and `AI_PRICE_UNKNOWN` is alerted as platform loss — see
+ * settleAiJob() below. AI_DEFAULT_RATE is never read on that path.
+ */
 export const AI_DEFAULT_RATE: ModelRate = {
   inPerM: 5 * USD, outPerM: 15 * USD, effectiveDate: "2026-07-24",
-  source: "conservative default (AI_DEFAULT_RATE, worker/src/lib/ai_billing.ts)",
+  source: "conservative RESERVE-ONLY default (AI_DEFAULT_RATE, worker/src/lib/ai_billing.ts) — never used to settle a charge",
 };
 
 export function rateFor(model: string): ModelRate {
@@ -128,7 +185,13 @@ export function rateFor(model: string): ModelRate {
 export interface UsageUnits {
   inputTokens?: number;
   outputTokens?: number;
-  images?: number;    // image-generation units
+  images?: number;    // image-generation units (COUNT of images — only used to derive a RESERVE ceiling; never the charge)
+  /** [AI-WALLET-SPENDABLE-2] OpenRouter-reported generated-image "image_output"
+   * tokens — the REAL billing unit for image generation on that provider.
+   * Read this straight off the provider's own usage payload at settle time;
+   * do NOT hardcode a tokens-per-image constant (it varies by resolution and
+   * provider). Priced via ModelRate.imageOutputPerM. */
+  imageOutputTokens?: number;
   ocrPages?: number;   // OCR page units
   avSeconds?: number;  // audio/video seconds
 }
@@ -139,21 +202,23 @@ export function costMicroUsd(model: string, usage: UsageUnits): number {
   const inTok = Math.max(0, Math.trunc(usage.inputTokens || 0));
   const outTok = Math.max(0, Math.trunc(usage.outputTokens || 0));
   const images = Math.max(0, Math.trunc(usage.images || 0));
+  const imageOutputTokens = Math.max(0, Math.trunc(usage.imageOutputTokens || 0));
   const ocrPages = Math.max(0, Math.trunc(usage.ocrPages || 0));
   const avSeconds = Math.max(0, Math.trunc(usage.avSeconds || 0));
   let total = 0;
   total += Math.floor((inTok * r.inPerM) / 1_000_000);
   total += Math.floor((outTok * r.outPerM) / 1_000_000);
-  if (images && r.imageUnitMicroUsd) total += images * r.imageUnitMicroUsd;
+  if (imageOutputTokens && r.imageOutputPerM) total += Math.floor((imageOutputTokens * r.imageOutputPerM) / 1_000_000);
+  else if (images && r.imageUnitMicroUsd) total += images * r.imageUnitMicroUsd; // legacy flat-per-image fallback for providers that DO bill a flat unit
   if (ocrPages && r.ocrPageMicroUsd) total += ocrPages * r.ocrPageMicroUsd;
   if (avSeconds && r.avSecondMicroUsd) total += avSeconds * r.avSecondMicroUsd;
   return total;
 }
 
-/** AI_MARKUP as basis-points-of-percent: 130 == 1.30x == 30% markup. Stored as an integer so ledger rows never carry a float. */
-export const AI_MARKUP_BPS = 130;
+/** AI_MARKUP as basis-points-of-percent: 120 == 1.20x == 20% markup (owner pricing decision, Part VIII §61 — usage-priced AI provider work is charged at actual cost + 20%; FEATURE_COSTS fixed retail prices are unaffected). Stored as an integer so ledger rows never carry a float. */
+export const AI_MARKUP_BPS = 120;
 
-/** user_cost_usd_micro = ceil(provider_cost_usd_micro * 1.30). Integer math: *130, /100, ceil. */
+/** user_cost_usd_micro = ceil(provider_cost_usd_micro * 1.20). Integer math: *120, /100, ceil. */
 export function userChargeMicroUsd(providerCostMicroUsd: number): number {
   const p = Math.max(0, Math.trunc(providerCostMicroUsd));
   return Math.ceil((p * AI_MARKUP_BPS) / 100);
@@ -162,7 +227,10 @@ export function userChargeMicroUsd(providerCostMicroUsd: number): number {
 /** 1 USD = 100 wallet tokens (matches wallet.ts TOKENS_PER_USD — canonical, site-wide). */
 export const AI_TOKENS_PER_USD = 100;
 
-/** wallet_debit_tokens = ceil(user_cost_usd_micro * 100 / 1e6). Never under-recovers due to fractional cents. */
+/** 1 wallet token == $0.01 == 10,000 micro-USD. Mirrors do/wallet.ts's TOKEN_MICRO_USD (defined independently there — the DO module intentionally does not import this file). */
+export const TOKEN_MICRO_USD = 1_000_000 / AI_TOKENS_PER_USD;
+
+/** wallet_debit_tokens = ceil(user_cost_usd_micro * 100 / 1e6). Never under-recovers due to fractional cents. Used for the RESERVE-time whole-token estimate; the SETTLE-time charge instead accrues via WalletDO's settle_ai_cost (see reserveAiJob/settleAiJob below). */
 export function microUsdToTokens(userCostMicroUsd: number): number {
   const c = Math.max(0, Math.trunc(userCostMicroUsd));
   return Math.max(0, Math.ceil((c * AI_TOKENS_PER_USD) / 1_000_000));
@@ -174,14 +242,14 @@ export interface CostEstimate {
   tokens: number;
 }
 
-/** Full estimate pipeline: usage -> provider cost -> marked-up user charge -> wallet tokens. Pure. Used for BOTH the worst-case reserve estimate and the catalog-derived settle fallback. */
+/** Full estimate pipeline: usage -> provider cost -> marked-up user charge -> wallet tokens. Pure. Used for the worst-case RESERVE estimate. */
 export function estimateTokens(model: string, usage: UsageUnits): CostEstimate {
   const providerCostMicroUsd = costMicroUsd(model, usage);
   const userCostMicroUsd = userChargeMicroUsd(providerCostMicroUsd);
   return { providerCostMicroUsd, userChargeMicroUsd: userCostMicroUsd, tokens: microUsdToTokens(userCostMicroUsd) };
 }
 
-/** Settlement math: prefer the provider's OWN reported cost (OpenRouter usage.cost, in micro-USD) when present — that is ground truth over our catalog estimate (§H3 step 6). Falls back to the catalog-computed cost from actual usage when the provider didn't report one. */
+/** Settlement math: prefer the provider's OWN reported cost (OpenRouter usage.cost, in micro-USD) when present — that is ground truth over our catalog estimate (§H3 step 6 / §65). Falls back to the catalog-computed cost from actual usage when the provider didn't report one. */
 export function settleTokens(model: string, usage: UsageUnits, providerCostUsdMicroOverride?: number): CostEstimate {
   const hasOverride = Number.isFinite(providerCostUsdMicroOverride) && (providerCostUsdMicroOverride as number) >= 0;
   const providerCostMicroUsd = hasOverride ? Math.trunc(providerCostUsdMicroOverride as number) : costMicroUsd(model, usage);
@@ -195,7 +263,8 @@ export function estimateInputTokensFromChars(promptChars: number): number {
 }
 
 // ---------------------------------------------------------------------------
-// Capability classification — safety/guardian NEVER metered (H4/H6).
+// Capability classification — safety/guardian NEVER metered (H4); free-text
+// chat NEVER metered (Part I §2 / Part VIII §52/§65, [AI-WALLET-SPENDABLE-2]).
 // ---------------------------------------------------------------------------
 
 export type AiModality = "text" | "image" | "audio" | "video" | "ocr";
@@ -207,11 +276,103 @@ export function isSafetyCapability(capability: string): boolean {
   return SAFETY_CAPABILITIES.has(String(capability || "").trim().toLowerCase());
 }
 
+// [AI-WALLET-SPENDABLE-2] SHARED CONTRACT — worker/src/routes/config.ts
+// imports isFreeCapability from here (`import { isFreeCapability } from
+// "../lib/ai_billing"`). Do not rename FREE_CAPABILITIES / isFreeCapability.
+//
+// `chat_ava` = Ask Ava / AvaBrain (/api/ava/gemini). `chat_thread` = the
+// #ava/@ava in-Messenger-thread agent. BOTH are free, plain-text chat lanes —
+// never metered, REGARDLESS of `aiWalletMeteringEnabled`. This is the exact
+// short-circuit that closes Part I §2's bug: a bonus-only wallet's `reserve()`
+// used to read paid `balance` only, so EVERY free-tier chat message 402'd.
+// The real, permanent fix is admitting on spendable funds (do/wallet.ts) —
+// but free text chat should never even ATTEMPT a reservation, because it was
+// never meant to cost the user anything in the first place.
+const FREE_CAPABILITIES_SET = new Set(["chat_ava", "chat_thread"]);
+export const FREE_CAPABILITIES: ReadonlySet<string> = FREE_CAPABILITIES_SET;
+
+/** True for a capability that is free, plain-text chat and must NEVER touch pricing or the wallet — checked BEFORE isSafetyCapability's sibling checks in both reserveAiJob() and settleAiJob(), and before any config read, catalog lookup, or walletOp call. */
+export function isFreeCapability(capability: string): boolean {
+  return FREE_CAPABILITIES_SET.has(String(capability || "").trim().toLowerCase());
+}
+
 async function meteringOn(env: Env): Promise<boolean> {
   // Fail CLOSED into "not metered" (dark/no-op) on a config read error — a
   // billing outage must never turn into an unexpected wallet debit, and it
   // must also never turn into a false AI_INSUFFICIENT_TOKENS block.
   try { return (await readConfig(env)).aiWalletMeteringEnabled === true; } catch { return false; }
+}
+
+// ---------------------------------------------------------------------------
+// [§66] Unrecovered-cost controls — per-account daily cap + platform-wide
+// daily alert. STORE CHOICE: KV (env.TOKENS), mirroring lib/ai_quota.ts's own
+// daily-counter pattern — a running daily total doesn't need D1's durability
+// or atomicity (a rare double-count under concurrent settles always errs in
+// the PLATFORM's favour, i.e. slightly early blocking, never late), so KV's
+// eventual consistency is fine and needs no migration.
+// ---------------------------------------------------------------------------
+
+function utcDayKey(now = Date.now()): string {
+  return new Date(now).toISOString().slice(0, 10);
+}
+function unrecoveredAcctKey(uid: string, day = utcDayKey()): string {
+  return `ai_unrecovered:${uid}:${day}`;
+}
+function unrecoveredPlatformKey(day = utcDayKey()): string {
+  return `ai_unrecovered:platform:${day}`;
+}
+const UNRECOVERED_TTL_SECONDS = 2 * 24 * 60 * 60; // survives the UTC day boundary, then self-evicts
+
+/** [§66] `unrecoveredDailyCapMicroUsd` — declared by routes/config.ts (owned by a sibling change in this same wave; see this file's HANDOFF note to the coordinator). 0/absent = no cap. Fails OPEN (cap disabled) on a config-read error — never block a job over an unrelated flag-read outage. */
+async function unrecoveredCapMicroUsd(env: Env): Promise<number> {
+  try { return Math.max(0, Number((await readConfig(env)).unrecoveredDailyCapMicroUsd ?? 0)); } catch { return 0; }
+}
+/** [§66] `unrecoveredPlatformAlertMicroUsd` — declared on `PlatformConfig` (routes/config.ts, gate finding B3 fix). 0/absent = alerting disabled. Fails OPEN (alert disabled) on a config-read error — never let a telemetry outage crash job settlement. */
+async function unrecoveredPlatformAlertMicroUsd(env: Env): Promise<number> {
+  try { return Math.max(0, Number((await readConfig(env)).unrecoveredPlatformAlertMicroUsd ?? 0)); } catch { return 0; }
+}
+
+async function unrecoveredUsedTodayMicroUsd(env: Env, uid: string): Promise<number> {
+  try {
+    const raw = await env.TOKENS.get(unrecoveredAcctKey(uid));
+    return raw ? Math.max(0, parseInt(raw, 10) || 0) : 0;
+  } catch { return 0; }
+}
+
+/**
+ * Best-effort: record a platform-loss event against BOTH the per-account and
+ * platform-wide UTC-day counters, and page/alert once the platform threshold
+ * is crossed. Never throws — a telemetry/KV failure must never unwind an
+ * already-completed, already-settled AI job.
+ */
+async function recordUnrecoveredLoss(
+  env: Env, uid: string, lossMicroUsd: number, ctx: { capability: string; model: string; costSource: string },
+): Promise<void> {
+  try {
+    const day = utcDayKey();
+    const acctKey = unrecoveredAcctKey(uid, day);
+    const platKey = unrecoveredPlatformKey(day);
+    const [acctRaw, platRaw] = await Promise.all([env.TOKENS.get(acctKey), env.TOKENS.get(platKey)]);
+    const acctTotal = (acctRaw ? Math.max(0, parseInt(acctRaw, 10) || 0) : 0) + lossMicroUsd;
+    const platTotal = (platRaw ? Math.max(0, parseInt(platRaw, 10) || 0) : 0) + lossMicroUsd;
+    await Promise.all([
+      env.TOKENS.put(acctKey, String(acctTotal), { expirationTtl: UNRECOVERED_TTL_SECONDS }),
+      env.TOKENS.put(platKey, String(platTotal), { expirationTtl: UNRECOVERED_TTL_SECONDS }),
+    ]);
+    void track(env, uid, "ai_cost_unrecovered", "ai_billing", {
+      loss_micro_usd: lossMicroUsd, account_total_today_micro_usd: acctTotal, platform_total_today_micro_usd: platTotal,
+      capability: ctx.capability, model: ctx.model, cost_source: ctx.costSource,
+    });
+    const alertThreshold = await unrecoveredPlatformAlertMicroUsd(env);
+    if (alertThreshold > 0 && platTotal >= alertThreshold && platTotal - lossMicroUsd < alertThreshold) {
+      // Edge-triggered: page once per UTC day (the moment THIS event crosses
+      // the threshold), not on every subsequent loss for the rest of the day.
+      void trackException(env, new Error("AI platform unrecovered-cost daily alert threshold crossed"), {
+        uid: "platform", route: "ai_billing.recordUnrecoveredLoss", handled: true,
+        extra: { subsystem: "ai_unrecovered_platform_alert", platform_total_today_micro_usd: platTotal, alert_threshold_micro_usd: alertThreshold, day },
+      });
+    }
+  } catch { /* best-effort — never throws out of a completed settle */ }
 }
 
 // ---------------------------------------------------------------------------
@@ -221,7 +382,7 @@ async function meteringOn(env: Env): Promise<boolean> {
 export interface ReserveAiJobInput {
   uid: string;
   opId: string;
-  capability: string;   // 'chat_ava' | 'util' | ... (never a safety capability — see isSafetyCapability)
+  capability: string;   // 'chat_ava' | 'chat_thread' | 'util' | ... (never a safety capability — see isSafetyCapability; chat_ava/chat_thread are FREE — see isFreeCapability)
   modality: AiModality;
   model: string;
   maxInputTokens: number;
@@ -247,11 +408,17 @@ function jobTags(input: ReserveAiJobInput, extra: Record<string, unknown>): Reco
   };
 }
 
+type CostSource = "provider" | "catalog" | "unknown" | "free" | "n/a";
+
 interface LedgerRowInput {
   opId: string; uid: string; capability: string; modality: string;
   modelRequested: string; modelActual: string | null; usage: UsageUnits | null;
   providerCostMicro: number | null; markupRate: number; userChargeTokens: number;
   status: "reserved" | "settled" | "released" | "failed_billed" | "failed_unbilled";
+  /** [AI-WALLET-SPENDABLE-2] Platform loss recorded on this row, if any — see worker/migrations/2026-07-25-ai-billing-ledger-unrecovered.sql. */
+  unrecoveredMicroUsd?: number;
+  /** [AI-WALLET-SPENDABLE-2 / §65] Where the CHARGED amount actually came from. */
+  costSource?: CostSource;
 }
 
 /** Durable D1 write, keyed by op_id (PK) — never the balance authority, only the AI-specific billing detail + terminal status for support/reconciliation. Best-effort: a ledger write failure must never unwind an already-applied wallet mutation, so this only ever logs an exception, never throws. */
@@ -260,16 +427,17 @@ async function writeLedgerRow(env: Env, row: LedgerRowInput): Promise<void> {
   try {
     await env.DB_WALLET.prepare(
       `INSERT INTO ai_billing_ledger
-         (op_id, uid, capability, modality, model_requested, model_actual, usage_json, provider_cost_micro, markup_rate, user_charge_tokens, status, created_at, updated_at)
-       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?12)
+         (op_id, uid, capability, modality, model_requested, model_actual, usage_json, provider_cost_micro, markup_rate, user_charge_tokens, status, unrecovered_micro_usd, cost_source, created_at, updated_at)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?14)
        ON CONFLICT(op_id) DO UPDATE SET
          model_actual=excluded.model_actual, usage_json=excluded.usage_json,
          provider_cost_micro=excluded.provider_cost_micro, user_charge_tokens=excluded.user_charge_tokens,
-         status=excluded.status, updated_at=excluded.updated_at`,
+         status=excluded.status, unrecovered_micro_usd=excluded.unrecovered_micro_usd,
+         cost_source=excluded.cost_source, updated_at=excluded.updated_at`,
     ).bind(
       row.opId, row.uid, row.capability, row.modality, row.modelRequested, row.modelActual,
       row.usage ? JSON.stringify(row.usage) : null, row.providerCostMicro, row.markupRate,
-      row.userChargeTokens, row.status, now,
+      row.userChargeTokens, row.status, Math.max(0, Math.trunc(row.unrecoveredMicroUsd || 0)), row.costSource || "n/a", now,
     ).run();
   } catch (e) {
     void trackException(env, e, {
@@ -279,15 +447,49 @@ async function writeLedgerRow(env: Env, row: LedgerRowInput): Promise<void> {
   }
 }
 
+/** [§66] Deliberately conservative RESERVE-time ceiling for image-generation
+ * jobs, in "image_output" tokens per image — OpenRouter does not expose
+ * tokens-per-image ahead of time (it varies by resolution and provider), so
+ * this is an intentional OVER-reserve: the unused headroom is refunded
+ * automatically at settle, since settle_ai_cost only ever consumes what
+ * actually turns out to be due from the provider's REAL reported usage.
+ * Re-tune from empirical P99 once measured; until then, erring generous is
+ * the safe direction — under-reserving and eating the gap is the failure
+ * mode §66 exists to close. */
+const IMAGE_OUTPUT_TOKEN_RESERVE_CEILING = 4096;
+
+/** [§55] Reservation TTL bounds. Chat/util-scale jobs resolve within one HTTP
+ * request, so a short TTL bounds a crashed Worker's headroom lockout to
+ * minutes, not the old blanket 6-hour window (§59c — a user WITH tokens
+ * getting 402s for up to 6 hours because reserve() scheduled no alarm at
+ * all). Media jobs (image/audio/video/ocr) get a longer ceiling for their
+ * declared job deadline + settlement grace, capped at 60 minutes, until
+ * per-job deadlines are threaded through from the caller. */
+const CHAT_RESERVATION_TTL_MS = 5 * 60_000;       // 5 minutes
+const MEDIA_JOB_RESERVATION_TTL_MS = 60 * 60_000; // 60 minutes (ceiling)
+function reservationTtlMsFor(modality: AiModality): number {
+  return modality === "text" ? CHAT_RESERVATION_TTL_MS : MEDIA_JOB_RESERVATION_TTL_MS;
+}
+
+/** Best-effort read of this account's current sub-cent debt remainder (do/wallet.ts acct.debt_micro_usd), via the `balance` op. Never throws; 0 on any failure. */
+async function currentDebtMicroUsd(env: Env, uid: string): Promise<number> {
+  try {
+    const r = await walletOp(env, uid, { op: "balance", uid });
+    return Math.max(0, Number(r.body?.debt_micro_usd ?? 0));
+  } catch { return 0; }
+}
+
 /**
  * Reserve the worst-case wallet amount for one AI job, atomically, before any
  * provider call is made (§H3 steps 1-4). Idempotent on opId: a re-reserve with
  * the same opId replays the WalletDO's stored result for `${opId}:reserve`
  * rather than reserving twice (WalletDO `ops` table dedupe).
  *
- * When `aiWalletMeteringEnabled` is OFF, or `capability` is a safety
- * capability, this ALWAYS returns {ok:true, metered:false, reserved_tokens:0}
- * — the caller should proceed to the provider call unconditionally.
+ * When `aiWalletMeteringEnabled` is OFF, `capability` is a safety capability,
+ * or `capability` is a FREE capability (chat_ava/chat_thread — regardless of
+ * the metering flag), this ALWAYS returns {ok:true, metered:false,
+ * reserved_tokens:0} — the caller should proceed to the provider call
+ * unconditionally, with ZERO wallet touches.
  */
 export async function reserveAiJob(env: Env, input: ReserveAiJobInput): Promise<ReserveAiJobResult> {
   const ref = `aijob:${input.opId}`;
@@ -297,6 +499,14 @@ export async function reserveAiJob(env: Env, input: ReserveAiJobInput): Promise<
   if (isSafetyCapability(input.capability)) {
     return { ok: true, metered: false, reserved_tokens: 0, ref };
   }
+  // [AI-WALLET-SPENDABLE-2 / §65 / §67a] Free capabilities NEVER touch
+  // pricing, metering config, or the wallet — regardless of
+  // aiWalletMeteringEnabled. Checked BEFORE meteringOn() so a config-read
+  // outage can never turn free chat into a blocked request.
+  if (isFreeCapability(input.capability)) {
+    void track(env, input.uid, "ai_job_requested", "ai_billing", jobTags(input, { metered: false, free_capability: true }));
+    return { ok: true, metered: false, reserved_tokens: 0, ref };
+  }
 
   const metered = await meteringOn(env);
   void track(env, input.uid, "ai_job_requested", "ai_billing", jobTags(input, { metered }));
@@ -304,16 +514,49 @@ export async function reserveAiJob(env: Env, input: ReserveAiJobInput): Promise<
     return { ok: true, metered: false, reserved_tokens: 0, ref };
   }
 
+  // [§66] Per-account unrecovered-cost circuit breaker — a metered job is
+  // refused with a DISTINCT reason (never a wallet-balance 402) once this
+  // account's UTC-day platform losses cross the configured cap. Free text
+  // remains available regardless (handled above, before this check ever
+  // runs). Fails OPEN on a config-read error.
+  const capMicroUsd = await unrecoveredCapMicroUsd(env);
+  if (capMicroUsd > 0) {
+    const usedToday = await unrecoveredUsedTodayMicroUsd(env, input.uid);
+    if (usedToday >= capMicroUsd) {
+      void track(env, input.uid, "ai_job_blocked_unrecovered_limit", "ai_billing", jobTags(input, { used_today_micro_usd: usedToday, cap_micro_usd: capMicroUsd }));
+      return { ok: false, metered: true, reserved_tokens: 0, ref, error: "AI_UNRECOVERED_LIMIT" };
+    }
+  }
+
   const usage: UsageUnits = {
     inputTokens: Math.max(0, Math.trunc(input.maxInputTokens || 0)),
     outputTokens: Math.max(0, Math.trunc(input.maxOutputTokens || 0)),
-    images: input.units?.images, ocrPages: input.units?.ocrPages, avSeconds: input.units?.avSeconds,
+    ocrPages: input.units?.ocrPages, avSeconds: input.units?.avSeconds,
   };
+  // [§66] Image generation is the LEAST trustworthy worst-case (OpenRouter
+  // doesn't expose tokens-per-image ahead of time) — over-reserve
+  // deliberately via the conservative ceiling rather than under-reserve and
+  // eat the gap. The unused headroom is refunded automatically at settle.
+  if (input.modality === "image" && (input.units?.images ?? 0) > 0) {
+    usage.imageOutputTokens = (input.units?.images ?? 0) * IMAGE_OUTPUT_TOKEN_RESERVE_CEILING;
+  } else {
+    usage.images = input.units?.images;
+  }
   const est = estimateTokens(input.model, usage);
-  const amount = Math.max(1, est.tokens);
+
+  // [§59a/§60b] Reserve whole-token headroom from EXISTING debt + this job's
+  // own worst-case marked-up estimate, not just this job's estimate alone — a
+  // string of near-zero-cost jobs can leave up to 1 token of live debt
+  // outstanding, and the NEXT reservation must have enough headroom to cover
+  // both, or settle_ai_cost will under-reserve-driven under-collect it as
+  // unrecovered platform loss for no reason.
+  const debtMicroUsd = await currentDebtMicroUsd(env, input.uid);
+  const amount = Math.max(1, Math.ceil((debtMicroUsd + est.userChargeMicroUsd) / TOKEN_MICRO_USD));
+  const expiresAt = Date.now() + reservationTtlMsFor(input.modality);
 
   const reserved = await walletOp(env, input.uid, {
-    op: "reserve", uid: input.uid, amount, ref, op_id: `${input.opId}:reserve`, app_name: `ai_${input.capability}`,
+    op: "reserve", uid: input.uid, amount, ref, allow_free: true, op_id: `${input.opId}:reserve`,
+    app_name: `ai_${input.capability}`, expires_at: expiresAt,
   }).catch((e) => {
     void trackException(env, e, { uid: input.uid, route: "ai_billing.reserveAiJob", method: "walletOp.reserve", handled: true, extra: { op_id: input.opId, capability: input.capability } });
     return null;
@@ -331,7 +574,7 @@ export async function reserveAiJob(env: Env, input: ReserveAiJobInput): Promise<
   await writeLedgerRow(env, {
     opId: input.opId, uid: input.uid, capability: input.capability, modality: input.modality,
     modelRequested: input.model, modelActual: null, usage, providerCostMicro: null,
-    markupRate: AI_MARKUP_BPS, userChargeTokens: 0, status: "reserved",
+    markupRate: AI_MARKUP_BPS, userChargeTokens: 0, status: "reserved", costSource: "n/a",
   });
   return { ok: true, metered: true, reserved_tokens: reservedTokens, ref };
 }
@@ -354,6 +597,14 @@ export interface SettleAiJobResult {
   metered: boolean;
   charged_tokens: number;
   provider_cost_micro_usd: number;
+  /** [AI-WALLET-SPENDABLE-2] acct.debt_micro_usd immediately before this settlement. */
+  debt_micro_usd_before: number;
+  /** [AI-WALLET-SPENDABLE-2] acct.debt_micro_usd immediately after — always in [0, TOKEN_MICRO_USD). */
+  debt_micro_usd_after: number;
+  /** [AI-WALLET-SPENDABLE-2 / §66] Platform loss for THIS settlement — never hidden user debt, never consumes a future top-up. */
+  unrecovered_micro_usd: number;
+  /** [§65] Where the charged amount came from: 'provider' (ground truth), 'catalog' (estimate), 'unknown' (neither — charged 0, AI_PRICE_UNKNOWN alerted), 'free' (a FREE_CAPABILITIES job), or 'n/a' (unmetered). */
+  cost_source: CostSource;
   error?: string;
 }
 
@@ -366,78 +617,135 @@ function jobTagsSettle(input: SettleAiJobInput, extra: Record<string, unknown>):
 }
 
 /**
- * Settle a reservation against ACTUAL provider usage (§H3 steps 6-8): debits
- * exactly the marked-up actual cost, ONCE (idempotent by opId via WalletDO's
- * `${opId}:settle` op_id), and releases whatever remains reserved back to
- * headroom. Writes the terminal ledger row. Safe to call more than once for
- * the same opId — the WalletDO dedupe makes a repeat call a no-op replay, not
- * a double charge.
+ * Settle a reservation against ACTUAL provider usage (§H3 steps 6-8; §65 for
+ * the fail-closed-on-billing-not-availability rule): debits exactly the
+ * marked-up actual cost via ONE atomic WalletDO `settle_ai_cost` call
+ * (idempotent by opId via `${opId}:settle`), folding it into the running
+ * sub-cent `debt_micro_usd` remainder rather than ceiling every job
+ * independently, and releases whatever remains reserved back to headroom in
+ * the SAME DO round trip (closing the old two-call race window between
+ * consume_reserved and release_reservation). Writes the terminal ledger row.
+ * Safe to call more than once for the same opId — the WalletDO dedupe makes
+ * a repeat call a no-op replay, not a double charge/double debt.
+ *
+ * Free capabilities (chat_ava/chat_thread) and unmetered reservations return
+ * immediately with ZERO wallet touches.
  */
 export async function settleAiJob(env: Env, reservation: ReserveAiJobResult, input: SettleAiJobInput): Promise<SettleAiJobResult> {
   // [TEST-FAILURE-INJECT-1] no-op unless FAULT_INJECT=ai_settle is set.
   if (shouldFail(env, "ai_settle")) throw new Error("fault_inject:ai_settle");
+
+  // [AI-WALLET-SPENDABLE-2 / §65 / §67a] Mirrors isSafetyCapability's
+  // short-circuit exactly, and works regardless of aiWalletMeteringEnabled.
+  // A free capability must never consult the price catalog.
+  if (isFreeCapability(input.capability)) {
+    void track(env, input.uid, "ai_job_completed", "ai_billing", jobTagsSettle(input, { metered: false, charged_tokens: 0, free_capability: true }));
+    return {
+      ok: true, metered: false, charged_tokens: 0, provider_cost_micro_usd: 0,
+      debt_micro_usd_before: 0, debt_micro_usd_after: 0, unrecovered_micro_usd: 0, cost_source: "free",
+    };
+  }
   if (!reservation.metered) {
     void track(env, input.uid, "ai_job_completed", "ai_billing", jobTagsSettle(input, { metered: false, charged_tokens: 0 }));
-    return { ok: true, metered: false, charged_tokens: 0, provider_cost_micro_usd: 0 };
+    return {
+      ok: true, metered: false, charged_tokens: 0, provider_cost_micro_usd: 0,
+      debt_micro_usd_before: 0, debt_micro_usd_after: 0, unrecovered_micro_usd: 0, cost_source: "n/a",
+    };
   }
 
-  const settle = settleTokens(input.modelActual || input.modelRequested, input.usage, input.providerCostUsdMicro);
-  // Never over-consume the reservation — mirrors the WalletDO's own clamp in
-  // consumeReserved(), kept here too so the ledger's recorded charge can never
-  // exceed what was actually reserved even if the estimate/settle math disagree.
-  const consumeAmount = Math.max(0, Math.min(settle.tokens, reservation.reserved_tokens));
+  // [§65] Provider usage.cost is GROUND TRUTH whenever present — no catalog
+  // entry is needed for it to settle correctly. The catalog is the
+  // estimator for the RESERVE, never the authority for the CHARGE. Only when
+  // NEITHER a provider cost NOR a catalog entry exists do we fail the
+  // *billing* (never the *answer*, never the availability).
+  const model = input.modelActual || input.modelRequested;
+  const hasProviderCost = Number.isFinite(input.providerCostUsdMicro) && (input.providerCostUsdMicro as number) >= 0;
+  const hasCatalogEntry = Object.prototype.hasOwnProperty.call(AI_PRICE_CATALOG, String(model || "").trim());
+  const costSource: CostSource = hasProviderCost ? "provider" : hasCatalogEntry ? "catalog" : "unknown";
 
-  // WalletDO's consume_reserved requires amount>0 (400 otherwise) — a genuine
-  // zero-cost completion (e.g. empty output) must NOT be treated as a
-  // settlement failure. Skip the call entirely and go straight to a full
-  // release when there is nothing to charge.
-  const settled = consumeAmount > 0
-    ? await walletOp(env, input.uid, {
-        op: "consume_reserved", uid: input.uid, ref: reservation.ref, amount: consumeAmount,
-        op_id: `${input.opId}:settle`, app_name: `ai_${input.capability}`,
-      }).catch((e) => {
-        void trackException(env, e, { uid: input.uid, route: "ai_billing.settleAiJob", method: "walletOp.consume_reserved", handled: true, extra: { op_id: input.opId, capability: input.capability } });
-        return null;
-      })
-    : { status: 200, body: { ok: true, consumed: 0 } };
+  if (costSource === "unknown") {
+    // Never bill from AI_DEFAULT_RATE, and never fail the user's
+    // ALREADY-COMPLETED answer over our own bookkeeping gap (§65). Release
+    // the full reservation, charge zero, alert the loss.
+    await walletOp(env, input.uid, {
+      op: "release_reservation", uid: input.uid, ref: reservation.ref, op_id: `${input.opId}:release`, app_name: `ai_${input.capability}`,
+    }).catch((e) => {
+      void trackException(env, e, { uid: input.uid, route: "ai_billing.settleAiJob", method: "walletOp.release_reservation", handled: true, extra: { op_id: input.opId, capability: input.capability } });
+    });
+    void track(env, input.uid, "ai_price_unknown", "ai_billing", jobTagsSettle(input, { reserved: reservation.reserved_tokens }));
+    void trackException(env, new Error("AI_PRICE_UNKNOWN: metered capability settled with no catalog entry and no provider cost"), {
+      uid: input.uid, route: "ai_billing.settleAiJob", handled: true,
+      extra: { subsystem: "ai_price_unknown", op_id: input.opId, capability: input.capability, model },
+    });
+    void track(env, input.uid, "ai_job_completed", "ai_billing", jobTagsSettle(input, { charged_tokens: 0, cost_source: "unknown" }));
+    await writeLedgerRow(env, {
+      opId: input.opId, uid: input.uid, capability: input.capability, modality: input.modality,
+      modelRequested: input.modelRequested, modelActual: input.modelActual, usage: input.usage,
+      providerCostMicro: 0, markupRate: AI_MARKUP_BPS, userChargeTokens: 0, status: "settled",
+      unrecoveredMicroUsd: 0, costSource: "unknown",
+    });
+    return {
+      ok: true, metered: true, charged_tokens: 0, provider_cost_micro_usd: 0,
+      debt_micro_usd_before: 0, debt_micro_usd_after: 0, unrecovered_micro_usd: 0, cost_source: "unknown",
+    };
+  }
 
-  // Always release whatever remains reserved, regardless of settle outcome —
-  // reserve() never touched bal.balance, so this only frees headroom for other
-  // reservations; it never refunds anything already consumed. Idempotent by opId.
-  await walletOp(env, input.uid, {
-    op: "release_reservation", uid: input.uid, ref: reservation.ref, op_id: `${input.opId}:release`, app_name: `ai_${input.capability}`,
+  const settle = settleTokens(model, input.usage, input.providerCostUsdMicro);
+  const providerCostMicroUsd = settle.providerCostMicroUsd;
+  const userChargeMicroUsdAmount = settle.userChargeMicroUsd;
+
+  const settled = await walletOp(env, input.uid, {
+    op: "settle_ai_cost", uid: input.uid, ref: reservation.ref, op_id: `${input.opId}:settle`,
+    app_name: `ai_${input.capability}`, capability: input.capability, actual_cost_micro_usd: userChargeMicroUsdAmount,
   }).catch((e) => {
-    void trackException(env, e, { uid: input.uid, route: "ai_billing.settleAiJob", method: "walletOp.release_reservation", handled: true, extra: { op_id: input.opId, capability: input.capability } });
+    void trackException(env, e, { uid: input.uid, route: "ai_billing.settleAiJob", method: "walletOp.settle_ai_cost", handled: true, extra: { op_id: input.opId, capability: input.capability } });
+    return null;
   });
 
   if (!settled || settled.status !== 200 || settled.body?.ok !== true) {
     void track(env, input.uid, "ai_job_failed_unbilled", "ai_billing", jobTagsSettle(input, { reason: "settlement_failed" }));
-    void trackException(env, new Error("ai_billing settlement mismatch: consume_reserved did not return ok"), {
-      uid: input.uid, route: "ai_billing.settleAiJob", method: "walletOp.consume_reserved", handled: true,
-      extra: { op_id: input.opId, capability: input.capability, expected_tokens: consumeAmount },
+    void trackException(env, new Error("ai_billing settlement mismatch: settle_ai_cost did not return ok"), {
+      uid: input.uid, route: "ai_billing.settleAiJob", method: "walletOp.settle_ai_cost", handled: true,
+      extra: { op_id: input.opId, capability: input.capability },
     });
     await writeLedgerRow(env, {
       opId: input.opId, uid: input.uid, capability: input.capability, modality: input.modality,
       modelRequested: input.modelRequested, modelActual: input.modelActual, usage: input.usage,
-      providerCostMicro: settle.providerCostMicroUsd, markupRate: AI_MARKUP_BPS, userChargeTokens: 0, status: "failed_unbilled",
+      providerCostMicro: providerCostMicroUsd, markupRate: AI_MARKUP_BPS, userChargeTokens: 0, status: "failed_unbilled",
+      unrecoveredMicroUsd: 0, costSource: costSource,
     });
-    return { ok: false, metered: true, charged_tokens: 0, provider_cost_micro_usd: settle.providerCostMicroUsd, error: "settlement_failed" };
+    return {
+      ok: false, metered: true, charged_tokens: 0, provider_cost_micro_usd: providerCostMicroUsd,
+      debt_micro_usd_before: 0, debt_micro_usd_after: 0, unrecovered_micro_usd: 0, cost_source: costSource, error: "settlement_failed",
+    };
   }
 
-  const chargedTokens = Number(settled.body?.consumed ?? consumeAmount);
-  const released = Math.max(0, reservation.reserved_tokens - chargedTokens);
+  const body = settled.body;
+  const chargedTokens = Number(body?.charged_tokens ?? 0);
+  const unrecoveredMicroUsd = Number(body?.unrecovered_micro_usd ?? 0);
+  const debtBefore = Number(body?.debt_micro_usd_before ?? 0);
+  const debtAfter = Number(body?.debt_micro_usd_after ?? 0);
+
   void track(env, input.uid, "ai_job_completed", "ai_billing", jobTagsSettle(input, {
-    charged_tokens: chargedTokens, provider_cost_micro_usd: settle.providerCostMicroUsd, markup_bps: AI_MARKUP_BPS,
+    charged_tokens: chargedTokens, provider_cost_micro_usd: providerCostMicroUsd, markup_bps: AI_MARKUP_BPS,
+    cost_source: costSource, unrecovered_micro_usd: unrecoveredMicroUsd,
   }));
   void track(env, input.uid, "ai_budget_released", "ai_billing", jobTagsSettle(input, {
-    reserved: reservation.reserved_tokens, used: chargedTokens, released, reason: "settled",
+    reserved: reservation.reserved_tokens, used: chargedTokens, released: Math.max(0, reservation.reserved_tokens - chargedTokens), reason: "settled",
   }));
+  if (unrecoveredMicroUsd > 0) {
+    await recordUnrecoveredLoss(env, input.uid, unrecoveredMicroUsd, { capability: input.capability, model, costSource });
+  }
   await writeLedgerRow(env, {
     opId: input.opId, uid: input.uid, capability: input.capability, modality: input.modality,
     modelRequested: input.modelRequested, modelActual: input.modelActual, usage: input.usage,
-    providerCostMicro: settle.providerCostMicroUsd, markupRate: AI_MARKUP_BPS, userChargeTokens: chargedTokens, status: "settled",
+    providerCostMicro: providerCostMicroUsd, markupRate: AI_MARKUP_BPS, userChargeTokens: chargedTokens, status: "settled",
+    unrecoveredMicroUsd, costSource,
   });
-  return { ok: true, metered: true, charged_tokens: chargedTokens, provider_cost_micro_usd: settle.providerCostMicroUsd };
+  return {
+    ok: true, metered: true, charged_tokens: chargedTokens, provider_cost_micro_usd: providerCostMicroUsd,
+    debt_micro_usd_before: debtBefore, debt_micro_usd_after: debtAfter, unrecovered_micro_usd: unrecoveredMicroUsd, cost_source: costSource,
+  };
 }
 
 export interface ReleaseAiJobInput {
@@ -451,7 +759,9 @@ export interface ReleaseAiJobInput {
  * Full, unbilled release of a reservation (§H4 "failed, cancelled, or
  * provider-rejected jobs release unused reservations"). No wallet debit
  * happens here — this is for jobs that produced NO billable usage at all.
- * Idempotent by opId.
+ * Idempotent by opId. Free capabilities and unmetered reservations return
+ * immediately with zero wallet touches (reservation.metered is already false
+ * for both).
  */
 export async function releaseAiJob(env: Env, reservation: ReserveAiJobResult, input: ReleaseAiJobInput): Promise<void> {
   if (!reservation.metered) return;
@@ -472,6 +782,6 @@ export async function releaseAiJob(env: Env, reservation: ReserveAiJobResult, in
   await writeLedgerRow(env, {
     opId: input.opId, uid: input.uid, capability: input.capability, modality: "text",
     modelRequested: "", modelActual: null, usage: null, providerCostMicro: 0,
-    markupRate: AI_MARKUP_BPS, userChargeTokens: 0, status: "released",
+    markupRate: AI_MARKUP_BPS, userChargeTokens: 0, status: "released", unrecoveredMicroUsd: 0, costSource: "n/a",
   });
 }

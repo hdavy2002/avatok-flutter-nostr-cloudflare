@@ -256,7 +256,11 @@ async function agentStreamXmlOrNull(
   if ((cfg as { betaFreePremium?: boolean } | null)?.betaFreePremium !== true) {
     try {
       const b = await walletOp(env, ownerUid, { op: "balance", uid: ownerUid });
-      if (b.status === 200 && Number(b.body?.balance ?? 0) < AGENT_MIN_TOKENS) return null;
+      // [AI-WALLET-SPENDABLE-2] spendable (free+bonus+paid), balance only as a
+      // backward-compat fallback — mirrors routes/receptionist.ts's
+      // already-correct spendable gate (receptionistConfigFor, :~1140).
+      const spendable = Number(b.body?.spendable ?? b.body?.balance ?? 0);
+      if (b.status === 200 && spendable < AGENT_MIN_TOKENS) return null;
     } catch { /* fail-open */ }
   }
 
