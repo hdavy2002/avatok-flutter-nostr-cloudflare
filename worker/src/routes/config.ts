@@ -186,6 +186,19 @@ export interface PlatformConfig {
   freeTextDailyInputTokens: number;    // per-account daily input-token budget, UTC-day reset
   freeTextDailyOutputTokens: number;   // per-account daily output-token budget, UTC-day reset
   freeTextDailyCostMicroUsd: number;   // per-account daily INTERNAL platform-cost budget (micro-USD), UTC-day reset — counts guardInput/isSafe/regenerate calls too, even though they are never wallet-billed
+  // [AI-MOD-FLAG-1 2026-07-25, gate finding B5] Master switch for the
+  // llama-guard-3-8b content classifier in lib/ai_gate.ts (ChatAva buffered +
+  // streaming, @ava/#ava thread replies, runGated, image prompts). Content
+  // moderation for the Ava AI paths was an explicit, DATED owner decision to be
+  // a no-op (2026-06-24, Specs §2A). Default FALSE preserves that decision —
+  // the classifier ships DARK and is a true no-op (no provider call, always
+  // safe) on every tier including BYO until the owner deliberately flips this
+  // on. Boolean → NOT in numericKeys. Declared here (interface + DEFAULTS in
+  // the same change) per the fake-flag rule: a client/server gate the code
+  // reads but this file does not declare can never be flipped (`putConfig`
+  // 400s `unknown key`) — the exact inAppUpdateEnabled failure shape from
+  // 2026-07-15.
+  aiContentModerationEnabled: boolean;
   guardianEnabled: boolean;          // Guardian safety surfaces (basic free, deep premium)
   companionEnabled: boolean;         // blank "New chat with Ava" + personas
   generativeEnabled: boolean;        // in-thread image gen (each gen is a PaidFeature)
@@ -810,6 +823,7 @@ const DEFAULTS: PlatformConfig = {
   freeTextDailyInputTokens: 2_000_000,
   freeTextDailyOutputTokens: 200_000,
   freeTextDailyCostMicroUsd: 50_000,   // $0.05/account/day INTERNAL platform-cost ceiling (generation + guardInput + isSafe + regenerate)
+  aiContentModerationEnabled: false, // [AI-MOD-FLAG-1] ships dark — preserves the 2026-06-24 no-op decision until the owner flips it on
   guardianEnabled: true,           // safety shield — free, trust driver
   companionEnabled: true,          // basic free Ava chat
   generativeEnabled: false,        // FREE LAUNCH: premium image gen — hidden

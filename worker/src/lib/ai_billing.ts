@@ -331,24 +331,42 @@ async function unrecoveredPlatformAlertMicroUsd(env: Env): Promise<number> {
   try { return Math.max(0, Number((await readConfig(env)).unrecoveredPlatformAlertMicroUsd ?? 0)); } catch { return 0; }
 }
 
-async function reserveUnrecoveredExposure(
-  env: Env, uid: string, opId: string, amountMicroUsd: number, capMicroUsd: number,
+/**
+ * [§66 / B3 fix, Opus review gate 2026-07-25] PRE-FLIGHT CHECK ONLY — never a
+ * reservation. Reads TODAY's SETTLED unrecovered-loss total for this account
+ * and compares it to the cap. §66 defines `unrecoveredDailyCapMicroUsd` as a
+ * bound on unrecovered PLATFORM LOSS ("once exceeded"); a healthy, fully-paid
+ * job has ZERO loss and must be admitted on wallet headroom alone, no matter
+ * how large its own worst-case marked-up ESTIMATE is. The previous version of
+ * this function reserved `est.userChargeMicroUsd` — the marked-up worst-case
+ * charge, not any actual loss — against this cap at admission time, so any
+ * single job whose estimate exceeded the $0.05 production default was refused
+ * outright regardless of balance. Image generation's deliberate
+ * IMAGE_OUTPUT_TOKEN_RESERVE_CEILING over-reserve was the case most likely to
+ * trip it. Fails OPEN (admit) on any wallet-read failure, matching every
+ * other config/cap fail-open policy in this file — a telemetry/read outage
+ * must never turn into a false AI_UNRECOVERED_LIMIT block.
+ */
+async function unrecoveredCapStatus(
+  env: Env, uid: string, capMicroUsd: number,
 ): Promise<{ ok: boolean; day: string; used: number }> {
   const day = utcDayKey();
   if (capMicroUsd <= 0) return { ok: true, day, used: 0 };
-  const r = await walletOp(env, uid, {
-    op: "ai_unrecovered_reserve", uid, request_id: opId, day,
-    amount_micro_usd: Math.max(0, Math.trunc(amountMicroUsd)),
-    daily_limit_micro_usd: Math.max(0, Math.trunc(capMicroUsd)),
-    op_id: `${opId}:unrecovered-reserve`, app_name: "ai_billing",
-  }).catch(() => null);
-  return {
-    ok: !!r && r.status === 200 && r.body?.ok === true,
-    day,
-    used: Math.max(0, Number(r?.body?.amount_micro_usd ?? 0)),
-  };
+  const r = await walletOp(env, uid, { op: "ai_unrecovered_status", uid, day }).catch(() => null);
+  const used = Math.max(0, Number(r?.body?.amount_micro_usd ?? 0));
+  return { ok: used < capMicroUsd, day, used };
 }
 
+/**
+ * Record ACTUAL unrecovered loss for this job, atomically, in the per-account
+ * daily authority (WalletDO's `ai_unrecovered_budget` table via the
+ * `ai_unrecovered_settle` op — do/wallet.ts). This is the race-free
+ * improvement over the old stale-counter read that B3 explicitly preserves:
+ * even though admission no longer reserves a worst-case slot (see
+ * unrecoveredCapStatus above), the SETTLE side still funnels every loss
+ * through one per-uid-serialized DO write, so concurrent jobs' losses can
+ * never race each other into an under-counted total.
+ */
 async function settleUnrecoveredExposure(
   env: Env, uid: string, opId: string, day: string | undefined, amountMicroUsd: number,
 ): Promise<void> {
@@ -357,16 +375,6 @@ async function settleUnrecoveredExposure(
     op: "ai_unrecovered_settle", uid, request_id: opId, day,
     amount_micro_usd: Math.max(0, Math.trunc(amountMicroUsd)),
     op_id: `${opId}:unrecovered-settle`, app_name: "ai_billing",
-  }).catch(() => {});
-}
-
-async function releaseUnrecoveredExposure(
-  env: Env, uid: string, opId: string, day: string | undefined,
-): Promise<void> {
-  if (!day) return;
-  await walletOp(env, uid, {
-    op: "ai_unrecovered_release", uid, request_id: opId, day,
-    op_id: `${opId}:unrecovered-release`, app_name: "ai_billing",
   }).catch(() => {});
 }
 
@@ -562,20 +570,21 @@ export async function reserveAiJob(env: Env, input: ReserveAiJobInput): Promise<
   }
   const est = estimateTokens(input.model, usage);
 
-  // Reserve worst-case loss exposure in the same per-user serialized authority
-  // before provider work. Concurrent jobs now see each other's reservations,
-  // not a stale completed-loss counter.
+  // [§66 / B3 fix] Admission is a PRE-FLIGHT CHECK against today's already-
+  // SETTLED unrecovered loss for this account, never a reservation of this
+  // job's own worst-case marked-up ESTIMATE. A healthy, fully-paid job has
+  // ZERO settled loss and is admitted here purely on that basis; the actual
+  // wallet-headroom check (which DOES look at this job's estimate, correctly)
+  // happens below at the `reserve` walletOp call.
   const capMicroUsd = await unrecoveredCapMicroUsd(env);
-  const exposure = await reserveUnrecoveredExposure(
-    env, input.uid, input.opId, est.userChargeMicroUsd, capMicroUsd,
-  );
-  if (!exposure.ok) {
+  const capStatus = await unrecoveredCapStatus(env, input.uid, capMicroUsd);
+  if (!capStatus.ok) {
     void track(env, input.uid, "ai_job_blocked_unrecovered_limit", "ai_billing", jobTags(input, {
-      used_today_micro_usd: exposure.used, cap_micro_usd: capMicroUsd,
+      used_today_micro_usd: capStatus.used, cap_micro_usd: capMicroUsd,
     }));
     return {
       ok: false, metered: true, reserved_tokens: 0, ref,
-      error: "AI_UNRECOVERED_LIMIT", unrecovered_day: exposure.day,
+      error: "AI_UNRECOVERED_LIMIT", unrecovered_day: capStatus.day,
     };
   }
 
@@ -598,13 +607,14 @@ export async function reserveAiJob(env: Env, input: ReserveAiJobInput): Promise<
   });
 
   if (!reserved || reserved.status === 402 || reserved.body?.ok !== true) {
-    await releaseUnrecoveredExposure(env, input.uid, input.opId, exposure.day);
+    // [B3 fix] Nothing was reserved against the unrecovered cap above (only
+    // checked, never reserved), so there is nothing to release here.
     const needed = amount;
     const balance = Number(reserved?.body?.available ?? 0);
     void track(env, input.uid, "ai_job_blocked_insufficient_tokens", "ai_billing", jobTags(input, { needed, balance }));
     return {
       ok: false, metered: true, reserved_tokens: 0, ref,
-      error: "AI_INSUFFICIENT_TOKENS", needed, balance, unrecovered_day: exposure.day,
+      error: "AI_INSUFFICIENT_TOKENS", needed, balance, unrecovered_day: capStatus.day,
     };
   }
 
@@ -617,7 +627,7 @@ export async function reserveAiJob(env: Env, input: ReserveAiJobInput): Promise<
   });
   return {
     ok: true, metered: true, reserved_tokens: reservedTokens, ref,
-    unrecovered_day: exposure.day,
+    unrecovered_day: capStatus.day,
   };
 }
 
@@ -714,7 +724,9 @@ export async function settleAiJob(env: Env, reservation: ReserveAiJobResult, inp
     }).catch((e) => {
       void trackException(env, e, { uid: input.uid, route: "ai_billing.settleAiJob", method: "walletOp.release_reservation", handled: true, extra: { op_id: input.opId, capability: input.capability } });
     });
-    await releaseUnrecoveredExposure(env, input.uid, input.opId, reservation.unrecovered_day);
+    // [B3 fix] No unrecovered-cap reservation was made at admission time, so
+    // there is nothing to release here — a zero-charge AI_PRICE_UNKNOWN
+    // outcome is (correctly) zero settled loss too, so no settle call either.
     void track(env, input.uid, "ai_price_unknown", "ai_billing", jobTagsSettle(input, { reserved: reservation.reserved_tokens }));
     void trackException(env, new Error("AI_PRICE_UNKNOWN: metered capability settled with no catalog entry and no provider cost"), {
       uid: input.uid, route: "ai_billing.settleAiJob", handled: true,
@@ -777,9 +789,6 @@ export async function settleAiJob(env: Env, reservation: ReserveAiJobResult, inp
   const unrecoveredMicroUsd = Number(body?.unrecovered_micro_usd ?? 0);
   const debtBefore = Number(body?.debt_micro_usd_before ?? 0);
   const debtAfter = Number(body?.debt_micro_usd_after ?? 0);
-  await settleUnrecoveredExposure(
-    env, input.uid, input.opId, reservation.unrecovered_day, unrecoveredMicroUsd,
-  );
 
   void track(env, input.uid, "ai_job_completed", "ai_billing", jobTagsSettle(input, {
     charged_tokens: chargedTokens, provider_cost_micro_usd: providerCostMicroUsd, markup_bps: AI_MARKUP_BPS,
@@ -794,7 +803,13 @@ export async function settleAiJob(env: Env, reservation: ReserveAiJobResult, inp
     providerCostMicro: providerCostMicroUsd, markupRate: AI_MARKUP_BPS, userChargeTokens: chargedTokens, status: "settled",
     unrecoveredMicroUsd, costSource,
   });
+  // [B3 fix] Only a NON-ZERO actual loss is worth a settled-loss write — a
+  // healthy job that charged in full has zero loss and must not consume a
+  // write (or count toward tomorrow's totals) at all.
   if (unrecoveredMicroUsd > 0) {
+    await settleUnrecoveredExposure(
+      env, input.uid, input.opId, reservation.unrecovered_day, unrecoveredMicroUsd,
+    );
     await recordUnrecoveredLoss(env, input.uid, unrecoveredMicroUsd, {
       opId: input.opId, capability: input.capability, model, costSource,
     });
@@ -828,7 +843,9 @@ export async function releaseAiJob(env: Env, reservation: ReserveAiJobResult, in
   }).catch((e) => {
     void trackException(env, e, { uid: input.uid, route: "ai_billing.releaseAiJob", method: "walletOp.release_reservation", handled: true, extra: { op_id: input.opId, capability: input.capability, reason: input.reason } });
   });
-  await releaseUnrecoveredExposure(env, input.uid, input.opId, reservation.unrecovered_day);
+  // [B3 fix] No unrecovered-cap reservation was made at admission time, so
+  // there is nothing to release here — a released job produced no billable
+  // usage, hence zero settled loss.
 
   void track(env, input.uid, "ai_budget_released", "ai_billing", {
     op_id: input.opId, capability: input.capability, reserved: reservation.reserved_tokens, used: 0,

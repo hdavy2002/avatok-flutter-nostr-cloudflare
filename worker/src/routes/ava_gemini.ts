@@ -259,9 +259,15 @@ export async function avaGemini(req: Request, env: Env): Promise<Response> {
   // Calling surface (composer_translate / composer_rewrite / composer_reply_ideas /
   // composer_grammar / chat / …) so latency can be sliced by WHICH feature is slow.
   const source = String(b.source ?? "chat").slice(0, 40);
-  const suppliedRequestId = String(b.request_id ?? "").trim();
-  const opId = suppliedRequestId && suppliedRequestId.length <= 160
-    ? suppliedRequestId : crypto.randomUUID();
+  // [AI-BUDGET-AUTH-2] The client's request_id is TELEMETRY ONLY. It must never
+  // become the budget or wallet idempotency key: `ai_daily_budget.request_id` is
+  // a PRIMARY KEY whose duplicate branch returns ok, so a client pinning one id
+  // would bypass the daily input/output/cost budget AND the turn cap outright —
+  // unlimited free AI. It also seeded the money ids (`${opId}:reserve`,
+  // `aijob:${opId}`), letting one reservation ref be reused across distinct
+  // metered jobs. Always mint the authority id server-side.
+  const clientTraceId = String(b.request_id ?? "").trim().slice(0, 160);
+  const opId = crypto.randomUUID();
   const t0 = Date.now();
 
   // Resolve the email (for telemetry) in parallel with the premium check so it
@@ -285,7 +291,7 @@ export async function avaGemini(req: Request, env: Env): Promise<Response> {
   const toolNames: string[] = [];
 
   trackUser(env, ctx.uid, email, "ava_chat_request", "avaai", {
-    request_id: opId,
+    request_id: opId, client_trace_id: clientTraceId || null,
     source, msg_len: message.length, history_len: history.length, images: images.length,
     has_context: !!context, premium, premium_via: via, setup_ms: setupMs,
   });
@@ -469,12 +475,18 @@ export async function avaGeminiStream(req: Request, env: Env): Promise<Response>
   const chatModel = hasImages ? imageCapableModel(env) : openRouterModel(env);
   const historyChars = history.reduce((n, t) => n + t.text.length, 0);
   const promptChars = system.length + message.length + historyChars;
-  const suppliedRequestId = String(b.request_id ?? "").trim();
-  const opId = suppliedRequestId && suppliedRequestId.length <= 160
-    ? suppliedRequestId : crypto.randomUUID();
+  // [AI-BUDGET-AUTH-2] The client's request_id is TELEMETRY ONLY. It must never
+  // become the budget or wallet idempotency key: `ai_daily_budget.request_id` is
+  // a PRIMARY KEY whose duplicate branch returns ok, so a client pinning one id
+  // would bypass the daily input/output/cost budget AND the turn cap outright —
+  // unlimited free AI. It also seeded the money ids (`${opId}:reserve`,
+  // `aijob:${opId}`), letting one reservation ref be reused across distinct
+  // metered jobs. Always mint the authority id server-side.
+  const clientTraceId = String(b.request_id ?? "").trim().slice(0, 160);
+  const opId = crypto.randomUUID();
   const setupMs = Date.now() - t0;
   trackUser(env, ctx.uid, email, "ava_chat_request", "avaai", {
-    request_id: opId, source, route: "chat_stream", capability, model: chatModel,
+    request_id: opId, client_trace_id: clientTraceId || null, source, route: "chat_stream", capability, model: chatModel,
     premium, input_chars: promptChars, setup_ms: setupMs,
   });
 

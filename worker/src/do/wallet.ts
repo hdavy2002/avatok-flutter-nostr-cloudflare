@@ -106,6 +106,20 @@ const DAILY_FREE_GRANT = 0;
 // if the site-wide rate ever changes, all three call sites must change together.
 export const TOKEN_MICRO_USD = 10_000;
 
+// [AI-BUDGET-AUTH-2 / B4] Bounded reservation TTL for the ai_daily_budget /
+// ai_unrecovered_budget tables — mirrors ai_billing.ts's
+// CHAT_RESERVATION_TTL_MS (5 minutes). Duplicated here BY DEFINITION, not by
+// accident (do/wallet.ts must not import from lib/ai_billing.ts at module
+// scope — see the header comment). If the chat reservation TTL ever changes,
+// both constants must change together. Root cause: these two tables carried
+// created_at/updated_at but no expires_at, so an SSE client disconnecting
+// mid-stream, a Worker eviction between reserve and settle, or any
+// settle/release call that itself failed (all `.catch(() => {})` in
+// ai_billing.ts) left an orphaned 'reserved' row counted at its WORST-CASE
+// values for the rest of the UTC day with nothing to expire it — the exact
+// §59c orphaned-reservation failure mode reproduced on these newer tables.
+const AI_BUDGET_RESERVATION_TTL_MS = 5 * 60_000;
+
 export interface AiSettlementInput {
   /** acct.debt_micro_usd BEFORE this settlement — a running sub-cent remainder. */
   debtMicroUsdBefore: number;
@@ -254,6 +268,11 @@ export class WalletDO {
          updated_at INTEGER NOT NULL
        )`,
     );
+    // [AI-BUDGET-AUTH-2 / B4] Self-migrating additive column, same idiom as
+    // acct.bonus / resv.uid / resv.expires_at above. 0 = no bound (pre-
+    // migration rows only — every reservation created from now on always
+    // gets a real value at insert time).
+    try { this.sql.exec("ALTER TABLE ai_daily_budget ADD COLUMN expires_at INTEGER NOT NULL DEFAULT 0"); } catch { /* column already exists */ }
     this.sql.exec("CREATE INDEX IF NOT EXISTS idx_ai_daily_budget_day ON ai_daily_budget(day, status)");
     this.sql.exec(
       `CREATE TABLE IF NOT EXISTS ai_unrecovered_budget (
@@ -266,6 +285,8 @@ export class WalletDO {
          updated_at INTEGER NOT NULL
        )`,
     );
+    // [AI-BUDGET-AUTH-2 / B4] Same additive expiry column as ai_daily_budget above.
+    try { this.sql.exec("ALTER TABLE ai_unrecovered_budget ADD COLUMN expires_at INTEGER NOT NULL DEFAULT 0"); } catch { /* column already exists */ }
     this.sql.exec("CREATE INDEX IF NOT EXISTS idx_ai_unrecovered_budget_day ON ai_unrecovered_budget(day, status)");
   }
 
@@ -848,7 +869,13 @@ export class WalletDO {
     return { day, requestId };
   }
 
-  private aiBudgetTotals(day: string): {
+  // [AI-BUDGET-AUTH-2 / B4] `now` defaults to Date.now() but is threaded
+  // explicitly from aiBudgetReserve so a single admission call uses ONE
+  // consistent instant for both its pre- and post-insert totals reads. A
+  // 'reserved' row past its OWN expires_at no longer counts toward ANY of
+  // turns/input/output/cost — an expired reservation must stop consuming the
+  // turn cap too, not just the token/cost caps (§59c / B4).
+  private aiBudgetTotals(day: string, now: number = Date.now()): {
     turns: number; inputTokens: number; outputTokens: number; costMicroUsd: number;
   } {
     const r = this.sql.exec(
@@ -858,8 +885,9 @@ export class WalletDO {
          COALESCE(SUM(CASE WHEN status='reserved' THEN output_reserved ELSE output_actual END),0) AS output_tokens,
          COALESCE(SUM(CASE WHEN status='reserved' THEN cost_reserved ELSE cost_actual END),0) AS cost_micro_usd
        FROM ai_daily_budget
-       WHERE day=?1 AND status IN ('reserved','settled')`,
-      day,
+       WHERE day=?1 AND status IN ('reserved','settled')
+         AND NOT (status='reserved' AND expires_at>0 AND expires_at<?2)`,
+      day, now,
     ).one() as any;
     return {
       turns: Math.max(0, Number(r?.turns ?? 0)),
@@ -889,9 +917,13 @@ export class WalletDO {
     if ([input, output, cost, inputLimit, outputLimit, costLimit, turnLimit].some((v) => v === null)) {
       return json({ error: "AI budget values must be finite non-negative integers" }, 400);
     }
+    // [AI-BUDGET-AUTH-2 / B4] One consistent `now` for the whole call — the
+    // pre-insert totals read, the row's own expires_at, and the post-insert
+    // totals read must all agree on "when this admission happened".
+    const now = Date.now();
     // Keep a short audit window without allowing one row per chat turn to grow
     // this per-user SQLite database forever.
-    const retentionCutoff = new Date(Date.now() - 8 * 86_400_000).toISOString().slice(0, 10);
+    const retentionCutoff = new Date(now - 8 * 86_400_000).toISOString().slice(0, 10);
     this.sql.exec("DELETE FROM ai_daily_budget WHERE day < ?1", retentionCutoff);
     this.sql.exec("DELETE FROM ai_unrecovered_budget WHERE day < ?1", retentionCutoff);
 
@@ -900,13 +932,13 @@ export class WalletDO {
       key.requestId, key.day,
     ).toArray() as any[];
     if (existing.length) {
-      const totals = this.aiBudgetTotals(key.day);
+      const totals = this.aiBudgetTotals(key.day, now);
       const result = { ok: true, duplicate: true, request_id: key.requestId, day: key.day, ...totals };
       this.recordOp(b.op_id, result);
       return json(result);
     }
 
-    const totals = this.aiBudgetTotals(key.day);
+    const totals = this.aiBudgetTotals(key.day, now);
     const blocked =
       ((turnLimit as number) > 0 && totals.turns + 1 > (turnLimit as number)) ||
       ((inputLimit as number) > 0 && totals.inputTokens + (input as number) > (inputLimit as number)) ||
@@ -921,14 +953,16 @@ export class WalletDO {
       return json(result, 429);
     }
 
-    const now = Date.now();
+    // [AI-BUDGET-AUTH-2 / B4] Bounded expiry on every new reservation — see
+    // AI_BUDGET_RESERVATION_TTL_MS above.
+    const expiresAt = now + AI_BUDGET_RESERVATION_TTL_MS;
     this.sql.exec(
       `INSERT INTO ai_daily_budget
-         (request_id,day,status,input_reserved,output_reserved,cost_reserved,created_at,updated_at)
-       VALUES (?1,?2,'reserved',?3,?4,?5,?6,?6)`,
-      key.requestId, key.day, input, output, cost, now,
+         (request_id,day,status,input_reserved,output_reserved,cost_reserved,created_at,updated_at,expires_at)
+       VALUES (?1,?2,'reserved',?3,?4,?5,?6,?6,?7)`,
+      key.requestId, key.day, input, output, cost, now, expiresAt,
     );
-    const after = this.aiBudgetTotals(key.day);
+    const after = this.aiBudgetTotals(key.day, now);
     const result = { ok: true, request_id: key.requestId, day: key.day, ...after };
     this.recordOp(b.op_id, result);
     return json(result);
@@ -973,7 +1007,15 @@ export class WalletDO {
     return json(result);
   }
 
-  private aiUnrecoveredStatus(b: any): Response {
+  // [AI-BUDGET-AUTH-2 / B4] `now` defaults to Date.now() so existing callers
+  // (aiUnrecoveredReserve's duplicate-branch replay) don't need to change,
+  // but aiUnrecoveredReserve below threads its own single `now` through both
+  // its pre- and post-insert reads, same reasoning as aiBudgetTotals. A
+  // 'reserved' row past its OWN expires_at no longer counts toward the sum —
+  // this is also what B3's admission-time pre-flight check reads, so an
+  // orphaned worst-case-estimate row (from any OTHER, non-ai_billing caller
+  // that still reserves) cannot wedge an account's cap open forever either.
+  private aiUnrecoveredStatus(b: any, now: number = Date.now()): Response {
     const key = this.validAiBudgetKey(b.day);
     if (!key) return json({ error: "valid day required" }, 400);
     const row = this.sql.exec(
@@ -981,8 +1023,9 @@ export class WalletDO {
          CASE WHEN status='reserved' THEN amount_reserved ELSE amount_actual END
        ),0) AS amount_micro_usd
        FROM ai_unrecovered_budget
-       WHERE day=?1 AND status IN ('reserved','settled')`,
-      key.day,
+       WHERE day=?1 AND status IN ('reserved','settled')
+         AND NOT (status='reserved' AND expires_at>0 AND expires_at<?2)`,
+      key.day, now,
     ).one() as any;
     return json({ ok: true, day: key.day, amount_micro_usd: Math.max(0, Number(row?.amount_micro_usd ?? 0)) });
   }
@@ -994,12 +1037,22 @@ export class WalletDO {
     if (!key?.requestId || !Number.isFinite(amount) || amount < 0 || !Number.isFinite(limit) || limit < 0) {
       return json({ error: "valid day, request_id, amount and daily limit required" }, 400);
     }
+    const now = Date.now();
+    // [AI-BUDGET-AUTH-2 / B4] Fold in the SAME retention sweep aiBudgetReserve
+    // runs. Previously ONLY aiBudgetReserve pruned ai_unrecovered_budget, so a
+    // metered-only account (one whose capability never calls
+    // ai_budget_reserve — e.g. a pure image job) never got its own
+    // ai_unrecovered_budget rows swept at all.
+    const retentionCutoff = new Date(now - 8 * 86_400_000).toISOString().slice(0, 10);
+    this.sql.exec("DELETE FROM ai_daily_budget WHERE day < ?1", retentionCutoff);
+    this.sql.exec("DELETE FROM ai_unrecovered_budget WHERE day < ?1", retentionCutoff);
+
     const existing = this.sql.exec(
       "SELECT status FROM ai_unrecovered_budget WHERE request_id=?1",
       key.requestId,
     ).toArray() as any[];
     if (existing.length) {
-      const status = this.aiUnrecoveredStatus({ day: key.day });
+      const status = this.aiUnrecoveredStatus({ day: key.day }, now);
       this.recordOp(b.op_id, { ok: true, duplicate: true, request_id: key.requestId, day: key.day });
       return status;
     }
@@ -1008,8 +1061,9 @@ export class WalletDO {
          CASE WHEN status='reserved' THEN amount_reserved ELSE amount_actual END
        ),0) AS n
        FROM ai_unrecovered_budget
-       WHERE day=?1 AND status IN ('reserved','settled')`,
-      key.day,
+       WHERE day=?1 AND status IN ('reserved','settled')
+         AND NOT (status='reserved' AND expires_at>0 AND expires_at<?2)`,
+      key.day, now,
     ).one() as any;
     const used = Math.max(0, Number(current?.n ?? 0));
     const n = Math.trunc(amount);
@@ -1018,29 +1072,46 @@ export class WalletDO {
       this.recordOp(b.op_id, result);
       return json(result, 429);
     }
-    const now = Date.now();
+    // [AI-BUDGET-AUTH-2 / B4] Bounded expiry, same TTL as ai_daily_budget.
+    const expiresAt = now + AI_BUDGET_RESERVATION_TTL_MS;
     this.sql.exec(
       `INSERT INTO ai_unrecovered_budget
-         (request_id,day,status,amount_reserved,created_at,updated_at)
-       VALUES (?1,?2,'reserved',?3,?4,?4)`,
-      key.requestId, key.day, n, now,
+         (request_id,day,status,amount_reserved,created_at,updated_at,expires_at)
+       VALUES (?1,?2,'reserved',?3,?4,?4,?5)`,
+      key.requestId, key.day, n, now, expiresAt,
     );
     const result = { ok: true, day: key.day, request_id: key.requestId, amount_micro_usd: used + n };
     this.recordOp(b.op_id, result);
     return json(result);
   }
 
+  // [AI-BUDGET-AUTH-2 / B3] Upsert, not update-only. Since B3's fix stops
+  // ai_billing.ts's reserveAiJob from reserving the worst-case estimate
+  // against this cap at admission time (Opus gate finding: that inverted
+  // §66's settled-LOSS cap into a worst-case-CHARGE cap on a live $0.05
+  // default), there is normally no pre-existing 'reserved' row for a given
+  // request_id by the time settlement runs — the loss is recorded directly,
+  // for the first time, right here. This single atomic DO-local write still
+  // does both: it settles a legacy 'reserved' row when one exists (any OTHER
+  // caller that still reserves first, e.g. a future non-free-chat lane) via
+  // the ON CONFLICT branch, and inserts a fresh 'settled' row when nothing
+  // was reserved. Either way it is ONE per-uid-serialized write, so the
+  // running per-account total stays race-free exactly as before — this is
+  // the "genuine improvement over the old stale-counter read" B3 asks to
+  // preserve even though the admission-time reservation itself is removed.
   private aiUnrecoveredSettle(b: any): Response {
     const key = this.validAiBudgetKey(b.day, b.request_id);
     const amount = Number(b.amount_micro_usd);
     if (!key?.requestId || !Number.isFinite(amount) || amount < 0) {
       return json({ error: "valid day, request_id and amount required" }, 400);
     }
+    const now = Date.now();
     this.sql.exec(
-      `UPDATE ai_unrecovered_budget
-       SET status='settled', amount_actual=?1, updated_at=?2
-       WHERE request_id=?3 AND day=?4 AND status='reserved'`,
-      Math.trunc(amount), Date.now(), key.requestId, key.day,
+      `INSERT INTO ai_unrecovered_budget (request_id,day,status,amount_actual,created_at,updated_at,expires_at)
+       VALUES (?1,?2,'settled',?3,?4,?4,0)
+       ON CONFLICT(request_id) DO UPDATE SET
+         status='settled', amount_actual=excluded.amount_actual, updated_at=excluded.updated_at`,
+      key.requestId, key.day, Math.trunc(amount), now,
     );
     const result = { ok: true, day: key.day, request_id: key.requestId };
     this.recordOp(b.op_id, result);

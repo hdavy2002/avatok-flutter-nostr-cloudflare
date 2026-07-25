@@ -20,7 +20,7 @@ import {
   type ReserveAiJobInput,
   type SettleAiJobInput,
 } from "../src/lib/ai_billing";
-import { computeAiSettlement, TOKEN_MICRO_USD } from "../src/do/wallet";
+import { computeAiSettlement, TOKEN_MICRO_USD, WalletDO } from "../src/do/wallet";
 import type { Env } from "../src/types";
 
 describe("FREE_CAPABILITIES / isFreeCapability — Part I §2 / §65 / §67a", () => {
@@ -331,5 +331,264 @@ describe("safety capabilities remain unmetered too (pre-existing guarantee, unaf
     const result = await reserveAiJob(env, input);
     expect(result.ok).toBe(true);
     expect(result.metered).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// [AI-BUDGET-AUTH-2 / B3] Opus review gate finding: `unrecoveredDailyCapMicroUsd`
+// had been inverted from a settled-LOSS cap (§66) into a worst-case-CHARGE
+// cap, on a live $0.05 production default — any single metered job whose
+// marked-up worst-case ESTIMATE exceeded $0.05 was refused with
+// AI_UNRECOVERED_LIMIT regardless of the user's balance (image generation's
+// deliberate over-reserve, IMAGE_OUTPUT_TOKEN_RESERVE_CEILING, was the case
+// most likely to trip it). The fix removes the admission-time reservation of
+// the estimate entirely; admission now checks ONLY today's already-SETTLED
+// loss against the cap.
+// ---------------------------------------------------------------------------
+function fakeAiBillingEnv(opts: {
+  config: Record<string, unknown>;
+  handleOp: (op: string, body: any) => { status: number; body: any } | undefined;
+}): { env: Env; calls: string[] } {
+  const calls: string[] = [];
+  const env = {
+    TOKENS: {
+      get: async () => opts.config,
+      put: async () => {},
+    },
+    WALLET_DO: {
+      idFromName: () => ({}),
+      get: () => ({
+        fetch: async (_url: string, init: { body: string }) => {
+          const body = JSON.parse(init.body);
+          calls.push(body.op);
+          const handled = opts.handleOp(body.op, body);
+          if (handled) return new Response(JSON.stringify(handled.body), { status: handled.status });
+          return new Response(JSON.stringify({ ok: true }), { status: 200 });
+        },
+      }),
+    },
+    DB_WALLET: { prepare: () => ({ bind: () => ({ run: async () => ({}) }) }) },
+  } as unknown as Env;
+  return { env, calls };
+}
+
+describe("[AI-BUDGET-AUTH-2 / B3] unrecoveredDailyCapMicroUsd bounds SETTLED loss, never a job's own worst-case estimate", () => {
+  it("a healthy, fully-paid metered job whose marked-up estimate EXCEEDS the cap is still admitted (zero settled loss today)", async () => {
+    const CAP = 50_000; // $0.05 — the live production default (config.ts:799)
+    const { env, calls } = fakeAiBillingEnv({
+      config: { aiWalletMeteringEnabled: true, unrecoveredDailyCapMicroUsd: CAP },
+      handleOp: (op, body) => {
+        if (op === "ai_unrecovered_status") return { status: 200, body: { ok: true, day: body.day, amount_micro_usd: 0 } };
+        if (op === "balance") return { status: 200, body: { ok: true, debt_micro_usd: 0 } };
+        if (op === "reserve") return { status: 200, body: { ok: true, reservedTotal: body.amount, available: 999_999 } };
+        return undefined;
+      },
+    });
+
+    const input: ReserveAiJobInput = {
+      uid: "u-b3-admit", opId: "op-b3-admit", capability: "util", modality: "text",
+      // openai/gpt-5-image-mini: $2.50/$2.00 per 1M — 1M input tokens' worst-case
+      // marked-up estimate is ~$3, vastly more than the $0.05 cap above.
+      model: "openai/gpt-5-image-mini",
+      maxInputTokens: 1_000_000, maxOutputTokens: 0,
+    };
+    const result = await reserveAiJob(env, input);
+
+    expect(result.ok).toBe(true);
+    expect(result.metered).toBe(true);
+    expect(result.error).toBeUndefined();
+    expect(result.reserved_tokens).toBeGreaterThan(0);
+    // Proves the fix: admission consulted the settled-loss status, then went
+    // on to the real wallet reserve — it never tried to reserve the estimate
+    // against the unrecovered cap (the old, now-removed `ai_unrecovered_reserve` op).
+    expect(calls).toContain("ai_unrecovered_status");
+    expect(calls).toContain("reserve");
+    expect(calls).not.toContain("ai_unrecovered_reserve");
+  });
+
+  it("an account whose SETTLED unrecovered losses already exceed the cap IS refused with AI_UNRECOVERED_LIMIT, without ever touching wallet headroom", async () => {
+    const CAP = 50_000;
+    const { env, calls } = fakeAiBillingEnv({
+      config: { aiWalletMeteringEnabled: true, unrecoveredDailyCapMicroUsd: CAP },
+      handleOp: (op, body) => {
+        if (op === "ai_unrecovered_status") return { status: 200, body: { ok: true, day: body.day, amount_micro_usd: 60_000 } };
+        throw new Error(`must not call WALLET_DO op "${op}" once today's settled loss already exceeds the cap`);
+      },
+    });
+
+    const input: ReserveAiJobInput = {
+      uid: "u-b3-blocked", opId: "op-b3-blocked", capability: "util", modality: "text",
+      model: "deepseek/deepseek-v4-flash", maxInputTokens: 100, maxOutputTokens: 100,
+    };
+    const result = await reserveAiJob(env, input);
+
+    expect(result.ok).toBe(false);
+    expect(result.metered).toBe(true);
+    expect(result.error).toBe("AI_UNRECOVERED_LIMIT");
+    expect(result.reserved_tokens).toBe(0);
+    // Blocked purely on the pre-flight settled-loss read — never reached
+    // `balance` (debt lookup) or `reserve` (real wallet headroom).
+    expect(calls).toEqual(["ai_unrecovered_status"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// [AI-BUDGET-AUTH-2 / B4] Opus review gate finding: `ai_daily_budget` and
+// `ai_unrecovered_budget` (do/wallet.ts) carried created_at/updated_at but no
+// expires_at — an orphaned 'reserved' row (SSE disconnect mid-stream, Worker
+// eviction between reserve and settle, or a settle/release call that itself
+// failed, all `.catch(() => {})` in ai_billing.ts) held a turn plus its
+// worst-case values against the account for the rest of the UTC day with no
+// expiry and no reaper — the §59c orphaned-reservation failure mode
+// reproduced on these newer tables. The fix adds `expires_at`, set at reserve
+// time, and excludes an expired 'reserved' row from the totals AND the turn
+// count. This test drives the REAL WalletDO class (not a reimplementation of
+// its logic) against a small purpose-built fake SqlStorage that recognizes
+// the exact SQL text `aiBudgetReserve`/`aiBudgetTotals` issue, mirroring the
+// existing pattern in worker/test/wallet_reservation_policy.test.ts.
+// ---------------------------------------------------------------------------
+type FakeAiDailyBudgetRow = {
+  request_id: string; day: string; status: string;
+  input_reserved: number; output_reserved: number; cost_reserved: number;
+  input_actual: number; output_actual: number; cost_actual: number;
+  created_at: number; updated_at: number; expires_at: number;
+};
+
+class FakeWalletSql {
+  acct = { free: 0, premium: 0, last_grant_day: "", bonus: 0, debt_micro_usd: 0 };
+  aiDailyBudget: FakeAiDailyBudgetRow[] = [];
+  aiUnrecoveredBudget: { request_id: string; day: string; status: string; amount_reserved: number; amount_actual: number; expires_at: number }[] = [];
+
+  exec(sqlText: string, ...binds: any[]): { toArray(): any[]; one(): any } {
+    const s = sqlText.replace(/\s+/g, " ").trim();
+    const rows = this.run(s, binds);
+    return {
+      toArray: () => rows,
+      one: () => {
+        if (!rows.length) throw new Error("FakeWalletSql.one(): no rows for: " + s);
+        return rows[0];
+      },
+    };
+  }
+
+  private run(s: string, b: any[]): any[] {
+    if (s.startsWith("CREATE TABLE") || s.startsWith("ALTER TABLE") || s.startsWith("CREATE INDEX")) return [];
+    if (s === "INSERT OR IGNORE INTO bal (k, balance, held) VALUES (1,0,0)") return [];
+    if (s === "INSERT OR IGNORE INTO acct (k, free, premium, last_grant_day) VALUES (1,0,0,'')") return [];
+    if (s === "SELECT id, amount FROM holds WHERE released=0 AND available_at<=?1") return [];
+
+    if (s === "SELECT free, premium, last_grant_day, bonus, debt_micro_usd FROM acct WHERE k=1") return [{ ...this.acct }];
+    if (s === "UPDATE acct SET free=?1, last_grant_day=?2 WHERE k=1") {
+      this.acct.free = Number(b[0]); this.acct.last_grant_day = String(b[1]); return [];
+    }
+
+    if (s === "DELETE FROM ai_daily_budget WHERE day < ?1") {
+      const cutoff = String(b[0]);
+      this.aiDailyBudget = this.aiDailyBudget.filter((r) => r.day >= cutoff);
+      return [];
+    }
+    if (s === "DELETE FROM ai_unrecovered_budget WHERE day < ?1") {
+      const cutoff = String(b[0]);
+      this.aiUnrecoveredBudget = this.aiUnrecoveredBudget.filter((r) => r.day >= cutoff);
+      return [];
+    }
+
+    if (s === "SELECT status FROM ai_daily_budget WHERE request_id=?1 AND day=?2") {
+      const [requestId, day] = b.map(String);
+      return this.aiDailyBudget
+        .filter((r) => r.request_id === requestId && r.day === day)
+        .map((r) => ({ status: r.status }));
+    }
+
+    if (s.startsWith("SELECT COUNT(*) AS turns")) {
+      const day = String(b[0]);
+      const now = Number(b[1]);
+      const rows = this.aiDailyBudget.filter((r) =>
+        r.day === day
+        && (r.status === "reserved" || r.status === "settled")
+        && !(r.status === "reserved" && r.expires_at > 0 && r.expires_at < now));
+      const turns = rows.length;
+      const inputTokens = rows.reduce((sum, r) => sum + (r.status === "reserved" ? r.input_reserved : r.input_actual), 0);
+      const outputTokens = rows.reduce((sum, r) => sum + (r.status === "reserved" ? r.output_reserved : r.output_actual), 0);
+      const costMicroUsd = rows.reduce((sum, r) => sum + (r.status === "reserved" ? r.cost_reserved : r.cost_actual), 0);
+      return [{ turns, input_tokens: inputTokens, output_tokens: outputTokens, cost_micro_usd: costMicroUsd }];
+    }
+
+    if (s.startsWith("INSERT INTO ai_daily_budget")) {
+      const [requestId, day, input, output, cost, now, expiresAt] = b;
+      this.aiDailyBudget.push({
+        request_id: String(requestId), day: String(day), status: "reserved",
+        input_reserved: Number(input), output_reserved: Number(output), cost_reserved: Number(cost),
+        input_actual: 0, output_actual: 0, cost_actual: 0,
+        created_at: Number(now), updated_at: Number(now), expires_at: Number(expiresAt),
+      });
+      return [];
+    }
+
+    throw new Error("FakeWalletSql: unhandled statement (update the fake alongside do/wallet.ts): " + s);
+  }
+}
+
+function makeFakeWalletDo(): { wallet: WalletDO; sql: FakeWalletSql } {
+  const sql = new FakeWalletSql();
+  const state = {
+    storage: {
+      sql,
+      getAlarm: async () => null,
+      setAlarm: async () => {},
+      list: async () => new Map(),
+      get: async () => undefined,
+      put: async () => {},
+      delete: async () => {},
+    },
+  } as unknown as DurableObjectState;
+  const env = {} as unknown as Env;
+  const wallet = new WalletDO(state, env);
+  return { wallet, sql };
+}
+
+async function doOp(wallet: WalletDO, body: Record<string, unknown>): Promise<{ status: number; body: any }> {
+  const req = new Request("https://wallet/op", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+  });
+  const res = await wallet.fetch(req);
+  return { status: res.status, body: await res.json().catch(() => ({})) };
+}
+
+describe("[AI-BUDGET-AUTH-2 / B4] ai_daily_budget reservations expire, same as resv.expires_at", () => {
+  it("a 'reserved' row past its own expires_at no longer counts toward totals or the turn count", async () => {
+    const { wallet, sql } = makeFakeWalletDo();
+    const day = new Date().toISOString().slice(0, 10);
+
+    const r1 = await doOp(wallet, {
+      op: "ai_budget_reserve", uid: "u1", day, request_id: "turn-1",
+      input_tokens: 500, output_tokens: 500, cost_micro_usd: 100,
+      turn_limit: 0, daily_input_limit: 0, daily_output_limit: 0, daily_cost_limit: 0,
+    });
+    expect(r1.status).toBe(200);
+    expect(r1.body.ok).toBe(true);
+    expect(r1.body.turns).toBe(1);
+    expect(r1.body.costMicroUsd).toBe(100);
+
+    // Simulate the orphan: nobody ever called ai_budget_settle/ai_budget_release
+    // for turn-1 (SSE disconnect / Worker eviction / a failed settle call that
+    // itself silently swallowed its own error) — force its reservation into
+    // the past exactly like a stale row that outlived its TTL would be.
+    expect(sql.aiDailyBudget).toHaveLength(1);
+    sql.aiDailyBudget[0].expires_at = Date.now() - 1;
+
+    const r2 = await doOp(wallet, {
+      op: "ai_budget_reserve", uid: "u1", day, request_id: "turn-2",
+      input_tokens: 10, output_tokens: 10, cost_micro_usd: 5,
+      turn_limit: 1, daily_input_limit: 0, daily_output_limit: 0, daily_cost_limit: 0,
+    });
+    // If the expired turn-1 row still counted, totals.turns would already be 1
+    // BEFORE this insert, and turn_limit:1 would refuse this second reservation
+    // with daily_ai_budget_exhausted (429) — the exact §59c "I have tokens but
+    // it says no" symptom reproduced on this table.
+    expect(r2.status).toBe(200);
+    expect(r2.body.ok).toBe(true);
+    expect(r2.body.turns).toBe(1); // only turn-2 counts — turn-1 excluded as expired
+    expect(r2.body.costMicroUsd).toBe(5); // turn-1's 100 excluded too
   });
 });

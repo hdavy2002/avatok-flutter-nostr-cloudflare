@@ -2,11 +2,19 @@
 // (Phase 2 — BYO-AI Proxy + Moderation Gate).
 //
 // Responsibilities (clean, composable functions P3 can call):
-//   (a) MODERATION — llama-guard on the INPUT and on the OUTPUT. Mandatory on
-//       BOTH tiers (BYO key included). Mirrors do/conversation.ts + do/ava_agent.ts:
-//       `@cf/meta/llama-guard-3-8b`, "unsafe" verdict ⇒ block/refuse, regenerate
-//       once. Fails OPEN on a classifier *error* (never block a user because the
-//       guard model itself errored), but fails CLOSED on a confident "unsafe".
+//   (a) MODERATION — llama-guard on the INPUT and on the OUTPUT, GATED behind the
+//       `aiContentModerationEnabled` KV flag (default FALSE — [AI-MOD-FLAG-1]
+//       2026-07-25 restoring the owner's 2026-06-24 no-op decision, Specs §2A,
+//       until deliberately flipped on). While the flag is off this is a true
+//       no-op on every tier, BYO included: no provider call, always safe. When
+//       the owner turns it on: mirrors do/conversation.ts + do/ava_agent.ts:
+//       `@cf/meta/llama-guard-3-8b`; the response's FIRST LINE ("safe" /
+//       "unsafe", the latter followed by category codes like S1) is the real
+//       verdict contract ⇒ block/refuse, regenerate once. Fails OPEN — and logs
+//       via trackException, so it's visible, not silent — on a classifier
+//       *error* or an unparseable response (never block a user because the
+//       guard model itself errored or returned something we can't parse), but
+//       fails CLOSED on a confident "unsafe".
 //   (b) INTENT GATE — a cheap heuristic: does this turn actually need the model /
 //       a tool? Trivial acks ("ok", "thanks", an empty/emoji-only line) get a
 //       canned reply with zero model spend.
@@ -26,6 +34,7 @@ import { readConfig } from "../routes/config";
 import { walletOp } from "../routes/wallet";
 import * as quota from "./ai_quota";
 import { isFreeCapability } from "./ai_billing"; // [AVA-FREE-BUDGET-1] chat_ava/chat_thread never reserve or settle
+import { trackException } from "../hooks";
 
 const GUARD = "@cf/meta/llama-guard-3-8b";
 
@@ -82,20 +91,66 @@ export function aiRunOpts(env: Env, uid?: string): any {
 
 // ---- (a) moderation ---------------------------------------------------------
 
-/** Run the real Workers-AI safety classifier. A classifier outage fails open
- * so chat stays available; a confident unsafe verdict fails closed. */
+/**
+ * Parse Llama Guard 3's actual verdict contract: the response's FIRST LINE is
+ * the literal string "safe" or "unsafe" (an "unsafe" verdict is followed by a
+ * newline plus category codes, e.g. "unsafe\nS1"). Anything else — an echoed
+ * prompt, an error envelope, empty output — is UNPARSEABLE and must NOT be
+ * treated as "unsafe": stringifying the whole provider envelope and substring-
+ * matching "unsafe" anywhere in it (the previous bug) blocks a turn on a stray
+ * occurrence of that word in an echoed prompt or error field.
+ */
+export function parseLlamaGuardVerdict(raw: string | null | undefined): "safe" | "unsafe" | "unparseable" {
+  const firstLine = String(raw ?? "").trim().split(/\r?\n/)[0]?.trim().toLowerCase();
+  if (firstLine === "safe") return "safe";
+  if (firstLine === "unsafe") return "unsafe";
+  return "unparseable";
+}
+
+/**
+ * Run the real Workers-AI safety classifier — GATED behind
+ * `aiContentModerationEnabled` (default false; [AI-MOD-FLAG-1]). While the
+ * flag is off, this is a true no-op: no provider call, always safe, on every
+ * tier including BYO — preserving the owner's 2026-06-24 decision (Specs §2A)
+ * until the flag is deliberately flipped on.
+ *
+ * When the flag is on: a confident "unsafe" verdict fails CLOSED. A provider
+ * *outage* or an *unparseable* response fails OPEN — deliberately: this is an
+ * availability-over-enforcement choice, never blocking a user because the
+ * guard model itself errored or returned something we can't parse — and is
+ * reported via trackException so the outage/unparseable case is visible
+ * instead of silently disabling moderation.
+ */
 export async function safetyVerdict(env: Env, text: string): Promise<{ safe: boolean; providerCalled: boolean }> {
   const t = (text ?? "").trim();
   if (!t) return { safe: true, providerCalled: false };
+  const cfg = await readConfig(env);
+  if (!cfg.aiContentModerationEnabled) return { safe: true, providerCalled: false };
   try {
     const out: any = await env.AI.run(
       GUARD,
       { messages: [{ role: "user", content: t }] },
       aiRunOpts(env),
     );
-    const verdict = (aiText(out) || JSON.stringify(out)).toLowerCase();
-    return { safe: !verdict.includes("unsafe"), providerCalled: true };
-  } catch {
+    const verdict = parseLlamaGuardVerdict(aiText(out));
+    if (verdict === "unsafe") return { safe: false, providerCalled: true };
+    if (verdict === "safe") return { safe: true, providerCalled: true };
+    // Unparseable: not a confident "unsafe", so fail open — but this is loud,
+    // not silent, since a persistently unparseable response means moderation
+    // is effectively no-op'ing while the flag believes it is on.
+    void trackException(env, new Error("llama_guard_unparseable_verdict"), {
+      route: "ai_gate.safetyVerdict", handled: true,
+      extra: { raw: String(aiText(out) ?? "").slice(0, 200) },
+    });
+    return { safe: true, providerCalled: true };
+  } catch (err) {
+    // Deliberate availability-over-enforcement fail-open: a Workers-AI outage
+    // must never block chat/image generation. Logged (not a silent catch) so
+    // the outage is visible instead of quietly disabling moderation.
+    void trackException(env, err, {
+      route: "ai_gate.safetyVerdict", handled: true,
+      extra: { reason: "moderation_provider_outage" },
+    });
     return { safe: true, providerCalled: false };
   }
 }
@@ -291,14 +346,37 @@ export async function reserveFreeTextBudget(
         ? 0 : Math.max(0, Number(cfg.dailyAvaTurnLimit) || 200),
       op_id: `${opts.requestId}:free-budget-reserve`, app_name: "ava_free_text",
     });
-    if (r.status === 429 || r.body?.ok !== true) {
+    // [AI-BUDGET-AUTH-2] Block ONLY on an explicit budget verdict — the DO's
+    // aiBudgetReserve() returns exactly `{ ok:false, error:"daily_ai_budget_exhausted", ... }`
+    // with HTTP 429 when (and only when) the daily budget is genuinely
+    // exhausted (worker/src/do/wallet.ts aiBudgetReserve). walletOp() never
+    // throws on a non-2xx (routes/wallet.ts walletOp returns {status, body}
+    // for every response), so a DO 500, a SQLite error, a 400 validation
+    // failure, a 404, or an empty body would otherwise ALL land in the
+    // "blocked" branch below and render as "you've used today's allowance" —
+    // a wallet-authority fault surfaced as a user-facing lie about their own
+    // usage. Anything that is not this exact exhausted verdict fails OPEN; the
+    // per-turn ceiling above remains enforced regardless.
+    if (r.status === 429 && r.body?.error === "daily_ai_budget_exhausted") {
       return { allowed: false, reason: "daily_ai_budget_exhausted", requestId: opts.requestId, day };
     }
+    if (r.body?.ok !== true) {
+      void trackException(env, new Error("free_budget_authority_unavailable"), {
+        uid, route: "ai_gate.reserveFreeTextBudget", handled: true,
+        extra: { status: r.status, body_error: r.body?.error },
+      });
+      return { allowed: true, requestId: opts.requestId, day }; // fail open; per-turn ceiling still enforced
+    }
     return { allowed: true, requestId: opts.requestId, day };
-  } catch {
-    // Emergency fail-open: the per-turn ceiling above remains enforced. The
-    // caller emits authority-outage telemetry; expensive metered jobs do not use
-    // this path and continue to fail closed.
+  } catch (err) {
+    // Emergency fail-open (thrown RPC — rarer than the non-2xx case handled
+    // above, but the same reasoning): the per-turn ceiling above remains
+    // enforced. Logged, not silent; expensive metered jobs do not use this
+    // path and continue to fail closed.
+    void trackException(env, err, {
+      uid, route: "ai_gate.reserveFreeTextBudget", handled: true,
+      extra: { reason: "free_budget_authority_rpc_threw" },
+    });
     return { allowed: true, requestId: opts.requestId, day };
   }
 }
