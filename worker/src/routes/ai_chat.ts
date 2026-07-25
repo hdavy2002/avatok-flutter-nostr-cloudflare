@@ -74,7 +74,7 @@ export class AiInsufficientTokensError extends Error {
 /// — are DELIBERATELY NOT in ai_billing.ts's FREE_CAPABILITIES (only chat_ava
 /// / chat_thread are free per owner decision §10 "text chat is free, these
 /// utility helpers are not"). So lib/ai_gate.ts's free-text budget gate
-/// (checkFreeTextBudget/recordFreeTextUsage) intentionally does NOT run here —
+/// (reserveFreeTextBudget/settleFreeTextBudget) intentionally does NOT run here —
 /// wiring it in would be dead code for every current call site and, if a
 /// capability tag were ever renamed to collide with a free one, would
 /// silently make a billed feature (translate is one you want to sell) free.

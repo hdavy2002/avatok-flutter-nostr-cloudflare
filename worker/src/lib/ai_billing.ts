@@ -145,6 +145,13 @@ export const AI_PRICE_CATALOG: Record<string, ModelRate> = {
     inPerM: Math.round(0.019 * USD), outPerM: Math.round(0.030 * USD), effectiveDate: "2026-07-25",
     source: "verified 2026-07-25 for [AI-WALLET-SPENDABLE-2] catalog prerequisite",
   },
+  // OpenRouter lists $0.0015/audio minute. Billing math uses integer
+  // micro-USD per second: 0.0015 USD * 1e6 / 60 = 25.
+  "openai/whisper-large-v3": {
+    inPerM: 0, outPerM: 0, avSecondMicroUsd: 25,
+    effectiveDate: "2026-07-25",
+    source: "https://openrouter.ai/openai/whisper-large-v3/pricing ($0.0015/minute)",
+  },
   // Image generation — OpenRouter bills generated images as `image_output`
   // TOKENS, not a flat per-image constant (see UsageUnits.imageOutputTokens /
   // imageOutputPerM below); the count MUST be read from the provider's own
@@ -304,22 +311,14 @@ async function meteringOn(env: Env): Promise<boolean> {
 }
 
 // ---------------------------------------------------------------------------
-// [§66] Unrecovered-cost controls — per-account daily cap + platform-wide
-// daily alert. STORE CHOICE: KV (env.TOKENS), mirroring lib/ai_quota.ts's own
-// daily-counter pattern — a running daily total doesn't need D1's durability
-// or atomicity (a rare double-count under concurrent settles always errs in
-// the PLATFORM's favour, i.e. slightly early blocking, never late), so KV's
-// eventual consistency is fine and needs no migration.
+// [§66 / AI-BUDGET-AUTH-1] Per-account unrecovered-cost hard cap. Admission is
+// an atomic reserve inside the user's WalletDO; settle replaces the maximum
+// exposure with actual loss and release removes it. KV is used only to dedupe a
+// platform alert, never as a money/cap authority.
 // ---------------------------------------------------------------------------
 
 function utcDayKey(now = Date.now()): string {
   return new Date(now).toISOString().slice(0, 10);
-}
-function unrecoveredAcctKey(uid: string, day = utcDayKey()): string {
-  return `ai_unrecovered:${uid}:${day}`;
-}
-function unrecoveredPlatformKey(day = utcDayKey()): string {
-  return `ai_unrecovered:platform:${day}`;
 }
 const UNRECOVERED_TTL_SECONDS = 2 * 24 * 60 * 60; // survives the UTC day boundary, then self-evicts
 
@@ -332,41 +331,72 @@ async function unrecoveredPlatformAlertMicroUsd(env: Env): Promise<number> {
   try { return Math.max(0, Number((await readConfig(env)).unrecoveredPlatformAlertMicroUsd ?? 0)); } catch { return 0; }
 }
 
-async function unrecoveredUsedTodayMicroUsd(env: Env, uid: string): Promise<number> {
-  try {
-    const raw = await env.TOKENS.get(unrecoveredAcctKey(uid));
-    return raw ? Math.max(0, parseInt(raw, 10) || 0) : 0;
-  } catch { return 0; }
+async function reserveUnrecoveredExposure(
+  env: Env, uid: string, opId: string, amountMicroUsd: number, capMicroUsd: number,
+): Promise<{ ok: boolean; day: string; used: number }> {
+  const day = utcDayKey();
+  if (capMicroUsd <= 0) return { ok: true, day, used: 0 };
+  const r = await walletOp(env, uid, {
+    op: "ai_unrecovered_reserve", uid, request_id: opId, day,
+    amount_micro_usd: Math.max(0, Math.trunc(amountMicroUsd)),
+    daily_limit_micro_usd: Math.max(0, Math.trunc(capMicroUsd)),
+    op_id: `${opId}:unrecovered-reserve`, app_name: "ai_billing",
+  }).catch(() => null);
+  return {
+    ok: !!r && r.status === 200 && r.body?.ok === true,
+    day,
+    used: Math.max(0, Number(r?.body?.amount_micro_usd ?? 0)),
+  };
+}
+
+async function settleUnrecoveredExposure(
+  env: Env, uid: string, opId: string, day: string | undefined, amountMicroUsd: number,
+): Promise<void> {
+  if (!day) return;
+  await walletOp(env, uid, {
+    op: "ai_unrecovered_settle", uid, request_id: opId, day,
+    amount_micro_usd: Math.max(0, Math.trunc(amountMicroUsd)),
+    op_id: `${opId}:unrecovered-settle`, app_name: "ai_billing",
+  }).catch(() => {});
+}
+
+async function releaseUnrecoveredExposure(
+  env: Env, uid: string, opId: string, day: string | undefined,
+): Promise<void> {
+  if (!day) return;
+  await walletOp(env, uid, {
+    op: "ai_unrecovered_release", uid, request_id: opId, day,
+    op_id: `${opId}:unrecovered-release`, app_name: "ai_billing",
+  }).catch(() => {});
 }
 
 /**
- * Best-effort: record a platform-loss event against BOTH the per-account and
- * platform-wide UTC-day counters, and page/alert once the platform threshold
- * is crossed. Never throws — a telemetry/KV failure must never unwind an
- * already-completed, already-settled AI job.
+ * Report an already-persisted loss and page once the durable D1 ledger's
+ * platform total crosses the threshold. Per-account enforcement has already
+ * settled atomically in WalletDO; this function is observability only.
  */
 async function recordUnrecoveredLoss(
-  env: Env, uid: string, lossMicroUsd: number, ctx: { capability: string; model: string; costSource: string },
+  env: Env, uid: string, lossMicroUsd: number,
+  ctx: { opId: string; capability: string; model: string; costSource: string },
 ): Promise<void> {
   try {
     const day = utcDayKey();
-    const acctKey = unrecoveredAcctKey(uid, day);
-    const platKey = unrecoveredPlatformKey(day);
-    const [acctRaw, platRaw] = await Promise.all([env.TOKENS.get(acctKey), env.TOKENS.get(platKey)]);
-    const acctTotal = (acctRaw ? Math.max(0, parseInt(acctRaw, 10) || 0) : 0) + lossMicroUsd;
-    const platTotal = (platRaw ? Math.max(0, parseInt(platRaw, 10) || 0) : 0) + lossMicroUsd;
-    await Promise.all([
-      env.TOKENS.put(acctKey, String(acctTotal), { expirationTtl: UNRECOVERED_TTL_SECONDS }),
-      env.TOKENS.put(platKey, String(platTotal), { expirationTtl: UNRECOVERED_TTL_SECONDS }),
-    ]);
+    const account = await walletOp(env, uid, { op: "ai_unrecovered_status", uid, day });
+    const acctTotal = Math.max(0, Number(account.body?.amount_micro_usd ?? lossMicroUsd));
+    const start = Date.parse(`${day}T00:00:00.000Z`);
+    const row = await env.DB_WALLET.prepare(
+      `SELECT COALESCE(SUM(unrecovered_micro_usd),0) AS total
+       FROM ai_billing_ledger WHERE created_at>=?1 AND created_at<?2`,
+    ).bind(start, start + 86_400_000).first<any>();
+    const platTotal = Math.max(0, Number(row?.total ?? lossMicroUsd));
     void track(env, uid, "ai_cost_unrecovered", "ai_billing", {
       loss_micro_usd: lossMicroUsd, account_total_today_micro_usd: acctTotal, platform_total_today_micro_usd: platTotal,
-      capability: ctx.capability, model: ctx.model, cost_source: ctx.costSource,
+      op_id: ctx.opId, capability: ctx.capability, model: ctx.model, cost_source: ctx.costSource,
     });
     const alertThreshold = await unrecoveredPlatformAlertMicroUsd(env);
-    if (alertThreshold > 0 && platTotal >= alertThreshold && platTotal - lossMicroUsd < alertThreshold) {
-      // Edge-triggered: page once per UTC day (the moment THIS event crosses
-      // the threshold), not on every subsequent loss for the rest of the day.
+    const alertKey = `ai_unrecovered_alert_sent:${day}`;
+    if (alertThreshold > 0 && platTotal >= alertThreshold && !(await env.TOKENS.get(alertKey))) {
+      await env.TOKENS.put(alertKey, "1", { expirationTtl: UNRECOVERED_TTL_SECONDS });
       void trackException(env, new Error("AI platform unrecovered-cost daily alert threshold crossed"), {
         uid: "platform", route: "ai_billing.recordUnrecoveredLoss", handled: true,
         extra: { subsystem: "ai_unrecovered_platform_alert", platform_total_today_micro_usd: platTotal, alert_threshold_micro_usd: alertThreshold, day },
@@ -399,6 +429,8 @@ export interface ReserveAiJobResult {
   error?: string;
   needed?: number;
   balance?: number;
+  /** UTC day of this job's atomic unrecovered-loss exposure reservation. */
+  unrecovered_day?: string;
 }
 
 function jobTags(input: ReserveAiJobInput, extra: Record<string, unknown>): Record<string, unknown> {
@@ -514,20 +546,6 @@ export async function reserveAiJob(env: Env, input: ReserveAiJobInput): Promise<
     return { ok: true, metered: false, reserved_tokens: 0, ref };
   }
 
-  // [§66] Per-account unrecovered-cost circuit breaker — a metered job is
-  // refused with a DISTINCT reason (never a wallet-balance 402) once this
-  // account's UTC-day platform losses cross the configured cap. Free text
-  // remains available regardless (handled above, before this check ever
-  // runs). Fails OPEN on a config-read error.
-  const capMicroUsd = await unrecoveredCapMicroUsd(env);
-  if (capMicroUsd > 0) {
-    const usedToday = await unrecoveredUsedTodayMicroUsd(env, input.uid);
-    if (usedToday >= capMicroUsd) {
-      void track(env, input.uid, "ai_job_blocked_unrecovered_limit", "ai_billing", jobTags(input, { used_today_micro_usd: usedToday, cap_micro_usd: capMicroUsd }));
-      return { ok: false, metered: true, reserved_tokens: 0, ref, error: "AI_UNRECOVERED_LIMIT" };
-    }
-  }
-
   const usage: UsageUnits = {
     inputTokens: Math.max(0, Math.trunc(input.maxInputTokens || 0)),
     outputTokens: Math.max(0, Math.trunc(input.maxOutputTokens || 0)),
@@ -543,6 +561,23 @@ export async function reserveAiJob(env: Env, input: ReserveAiJobInput): Promise<
     usage.images = input.units?.images;
   }
   const est = estimateTokens(input.model, usage);
+
+  // Reserve worst-case loss exposure in the same per-user serialized authority
+  // before provider work. Concurrent jobs now see each other's reservations,
+  // not a stale completed-loss counter.
+  const capMicroUsd = await unrecoveredCapMicroUsd(env);
+  const exposure = await reserveUnrecoveredExposure(
+    env, input.uid, input.opId, est.userChargeMicroUsd, capMicroUsd,
+  );
+  if (!exposure.ok) {
+    void track(env, input.uid, "ai_job_blocked_unrecovered_limit", "ai_billing", jobTags(input, {
+      used_today_micro_usd: exposure.used, cap_micro_usd: capMicroUsd,
+    }));
+    return {
+      ok: false, metered: true, reserved_tokens: 0, ref,
+      error: "AI_UNRECOVERED_LIMIT", unrecovered_day: exposure.day,
+    };
+  }
 
   // [§59a/§60b] Reserve whole-token headroom from EXISTING debt + this job's
   // own worst-case marked-up estimate, not just this job's estimate alone — a
@@ -563,10 +598,14 @@ export async function reserveAiJob(env: Env, input: ReserveAiJobInput): Promise<
   });
 
   if (!reserved || reserved.status === 402 || reserved.body?.ok !== true) {
+    await releaseUnrecoveredExposure(env, input.uid, input.opId, exposure.day);
     const needed = amount;
     const balance = Number(reserved?.body?.available ?? 0);
     void track(env, input.uid, "ai_job_blocked_insufficient_tokens", "ai_billing", jobTags(input, { needed, balance }));
-    return { ok: false, metered: true, reserved_tokens: 0, ref, error: "AI_INSUFFICIENT_TOKENS", needed, balance };
+    return {
+      ok: false, metered: true, reserved_tokens: 0, ref,
+      error: "AI_INSUFFICIENT_TOKENS", needed, balance, unrecovered_day: exposure.day,
+    };
   }
 
   const reservedTokens = Number(reserved.body?.reservedTotal ?? amount);
@@ -576,7 +615,10 @@ export async function reserveAiJob(env: Env, input: ReserveAiJobInput): Promise<
     modelRequested: input.model, modelActual: null, usage, providerCostMicro: null,
     markupRate: AI_MARKUP_BPS, userChargeTokens: 0, status: "reserved", costSource: "n/a",
   });
-  return { ok: true, metered: true, reserved_tokens: reservedTokens, ref };
+  return {
+    ok: true, metered: true, reserved_tokens: reservedTokens, ref,
+    unrecovered_day: exposure.day,
+  };
 }
 
 export interface SettleAiJobInput {
@@ -672,6 +714,7 @@ export async function settleAiJob(env: Env, reservation: ReserveAiJobResult, inp
     }).catch((e) => {
       void trackException(env, e, { uid: input.uid, route: "ai_billing.settleAiJob", method: "walletOp.release_reservation", handled: true, extra: { op_id: input.opId, capability: input.capability } });
     });
+    await releaseUnrecoveredExposure(env, input.uid, input.opId, reservation.unrecovered_day);
     void track(env, input.uid, "ai_price_unknown", "ai_billing", jobTagsSettle(input, { reserved: reservation.reserved_tokens }));
     void trackException(env, new Error("AI_PRICE_UNKNOWN: metered capability settled with no catalog entry and no provider cost"), {
       uid: input.uid, route: "ai_billing.settleAiJob", handled: true,
@@ -703,6 +746,11 @@ export async function settleAiJob(env: Env, reservation: ReserveAiJobResult, inp
   });
 
   if (!settled || settled.status !== 200 || settled.body?.ok !== true) {
+    // The provider already ran but no user debit was applied: this is real
+    // platform exposure, not zero. Preserve it in the hard-cap authority.
+    await settleUnrecoveredExposure(
+      env, input.uid, input.opId, reservation.unrecovered_day, userChargeMicroUsdAmount,
+    );
     void track(env, input.uid, "ai_job_failed_unbilled", "ai_billing", jobTagsSettle(input, { reason: "settlement_failed" }));
     void trackException(env, new Error("ai_billing settlement mismatch: settle_ai_cost did not return ok"), {
       uid: input.uid, route: "ai_billing.settleAiJob", method: "walletOp.settle_ai_cost", handled: true,
@@ -712,11 +760,15 @@ export async function settleAiJob(env: Env, reservation: ReserveAiJobResult, inp
       opId: input.opId, uid: input.uid, capability: input.capability, modality: input.modality,
       modelRequested: input.modelRequested, modelActual: input.modelActual, usage: input.usage,
       providerCostMicro: providerCostMicroUsd, markupRate: AI_MARKUP_BPS, userChargeTokens: 0, status: "failed_unbilled",
-      unrecoveredMicroUsd: 0, costSource: costSource,
+      unrecoveredMicroUsd: userChargeMicroUsdAmount, costSource: costSource,
+    });
+    await recordUnrecoveredLoss(env, input.uid, userChargeMicroUsdAmount, {
+      opId: input.opId, capability: input.capability, model, costSource,
     });
     return {
       ok: false, metered: true, charged_tokens: 0, provider_cost_micro_usd: providerCostMicroUsd,
-      debt_micro_usd_before: 0, debt_micro_usd_after: 0, unrecovered_micro_usd: 0, cost_source: costSource, error: "settlement_failed",
+      debt_micro_usd_before: 0, debt_micro_usd_after: 0,
+      unrecovered_micro_usd: userChargeMicroUsdAmount, cost_source: costSource, error: "settlement_failed",
     };
   }
 
@@ -725,6 +777,9 @@ export async function settleAiJob(env: Env, reservation: ReserveAiJobResult, inp
   const unrecoveredMicroUsd = Number(body?.unrecovered_micro_usd ?? 0);
   const debtBefore = Number(body?.debt_micro_usd_before ?? 0);
   const debtAfter = Number(body?.debt_micro_usd_after ?? 0);
+  await settleUnrecoveredExposure(
+    env, input.uid, input.opId, reservation.unrecovered_day, unrecoveredMicroUsd,
+  );
 
   void track(env, input.uid, "ai_job_completed", "ai_billing", jobTagsSettle(input, {
     charged_tokens: chargedTokens, provider_cost_micro_usd: providerCostMicroUsd, markup_bps: AI_MARKUP_BPS,
@@ -733,15 +788,17 @@ export async function settleAiJob(env: Env, reservation: ReserveAiJobResult, inp
   void track(env, input.uid, "ai_budget_released", "ai_billing", jobTagsSettle(input, {
     reserved: reservation.reserved_tokens, used: chargedTokens, released: Math.max(0, reservation.reserved_tokens - chargedTokens), reason: "settled",
   }));
-  if (unrecoveredMicroUsd > 0) {
-    await recordUnrecoveredLoss(env, input.uid, unrecoveredMicroUsd, { capability: input.capability, model, costSource });
-  }
   await writeLedgerRow(env, {
     opId: input.opId, uid: input.uid, capability: input.capability, modality: input.modality,
     modelRequested: input.modelRequested, modelActual: input.modelActual, usage: input.usage,
     providerCostMicro: providerCostMicroUsd, markupRate: AI_MARKUP_BPS, userChargeTokens: chargedTokens, status: "settled",
     unrecoveredMicroUsd, costSource,
   });
+  if (unrecoveredMicroUsd > 0) {
+    await recordUnrecoveredLoss(env, input.uid, unrecoveredMicroUsd, {
+      opId: input.opId, capability: input.capability, model, costSource,
+    });
+  }
   return {
     ok: true, metered: true, charged_tokens: chargedTokens, provider_cost_micro_usd: providerCostMicroUsd,
     debt_micro_usd_before: debtBefore, debt_micro_usd_after: debtAfter, unrecovered_micro_usd: unrecoveredMicroUsd, cost_source: costSource,
@@ -771,6 +828,7 @@ export async function releaseAiJob(env: Env, reservation: ReserveAiJobResult, in
   }).catch((e) => {
     void trackException(env, e, { uid: input.uid, route: "ai_billing.releaseAiJob", method: "walletOp.release_reservation", handled: true, extra: { op_id: input.opId, capability: input.capability, reason: input.reason } });
   });
+  await releaseUnrecoveredExposure(env, input.uid, input.opId, reservation.unrecovered_day);
 
   void track(env, input.uid, "ai_budget_released", "ai_billing", {
     op_id: input.opId, capability: input.capability, reserved: reservation.reserved_tokens, used: 0,

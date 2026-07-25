@@ -45,7 +45,7 @@ describe("userChargeMicroUsd — 20% markup, ceil", () => {
   it("zero cost -> zero charge", () => {
     expect(userChargeMicroUsd(0)).toBe(0);
   });
-  it("ceil edge: 1 micro-USD provider cost -> ceil(1.3) = 2 micro-USD user charge", () => {
+  it("ceil edge: 1 micro-USD provider cost -> ceil(1.2) = 2 micro-USD user charge", () => {
     expect(userChargeMicroUsd(1)).toBe(2);
   });
   it("negative input is clamped to zero before markup", () => {
@@ -102,6 +102,10 @@ describe("settleTokens — prefers the provider's own reported cost over the cat
 describe("catalog lookup", () => {
   it("known model returns its own catalog rate", () => {
     expect(rateFor("moonshotai/kimi-k3")).toBe(AI_PRICE_CATALOG["moonshotai/kimi-k3"]);
+  });
+  it("Whisper Large V3 is catalogued at OpenRouter's $0.0015/audio minute", () => {
+    expect(rateFor("openai/whisper-large-v3").avSecondMicroUsd).toBe(25);
+    expect(costMicroUsd("openai/whisper-large-v3", { avSeconds: 60 })).toBe(1500);
   });
   it("unknown model falls back to the conservative AI_DEFAULT_RATE", () => {
     expect(rateFor("some/unpriced-model-nobody-added")).toBe(AI_DEFAULT_RATE);

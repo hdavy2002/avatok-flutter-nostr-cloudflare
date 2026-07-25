@@ -33,7 +33,9 @@ import { json, aiText, geminiRun } from "../util";
 import type { MessageScope } from "../lib/ava_kinds";
 import {
   runGated, webSearchAllowed, aiRunOpts, type AiTier,
-  checkFreeTextBudget, recordFreeTextUsage, estimateTokens, FREE_BUDGET_MESSAGE, type FreeTextBudgetReason, // [AVA-FREE-BUDGET-1]
+  reserveFreeTextBudget, settleFreeTextBudget, releaseFreeTextBudget,
+  safetyVerdict, estimateTokens, FREE_BUDGET_MESSAGE,
+  type FreeTextBudgetReason,
 } from "../lib/ai_gate"; // P2 gate
 import { brainSearchTyped } from "../lib/ava_memory"; // F1 — typed retrieval (available/source/degraded_reason)
 import {
@@ -852,13 +854,33 @@ export class AvaAgentDO {
         // involvement at all (Part I §2c/§7's root failure).
         const promptChars = sys.length + user.length;
         const turnInputTokens = estimateTokens(sys + user);
-        const budget = await checkFreeTextBudget(this.env, uid, turnInputTokens);
+        const opId = `ava-thread:${statusId}`;
+        const budget = await reserveFreeTextBudget(this.env, uid, turnInputTokens, {
+          requestId: opId,
+          maxOutputTokens: MAX_TOKENS,
+          skipTurnLimit: premium,
+        });
         if (!budget.allowed) {
           const reason = budget.reason as FreeTextBudgetReason;
           await this.postStatus(conv, uid, priv, "Ava is working…", statusId, "end");
           await this.postAva({ conv, uid, text: FREE_BUDGET_MESSAGE[reason], private: priv, source: "chat" });
           trackUserContact(this.env, uid, email, phone, "ai_free_budget_blocked", "avaai", {
             conv_kind: convKind, capability: "chat_thread", reason,
+          });
+          return { ok: true, status_id: statusId };
+        }
+        const inputSafety = await safetyVerdict(this.env, userText);
+        const moderationInputTokens = inputSafety.providerCalled ? estimateTokens(userText) : 0;
+        if (!inputSafety.safe) {
+          await settleFreeTextBudget(this.env, uid, budget, {
+            inputTokens: moderationInputTokens,
+            outputTokens: 0,
+          });
+          await this.postStatus(conv, uid, priv, "Ava is working…", statusId, "end");
+          await this.postAva({
+            conv, uid,
+            text: "I can't help with that one. Let's keep things safe — ask me something else?",
+            private: priv, source: "safety",
           });
           return { ok: true, status_id: statusId };
         }
@@ -869,13 +891,13 @@ export class AvaAgentDO {
         // retried turn (fresh statusId) never collides with a prior one. No-op
         // admit while `aiWalletMeteringEnabled` is off, OR because capability
         // 'chat_thread' is free (ai_billing.isFreeCapability) — see ai_billing.ts.
-        const opId = `ava-thread:${statusId}`;
         const reqModel = this.threadModel();
         const reservation = await reserveAiJob(this.env, {
           uid, opId, capability: "chat_thread", modality: "text", model: reqModel,
           maxInputTokens: estimateInputTokensFromChars(promptChars), maxOutputTokens: MAX_TOKENS, email,
         });
         if (!reservation.ok) {
+          await releaseFreeTextBudget(this.env, uid, budget);
           // reserveAiJob already emitted ai_job_blocked_insufficient_tokens; this
           // is the app-specific (email/phone-stamped) counterpart plus the
           // user-facing reply so the turn never goes dark. Unreachable while
@@ -895,10 +917,23 @@ export class AvaAgentDO {
           g = await this.callThreadModel(sys, user);
         } catch (e) {
           await releaseAiJob(this.env, reservation, { uid, opId, capability: "chat_thread", reason: "provider_error" });
+          if (moderationInputTokens) {
+            await settleFreeTextBudget(this.env, uid, budget, {
+              inputTokens: moderationInputTokens,
+              outputTokens: 0,
+            });
+          } else {
+            await releaseFreeTextBudget(this.env, uid, budget);
+          }
           throw e;
         }
         let answer = guardOutput(g.text); // F8 minimal output guard
         if (!answer) answer = "Ava is unavailable right now. Please try again shortly.";
+        const outputSafety = await safetyVerdict(this.env, answer);
+        const moderationOutputTokens = outputSafety.providerCalled ? estimateTokens(answer) : 0;
+        if (!outputSafety.safe) {
+          answer = "I can't help with that one. Let's keep things safe — ask me something else?";
+        }
         // [AI-BILLING-AGENT-1] Settle against actual provider usage once the
         // deepseek/fallback response is known. tokensIn/tokensOut come straight
         // from the OpenRouter adapter (callThreadModel/openrouterAdapter.run);
@@ -914,7 +949,10 @@ export class AvaAgentDO {
         // [AVA-FREE-BUDGET-1] Record actual usage against the free-lane daily
         // budget — this lane skips runGated entirely (see the doc comment
         // above), so nothing else does this accounting for it.
-        await recordFreeTextUsage(this.env, uid, { inputTokens: meterIn, outputTokens: meterOut });
+        await settleFreeTextBudget(this.env, uid, budget, {
+          inputTokens: meterIn + moderationInputTokens + moderationOutputTokens,
+          outputTokens: meterOut,
+        });
         trackUserContact(this.env, uid, email, phone, "ai_wallet_settlement", "avaai", {
           conv_kind: convKind, capability: "chat_thread", model: g.model,
           input_tokens: meterIn, output_tokens: meterOut, charged_tokens: meter.charged_tokens,

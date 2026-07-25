@@ -23,6 +23,7 @@
 import type { Env } from "../types";
 import { aiText } from "../util";
 import { readConfig } from "../routes/config";
+import { walletOp } from "../routes/wallet";
 import * as quota from "./ai_quota";
 import { isFreeCapability } from "./ai_billing"; // [AVA-FREE-BUDGET-1] chat_ava/chat_thread never reserve or settle
 
@@ -81,17 +82,26 @@ export function aiRunOpts(env: Env, uid?: string): any {
 
 // ---- (a) moderation ---------------------------------------------------------
 
-/**
- * Content moderation for the Ava AI paths is REMOVED (owner decision 2026-06-24,
- * Specs §2A). ChatAva (/api/ava/gemini), @ava replies, agent-to-agent, the offline
- * auto-reply, and image prompts are no longer content-checked. This is a no-op so
- * the wrappers below (guardInput/guardOutput/runGated) keep their shape and the
- * kill-switch / intent gate / daily quota all still work. The surfaces that DO
- * moderate are the shield watchdog (ava_guardian) and save-time field validation
- * (/api/moderate) — both via lib/moderation.ts (Nemotron over OpenRouter).
- */
-export async function isSafe(_env: Env, _text: string): Promise<boolean> {
-  return true;
+/** Run the real Workers-AI safety classifier. A classifier outage fails open
+ * so chat stays available; a confident unsafe verdict fails closed. */
+export async function safetyVerdict(env: Env, text: string): Promise<{ safe: boolean; providerCalled: boolean }> {
+  const t = (text ?? "").trim();
+  if (!t) return { safe: true, providerCalled: false };
+  try {
+    const out: any = await env.AI.run(
+      GUARD,
+      { messages: [{ role: "user", content: t }] },
+      aiRunOpts(env),
+    );
+    const verdict = (aiText(out) || JSON.stringify(out)).toLowerCase();
+    return { safe: !verdict.includes("unsafe"), providerCalled: true };
+  } catch {
+    return { safe: true, providerCalled: false };
+  }
+}
+
+export async function isSafe(env: Env, text: string): Promise<boolean> {
+  return (await safetyVerdict(env, text)).safe;
 }
 
 /** Guard the user's INPUT. `{ ok:false, reason }` when the input is unsafe. */
@@ -200,38 +210,18 @@ export async function fileAnalysisAllowed(env: Env, tier: AiTier, premium?: bool
 // budget, UTC-day reset. The existing turn cap (enforceQuota/dailyAvaTurnLimit)
 // remains a SECONDARY anti-script limit on top of these.
 //
-// STORAGE: reuses ai_quota.ts's precedent — one KV key per uid per UTC day,
-// TTL so a day's counter self-evicts, best-effort/fail-open — rather than
-// inventing a new store shape. Same technique, a different counter (token/cost
-// usage instead of a turn count). ai_quota.ts itself is owned by a different
-// change in this wave, so this is a parallel key, not a shared one.
-
-const FREE_BUDGET_TTL_SECONDS = 2 * 24 * 60 * 60; // survives the UTC-day boundary, then self-evicts (mirrors ai_quota.ts)
+// STORAGE: [AI-BUDGET-AUTH-1] the existing per-account WalletDO. The previous
+// KV read-modify-write counter was not atomic and concurrent turns could all
+// pass against the same stale headroom.
 
 function freeBudgetDayKey(now = Date.now()): string {
   return new Date(now).toISOString().slice(0, 10);
-}
-function freeBudgetKvKey(uid: string, day = freeBudgetDayKey()): string {
-  return `free_text_budget:${uid}:${day}`;
 }
 
 export interface FreeTextUsage {
   inputTokens: number;
   outputTokens: number;
   costMicroUsd: number;
-}
-
-async function readFreeTextUsage(env: Env, uid: string): Promise<FreeTextUsage> {
-  try {
-    const raw = await env.TOKENS.get(freeBudgetKvKey(uid));
-    if (!raw) return { inputTokens: 0, outputTokens: 0, costMicroUsd: 0 };
-    const j = JSON.parse(raw);
-    return {
-      inputTokens: Math.max(0, Number(j?.inputTokens) || 0),
-      outputTokens: Math.max(0, Number(j?.outputTokens) || 0),
-      costMicroUsd: Math.max(0, Number(j?.costMicroUsd) || 0),
-    };
-  } catch { return { inputTokens: 0, outputTokens: 0, costMicroUsd: 0 }; }
 }
 
 /**
@@ -257,39 +247,11 @@ export function estimateTokens(text: string): number {
 const DEEPSEEK_IN_PER_M_MICRO_USD = 93_800;   // $0.0938 / 1M input tokens
 const DEEPSEEK_OUT_PER_M_MICRO_USD = 187_600; // $0.1876 / 1M output tokens
 
-function freeTextCostMicroUsd(inputTokens: number, outputTokens: number): number {
+export function freeTextCostMicroUsd(inputTokens: number, outputTokens: number): number {
   const inTok = Math.max(0, Math.trunc(inputTokens));
   const outTok = Math.max(0, Math.trunc(outputTokens));
   return Math.ceil((inTok * DEEPSEEK_IN_PER_M_MICRO_USD) / 1_000_000)
        + Math.ceil((outTok * DEEPSEEK_OUT_PER_M_MICRO_USD) / 1_000_000);
-}
-
-/**
- * Add usage to uid's free-text daily counters. Call for EVERY model-ish call a
- * free turn makes — generation, guardInput, isSafe, and any regenerate —
- * even though NONE of them are ever wallet-billed (report §19a: "a free turn
- * is 3-4 model calls, not one"; §55: "count safety/moderation model calls and
- * retries against the internal platform-cost budget"). Best-effort; never
- * throws — a counter-write failure must never block or corrupt a turn.
- */
-export async function recordFreeTextUsage(
-  env: Env,
-  uid: string,
-  usage: { inputTokens?: number; outputTokens?: number },
-): Promise<void> {
-  const inputTokens = Math.max(0, Math.trunc(usage.inputTokens ?? 0));
-  const outputTokens = Math.max(0, Math.trunc(usage.outputTokens ?? 0));
-  if (!inputTokens && !outputTokens) return;
-  const costMicroUsd = freeTextCostMicroUsd(inputTokens, outputTokens);
-  try {
-    const cur = await readFreeTextUsage(env, uid);
-    const next: FreeTextUsage = {
-      inputTokens: cur.inputTokens + inputTokens,
-      outputTokens: cur.outputTokens + outputTokens,
-      costMicroUsd: cur.costMicroUsd + costMicroUsd,
-    };
-    await env.TOKENS.put(freeBudgetKvKey(uid), JSON.stringify(next), { expirationTtl: FREE_BUDGET_TTL_SECONDS });
-  } catch { /* fail open — never block a turn on a counter write */ }
 }
 
 export type FreeTextBudgetReason = "input_too_large" | "daily_ai_budget_exhausted";
@@ -298,21 +260,16 @@ export interface FreeTextBudgetDecision {
   allowed: boolean;
   reason?: FreeTextBudgetReason;
   usage?: FreeTextUsage;
+  requestId?: string;
+  day?: string;
 }
 
-/**
- * Pre-flight check for the free text lane (report §19b/§55) — call BEFORE
- * guardInput/generate/isSafe run. Rejects an oversized single turn with
- * `input_too_large`, or a turn once the account's UTC-day input/output/cost
- * budget is exhausted with `daily_ai_budget_exhausted`. NEVER returns a
- * wallet/paywall reason — the free text lane has no wallet involvement at all
- * (that was Part I §2c/§7's root failure: a billing rejection rendered to the
- * user as "Sorry, I could not find an answer").
- */
-export async function checkFreeTextBudget(
+/** Atomically reserve worst-case daily free-lane budget before inference. */
+export async function reserveFreeTextBudget(
   env: Env,
   uid: string,
   inputTokens: number,
+  opts: { requestId: string; maxOutputTokens: number; skipTurnLimit?: boolean },
 ): Promise<FreeTextBudgetDecision> {
   const cfg = await readConfig(env);
   const maxInput = Number(cfg.freeTextMaxInputTokens) || 32_000;
@@ -322,15 +279,57 @@ export async function checkFreeTextBudget(
   const dailyOut = Number(cfg.freeTextDailyOutputTokens) || 200_000;
   const dailyCost = Number(cfg.freeTextDailyCostMicroUsd) || 50_000;
 
-  const usage = await readFreeTextUsage(env, uid);
-  if (
-    usage.inputTokens + inputTokens > dailyIn
-    || usage.outputTokens >= dailyOut
-    || usage.costMicroUsd >= dailyCost
-  ) {
-    return { allowed: false, reason: "daily_ai_budget_exhausted", usage };
+  const outputReserve = Math.max(0, Math.trunc(opts.maxOutputTokens));
+  const day = freeBudgetDayKey();
+  try {
+    const r = await walletOp(env, uid, {
+      op: "ai_budget_reserve", uid, request_id: opts.requestId, day,
+      input_tokens: inputTokens, output_tokens: outputReserve,
+      cost_micro_usd: freeTextCostMicroUsd(inputTokens, outputReserve),
+      daily_input_limit: dailyIn, daily_output_limit: dailyOut, daily_cost_limit: dailyCost,
+      turn_limit: opts.skipTurnLimit || cfg.openChatUncapped
+        ? 0 : Math.max(0, Number(cfg.dailyAvaTurnLimit) || 200),
+      op_id: `${opts.requestId}:free-budget-reserve`, app_name: "ava_free_text",
+    });
+    if (r.status === 429 || r.body?.ok !== true) {
+      return { allowed: false, reason: "daily_ai_budget_exhausted", requestId: opts.requestId, day };
+    }
+    return { allowed: true, requestId: opts.requestId, day };
+  } catch {
+    // Emergency fail-open: the per-turn ceiling above remains enforced. The
+    // caller emits authority-outage telemetry; expensive metered jobs do not use
+    // this path and continue to fail closed.
+    return { allowed: true, requestId: opts.requestId, day };
   }
-  return { allowed: true, usage };
+}
+
+export async function settleFreeTextBudget(
+  env: Env,
+  uid: string,
+  reservation: Pick<FreeTextBudgetDecision, "requestId" | "day">,
+  usage: { inputTokens?: number; outputTokens?: number },
+): Promise<void> {
+  if (!reservation.requestId || !reservation.day) return;
+  const inputTokens = Math.max(0, Math.trunc(usage.inputTokens ?? 0));
+  const outputTokens = Math.max(0, Math.trunc(usage.outputTokens ?? 0));
+  await walletOp(env, uid, {
+    op: "ai_budget_settle", uid, request_id: reservation.requestId, day: reservation.day,
+    input_tokens: inputTokens, output_tokens: outputTokens,
+    cost_micro_usd: freeTextCostMicroUsd(inputTokens, outputTokens),
+    op_id: `${reservation.requestId}:free-budget-settle`, app_name: "ava_free_text",
+  }).catch(() => {});
+}
+
+export async function releaseFreeTextBudget(
+  env: Env,
+  uid: string,
+  reservation: Pick<FreeTextBudgetDecision, "requestId" | "day">,
+): Promise<void> {
+  if (!reservation.requestId || !reservation.day) return;
+  await walletOp(env, uid, {
+    op: "ai_budget_release", uid, request_id: reservation.requestId, day: reservation.day,
+    op_id: `${reservation.requestId}:free-budget-release`, app_name: "ava_free_text",
+  }).catch(() => {});
 }
 
 /** User-facing copy for a free-budget rejection — never mentions a wallet, a paywall, Gemini, or BYO keys. */
@@ -382,6 +381,12 @@ export async function runGated(
     // unaffected — this is additive to wallet metering, never a replacement.
     capability?: string;
     inputTokens?: number;
+    // Stable across transport retries so a retry cannot reserve the same turn
+    // twice. Callers should pass their request/op id.
+    requestId?: string;
+    // Worst-case completion allowance reserved before inference, then replaced
+    // by actual usage at settlement.
+    maxOutputTokens?: number;
   },
 ): Promise<GatedResult> {
   const cfg = await readConfig(env);
@@ -397,10 +402,19 @@ export async function runGated(
   // [AVA-FREE-BUDGET-1] free-lane budget gate — BEFORE guardInput/generate
   // (report §55). Never a wallet/paywall reason: the free text lane has no
   // wallet path to fail on (Part I §2c/§7).
+  let reservation: FreeTextBudgetDecision | undefined;
   if (free) {
-    const decision = await checkFreeTextBudget(env, args.uid, turnInputTokens);
-    if (!decision.allowed) {
-      return { answer: FREE_BUDGET_MESSAGE[decision.reason as FreeTextBudgetReason], blocked: true, reason: decision.reason };
+    reservation = await reserveFreeTextBudget(env, args.uid, turnInputTokens, {
+      requestId: args.requestId ?? crypto.randomUUID(),
+      maxOutputTokens: args.maxOutputTokens ?? 1024,
+      skipTurnLimit: !!args.skipQuota || !!args.premium || args.tier === "byo",
+    });
+    if (!reservation.allowed) {
+      return {
+        answer: FREE_BUDGET_MESSAGE[reservation.reason as FreeTextBudgetReason],
+        blocked: true,
+        reason: reservation.reason,
+      };
     }
   }
 
@@ -414,27 +428,27 @@ export async function runGated(
     freeOutTokens += Math.max(0, outTok);
   };
   const flushFreeUsage = async (): Promise<void> => {
-    if (!free) return;
-    await recordFreeTextUsage(env, args.uid, { inputTokens: freeInTokens, outputTokens: freeOutTokens });
+    if (!free || !reservation) return;
+    await settleFreeTextBudget(env, args.uid, reservation, {
+      inputTokens: freeInTokens,
+      outputTokens: freeOutTokens,
+    });
   };
 
-  // (a) input moderation — mandatory on every tier incl. BYO. Counts as one
-  // model-ish call against the free-lane platform-cost budget even though
-  // isSafe() is currently a no-op (content moderation removed 2026-06-24 — see
-  // isSafe's own doc comment above); accounting stays correct if/when it is
-  // revived, and costs nothing extra today.
-  const gin = await guardInput(env, args.userText);
-  if (free) trackFree(turnInputTokens, 0);
-  if (!gin.ok) {
+  // (a) input moderation — mandatory on every tier incl. BYO. Count it only
+  // when the classifier really ran; empty input and classifier outages must not
+  // consume imaginary free-chat budget.
+  const inputSafety = await safetyVerdict(env, args.userText);
+  if (free && inputSafety.providerCalled) trackFree(turnInputTokens, 0);
+  if (!inputSafety.safe) {
     await flushFreeUsage();
-    return { answer: REFUSAL, blocked: true, reason: gin.reason };
+    return { answer: REFUSAL, blocked: true, reason: "input_unsafe" };
   }
 
-  // (c) quota — BYO/premium bypass; our-keys free tier capped + committed.
-  // This is now the SECONDARY anti-script turn limit (report §55/§19b) — the
-  // budgets above are the real cost bound for the free lane.
+  // The free-lane turn cap was admitted atomically with its budget reservation.
+  // Keep the legacy KV quota only for non-free callers until they migrate.
   let remaining: number | undefined;
-  if (!args.skipQuota) {
+  if (!free && !args.skipQuota) {
     const q = await enforceQuota(env, args.uid, args.tier, { premium: args.premium, commit: true });
     if (!q.allowed) {
       await flushFreeUsage();
@@ -446,22 +460,30 @@ export async function runGated(
     remaining = q.remaining;
   }
 
-  // generate → output guard → regenerate once → safe refusal.
-  let answer = (await args.generate()).trim();
-  if (free) trackFree(turnInputTokens, estimateTokens(answer));
-  if (!answer) answer = "Sorry, I couldn't come up with a reply just now. Try rephrasing?";
-  const safe1 = await isSafe(env, answer);
-  if (free) trackFree(estimateTokens(answer), 0); // isSafe reads the answer as its input
-  if (!safe1) {
-    answer = (await args.generate("Keep the reply respectful, safe, and appropriate.")).trim();
-    if (free) trackFree(turnInputTokens, estimateTokens(answer)); // regenerate = a full second generation
-    const safe2 = answer ? await isSafe(env, answer) : false;
-    if (free) trackFree(estimateTokens(answer), 0); // second isSafe pass
-    if (!answer || !safe2) {
-      await flushFreeUsage();
-      return { answer: REFUSAL, blocked: true, reason: "output_unsafe", remaining };
+  try {
+    // generate → output guard → regenerate once → safe refusal.
+    let answer = (await args.generate()).trim();
+    if (free) trackFree(turnInputTokens, estimateTokens(answer));
+    if (!answer) answer = "Sorry, I couldn't come up with a reply just now. Try rephrasing?";
+    const safe1 = await safetyVerdict(env, answer);
+    if (free && safe1.providerCalled) trackFree(estimateTokens(answer), 0);
+    if (!safe1.safe) {
+      answer = (await args.generate("Keep the reply respectful, safe, and appropriate.")).trim();
+      if (free) trackFree(turnInputTokens, estimateTokens(answer));
+      const safe2 = answer
+        ? await safetyVerdict(env, answer)
+        : { safe: false, providerCalled: false };
+      if (free && safe2.providerCalled) trackFree(estimateTokens(answer), 0);
+      if (!answer || !safe2.safe) {
+        await flushFreeUsage();
+        return { answer: REFUSAL, blocked: true, reason: "output_unsafe", remaining };
+      }
     }
+    await flushFreeUsage();
+    return { answer, blocked: false, remaining };
+  } catch (err) {
+    if (freeInTokens || freeOutTokens) await flushFreeUsage();
+    else if (free && reservation) await releaseFreeTextBudget(env, args.uid, reservation);
+    throw err;
   }
-  await flushFreeUsage();
-  return { answer, blocked: false, remaining };
 }

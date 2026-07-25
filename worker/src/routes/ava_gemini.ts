@@ -19,7 +19,9 @@ import { requireUser, isFail } from "../authz";
 import {
   runGated, intentGate, aiRunOpts,
   friendlyAiError,          // truthful provider-error wording (quota/safety)
-  checkFreeTextBudget, recordFreeTextUsage, estimateTokens, FREE_BUDGET_MESSAGE, type FreeTextBudgetReason, // [AVA-FREE-BUDGET-1]
+  reserveFreeTextBudget, settleFreeTextBudget, releaseFreeTextBudget,
+  safetyVerdict, estimateTokens, FREE_BUDGET_MESSAGE,
+  type FreeTextBudgetDecision, type FreeTextBudgetReason,
 } from "../lib/ai_gate";
 import { isPremiumAI, premiumUpsell } from "../lib/premium";
 import { trackUser } from "../hooks";
@@ -81,6 +83,7 @@ interface AvaGeminiBody {
   history?: unknown;
   images?: unknown;   // [{ mime, data(base64) }] — premium (file/image understanding)
   source?: unknown;   // calling surface, e.g. "composer_translate" — for latency slicing
+  request_id?: unknown; // stable client action id; reused by budget/wallet dedupe
 }
 
 interface Turn { role: "user" | "assistant"; text: string; }
@@ -256,6 +259,9 @@ export async function avaGemini(req: Request, env: Env): Promise<Response> {
   // Calling surface (composer_translate / composer_rewrite / composer_reply_ideas /
   // composer_grammar / chat / …) so latency can be sliced by WHICH feature is slow.
   const source = String(b.source ?? "chat").slice(0, 40);
+  const suppliedRequestId = String(b.request_id ?? "").trim();
+  const opId = suppliedRequestId && suppliedRequestId.length <= 160
+    ? suppliedRequestId : crypto.randomUUID();
   const t0 = Date.now();
 
   // Resolve the email (for telemetry) in parallel with the premium check so it
@@ -279,6 +285,7 @@ export async function avaGemini(req: Request, env: Env): Promise<Response> {
   const toolNames: string[] = [];
 
   trackUser(env, ctx.uid, email, "ava_chat_request", "avaai", {
+    request_id: opId,
     source, msg_len: message.length, history_len: history.length, images: images.length,
     has_context: !!context, premium, premium_via: via, setup_ms: setupMs,
   });
@@ -314,11 +321,10 @@ export async function avaGemini(req: Request, env: Env): Promise<Response> {
     generate(env, ctx.uid, email, system, history, message, premium ? images : [], chatModel, steer);
 
   // [AI-BILLING-CORE-1] Reserve the worst-case wallet amount BEFORE the provider
-  // call (§H3 steps 1-4). opId is fresh per turn (chat is not naturally
-  // idempotent). While aiWalletMeteringEnabled is off, OR capability is free
+  // call (§H3 steps 1-4). opId comes from the client action and is stable
+  // across a transport retry. While aiWalletMeteringEnabled is off, OR capability is free
   // (chat_ava — ai_billing.isFreeCapability), this is a no-op that always
   // admits — see ai_billing.ts.
-  const opId = crypto.randomUUID();
   const historyChars = history.reduce((n, t) => n + t.text.length, 0);
   const promptChars = system.length + message.length + historyChars;
   const reservation = await reserveAiJob(env, {
@@ -327,7 +333,7 @@ export async function avaGemini(req: Request, env: Env): Promise<Response> {
   });
   if (!reservation.ok) {
     trackUser(env, ctx.uid, email, "ava_chat_blocked", "avaai", {
-      source, route: "chat", reason: "insufficient_tokens", premium, needed: reservation.needed, balance: reservation.balance,
+      request_id: opId, source, route: "chat", reason: "insufficient_tokens", premium, needed: reservation.needed, balance: reservation.balance,
     });
     return json({
       error: reservation.error, needed: reservation.needed, balance: reservation.balance,
@@ -348,13 +354,15 @@ export async function avaGemini(req: Request, env: Env): Promise<Response> {
       // above instead).
       capability,
       inputTokens: estimateTokens(system + message + history.map((t) => t.text).join("\n")),
+      requestId: opId,
+      maxOutputTokens: MAX_TOKENS,
     });
   } catch (e: any) {
     // Provider call failed before any billable usage — full unbilled release.
     await releaseAiJob(env, reservation, { uid: ctx.uid, opId, capability, reason: "provider_error" });
     const cls = friendlyAiError(e);
     trackUser(env, ctx.uid, email, "ai_error", "avaai", {
-      source, route: "chat", reason: cls.kind, detail: String(e?.message ?? e).slice(0, 200),
+      request_id: opId, source, route: "chat", reason: cls.kind, detail: String(e?.message ?? e).slice(0, 200),
       premium, premium_via: via, latency_ms: Date.now() - t0, setup_ms: setupMs,
       gen_ms: Date.now() - tGen0, tool_calls: toolCalls, images: images.length,
     });
@@ -381,7 +389,7 @@ export async function avaGemini(req: Request, env: Env): Promise<Response> {
       trackUser(env, ctx.uid, email, "ai_free_budget_blocked", "avaai", { source, route: "chat", reason: result.reason, capability });
     }
     trackUser(env, ctx.uid, email, "ava_chat_blocked", "avaai", {
-      source, route: "chat", reason: result.reason, premium, latency_ms: totalMs,
+      request_id: opId, source, route: "chat", reason: result.reason, premium, latency_ms: totalMs,
       setup_ms: setupMs, gen_ms: genMs, tool_calls: toolCalls,
       ...(result.remaining != null ? { remaining: result.remaining } : {}),
     });
@@ -403,7 +411,7 @@ export async function avaGemini(req: Request, env: Env): Promise<Response> {
   });
 
   trackUser(env, ctx.uid, email, "ava_chat_completed", "avaai", {
-    source, route: "chat", tier: premium ? "premium" : "free", premium, premium_via: via,
+    request_id: opId, source, route: "chat", tier: premium ? "premium" : "free", premium, premium_via: via,
     answer_len: (result.answer ?? "").length, in_images: images.length, gen_images: generatedImages.length,
     latency_ms: totalMs, setup_ms: setupMs, gen_ms: genMs,
     tool_calls: toolCalls, tools: toolNames.join(",") || "none",
@@ -419,9 +427,11 @@ export async function avaGemini(req: Request, env: Env): Promise<Response> {
 // POST /api/ava/gemini/stream — streaming companion chat (SSE). Pipes Gemini's
 // streamGenerateContent tokens to the client as `data: {"delta":"…"}` so the UI
 // types the answer out LIVE (feels far faster). Same model + system as avaGemini.
-// Output moderation is skipped (you can't gate a stream before it's sent) — this
-// is the user's own companion chat; the input was already theirs.
+// Input moderation runs before the provider stream opens. Buffered routes also
+// guard output; this live-token route does not pretend a post-hoc classifier
+// can retract deltas already displayed.
 export async function avaGeminiStream(req: Request, env: Env): Promise<Response> {
+  const t0 = Date.now();
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   let b: AvaGeminiBody;
@@ -431,6 +441,7 @@ export async function avaGeminiStream(req: Request, env: Env): Promise<Response>
   const context = String(b.context ?? "").trim();
   const history = normHistory(b.history);
   const images = normImages(b.images);
+  const source = String(b.source ?? "chat_stream").slice(0, 40);
   if (!(env as any).OPENROUTER_API_KEY) return json({ error: "unavailable" }, 502);
 
   // [AVA-FREE-BUDGET-1] ChatAVA over SSE on deepseek/deepseek-v4-flash (free) —
@@ -458,17 +469,31 @@ export async function avaGeminiStream(req: Request, env: Env): Promise<Response>
   const chatModel = hasImages ? imageCapableModel(env) : openRouterModel(env);
   const historyChars = history.reduce((n, t) => n + t.text.length, 0);
   const promptChars = system.length + message.length + historyChars;
+  const suppliedRequestId = String(b.request_id ?? "").trim();
+  const opId = suppliedRequestId && suppliedRequestId.length <= 160
+    ? suppliedRequestId : crypto.randomUUID();
+  const setupMs = Date.now() - t0;
+  trackUser(env, ctx.uid, email, "ava_chat_request", "avaai", {
+    request_id: opId, source, route: "chat_stream", capability, model: chatModel,
+    premium, input_chars: promptChars, setup_ms: setupMs,
+  });
 
-  // [AVA-FREE-BUDGET-1] Streaming bypasses runGated (moderation is skipped for
-  // streams — see the doc comment above), so the free-budget pre-flight has to
-  // run here directly, BEFORE reserveAiJob/streamGenerate. Never a wallet/
-  // paywall reason (§55): input_too_large / daily_ai_budget_exhausted only.
+  // Streaming bypasses runGated, so reserve the same atomic free-lane budget
+  // here with the transport request id. The reservation also admits the daily
+  // turn cap; there is no raceable KV check on this path.
   const inputTokens = estimateTokens(system + message + history.map((t) => t.text).join("\n"));
+  let freeBudget: FreeTextBudgetDecision | undefined;
   if (!hasImages) {
-    const decision = await checkFreeTextBudget(env, ctx.uid, inputTokens);
-    if (!decision.allowed) {
-      const reason = decision.reason as FreeTextBudgetReason;
-      trackUser(env, ctx.uid, email, "ai_free_budget_blocked", "avaai", { source: "chat_stream", route: "chat", reason, capability });
+    freeBudget = await reserveFreeTextBudget(env, ctx.uid, inputTokens, {
+      requestId: opId,
+      maxOutputTokens: MAX_TOKENS,
+      skipTurnLimit: premium,
+    });
+    if (!freeBudget.allowed) {
+      const reason = freeBudget.reason as FreeTextBudgetReason;
+      trackUser(env, ctx.uid, email, "ai_free_budget_blocked", "avaai", {
+        request_id: opId, source, route: "chat_stream", reason, capability,
+      });
       const enc0 = new TextEncoder();
       const out0 = new ReadableStream({
         start(controller) {
@@ -483,16 +508,43 @@ export async function avaGeminiStream(req: Request, env: Env): Promise<Response>
     }
   }
 
+  // Restore real input moderation on the streaming lane. Only a classifier
+  // call that actually ran is included in the free platform-cost settlement.
+  const inputSafety = await safetyVerdict(env, message);
+  const moderationInputTokens = inputSafety.providerCalled ? estimateTokens(message) : 0;
+  if (!inputSafety.safe) {
+    if (freeBudget) {
+      await settleFreeTextBudget(env, ctx.uid, freeBudget, {
+        inputTokens: moderationInputTokens,
+        outputTokens: 0,
+      });
+    }
+    trackUser(env, ctx.uid, email, "ava_chat_blocked", "avaai", {
+      request_id: opId, source, route: "chat_stream", reason: "input_unsafe",
+    });
+    const enc0 = new TextEncoder();
+    const out0 = new ReadableStream({
+      start(controller) {
+        controller.enqueue(enc0.encode(`data: ${JSON.stringify({ delta: "I can't help with that one. Let's keep things safe — ask me something else?", blocked: true, reason: "input_unsafe" })}\n\n`));
+        controller.enqueue(enc0.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+    return new Response(out0, {
+      headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache", ...CORS },
+    });
+  }
+
   // [AI-BILLING-CORE-1] Same reserve-before-call contract as the non-streaming
   // handler above. A stream that can't be reserved never opens — the client
   // gets a normal 402 instead of an SSE stream. No-op while the flag is off,
   // or while capability is free (chat_ava).
-  const opId = crypto.randomUUID();
   const reservation = await reserveAiJob(env, {
     uid: ctx.uid, opId, capability, modality: "text", model: chatModel,
     maxInputTokens: estimateInputTokensFromChars(promptChars), maxOutputTokens: MAX_TOKENS,
   });
   if (!reservation.ok) {
+    if (freeBudget) await releaseFreeTextBudget(env, ctx.uid, freeBudget);
     return json({ error: reservation.error, needed: reservation.needed, balance: reservation.balance }, 402);
   }
 
@@ -504,10 +556,25 @@ export async function avaGeminiStream(req: Request, env: Env): Promise<Response>
       };
       let streamedAny = false;
       let streamedChars = 0;
+      let ttftMs: number | undefined;
+      let providerError: unknown;
       try {
         await streamGenerate(env, system, history, message, premium ? images : [], chatModel,
-          (t) => { if (t) { streamedAny = true; streamedChars += t.length; send({ delta: t }); } });
+          (t) => {
+            if (!t) return;
+            if (!streamedAny) {
+              ttftMs = Date.now() - t0;
+              trackUser(env, ctx.uid, email, "ava_chat_first_token", "avaai", {
+                request_id: opId, source, route: "chat_stream", ttft_ms: ttftMs,
+                setup_ms: setupMs, model: chatModel,
+              });
+            }
+            streamedAny = true;
+            streamedChars += t.length;
+            send({ delta: t });
+          });
       } catch (e) {
+        providerError = e;
         // On a hard failure before any token streamed, send a truthful reason
         // (quota/safety) so the chat bubble isn't a bare "couldn't generate".
         if (!streamedAny) {
@@ -525,15 +592,38 @@ export async function avaGeminiStream(req: Request, env: Env): Promise<Response>
           modelRequested: chatModel, modelActual: chatModel,
           usage: { inputTokens: estimateInputTokensFromChars(promptChars), outputTokens: Math.ceil(streamedChars / 4) },
         }).catch(() => {});
-        // [AVA-FREE-BUDGET-1] streaming never runs through runGated, so record
-        // the free-lane usage here directly (generation call only — moderation
-        // is skipped for streams by design, see the doc comment above).
+        // Streaming never runs through runGated, so settle its generation plus
+        // the input classifier call here directly.
         if (!hasImages) {
-          await recordFreeTextUsage(env, ctx.uid, { inputTokens, outputTokens: Math.ceil(streamedChars / 4) });
+          await settleFreeTextBudget(env, ctx.uid, freeBudget!, {
+            inputTokens: inputTokens + moderationInputTokens,
+            outputTokens: Math.ceil(streamedChars / 4),
+          });
         }
       } else {
         await releaseAiJob(env, reservation, { uid: ctx.uid, opId, capability, reason: "provider_error" }).catch(() => {});
+        if (freeBudget) {
+          if (moderationInputTokens) {
+            await settleFreeTextBudget(env, ctx.uid, freeBudget, {
+              inputTokens: moderationInputTokens,
+              outputTokens: 0,
+            });
+          } else {
+            await releaseFreeTextBudget(env, ctx.uid, freeBudget);
+          }
+        }
       }
+      const totalMs = Date.now() - t0;
+      const providerMs = Math.max(0, totalMs - setupMs);
+      trackUser(env, ctx.uid, email, providerError ? "ai_error" : "ava_chat_completed", "avaai", {
+        request_id: opId, source, route: "chat_stream", capability, model: chatModel,
+        premium, streamed: streamedAny, output_chars: streamedChars,
+        ttft_ms: ttftMs, total_ms: totalMs, setup_ms: setupMs, provider_ms: providerMs,
+        ...(providerError ? { detail: String((providerError as any)?.message ?? providerError).slice(0, 200) } : {}),
+      });
+      send({ done: true, timings: {
+        total_ms: totalMs, setup_ms: setupMs, provider_ms: providerMs, ttft_ms: ttftMs,
+      } });
       try { controller.enqueue(enc.encode("data: [DONE]\n\n")); } catch { /* ignore */ }
       controller.close();
     },

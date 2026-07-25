@@ -96,6 +96,31 @@ export type WalletOperation =
   // Exclusively for allow_free:true (AI-metered) reservations — the DO
   // refuses to settle a campaign/payout reservation this way.
   | (WalletOpBase & { op: "settle_ai_cost"; ref: string; actual_cost_micro_usd: number; capability?: string })
+  // [AI-BUDGET-AUTH-1] Strongly-consistent per-account free-AI budget.
+  // Reserve before provider work, then settle actual usage or release.
+  | (WalletOpBase & {
+      op: "ai_budget_reserve"; request_id: string; day: string;
+      input_tokens: number; output_tokens: number; cost_micro_usd: number;
+      daily_input_limit: number; daily_output_limit: number; daily_cost_limit: number;
+      turn_limit: number;
+    })
+  | (WalletOpBase & {
+      op: "ai_budget_settle"; request_id: string; day: string;
+      input_tokens: number; output_tokens: number; cost_micro_usd: number;
+    })
+  | (WalletOpBase & { op: "ai_budget_release"; request_id: string; day: string })
+  // Per-account unrecovered-cost exposure uses reserve/settle/release so
+  // concurrent metered jobs cannot all pass below a stale completed-loss total.
+  | (WalletOpBase & { op: "ai_unrecovered_status"; day: string })
+  | (WalletOpBase & {
+      op: "ai_unrecovered_reserve"; request_id: string; day: string;
+      amount_micro_usd: number; daily_limit_micro_usd: number;
+    })
+  | (WalletOpBase & {
+      op: "ai_unrecovered_settle"; request_id: string; day: string;
+      amount_micro_usd: number;
+    })
+  | (WalletOpBase & { op: "ai_unrecovered_release"; request_id: string; day: string })
   // Account-deletion cascade hook — clears the sub-cent AI remainder and
   // releases any stray AI-job reservations WITHOUT touching balance/free/bonus.
   | (WalletOpBase & { op: "clear_ai_remainder" });

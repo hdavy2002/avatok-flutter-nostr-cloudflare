@@ -235,6 +235,38 @@ export class WalletDO {
     // escrow keeps its own explicit release/consume lifecycle and is NEVER
     // reaped by expires_at or the aijob-only reaper below).
     try { this.sql.exec("ALTER TABLE resv ADD COLUMN expires_at INTEGER NOT NULL DEFAULT 0"); } catch { /* column already exists */ }
+    // [AI-BUDGET-AUTH-1] Atomic, per-account daily AI budget reservations.
+    // A request first reserves its maximum budget, then settles actual usage or
+    // releases. Keeping request rows makes retries idempotent and lets concurrent
+    // admissions see each other's headroom synchronously inside this DO.
+    this.sql.exec(
+      `CREATE TABLE IF NOT EXISTS ai_daily_budget (
+         request_id TEXT PRIMARY KEY,
+         day TEXT NOT NULL,
+         status TEXT NOT NULL,
+         input_reserved INTEGER NOT NULL DEFAULT 0,
+         output_reserved INTEGER NOT NULL DEFAULT 0,
+         cost_reserved INTEGER NOT NULL DEFAULT 0,
+         input_actual INTEGER NOT NULL DEFAULT 0,
+         output_actual INTEGER NOT NULL DEFAULT 0,
+         cost_actual INTEGER NOT NULL DEFAULT 0,
+         created_at INTEGER NOT NULL,
+         updated_at INTEGER NOT NULL
+       )`,
+    );
+    this.sql.exec("CREATE INDEX IF NOT EXISTS idx_ai_daily_budget_day ON ai_daily_budget(day, status)");
+    this.sql.exec(
+      `CREATE TABLE IF NOT EXISTS ai_unrecovered_budget (
+         request_id TEXT PRIMARY KEY,
+         day TEXT NOT NULL,
+         status TEXT NOT NULL,
+         amount_reserved INTEGER NOT NULL DEFAULT 0,
+         amount_actual INTEGER NOT NULL DEFAULT 0,
+         created_at INTEGER NOT NULL,
+         updated_at INTEGER NOT NULL
+       )`,
+    );
+    this.sql.exec("CREATE INDEX IF NOT EXISTS idx_ai_unrecovered_budget_day ON ai_unrecovered_budget(day, status)");
   }
 
   /** Replay guard: return the stored result for a seen op_id, else null. */
@@ -317,7 +349,10 @@ export class WalletDO {
       body.op === "credit" || body.op === "spend" || body.op === "earn" || body.op === "debit_hold" || body.op === "promo_credit" ||
       body.op === "hard_reset" || // [TOKENS-100-GRANT-1] one-time balance reset (idempotent per op_id)
       body.op === "reserve" || body.op === "consume_reserved" || body.op === "release_reservation" || // [AVA-CAMP-B1-WALLET]
-      body.op === "settle_ai_cost" || body.op === "clear_ai_remainder" // [AI-WALLET-SPENDABLE-2]
+      body.op === "settle_ai_cost" || body.op === "clear_ai_remainder" || // [AI-WALLET-SPENDABLE-2]
+      body.op === "ai_budget_reserve" || body.op === "ai_budget_settle" ||
+      body.op === "ai_budget_release" || body.op === "ai_unrecovered_reserve" ||
+      body.op === "ai_unrecovered_settle" || body.op === "ai_unrecovered_release" // [AI-BUDGET-AUTH-1]
     ) {
       const dup = this.seenOp(body.op_id);
       if (dup) return dup;
@@ -339,6 +374,13 @@ export class WalletDO {
       case "release_reservation": return this.releaseReservation(uid, body);
       // [AI-WALLET-SPENDABLE-2]
       case "settle_ai_cost": return this.settleAiCost(uid, body);
+      case "ai_budget_reserve": return this.aiBudgetReserve(body);
+      case "ai_budget_settle": return this.aiBudgetSettle(body);
+      case "ai_budget_release": return this.aiBudgetRelease(body);
+      case "ai_unrecovered_status": return this.aiUnrecoveredStatus(body);
+      case "ai_unrecovered_reserve": return this.aiUnrecoveredReserve(body);
+      case "ai_unrecovered_settle": return this.aiUnrecoveredSettle(body);
+      case "ai_unrecovered_release": return this.aiUnrecoveredRelease(body);
       case "clear_ai_remainder": return this.clearAiRemainder(uid, body);
       default: return json({ error: "unknown op" }, 400);
     }
@@ -797,6 +839,227 @@ export class WalletDO {
     return json(result);
   }
 
+  private validAiBudgetKey(dayRaw: unknown, requestRaw?: unknown): { day: string; requestId?: string } | null {
+    const day = String(dayRaw ?? "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
+    if (requestRaw === undefined) return { day };
+    const requestId = String(requestRaw ?? "").trim();
+    if (!requestId || requestId.length > 160) return null;
+    return { day, requestId };
+  }
+
+  private aiBudgetTotals(day: string): {
+    turns: number; inputTokens: number; outputTokens: number; costMicroUsd: number;
+  } {
+    const r = this.sql.exec(
+      `SELECT
+         COUNT(*) AS turns,
+         COALESCE(SUM(CASE WHEN status='reserved' THEN input_reserved ELSE input_actual END),0) AS input_tokens,
+         COALESCE(SUM(CASE WHEN status='reserved' THEN output_reserved ELSE output_actual END),0) AS output_tokens,
+         COALESCE(SUM(CASE WHEN status='reserved' THEN cost_reserved ELSE cost_actual END),0) AS cost_micro_usd
+       FROM ai_daily_budget
+       WHERE day=?1 AND status IN ('reserved','settled')`,
+      day,
+    ).one() as any;
+    return {
+      turns: Math.max(0, Number(r?.turns ?? 0)),
+      inputTokens: Math.max(0, Number(r?.input_tokens ?? 0)),
+      outputTokens: Math.max(0, Number(r?.output_tokens ?? 0)),
+      costMicroUsd: Math.max(0, Number(r?.cost_micro_usd ?? 0)),
+    };
+  }
+
+  // [AI-BUDGET-AUTH-1] Atomic check+reserve. No await occurs between reading
+  // totals and inserting the reservation, so concurrent requests to this
+  // per-user DO cannot all pass against the same stale headroom.
+  private aiBudgetReserve(b: any): Response {
+    const key = this.validAiBudgetKey(b.day, b.request_id);
+    if (!key?.requestId) return json({ error: "valid day and request_id required" }, 400);
+    const nonNeg = (v: unknown): number | null => {
+      const n = Number(v);
+      return Number.isFinite(n) && n >= 0 ? Math.trunc(n) : null;
+    };
+    const input = nonNeg(b.input_tokens);
+    const output = nonNeg(b.output_tokens);
+    const cost = nonNeg(b.cost_micro_usd);
+    const inputLimit = nonNeg(b.daily_input_limit);
+    const outputLimit = nonNeg(b.daily_output_limit);
+    const costLimit = nonNeg(b.daily_cost_limit);
+    const turnLimit = nonNeg(b.turn_limit);
+    if ([input, output, cost, inputLimit, outputLimit, costLimit, turnLimit].some((v) => v === null)) {
+      return json({ error: "AI budget values must be finite non-negative integers" }, 400);
+    }
+    // Keep a short audit window without allowing one row per chat turn to grow
+    // this per-user SQLite database forever.
+    const retentionCutoff = new Date(Date.now() - 8 * 86_400_000).toISOString().slice(0, 10);
+    this.sql.exec("DELETE FROM ai_daily_budget WHERE day < ?1", retentionCutoff);
+    this.sql.exec("DELETE FROM ai_unrecovered_budget WHERE day < ?1", retentionCutoff);
+
+    const existing = this.sql.exec(
+      "SELECT status FROM ai_daily_budget WHERE request_id=?1 AND day=?2",
+      key.requestId, key.day,
+    ).toArray() as any[];
+    if (existing.length) {
+      const totals = this.aiBudgetTotals(key.day);
+      const result = { ok: true, duplicate: true, request_id: key.requestId, day: key.day, ...totals };
+      this.recordOp(b.op_id, result);
+      return json(result);
+    }
+
+    const totals = this.aiBudgetTotals(key.day);
+    const blocked =
+      ((turnLimit as number) > 0 && totals.turns + 1 > (turnLimit as number)) ||
+      ((inputLimit as number) > 0 && totals.inputTokens + (input as number) > (inputLimit as number)) ||
+      ((outputLimit as number) > 0 && totals.outputTokens + (output as number) > (outputLimit as number)) ||
+      ((costLimit as number) > 0 && totals.costMicroUsd + (cost as number) > (costLimit as number));
+    if (blocked) {
+      const result = {
+        ok: false, error: "daily_ai_budget_exhausted", request_id: key.requestId, day: key.day,
+        ...totals,
+      };
+      this.recordOp(b.op_id, result);
+      return json(result, 429);
+    }
+
+    const now = Date.now();
+    this.sql.exec(
+      `INSERT INTO ai_daily_budget
+         (request_id,day,status,input_reserved,output_reserved,cost_reserved,created_at,updated_at)
+       VALUES (?1,?2,'reserved',?3,?4,?5,?6,?6)`,
+      key.requestId, key.day, input, output, cost, now,
+    );
+    const after = this.aiBudgetTotals(key.day);
+    const result = { ok: true, request_id: key.requestId, day: key.day, ...after };
+    this.recordOp(b.op_id, result);
+    return json(result);
+  }
+
+  private aiBudgetSettle(b: any): Response {
+    const key = this.validAiBudgetKey(b.day, b.request_id);
+    if (!key?.requestId) return json({ error: "valid day and request_id required" }, 400);
+    const vals = [b.input_tokens, b.output_tokens, b.cost_micro_usd].map(Number);
+    if (vals.some((n) => !Number.isFinite(n) || n < 0)) {
+      return json({ error: "actual AI budget values must be finite and non-negative" }, 400);
+    }
+    const row = this.sql.exec(
+      "SELECT status FROM ai_daily_budget WHERE request_id=?1 AND day=?2",
+      key.requestId, key.day,
+    ).toArray() as any[];
+    if (!row.length) return json({ error: "AI budget reservation not found" }, 404);
+    if (row[0].status === "reserved") {
+      this.sql.exec(
+        `UPDATE ai_daily_budget
+         SET status='settled', input_actual=?1, output_actual=?2, cost_actual=?3, updated_at=?4
+         WHERE request_id=?5 AND day=?6 AND status='reserved'`,
+        Math.trunc(vals[0]), Math.trunc(vals[1]), Math.trunc(vals[2]), Date.now(), key.requestId, key.day,
+      );
+    }
+    const totals = this.aiBudgetTotals(key.day);
+    const result = { ok: true, request_id: key.requestId, day: key.day, ...totals };
+    this.recordOp(b.op_id, result);
+    return json(result);
+  }
+
+  private aiBudgetRelease(b: any): Response {
+    const key = this.validAiBudgetKey(b.day, b.request_id);
+    if (!key?.requestId) return json({ error: "valid day and request_id required" }, 400);
+    this.sql.exec(
+      "UPDATE ai_daily_budget SET status='released', updated_at=?1 WHERE request_id=?2 AND day=?3 AND status='reserved'",
+      Date.now(), key.requestId, key.day,
+    );
+    const totals = this.aiBudgetTotals(key.day);
+    const result = { ok: true, request_id: key.requestId, day: key.day, ...totals };
+    this.recordOp(b.op_id, result);
+    return json(result);
+  }
+
+  private aiUnrecoveredStatus(b: any): Response {
+    const key = this.validAiBudgetKey(b.day);
+    if (!key) return json({ error: "valid day required" }, 400);
+    const row = this.sql.exec(
+      `SELECT COALESCE(SUM(
+         CASE WHEN status='reserved' THEN amount_reserved ELSE amount_actual END
+       ),0) AS amount_micro_usd
+       FROM ai_unrecovered_budget
+       WHERE day=?1 AND status IN ('reserved','settled')`,
+      key.day,
+    ).one() as any;
+    return json({ ok: true, day: key.day, amount_micro_usd: Math.max(0, Number(row?.amount_micro_usd ?? 0)) });
+  }
+
+  private aiUnrecoveredReserve(b: any): Response {
+    const key = this.validAiBudgetKey(b.day, b.request_id);
+    const amount = Number(b.amount_micro_usd);
+    const limit = Number(b.daily_limit_micro_usd);
+    if (!key?.requestId || !Number.isFinite(amount) || amount < 0 || !Number.isFinite(limit) || limit < 0) {
+      return json({ error: "valid day, request_id, amount and daily limit required" }, 400);
+    }
+    const existing = this.sql.exec(
+      "SELECT status FROM ai_unrecovered_budget WHERE request_id=?1",
+      key.requestId,
+    ).toArray() as any[];
+    if (existing.length) {
+      const status = this.aiUnrecoveredStatus({ day: key.day });
+      this.recordOp(b.op_id, { ok: true, duplicate: true, request_id: key.requestId, day: key.day });
+      return status;
+    }
+    const current = this.sql.exec(
+      `SELECT COALESCE(SUM(
+         CASE WHEN status='reserved' THEN amount_reserved ELSE amount_actual END
+       ),0) AS n
+       FROM ai_unrecovered_budget
+       WHERE day=?1 AND status IN ('reserved','settled')`,
+      key.day,
+    ).one() as any;
+    const used = Math.max(0, Number(current?.n ?? 0));
+    const n = Math.trunc(amount);
+    if (limit > 0 && used + n > Math.trunc(limit)) {
+      const result = { ok: false, error: "AI_UNRECOVERED_LIMIT", day: key.day, amount_micro_usd: used };
+      this.recordOp(b.op_id, result);
+      return json(result, 429);
+    }
+    const now = Date.now();
+    this.sql.exec(
+      `INSERT INTO ai_unrecovered_budget
+         (request_id,day,status,amount_reserved,created_at,updated_at)
+       VALUES (?1,?2,'reserved',?3,?4,?4)`,
+      key.requestId, key.day, n, now,
+    );
+    const result = { ok: true, day: key.day, request_id: key.requestId, amount_micro_usd: used + n };
+    this.recordOp(b.op_id, result);
+    return json(result);
+  }
+
+  private aiUnrecoveredSettle(b: any): Response {
+    const key = this.validAiBudgetKey(b.day, b.request_id);
+    const amount = Number(b.amount_micro_usd);
+    if (!key?.requestId || !Number.isFinite(amount) || amount < 0) {
+      return json({ error: "valid day, request_id and amount required" }, 400);
+    }
+    this.sql.exec(
+      `UPDATE ai_unrecovered_budget
+       SET status='settled', amount_actual=?1, updated_at=?2
+       WHERE request_id=?3 AND day=?4 AND status='reserved'`,
+      Math.trunc(amount), Date.now(), key.requestId, key.day,
+    );
+    const result = { ok: true, day: key.day, request_id: key.requestId };
+    this.recordOp(b.op_id, result);
+    return json(result);
+  }
+
+  private aiUnrecoveredRelease(b: any): Response {
+    const key = this.validAiBudgetKey(b.day, b.request_id);
+    if (!key?.requestId) return json({ error: "valid day and request_id required" }, 400);
+    this.sql.exec(
+      `UPDATE ai_unrecovered_budget SET status='released', updated_at=?1
+       WHERE request_id=?2 AND day=?3 AND status='reserved'`,
+      Date.now(), key.requestId, key.day,
+    );
+    const result = { ok: true, day: key.day, request_id: key.requestId };
+    this.recordOp(b.op_id, result);
+    return json(result);
+  }
+
   // [AI-WALLET-SPENDABLE-2] clear_ai_remainder({opId}): account-deletion
   // cascade hook. Clears the sub-cent debt_micro_usd remainder and releases
   // every outstanding AI-job reservation WITHOUT touching balance/free/bonus
@@ -812,7 +1075,17 @@ export class WalletDO {
     if (releasedRows.length) {
       this.sql.exec("UPDATE resv SET reserved=0, released=1, updated_at=?1 WHERE released=0 AND ref LIKE 'aijob:%'", Date.now());
     }
-    const result = { ok: true, cleared_debt_micro_usd: clearedDebtMicroUsd, released_ai_reservations: releasedRows.length };
+    const budgetRows = Number((this.sql.exec("SELECT COUNT(*) AS n FROM ai_daily_budget").one() as any)?.n ?? 0);
+    const unrecoveredRows = Number((this.sql.exec("SELECT COUNT(*) AS n FROM ai_unrecovered_budget").one() as any)?.n ?? 0);
+    this.sql.exec("DELETE FROM ai_daily_budget");
+    this.sql.exec("DELETE FROM ai_unrecovered_budget");
+    const result = {
+      ok: true,
+      cleared_debt_micro_usd: clearedDebtMicroUsd,
+      released_ai_reservations: releasedRows.length,
+      cleared_ai_budget_rows: budgetRows,
+      cleared_ai_unrecovered_rows: unrecoveredRows,
+    };
     this.recordOp(b.op_id, result);
     await this.audit(uid, {
       type: "adjustment", amount: 0, balance_after: this.bal().balance, app_name: "account_delete_ai_remainder_clear", ref: b.ref,
