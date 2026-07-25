@@ -6,6 +6,13 @@
 import type { Env, BrainMsg } from "./types";
 import { aiText, bumpAiSpend } from "./ai";
 import { avaReason } from "./ava_reason"; // AVA-CORE-5: the ONE reasoning gateway
+// [AVABRAIN-ASSET-1] canonical asset linkage for the media_memory pipeline +
+// the consent-revoke cascade. See consumers/src/brain_assets.ts header for why
+// this is a same-package sibling rather than an import of worker/src/lib/brain_assets.ts.
+import {
+  getAssetByMediaId, recordAudioAssetDerivative, markVideoVisualUnsupported, markAssetFailed,
+  deleteAssetForMedia, deleteAssetsForOwnerByKind, ASSET_KINDS_FOR_CAPABILITY, SENSITIVE_MEDIA_CAPABILITY,
+} from "./brain_assets";
 
 const RAW_TTL_MS = 30 * 86_400_000; // 30 days
 
@@ -445,12 +452,14 @@ async function ingestLibraryFile(msg: BrainMsg, env: Env): Promise<void> {
 // (multimodal, 256K ctx, OCR/doc/chart/UI/detection). Unified onto Gemma 4 so
 // the whole AvaBrain pipeline runs on ONE model. Bytes are passed as a base64
 // data URL in the OpenAI-style messages format Gemma 4 accepts on Workers AI.
-async function captionImage(env: Env, key: string): Promise<string> {
-  const obj = await env.BLOBS.get(key);
-  if (!obj) return "";
-  const buf = await obj.arrayBuffer();
-  const mime = obj.httpMetadata?.contentType || "image/jpeg";
-  const dataUrl = `data:${mime};base64,${bytesToBase64(new Uint8Array(buf))}`;
+//
+// [AVABRAIN-ASSET-1] Split into a buffer-based core (exported — reused by
+// consumers/src/brain_assets.ts, which must DECRYPT bytes fetched from R2
+// before captioning, same reason transcribeBuffer exists alongside
+// transcribeVoice below) and this thin fetch-plaintext wrapper for the
+// existing AvaLibrary (public, unencrypted files) call site.
+export async function captionImageBuffer(env: Env, buf: ArrayBuffer, mime: string): Promise<string> {
+  const dataUrl = `data:${mime || "image/jpeg"};base64,${bytesToBase64(new Uint8Array(buf))}`;
   // AVA-CORE-5: BRAIN_VISION_MODEL/BRAIN_EXTRACT_MODEL still WIN over the reasoner
   // default (behavior-preserving); undefined → AVA_REASONER.
   const model = env.BRAIN_VISION_MODEL || env.BRAIN_EXTRACT_MODEL;
@@ -473,6 +482,14 @@ async function captionImage(env: Env, key: string): Promise<string> {
   } catch { return ""; }
 }
 
+async function captionImage(env: Env, key: string): Promise<string> {
+  const obj = await env.BLOBS.get(key);
+  if (!obj) return "";
+  const buf = await obj.arrayBuffer();
+  const mime = obj.httpMetadata?.contentType || "image/jpeg";
+  return captionImageBuffer(env, buf, mime);
+}
+
 // base64-encode bytes in chunks (avoids call-stack limits on large buffers).
 function bytesToBase64(bytes: Uint8Array): string {
   let bin = "";
@@ -485,10 +502,12 @@ function bytesToBase64(bytes: Uint8Array): string {
 
 // Document → markdown/text. Uses the AI binding's document-to-markdown conversion
 // (handles pdf/docx/etc); falls back to UTF-8 decode for text/markdown.
-async function extractDocument(env: Env, key: string, mime: string, name: string): Promise<string> {
-  const obj = await env.BLOBS.get(key);
-  if (!obj) return "";
-  const buf = await obj.arrayBuffer();
+//
+// [AVABRAIN-ASSET-1] Same split as captionImage/captionImageBuffer above —
+// consumers/src/brain_assets.ts needs the buffer-based core because its bytes
+// come off an ENCRYPTED brain_media R2 object (decrypted first, never a
+// second R2 fetch of ciphertext-as-if-plaintext).
+export async function extractDocumentBuffer(env: Env, buf: ArrayBuffer, mime: string, name: string): Promise<string> {
   if (mime.startsWith("text/") || name.endsWith(".md") || name.endsWith(".txt")) {
     try { return new TextDecoder().decode(buf).slice(0, 8000); } catch { return ""; }
   }
@@ -500,7 +519,14 @@ async function extractDocument(env: Env, key: string, mime: string, name: string
   } catch { return ""; }
 }
 
-function chunkText(s: string, size: number): string[] {
+async function extractDocument(env: Env, key: string, mime: string, name: string): Promise<string> {
+  const obj = await env.BLOBS.get(key);
+  if (!obj) return "";
+  const buf = await obj.arrayBuffer();
+  return extractDocumentBuffer(env, buf, mime, name);
+}
+
+export function chunkText(s: string, size: number): string[] {
   const t = s.replace(/\s+/g, " ").trim();
   if (!t) return [];
   const out: string[] = [];
@@ -624,7 +650,11 @@ async function upsertEntity(env: Env, uid: string, e: { name: string; entity_typ
 
 // Record a vector id in the brain_vectors registry (enables retro-delete +
 // purge — Vectorize can only delete by id, never by metadata filter).
-async function recordVector(env: Env, uid: string, vecId: string, capability: string, kind: string, sourceApp: string, ref: string | null): Promise<void> {
+// [AVABRAIN-ASSET-1] Exported — consumers/src/brain_assets.ts registers its
+// own asset vectors (`${uid}:asset:${assetId}:${i}`) into the SAME registry so
+// account-deletion's collectVectorIds() (this file, below) and the settings
+// "delete my AvaBrain data" purge already sweep them with no further edit.
+export async function recordVector(env: Env, uid: string, vecId: string, capability: string, kind: string, sourceApp: string, ref: string | null): Promise<void> {
   try {
     await env.DB_BRAIN.prepare(
       `INSERT OR REPLACE INTO brain_vectors (vec_id, uid, capability, kind, source_app, ref, created_at)
@@ -692,7 +722,10 @@ async function transcribeVoice(env: Env, mediaRef: string): Promise<string> {
 // decryptMediaBytes below) can hand this an already-plaintext buffer directly,
 // instead of transcribeVoice's own env.BLOBS.get (which would pass ciphertext
 // straight to Whisper). Behavior for the voicemail caller above is unchanged.
-async function transcribeBuffer(env: Env, buf: ArrayBuffer, mime: string): Promise<string> {
+// [AVABRAIN-ASSET-1] Exported — consumers/src/brain_assets.ts reuses this
+// verbatim for audio-asset transcription rather than standing up a second STT
+// call site (task brief: "reuse transcribeBuffer() for audio").
+export async function transcribeBuffer(env: Env, buf: ArrayBuffer, mime: string): Promise<string> {
   if (buf.byteLength > 24_000_000) return ""; // Whisper hard limit ~25 MB
   if (env.OPENAI_API_KEY) {
     const form = new FormData();
@@ -783,7 +816,10 @@ function bytesFromB64(b64: string): Uint8Array {
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
 }
-async function decryptMediaBytes(ciphertext: ArrayBuffer, keyB64: string, ivB64: string): Promise<ArrayBuffer> {
+// [AVABRAIN-ASSET-1] Exported — consumers/src/brain_assets.ts's image/PDF
+// asset pipeline reads the SAME encrypted brain_media R2 objects (brain_media.ts
+// encrypts every kind, not just audio/video) and needs this exact reverse.
+export async function decryptMediaBytes(ciphertext: ArrayBuffer, keyB64: string, ivB64: string): Promise<ArrayBuffer> {
   const keyBytes = bytesFromB64(keyB64);
   const iv = bytesFromB64(ivB64);
   const key = await crypto.subtle.importKey("raw", keyBytes, { name: "AES-GCM" }, false, ["decrypt"]);
@@ -798,6 +834,36 @@ async function decryptMediaBytes(ciphertext: ArrayBuffer, keyB64: string, ivB64:
 // never make a failed AI job look like a failed upload — nor the reverse, an
 // AI job that never really ran look like a successful empty one).
 const TRANSCRIBE_MAX_BYTES = 24_000_000;
+
+// [AVABRAIN-ASSET-1] Link this media_memory recording's outcome into its
+// canonical brain_assets row (created by worker/src/routes/brain_media.ts at
+// /complete time, joined here by media_id). Best-effort throughout — a
+// brain_assets write failure must never affect the media_memory pipeline's
+// own state machine (setMediaState above), which remains the source of truth
+// for "did this recording get processed" regardless of asset-linking success.
+//
+// For 'audio': records the transcript derivative (embeds+indexes it) and
+// lands on 'ready'. For 'video': ALWAYS finishes on 'unsupported_visual_indexing'
+// (§40/§47 — visual frame captioning is a documented no-op today; never claim
+// video visual search works) — but records the audio-track transcript
+// derivative FIRST when one exists, so the asset is still text-searchable by
+// its audio even though its status honestly flags the visual gap.
+async function syncBrainAssetAfterMediaMemory(env: Env, uid: string, mediaId: string, kind: string, transcript: string): Promise<void> {
+  try {
+    const asset = await getAssetByMediaId(env, uid, mediaId);
+    if (!asset) return; // no linked asset (e.g. pre-AVABRAIN-ASSET-1 row, or link failed) — nothing to sync
+    if (transcript) {
+      await recordAudioAssetDerivative(env, { uid, assetId: asset.asset_id, mediaId, transcript });
+    }
+    if (kind === "video") {
+      await markVideoVisualUnsupported(env, uid, asset.asset_id);
+    } else if (!transcript) {
+      // Nothing came back — mirrors setMediaState's own "ready, nothing to remember"
+      // honesty rule above, not a failure.
+      await recordAudioAssetDerivative(env, { uid, assetId: asset.asset_id, mediaId, transcript: "" });
+    }
+  } catch (e) { console.error("[brain-assets] media_memory sync failed:", String(e)); }
+}
 
 async function ingestMediaMemory(msg: BrainMsg, env: Env): Promise<void> {
   const uid = msg.uid;
@@ -885,6 +951,7 @@ async function ingestMediaMemory(msg: BrainMsg, env: Env): Promise<void> {
       // like a failed upload" — the UPLOAD succeeded; there's simply no transcript).
       await setMediaState(env, mediaId, "ready", { transcript_chars: 0, frame_count: frameCount, vector_count: 0 });
       await brainTrack(env, uid, "avabrain_memory_ingest_completed", { id: mediaId, kind, empty: true, total_ms: Date.now() - t0 });
+      await syncBrainAssetAfterMediaMemory(env, uid, mediaId, kind, "");
       return;
     }
 
@@ -937,10 +1004,15 @@ async function ingestMediaMemory(msg: BrainMsg, env: Env): Promise<void> {
       ready_at: Date.now(),
     });
     await brainTrack(env, uid, "avabrain_memory_ingest_completed", { id: mediaId, kind, total_ms: Date.now() - t0 });
+    await syncBrainAssetAfterMediaMemory(env, uid, mediaId, kind, transcript);
   } catch (e) {
     console.error("[brain-media] processing failed:", String(e));
     await setMediaState(env, mediaId, "failed", { error: String((e as any)?.message ?? e).slice(0, 500) });
     await brainTrack(env, uid, "avabrain_memory_ingest_failed", { id: mediaId, kind, reason: String((e as any)?.message ?? e).slice(0, 200), total_ms: Date.now() - t0 });
+    try {
+      const asset = await getAssetByMediaId(env, uid, mediaId);
+      if (asset) await markAssetFailed(env, uid, asset.asset_id);
+    } catch { /* best-effort */ }
     // $exception (AvaBrainMediaTranscriptionFailed-class) — never include the
     // transcript/media bytes, only the error string (already scrubbed-by-brevity above).
     try {
@@ -1056,7 +1128,11 @@ async function deleteMediaMemory(env: Env, uid: string, mediaId: string): Promis
     // brain_media row already flipped to 'deleted' by the route; this final DELETE
     // finishes the sweep so the item stops counting against the daily/dedup tables.
     await env.DB_BRAIN.prepare("DELETE FROM brain_media WHERE uid=?1 AND id=?2").bind(uid, mediaId).run().catch(() => null);
-    await brainTrack(env, uid, "avabrain_memory_deleted", { id: mediaId, vectors: ids.length });
+    // [AVABRAIN-ASSET-1] this recording's linked brain_assets row + derivatives
+    // (media_id is the join key — Part VI §40 "a single media_id must link the
+    // chat attachment, storage object, job, artifact, and brain index").
+    const assetCleanup = await deleteAssetForMedia(env, uid, mediaId).catch(() => ({ deleted: false, vectors: 0 }));
+    await brainTrack(env, uid, "avabrain_memory_deleted", { id: mediaId, vectors: ids.length + assetCleanup.vectors, asset_deleted: assetCleanup.deleted });
   } catch (e) {
     console.error("[brain-media] delete failed:", String(e));
     await brainTrack(env, uid, "avabrain_memory_deleted", { id: mediaId, ok: false, reason: String((e as any)?.message ?? e).slice(0, 160) });
@@ -1103,6 +1179,21 @@ async function retroDelete(msg: BrainMsg, env: Env): Promise<void> {
   }
   // Derived facts from that source (facts.source_app holds the app/consent key).
   await env.DB_BRAIN.prepare(`DELETE FROM brain_facts WHERE uid=?1 AND source_app IN (${ph})`).bind(uid, ...caps).run().catch(() => null);
+
+  // [AVABRAIN-ASSET-1] The four brain_assets capability keys (image analysis /
+  // file indexing / audio transcription / sensitive-media indexing — see
+  // worker/src/lib/brain_assets.ts + worker/src/routes/brain_domains.ts) are
+  // NOT registered BrainDomain rows (see brain_assets.ts's own header for why),
+  // so they never appear in `caps`/legacy-alias handling above. Cascade them
+  // here explicitly: revoking one of these deletes every derived index for
+  // assets of the matching kind, but — same as every retro_delete case above —
+  // NEVER touches the original file (user_media/brain_media/R2).
+  const assetKinds = ASSET_KINDS_FOR_CAPABILITY[consentKey];
+  if (assetKinds) {
+    await deleteAssetsForOwnerByKind(env, uid, assetKinds).catch(() => null);
+  } else if (consentKey === SENSITIVE_MEDIA_CAPABILITY) {
+    await deleteAssetsForOwnerByKind(env, uid, null, "sensitive").catch(() => null);
+  }
 }
 
 // Every Vectorize id owned by a user (entity + registry + library). Vectorize can
@@ -1155,6 +1246,10 @@ async function purgeBrain(uid: string, env: Env): Promise<void> {
     "DELETE FROM brain_vectors WHERE uid=?1",
     "DELETE FROM brain_transcripts WHERE uid=?1",
     "DELETE FROM brain_media WHERE uid=?1", // [AVABRAIN-MEDIA-1] recording state rows
+    // [AVABRAIN-ASSET-1] canonical asset rows — column is owner_uid, not uid, but
+    // `?1` still binds positionally to the SAME `uid` param every other query here uses.
+    "DELETE FROM brain_asset_derivatives WHERE owner_uid=?1",
+    "DELETE FROM brain_assets WHERE owner_uid=?1",
   ]) { try { await env.DB_BRAIN.prepare(q).bind(uid).run(); } catch { /* table optional */ } }
   try { await env.DB_META.prepare("DELETE FROM avachat_sessions WHERE user_id=?1").bind(uid).run(); } catch { /* optional */ }
 }
@@ -1246,6 +1341,10 @@ async function runDeletionJob(env: Env, uid: string, deletionId: string | null, 
     ["brain_vectors", "DELETE FROM brain_vectors WHERE uid=?1"],
     ["brain_transcripts", "DELETE FROM brain_transcripts WHERE uid=?1"],
     ["brain_media", "DELETE FROM brain_media WHERE uid=?1"], // [AVABRAIN-MEDIA-1]
+    // [AVABRAIN-ASSET-1] derivatives BEFORE assets (no FK, but keeps the audit
+    // count meaningful if one of the two fails and the row is pinned 'partial').
+    ["brain_asset_derivatives", "DELETE FROM brain_asset_derivatives WHERE owner_uid=?1"],
+    ["brain_assets", "DELETE FROM brain_assets WHERE owner_uid=?1"],
   ] as Array<[string, string]>) {
     try {
       const r = await env.DB_BRAIN.prepare(sql).bind(uid).run();
@@ -1523,7 +1622,10 @@ async function backfill(uid: string, env: Env): Promise<void> {
   } catch { /* columns may differ; backfill best-effort */ }
 }
 
-async function embed(env: Env, text: string): Promise<number[] | null> {
+// [AVABRAIN-ASSET-1] Exported — consumers/src/brain_assets.ts embeds image
+// caption / PDF text / audio transcript chunks through this SAME call, one
+// embedding stack for the whole AvaBrain pipeline (no second one for assets).
+export async function embed(env: Env, text: string): Promise<number[] | null> {
   const model = env.BRAIN_EMBED_MODEL || "@cf/baai/bge-small-en-v1.5";
   // One Brain B1: via the avaReason gateway (pinned-@cf → cf_ai adapter, raw body).
   const out = (await avaReason(env as any, {

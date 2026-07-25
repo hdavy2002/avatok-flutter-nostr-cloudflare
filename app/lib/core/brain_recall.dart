@@ -73,6 +73,21 @@ class BrainHit {
   /// The producer's stable id for the hit, when available.
   final String sourceId;
 
+  /// [AVABRAIN-ASSET-1] The stable cross-surface asset id (worker/src/routes/
+  /// brain.ts recall now enriches asset-linked hits with this — Part VI §47).
+  /// Empty for non-asset hits (entities/facts/voicemail/etc.).
+  final String mediaId;
+
+  /// A safe, content-free display title for an asset-linked hit (never a
+  /// transcript/caption snippet — the server never sends that here either).
+  final String title;
+
+  /// Source conversation id for an asset-linked hit, when known. '' otherwise.
+  final String sourceConversation;
+
+  /// Source message id for an asset-linked hit, when known. '' otherwise.
+  final String sourceMessage;
+
   const BrainHit({
     required this.text,
     required this.domain,
@@ -82,9 +97,17 @@ class BrainHit {
     this.source = 'device',
     this.convKey = '',
     this.sourceId = '',
+    this.mediaId = '',
+    this.title = '',
+    this.sourceConversation = '',
+    this.sourceMessage = '',
   });
 
   bool get isDevicePrivate => scope == 'device_private';
+
+  /// True when this hit resolves to a real asset (image/PDF/audio/video) the
+  /// UI can open, rather than a text-only entity/fact/voicemail snippet.
+  bool get isAssetLinked => mediaId.isNotEmpty;
 
   BrainHit _withScore(double s) => BrainHit(
         text: text,
@@ -95,6 +118,10 @@ class BrainHit {
         source: source,
         convKey: convKey,
         sourceId: sourceId,
+        mediaId: mediaId,
+        title: title,
+        sourceConversation: sourceConversation,
+        sourceMessage: sourceMessage,
       );
 
   Map<String, dynamic> toJson() => {
@@ -106,7 +133,39 @@ class BrainHit {
         'source': source,
         if (convKey.isNotEmpty) 'conv': convKey,
         if (sourceId.isNotEmpty) 'ref': sourceId,
+        if (mediaId.isNotEmpty) 'media_id': mediaId,
+        if (title.isNotEmpty) 'title': title,
+        if (sourceConversation.isNotEmpty) 'source_conversation': sourceConversation,
+        if (sourceMessage.isNotEmpty) 'source_message': sourceMessage,
       };
+}
+
+/// [AVABRAIN-ASSET-1] Where an asset-linked hit should resolve to, so a caller
+/// can open the ORIGINAL Messenger/AvaStorage item. Deliberately just
+/// identifiers, never a URL: "never open a copied or unscoped URL" (Part VI
+/// §47 / task brief item 8) means this module must not synthesize a CDN/R2
+/// link itself — only the app's own scoped media resolution (Messenger's
+/// conversation loader, or AvaStorage's per-account media store) knows how to
+/// turn a media_id back into an authorized, per-account URL. Callers (a chat
+/// thread / AvaBrain search-result screen) resolve this target through THAT
+/// existing pipeline, not through anything constructed here.
+class BrainHitTarget {
+  final String mediaId;
+  final String sourceConversation;
+  final String sourceMessage;
+  const BrainHitTarget({required this.mediaId, this.sourceConversation = '', this.sourceMessage = ''});
+}
+
+/// Returns the resolvable target for an asset-linked hit, or null when the hit
+/// carries no media_id (a text-only entity/fact/voicemail snippet — nothing to
+/// open). See [BrainHitTarget] for why this never returns a URL.
+BrainHitTarget? brainHitOpenTarget(BrainHit hit) {
+  if (!hit.isAssetLinked) return null;
+  return BrainHitTarget(
+    mediaId: hit.mediaId,
+    sourceConversation: hit.sourceConversation,
+    sourceMessage: hit.sourceMessage,
+  );
 }
 
 /// Device-side brain domains — a `domains` filter that names ONLY these keeps the
@@ -310,11 +369,18 @@ Future<List<BrainHit>> _serverRecall(String q, List<String>? domains, int k) asy
       domain: (e['domain'] ?? '').toString(),
       // The server MUST NOT ship device_private content; coerce if it ever does.
       scope: scope == 'device_private' ? 'account_private' : scope,
-      score: (e['score'] as num?)?.toDouble() ?? 0,
+      // [AVABRAIN-ASSET-1] the server now sends a normalised 0..1 `confidence`
+      // for asset-linked hits (worker/src/routes/brain.ts enrichRecallHits);
+      // fall back to `score` for every other hit shape.
+      score: (e['confidence'] as num?)?.toDouble() ?? (e['score'] as num?)?.toDouble() ?? 0,
       ts: (e['ts'] as num?)?.toInt() ?? 0,
       source: 'server',
       convKey: (e['conv'] ?? e['convKey'] ?? '').toString(),
       sourceId: (e['ref'] ?? e['id'] ?? '').toString(),
+      mediaId: (e['media_id'] ?? '').toString(),
+      title: (e['title'] ?? '').toString(),
+      sourceConversation: (e['source_conversation'] ?? '').toString(),
+      sourceMessage: (e['source_message'] ?? '').toString(),
     ));
   }
   return out;

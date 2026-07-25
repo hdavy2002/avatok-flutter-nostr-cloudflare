@@ -276,10 +276,20 @@ class _BrainSettingsScreenState extends State<BrainSettingsScreen> {
                   'Let AvaBrain learn from your activity to help you across apps',
                   value: masterOn, master: true),
               // Per-domain toggles (registry-driven), only when master is on.
+              // [AVABRAIN-ASSET-1] brain_image_analysis / brain_file_indexing /
+              // brain_audio_transcription / brain_sensitive_media (Part VI §40/
+              // §47) arrive here automatically once the server registry lists
+              // them (worker/src/routes/brain_domains.ts) — this loop needs no
+              // per-key special-casing to RENDER them; only the sensitive-media
+              // row gets a distinct warning treatment below (§40 requires an
+              // EXPLICIT opt-in for sensitive media, unlike every other
+              // opt-out-by-default toggle here).
               if (masterOn)
                 for (final t in _toggles)
-                  _row(t.consentKey, t.label, t.description,
-                      value: _state[t.consentKey] ?? t.defaultOn),
+                  t.consentKey == 'brain_sensitive_media'
+                      ? _sensitiveRow(t, value: _state[t.consentKey] ?? t.defaultOn)
+                      : _row(t.consentKey, t.label, t.description,
+                          value: _state[t.consentKey] ?? t.defaultOn),
               // §10.1 legal-basis DISCLOSURES (e.g. Safety records) — always shown, no
               // switch. Safety processing runs on legitimate interest, not consent, so
               // it is not gated by the master switch either.
@@ -329,6 +339,32 @@ class _BrainSettingsScreenState extends State<BrainSettingsScreen> {
         ])),
         const SizedBox(width: 10),
         ZineToggle(value: value, onChanged: (v) => _set(key, v)),
+      ]),
+    );
+  }
+
+  // [AVABRAIN-ASSET-1] Part VI §40 — "require an explicit adult-content/privacy
+  // setting before indexing sensitive media". Same Switch as [_row] (this IS a
+  // real, movable consent toggle, unlike the legal-basis disclosures below —
+  // see worker/src/lib/brain_assets.ts's header for why it's a real gate), but
+  // with a warning icon + explicit copy so turning it ON is a deliberate act,
+  // not a row that looks identical to "remember my contacts".
+  Widget _sensitiveRow(BrainToggle t, {required bool value}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 9),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        ZineIconBadge(
+            icon: PhosphorIcons.warningCircle(PhosphorIconsStyle.fill), color: Zine.coral, size: 30),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(t.label, style: ZineText.value(size: 14.5, weight: FontWeight.w800)),
+            const SizedBox(height: 2),
+            Text(t.description, style: ZineText.sub(size: 12)),
+          ]),
+        ),
+        const SizedBox(width: 10),
+        ZineToggle(value: value, onChanged: (v) => _set(t.consentKey, v)),
       ]),
     );
   }

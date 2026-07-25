@@ -4,6 +4,66 @@
 import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, isFail } from "../authz";
+// [AVABRAIN-ASSET-1] Part VI §47 — search results must carry media_id, source
+// conversation/message, confidence and a safe display title, and consent/scope
+// must be enforced AGAIN at query time (not only at ingestion). This is a
+// privacy boundary, not an optimisation: consent can be revoked after ingestion.
+import { getAssetsByMediaIds, assetQueryConsentAllows, sourceLinkFor, type AssetKind } from "../lib/brain_assets";
+
+// [AVABRAIN-ASSET-1] Post-process the DO's raw recall response: for every hit
+// that carries a media_id (or `ref`, the field name some producers use — see
+// app/lib/core/brain_recall.dart's own defensive parsing), look up its
+// brain_assets row and:
+//   1. Drop it if the asset no longer belongs to this uid (defense-in-depth —
+//      USER_BRAIN is already keyed by uid via idFromName, so cross-account
+//      leakage should be structurally impossible upstream; this is the second
+//      layer the report calls for).
+//   2. Drop it if consent for that asset's kind is OFF RIGHT NOW, even though
+//      it was allowed at ingestion — consent can be revoked after ingestion,
+//      and a stale index entry must stop being retrievable immediately, not
+//      only once the async retro-delete queue drains it (Part VI §47).
+//   3. Otherwise enrich it with media_id, source_conversation, source_message,
+//      a normalised 0..1 confidence, and a safe (content-free) display title.
+// Hits with no media_id (entity/fact/voicemail/timeline hits that predate this
+// change) pass through unchanged — this is additive, not a rewrite of recall.
+async function enrichRecallHits(env: Env, uid: string, res: Response): Promise<Response> {
+  let data: any;
+  try { data = await res.json(); } catch { return res; }
+  // The DO/legacy shape may key hits as hits|results|recall or return a bare
+  // array (mirrors app/lib/core/brain_recall.dart's own defensive parsing).
+  const hits: any[] = Array.isArray(data?.hits) ? data.hits
+    : Array.isArray(data?.results) ? data.results
+    : Array.isArray(data?.recall) ? data.recall
+    : Array.isArray(data) ? data
+    : [];
+  if (!hits.length) return json(data, res.status);
+
+  const mediaIds = hits.map((h) => String(h?.media_id ?? h?.ref ?? h?.id ?? "")).filter(Boolean);
+  const assets = mediaIds.length ? await getAssetsByMediaIds(env, uid, mediaIds) : new Map();
+
+  const out: any[] = [];
+  for (const h of hits) {
+    const mediaId = String(h?.media_id ?? h?.ref ?? h?.id ?? "");
+    const asset = mediaId ? assets.get(mediaId) : undefined;
+    if (!asset) { out.push(h); continue; } // not an asset-linked hit — pass through
+
+    if (asset.owner_uid !== uid) continue; // never another account's asset
+    const allowed = await assetQueryConsentAllows(env, uid, asset.kind as AssetKind, asset.sensitivity_class as any);
+    if (!allowed) continue; // consent revoked since ingestion — drop, do not surface even metadata
+
+    const link = sourceLinkFor(asset);
+    const score = typeof h?.score === "number" ? h.score : typeof h?.confidence === "number" ? h.confidence : 0;
+    out.push({
+      ...h,
+      media_id: link.media_id,
+      source_conversation: link.source_conversation,
+      source_message: link.source_message,
+      confidence: Math.max(0, Math.min(1, score)),
+      title: link.title,
+    });
+  }
+  return json(Array.isArray(data) ? { hits: out } : { ...data, hits: out }, res.status);
+}
 
 async function toBrain(env: Env, uid: string, payload: Record<string, unknown>): Promise<Response> {
   const stub = env.USER_BRAIN.get(env.USER_BRAIN.idFromName(uid));
@@ -167,7 +227,10 @@ export async function brain(req: Request, env: Env, op: string): Promise<Respons
     // One Brain B4 (§6, §8-B4): POST /api/brain/recall {query, domains?, k?} →
     // {hits:[{text, domain, scope:'account_private', score, ts}]}. Server-lane
     // only; the device lane is merged client-side (B4-app).
-    case "recall": return toBrain(env, uid, { op, query: b.query, domains: b.domains, k: b.k });
+    // [AVABRAIN-ASSET-1] enrichRecallHits (below) re-checks owner scope + consent
+    // for every asset-linked hit AT QUERY TIME and attaches media_id/source/
+    // confidence/title — see Part VI §47.
+    case "recall": return enrichRecallHits(env, uid, await toBrain(env, uid, { op, query: b.query, domains: b.domains, k: b.k }));
     case "remember": return toBrain(env, uid, { op, facts: b.facts, entities: b.entities });
     case "investigate": return toBrain(env, uid, { op, complaint: b.complaint });
     case "forget": return toBrain(env, uid, { op, entity_id: b.entity_id });

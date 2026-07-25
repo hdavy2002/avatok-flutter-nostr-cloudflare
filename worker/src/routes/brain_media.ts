@@ -28,6 +28,12 @@ import { requireUser, isFail } from "../authz";
 import { brainIngest } from "../lib/brain_ingest";
 import { emailFor } from "../lib/identity";
 import { trackUser, trackException } from "../hooks";
+// [AVABRAIN-ASSET-1] link this recording into the canonical cross-surface
+// asset identity (Part VI §40/§47) — "extend the existing consented media
+// flow to reference brain_assets and job ids". Kind stays audio|video here
+// (this file's own KINDS set, unchanged); createOrGetAsset just gives this
+// recording a stable asset_id other surfaces (search, revoke) can join on.
+import { createOrGetAsset, getAssetByMediaId, assetIngestConsentAllows, type AssetKind } from "../lib/brain_assets";
 
 // ---- cost-control flags (Bible §5.3) — reported to AVABRAIN-FLAGS-1, not wired
 // into config.ts by this change. Read via env with hard-coded safe fallbacks so a
@@ -394,6 +400,27 @@ export async function brainMediaComplete(req: Request, env: Env, exec: Execution
     return json({ id, state: "failed", reason: result.reason ?? "ingest_rejected" });
   }
 
+  // [AVABRAIN-ASSET-1] Link this recording into the canonical cross-surface
+  // asset identity (media_id === this brain_media row's id). Best-effort and
+  // strictly ADDITIVE — a failure here must never affect the media_memory
+  // pipeline above (already queued and will process regardless). The consumer
+  // (consumers/src/brain.ts ingestMediaMemory → syncBrainAssetAfterMediaMemory)
+  // updates this row's index_status once transcription finishes, including the
+  // §40/§47 'unsupported_visual_indexing' honesty status for video.
+  try {
+    // A finer-grained sub-toggle than the coarse media_memory switch above (see
+    // worker/src/lib/brain_assets.ts header for why this is a separate,
+    // real, D1-backed gate rather than a registry domain). Consent already
+    // passed for the recording itself; this only decides whether it ALSO
+    // enters the unified cross-app searchable asset index.
+    if (await assetIngestConsentAllows(env, uid, kind as AssetKind, "standard")) {
+      await createOrGetAsset(env, {
+        ownerUid: uid, mediaId: id, kind: kind as AssetKind, mime,
+        sensitivityClass: "standard", // media_memory recordings aren't auto-flagged sensitive today
+      });
+    }
+  } catch (e) { console.error("[brain-media] asset link failed:", String(e)); }
+
   await trackMedia(env, uid, "avabrain_memory_ingest_queued", {
     id, kind, dedup_hit: false, size_bytes: bytes.byteLength, duration_sec: durationSec,
   });
@@ -411,12 +438,18 @@ export async function brainMediaStatus(req: Request, env: Env, id: string): Prom
      FROM brain_media WHERE id=?1 AND uid=?2`,
   ).bind(id, ctx.uid).first<MediaRow>();
   if (!row) return json({ error: "not found" }, 404);
+  // [AVABRAIN-ASSET-1] Surface the linked asset's id + index_status (e.g. the
+  // §40/§47 'unsupported_visual_indexing' honesty status for video) — NEVER its
+  // transcript_ref/caption_ref/extracted_text_ref content, those are opaque
+  // pointers only and are deliberately not read here.
+  const asset = await getAssetByMediaId(env, ctx.uid, row.id).catch(() => null);
   return json({
     id: row.id, kind: row.kind, state: row.state, error: row.error ?? null,
     size_bytes: row.size_bytes, duration_sec: row.duration_sec,
     transcript_chars: row.transcript_chars ?? null, frame_count: row.frame_count ?? null,
     vector_count: row.vector_count ?? null,
     created_at: row.created_at, updated_at: row.updated_at, ready_at: row.ready_at ?? null,
+    asset_id: asset?.asset_id ?? null, asset_index_status: asset?.index_status ?? null,
   });
 }
 
@@ -427,6 +460,9 @@ export async function brainMediaStatus(req: Request, env: Env, id: string): Prom
 // 'media_delete') does the actual store-by-store wipe; this route only validates
 // ownership, flips the row to 'deleted' (so it stops showing as processing) and
 // enqueues the job. Idempotent: deleting an already-'deleted' row is a no-op 200.
+// [AVABRAIN-ASSET-1] The queue-side wipe (consumers/src/brain.ts
+// deleteMediaMemory → deleteAssetForMedia) also removes the linked brain_assets
+// row + derivatives, joined by media_id — no separate call needed here.
 export async function brainMediaDelete(req: Request, env: Env, id: string): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);

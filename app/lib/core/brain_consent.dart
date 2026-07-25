@@ -102,6 +102,14 @@ const Map<String, String> _kConsentBlurb = <String, String>{
   'listings': 'Remember your marketplace listings, buys and sells',
   'wallet': 'Remember wallet activity (top-ups, purchases) — never card details',
   'files': 'Read your files (captions, text) so you can find them later',
+  // [AVABRAIN-ASSET-1] asset-ingestion sub-controls (Part VI §40/§47) — a
+  // finer grain than the switches above. Turning one off deletes what's
+  // already indexed for it and keeps your original files untouched.
+  'brain_image_analysis': 'Caption and read text in your images so you can find them later',
+  'brain_file_indexing': 'Extract text from your PDFs and documents so you can find them later',
+  'brain_audio_transcription': 'Transcribe your audio recordings so you can find them by what was said',
+  'brain_sensitive_media': 'Off by default. Only turn this on if you want Ava to index sensitive/adult '
+      'media you’ve explicitly marked — everything else stays out of the index either way.',
 };
 
 /// Legacy consumer keys → registry consentKey. Pre-B0 call sites still read old

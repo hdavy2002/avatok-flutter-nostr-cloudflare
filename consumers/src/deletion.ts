@@ -111,8 +111,9 @@ export async function handleDeletion(msg: DeletionMsg, env: Env): Promise<void> 
   // A balance > 0 after the grace period is FORFEITED (logged); coins held in
   // escrow (an undelivered order) must resolve first → retry later.
   if (env.WALLET_DO) {
+    const walletStub = env.WALLET_DO.get(env.WALLET_DO.idFromName(uid));
     try {
-      const res = await env.WALLET_DO.get(env.WALLET_DO.idFromName(uid)).fetch("https://wallet/op", {
+      const res = await walletStub.fetch("https://wallet/op", {
         method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ op: "balance", uid }),
       });
       const w = (await res.json()) as any;
@@ -121,6 +122,27 @@ export async function handleDeletion(msg: DeletionMsg, env: Env): Promise<void> 
     } catch (e) {
       if (String(e).includes("escrow")) throw e;
       /* WalletDO unreachable → proceed (recon catches drift) */
+    }
+    // [AI-WALLET-SPENDABLE-2] Clear any sub-cent AI debt remainder and release
+    // every stray `aijob:%` reservation before the account is wiped — otherwise
+    // debt_micro_usd and orphaned reservations survive the deleted account
+    // forever (BUG-account-delete-not-cascading.md). Only reached once the
+    // escrow check above didn't throw (no pending escrow), same as the
+    // wallet_forfeited bookkeeping. Same request pattern as the "balance" op
+    // above; op_id is deterministic per-uid so a queue redelivery replays the
+    // WalletDO's cached idempotent result instead of double-clearing.
+    try {
+      const clearRes = await walletStub.fetch("https://wallet/op", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ op: "clear_ai_remainder", uid, op_id: `account_delete_ai_remainder:${uid}` }),
+      });
+      const cleared = (await clearRes.json().catch(() => ({}))) as any;
+      done.push(`wallet_ai_remainder_cleared:${cleared.cleared_debt_micro_usd ?? 0}:${cleared.released_ai_reservations ?? 0}`);
+    } catch (e) {
+      // Best-effort — a stray reservation/debt remainder is a bounded cost, not
+      // a reason to block the whole deletion cascade the way pending escrow is.
+      console.error("[deletion] clear_ai_remainder failed:", uid, String(e));
+      done.push("wallet_ai_remainder_clear_failed");
     }
   }
 
@@ -134,6 +156,18 @@ export async function handleDeletion(msg: DeletionMsg, env: Env): Promise<void> 
   ]); done.push("db_brain");
   // AvaBrain consent toggles.
   try { await env.DB_BRAIN.prepare("DELETE FROM brain_consent WHERE uid=?1").bind(uid).run(); done.push("db_brain_consent"); } catch { /* table optional */ }
+  // [AVABRAIN-ASSET-1] brain_assets / brain_asset_derivatives — separate
+  // try/catch (not the atomic batch above) because the migration may not have
+  // run yet in every environment; a missing table here must not fail the rest
+  // of the DB_BRAIN cascade. Column is owner_uid, not uid (see
+  // worker/migrations/2026-07-25-brain-assets.sql). Vectorize ids for these
+  // assets are already covered by the generic brain_vectors sweep below
+  // (recordVector always registers there regardless of capability).
+  try {
+    await env.DB_BRAIN.prepare("DELETE FROM brain_asset_derivatives WHERE owner_uid=?1").bind(uid).run();
+    await env.DB_BRAIN.prepare("DELETE FROM brain_assets WHERE owner_uid=?1").bind(uid).run();
+    done.push("db_brain_assets");
+  } catch { /* table optional — migration not yet applied in this environment */ }
   // Phase 9: message/voicemail vector registry + Whisper transcripts (collect
   // ids BEFORE deleting the registry rows).
   try {
