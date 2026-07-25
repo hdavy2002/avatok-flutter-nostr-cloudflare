@@ -86,16 +86,16 @@ class _HomeCardsState extends State<HomeCards> {
   }
 
   Future<void> _loadWallet() async {
-    try {
-      final b = await MoneyApi.balance();
-      if (!mounted) return;
-      setState(() {
-        _coins = (b['balance'] is num) ? (b['balance'] as num).toInt() : null;
-        _walletLoading = false;
-      });
-    } catch (_) {
-      if (mounted) setState(() => _walletLoading = false);
-    }
+    final r = await MoneyApi.balanceResult();
+    if (!mounted) return;
+    setState(() {
+      // [WALLET-GET-STATE-1] Only take the number from a CONFIRMED 200 — a
+      // failed read (401/500/timeout/non-JSON) leaves `_coins` exactly as it
+      // was (never coerced to 0/null), so the card shows the last known
+      // balance, or "—" on a true cold start, never a fabricated one.
+      if (r.ok && r.data['balance'] is num) _coins = (r.data['balance'] as num).toInt();
+      _walletLoading = false;
+    });
   }
 
   Future<void> _loadCalls() async {

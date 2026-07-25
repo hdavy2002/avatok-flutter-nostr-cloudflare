@@ -9,10 +9,10 @@ import '../../core/analytics.dart';
 import '../../core/app_icon_cache.dart';
 import '../../core/apps_service.dart';
 import '../../core/avaapps_cache.dart';
-import '../../core/money_api.dart';
 import '../../core/paid_feature.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/wallet_entitlement.dart';
 
 /// Inline dark v2 page header (AD.headerFooter bar + back button + title).
 /// Replaces the light ZineAppBar — the AdBackButton's white glyph would be
@@ -150,10 +150,10 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
     final results = await Future.wait([
       AppsService.I.catalog(),
       AppsService.I.status(fresh: fresh),
-      MoneyApi.balance(),
+      WalletEntitlement.I.refresh(),
     ]);
     if (!mounted) return;
-    final bal = results[2] as Map<String, dynamic>;
+    final walletSnap = results[2] as WalletEntitlementSnapshot;
     final connected = results[1] as Set<String>;
     final catalog = results[0] as List<AvaCatalogApp>;
     setState(() {
@@ -161,7 +161,10 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
       // never blank out a working screen.
       if (catalog.isNotEmpty || _all.isEmpty) _all = catalog;
       _connected = connected;
-      _premium = bal['premium'] == 1 || bal['premium'] == true;
+      // [WALLET-GET-STATE-1] A failed wallet read must never downgrade a
+      // confirmed premium account to free — keep the last known `_premium`
+      // (Root-Cause Report §17).
+      if (walletSnap.isConfirmed) _premium = walletSnap.isPremium;
       _loading = false;
     });
     if (catalog.isNotEmpty) {

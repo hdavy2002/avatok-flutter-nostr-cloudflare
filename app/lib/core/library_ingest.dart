@@ -1,6 +1,6 @@
 import 'analytics.dart';
 import 'local_brain/local_brain.dart';
-import 'money_api.dart';
+import 'wallet_entitlement.dart';
 
 /// Tier-aware routing for a newly-added AvaLibrary file (owner decision 2026-06-20).
 ///
@@ -26,18 +26,26 @@ class LibraryIngest {
   /// of uploads doesn't hit the wallet endpoint repeatedly. On lookup failure we
   /// fall back to the last known value, else treat as FREE (index locally) — the
   /// fail-safe is to keep the user's data retrievable on their own device.
+  ///
+  /// [WALLET-GET-STATE-1] Previously called `MoneyApi.balance()` directly and
+  /// caught only THROWN exceptions — a 401/500/non-JSON response doesn't throw,
+  /// it silently returns `{}`, so `b['premium']` read `false` and a premium
+  /// account's uploads got routed to the free/on-device lane for up to 5
+  /// minutes with no error ever surfaced (Root-Cause Report §17). Now goes
+  /// through [WalletEntitlement], which distinguishes a confirmed `.free` from
+  /// an `.unavailable` read and never coerces the latter into the former.
   static Future<bool> _isPremium() async {
     final now = DateTime.now().millisecondsSinceEpoch;
     if (_premiumCache != null && now - _premiumAt < _ttlMs) return _premiumCache!;
-    try {
-      final b = await MoneyApi.balance();
-      final p = b['premium'] == 1 || b['premium'] == true;
-      _premiumCache = p;
+    final snap = await WalletEntitlement.I.refresh();
+    if (snap.isConfirmed) {
+      _premiumCache = snap.isPremium;
       _premiumAt = now;
-      return p;
-    } catch (_) {
-      return _premiumCache ?? false;
+      return snap.isPremium;
     }
+    // Unavailable — never coerce to FREE from a failed read. Fall back to the
+    // last known value; only default FREE if nothing has ever been confirmed.
+    return _premiumCache ?? false;
   }
 
   /// Invalidate the cached premium flag (e.g. right after a successful top-up).

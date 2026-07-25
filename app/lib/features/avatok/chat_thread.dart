@@ -91,7 +91,6 @@ import '../conference/cloudflare_conference_api.dart';
 import '../conference/cloudflare_conference_controller.dart';
 import '../conference/cloudflare_conference_screen.dart';
 import '../../core/analytics.dart';
-import '../../core/money_api.dart';
 import '../../core/live_location_service.dart';
 import 'call_screen.dart';
 import 'contact_profile_screen.dart';
@@ -672,9 +671,15 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   Map<String, dynamic>? _composePreview; // resolved preview json (null = none)
   bool _composePreviewLoading = false;
   final Set<String> _composePreviewDismissed = {}; // urls the user ✕'d
-  // Premium = topped-up wallet / active subscription. Gates the @ava·#ava
-  // composer hint (paid users only) — loaded in initState via MoneyApi.
-  bool _premium = false;
+  // [WALLET-GET-STATE-1] 2026-07-25: `_premium` used to gate #ava/@ava text
+  // AND the composer hint below it. Owner decision (Root-Cause Report §10/
+  // §12c): Ava-in-chat TEXT is free for everyone, never metered, never
+  // paywalled — attachments remain metered, but that gate is server-side
+  // (worker/src/routes/ava_gemini.ts), not here. With the text gate removed
+  // there is no remaining consumer of a client-side premium flag in this
+  // file, so it's gone rather than kept as dead state — see
+  // core/wallet_entitlement.dart if a future paid action in this screen
+  // needs a "warn before spending" read.
   bool _recording = false;
   String? _recPath;
   // Live voice-to-text (on-device Whisper) — types into the composer as you speak.
@@ -1090,10 +1095,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     // F3 (restoreV2): pull older history a page at a time as the user scrolls to
     // the top of the hot window. Guarded by the flag inside _maybePageArchive.
     _scroll.addListener(_maybePageArchive);
-    // Paid status — drives the paid-only @ava·#ava composer hint.
-    MoneyApi.balance().then((b) {
-      if (mounted) setState(() => _premium = b['premium'] == 1 || b['premium'] == true);
-    }).catchError((_) {});
+    // [WALLET-GET-STATE-1] 2026-07-25: the old `MoneyApi.balance()` read here
+    // only fed the paywall/hint this file no longer has — removed rather than
+    // left as an unused wallet fetch on every thread open.
     // [AVAVM-PLAYER-1] Bridge the shared AudioPlaybackService's state back
     // onto this thread's local voice-note fields (see `_onAudioStateChanged`)
     // — replaces the old per-thread `_audio.onPlayerComplete` /
@@ -3236,43 +3240,31 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       final avaModePrivate = _avaMode && !shared && !atAva;
       final privateAva = (atAva && !shared) || avaModePrivate;
       if (privateAva || shared) {
-        // Ava-in-chat (@ava / #ava) AND connected-app/composio actions (email,
-        // image generation, etc.) are a PAID feature (owner request 2026-06-27).
-        // Free users get a one-line upsell instead of an Ava turn.
-        if (!_premium) {
-          Analytics.capture('ava_chat_gate_blocked', <String, Object>{
-            'mode': privateAva ? 'private' : 'shared', 'is_group': _isGroup,
+        // [WALLET-GET-STATE-1] 2026-07-25, owner decision (Root-Cause Report
+        // §10/§12c): Ava-in-chat TEXT (@ava private / #ava shared) is FREE for
+        // everyone — never metered, never paywalled. The premium gate that used
+        // to sit here (and the `ava_chat_gate_blocked` toast/event it fired) is
+        // removed; a client-side GET failure can no longer misread a premium
+        // user as unentitled (Root-Cause Report §17), because there is nothing
+        // left to gate. Attachments remain metered, but server-side
+        // (worker/src/routes/ava_gemini.ts) — a 402 there is authoritative and
+        // speaks for itself; this path never blocks on it.
+        // Ava-mode plain text carries no marker → prefix so AvaInvoke parses it
+        // as a private @ava call.
+        // ignore: unawaited_futures
+        onSummonAva!(avaModePrivate ? '$_avaWakeWord $t' : t);
+        if (privateAva) {
+          _ragAddLine('You', t);
+          _composerFocus.requestFocus();
+          _mutMsgs(() {
+            // aiLocal: rendered locally only, never sent → no delivery ticks.
+            _msgs.add(_Msg(_seq++, true, t, _fmtTime(now), ts: now, aiLocal: true));
+            _ctrl.clear(); _hasText = false; _replyTo = null;
           });
-          if (privateAva) {
-            // Private @ava is never sent to the peer — show the upsell and stop.
-            _composerFocus.requestFocus();
-            _capNote('Asking Ava is a paid feature — subscribe to use @ava (private) '
-                'and #ava (in chat), plus connected apps like email and image generation.');
-            setState(() { _ctrl.clear(); _hasText = false; });
-            if (_convKey != null) DraftStore().set(_convKey!, '');
-            return;
-          }
-          // #ava: the literal message still sends to the peer (below); Ava just
-          // won't reply for free users.
-          _capNote('Ava in chat is a paid feature — subscribe to get an Ava reply to #ava.');
-        } else {
-          // Ava-mode plain text carries no marker → prefix so AvaInvoke parses it
-          // as a private @ava call.
-          // ignore: unawaited_futures
-          onSummonAva!(avaModePrivate ? '$_avaWakeWord $t' : t);
-          if (privateAva) {
-            _ragAddLine('You', t);
-            _composerFocus.requestFocus();
-            _mutMsgs(() {
-              // aiLocal: rendered locally only, never sent → no delivery ticks.
-              _msgs.add(_Msg(_seq++, true, t, _fmtTime(now), ts: now, aiLocal: true));
-              _ctrl.clear(); _hasText = false; _replyTo = null;
-            });
-            _jump(force: true); // [CHAT-UI-LIST-1e] own send — always jump
-            if (_convKey != null) DraftStore().set(_convKey!, '');
-            _schedulePersist();
-            return;
-          }
+          _jump(force: true); // [CHAT-UI-LIST-1e] own send — always jump
+          if (_convKey != null) DraftStore().set(_convKey!, '');
+          _schedulePersist();
+          return;
         }
       }
     }
@@ -9321,16 +9313,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     // left, right and between, so the row breathes and each chip is easy to hit.
     // Owner request (2026-06-27): the three quick-tool chips — Talk-to-Ava (✦),
     // Translate, and Help-me-write-better — are retired from the composer. In
-    // their place a tiny PAID-ONLY hint reminds people how to summon Ava inline:
-    // `@ava` for a private reply, `#ava` to ask Ava in front of everyone. Free
-    // users see nothing here (Ava AI in chat is a paid feature). The old chip
+    // their place a tiny hint reminds people how to summon Ava inline: `@ava`
+    // for a private reply, `#ava` to ask Ava in front of everyone. The old chip
     // builders below are intentionally left in place (unused) to keep this a
     // surgical, low-risk change.
-    if (!_premium) return const SizedBox.shrink();
+    // [WALLET-GET-STATE-1] 2026-07-25: was PAID-ONLY (`if (!_premium) return
+    // ...shrink()`) — owner decision (Root-Cause Report §10/§12c) made
+    // Ava-in-chat text free for everyone, so the hint is no longer gated.
     return _avaHintNote();
   }
 
-  /// Tiny paid-only reminder above the field: how to call Ava without a button.
+  /// Tiny reminder above the field: how to call Ava without a button.
   Widget _avaHintNote() => Padding(
         padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
         child: Row(children: [

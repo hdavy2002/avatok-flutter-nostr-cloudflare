@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/analytics.dart';
-import '../../../core/money_api.dart';
 import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/zine_widgets.dart';
+import '../../../core/wallet_entitlement.dart';
 import '../../avadial/pstn_forwarding_setup.dart' show PstnForwardingSetupScreen;
 import '../../wallet/wallet_screen.dart';
 
@@ -104,8 +104,11 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
 
   // Balance step — needs ≥3 tokens (1 minute of agent runway) to proceed.
   static const int _needTokens = 3;
-  int? _balance; // null = still loading / fetch failed
+  int? _balance; // null = still loading, or CONFIRMED balance never resolved
   bool _balLoading = true;
+  // [WALLET-GET-STATE-1] A failed GET (401/500/timeout/non-JSON) is a
+  // distinct state from "confirmed 0 tokens" — see _fetchBalance.
+  bool _balanceUnavailable = false;
 
   /// The step sequence. Forwarding conditions only exist for a scope that
   /// includes cell calls (plan §B5) — the scope is always chosen before the
@@ -139,29 +142,35 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
   }
 
   Future<void> _fetchBalance() async {
-    setState(() => _balLoading = true);
-    try {
-      final b = await MoneyApi.balance();
-      if (!mounted) return;
-      setState(() {
-        // [WALLET-UX-1] Gate on TOTAL SPENDABLE tokens (paid + welcome bonus +
-        // daily free) — the DO's `spendable`. The paid-only `balance` field
-        // showed 0 to users whose tokens live in the promo buckets and wrongly
-        // blocked this step. `balance` stays the fallback for old servers.
-        _balance = ((b['spendable'] ?? b['balance']) as num?)?.toInt();
-        _balLoading = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _balLoading = false);
-    }
+    setState(() { _balLoading = true; _balanceUnavailable = false; });
+    // [WALLET-UX-1] Gate on TOTAL SPENDABLE tokens (paid + welcome bonus +
+    // daily free) — the DO's `spendable`. The paid-only `balance` field
+    // showed 0 to users whose tokens live in the promo buckets and wrongly
+    // blocked this step.
+    final snap = await WalletEntitlement.I.refresh();
+    if (!mounted) return;
+    setState(() {
+      _balLoading = false;
+      if (snap.state == WalletEntitlementState.unavailable) {
+        // [WALLET-GET-STATE-1] A 401/500/timeout/non-JSON response is NOT a
+        // confirmed zero balance — never claim "you need N tokens" from a
+        // read that never actually answered (Root-Cause Report §17).
+        _balanceUnavailable = true;
+      } else {
+        _balanceUnavailable = false;
+        _balance = snap.spendable;
+      }
+    });
   }
 
-  bool get _balanceOk => (_balance ?? 0) >= _needTokens;
+  bool get _balanceOk => _balance != null && _balance! >= _needTokens;
 
   bool get _canContinue {
     if (_saving) return false;
-    if (_step == _Step.balance) return _balanceOk;
+    // A failed read must not block a wizard step by itself — only a
+    // CONFIRMED insufficient balance does. The agent's own per-minute billing
+    // is the authoritative check once a call actually happens.
+    if (_step == _Step.balance) return _balanceOk || _balanceUnavailable;
     return true;
   }
 
@@ -303,20 +312,25 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
           ])
         else ...[
           Text(
-            _balance == null
-                ? 'Couldn’t read your wallet — check your connection.'
+            // [WALLET-GET-STATE-1] `.unavailable` gets its own honest copy —
+            // never "0 tokens", never implies "you need more" (Root-Cause
+            // Report §17/§53).
+            _balanceUnavailable
+                ? kWalletUnavailableMessage
                 : 'You have $_balance token${_balance == 1 ? '' : 's'}.',
             style: _wizBody(c: AD.textPrimary),
           ),
           const SizedBox(height: 8),
           Text(
-            _balanceOk
-                ? 'That’s enough to get started (you need at least $_needTokens).'
-                : 'You need at least $_needTokens tokens — one minute of Ava '
-                    'talking to a caller — to turn the agent on.',
+            _balanceUnavailable
+                ? "We'll check again when you actually turn the agent on — you can continue."
+                : _balanceOk
+                    ? 'That’s enough to get started (you need at least $_needTokens).'
+                    : 'You need at least $_needTokens tokens — one minute of Ava '
+                        'talking to a caller — to turn the agent on.',
             style: _wizBody(),
           ),
-          if (!_balanceOk) ...[
+          if (!_balanceUnavailable && !_balanceOk) ...[
             const SizedBox(height: 14),
             AdButton(
               label: 'Top up your wallet',

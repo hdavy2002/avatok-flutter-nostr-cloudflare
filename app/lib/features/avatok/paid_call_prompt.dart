@@ -7,12 +7,12 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/feature_flags.dart';
-import '../../core/money_api.dart';
 import '../../core/paid_call_api.dart';
 import '../../core/remote_config.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../../core/wallet_entitlement.dart';
 
 /// Paid-call pre-connect prompt (Specs/PLAN-2026-07-11-dialpad-business-calls-
 /// ava-voice-agent.md §3B, Phase B2). Shown to the CALLER before connecting,
@@ -78,6 +78,11 @@ class _PaidCallPromptScreenState extends State<PaidCallPromptScreen> {
   int? _selectedMinutes;
   int _balance = 0;
   bool _loadingBalance = true;
+  // [WALLET-GET-STATE-1] A failed GET (401/500/timeout/non-JSON) is NOT a
+  // confirmed zero balance — used to read `?? 0` and block a call the user
+  // could afford (Root-Cause Report §17). The server escrow check in
+  // _confirm() is the authoritative affordability check either way.
+  bool _balanceUnavailable = false;
   bool _confirming = false;
   String? _error;
 
@@ -94,16 +99,25 @@ class _PaidCallPromptScreenState extends State<PaidCallPromptScreen> {
   }
 
   Future<void> _loadBalance() async {
-    final b = await MoneyApi.balance();
+    final snap = await WalletEntitlement.I.refresh();
     if (!mounted) return;
     setState(() {
-      _balance = (b['balance'] as num?)?.toInt() ?? (b['coins'] as num?)?.toInt() ?? 0;
       _loadingBalance = false;
+      if (snap.state == WalletEntitlementState.unavailable) {
+        _balanceUnavailable = true;
+      } else {
+        _balanceUnavailable = false;
+        _balance = snap.spendable;
+      }
     });
   }
 
   int get _total => widget.offer.totalFor(_selectedMinutes ?? 0);
-  bool get _canAfford => !_loadingBalance && _balance >= _total;
+  // [WALLET-GET-STATE-1] A failed read must never block a paid action by
+  // itself — only a genuinely CONFIRMED low balance disables Confirm. The
+  // server's escrow hold (_confirm → PaidCallApi.confirm, WALLET_INSUFFICIENT
+  // below) remains the authoritative check regardless.
+  bool get _canAfford => _loadingBalance || _balanceUnavailable || _balance >= _total;
 
   Future<void> _confirm() async {
     final mins = _selectedMinutes;
@@ -205,6 +219,8 @@ class _PaidCallPromptScreenState extends State<PaidCallPromptScreen> {
                 ),
                 if (_loadingBalance)
                   const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                else if (_balanceUnavailable)
+                  Text(kWalletUnavailableMessage, style: ADText.preview(c: AD.textSecondary))
                 else
                   Text('Balance: $_balance', style: ADText.preview(
                       c: _canAfford ? AD.textSecondary : AD.danger)),

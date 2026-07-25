@@ -19,6 +19,7 @@ import '../../core/money_api.dart';
 import '../../core/session_api.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../../core/wallet_entitlement.dart';
 import '../explore/creator_channel.dart';
 import '../translation/translate_overlay.dart';
 import 'live_room_widgets.dart';
@@ -168,8 +169,15 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
   }
 
   Future<void> _donateSheet() async {
-    final bal = ((await MoneyApi.balance())['balance'] as num?)?.toInt() ?? 0;
+    // [WALLET-GET-STATE-1] A failed read is not a confirmed $0.00 — showing
+    // that used to make a real balance look empty on a flaky network
+    // (Root-Cause Report §17). The donate amounts below are always tappable
+    // regardless; the server is the authoritative affordability check
+    // (see _donate's 402/WALLET_INSUFFICIENT handling).
+    final snap = await WalletEntitlement.I.refresh();
     if (!mounted) return;
+    final balUnavailable = snap.state == WalletEntitlementState.unavailable;
+    final bal = balUnavailable ? 0 : snap.balance;
     final amounts = [100, 200, 500, 1000, 2000, 5000];
     await showModalBottomSheet<void>(
       context: context,
@@ -184,7 +192,10 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
             title: 'Send a donation',
           ),
           const SizedBox(height: 6),
-          Text('Balance \$${(bal / 100).toStringAsFixed(2)} · goes to the creator instantly',
+          Text(
+              balUnavailable
+                  ? '$kWalletUnavailableMessage · goes to the creator instantly'
+                  : 'Balance \$${(bal / 100).toStringAsFixed(2)} · goes to the creator instantly',
               style: ZineText.sub(size: 13.5)),
           const SizedBox(height: 16),
           Wrap(spacing: 9, runSpacing: 9, children: [

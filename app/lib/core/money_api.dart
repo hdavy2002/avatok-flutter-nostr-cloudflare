@@ -1,10 +1,44 @@
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:http/http.dart' as http;
+
+import 'analytics.dart';
 import 'api_auth.dart';
 import 'config.dart';
 
-/// MoneyApi (Phase 2, audit A1) — wrapper for every MUTATING money endpoint.
+/// [WALLET-GET-STATE-1] Coarse classification of a GET result, independent of
+/// the raw HTTP status — this is what callers should branch on, not the number.
+/// `none` also covers a genuine 200 with a zero balance: that is NOT an error,
+/// it is a fact, and must never be conflated with `transport`/`auth`/`server`.
+enum MoneyApiErrorClass { none, transport, auth, server, client }
+
+/// Typed result of a money GET. Replaces the old pattern of silently coercing
+/// every failure (401, 500, a Cloudflare HTML error page, a timeout) to `{}`,
+/// which is indistinguishable from "the server truly returned nothing" and is
+/// exactly how a flaky network got read as "not premium" / "0 tokens" (see
+/// Root-Cause Report §17).
+class MoneyApiResult {
+  /// True only for a genuine 200 with a JSON body — the one case a caller may
+  /// trust [data] as authoritative.
+  final bool ok;
+  /// Real HTTP status, or 0 when the request never got a response (transport
+  /// failure — DNS, timeout, thrown exception).
+  final int status;
+  final Map<String, dynamic> data;
+  final MoneyApiErrorClass errorClass;
+  const MoneyApiResult({
+    required this.ok,
+    required this.status,
+    required this.data,
+    required this.errorClass,
+  });
+
+  static const MoneyApiResult transportFailure = MoneyApiResult(
+      ok: false, status: 0, data: {}, errorClass: MoneyApiErrorClass.transport);
+}
+
+/// MoneyApi (Phase 2, audit A1) — wrapper for every money endpoint.
 /// Auto-attaches an `Idempotency-Key` (one fresh UUID per logical tap) and
 /// retries safely on timeout with the SAME key, so a double-tap or a flaky
 /// network can never double-charge: the server replays the stored response.
@@ -20,6 +54,14 @@ class MoneyApi {
   static Map<String, dynamic> _json(String body) {
     try { return jsonDecode(body) as Map<String, dynamic>; } catch (_) { return {}; }
   }
+
+  /// Test-only network seam for [_get]. When set, `_get` calls this instead of
+  /// `ApiAuth.getSigned` — mirrors the function-pointer injection pattern
+  /// already used in this codebase (`ApiAuth.clerkBearer`, `onAuthExpired`),
+  /// so `app/test/wallet_entitlement_test.dart` can exercise the status/
+  /// error-class logic without a live network. Throw from the override to
+  /// simulate a transport failure. Tests MUST reset this to null afterward.
+  static Future<http.Response> Function(String url)? debugGetOverride;
 
   /// POST with idempotency key + one safe retry on timeout/network error.
   static Future<Map<String, dynamic>> _post(String url, Map<String, dynamic> body) async {
@@ -37,9 +79,74 @@ class MoneyApi {
     }
   }
 
+  /// [WALLET-GET-STATE-1] Shared GET wrapper: preserves HTTP status for both
+  /// JSON and non-JSON responses (a Cloudflare/edge HTML error page no longer
+  /// silently reads as an empty-but-successful body), and classifies the
+  /// result so callers can distinguish "the server said no" (auth/client),
+  /// "the server is broken" (server), and "we never heard back" (transport)
+  /// from a genuine, trustworthy answer. Never throws.
+  static Future<MoneyApiResult> _get(String url) async {
+    final endpoint = Uri.parse(url).path;
+    try {
+      final res = debugGetOverride != null
+          ? await debugGetOverride!(url)
+          : await ApiAuth.getSigned(url);
+      final status = res.statusCode;
+      Map<String, dynamic> data;
+      bool parsed = true;
+      try {
+        data = jsonDecode(res.body) as Map<String, dynamic>;
+      } catch (_) {
+        data = const {};
+        parsed = false;
+      }
+      final MoneyApiErrorClass cls;
+      final ok = status == 200 && parsed;
+      if (ok) {
+        cls = MoneyApiErrorClass.none;
+      } else if (status == 401 || status == 403) {
+        cls = MoneyApiErrorClass.auth;
+      } else if (status >= 500 || !parsed) {
+        // A 5xx, OR a 2xx/edge response that ISN'T JSON (gateway/HTML error
+        // page) — both mean "cannot trust this response", never "zero".
+        cls = MoneyApiErrorClass.server;
+      } else {
+        cls = MoneyApiErrorClass.client;
+      }
+      _emitGetTelemetry(endpoint, status, cls);
+      return MoneyApiResult(ok: ok, status: status, data: data, errorClass: cls);
+    } catch (_) {
+      // Transport failure — DNS, timeout, thrown exception. ApiAuth._tracked
+      // already fires the generic apiError(status:0); this adds the money-
+      // specific classification a caller actually branches on.
+      _emitGetTelemetry(endpoint, 0, MoneyApiErrorClass.transport);
+      return MoneyApiResult.transportFailure;
+    }
+  }
+
+  static void _emitGetTelemetry(String endpoint, int status, MoneyApiErrorClass cls) {
+    try {
+      // No secrets, no body — endpoint + status/error class + whatever account
+      // identifier Analytics already attaches to every event (account_id,
+      // clerk_uid, email — see Analytics._base).
+      Analytics.capture('money_get_result', {
+        'endpoint': endpoint,
+        'status': status,
+        'error_class': cls.name,
+      });
+    } catch (_) {/* telemetry must never break a read */}
+  }
+
   // ── wallet ────────────────────────────────────────────────────────────────
-  static Future<Map<String, dynamic>> balance() async =>
-      _json((await ApiAuth.getSigned('$kWalletBase/balance')).body);
+
+  /// Canonical typed wallet-balance read. Use this — not [balance] — for any
+  /// entitlement/affordability decision. See `core/wallet_entitlement.dart`.
+  static Future<MoneyApiResult> balanceResult() => _get('$kWalletBase/balance');
+
+  @Deprecated('Use balanceResult() — this silently coerces every failure '
+      '(401/500/timeout/non-JSON) to {}, which is how a flaky network got '
+      'read as "not premium" / "0 tokens". [WALLET-GET-STATE-1]')
+  static Future<Map<String, dynamic>> balance() async => (await balanceResult()).data;
 
   /// Top-up any amount (USD cents == coins). Returns {checkout_url} or
   /// {error, reason:'pending_legal_approval'} while the legal flag is off.
@@ -53,9 +160,9 @@ class MoneyApi {
   /// note}. India → INR fixed 1 Token = ₹1 (min ₹100); everywhere else → USD
   /// (1 USD = 100 Tokens, min $1).
   static Future<Map<String, dynamic>> topupQuote({String? country}) async =>
-      _json((await ApiAuth.getSigned(
+      (await _get(
               '$kWalletBase/topup-quote${country == null ? '' : '?country=${Uri.encodeQueryComponent(country)}'}'))
-          .body);
+          .data;
 
   /// Create a Stripe PaymentIntent for the NATIVE in-app PaymentSheet (no browser
   /// redirect). [amountMinor] is the real money amount in MINOR units of
@@ -93,11 +200,11 @@ class MoneyApi {
       if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
     };
     final qs = p.entries.map((e) => '${e.key}=${Uri.encodeQueryComponent(e.value)}').join('&');
-    return _json((await ApiAuth.getSigned('$kWalletBase/ledger?$qs')).body);
+    return (await _get('$kWalletBase/ledger?$qs')).data;
   }
 
   static Future<Map<String, dynamic>> ledgerDetail(String id) async =>
-      _json((await ApiAuth.getSigned('$kWalletBase/ledger/$id')).body);
+      (await _get('$kWalletBase/ledger/$id')).data;
 
   /// [WALLET-COCKPIT-1] Human-labeled statement feed (wallet_transactions):
   /// each entry = {id, ts, type, direction, feature_key, label, tokens (signed),
@@ -114,7 +221,7 @@ class MoneyApi {
       if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
     };
     final qs = p.entries.map((e) => '${e.key}=${Uri.encodeQueryComponent(e.value)}').join('&');
-    return _json((await ApiAuth.getSigned('$kWalletBase/statement?$qs')).body);
+    return (await _get('$kWalletBase/statement?$qs')).data;
   }
 
   /// [WALLET-COCKPIT-1] Cockpit aggregates over the last [days] days: balance,
@@ -124,9 +231,9 @@ class MoneyApi {
   /// 7-day bar chart doesn't attribute late-night spend to the wrong bar.
   /// Also returns `by_category` (donut) alongside the existing `by_feature`.
   static Future<Map<String, dynamic>> summary({int days = 30, int? tzOffsetMin}) async =>
-      _json((await ApiAuth.getSigned(
+      (await _get(
         '$kWalletBase/summary?days=$days${tzOffsetMin != null ? '&tz_offset_min=$tzOffsetMin' : ''}',
-      )).body);
+      )).data;
 
   /// [WALLET-REDESIGN-1] CSV statement for a date window — backs the export
   /// sheet (share / save / email). Returns the raw CSV body.
@@ -146,13 +253,13 @@ class MoneyApi {
   }
 
   static Future<Map<String, dynamic>> adminAccount(String uid) async =>
-      _json((await ApiAuth.getSigned('$kApiBase/admin/account/$uid')).body);
+      (await _get('$kApiBase/admin/account/$uid')).data;
   static Future<Map<String, dynamic>> adminLedger({String? user, String? ref}) async =>
-      _json((await ApiAuth.getSigned('$kApiBase/admin/ledger?user=${Uri.encodeQueryComponent(user ?? '')}&ref=${Uri.encodeQueryComponent(ref ?? '')}')).body);
+      (await _get('$kApiBase/admin/ledger?user=${Uri.encodeQueryComponent(user ?? '')}&ref=${Uri.encodeQueryComponent(ref ?? '')}')).data;
   static Future<Map<String, dynamic>> adminRefund({required String orderId, required int amount, required String reason}) =>
       _post('$kApiBase/admin/refund', {'orderId': orderId, 'amount': amount, 'reason': reason});
   static Future<Map<String, dynamic>> adminAdjust({required String account, required int amount, required String reason}) =>
       _post('$kApiBase/admin/adjust', {'account': account, 'amount': amount, 'reason': reason});
   static Future<Map<String, dynamic>> adminRecon() async =>
-      _json((await ApiAuth.getSigned('$kApiBase/admin/recon')).body);
+      (await _get('$kApiBase/admin/recon')).data;
 }
