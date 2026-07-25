@@ -45,8 +45,16 @@ class AvatarCache {
     return d;
   }
 
-  static String _name(String url, int px) {
-    final seg = Uri.parse(url).pathSegments.isNotEmpty ? Uri.parse(url).pathSegments.last : url;
+  /// [AVA-MEDIA-AUTHZ-1] [keyOverride], when given, replaces the URL-derived
+  /// name entirely — for a caller with a STABLE content id whose URL is a
+  /// presigned link that re-mints (and rotates its signature) on every fetch,
+  /// keying on the url would make every re-render a cache MISS + full
+  /// re-download, and the rotating signature would otherwise land in a disk
+  /// filename. See [getAny]'s `cacheKey` param.
+  static String _name(String url, int px, {String? keyOverride}) {
+    final seg = (keyOverride != null && keyOverride.isNotEmpty)
+        ? keyOverride
+        : (Uri.parse(url).pathSegments.isNotEmpty ? Uri.parse(url).pathSegments.last : url);
     final safe = seg.replaceAll(RegExp(r'[^a-zA-Z0-9_.-]'), '_');
     return '${safe}_$px.img';
   }
@@ -107,17 +115,26 @@ class AvatarCache {
   /// /cdn-cgi/image transform — other hosts (e.g. test/placeholder images) are
   /// fetched raw. Caches the bytes on disk so the image loads instantly next
   /// time instead of re-downloading on every scroll/open (pic 3).
-  static Future<File?> getAny(String rawUrl, int px) async {
+  ///
+  /// [AVA-MEDIA-AUTHZ-1] [cacheKey] — pass a stable id (e.g.
+  /// `AiMediaJob.artifactMediaId`) when [rawUrl] is a presigned URL whose
+  /// signature rotates on every mint: the disk (and in-memory) cache is then
+  /// keyed on the id, so re-rendering the SAME artifact is a cache hit even
+  /// though the fetched URL differs byte-for-byte each time. [rawUrl] is
+  /// still what's actually fetched on a miss. Omit for ordinary stable URLs
+  /// (unchanged behavior).
+  static Future<File?> getAny(String rawUrl, int px, {String? cacheKey}) async {
     if (rawUrl.isEmpty) return null;
     try {
-      final f = File('${(await _dir()).path}/${_name(rawUrl, px)}');
-      if (await f.exists() && await f.length() > 0) { _remember(_name(rawUrl, px), f); return f; }
+      final name = _name(rawUrl, px, keyOverride: cacheKey);
+      final f = File('${(await _dir()).path}/$name');
+      if (await f.exists() && await f.length() > 0) { _remember(name, f); return f; }
       final host = Uri.parse(rawUrl).host;
       final fetchUrl = host.endsWith('avatok.ai') ? transformUrl(rawUrl, px) : rawUrl;
       final res = await http.get(Uri.parse(fetchUrl)).timeout(const Duration(seconds: 15));
       if (res.statusCode == 200 && _looksLikeImage(res.bodyBytes)) {
         await f.writeAsBytes(res.bodyBytes, flush: true);
-        _remember(_name(rawUrl, px), f);
+        _remember(name, f);
         return f;
       }
     } catch (_) {/* fall through to null */}

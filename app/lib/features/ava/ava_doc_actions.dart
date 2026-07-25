@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
+import '../../core/ai_media_jobs.dart'; // [AVA-DOC-ARTIFACT-1] durable summarize/translate jobs
 import '../../core/api_auth.dart';
 import '../../core/api_backoff.dart';
 import '../../core/ava_log.dart';
@@ -11,20 +12,25 @@ import '../../core/composer_ai.dart';
 import '../../core/config.dart';
 import '../../core/ui/zine.dart';
 
-/// AvaDocActions (Ava Copilot Phase A — plan §7).
+/// AvaDocActions (Ava Copilot Phase A — plan §7; migrated to durable jobs by
+/// [AVA-DOC-ARTIFACT-1], Specs/ROOT-CAUSE-REPORT-RECURRING-ISSUES-2026-07-25.md
+/// Part VI §38/§45).
 ///
 /// Context-menu handlers for the Ava items on a doc/PDF/image message:
-///   • Summarize ✨          → POST /api/ava/doc/summarize
-///   • Translate ✨          → POST /api/ava/doc/translate (inline result dialog,
-///                             language picker first)
-///   • Auto-translate file ✨ → POST /api/ava/doc/translate-file (fresh PDF is
-///                             delivered later in the PRIVATE Ava lane)
+///   • Summarize ✨ → creates a durable `doc_summarize` AiMediaJob (produces a
+///     `.summary.md`/`.txt` artifact — never just inline text now).
+///   • Translate ✨ → language picker, then a durable `doc_translate` AiMediaJob
+///     (produces a translated file artifact).
 ///
-/// Every item is labelled with ✨ and the subtitle "only you will see this" —
-/// results land in the caller's private Ava lane only (D2/D19). Failure
-/// handling is deliberately quiet: 403 {reason:"ava_off_chat"} (per-chat Ava
-/// toggle is off, D29) and 503 {flag} (kill switch) show a one-line snackbar,
-/// never a dialog.
+/// "Auto-translate file" is RETIRED (kept as [translateFile] below, unused by
+/// [menuItems], per §49 "remove only after the new path is verified") —
+/// Translate itself always produces a file now, so the separate action no
+/// longer adds anything.
+///
+/// The caller (chat_thread.dart) supplies [onOutcome], which it wires to its
+/// shared `_handleJobOutcome` — the ONE place that renders the pending job
+/// card AND the 402 `AI_INSUFFICIENT_TOKENS` "you're out of tokens" message
+/// (CLAUDE.md: a 402 must never render as a generic failure).
 class AvaDocActions {
   AvaDocActions._();
 
@@ -47,6 +53,7 @@ class AvaDocActions {
     required String? mediaRef,
     required String? name,
     required bool show,
+    required void Function(AiMediaJobCreateOutcome outcome) onOutcome,
   }) {
     if (!show || conv == null || conv.isEmpty || mediaRef == null || mediaRef.isEmpty) {
       return const <Widget>[];
@@ -65,53 +72,47 @@ class AvaDocActions {
         );
     return <Widget>[
       item(PhosphorIcons.sparkle(PhosphorIconsStyle.bold), 'Summarize',
-          () => summarize(threadContext, conv: conv, mediaRef: mediaRef, name: name)),
+          () => summarize(threadContext, conv: conv, mediaRef: mediaRef, name: name, onOutcome: onOutcome)),
       item(PhosphorIcons.translate(PhosphorIconsStyle.bold), 'Translate',
-          () => translate(threadContext, conv: conv, mediaRef: mediaRef, name: name)),
-      item(PhosphorIcons.filePdf(PhosphorIconsStyle.bold), 'Auto-translate file',
-          () => translateFile(threadContext, conv: conv, mediaRef: mediaRef, name: name)),
+          () => translate(threadContext, conv: conv, mediaRef: mediaRef, name: name, onOutcome: onOutcome)),
     ];
   }
 
-  /// Summarize the document. The answer arrives asynchronously as a private
-  /// Ava-lane bubble in this thread; when the server answers inline (cache hit)
-  /// we show it straight away in a dialog too.
+  /// [AVA-DOC-ARTIFACT-1] Summarize the document: creates a durable
+  /// `doc_summarize` AiMediaJob. [onOutcome] renders the pending card (success)
+  /// or the honest 402/failure copy — this method never shows its own dialog
+  /// any more (the artifact IS the result now, not an inline text blob).
   static Future<void> summarize(BuildContext context,
-      {required String conv, required String mediaRef, String? name}) async {
+      {required String conv, required String mediaRef, String? name,
+      required void Function(AiMediaJobCreateOutcome) onOutcome}) async {
     Analytics.capture('ava_doc_action_tap', {'action': 'summarize', 'conv': conv});
-    _toast(context, 'Ava is reading the document — her summary will appear here, only for you.');
-    final res = await _post(_summarizeUrl, {
-      'conv': conv,
-      'media_ref': mediaRef,
-      if (name != null && name.isNotEmpty) 'name': name,
-    });
-    if (!context.mounted) return;
-    if (!_handleFailure(context, res, 'summarize')) return;
-    final text = _textOf(res.body);
-    if (text.isNotEmpty) _resultDialog(context, 'Summary — Ava ✨', text);
+    final outcome = await AiMediaJobRepository.I.create(
+      convId: conv,
+      kind: AiMediaJobKind.docSummarize,
+      sourceMediaId: mediaRef,
+      label: 'Preparing summary…',
+    );
+    onOutcome(outcome);
   }
 
-  /// Translate the document INLINE: pick a language, then show Ava's
-  /// translation in a dialog (the private-lane bubble carries it too).
+  /// [AVA-DOC-ARTIFACT-1] Translate the document: pick a language, then create
+  /// a durable `doc_translate` AiMediaJob (produces a translated file, never
+  /// just inline text). [onOutcome] renders the pending card / 402 / failure.
   static Future<void> translate(BuildContext context,
-      {required String conv, required String mediaRef, String? name}) async {
+      {required String conv, required String mediaRef, String? name,
+      required void Function(AiMediaJobCreateOutcome) onOutcome}) async {
     final lang = await _pickLanguage(context);
     if (lang == null || !context.mounted) return;
     Analytics.capture('ava_doc_action_tap',
         {'action': 'translate', 'conv': conv, 'lang': lang.code});
-    _toast(context, 'Ava is translating into ${lang.label} — only you will see it.');
-    final res = await _post(_translateUrl, {
-      'conv': conv,
-      'media_ref': mediaRef,
-      'lang': lang.code,
-      if (name != null && name.isNotEmpty) 'name': name,
-    });
-    if (!context.mounted) return;
-    if (!_handleFailure(context, res, 'translate')) return;
-    final text = _textOf(res.body);
-    if (text.isNotEmpty) {
-      _resultDialog(context, 'Translation (${lang.label}) — Ava ✨', text);
-    }
+    final outcome = await AiMediaJobRepository.I.create(
+      convId: conv,
+      kind: AiMediaJobKind.docTranslate,
+      sourceMediaId: mediaRef,
+      targetLanguage: lang.code,
+      label: 'Translating to ${lang.label}…',
+    );
+    onOutcome(outcome);
   }
 
   /// Auto-translate the WHOLE file: pick a language, then ask the worker to

@@ -34,6 +34,11 @@ DIDIT_WORKFLOW_ID = "21da9f1d-4fec-4639-a010-cb7299fe6528"
 # If unset, the GenUI template cache simply no-ops (composes each time).
 UPSTASH_REDIS_REST_URL = "https://crack-grackle-16293.upstash.io"
 BLOSSOM_BASE_URL = "https://blossom.avatok.ai"   # public R2 read host (no Worker in path)
+# [AVA-MEDIA-AUTHZ-1] Bucket name for SigV4 presigned reads of the private DIGITAL
+# bucket (routes/media.ts). MUST match [[r2_buckets]] binding="DIGITAL" bucket_name
+# above (PRODUCTION). Do not copy this value into [env.staging.vars] — staging has
+# its own bucket_name below.
+DIGITAL_BUCKET_NAME = "avatok-digital"
 FCM_PROJECT = "avatok-e19ef"
 BRAIN_REASONER_MODEL = "@cf/google/gemma-4-26b-a4b-it"  # Gemma 4 26B-A4B MoE (~4B-class cost, thinking-mode reasoning)
 # AVA CORE (Phase 0, AVA-CORE-1): the ONE reasoner slot behind avaReason()
@@ -574,6 +579,9 @@ custom_domain = true
 TEST_CLOCK_ALLOWED = "1"   # Phase 7 A2 — refund-engine test clock (staging ONLY)
 UPSTASH_REDIS_REST_URL = "https://crack-grackle-16293.upstash.io"   # GenUI template cache (token = secret)
 BLOSSOM_BASE_URL = "https://blossom.avatok.ai"
+# [AVA-MEDIA-AUTHZ-1] STAGING bucket name — must match [[env.staging.r2_buckets]]
+# binding="DIGITAL" bucket_name below ("avatok-digital-staging"), NOT production's.
+DIGITAL_BUCKET_NAME = "avatok-digital-staging"
 FCM_PROJECT = "avatok-e19ef"
 BRAIN_REASONER_MODEL = "@cf/google/gemma-4-26b-a4b-it"
 BRAIN_EMBED_MODEL = "@cf/baai/bge-small-en-v1.5"

@@ -149,6 +149,12 @@ export interface Env {
 
   // vars
   BLOSSOM_BASE_URL: string;
+  // [AVA-MEDIA-AUTHZ-1] R2 bucket name for the private DIGITAL bucket's SigV4
+  // presigned-read path (media.ts). MUST match the env's DIGITAL r2_buckets
+  // bucket_name in wrangler.toml — prod = "avatok-digital", staging =
+  // "avatok-digital-staging". A hardcoded prod fallback here previously let
+  // staging presign against PRODUCTION's bucket.
+  DIGITAL_BUCKET_NAME: string;
   FCM_PROJECT: string;
   // Comma-separated Clerk uids allowed to PUT /api/admin/config (Phase 1, A2).
   ADMIN_UIDS?: string;

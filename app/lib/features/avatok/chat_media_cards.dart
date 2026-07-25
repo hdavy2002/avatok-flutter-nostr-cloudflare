@@ -841,7 +841,10 @@ class _ChatVideoCardState extends State<ChatVideoCard> {
       );
       _thumbDone(bytes, bytes == null || bytes.isEmpty ? 'empty' : null);
     } catch (e) {
-      _thumbDone(null, e.toString());
+      // [AVA-MEDIA-AUTHZ-1] `_file()` -> `_bytes()` can rethrow a fetch failure
+      // from `MediaService.downloadAndDecrypt` whose toString() carries a
+      // presigned URL (storage=='digital' media) — classified type only.
+      _thumbDone(null, e.runtimeType.toString());
     }
   }
 
@@ -888,10 +891,12 @@ class _ChatVideoCardState extends State<ChatVideoCard> {
       });
     } catch (e) {
       if (mounted) setState(() => _starting = false);
+      // [AVA-MEDIA-AUTHZ-1] Same rethrow path as `_makeThumb` — classified
+      // type only, never the full toString().
       Analytics.capture('chat_media_preview_failed', {
         'kind': 'video',
         'stage': 'inline_play',
-        'err': e.toString(),
+        'err': e.runtimeType.toString(),
       });
     }
   }

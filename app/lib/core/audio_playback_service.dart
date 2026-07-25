@@ -293,6 +293,35 @@ class AudioPlaybackService with WidgetsBindingObserver {
     }
   }
 
+  /// [AVA-AUDIO-ARTIFACT-1] Play a completed `audio_translate` AiMediaJob
+  /// artifact (Part VI §39/§46). A thin, documented wrapper over [play] so
+  /// every caller uses the SAME `trackId` convention for a job artifact — the
+  /// artifact's own stable media id ([AiMediaJob.artifactMediaId], NEVER the
+  /// expiring `artifact_url`), which is already the globally-unique key
+  /// [play]/[savedPosition]/[knownDuration] expect. This does not duplicate
+  /// any playback/persistence logic: an artifact is just another track once
+  /// its bytes are fetched, and duration/position are preserved exactly as
+  /// they are for any other track, keyed by [artifactMediaId].
+  Future<void> playArtifact({
+    required String artifactMediaId,
+    required Uint8List bytes,
+    String title = 'Translated audio',
+    String? subtitle,
+    String? originRoute,
+    Duration? startAt,
+  }) {
+    return play(
+      track: AudioTrack(
+        trackId: artifactMediaId,
+        title: title,
+        subtitle: subtitle,
+        originRoute: originRoute,
+      ),
+      bytes: bytes,
+      startAt: startAt,
+    );
+  }
+
   Future<void> pause() async {
     final cur = _state.value;
     if (cur == null) return;

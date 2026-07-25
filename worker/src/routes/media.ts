@@ -8,6 +8,19 @@ import { walletOp } from "./wallet";
 import { checkUploadAllowed, afterRegisterFile } from "../storage";
 import { brainIngest } from "../lib/brain_ingest";
 import { shouldFail } from "../lib/fault_inject";
+// [AVA-MEDIA-JOB-2 / B3] Private-object presign — same SigV4 query-URL scheme
+// routes/olx.ts already uses for avatok-digital downloads (avatok-digital
+// bucket, S3-compatible R2 API). Imported (not re-implemented) so there is
+// exactly one signing implementation in the codebase.
+import { presignGetUrl } from "../aws/sigv4";
+// [B2 / B3 fix / AVA-MEDIA-AUTHZ-1] isConvMember — same conversation-membership
+// check lib/ai_media_jobs.ts uses, imported here for libraryRecord()'s
+// forged-key authorization fix below (one implementation, not a second copy).
+import { type ArtifactSensitivity, isConvMember } from "../lib/ai_media_jobs";
+// [P1 fix / AVA-MEDIA-AUTHZ-1] voiceNoteEncryptionEnabled must be enforced
+// SERVER-SIDE in uploadPrivate() below, not just read client-side — see the
+// fix note there.
+import { readConfig } from "./config";
 // [AVA-IDGATE-1] identity_gate import removed — /upload/public is no longer gated
 // (avatars must upload during onboarding; the public ACTION is gated at its endpoint).
 
@@ -79,9 +92,24 @@ export async function uploadPublic(req: Request, env: Env, exec: ExecutionContex
   return json({ hash, key: r2Key, url, status: "pending", id });
 }
 
-// POST /upload/private — client-side AES-GCM ciphertext (DM attachments).
-// No scan (unscannable by design). Same public bucket — ciphertext is safe to
-// serve; the AES key travels inside the encrypted DM.
+// POST /upload/private — DM attachments. Two modes, chosen by the caller:
+//
+//  1. DEFAULT (no x-encrypted header, or "1"/"true") — client-side AES-GCM
+//     CIPHERTEXT, byte-for-byte the original behavior. No scan (unscannable
+//     by design). Stored in the PUBLIC BLOBS bucket — safe to serve there
+//     because it is opaque without the AES key, which travels inside the
+//     encrypted DM, never through this endpoint.
+//
+//  2. x-encrypted: 0 — [MVP voice-note decision 2026-07-25 / B3 fix] PLAINTEXT
+//     that the server can read (gated client-side by config.ts's
+//     voiceNoteEncryptionEnabled=false), so it MUST NOT land in the public
+//     bucket: "unguessable path" is not access control. Stored instead in the
+//     PRIVATE `DIGITAL` bucket (worker/wrangler.toml — same bucket
+//     routes/olx.ts uses for paid digital-goods downloads) and never served
+//     by the public blossom.avatok.ai domain — only via a freshly presigned,
+//     short-lived URL (presignDigitalReadUrl above), which this route mints
+//     once at upload time and getLibrary()/libraryRecord() re-mint on every
+//     later read (a stored presigned URL would just go stale).
 export async function uploadPrivate(req: Request, env: Env, exec?: ExecutionContext): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
@@ -90,50 +118,222 @@ export async function uploadPrivate(req: Request, env: Env, exec?: ExecutionCont
   const bytes = await req.arrayBuffer();
   if (!bytes.byteLength) return json({ error: "empty body" }, 400);
   const hash = await sha256Hex(bytes);
-  const r2Key = userKey(ctx.uid, "dm", hash);   // per-user path (ciphertext owned by sender)
-  const url = `${env.BLOSSOM_BASE_URL}/${r2Key}`;
-  const ct = "application/octet-stream"; // ciphertext
-  // The real content type/name travel in headers (the bytes themselves are
-  // opaque ciphertext). Used only to categorise the Library entry — never to scan.
+
+  const encryptedHeader = (req.headers.get("x-encrypted") || "").trim().toLowerCase();
+  const isPlaintext = encryptedHeader === "0" || encryptedHeader === "false";
+
+  // [P1 fix / AVA-MEDIA-AUTHZ-1] voiceNoteEncryptionEnabled was a CLIENT-ONLY
+  // brake: this route honoured x-encrypted:0 unconditionally, so flipping the
+  // flag back to true would not stop plaintext uploads from a client that
+  // hasn't refetched config, or a modified client that never checks it at
+  // all — the exact "declared, flippable flag that isn't a brake" failure
+  // shape CLAUDE.md documents for inAppUpdateEnabled. Enforced server-side
+  // now: when the flag says encryption IS required, a plaintext upload is
+  // rejected outright rather than silently accepted.
+  if (isPlaintext) {
+    const cfg = await readConfig(env);
+    if (cfg.voiceNoteEncryptionEnabled) {
+      return json({ error: "plaintext_disabled" }, 400);
+    }
+  }
+
+  const r2Key = userKey(ctx.uid, isPlaintext ? "private" : "dm", hash); // per-user path (bytes owned by sender)
+  const ct = "application/octet-stream"; // ciphertext OR opaque-on-the-wire plaintext blob — real mime rides in x-real-mime
+  // The real content type/name travel in headers. Used only to categorise the
+  // Library entry — never to scan (ciphertext is unscannable by design;
+  // plaintext-but-private scanning is a follow-on, not this issue's scope).
   const realMime = req.headers.get("x-real-mime") || "application/octet-stream";
   const fileName = req.headers.get("x-file-name") || defaultName(realMime, hash);
   const app = (req.headers.get("x-app") || "avachat").toLowerCase();
-  // VIDPOL-2: DM video is E2E-encrypted so the bytes are opaque, but the real
-  // mime rides in x-real-mime — cap on that. Ciphertext is ~same size as source,
-  // so the 64 MB ciphertext ceiling ≈ the same policy as public video.
+  // VIDPOL-2: same 64 MB ceiling either way (ciphertext/plaintext are ~same size as source).
   const vidCap = videoCapReject(realMime, bytes.byteLength);
   if (vidCap) return vidCap;
 
   const mdb = mediaSession(env);
   const existing = await mdb.prepare("SELECT id FROM user_media WHERE key=?1").bind(r2Key).first();
   if (!existing) {
-    // Phase 4 quota gate (same pool as public — ciphertext bytes count too).
+    // Phase 4 quota gate (same pool as public — these bytes count too).
     const gate = await checkUploadAllowed(env, ctx.uid, bytes.byteLength, false);
     if (!gate.ok) return gate.resp;
   }
-  const head = await env.BLOBS.head(r2Key);
-  if (!head) await env.BLOBS.put(r2Key, bytes, { httpMetadata: { contentType: ct } });
+  const bucket = isPlaintext ? env.DIGITAL : env.BLOBS;
+  const head = await bucket.head(r2Key);
+  if (!head) await bucket.put(r2Key, bytes, { httpMetadata: { contentType: ct } });
+
+  const url = isPlaintext
+    ? ((await presignDigitalReadUrl(env, r2Key)) || "")
+    : `${env.BLOSSOM_BASE_URL}/${r2Key}`;
 
   if (!existing) {
     await mdb.prepare(
       `INSERT INTO user_media (id, uid, media_type, storage, visibility, encrypted, key, display_url, mime_type, size_bytes, original_app, created_at, moderation_status, category, file_name, source_kind)
-       VALUES (?1,?2,?3,'blossom','private',1,?4,?5,?6,?7,?8,?9,'skipped',?10,?11,'sent')`,
-    ).bind(crypto.randomUUID(), ctx.uid, mediaType(realMime), r2Key, url, ct, bytes.byteLength, app, Date.now(), categoryOf(realMime), fileName).run();
+       VALUES (?1,?2,?3,?4,'private',?5,?6,?7,?8,?9,?10,?11,'skipped',?12,?13,'sent')`,
+    ).bind(
+      crypto.randomUUID(), ctx.uid, mediaType(realMime), isPlaintext ? "digital" : "blossom",
+      isPlaintext ? 0 : 1, r2Key, isPlaintext ? "" : url, ct, bytes.byteLength, app, Date.now(),
+      categoryOf(realMime), fileName,
+    ).run();
     const reg = afterRegisterFile(env, ctx.uid, { kind: categoryOf(realMime), bytes: bytes.byteLength, source_app: app, dedup: false });
     if (exec) exec.waitUntil(reg); else await reg.catch(() => { /* best-effort */ });
   }
-  return json({ hash, key: r2Key, url, status: "live" });
+  return json({ hash, key: r2Key, url, status: "live", encrypted: isPlaintext ? 0 : 1 });
+}
+
+// ---------------------------------------------------------------------------
+// [AVA-MEDIA-JOB-2 / B3 fix] registerArtifactMedia — the ONE place a derived
+// AI media job artifact (a generated image, a doc summary/translation, a
+// transcript, a translated transcript) uploads its output bytes and
+// registers a `user_media` row, so the result shows up in AvaLibrary/
+// AvaStorage and can be opened/downloaded/shared with the SAME machinery as
+// any manually-uploaded file. Routes through the SAME content-addressed
+// media pool as uploadPublic()/uploadPrivate() above — no second storage
+// path, per this issue's instructions.
+//
+// THE FIX: an earlier attempt at this function (parked on
+// wave3-media-ux-parked, blocked in review) ALWAYS wrote to
+// `u/<uid>/public/<hash>` with visibility='public' — the summary of a
+// private contract and the transcript of a private voice note became
+// publicly fetchable URLs with no auth. `sensitivity` is now a REQUIRED
+// input (no default): 'private' routes storage through the SAME
+// access-gated DIGITAL bucket + presigned-URL scheme uploadPrivate() uses
+// for unencrypted voice notes above — never the public BLOBS/blossom bucket.
+// Callers (the per-kind job handlers, [AVA-IMAGE-UX-1]/[AVA-DOC-ARTIFACT-1]/
+// [AVA-AUDIO-ARTIFACT-1]) decide 'public' vs 'private' by calling
+// ai_media_jobs.ts's resolveArtifactSensitivity(sourceMediaId) — an artifact
+// inherits the sensitivity of its source; no known-public source defaults to
+// private.
+//
+// The PARENT/DERIVED link (source_media_id) is deliberately NOT stored on
+// this row — it lives on `ai_media_artifacts`
+// (worker/migrations/2026-07-25-ai-media-jobs.sql), written by
+// ai_media_jobs.ts's completeAiMediaJob() right after this call returns a
+// media_id. This function only ever creates the STORAGE/LIBRARY side; it
+// never touches ai_media_jobs/ai_media_artifacts.
+// ---------------------------------------------------------------------------
+export interface RegisterArtifactInput {
+  uid: string;
+  bytes: Uint8Array;
+  mimeType: string;
+  /** Exact final display file name. If omitted, derived from filePrefix + the
+   *  first 8 hex chars of the content hash + fileExt. */
+  fileName?: string;
+  filePrefix?: string; // e.g. "ava-image", "summary", "transcript"
+  fileExt?: string;    // e.g. "png", "md", "txt", "pdf"
+  /** AvaLibrary category — defaults to categoryOf(mimeType) when omitted. */
+  category?: string;
+  /** original_app column — defaults to "avatok". */
+  app?: string;
+  /** [B3 fix] REQUIRED — no default. 'private' = the source this was derived
+   *  from is private/received (or unknown); 'public' = the source was
+   *  explicitly visibility='public'. See ai_media_jobs.ts's
+   *  resolveArtifactSensitivity(). */
+  sensitivity: ArtifactSensitivity;
+}
+export interface RegisterArtifactResult {
+  id: string;
+  /** Public artifacts: a stable, permanent CDN URL. Private artifacts: null —
+   *  callers must presign fresh on every read (presignDigitalReadUrl above);
+   *  a URL minted once at register time would go stale. */
+  url: string | null;
+  key: string;
+  dedup: boolean;
+  visibility: "public" | "private";
+}
+
+export async function registerArtifactMedia(env: Env, input: RegisterArtifactInput): Promise<RegisterArtifactResult> {
+  const hash = await sha256Hex(input.bytes);
+  const mdb = mediaSession(env);
+  const fileName = input.fileName || `${input.filePrefix || "file"}-${hash.slice(0, 8)}.${input.fileExt || "bin"}`;
+  const category = input.category || categoryOf(input.mimeType);
+  const app = input.app || "avatok";
+
+  if (input.sensitivity === "private") {
+    const r2Key = `u/${input.uid}/private/${hash}`;
+    const existing = await mdb.prepare("SELECT id FROM user_media WHERE key=?1 AND uid=?2").bind(r2Key, input.uid).first<any>();
+    if (existing) return { id: existing.id, url: null, key: r2Key, dedup: true, visibility: "private" };
+    // [§41] Same universal-storage quota every manual upload goes through —
+    // an AI-generated artifact is a real file in the SAME pool.
+    const gate = await checkUploadAllowed(env, input.uid, input.bytes.byteLength, false);
+    if (!gate.ok) throw new Error("insufficient_balance: storage quota exceeded (AvaStorage is read-only over quota with an empty wallet)");
+    await env.DIGITAL.put(r2Key, input.bytes, { httpMetadata: { contentType: input.mimeType } });
+    const id = crypto.randomUUID();
+    await mdb.prepare(
+      `INSERT INTO user_media (id, uid, media_type, storage, visibility, encrypted, key, display_url, mime_type, size_bytes, original_app, created_at, moderation_status, category, file_name, source_kind)
+       VALUES (?1,?2,?3,'digital','private',0,?4,'',?5,?6,?7,?8,'skipped',?9,?10,'sent')`,
+    ).bind(id, input.uid, artifactMediaKind(input.mimeType), r2Key, input.mimeType, input.bytes.byteLength, app, Date.now(), category, fileName).run();
+    await afterRegisterFile(env, input.uid, { kind: category, bytes: input.bytes.byteLength, source_app: app, dedup: false }).catch(() => {});
+    return { id, url: null, key: r2Key, dedup: false, visibility: "private" };
+  }
+
+  // sensitivity === "public" — original always-public behavior, now opt-in only.
+  const r2Key = `u/${input.uid}/public/${hash}`;
+  const url = `${env.BLOSSOM_BASE_URL}/${r2Key}`;
+  const existing = await mdb.prepare("SELECT id FROM user_media WHERE key=?1 AND uid=?2").bind(r2Key, input.uid).first<any>();
+  if (existing) return { id: existing.id, url, key: r2Key, dedup: true, visibility: "public" };
+  const gate = await checkUploadAllowed(env, input.uid, input.bytes.byteLength, false);
+  if (!gate.ok) throw new Error("insufficient_balance: storage quota exceeded (AvaStorage is read-only over quota with an empty wallet)");
+  await env.BLOBS.put(r2Key, input.bytes, { httpMetadata: { contentType: input.mimeType } });
+  const id = crypto.randomUUID();
+  await mdb.prepare(
+    `INSERT INTO user_media (id, uid, media_type, storage, visibility, encrypted, key, display_url, mime_type, size_bytes, original_app, created_at, moderation_status, category, file_name, source_kind)
+     VALUES (?1,?2,?3,'blossom','public',0,?4,?5,?6,?7,?8,?9,'live',?10,?11,'sent')`,
+  ).bind(id, input.uid, artifactMediaKind(input.mimeType), r2Key, url, input.mimeType, input.bytes.byteLength, app, Date.now(), category, fileName).run();
+  await afterRegisterFile(env, input.uid, { kind: category, bytes: input.bytes.byteLength, source_app: app, dedup: false }).catch(() => {});
+  return { id, url, key: r2Key, dedup: false, visibility: "public" };
+}
+
+// Local to registerArtifactMedia — deliberately distinct from mediaType()
+// above (which defaults anything non-image/audio/video to "image" and would
+// mis-tag a text/PDF artifact). AI-derived documents/transcripts are the
+// common case here, so they get their own correct "document" bucket.
+function artifactMediaKind(mime: string): string {
+  if (mime.startsWith("image/")) return "image";
+  if (mime.startsWith("audio/")) return "audio";
+  if (mime.startsWith("video/")) return "video";
+  return "document";
 }
 
 // Per-user storage prefix with a type subfolder → everything a user owns lives
 // under `u/<uid>/…`, so an account delete is one prefix wipe and nothing of
 // another user's can be touched. `uid` is bech32 (safe charset).
 //   u/<uid>/public/<hash>   public posts
-//   u/<uid>/dm/<hash>       DM ciphertext
+//   u/<uid>/dm/<hash>       DM ciphertext (E2E — opaque, safe in the PUBLIC bucket)
+//   u/<uid>/private/<hash>  [B3 / voice-note MVP] server-readable PLAINTEXT that is
+//                           NOT public — lives in the DIGITAL bucket, never BLOBS.
 //   u/<uid>/video/…         (future) Bunny is separate, but keep the convention
 //   u/<uid>/backups/…       account exports
-function userKey(uid: string, kind: "public" | "dm", hash: string): string {
+function userKey(uid: string, kind: "public" | "dm" | "private", hash: string): string {
   return `u/${uid}/${kind}/${hash}`;
+}
+
+// [B3 fix] The ONE place that mints a fetchable URL for a DIGITAL-bucket
+// (private, server-readable) object. A private object is NEVER served by the
+// public blossom.avatok.ai domain (that bucket has no auth at all — an
+// unguessable path is not access control, which is the exact defect this
+// issue fixes). Same SigV4 query-presign scheme as routes/olx.ts's digital
+// downloads; short expiry (15 min) because every caller re-mints on read
+// rather than persisting a URL that would go stale or leak a long-lived
+// credential. Returns null (never throws) when R2 S3 credentials aren't
+// configured — callers must treat that as "not downloadable yet", the same
+// precondition routes/olx.ts's presigned branch already has.
+export async function presignDigitalReadUrl(env: Env, r2Key: string, expiresSec = 900): Promise<string | null> {
+  if (!(env.R2_ACCESS_KEY_ID && env.R2_SECRET_ACCESS_KEY && env.R2_ACCOUNT_ID)) return null;
+  // [AVA-MEDIA-AUTHZ-1 fix] Per-environment bucket name (staging vs prod use
+  // different avatok-digital* bucket names, worker/wrangler.toml). NO
+  // hardcoded "avatok-digital" fallback anymore — that silently made staging
+  // sign against the PRODUCTION bucket whenever DIGITAL_BUCKET_NAME was
+  // unset. Fail CLOSED instead: an unset var means the environment isn't
+  // configured yet, not "assume prod".
+  const bucket = (env as unknown as { DIGITAL_BUCKET_NAME?: string }).DIGITAL_BUCKET_NAME;
+  if (!bucket) return null;
+  try {
+    return await presignGetUrl({
+      url: `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${bucket}/${r2Key}`,
+      region: "auto", service: "s3",
+      accessKeyId: env.R2_ACCESS_KEY_ID, secretAccessKey: env.R2_SECRET_ACCESS_KEY,
+      expiresSec,
+    });
+  } catch { return null; }
 }
 
 // VIDPOL-2: 64 MB hard cap on video uploads (both /upload/public and
@@ -157,9 +357,12 @@ export function mediaRedirect(path: string, env: Env): Response {
 }
 
 // Columns every Library item view returns (kept stable for the client model).
+// `storage` is selected ONLY to decide whether display_url needs a fresh
+// presign below — stripped back off each row before the response goes out
+// (see getLibrary) so the client-facing shape is unchanged.
 const LIB_COLS =
   "id, media_type, category, key, display_url, thumbnail_url, mime_type, file_name, " +
-  "size_bytes, visibility, original_app, folder_id, source_kind, enc_blob, created_at";
+  "size_bytes, visibility, original_app, folder_id, source_kind, enc_blob, created_at, storage";
 
 // GET /api/library?app=&category=&folder=&type=&cursor= — paginated file list for
 // ONE view (an app→category bucket, or a user folder). Soft-deleted rows excluded.
@@ -196,6 +399,16 @@ export async function getLibrary(req: Request, env: Env): Promise<Response> {
   const rs = await mediaSession(env).prepare(sql).bind(...binds).all();
   const items = (rs.results ?? []) as any[];
   const next = items.length === 30 ? items[items.length - 1].created_at : null;
+  // [B3 / voice-note MVP] A stored display_url is only ever valid for a
+  // public-bucket row. A 'digital' (private, server-readable) row's
+  // display_url was recorded empty/soon-stale at write time (uploadPrivate /
+  // libraryRecord above) — re-mint a fresh short-lived presigned URL on every
+  // read instead, and strip the internal `storage` field back off before it
+  // reaches the client (LIB_COLS's public contract is unchanged).
+  await Promise.all(items.map(async (it) => {
+    if (it.storage === "digital") it.display_url = (await presignDigitalReadUrl(env, it.key)) || it.display_url;
+    delete it.storage;
+  }));
   return json({ items, cursor: next });
 }
 
@@ -439,24 +652,101 @@ export async function libraryRecord(req: Request, env: Env, exec: ExecutionConte
   const b = (await req.json().catch(() => ({}))) as any;
   const key = (b.key || "").toString();
   if (!key) return json({ error: "key required" }, 400);
+
+  // [B2 fix / AVA-MEDIA-AUTHZ-1 — CRITICAL] `key` used to be taken raw with
+  // NO validation that the caller ever received it. Pre-wave that was
+  // harmless (the row only ever produced a public-bucket blossom URL — no
+  // privilege gained). This wave changed that: b.storage==='digital' routes
+  // the row into the PRIVATE bucket and calls presignDigitalReadUrl(), and
+  // getLibrary() re-mints that presign on every read — so any authenticated
+  // user could POST an arbitrary victim's (or an OLX paid-digital-good's,
+  // env.DIGITAL is shared with routes/olx.ts) key and mint themselves a
+  // valid SigV4 read for it. Fixed by:
+  //   1. Rejecting any key that doesn't match the real `u/<uid>/<kind>/<hash>`
+  //      shape this codebase actually writes (userKey() above).
+  //   2. Requiring the caller to send `conv` and proving BOTH the key's
+  //      owner (parsed from the key, not trusted from the body) AND the
+  //      caller are members of that SAME conversation — a forged key for a
+  //      stranger's media never shares a conversation with the attacker.
+  //   3. Never trusting b.storage/b.enc_blob to decide privacy: `encrypted`/
+  //      `visibility`/`storage` are derived from the OWNER's OWN user_media
+  //      row (a client-asserted sensitivity is the input to a privacy
+  //      decision — attacker-controlled). enc_blob's VALUE (the recipient's
+  //      E2E-wrapped decryption key) is still accepted from the body — it is
+  //      opaque, recipient-specific ciphertext the server never reads, not a
+  //      privilege signal.
+  //   4. Denying by default (404) when no matching owner row exists — a key
+  //      with no real backing upload is a forgery attempt, not "record what
+  //      I received".
+  const keyMatch = /^u\/([a-z0-9]+)\/(public|dm|private)\/[0-9a-f]{64}$/i.exec(key);
+  if (!keyMatch) return json({ error: "invalid_key" }, 400);
+  const senderUid = keyMatch[1];
+  const conv = (b.conv || "").toString().trim();
+  // [AVA-MEDIA-AUTHZ-1 — BACKWARD COMPATIBILITY] `conv` is a NEW required field.
+  // The shipped production client (build 10462 and every build before it) does
+  // NOT send it, and the APK rollout lags this worker deploy by days. Hard-
+  // requiring it would 400 every existing user's "record the media I just
+  // received" call — i.e. break media receiving for the entire installed base
+  // to close a hole none of those clients can reach.
+  //
+  // The privilege escalation B2 describes exists ONLY on the digital/private
+  // path: that is what mints a SigV4 presigned read and what shares a bucket
+  // with OLX paid goods. A legacy client cannot produce a digital row (it has
+  // no plaintext-voice upload path), so gating strictly on the OWNER's real
+  // storage class is both sufficient and safe:
+  //   - owner row is `digital`  -> conv + two-sided membership REQUIRED, no exceptions.
+  //   - owner row is `blossom`  -> pre-wave behaviour, which granted no
+  //     privilege (public bucket URL, or opaque AES ciphertext for a DM).
+  //     Verify membership when `conv` IS supplied (new clients), skip when it
+  //     is absent (old clients) rather than locking them out.
+  // The owner-row lookup below is the real backstop either way: a key with no
+  // backing upload is rejected 404, so a forged key never records at all.
+  const convChecked = conv
+    ? (await isConvMember(env, conv, senderUid)) && (await isConvMember(env, conv, ctx.uid))
+    : false;
+  if (conv && !convChecked) return json({ error: "forbidden" }, 403);
+
   const mime = (b.mime || "application/octet-stream").toString();
   const app = (b.app || "avatok").toString().toLowerCase();
   const size = Number(b.size || 0);
   const name = (b.name || defaultName(mime, key)).toString();
-  const encrypted = b.enc_blob ? 1 : 0;
-  const display = (b.display_url || `${env.BLOSSOM_BASE_URL}/${key}`).toString();
+
   const mdb = mediaSession(env);
+  const ownerRow = await mdb.prepare(
+    "SELECT storage, visibility, encrypted FROM user_media WHERE uid=?1 AND key=?2 AND deleted_at IS NULL LIMIT 1",
+  ).bind(senderUid, key).first<{ storage: string; visibility: string; encrypted: number }>();
+  if (!ownerRow) return json({ error: "source_not_found" }, 404);
+
+  const isDigital = ownerRow.storage === "digital";
+  // [AVA-MEDIA-AUTHZ-1] The B2 escalation lives entirely here: a `digital` row
+  // is the only one that mints a presigned read into the private bucket shared
+  // with OLX paid goods. No conv, or an unverified conv, NEVER reaches it —
+  // regardless of client version. A legacy client cannot legitimately hit this
+  // branch, so refusing it costs nothing and closes the hole completely.
+  if (isDigital && !convChecked) {
+    return json({ error: conv ? "forbidden" : "conv_required" }, conv ? 403 : 400);
+  }
+  const encrypted = isDigital ? 0 : (ownerRow.encrypted ? 1 : 0);
+  const visibility = ownerRow.visibility === "public" ? "public" : "private";
+  const storage = isDigital ? "digital" : "blossom";
+  const display = isDigital
+    ? ((await presignDigitalReadUrl(env, key)) || "")
+    : (b.display_url || `${env.BLOSSOM_BASE_URL}/${key}`).toString();
   // Idempotent per (uid, key, received): re-receiving the same blob is a no-op.
   const existing = await mdb.prepare("SELECT id FROM user_media WHERE uid=?1 AND key=?2 AND source_kind='received'").bind(ctx.uid, key).first<any>();
   if (existing) return json({ id: existing.id, deduped: true });
   const id = crypto.randomUUID();
   await mdb.prepare(
     `INSERT INTO user_media (id, uid, media_type, storage, visibility, encrypted, key, display_url, mime_type, size_bytes, original_app, created_at, moderation_status, category, file_name, source_kind, enc_blob)
-     VALUES (?1,?2,?3,'blossom',?4,?5,?6,?7,?8,?9,?10,?11,'skipped',?12,?13,'received',?14)`,
-  ).bind(id, ctx.uid, mediaType(mime), encrypted ? "private" : "public", encrypted, key, display, mime, size, app, Date.now(),
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,'skipped',?13,?14,'received',?15)`,
+  ).bind(id, ctx.uid, mediaType(mime), storage, visibility, encrypted, key, display, mime, size, app, Date.now(),
     categoryOf(mime), name, b.enc_blob ?? null).run();
-  // PUBLIC received media is brain-eligible server-side; private stays on-device.
-  if (!encrypted && env.Q_BRAIN) {
+  // PUBLIC received media is brain-eligible server-side; private (E2E OR
+  // digital-private) stays out of the automatic public-brain path — indexing
+  // private/received media is the separate AVABRAIN-INGEST-1 consent-gated
+  // pipeline (Specs/ROOT-CAUSE-REPORT-RECURRING-ISSUES-2026-07-25.md §40), not
+  // this endpoint.
+  if (!encrypted && !isDigital && env.Q_BRAIN) {
     exec.waitUntil(maybeEmitLibraryBrain(env, ctx.uid, app, { media_id: id, key, mime, size, name, category: categoryOf(mime), visibility: "public" }));
   }
   // Phase 4: received files join the recipient's pool too → recompute + live push.

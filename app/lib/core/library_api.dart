@@ -2,11 +2,31 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:http/http.dart' as http;
 
 import 'account_storage.dart';
+import 'analytics.dart';
 import 'api_auth.dart';
 import 'config.dart';
 import 'library_ingest.dart';
+
+/// [AVA-MEDIA-AUTHZ-1] `POST /api/library/record` now requires `conv` and
+/// verifies BOTH the media's owner (parsed from the key) and the caller are
+/// members of it — closing a hole where any authenticated user could forge a
+/// Library row for someone else's private media key and get back a valid
+/// presigned read URL (which also bypassed payment on the shared paid-goods
+/// bucket). A rejection is reported here — via [LibraryApi.record] — never
+/// swallowed silently, so a future "why didn't this show up in Library" is
+/// diagnosable. `code` is the server's `error` field when present
+/// (`conv_required` | `invalid_key` | `forbidden` | `source_not_found`),
+/// else `http_<status>`.
+class LibraryRecordException implements Exception {
+  final int status;
+  final String code;
+  LibraryRecordException(this.status, this.code);
+  @override
+  String toString() => 'library_record_failed status=$status code=$code';
+}
 
 /// One file in AvaLibrary (a row of `user_media`, projected for the client).
 class LibraryItem {
@@ -216,17 +236,58 @@ class LibraryApi {
   /// Record a RECEIVED DM file so it appears in the recipient's Library too. The
   /// decryption material is encrypted to the recipient ([encBlob]) — the server
   /// stores ciphertext only, never the plaintext AES key.
+  ///
+  /// [conv] — [AVA-MEDIA-AUTHZ-1] REQUIRED: the server verifies both the
+  /// media owner (parsed from [key]) and the caller are members of this
+  /// conversation before minting a presigned read URL. Never pass an empty
+  /// string — a call site with no real conversation context should not call
+  /// this at all.
+  ///
+  /// [storage] — [AVA-VOICE-PLAINTEXT-1]: pass `'digital'` for a received
+  /// MVP-unencrypted voice note (`ChatMedia.storage == 'digital'`, no
+  /// [encBlob] — this content was never E2E-encrypted at all). The server
+  /// (worker/src/routes/media.ts libraryRecord) reads `b.storage==='digital'`
+  /// to route the receiver's own Library row through the SAME private
+  /// DIGITAL-bucket / presigned-URL scheme the sender's upload used, instead
+  /// of defaulting to the public bucket a bare key would otherwise imply.
+  ///
+  /// Best-effort overall (never throws into the caller — a failed mirror into
+  /// Library must never block the chat), but a server-side rejection is never
+  /// SILENT: [400 conv_required] / [400 invalid_key] / [403 forbidden] /
+  /// [404 source_not_found] are reported via [Analytics.captureException] (as
+  /// a [LibraryRecordException]) so a future diagnosis can tell them apart
+  /// instead of seeing a generic "couldn't load".
   static Future<void> record({
     required String key, required String mime, required int size, required String name,
-    String app = 'avatok', String? encBlob, String? displayUrl,
+    required String conv,
+    String app = 'avatok', String? encBlob, String? displayUrl, String? storage,
   }) async {
+    http.Response res;
     try {
-      await ApiAuth.postJson(kLibraryRecordUrl, {
+      res = await ApiAuth.postJson(kLibraryRecordUrl, {
         'key': key, 'mime': mime, 'size': size, 'name': name, 'app': app,
-        'source_kind': 'received',
+        'source_kind': 'received', 'conv': conv,
         if (encBlob != null) 'enc_blob': encBlob,
         if (displayUrl != null) 'display_url': displayUrl,
+        if (storage != null) 'storage': storage,
       });
-    } catch (_) {/* best-effort; local cache still shows it */}
+    } catch (e, st) {
+      await Analytics.captureException(e, st, screen: 'library_record', handled: true,
+          extra: {'stage': 'network', 'app': app});
+      return; // best-effort; local cache still shows it
+    }
+    if (res.statusCode == 200) return;
+    String code = 'http_${res.statusCode}';
+    try {
+      final j = jsonDecode(res.body);
+      if (j is Map && j['error'] != null) code = j['error'].toString();
+    } catch (_) {/* non-JSON body — keep the http_<status> fallback */}
+    await Analytics.captureException(
+      LibraryRecordException(res.statusCode, code),
+      StackTrace.current,
+      screen: 'library_record',
+      handled: true,
+      extra: {'status': res.statusCode, 'code': code, 'app': app},
+    );
   }
 }

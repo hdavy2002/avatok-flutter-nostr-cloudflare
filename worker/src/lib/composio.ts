@@ -1177,12 +1177,20 @@ export async function runAgentLoop(
     // or search_memory) with timing + success/error so we can pinpoint failures,
     // latency and call volume in PostHog.
     onTool?: (ev: { tool: string; ok: boolean; ms: number; error?: string; args_keys?: string[]; result_chars?: number; count?: number; result?: unknown; is_app?: boolean }) => void;
-    // In-thread image generation (Nano Banana 2). When provided, the model is
-    // given a `generate_image` tool; the handler kicks off async generation into
-    // the SAME conversation (chip now, image when ready) and returns a short
-    // status string for the model to relay. Gating (premium + per-user daily
-    // fair-use cap + wallet) lives inside this handler, keyed to the caller.
-    onImage?: (prompt: string, editRef?: string) => Promise<string>;
+    // In-thread image generation. When provided, the model is given a
+    // `generate_image` tool; the handler creates a durable AiMediaJob (§44)
+    // and kicks off async generation into the SAME conversation (job + legacy
+    // chip now, image when ready). [AVA-IMAGE-UX-1] Return type is widened to
+    // `string | {status, job_id}` so a job-aware caller (routes/ava_image.ts's
+    // runAvaImage, invoked via do/ava_agent.ts's onImage) can thread the job id
+    // into the tool RESULT fed back to the model — see the TOOL RESULT
+    // construction below. The only current implementor (do/ava_agent.ts, a
+    // different agent's file ownership) still returns a plain string; both
+    // branches below handle that case identically to the object case (job_id
+    // simply absent), so this is a backward-compatible widening, not a
+    // breaking change. Gating (dark-flag + premium + per-user daily fair-use
+    // cap + wallet reservation) lives inside the handler, keyed to the caller.
+    onImage?: (prompt: string, editRef?: string) => Promise<string | { status: string; job_id?: string | null }>;
     // Multimodal input: images/files (base64) the user attached this turn. Added
     // as inline_data parts on the FIRST user turn so the model can SEE/READ them
     // (file & photo understanding). Used by ChatAVA file uploads; Messenger passes
@@ -1326,12 +1334,15 @@ export async function runAgentLoop(
         imageStarted = true;
         const tStart = Date.now();
         let status = "";
+        let jobId: string | null = null;
         let okTool = true;
         try {
-          status = await opts.onImage(
+          const r = await opts.onImage(
             String(args?.prompt ?? query),
             args?.edit_ref ? String(args.edit_ref) : undefined,
           );
+          status = typeof r === "string" ? r : r.status;
+          jobId = typeof r === "string" ? null : (r.job_id ?? null);
         } catch (e: any) {
           okTool = false;
           status = "I couldn't start that image right now — please try again.";
@@ -1340,6 +1351,7 @@ export async function runAgentLoop(
           opts?.onTool?.({
             tool: "generate_image", ok: okTool, ms: Date.now() - tStart,
             args_keys: Object.keys(args || {}).slice(0, 12), is_app: false,
+            result: jobId ? { job_id: jobId, status: "queued" } : undefined,
           });
         } catch { /* telemetry best-effort */ }
         if (opts?.onDelta && status) { try { await opts.onDelta(status); } catch { /* stream best-effort */ } }
@@ -1392,15 +1404,22 @@ export async function runAgentLoop(
           count = lines.length;
           result = { matches: lines.slice(0, 8) };
         } else if (name === "generate_image" && opts?.onImage) {
-          // Async, in-thread (Nano Banana 2). The handler posts the chip + image
-          // into the conversation; we return its status string for the model to
-          // relay. One per turn — extra calls are short-circuited.
+          // [AVA-IMAGE-UX-1 / §44] Async, in-thread. The handler creates a
+          // durable AiMediaJob and posts the legacy chip; we do NOT wait for
+          // the image itself — only for the short "job started" call to
+          // return. One per turn — extra calls are short-circuited. Tool
+          // RESULT fed back to the model is {job_id, status:"queued"} once
+          // the caller returns a job id; a caller still on the legacy plain-
+          // string contract gets {status:<text>} exactly as before, so the
+          // model's acknowledgement behavior is unchanged either way.
           if (imageStarted) {
             result = { status: "An image is already being generated for this request." };
           } else {
             imageStarted = true;
-            const status = await opts.onImage(String(args?.prompt ?? query), args?.edit_ref ? String(args.edit_ref) : undefined);
-            result = { status };
+            const r = await opts.onImage(String(args?.prompt ?? query), args?.edit_ref ? String(args.edit_ref) : undefined);
+            const status = typeof r === "string" ? r : r.status;
+            const jobId = typeof r === "string" ? null : (r.job_id ?? null);
+            result = jobId ? { job_id: jobId, status: "queued" } : { status };
           }
         } else {
           const r = await executeTool(env, userId, name, args);

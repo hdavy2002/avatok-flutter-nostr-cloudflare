@@ -48,8 +48,13 @@ export async function aiMediaJobsCreate(req: Request, env: Env, ctx?: ExecutionC
   const kind = String(b?.kind ?? "").trim() as AiMediaJobKind;
   if (!conv) return json({ error: "conv required" }, 400);
   if (!VALID_KINDS.has(kind)) return json({ error: "invalid kind" }, 400);
+  // [AVA-MEDIA-JOB-2] A kind not yet migrated onto this backbone is a client
+  // request error (it asked for something that doesn't exist yet), not a
+  // transient service outage — 400, not 503. Checked BEFORE createAiMediaJob()
+  // (and therefore before any wallet reserve), so an unimplemented kind never
+  // reserves money, fails, and releases it — it never reserves at all.
   if (!isAiMediaKindImplemented(kind)) {
-    return json({ error: "This AI media action is not available yet", code: "AI_MEDIA_KIND_NOT_LIVE", kind }, 503);
+    return json({ error: "This AI media action is not available yet", code: "AI_MEDIA_KIND_NOT_LIVE", kind }, 400);
   }
 
   const email = await emailFor(env, ctxUser.uid);

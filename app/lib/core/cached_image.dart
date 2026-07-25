@@ -23,6 +23,15 @@ class CachedImage extends StatelessWidget {
   /// width (retina-crisp) clamped to a sane range.
   final int? cachePx;
 
+  /// [AVA-MEDIA-AUTHZ-1] Stable id to key the disk cache on instead of [url]
+  /// itself — for a presigned URL (e.g. an AI media job artifact) whose
+  /// signature rotates on every mint, keying on the raw url makes every
+  /// re-render a cache MISS + full re-download (and the rotating signature
+  /// would land in the disk filename). Pass the artifact's stable media id;
+  /// [url] is still what's fetched on a genuine cache miss. Omit for
+  /// ordinary stable URLs (unchanged behavior).
+  final String? cacheKey;
+
   const CachedImage(
     this.url, {
     super.key,
@@ -31,6 +40,7 @@ class CachedImage extends StatelessWidget {
     this.fit = BoxFit.cover,
     this.radius,
     this.cachePx,
+    this.cacheKey,
   });
 
   Widget _wrap(Widget child) =>
@@ -67,7 +77,7 @@ class CachedImage extends StatelessWidget {
       // getAny is host-aware: avatok.ai images use the CF transform, other hosts
       // (e.g. placeholders/test images) are cached raw — so EVERY image is
       // cached on disk and never re-downloads on reopen.
-      future: AvatarCache.getAny(url, px),
+      future: AvatarCache.getAny(url, px, cacheKey: cacheKey),
       builder: (context, snap) {
         if (snap.connectionState != ConnectionState.done) return _spinner();
         final f = snap.data;

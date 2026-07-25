@@ -206,6 +206,19 @@ export interface PlatformConfig {
   // Dedicated gate for the durable derived-media API. It remains dark until a
   // real queue is provisioned and at least one kind handler is implemented.
   aiMediaJobsEnabled: boolean;
+  // [AVA-MEDIA-JOB-2] MVP voice-note decision (owner, 2026-07-25): voice notes
+  // in DMs are sent SERVER-READABLE (not E2E) so the server can transcribe
+  // them — encryption also cost sending latency. Default FALSE = unencrypted
+  // (the MVP state). "Unencrypted" only means the SERVER can read the bytes;
+  // it does NOT mean the world can — the upload path
+  // (worker/src/routes/media.ts's uploadPrivate, x-encrypted:0) still stores
+  // these in the private, access-gated DIGITAL bucket, never the public
+  // BLOBS/blossom bucket (see this issue's B3 fix). Boolean → NOT in
+  // numericKeys. Declared here (interface + DEFAULTS in the same change) per
+  // the fake-flag rule — the exact inAppUpdateEnabled failure shape from
+  // 2026-07-15 (a client-read flag `config.ts` doesn't declare 400s on
+  // `putConfig`, "unknown key", and can never actually be flipped).
+  voiceNoteEncryptionEnabled: boolean;
   // AI Ringback Tones + Busy Tone (Specs/proposals/PROPOSAL-AI-RINGBACK-TONES.md).
   // Master switch for /api/ringtone/* (generation/library) AND the caller-side
   // ringback playback. OFF → generation 503s and callers fall back to today's
@@ -829,6 +842,7 @@ const DEFAULTS: PlatformConfig = {
   generativeEnabled: false,        // FREE LAUNCH: premium image gen — hidden
   imageDailyCap: 100,              // fair-use backstop per user/day — applies even to "unlimited" packages
   aiMediaJobsEnabled: false,       // five media handlers are intentionally dark until individually production-ready
+  voiceNoteEncryptionEnabled: false, // [AVA-MEDIA-JOB-2] MVP: voice notes are server-readable, not E2E (owner decision 2026-07-25)
   ringbackEnabled: true,           // AI ringback + busy tone (free, our AI key)
   callAudioControllerV2: false,    // call-reliability program — ships dark
   callPlayoutHealthV2: false,      // call-reliability program — ships dark

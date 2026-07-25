@@ -38,32 +38,73 @@ class ChatMedia {
   /// `@ava` instruction stays attached to the file it refers to (the server reads
   /// `cap` to link the request to this attachment).
   final String caption;
+
+  /// [AVA-VOICE-PLAINTEXT-1] `'blossom'` (default, unchanged) = client-side
+  /// AES-GCM ciphertext on the public bucket — [downloadUrl] is valid, correct
+  /// client-side URL math. `'digital'` = MVP unencrypted voice notes (owner
+  /// decision 2026-07-25, `RemoteConfig.voiceNoteEncryptionEnabled == false`):
+  /// PLAINTEXT bytes the server can read, stored in the PRIVATE `digital` R2
+  /// bucket (worker/src/routes/media.ts `uploadPrivate` `x-encrypted: 0`) —
+  /// never public, never client-URL-computable. [keyB64]/[nonceB64]/[macB64]
+  /// are meaningless (empty) for `'digital'`: there is nothing to decrypt.
+  final String storage;
+
+  /// [AVA-VOICE-PLAINTEXT-1] For `storage == 'digital'` ONLY: the presigned
+  /// URL minted by the server at upload/receive time (900s TTL —
+  /// `presignDigitalReadUrl`, worker/src/routes/media.ts). This is a FIRST-
+  /// FETCH convenience, never a permanent reference — once
+  /// [MediaService.downloadPlaintext] has fetched the bytes once they are
+  /// cached on-device forever (same local-first contract as the encrypted
+  /// path) and this URL is never needed again for that device. If it has gone
+  /// stale before the first fetch (chat reopened long after send/receive),
+  /// [MediaService.downloadPlaintext] falls back to a best-effort AvaLibrary
+  /// round-trip — see that method's doc comment.
+  final String? digitalUrl;
+
   ChatMedia({
     required this.kind, required this.id, required this.keyB64,
     required this.nonceB64, required this.macB64,
     required this.contentType, required this.name, required this.size,
     this.caption = '',
+    this.storage = 'blossom',
+    this.digitalUrl,
   });
 
+  /// Only correct client-side URL math for `storage == 'blossom'` (the public,
+  /// content-addressed bucket). For `storage == 'digital'` this is NOT a
+  /// fetchable URL — use [MediaService.downloadPlaintext] instead, which knows
+  /// how to resolve/refresh the private presigned URL. Left as a plain string
+  /// (not deprecated/removed) because every existing `storage == 'blossom'`
+  /// call site still depends on it being a cheap synchronous getter.
   String get downloadUrl => '$kBlossomBaseUrl/$id';
 
-  /// Envelope sent inside an encrypted DM so the recipient can fetch + decrypt.
+  bool get isServerReadable => storage == 'digital';
+
+  /// Envelope sent inside a DM so the recipient can fetch (+ decrypt, when
+  /// `storage == 'blossom'`). `storage`/`url` are only emitted for the
+  /// `'digital'` case — omitted entirely for ordinary encrypted media so an
+  /// old/unaffected build's `fromEnvelope` (which defaults both) round-trips
+  /// byte-for-byte exactly as it did before this change.
   Map<String, dynamic> toEnvelope() => {
         't': 'media', 'kind': kind.name, 'id': id, 'k': keyB64, 'n': nonceB64,
         'mac': macB64, 'ct': contentType, 'name': name, 'size': size,
         if (caption.isNotEmpty) 'cap': caption,
+        if (storage != 'blossom') 'storage': storage,
+        if (digitalUrl != null && digitalUrl!.isNotEmpty) 'url': digitalUrl,
       };
 
   static ChatMedia fromEnvelope(Map<String, dynamic> j) => ChatMedia(
         kind: MediaKind.values.byName(j['kind'].toString()),
         id: j['id'].toString(),
-        keyB64: j['k'].toString(),
-        nonceB64: j['n'].toString(),
-        macB64: j['mac'].toString(),
+        keyB64: (j['k'] ?? '').toString(),
+        nonceB64: (j['n'] ?? '').toString(),
+        macB64: (j['mac'] ?? '').toString(),
         contentType: j['ct'].toString(),
         name: j['name'].toString(),
         size: (j['size'] as num?)?.toInt() ?? 0,
         caption: (j['cap'] ?? '').toString(),
+        storage: (j['storage'] ?? 'blossom').toString(),
+        digitalUrl: j['url']?.toString(),
       );
 
   /// Copy with a caption attached (set after the picker's caption step, before
@@ -71,6 +112,7 @@ class ChatMedia {
   ChatMedia withCaption(String c) => ChatMedia(
         kind: kind, id: id, keyB64: keyB64, nonceB64: nonceB64, macB64: macB64,
         contentType: contentType, name: name, size: size, caption: c,
+        storage: storage, digitalUrl: digitalUrl,
       );
 }
 
@@ -171,6 +213,68 @@ class MediaService {
     return media;
   }
 
+  /// [AVA-VOICE-PLAINTEXT-1] Uploads PLAINTEXT bytes — NO client-side AES —
+  /// via the SAME `/upload/private` endpoint [encryptAndUpload] uses, but with
+  /// `x-encrypted: 0` (worker/src/routes/media.ts `uploadPrivate`). MVP voice
+  /// notes (owner decision 2026-07-25, CLAUDE.md): while
+  /// `RemoteConfig.voiceNoteEncryptionEnabled` is false, a recorded voice note
+  /// goes through this path instead of [encryptAndUpload] so Ava's transcribe/
+  /// translate jobs can actually read the bytes.
+  ///
+  /// UNENCRYPTED DOES NOT MEAN PUBLIC: the server stores this in the PRIVATE
+  /// `digital` R2 bucket (never the public `blossom` bucket an "unguessable
+  /// path" would be), and every later read (this device or the recipient's) is
+  /// authorization-gated to conversation membership and served only via a
+  /// short-lived (900s) presigned URL — never a permanent public link. This is
+  /// the exact `storage: 'digital'` distinction [ChatMedia.storage] documents.
+  static Future<ChatMedia> uploadPlaintext(
+    Uint8List bytes, {
+    required MediaKind kind,
+    required String contentType,
+    required String name,
+    String caption = '',
+  }) async {
+    final extraHeaders = {
+      'x-real-mime': contentType,
+      'x-file-name': name,
+      'x-app': 'avatok',
+      'x-encrypted': '0',
+    };
+    final http.Response res = await ApiAuth.postBytes(
+      kUploadPrivateUrl,
+      bytes,
+      extraHeaders: extraHeaders,
+      timeout: const Duration(seconds: 60),
+    );
+    if (res.statusCode != 200) {
+      AvaLog.I.log('media', 'PLAINTEXT UPLOAD FAILED kind=${kind.name} ${bytes.length}B -> HTTP ${res.statusCode}');
+      Analytics.capture('chat_media_upload_failed', {
+        'kind': kind.name, 'status': res.statusCode, 'size': bytes.length, 'storage': 'digital',
+      });
+      throw MediaUploadException('upload failed (${res.statusCode})');
+    }
+    final j = jsonDecode(res.body) as Map<String, dynamic>;
+    final id = (j['key'] ?? j['hash'] ?? '').toString();
+    final url = (j['url'] ?? '').toString();
+    AvaLog.I.log('media', 'plaintext upload ok kind=${kind.name} ${bytes.length}B key=${_short(id)}');
+    final media = ChatMedia(
+      kind: kind,
+      id: id,
+      keyB64: '', nonceB64: '', macB64: '', // nothing to decrypt — plaintext on the wire
+      contentType: contentType,
+      name: name,
+      size: bytes.length,
+      caption: caption,
+      storage: 'digital',
+      digitalUrl: url.isNotEmpty ? url : null,
+    );
+    // Sender caches its own plaintext immediately, exactly like the encrypted
+    // path — after this, `media.digitalUrl` is never needed again on THIS
+    // device even once it expires.
+    await _cacheWrite(media.id, bytes);
+    return media;
+  }
+
   /// [CHAT-UPLOAD-1] Paced PUT of the ciphertext: emits the body in ~32 KB chunks
   /// spaced so throughput stays under [_kInCallUploadBytesPerSec], leaving uplink
   /// headroom for the live WebRTC call. Auth is a Bearer JWT (no body HMAC), so a
@@ -215,6 +319,12 @@ class MediaService {
   /// another app never re-downloads or re-decrypts. This is the standard for all
   /// chat media (images, voice, video, files) across every AvaVerse app.
   static Future<Uint8List> downloadAndDecrypt(ChatMedia m) async {
+    // [AVA-VOICE-PLAINTEXT-1] `storage=='digital'` (MVP unencrypted voice
+    // notes) has no ciphertext to decrypt — dispatch to the plaintext path so
+    // every EXISTING caller of this method (share, transcribe, voice-bubble
+    // playback…) gets unencrypted-voice-note support with no call-site
+    // changes required.
+    if (m.storage == 'digital') return _downloadPlaintext(m);
     final cached = await _cacheRead(m.id);
     if (cached != null) {
       AvaLog.I.log('media', 'download cache-HIT kind=${m.kind.name} key=${_short(m.id)} ${cached.length}B');
@@ -224,11 +334,14 @@ class MediaService {
     http.Response res;
     try {
       res = await http.get(Uri.parse(m.downloadUrl)).timeout(const Duration(seconds: 60));
-    } catch (e) {
-      AvaLog.I.log('media', 'download ERROR kind=${m.kind.name} key=${_short(m.id)}: $e');
-      Analytics.capture('chat_media_load_failed', {
-        'kind': m.kind.name, 'stage': 'download', 'err': e.toString(),
-      });
+    } catch (e, st) {
+      // [AVA-MEDIA-AUTHZ-1] Never the full `e.toString()` — `http.ClientException`
+      // embeds the request `uri=…` (query string included), so a classified type
+      // + the scrubbing `captureException` path (analytics.dart `_scrub`) is used
+      // instead of a free-text error field.
+      AvaLog.I.log('media', 'download ERROR kind=${m.kind.name} key=${_short(m.id)} err=${e.runtimeType}');
+      await Analytics.captureException(e, st, screen: 'media_download', handled: true,
+          extra: {'kind': m.kind.name, 'stage': 'download'});
       rethrow;
     }
     if (res.statusCode != 200) {
@@ -266,22 +379,138 @@ class MediaService {
   /// to the recipient via the Vault (key derived from THEIR Nostr key) before it
   /// leaves the device — the server only ever stores ciphertext, never plaintext
   /// keys (E2E boundary preserved). Best-effort: failure never blocks the chat.
-  static Future<void> recordReceived(ChatMedia m, {String app = 'avatok'}) async {
+  ///
+  /// [conv] — [AVA-MEDIA-AUTHZ-1] REQUIRED: forwarded to [LibraryApi.record],
+  /// which the server now uses to verify both the media owner and the caller
+  /// belong to the same conversation before minting a presigned read URL. The
+  /// caller (chat_thread.dart) must resolve a real server conversation id —
+  /// never pass an empty string.
+  ///
+  /// [AVA-VOICE-PLAINTEXT-1] For `storage=='digital'` (MVP unencrypted voice
+  /// notes) there is no decryption material to wrap — this content was never
+  /// E2E-encrypted at all — so [encBlob] stays null and `storage:'digital'` is
+  /// passed instead, telling the server (worker/src/routes/media.ts
+  /// `libraryRecord`) to route the recipient's own Library row through the
+  /// SAME private DIGITAL-bucket/presigned-URL scheme the sender used.
+  static Future<void> recordReceived(ChatMedia m, {required String conv, String app = 'avatok'}) async {
     try {
+      final isDigital = m.storage == 'digital';
       String? encBlob;
-      final keyMat = await AccountKey.I.ensureHex();
-      if (keyMat != null) {
-        // Wrap just the decryption material (key/nonce/mac) — not the bytes.
-        final material = jsonEncode({'k': m.keyB64, 'n': m.nonceB64, 'mac': m.macB64});
-        encBlob = await Vault.encrypt(material, keyMat);
+      if (!isDigital) {
+        final keyMat = await AccountKey.I.ensureHex();
+        if (keyMat != null) {
+          // Wrap just the decryption material (key/nonce/mac) — not the bytes.
+          final material = jsonEncode({'k': m.keyB64, 'n': m.nonceB64, 'mac': m.macB64});
+          encBlob = await Vault.encrypt(material, keyMat);
+        }
       }
       await LibraryApi.record(
         key: m.id, mime: m.contentType, size: m.size, name: m.name,
-        app: app, encBlob: encBlob, displayUrl: m.downloadUrl,
+        conv: conv,
+        app: app, encBlob: encBlob,
+        displayUrl: isDigital ? m.digitalUrl : m.downloadUrl,
+        storage: isDigital ? 'digital' : null,
       );
-    } catch (e) {/* best-effort — local view still works */
-      AvaLog.I.log('media', 'recordReceived failed key=${_short(m.id)}: $e');
+    } catch (e, st) {/* best-effort — local view still works */
+      AvaLog.I.log('media', 'recordReceived failed key=${_short(m.id)} err=${e.runtimeType}');
+      await Analytics.captureException(e, st, screen: 'media_record_received', handled: true,
+          extra: {'kind': m.kind.name});
     }
+  }
+
+  /// [AVA-VOICE-PLAINTEXT-1] Plaintext counterpart of the ciphertext fetch
+  /// above — no AES, just fetch + cache. `m.digitalUrl` (embedded in the
+  /// message envelope at send/receive time) is a 900s presigned URL: good for
+  /// the FIRST fetch soon after send/receive; once cached locally it is never
+  /// needed again on this device (same local-first contract as encrypted
+  /// media). If it has gone stale before ANY fetch ever happened (e.g. the
+  /// chat is reopened long after receipt and the note was never played),
+  /// falls back to a best-effort AvaLibrary round-trip
+  /// ([_resolveStaleDigitalUrl]) instead of hanging or failing silently.
+  static Future<Uint8List> _downloadPlaintext(ChatMedia m) async {
+    final cached = await _cacheRead(m.id);
+    if (cached != null) {
+      AvaLog.I.log('media', 'download cache-HIT(plaintext) kind=${m.kind.name} key=${_short(m.id)} ${cached.length}B');
+      return cached;
+    }
+    Future<http.Response> fetchOnce(String u) =>
+        http.get(Uri.parse(u)).timeout(const Duration(seconds: 60));
+    final t0 = DateTime.now().millisecondsSinceEpoch;
+    http.Response? firstAttempt;
+    final firstUrl = m.digitalUrl ?? '';
+    if (firstUrl.isNotEmpty) {
+      try { firstAttempt = await fetchOnce(firstUrl); } catch (_) { firstAttempt = null; }
+    }
+    // Missing/expired/unauthorized (no URL at all, or the 900s presign is
+    // stale) — one best-effort round-trip re-resolve, then fail honestly.
+    // `res` is a FRESH, explicitly non-nullable local assigned exactly once on
+    // every reachable path below (never reassigned/promoted across branches),
+    // so there is nothing for null-safety flow analysis to get wrong.
+    final http.Response res;
+    if (firstAttempt != null && firstAttempt.statusCode != 403 && firstAttempt.statusCode != 404) {
+      res = firstAttempt;
+    } else {
+      final fresh = await _resolveStaleDigitalUrl(m);
+      if (fresh == null || fresh.isEmpty) {
+        AvaLog.I.log('media', 'download(plaintext) FAILED kind=${m.kind.name} key=${_short(m.id)}: no readable URL');
+        Analytics.capture('chat_media_load_failed', {
+          'kind': m.kind.name, 'stage': 'download_plaintext', 'reason': 'no_url',
+        });
+        throw MediaUploadException('no readable URL for this attachment');
+      }
+      try {
+        res = await fetchOnce(fresh);
+      } catch (e, st) {
+        // [AVA-MEDIA-AUTHZ-1] `fresh` is a 900s SigV4 presigned URL — a bearer
+        // read credential. `http.ClientException.toString()` embeds the full
+        // request URI (incl. `X-Amz-Signature`), so this must never land as a
+        // free-text field: classified type in the log line, full scrub via
+        // captureException for PostHog.
+        AvaLog.I.log('media', 'download(plaintext) ERROR kind=${m.kind.name} key=${_short(m.id)} err=${e.runtimeType}');
+        await Analytics.captureException(e, st, screen: 'media_download_plaintext', handled: true,
+            extra: {'kind': m.kind.name, 'stage': 'download_plaintext'});
+        rethrow;
+      }
+    }
+    if (res.statusCode != 200) {
+      AvaLog.I.log('media', 'download(plaintext) FAILED kind=${m.kind.name} key=${_short(m.id)} -> HTTP ${res.statusCode}');
+      Analytics.capture('chat_media_load_failed', {
+        'kind': m.kind.name, 'stage': 'download_plaintext', 'status': res.statusCode,
+      });
+      throw MediaUploadException('download failed (${res.statusCode})');
+    }
+    final bytes = Uint8List.fromList(res.bodyBytes);
+    await _cacheWrite(m.id, bytes);
+    final ms = DateTime.now().millisecondsSinceEpoch - t0;
+    AvaLog.I.log('media', 'download(plaintext) ok kind=${m.kind.name} key=${_short(m.id)} ${bytes.length}B ${ms}ms');
+    return bytes;
+  }
+
+  /// Best-effort recovery when a `storage=='digital'` attachment's embedded
+  /// presigned URL has gone stale AND its bytes were never fetched even once
+  /// locally. There is no dedicated "resolve a fresh URL by id" route for a
+  /// raw upload (unlike AI job artifacts, which re-mint `artifact_url` on
+  /// every `GET /api/ai/jobs/:id` — worker/src/lib/ai_media_jobs.ts) — this
+  /// reuses the EXISTING `GET /api/library` list endpoint instead
+  /// (worker/src/routes/media.ts `getLibrary` re-mints `display_url` for
+  /// every `storage=='digital'` row on every read), matching by this file's
+  /// exact name first (server-side `file_name LIKE`; voice-note names carry a
+  /// content-hash prefix so this is effectively a unique match), falling back
+  /// to a name+size match. Never throws; returns null so the caller fails
+  /// honestly instead of hanging.
+  static Future<String?> _resolveStaleDigitalUrl(ChatMedia m) async {
+    try {
+      final res = await LibraryApi.list(app: 'avatok', category: 'audio', q: m.name);
+      for (final it in res.items) {
+        if (it.key == m.id) return it.displayUrl.isNotEmpty ? it.displayUrl : null;
+      }
+      for (final it in res.items) {
+        if (it.name == m.name && it.size == m.size) {
+          return it.displayUrl.isNotEmpty ? it.displayUrl : null;
+        }
+      }
+    } catch (_) {/* best-effort */}
+    return null;
   }
 
   // ---- per-account on-disk media cache ----

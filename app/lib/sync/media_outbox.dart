@@ -83,6 +83,15 @@ class MediaOutboxRow {
   final int updatedTs;
   final String mediaJson; // ChatMedia.toEnvelope() JSON, set once uploaded
 
+  /// [AVA-VOICE-PLAINTEXT-1] The upload mode CHOSEN AT STAGING TIME by
+  /// `_upload`'s explicit `plaintextVoice` param — never re-derived from
+  /// `kind` on resume (a picked audio FILE is also `MediaKind.audio` but
+  /// must stay encrypted; only `_stopAndSendRecording`'s live recording ever
+  /// sets this true). `null` = an older row written before this column
+  /// existed — [_resumeMediaUpload] treats that as `false` (encrypted),
+  /// fail-safe: never silently downgrade a resumed upload to plaintext.
+  final bool? plaintextVoice;
+
   MediaOutboxRow({
     required this.clientId,
     required this.envelopeClientId,
@@ -100,6 +109,7 @@ class MediaOutboxRow {
     required this.createdTs,
     required this.updatedTs,
     required this.mediaJson,
+    this.plaintextVoice,
   });
 }
 
@@ -164,6 +174,16 @@ class MediaOutbox {
         media_json TEXT NOT NULL DEFAULT ''
       );
     ''');
+    // [AVA-VOICE-PLAINTEXT-1] Additive column for the persisted upload mode.
+    // `CREATE TABLE IF NOT EXISTS` above is a no-op on an install that already
+    // has this table from before this column existed, so it's migrated in
+    // separately. No DEFAULT on purpose — an existing row reads back NULL
+    // (never 0/1), which [_allRows] surfaces as `plaintextVoice == null` so
+    // the resume path can tell "recorded before this change" apart from an
+    // explicit encrypted choice and fail safe (treat absent as encrypted).
+    try {
+      await db.customStatement('ALTER TABLE media_outbox ADD COLUMN plaintext_voice INTEGER');
+    } catch (_) {/* column already exists */}
     // An envelope client id watched under the PREVIOUS account's scope points
     // at a row that lives (if at all) in a DIFFERENT sqlite file now — never
     // let it dangle across an account switch and never let a completion for
@@ -266,6 +286,13 @@ class MediaOutbox {
     String caption = '',
     String toUid = '',
     String gid = '',
+    /// [AVA-VOICE-PLAINTEXT-1] The mode `_upload` actually chose for this
+    /// attachment (its `plaintextVoice` param) — persisted so a resume after
+    /// an app kill re-reads the SAME decision instead of re-deriving it from
+    /// `kind` (which cannot distinguish a recorded voice note from a picked
+    /// audio file). Null = caller didn't know/pass it; treated as "absent"
+    /// same as an older row.
+    bool? plaintextVoice,
   }) async {
     try {
       await _ensureSchema();
@@ -276,11 +303,12 @@ class MediaOutbox {
       await Db.I.customStatement(
         'INSERT OR REPLACE INTO media_outbox '
         '(client_id, envelope_client_id, conv_key, to_uid, gid, kind, mime, filename, caption, '
-        ' staged_path, state, attempts, next_attempt_ts, created_ts, updated_ts, media_json) '
-        'VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)',
+        ' staged_path, state, attempts, next_attempt_ts, created_ts, updated_ts, media_json, plaintext_voice) '
+        'VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)',
         [
           clientId, '', convKey, toUid, gid, kind, mime, filename, caption,
           f.path, 'queued', 0, 0, now, now, '',
+          plaintextVoice == null ? null : (plaintextVoice ? 1 : 0),
         ],
       );
       unawaited(_pruneStagingDir());
@@ -401,6 +429,10 @@ class MediaOutbox {
           createdTs: r.read<int>('created_ts'),
           updatedTs: r.read<int>('updated_ts'),
           mediaJson: r.read<String>('media_json'),
+          plaintextVoice: switch (r.readNullable<int>('plaintext_voice')) {
+            null => null,
+            final v => v != 0,
+          },
         ),
     ];
   }
@@ -507,7 +539,7 @@ class MediaOutbox {
             toUid: row.toUid, gid: row.gid, kind: row.kind, mime: row.mime, filename: row.filename,
             caption: row.caption, stagedPath: row.stagedPath, state: 'uploaded', attempts: row.attempts,
             nextAttemptTs: row.nextAttemptTs, createdTs: row.createdTs, updatedTs: row.updatedTs,
-            mediaJson: result.toEnvelopeJson,
+            mediaJson: result.toEnvelopeJson, plaintextVoice: row.plaintextVoice,
           );
           unawaited(_resendFromRow(reRow));
         } catch (e) {

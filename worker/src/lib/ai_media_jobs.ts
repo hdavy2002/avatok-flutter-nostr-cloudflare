@@ -37,6 +37,12 @@ import {
   type AiModality, type UsageUnits, type ReserveAiJobResult,
 } from "./ai_billing";
 import { track, trackException } from "../hooks";
+// [B3 fix] Private-artifact URL minting reuses the SAME presign helper the
+// upload path uses (worker/src/routes/media.ts) — one place decides how a
+// DIGITAL-bucket object becomes a fetchable URL. `lib/` importing a helper
+// from `routes/` is an established pattern in this codebase (lib/ai_billing.ts
+// already imports readConfig/walletOp from routes/config.ts, routes/wallet.ts).
+import { presignDigitalReadUrl } from "../routes/media";
 
 export type AiMediaJobKind =
   | "image_generate"
@@ -58,6 +64,15 @@ export interface AiMediaJobRecord {
   progress: number;
   target_language: string | null;
   artifact_media_id: string | null;
+  /** [AVA-MEDIA-JOB-2] Computed, NEVER persisted — resolved fresh on every
+   *  read from the artifact's user_media row (resolveArtifactUrl below): a
+   *  stable public CDN URL for a public artifact, or a short-lived (15 min)
+   *  presigned URL for a private one. null until status='succeeded'. THE
+   *  CONTRACT the other agents (M2/M3/M4) code against: this is the ONLY
+   *  field they need to open/download/share a completed job's result — no
+   *  second lookup, and it is always the correctly-scoped URL for that
+   *  artifact's sensitivity. */
+  artifact_url: string | null;
   error_code: string | null;
   reservation_id: string | null;
   created_at: number;
@@ -148,7 +163,9 @@ function rowToRecord(r: any): AiMediaJobRecord {
     source_media_id: r.source_media_id ?? null, kind: r.kind, status: r.status,
     label: r.label ?? null, progress: Number(r.progress ?? 0),
     target_language: r.target_language ?? null,
-    artifact_media_id: r.artifact_media_id ?? null, error_code: r.error_code ?? null,
+    artifact_media_id: r.artifact_media_id ?? null,
+    artifact_url: null, // computed below in fetchJob — never read from the row
+    error_code: r.error_code ?? null,
     reservation_id: r.reservation_id ?? null,
     created_at: Number(r.created_at), updated_at: Number(r.updated_at),
     completed_at: r.completed_at != null ? Number(r.completed_at) : null,
@@ -157,15 +174,72 @@ function rowToRecord(r: any): AiMediaJobRecord {
 
 async function fetchJob(env: Env, jobId: string): Promise<AiMediaJobRecord | null> {
   const r = await env.DB_MEDIA.prepare("SELECT * FROM ai_media_jobs WHERE job_id=?1").bind(jobId).first<any>();
-  return r ? rowToRecord(r) : null;
+  if (!r) return null;
+  const record = rowToRecord(r);
+  record.artifact_url = await resolveArtifactUrl(env, record.artifact_media_id);
+  return record;
+}
+
+// [AVA-MEDIA-JOB-2 / B3] The contract's artifact_url, resolved fresh on every
+// read (never persisted — a stored presigned URL would go stale). No-ops
+// (returns null, no DB hit) until a job has an artifact. Fail-closed: any
+// lookup error returns null rather than a broken/wrong URL.
+async function resolveArtifactUrl(env: Env, artifactMediaId: string | null): Promise<string | null> {
+  if (!artifactMediaId) return null;
+  try {
+    const row = await env.DB_MEDIA.prepare(
+      "SELECT key, visibility, storage FROM user_media WHERE id=?1",
+    ).bind(artifactMediaId).first<{ key: string; visibility: string; storage: string }>();
+    if (!row) return null;
+    if (row.storage === "digital" || row.visibility === "private") {
+      return await presignDigitalReadUrl(env, row.key);
+    }
+    return `${env.BLOSSOM_BASE_URL}/${row.key}`;
+  } catch (e) {
+    void trackException(env, e, { route: "ai_media_jobs.resolveArtifactUrl", handled: true, extra: { artifact_media_id: artifactMediaId } });
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
-// Authorization helpers — read-only checks against EXISTING tables (DB_META
-// conversation_members, DB_MEDIA user_media). No schema changes to either.
-// Fail CLOSED (deny) on any read error — these gate a paid action.
+// Source-media resolution + authorization — read-only checks against
+// EXISTING tables (DB_META conversation_members, DB_MEDIA user_media). No
+// schema changes to either. Fail CLOSED (deny) on any read error — these
+// gate a paid action.
+//
+// B1 FIX: an earlier attempt at this file (parked on wave3-media-ux-parked,
+// blocked in review) resolved `sourceMediaId` ONLY as `user_media.id` (a
+// crypto.randomUUID()). The client's ChatMedia.id
+// (app/lib/features/avatok/media.dart:29) is documented as "sha256 of
+// ciphertext (R2 key)" — the HASH TAIL of user_media.key
+// (`u/<uid>/<public|dm|private>/<hash>`, worker/src/routes/media.ts's
+// userKey()), NOT user_media.id. Every client-created job 404'd
+// (source_media_not_found). findSourceMediaRows() below tries the UUID
+// primary-key lookup FIRST, then falls back to a key-suffix match against the
+// SAME indexed `key` column (idx_media_key, worker/migrations/media.sql) —
+// one indexed-then-fallback lookup, either identifier form resolves.
+//
+// EARLIER FIX (superseded, kept for history): an earlier attempt gated with
+// `row.uid === requesterUid` — but a PDF/voice note someone SENT you is
+// owned (user_media.uid) by the SENDER, so "summarize the document I
+// received" / "transcribe their voice note" both 403'd. That version of
+// authorizeSourceMedia() authorized on raw CONVERSATION MEMBERSHIP instead —
+// the media row's owner only had to be a fellow member of the conversation
+// the job is being created in, with no check the media was ever sent IN that
+// conversation. The 2026-07-25 security review (AVA-MEDIA-AUTHZ-1, "B3")
+// flagged that as a live cross-account exfiltration hole: a single shared DM
+// with a victim authorized ALL of that victim's server-readable media, from
+// every other conversation they have. See the fix + rationale on
+// authorizeSourceMedia() below — the fallback is now REMOVED, not
+// broadened; the "they sent it to me" case is covered by the requester's own
+// ownRow instead (routes/media.ts's libraryRecord() always gives a recipient
+// their own row).
 // ---------------------------------------------------------------------------
-async function isConvMember(env: Env, conv: string, uid: string): Promise<boolean> {
+// [AVA-MEDIA-AUTHZ-1] Exported — routes/media.ts's libraryRecord() (B2 fix)
+// needs the exact same "does this uid share this conversation" check to
+// authorize a forged-key /api/library/record call. One implementation, no
+// second copy that could drift out of sync with this one.
+export async function isConvMember(env: Env, conv: string, uid: string): Promise<boolean> {
   if (!conv) return false;
   // Mirrors routes/ava_image.ts's membersOf(): a 1:1 DM conv id encodes both
   // participants directly and may have no conversation_members rows at all.
@@ -181,12 +255,99 @@ async function isConvMember(env: Env, conv: string, uid: string): Promise<boolea
   } catch { return false; }
 }
 
-async function mediaOwnedBy(env: Env, mediaId: string, uid: string): Promise<"ok" | "not_found" | "forbidden"> {
+interface SourceMediaRow { id: string; uid: string }
+
+// B1: resolve EITHER a user_media.id (UUID) or a content-hash/key-suffix
+// identifier (the client's ChatMedia.id shape) to every matching user_media
+// row. A content hash can legitimately match more than one row — the
+// sender's own row AND each recipient's received-side copy
+// (routes/media.ts's libraryRecord() inserts a row per recipient pointing at
+// the SAME `key` as the sender's) — so this returns all candidates and lets
+// authorizeSourceMedia() below decide which one is authorized.
+// [B1 FIX / AVA-MEDIA-AUTHZ-1 — CRITICAL] `identifier` is client-supplied and
+// was being concatenated into a LIKE pattern with NO metacharacter escaping
+// and no ESCAPE clause: a caller could pass '%' / '_' as live wildcards
+// (e.g. source_media_id:"private/%" -> `key LIKE '%/private/%'`, matching
+// EVERY user's private media in the shard). Fixed by:
+//   1. Rejecting any identifier that isn't a UUID (user_media.id) or a
+//      64-hex sha256 content hash (the client's ChatMedia.id form) BEFORE it
+//      ever reaches a query — the only two legitimate shapes.
+//   2. Escaping '\', '%', '_' anyway (defense in depth — the shape check
+//      above already excludes them, but every LIKE in this codebase should
+//      follow the same rule) with an explicit ESCAPE '\', mirroring
+//      routes/media.ts's getLibrary() precedent.
+//   3. Excluding soft-deleted rows (deleted_at IS NULL) — a "deleted" file
+//      must stop being a valid job source, or delete doesn't actually delete.
+//   4. A LIMIT so a wildcard pattern can never return an unbounded row set.
+async function findSourceMediaRows(env: Env, identifier: string): Promise<SourceMediaRow[]> {
+  if (!/^[0-9a-f]{64}$/i.test(identifier) && !/^[0-9a-f-]{36}$/i.test(identifier)) return [];
   try {
-    const r = await env.DB_MEDIA.prepare("SELECT uid FROM user_media WHERE id=?1").bind(mediaId).first<{ uid: string }>();
-    if (!r) return "not_found";
-    return r.uid === uid ? "ok" : "forbidden";
-  } catch { return "not_found"; }
+    const byId = await env.DB_MEDIA.prepare(
+      "SELECT id, uid FROM user_media WHERE id=?1 AND deleted_at IS NULL",
+    ).bind(identifier).first<SourceMediaRow>();
+    if (byId) return [byId];
+    const escaped = identifier.replace(/[\\%_]/g, (m) => `\\${m}`);
+    const byKey = await env.DB_MEDIA.prepare(
+      "SELECT id, uid FROM user_media WHERE (key=?1 OR key LIKE '%/' || ?2 ESCAPE '\\') AND deleted_at IS NULL LIMIT 50",
+    ).bind(identifier, escaped).all<SourceMediaRow>();
+    return (byKey.results || []) as SourceMediaRow[];
+  } catch { return []; }
+}
+
+type SourceMediaAuth =
+  | { ok: true; mediaId: string }
+  | { ok: false; error: "not_found" | "forbidden" };
+
+// [B3 FIX / AVA-MEDIA-AUTHZ-1 — was authz hole] Prefers a row the REQUESTER
+// themself owns (so the stored source_media_id points at the caller's own
+// reference when they have one — e.g. either side of a DM).
+//
+// The earlier design (parked here as history) additionally fell back to
+// "authorize any row whose OWNER is a member of `convId`" for the "they sent
+// it to me" case. That check only proved the owner is a member of THIS
+// conversation, never that the media was ever sent IN this conversation — a
+// single shared DM with a victim authorized ALL of that victim's
+// server-readable media, from every other conversation they have. There is
+// no cheap way to verify "this media id/key actually appears in a message in
+// convId" here: per the Cloudflare-native pivot (CLAUDE.md), messages live
+// in per-account DO-local SQLite, not a D1 table this lib can join against.
+//
+// CHOSEN FIX: drop the fallback rather than build a real per-message check
+// against a store this file can't see. It buys nothing legitimate: the real
+// "they sent it to me" case is already fully covered by the ownRow branch
+// above — receiving media calls POST /api/library/record
+// (routes/media.ts's libraryRecord(), itself hardened this same wave) which
+// inserts a row OWNED BY THE RECIPIENT (source_kind='received') pointing at
+// the same key, so a real recipient always has their own row. Deny by
+// default when no own row exists.
+async function authorizeSourceMedia(env: Env, identifier: string, convId: string, requesterUid: string): Promise<SourceMediaAuth> {
+  // convId membership for requesterUid is already verified by the caller
+  // (createAiMediaJob's isConvMember(env, convId, ownerUid) check, above);
+  // convId is accepted here only to keep the function signature/call site
+  // unchanged for the other agents' callers.
+  const rows = await findSourceMediaRows(env, identifier);
+  if (!rows.length) return { ok: false, error: "not_found" };
+  const ownRow = rows.find((r) => r.uid === requesterUid);
+  if (ownRow) return { ok: true, mediaId: ownRow.id };
+  return { ok: false, error: "forbidden" };
+}
+
+export type ArtifactSensitivity = "public" | "private";
+
+// [B3 fix / §41] An artifact inherits the sensitivity of its source. No
+// known-public source — including a bare-prompt image_generate with no
+// source_media_id at all — defaults to PRIVATE: the safe default for a
+// Messenger-conversation artifact. Only a source whose OWN user_media row is
+// explicitly visibility='public' promotes the derived artifact to the public
+// path. Deny-safe (private) on any lookup error. Callers: the per-kind job
+// handlers ([AVA-IMAGE-UX-1]/[AVA-DOC-ARTIFACT-1]/[AVA-AUDIO-ARTIFACT-1]),
+// BEFORE calling routes/media.ts's registerArtifactMedia().
+export async function resolveArtifactSensitivity(env: Env, sourceMediaId: string | null | undefined): Promise<ArtifactSensitivity> {
+  if (!sourceMediaId) return "private";
+  try {
+    const r = await env.DB_MEDIA.prepare("SELECT visibility FROM user_media WHERE id=?1").bind(sourceMediaId).first<{ visibility: string }>();
+    return r?.visibility === "public" ? "public" : "private";
+  } catch { return "private"; }
 }
 
 // ---------------------------------------------------------------------------
@@ -221,11 +382,23 @@ export async function createAiMediaJob(env: Env, input: CreateAiMediaJobInput): 
   if (!(await isConvMember(env, convId, ownerUid))) {
     return { ok: false, error: "forbidden", status: 403 };
   }
-  const sourceMediaId = input.sourceMediaId ? String(input.sourceMediaId).trim() : null;
-  if (sourceMediaId) {
-    const owned = await mediaOwnedBy(env, sourceMediaId, ownerUid);
-    if (owned === "not_found") return { ok: false, error: "source_media_not_found", status: 404 };
-    if (owned === "forbidden") return { ok: false, error: "forbidden", status: 403 };
+  // B1/B2 fix: resolve the client-supplied identifier (either a user_media.id
+  // OR the ChatMedia.id content-hash form) AND authorize it on conversation
+  // membership (not raw uid equality) in one step. `sourceMediaId` below is
+  // always the CANONICAL user_media.id once resolved, so every downstream
+  // consumer (the D1 row, resolveArtifactSensitivity()) gets a real FK.
+  const sourceMediaInput = input.sourceMediaId ? String(input.sourceMediaId).trim() : null;
+  let sourceMediaId: string | null = null;
+  if (sourceMediaInput) {
+    const auth = await authorizeSourceMedia(env, sourceMediaInput, convId, ownerUid);
+    if (!auth.ok) {
+      return {
+        ok: false,
+        error: auth.error === "not_found" ? "source_media_not_found" : "forbidden",
+        status: auth.error === "not_found" ? 404 : 403,
+      };
+    }
+    sourceMediaId = auth.mediaId;
   }
 
   const jobId = String(input.jobId || crypto.randomUUID());
@@ -492,6 +665,14 @@ export async function listAiMediaJobs(env: Env, input: ListAiMediaJobsInput): Pr
   const sql = `SELECT * FROM ai_media_jobs WHERE ${clauses.join(" AND ")} ORDER BY created_at DESC LIMIT ${limit}`;
   try {
     const r = await env.DB_MEDIA.prepare(sql).bind(...binds).all<any>();
-    return (r.results || []).map(rowToRecord);
+    const records = (r.results || []).map(rowToRecord);
+    // Same artifact_url contract as fetchJob() — a reconnect/hydration list
+    // must carry it too, or a client that only ever calls the list endpoint
+    // (GET /api/ai/jobs?conv=...) would never learn how to open a succeeded
+    // job's result.
+    await Promise.all(records.map(async (rec) => {
+      rec.artifact_url = await resolveArtifactUrl(env, rec.artifact_media_id);
+    }));
+    return records;
   } catch { return []; }
 }

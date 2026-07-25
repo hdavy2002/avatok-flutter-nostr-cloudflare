@@ -556,6 +556,21 @@ class RemoteConfig {
   /// `sendMsgReceipt`) is device-verified.
   static bool get groupReceiptsEnabled => _b('groupReceiptsEnabled', false);
 
+  /// [AVA-VOICE-PLAINTEXT-1] MVP voice notes (owner decision 2026-07-25,
+  /// CLAUDE.md "Part A"): whether DM voice notes are end-to-end encrypted.
+  /// Mirrors config.ts `voiceNoteEncryptionEnabled` EXACTLY — same key name,
+  /// same default (`false`, worker/src/routes/config.ts DEFAULTS) — a client
+  /// getter reading a key the server never declares is a fake flag
+  /// (`imageGenEnabled` was the last one, CLAUDE.md "FAKE FLAGS"). Default
+  /// FALSE: recorded voice notes upload PLAINTEXT via the private,
+  /// server-readable path (`x-encrypted: 0`, `MediaService.uploadPlaintext`)
+  /// so Ava can transcribe/translate them; sending stays authorization-gated
+  /// to the conversation membership — unencrypted never means public. Flip
+  /// `voiceNoteEncryptionEnabled: true` in KV to restore client-side AES-GCM
+  /// encryption (`MediaService.encryptAndUpload`) with NO rebuild — both
+  /// paths stay live in `chat_thread.dart`'s `_stopAndSendRecording`/`_upload`.
+  static bool get voiceNoteEncryptionEnabled => _b('voiceNoteEncryptionEnabled', false);
+
   /// Fetch now + poll every 15 min. Never throws.
   static Future<void> start() async {
     // Paint the active account's cached admin flag first so admin-only surfaces

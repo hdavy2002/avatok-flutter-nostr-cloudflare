@@ -30,8 +30,17 @@ import { requireUser, isFail } from "../authz";
 import { trackUser } from "../hooks";
 import { emailFor } from "../lib/identity";
 import { readConfig } from "./config";
-import { avaReason } from "../lib/ava_reason";
+import { avaReason, avaReasonRaw } from "../lib/ava_reason";
+import { orText, usageTokens } from "../lib/ava_reason/types";
+import { docSummarizeModel, docTranslateModel } from "../lib/ava_reason/policy";
 import { postAvaPrivate } from "../lib/ava_lane";
+// [AVA-MEDIA-AUTHZ-1] B6 fix: avaDocTranslateFile used to write the translated
+// PDF straight to the PUBLIC BLOBS/blossom bucket with no user_media row at
+// all (no quota, no library entry, no visibility record) — a private
+// document became a publicly fetchable URL. Route it through the SAME
+// authorization-gated private path the [AVA-MEDIA-JOB-1] artifact pipeline
+// uses. media.ts is owned by another agent this wave — import only, no edits.
+import { registerArtifactMedia, presignDigitalReadUrl } from "./media";
 
 const DOC_TTL = 30 * 24 * 3600;      // D7 derived-content cache: 30 days
 const MAX_SUMMARIZE_CHARS = 24_000;  // summary reads the head of very large docs
@@ -294,17 +303,25 @@ export async function avaDocTranslateFile(req: Request, env: Env): Promise<Respo
     try { await env.TOKENS.put(key, translated, { expirationTtl: DOC_TTL }); } catch { /* best-effort */ }
   }
 
-  // Emit the artifact. Latin-1-safe → minimal PDF uploaded to blob storage;
-  // otherwise the plain translated text (client renders/saves it).
+  // Emit the artifact. Latin-1-safe → minimal PDF registered through the SAME
+  // private, authorization-gated path the [AVA-MEDIA-JOB-1] artifact pipeline
+  // uses (registerArtifactMedia, sensitivity:'private' → env.DIGITAL + a real
+  // user_media row: quota, library entry, soft-delete, visibility — all of it).
+  // NEVER the public BLOBS/blossom bucket. mediaRef is a short-lived presigned
+  // read URL (private storage is never exposed as a stable public URL); fine
+  // here because postAvaPrivate posts it immediately below.
+  // Otherwise the plain translated text (client renders/saves it) — never
+  // stored server-side.
   let format: "pdf" | "text" = "text";
   let mediaRef: string | undefined;
   if (isLatin1(translated)) {
     try {
       const pdf = buildSimplePdf(`${name} — ${to}`, translated);
-      const hash = await sha256Hex(pdf);
-      const r2Key = `u/${uid}/public/${hash}`; // content-addressed, same layout as /upload/public
-      await env.BLOBS.put(r2Key, pdf, { httpMetadata: { contentType: "application/pdf" } });
-      mediaRef = `${env.BLOSSOM_BASE_URL}/${r2Key}`;
+      const docFileName = `${name.replace(/\.[a-z0-9]{1,6}$/i, "")}-${to.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.pdf`;
+      const artifact = await registerArtifactMedia(env, {
+        uid, bytes: pdf, mimeType: "application/pdf", fileName: docFileName, category: "document", sensitivity: "private",
+      });
+      mediaRef = (await presignDigitalReadUrl(env, artifact.key)) || undefined;
       format = "pdf";
     } catch { format = "text"; mediaRef = undefined; } // fall back to text on any storage hiccup
   }
@@ -324,6 +341,151 @@ export async function avaDocTranslateFile(req: Request, env: Env): Promise<Respo
     ok: true, format, to, cached: cacheHit, file_name: fileName,
     ...(mediaRef ? { media_ref: mediaRef } : { text: translated, note: "TODO(pdf-lib): non-Latin scripts ship as text until a Unicode-font PDF path lands" }),
   });
+}
+
+// ===========================================================================
+// [AVA-DOC-ARTIFACT-1] Worker-callable document pipeline for the ai_media_jobs
+// queue consumer (worker/src/queues/ai_media.ts). ADDITIVE — the existing
+// avaDocSummarize/avaDocTranslate/avaDocTranslateFile HTTP routes above are
+// UNCHANGED (client-supplied text, inline/private-lane result, no durable
+// artifact — the pre-[AVA-MEDIA-JOB-1] Ava Copilot Phase A/B feature; kept
+// per this issue's "do not delete existing extraction functions" instruction,
+// and still useful for a quick already-extracted-text dialog result). This
+// section is the NEW, durable, artifact-producing path: the job consumer
+// fetches the SOURCE FILE from R2 by source_media_id, extracts its text HERE
+// (never persisted to the job table/queue message — only the media id is,
+// per §41/§42), summarizes/translates it, and hands bytes back to the queue
+// to register as a real AvaLibrary artifact (routes/media.ts's
+// registerArtifactMedia — called by the queue, not here, to keep storage
+// decisions in one place).
+// ===========================================================================
+
+export interface ExtractedDoc { text: string; truncated: boolean }
+
+const EXTRACT_MAX_CHARS = 120_000; // matches MAX_FILE_CHARS — the largest any doc capability below reads
+
+/**
+ * Document bytes -> plain text/markdown. Mirrors consumers/src/brain.ts's
+ * extractDocumentBuffer EXACTLY (worker/ and consumers/ are separate
+ * deployables that cannot import across one another — see worker/wrangler.toml's
+ * LIVE-QUEUE-1 comment / ai_media_jobs.ts's file header for the identical
+ * rationale) via the SAME Workers AI `toMarkdown` binding — no PDF npm
+ * dependency required or added; worker/package.json stays untouched.
+ */
+export async function extractDocumentText(env: Env, buf: ArrayBuffer, mime: string, name: string): Promise<ExtractedDoc> {
+  const lower = String(mime || "").toLowerCase();
+  if (lower.startsWith("text/") || /\.(md|txt)$/i.test(name || "")) {
+    try {
+      const full = new TextDecoder().decode(buf);
+      return { text: full.slice(0, EXTRACT_MAX_CHARS), truncated: full.length > EXTRACT_MAX_CHARS };
+    } catch { return { text: "", truncated: false }; }
+  }
+  try {
+    const blob = new Blob([buf], { type: lower || "application/octet-stream" });
+    const md = await (env.AI as any).toMarkdown?.([{ name, blob }]);
+    const first = Array.isArray(md) ? md[0] : md;
+    const full = String(first?.data || first?.markdown || "");
+    return { text: full.slice(0, EXTRACT_MAX_CHARS), truncated: full.length > EXTRACT_MAX_CHARS };
+  } catch {
+    return { text: "", truncated: false };
+  }
+}
+
+export interface DocModelResult {
+  text: string;
+  modelActual: string;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  /** Prefer this over any catalog estimate at settle time — only set when the
+   *  provider actually reported usage.cost (see ai_billing.ts's settleAiJob). */
+  providerCostUsdMicro?: number;
+}
+
+/**
+ * Summarize extracted document text — the SAME system prompt as
+ * avaDocSummarize's inline route above, factored out so the queue consumer
+ * can call it without an HTTP round-trip and without duplicating the prompt.
+ * Uses avaReasonRaw (not avaReason) so real provider usage/cost reach the
+ * billing layer instead of being discarded — the string-only avaReason() the
+ * inline route uses has no settlement need, but a paid artifact job does.
+ */
+export async function summarizeDocumentForArtifact(env: Env, args: { uid: string; email: string | null; text: string }): Promise<DocModelResult> {
+  const system = [
+    "You summarise a document a user long-pressed in their chat. Produce a tight summary:",
+    "1–2 sentence overview, then up to 5 short bullets of the key points (amounts, dates,",
+    "names, obligations). Mirror the document's language. No preamble, no invented facts.",
+  ].join(" ");
+  const raw = await avaReasonRaw(env, {
+    role: "media_job", capability: "media_doc_summarize", feature: "media_doc_summarize", trigger: "job_consumer",
+    system, user: args.text.slice(0, MAX_SUMMARIZE_CHARS), maxTokens: 500, temperature: 0.2,
+    uid: args.uid, email: args.email, appName: "ai_media_jobs",
+  });
+  const text = orText(raw);
+  if (!text.trim()) throw new Error("provider_unavailable: empty summary");
+  const [inputTokens, outputTokens] = usageTokens(raw);
+  const providerCostUsdMicro = typeof raw?.usage?.cost === "number" ? Math.round(raw.usage.cost * 1_000_000) : undefined;
+  return { text, modelActual: docSummarizeModel(env), inputTokens, outputTokens, providerCostUsdMicro };
+}
+
+/**
+ * Translate document text (chunked via the SAME chunkText() helper
+ * avaDocTranslateFile's inline route uses below) into `to`. Shared by the
+ * doc_translate job handler AND the audio_translate job's transcript-
+ * translation sub-step (a transcript is just text) — one chunking/aggregation
+ * implementation instead of two. Aggregates usage/cost across chunks; only
+ * reports providerCostUsdMicro when EVERY chunk that ran reported a real
+ * provider cost, so a partial miss never silently under-charges by averaging
+ * in a $0 chunk (ai_billing.ts's settleAiJob then correctly falls back to the
+ * catalog estimate for the whole job instead).
+ */
+export async function translateDocumentForArtifact(env: Env, args: { uid: string; email: string | null; text: string; to: string }): Promise<DocModelResult> {
+  const parts = chunkText(args.text, CHUNK_CHARS);
+  if (!parts.length) throw new Error("provider_unavailable: nothing to translate");
+  const outs: string[] = [];
+  let inTok = 0, outTok = 0, haveTokens = false;
+  let costMicro = 0, haveCost = true;
+  for (const part of parts) {
+    const raw = await avaReasonRaw(env, {
+      role: "media_job", capability: "media_doc_translate", feature: "media_doc_translate", trigger: "job_consumer",
+      system: `Translate this document section into ${args.to}. Preserve meaning, tone, layout hints and paragraph breaks. Output ONLY the translation.`,
+      user: part, maxTokens: 2000, temperature: 0.2,
+      uid: args.uid, email: args.email, appName: "ai_media_jobs",
+    });
+    const t = orText(raw);
+    if (!t.trim()) throw new Error("provider_unavailable: empty translation");
+    outs.push(t);
+    const [ti, to_] = usageTokens(raw);
+    if (ti != null) { inTok += ti; haveTokens = true; }
+    if (to_ != null) { outTok += to_; haveTokens = true; }
+    if (typeof raw?.usage?.cost === "number") costMicro += Math.round(raw.usage.cost * 1_000_000);
+    else haveCost = false;
+  }
+  return {
+    text: outs.join("\n\n"), modelActual: docTranslateModel(env),
+    inputTokens: haveTokens ? inTok : null, outputTokens: haveTokens ? outTok : null,
+    providerCostUsdMicro: haveCost ? costMicro : undefined,
+  };
+}
+
+export interface DocumentArtifactBytes { bytes: Uint8Array; mimeType: string; ext: string }
+
+/**
+ * [§38/§45] Never silently emit corrupted Latin-1 PDF output. Latin-1-safe
+ * text gets the existing minimal-PDF path (buildSimplePdf below — no
+ * embedded-Unicode-font PDF library is available; pdf-lib is not a worker/
+ * dependency and adding one is out of this issue's scope, matching
+ * avaDocTranslateFile's existing TODO(pdf-lib) below). Anything else —
+ * Hindi/Arabic/CJK/etc — is emitted as UTF-8 plain text instead of a garbled
+ * PDF. Used only by the doc_translate artifact (doc_summarize always emits
+ * markdown/text per §38's "Summarize → .summary.md or .txt").
+ */
+export function buildDocumentArtifactBytes(title: string, text: string): DocumentArtifactBytes {
+  if (isLatin1(text)) {
+    try {
+      return { bytes: buildSimplePdf(title, text), mimeType: "application/pdf", ext: "pdf" };
+    } catch { /* fall through to UTF-8 text on any PDF-build hiccup */ }
+  }
+  return { bytes: new TextEncoder().encode(text), mimeType: "text/plain; charset=utf-8", ext: "txt" };
 }
 
 // ---------------------------------------------------------------------------

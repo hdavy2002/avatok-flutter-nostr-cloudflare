@@ -26,6 +26,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../core/account_storage.dart';
 import '../../core/active_thread.dart'; // [PUSH-FG-BANNER-1]
+import '../../core/ai_media_jobs.dart'; // [AVA-MEDIA-JOB-2] durable image/doc/audio job repository
 import '../../core/api_auth.dart';
 import '../../core/audio_playback_service.dart'; // [AVAVM-PLAYER-1]
 import '../../core/avatar_cache.dart';
@@ -83,6 +84,7 @@ import '../ava/ava_invoke.dart';
 import '../ava/ava_doc_actions.dart'; // Phase A (Ava Copilot): doc actions + per-chat toggle
 import '../ava/ava_lane.dart'; // Phase A (Ava Copilot): private Ava-lane bubble
 import '../ava/ava_unread.dart'; // Phase A (Ava Copilot): per-conv ava_unread counter
+import 'widgets/ai_media_job_card.dart'; // [AVA-MEDIA-JOB-2] durable job card (image/doc/audio)
 import 'ava_email.dart';
 import 'file_viewer_screen.dart';
 import '../genui/a2ui_renderer.dart';
@@ -1036,6 +1038,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     // dashboard by name.
     Analytics.screenViewed('avatok', 'chat_thread');
     WidgetsBinding.instance.addObserver(this); // [VOICE-REC-1] recorder auto-pause
+    // [AVA-MEDIA-JOB-2] Bind the durable AI-media-job stream now — filtering
+    // happens at EVENT time against `_serverConvId`/`_convKey` inside
+    // [_bindAiJobs], so it's safe to subscribe before either is resolved.
+    // Hydration/reconcile + explicit seeding happens once the conv id is
+    // known, from `_loadChatExtras` (see that method's own note).
+    _bindAiJobs();
     // [CHAT-UI-REVERSE-1] The old 450ms "reveal unconditionally" safety-net
     // timer for `_openReveal` is gone along with the field itself — the
     // reverse:true list has nothing to reveal; see the `_scroll` field doc.
@@ -1264,6 +1272,16 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   Future<void> _loadChatExtras() async {
     final key = _convKey;
     if (key == null) return;
+    // [AVA-MEDIA-JOB-2] Hydrate + reconcile this conversation's durable AI
+    // media jobs (image/doc/audio) now that a conv id is known, then
+    // explicitly seed a card for every job already known — required even
+    // though [_bindAiJobs]'s update stream ALSO fires on hydrate/reconcile,
+    // because a job whose state hasn't changed since a prior visit this
+    // session is a no-op in the repository's dedup (`_apply` only notifies on
+    // a VISIBLE change) and would otherwise never get a card in a freshly
+    // rebuilt `_msgs` list. Fire-and-forget: never blocks the rest of this
+    // thread's setup.
+    unawaited(_openAiJobs(_serverConvId ?? key));
     final draft = (await DraftStore().load())[key];
     final timer = (await ChatTimerStore().load())[key];
     final pin = (await PinnedMsgStore().load())[key];
@@ -1866,6 +1884,25 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     });
   }
 
+  /// [AVA-MEDIA-AUTHZ-1] Mirror a received attachment into the recipient's
+  /// AvaLibrary — the single call site both `_onGroupMsg` and `_onDm` route
+  /// through, since `MediaService.recordReceived` now REQUIRES a server
+  /// conversation id (`conv`) the worker uses to verify both the media owner
+  /// and the caller belong to it. `_serverConvId` resolves for DM AND group
+  /// threads (see its own doc). If it isn't resolvable yet (e.g. `_meId` not
+  /// loaded), skip rather than invent an empty string — the server would just
+  /// 400 `conv_required` — and report it once so a persistent gap (not just a
+  /// one-off race) is visible.
+  void _recordReceivedMedia(ChatMedia media) {
+    final conv = _serverConvId;
+    if (conv == null || conv.isEmpty) {
+      AvaLog.I.log('media', 'recordReceived skipped: no server conv id yet');
+      Analytics.capture('chat_media_record_skipped', {'reason': 'no_conv'});
+      return;
+    }
+    MediaService.recordReceived(media, conv: conv); // mirror into the recipient's AvaLibrary
+  }
+
   // Send an ephemeral floating-emoji burst to everyone in the room + animate locally.
   void _sendBurst(String emoji) {
     HapticFeedback.lightImpact();
@@ -1930,7 +1967,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       } else if (env is Map && env['t'] == 'gmedia') {
         media = ChatMedia.fromEnvelope(env.cast<String, dynamic>());
         text = _caption(media.kind, media.name);
-        if (!m.mine) MediaService.recordReceived(media); // mirror into the recipient's AvaLibrary
+        if (!m.mine) _recordReceivedMedia(media);
       } else if (env is Map && env['t'] == 'gtext') {
         text = (env['body'] ?? '').toString();
         isSystem = env['system'] == true;
@@ -2206,7 +2243,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         text = _caption(media.kind, media.name);
         final keyShort = media.id.length > 12 ? media.id.substring(media.id.length - 8) : media.id;
         AvaLog.I.log('media', 'recv dm media kind=${media.kind.name} ${media.size}B key=…$keyShort mine=${m.mine}');
-        if (!m.mine) MediaService.recordReceived(media); // mirror into the recipient's AvaLibrary
+        if (!m.mine) _recordReceivedMedia(media);
       } else if (env is Map && env['t'] == 'text') {
         text = env['body'].toString();
       } else if (env is Map && env['t'] == 'deleted') {
@@ -2944,6 +2981,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     if (state == AppLifecycleState.resumed && _isGroup) {
       unawaited(_fetchCompanionDrafts());
     }
+    // [AVA-MEDIA-JOB-2] Re-reconcile this conversation's AI media jobs on
+    // resume — the specific defect Part VI exists to fix: a job that finished
+    // (or failed) while the app was backgrounded must not be lost/stuck
+    // "working" forever just because no poll timer was running while paused.
+    if (state == AppLifecycleState.resumed) {
+      final convId = _serverConvId ?? _convKey;
+      if (convId != null) unawaited(AiMediaJobRepository.I.reconcile(convId));
+    }
     if (!_recording || _recPaused) return;
     // `inactive` also covers the transient states (a call banner, the app
     // switcher, the screen locking) — precisely the cases the owner hit.
@@ -3007,6 +3052,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     ActiveThread.leave(_convKey);
     _localAvaSub?.cancel();
     _avaStreamSub?.cancel();
+    _aiJobsSub?.cancel();              // [AVA-MEDIA-JOB-2]
+    // [AVA-MEDIA-JOB-2] Stop polling for this conv; the on-disk job cache is
+    // untouched, so a reopen still hydrates instantly (see
+    // `AiMediaJobRepository.closeConversation`'s own doc comment).
+    { final convId = _serverConvId ?? _convKey; if (convId != null) AiMediaJobRepository.I.closeConversation(convId); }
     _safetySub?.cancel();              // F6: live safety_flag frames
     _scroll.removeListener(_maybePageArchive); // F3: archive pager
     _clockTimer?.cancel();              // Phase 5: live clock
@@ -3072,6 +3122,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   /// Grows an Ava bubble as deltas arrive; the durable answer replaces it.
   StreamSubscription<Map<String, dynamic>>? _avaStreamSub;
 
+  /// [AVA-MEDIA-JOB-2] Subscription to every AiMediaJob upsert/removal across
+  /// the whole app; filtered to THIS conversation in [_bindAiJobs]. Bound once
+  /// in `initState` (event-time filtering means it's safe to bind before
+  /// `_convKey`/`_serverConvId` are known — see [_bindAiJobs]), cancelled in
+  /// `dispose`.
+  StreamSubscription<AiMediaJobUpdate>? _aiJobsSub;
+
   /// The wake words the composer watches for. `@ava` = a PRIVATE personal call
   /// to Ava (never sent to the peer, private reply). `#ava` = a SHARED call (both
   /// parties see the question + reply).
@@ -3117,8 +3174,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       if (!mounted || r.convKey != key) return;
       final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
       _mutMsgs(() {
-        // The on-device answer is here — drop the transient "thinking" chip.
-        _msgs.removeWhere((m) => m.special == 'ava_status');
+        // [AVA-IMAGE-UX-1] The on-device answer is here — drop the transient
+        // "thinking" chip ONLY. Root cause (Part VI §37): this used to be a
+        // blanket `removeWhere(special == 'ava_status')`, which could also
+        // wipe an UNRELATED still-running image job's placeholder chip the
+        // instant any text answer landed. `_isJobStatusChip` protects any
+        // status row correlated to a job (by `job_id`, or the legacy
+        // image-generation marker while `ava_image.ts` still posts one) —
+        // durable job cards render as `special: 'ai_job'` now anyway (a
+        // different value entirely), so this guard only matters for the
+        // legacy chip during the migration window (§49).
+        _msgs.removeWhere((m) => m.special == 'ava_status' && !_isJobStatusChip(m));
         _msgs.add(_Msg(_seq++, false, r.text, _fmtTime(now),
             ts: now, special: 'ava'));
         _msgs.sort((a, b) => a.ts.compareTo(b.ts));
@@ -3173,14 +3239,41 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
           return;
         }
         // First frame for this turn (start, or a delta if start was missed):
-        // drop the "working…" chip and open the growing bubble.
-        _msgs.removeWhere((x) => x.special == 'ava_status');
+        // drop the "working…" chip and open the growing bubble. [AVA-IMAGE-UX-1]
+        // Same job-aware guard as `_bindLocalAva` above — see that call site's
+        // note; this must never remove an unrelated job's status chip.
+        _msgs.removeWhere((x) => x.special == 'ava_status' && !_isJobStatusChip(x));
         _msgs.add(_Msg(_seq++, false, delta, _fmtTime(now),
             ts: now, special: 'ava', evId: evId));
         _msgs.sort((a, b) => a.ts.compareTo(b.ts));
       });
       _jump();
     });
+  }
+
+  /// [AVA-IMAGE-UX-1] True for an `ava_status` chip that belongs to a durable
+  /// job rather than this turn's own plain "Ava is thinking…" pill (Part VI
+  /// §37/§49 — the root cause: a global sweep of every `ava_status` row could
+  /// erase a still-running image job's placeholder just because an unrelated
+  /// text answer arrived). Two cases:
+  ///   1. Forward-looking: any `ava_status` row explicitly correlated to a job
+  ///      via `job_id` — a real job placeholder should never share this
+  ///      client's turn-scoped "thinking" chip's fate.
+  ///   2. The LEGACY image-generation chip `ava_image.ts` may still post via
+  ///      `postChip()`/`endChip()` (no `job_id`) until every producer fully
+  ///      migrates to `createAiMediaJob()` (§44/§49) — same heuristic
+  ///      `_avaStatusChip` already uses to pick the ChatGPT-style image
+  ///      placeholder rendering, reused here so the two never disagree about
+  ///      what "is an image chip".
+  /// Once every producer of `ava_status` speaks job_id (or, for images,
+  /// migrates entirely to `special: 'ai_job'`), case 2 becomes dead code —
+  /// safe to delete then per §49, not before.
+  bool _isJobStatusChip(_Msg m) {
+    if (m.special != 'ava_status') return false;
+    if ((m.extra?['job_id'] ?? '').toString().isNotEmpty) return true;
+    final source = (m.extra?['source'] ?? '').toString();
+    final label = (m.extra?['label'] ?? '').toString().toLowerCase();
+    return source == 'image' || label.contains('generating an image');
   }
 
   /// Remove any live streaming preview bubble(s) once the durable Ava answer
@@ -5046,8 +5139,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       await f.writeAsBytes(res.bodyBytes, flush: true);
       await Share.shareXFiles([XFile(f.path)], subject: 'Ava image');
       Analytics.capture('ava_image_download', {'ok': true, 'share': share});
-    } catch (e) {
-      Analytics.capture('ava_image_download', {'ok': false, 'error': e.toString()});
+    } catch (e, st) {
+      // [AVA-MEDIA-AUTHZ-1] `url` can be a presigned artifact URL (a job's
+      // imageGenerate result) — never let its signature ride in a free-text
+      // `toString()`; classified type here, full scrub via captureException.
+      Analytics.capture('ava_image_download', {'ok': false, 'error': e.runtimeType.toString()});
+      await Analytics.captureException(e, st, screen: 'chat_thread', handled: true,
+          extra: {'stage': 'download_image', 'share': share});
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text("Couldn't download the image")));
@@ -5083,8 +5181,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       await f.writeAsBytes(bytes, flush: true);
       await Share.shareXFiles([XFile(f.path, mimeType: ct.isEmpty ? null : ct)]);
       Analytics.capture('chat_media_shared_out', {'kind': kind.name, 'ok': true});
-    } catch (e) {
-      Analytics.capture('chat_media_shared_out', {'ok': false, 'error': e.toString()});
+    } catch (e, st) {
+      // [AVA-MEDIA-AUTHZ-1] `downloadAndDecrypt` can rethrow a fetch failure
+      // whose toString() carries a presigned URL (digital/plaintext storage) —
+      // classified type only, full scrub via captureException.
+      Analytics.capture('chat_media_shared_out', {'ok': false, 'error': e.runtimeType.toString()});
+      await Analytics.captureException(e, st, screen: 'chat_thread', handled: true,
+          extra: {'stage': 'share_media'});
       if (mounted) _capNote('Couldn’t share this attachment.');
     }
   }
@@ -5110,6 +5213,358 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       case MediaKind.audio: return '.m4a';
       case MediaKind.file: return '';
     }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // [AVA-MEDIA-JOB-2] / [AVA-IMAGE-UX-1] / [AVA-DOC-ARTIFACT-1] /
+  // [AVA-AUDIO-ARTIFACT-1] — durable AI media job wiring.
+  //
+  // Root cause (Specs/ROOT-CAUSE-REPORT-RECURRING-ISSUES-2026-07-25.md Part VI
+  // §36-§37): image generation, PDF summarize/translate and audio transcribe/
+  // translate each invented their own transient, unaddressable status row, and
+  // a global `removeWhere(special == 'ava_status')` on the next Ava answer
+  // could wipe a still-running job's placeholder. Every job now renders as a
+  // `special: 'ai_job'` message (see `_aiJobBubble`/`_bubble`) keyed ONLY by
+  // `job_id` — a wholly different `_Msg.special` value from `'ava_status'`, so
+  // the legacy sweep near `_bindLocalAva`/`_bindAvaStream` structurally cannot
+  // touch it, regardless of how many other messages arrive in between.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /// Hydrate + reconcile [convId]'s jobs, then seed a card for every job the
+  /// repository already knows about (see the call site's note on why explicit
+  /// seeding is required in addition to the update stream).
+  Future<void> _openAiJobs(String convId) async {
+    await AiMediaJobRepository.I.openConversation(convId);
+    if (!mounted) return;
+    for (final j in AiMediaJobRepository.I.jobsFor(convId)) {
+      _upsertJobMessage(j);
+    }
+  }
+
+  /// Bind the app-wide job-update stream once. Filters to THIS conversation at
+  /// EVENT time (`_serverConvId ?? _convKey`), so it's safe to call this before
+  /// either is resolved — see `initState`.
+  void _bindAiJobs() {
+    _aiJobsSub?.cancel();
+    _aiJobsSub = AiMediaJobRepository.I.updates.listen((u) {
+      if (!mounted) return;
+      final convId = _serverConvId ?? _convKey;
+      if (convId == null) return;
+      if (u.removed) {
+        // A removal carries no job/convId — only act if WE currently have a
+        // card for this job_id, so a removal for another open thread's job
+        // (the repository is a single app-wide singleton) is a no-op here.
+        final hadCard = _msgs.any((m) => m.special == 'ai_job' && m.extra?['job_id'] == u.jobId);
+        if (hadCard) _removeJobMessage(u.jobId);
+        return;
+      }
+      final job = u.job;
+      if (job == null || job.convId != convId) return;
+      _upsertJobMessage(job);
+    });
+  }
+
+  /// Insert a `special: 'ai_job'` placeholder message for [job], keyed ONLY by
+  /// `job_id` in `extra`. The card itself always reads LIVE state via
+  /// `AiMediaJobRepository.I.byId()` at render time (see `_aiJobBubble`), so
+  /// there is nothing else to mutate on an update; the `_mutMsgs` wrapper
+  /// alone invalidates the per-row cache and repaints the card with the job's
+  /// new state.
+  void _upsertJobMessage(AiMediaJob job) {
+    _mutMsgs(() {
+      final i = _msgs.indexWhere((m) => m.special == 'ai_job' && m.extra?['job_id'] == job.jobId);
+      if (i >= 0) return; // card already placed; _aiJobBubble reads fresh state every rebuild
+      _msgs.add(_Msg(_seq++, false, '', _fmtTime(job.createdAt),
+          ts: job.createdAt, special: 'ai_job', extra: {'job_id': job.jobId}));
+      _msgs.sort((a, b) => a.ts.compareTo(b.ts));
+    });
+  }
+
+  /// Remove the placeholder message for job [jobId] (explicit local delete —
+  /// see `_deleteJobArtifact`). Never touches any other message.
+  void _removeJobMessage(String jobId) {
+    _mutMsgs(() => _msgs.removeWhere((m) => m.special == 'ai_job' && m.extra?['job_id'] == jobId));
+  }
+
+  /// Shared outcome handler for EVERY `AiMediaJobRepository.create()` call in
+  /// this thread (image/doc/audio) — including the ones inside
+  /// [AvaDocActions] (wired via its `onOutcome` param). CLAUDE.md's central
+  /// lesson: an HTTP 402 must NEVER render as a generic failure or a "could
+  /// not find an answer" — so it gets its own truthful copy with the
+  /// server-reported needed/balance numbers, distinct from every other
+  /// failure path.
+  void _handleJobOutcome(AiMediaJobCreateOutcome outcome) {
+    if (!mounted) return;
+    if (outcome.ok) {
+      _upsertJobMessage(outcome.job!);
+      return;
+    }
+    if (outcome.insufficientTokens) {
+      final needed = outcome.tokensNeeded;
+      final balance = outcome.tokensBalance;
+      final detail = (needed != null && balance != null) ? ' (need $needed · you have $balance)' : '';
+      _toast("You're out of tokens$detail — top up to continue.");
+      return;
+    }
+    _toast("Couldn't start that — try again in a moment.");
+  }
+
+  /// [AVA-MEDIA-JOB-2] EVERY open/download/share/save/play action re-fetches
+  /// the job first (`GET /api/ai/jobs/:id`) rather than trusting whatever
+  /// `artifact_url` a widget was last built with — the server contract mints a
+  /// FRESH 900-second presigned URL on every read (never persists one), so a
+  /// card that has sat on screen for more than ~15 minutes would otherwise
+  /// hand a downloader/browser an expired link. This also sidesteps the
+  /// parked attempt's defect #2 (`_msgForMedia` compared a ciphertext hash
+  /// against a UUID and never matched, so every action said "still syncing"
+  /// forever): there is no local-message correlation step at all any more —
+  /// `artifact_url` is the one thing every action needs.
+  Future<String?> _freshArtifactUrl(AiMediaJob job) async {
+    final fresh = await AiMediaJobRepository.I.fetch(job.jobId);
+    final url = fresh?.artifactUrl;
+    if (url == null || url.isEmpty) {
+      if (mounted) _toast("Couldn't load — try again in a moment.");
+      return null;
+    }
+    return url;
+  }
+
+  /// Fetch [url]'s bytes + its real MIME type off the HTTP response's
+  /// Content-Type header. The job object itself carries no filename/mime —
+  /// the server sets Content-Type from the artifact's stored
+  /// `user_media.mime_type` at registration time (worker/src/routes/media.ts
+  /// `registerArtifactMedia`), so reading it off the response is the one
+  /// reliable source rather than guessing an extension from the job kind.
+  Future<(Uint8List, String)> _fetchArtifactBytes(String url) async {
+    final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 60));
+    if (res.statusCode != 200) throw 'http ${res.statusCode}';
+    final mime = (res.headers['content-type'] ?? '').split(';').first.trim();
+    return (Uint8List.fromList(res.bodyBytes), mime);
+  }
+
+  String _extForArtifactMime(String mime) {
+    final m = mime.toLowerCase();
+    if (m.contains('pdf')) return 'pdf';
+    if (m.contains('markdown')) return 'md';
+    if (m.contains('plain')) return 'txt';
+    if (m.contains('png')) return 'png';
+    if (m.contains('jpeg') || m.contains('jpg')) return 'jpg';
+    if (m.contains('mp4') || m.contains('m4a') || m.contains('aac')) return 'm4a';
+    if (m.contains('mpeg')) return 'mp3';
+    if (m.contains('wav')) return 'wav';
+    return 'bin';
+  }
+
+  String _artifactFileName(AiMediaJob job, String mime) {
+    final shortId = job.jobId.length > 8 ? job.jobId.substring(0, 8) : job.jobId;
+    return '${job.kind.wire}_$shortId.${_extForArtifactMime(mime)}';
+  }
+
+  /// Open the finished artifact for [job]. Image jobs reuse the existing
+  /// full-screen viewer (`_openImageFull`, same convention `_avaImageBubble`
+  /// already uses for its `media_ref`). `audio_translate` jobs play through
+  /// the shared player. Doc/transcript jobs route through the SAME
+  /// `FileViewerScreen`/`openFileWithOs` machinery `_openFile` uses for an
+  /// ordinary chat file — just fed bytes fetched from [url] instead of a
+  /// decrypted `ChatMedia`.
+  Future<void> _openJobArtifact(AiMediaJob job) async {
+    if (job.kind == AiMediaJobKind.audioTranslate) { await _playJobArtifact(job); return; }
+    final url = await _freshArtifactUrl(job);
+    if (url == null) return;
+    if (job.kind == AiMediaJobKind.imageGenerate) { _openImageFull(url); return; }
+    try {
+      final (bytes, mime) = await _fetchArtifactBytes(url);
+      final name = _artifactFileName(job, mime);
+      if (!mounted) return;
+      if (FileViewerScreen.canView(mime, name)) {
+        await Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => FileViewerScreen(bytes: bytes, name: name, mime: mime),
+        ));
+      } else {
+        final ok = await openFileWithOs(bytes, name, mime);
+        if (!ok && mounted) {
+          _toast('No app on this device can open $name — tap share to send it elsewhere.');
+        }
+      }
+      Analytics.capture('ai_media_job_artifact_open', {'kind': job.kind.wire, 'job_id': job.jobId, 'ok': true});
+    } catch (e, st) {
+      // [AVA-MEDIA-AUTHZ-1] `url` is a 900s presigned artifact URL — a bearer
+      // read credential. Never the full `e.toString()`; classified type here,
+      // full scrub via captureException.
+      Analytics.capture('ai_media_job_artifact_open',
+          {'kind': job.kind.wire, 'job_id': job.jobId, 'ok': false, 'error': e.runtimeType.toString()});
+      await Analytics.captureException(e, st, screen: 'chat_thread', handled: true,
+          extra: {'stage': 'open_job_artifact', 'kind': job.kind.wire, 'job_id': job.jobId});
+      if (mounted) _toast("Couldn't open this ${job.kind.displayNoun}.");
+    }
+  }
+
+  /// Download the ORIGINAL artifact bytes (never a CDN thumbnail rendition —
+  /// Part VI §37) to the OS share sheet. Image jobs reuse `_downloadImage`
+  /// (same full-resolution-fetch convention `_avaImageBubble` already uses);
+  /// every other kind fetches + writes a temp file with a real name/extension.
+  Future<void> _downloadJobArtifact(AiMediaJob job) async {
+    if (job.kind == AiMediaJobKind.imageGenerate) {
+      final url = await _freshArtifactUrl(job);
+      if (url == null) return;
+      await _downloadImage(url);
+      return;
+    }
+    final url = await _freshArtifactUrl(job);
+    if (url == null) return;
+    try {
+      final (bytes, mime) = await _fetchArtifactBytes(url);
+      final name = _artifactFileName(job, mime);
+      final dir = await getTemporaryDirectory();
+      final f = File('${dir.path}/$name');
+      await f.writeAsBytes(bytes, flush: true);
+      await Share.shareXFiles([XFile(f.path, mimeType: mime.isEmpty ? null : mime)]);
+      Analytics.capture('ai_media_job_artifact_download', {'kind': job.kind.wire, 'job_id': job.jobId, 'ok': true});
+    } catch (e, st) {
+      // [AVA-MEDIA-AUTHZ-1] See `_openJobArtifact` — `url` is a presigned
+      // credential; never the full `e.toString()`.
+      Analytics.capture('ai_media_job_artifact_download',
+          {'kind': job.kind.wire, 'job_id': job.jobId, 'ok': false, 'error': e.runtimeType.toString()});
+      await Analytics.captureException(e, st, screen: 'chat_thread', handled: true,
+          extra: {'stage': 'download_job_artifact', 'kind': job.kind.wire, 'job_id': job.jobId});
+      if (mounted) _toast("Couldn't download this ${job.kind.displayNoun}.");
+    }
+  }
+
+  /// Same OS share-sheet affordance as Download — a job artifact has no
+  /// separate "send elsewhere" mechanic to distinguish the two actions.
+  Future<void> _shareJobArtifact(AiMediaJob job) => _downloadJobArtifact(job);
+
+  /// "Save to AvaStorage" — fetch + upload to the user's AvaTOK Drive folder.
+  Future<void> _saveJobArtifactToDrive(AiMediaJob job) async {
+    final url = await _freshArtifactUrl(job);
+    if (url == null) return;
+    _capNote('Saving to your AvaTOK Drive…');
+    try {
+      final (bytes, mime) = await _fetchArtifactBytes(url);
+      final name = _artifactFileName(job, mime);
+      // DriveService's bucket set is a fixed enum (worker/src/routes/ava_drive.ts
+      // BUCKETS) — an image job goes to Photos like every other picture; every
+      // other kind (doc/transcript/translated-audio) goes to Files.
+      final bucket = job.kind == AiMediaJobKind.imageGenerate ? 'Photos' : 'Files';
+      final ok = await DriveService.I
+          .upload(bucket, name, mime.isEmpty ? 'application/octet-stream' : mime, bytes);
+      if (mounted) {
+        _capNote(ok ? 'Saved to your AvaTOK Drive ✓' : "Couldn't save — connect Drive in AvaStorage.");
+      }
+      Analytics.capture('ai_media_job_artifact_save', {'kind': job.kind.wire, 'job_id': job.jobId, 'ok': ok});
+    } catch (e, st) {
+      // [AVA-MEDIA-AUTHZ-1] See `_openJobArtifact` — `url` is a presigned
+      // credential; never the full `e.toString()`.
+      Analytics.capture('ai_media_job_artifact_save',
+          {'kind': job.kind.wire, 'job_id': job.jobId, 'ok': false, 'error': e.runtimeType.toString()});
+      await Analytics.captureException(e, st, screen: 'chat_thread', handled: true,
+          extra: {'stage': 'save_job_artifact', 'kind': job.kind.wire, 'job_id': job.jobId});
+      if (mounted) _capNote("Couldn't save this ${job.kind.displayNoun}.");
+    }
+  }
+
+  /// "Copy result" (§38) — text-ish artifacts only (doc summarize/translate,
+  /// audio transcript); the card never wires this for image/audio_translate
+  /// kinds (see `_aiJobBubble`). Decodes the artifact bytes as UTF-8 text.
+  Future<void> _copyJobResult(AiMediaJob job) async {
+    final url = await _freshArtifactUrl(job);
+    if (url == null) return;
+    try {
+      final (bytes, _) = await _fetchArtifactBytes(url);
+      final text = utf8.decode(bytes, allowMalformed: true);
+      await Clipboard.setData(ClipboardData(text: text));
+      if (mounted) _capNote('Copied');
+    } catch (e, st) {
+      // [AVA-MEDIA-AUTHZ-1] See `_openJobArtifact` — `url` is a presigned
+      // credential; never the full `e.toString()`.
+      Analytics.capture('ai_media_job_artifact_copy',
+          {'kind': job.kind.wire, 'job_id': job.jobId, 'ok': false, 'error': e.runtimeType.toString()});
+      await Analytics.captureException(e, st, screen: 'chat_thread', handled: true,
+          extra: {'stage': 'copy_job_artifact', 'kind': job.kind.wire, 'job_id': job.jobId});
+      if (mounted) _toast("Couldn't copy this ${job.kind.displayNoun}.");
+    }
+  }
+
+  /// Delete the RESULT card (never the original source media — `forget` only
+  /// ever removes a row from the local job cache/UI, never a server file).
+  Future<void> _deleteJobArtifact(AiMediaJob job) => AiMediaJobRepository.I.forget(job.jobId);
+
+  /// Retry a failed/cancelled job: [AiMediaJobRepository.retry] re-submits a
+  /// NEW job with the original params; once it lands (via the update stream,
+  /// under its own `job_id`), drop the old failed/cancelled card.
+  Future<void> _retryJobCard(AiMediaJob job) async {
+    final newJob = await AiMediaJobRepository.I.retry(job.jobId);
+    if (newJob != null) await AiMediaJobRepository.I.forget(job.jobId);
+  }
+
+  Future<void> _cancelJobCard(AiMediaJob job) => AiMediaJobRepository.I.cancel(job.jobId);
+
+  /// Play a completed `audio_translate` artifact through the shared, app-wide
+  /// [AudioPlaybackService] (Part VI §39/§46) — never a new, per-card player.
+  /// Local-first: cached bytes (by the artifact's STABLE `artifactMediaId`,
+  /// never the expiring URL — see `MediaService.cachedBlob`) are reused on
+  /// replay instead of re-fetching every tap.
+  Future<void> _playJobArtifact(AiMediaJob job) async {
+    final artifactId = job.artifactMediaId;
+    if (artifactId == null || artifactId.isEmpty) {
+      if (mounted) _toast('Could not load this audio.');
+      return;
+    }
+    try {
+      Uint8List? bytes = await MediaService.cachedBlob(artifactId);
+      if (bytes == null) {
+        final url = await _freshArtifactUrl(job);
+        if (url == null) return;
+        final (fetched, _) = await _fetchArtifactBytes(url);
+        bytes = fetched;
+        await MediaService.writeBlob(artifactId, bytes);
+      }
+      await AudioPlaybackService.I.playArtifact(
+        artifactMediaId: artifactId,
+        bytes: bytes,
+        subtitle: job.label.isNotEmpty ? job.label : 'Translated audio',
+        originRoute: _convKey,
+      );
+    } catch (e, st) {
+      await Analytics.captureException(e, st, screen: 'chat_thread', handled: true, extra: {
+        'stage': 'play_job_artifact',
+        'kind': job.kind.wire,
+      });
+      if (mounted) _toast('Could not play this audio.');
+    }
+  }
+
+  /// Render one durable job as an [AiMediaJobCard]. Image jobs get a live
+  /// thumbnail straight off `artifact_url` (a stable public CDN URL for an
+  /// ordinary "make an image" job — the same convention `_avaImageBubble`'s
+  /// `media_ref` already uses); doc/audio kinds render the typed row.
+  Widget _aiJobBubble(AiMediaJob job) {
+    final isImage = job.kind == AiMediaJobKind.imageGenerate;
+    final succeeded = job.isSucceeded;
+    final artifactUrl = job.artifactUrl;
+    return AiMediaJobCard(
+      key: AiMediaJobCard.keyFor(job.jobId),
+      job: job,
+      // [AVA-MEDIA-AUTHZ-1] `artifact_url` re-mints (new signature) on every
+      // job read (`_freshArtifactUrl`'s doc), so keying the cache on the url
+      // itself would miss every time; `artifactMediaId` is the stable id.
+      thumbnailWidget: (isImage && succeeded && artifactUrl != null && artifactUrl.isNotEmpty)
+          ? CachedImage(artifactUrl, width: 240, cacheKey: job.artifactMediaId)
+          : null,
+      onTapOpen: succeeded ? () => _openJobArtifact(job) : null,
+      onDownload: succeeded ? () => _downloadJobArtifact(job) : null,
+      onShare: succeeded ? () => _shareJobArtifact(job) : null,
+      onSaveToLibrary: succeeded ? () => _saveJobArtifactToDrive(job) : null,
+      onCopyResult: (succeeded &&
+              job.kind != AiMediaJobKind.imageGenerate &&
+              job.kind != AiMediaJobKind.audioTranslate)
+          ? () => _copyJobResult(job)
+          : null,
+      onDelete: job.isTerminal ? () => _deleteJobArtifact(job) : null,
+      onRetry: (job.isFailed || job.isCancelled) ? () => _retryJobCard(job) : null,
+      onCancel: job.isWorking ? () => _cancelJobCard(job) : null,
+    );
   }
 
   Future<void> _addSharedContact(Map e) async {
@@ -5315,8 +5770,26 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       }
       final live = CallSessionManager.instance.current;
       final inCall = live != null && !live.isEnded;
-      final m = await MediaService.encryptAndUpload(uploadBytes,
-          kind: kind, contentType: uploadCt, name: row.filename, caption: row.caption, inCall: inCall);
+      // [AVA-VOICE-PLAINTEXT-1] Read back the mode `_upload` PERSISTED on this
+      // row at staging time (`row.plaintextVoice`) — never re-derive it from
+      // `kind == MediaKind.audio && !RemoteConfig.voiceNoteEncryptionEnabled`.
+      // That used to be wrong two ways: (1) it ignored what was actually
+      // chosen — `_upload` only goes plaintext when the CALLER explicitly set
+      // `plaintextVoice` (only `_stopAndSendRecording` ever does), so a picked
+      // audio FILE attachment (also `MediaKind.audio`, always encrypted per
+      // `_upload`'s own doc) would incorrectly resume as plaintext whenever the
+      // flag happened to be off at RESUME time; (2) it re-read the flag live
+      // instead of the point-in-time decision, so a flag flip between send and
+      // resume could silently change which bucket/encryption an already-queued
+      // attachment ends up in. `row.plaintextVoice == null` (an older row
+      // staged before this column existed) defaults to `false` — fail safe,
+      // never silently downgrade an encrypted upload to plaintext.
+      final plaintextVoice = row.plaintextVoice ?? false;
+      final m = plaintextVoice
+          ? await MediaService.uploadPlaintext(uploadBytes,
+              kind: kind, contentType: uploadCt, name: row.filename, caption: row.caption)
+          : await MediaService.encryptAndUpload(uploadBytes,
+              kind: kind, contentType: uploadCt, name: row.filename, caption: row.caption, inCall: inCall);
       return (mediaId: m.id, toEnvelopeJson: jsonEncode(m.toEnvelope()));
     } catch (e) {
       // Let a terminal rejection (video cap) propagate to `reconcile()`,
@@ -5329,7 +5802,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   }
 
   Future<void> _upload(_Msg msg, Uint8List bytes, MediaKind kind, String ct, String name,
-      {String caption = '', String? sourcePath}) async {
+      {String caption = '', String? sourcePath, bool plaintextVoice = false}) async {
     _mutMsgs(() { msg.uploading = true; msg.failed = false; });
     final tUploadStart = DateTime.now().millisecondsSinceEpoch;
     int? transcodeMs;
@@ -5350,6 +5823,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       caption: caption,
       toUid: _isGroup ? '' : (_peerNpub ?? ''),
       gid: _isGroup ? (_group?.id ?? '') : '',
+      // [AVA-VOICE-PLAINTEXT-1] Persist the mode CHOSEN HERE so a resume after
+      // an app kill (`_resumeMediaUpload`) reads back the same decision
+      // instead of re-deriving it from `kind` (which can't tell a recorded
+      // voice note from a picked audio file — see that method's doc).
+      plaintextVoice: plaintextVoice,
     ).then((_) => MediaOutbox.I.markUploading(mediaClientId)));
     // [MEDIA-OUTBOX-DURABLE-1 / reconcile-race] Register this id as having a
     // LIVE upload for the lifetime of this call, cleared in the `finally`
@@ -5416,7 +5894,16 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       // WebRTC (which previously forced both-sides reconnects). Full speed off-call.
       final live = CallSessionManager.instance.current;
       final inCall = live != null && !live.isEnded;
-      final m = await MediaService.encryptAndUpload(uploadBytes, kind: kind, contentType: uploadCt, name: uploadName, caption: caption, inCall: inCall);
+      // [AVA-VOICE-PLAINTEXT-1] MVP voice notes (owner decision 2026-07-25):
+      // when the CALLER explicitly marked this a recorded voice note AND the
+      // flag is off, upload PLAINTEXT via the private, server-readable path
+      // instead of client-side AES — this is the only call site that ever
+      // sets [plaintextVoice] (`_stopAndSendRecording`), so a generic
+      // picked-audio-FILE attachment (also `MediaKind.audio`, sent through
+      // this same `_upload`) is unaffected and stays encrypted.
+      final m = plaintextVoice
+          ? await MediaService.uploadPlaintext(uploadBytes, kind: kind, contentType: uploadCt, name: uploadName, caption: caption)
+          : await MediaService.encryptAndUpload(uploadBytes, kind: kind, contentType: uploadCt, name: uploadName, caption: caption, inCall: inCall);
       // [MEDIA-OUTBOX-DURABLE-1] Ciphertext is durably on R2 now — record the
       // exact envelope reference so a kill BEFORE the message send below still
       // has something to resend from (closes the "R2 object with nothing
@@ -6269,7 +6756,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     Analytics.capture('voice_note_record_sent', {
       ..._voiceTelemetry(), 'seconds': seconds, 'bytes': bytes.length,
     });
-    await _upload(msg, bytes, MediaKind.audio, 'audio/mp4', 'voice.m4a');
+    // [AVA-VOICE-PLAINTEXT-1] MVP voice notes (owner decision 2026-07-25):
+    // while `voiceNoteEncryptionEnabled` is false (the default), a RECORDED
+    // voice note uploads plaintext via the server-readable path so Ava can
+    // transcribe/translate it. This is the ONLY call site that sets
+    // `plaintextVoice` — a generic audio FILE picked from Files/gallery still
+    // goes through the ordinary encrypted `_upload` path unaffected.
+    await _upload(msg, bytes, MediaKind.audio, 'audio/mp4', 'voice.m4a',
+        plaintextVoice: !RemoteConfig.voiceNoteEncryptionEnabled);
   }
 
   /// The single teardown path for a recording session — every exit routes here
@@ -6674,12 +7168,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                     _action(ctx, PhosphorIcons.translate(PhosphorIconsStyle.bold), 'Translate',
                         () => _translateVoice(m)),
                   ],
-                  // Phase A (Ava Copilot §7): Ava doc actions on doc/PDF/image
-                  // bubbles — Summarize ✨ · Translate ✨ · Auto-translate file ✨,
-                  // in the plan's order BEFORE the download/share rows. Each is
-                  // labelled "only you will see this" (results land in the
-                  // private Ava lane). Hidden when "Ava in this chat" is off
-                  // (D29) or the message has no server media ref.
+                  // [AVA-DOC-ARTIFACT-1] Ava doc actions on doc/PDF/image
+                  // bubbles — Summarize ✨ · Translate ✨, in the plan's order
+                  // BEFORE the download/share rows. Each now creates a durable
+                  // AiMediaJob artifact (Part VI §38/§45) instead of the old
+                  // inline-only dialog; "Auto-translate file" is retired since
+                  // Translate itself always produces a file now. Hidden when
+                  // "Ava in this chat" is off (D29) or the message has no
+                  // server media ref.
                   ...AvaDocActions.menuItems(
                     sheetContext: ctx,
                     threadContext: context,
@@ -6690,6 +7186,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                         m.media != null &&
                         (m.media!.kind == MediaKind.file ||
                             m.media!.kind == MediaKind.image),
+                    // [AVA-DOC-ARTIFACT-1] Summarize/Translate now create a
+                    // durable AiMediaJob instead of an inline-only dialog; the
+                    // shared outcome handler inserts the pending card (and
+                    // renders the 402 "out of tokens" message, never a
+                    // generic failure — see _handleJobOutcome's own note).
+                    onOutcome: _handleJobOutcome,
                   ),
                   _action(ctx, PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold), 'Forward', () => _forward(m)),
                   // [AVAGRP-BUBBLE-1 / message-info] "Info" (§4, WhatsApp-style):
@@ -7793,6 +8295,15 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   /// local monotonic id. Matches the scheme used by inline text translation.
   String _msgCacheKey(_Msg m) => m.evId ?? '${m.id}';
 
+  /// [AVA-AUDIO-ARTIFACT-1] SUPERSEDED by the job-based `_transcribeVoice`/
+  /// `_translateVoice` above (Part VI §39/§46: the inline-only result this
+  /// produced was the exact "no durable artifact" gap the audio job pipeline
+  /// exists to fix). No longer called from the context menu; kept in place
+  /// (not deleted — §49 "only remove after the new path is live and
+  /// verified") since `m.extra['transcript']`/`extra['transcript_translated']`
+  /// rendering at the voice-bubble level still reads whatever a message
+  /// already has cached from before this change.
+  ///
   /// Fetch the DECRYPTED voice bytes (local-first, per-account MediaService
   /// cache), POST them to the existing cloud-Whisper transcribe route, and cache
   /// the transcript per message (account-scoped). Returns '' on failure. The
@@ -7846,55 +8357,75 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     }
   }
 
-  /// Long-press → Transcribe: show the Whisper transcript below the voice bubble
-  /// (viewer-only, cached). Inline snackbar on failure — never crashes.
+  /// [AVA-AUDIO-ARTIFACT-1] Long-press → Transcribe: create a durable
+  /// `audio_transcribe` AiMediaJob (Part VI §39/§46) instead of the old
+  /// inline-only Whisper call (`_ensureTranscript`, kept above for its
+  /// disk-cache helpers — SUPERSEDED, no longer called from here). The
+  /// transcript lands as a downloadable/shareable artifact card that survives
+  /// the app being backgrounded/reconnected. The source voice note is NEVER
+  /// replaced or removed.
+  ///
+  /// [AVA-VOICE-PLAINTEXT-1] Defect #5 fix: an OLD voice note sent while
+  /// encryption was still on (`m.media.storage != 'digital'`) is client-side
+  /// AES-GCM ciphertext — the server has no way to read it, so a job created
+  /// against it could only fail opaquely. Caught HERE, before spending a
+  /// wallet reservation on a job that can never succeed: an honest, specific
+  /// toast, never a hang or a silent no-op.
   Future<void> _transcribeVoice(_Msg m) async {
-    if ((m.extra?['transcript'] as String?)?.trim().isNotEmpty == true) return;
-    _toast('Transcribing…');
-    final text = await _ensureTranscript(m);
-    if (!mounted) return;
-    if (text.isEmpty) {
-      _toast("Couldn't transcribe this voice message.");
+    if (m.media?.storage != 'digital') {
+      _toast('This voice note was sent encrypted — ask them to resend it.');
+      return;
     }
+    final mediaId = m.media?.id;
+    if (mediaId == null || mediaId.isEmpty) {
+      _toast("This voice note hasn't finished sending yet — try again in a moment.");
+      return;
+    }
+    final convId = _serverConvId ?? _convKey;
+    if (convId == null) return;
+    Analytics.capture('voice_transcribe_job_requested', {'kind': 'audio_transcribe'});
+    final outcome = await AiMediaJobRepository.I.create(
+      convId: convId,
+      kind: AiMediaJobKind.audioTranscribe,
+      sourceMediaId: mediaId,
+      label: 'Converting to text…',
+    );
+    _handleJobOutcome(outcome);
   }
 
-  /// Long-press → Translate a voice note: pick a language, transcribe (if not
-  /// cached), translate the transcript with the existing engine, then show
-  /// "translated (Language)" below the bubble. Viewer-only, cached per message
-  /// in the SAME translation cache keyed by '<msgId>|<lang>'.
+  /// [AVA-AUDIO-ARTIFACT-1] Long-press → Translate a voice note: pick a
+  /// language, then create a durable `audio_translate` AiMediaJob (transcript
+  /// → translated TTS audio file, Part VI §39/§46). Same job-card contract as
+  /// [_transcribeVoice] — including the same honest encrypted-note guard —
+  /// and the original recording is never replaced or removed.
   Future<void> _translateVoice(_Msg m) async {
+    if (m.media?.storage != 'digital') {
+      _toast('This voice note was sent encrypted — ask them to resend it.');
+      return;
+    }
     if (!await BrainConsent.isOn('messaging')) {
       if (mounted) _toast('Turn on AvaBrain for your messages in Settings to translate.');
+      return;
+    }
+    final mediaId = m.media?.id;
+    if (mediaId == null || mediaId.isEmpty) {
+      _toast("This voice note hasn't finished sending yet — try again in a moment.");
       return;
     }
     // Reuse the shared language picker sheet.
     final picked = await _pickVoiceLang();
     if (picked == null || !mounted) return;
-    final to = picked.code;
-    final key = _msgCacheKey(m);
-    // Translation already cached for this note+language?
-    final cachedTr = await _msgStore.readTranslation(key, to);
-    if (cachedTr != null && cachedTr.trim().isNotEmpty) {
-      if (mounted) _showVoiceTranslation(m, cachedTr, picked.label);
-      return;
-    }
-    _toast('Transcribing…');
-    final transcript = await _ensureTranscript(m);
-    if (!mounted) return;
-    if (transcript.isEmpty) { _toast("Couldn't transcribe this voice message."); return; }
-    _toast('Translating…');
-    final t0 = DateTime.now().millisecondsSinceEpoch;
-    final out = await AiChatApi.translate(transcript, to);
-    final ms = DateTime.now().millisecondsSinceEpoch - t0;
-    if (!mounted) return;
-    if (out == null) {
-      Analytics.capture('voice_translate', {'ok': false, 'lang': to, 'ms': ms});
-      _toast('Could not translate.');
-      return;
-    }
-    Analytics.capture('voice_translate', {'ok': true, 'lang': to, 'ms': ms, 'chars': out.length});
-    try { await _msgStore.writeTranslation(key, to, out); } catch (_) {}
-    _showVoiceTranslation(m, out, picked.label);
+    final convId = _serverConvId ?? _convKey;
+    if (convId == null) return;
+    Analytics.capture('voice_translate_job_requested', {'kind': 'audio_translate', 'lang': picked.code});
+    final outcome = await AiMediaJobRepository.I.create(
+      convId: convId,
+      kind: AiMediaJobKind.audioTranslate,
+      sourceMediaId: mediaId,
+      targetLanguage: picked.code,
+      label: 'Translating to ${picked.label}…',
+    );
+    _handleJobOutcome(outcome);
   }
 
   /// Language picker for voice-note translation — same list/sheet style as the
@@ -8572,7 +9103,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                     // (mirrors the long-press menu's 'Reply' action). System
                     // pills / soft-deleted / the transient "Ava is thinking…"
                     // chip don't get it — they have no long-press menu either.
-                    final canSwipeReply = !m.system && !m.hidden && m.special != 'ava_status';
+                    // [AVA-MEDIA-JOB-2] Job placeholder cards get no swipe-to-reply
+                    // either — same reasoning as the 'ava_status' chip they replace.
+                    final canSwipeReply =
+                        !m.system && !m.hidden && m.special != 'ava_status' && m.special != 'ai_job';
                     // [CHAT-UI-ROW-EXTRACT-1] The actual `_bubble(m)` build is
                     // deferred into `_MessageRow`'s own State, keyed by message
                     // id below, so an unrelated rebuild (typing indicator,
@@ -10895,6 +11429,16 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     if (m.special == 'ava_status') {
       if ((m.extra?['phase'] ?? '').toString() == 'end') return const SizedBox.shrink();
       return _avaStatusChip(m);
+    }
+    // [AVA-MEDIA-JOB-2] A durable image/doc/audio job placeholder — keyed only
+    // by `job_id` (extra['job_id']), never swept by the legacy `ava_status`
+    // cleanup (see `_isJobStatusChip`). Reads LIVE state from the repository
+    // every rebuild.
+    if (m.special == 'ai_job') {
+      final jobId = (m.extra?['job_id'] ?? '').toString();
+      final job = jobId.isEmpty ? null : AiMediaJobRepository.I.byId(jobId);
+      if (job == null) return const SizedBox.shrink(); // forgotten/not-yet-hydrated — nothing to render
+      return _aiJobBubble(job);
     }
     // SOFT-DELETED (by me) — a slim "deleted" pill with an Undo so I can recover my
     // own data. The real content stays in `m` (hidden, not erased) until I confirm.

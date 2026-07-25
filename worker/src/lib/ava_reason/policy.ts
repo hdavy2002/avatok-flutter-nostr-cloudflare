@@ -58,6 +58,64 @@ export function geminiDirectAltModel(env: ReasonEnv): string {
   return ((env as any).GEMINI_DIRECT_ALT_MODEL as string) || DEFAULT_GEMINI_DIRECT_ALT;
 }
 
+// ── [AVA-DOC-ARTIFACT-1 / AVA-AUDIO-ARTIFACT-1] Media-job capability models ──
+// Pinned model ids + latency profiles for the ai_media_jobs queue's document
+// and audio capabilities (Specs/ROOT-CAUSE-REPORT-RECURRING-ISSUES-2026-07-25.md
+// §46: "pin model ids and latency profiles here; do not scatter model strings
+// through routes"). worker/src/queues/ai_media.ts and worker/src/routes/
+// ava_copilot.ts / stt.ts call these — no capability below hardcodes a model
+// id of its own.
+const DEFAULT_MEDIA_TEXT_MODEL = "mistralai/mistral-nemo"; // catalogued in ai_billing.ts's AI_PRICE_CATALOG
+const DEFAULT_AUDIO_TRANSCRIBE_MODEL = "openai/whisper-large-v3"; // billed per-audio-second, not per token — see AI_PRICE_CATALOG
+const DEFAULT_IMAGE_UNDERSTANDING_MODEL = "google/gemma-3-12b-it"; // vision-capable, catalogued
+
+/** mistral-nemo — doc_summarize/doc_translate/the audio_translate transcript-
+ *  translation sub-step. Env-overridable via AVA_MEDIA_TEXT_MODEL. */
+export function mediaTextModel(env: ReasonEnv): string {
+  return ((env as any).AVA_MEDIA_TEXT_MODEL as string) || DEFAULT_MEDIA_TEXT_MODEL;
+}
+export function docSummarizeModel(env: ReasonEnv): string { return mediaTextModel(env); }
+export function docTranslateModel(env: ReasonEnv): string { return mediaTextModel(env); }
+export function audioTranslateTextModel(env: ReasonEnv): string { return mediaTextModel(env); }
+
+/** openai/whisper-large-v3 — the default multilingual STT model (worker/src/
+ *  routes/stt.ts). Env-overridable via OPENROUTER_STT_MODEL (existing var). */
+export function audioTranscribeModel(env: ReasonEnv): string {
+  return ((env as any).OPENROUTER_STT_MODEL as string) || DEFAULT_AUDIO_TRANSCRIBE_MODEL;
+}
+
+/** Vision-capable model reserved for a future image_understanding capability
+ *  (not wired to a call site by [AVA-DOC-ARTIFACT-1]/[AVA-AUDIO-ARTIFACT-1] —
+ *  pinned here per §46 so whoever builds it doesn't hardcode a model string
+ *  in a route). Env-overridable via AVA_IMAGE_UNDERSTANDING_MODEL. */
+export function imageUnderstandingModel(env: ReasonEnv): string {
+  return ((env as any).AVA_IMAGE_UNDERSTANDING_MODEL as string) || DEFAULT_IMAGE_UNDERSTANDING_MODEL;
+}
+
+/** Rough p95 latency budget per media-job capability, ms — informational (not
+ *  yet enforced anywhere); a future per-job deadline/ETA can read this instead
+ *  of a second hardcoded table. */
+export const MEDIA_LATENCY_PROFILE_MS: Record<string, number> = {
+  audio_transcribe: 15_000,
+  audio_translate: 30_000,
+  doc_summarize: 12_000,
+  doc_translate: 25_000,
+  image_understanding: 8_000,
+};
+
+// [AVA-DOC-ARTIFACT-1 / AVA-AUDIO-ARTIFACT-1] `feature` routing for the media-
+// job text capabilities above. A PRIOR attempt at this routing (parked on
+// wave3-media-ux-parked, blocked in review) pinned mistral-nemo via
+// req.legacyModel — the worker dialect's "legacy pin" branch below forces
+// noFallback:true (single call, no ALT), which review flagged as removing the
+// graceful cf_ai/OpenRouter degradation every OTHER reasoner-ladder call site
+// gets: a mistral-nemo/OpenRouter blip would fail the entire media job outright
+// instead of degrading. This feature branch keeps the SAME pinned primary model
+// but gives it a real ALT via core.ts's EXISTING primary->alt fallback (no
+// adapter change needed — see runReason() in ./core.ts), so a mistral-nemo
+// outage degrades to the reasoner ALT instead of failing the job.
+const MEDIA_TEXT_FEATURES = new Set(["media_doc_summarize", "media_doc_translate", "media_audio_translate"]);
+
 function step(provider: Step["provider"], model: string, body: BodyOpts): Step {
   return { provider, model, body };
 }
@@ -102,6 +160,19 @@ export function plan(env: ReasonEnv, req: ReasonReq, dialect: Dialect): Plan {
       primary: { provider: "google", model: primaryModel, body: CF_C, models },
       alt: null,
       noFallback: true, retryPrimaryIfNoAlt: false, altRequiresKey: false, altChatOnly: false,
+    };
+  }
+
+  // [AVA-DOC-ARTIFACT-1 / AVA-AUDIO-ARTIFACT-1] media-job text capabilities —
+  // see MEDIA_TEXT_FEATURES's doc comment above. Checked before the
+  // dialect/verb branches below since it applies regardless of legacyModel
+  // (the job consumer never sets one).
+  if (MEDIA_TEXT_FEATURES.has(String(req.feature ?? ""))) {
+    return {
+      verb,
+      primary: step("openrouter", mediaTextModel(env), OR_W),
+      alt: step("openrouter", reasonerAltModel(env), OR_W),
+      noFallback: false, retryPrimaryIfNoAlt: false, altRequiresKey: false, altChatOnly: false,
     };
   }
 

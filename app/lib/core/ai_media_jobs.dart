@@ -157,8 +157,28 @@ class AiMediaJob {
   /// — the server never sends `artifact_id`; an earlier version of this file
   /// hedged both names, which is exactly the kind of guess this reconciliation
   /// pass removes (a real rename would have silently kept "working" via the
-  /// wrong fallback instead of surfacing as a missing field).
+  /// wrong fallback instead of surfacing as a missing field). A stable
+  /// identity (never re-minted) — used as e.g. an audio-playback track id
+  /// (see `AudioPlaybackService.playArtifact`), NEVER as a URL.
   final String? artifactMediaId;
+
+  /// [AVA-MEDIA-JOB-2] THE field every open/download/share/play action uses.
+  /// VERIFIED wire field (worker/src/lib/ai_media_jobs.ts `AiMediaJobRecord.artifact_url`,
+  /// `resolveArtifactUrl`): null until `status=='succeeded'`, then either a
+  /// stable public CDN URL (public artifacts) or a 900-SECOND PRESIGNED URL
+  /// (private artifacts) — re-minted fresh on EVERY server read of this job
+  /// (`fetchJob`/`listJobs`), never persisted server-side. This is exactly why
+  /// the earlier parked attempt broke: it treated the bare `artifact_media_id`
+  /// UUID as if it were a fetchable URL, so every Open/Download/Share said
+  /// "still syncing" forever (nothing ever matched). Do NOT cache this value
+  /// long-term or persist it as if durable — a card that has sat on screen for
+  /// more than ~15 minutes must call [AiMediaJobRepository.fetch] again before
+  /// using it (every action call site in chat_thread.dart does this via
+  /// `_freshArtifactUrl`). Still round-tripped through the local disk cache
+  /// ([toJson]/[fromCacheJson]) purely as a "last known, may already be
+  /// stale" convenience for an instant repaint on hydrate — never trusted for
+  /// an actual network fetch without a fresh re-read first.
+  final String? artifactUrl;
 
   /// Safe error code only (e.g. `provider_timeout`, `unsupported_format`) —
   /// NEVER a raw provider error string. The card renders a friendly message
@@ -187,6 +207,7 @@ class AiMediaJob {
     this.label = '',
     this.progress,
     this.artifactMediaId,
+    this.artifactUrl,
     this.errorCode,
     required this.createdAt,
     required this.updatedAt,
@@ -209,6 +230,7 @@ class AiMediaJob {
     String? label,
     double? progress,
     String? artifactMediaId,
+    String? artifactUrl,
     String? errorCode,
     int? updatedAt,
     int? completedAt,
@@ -223,6 +245,7 @@ class AiMediaJob {
         label: label ?? this.label,
         progress: progress ?? this.progress,
         artifactMediaId: artifactMediaId ?? this.artifactMediaId,
+        artifactUrl: artifactUrl ?? this.artifactUrl,
         errorCode: errorCode ?? this.errorCode,
         createdAt: createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
@@ -257,6 +280,7 @@ class AiMediaJob {
       label: _str(j, ['label']) ?? '',
       progress: _progress(j['progress']),
       artifactMediaId: _str(j, ['artifact_media_id']),
+      artifactUrl: _str(j, ['artifact_url']),
       errorCode: _str(j, ['error_code']),
       createdAt: _epoch(j['created_at']),
       updatedAt: _epoch(j['updated_at'], fallback: _epoch(j['created_at'])),
@@ -275,6 +299,12 @@ class AiMediaJob {
         'label': label,
         if (progress != null) 'progress': progress,
         if (artifactMediaId != null) 'artifact_media_id': artifactMediaId,
+        // [AVA-MEDIA-JOB-2] Last-known convenience ONLY (instant repaint on
+        // hydrate before the first reconcile() lands) — this presigned URL
+        // expires in 900s server-side, so it may already be stale by the time
+        // it's read back. Every actual open/download/share/play call site
+        // re-fetches the job first; see [artifactUrl]'s own doc comment.
+        if (artifactUrl != null) 'artifact_url': artifactUrl,
         if (errorCode != null) 'error_code': errorCode,
         'created_at': createdAt,
         'updated_at': updatedAt,
@@ -761,8 +791,10 @@ class AiMediaJobRepository {
 
   // ── Internal ─────────────────────────────────────────────────────────────
 
-  /// Upsert with duplicate suppression. Returns true if the record actually
-  /// changed (and a notification was emitted).
+  /// Upsert with duplicate suppression. Returns true if the record VISIBLY
+  /// changed (and a notification was emitted) — [artifactUrl] is deliberately
+  /// EXCLUDED from that comparison (see below) even though it is always
+  /// refreshed in [_byId].
   bool _apply(AiMediaJob incoming, {required bool notify}) {
     final existing = _byId[incoming.jobId];
     if (existing != null) {
@@ -772,8 +804,19 @@ class AiMediaJobRepository {
           existing.artifactMediaId == incoming.artifactMediaId &&
           existing.errorCode == incoming.errorCode &&
           existing.label == incoming.label;
-      if (unchanged) return false; // exact duplicate (poll + push race) — no-op
+      // [AVA-MEDIA-JOB-2] `artifact_url` is RE-MINTED by the server on every
+      // read (a fresh 900s presign), so it legitimately differs between two
+      // polls even when nothing else about the job changed. Always take the
+      // freshest one into `_byId` regardless of `unchanged` — otherwise this
+      // dedup would pin whatever URL happened to be cached first and every
+      // action taken more than ~15 minutes later would silently hand out an
+      // expired link. This does NOT count as a "visible" change on its own
+      // (no notify, no card rebuild) because every action call site
+      // (`_freshArtifactUrl` in chat_thread.dart) re-fetches the job directly
+      // before using the URL rather than trusting whatever this stream last
+      // delivered — see [artifactUrl]'s own doc comment.
       _byId[incoming.jobId] = existing.mergeServer(incoming);
+      if (unchanged) return false; // exact duplicate (poll + push race) — no-op
     } else {
       _byId[incoming.jobId] = incoming;
     }

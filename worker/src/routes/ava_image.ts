@@ -31,6 +31,24 @@
 // paid:true; the wallet hook is a Phase-0 stub that routes to the top-up sheet
 // today). This route does not itself debit the wallet (no server wallet-spend
 // authority is wired for Ava yet) — see INTEGRATION-NOTES Phase 9.
+//
+// [AVA-IMAGE-UX-1 / §44, 2026-07-25] BILLING/STATE UPDATE: the paragraph above
+// is historical — generation now DOES reserve/settle real wallet spend, once,
+// via a durable AiMediaJob (worker/src/lib/ai_media_jobs.ts). runAvaImage()
+// creates the job and returns `job_id` immediately; fulfil() below claims it,
+// generates, uploads, and completes/fails it exactly once. The legacy
+// ava_status "working chip" (postChip/endChip, step 3/pipeline note above)
+// is kept ONLY as a best-effort secondary signal for pre-job-card clients —
+// the job (and its `artifact_url`, resolved fresh on every read) is the
+// PRIMARY, authoritative state a job-hydrated client reconciles against.
+//
+// image_generate is the ONE AiMediaJob kind that stays route-owned rather than
+// queue-dispatched (worker/src/queues/ai_media.ts's handleImageGenerate is a
+// deliberate unreachable stub): its input is an ephemeral PROMPT that must
+// never be persisted to the job row or a queue message (§41/§42 privacy
+// rule), so a job_id-only redelivery could never safely redo the work. fulfil()
+// below claims and completes/fails the job directly, in the same request's
+// closure where the prompt still legitimately lives.
 
 import type { Env } from "../types";
 import { json, sha256Hex } from "../util";
@@ -44,6 +62,16 @@ import { mediaSession } from "../db/shard";
 import { postAvaMessage } from "./ava_thread";
 import type { MessageScope } from "../lib/ava_kinds";
 import { imageModel } from "../lib/ava_reason/policy"; // One Brain B1: env-overridable image model
+// [AVA-IMAGE-UX-1 / §44] Durable job/message state machine — the PRIMARY
+// mechanism a job-hydrated client (AiMediaJobRepository/AiMediaJobCard, M4)
+// reads. postChip()/endChip() below are kept as a best-effort SECONDARY
+// signal only, for any app build that hasn't picked up the job card yet.
+import {
+  createAiMediaJob, claimAiMediaJob, completeAiMediaJob, failAiMediaJob,
+  resolveArtifactSensitivity,
+} from "../lib/ai_media_jobs";
+import { registerArtifactMedia } from "./media";
+import { emailFor } from "../lib/identity";
 
 // Image generation is metered by the Phase-1 SUBSCRIPTION ALLOWANCE (plans.ts):
 // every tier — including Free — gets a daily image grant (Free 3, Plus 30,
@@ -219,7 +247,13 @@ async function endChip(env: Env, uid: string, conv: string, statusId: string | u
 // `editRef` (optional) supplies an existing public image URL to edit ("make it
 // blue") — passed as an input_reference for image-to-image. Errors emit
 // `ava_image_error` telemetry so the real provider message is visible in PostHog.
-async function generateImage(env: Env, key: string, prompt: string, uid: string, editRef?: string): Promise<Uint8Array> {
+// [§46/§48] Best-effort provider usage/cost captured off the Images API
+// response for billing ground truth (completeAiMediaJob's settlement prefers
+// this over a catalog estimate) — NEVER fabricated: absent fields stay
+// undefined, never defaulted to 0/a guess.
+export interface GeneratedImage { bytes: Uint8Array; imageOutputTokens?: number; costUsd?: number }
+
+async function generateImage(env: Env, key: string, prompt: string, uid: string, editRef?: string): Promise<GeneratedImage> {
   // One Brain B1: model is env-overridable (OPENROUTER_IMAGE_MODEL) via policy.
   const model = imageModel(env);
   const t0 = Date.now();
@@ -275,12 +309,23 @@ async function generateImage(env: Env, key: string, prompt: string, uid: string,
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   emitReason(true, null);
-  return bytes;
+  // [§46/§48] Best-effort real usage/cost off the SAME response — never
+  // fabricated. Different OpenRouter image providers report this
+  // differently (or not at all); read only what's actually present.
+  const usage = j?.usage ?? {};
+  const imageOutputTokens = typeof usage?.image_tokens === "number" ? usage.image_tokens
+    : typeof usage?.completion_tokens === "number" ? usage.completion_tokens : undefined;
+  const costUsd = typeof usage?.cost === "number" ? usage.cost : undefined;
+  return { bytes, imageOutputTokens, costUsd };
 }
 
-// Store the generated PNG in the PUBLIC blob bucket (same layout + CDN path as
-// /upload/public) and register a user_media row so it counts toward the pool and
-// the library/Avatar widgets see it. Returns the public blossom URL (media_ref).
+// LEGACY sync-path storage: the PUBLIC blob bucket (same layout + CDN path as
+// /upload/public), unchanged. Used ONLY by generateAvaImageSync() below (the
+// ChatAVA companion path, which is intentionally NOT migrated onto the job/
+// wallet system this wave — see that function's header note). The job-based
+// path (fulfil(), below) uses storeImageArtifact() instead, which goes
+// through the shared content-addressed artifact store and respects the
+// required public/private sensitivity contract.
 async function storePublicImage(env: Env, uid: string, bytes: Uint8Array): Promise<string> {
   const hash = await sha256Hex(bytes);
   const r2Key = `u/${uid}/public/${hash}`;
@@ -297,49 +342,128 @@ async function storePublicImage(env: Env, uid: string, bytes: Uint8Array): Promi
   return url;
 }
 
-// Do the heavy work: generate → upload → post the ava image message → end chip.
-// Runs after the HTTP response has been sent (detached) so the request returns
-// fast and the humans keep chatting; the image arrives in-thread when ready.
+// [AVA-IMAGE-UX-1 / §44] Job-based storage: delegates to media.ts's
+// registerArtifactMedia — the ONE shared content-addressed-store +
+// user_media-insert path every AI media artifact (image/doc/audio) now goes
+// through. image_generate jobs never have a validated source_media_id (a bare
+// prompt, or an edit_ref that is a public URL rather than a user_media id) —
+// resolveArtifactSensitivity(env, null) always returns 'private', so a
+// generated image always lands in the DIGITAL (private, presign-on-read)
+// bucket. Do NOT force it public — that is the §44 contract M1 built
+// ai_media_jobs.ts against.
+async function storeImageArtifact(env: Env, uid: string, bytes: Uint8Array): Promise<{ id: string; url: string | null }> {
+  const hash = await sha256Hex(bytes);
+  const sensitivity = await resolveArtifactSensitivity(env, null);
+  const r = await registerArtifactMedia(env, {
+    uid, bytes, mimeType: "image/png", fileName: `ava-image-${hash.slice(0, 8)}.png`, category: "image", sensitivity,
+  });
+  return { id: r.id, url: r.url };
+}
+
+// [§46 error-code vocabulary] Maps a thrown Error to ONE of the SAFE,
+// lower_snake_case codes app/lib/features/avatok/widgets/ai_media_job_card.dart's
+// _friendlyError() recognises (provider_timeout, provider_unavailable,
+// unsupported_format, input_too_large, insufficient_balance,
+// cancelled_by_user) — never the raw provider message (§41/§42). A handler
+// that wants a SPECIFIC code throws `new Error("<code>: detail")`
+// (registerArtifactMedia's storage-quota check does this); anything else (a
+// raw provider/network error) falls back to the generic
+// 'provider_unavailable'. Duplicated (identically) in queues/ai_media.ts —
+// no shared job-utils module in this wave's file ownership.
+const KNOWN_JOB_ERROR_CODES = new Set([
+  "provider_timeout", "provider_unavailable", "unsupported_format",
+  "input_too_large", "insufficient_balance", "cancelled_by_user",
+]);
+function classifyImageJobError(e: unknown): string {
+  const msg = String((e as any)?.message ?? e ?? "");
+  const m = /^([a-z_]+):/.exec(msg);
+  if (m && KNOWN_JOB_ERROR_CODES.has(m[1])) return m[1];
+  if (/timeout|abort/i.test(msg)) return "provider_timeout";
+  return "provider_unavailable";
+}
+
+// Do the heavy work: claim the job → generate → upload → complete the job →
+// post the ava image message → (best-effort legacy) end the chip. Runs after
+// the HTTP response has been sent (detached) so the request returns fast and
+// the humans keep chatting; the image arrives in-thread when ready.
+//
+// [AVA-IMAGE-UX-1 / §44] This function (not queues/ai_media.ts's generic
+// KIND_HANDLERS dispatcher) claims and completes the job directly, because
+// the PROMPT — the one thing this function actually needs to do the work —
+// must NEVER be persisted to the job row or a queue message (§41/§42
+// privacy rule). It lives only in this call's arguments/closure. See
+// queues/ai_media.ts's `handleImageGenerate` doc comment for the same note
+// from the dispatcher side.
 async function fulfil(
   env: Env, uid: string, conv: string, prompt: string, key: string,
-  tier: TierId, statusId: string | undefined, editRef: string | undefined, priv: boolean,
+  tier: TierId, jobId: string, statusId: string | undefined, editRef: string | undefined, priv: boolean,
 ): Promise<void> {
+  // Idempotent claim by job_id — a second concurrent trigger (there shouldn't
+  // be one; kept for safety/symmetry with the queue-driven kinds) is a safe
+  // no-op, never a double generation/double charge.
+  const claimed = await claimAiMediaJob(env, jobId);
+  if (!claimed.ok) { await endChip(env, uid, conv, statusId, priv).catch(() => {}); return; }
+
   try {
-    const bytes = await generateImage(env, key, prompt, uid, editRef);
+    const gen = await generateImage(env, key, prompt, uid, editRef);
     // OUTPUT-INTENT moderation: the prompt is llama-guarded BEFORE generation
     // (the gate in avaImage). Pixel-level scanning of the produced image is not
     // run inline here (we write the user_media row directly rather than through
     // /upload/public's async Workers-AI scan); the prompt guard is the
     // enforced gate. A follow-up could enqueue Q_MODERATION on the new r2_key.
-    const mediaRef = await storePublicImage(env, uid, bytes);
+    const stored = await storeImageArtifact(env, uid, gen.bytes);
     // Consume ONE image from today's per-tier allowance only AFTER a successful
     // delivery, so a failed generation never burns the user's daily grant. The
     // global imageDailyCap counter is bumped the same way, for the same reason.
     await enforceAllowance(env, uid, tier, "image", 1, { commit: true }).catch(() => {});
     await bumpGlobalImageCount(env, uid).catch(() => {});
+
+    // [AVA-IMAGE-UX-1 / §44] Settle ONCE by job_id — completeAiMediaJob calls
+    // ai_billing.ts's settleAiJob internally; this is the ONLY billing call
+    // for this job (no second/duplicate settlement anywhere in this route).
+    const completed = await completeAiMediaJob(env, {
+      jobId,
+      artifact: { mediaId: stored.id, mimeType: "image/png", fileName: `ava-image-${jobId.slice(0, 8)}.png` },
+      settlement: {
+        modelActual: imageModel(env),
+        usage: { images: 1, imageOutputTokens: gen.imageOutputTokens },
+        providerCostUsdMicro: gen.costUsd != null ? Math.round(gen.costUsd * 1_000_000) : undefined,
+      },
+    });
+
     const caption = editRef ? "Here's the edited image ✨" : "Here's your image ✨";
+    // [B3 contract] The completed job's `artifact_url` is resolved FRESH by
+    // completeAiMediaJob/fetchJob — a public CDN URL, or (the normal case for
+    // image_generate: always PRIVATE, see storeImageArtifact) a freshly-minted
+    // 900s presigned URL. Reuse THAT here as the legacy chat bubble's
+    // media_ref, rather than re-deriving one, so the message renders
+    // immediately for a pre-job-card client too. This is a best-effort
+    // SECONDARY affordance (§44): the presigned link can go stale after 15
+    // minutes in old chat history, but the job's own artifact_url (fetched via
+    // GET /api/ai/jobs/:job_id, re-minted every read) is the durable,
+    // authoritative way to open/download/share the result once a job-hydrated
+    // client (M4) reads it.
+    const mediaRef = completed.ok ? (completed.job.artifact_url ?? undefined) : undefined;
     // PRIVACY: private:true posts ONLY to the requester (kind ava_private, scope
     // to:<uid>) — a @ava image never reaches the other participant.
-    await postAvaMessage(env, { ownerUid: uid, conv, text: caption, media_ref: mediaRef, source: "image", private: priv });
+    await postAvaMessage(env, {
+      ownerUid: uid, conv, text: caption, media_ref: mediaRef, source: "image", private: priv,
+      meta: { job_id: jobId },
+    });
   } catch (e: any) {
-    // Never leak raw provider errors. Post a friendly failure into the thread —
-    // and when the provider key is quota-exhausted, say so truthfully (it's an
-    // outage on our side, not the user's plan) instead of a vague "try again".
+    // Never leak raw provider errors, and NEVER post an unrelated new chat
+    // message on failure — update the SAME job to 'failed' (a job-hydrated
+    // client renders the Retry state from error_code) and stop there. This is
+    // the exact bug Part VI exists for: a later message wiping pending state.
     console.error("ava image generation failed:", String(e?.message ?? e));
     const cls = friendlyAiError(e);
+    await failAiMediaJob(env, { jobId, errorCode: classifyImageJobError(e), reason: cls.kind }).catch(() => {});
     track(env, uid, "ava_image_error", "avaai", {
-      stage: "fulfil", reason: cls.kind, tier, edit: !!editRef,
+      stage: "fulfil", reason: cls.kind, tier, edit: !!editRef, job_id: jobId,
       error: String(e?.message ?? e).slice(0, 200),
     });
-    await postAvaMessage(env, {
-      ownerUid: uid, conv,
-      text: cls.kind === "quota"
-        ? "I couldn't make that image — Ava's image service is at capacity right now. Please try again in a few minutes."
-        : "I couldn't create that image just now — please try again in a moment.",
-      source: "image", private: priv,
-    }).catch(() => { /* best-effort */ });
   } finally {
-    await endChip(env, uid, conv, statusId, priv);
+    await endChip(env, uid, conv, statusId, priv).catch(() => {});
   }
 }
 
@@ -353,6 +477,12 @@ export type AvaImageResult = {
   message?: string;
   conv?: string;
   status_id?: string | null;
+  /** [AVA-IMAGE-UX-1] The durable job id — the PRIMARY handle a job-hydrated
+   *  client (AiMediaJobRepository/AiMediaJobCard, M4) reconciles against.
+   *  Always set on a successful async start; null on any blocked/error
+   *  result. Callers must return this to the user immediately — never make
+   *  the caller (HTTP client or the @ava agent tool) wait for generation. */
+  job_id?: string | null;
   async?: boolean;
   tier?: string;
   httpStatus: number;
@@ -382,6 +512,16 @@ export async function runAvaImage(
   }
   if (cfg.aiEnabled === false) {
     return { ok: false, reason: "ai_disabled", message: "Ava is currently turned off.", httpStatus: 503 };
+  }
+  // [AVA-IMAGE-UX-1] THE DARK GATE — must run FIRST, before moderation, the
+  // allowance peek, and (above all) before createAiMediaJob() below, which is
+  // what actually reserves wallet spend. Mirrors routes/ai_media_jobs.ts's
+  // aiMediaJobsCreate() gate exactly, so this route can never charge for a
+  // feature the generic job API itself refuses to serve. Do not move this
+  // below any check that can reserve money, and do not weaken it to a
+  // warning — a dark feature must be structurally impossible to bill.
+  if (!cfg.aiMediaJobsEnabled) {
+    return { ok: false, reason: "ai_media_not_live", message: "Image generation is currently turned off.", httpStatus: 503 };
   }
   if (!conv) return { ok: false, reason: "conv_required", message: "Missing conversation.", httpStatus: 400 };
   if (!prompt) return { ok: false, reason: "prompt_required", message: "Tell me what to draw.", httpStatus: 400 };
@@ -433,15 +573,44 @@ export async function runAvaImage(
   const key = (env as any).OPENROUTER_API_KEY as string | undefined;
   if (!key) return { ok: false, reason: "no_image_key", message: "Image generation is unavailable right now.", httpStatus: 503 };
 
-  // (3) drop the working chip immediately so the thread shows "Ava is generating…".
+  // [AVA-IMAGE-UX-1 / §44] Create the durable job FIRST — this (not the
+  // legacy chip below) is the PRIMARY state mechanism a job-hydrated client
+  // reconciles against, and it is what reserves the wallet spend (§41: never
+  // call a paid provider before the reservation succeeds). sourceMediaId is
+  // always null: a bare prompt (or an edit_ref, which is a public URL, not a
+  // validated user_media id) has no source we can authorize — M1's
+  // resolveArtifactSensitivity() defaults that to PRIVATE (DIGITAL bucket),
+  // which is the correct, safe default for a Messenger-conversation artifact.
+  const email = await emailFor(env, uid).catch(() => null);
+  const created = await createAiMediaJob(env, {
+    ownerUid: uid, convId: conv, kind: "image_generate",
+    sourceMediaId: null,
+    label: a.editRef ? "Ava is editing your image…" : "Ava is generating an image…",
+    estimate: { images: 1 },
+    email,
+  });
+  if (!created.ok) {
+    track(env, uid, "ava_image_error", "avaai", { stage: "reserve", reason: created.error, tier });
+    if (created.error === "AI_INSUFFICIENT_TOKENS") {
+      return { ok: false, blocked: true, reason: "insufficient_balance", tier: PLANS[tier].key,
+        message: "You don't have enough AvaCoins for an image right now.", httpStatus: 200 };
+    }
+    return { ok: false, reason: created.error, message: "I couldn't start that image right now — please try again.", httpStatus: created.status };
+  }
+  const jobId = created.job.job_id;
+
+  // (3) drop the LEGACY working chip too, best-effort, for any client not yet
+  // reading the job. Never the source of truth any more — see file header.
   const statusId = await postChip(env, uid, conv, "Ava is generating an image…", priv);
-  track(env, uid, "ava_image_request", "avaai", { edit: !!a.editRef, tier, private: priv });
+  track(env, uid, "ava_image_request", "avaai", { edit: !!a.editRef, tier, private: priv, job_id: jobId });
 
-  // (4–6) heavy work runs detached — return now while the image is produced and
-  // posted into the SAME conversation when ready.
-  void fulfil(env, uid, conv, prompt, key, tier, statusId, a.editRef, priv);
+  // (4–6) heavy work runs detached — return now while the image is produced,
+  // the job is completed, and the image is posted into the SAME conversation
+  // when ready. The caller must NOT wait behind this: runAvaImage() returns
+  // job_id immediately, below.
+  void fulfil(env, uid, conv, prompt, key, tier, jobId, statusId, a.editRef, priv);
 
-  return { ok: true, conv, status_id: statusId ?? null, async: true, tier: PLANS[tier].key, httpStatus: 200 };
+  return { ok: true, conv, job_id: jobId, status_id: statusId ?? null, async: true, tier: PLANS[tier].key, httpStatus: 200 };
 }
 
 // SYNCHRONOUS image generation for request/response surfaces (ChatAVA companion).
@@ -449,6 +618,22 @@ export async function runAvaImage(
 // Free 3/day, shared with Messenger), but instead of posting into a conv it RETURNS
 // the public image URL so the caller can render it inline in its own reply. The
 // allowance unit is consumed only on a successful generation.
+//
+// [AVA-IMAGE-UX-1 / §44] NOT MIGRATED onto the AiMediaJob/wallet path this
+// wave, deliberately — flagging per the work order rather than half-migrating
+// it. This path is a synchronous request/response call (it RETURNS a URL for
+// the caller to render inline), while createAiMediaJob()/fulfil() is
+// fundamentally asynchronous (job_id now, artifact later) — bridging that
+// would mean either (a) blocking this request on the full job lifecycle
+// (defeats the point of a sync path and risks the caller's own timeout), or
+// (b) reworking the ChatAVA companion's response contract to poll a job,
+// which is outside this file-pair's ownership (client changes) and this
+// task's scope. Net effect, unchanged from before this wave: this path stays
+// UNMETERED (no wallet reserve/settle, only the pre-existing per-tier daily
+// allowance + the imageDailyCap circuit breaker below) and its output is
+// always PUBLIC via the legacy storePublicImage() helper, not the private
+// job-artifact path. A follow-up issue should either give ChatAVA a
+// poll-friendly job flow or an explicit "sync-tier" wallet reservation.
 export async function generateAvaImageSync(
   env: Env,
   a: { uid: string; prompt: string; editRef?: string },
@@ -488,8 +673,8 @@ export async function generateAvaImageSync(
   if (!key) return { ok: false, message: "Image generation is unavailable right now." };
 
   try {
-    const bytes = await generateImage(env, key, prompt, uid, a.editRef);
-    const url = await storePublicImage(env, uid, bytes);
+    const gen = await generateImage(env, key, prompt, uid, a.editRef);
+    const url = await storePublicImage(env, uid, gen.bytes);
     // Consume ONE image from the per-tier allowance AND the global cap counter,
     // same rationale as fulfil(): only after a successful delivery.
     await enforceAllowance(env, uid, tier, "image", 1, { commit: true }).catch(() => {});
@@ -534,5 +719,7 @@ export async function avaImage(req: Request, env: Env): Promise<Response> {
   if (!r.ok) {
     return json({ ok: false, blocked: !!r.blocked, reason: r.reason, message: r.message, answer: r.message }, r.httpStatus);
   }
-  return json({ ok: true, conv: r.conv, status_id: r.status_id ?? null, async: true, tier: r.tier }, r.httpStatus);
+  // [AVA-IMAGE-UX-1] job_id is the PRIMARY handle the client now hydrates
+  // against; status_id (the legacy chip) stays for a pre-job-card build only.
+  return json({ ok: true, conv: r.conv, job_id: r.job_id ?? null, status_id: r.status_id ?? null, async: true, tier: r.tier }, r.httpStatus);
 }

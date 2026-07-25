@@ -521,8 +521,31 @@ class Analytics {
   static Future<void> capture(String event, [Map<String, Object>? properties]) async {
     if (!_ready) return;
     try {
-      await Posthog().capture(eventName: event, properties: _base(properties));
+      await Posthog().capture(eventName: event, properties: _base(_scrubErrorProps(properties)));
     } catch (_) {}
+  }
+
+  /// [AVA-MEDIA-AUTHZ-1] Defense-in-depth: unlike [captureException], [capture]
+  /// previously shipped free-text `error`/`err` values completely unscrubbed —
+  /// a presigned media URL's signature riding inside a caught exception's
+  /// `toString()` (e.g. `http.ClientException`'s `uri=…`) landed straight in
+  /// PostHog. Any String value under an `error`/`err`-style key is now run
+  /// through [_scrub] here too, so a call site that (accidentally or in the
+  /// future) passes a raw exception string is still protected even without a
+  /// per-site fix. This is a BACKSTOP, not a substitute for fixing call sites
+  /// that build these maps from `e.toString()` in the first place.
+  static Map<String, Object>? _scrubErrorProps(Map<String, Object>? p) {
+    if (p == null || p.isEmpty) return p;
+    Map<String, Object>? out;
+    for (final entry in p.entries) {
+      final k = entry.key.toLowerCase();
+      final v = entry.value;
+      final isErrorKey = k == 'error' || k == 'err' || k.endsWith('_error') || k.endsWith('_err');
+      if (isErrorKey && v is String) {
+        (out ??= Map<String, Object>.of(p))[entry.key] = _scrub(v);
+      }
+    }
+    return out ?? p;
   }
 
   /// [UI-PERF-1] Standardized UI interaction latency (tap -> paint / interactive).
@@ -681,8 +704,17 @@ class Analytics {
 
   /// Remove anything that looks like an nsec / long token from error text so we
   /// never leak secrets into analytics.
+  ///
+  /// [AVA-MEDIA-AUTHZ-1] Private artifacts and plaintext voice notes are served
+  /// by 900s SigV4 presigned URLs — bearer read credentials. A caught
+  /// `http.ClientException`'s `toString()` embeds the full request URI
+  /// (`uri=https://…/key?X-Amz-Signature=…&X-Amz-Credential=…`), so query
+  /// strings are stripped off any URL BEFORE the generic long-token pass below
+  /// (which also catches a signature that lands outside a full URL).
   static String _scrub(String s) {
     var out = s.replaceAll(RegExp(r'nsec1[0-9a-z]+'), 'nsec[redacted]');
+    out = out.replaceAllMapped(
+        RegExp(r'(https?://[^\s?#]+)\?[^\s]*', caseSensitive: false), (m) => '${m.group(1)}?[redacted]');
     out = out.replaceAll(RegExp(r'[A-Za-z0-9_\-]{40,}'), '[redacted]');
     return out.length > 500 ? out.substring(0, 500) : out;
   }
