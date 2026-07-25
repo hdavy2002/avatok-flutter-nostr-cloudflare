@@ -58,6 +58,14 @@ class FakeSql {
     // below, so CREATE TABLE / ALTER TABLE / CREATE INDEX only need to not throw.
     // (CREATE INDEX arrived with the ai_daily_budget/ai_unrecovered_budget tables.)
     if (s.startsWith("CREATE TABLE") || s.startsWith("ALTER TABLE") || s.startsWith("CREATE INDEX")) return [];
+    // The ai_daily_budget / ai_unrecovered_budget tables are the FREE-lane
+    // budget authority and are deliberately out of scope for this harness,
+    // which covers the paid reservation/settlement path. clear_ai_remainder
+    // counts them for its audit payload; 0 is the honest answer here because
+    // no test in this file ever writes one. ai_billing_accrual.test.ts and
+    // ai_free_budget.test.ts cover those tables.
+    if (s === "SELECT COUNT(*) AS n FROM ai_daily_budget") return [{ n: 0 }];
+    if (s === "SELECT COUNT(*) AS n FROM ai_unrecovered_budget") return [{ n: 0 }];
     if (s === "INSERT OR IGNORE INTO bal (k, balance, held) VALUES (1,0,0)") return [];
     if (s === "INSERT OR IGNORE INTO acct (k, free, premium, last_grant_day) VALUES (1,0,0,'')") return [];
 
