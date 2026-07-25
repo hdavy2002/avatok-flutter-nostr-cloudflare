@@ -54,7 +54,10 @@ class FakeSql {
 
   // eslint-disable-next-line complexity
   private run(s: string, b: any[]): Row[] {
-    if (s.startsWith("CREATE TABLE") || s.startsWith("ALTER TABLE")) return [];
+    // DDL is a no-op in the fake: the schema is modelled by the in-memory maps
+    // below, so CREATE TABLE / ALTER TABLE / CREATE INDEX only need to not throw.
+    // (CREATE INDEX arrived with the ai_daily_budget/ai_unrecovered_budget tables.)
+    if (s.startsWith("CREATE TABLE") || s.startsWith("ALTER TABLE") || s.startsWith("CREATE INDEX")) return [];
     if (s === "INSERT OR IGNORE INTO bal (k, balance, held) VALUES (1,0,0)") return [];
     if (s === "INSERT OR IGNORE INTO acct (k, free, premium, last_grant_day) VALUES (1,0,0,'')") return [];
 
