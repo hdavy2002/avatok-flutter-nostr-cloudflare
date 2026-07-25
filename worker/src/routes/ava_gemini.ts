@@ -16,12 +16,15 @@
 import type { Env } from "../types";
 import { json, aiText, CORS, thinkingCfg } from "../util";
 import { requireUser, isFail } from "../authz";
-import { runGated, intentGate, aiRunOpts } from "../lib/ai_gate";
+import {
+  runGated, intentGate, aiRunOpts,
+  friendlyAiError,          // truthful provider-error wording (quota/safety)
+  checkFreeTextBudget, recordFreeTextUsage, estimateTokens, FREE_BUDGET_MESSAGE, type FreeTextBudgetReason, // [AVA-FREE-BUDGET-1]
+} from "../lib/ai_gate";
 import { isPremiumAI, premiumUpsell } from "../lib/premium";
 import { trackUser } from "../hooks";
 import { emailFor } from "../lib/identity";
 import { runAgentLoop } from "../lib/composio";        // unified tool-calling loop (shared with Messenger @ava)
-import { friendlyAiError } from "../lib/ai_gate";       // truthful provider-error wording (quota/safety)
 import { generateAvaImageSync } from "./ava_image";    // synchronous image gen → URL (rendered inline)
 import { brainSearchLines } from "../lib/ava_memory";  // the ONE Cloudflare AI Search store per user
 import { searchForUser } from "../lib/ava_search";     // sharded tenancy boundary (folder-filtered per user)
@@ -43,13 +46,24 @@ import {
 // gemini-3 stays available but is too slow per call for a chat reply today.
 const CHAT_MODEL = "gemini-2.5-flash";           // (legacy, unused) DIRECT Google API id
 const FALLBACK_MODEL = "gemini-2.5-flash-lite";  // (legacy, unused) DIRECT Google API id
-// ChatAVA now runs on OpenRouter (owner decision 2026-06-27 — replace the direct
-// Gemini key). Default model z-ai/glm-5.2; override via env.OPENROUTER_CHAT_MODEL.
-// AVA-CORE-3: calls go through avaReason() with this model pinned as `legacyModel`
-// so wire behavior is IDENTICAL today; clearing the pin later (config-only) moves
-// ChatAVA onto the shared AVA_REASONER ladder (v5 plan D21 — GLM retirement).
+// [AVA-FREE-BUDGET-1] ChatAVA TEXT default: deepseek/deepseek-v4-flash (owner
+// decision, report §10/§11a/§12b) — free, unmetered, budget-gated by
+// lib/ai_gate.ts instead of the wallet. Replaces the prior GLM-5.2 default
+// (live 2026-06-27..2026-07-25). Keep the env.OPENROUTER_CHAT_MODEL override so ops can pin
+// something else without a redeploy. TEXT-ONLY (input_modalities: ["text"]) —
+// it cannot see images, so it must NEVER be selected for a turn carrying
+// attachments; see imageCapableModel() below and the `images.length` branch in
+// avaGemini()/avaGeminiStream().
 function openRouterModel(env: Env): string {
-  return ((env as any).OPENROUTER_CHAT_MODEL as string) || "z-ai/glm-5.2";
+  return ((env as any).OPENROUTER_CHAT_MODEL as string) || "deepseek/deepseek-v4-flash";
+}
+// Multimodal fallback for any ChatAVA turn carrying image attachments — the
+// free text default above cannot see images at all (§11a/§14). Mirrors
+// do/ava_agent.ts's DEFAULT_THREAD_MODEL_ALT (same reasoning: cheap AND
+// vision-capable). Attachments stay metered (owner decision §10 "text free,
+// attachments metered") — see the `chat_ava_image` capability split below.
+function imageCapableModel(env: Env): string {
+  return ((env as any).OPENROUTER_IMAGE_CHAT_MODEL as string) || "google/gemini-2.5-flash-lite";
 }
 const MAX_TOKENS = 700;
 
@@ -157,13 +171,14 @@ async function retrieveMemory(env: Env, uid: string, query: string): Promise<str
 }
 
 /// ChatAVA reply via the ONE reasoning gateway (AVA-CORE-3; model pinned via
-/// legacyModel = openRouterModel(env)). Throws on a hard failure so the caller's
-/// gate surfaces a truthful reason (quota/safety).
-async function generate(env: Env, uid: string, email: string | null, system: string, history: Turn[], message: string, images: Array<{ mime: string; data: string }>, steer?: string): Promise<string> {
+/// legacyModel = `model`, resolved by the caller — [AVA-FREE-BUDGET-1]:
+/// deepseek/deepseek-v4-flash for text, imageCapableModel() when the turn
+/// carries attachments (deepseek cannot see images). Throws on a hard failure
+/// so the caller's gate surfaces a truthful reason (quota/safety).
+async function generate(env: Env, uid: string, email: string | null, system: string, history: Turn[], message: string, images: Array<{ mime: string; data: string }>, model: string, steer?: string): Promise<string> {
   const sys = steer ? `${system}\n${steer}` : system;
   const key = (env as any).OPENROUTER_API_KEY as string | undefined;
   if (!key) return "Ava is temporarily unavailable.";
-  const model = openRouterModel(env);
   let raw: string;
   try {
     raw = await avaReason(env, {
@@ -184,12 +199,12 @@ async function generate(env: Env, uid: string, email: string | null, system: str
 }
 
 /// Streaming ChatAVA reply (SSE) via avaReason's OpenRouter streaming passthrough.
-/// Calls [onDelta] for each chunk.
+/// Calls [onDelta] for each chunk. `model` is caller-resolved — see generate()'s
+/// [AVA-FREE-BUDGET-1] doc comment above.
 async function streamGenerate(env: Env, system: string, history: Turn[], message: string,
-    images: Array<{ mime: string; data: string }>, onDelta: (t: string) => void): Promise<void> {
+    images: Array<{ mime: string; data: string }>, model: string, onDelta: (t: string) => void): Promise<void> {
   const key = (env as any).OPENROUTER_API_KEY as string | undefined;
   if (!key) throw new Error("openrouter key missing");
-  const model = openRouterModel(env);
   const res = await avaReason(env, {
     role: "chatava", capability: "chat", trigger: "user_message",
     appName: "avaai",
@@ -274,10 +289,17 @@ export async function avaGemini(req: Request, env: Env): Promise<Response> {
     return premiumUpsell(env, ctx.uid, "file_understanding");
   }
 
-  // ChatAVA on OpenRouter (z-ai/glm-5.2) — owner decision 2026-06-27, replacing the
-  // direct Gemini key. AvaBrain memory is still injected so Ava "remembers" the
-  // user; Composio app tools + inline image-gen are NOT used in the companion (they
-  // remain on the @ava agentic loop). Memory search runs once up-front (not agentic).
+  // [AVA-FREE-BUDGET-1] ChatAVA text runs on deepseek/deepseek-v4-flash (free,
+  // budget-gated by ai_gate.ts — see openRouterModel() above). AvaBrain memory
+  // is still injected so Ava "remembers" the user; Composio app tools + inline
+  // image-gen are NOT used in the companion (they remain on the @ava agentic
+  // loop). Memory search runs once up-front (not agentic).
+  //
+  // Attachments = file/image understanding = a DIFFERENT, METERED capability
+  // (`chat_ava_image`, owner decision §10 "text free, attachments metered") —
+  // deepseek cannot see images at all, so an image turn also routes to
+  // imageCapableModel() instead. `capability`/`chatModel` below are resolved
+  // ONCE and reused for the reserve/gate/settle calls so all three agree.
   const memory = await brainSearchLines(env, ctx.uid, message, 6).then((l) => l.join("\n")).catch(() => "");
   const system = [
     SYSTEM_BASE,
@@ -285,19 +307,22 @@ export async function avaGemini(req: Request, env: Env): Promise<Response> {
     memory ? `Things you remember about this user (use only if relevant):\n${memory}` : "",
   ].filter(Boolean).join("\n\n");
   const generatedImages: string[] = [];
+  const hasImages = premium && images.length > 0;
+  const capability = hasImages ? "chat_ava_image" : "chat_ava";
+  const chatModel = hasImages ? imageCapableModel(env) : openRouterModel(env);
   const runChat = (steer?: string): Promise<string> =>
-    generate(env, ctx.uid, email, system, history, message, premium ? images : [], steer);
+    generate(env, ctx.uid, email, system, history, message, premium ? images : [], chatModel, steer);
 
   // [AI-BILLING-CORE-1] Reserve the worst-case wallet amount BEFORE the provider
   // call (§H3 steps 1-4). opId is fresh per turn (chat is not naturally
-  // idempotent). While aiWalletMeteringEnabled is off this is a no-op that
-  // always admits — see ai_billing.ts.
+  // idempotent). While aiWalletMeteringEnabled is off, OR capability is free
+  // (chat_ava — ai_billing.isFreeCapability), this is a no-op that always
+  // admits — see ai_billing.ts.
   const opId = crypto.randomUUID();
-  const chatModel = openRouterModel(env);
   const historyChars = history.reduce((n, t) => n + t.text.length, 0);
   const promptChars = system.length + message.length + historyChars;
   const reservation = await reserveAiJob(env, {
-    uid: ctx.uid, opId, capability: "chat_ava", modality: "text", model: chatModel,
+    uid: ctx.uid, opId, capability, modality: "text", model: chatModel,
     maxInputTokens: estimateInputTokensFromChars(promptChars), maxOutputTokens: MAX_TOKENS, email,
   });
   if (!reservation.ok) {
@@ -318,10 +343,15 @@ export async function avaGemini(req: Request, env: Env): Promise<Response> {
       generate: runChat,
       // Premium users (key or top-up) are uncapped; free users keep the daily cap.
       skipQuota: premium,
+      // [AVA-FREE-BUDGET-1] budget-gates the turn BEFORE guard/model calls when
+      // capability is free; a no-op for chat_ava_image (metered, wallet-gated
+      // above instead).
+      capability,
+      inputTokens: estimateTokens(system + message + history.map((t) => t.text).join("\n")),
     });
   } catch (e: any) {
     // Provider call failed before any billable usage — full unbilled release.
-    await releaseAiJob(env, reservation, { uid: ctx.uid, opId, capability: "chat_ava", reason: "provider_error" });
+    await releaseAiJob(env, reservation, { uid: ctx.uid, opId, capability, reason: "provider_error" });
     const cls = friendlyAiError(e);
     trackUser(env, ctx.uid, email, "ai_error", "avaai", {
       source, route: "chat", reason: cls.kind, detail: String(e?.message ?? e).slice(0, 200),
@@ -341,10 +371,15 @@ export async function avaGemini(req: Request, env: Env): Promise<Response> {
   const timings = { total_ms: totalMs, setup_ms: setupMs, gen_ms: genMs, tool_calls: toolCalls };
 
   if (result.blocked) {
-    // Blocked by the gate (daily cap / disabled / moderation) BEFORE the model
-    // ran — no billable usage occurred, so this is a full release, not a settle.
-    await releaseAiJob(env, reservation, { uid: ctx.uid, opId, capability: "chat_ava", reason: result.reason ?? "blocked" });
+    // Blocked by the gate (daily cap / disabled / moderation / free-budget —
+    // input_too_large / daily_ai_budget_exhausted) BEFORE the model ran — no
+    // billable usage occurred, so this is a full release, not a settle. NEVER
+    // a wallet/paywall reason for the free-budget cases (§55/Part I §7).
+    await releaseAiJob(env, reservation, { uid: ctx.uid, opId, capability, reason: result.reason ?? "blocked" });
     if (result.reason === "daily_cap") trackUser(env, ctx.uid, email, "free_chat_cap_hit", "avaai", {});
+    if (result.reason === "input_too_large" || result.reason === "daily_ai_budget_exhausted") {
+      trackUser(env, ctx.uid, email, "ai_free_budget_blocked", "avaai", { source, route: "chat", reason: result.reason, capability });
+    }
     trackUser(env, ctx.uid, email, "ava_chat_blocked", "avaai", {
       source, route: "chat", reason: result.reason, premium, latency_ms: totalMs,
       setup_ms: setupMs, gen_ms: genMs, tool_calls: toolCalls,
@@ -359,9 +394,10 @@ export async function avaGemini(req: Request, env: Env): Promise<Response> {
   // follow-up would thread OpenRouter's usage block through the shared
   // ava_reason gateway), so this settles from a conservative chars/4 estimate
   // of the real prompt/answer text. Exact (nothing charged) while the flag is
-  // off; an approximation only once the flag is later enabled.
+  // off, or while capability is free (chat_ava); an approximation only once
+  // metering is enabled for a metered capability (chat_ava_image).
   await settleAiJob(env, reservation, {
-    opId, uid: ctx.uid, capability: "chat_ava", modality: "text",
+    opId, uid: ctx.uid, capability, modality: "text",
     modelRequested: chatModel, modelActual: chatModel,
     usage: { inputTokens: estimateInputTokensFromChars(promptChars), outputTokens: Math.ceil((result.answer ?? "").length / 4) },
   });
@@ -397,11 +433,17 @@ export async function avaGeminiStream(req: Request, env: Env): Promise<Response>
   const images = normImages(b.images);
   if (!(env as any).OPENROUTER_API_KEY) return json({ error: "unavailable" }, 502);
 
-  // ChatAVA over SSE on OpenRouter (z-ai/glm-5.2). AvaBrain memory is injected
-  // up-front so Ava remembers the user; Composio app tools + inline image-gen are
-  // not used in the companion (they remain on the @ava agentic loop). Attachments
-  // stay premium → free users get the upsell.
-  const { premium } = await isPremiumAI(req, env, ctx.uid, b);
+  // [AVA-FREE-BUDGET-1] ChatAVA over SSE on deepseek/deepseek-v4-flash (free) —
+  // see openRouterModel()'s doc comment above. AvaBrain memory is injected
+  // up-front so Ava remembers the user; Composio app tools + inline image-gen
+  // are not used in the companion (they remain on the @ava agentic loop).
+  // Attachments stay premium → free users get the upsell; attachments are ALSO
+  // a different, metered capability (chat_ava_image) that never uses the free
+  // text model (it cannot see images) — same split as the non-streaming handler.
+  const [email, { premium }] = await Promise.all([
+    emailFor(env, ctx.uid),
+    isPremiumAI(req, env, ctx.uid, b),
+  ]);
   if (images.length && !premium) return premiumUpsell(env, ctx.uid, "file_understanding");
 
   const memory = await brainSearchLines(env, ctx.uid, message, 6).then((l) => l.join("\n")).catch(() => "");
@@ -411,15 +453,43 @@ export async function avaGeminiStream(req: Request, env: Env): Promise<Response>
     memory ? `Things you remember about this user (use only if relevant):\n${memory}` : "",
   ].filter(Boolean).join("\n\n");
 
-  // [AI-BILLING-CORE-1] Same reserve-before-call contract as the non-streaming
-  // handler above. A stream that can't be reserved never opens — the client
-  // gets a normal 402 instead of an SSE stream. No-op while the flag is off.
-  const opId = crypto.randomUUID();
-  const chatModel = openRouterModel(env);
+  const hasImages = premium && images.length > 0;
+  const capability = hasImages ? "chat_ava_image" : "chat_ava";
+  const chatModel = hasImages ? imageCapableModel(env) : openRouterModel(env);
   const historyChars = history.reduce((n, t) => n + t.text.length, 0);
   const promptChars = system.length + message.length + historyChars;
+
+  // [AVA-FREE-BUDGET-1] Streaming bypasses runGated (moderation is skipped for
+  // streams — see the doc comment above), so the free-budget pre-flight has to
+  // run here directly, BEFORE reserveAiJob/streamGenerate. Never a wallet/
+  // paywall reason (§55): input_too_large / daily_ai_budget_exhausted only.
+  const inputTokens = estimateTokens(system + message + history.map((t) => t.text).join("\n"));
+  if (!hasImages) {
+    const decision = await checkFreeTextBudget(env, ctx.uid, inputTokens);
+    if (!decision.allowed) {
+      const reason = decision.reason as FreeTextBudgetReason;
+      trackUser(env, ctx.uid, email, "ai_free_budget_blocked", "avaai", { source: "chat_stream", route: "chat", reason, capability });
+      const enc0 = new TextEncoder();
+      const out0 = new ReadableStream({
+        start(controller) {
+          controller.enqueue(enc0.encode(`data: ${JSON.stringify({ delta: FREE_BUDGET_MESSAGE[reason], blocked: true, reason })}\n\n`));
+          controller.enqueue(enc0.encode("data: [DONE]\n\n"));
+          controller.close();
+        },
+      });
+      return new Response(out0, {
+        headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache", ...CORS },
+      });
+    }
+  }
+
+  // [AI-BILLING-CORE-1] Same reserve-before-call contract as the non-streaming
+  // handler above. A stream that can't be reserved never opens — the client
+  // gets a normal 402 instead of an SSE stream. No-op while the flag is off,
+  // or while capability is free (chat_ava).
+  const opId = crypto.randomUUID();
   const reservation = await reserveAiJob(env, {
-    uid: ctx.uid, opId, capability: "chat_ava", modality: "text", model: chatModel,
+    uid: ctx.uid, opId, capability, modality: "text", model: chatModel,
     maxInputTokens: estimateInputTokensFromChars(promptChars), maxOutputTokens: MAX_TOKENS,
   });
   if (!reservation.ok) {
@@ -435,7 +505,7 @@ export async function avaGeminiStream(req: Request, env: Env): Promise<Response>
       let streamedAny = false;
       let streamedChars = 0;
       try {
-        await streamGenerate(env, system, history, message, premium ? images : [],
+        await streamGenerate(env, system, history, message, premium ? images : [], chatModel,
           (t) => { if (t) { streamedAny = true; streamedChars += t.length; send({ delta: t }); } });
       } catch (e) {
         // On a hard failure before any token streamed, send a truthful reason
@@ -448,15 +518,21 @@ export async function avaGeminiStream(req: Request, env: Env): Promise<Response>
       // [AI-BILLING-CORE-1] settle from what was actually streamed (chars/4
       // estimate — see the non-streaming handler's comment on avaReason not
       // surfacing real usage yet); a hard failure with nothing streamed is a
-      // full unbilled release instead.
+      // full unbilled release instead. No-op wallet-wise for the free lane.
       if (streamedAny) {
         await settleAiJob(env, reservation, {
-          opId, uid: ctx.uid, capability: "chat_ava", modality: "text",
+          opId, uid: ctx.uid, capability, modality: "text",
           modelRequested: chatModel, modelActual: chatModel,
           usage: { inputTokens: estimateInputTokensFromChars(promptChars), outputTokens: Math.ceil(streamedChars / 4) },
         }).catch(() => {});
+        // [AVA-FREE-BUDGET-1] streaming never runs through runGated, so record
+        // the free-lane usage here directly (generation call only — moderation
+        // is skipped for streams by design, see the doc comment above).
+        if (!hasImages) {
+          await recordFreeTextUsage(env, ctx.uid, { inputTokens, outputTokens: Math.ceil(streamedChars / 4) });
+        }
       } else {
-        await releaseAiJob(env, reservation, { uid: ctx.uid, opId, capability: "chat_ava", reason: "provider_error" }).catch(() => {});
+        await releaseAiJob(env, reservation, { uid: ctx.uid, opId, capability, reason: "provider_error" }).catch(() => {});
       }
       try { controller.enqueue(enc.encode("data: [DONE]\n\n")); } catch { /* ignore */ }
       controller.close();

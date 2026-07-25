@@ -24,6 +24,7 @@ import type { Env } from "../types";
 import { aiText } from "../util";
 import { readConfig } from "../routes/config";
 import * as quota from "./ai_quota";
+import { isFreeCapability } from "./ai_billing"; // [AVA-FREE-BUDGET-1] chat_ava/chat_thread never reserve or settle
 
 const GUARD = "@cf/meta/llama-guard-3-8b";
 
@@ -185,12 +186,167 @@ export async function fileAnalysisAllowed(env: Env, tier: AiTier, premium?: bool
   return cfg.fileAnalysisEnabled && (tier === "byo" || !!premium);
 }
 
+// ---- (d) free-text-lane budgets [AVA-FREE-BUDGET-1] -------------------------
+//
+// Text chat (`chat_ava` — Ask Ava/composer, `chat_thread` — #ava/@ava, routed to
+// deepseek/deepseek-v4-flash) is structurally free: ai_billing.isFreeCapability()
+// makes reserveAiJob/settleAiJob a permanent no-op for these two capabilities,
+// even with aiWalletMeteringEnabled=true (report §12b). That is a BILLING
+// decision, not a COST bound — report §19b: a turn cap alone does not bound
+// spend once the model has a 1,048,576-token context (200 capped turns of
+// pasted documents could reach ~200M input tokens/day, ~$19/day from one
+// account). The functions below are the actual cost/abuse bound for the free
+// lane: a per-turn input ceiling, plus a per-account daily input/output/cost
+// budget, UTC-day reset. The existing turn cap (enforceQuota/dailyAvaTurnLimit)
+// remains a SECONDARY anti-script limit on top of these.
+//
+// STORAGE: reuses ai_quota.ts's precedent — one KV key per uid per UTC day,
+// TTL so a day's counter self-evicts, best-effort/fail-open — rather than
+// inventing a new store shape. Same technique, a different counter (token/cost
+// usage instead of a turn count). ai_quota.ts itself is owned by a different
+// change in this wave, so this is a parallel key, not a shared one.
+
+const FREE_BUDGET_TTL_SECONDS = 2 * 24 * 60 * 60; // survives the UTC-day boundary, then self-evicts (mirrors ai_quota.ts)
+
+function freeBudgetDayKey(now = Date.now()): string {
+  return new Date(now).toISOString().slice(0, 10);
+}
+function freeBudgetKvKey(uid: string, day = freeBudgetDayKey()): string {
+  return `free_text_budget:${uid}:${day}`;
+}
+
+export interface FreeTextUsage {
+  inputTokens: number;
+  outputTokens: number;
+  costMicroUsd: number;
+}
+
+async function readFreeTextUsage(env: Env, uid: string): Promise<FreeTextUsage> {
+  try {
+    const raw = await env.TOKENS.get(freeBudgetKvKey(uid));
+    if (!raw) return { inputTokens: 0, outputTokens: 0, costMicroUsd: 0 };
+    const j = JSON.parse(raw);
+    return {
+      inputTokens: Math.max(0, Number(j?.inputTokens) || 0),
+      outputTokens: Math.max(0, Number(j?.outputTokens) || 0),
+      costMicroUsd: Math.max(0, Number(j?.costMicroUsd) || 0),
+    };
+  } catch { return { inputTokens: 0, outputTokens: 0, costMicroUsd: 0 }; }
+}
+
+/**
+ * Rough, fast token estimate for the free-text budget — this codebase has no
+ * tokenizer on the hot path, and an estimate is all a PRE-FLIGHT check needs
+ * (report §65: the estimator bounds the reserve/pre-flight, it is never the
+ * authority for a charge — this lane never charges at all). ~4 chars/token is
+ * the standard rough ratio for English text.
+ */
+export function estimateTokens(text: string): number {
+  return Math.ceil(Math.max(0, (text ?? "").length) / 4);
+}
+
+// DeepSeek V4 Flash's own published OpenRouter pricing (report §11a), used
+// ONLY for the INTERNAL platform-cost budget below — never for user billing;
+// free capabilities never consult a price catalog at all (report §65 / Part X).
+// Hardcoded here rather than read from ai_billing.ts's AI_PRICE_CATALOG because
+// that catalog does not carry a deepseek/deepseek-v4-flash entry yet
+// ([AI-PRICE-CATALOG-1] is a separate, later work item) — falling through to
+// AI_DEFAULT_RATE ($5/$15 per 1M, ~50-100x too high) would exhaust this budget
+// almost immediately on real free-chat traffic. Re-point this at the catalog
+// once AI-PRICE-CATALOG-1 lands so there is one source of truth.
+const DEEPSEEK_IN_PER_M_MICRO_USD = 93_800;   // $0.0938 / 1M input tokens
+const DEEPSEEK_OUT_PER_M_MICRO_USD = 187_600; // $0.1876 / 1M output tokens
+
+function freeTextCostMicroUsd(inputTokens: number, outputTokens: number): number {
+  const inTok = Math.max(0, Math.trunc(inputTokens));
+  const outTok = Math.max(0, Math.trunc(outputTokens));
+  return Math.ceil((inTok * DEEPSEEK_IN_PER_M_MICRO_USD) / 1_000_000)
+       + Math.ceil((outTok * DEEPSEEK_OUT_PER_M_MICRO_USD) / 1_000_000);
+}
+
+/**
+ * Add usage to uid's free-text daily counters. Call for EVERY model-ish call a
+ * free turn makes — generation, guardInput, isSafe, and any regenerate —
+ * even though NONE of them are ever wallet-billed (report §19a: "a free turn
+ * is 3-4 model calls, not one"; §55: "count safety/moderation model calls and
+ * retries against the internal platform-cost budget"). Best-effort; never
+ * throws — a counter-write failure must never block or corrupt a turn.
+ */
+export async function recordFreeTextUsage(
+  env: Env,
+  uid: string,
+  usage: { inputTokens?: number; outputTokens?: number },
+): Promise<void> {
+  const inputTokens = Math.max(0, Math.trunc(usage.inputTokens ?? 0));
+  const outputTokens = Math.max(0, Math.trunc(usage.outputTokens ?? 0));
+  if (!inputTokens && !outputTokens) return;
+  const costMicroUsd = freeTextCostMicroUsd(inputTokens, outputTokens);
+  try {
+    const cur = await readFreeTextUsage(env, uid);
+    const next: FreeTextUsage = {
+      inputTokens: cur.inputTokens + inputTokens,
+      outputTokens: cur.outputTokens + outputTokens,
+      costMicroUsd: cur.costMicroUsd + costMicroUsd,
+    };
+    await env.TOKENS.put(freeBudgetKvKey(uid), JSON.stringify(next), { expirationTtl: FREE_BUDGET_TTL_SECONDS });
+  } catch { /* fail open — never block a turn on a counter write */ }
+}
+
+export type FreeTextBudgetReason = "input_too_large" | "daily_ai_budget_exhausted";
+
+export interface FreeTextBudgetDecision {
+  allowed: boolean;
+  reason?: FreeTextBudgetReason;
+  usage?: FreeTextUsage;
+}
+
+/**
+ * Pre-flight check for the free text lane (report §19b/§55) — call BEFORE
+ * guardInput/generate/isSafe run. Rejects an oversized single turn with
+ * `input_too_large`, or a turn once the account's UTC-day input/output/cost
+ * budget is exhausted with `daily_ai_budget_exhausted`. NEVER returns a
+ * wallet/paywall reason — the free text lane has no wallet involvement at all
+ * (that was Part I §2c/§7's root failure: a billing rejection rendered to the
+ * user as "Sorry, I could not find an answer").
+ */
+export async function checkFreeTextBudget(
+  env: Env,
+  uid: string,
+  inputTokens: number,
+): Promise<FreeTextBudgetDecision> {
+  const cfg = await readConfig(env);
+  const maxInput = Number(cfg.freeTextMaxInputTokens) || 32_000;
+  if (inputTokens > maxInput) return { allowed: false, reason: "input_too_large" };
+
+  const dailyIn = Number(cfg.freeTextDailyInputTokens) || 2_000_000;
+  const dailyOut = Number(cfg.freeTextDailyOutputTokens) || 200_000;
+  const dailyCost = Number(cfg.freeTextDailyCostMicroUsd) || 50_000;
+
+  const usage = await readFreeTextUsage(env, uid);
+  if (
+    usage.inputTokens + inputTokens > dailyIn
+    || usage.outputTokens >= dailyOut
+    || usage.costMicroUsd >= dailyCost
+  ) {
+    return { allowed: false, reason: "daily_ai_budget_exhausted", usage };
+  }
+  return { allowed: true, usage };
+}
+
+/** User-facing copy for a free-budget rejection — never mentions a wallet, a paywall, Gemini, or BYO keys. */
+export const FREE_BUDGET_MESSAGE: Record<FreeTextBudgetReason, string> = {
+  input_too_large:
+    "That message is too long for a quick chat reply — try trimming it, or share it as a file for Ava to go through.",
+  daily_ai_budget_exhausted:
+    "You've reached today's free Ava chat limit. It's a generous daily allowance and resets at midnight UTC — try again then.",
+};
+
 // ---- the all-in-one wrapper -------------------------------------------------
 
 export interface GatedResult {
   answer: string;
   blocked?: boolean;
-  reason?: string;          // 'ai_disabled' | 'daily_cap' | 'input_unsafe' | 'output_unsafe'
+  reason?: string;          // 'ai_disabled' | 'daily_cap' | 'input_unsafe' | 'output_unsafe' | 'input_too_large' | 'daily_ai_budget_exhausted'
   remaining?: number;       // turns left today (capped tier)
 }
 
@@ -216,26 +372,74 @@ export async function runGated(
     generate: (steer?: string) => Promise<string>;
     // Skip the daily-cap commit (e.g. a server-initiated turn). Default false.
     skipQuota?: boolean;
+    // [AVA-FREE-BUDGET-1] Capability tag (e.g. 'chat_ava' | 'chat_thread') and a
+    // measured/estimated INPUT token count for this turn's prompt. When the
+    // capability is free (ai_billing.isFreeCapability), runGated enforces the
+    // per-turn ceiling + daily input/output/cost budgets BEFORE any guard/model
+    // call runs, and records actual usage from every guard/generate/regenerate
+    // call against the same UTC-day counters afterward. Non-free capabilities
+    // (capability omitted, or not in FREE_CAPABILITIES) are completely
+    // unaffected — this is additive to wallet metering, never a replacement.
+    capability?: string;
+    inputTokens?: number;
   },
 ): Promise<GatedResult> {
   const cfg = await readConfig(env);
   if (!cfg.aiEnabled) return { answer: "", blocked: true, reason: "ai_disabled" };
 
-  // (b) intent gate — free path, no spend, no cap consumed.
+  // (b) intent gate — free path, no spend, no cap consumed, no budget touched.
   const intent = intentGate(args.userText);
   if (!intent.needsModel) return { answer: intent.cannedReply ?? "", blocked: false };
 
-  // (a) input moderation — mandatory on every tier incl. BYO.
+  const free = !!args.capability && isFreeCapability(args.capability);
+  const turnInputTokens = args.inputTokens ?? estimateTokens(args.userText);
+
+  // [AVA-FREE-BUDGET-1] free-lane budget gate — BEFORE guardInput/generate
+  // (report §55). Never a wallet/paywall reason: the free text lane has no
+  // wallet path to fail on (Part I §2c/§7).
+  if (free) {
+    const decision = await checkFreeTextBudget(env, args.uid, turnInputTokens);
+    if (!decision.allowed) {
+      return { answer: FREE_BUDGET_MESSAGE[decision.reason as FreeTextBudgetReason], blocked: true, reason: decision.reason };
+    }
+  }
+
+  // Running tally of this turn's platform-cost usage (free lane only) — every
+  // guard/generate/regenerate call below adds to it, then it is recorded once
+  // at every exit point (report §19a: "a free turn is 3-4 model calls").
+  let freeInTokens = 0;
+  let freeOutTokens = 0;
+  const trackFree = (inTok: number, outTok: number): void => {
+    freeInTokens += Math.max(0, inTok);
+    freeOutTokens += Math.max(0, outTok);
+  };
+  const flushFreeUsage = async (): Promise<void> => {
+    if (!free) return;
+    await recordFreeTextUsage(env, args.uid, { inputTokens: freeInTokens, outputTokens: freeOutTokens });
+  };
+
+  // (a) input moderation — mandatory on every tier incl. BYO. Counts as one
+  // model-ish call against the free-lane platform-cost budget even though
+  // isSafe() is currently a no-op (content moderation removed 2026-06-24 — see
+  // isSafe's own doc comment above); accounting stays correct if/when it is
+  // revived, and costs nothing extra today.
   const gin = await guardInput(env, args.userText);
-  if (!gin.ok) return { answer: REFUSAL, blocked: true, reason: gin.reason };
+  if (free) trackFree(turnInputTokens, 0);
+  if (!gin.ok) {
+    await flushFreeUsage();
+    return { answer: REFUSAL, blocked: true, reason: gin.reason };
+  }
 
   // (c) quota — BYO/premium bypass; our-keys free tier capped + committed.
+  // This is now the SECONDARY anti-script turn limit (report §55/§19b) — the
+  // budgets above are the real cost bound for the free lane.
   let remaining: number | undefined;
   if (!args.skipQuota) {
     const q = await enforceQuota(env, args.uid, args.tier, { premium: args.premium, commit: true });
     if (!q.allowed) {
+      await flushFreeUsage();
       return {
-        answer: "You've reached today's free Ava limit. Connect your own Gemini key (Settings → Ava AI) for unlimited use, or try again tomorrow.",
+        answer: "You've reached today's Ava chat limit for now. It resets at midnight UTC — try again after that.",
         blocked: true, reason: q.reason, remaining: 0,
       };
     }
@@ -244,12 +448,20 @@ export async function runGated(
 
   // generate → output guard → regenerate once → safe refusal.
   let answer = (await args.generate()).trim();
+  if (free) trackFree(turnInputTokens, estimateTokens(answer));
   if (!answer) answer = "Sorry, I couldn't come up with a reply just now. Try rephrasing?";
-  if (!(await isSafe(env, answer))) {
+  const safe1 = await isSafe(env, answer);
+  if (free) trackFree(estimateTokens(answer), 0); // isSafe reads the answer as its input
+  if (!safe1) {
     answer = (await args.generate("Keep the reply respectful, safe, and appropriate.")).trim();
-    if (!answer || !(await isSafe(env, answer))) {
+    if (free) trackFree(turnInputTokens, estimateTokens(answer)); // regenerate = a full second generation
+    const safe2 = answer ? await isSafe(env, answer) : false;
+    if (free) trackFree(estimateTokens(answer), 0); // second isSafe pass
+    if (!answer || !safe2) {
+      await flushFreeUsage();
       return { answer: REFUSAL, blocked: true, reason: "output_unsafe", remaining };
     }
   }
+  await flushFreeUsage();
   return { answer, blocked: false, remaining };
 }

@@ -68,6 +68,21 @@ export class AiInsufficientTokensError extends Error {
 /// no-op pass-through while the flag is off, so this changes nothing today.
 /// Skips metering entirely when no uid is available (defensive; every real
 /// call site here passes uid: ctx.uid).
+///
+/// [AVA-FREE-BUDGET-1 2026-07-25] This helper's capability tags — catchup,
+/// smart_replies, translate, group_translate, safety_score, bio, gender_infer
+/// — are DELIBERATELY NOT in ai_billing.ts's FREE_CAPABILITIES (only chat_ava
+/// / chat_thread are free per owner decision §10 "text chat is free, these
+/// utility helpers are not"). So lib/ai_gate.ts's free-text budget gate
+/// (checkFreeTextBudget/recordFreeTextUsage) intentionally does NOT run here —
+/// wiring it in would be dead code for every current call site and, if a
+/// capability tag were ever renamed to collide with a free one, would
+/// silently make a billed feature (translate is one you want to sell) free.
+/// The billing fix for THIS helper (reserve() admitting only paid balance) is
+/// [AI-WALLET-SPENDABLE-2], not this ticket — do not change it here. If a
+/// future capability here is meant to be free, add it to FREE_CAPABILITIES in
+/// ai_billing.ts (the one source of truth) rather than special-casing it in
+/// this file.
 async function llm(env: Env, tags: LlmTags, system: string, user: string, maxTokens = 400, temperature = 0.3): Promise<string> {
   const model = utilModel(env);
   const uid = tags.uid;
@@ -80,7 +95,8 @@ async function llm(env: Env, tags: LlmTags, system: string, user: string, maxTok
   // pass here, so "util" bypassed the safety exemption entirely), and b) every
   // other lane's ledger rows collapsed into one undifferentiated "util" bucket.
   // "util" remains only as a defensive fallback for a call site that forgot to
-  // set one — never the deliberate value.
+  // set one — never the deliberate value. NONE of these names may ever be
+  // "chat_ava" or "chat_thread" — see this function's doc comment above.
   const capability = tags.capability || "util";
   if (!uid) {
     return avaReason(env, { ...tags, appName: tags.appName ?? "messaging", system, user, maxTokens, temperature, legacyModel: model });

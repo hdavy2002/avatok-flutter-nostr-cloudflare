@@ -31,7 +31,10 @@
 import type { Env } from "../types";
 import { json, aiText, geminiRun } from "../util";
 import type { MessageScope } from "../lib/ava_kinds";
-import { runGated, webSearchAllowed, aiRunOpts, type AiTier } from "../lib/ai_gate"; // P2 gate
+import {
+  runGated, webSearchAllowed, aiRunOpts, type AiTier,
+  checkFreeTextBudget, recordFreeTextUsage, estimateTokens, FREE_BUDGET_MESSAGE, type FreeTextBudgetReason, // [AVA-FREE-BUDGET-1]
+} from "../lib/ai_gate"; // P2 gate
 import { brainSearchTyped } from "../lib/ava_memory"; // F1 — typed retrieval (available/source/degraded_reason)
 import {
   runAppsToolLoop, runAgentLoop, connectedToolkits, looksLikeImageRequest,
@@ -66,13 +69,12 @@ import { reserveAiJob, settleAiJob, releaseAiJob, estimateInputTokensFromChars }
 //   media — refers to a file/photo/attachment shared IN this chat
 type AvaIntent = "chat" | "apps" | "web" | "files" | "media";
 
-// our-keys (no BYO key): Gemini 3 Flash (preview) as a Workers-AI THIRD-PARTY
-// model ({author}/{model} id), invoked through env.AI.run so it flows via our CF
-// AI Gateway (per-uid metering, caching). If the 3.x partner model is ever
-// unavailable we fall back to Gemini 2.5 Flash-Lite — NEVER Gemma 4 (owner
-// decision: Gemini for everything online). Both have thinking OFF by default.
-const OURKEYS_CHAT_MODEL = "google/gemini-3-flash-preview";
-const OURKEYS_FALLBACK_MODEL = "google/gemini-2.5-flash-lite";
+// [AVA-FREE-BUDGET-1 2026-07-25] OURKEYS_CHAT_MODEL/OURKEYS_FALLBACK_MODEL
+// REMOVED — dead constants, never referenced anywhere in this file (the
+// OUR-KEYS plain-chat lane actually runs on threadModel()/DEFAULT_THREAD_MODEL
+// below via callThreadModel()). Having a second, unused "default chat model"
+// pair sitting next to the real one is exactly how the wrong model ends up
+// live (report §12b/§14) — removed rather than reconciled since nothing used it.
 // BYO (free tier): the user's own Gemini key (direct Google API). Plain chat runs
 // Gemini 3 Flash; a search-intent turn adds Google Search grounding, so
 // "@ava search the web for…" works.
@@ -86,12 +88,24 @@ const SUMMARY_EVERY = 8;    // refresh the rolling summary roughly every N messa
 const MAX_TOKENS = 300;
 
 // ---- AVA-KIMI-GATEWAY-1: OUR-KEYS plain-chat model gateway ------------------
-// Env-configurable OpenRouter target for the in-thread @ava turn (Kimi K3 by
-// default). This is a SEPARATE lane from the agentic tool loop below (apps/
-// image/attachments still run through composio.ts's runAgentLoop, which is
-// Gemini-via-OpenRouter and out of this file's scope) — see turn()'s
-// `wantsTools` gate and the report for why tool-calling turns are NOT migrated.
-const DEFAULT_THREAD_MODEL = "moonshotai/kimi-k3";
+// Env-configurable OpenRouter target for the in-thread @ava turn. This is a
+// SEPARATE lane from the agentic tool loop below (apps/image/attachments still
+// run through composio.ts's runAgentLoop, which is Gemini-via-OpenRouter and
+// out of this file's scope) — see turn()'s `wantsTools` gate and the report
+// for why tool-calling turns are NOT migrated.
+//
+// [AVA-FREE-BUDGET-1 2026-07-25] Free-text default is now deepseek/deepseek-
+// v4-flash (owner decision, report §10/§11a/§12b) — replaces the prior Kimi K3 default.
+// This lane is capability 'chat_thread' below, one of ai_billing.ts's
+// FREE_CAPABILITIES: free, unmetered, budget-gated by lib/ai_gate.ts instead
+// of the wallet. DEFAULT_THREAD_MODEL_ALT stays google/gemini-2.5-flash-lite
+// UNCHANGED and MUST remain reachable — deepseek is TEXT-ONLY
+// (input_modalities: ["text"], confirmed from OpenRouter's catalog) and cannot
+// serve an attachment turn; the `wantsTools` gate below already keeps any
+// attachment turn OFF this lane entirely (attachments route to the agentic
+// tool loop / 'ava_thread_tools', which stays on its own, separately metered
+// model and is unaffected by this change).
+const DEFAULT_THREAD_MODEL = "deepseek/deepseek-v4-flash";
 const DEFAULT_THREAD_MODEL_ALT = "google/gemini-2.5-flash-lite";
 const THREAD_TIMEOUT_MS = 30_000;
 
@@ -809,13 +823,17 @@ export class AvaAgentDO {
       }
 
       // AVA-KIMI-GATEWAY-1: OUR-KEYS plain-chat turns (no tool need) run through
-      // the configurable OpenRouter gateway (Kimi K3 by default; see
-      // callThreadModel) instead of the Gemini tool-loop below. This is
-      // deliberately narrow: a turn needs the agentic loop the moment it might
-      // touch attachments, connected apps, or image generation, because that loop
-      // does OpenAI-style function-calling that this simpler lane does not attempt
-      // to reproduce (see the report for why). BYO-key users are UNCHANGED — this
-      // lane never applies to them, preserving that path exactly as it runs today.
+      // the configurable OpenRouter gateway (deepseek/deepseek-v4-flash by
+      // default — [AVA-FREE-BUDGET-1]; see callThreadModel) instead of the
+      // Gemini tool-loop below. This is deliberately narrow: a turn needs the
+      // agentic loop the moment it might touch attachments, connected apps, or
+      // image generation, because that loop does OpenAI-style function-calling
+      // that this simpler lane does not attempt to reproduce (see the report for
+      // why) — and, since [AVA-FREE-BUDGET-1], because deepseek/deepseek-v4-flash
+      // cannot see images at all (report §11a/§14): `attachments.length > 0` in
+      // `wantsTools` below already keeps every attachment turn off this lane.
+      // BYO-key users are UNCHANGED — this lane never applies to them, preserving
+      // that path exactly as it runs today.
       const wantsTools = attachments.length > 0
         || (appsCap && premium && this.looksLikeApps(userText))
         || looksLikeImageRequest(userText);
@@ -824,27 +842,50 @@ export class AvaAgentDO {
         const summaryNow = this.summaryRow(conv).summary;
         const { sys, user } = this.buildPrompt(summaryNow, window, userText, snippets, false, attachments);
 
+        // [AVA-FREE-BUDGET-1] This lane is capability 'chat_thread' — one of
+        // ai_billing.ts's FREE_CAPABILITIES (free, unmetered even with
+        // aiWalletMeteringEnabled=true). It does NOT run through ai_gate's
+        // runGated() (this DO calls callThreadModel directly, with its own
+        // guardOutput from composio.ts below), so the free-lane budget gate has
+        // to run here directly, BEFORE reserveAiJob/callThreadModel (report
+        // §55). Never a wallet/paywall reason — this lane has no wallet
+        // involvement at all (Part I §2c/§7's root failure).
+        const promptChars = sys.length + user.length;
+        const turnInputTokens = estimateTokens(sys + user);
+        const budget = await checkFreeTextBudget(this.env, uid, turnInputTokens);
+        if (!budget.allowed) {
+          const reason = budget.reason as FreeTextBudgetReason;
+          await this.postStatus(conv, uid, priv, "Ava is working…", statusId, "end");
+          await this.postAva({ conv, uid, text: FREE_BUDGET_MESSAGE[reason], private: priv, source: "chat" });
+          trackUserContact(this.env, uid, email, phone, "ai_free_budget_blocked", "avaai", {
+            conv_kind: convKind, capability: "chat_thread", reason,
+          });
+          return { ok: true, status_id: statusId };
+        }
+
         // [AI-BILLING-AGENT-1] Reserve the worst-case wallet amount BEFORE the
         // model call (mirrors routes/ava_gemini.ts's ChatAVA integration).
         // opId reuses this turn's statusId — one turn, one reservation, and a
         // retried turn (fresh statusId) never collides with a prior one. No-op
-        // admit while `aiWalletMeteringEnabled` is off (see ai_billing.ts).
+        // admit while `aiWalletMeteringEnabled` is off, OR because capability
+        // 'chat_thread' is free (ai_billing.isFreeCapability) — see ai_billing.ts.
         const opId = `ava-thread:${statusId}`;
-        const promptChars = sys.length + user.length;
         const reqModel = this.threadModel();
         const reservation = await reserveAiJob(this.env, {
-          uid, opId, capability: "ava_thread", modality: "text", model: reqModel,
+          uid, opId, capability: "chat_thread", modality: "text", model: reqModel,
           maxInputTokens: estimateInputTokensFromChars(promptChars), maxOutputTokens: MAX_TOKENS, email,
         });
         if (!reservation.ok) {
           // reserveAiJob already emitted ai_job_blocked_insufficient_tokens; this
           // is the app-specific (email/phone-stamped) counterpart plus the
-          // user-facing reply so the turn never goes dark.
+          // user-facing reply so the turn never goes dark. Unreachable while
+          // 'chat_thread' stays free (the budget gate above already covers cost
+          // control) — kept for parity with every other reserveAiJob call site.
           const message = "You have run out of AI tokens. Top up your wallet to continue using Ava.";
           await this.postStatus(conv, uid, priv, "Ava is working…", statusId, "end");
           await this.postAva({ conv, uid, text: message, private: priv, source: "billing" });
           trackUserContact(this.env, uid, email, phone, "ai_wallet_blocked", "avaai", {
-            conv_kind: convKind, capability: "ava_thread", reason: reservation.error ?? "unknown",
+            conv_kind: convKind, capability: "chat_thread", reason: reservation.error ?? "unknown",
             needed: reservation.needed, balance: reservation.balance,
           });
           return { ok: false, status_id: statusId, error: reservation.error ?? "ai_wallet_blocked" };
@@ -853,25 +894,29 @@ export class AvaAgentDO {
         try {
           g = await this.callThreadModel(sys, user);
         } catch (e) {
-          await releaseAiJob(this.env, reservation, { uid, opId, capability: "ava_thread", reason: "provider_error" });
+          await releaseAiJob(this.env, reservation, { uid, opId, capability: "chat_thread", reason: "provider_error" });
           throw e;
         }
         let answer = guardOutput(g.text); // F8 minimal output guard
         if (!answer) answer = "Ava is unavailable right now. Please try again shortly.";
         // [AI-BILLING-AGENT-1] Settle against actual provider usage once the
-        // Kimi/fallback response is known. tokensIn/tokensOut come straight from
-        // the OpenRouter adapter (callThreadModel/openrouterAdapter.run); the
-        // direct-Gemini emergency path carries no usage metadata, so that case
-        // falls back to a conservative chars/4 estimate of the real text sent.
+        // deepseek/fallback response is known. tokensIn/tokensOut come straight
+        // from the OpenRouter adapter (callThreadModel/openrouterAdapter.run);
+        // the direct-Gemini emergency path carries no usage metadata, so that
+        // case falls back to a conservative chars/4 estimate of the real text sent.
         const meterIn = g.tokensIn ?? Math.ceil(promptChars / 4);
         const meterOut = g.tokensOut ?? Math.ceil(answer.length / 4);
         const meter = await settleAiJob(this.env, reservation, {
-          opId, uid, capability: "ava_thread", modality: "text",
+          opId, uid, capability: "chat_thread", modality: "text",
           modelRequested: reqModel, modelActual: g.model,
           usage: { inputTokens: meterIn, outputTokens: meterOut },
         }).catch((e) => ({ ok: false, metered: reservation.metered, charged_tokens: 0, provider_cost_micro_usd: 0, error: String(e?.message ?? e).slice(0, 120) }));
+        // [AVA-FREE-BUDGET-1] Record actual usage against the free-lane daily
+        // budget — this lane skips runGated entirely (see the doc comment
+        // above), so nothing else does this accounting for it.
+        await recordFreeTextUsage(this.env, uid, { inputTokens: meterIn, outputTokens: meterOut });
         trackUserContact(this.env, uid, email, phone, "ai_wallet_settlement", "avaai", {
-          conv_kind: convKind, capability: "ava_thread", model: g.model,
+          conv_kind: convKind, capability: "chat_thread", model: g.model,
           input_tokens: meterIn, output_tokens: meterOut, charged_tokens: meter.charged_tokens,
           provider_cost_micro_usd: meter.provider_cost_micro_usd, reserve_tokens: reservation.reserved_tokens,
           ok: meter.ok, error: meter.error ?? null,
