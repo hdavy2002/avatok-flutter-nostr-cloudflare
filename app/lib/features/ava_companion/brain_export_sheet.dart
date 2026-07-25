@@ -82,7 +82,7 @@ class _BrainExportSheetState extends State<_BrainExportSheet> {
       'chars': _charCount,
       'ok': result.ok,
       'status': result.status,
-      if (result.error != null) 'error': result.error,
+      if (result.error != null) 'error': result.error!,
     });
     if (!mounted) return;
     if (result.ok) {

@@ -191,7 +191,7 @@ export async function createDraft(env: Env, args: {
     const created = ((ins as any)?.meta?.changes ?? 0) > 0;
     if (created) {
       void track(env, "server", "avabrain_companion_draft_created", "avabrain_companion", {
-        decision_id: args.decisionId, conv, capability: args.capability,
+        decision_id: args.decisionId, conv: args.conv, capability: args.capability,
         template_id: args.templateId, scope: args.scope, has_target: !!args.targetUid,
       });
     }
