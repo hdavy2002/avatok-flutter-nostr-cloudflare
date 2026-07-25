@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'api_auth.dart';
+import 'analytics.dart';
 import 'ava_ai_store.dart';
 import 'ava_contracts.dart';
 import 'config.dart';
@@ -49,8 +50,10 @@ class AvaAiClient {
     List<Map<String, String>>? history,
     Duration timeout = const Duration(seconds: 30),
   }) async {
+    final requestId = TraceContext.mint();
     final body = <String, dynamic>{
       'message': message,
+      'request_id': requestId,
       if (context != null && context.isNotEmpty) 'context': context,
       if (mode != null && mode.isNotEmpty) 'mode': mode,
       if (source != null && source.isNotEmpty) 'source': source,
@@ -62,7 +65,7 @@ class AvaAiClient {
 
     // Send the BYO key per-request when connected. Header (not body) keeps it
     // out of any body-logging path; the Worker reads `X-Ava-Gemini-Key` first.
-    final extraHeaders = <String, String>{};
+    final extraHeaders = <String, String>{'X-Trace-Id': requestId};
     final key = await _store.apiKey();
     if (key != null && key.isNotEmpty) extraHeaders['X-Ava-Gemini-Key'] = key;
 
@@ -119,18 +122,22 @@ class AvaAiClient {
   Stream<String> askStream({
     required String message,
     String? context,
+    String? source,
     List<Map<String, String>>? history,
     void Function(String url)? onImage,
     void Function()? onImagePending,
     void Function()? onImageFailed,
     Duration timeout = const Duration(seconds: 60),
   }) async* {
+    final requestId = TraceContext.mint();
     final body = <String, dynamic>{
       'message': message,
+      'request_id': requestId,
       if (context != null && context.isNotEmpty) 'context': context,
+      if (source != null && source.isNotEmpty) 'source': source,
       if (history != null && history.isNotEmpty) 'history': history,
     };
-    final extra = <String, String>{};
+    final extra = <String, String>{'X-Trace-Id': requestId};
     final key = await _store.apiKey();
     if (key != null && key.isNotEmpty) extra['X-Ava-Gemini-Key'] = key;
 
@@ -145,7 +152,14 @@ class AvaAiClient {
         ..bodyBytes = bytes;
       final resp = await client.send(req).timeout(timeout);
       if (resp.statusCode != 200) {
-        throw Exception('stream http ${resp.statusCode}');
+        final raw = await resp.stream.transform(utf8.decoder).join();
+        var detail = raw;
+        try {
+          final j = jsonDecode(raw) as Map<String, dynamic>;
+          detail = (j['error'] ?? j['detail'] ?? raw).toString();
+        } catch (_) {/* keep the bounded raw response */}
+        if (detail.length > 180) detail = detail.substring(0, 180);
+        throw Exception('stream http ${resp.statusCode}${detail.isEmpty ? '' : ': $detail'}');
       }
       final lines = resp.stream.transform(utf8.decoder).transform(const LineSplitter());
       await for (final line in lines) {

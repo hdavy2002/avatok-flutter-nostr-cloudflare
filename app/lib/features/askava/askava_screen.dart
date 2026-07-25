@@ -45,8 +45,8 @@ enum _Role { user, assistant, action }
 
 class _Turn {
   final _Role role;
-  final String text;
-  final List<AskAvaContact> contacts; // assistant → Call/Message chips
+  String text;
+  List<AskAvaContact> contacts; // assistant → Call/Message chips
   final String? actionTool; // 'dial' | 'block' | 'report_spam'
   final String? actionArg; // the number
   _Turn(this.role, this.text, {this.contacts = const [], this.actionTool, this.actionArg});
@@ -66,6 +66,7 @@ class _AskAvaScreenState extends State<AskAvaScreen> {
   final _scroll = ScrollController();
   final _turns = <_Turn>[];
   bool _busy = false;
+  bool _streamStarted = false;
 
   static const _maxHops = 3;
   static const _ss = FlutterSecureStorage(
@@ -152,17 +153,51 @@ class _AskAvaScreenState extends State<AskAvaScreen> {
 
     try {
       for (var hop = 0; hop < _maxHops; hop++) {
-        final ans = await AvaAiClient.I.ask(
+        final replyBuffer = StringBuffer();
+        _Turn? streamedTurn;
+        var prefixDecided = false;
+        var hideAsPossibleToolCall = false;
+        await for (final delta in AvaAiClient.I.askStream(
           message: pending,
           context: _preamble(toolsAllowed),
           history: history,
           source: 'askava',
-        );
-        final reply = ans.answer.trim();
+        )) {
+          replyBuffer.write(delta);
+          final partial = replyBuffer.toString();
+          if (!prefixDecided && partial.trim().isNotEmpty) {
+            prefixDecided = true;
+            // Tool calls are an internal client/server protocol. Hold JSON
+            // responses until complete so they never flash in the chat bubble.
+            hideAsPossibleToolCall = partial.trimLeft().startsWith('{');
+          }
+          if (!hideAsPossibleToolCall && partial.isNotEmpty && mounted) {
+            setState(() {
+              if (streamedTurn == null) {
+                streamedTurn = _Turn(_Role.assistant, partial);
+                _turns.add(streamedTurn!);
+                _streamStarted = true;
+              } else {
+                streamedTurn!.text = partial;
+              }
+            });
+            _jumpToEnd();
+          }
+        }
+        final reply = replyBuffer.toString().trim();
 
         final call = _parseToolCall(reply);
         if (call == null) {
-          finalText = reply.isEmpty ? 'Sorry, I could not find an answer.' : reply;
+          if (streamedTurn != null) {
+            setState(() {
+              streamedTurn!.text =
+                  reply.isEmpty ? 'Sorry, I could not find an answer.' : reply;
+              streamedTurn!.contacts = finalContacts;
+            });
+            finalText = null; // the live bubble is already in the thread
+          } else {
+            finalText = reply.isEmpty ? 'Sorry, I could not find an answer.' : reply;
+          }
           break;
         }
 
@@ -200,14 +235,19 @@ class _AskAvaScreenState extends State<AskAvaScreen> {
         break;
       }
     } catch (_) {
-      finalText = 'Ava could not be reached. Please try again.';
+      finalText = _streamStarted
+          ? null
+          : 'Ava could not be reached. Please try again.';
     }
 
     if (finalText != null) {
       final ft = finalText;
       setState(() => _turns.add(_Turn(_Role.assistant, ft, contacts: finalContacts)));
     }
-    setState(() => _busy = false);
+    setState(() {
+      _busy = false;
+      _streamStarted = false;
+    });
     _jumpToEnd();
     unawaited(_saveThread());
   }
@@ -361,7 +401,7 @@ Never invent contacts or numbers; only use what the tools return. Keep answers c
                 : ListView.builder(
                     controller: _scroll,
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-                    itemCount: _turns.length + (_busy ? 1 : 0),
+                    itemCount: _turns.length + (_busy && !_streamStarted ? 1 : 0),
                     itemBuilder: (_, i) {
                       if (i >= _turns.length) return _typing();
                       return _bubble(_turns[i]);
