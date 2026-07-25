@@ -66,9 +66,11 @@ describe("microUsdToTokens — 100 tokens/USD, ceil (never under-recovers)", () 
 });
 
 describe("estimateTokens — full pipeline, spec §H2 worked example", () => {
-  it("kimi-k3 100k in / 10k out settles to 59 wallet tokens", () => {
+  // [AI-WALLET-SPENDABLE-2] Markup moved 130 -> 120 bps (owner decision, 2026-07-25).
+  // 450_000 * 1.20 = 540_000 micro-USD -> ceil(54.0) = 54 wallet tokens.
+  it("kimi-k3 100k in / 10k out settles to 54 wallet tokens at the 1.20x markup", () => {
     const est = estimateTokens("moonshotai/kimi-k3", { inputTokens: 100_000, outputTokens: 10_000 });
-    expect(est).toEqual({ providerCostMicroUsd: 450_000, userChargeMicroUsd: 585_000, tokens: 59 });
+    expect(est).toEqual({ providerCostMicroUsd: 450_000, userChargeMicroUsd: 540_000, tokens: 54 });
   });
   it("zero usage -> zero everything", () => {
     expect(estimateTokens("moonshotai/kimi-k3", {})).toEqual({ providerCostMicroUsd: 0, userChargeMicroUsd: 0, tokens: 0 });
@@ -85,7 +87,7 @@ describe("settleTokens — prefers the provider's own reported cost over the cat
   });
   it("falls back to the catalog estimate when no override is given", () => {
     const settled = settleTokens("moonshotai/kimi-k3", { inputTokens: 100_000, outputTokens: 10_000 });
-    expect(settled).toEqual({ providerCostMicroUsd: 450_000, userChargeMicroUsd: 585_000, tokens: 59 });
+    expect(settled).toEqual({ providerCostMicroUsd: 450_000, userChargeMicroUsd: 540_000, tokens: 54 });
   });
   it("ignores a negative override and falls back to the catalog cost", () => {
     const settled = settleTokens("moonshotai/kimi-k3", { inputTokens: 100_000, outputTokens: 10_000 }, -5);
@@ -140,8 +142,8 @@ describe("estimateInputTokensFromChars — conservative chars/3 estimator", () =
 });
 
 describe("constants sanity", () => {
-  it("markup is 130 bps (1.30x, 30% markup)", () => {
-    expect(AI_MARKUP_BPS).toBe(130);
+  it("markup is 120 bps (1.20x, 20% markup)", () => {
+    expect(AI_MARKUP_BPS).toBe(120);
   });
   it("100 wallet tokens per USD", () => {
     expect(AI_TOKENS_PER_USD).toBe(100);
