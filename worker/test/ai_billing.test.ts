@@ -38,9 +38,9 @@ describe("costMicroUsd", () => {
   });
 });
 
-describe("userChargeMicroUsd — 30% markup, ceil", () => {
-  it("kimi-k3 example: $0.45 provider -> $0.585 user charge", () => {
-    expect(userChargeMicroUsd(450_000)).toBe(585_000);
+describe("userChargeMicroUsd — 20% markup, ceil", () => {
+  it("kimi-k3 example: $0.45 provider -> $0.54 user charge", () => {
+    expect(userChargeMicroUsd(450_000)).toBe(540_000);
   });
   it("zero cost -> zero charge", () => {
     expect(userChargeMicroUsd(0)).toBe(0);
