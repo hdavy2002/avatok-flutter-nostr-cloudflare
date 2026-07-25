@@ -33,7 +33,7 @@ import '../../core/remote_config.dart';
 import '../../identity/identity.dart';
 
 /// Canned, on-device "coming soon" reply for image generation while the feature
-/// is switched OFF (RemoteConfig.imageGenEnabled == false, e.g. the pro/live
+/// is switched OFF (RemoteConfig.generativeEnabled == false, e.g. the pro/live
 /// build). Returned WITHOUT any network call so repeat asks never hit the
 /// server — the "cache" is this const. Shape matches a worker `blocked` result
 /// so ImageRequestSheet + the image.generate tool surface it unchanged.
@@ -65,7 +65,7 @@ Future<Map<String, Object?>> requestAvaImage({
   // Feature switched OFF (pro/live build): short-circuit to the canned reply with
   // NO network call. Both the manual sheet and the in-chat image.generate tool
   // funnel through here, so this one guard covers every entry point.
-  if (!RemoteConfig.imageGenEnabled) {
+  if (!RemoteConfig.generativeEnabled) {
     Analytics.capture('ava_image_coming_soon', {'convKey': convKey});
     return Map<String, Object?>.from(kImageGenComingSoon);
   }

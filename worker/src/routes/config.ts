@@ -55,6 +55,13 @@ export interface PlatformConfig {
   // AvaVoice — creator-built AI voice agents (Specs/AVAVOICE-PROPOSAL.md).
   avavoiceEnabled: boolean;          // master switch for /api/avavoice/*
   avavisionEnabled: boolean;         // master switch for /api/avavision/* (vision coaching agents)
+  // [AI-FLAG-CONTRACT-1] Hands-free Ava voice call. Was read by the client
+  // (remote_config.dart) but never declared here — an un-flippable fake flag
+  // (putConfig 400s `unknown key` on any attempt to set it in KV; see the
+  // 2026-07-15 inAppUpdateEnabled lesson in CLAUDE.md). Declaring it makes the
+  // documented KV brake real. Default false — matches the client's permanent
+  // fallback, so declaring it changes nothing today until explicitly flipped.
+  aiVoiceCallEnabled: boolean;
   // Ava Receptionist — premium "Ava answers after N rings" (Specs/PROPOSAL-AI-RECEPTIONIST.md
   // + PROPOSAL-RECEPTIONIST-V2.md). First real AvaVoice deployment. Gemini Live via CF AI
   // Gateway, 2-min cap.
@@ -148,11 +155,37 @@ export interface PlatformConfig {
   // Guardian/safety capabilities NEVER go through this gate regardless of its
   // value — they bypass reserveAiJob entirely (see isSafetyCapability()).
   aiWalletMeteringEnabled: boolean;
+  // [AI-PRICE-CATALOG-1 / unrecovered-cost controls, §66] Per-account daily ceiling
+  // (micro-USD) on `unrecovered_micro_usd` — the gap between a reservation's
+  // worst-case estimate and the provider's actual settled cost. Once an account
+  // crosses this in a UTC day, further METERED jobs are blocked with a distinct
+  // `AI_UNRECOVERED_LIMIT` reason (never a wallet/paywall error) until rollover.
+  // Free capabilities (chat_ava/chat_thread) never consult this — it only bounds
+  // platform loss on metered multimodal lanes. Numeric — see numericKeys below.
+  unrecoveredDailyCapMicroUsd: number;
+  // [AI-PRICE-CATALOG-1 / §66] Platform-wide daily unrecovered-loss ALERT threshold
+  // (micro-USD), distinct from the per-account CAP above. Crossing this in a UTC
+  // day fires an edge-triggered page/alert (recordUnrecoveredLoss in
+  // worker/src/lib/ai_billing.ts) — it never blocks a job, only pages. 0/absent =
+  // alerting disabled. Declared here (interface + DEFAULTS + numericKeys in the
+  // same change) per the fake-flag rule: ai_billing.ts previously read this key
+  // through an `as any` cast because config.ts never declared it, so `putConfig`
+  // 400'd `unknown key` on any attempt to set it and the alert was permanently
+  // unreachable (gate finding B3 — the same failure shape as inAppUpdateEnabled).
+  unrecoveredPlatformAlertMicroUsd: number;
   focusMode: boolean;                // hide non-AvaTOK apps in the drawer (reversible)
   webSearchEnabled: boolean;         // premium-only; our-keys free tier never gets it
   fileAnalysisEnabled: boolean;      // premium-only
   openChatUncapped: boolean;         // premium removes the daily cap
-  dailyAvaTurnLimit: number;         // our-keys free-tier cap (turns/account/day)
+  dailyAvaTurnLimit: number;         // free-tier turn cap (turns/account/day) — secondary anti-script limit; the real cost bound is the freeText* budgets below (§19b)
+  // [AVA-FREE-BUDGET-1] Free-text-lane budgets (§12b/§19/§55). Text chat
+  // (`chat_ava`/`chat_thread`, routed to deepseek/deepseek-v4-flash) is
+  // structurally free — these bound COST and ABUSE, not billing. All numeric —
+  // see numericKeys below.
+  freeTextMaxInputTokens: number;      // per-turn input-token ceiling; over this the turn is rejected with input_too_large (route large pastes/attachments to the paid document flow instead)
+  freeTextDailyInputTokens: number;    // per-account daily input-token budget, UTC-day reset
+  freeTextDailyOutputTokens: number;   // per-account daily output-token budget, UTC-day reset
+  freeTextDailyCostMicroUsd: number;   // per-account daily INTERNAL platform-cost budget (micro-USD), UTC-day reset — counts guardInput/isSafe/regenerate calls too, even though they are never wallet-billed
   guardianEnabled: boolean;          // Guardian safety surfaces (basic free, deep premium)
   companionEnabled: boolean;         // blank "New chat with Ava" + personas
   generativeEnabled: boolean;        // in-thread image gen (each gen is a PaidFeature)
@@ -726,6 +759,7 @@ const DEFAULTS: PlatformConfig = {
   translationGroupEnabled: false,  // FREE LAUNCH: hidden
   avavoiceEnabled: false,          // FREE LAUNCH: agent builder hidden
   avavisionEnabled: false,         // FREE LAUNCH: agent builder hidden
+  aiVoiceCallEnabled: false,       // [AI-FLAG-CONTRACT-1] hands-free Ava voice call — was a fake flag; declared now, still dark until explicitly flipped
   receptionistEnabled: true,       // FREE LAUNCH: AI receptionist ON (Gemini Live)
   avatokVoicemailFree: true,       // [AVACALL-VMFREE-1] FREE AvaTOK↔AvaTOK auto-voicemail ON. Kill switch — flip false in KV to end no-answer AvaTOK audio calls silently again. NOT gated by the paid voicemailBot.
   voicemailEnabled: true,          // [VM-KILL-1] GLOBAL voicemail master switch. Default true = no change. Flip false in prod KV to disable ALL voicemail lanes at once (reversible).
@@ -759,11 +793,20 @@ const DEFAULTS: PlatformConfig = {
   // Ava in-chat AI defaults (proposal §7.1 anti-abuse tiering).
   aiEnabled: true,                 // basic free Ava chat ON
   aiWalletMeteringEnabled: false,  // [AI-BILLING-CORE-1] DARK — flip ON only after the owner reviews H4's route-by-route premium-gate audit; see interface comment above
+  unrecoveredDailyCapMicroUsd: 50_000, // [AI-PRICE-CATALOG-1] $0.05/account/day unrecovered-cost ceiling before metered jobs block with AI_UNRECOVERED_LIMIT (§66)
+  unrecoveredPlatformAlertMicroUsd: 1_000_000, // [AI-PRICE-CATALOG-1] $1/day platform-wide unrecovered-loss alert threshold (§66, gate finding B3)
   focusMode: true,
   webSearchEnabled: false,         // FREE LAUNCH: premium AI cost — hidden
   fileAnalysisEnabled: false,      // premium unlocks
   openChatUncapped: false,         // premium removes the cap
-  dailyAvaTurnLimit: 25,
+  dailyAvaTurnLimit: 200,          // [AVA-FREE-BUDGET-1] owner decision §10: free text is "free but generously rate-limited" — raised from 25; secondary anti-script limit, real cost bound is freeText* below
+  // [AVA-FREE-BUDGET-1] §19b/§55: a turn cap does not cap cost — DeepSeek V4 Flash's
+  // 1,048,576-token context means 200 capped turns of pasted documents could still
+  // reach ~200M input tokens/day. These are the budgets that actually bound spend.
+  freeTextMaxInputTokens: 32_000,
+  freeTextDailyInputTokens: 2_000_000,
+  freeTextDailyOutputTokens: 200_000,
+  freeTextDailyCostMicroUsd: 50_000,   // $0.05/account/day INTERNAL platform-cost ceiling (generation + guardInput + isSafe + regenerate)
   guardianEnabled: true,           // safety shield — free, trust driver
   companionEnabled: true,          // basic free Ava chat
   generativeEnabled: false,        // FREE LAUNCH: premium image gen — hidden
@@ -1073,6 +1116,16 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     "campaignMaxContacts", "campaignCallMaxMin", "campaignWrapCueMin", "campaignTokensPerMin",
     "campaignDidMonthlyTokens", "campaignKbMaxFiles", "campaignToolBudget",
     "campaignHandoverRingSec", "campaignHandoverTokensPerMin", "campaignHandoverTopupMin",
+    // [AI-FLAG-CONTRACT-1 2026-07-25] Both were numeric in DEFAULTS but missing here,
+    // so `scripts/flags.sh set` 400'd `bad type` on either — un-tunable fair-use caps.
+    "imageDailyCap", "livenessValidityDays",
+    // [AVA-FREE-BUDGET-1 / AI-PRICE-CATALOG-1 2026-07-25] free-text-lane budgets + the
+    // unrecovered-cost circuit breaker — all numeric, all must be here or they 400.
+    "freeTextMaxInputTokens", "freeTextDailyInputTokens", "freeTextDailyOutputTokens",
+    "freeTextDailyCostMicroUsd", "unrecoveredDailyCapMicroUsd",
+    // [AI-PRICE-CATALOG-1 2026-07-25 / gate finding B3] platform-wide unrecovered-
+    // loss alert threshold — numeric, must be here or `putConfig` 400s `bad type`.
+    "unrecoveredPlatformAlertMicroUsd",
   ]);
   for (const [k, v] of Object.entries(body)) {
     if (!(k in DEFAULTS)) return json({ error: `unknown key: ${k}` }, 400);

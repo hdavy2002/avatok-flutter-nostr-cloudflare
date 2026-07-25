@@ -31,6 +31,16 @@ jobs:
       - name: Type-check worker (tsc --noEmit)
         working-directory: worker
         run: npm run typecheck
+      # [AI-FLAG-CONTRACT-1] Client-key <-> server-key config contract. Fails
+      # fast (before the slower vitest run) on a fake flag (client reads a key
+      # the Worker's DEFAULTS doesn't declare — see CLAUDE.md "FAKE FLAGS" and
+      # ROOT-CAUSE-REPORT-RECURRING-ISSUES-2026-07-25.md §18/§54), a
+      # numeric-typed DEFAULTS key missing from numericKeys (un-tunable via
+      # scripts/flags.sh), or a critical gate/cap declared but read nowhere.
+      # No deps beyond node:fs/node:path — runs with the Node 20 already set
+      # up above, no `npm ci` needed.
+      - name: Config contract (client/server flag symmetry)
+        run: node scripts/check-config-contract.mjs
       - name: Unit tests (vitest)
         working-directory: worker
         # Scoped to test/ via --dir — src/spam/scoring.test.ts is a pre-existing

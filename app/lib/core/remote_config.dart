@@ -260,8 +260,14 @@ class RemoteConfig {
   /// (LiveVoiceController). Owner kill switch (2026-06-27): default OFF so the
   /// feature stays dark after a config-fetch failure and can't burn the shared
   /// Gemini Live quota. NOTE: distinct from [avavoiceEnabled] (the AvaVoice
-  /// studio/agents app). Flip `aiVoiceCallEnabled: true` in KV `platform_config`
-  /// to re-enable. Premium still applies on top of this when the switch is on.
+  /// studio/agents app). [AI-FLAG-CONTRACT-1] 2026-07-25: `aiVoiceCallEnabled`
+  /// is now declared in the Worker's `PlatformConfig`/DEFAULTS (routes/config.ts,
+  /// default false) — it was previously a fake flag (this docstring told the
+  /// reader to flip it in KV, but `putConfig` 400'd `unknown key` because the
+  /// Worker never declared it; see CLAUDE.md "FAKE FLAGS", ROOT-CAUSE §18). It
+  /// is a genuinely flippable switch now: `scripts/flags.sh set
+  /// aiVoiceCallEnabled=true` re-enables it. Premium still applies on top of
+  /// this when the switch is on.
   static bool get aiVoiceCallEnabled => _b('aiVoiceCallEnabled', false);
   /// AvaAffiliate (PROPOSAL-AVA-AFFILIATE) — default OFF until launch, so a
   /// config-fetch failure never advertises a program the Worker isn't serving.
@@ -280,13 +286,18 @@ class RemoteConfig {
   static bool get callRelayMigrationV1 => _b('callRelayMigrationV1', false);
   static bool get receptionistReconnectV1 => _b('receptionistReconnectV1', false);
   static bool get callRingAudibilityV1 => _b('callRingAudibilityV1', false);
-  /// In-chat AI image generation (ChatAVA "make an image"). Server kill switch
-  /// mirrors the compile default [kGenerativeEnabledDefault]. When false the
-  /// client short-circuits every image request to a canned "coming soon" reply
-  /// WITHOUT a network call (see ava_generative/image_tool.dart). Live (pro)
-  /// build sets `imageGenEnabled:false` in prod KV; staging keeps it true so the
-  /// side-by-side test APK still exercises generation.
-  static bool get imageGenEnabled => _b('imageGenEnabled', kGenerativeEnabledDefault);
+  /// In-chat AI image generation (ChatAVA "make an image"). Server kill switch —
+  /// reads the Worker's key EXACTLY, `generativeEnabled` (routes/config.ts,
+  /// enforced in routes/ava_image.ts). [AI-FLAG-CONTRACT-1] 2026-07-25: this
+  /// getter used to read a client-only key, `imageGenEnabled`, which the Worker
+  /// never declared in DEFAULTS — `putConfig` rejected it (`unknown key`, 400),
+  /// so it could never be flipped and every tap made a real POST straight into a
+  /// 503 `generative_disabled` (see CLAUDE.md "FAKE FLAGS", ROOT-CAUSE §18). Do
+  /// NOT reintroduce a differently-named alias. When false the client
+  /// short-circuits every image request to a canned "coming soon" reply WITHOUT
+  /// a network call (see ava_generative/image_tool.dart). Compile-time fallback
+  /// [kGenerativeEnabledDefault] only applies on a config-fetch failure.
+  static bool get generativeEnabled => _b('generativeEnabled', kGenerativeEnabledDefault);
   /// Guardian (scam/grooming/deepfake safety) surfaces + settings section.
   /// Mirrors the compile default [kGuardianEnabledDefault]. When false the
   /// Guardian settings section is not registered and the per-chat shield icon is

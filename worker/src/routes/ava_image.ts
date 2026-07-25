@@ -65,6 +65,83 @@ function inboxOf(env: Env, uid: string) {
   return env.INBOX.get(env.INBOX.idFromName(uid));
 }
 
+// ---- imageDailyCap: global per-account/day emergency cost circuit breaker ---
+// [AI-FLAG-CONTRACT-1] `cfg.imageDailyCap` (routes/config.ts DEFAULTS + numericKeys)
+// used to be an ORPHAN — writable via KV once in numericKeys, but read by NOTHING,
+// so tuning it did nothing (ROOT-CAUSE §18). This is the fix: a hard backstop
+// enforced IN ADDITION TO the per-tier plan allowance above, so it also catches
+// the Max/unlimited tier — which PLANS[tier].caps.image === null and
+// usage.ts#enforceAllowance short-circuits BEFORE it ever reads or bumps its
+// per-tier "image" counter (see enforceAllowance: `if (cap === null) return
+// {allowed:true, used:0, ...}` — an unlimited tier is never counted there).
+// A global cap that only ever consulted that same counter would therefore never
+// see (or bound) an unlimited-tier account, defeating the point of an emergency
+// circuit breaker. So this keeps its OWN counter, independent of tier/plan,
+// matching the exact storage pattern usage.ts already uses (KV `env.TOKENS`,
+// one key per uid per UTC day, self-evicting TTL) rather than inventing new
+// storage — just under its own key prefix (`imgcap:`) so it counts every image
+// this uid generates regardless of tier.
+const IMG_CAP_TTL_SECONDS = 2 * 24 * 60 * 60; // mirrors usage.ts TTL_SECONDS
+
+function imgCapDayKey(now = Date.now()): string {
+  return new Date(now).toISOString().slice(0, 10); // UTC day, same as usage.ts#dayKey
+}
+function imgCapKvKey(uid: string, day = imgCapDayKey()): string {
+  return `imgcap:${uid}:${day}`;
+}
+
+async function readGlobalImageCount(env: Env, uid: string): Promise<number> {
+  try {
+    const raw = await env.TOKENS.get(imgCapKvKey(uid));
+    return raw ? Math.max(0, parseInt(raw, 10) || 0) : 0;
+  } catch {
+    return 0; // fail open — never block generation because a KV read hiccuped
+  }
+}
+
+async function bumpGlobalImageCount(env: Env, uid: string): Promise<number> {
+  const key = imgCapKvKey(uid);
+  let used = 0;
+  try {
+    const raw = await env.TOKENS.get(key);
+    used = (raw ? Math.max(0, parseInt(raw, 10) || 0) : 0) + 1;
+    await env.TOKENS.put(key, String(used), { expirationTtl: IMG_CAP_TTL_SECONDS });
+  } catch {
+    /* fail open — never block a generation on a counter write failure */
+  }
+  return used;
+}
+
+// [AI-FLAG-CONTRACT-1] existing "staging vs prod" signal in this codebase
+// (clock.ts uses the same `TEST_CLOCK_ALLOWED === "1"` check, set ONLY in
+// `[env.staging.vars]` — see wrangler.toml). Reused here rather than inventing a
+// new environment tag, since none currently exists in Env.
+function environmentTag(env: Env): "staging" | "prod" {
+  return env.TEST_CLOCK_ALLOWED === "1" ? "staging" : "prod";
+}
+
+/**
+ * Global per-account/day image-gen circuit breaker. Runs AFTER the per-tier
+ * plan-allowance gate (so a plan_limit block is reported as that, not this) and
+ * BEFORE any provider call. `cap` is `cfg.imageDailyCap`; non-finite/<=0
+ * disables the backstop (fails OPEN on a misconfigured value, matching the
+ * rest of this route's fail-open KV posture) rather than blocking everyone.
+ */
+async function checkGlobalImageCap(
+  env: Env, uid: string, tier: TierId, cap: unknown,
+): Promise<{ blocked: boolean; used: number; cap: number | null }> {
+  const capNum = typeof cap === "number" && Number.isFinite(cap) && cap > 0 ? cap : null;
+  if (capNum === null) return { blocked: false, used: 0, cap: null };
+  const used = await readGlobalImageCount(env, uid);
+  if (used >= capNum) {
+    track(env, uid, "ava_image_global_cap_blocked", "avaai", {
+      cap: capNum, used, tier, environment: environmentTag(env),
+    });
+    return { blocked: true, used, cap: capNum };
+  }
+  return { blocked: false, used, cap: capNum };
+}
+
 // Resolve conversation members — mirrors AvaAgentDO.members() (P3) so a DM with
 // no conversation_members rows still fans out and a group reads DB_META.
 async function membersOf(env: Env, conv: string, caller: string): Promise<string[]> {
@@ -236,8 +313,10 @@ async function fulfil(
     // enforced gate. A follow-up could enqueue Q_MODERATION on the new r2_key.
     const mediaRef = await storePublicImage(env, uid, bytes);
     // Consume ONE image from today's per-tier allowance only AFTER a successful
-    // delivery, so a failed generation never burns the user's daily grant.
+    // delivery, so a failed generation never burns the user's daily grant. The
+    // global imageDailyCap counter is bumped the same way, for the same reason.
     await enforceAllowance(env, uid, tier, "image", 1, { commit: true }).catch(() => {});
+    await bumpGlobalImageCount(env, uid).catch(() => {});
     const caption = editRef ? "Here's the edited image ✨" : "Here's your image ✨";
     // PRIVACY: private:true posts ONLY to the requester (kind ava_private, scope
     // to:<uid>) — a @ava image never reaches the other participant.
@@ -337,6 +416,19 @@ export async function runAvaImage(
     };
   }
 
+  // GLOBAL EMERGENCY CAP (imageDailyCap): a per-account/day backstop enforced ON
+  // TOP OF the plan allowance above — including the unlimited/Max tier, which the
+  // plan gate never counts. See checkGlobalImageCap for why this needs its own
+  // counter rather than reusing the plan-tier "image" usage dim.
+  const globalCap = await checkGlobalImageCap(env, uid, tier, cfg.imageDailyCap);
+  if (globalCap.blocked) {
+    return {
+      ok: false, blocked: true, reason: "global_cap", tier: PLANS[tier].key,
+      message: "You've hit today's image-generation limit — it resets tomorrow.",
+      httpStatus: 200,
+    };
+  }
+
   // Image gen runs on OpenRouter (xAI Grok) via our OPENROUTER_API_KEY.
   const key = (env as any).OPENROUTER_API_KEY as string | undefined;
   if (!key) return { ok: false, reason: "no_image_key", message: "Image generation is unavailable right now.", httpStatus: 503 };
@@ -385,13 +477,23 @@ export async function generateAvaImageSync(
     return { ok: false, blocked: true, message: `You've used all ${allow.cap} of today's AI images on your ${PLANS[tier].name} plan — it resets tomorrow.${upText}` };
   }
 
+  // GLOBAL EMERGENCY CAP (imageDailyCap) — same backstop as runAvaImage, in
+  // addition to the plan allowance above; see checkGlobalImageCap.
+  const globalCap = await checkGlobalImageCap(env, uid, tier, cfg.imageDailyCap);
+  if (globalCap.blocked) {
+    return { ok: false, blocked: true, message: "You've hit today's image-generation limit — it resets tomorrow." };
+  }
+
   const key = (env as any).OPENROUTER_API_KEY as string | undefined;
   if (!key) return { ok: false, message: "Image generation is unavailable right now." };
 
   try {
     const bytes = await generateImage(env, key, prompt, uid, a.editRef);
     const url = await storePublicImage(env, uid, bytes);
+    // Consume ONE image from the per-tier allowance AND the global cap counter,
+    // same rationale as fulfil(): only after a successful delivery.
     await enforceAllowance(env, uid, tier, "image", 1, { commit: true }).catch(() => {});
+    await bumpGlobalImageCount(env, uid).catch(() => {});
     track(env, uid, "ava_image_request", "avaai", { edit: !!a.editRef, tier, surface: "chatava", sync: true });
     return { ok: true, url };
   } catch (e: any) {
