@@ -41,6 +41,7 @@ import type { Env } from "../types";
 import { json, aiText, geminiRun } from "../util";
 import { requireUser, isFail } from "../authz";
 import { postAvaMessage } from "./ava_thread";
+import { loadReceptRules, evalCallRules } from "../lib/dynw/recept_rules"; // [DYNW-RECEPT-RULES-2]
 import { runGated } from "../lib/ai_gate";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -319,7 +320,22 @@ export async function delegateScan(env: Env, args: DelegateScanArgs): Promise<De
     if (prefs.monitor) {
       const offline = await isOffline(env, mem.uid);
       if (!offline) return; // they're here — let them answer themselves
-      const reply = await generateDelegateReply(env, mem.uid, mem.name, senderUid, text);
+      // [DYNW-RECEPT-RULES-2] Phase 2b: the member's rules script gets first look
+      // (same sandboxed module as receptionist rules; FAIL-OPEN). {ignore} =
+      // owner rule says stay silent; {say} = deterministic disclosed reply with
+      // ZERO inference; null = the pre-existing LLM path, unchanged.
+      let ruleSay: string | null = null;
+      try {
+        const loaded = await loadReceptRules(env, mem.uid);
+        if (loaded) {
+          const wait = { waitUntil: (p: Promise<unknown>) => { void p; } } as ExecutionContext;
+          const v = await evalCallRules(env, wait, mem.uid, "onDelegate",
+            { heard: text.slice(0, 1000), from: senderUid, conv }, loaded);
+          if (v?.ignore) return;
+          if (v?.say) ruleSay = v.say;
+        }
+      } catch { /* fail-open */ }
+      const reply = ruleSay ?? await generateDelegateReply(env, mem.uid, mem.name, senderUid, text);
       if (reply) {
         // ALWAYS disclosed: the text itself names Ava + the user, and the
         // envelope carries source:'delegate' + meta for the UI. ownerUid = the

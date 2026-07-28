@@ -292,7 +292,12 @@ export async function handleAutoReply(m: AutoReplyMsg, env: Env): Promise<void> 
   const owner = await ownerName(env, recipient);
   const agent = "Ava";
   let replyText: string;
-  if (aiMode) {
+  const ruleCanned = (m.canned_text ?? "").trim();
+  if (ruleCanned) {
+    // [DYNW-RECEPT-RULES-2] deterministic reply authored by the recipient's rules
+    // script at enqueue time (see types.ts) — no AI call, caps already applied above.
+    replyText = ruleCanned.slice(0, 400);
+  } else if (aiMode) {
     const thread = await recentThread(env, recipient, conv);
     replyText = await aiReply(env, agent, owner, cfg, thread, incoming);
   } else {
@@ -316,7 +321,7 @@ export async function handleAutoReply(m: AutoReplyMsg, env: Env): Promise<void> 
   const peerName = await ownerName(env, sender); // the sender's display name for the digest line
   await recordDigestPeer(env, recipient, sender, peerName, replyText);
 
-  await track(env, recipient, "autoreply_sent", { ai_mode: aiMode, lang: cfg.replyLang, capped: false, peer: sender, conv, mode: cfg.mode, urgent });
+  await track(env, recipient, "autoreply_sent", { ai_mode: aiMode, lang: cfg.replyLang, capped: false, peer: sender, conv, mode: cfg.mode, urgent, rule_canned: !!ruleCanned });
 }
 
 interface DigestEntry { peer: string; name: string; snippet: string }

@@ -125,6 +125,12 @@ export interface AutoReplyMsg {
   incoming_kind: string;  // 'text' | 'audio' | ...
   incoming_mid?: string;  // canonical id of the incoming message (telemetry only)
   enqueuedAt?: number;    // when avatok-api enqueued this (backlog detection)
+  // [DYNW-RECEPT-RULES-2] Phase 2b: deterministic reply text produced by the
+  // recipient's sandboxed rules script AT ENQUEUE TIME (in avatok-api, which owns
+  // the LOADER binding — this worker has none, §1.4 of the Dynamic Workers spec).
+  // Present ⇒ handleAutoReply uses it verbatim and skips AI generation; all
+  // caps/loop-protection/urgent logic still applies. Absent ⇒ behavior unchanged.
+  canned_text?: string;
 }
 
 // STREAM F — away-digest job (producer: avatok-api putAutoResponder on an

@@ -14,6 +14,7 @@ import { nameFor } from "../lib/identity";        // resolve inviter display nam
 import { readConfig } from "./config";            // groupInvitesEnabled kill switch
 import { novuGroupInvite } from "../notify_novu"; // optional Novu orchestration
 import { delegateScan } from "./ava_delegate";   // P7 — Phase 11 hook
+import { loadReceptRules, evalCallRules } from "../lib/dynw/recept_rules"; // [DYNW-RECEPT-RULES-2] Phase 2b onAutoReply hook
 import { guardianScan, guardianFastScan, hasGuardianOnRecipient } from "./ava_guardian"; // P8 + G3 inline two-lane scan
 import { canonicalMsgId } from "../util"; // canonical, chronologically-sortable message id
 import { brainIngest } from "../lib/brain_ingest"; // One Brain B3 (§8-B3, B-D1) — metadata-only chat activity
@@ -310,12 +311,29 @@ async function maybeEnqueueAutoReply(
     //    recipient. 'everyone' → anyone except a blocked sender (blocks were already
     //    filtered upstream, so reaching here means not blocked).
     if (cfg.audience === "known" && !args.senderKnown) return;
+    // 4b) [DYNW-RECEPT-RULES-2] Phase 2b — evaluate the recipient's rules script
+    //     HERE, in the deployment that owns the loader (§1.4 deployment boundary:
+    //     consumers has no LOADER binding). {ignore} = no job at all; {say} rides
+    //     the job as canned_text so the consumer skips AI generation but keeps
+    //     ALL its caps/loop/urgent logic. FAIL-OPEN: any error → plain enqueue.
+    let cannedText: string | undefined;
+    try {
+      const loaded = await loadReceptRules(env, args.recipient);
+      if (loaded) {
+        const wait = { waitUntil: (p: Promise<unknown>) => { void p; } } as ExecutionContext;
+        const v = await evalCallRules(env, wait, args.recipient, "onAutoReply",
+          { heard: (args.text ?? "").slice(0, 1000), from: args.sender, conv: args.conv }, loaded);
+        if (v?.ignore) return;
+        if (v?.say) cannedText = v.say;
+      }
+    } catch { /* fail-open */ }
     // 5) Enqueue. The consumer enforces the 3/contact/day + 50/day caps + generates
     //    the reply (canned or AI) + appends it. Dark/no-op if the queue is unbound.
     await env.Q_AUTO_REPLY?.send({
       recipient: args.recipient, sender: args.sender, conv: args.conv,
       incoming_text: args.text, incoming_kind: args.kind, incoming_mid: args.mid,
       enqueuedAt: Date.now(),
+      ...(cannedText ? { canned_text: cannedText } : {}),
     });
   } catch { /* best-effort; a missed auto-reply never affects the human's message delivery */ }
 }

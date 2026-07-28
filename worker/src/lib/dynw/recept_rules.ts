@@ -17,6 +17,13 @@
 // Verdict shape (anything else → null):
 //   { say?: string, end?: boolean }          → speak `say` verbatim; end the call after when `end`
 //   { promptAddendum?: string }              → inject an owner rule into THIS LLM turn
+//   { ignore?: true }                        → (onDelegate/onAutoReply) stay silent — no reply at all
+//
+// Phase 2b hooks (same module, same sandbox):
+//   onDelegate(payload {heard, from, conv})  → {say} replies deterministically as the
+//     disclosed delegate line (0 inference), {ignore} suppresses the delegate reply.
+//   onAutoReply(payload {heard, from, conv}) → {say} becomes the canned auto-reply
+//     text (consumer skips AI generation), {ignore} suppresses the auto-reply.
 import type { Env } from "../../types";
 import { runDynamic } from "./host";
 import { saveModule, setStatus, loadActive, type DynModuleRow } from "./registry";
@@ -24,7 +31,7 @@ import { saveModule, setStatus, loadActive, type DynModuleRow } from "./registry
 const PTR_KEY = (uid: string) => `dynw:rules:recept:${uid}`;
 const MAX_BODY_CHARS = 16 * 1024;
 
-export interface RuleVerdict { say?: string; end?: boolean; promptAddendum?: string }
+export interface RuleVerdict { say?: string; end?: boolean; promptAddendum?: string; ignore?: boolean }
 export interface LoadedRules { codeId: string; modules: Record<string, string> }
 
 // String-concat wrapper (never a template literal — owner code may contain ` and ${）.
@@ -98,8 +105,9 @@ function sanitizeVerdict(v: unknown): RuleVerdict | null {
   const out: RuleVerdict = {};
   if (typeof o.say === "string" && o.say.trim()) out.say = o.say.trim().slice(0, 400);
   if (o.end === true) out.end = true;
+  if (o.ignore === true) out.ignore = true;
   if (typeof o.promptAddendum === "string" && o.promptAddendum.trim()) out.promptAddendum = o.promptAddendum.trim().slice(0, 500);
-  return (out.say || out.promptAddendum) ? out : null;
+  return (out.say || out.promptAddendum || out.ignore) ? out : null;
 }
 
 /**
@@ -111,7 +119,7 @@ export async function evalCallRules(
   env: Env,
   wait: ExecutionContext,
   uid: string,
-  hook: "onTurn" | "onCallStart",
+  hook: "onTurn" | "onCallStart" | "onDelegate" | "onAutoReply",
   payload: unknown,
   loaded: LoadedRules,
 ): Promise<RuleVerdict | null> {
