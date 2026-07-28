@@ -99,20 +99,33 @@ binding = "LOADER"
 - **`registry.ts`** — code storage/versioning. Table (D1 `DB_META`):
   ```sql
   CREATE TABLE IF NOT EXISTS dyn_modules (
-    code_id TEXT PRIMARY KEY,        -- "<area>:<owner>:<semver-or-hash>"
+    code_id TEXT PRIMARY KEY,        -- "<area>:<owner>:<sha256-prefix>"
     area TEXT NOT NULL, owner_uid TEXT,
     source TEXT NOT NULL,            -- bundled JS (post worker-bundler)
-    sha256 TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active', -- active|disabled
-    created_at INTEGER NOT NULL
+    sha256 TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft', -- draft|pending_review|active|disabled
+    size_bytes INTEGER NOT NULL,
+    created_at INTEGER NOT NULL, activated_at INTEGER, activated_by TEXT
   );
   ```
-  `codeId` embeds the sha — a code change is a new id, so `LOADER.get` caching is always correct and rollback = flip a pointer.
+  Registry hardening (all enforced in `registry.ts`, the only module allowed to read/write this table):
+  - **Size limit:** reject `source` over `dynModuleMaxBytes` (default 128 KB, numeric flag per §2.3) at save time; `size_bytes` recorded and re-checked on load.
+  - **Owner authorization:** writes require the authenticated uid to equal `owner_uid` (or admin for first-party areas); an owner can only save into areas enabled for them (per-area allowlist/flag). Loads verify the requesting context's uid matches `owner_uid` for owner-scoped areas.
+  - **Immutable hash verification:** rows are immutable — no UPDATE of `source`, ever; a change is a new `code_id`. On every load, recompute sha256 of `source` and refuse to run on mismatch (tamper = telemetry + `status='disabled'`).
+  - **Approval lifecycle:** `draft` (saved, never runnable) → `pending_review` (source moderated via `guardWrite`; first-party areas also require owner/admin approval) → `active` (runnable) → `disabled` (kill; never deleted, for audit). Only `active` rows are loadable; `LOADER.get` codeId includes the sha so a status flip can never serve stale code.
 
 ### 2.3 Flags (declare all in `config.ts` DEFAULTS now, all `false`)
-`dynamicWorkersEnabled` (master), plus per-workstream: `dynCodeModeEnabled`, `dynAvaBrainContextEnabled`, `dynReceptionistRulesEnabled`, `dynMarketplaceFlowsEnabled`, `dynCallRoutingEnabled`, `dynCreatorAgentToolsEnabled`. Do not add a `dynMessagingEnabled` flag: ordinary messaging is explicitly out of scope. A future chat-plugin experiment must receive a separate architecture decision first.
+`dynamicWorkersEnabled` (master), plus per-workstream: `dynCodeModeEnabled`, `dynAvaBrainContextEnabled`, `dynReceptionistRulesEnabled`, `dynMarketplaceFlowsEnabled`, `dynCallRoutingEnabled`, `dynCreatorAgentToolsEnabled`; numeric: `dynModuleMaxBytes` (default 131072, in `numericKeys`). Do not add a `dynMessagingEnabled` flag: ordinary messaging is explicitly out of scope. A future chat-plugin experiment must receive a separate architecture decision first.
 
 ### 2.4 Acceptance
 Hello-world dynamic worker runs on staging behind the flag; blocked-egress test proves `fetch("https://example.com")` inside dynamic code throws; a `DynKV` stub with prefix `A` provably cannot read prefix `B`; telemetry event visible in PostHog.
+
+Brain-boundary tests (all three must fail closed, with a telemetry event, before any workstream ships):
+1. **Consent off → denied:** master AvaBrain switch (or the relevant per-app guardrail) disabled for the test account → every `DynBrain` call throws a capability-denied error; nothing is returned.
+2. **Private/E2E source → denied:** a `DynBrain` query that would touch private/E2E-derived content returns nothing and emits a denial event — such content must be excluded at the capability layer (host-side filter), not by trusting query shape.
+3. **No Brain writes:** `DynBrain` exposes no write/ingest/embed method; a dynamic script attempting to reach Brain state through any other passed capability (`DynKV` prefix probing included) fails. Verified by an adversarial test script in the Phase 0 suite.
+
+Registry tests: over-size module rejected; non-owner save/load rejected; sha mismatch on load refuses to run and disables the row; a `draft`/`pending_review`/`disabled` module is not loadable.
 
 ---
 
@@ -156,7 +169,10 @@ Ranked by value/effort. Each is an independent issue; WS-1..3 are the recommende
    ```
 2. Compile+bundle at save time (worker-bundler), moderate source via `guardWrite(ModField:"prompt")`, store in `dyn_modules` (`area:"recept_rules"`, owner_uid), sha-versioned.
 3. In `ReceptionRoomCf.processCfTurn`: before `cfChat`, call the owner's rules worker (not a DO facet — a warm loader isolate) — `LOADER.get(codeId)` warm across the whole call, `globalOutbound:null`, env `{}` (pure function over transcript; caller info from InitBlob). `say` verdicts skip the LLM entirely (direct `cfSpeak`); `continue` verdicts append `promptAddendum`. Hard 20ms CPU limit; any error → ignore, proceed to LLM (fail-open, matches delegateScan's cheap-first cascade philosophy).
-4. Same host for `ava_delegate` (script decides reply/ignore/alert before `generateDelegateReply` :365) and `auto_responder` `depth:"chat"` (script can produce the canned reply without the consumers-side AI call).
+4. Same host for `ava_delegate` (script decides reply/ignore/alert before `generateDelegateReply` :365).
+5. **`auto_responder` crosses the deployment boundary (§1.4):** `depth:"chat"` replies are generated in the `consumers` deployment (`consumers/src/auto_reply.ts` via `Q_AUTO_REPLY`), which has no `LOADER` binding. Two compliant options — pick ONE in the implementation PR, do not give consumers its own loader:
+   - **(a) Recommended — evaluate in the Worker before enqueue:** run the owner's rule script in `avatok-api` at the point where the send hot path already reads the KV-mirrored config (`readAutoResponderConfig`). If the script produces a deterministic reply, enqueue a pre-rendered `kind:"canned"` job (payload carries the final text + `code_id` for audit); consumers just delivers it. LLM-path jobs are enqueued unchanged.
+   - **(b) Service binding:** consumers gets a service binding to a named entrypoint on `avatok-api` (`DynEval.evaluate(area, codeId, input)`), so the loader stays in one deployment. Costs a cross-worker hop per message; only choose this if (a)'s enqueue-time evaluation misses needed context (e.g. rules that depend on delivery-time state).
 
 **Acceptance:** deterministic rule answered with 0 LLM calls (verify via `$ai_generation` absence + `dyn_worker_run` presence); a thrown script never breaks a live call (chaos test: script with `throw` mid-call); disable = KV flag + `dyn_modules.status='disabled'`.
 
@@ -171,6 +187,12 @@ Ranked by value/effort. Each is an independent issue; WS-1..3 are the recommende
 - `consumers/src/calendar.ts:82` reminder ladder + `listing_expiry.ts` — cron-poll + boolean columns → `step.sleep` until T−24h/T−60m/T−10m.
 
 **Design:** these are OUR code, not tenant code → use **static Cloudflare Workflows** first (`[[workflows]]` binding, `WorkflowEntrypoint` classes in `worker/src/workflows/`). The existing consumer deployment cannot use the Worker's loader without its own binding and deployment work. Adopt `@cloudflare/dynamic-workflows` only where the steps themselves are tenant-defined (WS-4 marketplace automations, WS-1 long agent plans). Order: (1) deletion cascade — each store = one `step.do` with per-step retry, legal-hold checks, and idempotency keys; cron backstop kept as safety net; (2) Wise payout; (3) mkt audio; (4) reminders. Keep queue producers; migrate each consumer only after the owning deployment has a deliberate Workflow binding.
+
+**Handoff contract (deployment boundary, §1.4):** the `[[workflows]]` binding and all `WorkflowEntrypoint` classes live in `avatok-api` (worker). Consumers CANNOT call `WORKFLOW.create()` — it has different bindings. Per migrated flow:
+- **Trigger:** either (a) move the trigger to the worker side (e.g. deletion: the route/DO that today enqueues to `Q_ACCOUNT_DELETIONS` instead calls `env.WF_DELETION.create({id: uid})` — instance id = the natural idempotency key, so double-triggers dedupe), or (b) consumers keeps consuming the queue but its handler shrinks to one call on a **service binding** to `avatok-api` (`WorkflowGateway.start(flow, id, params)`), which does the `create()`. (a) for worker-originated flows (payout, mkt audio, ava_apps confirm); (b) for flows whose producer must stay in consumers/cron.
+- **Events:** webhook receivers stay where they are (`/webhooks/wise` in worker) and call `instance.sendEvent()` directly; consumer-side signals go through the same `WorkflowGateway`.
+- **Idempotency:** workflow instance ids are deterministic (`<flow>:<natural-key>`, e.g. `deletion:<uid>`, `payout:<transfer_id>`); `create()` on an existing id is treated as already-started, not an error. Each `step.do` keeps the existing per-store/per-hop idempotency markers (`settlement_log`, `op_id`) so the cron backstops remain valid during migration.
+- **Rollout:** per-flow flag; queue path stays as fallback until the workflow version has run clean on staging for a week.
 **Acceptance:** kill the worker mid-deletion-cascade on staging → workflow resumes at the failed step, no re-deletion of completed stores (idempotency preserved); Wise flow survives a 2-day webhook delay without cron polling.
 
 ---
