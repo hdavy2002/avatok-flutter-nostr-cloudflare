@@ -26,6 +26,7 @@ import { idStatus, idEmailStart, idEmailVerify, idPasswordStart, idPasswordSet }
 import { walletTopup, walletTopupIntent, walletTopupPlayVerify, stripeWebhook, walletSpend, walletBalance, walletTransactions, walletEarnings, walletLive, walletLedger, walletLedgerDetail, walletReceiptResend } from "./routes/wallet";
 import { walletStatement, walletStatementExport, walletSummary, walletTopupQuote } from "./routes/wallet_statement";
 import { adminLedger, adminRefund, adminAdjust, adminAccount, adminRecon, adminEscrowHold, adminEscrowRelease, adminTaxExport, adminFailedSettlements, adminRetrySettlement, requireAdmin } from "./routes/admin_money";
+import { dynwAcceptance } from "./routes/dynw_test"; // [DYNW-CORE-1] Phase 0 acceptance battery (admin-only, dark behind dynamicWorkersEnabled)
 import { welcomeBackfill } from "./routes/welcome_bonus"; // [WELCOME-100-1]
 import { tokenHardResetBackfill } from "./routes/token_reset"; // [TOKENS-100-GRANT-1] one-time hard reset to 100
 import { liveStart, liveStop, liveJoin, liveRoom, liveDonate, liveMod, liveState } from "./routes/live";
@@ -227,6 +228,10 @@ export { VobizAgentRoom } from "./do/vobiz_agent_room"; // [AVA-PSTN-AGENT-1] li
 export { VoicemailStreamRoom } from "./do/voicemail_stream_room"; // [AVA-VM-SELFREC-1] self-recorded PSTN voicemail over <Stream> (dark behind pstnVoicemailSelfRecord)
 export { DialerGateDO } from "./do/dialer_gate_do"; // [AVA-CAMP-B1-GATE] per-user outbound-dial channel pool + rate limit (dark — nothing calls it yet, campaignDialerEnabled)
 export { CampaignDO } from "./do/campaign_do"; // [AVA-CAMP-B2-WIRE] per-campaign SQLite-backed DO (call_fsm state, pacing; dark behind campaignDialerEnabled)
+// [DYNW-CORE-1] Dynamic Workers capability entrypoints. Top-level exports are
+// REQUIRED so lib/dynw can mint scoped stubs via ctx.exports (enable_ctx_exports)
+// and pass them into sandboxed child Workers. Dark behind dynamicWorkersEnabled.
+export { DynKV, DynBrain } from "./lib/dynw/caps";
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -331,6 +336,10 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
     // Remote kill switches (Phase 1, A2) — public read, admin write.
     if (p === "/api/config" && req.method === "GET") return await getConfig(env);
     if (p === "/api/admin/config" && req.method === "PUT") return await putConfig(req, env);
+
+    // [DYNW-CORE-1] Dynamic Workers Phase 0 acceptance battery (admin-only; 403s
+    // unless dynamicWorkersEnabled — dark in prod, exercised on staging).
+    if (p === "/api/admin/dynw/acceptance" && req.method === "POST") return await dynwAcceptance(req, env, ctx);
 
     // Store-review login bypass REMOVED (2026-06-18). Login is moving to
     // Google-only OAuth (no OTP), so reviewers sign in with a Gmail test

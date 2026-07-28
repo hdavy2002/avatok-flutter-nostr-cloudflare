@@ -759,6 +759,19 @@ export interface PlatformConfig {
   campaignHandoverRingSec: number;        // handover ring window, seconds (25)
   campaignHandoverTokensPerMin: number;   // handover tariff, tokens/min (3, was 2 — bumped 2026-07-20)
   campaignHandoverTopupMin: number;       // handover rolling-reservation top-up window, minutes (10)
+
+  // Dynamic Workers (Specs/PROPOSAL-DYNAMIC-WORKERS-2026-07-28.md, [DYNW-CORE-1]).
+  // Master kill switch + one flag per workstream, all declared per the fake-flag
+  // rule. NO dynMessagingEnabled by owner decision: ordinary messaging (InboxDO/
+  // PartyDO hot paths) is explicitly out of scope for dynamic code.
+  dynamicWorkersEnabled: boolean;         // master switch — lib/dynw/host.ts refuses to run anything while false
+  dynCodeModeEnabled: boolean;            // WS-1: Code Mode for AvaApps/Ava tool loops
+  dynAvaBrainContextEnabled: boolean;     // WS-1: read-only consent-scoped DynBrain capability
+  dynReceptionistRulesEnabled: boolean;   // WS-2: per-owner receptionist/delegate rule scripts
+  dynMarketplaceFlowsEnabled: boolean;    // WS-4: seller policy scripts + tenant automations
+  dynCallRoutingEnabled: boolean;         // WS-9: DID/PSTN call-routing scripts (evaluate-only for now)
+  dynCreatorAgentToolsEnabled: boolean;   // WS-8: creator agent skills via ToolRuntime
+  dynModuleMaxBytes: number;              // registry cap on bundled module source (131072)
 }
 
 // FREE LAUNCH (2026-06-28, owner-locked Specs/FREE-LAUNCH-DIRECTION.md): ship an
@@ -1085,6 +1098,16 @@ const DEFAULTS: PlatformConfig = {
   campaignHandoverRingSec: 25,
   campaignHandoverTokensPerMin: 3,   // [AVA-CAMP-Q-BACKEND] human-takeover tariff bumped 2->3 tokens/min (owner decision 2026-07-20)
   campaignHandoverTopupMin: 10,
+
+  // --- Dynamic Workers ([DYNW-CORE-1]) — ALL DARK. Flip on staging KV first. ---
+  dynamicWorkersEnabled: false,
+  dynCodeModeEnabled: false,
+  dynAvaBrainContextEnabled: false,
+  dynReceptionistRulesEnabled: false,
+  dynMarketplaceFlowsEnabled: false,
+  dynCallRoutingEnabled: false,
+  dynCreatorAgentToolsEnabled: false,
+  dynModuleMaxBytes: 131072,         // 128 KB bundled-source cap (lib/dynw/registry.ts)
 };
 
 /** Merged config for server-side gates (same blob getConfig serves). */
@@ -1158,6 +1181,8 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     // [AI-PRICE-CATALOG-1 2026-07-25 / gate finding B3] platform-wide unrecovered-
     // loss alert threshold — numeric, must be here or `putConfig` 400s `bad type`.
     "unrecoveredPlatformAlertMicroUsd",
+    // [DYNW-CORE-1] dynamic-module source size cap — numeric or flags.sh 400s.
+    "dynModuleMaxBytes",
   ]);
   for (const [k, v] of Object.entries(body)) {
     if (!(k in DEFAULTS)) return json({ error: `unknown key: ${k}` }, 400);

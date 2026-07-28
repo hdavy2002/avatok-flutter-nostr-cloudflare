@@ -8,7 +8,11 @@
 name = "avatok-api"
 main = "src/index.ts"
 compatibility_date = "2025-05-01"
-compatibility_flags = ["nodejs_compat"]
+# [DYNW-CORE-1] enable_ctx_exports: additive runtime feature (ctx.exports loopback
+# bindings) needed to pass scoped capability stubs into dynamically-loaded Workers.
+# It enables ONE new API and changes no existing behavior — deliberately a flag
+# bump, NOT a compatibility_date bump.
+compatibility_flags = ["nodejs_compat", "enable_ctx_exports"]
 
 # Apex-zone custom domain. The long *.workers.dev host intermittently fails mobile
 # DNS resolution (errno 7) on wifi/LTE transitions — fatal for the persistent
@@ -448,6 +452,13 @@ class_name = "DialerGateDO"
 name = "CAMPAIGN_DO"
 class_name = "CampaignDO"
 
+# [DYNW-CORE-1] Dynamic Workers loader (Specs/PROPOSAL-DYNAMIC-WORKERS-2026-07-28.md).
+# Lets this Worker spin up sandboxed child Workers at runtime. DARK behind
+# `dynamicWorkersEnabled` (routes/config.ts); the ONLY consumer is lib/dynw/host.ts.
+# Every load() sets globalOutbound: null (no network) unless a workstream opts in.
+[[worker_loaders]]
+binding = "LOADER"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["CallRoom"]
@@ -652,6 +663,10 @@ bucket_name = "avatok-backup-staging"
 [[env.staging.kv_namespaces]]
 binding = "TOKENS"
 id = "fbd93a113d634a29b89dd40ad8caff0d"
+
+# [DYNW-CORE-1] Dynamic Workers loader — staging twin of the top-level binding.
+[[env.staging.worker_loaders]]
+binding = "LOADER"
 
 [[env.staging.queues.producers]]
 binding = "Q_MODERATION"
