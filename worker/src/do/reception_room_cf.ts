@@ -29,6 +29,7 @@ import { contactFor } from "../lib/identity";
 import { avaReasonRaw } from "../lib/ava_reason"; // One Brain B1: gateway for STT/LLM/TTS
 import type { Verb } from "../lib/ava_reason/types";
 import { aiRunOpts } from "../lib/ai_gate";       // AI Gateway cost-logging opts
+import { loadReceptRules, evalCallRules, type LoadedRules } from "../lib/dynw/recept_rules"; // [DYNW-RECEPT-RULES-1]
 import { googleSynthesizeForLang } from "../lib/google_tts"; // WaveNet voice, any language (RECEPT-TTS-GOOGLE)
 import { sarvamTtsPcm, sarvamSttTranscribe } from "../lib/sarvam"; // Bulbul TTS + Saarika STT (RECEPT-SARVAM)
 import { deepInfraStt, deepInfraTtsPcm, kokoroVoiceForLang, splitTtsClauses, deepInfraSpeechResponse } from "../lib/deepinfra"; // Voxtral STT + Kokoro/Inworld TTS (RECEPT-DEEPINFRA)
@@ -156,6 +157,9 @@ export class ReceptionRoomCf {
 
   private client: WebSocket | null = null;
   private init: InitBlob | null = null;
+  // [DYNW-RECEPT-RULES-1] owner rules module, resolved ONCE per call on first turn
+  // (null = not looked up yet, "none" = looked up, owner has no active rules).
+  private dynRules: LoadedRules | "none" | null = null;
   private startedAt = 0;
   private softTimer: ReturnType<typeof setTimeout> | null = null;
   private hardTimer: ReturnType<typeof setTimeout> | null = null;
@@ -636,7 +640,13 @@ export class ReceptionRoomCf {
     if (this.finalized) return;
     if (this.cfTimeUp) this.cfHistory.push({ role: "user", content: "[SYSTEM: time is up]" });
     this.cfHistory.push({ role: "user", content: userContent });
-    const raw = (await this.cfLlm()).trim();
+    // [DYNW-RECEPT-RULES-1] deterministic pre-LLM verdict from the owner's rules
+    // script (sandboxed, no network, ≤1.5s, FAIL-OPEN). A `say` verdict answers
+    // with ZERO inference; a `promptAddendum` steers this turn's LLM call; null →
+    // exactly the pre-existing behavior. Dark behind dynReceptionistRulesEnabled
+    // (area flag enforced inside runDynamic).
+    const ruleSay = await this.dynRuleVerdict(userContent);
+    const raw = (ruleSay ?? (await this.cfLlm())).trim();
     // CLOSE-ON-GOODBYE (owner 2026-07-19): end the call the moment Ava signs off,
     // instead of holding the line open until the hard timer (which made her wake up
     // again after "have a great day"). Honor the model's <END_CALL> marker AND detect
@@ -854,6 +864,40 @@ export class ReceptionRoomCf {
 
   private async cfLlm(): Promise<string> {
     return this.cfChat(this.cfHistory, 120); // short replies → faster LLM + TTS
+  }
+
+  // [DYNW-RECEPT-RULES-1] Evaluate the owner's onTurn rules. Returns the verbatim
+  // text to speak (optionally + "<END_CALL>") when a `say` verdict fires, or null
+  // to proceed to the LLM (after injecting any promptAddendum). Every failure path
+  // is fail-open null — rules can never break a live call.
+  private async dynRuleVerdict(lastHeard: string): Promise<string | null> {
+    try {
+      const uid = this.init?.owner_uid;
+      if (!uid) return null;
+      if (this.dynRules === null) this.dynRules = (await loadReceptRules(this.env, uid)) ?? "none";
+      if (this.dynRules === "none") return null;
+      const payload = {
+        caller: { phone: this.init?.caller_phone ?? null, name: this.init?.caller_name ?? null },
+        heard: String(lastHeard ?? "").slice(0, 1000),
+        transcript: this.cfHistory.filter((m) => m.role !== "system").slice(-12),
+        activation_mode: this.init?.activation_mode ?? null,
+      };
+      // DurableObjectState has waitUntil — structurally sufficient for the host's
+      // telemetry flushes (ctx.exports is never needed here: rules get NO capabilities).
+      const wait = this.state as unknown as ExecutionContext;
+      const v = await evalCallRules(this.env, wait, uid, "onTurn", payload, this.dynRules);
+      if (!v) return null;
+      if (v.promptAddendum) {
+        this.cfHistory.push({ role: "system", content: "OWNER RULE (apply to this reply): " + v.promptAddendum });
+        this.ev("ava_recept_rule_addendum", { chars: v.promptAddendum.length });
+        return null;
+      }
+      if (v.say) {
+        this.ev("ava_recept_rule_say", { end: v.end === true, chars: v.say.length });
+        return v.say + (v.end ? " <END_CALL>" : "");
+      }
+      return null;
+    } catch { return null; }
   }
 
   private sleep(ms: number): Promise<void> { return new Promise((r) => setTimeout(r, Math.max(0, ms))); }

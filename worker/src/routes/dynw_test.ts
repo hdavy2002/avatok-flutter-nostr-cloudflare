@@ -10,6 +10,7 @@ import { json } from "../util";
 import { requireAdmin } from "./admin_money";
 import { runDynamic } from "../lib/dynw/host";
 import { saveModule, setStatus, loadActive } from "../lib/dynw/registry";
+import { saveReceptRules, loadReceptRules, evalCallRules, disableReceptRules } from "../lib/dynw/recept_rules"; // [DYNW-RECEPT-RULES-1]
 import { readConfig } from "./config";
 
 const TEST_UID = "dynw-test-user";
@@ -118,6 +119,34 @@ export async function dynwAcceptance(req: Request, env: Env, ctx: ExecutionConte
   const cmEnv = { MEMORY: brainEnv.MEMORY, TOOLS: exports.DynComposio({ props: { uid: TEST_UID, runId: crypto.randomUUID(), budget: 2, confirmSends: true } }) };
   const ft = await runDynamic<string>(env, ctx, { ...base, codeId: codeId("faketool"), method: "faketool", env: cmEnv });
   ck("composio_unknown_tool_denied", !ft.ok && ft.error === "script_error" && /capability_denied|unknown_tool/.test(ft.detail ?? ""), JSON.stringify(ft));
+
+  // 5c — [DYNW-RECEPT-RULES-1] receptionist rules: deterministic say verdict,
+  // null passthrough, and fail-open on a throwing script. Bodies carry a
+  // per-run nonce: identical sources are idempotent in the registry, and a
+  // previous run's disabled row must not be reused.
+  const nonce = `// run ${Date.now()}`;
+  let ruleSayOk = false, ruleNullOk = false, ruleFailOpenOk = false;
+  const savedRules = await saveReceptRules(env, TEST_UID,
+    `${nonce}\nreturn { onTurn(p) { if (/pizza/i.test(p.heard)) return { say: "No pizza today.", end: true }; return null; } }`);
+  if (savedRules.ok) {
+    const loaded = await loadReceptRules(env, TEST_UID);
+    if (loaded) {
+      const v1 = await evalCallRules(env, ctx, TEST_UID, "onTurn", { heard: "do you want pizza?", caller: {} }, loaded);
+      ruleSayOk = v1?.say === "No pizza today." && v1?.end === true;
+      const v2 = await evalCallRules(env, ctx, TEST_UID, "onTurn", { heard: "hello there", caller: {} }, loaded);
+      ruleNullOk = v2 === null;
+    }
+    const badRules = await saveReceptRules(env, TEST_UID, `${nonce}\nreturn { onTurn() { throw new Error("boom"); } }`);
+    if (badRules.ok) {
+      const loadedBad = await loadReceptRules(env, TEST_UID);
+      ruleFailOpenOk = loadedBad !== null
+        && (await evalCallRules(env, ctx, TEST_UID, "onTurn", { heard: "x", caller: {} }, loadedBad)) === null;
+    }
+    await disableReceptRules(env, TEST_UID);
+  }
+  ck("recept_rules_say_verdict", ruleSayOk, JSON.stringify(savedRules));
+  ck("recept_rules_null_passthrough", ruleNullOk);
+  ck("recept_rules_fail_open", ruleFailOpenOk);
 
   // 6 — registry: size cap, lifecycle, owner authz, sha tamper.
   const big = "//" + "x".repeat(cfg.dynModuleMaxBytes + 1);

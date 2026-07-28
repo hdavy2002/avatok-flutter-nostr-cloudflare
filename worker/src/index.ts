@@ -27,6 +27,7 @@ import { walletTopup, walletTopupIntent, walletTopupPlayVerify, stripeWebhook, w
 import { walletStatement, walletStatementExport, walletSummary, walletTopupQuote } from "./routes/wallet_statement";
 import { adminLedger, adminRefund, adminAdjust, adminAccount, adminRecon, adminEscrowHold, adminEscrowRelease, adminTaxExport, adminFailedSettlements, adminRetrySettlement, requireAdmin } from "./routes/admin_money";
 import { dynwAcceptance } from "./routes/dynw_test"; // [DYNW-CORE-1] Phase 0 acceptance battery (admin-only, dark behind dynamicWorkersEnabled)
+import { receptRules } from "./routes/recept_rules"; // [DYNW-RECEPT-RULES-1] owner receptionist rule scripts
 import { welcomeBackfill } from "./routes/welcome_bonus"; // [WELCOME-100-1]
 import { tokenHardResetBackfill } from "./routes/token_reset"; // [TOKENS-100-GRANT-1] one-time hard reset to 100
 import { liveStart, liveStop, liveJoin, liveRoom, liveDonate, liveMod, liveState } from "./routes/live";
@@ -340,6 +341,10 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
     // [DYNW-CORE-1] Dynamic Workers Phase 0 acceptance battery (admin-only; 403s
     // unless dynamicWorkersEnabled — dark in prod, exercised on staging).
     if (p === "/api/admin/dynw/acceptance" && req.method === "POST") return await dynwAcceptance(req, env, ctx);
+
+    // [DYNW-RECEPT-RULES-1] Owner receptionist rule scripts (dark behind
+    // dynReceptionistRulesEnabled; source moderated + sandboxed, fail-open in-call).
+    if (p === "/api/receptionist/rules") return await receptRules(req, env, ctx);
 
     // Store-review login bypass REMOVED (2026-06-18). Login is moving to
     // Google-only OAuth (no OTP), so reviewers sign in with a Gmail test
