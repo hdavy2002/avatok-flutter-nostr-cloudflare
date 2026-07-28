@@ -233,6 +233,12 @@ export { CampaignDO } from "./do/campaign_do"; // [AVA-CAMP-B2-WIRE] per-campaig
 // REQUIRED so lib/dynw can mint scoped stubs via ctx.exports (enable_ctx_exports)
 // and pass them into sandboxed child Workers. Dark behind dynamicWorkersEnabled.
 export { DynKV, DynBrain, DynComposio } from "./lib/dynw/caps";
+// [DYNW-FLOWS-1] DARK PARALLEL Cloudflare Workflow — account-deletion cascade port
+// (§WS-3). LIVE path is still the account-deletions queue → consumers/src/
+// deletion.ts + cron backstop; this export is required so wrangler's [[workflows]]
+// class_name = "DeletionWorkflow" binding resolves. Dark behind
+// deletionWorkflowEnabled (routes/config.ts).
+export { DeletionWorkflow } from "./workflows/deletion";
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {

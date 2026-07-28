@@ -24,6 +24,7 @@ import { metaDb } from "../db/shard";
 import { track, trackException } from "../hooks";
 import { requireAdmin } from "./admin_money";
 import { enqueueMem0Purge } from "../sentinel/purge";
+import { enqueueDeletion } from "./account"; // [DYNW-FLOWS-1] shared queue/WF_DELETION dispatch (deletionWorkflowEnabled)
 
 function adminUids(env: Env): string[] {
   return (env.ADMIN_UIDS ?? "").split(/[,\s]+/).map((s) => s.trim()).filter(Boolean);
@@ -76,8 +77,10 @@ export async function adminDeleteUser(req: Request, env: Env, secret?: string): 
     // Best-effort mem0 behaviour-memory purge — DETACHED, never blocks deletion.
     void enqueueMem0Purge(env, uid).catch(() => {});
 
-    // Enqueue for the cascade consumer; it honors scheduled_at (now → runs immediately).
-    await env.Q_DELETE.send({ uid, clerk_user_id: uid, scheduled_at: now });
+    // Enqueue for the cascade (queue consumer, or the dark WF_DELETION Workflow
+    // behind deletionWorkflowEnabled — see routes/account.ts enqueueDeletion). It
+    // honors scheduled_at (now → runs immediately) either way.
+    await enqueueDeletion(env, { uid, clerk_user_id: uid, scheduled_at: now });
 
     // Telemetry: actor + target on one auditable event.
     track(env, actor, "admin_user_deleted", "platform", { target_uid: uid, immediate: true, scheduled_at: now });

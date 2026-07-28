@@ -772,6 +772,13 @@ export interface PlatformConfig {
   dynCallRoutingEnabled: boolean;         // WS-9: DID/PSTN call-routing scripts (evaluate-only for now)
   dynCreatorAgentToolsEnabled: boolean;   // WS-8: creator agent skills via ToolRuntime
   dynModuleMaxBytes: number;              // registry cap on bundled module source (131072)
+
+  // [DYNW-FLOWS-1] WS-3: DARK PARALLEL Cloudflare Workflow port of the account-
+  // deletion cascade (worker/src/workflows/deletion.ts). The account-deletions
+  // QUEUE + 6-hourly cron backstop stay the LIVE path regardless of this flag —
+  // flipping it on only changes where NEW deletion requests are enqueued (see
+  // routes/account.ts). Boolean → NOT in numericKeys.
+  deletionWorkflowEnabled: boolean;
 }
 
 // FREE LAUNCH (2026-06-28, owner-locked Specs/FREE-LAUNCH-DIRECTION.md): ship an
@@ -1108,6 +1115,9 @@ const DEFAULTS: PlatformConfig = {
   dynCallRoutingEnabled: false,
   dynCreatorAgentToolsEnabled: false,
   dynModuleMaxBytes: 131072,         // 128 KB bundled-source cap (lib/dynw/registry.ts)
+
+  // [DYNW-FLOWS-1] WS-3 deletion Workflow — DARK. Flip on staging KV first.
+  deletionWorkflowEnabled: false,
 };
 
 /** Merged config for server-side gates (same blob getConfig serves). */

@@ -10,6 +10,7 @@ import { setVerifiedCache } from "../auth";
 import { requireUser, isFail } from "../authz";
 import { metaDb } from "../db/shard";
 import { track } from "../hooks";
+import { readConfig } from "./config"; // [DYNW-FLOWS-1] deletionWorkflowEnabled gate
 // [SENTINEL-MEM0-PURGE] Guardian Sentinel S2 — best-effort mem0 behaviour-memory
 // purge. Enqueue + retry asynchronously; NEVER blocks canonical deletion (plan §1.1
 // rule 5: an external SaaS can never block account deletion). No-ops without a key.
@@ -22,6 +23,36 @@ import { enqueueMem0Purge } from "../sentinel/purge";
 // "re-onboarded / choose a new number" report). 30 days gives a returning user room
 // to reactivate before anything is destroyed; email relink in /api/me covers the rest.
 const GRACE_MS = 30 * 86_400_000; // 30-day grace (§10.5)
+
+// [DYNW-FLOWS-1] Trigger the deletion cascade — DARK PARALLEL Workflow behind
+// `deletionWorkflowEnabled`, queue send otherwise (today's live path, unchanged).
+// Instance id is deterministic (`deletion:<uid>`) so a double-trigger for the same
+// uid throws "already exists" from create(), which we treat as success rather than
+// falling back to the queue (that would enqueue a second, redundant cascade run).
+// Any OTHER create() failure (binding missing, transient RPC error, …) falls back
+// to the exact same env.Q_DELETE.send() the queue path always used, so flipping
+// the flag can never leave a deletion request unenqueued.
+export async function enqueueDeletion(
+  env: Env,
+  msg: { uid: string; clerk_user_id: string; scheduled_at: number },
+): Promise<void> {
+  let useWorkflow = false;
+  try { useWorkflow = (await readConfig(env)).deletionWorkflowEnabled; } catch { /* config read failed → queue */ }
+
+  if (useWorkflow && env.WF_DELETION) {
+    try {
+      await env.WF_DELETION.create({ id: `deletion:${msg.uid}`, params: { uid: msg.uid } });
+      return;
+    } catch (e) {
+      const already = String(e).toLowerCase().includes("already exists") || String(e).toLowerCase().includes("duplicate");
+      if (already) return; // idempotent double-trigger — a run is already in flight/done
+      console.error("[DYNW-FLOWS-1] WF_DELETION.create failed — falling back to Q_DELETE", msg.uid, String(e));
+      // fall through to the queue send below
+    }
+  }
+
+  await env.Q_DELETE.send(msg);
+}
 
 export async function deleteAccount(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
@@ -56,8 +87,10 @@ export async function deleteAccount(req: Request, env: Env): Promise<Response> {
   // canonical cascade regardless).
   void enqueueMem0Purge(env, ctx.uid).catch(() => {});
 
-  // Enqueue for the cascade consumer; it honors scheduled_at (re-delays if early).
-  try { await env.Q_DELETE.send({ uid: ctx.uid, clerk_user_id: ctx.uid, scheduled_at: scheduled }); } catch { /* cron sweep is the backstop */ }
+  // Enqueue for the cascade (queue consumer, or the dark WF_DELETION Workflow
+  // behind deletionWorkflowEnabled — see enqueueDeletion above). It honors
+  // scheduled_at (re-delays if early) either way.
+  try { await enqueueDeletion(env, { uid: ctx.uid, clerk_user_id: ctx.uid, scheduled_at: scheduled }); } catch { /* cron sweep is the backstop */ }
 
   track(env, ctx.uid, "account_deletion_requested", "platform", { scheduled_at: scheduled });
   return json({ scheduled: true, uid: ctx.uid, grace_ends_at: scheduled, cancellable: true });

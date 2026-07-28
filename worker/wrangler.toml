@@ -459,6 +459,16 @@ class_name = "CampaignDO"
 [[worker_loaders]]
 binding = "LOADER"
 
+# [DYNW-FLOWS-1] Cloudflare Workflow — DARK PARALLEL account-deletion cascade
+# (Specs/PROPOSAL-DYNAMIC-WORKERS-2026-07-28.md §WS-3). The LIVE path is still the
+# account-deletions queue → consumers/src/deletion.ts + the 6-hourly cron backstop;
+# this binding is only used behind `deletionWorkflowEnabled` (routes/config.ts,
+# default false). See worker/src/workflows/deletion.ts for the full port.
+[[workflows]]
+name = "avatok-deletion"
+binding = "WF_DELETION"
+class_name = "DeletionWorkflow"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["CallRoom"]
@@ -667,6 +677,15 @@ id = "fbd93a113d634a29b89dd40ad8caff0d"
 # [DYNW-CORE-1] Dynamic Workers loader — staging twin of the top-level binding.
 [[env.staging.worker_loaders]]
 binding = "LOADER"
+
+# [DYNW-FLOWS-1] Deletion cascade Workflow — staging twin of the top-level
+# binding. DARK behind deletionWorkflowEnabled; live path unchanged (Q_DELETE).
+[[env.staging.workflows]]
+# Distinct name from prod: workflow names are account-scoped, and avatok-api /
+# avatok-api-staging are two scripts on ONE account — same name would collide.
+name = "avatok-deletion-staging"
+binding = "WF_DELETION"
+class_name = "DeletionWorkflow"
 
 [[env.staging.queues.producers]]
 binding = "Q_MODERATION"
