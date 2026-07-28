@@ -44,8 +44,19 @@ export default class Probe extends WorkerEntrypoint {
 `;
 
 export async function dynwAcceptance(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-  const admin = await requireAdmin(req, env);
-  if (admin instanceof Response) return admin;
+  // Auth: Clerk admin JWT, OR the staging-only DYNW_TEST_SECRET header so the
+  // acceptance battery can run from CI/CLI. The secret is set ONLY on staging
+  // (wrangler secret); where unset (prod) this path is dead and Clerk admin is
+  // the only way in — and the route 403s anyway while dynamicWorkersEnabled=false.
+  let adminUid: string;
+  const secret = env.DYNW_TEST_SECRET;
+  if (secret && req.headers.get("x-dynw-admin-secret") === secret) {
+    adminUid = "dynw-ci";
+  } else {
+    const admin = await requireAdmin(req, env);
+    if (admin instanceof Response) return admin;
+    adminUid = admin.uid;
+  }
   const cfg = await readConfig(env);
   if (!cfg.dynamicWorkersEnabled) return json({ error: "dynamicWorkersEnabled is off" }, 403);
 
@@ -101,8 +112,8 @@ export async function dynwAcceptance(req: Request, env: Env, ctx: ExecutionConte
   let lifecycleOk = false, tamperOk = false, draftBlocked = false;
   if (saved.ok) {
     draftBlocked = (await loadActive(env, saved.code_id)).ok === false; // draft must not load
-    await setStatus(env, saved.code_id, "pending_review", admin.uid);
-    await setStatus(env, saved.code_id, "active", admin.uid);
+    await setStatus(env, saved.code_id, "pending_review", adminUid);
+    await setStatus(env, saved.code_id, "active", adminUid);
     const loaded = await loadActive(env, saved.code_id, { requesterUid: TEST_UID });
     lifecycleOk = draftBlocked && loaded.ok === true && loaded.row.source === src;
     // Simulate out-of-band tamper (test-only raw UPDATE — registry never does this).

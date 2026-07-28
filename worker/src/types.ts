@@ -3,6 +3,9 @@ export interface Env {
   // [DYNW-CORE-1] Dynamic Workers loader. ONLY lib/dynw/host.ts may touch this —
   // it enforces the master kill switch, no-network default, timeout + telemetry.
   LOADER: import("./lib/dynw/types").WorkerLoaderBinding;
+  // [DYNW-CORE-1] STAGING-ONLY secret for the dynw acceptance battery
+  // (routes/dynw_test.ts). Never set in prod — absent = header auth disabled.
+  DYNW_TEST_SECRET?: string;
 
   // D1 — the database (Golden Rule 1)
   DB_META: D1Database;
