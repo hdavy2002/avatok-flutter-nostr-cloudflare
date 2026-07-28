@@ -1151,6 +1151,30 @@ export function newAgentLoopStats(): AgentLoopStats {
   return { model_requested: "", model_actual: "", provider: "openrouter", input_tokens: 0, output_tokens: 0, fallback_reason: null };
 }
 
+// ---- [DYNW-CODEMODE-1] additive exports for the Code Mode lane ---------------
+// lib/dynw/codemode.ts + lib/dynw/caps.ts (DynComposio) reuse THIS module's
+// confirm classification, human summaries, result trimming, and OpenRouter step
+// machinery so the two lanes can never drift apart. Pure re-exports + one thin
+// wrapper — no behavior change to the existing loop.
+export { isSendType as isConfirmableTool, humanSummaryFor as confirmSummaryFor, trimToolResult as trimToolResultForModel };
+export function confirmSendsEnabled(env: Env): boolean { return confirmSendsOn(env); }
+
+/** One plain completion (no tools) on the agent model with the standard
+ *  primary→ALT fallback ladder. Used by Code Mode's single planning call. */
+export async function orPlanCompletion(
+  env: Env, messages: any[],
+): Promise<{ text: string; model: string; fallback: boolean; prompt_tokens: number; completion_tokens: number }> {
+  const primary = orAgentModel(env);
+  try {
+    const r = await orStep(env, primary, messages, []);
+    return { text: r.text, model: primary, fallback: false, prompt_tokens: r.usage?.prompt_tokens ?? 0, completion_tokens: r.usage?.completion_tokens ?? 0 };
+  } catch {
+    const alt = orAgentModelAlt(env);
+    const r = await orStep(env, alt, messages, []);
+    return { text: r.text, model: alt, fallback: true, prompt_tokens: r.usage?.prompt_tokens ?? 0, completion_tokens: r.usage?.completion_tokens ?? 0 };
+  }
+}
+
 // F8 prompt-injection boundary — a lean, single-paragraph rule shared by BOTH
 // agentic loops (runAppsToolLoop + runAgentLoop). The loop feeds conversation
 // text, thread context, and tool RESULTS back into the model; all of that is

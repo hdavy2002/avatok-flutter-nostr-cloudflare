@@ -42,6 +42,9 @@ export default {
       } else if (method === "brainWrite") {
         await env.MEMORY.ingest("should not exist");
         out = "UNEXPECTED_WRITE_OK";
+      } else if (method === "faketool") {
+        await env.TOOLS.exec("ZZZFAKE_TOOL_X", {});
+        out = "UNEXPECTED_TOOL_OK";
       } else {
         return new Response(JSON.stringify({ ok: false, err: "no method: " + method }), { status: 500 });
       }
@@ -76,8 +79,8 @@ export async function dynwAcceptance(req: Request, env: Env, ctx: ExecutionConte
   const exports = (ctx as unknown as { exports: Record<string, (o: { props: unknown }) => unknown> }).exports;
   const modules = { "probe.js": PROBE_SRC };
   const base = { area: "acceptance" as const, uid: TEST_UID, modules, mainModule: "probe.js" };
-  // v2: fetch()-dispatch probe (same id must always mean same code — LOADER.get caches by id).
-  const codeId = (n: string) => `acceptance:platform:${n}-v2`;
+  // v3: + faketool branch (same id must always mean same code — LOADER.get caches by id).
+  const codeId = (n: string) => `acceptance:platform:${n}-v3`;
 
   // 1 — hello world, no bindings, no network.
   const hello = await runDynamic<string>(env, ctx, { ...base, codeId: codeId("hello"), input: "world" });
@@ -109,6 +112,12 @@ export async function dynwAcceptance(req: Request, env: Env, ctx: ExecutionConte
   // 5 — Brain has NO write surface: calling a nonexistent ingest() must throw.
   const bw = await runDynamic<string>(env, ctx, { ...base, codeId: codeId("brainw"), method: "brainWrite", env: brainEnv });
   ck("brain_no_write", !bw.ok && bw.error === "script_error", JSON.stringify(bw));
+
+  // 5b — [DYNW-CODEMODE-1] DynComposio: a nonexistent tool slug is denied by the
+  // catalog check before any execution (validation chain runs inside the stub).
+  const cmEnv = { MEMORY: brainEnv.MEMORY, TOOLS: exports.DynComposio({ props: { uid: TEST_UID, runId: crypto.randomUUID(), budget: 2, confirmSends: true } }) };
+  const ft = await runDynamic<string>(env, ctx, { ...base, codeId: codeId("faketool"), method: "faketool", env: cmEnv });
+  ck("composio_unknown_tool_denied", !ft.ok && ft.error === "script_error" && /capability_denied|unknown_tool/.test(ft.detail ?? ""), JSON.stringify(ft));
 
   // 6 — registry: size cap, lifecycle, owner authz, sha tamper.
   const big = "//" + "x".repeat(cfg.dynModuleMaxBytes + 1);

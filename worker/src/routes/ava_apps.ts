@@ -86,6 +86,7 @@ function streamAppsRun(
   });
 }
 import { toolkitOf, isExecutableTool, coerceArgs } from "../lib/capabilities";
+import { runCodeMode } from "../lib/dynw/codemode"; // [DYNW-CODEMODE-1]
 import { renderData } from "../lib/genui";
 
 // GET /api/ava/apps/catalog — the full Composio app catalog (free to browse).
@@ -185,7 +186,9 @@ export async function avaAppsDisconnect(req: Request, env: Env): Promise<Respons
 
 // POST /api/ava/apps/run — PREMIUM. Natural-language action across connected apps
 // (runs on OUR Google key; coin-metered).
-export async function avaAppsRun(req: Request, env: Env): Promise<Response> {
+// [DYNW-CODEMODE-1] execCtx (optional, passed by the router) enables the Code
+// Mode lane — it is needed for ctx.exports capability stubs. Absent = legacy only.
+export async function avaAppsRun(req: Request, env: Env, execCtx?: ExecutionContext): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   if (!env.COMPOSIO_API_KEY) return json({ error: "AvaApps not configured" }, 503);
@@ -249,6 +252,34 @@ export async function avaAppsRun(req: Request, env: Env): Promise<Response> {
   // Phase 5: SSE streaming variant (`?stream=1`). Non-stream path below unchanged.
   if (new URL(req.url).searchParams.get("stream") === "1") {
     return streamAppsRun(env, ctx.uid, email, phone, query, source, stats, t0);
+  }
+
+  // [DYNW-CODEMODE-1] Code Mode lane — DARK behind dynamicWorkersEnabled +
+  // dynCodeModeEnabled (checked inside runCodeMode; returns handled:false in a
+  // few µs while off). One planning LLM call + sandboxed script instead of the
+  // N-step loop. handled:false = transparent fall-through to the legacy loop
+  // below; handled:true after any executed tool NEVER falls through (side
+  // effects must not re-run). Billing/telemetry mirror the legacy path.
+  if (execCtx) {
+    try {
+      const cm = await runCodeMode(env, execCtx, { uid: ctx.uid, query, source, stats, emit: stats.emit });
+      if (cm.handled) {
+        await chargeFeature(env, ctx.uid, "ava_mcp_tool", crypto.randomUUID()).catch(() => ({ ok: false }));
+        trackUserContact(env, ctx.uid, email, phone, "ava_apps_run", "avaapps", { answer_len: (cm.answer ?? "").length });
+        trackUserContact(env, ctx.uid, email, phone, "avaapps_run_ok", "avaapps", {
+          duration_ms: Date.now() - t0, source, lane: "codemode",
+          steps: stats.steps, toolkits: stats.toolkits, tools_called: stats.tools_called,
+          model: stats.model, fallback_used: stats.fallback_used,
+          prompt_tokens: stats.prompt_tokens, completion_tokens: stats.completion_tokens,
+          answer_len: (cm.answer ?? "").length,
+          ...(cm.pending_action ? { pending_confirm: cm.pending_action.tool } : {}),
+        });
+        return json({ ok: true, answer: cm.answer, ...(cm.pending_action ? { pending_action: cm.pending_action } : {}) });
+      }
+    } catch (e: any) {
+      // A Code Mode bug must never take the feature down — log and fall through.
+      trackUserContact(env, ctx.uid, email, phone, "avaapps_codemode_fallback", "avaapps", { reason: "lane_threw", detail: String(e?.message ?? e).slice(0, 160) });
+    }
   }
 
   try {

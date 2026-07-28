@@ -231,7 +231,7 @@ export { CampaignDO } from "./do/campaign_do"; // [AVA-CAMP-B2-WIRE] per-campaig
 // [DYNW-CORE-1] Dynamic Workers capability entrypoints. Top-level exports are
 // REQUIRED so lib/dynw can mint scoped stubs via ctx.exports (enable_ctx_exports)
 // and pass them into sandboxed child Workers. Dark behind dynamicWorkersEnabled.
-export { DynKV, DynBrain } from "./lib/dynw/caps";
+export { DynKV, DynBrain, DynComposio } from "./lib/dynw/caps";
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -590,7 +590,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/ava/apps/connect" && req.method === "POST") return await avaAppsConnect(req, env); // AvaApps
       if (p === "/api/ava/apps/disconnect" && req.method === "POST") return await avaAppsDisconnect(req, env); // AvaApps
       if (p === "/api/ava/apps/status" && req.method === "GET") return await avaAppsStatus(req, env);    // AvaApps
-      if (p === "/api/ava/apps/run" && req.method === "POST") return await avaAppsRun(req, env);         // AvaApps
+      if (p === "/api/ava/apps/run" && req.method === "POST") return await avaAppsRun(req, env, ctx);    // AvaApps ([DYNW-CODEMODE-1]: ctx enables Code Mode)
       if (p === "/api/ava/genui/action" && req.method === "POST") return await avaGenuiAction(req, env); // GenUI card action (Composio)
       if (p === "/api/ava/genui/thumb" && req.method === "GET") return await avaGenuiThumb(req, env);   // GenUI preview thumbnail (signed-URL proxy)
       if (p === "/api/ava/email/list" && req.method === "POST") return await avaEmailList(req, env);    // in-chat email

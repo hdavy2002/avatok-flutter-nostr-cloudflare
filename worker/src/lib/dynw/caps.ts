@@ -23,6 +23,8 @@ import type { Env } from "../../types";
 import { readConfig } from "../../routes/config";
 import { brainSearchTyped, type MemoryResult } from "../ava_memory";
 import { track } from "../../hooks";
+import { executeTool, isConfirmableTool, confirmSummaryFor, trimToolResultForModel } from "../composio";
+import { isExecutableTool, coerceArgs } from "../capabilities";
 
 /** Thrown (as a plain Error over RPC) when a capability check fails. */
 export const CAP_DENIED = "capability_denied";
@@ -84,6 +86,76 @@ async function consentAllows(env: Env, uid: string, capabilities: string[]): Pro
   } catch (e) {
     console.error("[dynw] consent check failed — fail-closed:", String(e));
     return false; // fail-closed, matching brain_assets.ts
+  }
+}
+
+// ── DynComposio ──────────────────────────────────────────────────────────────
+// [DYNW-CODEMODE-1] Validated Composio tool execution for Code Mode scripts.
+// One method, exec(slug, args), which runs the EXACT validation chain the GenUI
+// action route uses (isExecutableTool → coerceArgs → executeTool) plus:
+//   • per-run tool budget, enforced HERE so the script cannot bypass it. The
+//     counter lives in KV keyed by runId; increments are read-modify-write and
+//     non-atomic — same accepted trade-off as ava_apps.ts checkRunQuota (a
+//     sequential script can't race itself; a pathological parallel script can
+//     overshoot by at most the in-flight count, and executeTool's idempotency
+//     still applies).
+//   • confirm-before-send: a SEND/DELETE/CREATE_EVENT-class tool (same
+//     isConfirmableTool truth the legacy loop uses) is NOT executed — the
+//     pending action is stored under the SAME avaapps:confirm:<token> key the
+//     existing confirm-resume route path executes, details are parked at
+//     dynw:cm:pending:<runId> for the host, and exec throws "needs_confirm".
+//   • results are shaped by the loop's own trimToolResultForModel so both lanes
+//     return identical structures to their consumers.
+// Props carry NO secrets (uid, budget, flags, runId only).
+
+export interface DynComposioProps {
+  uid: string;
+  runId: string;        // per-run scope for the budget counter + pending slot
+  budget: number;       // max exec() calls this run
+  confirmSends: boolean;
+}
+
+interface CmLedger { n: number; tools: string[] }
+
+export class DynComposio extends WorkerEntrypoint<Env> {
+  private get p(): DynComposioProps {
+    const p = (this.ctx as unknown as { props?: DynComposioProps }).props;
+    if (!p || typeof p.uid !== "string" || !p.uid || typeof p.runId !== "string" || !p.runId) {
+      throw new Error(`${CAP_DENIED}: no scope`);
+    }
+    return p;
+  }
+
+  async exec(slug: string, args: Record<string, unknown>): Promise<unknown> {
+    const { uid, runId, budget, confirmSends } = this.p;
+    const s = String(slug ?? "").toUpperCase().trim();
+    if (!/^[A-Z0-9_]{3,80}$/.test(s)) throw new Error(`${CAP_DENIED}: bad_slug`);
+    if (!(await isExecutableTool(this.env, s))) throw new Error(`${CAP_DENIED}: unknown_tool ${s}`);
+
+    // Budget ledger (also doubles as the executed-tools record for telemetry).
+    const lkey = `dynw:cm:${runId}`;
+    let ledger: CmLedger = { n: 0, tools: [] };
+    try { ledger = ((await this.env.TOKENS.get(lkey, "json")) as CmLedger) ?? ledger; } catch { /* fresh */ }
+    if (ledger.n >= Math.max(1, budget)) throw new Error("tool_budget_exhausted");
+
+    const coerced = await coerceArgs(this.env, s, (args && typeof args === "object" ? args : {}) as Record<string, unknown>);
+
+    // Confirm gate BEFORE any side effect. Reuses the legacy confirm-token slot,
+    // so the existing /api/ava/apps/run confirm_token path executes the resume.
+    if (confirmSends && isConfirmableTool(s)) {
+      const token = crypto.randomUUID();
+      const human = confirmSummaryFor(s, coerced);
+      try { await this.env.TOKENS.put(`avaapps:confirm:${token}`, JSON.stringify({ uid, tool: s, args: coerced }), { expirationTtl: 300 }); } catch { /* best-effort */ }
+      try { await this.env.TOKENS.put(`dynw:cm:pending:${runId}`, JSON.stringify({ tool: s, human_summary: human, args_digest: JSON.stringify(coerced).slice(0, 300), confirm_token: token }), { expirationTtl: 300 }); } catch { /* best-effort */ }
+      throw new Error("needs_confirm");
+    }
+
+    ledger = { n: ledger.n + 1, tools: [...ledger.tools, s].slice(0, 24) };
+    try { await this.env.TOKENS.put(lkey, JSON.stringify(ledger), { expirationTtl: 300 }); } catch { /* best-effort */ }
+
+    const r = await executeTool(this.env, uid, s, coerced);
+    try { this.ctx.waitUntil(track(this.env, uid, "dyn_codemode_tool", "avaapps", { tool: s, run_id: runId, ok: !(r && (r.successful === false || r.error)) })); } catch { /* best-effort */ }
+    return trimToolResultForModel(s, r);
   }
 }
 
