@@ -103,7 +103,10 @@ export class DynBrain extends WorkerEntrypoint<Env> {
   async search(query: string, topK = 5): Promise<{ lines: string[]; source: MemoryResult["source"] }> {
     const { uid, guardrailCapability } = this.p;
     const deny = async (reason: string): Promise<never> => {
-      void track(this.env, uid, "dyn_brain_denied", "avatok", { reason, guardrail: guardrailCapability });
+      // waitUntil, not a bare void: un-awaited Q_ANALYTICS sends are cancelled
+      // when the RPC returns (see hooks.ts track() header) — observed on the
+      // first staging acceptance run (dyn_worker_run landed, dyn_brain_denied didn't).
+      try { this.ctx.waitUntil(track(this.env, uid, "dyn_brain_denied", "avatok", { reason, guardrail: guardrailCapability })); } catch { /* best-effort */ }
       throw new Error(`${CAP_DENIED}: ${reason}`);
     };
     const cfg = await readConfig(this.env);
