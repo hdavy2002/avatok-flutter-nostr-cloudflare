@@ -16,31 +16,41 @@ const TEST_UID = "dynw-test-user";
 
 type Check = { name: string; pass: boolean; detail?: string };
 
-// Dynamic-worker source used by several checks. `run(input)` echoes; `egress`
+// Dynamic-worker source used by several checks. Plain default handler dispatching
+// POST /<method> (see lib/dynw/host.ts calling convention): `run` echoes; `egress`
 // attempts a network call (must throw); `kv`/`brain` exercise capability stubs.
 const PROBE_SRC = `
-import { WorkerEntrypoint } from "cloudflare:workers";
-export default class Probe extends WorkerEntrypoint {
-  async run(input) { return "hello:" + String(input); }
-  async egress() {
-    const r = await fetch("https://example.com/");
-    return "UNEXPECTED_NETWORK_OK:" + r.status;
+export default {
+  async fetch(req, env) {
+    const method = new URL(req.url).pathname.slice(1);
+    let input = null; try { input = await req.json(); } catch {}
+    try {
+      let out;
+      if (method === "run") {
+        out = "hello:" + String(input);
+      } else if (method === "egress") {
+        const r = await fetch("https://example.com/");
+        out = "UNEXPECTED_NETWORK_OK:" + r.status;
+      } else if (method === "kv") {
+        await env.STORAGE.put("probe", "mine");
+        const own = await env.STORAGE.get("probe");
+        const foreign = await env.STORAGE.get("secret"); // host planted dynkv:dynw-b:secret
+        out = { own, foreign };
+      } else if (method === "brain") {
+        const r = await env.MEMORY.search("anything", 3);
+        out = "UNEXPECTED_BRAIN_OK:" + r.lines.length;
+      } else if (method === "brainWrite") {
+        await env.MEMORY.ingest("should not exist");
+        out = "UNEXPECTED_WRITE_OK";
+      } else {
+        return new Response(JSON.stringify({ ok: false, err: "no method: " + method }), { status: 500 });
+      }
+      return new Response(JSON.stringify({ ok: true, out }));
+    } catch (e) {
+      return new Response(JSON.stringify({ ok: false, err: String((e && e.message) || e) }), { status: 500 });
+    }
   }
-  async kv() {
-    await this.env.STORAGE.put("probe", "mine");
-    const own = await this.env.STORAGE.get("probe");
-    const foreign = await this.env.STORAGE.get("secret"); // host planted dynkv:dynw-b:secret
-    return { own, foreign };
-  }
-  async brain() {
-    const r = await this.env.MEMORY.search("anything", 3);
-    return "UNEXPECTED_BRAIN_OK:" + r.lines.length;
-  }
-  async brainWrite() {
-    await this.env.MEMORY.ingest("should not exist");
-    return "UNEXPECTED_WRITE_OK";
-  }
-}
+};
 `;
 
 export async function dynwAcceptance(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -66,7 +76,8 @@ export async function dynwAcceptance(req: Request, env: Env, ctx: ExecutionConte
   const exports = (ctx as unknown as { exports: Record<string, (o: { props: unknown }) => unknown> }).exports;
   const modules = { "probe.js": PROBE_SRC };
   const base = { area: "acceptance" as const, uid: TEST_UID, modules, mainModule: "probe.js" };
-  const codeId = (n: string) => `acceptance:platform:${n}-v1`;
+  // v2: fetch()-dispatch probe (same id must always mean same code — LOADER.get caches by id).
+  const codeId = (n: string) => `acceptance:platform:${n}-v2`;
 
   // 1 — hello world, no bindings, no network.
   const hello = await runDynamic<string>(env, ctx, { ...base, codeId: codeId("hello"), input: "world" });

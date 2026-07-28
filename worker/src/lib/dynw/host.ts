@@ -12,8 +12,13 @@
 //     the analytics pipeline), failures additionally via trackException. No user
 //     content, message bodies, or secrets in telemetry props.
 //
-// Dynamic-module calling convention (Phase 0): the module's main module default-
-// exports a class extending WorkerEntrypoint with an async `run(input)` method.
+// Dynamic-module calling convention (Phase 0): the module default-exports a plain
+// handler whose fetch(req, env) dispatches on pathname — POST /<method> with a
+// JSON body — and replies {ok, out} | {ok:false, err}. We use fetch() rather than
+// custom RPC methods because the runtime forbids transferring dynamic-worker
+// entrypoint stubs / their method calls across contexts ("Entrypoints to
+// dynamically-loaded workers cannot be transferred…", observed on staging
+// 2026-07-28); entrypoint.fetch() is the documented, unrestricted path.
 // TODO(DYNW): per-isolate CPU limits — Cloudflare "Custom limits" for Dynamic
 // Workers (docs: /dynamic-workers/usage/limits/) — adopt once we pin the exact
 // WorkerCode field on a staging probe; wall-clock timeout guards until then.
@@ -117,15 +122,19 @@ export async function runDynamic<T = unknown>(
     timer = setTimeout(() => rej(new Error("dynw_timeout")), timeoutMs);
   });
   try {
-    const fn = entry[method];
-    if (typeof fn !== "function") {
-      return done({ ok: false, error: "script_error", detail: `entrypoint has no method '${method}'` });
-    }
-    const result = (await Promise.race([
-      (fn as (input: unknown) => Promise<unknown>).call(entry, opts.input),
-      timeout,
-    ])) as T;
-    return done({ ok: true, result });
+    const call = new Request(`https://dynw.internal/${encodeURIComponent(method)}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(opts.input ?? null),
+    });
+    const resp = (await Promise.race([entry.fetch(call), timeout])) as Response;
+    const body = (await Promise.race([resp.json(), timeout])) as
+      | { ok: true; out: unknown }
+      | { ok: false; err?: string }
+      | null;
+    if (body && body.ok === true) return done({ ok: true, result: body.out as T });
+    const err = body && body.ok === false ? body.err : undefined;
+    return done({ ok: false, error: "script_error", detail: String(err ?? `status ${resp.status}`).slice(0, 200) });
   } catch (e) {
     const msg = String(e instanceof Error ? e.message : e);
     if (msg.includes("dynw_timeout")) return done({ ok: false, error: "timeout" });
