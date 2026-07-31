@@ -15,6 +15,7 @@ import '../../wallet/wallet_balance_chip.dart' show WalletBalanceStore;
 import '../../wallet/wallet_screen.dart';
 import '../settings_registry.dart';
 import 'receptionist_analytics_page.dart';
+import 'receptionist_rules_screen.dart';
 
 /// [RECEPT-SETTINGS-1] Client-side token gate (must agree with the backend
 /// deduction agent). When the wallet's SPENDABLE token balance is AT OR BELOW
@@ -799,6 +800,31 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                   fontSize: 15,
                   loading: _saving,
                   onPressed: _saving ? null : () => _save(enabled: true),
+                ),
+                const SizedBox(height: 10),
+                // ── [DYNW-RULES-UI-1] Call Rules entry ──────────────────────
+                ZinePressable(
+                  onTap: () {
+                    Analytics.uiInteraction('recept_rules_entry_tapped', 0);
+                    Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => const ReceptionistRulesScreen()));
+                  },
+                  color: AD.card,
+                  borderColor: AD.borderControl,
+                  radius: BorderRadius.circular(AD.rInput),
+                  boxShadow: const [],
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                  child: Row(children: [
+                    Icon(PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold),
+                        size: 18, color: AD.textSecondary),
+                    const SizedBox(width: 10),
+                    Expanded(
+                        child: Text('Call Rules — tell Ava what to say',
+                            style: ADText.rowName())),
+                    Icon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold),
+                        size: 16, color: AD.textTertiary),
+                  ]),
                 ),
                 const SizedBox(height: 10),
                 // ── [RECEPT-STATS-1] Call analytics entry (plan §C3) ───────
