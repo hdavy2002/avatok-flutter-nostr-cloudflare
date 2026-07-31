@@ -532,6 +532,7 @@ class AdField extends StatefulWidget {
   final TextCapitalization textCapitalization;
   final bool autocorrect;
   final bool enabled;
+  final bool readOnly;
   final List<TextInputFormatter>? inputFormatters;
   const AdField({
     super.key,
@@ -554,6 +555,7 @@ class AdField extends StatefulWidget {
     this.textCapitalization = TextCapitalization.none,
     this.autocorrect = false,
     this.enabled = true,
+    this.readOnly = false,
     this.inputFormatters,
   });
   @override
@@ -606,6 +608,7 @@ class _AdFieldState extends State<AdField> {
               child: TextField(
                 controller: widget.controller,
                 enabled: widget.enabled,
+                readOnly: widget.readOnly,
                 obscureText: widget.obscureText,
                 keyboardType: widget.keyboardType,
                 onChanged: widget.onChanged,
@@ -618,6 +621,10 @@ class _AdFieldState extends State<AdField> {
                 autocorrect: widget.autocorrect,
                 inputFormatters: widget.inputFormatters,
                 cursorColor: AD.iconSearch,
+                // Locked identity fields must remain legible. Flutter applies
+                // the disabled theme color when enabled=false, which is black
+                // on the dark locked-card background. Use readOnly for fields
+                // that are known but immutable so the normal ink style remains.
                 style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w700,
                     fontSize: 15, color: AD.textOnInput),
                 decoration: InputDecoration(
