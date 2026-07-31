@@ -141,6 +141,12 @@ class _AvaShellState extends State<AvaShell> {
         // the email PostHog already stamped at sign-in so the locked Email field
         // on the profile step is never left blank when we do know who this is.
         final email = (u?.email ?? '').isNotEmpty ? u!.email : Analytics.currentEmail;
+        // [ONBOARD-IDENTITY-2] Make the authenticated email durable in the
+        // profile gate's account-scoped store. The setup screen can therefore
+        // render it even when Clerk/currentUser resolves after the first frame.
+        if ((email ?? '').trim().isNotEmpty) {
+          unawaited(ProfileStore().setEmail(email!.trim()));
+        }
         // Capture email + Google-provided name for the profile (prefill + lock).
         if (mounted && (email != _authEmail || u?.firstName != _authFirst || u?.lastName != _authLast)) {
           setState(() {
@@ -186,6 +192,16 @@ class _AvaShellState extends State<AvaShell> {
       try {
         final me = await AvaNumber.me();
         needsNumber = me.featureOn && !me.hasNumber;
+        // [ONBOARD-IDENTITY-2] Carry the server-authoritative number into the
+        // profile gate, not only the number-picker callback. This also covers
+        // users who already selected a number before this shell instance was
+        // mounted or whose callback was interrupted by a rebuild.
+        final shownNumber = (me.display ?? '').trim().isNotEmpty
+            ? me.display!.trim()
+            : ((me.number ?? '').trim().isNotEmpty ? '+${me.number!.trim()}' : '');
+        if (shownNumber.isNotEmpty && shownNumber != _assignedNumberDisplay && mounted) {
+          setState(() => _assignedNumberDisplay = shownNumber);
+        }
         // [NUMBER-GATE-DIAG 2026-07-10] Rich telemetry to catch the "gate re-appears
         // even though I have a number" report. If needs_number is true while the
         // account actually holds one, this row makes the contradiction visible.

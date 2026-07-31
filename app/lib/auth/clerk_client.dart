@@ -745,9 +745,22 @@ class ClerkUser {
     final last = u['last_name'];
     final img = u['image_url'] ?? u['profile_image_url'];
     final emails = u['email_addresses'] as List?;
-    final email = (emails != null && emails.isNotEmpty)
-        ? (emails.first as Map)['email_address']?.toString()
-        : null;
+    // [ONBOARD-IDENTITY-2] Clerk does not guarantee that email_addresses[0] is
+    // the primary address. Selecting the first entry made Google/password users
+    // intermittently arrive at the locked profile field with no usable email.
+    final primaryId = u['primary_email_address_id']?.toString();
+    Map? selected;
+    if (emails != null) {
+      for (final raw in emails) {
+        final e = raw as Map;
+        if (primaryId != null && e['id']?.toString() == primaryId) {
+          selected = e;
+          break;
+        }
+        selected ??= e;
+      }
+    }
+    final email = selected?['email_address']?.toString();
     return ClerkUser((first ?? email ?? 'Account').toString(),
         id: (u['id'] ?? '').toString(),
         email: email,
