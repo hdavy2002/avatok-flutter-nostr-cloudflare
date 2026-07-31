@@ -298,6 +298,7 @@ class _ContactsTabState extends State<_ContactsTab> {
   Set<String> _blockedNumbers = const {};
   bool _loaded = false;
   String _query = '';
+  StreamSubscription<List<Contact>>? _contactSub;
 
   // [AVADIAL-CONTACTS-MERGE] Device address book (section 2). Bound to the live
   // SQLite mirror so a background sync + presence probe repaints the orange
@@ -320,6 +321,17 @@ class _ContactsTabState extends State<_ContactsTab> {
     super.initState();
     _load();
     _initDevice();
+    // Contacts can be added from Messenger, the new-chat sheet, or another
+    // AvaTOK surface while this IndexedStack tab stays alive. Without this
+    // subscription the dialer kept its initState snapshot until app restart.
+    _contactSub = ContactsStore.changes.listen((contacts) {
+      if (!mounted) return;
+      final savedUids = contacts.map((c) => c.uid).toSet();
+      setState(() {
+        _all = contacts;
+        _serverHits = _serverHits.where((c) => !savedUids.contains(c.uid)).toList();
+      });
+    });
     // A block/unblock from the Block tab (or this tab, on another row) should
     // flip this row's menu label immediately — same cross-tab notifier the
     // Block tab already listens to.
@@ -329,6 +341,7 @@ class _ContactsTabState extends State<_ContactsTab> {
   @override
   void dispose() {
     avaDialRev.removeListener(_onRev);
+    _contactSub?.cancel();
     _deviceSub?.cancel();
     _searchDebounce?.cancel();
     super.dispose();
@@ -475,7 +488,11 @@ class _ContactsTabState extends State<_ContactsTab> {
   /// [_AddAvaTokContactDialog], goes through the number/email-only directory
   /// lookup per the owner spec).
   List<Contact> get _filtered {
-    final members = _all.where((c) => c.number.isNotEmpty).toList();
+    // A resolved contact is valid even if the directory did not return its
+    // display number (older accounts/response shapes may only expose email or
+    // phone). Filtering those rows out made a successful add look lost until a
+    // later cold-start restore repaired the view.
+    final members = _all.toList();
     final q = _query.trim().toLowerCase();
     final list = q.isEmpty
         ? members
@@ -823,7 +840,7 @@ class _ContactsTabState extends State<_ContactsTab> {
                   Row(children: [
                     PhosphorIcon(PhosphorIcons.hash(PhosphorIconsStyle.bold), size: 12, color: AD.online),
                     const SizedBox(width: 3),
-                    Text(c.number, style: ADText.preview(c: AD.online)),
+                    Text(c.subtitle, style: ADText.preview(c: AD.online)),
                   ]),
                 ]),
               ),

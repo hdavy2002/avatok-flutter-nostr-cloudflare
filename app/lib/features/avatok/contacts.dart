@@ -682,6 +682,17 @@ class Directory {
       final name = (p?['name'] ?? p?['display_name'] ?? '').toString().isNotEmpty
           ? (p?['name'] ?? p?['display_name']).toString()
           : assembled;
+      // Directory responses have historically used both the canonical `number`
+      // field and the older `avatok_number_display` spelling. Keep the contact
+      // routable/displayable even when an older production response is cached.
+      final number = (p?['number'] ??
+              p?['avatok_number_display'] ??
+              p?['avatok_number'] ??
+              j['number'] ??
+              j['avatok_number_display'] ??
+              j['avatok_number'] ??
+              '').toString();
+      final phone = (p?['phone'] ?? p?['phone_number'] ?? j['phone'] ?? '').toString();
       return Contact(
         uid: uid.toString(),
         name: name.isNotEmpty
@@ -689,7 +700,8 @@ class Directory {
             : ((p?['email'] ?? '').toString().isNotEmpty ? p!['email'].toString() : _short(uid.toString())),
         email: (p?['email'] ?? '').toString(),
         avatarUrl: (p?['avatar_url'] ?? j['avatar_url'] ?? '').toString(),
-        number: (p?['number'] ?? '').toString(),
+        phone: phone,
+        number: number,
       );
     } catch (e) {
       // Even with no directory hit, a raw uid is still addable.
