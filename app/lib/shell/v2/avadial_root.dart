@@ -298,6 +298,7 @@ class _ContactsTabState extends State<_ContactsTab> {
   Set<String> _blockedNumbers = const {};
   bool _loaded = false;
   String _query = '';
+  final _searchCtrl = TextEditingController();
   StreamSubscription<List<Contact>>? _contactSub;
 
   // [AVADIAL-CONTACTS-MERGE] Device address book (section 2). Bound to the live
@@ -344,6 +345,7 @@ class _ContactsTabState extends State<_ContactsTab> {
     _contactSub?.cancel();
     _deviceSub?.cancel();
     _searchDebounce?.cancel();
+    _searchCtrl.dispose();
     super.dispose();
   }
 
@@ -452,15 +454,24 @@ class _ContactsTabState extends State<_ContactsTab> {
 
   /// Save a server-search result into the saved AvaTOK contacts.
   Future<void> _saveServerHit(Contact c) async {
-    final list = await _store.add(c);
+    // The public resolve response intentionally omits the discoverable email.
+    // Preserve the exact key the user just used so the new contact remains
+    // findable and does not vanish when the search filter is still active.
+    final q = _query.trim();
+    final saved = c.email.isNotEmpty || !Directory.isCompleteEmail(q)
+        ? c
+        : c.copyWith(email: q);
+    final list = await _store.add(saved);
     if (!mounted) return;
     setState(() {
       _all = list;
-      _serverHits = _serverHits.where((h) => h.uid != c.uid).toList();
+      _serverHits = const [];
+      _query = '';
     });
+    _searchCtrl.clear();
     Analytics.capture('avadial_contacts_server_add', const {});
     ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Saved ${c.name.isNotEmpty ? c.name : c.number}')));
+        SnackBar(content: Text('Saved ${saved.name.isNotEmpty ? saved.name : saved.number}')));
   }
 
   void _onRev() {
@@ -774,6 +785,7 @@ class _ContactsTabState extends State<_ContactsTab> {
               const SizedBox(width: 8),
               Expanded(
                 child: TextField(
+                  controller: _searchCtrl,
                   onChanged: _onQueryChanged,
                   cursorColor: AvaDialTheme.searchText,
                   style: const TextStyle(color: AvaDialTheme.searchText, fontSize: 14.5),
