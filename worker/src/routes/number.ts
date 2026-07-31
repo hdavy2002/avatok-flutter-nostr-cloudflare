@@ -192,6 +192,13 @@ export async function assign(req: Request, env: Env): Promise<Response> {
   const hadReal = await env.DB_META.prepare("SELECT phone_hash, avatok_number FROM users WHERE uid=?1").bind(ctx.uid).first<{ phone_hash: string | null; avatok_number: string | null }>();
 
   const stmts = [
+    // [NUMBER-ONBOARD-PERSIST-1] Number selection happens BEFORE the profile
+    // form is saved. A brand-new Clerk account may therefore have no users row
+    // yet; UPDATE users below would affect zero rows and /me would immediately
+    // forget the successful assignment. Materialize the minimal row first.
+    env.DB_META.prepare(
+      "INSERT INTO users (uid, created_at, updated_at) VALUES (?1,?2,?2) ON CONFLICT(uid) DO NOTHING",
+    ).bind(ctx.uid, now),
     // release any previous active number of this account back to the pool
     env.DB_META.prepare("UPDATE avatok_numbers SET status='released', uid=NULL, released_at=?2, updated_at=?2 WHERE uid=?1 AND status='active'").bind(ctx.uid, now),
     // claim the new number
@@ -268,6 +275,11 @@ export async function assignOwn(req: Request, env: Env): Promise<Response> {
   const now = Date.now();
   const prev = await env.DB_META.prepare("SELECT number FROM avatok_numbers WHERE uid=?1 AND status='active'").bind(ctx.uid).first<{ number: string }>();
   await env.DB_META.batch([
+    // [NUMBER-ONBOARD-PERSIST-1] Keep BYO-number assignment durable even when
+    // onboarding has not posted the profile row yet.
+    env.DB_META.prepare(
+      "INSERT INTO users (uid, created_at, updated_at) VALUES (?1,?2,?2) ON CONFLICT(uid) DO NOTHING",
+    ).bind(ctx.uid, now),
     env.DB_META.prepare("UPDATE avatok_numbers SET status='released', uid=NULL, released_at=?2, updated_at=?2 WHERE uid=?1 AND status='active'").bind(ctx.uid, now),
     env.DB_META.prepare(
       `INSERT INTO avatok_numbers (number, country, uid, display, status, claimed_at, updated_at)
@@ -296,7 +308,30 @@ export async function me(req: Request, env: Env): Promise<Response> {
   // truth right after assigning a number in a previous request, and a lagged
   // replica here made the app re-ask for a number it had just set (loop bug,
   // owner report 2026-06-27).
-  const r = await metaDb(env).prepare("SELECT avatok_number, avatok_number_display, free_number_used FROM users WHERE uid=?1").bind(ctx.uid).first<{ avatok_number: string | null; avatok_number_display: string | null; free_number_used: number | null }>();
+  let r = await metaDb(env).prepare("SELECT avatok_number, avatok_number_display, free_number_used FROM users WHERE uid=?1").bind(ctx.uid).first<{ avatok_number: string | null; avatok_number_display: string | null; free_number_used: number | null }>();
+  // [NUMBER-ONBOARD-PERSIST-1] Recover assignments made before the profile row
+  // existed. Older onboarding could successfully claim avatok_numbers while the
+  // follow-up UPDATE users affected zero rows, leaving the account stuck in this
+  // gate forever. The active number table is the durable assignment authority;
+  // repair the directory row before returning the result.
+  if (!r?.avatok_number) {
+    const active = await metaDb(env).prepare(
+      "SELECT number, display FROM avatok_numbers WHERE uid=?1 AND status='active' ORDER BY claimed_at DESC LIMIT 1",
+    ).bind(ctx.uid).first<{ number: string; display: string }>();
+    if (active?.number) {
+      const now = Date.now();
+      await metaDb(env).batch([
+        env.DB_META.prepare(
+          "INSERT INTO users (uid, created_at, updated_at) VALUES (?1,?2,?2) ON CONFLICT(uid) DO NOTHING",
+        ).bind(ctx.uid, now),
+        env.DB_META.prepare(
+          "UPDATE users SET avatok_number=?2, avatok_number_display=?3, number_norm=substr(?2,-10), phone_discoverable=0, free_number_used=1, share_token=COALESCE(share_token,?4), updated_at=?5 WHERE uid=?1",
+        ).bind(ctx.uid, active.number, active.display, crypto.randomUUID().replace(/-/g, ""), now),
+      ]);
+      analytics(env, "number_assignment_repaired", ctx.uid, { number: active.number, display: active.display }, req);
+      r = { avatok_number: active.number, avatok_number_display: active.display, free_number_used: 1 };
+    }
+  }
   // can_generate: free accounts may claim their ONE number; paid accounts always.
   const canGenerate = paid(tier) || ((r?.free_number_used ?? 0) === 0 && !(r?.avatok_number ?? ""));
   return json({ entitled: paid(tier), tier, number: r?.avatok_number ?? null, display: r?.avatok_number_display ?? null, feature: await featureOn(env), can_generate: canGenerate });
