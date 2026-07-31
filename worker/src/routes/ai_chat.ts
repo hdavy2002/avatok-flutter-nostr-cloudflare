@@ -31,6 +31,7 @@ import { avaReason } from "../lib/ava_reason";
 import {
   reserveAiJob, settleAiJob, releaseAiJob, estimateInputTokensFromChars,
 } from "../lib/ai_billing";
+import { grantWelcomeBonus } from "./welcome_bonus";
 
 // Cheap chat model for these utility calls. Override via env.OPENROUTER_UTIL_MODEL.
 // (Distinct from ChatAVA's model — these are one-shot, latency-sensitive.)
@@ -524,6 +525,12 @@ export async function aiGender(req: Request, env: Env): Promise<Response> {
   let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
   const name = String(b?.name ?? "").trim().slice(0, 80);
   if (!name) return json({ error: "name required" }, 400);
+
+  // [ONBOARD-402-1] Gender inference can be the first authenticated request on
+  // a fresh account: the profile screen runs it before /api/profile is saved.
+  // The welcome:<uid> operation is idempotent, so this closes that race without
+  // making gender free or changing existing balances.
+  try { await grantWelcomeBonus(env, ctx.uid); } catch { /* reserve reports the real wallet state */ }
 
   const system = [
     "You infer the most likely gender associated with a person's GIVEN name, for setting pronouns.",

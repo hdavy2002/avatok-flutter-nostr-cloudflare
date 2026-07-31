@@ -87,6 +87,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   String _avatokNumber = ''; // chosen in the number gate (shown here, locked)
   bool _photoBusy = false;
   bool _saving = false;
+  Timer? _identityHydrationTimer;
+  Timer? _numberHydrationTimer;
 
   // R2-F2: profile-completion UX. Per-field GlobalKeys let us scroll the FIRST
   // missing/rejected field into view. `_fieldErrors` drives the red border +
@@ -185,12 +187,64 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   /// Resolve the locked email from every source we have, newest-wins but never
   /// clobbering a value already shown. Called from initState, didUpdateWidget and
   /// a post-frame retry so a late Clerk/telemetry email still lands in the field.
-  void _resolveEmailInto() {
+  void _resolveEmailInto({String fallback = ''}) {
     if (_email.text.trim().isNotEmpty) return;
     final candidate = (widget.email ?? '').trim().isNotEmpty
         ? widget.email!.trim()
-        : ((Analytics.currentEmail ?? '').trim().isNotEmpty ? Analytics.currentEmail!.trim() : '');
+        : ((Analytics.currentEmail ?? '').trim().isNotEmpty
+            ? Analytics.currentEmail!.trim()
+            : fallback.trim());
     if (candidate.isNotEmpty && mounted) setState(() => _email.text = candidate);
+  }
+
+  /// Clerk and PostHog can become ready after the shell has already painted
+  /// this mandatory gate. Keep trying briefly, but only fill an empty field:
+  /// this makes hydration order-independent and never overwrites user input.
+  void _retryIdentityHydration() {
+    _identityHydrationTimer?.cancel();
+    const delays = <Duration>[
+      Duration(milliseconds: 100),
+      Duration(milliseconds: 400),
+      Duration(seconds: 1),
+      Duration(seconds: 2),
+    ];
+    var index = 0;
+    void attempt() {
+      if (!mounted || _email.text.trim().isNotEmpty || index >= delays.length) return;
+      _identityHydrationTimer = Timer(delays[index++], () {
+        _resolveEmailInto();
+        attempt();
+      });
+    }
+    attempt();
+  }
+
+  void _retryNumberHydration() {
+    _numberHydrationTimer?.cancel();
+    const delays = <Duration>[
+      Duration(milliseconds: 150),
+      Duration(milliseconds: 500),
+      Duration(seconds: 1),
+      Duration(seconds: 2),
+    ];
+    var index = 0;
+    void attempt() {
+      if (!mounted || _phone.text.trim().isNotEmpty || index >= delays.length) return;
+      _numberHydrationTimer = Timer(delays[index++], () async {
+        if (!mounted || _phone.text.trim().isNotEmpty) return;
+        final m = await AvaNumber.me();
+        if (!mounted || _phone.text.trim().isNotEmpty) return;
+        final shown = (m.display ?? '').trim().isNotEmpty
+            ? m.display!.trim()
+            : ((m.number ?? '').trim().isNotEmpty ? '+${m.number!.trim()}' : '');
+        if (shown.isNotEmpty) {
+          setState(() { _avatokNumber = shown; _phone.text = shown; });
+          return;
+        }
+        attempt();
+      });
+    }
+    attempt();
   }
 
   @override
@@ -245,6 +299,10 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         _privatePhoneVerified = p.privatePhoneVerified;
         _gender = p.gender;
       });
+      // The store read can finish after the first frame. Re-run the same
+      // resolver here so a saved/account email cannot be lost to that race.
+      _resolveEmailInto(fallback: p.email);
+      _retryIdentityHydration();
       // If a name was auto-filled (Google) or restored and gender isn't set yet,
       // kick off AI gender detection so it can lock without the user retyping.
       if (_first.text.trim().isNotEmpty && _gender.isEmpty) _maybeDetectGender();
@@ -268,9 +326,11 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         setState(() { _avatokNumber = shown; _phone.text = shown; });
       }
     });
+    _retryNumberHydration();
     // Late-email safety net: Clerk/telemetry email can resolve a beat after mount.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _resolveEmailInto();
+      _retryIdentityHydration();
       // [PROFILE-DISPLAY-2] Diagnostic: did the locked email + AvaTOK number
       // actually populate on this onboarding screen? Tagged with the email so a
       // future pull can tell whose device left either field blank.
@@ -305,6 +365,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   void dispose() {
     _first.dispose(); _last.dispose(); _email.dispose(); _phone.dispose();
     _bio.dispose();
+    _identityHydrationTimer?.cancel();
+    _numberHydrationTimer?.cancel();
     _bioTimer?.cancel();
     _genderTimer?.cancel();
     _scrollController.dispose();
@@ -551,6 +613,15 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         setState(() { _gender = g; _genderLocked = true; _genderDetecting = false; });
         _clearErr('gender');
         Analytics.capture('profile_gender_locked', {'gender': g, 'email': _email.text.trim()});
+      } else if (r.statusCode == 402 && body['error'] == 'AI_INSUFFICIENT_TOKENS') {
+        // [ONBOARD-402-1] Keep onboarding fail-open, but make a missing welcome
+        // grant visible instead of silently presenting it as an unknown name.
+        setState(() { _genderLocked = false; _genderDetecting = false; });
+        Analytics.capture('profile_gender_ai_insufficient_tokens', {
+          'needed': body['needed'] ?? 0,
+          'balance': body['balance'] ?? 0,
+          'email': _email.text.trim(),
+        });
       } else {
         // Unknown / low confidence → let the user choose manually.
         setState(() { _genderLocked = false; _genderDetecting = false; });

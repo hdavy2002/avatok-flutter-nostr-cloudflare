@@ -967,7 +967,14 @@ export async function me(req: Request, env: Env): Promise<Response> {
       }
     } catch { /* relink is best-effort; fall through to onboarding if it can't help */ }
   }
-  if (!prof) return json({ found: false, clerk_enabled: true, uid: clerkRaw });
+  if (!prof) {
+    // [ONBOARD-402-1] Bootstrap the idempotent welcome grant before the profile
+    // screen can invoke token-metered onboarding AI. Previously the first 100
+    // tokens were granted only after POST /api/profile, but ProfileSetupScreen
+    // calls /api/ai/gender before the user can save that form.
+    try { await grantWelcomeBonus(env, clerkRaw); } catch { /* AI path retries the same idempotent grant */ }
+    return json({ found: false, clerk_enabled: true, uid: clerkRaw });
+  }
   // P11: completeness = photo + first + last + birth year + gender + About (phone
   // is the only optional field). The client routes an incomplete profile to the
   // Profile screen before the app when profileCompletionGate is ON.
@@ -1468,4 +1475,3 @@ export async function callRinging(req: Request, env: Env): Promise<Response> {
     return json({ error: `error: ${e}` }, 500);
   }
 }
-
