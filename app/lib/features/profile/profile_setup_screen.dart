@@ -247,10 +247,47 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     attempt();
   }
 
+  /// Hydrate locked identity fields from the authenticated server response.
+  /// These values are account facts, not optional analytics or widget timing;
+  /// resolving them here makes onboarding deterministic on every entry path.
+  Future<void> _hydrateIdentityFromServer() async {
+    try {
+      final r = await ApiAuth.getSigned(kMeUrl);
+      if (r.statusCode != 200) return;
+      final j = jsonDecode(r.body) as Map<String, dynamic>;
+      final email = (j['email'] ?? '').toString().trim();
+      final number = (j['avatok_number_display'] ?? j['avatok_number'] ?? '').toString().trim();
+      if (!mounted) return;
+      var changed = false;
+      if (_email.text.trim().isEmpty && email.isNotEmpty) {
+        _email.text = email;
+        changed = true;
+        unawaited(_store.setEmail(email));
+      }
+      if (_phone.text.trim().isEmpty && number.isNotEmpty) {
+        final shown = number.startsWith('+') ? number : '+$number';
+        _avatokNumber = shown;
+        _phone.text = shown;
+        changed = true;
+      }
+      Analytics.capture('profile_identity_hydrated', {
+        'email_shown': _email.text.trim().isNotEmpty,
+        'number_shown': _phone.text.trim().isNotEmpty,
+        'source': 'server_me',
+        'changed': changed,
+        'email': _email.text.trim(),
+      });
+      if (changed) setState(() {});
+    } catch (_) {
+      // Existing local/cache retries remain the offline fallback.
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     _id = widget.identity;
+    unawaited(_hydrateIdentityFromServer());
     // Deterministic: the number just picked in the gate is handed straight in, so
     // show it immediately (locked) instead of waiting on the me() cache/network.
     final passedNum = (widget.avatokNumber ?? '').trim();

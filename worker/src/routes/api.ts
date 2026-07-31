@@ -12,7 +12,7 @@ import { metaSession } from "../db/shard";
 import { requireUser, isFail, dmConvId } from "../authz";
 import { gatePublicAction, emailOf } from "../lib/identity_gate"; // [AVA-IDGATE-1]
 import { verifyClerk, resolveCanonicalUid, linkClerkAlias } from "../auth";
-import { nameFor, primaryVerifiedEmailFor } from "../lib/identity";
+import { emailFor, nameFor, primaryVerifiedEmailFor } from "../lib/identity";
 import { track } from "../hooks";
 import { brainIngest } from "../lib/brain_ingest";
 import { avaReason } from "../lib/ava_reason"; // One Brain B1: unified reasoning gateway
@@ -973,7 +973,7 @@ export async function me(req: Request, env: Env): Promise<Response> {
     // tokens were granted only after POST /api/profile, but ProfileSetupScreen
     // calls /api/ai/gender before the user can save that form.
     try { await grantWelcomeBonus(env, clerkRaw); } catch { /* AI path retries the same idempotent grant */ }
-    return json({ found: false, clerk_enabled: true, uid: clerkRaw });
+    return json({ found: false, clerk_enabled: true, uid: clerkRaw, email: await emailFor(env, clerkRaw) });
   }
   // P11: completeness = photo + first + last + birth year + gender + About (phone
   // is the only optional field). The client routes an incomplete profile to the
@@ -982,6 +982,9 @@ export async function me(req: Request, env: Env): Promise<Response> {
     && prof.birth_year && prof.gender && prof.bio);
   return json({
     found: true, clerk_enabled: true, uid,
+    // Authenticated identity hydration for onboarding. This is returned only
+    // to the signed-in account itself; D1 continues storing only email_hash.
+    email: await emailFor(env, uid),
     display_name: prof.display_name ?? null, first_name: prof.first_name ?? null, last_name: prof.last_name ?? null,
     avatar_url: prof.avatar_url ?? null, birth_year: prof.birth_year ?? null, bio: prof.bio ?? null,
     gender: prof.gender ?? null, profile_complete: profileComplete,
