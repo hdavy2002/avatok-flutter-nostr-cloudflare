@@ -988,6 +988,8 @@ class _CallScreenState extends State<CallScreen> {
               // user lands back on the thread and can read/send messages.
               _btn(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), onTap: _minimize),
               const SizedBox(width: 14),
+              _btn(PhosphorIcons.dialpad(PhosphorIconsStyle.bold), onTap: () => _showDtmfPad(s)),
+              const SizedBox(width: 14),
               _btn(
                   speaker
                       ? PhosphorIcons.speakerHigh(PhosphorIconsStyle.bold)
@@ -1102,6 +1104,30 @@ class _CallScreenState extends State<CallScreen> {
         body: dialerSkin
             ? Container(color: PhoneTheme.bg, child: stack)
             : Container(color: AD.bg, child: stack),
+      ),
+    );
+  }
+
+  void _showDtmfPad(CallSession session) {
+    const keys = <String>['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'];
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AD.card,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: GridView.count(
+            shrinkWrap: true,
+            crossAxisCount: 3,
+            mainAxisSpacing: 12,
+            crossAxisSpacing: 12,
+            children: keys.map((key) => TextButton(
+              onPressed: () { unawaited(session.sendDtmf(key)); },
+              child: Text(key, style: ADText.appTitle(c: AD.textPrimary)),
+            )).toList(),
+          ),
+        ),
       ),
     );
   }

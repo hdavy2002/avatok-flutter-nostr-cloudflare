@@ -46,16 +46,15 @@ const TICKET_TTL_S = 60; // short-lived: only needs to cover the WS-upgrade race
 
 // ---- config / membership (mirrors conference.ts, kept local) -------------------
 
-async function flags(env: Env): Promise<{ conf: boolean; sfu: boolean; cfConf: boolean; lkConf: boolean; enabled: boolean }> {
+async function flags(env: Env): Promise<{ conf: boolean; sfu: boolean; cfConf: boolean; enabled: boolean }> {
   try {
     const c = (await env.TOKENS.get("platform_config", "json")) as
-      { conferenceEnabled?: boolean; groupAudioSfuEnabled?: boolean; cloudflareConferenceEnabled?: boolean; livekitConferenceEnabled?: boolean } | null;
+      { conferenceEnabled?: boolean; groupAudioSfuEnabled?: boolean; cloudflareConferenceEnabled?: boolean } | null;
     const conf = c?.conferenceEnabled !== false;
     const sfu = c?.groupAudioSfuEnabled === true;
     const cfConf = c?.cloudflareConferenceEnabled === true;
-    const lkConf = c?.livekitConferenceEnabled !== false;
-    return { conf, sfu, cfConf, lkConf, enabled: sfu || cfConf };
-  } catch { return { conf: true, sfu: false, cfConf: false, lkConf: true, enabled: false }; }
+    return { conf, sfu, cfConf, enabled: sfu || cfConf };
+  } catch { return { conf: true, sfu: false, cfConf: false, enabled: false }; }
 }
 
 function sfuConfigured(env: Env): boolean {
@@ -289,7 +288,6 @@ export async function groupCallJoin(req: Request, env: Env, groupId: string): Pr
       decision_source: "worker",
       media_kind_requested: mediaKind,
       cloudflare_conference_enabled: g.cfConf,
-      livekit_conference_enabled: g.lkConf,
     },
   });
   await emitConf(env, req, g.uid, g.email, "cloudflare_conference_join_started", { groupId, extra: { route: "join" } });
@@ -365,6 +363,44 @@ export async function groupCallJoin(req: Request, env: Env, groupId: string): Pr
     max_participants: authority.max_participants,
     ws_url: wsUrl,
     generation: authority.generation,
+  });
+}
+
+/** Mint a fresh one-time WS ticket for an existing SFU session. Reconnects must
+ * never reuse the original bearer ticket now that ticket nonces are consumed
+ * on upgrade. This does not create another SFU session or change room media. */
+export async function groupCallRejoin(req: Request, env: Env, groupId: string): Promise<Response> {
+  const g = await guard(req, env, groupId);
+  if (g instanceof Response) return g;
+  let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
+  const sessionId = String(b?.sessionId ?? "").trim();
+  if (!sessionId) return json({ error: "sessionId required" }, 400);
+  const auth = await roomFetch<{ call_id: string; call_trace_id: string; generation: number; state: string; media_kind: string; max_participants: number; error?: string }>(
+    env, groupId, "/authority/join", { uid: g.uid },
+  );
+  if (!auth.ok || !auth.data?.call_id || auth.data.state === "ended") {
+    return json({ error: auth.data?.error ?? "call is no longer active" }, auth.status >= 400 ? auth.status : 409);
+  }
+  const check = await roomFetch<{ ok: boolean; error?: string }>(env, groupId, "/authority/session_check", {
+    uid: g.uid, session_id: sessionId,
+  });
+  // The existing attachment is the proof that this session belongs to this
+  // authenticated uid. If its close event already won the race, the caller
+  // must use the full join flow, which mints a new SFU session; never mint a
+  // ticket for an arbitrary session id supplied by a group member.
+  if (!check.ok) return json({ error: "session is not eligible for reconnect" }, 409);
+  const ticket = await mintJoinTicket(env, {
+    call_id: auth.data.call_id, uid: g.uid, session_id: sessionId, generation: auth.data.generation,
+  });
+  if (!ticket) return json({ error: "call ticketing not configured" }, 503);
+  const iceServers = await mintIceServers(env, ICE_TTL_S);
+  const url = new URL(req.url);
+  return json({
+    provider: PROVIDER, call_id: auth.data.call_id, call_trace_id: auth.data.call_trace_id,
+    session_id: sessionId, join_ticket: ticket, ice_servers: iceServers,
+    media: { audio: true, video: auth.data.media_kind !== "audio" },
+    max_participants: auth.data.max_participants, generation: auth.data.generation,
+    ws_url: `wss://${url.host}/api/groupcall/${groupId}/ws?ticket=${encodeURIComponent(ticket)}`,
   });
 }
 

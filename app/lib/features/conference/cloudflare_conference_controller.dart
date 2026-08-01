@@ -67,12 +67,17 @@ class CloudflareConferenceController extends ChangeNotifier {
   final bool wantVideo;
   final bool starter;
   final int maxVideoSubs;
+  /// Optional call-owned capture source. Migration/warm-up paths pass the
+  /// existing 1:1 source here so joining the SFU never prompts for a second
+  /// microphone or reconfigures the active capturer.
+  final MediaStream? sharedLocalStream;
 
   CloudflareConferenceController({
     required this.gid,
     required this.wantVideo,
     required this.starter,
     this.maxVideoSubs = kDefaultMaxVideoSubs,
+    this.sharedLocalStream,
   });
 
   // Local placeholder id used only before the server's `welcome` frame
@@ -95,6 +100,7 @@ class CloudflareConferenceController extends ChangeNotifier {
   RTCPeerConnection? _pendingRetirePc;
   Timer? _retireTimer;
   MediaStream? _localStream;
+  bool _ownsLocalStream = false;
   WebSocketChannel? _ws;
   CfJoinResult? _join;
   int _ticketIssuedAtMs = 0;
@@ -108,6 +114,7 @@ class CloudflareConferenceController extends ChangeNotifier {
   final Map<String, String> _pulledAudioMid = {}; // uid -> mid
   final Map<String, String> _pulledVideoMid = {}; // uid -> mid
   Set<String> _visibleUids = {};
+  Set<String> _activeAudioUids = {};
   String? _dominantSpeakerUid;
 
   final RTCVideoRenderer localRenderer = RTCVideoRenderer();
@@ -136,6 +143,7 @@ class CloudflareConferenceController extends ChangeNotifier {
   List<CfParticipant> get roster => _roster.values.toList(growable: false);
   RTCVideoRenderer? rendererFor(String uid) => _remoteVideoRenderers[uid];
   String? get dominantSpeakerUid => _dominantSpeakerUid;
+  bool get hasMediaEvidence => state == CfConnState.connected && (_lastAudioBytes != null || _lastVideoFrames != null);
 
   // ---- lifecycle ---------------------------------------------------------------
 
@@ -150,7 +158,6 @@ class CloudflareConferenceController extends ChangeNotifier {
         groupId: gid,
         decidedProvider: RemoteConfig.cloudflareConferenceEnabled ? 'cloudflare_realtime' : 'disabled',
         cloudflareEnabled: RemoteConfig.cloudflareConferenceEnabled,
-        livekitEnabled: RemoteConfig.livekitConferenceEnabled,
         mediaKindRequested: wantVideo ? 'audio_video' : 'audio',
       );
 
@@ -215,7 +222,7 @@ class CloudflareConferenceController extends ChangeNotifier {
       }
     };
 
-    _localStream = await navigator.mediaDevices.getUserMedia({
+    _localStream = sharedLocalStream ?? await navigator.mediaDevices.getUserMedia({
       'audio': avaMicConstraints(),
       'video': wantVideo
           ? {
@@ -226,6 +233,7 @@ class CloudflareConferenceController extends ChangeNotifier {
             }
           : false,
     });
+    _ownsLocalStream = sharedLocalStream == null;
     // Validate live tracks before publishing (Phase 3 requirement).
     final audioTracks = _localStream!.getAudioTracks();
     if (audioTracks.isEmpty || !audioTracks.first.enabled) {
@@ -350,7 +358,9 @@ class CloudflareConferenceController extends ChangeNotifier {
             .map((e) => e.toString())
             .where((u) => !_isSelf(u))
             .toList();
+        _activeAudioUids = uids.take(6).toSet();
         _dominantSpeakerUid = uids.isNotEmpty ? uids.first : null;
+        unawaited(_applyAudioSubscriptionPolicy());
         await _applyVideoSubscriptionPolicy();
         _safeNotify();
         break;
@@ -398,17 +408,26 @@ class CloudflareConferenceController extends ChangeNotifier {
       if (_isSelf(uid)) continue; // defense-in-depth; _roster never holds self
       _tel?.participantJoined(subjectUid: uid, rosterSizeAfter: _roster.length);
     }
-    unawaited(_pullAudioForRoster());
+    unawaited(_applyAudioSubscriptionPolicy());
     unawaited(_applyVideoSubscriptionPolicy());
     _safeNotify();
   }
 
-  // Active-speaker audio pull (mirrors sfu_group_call_screen's fan-out, extended
-  // to the ticket-authenticated pull contract).
-  Future<void> _pullAudioForRoster() async {
-    for (final p in _roster.values) {
-      if (_isSelf(p.uid) || p.audioTrack == null || p.audioTrack!.isEmpty) continue;
-      if (_pulledAudioMid.containsKey(p.uid)) continue;
+  // Audio subscriptions follow the server's debounced loudest-speaker set.
+  // The old implementation pulled every roster member until the server's cap
+  // rejected the rest, making roster order decide who could be heard.
+  Future<void> _applyAudioSubscriptionPolicy() async {
+    final wanted = _activeAudioUids.where((uid) {
+      final p = _roster[uid];
+      return p != null && p.audioTrack != null && p.audioTrack!.isNotEmpty;
+    }).toSet();
+    for (final uid in _pulledAudioMid.keys.where((u) => !wanted.contains(u)).toList()) {
+      await _closeAudioPull(uid);
+    }
+    for (final uid in wanted) {
+      if (_pulledAudioMid.containsKey(uid)) continue;
+      final p = _roster[uid];
+      if (p == null || p.audioTrack == null) continue;
       await _pullTrack(p, kind: 'audio', trackName: p.audioTrack!, qualityPolicy: 'high', reason: 'active_speaker_audio');
     }
   }
@@ -676,7 +695,13 @@ class CloudflareConferenceController extends ChangeNotifier {
     final t0 = DateTime.now().millisecondsSinceEpoch;
     try {
       if (ticketFresh) {
-        _joinConnectWs(_join!, route: 'join');
+        // Ticket nonces are consumed by the DO on websocket upgrade. Mint a
+        // fresh ticket for every reconnect while keeping the media PC alive.
+        final refreshed = await CloudflareConferenceApi.rejoin(gid, sessionId: _join!.sessionId);
+        _join = refreshed;
+        _ticketIssuedAtMs = DateTime.now().millisecondsSinceEpoch;
+        _generation = refreshed.generation;
+        _joinConnectWs(refreshed, route: 'rejoin');
         _tel?.reconnectCompleted(
             attemptId: attemptId, mediaKeptAlive: true,
             elapsedMs: DateTime.now().millisecondsSinceEpoch - t0, pcRecreated: false);
@@ -769,7 +794,10 @@ class CloudflareConferenceController extends ChangeNotifier {
 
   void _startHealthSampler() {
     _healthTimer?.cancel();
-    _healthTimer = Timer.periodic(const Duration(seconds: 5), (_) => _pollMediaHealth());
+    // Migration preparation has a four-second deadline; a five-second sampler
+    // cannot produce evidence in time. Keep the sample interval at or below the
+    // one-second contract used by sfu_ready.
+    _healthTimer = Timer.periodic(const Duration(seconds: 1), (_) => _pollMediaHealth());
   }
 
   Future<void> _pollMediaHealth() async {
@@ -922,10 +950,12 @@ class CloudflareConferenceController extends ChangeNotifier {
     _remoteVideoRenderers.clear();
     if (_localRendererReady) { try { localRenderer.srcObject = null; localRenderer.dispose(); } catch (_) {} }
 
-    try {
-      for (final t in _localStream?.getTracks() ?? const <MediaStreamTrack>[]) { await t.stop(); }
-    } catch (_) {}
-    try { await _localStream?.dispose(); } catch (_) {}
+    if (_ownsLocalStream) {
+      try {
+        for (final t in _localStream?.getTracks() ?? const <MediaStreamTrack>[]) { await t.stop(); }
+      } catch (_) {}
+      try { await _localStream?.dispose(); } catch (_) {}
+    }
 
     if (RemoteConfig.callAudioControllerV2 && _join != null) {
       try { await NativeVoiceAudio.instance.endP2pSession(callId: _join!.callId); } catch (_) {}

@@ -160,7 +160,7 @@ rulebook" below or `Specs/AVATALK-CLOUDFLARE-RULEBOOK.md` conflict with the new 
 (NIP-17/44/59, gift-wrap, keypairs, NIP-42/98, the relay Worker). Do NOT make a single
 central D1 the high-write message store — messages live in DO-local SQLite per user.
 Still valid: per-account scoping. NOTE (2026-06-10): the old "1:1-only calls" rule
-was CHANGED in Phase 10 — group conferences ≤25 via LiveKit are now allowed (see
+was CHANGED in Phase 10 — group conferences ≤25 via Cloudflare Realtime are now allowed (see
 the product rule below).
 
 ---
@@ -214,13 +214,16 @@ literal text / string search (TODOs, error messages, arbitrary tokens).
 ## Engineering rulebook (READ — applies to every app)
 
 **AvaTOK product rule — RULE CHANGE 2026-06-10 (owner decision, Phase 10).**
-Group conferences ARE allowed in AvaTalk groups, **≤25 participants, via LiveKit**
-(`worker/src/routes/conference.ts` + `app/lib/features/conference/`). 1:1 calls
+Group conferences ARE allowed in AvaTalk groups, **≤25 participants, via Cloudflare Realtime**
+(`worker/src/routes/groupcall.ts` + `app/lib/features/conference/`). Cloudflare is
+the only real-time media provider: SFU, TURN, ICE delivery, and signalling all
+stay Cloudflare-native. Cloudflare STUN is primary and Google Public STUN is the
+owner-approved discovery-only fallback. 1:1 calls
 stay P2P (CallRoom DO, **2-peer cap unchanged** — group conferences never touch
 it; do NOT raise the cap). Group/conference CONSULTING still lives in AvaConsult.
 Enforcement: group-thread call icons active only when `memberCount <= 25`
 (otherwise greyed + a notice popup), the Worker rejects start/join for >25-member
-groups, and LiveKit `max_participants=25` is the server-side backstop. All gated
+groups, and the Cloudflare Realtime participant cap of 25 is the server-side backstop. All gated
 by the `conferenceEnabled` kill switch (`routes/config.ts`). Group chats keep FULL
 messaging (text, media, voice notes, stickers, polls, location, contact cards).
 

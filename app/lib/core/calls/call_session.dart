@@ -3486,6 +3486,32 @@ class CallSession {
     muted.value = _muted;
   }
 
+  /// Sends an RFC 4733 DTMF tone through the negotiated audio sender. This is
+  /// intentionally media-plane only: digits never enter signaling logs or the
+  /// call command reducer. The native WebRTC plugin reports unsupported sender
+  /// state as a normal failed feasibility result instead of crashing the call.
+  Future<bool> sendDtmf(String tone) async {
+    if (_ended || !_connected || !RegExp(r'^[0-9A-D#*]$').hasMatch(tone)) return false;
+    try {
+      final senders = await _pc?.getSenders();
+      RTCDTMFSender? dtmf;
+      for (final sender in senders ?? const <RTCRtpSender>[]) {
+        if (sender.track?.kind == 'audio') {
+          dtmf = sender.dtmfSender;
+          break;
+        }
+      }
+      if (dtmf == null || !await dtmf.canInsertDtmf()) return false;
+      await dtmf.insertDTMF(tone, duration: 100, interToneGap: 70);
+      Analytics.capture('call_dtmf_sent', {'call_id': config.room, 'tone': tone});
+      return true;
+    } catch (e, st) {
+      _telemetry.runtimeError(stage: 'dtmf_send_failed', error: e, stack: st,
+          extra: {'call_id': config.room});
+      return false;
+    }
+  }
+
   void toggleSpeaker() {
     if (RemoteConfig.callAudioControllerV2) {
       // CALL-REL-1: the controller is the only route owner. toggleSpeaker is
@@ -3573,8 +3599,8 @@ class CallSession {
       Analytics.capture('call_cancel_suppressed_dup', {'call_id': config.room});
       return;
     }
-    ApiAuth.postJson(kCallStatusUrl, {
-      'to': config.seed, 'callId': config.room, 'status': 'cancel',
+    ApiAuth.postJson(kCallCommandUrl, {
+      'callId': config.room, 'command': 'cancel_call',
     }).ignore();
     Analytics.capture('call_cancel_sent', {'call_id': config.room});
   }
@@ -3722,8 +3748,8 @@ class CallSession {
     pop?.call();
     if (_remoteId != null) _send({'type': 'bye', 'to': _remoteId});
     if (config.seed.isNotEmpty) {
-      ApiAuth.postJson(kCallStatusUrl, {
-        'to': config.seed, 'callId': config.room, 'status': 'ended',
+      ApiAuth.postJson(kCallCommandUrl, {
+        'callId': config.room, 'command': 'end_call',
       }).ignore();
     }
     _telemetry.ended('local-hangup');
@@ -3761,8 +3787,8 @@ class CallSession {
     if (_ended) return;
     if (_remoteId != null) _send({'type': 'bye', 'to': _remoteId});
     if (config.seed.isNotEmpty) {
-      ApiAuth.postJson(kCallStatusUrl, {
-        'to': config.seed, 'callId': config.room, 'status': 'ended',
+      ApiAuth.postJson(kCallCommandUrl, {
+        'callId': config.room, 'command': 'end_call',
       }).ignore();
     }
     Analytics.capture('call_ended_for_accept', {

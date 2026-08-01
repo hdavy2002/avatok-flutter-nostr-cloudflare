@@ -123,6 +123,15 @@ class CloudflareConferenceApi {
     return CfJoinResult.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
+  /// POST /rejoin {sessionId} → a fresh one-time WS ticket for the existing
+  /// SFU session. Ticket nonces are consumed at upgrade and cannot be reused.
+  static Future<CfJoinResult> rejoin(String gid, {required String sessionId}) async {
+    final res = await ApiAuth.postJson('$kCfGroupCallBase/$gid/rejoin', {'sessionId': sessionId},
+        timeout: const Duration(seconds: 15));
+    if (res.statusCode != 200) _fail(res.statusCode, res.body);
+    return CfJoinResult.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
   /// POST /publish {sessionId, offer:{sdp}, tracks:[...]} → {answer, tracks}.
   /// `attempt` increments on a retried publish (e.g. after generation_conflict)
   /// per the telemetry contract §3.1 — the server counts it, we just pass it.
@@ -217,4 +226,37 @@ class CloudflareConferenceApi {
       return (live: false, count: 0, max: 25, callId: null);
     }
   }
+}
+
+/// Durable migration/billing control plane. Media tickets and SDP remain on
+/// CloudflareConferenceApi; these calls only coordinate the make-before-break
+/// protocol and server-owned sponsor state.
+class ConferenceRoomApi {
+  static String _url(String roomId, String action) => '$kApiBase/conference-room/$roomId/$action';
+
+  static Future<Map<String, dynamic>> _post(String roomId, String action, Map<String, dynamic> body) async {
+    final res = await ApiAuth.postJson(_url(roomId, action), body, timeout: const Duration(seconds: 15));
+    if (res.statusCode < 200 || res.statusCode >= 300) CloudflareConferenceApi._fail(res.statusCode, res.body);
+    return (jsonDecode(res.body) as Map).cast<String, dynamic>();
+  }
+
+  static Future<Map<String, dynamic>> state(String roomId) async {
+    final res = await ApiAuth.getSigned(_url(roomId, 'state'));
+    if (res.statusCode != 200) CloudflareConferenceApi._fail(res.statusCode, res.body);
+    return (jsonDecode(res.body) as Map).cast<String, dynamic>();
+  }
+
+  static Future<Map<String, dynamic>> start(String roomId, {required String groupId, String mediaKind = 'audio'}) => _post(roomId, 'start', {'group_id': groupId, 'media_kind': mediaKind});
+  static Future<Map<String, dynamic>> reserveMigration(String roomId, {required String callEpoch}) => _post(roomId, 'migration/reserve', {'call_epoch': callEpoch});
+  static Future<Map<String, dynamic>> prepareMigration(String roomId, {required String migrationId, required String callEpoch}) => _post(roomId, 'migration/prepare', {'migration_id': migrationId, 'call_epoch': callEpoch});
+  static Future<Map<String, dynamic>> commitMigration(String roomId, {required String migrationId, required bool sfuReady}) => _post(roomId, 'migration/commit', {'migration_id': migrationId, 'sfu_ready': sfuReady});
+  static Future<Map<String, dynamic>> abortMigration(String roomId, {required String migrationId}) => _post(roomId, 'migration/abort', {'migration_id': migrationId});
+  static Future<Map<String, dynamic>> reserveParticipant(String roomId, {String? sessionId}) => _post(roomId, 'participant/reserve', {'session_id': sessionId});
+  static Future<Map<String, dynamic>> joinParticipant(String roomId, {String? sessionId}) => _post(roomId, 'participant/join', {'session_id': sessionId});
+  static Future<Map<String, dynamic>> leaveParticipant(String roomId) => _post(roomId, 'participant/leave', const {});
+  static Future<Map<String, dynamic>> acceptSponsorship(String roomId, {required int reservedMinutes}) => _post(roomId, 'billing/sponsor/accept', {'reserved_minutes': reservedMinutes});
+  static Future<Map<String, dynamic>> startBilling(String roomId, {required int reservedMinutes}) => _post(roomId, 'billing/start', {'reserved_minutes': reservedMinutes});
+  static Future<Map<String, dynamic>> billingTick(String roomId, {required String segmentId, required int minuteIndex}) => _post(roomId, 'billing/tick', {'segment_id': segmentId, 'minute_index': minuteIndex});
+  static Future<Map<String, dynamic>> transferHost(String roomId, {required String targetUid}) => _post(roomId, 'host/transfer', {'target_uid': targetUid});
+  static Future<Map<String, dynamic>> end(String roomId) => _post(roomId, 'end', const {});
 }

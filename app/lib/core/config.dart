@@ -36,6 +36,10 @@ const String kCallUrl = 'https://$kSignalingHost/api/call';
 /// Relay a call status (declined / busy / ended) to the caller via FCM. (NIP-98)
 const String kCallStatusUrl = 'https://$kSignalingHost/api/call-status';
 
+/// [CALL-AUTHZ-1] Authenticated call outcome command endpoint. The Worker
+/// derives the actor and peer from the persisted CallRoom participants.
+const String kCallCommandUrl = 'https://$kSignalingHost/api/call/command';
+
 /// [CALL-QUICK-REPLY-1 2026-08-01] Deliver a canned "Message" reply to the
 /// CALLER after the callee dismissed a ringing call with a quick reply. The
 /// client sends a `quickReplyId` + `catalogVersion`; the SERVER owns the text,

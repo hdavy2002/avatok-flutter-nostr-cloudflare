@@ -38,6 +38,9 @@ import type { CallSnapshot } from "./call_snapshot";
 import { emitCallEvent, EVENT_SCHEMA_VERSION, newTraceId, type CallEvent, type ReasonCode } from "./call_events";
 
 const orderIdFor = (callId: string): string => `call:${callId}`;
+export const conferenceBillingId = (callId: string, sponsorId: string): string => `${callId}:sponsor:${sponsorId}`;
+export const conferenceVideoHoldCost = (minutes: number, tokensPerHour: number): number =>
+  Math.ceil(Math.trunc(minutes) / 60) * Math.trunc(tokensPerHour);
 
 export interface CallBillingResult {
   ok: boolean;
@@ -102,6 +105,44 @@ export async function holdForCall(
   }
   await emit(env, ctx, "escrow_held", undefined, { rate, minutes, total, ok: true, mode: "B" });
   return { ok: true, held: total };
+}
+
+/** Conference sponsor hold. A conference has no callee revenue leg; all
+ * metered minutes settle from the sponsor escrow into platform fees. The
+ * tariff is supplied by server config, never by a client request. */
+export async function holdForConference(
+  env: Env,
+  args: { call_id: string; sponsor_id: string; minutes: number; tariff_per_hour: number; trace_id?: string },
+): Promise<CallBillingResult> {
+  if (!(args.tariff_per_hour > 0) || !(args.minutes > 0)) return { ok: false, held: 0, reason: "VALIDATION" };
+  const billingId = conferenceBillingId(args.call_id, args.sponsor_id);
+  // Video conferences are billed per started hour: 1–60 minutes = 20 tokens,
+  // 61–120 minutes = 40 tokens. Audio conferences never enter this path.
+  const total = conferenceVideoHoldCost(args.minutes, args.tariff_per_hour);
+  const r = await hold(env, args.sponsor_id, orderIdFor(billingId), total, {
+    opId: `hold:conference:${billingId}`,
+    title: `Conference ${args.call_id}`,
+    app: "conference_billing",
+  });
+  return r.ok ? { ok: true, held: total } : { ok: false, held: 0, reason: r.status === 402 ? "WALLET_INSUFFICIENT" : "VALIDATION" };
+}
+
+export async function settleConferenceMinute(
+  env: Env,
+  args: { call_id: string; sponsor_id: string; minute_index: number; amount: number },
+): Promise<{ ok: boolean; settled: number }> {
+  const amount = Math.trunc(args.amount);
+  if (!(amount > 0) || !(args.minute_index > 0)) return { ok: false, settled: 0 };
+  const orderId = orderIdFor(conferenceBillingId(args.call_id, args.sponsor_id));
+  const available = await escrowBalance(env, orderId);
+  const settled = Math.min(amount, Math.max(0, available));
+  if (!(settled > 0)) return { ok: true, settled: 0 };
+  await env.Q_WALLET.send({
+    id: `settle:conference:${args.call_id}:m${args.minute_index}`,
+    ts: Date.now(), amount: settled,
+    ledger: { debit: acctEscrow(orderId), credit: ACCT_PLATFORM_FEES, type: "conference_minute_settle", ref: orderId, meta: JSON.stringify({ sponsor_id: args.sponsor_id, minute_index: args.minute_index }) },
+  });
+  return { ok: true, settled };
 }
 
 // ---------------------------------------------------------------------------

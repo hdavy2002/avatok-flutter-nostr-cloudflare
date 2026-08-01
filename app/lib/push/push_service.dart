@@ -2545,10 +2545,10 @@ class PushService {
   /// across every retry of THAT tap; callers that omit it get a per-call-stable
   /// value, which preserves the old collapse-retries behaviour for paths where
   /// only one such action is possible.
-  static void _signalStatus(String callId, String status, String callerNpub,
+  static Future<bool> _signalStatus(String callId, String status, String callerNpub,
       {String? busyReason, bool receptionistEnabled = false, String? pronoun,
       String? intent, String? actionInstance}) {
-    if (callId.isEmpty) return;
+    if (callId.isEmpty) return Future<bool>.value(false);
     final actionInstanceId = actionInstance ?? 'single';
     // [BUSY-CARD-1] When we auto-busy a caller, attach why we're busy + whether Ava
     // can take a message, so the CALLER renders the personalized busy card instead
@@ -2565,7 +2565,7 @@ class PushService {
       Analytics.capture('call_status_signal_skipped', {
         'call_id': callId, 'status': status, 'reason': 'no_caller_uid',
       });
-      return;
+      return Future<bool>.value(false);
     }
     final t0 = DateTime.now().millisecondsSinceEpoch;
     // [CALL-CMD-IDEMPOTENT-2 2026-08-01] One id per USER ACTION, not per HTTP
@@ -2586,10 +2586,23 @@ class PushService {
     // action still collapse. `intent` defaults to the status for callers that
     // do not distinguish.
     final commandId = '$callId:${intent ?? status}:$actionInstanceId';
-    ApiAuth.postJson(kCallStatusUrl, {
-      'to': callerNpub, 'callId': callId, 'status': status,
-      'commandId': commandId, ...extra,
-    }).then((res) {
+    final command = switch (status) {
+      'decline' || 'declined' => 'decline_call',
+      'decline_ava' => 'handoff_to_receptionist',
+      'decline_vm' => 'offer_voicemail',
+      'cancel' => 'cancel_call',
+      'bye' || 'hangup' || 'ended' => 'end_call',
+      _ => null,
+    };
+    final future = command != null
+        ? ApiAuth.postJson(kCallCommandUrl, {
+            'callId': callId, 'command': command, 'commandId': commandId,
+          })
+        : ApiAuth.postJson(kCallStatusUrl, {
+            'to': callerNpub, 'callId': callId, 'status': status,
+            'commandId': commandId, ...extra,
+          });
+    return future.then((res) {
       // Telemetry for the ONE remaining path, split by leg so a regression is
       // diagnosable: did the DO persist it, and did it reach a live socket?
       var socketsSent = -1, socketsSeen = -1;
@@ -2612,12 +2625,14 @@ class PushService {
         'already_terminal': alreadyTerminal,
         'ms': DateTime.now().millisecondsSinceEpoch - t0,
       });
+      return res.statusCode >= 200 && res.statusCode < 300;
     }).catchError((Object e) {
       Analytics.capture('call_status_signal_failed', {
         'call_id': callId, 'status': status, 'to_uid': callerNpub,
         'error': e.toString(),
         'ms': DateTime.now().millisecondsSinceEpoch - t0,
       });
+      return false;
     });
   }
 
@@ -2793,7 +2808,7 @@ class PushService {
     // Terminal for the caller — Message ends the call, it does not park it.
     // [CALL-CMD-IDEMPOTENT-2] Distinct intent: a quick reply and a plain
     // decline both ride the `decline` status and must not collapse together.
-    _signalStatus(callId, 'decline', from, intent: 'quick_reply');
+    final declined = await _signalStatus(callId, 'decline', from, intent: 'quick_reply');
     if (_onceCallEvent(callId, 'declined')) {
       Analytics.capture('call_incoming_declined', {
         'call_id': callId,
@@ -2802,7 +2817,7 @@ class PushService {
       });
     }
     _logMissed(extra);
-    if (from.isEmpty) return;
+    if (!declined || from.isEmpty) return;
     try {
       final res = await ApiAuth.postJson(kCallQuickReplyUrl, {
         'to': from,

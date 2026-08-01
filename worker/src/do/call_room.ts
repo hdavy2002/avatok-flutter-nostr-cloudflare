@@ -128,6 +128,7 @@ export class CallRoom {
    *  loaded from storage; see loadSession(). The RULES live in lib/call_state.ts
    *  (pure); this DO owns only persistence and delivery. */
   private session: CallSession | undefined;
+  private ringDeadline: number | null | undefined; // undefined = not loaded
   // CALL-GEN-1: per-peer generation counter. Each accepted (re)join / reconnect of
   // a peer id bumps its gen; the 'welcome' tells the client its current gen, and it
   // stamps gen on every frame. A frame whose gen is LOWER than the DO's current gen
@@ -302,17 +303,6 @@ export class CallRoom {
       authenticatedUid?: string;
     } = {},
   ): Promise<Record<string, unknown>> {
-    if (opts.commandId) {
-      const prior = this.seenCommands.get(opts.commandId);
-      if (prior) return { ...prior, replayed: true };
-      // [CALL-AUTHZ-1] Idempotency must survive a DO eviction. seenCommands is
-      // in-memory, so before this the first request after an eviction would
-      // re-run a command that had already been applied. The durable copy is the
-      // authority; the map is just a hot cache in front of it.
-      const durable = await this.state.storage.get<Record<string, unknown>>(`cmd:${opts.commandId}`).catch(() => undefined);
-      if (durable) { this.seenCommands.set(opts.commandId, durable); return { ...durable, replayed: true }; }
-    }
-
     const loaded = await this.loadSession(callId);
     // ── GATE 1: MEMBERSHIP ────────────────────────────────────────────────
     // Is this authenticated user actually on this call? Answered from the
@@ -329,6 +319,15 @@ export class CallRoom {
         };
       }
       effectiveActor = derived;
+    }
+    // Idempotency lookup happens only AFTER membership authorization. Returning
+    // a cached result before this gate would let a stranger who guessed a
+    // command id learn that a call exists and inspect its prior outcome.
+    if (opts.commandId) {
+      const prior = this.seenCommands.get(opts.commandId);
+      if (prior) return { ...prior, replayed: true };
+      const durable = await this.state.storage.get<Record<string, unknown>>(`cmd:${opts.commandId}`).catch(() => undefined);
+      if (durable) { this.seenCommands.set(opts.commandId, durable); return { ...durable, replayed: true }; }
     }
     // ── GATE 2: CAPABILITY ────────────────────────────────────────────────
     // Given that they ARE the callee, may a callee do this?
@@ -359,6 +358,10 @@ export class CallRoom {
         await this.markTerminal(r.state.disposition);
       }
       fan = this.broadcastTransition(r.state, r.events, callId);
+      if (r.state.session_state === "connected" || r.state.session_state === "completed") {
+        this.ringDeadline = null;
+        try { await this.state.storage.delete("ringDeadline"); } catch { /* best-effort */ }
+      }
     }
 
     const result = {
@@ -375,6 +378,7 @@ export class CallRoom {
       seq: r.state.transition_sequence,
       sockets_seen: fan.seen,
       sockets_sent: fan.sent,
+      peer_uid: effectiveActor === "caller" ? r.state.callee_uid : r.state.caller_uid,
     };
     if (opts.commandId) {
       this.seenCommands.set(opts.commandId, result);
@@ -397,14 +401,27 @@ export class CallRoom {
    *  AUTHENTICATED caller uid and the dialled callee uid. Everything downstream
    *  derives membership from this, so it must be written before any
    *  client-originated command can be accepted. Idempotent. */
-  private async setParticipants(callId: string, callerUid: string, calleeUid: string): Promise<void> {
+  private async setParticipants(callId: string, callerUid: string, calleeUid: string): Promise<{ ok: true } | { ok: false; error: string }> {
     const s = await this.loadSession(callId);
-    if (s.caller_uid && s.callee_uid) return; // already stamped
-    s.caller_uid = callerUid || s.caller_uid;
-    s.callee_uid = calleeUid || s.callee_uid;
+    if (s.caller_uid || s.callee_uid) {
+      if (s.caller_uid !== callerUid || s.callee_uid !== calleeUid) return { ok: false, error: "participant_mismatch" };
+      return { ok: true };
+    }
+    if (!callId || !callerUid || !calleeUid || callerUid === calleeUid) return { ok: false, error: "invalid_participants" };
+    s.caller_uid = callerUid;
+    s.callee_uid = calleeUid;
     s.call_id = s.call_id || callId;
     this.session = s;
-    try { await this.state.storage.put("fsm", s); } catch { /* best-effort */ }
+    await this.state.storage.put("fsm", s);
+    const deadline = Date.now() + 35_000;
+    this.ringDeadline = deadline;
+    await this.state.storage.put("ringDeadline", deadline);
+    // Seed the server-owned lifecycle before any ring push is sent. The client
+    // may display the ring, but only this aggregate may decide timeout.
+    await this.runCommand(callId, "admit_call", "server");
+    await this.runCommand(callId, "callee_ringing", "server");
+    await this.scheduleNextAlarm();
+    return { ok: true };
   }
 
   /**
@@ -610,9 +627,13 @@ export class CallRoom {
   private async scheduleNextAlarm(): Promise<void> {
     const away = await this.loadAway();
     const billing = await this.loadBilling();
+    if (this.ringDeadline === undefined) {
+      this.ringDeadline = (await this.state.storage.get<number>("ringDeadline")) ?? null;
+    }
     const candidates: number[] = [];
     if (away) candidates.push(away.awaySince + RECONNECT_GRACE_MS);
     if (billing && !billing.stopped) candidates.push(billing.next_tick);
+    if (this.ringDeadline != null) candidates.push(this.ringDeadline);
     if (candidates.length === 0) {
       try { await this.state.storage.deleteAlarm(); } catch { /* no alarm set */ }
       return;
@@ -852,8 +873,18 @@ export class CallRoom {
         const callerUid = typeof body.callerUid === "string" ? body.callerUid : "";
         const calleeUid = typeof body.calleeUid === "string" ? body.calleeUid : "";
         if (!callerUid || !calleeUid) return Response.json({ error: "callerUid and calleeUid required" }, { status: 400 });
-        await this.setParticipants(callId, callerUid, calleeUid);
-        return Response.json({ ok: true });
+        const result = await this.setParticipants(callId, callerUid, calleeUid);
+        return Response.json(result, { status: result.ok ? 200 : 409 });
+      }
+      // Internal-only lookup used by authenticated API routes. Missing
+      // participants return no identity data, so call ids cannot be used as an
+      // oracle and no recipient can be client-selected.
+      if (req.method === "GET" && stateUrl.pathname.endsWith("/participants")) {
+        const s = await this.loadSession(stateUrl.searchParams.get("callId") ?? "");
+        if (!s.caller_uid || !s.callee_uid) {
+          return Response.json({ ok: false, error: "participants_unavailable" }, { status: 503 });
+        }
+        return Response.json({ ok: true, callerUid: s.caller_uid, calleeUid: s.callee_uid });
       }
       // [CALL-FSM-1] Read the authoritative aggregate (late-joining client,
       // reconnect reconciliation, support debugging).
@@ -929,8 +960,12 @@ export class CallRoom {
         // never mutate call state.
         const legacy = commandForLegacyStatus(status);
         if (legacy) {
-          const fsm = await this.runCommand(callId ?? "", legacy.name, legacy.actor, { commandId });
-          return Response.json(fsm, { status: fsm.ok === false ? 409 : 200 });
+          const fsm = await this.runCommand(callId ?? "", legacy.name, legacy.actor, {
+            commandId,
+            authenticatedUid: typeof body.authenticatedUid === "string" ? body.authenticatedUid : undefined,
+          });
+          const denied = fsm.error === "unauthorized" || fsm.error === "not_a_participant";
+          return Response.json(fsm, { status: fsm.ok === false ? (denied ? 403 : 409) : 200 });
         }
         // ── Non-state relay only (e.g. `busy`) ───────────────────────────────
         // These carry information for the peer's UI but say nothing about the
@@ -1352,6 +1387,18 @@ export class CallRoom {
    *  hasn't expired yet) simply no-ops that branch — no cross-purpose effect. */
   async alarm(): Promise<void> {
     const now = Date.now();
+    if (this.ringDeadline === undefined) this.ringDeadline = (await this.state.storage.get<number>("ringDeadline")) ?? null;
+    if (this.ringDeadline != null && now >= this.ringDeadline - 500) {
+      const session = await this.loadSession("");
+      const result = await this.runCommand(session.call_id, "ring_timeout", "server");
+      this.ringDeadline = null;
+      try { await this.state.storage.delete("ringDeadline"); } catch { /* best-effort */ }
+      if (result.ok === true && result.changed === true && typeof result.peer_uid === "string") {
+        try {
+          await this.env.Q_PUSH.send({ kind: "call-status", to: result.peer_uid, callId: session.call_id, status: "no-answer", ts: Date.now(), seq: result.seq });
+        } catch { /* socket path remains authoritative for connected clients */ }
+      }
+    }
     const away = await this.loadAway();
     if (away && now >= away.awaySince + RECONNECT_GRACE_MS - 500) {
       // CALL-RC-D1: fires ~30s after a peer's WS closed/errored. If it never

@@ -8,7 +8,6 @@ import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/blocking_api.dart';
 import '../../core/chat_state.dart';
-import '../../core/remote_config.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../push/push_service.dart';
@@ -281,30 +280,22 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
   /// button labelled "Report" silently blocking would be a surprise.
   Future<void> _reportSpam() async {
     if (_busy) return;
-    final alsoBlock = await showDialog<bool>(
+    final alsoBlock = await showModalBottomSheet<bool>(
       context: context,
-      builder: (dctx) => AlertDialog(
-        backgroundColor: AD.card,
-        title: Text('Report as spam?', style: ADText.appTitle(c: AD.textPrimary)),
-        content: Text(
-          'We\'ll flag $_displayName. Do you also want to block them so they '
-          'can\'t call you again?',
-          style: ADText.preview(c: AD.textSecondary),
+      backgroundColor: AD.card,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Report spam', style: ADText.appTitle(c: AD.textPrimary)),
+            const SizedBox(height: 6),
+            Text('The call ends and $_displayName is reported.', style: ADText.preview(c: AD.textSecondary)),
+            ListTile(contentPadding: EdgeInsets.zero, title: Text('Report only', style: ADText.preview(c: AD.textPrimary)), onTap: () => Navigator.of(sheetContext).pop(false)),
+            ListTile(contentPadding: EdgeInsets.zero, title: Text('Report and block', style: ADText.preview(c: AD.destructiveBg)), onTap: () => Navigator.of(sheetContext).pop(true)),
+            TextButton(onPressed: () => Navigator.of(sheetContext).pop(), child: const Text('Cancel')),
+          ]),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dctx).pop(null),
-            child: Text('Cancel', style: ADText.preview(c: AD.textSecondary)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(dctx).pop(false),
-            child: Text('Report only', style: ADText.preview(c: AD.textPrimary)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(dctx).pop(true),
-            child: Text('Report & block', style: ADText.preview(c: AD.destructiveBg)),
-          ),
-        ],
       ),
     );
     if (alsoBlock == null || !mounted) return; // cancelled — keep ringing
@@ -372,19 +363,6 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
                 const SizedBox(height: 8),
                 Text('This is an AvaTOK to AvaTOK call',
                     style: ADText.preview(c: AD.textSecondary)),
-                const SizedBox(height: 12),
-                // Cost chip from the design. AvaTOK-to-AvaTOK is free; the
-                // callee seeing that up front is the point of the screen.
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: AD.incomingCall.withValues(alpha: 0.12),
-                    border: Border.all(color: AD.incomingCall.withValues(alpha: 0.25)),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text('Call cost: Free',
-                      style: ADText.preview(c: AD.incomingCall)),
-                ),
                 const Spacer(),
                 // ── Secondary row: non-destructive alternatives to answering ──
                 // [CALL-DECLINE-IS-TERMINAL-1] Receptionist lives HERE, not
@@ -393,30 +371,10 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
                 // they are two different outcomes for the person calling.
                 Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                   _SoftAction(
-                    icon: PhosphorIcons.chatCircle(PhosphorIconsStyle.bold),
-                    label: 'Message',
-                    onTap: _busy ? null : _openQuickReplies,
-                  ),
-                  const SizedBox(width: 34),
-                  _SoftAction(
                     icon: PhosphorIcons.headset(PhosphorIconsStyle.bold),
                     label: 'Receptionist',
                     onTap: _busy ? null : _receptionist,
                   ),
-                  const SizedBox(width: 34),
-                  _SoftAction(
-                    icon: PhosphorIcons.voicemail(PhosphorIconsStyle.bold),
-                    label: 'Voice Mail',
-                    onTap: _busy ? null : _voicemail,
-                  ),
-                  if (RemoteConfig.voiceAgent) ...[
-                    const SizedBox(width: 34),
-                    _SoftAction(
-                      icon: PhosphorIcons.robot(PhosphorIconsStyle.bold),
-                      label: 'Send to Ava',
-                      onTap: _busy ? null : _sendToAgent,
-                    ),
-                  ],
                 ]),
                 const SizedBox(height: 26),
                 // Primary row. Decline and Accept are the big targets; Report
@@ -443,13 +401,6 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
                     label: 'Accept',
                     color: AD.incomingCall,
                     onTap: _busy ? null : _accept,
-                  ),
-                  const SizedBox(width: 14),
-                  _MiniAction(
-                    icon: PhosphorIcons.prohibit(PhosphorIconsStyle.bold),
-                    label: 'Block',
-                    tint: AD.textSecondary,
-                    onTap: _busy ? null : _block,
                   ),
                 ]),
                 const SizedBox(height: 8),

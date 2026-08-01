@@ -76,6 +76,15 @@ describe("GATE 4: cross-user call control is rejected", () => {
     expect(authorizeCommand("block_caller", "caller")).toBe(false);
     expect(authorizeCommand("report_spam", "caller")).toBe(false);
   });
+
+  it("does not let an authenticated participant impersonate the server", () => {
+    expect(authorizeCommand("ring_timeout", "caller")).toBe(false);
+    expect(authorizeCommand("ring_timeout", "callee")).toBe(false);
+    expect(authorizeCommand("receptionist_failed", "caller")).toBe(false);
+    expect(authorizeCommand("receptionist_failed", "callee")).toBe(false);
+    expect(authorizeCommand("end_call", "caller")).toBe(true);
+    expect(authorizeCommand("end_call", "callee")).toBe(true);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

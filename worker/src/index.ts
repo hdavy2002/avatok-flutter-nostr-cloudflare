@@ -115,7 +115,8 @@ import { uploadAgentDoc, listAgentDocs, deleteAgentDoc } from "./routes/agent_do
 import { featureCostsRoute } from "./feature_pricing";
 import { googleAuth } from "./routes/google_auth";
 import { conferenceStart, conferenceJoin, conferenceStatus, conferenceEnd, conferenceBeat } from "./routes/conference";
-import { groupCallJoin, groupCallPublish, groupCallPull, groupCallRenegotiate, groupCallClose, groupCallStatus } from "./routes/groupcall";
+import { groupCallJoin, groupCallRejoin, groupCallPublish, groupCallPull, groupCallRenegotiate, groupCallClose, groupCallStatus } from "./routes/groupcall";
+import { conferenceRoomRoute } from "./routes/conference_room";
 import { translateStart, translateBeat, translateStop, translateToken, translateQuote } from "./routes/translate";
 import { sttTranscribe } from "./routes/stt";
 import {
@@ -205,6 +206,7 @@ import { addFavorite, removeFavorite, listFavorites } from "./routes/listings"; 
 export { CallRoom } from "./do/call_room";
 export { MeshRoom } from "./do/mesh_room";
 export { GroupCallRoom } from "./do/group_call_room"; // CF Realtime SFU group AUDIO (≤32)
+export { ConferenceRoomDO } from "./do/conference_room";
 export { InboxDO } from "./do/inbox";
 // Dormant call-state control-plane authority (Phase A plumbing only — no
 // route reads/writes it yet). Specs/CALL-CONTROL-PLANE-UNIFIED-PLAN.md.
@@ -340,6 +342,9 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
 
     if (p === "/health") return json({ ok: true, service: "avatok-api", ts: Date.now() });
 
+    const conferenceRoom = p.match(/^\/api\/conference-room\/([A-Za-z0-9_:.-]{1,96})\/(state|start|participant\/(?:reserve|join|leave)|migration\/(?:reserve|prepare|commit|abort)|billing\/(?:start|sponsor\/accept|tick)|host\/transfer|end)$/);
+    if (conferenceRoom) return await conferenceRoomRoute(req, env, conferenceRoom[1], conferenceRoom[2]);
+
     // Remote kill switches (Phase 1, A2) — public read, admin write.
     if (p === "/api/config" && req.method === "GET") return await getConfig(env);
     if (p === "/api/admin/config" && req.method === "PUT") return await putConfig(req, env);
@@ -405,7 +410,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
     // ([CF-CALL-001/002] audio+video); LiveKit /api/conference/* was removed
     // [CF-CALL-007A] (2026-07-24) and now always 410s. Keyed by group id so all
     // members meet on one room instance.
-    const gc = p.match(/^\/api\/groupcall\/([A-Za-z0-9_:.-]{1,64})\/(join|publish|pull|renegotiate|close|status|ws)$/);
+    const gc = p.match(/^\/api\/groupcall\/([A-Za-z0-9_:.-]{1,64})\/(join|rejoin|publish|pull|renegotiate|close|status|ws)$/);
     if (gc) {
       const groupId = gc[1];
       if (gc[2] === "ws") {
@@ -413,6 +418,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
         return env.GROUP_CALL_ROOMS.get(env.GROUP_CALL_ROOMS.idFromName(groupId), hint ? { locationHint: hint } : undefined).fetch(req);
       }
       if (gc[2] === "join" && req.method === "POST") return await groupCallJoin(req, env, groupId);
+      if (gc[2] === "rejoin" && req.method === "POST") return await groupCallRejoin(req, env, groupId);
       if (gc[2] === "publish" && req.method === "POST") return await groupCallPublish(req, env, groupId);
       if (gc[2] === "pull" && req.method === "POST") return await groupCallPull(req, env, groupId);
       if (gc[2] === "renegotiate" && req.method === "PUT") return await groupCallRenegotiate(req, env, groupId);

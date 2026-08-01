@@ -439,7 +439,6 @@ export interface PlatformConfig {
   // (stays OFF), LiveKit remains the live conference provider (stays ON) until the
   // migration flips them.
   cloudflareConferenceEnabled: boolean;
-  livekitConferenceEnabled: boolean;
   // Call-state control-plane authority (Specs/CALL-CONTROL-PLANE-UNIFIED-PLAN.md
   // §5 — protocol-v1/v2 shadow rollout). All default OFF/legacy: CallStateAuthorityDO
   // is wired (wrangler binding + v13 migration) but fully dormant until these flip.
@@ -629,6 +628,8 @@ export interface PlatformConfig {
   agentConcurrencyA: number;       // AGENT_CONCURRENCY_A — Mode A concurrent calls per primary number (1)
   agentConcurrencyB: number;       // AGENT_CONCURRENCY_B — Mode B concurrent escrowed sessions per service number (5)
   networkReconnectWindowSec: number; // NETWORK_RECONNECT_WINDOW — drop-past-this settles+refunds, seconds (20)
+  conferenceBillingEnabled: boolean;
+  conferenceVideoTokensPerHour: number;
 
   // PSTN voicemail platform — Canonical Architecture v1.0 (Specs/PLAN-2026-07-16-
   // ava-receptionist-guardian-FINAL.md, "Rollout inversion": V1 SHIPS VOICEMAIL FOR
@@ -947,7 +948,6 @@ const DEFAULTS: PlatformConfig = {
   latestAppBuild: 0,                     // newest published build; >installed → soft "update available" popup (opens Play Store). Owner bumps in KV per release. 0 = never prompt.
   inAppUpdateEnabled: true,              // [AVA-UPDATE-AUTO] emergency brake for the auto-updater. TRUE (matches the client's own fallback default, so declaring it changes nothing today) — set false in KV to stop every device update-checking.
   cloudflareConferenceEnabled: false,    // [CF-CALL-000] Cloudflare-only media migration — DARK until Wave-N builds the CF conference path
-  livekitConferenceEnabled: true,        // [CF-CALL-000] LiveKit is the live conference provider today; stays ON until migration cuts over
   // Call-state control-plane authority (Specs/CALL-CONTROL-PLANE-UNIFIED-PLAN.md §5)
   // — Phase A plumbing only. All OFF/legacy: CallStateAuthorityDO is bound but dark.
   authorityShadowEnabled: true,   // CALL-AUTH-LIVE-1: authority observes + records vs legacy
@@ -1047,6 +1047,8 @@ const DEFAULTS: PlatformConfig = {
   agentConcurrencyA: 1,
   agentConcurrencyB: 5,
   networkReconnectWindowSec: 20,
+  conferenceBillingEnabled: true,
+  conferenceVideoTokensPerHour: 20,
   // PSTN voicemail platform — DARK. While false, worker/src/routes/pstn.ts runs
   // pure-probe mode only (capture + orphan voicemail, no owner inbox delivery).
   // Flip ON in KV (staging first) once Phase 0 carrier verification passes.
@@ -1174,7 +1176,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     // Dialpad business calls + Ava AI Voice Agent — §11/§15 numeric constants.
     "minServiceRate", "agentRateAPerMin", "platformFeePerMin", "serviceLineFeePerMin", "agentMaxCallSec",
     "ringTimeoutSec", "agentAutoanswerSec", "voicemailRecordSec", "escrowPromptTimeoutSec", "offlineDetectSec",
-    "agentConcurrencyA", "agentConcurrencyB", "networkReconnectWindowSec",
+    "agentConcurrencyA", "agentConcurrencyB", "networkReconnectWindowSec", "conferenceVideoTokensPerHour",
     // PSTN voicemail platform (Canonical Architecture v1.0).
     "pstnVoicemailRecordSec",
     // Outbound AI Calling Campaigns (Specs/OUTBOUND-AI-CALLING-CAMPAIGNS.md §18).

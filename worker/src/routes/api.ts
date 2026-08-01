@@ -33,6 +33,30 @@ import { rateLimit } from "../money"; // abuse limits (Phase 3 hardening)
 import { rekognitionConfigured, detectModerationLabels, avatarModerationRejected } from "../aws/rekognition";
 // [WELCOME-100-1] 100-token welcome bonus on first account materialization.
 import { grantWelcomeBonus } from "./welcome_bonus";
+import {
+  deriveCallRecipient,
+  deriveQuickReplyRecipient,
+  QUICK_REPLY_CATALOG_V1,
+  type PersistedCallParticipants,
+} from "../lib/call_route_authority";
+
+type CallParticipants = PersistedCallParticipants;
+
+/** Persisted CallRoom participants are the only source of call recipients. */
+async function readCallParticipants(env: Env, callId: string): Promise<CallParticipants | null> {
+  if (!callId) return null;
+  const stub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(callId));
+  const response = await stub.fetch(`https://call-room/participants?callId=${encodeURIComponent(callId)}`);
+  if (!response.ok) return null;
+  const body = await response.json().catch(() => null) as { ok?: boolean; callerUid?: string; calleeUid?: string } | null;
+  return body?.ok && body.callerUid && body.calleeUid
+    ? { callerUid: body.callerUid, calleeUid: body.calleeUid }
+    : null;
+}
+
+function otherCallParticipant(p: CallParticipants, uid: string): string | null {
+  return deriveCallRecipient(p, uid);
+}
 
 // ---- push: /api/register /api/call /api/notify /api/call-status ----
 export async function register(req: Request, env: Env): Promise<Response> {
@@ -512,25 +536,23 @@ export async function call(req: Request, env: Env): Promise<Response> {
   const ringReceiptToken = crypto.randomUUID();
   const expiresAt = Date.now() + 30000; // 30s expiration window
 
-  // Register the receipt capability token in the CallRoom DO
+  // Register participants before the phone is rung. This is fail-closed: a
+  // call without a durable participant record cannot authorize later commands.
   try {
     const callStub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(b.callId));
+    const participantResponse = await callStub.fetch("https://call-room/participants", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ callId: b.callId, callerUid: ctx.uid, calleeUid: b.to }),
+    });
+    const participantResult = await participantResponse.json().catch(() => null) as { ok?: boolean } | null;
+    if (!participantResponse.ok || participantResult?.ok !== true) return json({ error: "call_authority_unavailable" }, 503);
     await callStub.fetch("https://call-room/control", {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ type: "register-token", token: ringReceiptToken, expiresAt }),
     });
-    // [CALL-AUTHZ-1 2026-08-01] Stamp WHO IS ON THIS CALL, from the
-    // AUTHENTICATED caller uid and the dialled callee uid. Every later command
-    // derives its actor from this record rather than from anything the client
-    // says about itself, so this write is what makes the command endpoint safe.
-    // It must land before the callee's phone can possibly respond — hence here,
-    // before the ring push and the WS ring below.
-    await callStub.fetch("https://call-room/participants", {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ callId: b.callId, callerUid: ctx.uid, calleeUid: b.to }),
-    });
   } catch (e) {
     console.error("Failed to register ring receipt token / participants in CallRoom:", String(e));
+    return json({ error: "call_authority_unavailable" }, 503);
   }
 
   await env.Q_PUSH.send({
@@ -672,6 +694,10 @@ export async function callStatus(req: Request, env: Env): Promise<Response> {
     commandId?: string;
   };
   if (!b.to || !b.callId || !b.status) return json({ error: "to, callId, status required" }, 400);
+  let participants: CallParticipants | null;
+  try { participants = await readCallParticipants(env, b.callId); } catch { participants = null; }
+  const recipient = participants ? otherCallParticipant(participants, ctx.uid) : null;
+  if (!participants || !recipient) return json({ error: "call_authority_unavailable" }, 503);
   // [AVACALL-RING-CANCEL-1] Persist a DURABLE terminal marker on the CallRoom DO
   // BEFORE the (eventually-consistent) FCM fan-out, so a callee who accepts around
   // the same instant — or whose ring push is still in flight — learns the caller
@@ -705,17 +731,19 @@ export async function callStatus(req: Request, env: Env): Promise<Response> {
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({
           status: b.status, callId: b.callId, terminal: isTerminal,
+          authenticatedUid: ctx.uid,
           ...(b.commandId ? { commandId: String(b.commandId).slice(0, 64) } : {}),
         }),
       });
       doResult = (await r.json().catch(() => null)) as Record<string, unknown> | null;
-    } catch { /* best-effort — durable marker is an accelerator, FCM stays the path */ }
+      if (!r.ok) return json({ error: "call_authority_unavailable" }, r.status === 403 ? 403 : 503);
+    } catch { return json({ error: "call_authority_unavailable" }, 503); }
   }
   const re = b.receptionist_enabled;
   // The FCM queue stays as the DURABLE backstop, always — the socket fan-out only
   // reaches peers that are currently attached, and a backgrounded/killed app is not.
   await env.Q_PUSH.send({
-    kind: "call-status", to: b.to, callId: b.callId, status: b.status, ts: Date.now(),
+    kind: "call-status", to: recipient, callId: b.callId, status: b.status, ts: Date.now(),
     ...(b.busy_reason ? { busy_reason: String(b.busy_reason) } : {}),
     ...(re != null ? { receptionist_enabled: re === true || re === "1" || re === 1 } : {}),
     ...(b.pronoun ? { pronoun: String(b.pronoun) } : {}),
@@ -736,13 +764,13 @@ export async function callStatus(req: Request, env: Env): Promise<Response> {
       // interaction — a call bug only makes sense from both ends (CLAUDE.md).
       const [actorEmail, peerEmail] = await Promise.all([
         emailFor(env, ctx.uid).catch(() => null),
-        emailFor(env, b.to).catch(() => null),
+        emailFor(env, recipient).catch(() => null),
       ]);
       const props = {
         call_id: b.callId,
         status: b.status,
         from_uid: ctx.uid,
-        to_uid: b.to,
+        to_uid: recipient,
         from_email: actorEmail,
         to_email: peerEmail,
         terminal: isTerminal,
@@ -757,7 +785,7 @@ export async function callStatus(req: Request, env: Env): Promise<Response> {
       };
       await Promise.all([
         trackUser(env, ctx.uid, actorEmail, "call_status_relayed", "avatok", props),
-        trackUser(env, b.to, peerEmail, "call_status_relayed", "avatok", props),
+        trackUser(env, recipient, peerEmail, "call_status_relayed", "avatok", props),
       ]);
     } catch { /* telemetry must never break signaling */ }
   }
@@ -783,23 +811,13 @@ export async function callStatus(req: Request, env: Env): Promise<Response> {
  * THE SERVER OWNS THE TEXT. The client sends `quickReplyId` + `catalogVersion`,
  * never authoritative free text. If the client were trusted with the string, a
  * modified client could put arbitrary words into a message attributed to the
- * callee, and a localisation change or an old app version would silently produce
- * inconsistent content. `fallbackText` is accepted ONLY for an id this server
- * does not recognise (a newer client against an older Worker), is length-capped,
- * and never overrides a known id.
+ * callee. Unknown ids are rejected; catalog version skew must be fixed by
+ * deploying the catalog, never by accepting client-authored text.
  *
  * Delivery is deliberately decoupled from call termination — see
  * push_service.quickReplyIncomingCall. A messenger hiccup must not leave the
  * caller ringing.
  */
-const QUICK_REPLY_CATALOG_V1: Record<string, string> = {
-  will_call_back: "Will call back",
-  busy_now: "Busy right now",
-  in_meeting: "In a meeting",
-  travelling: "Travelling",
-  cant_talk: "Can't talk",
-};
-
 export async function callQuickReply(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
@@ -810,12 +828,14 @@ export async function callQuickReply(req: Request, env: Env): Promise<Response> 
   if (!b.to || !b.callId || !b.quickReplyId) {
     return json({ error: "to, callId, quickReplyId required" }, 400);
   }
+  let participants: CallParticipants | null;
+  try { participants = await readCallParticipants(env, b.callId); } catch { participants = null; }
+  const callerUid = participants ? deriveQuickReplyRecipient(participants, ctx.uid) : null;
+  if (!callerUid) return json({ error: "call_authority_unavailable" }, 503);
   const id = String(b.quickReplyId).slice(0, 40);
   const known = QUICK_REPLY_CATALOG_V1[id];
-  // Unknown id → accept a capped fallback so a newer client still delivers
-  // something readable, but never let it masquerade as a catalog entry.
-  const text = known ?? String(b.fallbackText ?? "").trim().slice(0, 120);
-  if (!text) return json({ error: "unknown quickReplyId" }, 400);
+  if (!known) return json({ error: "unknown quickReplyId" }, 400);
+  const text = known;
 
   // The callee is the SENDER of this message — they are replying to the caller.
   const identity = await publicIdentityFor(env, ctx.uid).catch(() => null);
@@ -824,7 +844,7 @@ export async function callQuickReply(req: Request, env: Env): Promise<Response> 
 
   await env.Q_PUSH.send({
     kind: "notify",
-    to: b.to,
+    to: callerUid,
     fromName: senderName,
     from: ctx.uid,
     preview: text,
@@ -841,10 +861,10 @@ export async function callQuickReply(req: Request, env: Env): Promise<Response> 
   try {
     const [actorEmail, peerEmail] = await Promise.all([
       emailFor(env, ctx.uid).catch(() => null),
-      emailFor(env, b.to).catch(() => null),
+      emailFor(env, callerUid).catch(() => null),
     ]);
     const props = {
-      call_id: b.callId, to_uid: b.to, from_uid: ctx.uid,
+      call_id: b.callId, to_uid: callerUid, from_uid: ctx.uid,
       from_email: actorEmail, to_email: peerEmail,
       quick_reply_id: id,
       catalog_version: Number(b.catalogVersion ?? 1),
@@ -855,7 +875,7 @@ export async function callQuickReply(req: Request, env: Env): Promise<Response> 
     };
     await Promise.all([
       trackUser(env, ctx.uid, actorEmail, "call_quick_reply_delivered", "avatok", props),
-      trackUser(env, b.to, peerEmail, "call_quick_reply_delivered", "avatok", props),
+      trackUser(env, callerUid, peerEmail, "call_quick_reply_delivered", "avatok", props),
     ]);
   } catch { /* telemetry must never break delivery */ }
 
@@ -933,10 +953,10 @@ export async function callCommand(req: Request, env: Env): Promise<Response> {
   // Durable backstop. The DO broadcast only reaches sockets that are attached
   // right now; a backgrounded or killed peer is not. Only fan out on a real
   // state change, and only for outcomes the peer needs to see.
-  if (out.ok === true && out.changed === true && b.peerUid) {
+  if (out.ok === true && out.changed === true && typeof out.peer_uid === "string" && out.peer_uid) {
     try {
       await env.Q_PUSH.send({
-        kind: "call-status", to: b.peerUid, callId: b.callId,
+        kind: "call-status", to: out.peer_uid, callId: b.callId,
         status: String(out.callee_leg_state ?? out.disposition ?? ""),
         ts: Date.now(),
         ...(typeof out.seq === "number" ? { seq: out.seq } : {}),
@@ -947,7 +967,7 @@ export async function callCommand(req: Request, env: Env): Promise<Response> {
   try {
     const [actorEmail, peerEmail] = await Promise.all([
       emailFor(env, ctx.uid).catch(() => null),
-      b.peerUid ? emailFor(env, b.peerUid).catch(() => null) : Promise.resolve(null),
+      typeof out.peer_uid === "string" ? emailFor(env, out.peer_uid).catch(() => null) : Promise.resolve(null),
     ]);
     await trackUser(env, ctx.uid, actorEmail, "call_command", "avatok", {
       call_id: b.callId, command: b.command,
@@ -955,7 +975,7 @@ export async function callCommand(req: Request, env: Env): Promise<Response> {
       // a security signal, not a UX one — it means someone tried to act on a
       // call they are not on. Any volume of it deserves investigation.
       actor: out.actor ?? null,
-      from_uid: ctx.uid, to_uid: b.peerUid ?? null,
+      from_uid: ctx.uid, to_uid: out.peer_uid ?? null,
       from_email: actorEmail, to_email: peerEmail,
       ok: out.ok === true, changed: out.changed === true,
       // `rejected` with a reason is the signal that a race actually happened —

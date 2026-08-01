@@ -86,6 +86,7 @@ const STALE_MS = 45_000;
 const SWEEP_MS = 15_000;
 // Absolute backstop so a wedged room can't live forever.
 const MAX_ROOM_MS = 18 * 3600 * 1000;
+const TICKET_NONCE_PREFIX = "ticket_nonce:";
 
 interface Att {
   uid: string;
@@ -267,6 +268,16 @@ export class GroupCallRoom {
     const ticket = await verifyJoinTicket(this.env, ticketStr);
     if (!ticket) return new Response("invalid or expired ticket", { status: 401 });
 
+    // A signed ticket is a one-time capability, not a bearer token. Consume its
+    // nonce in the room before accepting the socket so replaying a valid ticket
+    // cannot displace the legitimate participant during its 60-second window.
+    const nonceKey = `${TICKET_NONCE_PREFIX}${ticket.nonce}`;
+    const nonceExp = await this.state.storage.get<number>(nonceKey);
+    if (nonceExp != null && nonceExp >= Date.now()) {
+      return new Response("ticket already used", { status: 401 });
+    }
+    await this.state.storage.put(nonceKey, ticket.exp);
+
     const a = await this.loadAuthority();
     if (!a || a.state === "ended") return new Response("call not active", { status: 409 });
     if (ticket.call_id !== a.call_id || ticket.generation !== a.generation) {
@@ -392,6 +403,10 @@ export class GroupCallRoom {
   // Zombie/idle/max-duration sweep. Hibernation-safe: scheduled via the DO alarm.
   async alarm(): Promise<void> {
     const now = Date.now();
+    const nonces = await this.state.storage.list<number>({ prefix: TICKET_NONCE_PREFIX });
+    for (const [key, exp] of nonces) {
+      if (exp < now) await this.state.storage.delete(key);
+    }
     const all = this.state.getWebSockets();
     for (const ws of all) {
       const a = this.att(ws);

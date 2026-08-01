@@ -327,6 +327,10 @@ class_name = "MeshRoom"
 name = "GROUP_CALL_ROOMS"
 class_name = "GroupCallRoom"
 
+[[durable_objects.bindings]]
+name = "CONFERENCE_ROOMS"
+class_name = "ConferenceRoomDO"
+
 # Per-user reasoning DO (AvaBrain). Keyed by npub; idles to nothing between asks.
 [[durable_objects.bindings]]
 name = "USER_BRAIN"
@@ -569,6 +573,10 @@ new_sqlite_classes = ["CampaignDO"]
 tag = "v19"
 new_sqlite_classes = ["VoicemailStreamRoom"]
 
+[[migrations]]
+tag = "v22"
+new_sqlite_classes = ["ConferenceRoomDO"]
+
 # Brain reasoning + observability config (vars; secrets set via wrangler):
 #   BRAIN_REASONER_MODEL  — default @cf/meta/llama-3.1-8b-instruct-fp8 (8B)
 #   POSTHOG_QUERY_HOST    — https://us.posthog.com (investigate reads)
@@ -806,6 +814,10 @@ name = "GROUP_CALL_ROOMS"
 class_name = "GroupCallRoom"
 
 [[env.staging.durable_objects.bindings]]
+name = "CONFERENCE_ROOMS"
+class_name = "ConferenceRoomDO"
+
+[[env.staging.durable_objects.bindings]]
 name = "USER_BRAIN"
 class_name = "UserBrain"
 
@@ -988,3 +1000,7 @@ new_sqlite_classes = ["CampaignDO"]
 [[env.staging.migrations]]
 tag = "v19"
 new_sqlite_classes = ["VoicemailStreamRoom"]
+
+[[env.staging.migrations]]
+tag = "v22"
+new_sqlite_classes = ["ConferenceRoomDO"]

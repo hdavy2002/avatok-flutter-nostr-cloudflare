@@ -81,9 +81,8 @@ class CloudflareConferenceTelemetry {
 
   static void providerSelected({
     required String groupId,
-    required String decidedProvider, // cloudflare_realtime | livekit | disabled
+    required String decidedProvider, // cloudflare_realtime | disabled
     required bool cloudflareEnabled,
-    required bool livekitEnabled,
     required String mediaKindRequested,
     String decisionSource = 'client',
   }) {
@@ -91,7 +90,6 @@ class CloudflareConferenceTelemetry {
       'group_id_hash': _shortHash(groupId),
       'decided_provider': decidedProvider,
       'cloudflare_conference_enabled': cloudflareEnabled,
-      'livekit_conference_enabled': livekitEnabled,
       'media_kind_requested': mediaKindRequested,
       'decision_source': decisionSource,
     });

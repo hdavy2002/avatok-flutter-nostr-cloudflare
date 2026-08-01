@@ -82,6 +82,7 @@ export interface Env {
   // Roster + active-speaker fan-out over hibernatable WS; one per group id.
   // Gated by groupAudioSfuEnabled (dormant until built+CI-verified).
   GROUP_CALL_ROOMS: DurableObjectNamespace;
+  CONFERENCE_ROOMS: DurableObjectNamespace;
   // Durable Object — per-user AvaBrain reasoning
   USER_BRAIN: DurableObjectNamespace;
   // Durable Object — per-user atomic coin balance (Phase 2)
