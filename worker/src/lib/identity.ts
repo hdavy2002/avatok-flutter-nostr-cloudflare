@@ -102,15 +102,115 @@ export async function contactFor(env: Env, uid: string): Promise<{ email: string
   return { email, phone };
 }
 
-// v2 prefix: bumped so stale "" entries cached by the old Clerk-only resolver
-// (which returned null for empty first_name) are bypassed and re-resolved from
-// the app profile table.
-const NAME_PREFIX = "ph_name3:"; // KV key namespace (uid → first name, "" = none)
+// v4 prefix: bumped by [CALL-IDENTITY-SNAPSHOT-1] because v3 entries were
+// populated by the OLD Clerk-first resolver and are therefore poisoned with
+// identity-provider names. A prefix bump is the only safe invalidation — there
+// is no enumeration of the old keys.
+const NAME_PREFIX = "ph_name4:"; // KV key namespace (uid → first name, "" = none)
+const PROFILE_PREFIX = "ph_prof1:"; // uid → JSON public identity snapshot
+
+/** A usable name token: trimmed, non-empty, and NOT email/handle-looking.
+ *  Greeting "Hi hdavy2002@gmail.com" is worse than no name at all. */
+function asNameToken(raw: unknown): string | null {
+  const t = (raw ?? "").toString().trim();
+  if (!t || t.includes("@")) return null;
+  return t;
+}
 
 /**
- * uid → the user's first/display name, KV-cached like [emailFor]. Used so the
- * receptionist can greet a caller BY NAME ("Hi Humphrey, …") — resolved from
- * Clerk (first_name → username → null). A cached empty string = known absent.
+ * [CALL-IDENTITY-SNAPSHOT-1 2026-08-01] The AvaTOK PUBLIC PROFILE identity —
+ * the "YOUR PUBLIC CARD" screen the user actually edits (first name, last name,
+ * avatar). This is the ONLY server-side identity source on the call path.
+ *
+ * WHY THIS EXISTS. `nameFor()` used to ask Clerk FIRST and only fall back to the
+ * profile table. So a caller whose AvaTOK profile said "Arti Singh" was announced
+ * to the callee as "Davy" — her Google account's first name. Your Gmail identity
+ * leaking to everyone you call is not acceptable, and it is not a precedence bug
+ * to be re-tuned: per Specs/CALL-OUTCOMES-FROZEN-2026-08-01.md freeze decision 6,
+ * the identity provider is REMOVED as a permissible runtime source, not demoted.
+ * Clerk may seed a profile name at onboarding; after that it is not consulted.
+ *
+ * Returns null only when the user has no profile row at all.
+ */
+export type PublicIdentity = {
+  uid: string;
+  /** Full display name for UI — "Arti Singh", not just "Arti". */
+  display_name: string | null;
+  /** First name only, for a spoken greeting — "Hi Arti". */
+  greeting_name: string | null;
+  avatar_url: string | null;
+  /** Stable cache key component. Changes when the avatar changes, so a client
+   *  disk cache can be keyed `avatar:{uid}:{avatar_version}` rather than on the
+   *  URL — CDN query strings and transforms change while the image does not. */
+  avatar_version: string | null;
+  profile_version: number;
+  resolved_at: number;
+};
+
+export async function publicIdentityFor(env: Env, uid: string): Promise<PublicIdentity | null> {
+  if (!uid) return null;
+  const key = PROFILE_PREFIX + uid;
+  try {
+    const cached = await env.TOKENS.get(key);
+    if (cached !== null) {
+      if (cached === "") return null; // known-absent
+      return JSON.parse(cached) as PublicIdentity;
+    }
+  } catch { /* fall through to a live lookup */ }
+
+  let row: {
+    display_name?: string | null; first_name?: string | null; last_name?: string | null;
+    avatar_url?: string | null; handle?: string | null; updated_at?: number | null;
+  } | null = null;
+  try {
+    row = await env.DB_META
+      .prepare("SELECT display_name, first_name, last_name, avatar_url, handle, updated_at FROM users WHERE uid=?1")
+      .bind(uid)
+      .first();
+  } catch { /* best-effort — a D1 hiccup must never block a call */ }
+  if (!row) {
+    try { await env.TOKENS.put(key, "", { expirationTtl: 60 }); } catch { /* best-effort */ }
+    return null;
+  }
+
+  // Prefer the explicit first+last the user typed on the public card; fall back
+  // to display_name, then handle. Never Clerk.
+  const first = asNameToken(row.first_name);
+  const last = asNameToken(row.last_name);
+  const composed = [first, last].filter(Boolean).join(" ").trim();
+  const display = composed || asNameToken(row.display_name) || asNameToken(row.handle);
+  const greeting = first
+    || (display ? display.split(/\s+/)[0] : null);
+
+  const avatarUrl = (row.avatar_url ?? "").toString().trim() || null;
+  // Version the avatar so the client cache key is stable across CDN transforms.
+  // `updated_at` moves whenever the profile is saved, which is exactly when the
+  // avatar can have changed; a hash of the URL covers rows with no updated_at.
+  const avatarVersion = avatarUrl
+    ? String(row.updated_at ?? 0) + ":" + String(avatarUrl.length) + avatarUrl.slice(-12)
+    : null;
+
+  const snap: PublicIdentity = {
+    uid,
+    display_name: display,
+    greeting_name: greeting,
+    avatar_url: avatarUrl,
+    avatar_version: avatarVersion,
+    profile_version: Number(row.updated_at ?? 0),
+    resolved_at: Date.now(),
+  };
+  // Short TTL: a profile edit must show up on the next call, not in 6 hours.
+  try { await env.TOKENS.put(key, JSON.stringify(snap), { expirationTtl: 300 }); } catch { /* best-effort */ }
+  return snap;
+}
+
+/**
+ * uid → the user's FIRST name for a spoken greeting ("Hi Arti, …"), KV-cached.
+ *
+ * [CALL-IDENTITY-SNAPSHOT-1] Now resolved from the AvaTOK public profile ONLY.
+ * The Clerk lookup that used to run first has been DELETED — see
+ * [publicIdentityFor] for why. A cached empty string = known absent, and the
+ * greeting gracefully degrades to "Hi there".
  */
 export async function nameFor(env: Env, uid: string): Promise<string | null> {
   if (!uid) return null;
@@ -119,33 +219,8 @@ export async function nameFor(env: Env, uid: string): Promise<string | null> {
     const cached = await env.TOKENS.get(key);
     if (cached !== null) return cached === "" ? null : cached;
   } catch { /* fall through to a live lookup */ }
-  // A usable first name: trimmed, non-empty, and NOT an email/handle-looking
-  // token (greeting "Hi hdavy2002@gmail.com" is worse than no name at all).
-  const asName = (raw: unknown): string | null => {
-    const t = (raw ?? "").toString().trim();
-    if (!t || t.includes("@")) return null; // email-like → reject
-    const first = t.split(/\s+/)[0];
-    return first && !first.includes("@") ? first : null;
-  };
-  let name: string | null = null;
-  // 1) Clerk first/last name — the most reliable "real name" for a Google sign-up.
-  try {
-    const u = await clerkUser(env, uid);
-    if (u) {
-      name = asName(u.first_name) ?? asName(u.last_name) ?? asName(u.username);
-    }
-  } catch { /* fall through to the app profile */ }
-  // 2) App profile (DB_META.users) display name / handle — only if not email-like.
-  if (!name) {
-    try {
-      const r = await env.DB_META
-        .prepare("SELECT display_name, handle FROM users WHERE uid=?1")
-        .bind(uid)
-        .first<{ display_name?: string | null; handle?: string | null }>();
-      if (r) name = asName(r.display_name) ?? asName(r.handle);
-    } catch { /* best-effort */ }
-  }
-  // Nothing name-like found → null; the greeting gracefully says "Hi there".
+  const snap = await publicIdentityFor(env, uid);
+  const name = snap?.greeting_name ?? null;
   try { await env.TOKENS.put(key, name ?? "", { expirationTtl: TTL_SECONDS }); } catch { /* best-effort */ }
   return name;
 }

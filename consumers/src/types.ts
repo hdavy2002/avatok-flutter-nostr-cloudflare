@@ -198,6 +198,14 @@ export interface PushMsg {
   // Possession of this capability token authorizes reporting device ringing state.
   ringReceiptToken?: string;
   tokenExpiresAt?: number;
+  // [CALL-IDENTITY-SNAPSHOT-1 2026-08-01] Transport copy of the caller's public
+  // AvaTOK profile identity, stamped at call creation by routes/api.ts and
+  // forwarded verbatim to the ring payload so a cold, locked phone can paint the
+  // caller's real photo + profile name on the first frame. URL + version only,
+  // never image bytes. See Specs/CALL-OUTCOMES-FROZEN-2026-08-01.md.
+  callerAvatarUrl?: string | null;
+  callerAvatarVersion?: string | null;
+  identitySnapshotVersion?: number | string | null;
   // kind === "group_invite": the inviter added the recipient to a group. Carries
   // the group name + conv id so the app can deep-link straight to the group and
   // show the Accept/Decline prompt.

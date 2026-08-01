@@ -11,7 +11,7 @@ import { json, sha256Hex, normalizePhone } from "../util";
 import { metaSession } from "../db/shard";
 import { requireUser, isFail } from "../authz";
 import { verifyClerk, resolveCanonicalUid, linkClerkAlias } from "../auth";
-import { emailFor, nameFor, primaryVerifiedEmailFor } from "../lib/identity";
+import { emailFor, nameFor, primaryVerifiedEmailFor, publicIdentityFor } from "../lib/identity";
 import { track, trackUser } from "../hooks";
 import { brainIngest } from "../lib/brain_ingest";
 import { avaReason } from "../lib/ava_reason"; // One Brain B1: unified reasoning gateway
@@ -255,15 +255,35 @@ export async function call(req: Request, env: Env): Promise<Response> {
     // unreachable → Ava receptionist handoff. We still returned the telemetry
     // above, and the final response is the optimistic reachable:true (sent:0).
   }
-  // Resolve the caller's real name SERVER-SIDE (Clerk first name → app
-  // display_name/handle) instead of trusting the client. The client was sending
-  // the raw uid, so the callee's incoming-call screen showed "user_xxx…" / an
-  // uid instead of the person's name. Fall back to the client value, then the
-  // app name. nameFor is KV-cached, so this adds no per-call DB round-trip.
-  const resolved = await nameFor(env, ctx.uid).catch(() => null);
+  // ── CALLER IDENTITY SNAPSHOT ───────────────────────────────────────────────
+  // [CALL-IDENTITY-SNAPSHOT-1 2026-08-01] Resolve the caller's PUBLIC AvaTOK
+  // PROFILE identity — the card they actually edit (first + last name, avatar) —
+  // and stamp it onto the call. Spec: Specs/CALL-OUTCOMES-FROZEN-2026-08-01.md.
+  //
+  // WHAT WAS WRONG. This used `nameFor()`, which asked Clerk FIRST. A caller
+  // whose AvaTOK profile reads "Arti Singh" was announced to the callee as
+  // "Davy" — her Google account's first name. nameFor now reads the profile
+  // only, and this call site takes the FULL display name rather than the
+  // greeting first-name, because a call screen should say "Arti Singh" while a
+  // spoken greeting says "Hi Arti".
+  //
+  // The snapshot is IMMUTABLE for the life of the call: if the caller renames
+  // their profile mid-ring, this call keeps the name the callee first saw. The
+  // next call picks up the new one.
+  //
+  // The client-sent `fromName` is a LAST-resort fallback only — it is
+  // unauthenticated and was the source of raw "user_xxx" uids appearing as
+  // caller names. It must never outrank the server-resolved profile.
+  const ident = await publicIdentityFor(env, ctx.uid).catch(() => null);
   const clientName = (b.fromName ?? "").trim();
-  const resolvedName = resolved || clientName || "AvaTOK";
-  const nameSource = resolved ? "resolved" : (clientName ? "client" : "fallback");
+  const resolvedName = ident?.display_name || clientName || "AvaTOK";
+  const nameSource = ident?.display_name ? "profile" : (clientName ? "client" : "fallback");
+  // Avatar travels as URL + version, never bytes (FCM payloads are size-capped).
+  // `avatar_version` lets the device cache under a key that survives CDN
+  // transforms and query-string churn: avatar:{uid}:{avatar_version}.
+  const callerAvatarUrl = ident?.avatar_url ?? null;
+  const callerAvatarVersion = ident?.avatar_version ?? null;
+  const identitySnapshotVersion = ident?.profile_version ?? 0;
   // ── LIVE TAKEOVER ──────────────────────────────────────────────────────────
   // If the caller (ctx.uid) is dialing the EXACT person (b.to) who is, RIGHT NOW,
   // leaving them a message via their AI Receptionist, this isn't a cold call — the
@@ -438,6 +458,13 @@ export async function call(req: Request, env: Env): Promise<Response> {
     kind: "call", to: b.to, from: ctx.uid, fromName: resolvedName,
     callId: b.callId, callType: b.kind ?? "audio", traceId, ts: Date.now(),
     ringReceiptToken, tokenExpiresAt: expiresAt,
+    // [CALL-IDENTITY-SNAPSHOT-1] Transport copy of the identity snapshot, so a
+    // COLD phone can paint the caller's photo + real name on the first frame.
+    // This is a copy, NOT an authority — if it ever disagrees with the call
+    // state, the DO wins and the mismatch is a pipeline bug worth logging.
+    ...(callerAvatarUrl ? { callerAvatarUrl } : {}),
+    ...(callerAvatarVersion ? { callerAvatarVersion } : {}),
+    identitySnapshotVersion,
     // [WP3] 'dialpad' marks this as a business-channel call so the callee's
     // incoming-call screen shows the named business UI (client already checks d['via']).
     ...(isDialpad ? { via: "dialpad" } : {}),
@@ -459,6 +486,13 @@ export async function call(req: Request, env: Env): Promise<Response> {
         type: "call_ring", callId: b.callId, fromPub: ctx.uid,
         fromName: resolvedName, kind: b.kind ?? "audio",
         ringReceiptToken, trace_id: traceId, ts: Date.now(),
+        // [CALL-IDENTITY-SNAPSHOT-1] The WS ring beats FCM by seconds for an
+        // online callee, so it MUST carry the same identity fields — otherwise
+        // the fast path paints a nameless, photoless screen and the slow path
+        // "fixes" it a few seconds later, which looks like a flicker bug.
+        ...(callerAvatarUrl ? { callerAvatarUrl } : {}),
+        ...(callerAvatarVersion ? { callerAvatarVersion } : {}),
+        identitySnapshotVersion,
         // [WP3] mirrors the Q_PUSH payload's via:'dialpad' marker above.
         ...(isDialpad ? { via: "dialpad" } : {}),
       }),
@@ -486,6 +520,11 @@ export async function call(req: Request, env: Env): Promise<Response> {
         stage: "enqueue",
         to: b.to, call_id: b.callId, call_type: b.kind ?? "audio", trace_id: traceId,
         name_source: nameSource, devices: n,
+        // [CALL-IDENTITY-SNAPSHOT-1] name_source=='profile' is the healthy state.
+        // 'client' or 'fallback' at any volume means the profile lookup is
+        // failing and callees are about to see uids or the wrong name again.
+        has_avatar: !!callerAvatarUrl,
+        identity_snapshot_version: identitySnapshotVersion,
         app_name: "avatok", service_name: "avatok-api", worker: true, account_id: ctx.uid,
       },
     });
@@ -635,6 +674,95 @@ export async function callStatus(req: Request, env: Env): Promise<Response> {
     sockets_seen: doResult?.sockets_seen ?? 0,
     sockets_sent: doResult?.sockets_sent ?? 0,
   });
+}
+
+/**
+ * [CALL-QUICK-REPLY-1 2026-08-01] POST /api/call/quick-reply
+ *
+ * The callee dismissed a ringing call with a canned reply ("Message" on the
+ * incoming-call screen). The call itself is already being terminated via
+ * /api/call-status; this delivers the courtesy text to the CALLER.
+ *
+ * THE SERVER OWNS THE TEXT. The client sends `quickReplyId` + `catalogVersion`,
+ * never authoritative free text. If the client were trusted with the string, a
+ * modified client could put arbitrary words into a message attributed to the
+ * callee, and a localisation change or an old app version would silently produce
+ * inconsistent content. `fallbackText` is accepted ONLY for an id this server
+ * does not recognise (a newer client against an older Worker), is length-capped,
+ * and never overrides a known id.
+ *
+ * Delivery is deliberately decoupled from call termination — see
+ * push_service.quickReplyIncomingCall. A messenger hiccup must not leave the
+ * caller ringing.
+ */
+const QUICK_REPLY_CATALOG_V1: Record<string, string> = {
+  will_call_back: "Will call back",
+  busy_now: "Busy right now",
+  in_meeting: "In a meeting",
+  travelling: "Travelling",
+  cant_talk: "Can't talk",
+};
+
+export async function callQuickReply(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const b = (await req.json().catch(() => ({}))) as {
+    to?: string; callId?: string; quickReplyId?: string;
+    catalogVersion?: number; fallbackText?: string;
+  };
+  if (!b.to || !b.callId || !b.quickReplyId) {
+    return json({ error: "to, callId, quickReplyId required" }, 400);
+  }
+  const id = String(b.quickReplyId).slice(0, 40);
+  const known = QUICK_REPLY_CATALOG_V1[id];
+  // Unknown id → accept a capped fallback so a newer client still delivers
+  // something readable, but never let it masquerade as a catalog entry.
+  const text = known ?? String(b.fallbackText ?? "").trim().slice(0, 120);
+  if (!text) return json({ error: "unknown quickReplyId" }, 400);
+
+  // The callee is the SENDER of this message — they are replying to the caller.
+  const identity = await publicIdentityFor(env, ctx.uid).catch(() => null);
+  const senderName = identity?.display_name || "AvaTOK";
+  const conv = `1:${ctx.uid}`;
+
+  await env.Q_PUSH.send({
+    kind: "notify",
+    to: b.to,
+    fromName: senderName,
+    from: ctx.uid,
+    preview: text,
+    conv,
+    ts: Date.now(),
+    data: {
+      type: "quick_reply",
+      caller_uid: ctx.uid,
+      caller_name: senderName,
+      call_id: b.callId,
+    },
+  });
+
+  try {
+    const [actorEmail, peerEmail] = await Promise.all([
+      emailFor(env, ctx.uid).catch(() => null),
+      emailFor(env, b.to).catch(() => null),
+    ]);
+    const props = {
+      call_id: b.callId, to_uid: b.to, from_uid: ctx.uid,
+      from_email: actorEmail, to_email: peerEmail,
+      quick_reply_id: id,
+      catalog_version: Number(b.catalogVersion ?? 1),
+      // known=false means this Worker did not recognise the id and fell back to
+      // client text — a version-skew signal worth alerting on.
+      known_id: !!known,
+      app_name: "avatok", service_name: "avatok-api", worker: true,
+    };
+    await Promise.all([
+      trackUser(env, ctx.uid, actorEmail, "call_quick_reply_delivered", "avatok", props),
+      trackUser(env, b.to, peerEmail, "call_quick_reply_delivered", "avatok", props),
+    ]);
+  } catch { /* telemetry must never break delivery */ }
+
+  return json({ ok: true, queued: true, text });
 }
 
 // [AVACALL-RING-CANCEL-1] GET /api/call-state?callId=<id> — thin authed proxy to

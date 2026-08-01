@@ -604,6 +604,17 @@ function buildPayload(msg: PushMsg): { data: Record<string, string>; highPriorit
       trace_id: msg.traceId ?? "",
       ...(msg.ringReceiptToken ? { ringReceiptToken: msg.ringReceiptToken } : {}),
       ...(msg.tokenExpiresAt ? { tokenExpiresAt: msg.tokenExpiresAt.toString() } : {}),
+      // [CALL-IDENTITY-SNAPSHOT-1 2026-08-01] Caller photo, as URL + version —
+      // never bytes, FCM data payloads are size-capped. `callerAvatarVersion`
+      // gives the device a cache key (avatar:{uid}:{version}) that survives CDN
+      // transforms and query-string churn, so the ring screen can paint a cached
+      // photo on the FIRST frame instead of a blank circle.
+      // This is a transport copy of the server's identity snapshot, not an
+      // authority — see Specs/CALL-OUTCOMES-FROZEN-2026-08-01.md.
+      ...(msg.callerAvatarUrl ? { callerAvatarUrl: String(msg.callerAvatarUrl) } : {}),
+      ...(msg.callerAvatarVersion ? { callerAvatarVersion: String(msg.callerAvatarVersion) } : {}),
+      ...(msg.identitySnapshotVersion != null
+        ? { identitySnapshotVersion: String(msg.identitySnapshotVersion) } : {}),
     } };
   }
   if (msg.kind === "call-status") {
