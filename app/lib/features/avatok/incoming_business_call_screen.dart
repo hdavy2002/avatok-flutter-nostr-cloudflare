@@ -89,6 +89,10 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
   /// [CALL-TERMINAL-BCAST-1] Guards against a double pop when a local action and
   /// the remote status broadcast (now sub-100ms, not 5s) land back-to-back.
   bool _dismissed = false;
+  /// [CALL-SPAM-REPORT-1] When this screen appeared, so a spam report can carry
+  /// how long it rang before the user gave up — an instant report on a first
+  /// ring reads very differently from one after 20 seconds of deliberation.
+  final int _shownAtMs = DateTime.now().millisecondsSinceEpoch;
   StreamSubscription<CallStatusEvent>? _statusSub;
 
   @override
@@ -249,6 +253,70 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
     );
   }
 
+  /// [CALL-VOICEMAIL-1 2026-08-01] "Voice Mail" — stop my ring, and let the
+  /// caller record a message. Their leg stays alive; the recording arrives as a
+  /// normal audio message in this thread.
+  Future<void> _voicemail() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    Analytics.capture('business_call_incoming_voicemail', {'call_id': widget.callId});
+    await _endNativeRing();
+    _dismiss(reason: 'voicemail');
+    await PushService.voicemailIncomingCall(_extra);
+  }
+
+  /// [CALL-SPAM-REPORT-1 2026-08-01] "Report Spam".
+  ///
+  /// Asks whether to block as well rather than assuming it. Reporting and
+  /// blocking are different intentions — someone may want a suspicious caller
+  /// flagged while still allowing future calls through to screening — and a
+  /// button labelled "Report" silently blocking would be a surprise.
+  Future<void> _reportSpam() async {
+    if (_busy) return;
+    final alsoBlock = await showDialog<bool>(
+      context: context,
+      builder: (dctx) => AlertDialog(
+        backgroundColor: AD.card,
+        title: Text('Report as spam?', style: ADText.appTitle(c: AD.textPrimary)),
+        content: Text(
+          'We\'ll flag $_displayName. Do you also want to block them so they '
+          'can\'t call you again?',
+          style: ADText.preview(c: AD.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dctx).pop(null),
+            child: Text('Cancel', style: ADText.preview(c: AD.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dctx).pop(false),
+            child: Text('Report only', style: ADText.preview(c: AD.textPrimary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dctx).pop(true),
+            child: Text('Report & block', style: ADText.preview(c: AD.destructiveBg)),
+          ),
+        ],
+      ),
+    );
+    if (alsoBlock == null || !mounted) return; // cancelled — keep ringing
+    setState(() => _busy = true);
+    Analytics.capture('business_call_incoming_report_spam', {
+      'call_id': widget.callId, 'also_block': alsoBlock,
+    });
+    if (alsoBlock) {
+      // Local flag mirrors the server block so the thread hides immediately.
+      try { await ChatFlagsStore().toggle('blocked', '1:${widget.fromUid}'); } catch (_) {/* best-effort */}
+    }
+    await _endNativeRing();
+    _dismiss(reason: alsoBlock ? 'spam_and_block' : 'spam');
+    await PushService.reportSpamIncomingCall(
+      _extra,
+      alsoBlock: alsoBlock,
+      ringDurationMs: DateTime.now().millisecondsSinceEpoch - _shownAtMs,
+    );
+  }
+
   /// Silent, account-level block (§15.2): the caller sees normal ringing then
   /// the standard no-answer card — never told they're blocked. Blocks calls to
   /// ALL of my numbers, voicemail, the agent, and messaging.
@@ -327,6 +395,12 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
                     label: 'Receptionist',
                     onTap: _busy ? null : _receptionist,
                   ),
+                  const SizedBox(width: 34),
+                  _SoftAction(
+                    icon: PhosphorIcons.voicemail(PhosphorIconsStyle.bold),
+                    label: 'Voice Mail',
+                    onTap: _busy ? null : _voicemail,
+                  ),
                   if (RemoteConfig.voiceAgent) ...[
                     const SizedBox(width: 34),
                     _SoftAction(
@@ -337,32 +411,37 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
                   ],
                 ]),
                 const SizedBox(height: 26),
-                Row(children: [
-                  Expanded(
-                    child: _ActionButton(
-                      icon: PhosphorIcons.prohibit(PhosphorIconsStyle.bold),
-                      label: 'Block',
-                      color: AD.destructiveBg,
-                      onTap: _busy ? null : _block,
-                    ),
+                // Primary row. Decline and Accept are the big targets; Report
+                // Spam and Block are smaller and outboard, because they are
+                // irreversible-ish actions sitting on a high-pressure screen and
+                // a mis-tap should not land on one.
+                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  _MiniAction(
+                    icon: PhosphorIcons.shieldWarning(PhosphorIconsStyle.bold),
+                    label: 'Report\nSpam',
+                    tint: AD.danger,
+                    onTap: _busy ? null : _reportSpam,
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _ActionButton(
-                      icon: PhosphorIcons.phoneX(PhosphorIconsStyle.bold),
-                      label: 'Decline',
-                      color: AD.destructiveBg,
-                      onTap: _busy ? null : _decline,
-                    ),
+                  const SizedBox(width: 14),
+                  _ActionButton(
+                    icon: PhosphorIcons.phoneX(PhosphorIconsStyle.bold),
+                    label: 'Decline',
+                    color: AD.destructiveBg,
+                    onTap: _busy ? null : _decline,
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _ActionButton(
-                      icon: PhosphorIcons.phone(PhosphorIconsStyle.bold),
-                      label: 'Accept',
-                      color: AD.incomingCall,
-                      onTap: _busy ? null : _accept,
-                    ),
+                  const SizedBox(width: 18),
+                  _ActionButton(
+                    icon: PhosphorIcons.phone(PhosphorIconsStyle.bold),
+                    label: 'Accept',
+                    color: AD.incomingCall,
+                    onTap: _busy ? null : _accept,
+                  ),
+                  const SizedBox(width: 14),
+                  _MiniAction(
+                    icon: PhosphorIcons.prohibit(PhosphorIconsStyle.bold),
+                    label: 'Block',
+                    tint: AD.textSecondary,
+                    onTap: _busy ? null : _block,
                   ),
                 ]),
                 const SizedBox(height: 8),
@@ -400,6 +479,42 @@ class _ActionButton extends StatelessWidget {
       const SizedBox(height: 6),
       Text(label, style: ADText.sectionLabel(c: AD.textPrimary), textAlign: TextAlign.center),
     ]);
+  }
+}
+
+/// A small outboard control for the irreversible-ish actions (Report Spam,
+/// Block). Deliberately smaller than Decline/Accept and set apart from them:
+/// this screen is answered under time pressure, often half-awake, and a mis-tap
+/// must not land on something the user cannot take back.
+class _MiniAction extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color tint;
+  final VoidCallback? onTap;
+  const _MiniAction({required this.icon, required this.label, required this.tint, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final dim = onTap == null;
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Container(
+          width: 46, height: 46,
+          decoration: BoxDecoration(
+            color: tint.withValues(alpha: dim ? 0.06 : 0.14),
+            shape: BoxShape.circle,
+            border: Border.all(color: tint.withValues(alpha: 0.3)),
+          ),
+          child: Icon(icon, color: tint.withValues(alpha: dim ? 0.4 : 1.0), size: 19),
+        ),
+        const SizedBox(height: 6),
+        Text(label,
+            textAlign: TextAlign.center,
+            style: ADText.sectionLabel(c: AD.textSecondary)),
+      ]),
+    );
   }
 }
 

@@ -728,6 +728,9 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // [CALL-QUICK-REPLY-1 2026-08-01] Callee dismissed a ringing call with a
       // canned "Message" reply -> deliver it to the caller. Server owns the text.
       if (p === "/api/call/quick-reply" && req.method === "POST") return await api.callQuickReply(req, env);
+      // [CALL-SPAM-REPORT-1 2026-08-01] Report an AvaTOK CALLER as spam (uid-keyed).
+      // Distinct from /api/spam/report (E.164-keyed) and /api/safety/report (conv-keyed).
+      if (p === "/api/calls/report" && req.method === "POST") return await api.callReportSpam(req, env);
       if (p === "/api/call-state" && req.method === "GET") return await api.callState(req, env);
       if (p === "/api/call/ringing" && req.method === "POST") return await api.callRinging(req, env);
       if (p === "/api/call/notify-register" && req.method === "POST") return await api.callNotifyRegister(req, env);

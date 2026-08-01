@@ -43,6 +43,12 @@ const String kCallStatusUrl = 'https://$kSignalingHost/api/call-status';
 /// message attributed to the callee.
 const String kCallQuickReplyUrl = 'https://$kSignalingHost/api/call/quick-reply';
 
+/// [CALL-SPAM-REPORT-1 2026-08-01] Report an AvaTOK CALLER as spam (uid-keyed).
+/// Distinct from /api/spam/report, which is E.164-keyed and cannot represent an
+/// app-to-app caller, and from /api/safety/report, which is conversation-keyed
+/// and always blocks.
+const String kCallReportUrl = 'https://$kSignalingHost/api/calls/report';
+
 /// [AVACALL-CANCEL-1] Read the DURABLE call state for a room (answered / ended /
 /// terminal_status) from the CallRoom DO, via a thin authed proxy. Used by the
 /// accept path to honor a cancel that arrived before/around the accept so a

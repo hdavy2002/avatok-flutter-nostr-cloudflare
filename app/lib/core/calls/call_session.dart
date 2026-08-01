@@ -1548,6 +1548,21 @@ class CallSession {
           _handoffToAva('decline');
           return;
         }
+        // [CALL-VOICEMAIL-1 2026-08-01] The callee chose "Voice Mail": their ring
+        // stops, but MY leg stays alive so I can record a message. This is a
+        // HANDOFF, not a terminal status — see the frozen spec.
+        //
+        // _showOutcomeMenu already does exactly the right teardown (bye, stop
+        // mic tracks, close the peer connection, notify the callee) and parks the
+        // session in the 'outcome-menu' phase, whose existing recorder uploads to
+        // R2 and delivers a normal audio message into the DM thread. Deliberately
+        // NOT gated on _menuEnabled: the callee explicitly asked for voicemail,
+        // so a flag defaulting to false must not swallow their choice.
+        if (e.status == 'decline_vm' && !config.video && !_ended) {
+          _ringTimeout?.cancel();
+          _showOutcomeMenu('voicemail');
+          return;
+        }
         if (e.status == 'busy') {
           // [BUSY-CARD-1] Capture the server's busy metadata (why + whether the
           // callee's receptionist can take a message + pronoun) BEFORE handling
@@ -3316,6 +3331,14 @@ class CallSession {
         // [DIALPAD-BIZ-CALLS Phase C] Fast-WS "Send to Ava AI Agent" signal.
         if (_receptionistActive) break;
         if (!_connected && !_ended) businessAgentHandoff('manual_send_to_agent');
+        break;
+      case 'decline_vm':
+        // [CALL-VOICEMAIL-1 2026-08-01] Fast-WS twin of the push branch above.
+        // Both paths MUST agree — the decline bug happened because two copies of
+        // the same decision disagreed and whichever won the race decided the
+        // outcome. Keep these two in lockstep.
+        if (_receptionistActive) break;
+        if (!_connected && !_ended) _showOutcomeMenu('voicemail');
         break;
       case 'decline':
         if (_receptionistActive) break;

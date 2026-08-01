@@ -2685,6 +2685,77 @@ class PushService {
     }
   }
 
+  /// [CALL-VOICEMAIL-1 2026-08-01] "Voice Mail" on the incoming-call screen:
+  /// stop MY ring and offer the CALLER a recorder so they can leave a message.
+  ///
+  /// Signals `decline_vm`, which is a HANDOFF, not a terminal status — the
+  /// caller's session must stay alive to record. The caller's CallSession parks
+  /// in the outcome-menu phase, whose recorder already uploads to R2 and
+  /// delivers a normal audio message into this thread. Nothing about the
+  /// voicemail is a separate silo: it is an ordinary messenger message, so it
+  /// inherits unread counts, delivery, ordering, retention and deletion.
+  static Future<void> voicemailIncomingCall(Map extra) async {
+    unawaited(_dismissBrandedFsi());
+    final callId = (extra['callId'] ?? '').toString();
+    final from = (extra['from'] ?? '').toString();
+    unawaited(_stopRingtoneFallback(callId));
+    _signalStatus(callId, 'decline_vm', from);
+    if (_onceCallEvent(callId, 'declined')) {
+      Analytics.capture('call_incoming_declined', {
+        'call_id': callId,
+        'routed_to': 'decline_vm',
+      });
+    }
+    _logMissed(extra);
+  }
+
+  /// [CALL-SPAM-REPORT-1 2026-08-01] "Report Spam" on the incoming-call screen.
+  ///
+  /// Reporting and blocking are DELIBERATELY separate — a user may want to flag
+  /// a suspicious caller while still allowing future calls through to
+  /// screening, and silently blocking on report would be a surprise the UI
+  /// never promised. `alsoBlock` is passed only when the user asked for it.
+  ///
+  /// The call is terminated first; the report is filed after. A reporting
+  /// outage must never leave the phone ringing.
+  static Future<void> reportSpamIncomingCall(
+    Map extra, {
+    required bool alsoBlock,
+    String category = 'spam',
+    int? ringDurationMs,
+  }) async {
+    unawaited(_dismissBrandedFsi());
+    final callId = (extra['callId'] ?? '').toString();
+    final from = (extra['from'] ?? '').toString();
+    unawaited(_stopRingtoneFallback(callId));
+    _signalStatus(callId, 'decline', from);
+    if (_onceCallEvent(callId, 'declined')) {
+      Analytics.capture('call_incoming_declined', {
+        'call_id': callId,
+        'routed_to': alsoBlock ? 'spam_and_block' : 'spam',
+      });
+    }
+    _logMissed(extra);
+    if (from.isEmpty) return;
+    try {
+      final res = await ApiAuth.postJson(kCallReportUrl, {
+        'reportedUid': from,
+        'callId': callId,
+        'category': category,
+        'alsoBlock': alsoBlock,
+        if (ringDurationMs != null) 'ringDurationMs': ringDurationMs,
+      });
+      Analytics.capture('call_spam_report_sent', {
+        'call_id': callId, 'reported_uid': from, 'also_block': alsoBlock,
+        'http_status': res.statusCode, 'ok': res.statusCode == 200,
+      });
+    } catch (e) {
+      Analytics.capture('call_spam_report_failed', {
+        'call_id': callId, 'reported_uid': from, 'error': e.toString(),
+      });
+    }
+  }
+
   /// [CALL-DECLINE-IS-TERMINAL-1 2026-08-01] "Receptionist" on the incoming-call
   /// screen — the callee's ring stops and the CALLER is handed to Ava to leave a
   /// message. This is the ONLY path that may produce `decline_ava`.
