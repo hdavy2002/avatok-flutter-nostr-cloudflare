@@ -52,6 +52,7 @@ import { settleCallMinute, refundUnused } from "../lib/call_billing";
 import { brainIngest } from "../lib/brain_ingest";
 import {
   applyCommand, authorizeCommand, deriveActor, newCallSession, commandForLegacyStatus,
+  legacyWireStatus,
   type CallSession, type Command, type CommandName,
 } from "../lib/call_state";
 
@@ -417,9 +418,21 @@ export class CallRoom {
   private broadcastTransition(s: CallSession, events: string[], callId?: string): { seen: number; sent: number; seq: number } {
     let seen = 0, sent = 0;
     const frame = JSON.stringify({
-      // Legacy-compatible discriminator: old clients switch on `type`.
-      type: s.disposition !== "none" && s.session_state === "completed"
-        ? s.disposition : s.callee_leg_state,
+      // [CALL-WIRE-COMPAT-1 2026-08-01] `type` MUST be a legacy status string.
+      //
+      // This previously emitted the DISPOSITION or the LEG STATE — so a decline
+      // went out as `declined`, and every shipped client switches on `decline`.
+      // Old callers fell through to `default`, ignored the frame entirely, and
+      // kept ringing until their own ring-timeout handed the caller to Ava.
+      // Confirmed in prod: call avatok-b7741a74, decline at 09:09:21.8,
+      // DO broadcast delivered (sockets_sent=1) at 09:09:23.4, caller ignored
+      // it and started the receptionist at 09:09:27.0 with
+      // activation_mode "rings" — the ring TIMEOUT, not the decline.
+      //
+      // I had written "keeps the legacy status shape" in this very comment and
+      // it did not. The vocabulary a shipped client understands is a CONTRACT;
+      // the FSM's internal names are not part of it. New clients read `fsm`.
+      type: legacyWireStatus(s),
       ...(callId ? { callId } : {}),
       fsm: {
         session_state: s.session_state,

@@ -442,6 +442,59 @@ export function applyCommand(prev: CallSession, cmd: Command, now: number): Appl
 }
 
 /**
+ * [CALL-WIRE-COMPAT-1 2026-08-01] The INVERSE of commandForLegacyStatus: the
+ * aggregate → the status string a SHIPPED client understands.
+ *
+ * This is a CONTRACT, not an implementation detail. Every client in the field
+ * switches on these exact words, and they cannot be renamed to match whatever
+ * the state machine happens to call things internally. Getting this wrong is
+ * not a cosmetic mismatch — the client silently falls through to `default`,
+ * ignores the frame, and behaves as though the call never ended.
+ *
+ * That is exactly what happened in prod (call avatok-b7741a74): the broadcast
+ * said `declined`, every client listens for `decline`, so a declined call kept
+ * ringing until the caller's own ring-timeout handed them to the receptionist.
+ *
+ * RULE: if you add a state or a disposition, map it HERE to an existing legacy
+ * word. Never invent a new wire value for old clients to not understand.
+ */
+export function legacyWireStatus(s: CallSession): string {
+  // Handoffs first: the callee's ring is over but the caller's leg lives on,
+  // and these have their own long-standing wire words.
+  if (s.callee_leg_state === "dismissed_for_receptionist") return "decline_ava";
+  if (s.callee_leg_state === "dismissed_for_voicemail") return "decline_vm";
+
+  switch (s.disposition) {
+    case "declined":
+    // Quick reply / spam / block all present to the CALLER as a plain decline:
+    // the call is over and the reason is the callee's business, not theirs.
+    case "quick_reply_sent":
+    case "reported_spam":
+    case "blocked_by_callee":
+      return "decline";
+    case "answered_by_callee":     return "accept";
+    case "caller_cancelled":       return "cancel";
+    case "ring_timeout":           return "no-answer";
+    case "answered_by_receptionist": return "decline_ava";
+    case "voicemail_left":
+    case "voicemail_abandoned":
+    case "voicemail_failed":       return "decline_vm";
+    case "receptionist_failed":    return "ended";
+    case "recipient_unavailable":  return "no-answer";
+    default: break;
+  }
+  // Not yet terminal — report the ring's own state in legacy words.
+  switch (s.callee_leg_state) {
+    case "accepted":               return "accept";
+    case "declined":               return "decline";
+    case "timed_out":              return "no-answer";
+    case "ended":                  return "ended";
+    case "ringing":                return "ringing";
+    default:                       return "ringing";
+  }
+}
+
+/**
  * Legacy `/api/call-status` strings → commands.
  *
  * The old status-string API is still what shipped clients speak, and will be for

@@ -13,7 +13,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   applyCommand, authorizeCommand, deriveActor, newCallSession,
-  commandForLegacyStatus, type CallSession,
+  commandForLegacyStatus, legacyWireStatus, type CallSession,
 } from "../src/lib/call_state";
 import { admitCall, __resetVerdictCache } from "../src/lib/call_admission";
 
@@ -231,6 +231,74 @@ describe("GATE 3: old-client status strings still work", () => {
     if (!vm.ok) return;
     expect(vm.state.caller_leg_state).toBe("voicemail_ready");
     expect(vm.state.caller_leg_state).not.toBe("ended");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GATE 3b — THE WIRE CONTRACT. This is the gate that was NOT closed, and it
+// broke in production within hours (call avatok-b7741a74): the DO broadcast
+// `declined`, every shipped client switches on `decline`, so the frame was
+// silently ignored and the call rang on until the caller's ring-timeout handed
+// them to Ava. `sockets_sent=1` said delivered; the client understood nothing.
+//
+// The vocabulary a shipped client understands is a CONTRACT. These tests pin it.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("GATE 3b: the wire vocabulary shipped clients understand", () => {
+  /** Words a shipped client's _onSignal / callStatusBus actually switches on. */
+  const KNOWN_TO_OLD_CLIENTS = new Set([
+    "decline", "decline_ava", "decline_vm", "decline_agent",
+    "accept", "cancel", "bye", "ended", "no-answer", "missed", "busy", "ringing",
+  ]);
+
+  const after = (name: Parameters<typeof applyCommand>[1]["name"], actor: "caller" | "callee" | "server") => {
+    const r = applyCommand(ringing(), { name, actor }, NOW);
+    if (!r.ok) throw new Error(`${name} rejected`);
+    return legacyWireStatus(r.state);
+  };
+
+  it("REGRESSION: a decline goes out as `decline`, never `declined`", () => {
+    // The exact production bug. `declined` is the FSM's internal disposition
+    // name; no client has ever listened for it.
+    expect(after("decline_call", "callee")).toBe("decline");
+    expect(after("decline_call", "callee")).not.toBe("declined");
+  });
+
+  it("handoffs keep their own long-standing words", () => {
+    expect(after("handoff_to_receptionist", "callee")).toBe("decline_ava");
+    expect(after("offer_voicemail", "callee")).toBe("decline_vm");
+  });
+
+  it("quick reply / spam / block present to the CALLER as a plain decline", () => {
+    // The call is over; WHY is the callee's business, not the caller's.
+    expect(after("send_quick_reply", "callee")).toBe("decline");
+    expect(after("report_spam", "callee")).toBe("decline");
+    expect(after("block_caller", "callee")).toBe("decline");
+  });
+
+  it("accept / cancel / timeout use their legacy words", () => {
+    expect(after("accept_call", "callee")).toBe("accept");
+    expect(after("cancel_call", "caller")).toBe("cancel");
+    expect(after("ring_timeout", "server")).toBe("no-answer");
+  });
+
+  it("EVERY reachable outcome maps to a word an old client knows", () => {
+    // The guard that would have caught the production bug. Any new state or
+    // disposition must map onto the existing vocabulary — never invent a word
+    // for shipped clients to silently ignore.
+    for (const [name, actor] of [
+      ["decline_call", "callee"], ["accept_call", "callee"],
+      ["send_quick_reply", "callee"], ["handoff_to_receptionist", "callee"],
+      ["offer_voicemail", "callee"], ["report_spam", "callee"],
+      ["block_caller", "callee"], ["cancel_call", "caller"],
+      ["ring_timeout", "server"], ["end_call", "caller"],
+    ] as const) {
+      const w = after(name, actor);
+      expect(KNOWN_TO_OLD_CLIENTS.has(w), `${name} -> "${w}" is unknown to shipped clients`).toBe(true);
+    }
+  });
+
+  it("a still-ringing call reports `ringing`, not an internal leg name", () => {
+    expect(legacyWireStatus(ringing())).toBe("ringing");
   });
 });
 
