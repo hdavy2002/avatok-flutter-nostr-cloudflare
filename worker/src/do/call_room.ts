@@ -204,14 +204,63 @@ export class CallRoom {
    *  bye/hangup skip stopBilling()/refundUnused() and the call_completed ingest
    *  ([AVACALL-RING-CANCEL-2] fix). Every terminal-status consumer keys off
    *  `terminal_status`, not `ended`, so suppression is unaffected.
-   *  Idempotent + never throws — a status write must not break signaling. */
-  private async markTerminal(status: string): Promise<void> {
+   *  Idempotent + never throws — a status write must not break signaling.
+   *
+   *  [CALL-TERMINAL-BCAST-1 2026-08-01] MONOTONIC. The first terminal status to
+   *  land wins and is IMMUTABLE; a later/racing terminal request must NOT
+   *  overwrite it. Before this, a `decline` could be silently replaced by the
+   *  caller's own follow-up `cancel`, so `/api/call-state` reported the wrong
+   *  reason and a late `accept` could revive a call the callee had rejected.
+   *  Returns whether this call was already terminal so callers can report it. */
+  private async markTerminal(status: string): Promise<{ already: boolean; status: string }> {
     await this.loadCallState();
+    if (this.terminalStatus) {
+      // Already terminal — immutable. Do not rewrite storage, do not move terminalAt.
+      return { already: true, status: this.terminalStatus };
+    }
     const s = (status || "ended").slice(0, 24);
     this.terminalStatus = s;
     this.terminalAt = Date.now();
     try { await this.state.storage.put("terminalStatus", s); } catch { /* best-effort */ }
     try { await this.state.storage.put("terminalAt", this.terminalAt); } catch { /* best-effort */ }
+    return { already: false, status: s };
+  }
+
+  /** [CALL-TERMINAL-BCAST-1 2026-08-01] Push a call-status frame to every socket
+   *  attached to this room, so the OTHER party learns about it over the live
+   *  WebSocket it is already holding instead of waiting on the FCM queue.
+   *
+   *  ROOT CAUSE this fixes (prod call avatok-f0c0ef5c, 2026-08-01 01:31 UTC): the
+   *  callee declined at 01:31:47.66; `/mark-terminal` wrote storage and told
+   *  NOBODY; the caller only learned via FCM at 01:31:53.06 — 5.4s of ringback
+   *  into a call that was already over. The caller was attached to THIS DO the
+   *  whole time. `/ring-ack` above already fans out this way; the terminal path
+   *  simply never did.
+   *
+   *  Deliberately separate from markTerminal(): non-terminal handoff statuses
+   *  (`decline_ava`, `decline_agent`) must reach the caller instantly WITHOUT
+   *  marking the call terminal, or the caller's CallSession would tear down
+   *  before it could hand the leg to the receptionist.
+   *
+   *  Hibernation-safe: an inbound fetch() wakes the DO and getWebSockets()
+   *  returns the currently-attached sockets. A detached caller yields 0 sends —
+   *  which is exactly why the FCM queue path stays as the durable backstop. */
+  private broadcastStatus(status: string, callId?: string, extra?: Record<string, unknown>): { seen: number; sent: number } {
+    let seen = 0, sent = 0;
+    const frame = JSON.stringify({
+      type: status,
+      ...(callId ? { callId } : {}),
+      ...(extra ?? {}),
+      terminalAt: this.terminalAt ?? Date.now(),
+      src: "do",
+    });
+    for (const w of this.state.getWebSockets()) {
+      seen++;
+      // Count successful send() calls, not attached sockets — a stale socket
+      // throws here and must not be reported to the caller as a delivery.
+      try { w.send(frame); sent++; } catch { /* stale socket */ }
+    }
+    return { seen, sent };
   }
 
   /** [WP2] `reason` drives the refund event's ReasonCode when this transition
@@ -541,12 +590,34 @@ export class CallRoom {
       // callStatus when the caller POSTs a cancel/bye/ended status. Same trust
       // boundary as GET /state (only reachable within this Worker). Best-effort,
       // never touches the 2-peer cap / glare / reconnect-grace state.
+      //
+      // [CALL-TERMINAL-BCAST-1 2026-08-01] It now ALSO fans the status out to
+      // every attached socket, making the DO the fast authoritative path instead
+      // of a write-only marker (see broadcastStatus). `terminal:false` in the
+      // body means "relay this to the peers but do NOT mark the call over" —
+      // that is the decline_ava / decline_agent handoff lane.
       if (req.method === "POST" && stateUrl.pathname.endsWith("/mark-terminal")) {
         let body: Record<string, unknown> = {};
         try { body = (await req.json()) as Record<string, unknown>; } catch { /* empty */ }
         const status = typeof body.status === "string" ? body.status : "ended";
-        await this.markTerminal(status);
-        return Response.json({ ok: true, terminal_status: this.terminalStatus ?? null });
+        const callId = typeof body.callId === "string" ? body.callId : undefined;
+        const asTerminal = body.terminal !== false;
+        let already = false;
+        if (asTerminal) {
+          const r = await this.markTerminal(status);
+          already = r.already;
+        } else {
+          await this.loadCallState();
+        }
+        const fan = this.broadcastStatus(status, callId);
+        return Response.json({
+          ok: true,
+          terminal_status: this.terminalStatus ?? null,
+          terminal_persisted: asTerminal,
+          already_terminal: already,
+          sockets_seen: fan.seen,
+          sockets_sent: fan.sent,
+        });
       }
       if (req.method === "POST") {
         let body: Record<string, unknown> = {};

@@ -12,7 +12,7 @@ import { metaSession } from "../db/shard";
 import { requireUser, isFail } from "../authz";
 import { verifyClerk, resolveCanonicalUid, linkClerkAlias } from "../auth";
 import { emailFor, nameFor, primaryVerifiedEmailFor } from "../lib/identity";
-import { track } from "../hooks";
+import { track, trackUser } from "../hooks";
 import { brainIngest } from "../lib/brain_ingest";
 import { avaReason } from "../lib/ava_reason"; // One Brain B1: unified reasoning gateway
 import { guardWrite } from "./moderate"; // save-time content validation (Nemotron)
@@ -554,24 +554,87 @@ export async function callStatus(req: Request, env: Env): Promise<Response> {
   // is gone from strongly-consistent DO state (GET /api/call-state) and never sits
   // on "connecting". The 2026-07-20 incident: the ring push reached the callee 2s
   // AFTER this cancel. Best-effort: a DO hiccup must never block the status relay.
-  const TERMINAL_CALL_STATUS = new Set(["cancel", "bye", "ended", "decline", "declined", "missed", "no-answer"]);
-  if (TERMINAL_CALL_STATUS.has(b.status)) {
+  //
+  // [CALL-TERMINAL-BCAST-1 2026-08-01] The DO is now also the FAST path, not just
+  // a durable marker: /mark-terminal fans the status out over the peer's live
+  // WebSocket. Prod incident avatok-f0c0ef5c — the callee declined and the caller
+  // kept hearing ringback for 5.4s because the ONLY delivery path was
+  // Q_PUSH -> 2s queue batch window -> serial consumer -> FCM. The caller was
+  // attached to this exact DO the entire time.
+  //
+  // HANDOFF_CALL_STATUS are relayed with terminal:false — the callee is done, but
+  // the CALLER's session must stay alive to hand the leg to Ava/the agent. If
+  // these were marked terminal the receptionist handoff would be killed before it
+  // started (see call_session.dart _handoffToAva).
+  const TERMINAL_CALL_STATUS = new Set(["cancel", "bye", "hangup", "ended", "decline", "declined", "missed", "no-answer"]);
+  const HANDOFF_CALL_STATUS = new Set(["decline_ava", "decline_agent"]);
+  const isTerminal = TERMINAL_CALL_STATUS.has(b.status);
+  const isHandoff = HANDOFF_CALL_STATUS.has(b.status);
+  let doResult: Record<string, unknown> | null = null;
+  if (isTerminal || isHandoff) {
     try {
       const stub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(b.callId));
-      await stub.fetch("https://call/mark-terminal", {
+      const r = await stub.fetch("https://call/mark-terminal", {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ status: b.status }),
+        body: JSON.stringify({ status: b.status, callId: b.callId, terminal: isTerminal }),
       });
+      doResult = (await r.json().catch(() => null)) as Record<string, unknown> | null;
     } catch { /* best-effort — durable marker is an accelerator, FCM stays the path */ }
   }
   const re = b.receptionist_enabled;
+  // The FCM queue stays as the DURABLE backstop, always — the socket fan-out only
+  // reaches peers that are currently attached, and a backgrounded/killed app is not.
   await env.Q_PUSH.send({
     kind: "call-status", to: b.to, callId: b.callId, status: b.status, ts: Date.now(),
     ...(b.busy_reason ? { busy_reason: String(b.busy_reason) } : {}),
     ...(re != null ? { receptionist_enabled: re === true || re === "1" || re === 1 } : {}),
     ...(b.pronoun ? { pronoun: String(b.pronoun) } : {}),
   });
-  return json({ sent: 1 });
+  // Telemetry: separate the four legs of delivery so a future regression is
+  // diagnosable without guessing — DO persistence, socket fan-out, queue enqueue.
+  // Tagged with BOTH parties (actor = whoever POSTed, to_uid = the peer) so either
+  // tester's email retrieves the interaction. [CALL-TERMINAL-BCAST-1]
+  if (isTerminal || isHandoff) {
+    try {
+      // Both parties' emails are attached so EITHER tester's email retrieves this
+      // interaction — a call bug only makes sense from both ends (CLAUDE.md).
+      const [actorEmail, peerEmail] = await Promise.all([
+        emailFor(env, ctx.uid).catch(() => null),
+        emailFor(env, b.to).catch(() => null),
+      ]);
+      const props = {
+        call_id: b.callId,
+        status: b.status,
+        from_uid: ctx.uid,
+        to_uid: b.to,
+        from_email: actorEmail,
+        to_email: peerEmail,
+        terminal: isTerminal,
+        handoff: isHandoff,
+        do_ok: doResult != null,
+        terminal_persisted: doResult?.terminal_persisted ?? null,
+        already_terminal: doResult?.already_terminal ?? null,
+        terminal_status: doResult?.terminal_status ?? null,
+        sockets_seen: doResult?.sockets_seen ?? null,
+        sockets_sent: doResult?.sockets_sent ?? null,
+        queued: true,
+      };
+      await Promise.all([
+        trackUser(env, ctx.uid, actorEmail, "call_status_relayed", "avatok", props),
+        trackUser(env, b.to, peerEmail, "call_status_relayed", "avatok", props),
+      ]);
+    } catch { /* telemetry must never break signaling */ }
+  }
+  // NOTE: `sent: 1` means QUEUED, not "the caller processed it". The fields below
+  // are attempt/result metrics, deliberately NOT a delivery guarantee.
+  return json({
+    sent: 1,
+    queued: true,
+    terminal_persisted: doResult?.terminal_persisted ?? false,
+    already_terminal: doResult?.already_terminal ?? false,
+    sockets_seen: doResult?.sockets_seen ?? 0,
+    sockets_sent: doResult?.sockets_sent ?? 0,
+  });
 }
 
 // [AVACALL-RING-CANCEL-1] GET /api/call-state?callId=<id> — thin authed proxy to

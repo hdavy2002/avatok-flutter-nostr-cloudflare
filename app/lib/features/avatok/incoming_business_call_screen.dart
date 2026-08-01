@@ -50,6 +50,9 @@ class IncomingBusinessCallScreen extends StatefulWidget {
 
 class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen> {
   bool _busy = false;
+  /// [CALL-TERMINAL-BCAST-1] Guards against a double pop when a local action and
+  /// the remote status broadcast (now sub-100ms, not 5s) land back-to-back.
+  bool _dismissed = false;
   StreamSubscription<CallStatusEvent>? _statusSub;
 
   @override
@@ -63,12 +66,44 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
     // tear down the branded UI + clear the glare globals.
     _statusSub = callStatusBus.stream.listen((e) {
       if (e.callId != widget.callId) return;
-      const terminal = {'cancel', 'ended', 'missed', 'no-answer', 'bye'};
-      if (terminal.contains(e.status)) {
-        _clearRingGlobals();
-        if (mounted) Navigator.of(context).maybePop();
-      }
+      // [CALL-TERMINAL-BCAST-1 2026-08-01] 'decline'/'declined' (and the two
+      // handoff variants) were MISSING here, so when this account's other device
+      // — or this device via a redelivered push — declined, the ring screen had no
+      // reason to close. Any status that ends the RING closes this screen.
+      const terminal = {
+        'cancel', 'ended', 'missed', 'no-answer', 'bye', 'hangup',
+        'decline', 'declined', 'decline_ava', 'decline_agent',
+      };
+      if (terminal.contains(e.status)) _dismiss(reason: 'status_${e.status}');
     });
+  }
+
+  /// [CALL-TERMINAL-BCAST-1 2026-08-01] The ONE way this screen closes.
+  ///
+  /// Every dismissal site used to call `Navigator.of(context).maybePop()` while
+  /// the build wraps everything in `PopScope(canPop: false)` — and `maybePop`
+  /// is exactly the API `PopScope` is defined to intercept. `canPop: false`
+  /// yields `RoutePopDisposition.doNotPop`, `maybePop` returns false, and with
+  /// no `onPopInvoked` callback nothing else happened either. So decline,
+  /// accept, block, send-to-agent AND the remote auto-dismiss were all silently
+  /// no-ops, and the incoming-call screen stayed on top forever (prod call
+  /// avatok-f0c0ef5c — the callee declined and the ring screen never left).
+  ///
+  /// `canPop: false` is LOAD-BEARING and stays: it blocks the hardware back
+  /// button / back gesture so a ringing call can't be swiped away by accident.
+  /// The fix is to keep the user-gesture path blocked and give the app an
+  /// explicit programmatic exit — `pop()`, which PopScope does not intercept.
+  /// Do NOT "fix" this by force-popping from `onPopInvoked`: that turns a
+  /// deliberately-blocked back gesture back into an accidental dismissal.
+  void _dismiss({required String reason}) {
+    if (!mounted || _dismissed) return;
+    _dismissed = true;
+    _clearRingGlobals();
+    Analytics.capture('business_call_screen_dismissed', {
+      'call_id': widget.callId,
+      'reason': reason,
+    });
+    Navigator.of(context).pop();
   }
 
   @override
@@ -100,17 +135,20 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
     setState(() => _busy = true);
     Analytics.capture('business_call_incoming_accept', {'call_id': widget.callId});
     await PushService.acceptRingingCall(widget.callId); // ends the CallKit ring + opens CallScreen
-    if (mounted) Navigator.of(context).maybePop();
+    _dismiss(reason: 'accept');
   }
 
   Future<void> _decline() async {
     if (_busy) return;
     setState(() => _busy = true);
     Analytics.capture('business_call_incoming_decline', {'call_id': widget.callId});
+    // [CALL-TERMINAL-BCAST-1] Tear the UI down FIRST. Declining is an instant,
+    // unambiguous user intent; making the screen wait on a network round-trip
+    // (declineIncomingCall POSTs /api/call-status) is what made a slow network
+    // look like a frozen ring screen. The signalling still runs to completion.
     await _endNativeRing();
-    _clearRingGlobals();
+    _dismiss(reason: 'decline');
     await PushService.declineIncomingCall(_extra);
-    if (mounted) Navigator.of(context).maybePop();
   }
 
   /// Hands the caller to the Ava AI Voice Agent right away (§3 step 4). Phase C
@@ -122,9 +160,8 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
     setState(() => _busy = true);
     Analytics.capture('business_call_incoming_send_to_agent', {'call_id': widget.callId});
     await _endNativeRing();
-    _clearRingGlobals();
+    _dismiss(reason: 'send_to_agent');
     await PushService.sendToAgentIncomingCall(_extra);
-    if (mounted) Navigator.of(context).maybePop();
   }
 
   /// Silent, account-level block (§15.2): the caller sees normal ringing then
@@ -137,10 +174,9 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
     try { await ChatFlagsStore().toggle('blocked', '1:${widget.fromUid}'); } catch (_) {/* best-effort */}
     unawaited(BlockingApi.blockAccount(widget.fromUid));
     await _endNativeRing();
-    _clearRingGlobals();
+    _dismiss(reason: 'block');
     // Silent — same signal as a plain decline, no "you were blocked" tell.
     await PushService.declineIncomingCall(_extra);
-    if (mounted) Navigator.of(context).maybePop();
   }
 
   @override

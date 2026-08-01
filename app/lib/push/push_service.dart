@@ -11,7 +11,6 @@ import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:uuid/uuid.dart';
-import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../core/account_storage.dart';
 import '../core/active_thread.dart'; // [PUSH-FG-BANNER-1]
@@ -494,10 +493,32 @@ Future<void> _queuePendingCallOp(Map<String, dynamic> d) async {
   } catch (_) {/* best-effort; the next full sync still reconciles */}
 }
 
-/// A call-status that means the call is over and any incoming ring should stop.
+/// A call-status that means ANY INCOMING RING on this device should stop.
+///
+/// [CALL-TERMINAL-BCAST-1 2026-08-01] `decline`/`declined` were missing here, so
+/// a decline never ended the CallKit ring nor dismissed the branded full-screen
+/// UI — on a second device of the same account the ring screen simply stayed up
+/// (prod call avatok-f0c0ef5c). `decline_ava`/`decline_agent` ALSO belong here:
+/// the callee is done ringing in both cases. They are deliberately NOT in
+/// [_callerSessionTerminal] — see that doc.
+///
+/// This is the RING lifecycle, not the CALL lifecycle. Keep the two apart.
 bool _terminalCallStatus(String s) =>
     s == 'cancel' || s == 'ended' || s == 'missed' || s == 'no-answer' ||
-    s == 'bye';
+    s == 'bye' || s == 'hangup' ||
+    s == 'decline' || s == 'declined' ||
+    s == 'decline_ava' || s == 'decline_agent';
+
+/// A call-status that means the CALLER's own CallSession is over.
+///
+/// [CALL-TERMINAL-BCAST-1] Deliberately EXCLUDES `decline_ava`/`decline_agent`:
+/// those mean "the callee handed me off", and the caller's session must stay
+/// alive long enough for `CallSession._handoffToAva` to take the leg. Treating
+/// them as terminal here would kill the receptionist before it ever connected.
+// ignore: unused_element
+bool _callerSessionTerminal(String s) =>
+    s == 'cancel' || s == 'ended' || s == 'missed' || s == 'no-answer' ||
+    s == 'bye' || s == 'hangup' || s == 'decline' || s == 'declined';
 
 /// [AVACALL-CANCEL-1] Last-terminal-status cache keyed by callId. The
 /// `callStatusBus` is a plain broadcast Stream with NO replay, so a cancel/bye/
@@ -903,6 +924,10 @@ Future<void> _showMissedCallNotif(Map<String, dynamic> d) async {
     'tier': resolved.tier,
     'had_from_uid': fromUid.isNotEmpty,
     'had_from_phone': fromPhone.isNotEmpty,
+    // [RECEPT-CALLER-IDENTITY-1] The third input. tier=='unknown' with all three
+    // false is the "Missed call from Unknown caller" fingerprint — alert on it.
+    'had_caller_name': rawCallerName.isNotEmpty,
+    'call_id': (d['callId'] ?? d['call_id'] ?? '').toString(),
   });
 
   final preview = (d['preview'] ?? d['body'] ?? '').toString().trim();
@@ -2365,8 +2390,27 @@ class PushService {
   static Future<void> clearMessageBadge() =>
       BadgeService.recompute(source: 'clear_message_badge');
 
-  /// Tell the caller a call was declined / busy — over the WS room (fast path)
-  /// AND via the server push (works even if the socket can't be held).
+  /// Tell the caller a call was declined / busy.
+  ///
+  /// [CALL-TERMINAL-BCAST-1 2026-08-01] There is now exactly ONE client signalling
+  /// path: POST /api/call-status. The Worker hands the status to the CallRoom DO,
+  /// which fans it out over the caller's ALREADY-OPEN WebSocket (fast, sub-100ms)
+  /// and enqueues the FCM push as the durable backstop.
+  ///
+  /// The old "fast path" — a throwaway `ctl-<epoch>` WebSocket opened here, one
+  /// frame written, socket closed 800ms later — has been DELETED. It was the worst
+  /// kind of optimisation: `WebSocketChannel.connect` is lazy, so a DNS/TLS/upgrade
+  /// failure surfaced asynchronously on `sink.done` and this try/catch (which only
+  /// catches synchronous throws) swallowed it whole. It had no ack, no retry and no
+  /// telemetry, so when it silently failed — routinely, on a cold FCM-woken isolate
+  /// that cannot finish a TLS handshake in 800ms — nothing recorded it and the
+  /// decline fell back to the 5-second FCM queue. That is the prod bug
+  /// (call avatok-f0c0ef5c: decline at 01:31:47.66, caller notified 01:31:53.06).
+  /// Two competing status paths also made ordering impossible to reason about.
+  ///
+  /// Everything the socket carried is already in the HTTP body — `busy_reason`,
+  /// `receptionist_enabled`, `pronoun` — so nothing is lost. Verified: the DO reads
+  /// no metadata that arrived only over that socket.
   static void _signalStatus(String callId, String status, String callerNpub,
       {String? busyReason, bool receptionistEnabled = false, String? pronoun}) {
     if (callId.isEmpty) return;
@@ -2379,21 +2423,46 @@ class PushService {
       extra['receptionist_enabled'] = receptionistEnabled;
       if (pronoun != null && pronoun.isNotEmpty) extra['pronoun'] = pronoun;
     }
-    // fast path: signaling room (carries the metadata too, so the card shows without
-    // waiting for the durable FCM — avoids a race where the plain WS 'busy' wins).
-    try {
-      final ch = WebSocketChannel.connect(
-          Uri.parse('wss://$kSignalingHost/room/$callId?id=ctl-${DateTime.now().millisecondsSinceEpoch}'));
-      ch.sink.add(jsonEncode({'type': status, ...extra}));
-      Future.delayed(const Duration(milliseconds: 800), () {
-        try { ch.sink.close(); } catch (_) {}
+    if (callerNpub.isEmpty) {
+      // No caller uid = nothing to signal to. Record it: previously the ctl- socket
+      // masked this case, so a decline could vanish with no trace at all.
+      Analytics.capture('call_status_signal_skipped', {
+        'call_id': callId, 'status': status, 'reason': 'no_caller_uid',
       });
-    } catch (_) {/* best effort */}
-    // durable path: server pushes the status to the caller
-    if (callerNpub.isNotEmpty) {
-      ApiAuth.postJson(kCallStatusUrl,
-          {'to': callerNpub, 'callId': callId, 'status': status, ...extra}).ignore();
+      return;
     }
+    final t0 = DateTime.now().millisecondsSinceEpoch;
+    ApiAuth.postJson(kCallStatusUrl,
+        {'to': callerNpub, 'callId': callId, 'status': status, ...extra}).then((res) {
+      // Telemetry for the ONE remaining path, split by leg so a regression is
+      // diagnosable: did the DO persist it, and did it reach a live socket?
+      var socketsSent = -1, socketsSeen = -1;
+      var alreadyTerminal = false;
+      try {
+        final j = jsonDecode(res.body);
+        if (j is Map) {
+          socketsSent = (j['sockets_sent'] as num?)?.toInt() ?? -1;
+          socketsSeen = (j['sockets_seen'] as num?)?.toInt() ?? -1;
+          alreadyTerminal = j['already_terminal'] == true;
+        }
+      } catch (_) {/* non-JSON body — still record the status code */}
+      Analytics.capture('call_status_signal_sent', {
+        'call_id': callId,
+        'status': status,
+        'to_uid': callerNpub,
+        'http_status': res.statusCode,
+        'sockets_seen': socketsSeen,
+        'sockets_sent': socketsSent,
+        'already_terminal': alreadyTerminal,
+        'ms': DateTime.now().millisecondsSinceEpoch - t0,
+      });
+    }).catchError((Object e) {
+      Analytics.capture('call_status_signal_failed', {
+        'call_id': callId, 'status': status, 'to_uid': callerNpub,
+        'error': e.toString(),
+        'ms': DateTime.now().millisecondsSinceEpoch - t0,
+      });
+    });
   }
 
   /// React to taps on the native call UI (accept / decline / timeout).
