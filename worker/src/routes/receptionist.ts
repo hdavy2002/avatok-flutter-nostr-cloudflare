@@ -25,7 +25,7 @@ import { requireUser, isFail, type UserCtx } from "../authz";
 import { metaDb } from "../db/shard";
 import { readConfig } from "./config";
 import { track, trackUserContact, metric } from "../hooks";
-import { contactFor, nameFor } from "../lib/identity";
+import { contactFor, nameFor, publicIdentityFor } from "../lib/identity";
 import { isPremiumAI, premiumUpsell } from "../lib/premium";
 import { enforceAllowance, planLimitBody } from "../lib/usage";
 import { tierOf } from "./plans";
@@ -1456,10 +1456,26 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   // Caller's number for the owner's voicemail label — client value, else the
   // caller's own number resolved server-side (so the card isn't "Unknown caller").
   const callerPhone = (b.caller_phone ? normalizePhone(String(b.caller_phone)) : null) || caller.phone || null;
-  // Caller name for Ava's "Hi <name>…" greeting: prefer a client-sent name, else
-  // resolve the caller's own name SERVER-SIDE from Clerk (so no app change needed).
-  const callerName = (b.caller_name == null ? null : String(b.caller_name).slice(0, 80))
-    || await nameFor(env, ctx.uid).catch(() => null);
+  // [CALL-IDENTITY-SNAPSHOT-1 2026-08-01] Caller name for Ava's "Hi <name>…"
+  // greeting AND for the owner's missed-call copy.
+  //
+  // THE SERVER PROFILE WINS. This used to prefer the CLIENT-SENT `caller_name`,
+  // falling back to a server lookup only if the client sent nothing. The client
+  // sends whatever its local session has — which is the Google/Clerk account
+  // name. So even after nameFor() was fixed to read the AvaTOK profile, this
+  // path still leaked the caller's Gmail name: the owner's notification read
+  // "Missed call from Arti Singh" (title, server-resolved, correct) over
+  // "Davy called" (body, client-supplied, wrong) — the same identity in two
+  // different names, in one notification.
+  //
+  // Per the frozen spec the identity provider is not a permissible runtime
+  // identity source, and an UNAUTHENTICATED client value must never outrank the
+  // authoritative profile. The client value is kept only as a last resort for a
+  // caller with no profile row at all, and is capped.
+  const callerIdent = await publicIdentityFor(env, ctx.uid).catch(() => null);
+  const callerName = callerIdent?.display_name
+    || (b.caller_name == null ? null : String(b.caller_name).slice(0, 80))
+    || null;
   // Owner's name for the greeting ("<owner> is travelling…") and the caller's ack
   // ("this is <owner>'s assistant"): the settings display_name, else resolved from
   // the owner's profile/Clerk — so it's never the awkward fallback "your contact".

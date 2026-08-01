@@ -1338,10 +1338,13 @@ export class ReceptionRoomCf {
       ? dmConvId(init.owner_uid, init.caller_uid)
       : (init.caller_phone ? `recept_${init.owner_uid}__tel:${init.caller_phone}` : `recept_${init.owner_uid}__unknown`);
     const inThread = !!init.caller_uid;
+    // [CALL-IDENTITY-SNAPSHOT-1 2026-08-01] Do not repeat the caller's name —
+    // the notification title already carries it, resolved on-device from the
+    // recipient's own contacts. See reception_room.ts for the full reasoning.
     const bodyText = summary
-      ? `📞 ${summary.caller_name || callerLabel} called and left a message: ${summary.reason}`
-      : hadConversation ? `📞 ${callerLabel} called — Ava answered.`
-        : `📞 Missed call from ${callerLabel} — they hung up before leaving a message.`;
+      ? `📞 Ava took a message: ${summary.reason}`
+      : hadConversation ? `📞 Ava answered.`
+        : `📞 Missed call — they hung up before leaving a message.`;
     const envelope = JSON.stringify({
       t: "recept", text: bodyText, session_id: init.sid,
       caller_name: init.caller_name, caller_phone: init.caller_phone,

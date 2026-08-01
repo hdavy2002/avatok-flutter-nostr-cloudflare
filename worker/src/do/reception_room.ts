@@ -1425,11 +1425,24 @@ export class ReceptionRoom {
           ? `recept_${init.owner_uid}__tel:${init.caller_phone}`
           : `recept_${init.owner_uid}__unknown`);
     const inThread = !!init.caller_uid;
+    // [CALL-IDENTITY-SNAPSHOT-1 2026-08-01] The body does NOT repeat the caller's
+    // name. The notification TITLE already carries it, resolved on-device from
+    // the recipient's own contacts, and the two are produced by different code
+    // paths — so any disagreement between them shows up as one notification
+    // naming the same person twice, differently. That is exactly what the owner
+    // saw: "Missed call from Arti Singh" over "Davy called — Ava answered."
+    //
+    // Naming the caller here adds nothing the title has not already said, and
+    // every extra place a name is rendered is another place it can be wrong or
+    // leak an identity-provider name. Owner decision 2026-08-01: just say Ava
+    // answered.
+    //
+    // `summary.reason` is kept — that IS new information (what they wanted).
     const bodyText = summary
-      ? `📞 ${summary.caller_name || callerLabel} called and left a message: ${summary.reason}`
+      ? `📞 Ava took a message: ${summary.reason}`
       : hadConversation
-        ? `📞 ${callerLabel} called — Ava answered.`
-        : `📞 Missed call from ${callerLabel} — they hung up before leaving a message.`;
+        ? `📞 Ava answered.`
+        : `📞 Missed call — they hung up before leaving a message.`;
     // Body is an app envelope {t:'recept', …} so the FROZEN chat_thread renderer
     // shows a dedicated receptionist card (summary + transcript + play). Scoped
     // to:<owner> so it's the owner's private voicemail record — the caller, even
