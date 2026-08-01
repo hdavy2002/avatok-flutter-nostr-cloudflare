@@ -50,6 +50,10 @@ import type { CallSnapshot } from "../lib/call_snapshot";
 import type { ReasonCode } from "../lib/call_events";
 import { settleCallMinute, refundUnused } from "../lib/call_billing";
 import { brainIngest } from "../lib/brain_ingest";
+import {
+  applyCommand, authorizeCommand, newCallSession, commandForLegacyStatus,
+  type CallSession, type Command, type CommandName,
+} from "../lib/call_state";
 
 // [ONEBRAIN-B2] Human-readable call length for a brain summary (e.g. "4m12s").
 function fmtCallDuration(sec: number): string {
@@ -119,6 +123,10 @@ export class CallRoom {
    *  performing the transition a second time. Insertion-ordered (JS Map) so
    *  eviction is oldest-first. See the /mark-terminal handler. */
   private seenCommands = new Map<string, Record<string, unknown>>();
+  /** [CALL-FSM-1 2026-08-01] The multi-leg call aggregate. `undefined` = not yet
+   *  loaded from storage; see loadSession(). The RULES live in lib/call_state.ts
+   *  (pure); this DO owns only persistence and delivery. */
+  private session: CallSession | undefined;
   // CALL-GEN-1: per-peer generation counter. Each accepted (re)join / reconnect of
   // a peer id bumps its gen; the 'welcome' tells the client its current gen, and it
   // stamps gen on every frame. A frame whose gen is LOWER than the DO's current gen
@@ -254,6 +262,133 @@ export class CallRoom {
    *  Hibernation-safe: an inbound fetch() wakes the DO and getWebSockets()
    *  returns the currently-attached sockets. A detached caller yields 0 sends —
    *  which is exactly why the FCM queue path stays as the durable backstop. */
+  // ── [CALL-FSM-1 2026-08-01] THE COMMAND PIPELINE ──────────────────────────
+  //
+  // Every call outcome now enters through here. The DO's job is narrow on
+  // purpose: load the aggregate, hand the command to the PURE reducer in
+  // lib/call_state.ts, persist whatever came back, broadcast it, return it.
+  // It does not decide anything. All the rules — which transitions are legal,
+  // which outcomes end the caller's leg, which keep it alive — live in one
+  // readable file that can be unit-tested without a network.
+
+  /** Hydrate the aggregate from storage on first touch after an eviction. */
+  private async loadSession(callId: string): Promise<CallSession> {
+    if (this.session) return this.session;
+    const stored = await this.state.storage.get<CallSession>("fsm").catch(() => undefined);
+    this.session = stored ?? newCallSession(callId, Date.now());
+    return this.session;
+  }
+
+  /**
+   * Execute one command against the aggregate.
+   *
+   * Idempotent by `command_id`: a retry, an FCM action replay or a double-tap
+   * returns the ORIGINAL result rather than transitioning again. Returning the
+   * original (not an error) is what makes it safe for a client to retry freely.
+   *
+   * A rejected command returns the CURRENT authoritative state rather than an
+   * error alone, so a stale device can reconcile — e.g. render "answered on
+   * another device" — instead of inventing its own outcome. That is the whole
+   * point: a loser in a race must be TOLD what actually happened.
+   */
+  private async runCommand(
+    callId: string, name: CommandName, actor: Command["actor"],
+    opts: { commandId?: string; expectedEpoch?: number; data?: Record<string, unknown> } = {},
+  ): Promise<Record<string, unknown>> {
+    if (opts.commandId) {
+      const prior = this.seenCommands.get(opts.commandId);
+      if (prior) return { ...prior, replayed: true };
+    }
+    if (!authorizeCommand(name, actor)) {
+      // A hostile or confused client must not be able to accept a call on
+      // someone else's behalf, or cancel a call it is not on.
+      return { ok: false, error: "unauthorized", command: name, actor };
+    }
+
+    const prev = await this.loadSession(callId);
+    const r = applyCommand(prev, { name, actor, command_id: opts.commandId, expected_epoch: opts.expectedEpoch, data: opts.data }, Date.now());
+
+    if (!r.ok) {
+      return {
+        ok: false, error: r.error,
+        // Hand back current truth so the loser of a race can reconcile.
+        state: r.state, seq: r.state.transition_sequence, epoch: r.state.epoch,
+      };
+    }
+
+    this.session = r.state;
+    let fan = { seen: 0, sent: 0, seq: r.state.transition_sequence };
+    if (r.changed) {
+      try { await this.state.storage.put("fsm", r.state); } catch { /* best-effort */ }
+      // Keep the legacy terminal marker in lock-step: /api/call-state and the
+      // ring-suppression probe still read it, and they must never disagree with
+      // the aggregate. Two sources of truth is the bug we are removing.
+      if (r.state.session_state === "completed" && !this.terminalStatus) {
+        await this.markTerminal(r.state.disposition);
+      }
+      fan = this.broadcastTransition(r.state, r.events, callId);
+    }
+
+    const result = {
+      ok: true,
+      command: name,
+      changed: r.changed,
+      events: r.events,
+      session_state: r.state.session_state,
+      caller_leg_state: r.state.caller_leg_state,
+      callee_leg_state: r.state.callee_leg_state,
+      service_leg_state: r.state.service_leg_state,
+      disposition: r.state.disposition,
+      epoch: r.state.epoch,
+      seq: r.state.transition_sequence,
+      sockets_seen: fan.seen,
+      sockets_sent: fan.sent,
+    };
+    if (opts.commandId) {
+      this.seenCommands.set(opts.commandId, result);
+      if (this.seenCommands.size > 64) {
+        const oldest = this.seenCommands.keys().next().value;
+        if (oldest !== undefined) this.seenCommands.delete(oldest);
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Broadcast an authoritative transition to every attached socket.
+   *
+   * Carries the FULL leg state, not just a status string. A client that missed
+   * an earlier frame can reconcile from this one alone rather than trying to
+   * infer where it is from a sequence of deltas. `type` keeps the legacy status
+   * shape so shipped clients keep working unchanged.
+   */
+  private broadcastTransition(s: CallSession, events: string[], callId?: string): { seen: number; sent: number; seq: number } {
+    let seen = 0, sent = 0;
+    const frame = JSON.stringify({
+      // Legacy-compatible discriminator: old clients switch on `type`.
+      type: s.disposition !== "none" && s.session_state === "completed"
+        ? s.disposition : s.callee_leg_state,
+      ...(callId ? { callId } : {}),
+      fsm: {
+        session_state: s.session_state,
+        caller_leg_state: s.caller_leg_state,
+        callee_leg_state: s.callee_leg_state,
+        service_leg_state: s.service_leg_state,
+        disposition: s.disposition,
+      },
+      events,
+      epoch: s.epoch,
+      seq: s.transition_sequence,
+      terminalAt: this.terminalAt ?? Date.now(),
+      src: "do",
+    });
+    for (const w of this.state.getWebSockets()) {
+      seen++;
+      try { w.send(frame); sent++; } catch { /* stale socket */ }
+    }
+    return { seen, sent, seq: s.transition_sequence };
+  }
+
   private broadcastStatus(status: string, callId?: string, extra?: Record<string, unknown>): { seen: number; sent: number; seq: number } {
     let seen = 0, sent = 0;
     // [CALL-REDUCER-1 2026-08-01] MONOTONIC TRANSITION SEQUENCE.
@@ -610,6 +745,35 @@ export class CallRoom {
         await this.stopBilling(reason);
         return Response.json({ ok: true, disarmed: true });
       }
+      // ── [CALL-FSM-1 2026-08-01] THE SINGLE COMMAND ENDPOINT ─────────────────
+      // Every call outcome enters here. The DO validates authorization and
+      // epoch, hands the command to the pure reducer, persists, broadcasts and
+      // returns the resulting state. Nothing else in the system decides what a
+      // call outcome means.
+      if (req.method === "POST" && stateUrl.pathname.endsWith("/command")) {
+        let body: Record<string, unknown> = {};
+        try { body = (await req.json()) as Record<string, unknown>; } catch { /* empty */ }
+        const name = String(body.command ?? "") as CommandName;
+        const actor = String(body.actor ?? "server") as Command["actor"];
+        const callId = typeof body.callId === "string" ? body.callId : "";
+        if (!name) return Response.json({ error: "command required" }, { status: 400 });
+        const out = await this.runCommand(callId, name, actor, {
+          commandId: typeof body.commandId === "string" ? body.commandId.slice(0, 64) : undefined,
+          expectedEpoch: typeof body.expectedEpoch === "number" ? body.expectedEpoch : undefined,
+          data: (body.data ?? undefined) as Record<string, unknown> | undefined,
+        });
+        // A rejected command is a normal, expected outcome (a stale device, a
+        // replay, a race loser) — not a server error. 409 tells the client
+        // "your view is out of date, here is the truth" without it being logged
+        // as a failure.
+        return Response.json(out, { status: out.ok === false && out.error !== "unauthorized" ? 409 : (out.ok === false ? 403 : 200) });
+      }
+      // [CALL-FSM-1] Read the authoritative aggregate (late-joining client,
+      // reconnect reconciliation, support debugging).
+      if (req.method === "GET" && stateUrl.pathname.endsWith("/session")) {
+        const s = await this.loadSession(stateUrl.searchParams.get("callId") ?? "");
+        return Response.json({ ok: true, session: s });
+      }
       // [AVACALL-RING-CANCEL-1] Internal-only: record that this call is terminal
       // (caller cancelled / ended before connect). Called from routes/api.ts
       // callStatus when the caller POSTs a cancel/bye/ended status. Same trust
@@ -646,6 +810,30 @@ export class CallRoom {
         if (commandId) {
           const prior = this.seenCommands.get(commandId);
           if (prior) return Response.json({ ...prior, replayed: true });
+        }
+        // [CALL-FSM-1 2026-08-01] LEGACY PATH, ONE SET OF RULES.
+        //
+        // Shipped clients speak status strings and will for as long as an old
+        // build exists. Rather than keep two parallel decision paths — which is
+        // the exact failure this whole effort is unwinding — a legacy status is
+        // TRANSLATED into a command and run through the SAME state machine.
+        // One set of rules, reached two ways.
+        //
+        // The aggregate is advanced BEFORE the legacy marker/broadcast below, so
+        // the two can never disagree about what happened. If the status has no
+        // aggregate meaning (`busy`), commandForLegacyStatus returns null and the
+        // legacy relay proceeds untouched.
+        const legacy = commandForLegacyStatus(status);
+        if (legacy) {
+          const fsm = await this.runCommand(callId ?? "", legacy.name, legacy.actor, { commandId });
+          // The FSM already persisted, marked terminal and broadcast the full
+          // transition. Return its richer result rather than broadcasting a
+          // second, thinner frame for the same event — a duplicate frame is how
+          // clients end up applying one transition twice.
+          if (fsm.ok === true && fsm.changed === true) return Response.json(fsm);
+          // Not a state change (replay, already terminal, illegal) → fall
+          // through to the legacy relay so a shipped client still gets its
+          // frame. Belt and braces during the migration window.
         }
         let already = false;
         if (asTerminal) {

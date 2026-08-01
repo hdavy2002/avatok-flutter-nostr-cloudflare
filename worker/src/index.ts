@@ -731,6 +731,10 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // [CALL-SPAM-REPORT-1 2026-08-01] Report an AvaTOK CALLER as spam (uid-keyed).
       // Distinct from /api/spam/report (E.164-keyed) and /api/safety/report (conv-keyed).
       if (p === "/api/calls/report" && req.method === "POST") return await api.callReportSpam(req, env);
+      // [CALL-FSM-1 2026-08-01] THE single command endpoint. Every call outcome
+      // (accept/decline/quick reply/receptionist/voicemail/spam/block/cancel)
+      // enters here and is executed by the state machine in lib/call_state.ts.
+      if (p === "/api/call/command" && req.method === "POST") return await api.callCommand(req, env);
       if (p === "/api/call-state" && req.method === "GET") return await api.callState(req, env);
       if (p === "/api/call/ringing" && req.method === "POST") return await api.callRinging(req, env);
       if (p === "/api/call/notify-register" && req.method === "POST") return await api.callNotifyRegister(req, env);

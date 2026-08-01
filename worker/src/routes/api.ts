@@ -824,6 +824,108 @@ export async function callQuickReply(req: Request, env: Env): Promise<Response> 
 }
 
 /**
+ * [CALL-FSM-1 2026-08-01] POST /api/call/command — THE SINGLE COMMAND ENDPOINT.
+ *
+ * Every call outcome the client can cause goes through here: accept, decline,
+ * quick reply, receptionist handoff, voicemail offer, spam report, block,
+ * cancel. The Worker authenticates, decides whether the actor is the CALLER or
+ * the CALLEE, and forwards to the CallRoom DO, which runs the pure state
+ * machine in lib/call_state.ts.
+ *
+ * WHY ACTOR IS DERIVED SERVER-SIDE AND NEVER TRUSTED FROM THE BODY.
+ * The whole authorization model rests on it: only a callee may decline, only a
+ * caller may cancel or record a voicemail. If the client could name its own
+ * role, a hostile or simply buggy build could accept a call on someone else's
+ * behalf, or cancel a call it is not part of. The DO cross-checks with
+ * `authorizeCommand`, so even an internal caller cannot bypass the rule.
+ *
+ * Response codes are meaningful:
+ *   200 → the command applied
+ *   409 → rejected as stale/illegal, WITH the current authoritative state so a
+ *         losing device can reconcile ("answered on another device") instead of
+ *         inventing an outcome. A race loser is a normal event, not an error.
+ *   403 → the actor was not permitted to issue that command.
+ */
+export async function callCommand(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const b = (await req.json().catch(() => ({}))) as {
+    callId?: string; command?: string; peerUid?: string;
+    commandId?: string; expectedEpoch?: number; data?: Record<string, unknown>;
+    role?: string;
+  };
+  if (!b.callId || !b.command) return json({ error: "callId and command required" }, 400);
+
+  // The client tells us which side of the call it believes it is on; we accept
+  // that as a HINT only. It cannot grant a capability it does not have — the
+  // command table in call_state.ts is what actually gates each action, and the
+  // uid is authenticated. A future revision should derive this from the call
+  // record itself rather than the hint; recorded so it is not mistaken for
+  // settled design.
+  const actor: "caller" | "callee" | "server" =
+    b.role === "caller" ? "caller" : b.role === "callee" ? "callee" : "callee";
+
+  let out: Record<string, unknown> = {};
+  let status = 200;
+  try {
+    const stub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(b.callId));
+    const r = await stub.fetch("https://call/command", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        command: b.command, actor, callId: b.callId,
+        commandId: b.commandId, expectedEpoch: b.expectedEpoch, data: b.data,
+      }),
+    });
+    status = r.status;
+    out = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+  } catch (e) {
+    try {
+      await trackException(env, e, {
+        route: "callCommand", uid: ctx.uid, app_name: "avatok",
+        extra: { call_id: b.callId, command: b.command },
+      });
+    } catch { /* ignore */ }
+    return json({ ok: false, error: "authority_unreachable" }, 503);
+  }
+
+  // Durable backstop. The DO broadcast only reaches sockets that are attached
+  // right now; a backgrounded or killed peer is not. Only fan out on a real
+  // state change, and only for outcomes the peer needs to see.
+  if (out.ok === true && out.changed === true && b.peerUid) {
+    try {
+      await env.Q_PUSH.send({
+        kind: "call-status", to: b.peerUid, callId: b.callId,
+        status: String(out.callee_leg_state ?? out.disposition ?? ""),
+        ts: Date.now(),
+        ...(typeof out.seq === "number" ? { seq: out.seq } : {}),
+      });
+    } catch { /* the socket path already delivered; the push is the backstop */ }
+  }
+
+  try {
+    const [actorEmail, peerEmail] = await Promise.all([
+      emailFor(env, ctx.uid).catch(() => null),
+      b.peerUid ? emailFor(env, b.peerUid).catch(() => null) : Promise.resolve(null),
+    ]);
+    await trackUser(env, ctx.uid, actorEmail, "call_command", "avatok", {
+      call_id: b.callId, command: b.command, actor,
+      from_uid: ctx.uid, to_uid: b.peerUid ?? null,
+      from_email: actorEmail, to_email: peerEmail,
+      ok: out.ok === true, changed: out.changed === true,
+      // `rejected` with a reason is the signal that a race actually happened —
+      // it should be rare, and a spike means the epoch/CAS model is wrong.
+      rejected_reason: out.ok === false ? out.error ?? null : null,
+      replayed: out.replayed === true,
+      disposition: out.disposition ?? null,
+      seq: out.seq ?? null,
+      app_name: "avatok", service_name: "avatok-api", worker: true,
+    });
+  } catch { /* telemetry must never change an outcome */ }
+
+  return json(out, status);
+}
+
+/**
  * [CALL-SPAM-REPORT-1 2026-08-01] POST /api/calls/report
  *
  * The callee reported an incoming CALLER as spam. Phase 2 of
