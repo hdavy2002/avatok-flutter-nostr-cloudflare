@@ -790,7 +790,10 @@ export class CallRoom {
         try { body = (await req.json()) as Record<string, unknown>; } catch { /* empty */ }
         const status = typeof body.status === "string" ? body.status : "ended";
         const callId = typeof body.callId === "string" ? body.callId : undefined;
-        const asTerminal = body.terminal !== false;
+        // NOTE [CALL-FSM-2]: the old `terminal:false` flag is no longer read.
+        // Whether an outcome is terminal is decided by the state machine, not
+        // asserted by the caller — that was the loophole through which a
+        // handoff could be mislabelled as terminal and kill the caller's leg.
         // [CALL-CMD-IDEMPOTENT-1 2026-08-01] Command-level idempotency.
         //
         // A `commandId` is minted ONCE per user action on the device. Retries,
@@ -811,43 +814,50 @@ export class CallRoom {
           const prior = this.seenCommands.get(commandId);
           if (prior) return Response.json({ ...prior, replayed: true });
         }
-        // [CALL-FSM-1 2026-08-01] LEGACY PATH, ONE SET OF RULES.
+        // [CALL-FSM-2 2026-08-01] THE LEGACY DECISION PATH IS GONE.
         //
-        // Shipped clients speak status strings and will for as long as an old
-        // build exists. Rather than keep two parallel decision paths — which is
-        // the exact failure this whole effort is unwinding — a legacy status is
-        // TRANSLATED into a command and run through the SAME state machine.
-        // One set of rules, reached two ways.
+        // What could NOT be deleted: the status-string API itself. Shipped
+        // builds speak it and will until every install in the wild rolls over,
+        // so `/api/call-status` stays. But an API is not a decision path — it is
+        // a vocabulary. commandForLegacyStatus() translates it into a command
+        // and the SAME state machine decides what happens. One set of rules,
+        // reached through two vocabularies.
         //
-        // The aggregate is advanced BEFORE the legacy marker/broadcast below, so
-        // the two can never disagree about what happened. If the status has no
-        // aggregate meaning (`busy`), commandForLegacyStatus returns null and the
-        // legacy relay proceeds untouched.
+        // What WAS deleted: the fallthrough. This used to run the FSM and then,
+        // if the FSM did not report a change, ALSO run markTerminal +
+        // broadcastStatus — a second, independent implementation of the same
+        // decision, kept "as belt and braces during the migration window".
+        //
+        // That belt-and-braces was itself the bug. The FSM declines to change
+        // state in exactly three cases — the command was a replay, the call is
+        // already terminal, or the transition is illegal — and in ALL THREE the
+        // correct action is to broadcast NOTHING. Re-broadcasting an old status
+        // over a call that has already moved on is precisely how a dead ring
+        // screen came back to life. The "safety net" was re-introducing the
+        // failure it was meant to guard against.
+        //
+        // So: a status with a command mapping now ALWAYS returns the FSM result,
+        // change or no change. `broadcastStatus` survives ONLY for statuses with
+        // no aggregate meaning (`busy`), which are pure peer-to-peer relays and
+        // never mutate call state.
         const legacy = commandForLegacyStatus(status);
         if (legacy) {
           const fsm = await this.runCommand(callId ?? "", legacy.name, legacy.actor, { commandId });
-          // The FSM already persisted, marked terminal and broadcast the full
-          // transition. Return its richer result rather than broadcasting a
-          // second, thinner frame for the same event — a duplicate frame is how
-          // clients end up applying one transition twice.
-          if (fsm.ok === true && fsm.changed === true) return Response.json(fsm);
-          // Not a state change (replay, already terminal, illegal) → fall
-          // through to the legacy relay so a shipped client still gets its
-          // frame. Belt and braces during the migration window.
+          return Response.json(fsm, { status: fsm.ok === false ? 409 : 200 });
         }
-        let already = false;
-        if (asTerminal) {
-          const r = await this.markTerminal(status);
-          already = r.already;
-        } else {
-          await this.loadCallState();
-        }
+        // ── Non-state relay only (e.g. `busy`) ───────────────────────────────
+        // These carry information for the peer's UI but say nothing about the
+        // call's lifecycle, so there is no aggregate to advance and no risk of a
+        // competing decision. markTerminal is deliberately NOT called here: a
+        // status without a command mapping is by definition not terminal.
+        await this.loadCallState();
         const fan = this.broadcastStatus(status, callId);
         const result = {
           ok: true,
+          relay_only: true,
           terminal_status: this.terminalStatus ?? null,
-          terminal_persisted: asTerminal,
-          already_terminal: already,
+          terminal_persisted: false,
+          already_terminal: false,
           sockets_seen: fan.seen,
           sockets_sent: fan.sent,
           // [CALL-REDUCER-1] The caller (routes/api.ts) copies this onto the FCM
@@ -1159,10 +1169,28 @@ export class CallRoom {
     // a stray peer-left after the call already ended cleanly.
     if (data.type === "bye" || data.type === "hangup" || data.type === "decline" || data.type === "cancel") {
       await this.setAway(null);
-      // [AVACALL-RING-CANCEL-1] Record the durable terminal status so a late
-      // accept / in-flight ring push learns the call is over even if it never
-      // connected. Only bye/hangup also markEnded (settles billing) below.
-      await this.markTerminal(String(data.type));
+      // [CALL-FSM-2 2026-08-01] THE THIRD DECISION POINT, now also routed
+      // through the state machine.
+      //
+      // This branch used to call markTerminal() directly — a peer sending `bye`
+      // or `decline` over the SOCKET took a completely different route to
+      // "the call is over" than the same peer sending it over HTTP. Two routes,
+      // two implementations, and whichever the client happened to use decided
+      // what got recorded. That is the same disease, in a third place.
+      //
+      // It now issues a command like everything else, so the aggregate, the
+      // durable marker and the broadcast all come from one place. runCommand is
+      // idempotent and monotonic, so a socket `bye` that follows an HTTP
+      // decline is correctly a no-op rather than an overwrite.
+      //
+      // Actor is `server`: this frame arrived on an established socket whose
+      // peer identity is the room's own tagging, not an authenticated uid, so
+      // it must not claim to be the caller or the callee — `end_call` is the
+      // one command either party may legitimately issue.
+      const cmd = commandForLegacyStatus(String(data.type));
+      if (cmd) {
+        await this.runCommand(this.state.id.name ?? "", cmd.name === "decline_call" ? "end_call" : cmd.name, "server");
+      }
     }
     if (data.type === "bye" || data.type === "hangup") {
       await this.setAway(null);
