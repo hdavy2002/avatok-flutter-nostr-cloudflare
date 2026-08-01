@@ -490,8 +490,18 @@ export async function call(req: Request, env: Env): Promise<Response> {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ type: "register-token", token: ringReceiptToken, expiresAt }),
     });
+    // [CALL-AUTHZ-1 2026-08-01] Stamp WHO IS ON THIS CALL, from the
+    // AUTHENTICATED caller uid and the dialled callee uid. Every later command
+    // derives its actor from this record rather than from anything the client
+    // says about itself, so this write is what makes the command endpoint safe.
+    // It must land before the callee's phone can possibly respond — hence here,
+    // before the ring push and the WS ring below.
+    await callStub.fetch("https://call-room/participants", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ callId: b.callId, callerUid: ctx.uid, calleeUid: b.to }),
+    });
   } catch (e) {
-    console.error("Failed to register ring receipt token in CallRoom:", String(e));
+    console.error("Failed to register ring receipt token / participants in CallRoom:", String(e));
   }
 
   await env.Q_PUSH.send({
@@ -856,15 +866,18 @@ export async function callCommand(req: Request, env: Env): Promise<Response> {
   };
   if (!b.callId || !b.command) return json({ error: "callId and command required" }, 400);
 
-  // The client tells us which side of the call it believes it is on; we accept
-  // that as a HINT only. It cannot grant a capability it does not have — the
-  // command table in call_state.ts is what actually gates each action, and the
-  // uid is authenticated. A future revision should derive this from the call
-  // record itself rather than the hint; recorded so it is not mistaken for
-  // settled design.
-  const actor: "caller" | "callee" | "server" =
-    b.role === "caller" ? "caller" : b.role === "callee" ? "callee" : "callee";
-
+  // [CALL-AUTHZ-1 2026-08-01] The client-sent `role` is IGNORED.
+  //
+  // It used to be accepted as a "hint" that defaulted to callee, on the
+  // reasoning that the capability table still gated each action. That reasoning
+  // was wrong, and it was a live security hole: the capability table answers
+  // "may a callee decline?" — it never answered "is this person the callee?".
+  // Any authenticated user who learned a call id could send role:"callee" and
+  // decline, block, report or accept a stranger's call.
+  //
+  // The DO now derives the side from the PERSISTED participants plus the
+  // authenticated uid, and there is no longer any way to pass an actor through
+  // this route at all — so even a bug here cannot reintroduce the hole.
   let out: Record<string, unknown> = {};
   let status = 200;
   try {
@@ -872,7 +885,7 @@ export async function callCommand(req: Request, env: Env): Promise<Response> {
     const r = await stub.fetch("https://call/command", {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        command: b.command, actor, callId: b.callId,
+        command: b.command, authenticatedUid: ctx.uid, callId: b.callId,
         commandId: b.commandId, expectedEpoch: b.expectedEpoch, data: b.data,
       }),
     });
@@ -908,7 +921,11 @@ export async function callCommand(req: Request, env: Env): Promise<Response> {
       b.peerUid ? emailFor(env, b.peerUid).catch(() => null) : Promise.resolve(null),
     ]);
     await trackUser(env, ctx.uid, actorEmail, "call_command", "avatok", {
-      call_id: b.callId, command: b.command, actor,
+      call_id: b.callId, command: b.command,
+      // Server-derived, not claimed. `not_a_participant` in rejected_reason is
+      // a security signal, not a UX one — it means someone tried to act on a
+      // call they are not on. Any volume of it deserves investigation.
+      actor: out.actor ?? null,
       from_uid: ctx.uid, to_uid: b.peerUid ?? null,
       from_email: actorEmail, to_email: peerEmail,
       ok: out.ok === true, changed: out.changed === true,

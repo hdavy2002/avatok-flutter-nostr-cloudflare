@@ -61,11 +61,26 @@ export type Disposition =
 
 export type CallSession = {
   call_id: string;
+  /** [CALL-AUTHZ-1 2026-08-01] THE PARTICIPANTS, stamped once at admission from
+   *  the AUTHENTICATED caller uid and the dialled callee uid.
+   *
+   *  These exist so `actor` can be DERIVED from the authenticated identity plus
+   *  the call record, never taken from the request body. The earlier design
+   *  accepted a client-sent `role` hint, and the authorization table only
+   *  checked that the claimed role was allowed to issue the command — it never
+   *  checked that the authenticated user actually occupied that side of the
+   *  call. Any authenticated user who learned a call id could send
+   *  `role: "callee"` and decline, block, report or accept a stranger's call.
+   *  Membership is now a fact of the record, not a claim of the request. */
+  caller_uid: string | null;
+  callee_uid: string | null;
   /** Bumped on any structural restart of the call. A command carrying a stale
    *  expected_epoch is rejected — this is the multi-device CAS guard. */
   epoch: number;
   /** Strictly increasing. Stamped on every emitted transition so clients can
-   *  order and dedupe. */
+   *  order and dedupe. Persisted with the rest of the aggregate, so a DO
+   *  eviction mid-call cannot restart it at 1 and make a NEWER transition look
+   *  stale to a client that already applied a higher number. */
   transition_sequence: number;
 
   session_state: SessionState;
@@ -81,6 +96,8 @@ export type CallSession = {
 export function newCallSession(callId: string, now: number): CallSession {
   return {
     call_id: callId,
+    caller_uid: null,
+    callee_uid: null,
     epoch: 1,
     transition_sequence: 0,
     session_state: "creating",
@@ -157,8 +174,34 @@ function isSessionTerminal(s: CallSession): boolean {
 }
 
 /**
+ * [CALL-AUTHZ-1 2026-08-01] Derive which side of the call an AUTHENTICATED user
+ * occupies, from the persisted record. Returns null when the user is not a
+ * participant at all — which must be treated as a hard rejection.
+ *
+ * This is the security boundary. `role` from the request body is not consulted
+ * anywhere; membership is a property of the call, not a claim of the caller.
+ *
+ * Before the participants are stamped (a call created by an older client that
+ * never went through admission) both uids are null. In that case we return null
+ * — UNKNOWN, not "allowed". Fail-closed here is correct and cheap: the legacy
+ * status path still works for those calls, so the only thing refused is the NEW
+ * command endpoint on a call whose membership we cannot prove.
+ */
+export function deriveActor(s: CallSession, authenticatedUid: string): Command["actor"] | null {
+  if (!authenticatedUid) return null;
+  if (s.caller_uid && authenticatedUid === s.caller_uid) return "caller";
+  if (s.callee_uid && authenticatedUid === s.callee_uid) return "callee";
+  return null;
+}
+
+/**
  * Authorization table. The server MUST enforce this — an FCM action replay or a
  * hostile client must not be able to accept a call on someone else's behalf.
+ *
+ * NOTE this is the SECOND of two gates and is useless alone: it answers "may a
+ * callee decline?", not "is this person the callee?". [deriveActor] answers the
+ * latter and must run first. The original design had only this gate, which is
+ * why a client-supplied role was enough to act on a stranger's call.
  *
  * Returns true when `actor` is permitted to issue `name`.
  */
@@ -356,10 +399,32 @@ export function applyCommand(prev: CallSession, cmd: Command, now: number): Appl
       events.push("ring_timed_out");
       break;
 
-    case "end_call":
+    // [CALL-AUTHZ-1 2026-08-01] The disposition here used to default to
+    // `answered_by_callee` whenever none had been set yet. That is only true
+    // for a call that actually CONNECTED. A hang-up DURING RINGING — which is
+    // exactly what the socket `bye`/`cancel` path produces — has no disposition
+    // yet, so it was being recorded as an answered call. Call history, billing
+    // analytics and the missed-call surface would all have disagreed with what
+    // the user experienced.
+    //
+    // Now the disposition follows the evidence: if the call was never connected
+    // it ended without being answered, and which side hung up decides whether
+    // that reads as a cancel or a timeout.
+    case "end_call": {
+      const wasConnected =
+        prev.session_state === "connected" || prev.caller_leg_state === "connected_to_callee";
       if (!CALLEE_TERMINAL.has(s.callee_leg_state)) endCalleeRing("ended");
-      complete(s.disposition === "none" ? "answered_by_callee" : s.disposition);
+      if (s.disposition !== "none") {
+        complete(s.disposition);
+      } else if (wasConnected) {
+        complete("answered_by_callee");
+      } else {
+        // Never connected. `caller` hanging up mid-ring is a cancel; anything
+        // else ending an unanswered ring is a timeout.
+        complete(cmd.actor === "caller" ? "caller_cancelled" : "ring_timeout");
+      }
       break;
+    }
   }
 
   const changed =

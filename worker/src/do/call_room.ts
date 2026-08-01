@@ -51,7 +51,7 @@ import type { ReasonCode } from "../lib/call_events";
 import { settleCallMinute, refundUnused } from "../lib/call_billing";
 import { brainIngest } from "../lib/brain_ingest";
 import {
-  applyCommand, authorizeCommand, newCallSession, commandForLegacyStatus,
+  applyCommand, authorizeCommand, deriveActor, newCallSession, commandForLegacyStatus,
   type CallSession, type Command, type CommandName,
 } from "../lib/call_state";
 
@@ -293,19 +293,50 @@ export class CallRoom {
    */
   private async runCommand(
     callId: string, name: CommandName, actor: Command["actor"],
-    opts: { commandId?: string; expectedEpoch?: number; data?: Record<string, unknown> } = {},
+    opts: {
+      commandId?: string; expectedEpoch?: number; data?: Record<string, unknown>;
+      /** [CALL-AUTHZ-1] When present, `actor` is IGNORED and derived from the
+       *  persisted participants instead. Every client-originated command must
+       *  pass this. Only internal server-driven transitions omit it. */
+      authenticatedUid?: string;
+    } = {},
   ): Promise<Record<string, unknown>> {
     if (opts.commandId) {
       const prior = this.seenCommands.get(opts.commandId);
       if (prior) return { ...prior, replayed: true };
-    }
-    if (!authorizeCommand(name, actor)) {
-      // A hostile or confused client must not be able to accept a call on
-      // someone else's behalf, or cancel a call it is not on.
-      return { ok: false, error: "unauthorized", command: name, actor };
+      // [CALL-AUTHZ-1] Idempotency must survive a DO eviction. seenCommands is
+      // in-memory, so before this the first request after an eviction would
+      // re-run a command that had already been applied. The durable copy is the
+      // authority; the map is just a hot cache in front of it.
+      const durable = await this.state.storage.get<Record<string, unknown>>(`cmd:${opts.commandId}`).catch(() => undefined);
+      if (durable) { this.seenCommands.set(opts.commandId, durable); return { ...durable, replayed: true }; }
     }
 
-    const prev = await this.loadSession(callId);
+    const loaded = await this.loadSession(callId);
+    // ── GATE 1: MEMBERSHIP ────────────────────────────────────────────────
+    // Is this authenticated user actually on this call? Answered from the
+    // persisted record, never from the request. This is the gate whose absence
+    // meant anyone holding a call id could act on a stranger's call.
+    let effectiveActor = actor;
+    if (opts.authenticatedUid !== undefined) {
+      const derived = deriveActor(loaded, opts.authenticatedUid);
+      if (!derived) {
+        return {
+          ok: false, error: "not_a_participant", command: name,
+          // Deliberately no call state in the response: a non-participant must
+          // not learn whether the call exists, who is on it, or what it is doing.
+        };
+      }
+      effectiveActor = derived;
+    }
+    // ── GATE 2: CAPABILITY ────────────────────────────────────────────────
+    // Given that they ARE the callee, may a callee do this?
+    if (!authorizeCommand(name, effectiveActor)) {
+      return { ok: false, error: "unauthorized", command: name, actor: effectiveActor };
+    }
+    actor = effectiveActor;
+
+    const prev = loaded;
     const r = applyCommand(prev, { name, actor, command_id: opts.commandId, expected_epoch: opts.expectedEpoch, data: opts.data }, Date.now());
 
     if (!r.ok) {
@@ -346,12 +377,33 @@ export class CallRoom {
     };
     if (opts.commandId) {
       this.seenCommands.set(opts.commandId, result);
+      // [CALL-AUTHZ-1] Durable copy so idempotency survives an eviction. Only
+      // recorded for commands that actually CHANGED something — a rejected or
+      // no-op command should stay retryable rather than be permanently pinned
+      // to its failure.
+      if (r.changed) {
+        try { await this.state.storage.put(`cmd:${opts.commandId}`, result); } catch { /* best-effort */ }
+      }
       if (this.seenCommands.size > 64) {
         const oldest = this.seenCommands.keys().next().value;
         if (oldest !== undefined) this.seenCommands.delete(oldest);
       }
     }
     return result;
+  }
+
+  /** [CALL-AUTHZ-1] Stamp the participants once, at admission, from the
+   *  AUTHENTICATED caller uid and the dialled callee uid. Everything downstream
+   *  derives membership from this, so it must be written before any
+   *  client-originated command can be accepted. Idempotent. */
+  private async setParticipants(callId: string, callerUid: string, calleeUid: string): Promise<void> {
+    const s = await this.loadSession(callId);
+    if (s.caller_uid && s.callee_uid) return; // already stamped
+    s.caller_uid = callerUid || s.caller_uid;
+    s.callee_uid = calleeUid || s.callee_uid;
+    s.call_id = s.call_id || callId;
+    this.session = s;
+    try { await this.state.storage.put("fsm", s); } catch { /* best-effort */ }
   }
 
   /**
@@ -754,19 +806,41 @@ export class CallRoom {
         let body: Record<string, unknown> = {};
         try { body = (await req.json()) as Record<string, unknown>; } catch { /* empty */ }
         const name = String(body.command ?? "") as CommandName;
-        const actor = String(body.actor ?? "server") as Command["actor"];
         const callId = typeof body.callId === "string" ? body.callId : "";
         if (!name) return Response.json({ error: "command required" }, { status: 400 });
-        const out = await this.runCommand(callId, name, actor, {
-          commandId: typeof body.commandId === "string" ? body.commandId.slice(0, 64) : undefined,
+        // [CALL-AUTHZ-1] `authenticatedUid` is the ONLY identity input accepted
+        // from the route. There is deliberately no way to pass an `actor` here:
+        // the DO derives it from the persisted participants, so a compromised or
+        // buggy Worker route still cannot let someone act on a stranger's call.
+        const authenticatedUid = typeof body.authenticatedUid === "string" ? body.authenticatedUid : "";
+        if (!authenticatedUid) return Response.json({ error: "authenticatedUid required" }, { status: 400 });
+        const out = await this.runCommand(callId, name, "server", {
+          authenticatedUid,
+          commandId: typeof body.commandId === "string" ? body.commandId.slice(0, 128) : undefined,
           expectedEpoch: typeof body.expectedEpoch === "number" ? body.expectedEpoch : undefined,
           data: (body.data ?? undefined) as Record<string, unknown> | undefined,
         });
         // A rejected command is a normal, expected outcome (a stale device, a
         // replay, a race loser) — not a server error. 409 tells the client
         // "your view is out of date, here is the truth" without it being logged
-        // as a failure.
-        return Response.json(out, { status: out.ok === false && out.error !== "unauthorized" ? 409 : (out.ok === false ? 403 : 200) });
+        // as a failure. 403 is a genuine authorization refusal.
+        const denied = out.error === "unauthorized" || out.error === "not_a_participant";
+        return Response.json(out, { status: out.ok === false ? (denied ? 403 : 409) : 200 });
+      }
+      // [CALL-AUTHZ-1] Internal-only: stamp the call's participants at
+      // admission. Called from routes/api.ts call() with the AUTHENTICATED
+      // caller uid and the dialled callee uid. Must happen before any
+      // client-originated command can be authorized. Same trust boundary as
+      // GET /state — only reachable from within this Worker.
+      if (req.method === "POST" && stateUrl.pathname.endsWith("/participants")) {
+        let body: Record<string, unknown> = {};
+        try { body = (await req.json()) as Record<string, unknown>; } catch { /* empty */ }
+        const callId = typeof body.callId === "string" ? body.callId : "";
+        const callerUid = typeof body.callerUid === "string" ? body.callerUid : "";
+        const calleeUid = typeof body.calleeUid === "string" ? body.calleeUid : "";
+        if (!callerUid || !calleeUid) return Response.json({ error: "callerUid and calleeUid required" }, { status: 400 });
+        await this.setParticipants(callId, callerUid, calleeUid);
+        return Response.json({ ok: true });
       }
       // [CALL-FSM-1] Read the authoritative aggregate (late-joining client,
       // reconnect reconciliation, support debugging).

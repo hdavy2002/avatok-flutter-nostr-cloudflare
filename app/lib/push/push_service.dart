@@ -2539,9 +2539,17 @@ class PushService {
   /// Everything the socket carried is already in the HTTP body — `busy_reason`,
   /// `receptionist_enabled`, `pronoun` — so nothing is lost. Verified: the DO reads
   /// no metadata that arrived only over that socket.
+  /// [CALL-CMD-IDEMPOTENT-2] `intent` names the USER'S ACTION when several
+  /// actions share one wire status — decline, report_spam and block all signal
+  /// `decline`. `actionInstanceId` must be minted ONCE at the tap and reused
+  /// across every retry of THAT tap; callers that omit it get a per-call-stable
+  /// value, which preserves the old collapse-retries behaviour for paths where
+  /// only one such action is possible.
   static void _signalStatus(String callId, String status, String callerNpub,
-      {String? busyReason, bool receptionistEnabled = false, String? pronoun}) {
+      {String? busyReason, bool receptionistEnabled = false, String? pronoun,
+      String? intent, String? actionInstance}) {
     if (callId.isEmpty) return;
+    final actionInstanceId = actionInstance ?? 'single';
     // [BUSY-CARD-1] When we auto-busy a caller, attach why we're busy + whether Ava
     // can take a message, so the CALLER renders the personalized busy card instead
     // of a cold "User is busy". Additive: old callers ignore the extra fields.
@@ -2560,13 +2568,24 @@ class PushService {
       return;
     }
     final t0 = DateTime.now().millisecondsSinceEpoch;
-    // [CALL-CMD-IDEMPOTENT-1 2026-08-01] One id per (call, status) — i.e. per
-    // USER ACTION, not per HTTP attempt. A retry, an FCM action replay, a
-    // double-tap or CallKit double-firing all reuse it, so the server collapses
-    // them into a single transition instead of each producing a new sequence
-    // and a fresh broadcast. Deliberately NOT random per call: randomness would
-    // make every duplicate look like a distinct command, which is the bug.
-    final commandId = '$callId:$status';
+    // [CALL-CMD-IDEMPOTENT-2 2026-08-01] One id per USER ACTION, not per HTTP
+    // attempt. A retry, an FCM action replay, a double-tap or CallKit
+    // double-firing all reuse it, so the server collapses them into a single
+    // transition instead of each producing a new sequence and a fresh
+    // broadcast. Deliberately NOT random per attempt: that would make every
+    // duplicate look like a distinct command, which is the bug it prevents.
+    //
+    // FIXED: this was `$callId:$status`, which COLLIDED. Report Spam, Block and
+    // plain Decline all signal the status `decline`, so on one call they
+    // produced the same id — and the second real, distinct user action was
+    // silently swallowed as a "replay". Reporting someone after declining them
+    // would have looked like it worked and done nothing.
+    //
+    // The id now includes the intent AND a per-action instance, so two
+    // different actions on one call are distinct while retries of the SAME
+    // action still collapse. `intent` defaults to the status for callers that
+    // do not distinguish.
+    final commandId = '$callId:${intent ?? status}:$actionInstanceId';
     ApiAuth.postJson(kCallStatusUrl, {
       'to': callerNpub, 'callId': callId, 'status': status,
       'commandId': commandId, ...extra,
@@ -2772,7 +2791,9 @@ class PushService {
     final from = (extra['from'] ?? '').toString();
     unawaited(_stopRingtoneFallback(callId));
     // Terminal for the caller — Message ends the call, it does not park it.
-    _signalStatus(callId, 'decline', from);
+    // [CALL-CMD-IDEMPOTENT-2] Distinct intent: a quick reply and a plain
+    // decline both ride the `decline` status and must not collapse together.
+    _signalStatus(callId, 'decline', from, intent: 'quick_reply');
     if (_onceCallEvent(callId, 'declined')) {
       Analytics.capture('call_incoming_declined', {
         'call_id': callId,
@@ -2845,7 +2866,12 @@ class PushService {
     final callId = (extra['callId'] ?? '').toString();
     final from = (extra['from'] ?? '').toString();
     unawaited(_stopRingtoneFallback(callId));
-    _signalStatus(callId, 'decline', from);
+    // [CALL-CMD-IDEMPOTENT-2] `intent` distinguishes this from a plain decline.
+    // Both go out as status `decline`, so without it the server would treat a
+    // report that followed a decline on the same call as a duplicate and
+    // silently drop it.
+    _signalStatus(callId, 'decline', from,
+        intent: alsoBlock ? 'report_spam_block' : 'report_spam');
     if (_onceCallEvent(callId, 'declined')) {
       Analytics.capture('call_incoming_declined', {
         'call_id': callId,
