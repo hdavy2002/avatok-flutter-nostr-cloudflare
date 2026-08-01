@@ -36,6 +36,13 @@ const String kCallUrl = 'https://$kSignalingHost/api/call';
 /// Relay a call status (declined / busy / ended) to the caller via FCM. (NIP-98)
 const String kCallStatusUrl = 'https://$kSignalingHost/api/call-status';
 
+/// [CALL-QUICK-REPLY-1 2026-08-01] Deliver a canned "Message" reply to the
+/// CALLER after the callee dismissed a ringing call with a quick reply. The
+/// client sends a `quickReplyId` + `catalogVersion`; the SERVER owns the text,
+/// so a modified or outdated client cannot inject arbitrary content into a
+/// message attributed to the callee.
+const String kCallQuickReplyUrl = 'https://$kSignalingHost/api/call/quick-reply';
+
 /// [AVACALL-CANCEL-1] Read the DURABLE call state for a room (answered / ended /
 /// terminal_status) from the CallRoom DO, via a thin authed proxy. Used by the
 /// accept path to honor a cancel that arrived before/around the accept so a

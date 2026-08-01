@@ -725,6 +725,9 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/call" && req.method === "POST") return await api.call(req, env);
       if (p === "/api/notify" && req.method === "POST") return await api.notify(req, env);
       if (p === "/api/call-status" && req.method === "POST") return await api.callStatus(req, env);
+      // [CALL-QUICK-REPLY-1 2026-08-01] Callee dismissed a ringing call with a
+      // canned "Message" reply -> deliver it to the caller. Server owns the text.
+      if (p === "/api/call/quick-reply" && req.method === "POST") return await api.callQuickReply(req, env);
       if (p === "/api/call-state" && req.method === "GET") return await api.callState(req, env);
       if (p === "/api/call/ringing" && req.method === "POST") return await api.callRinging(req, env);
       if (p === "/api/call/notify-register" && req.method === "POST") return await api.callNotifyRegister(req, env);

@@ -1559,17 +1559,26 @@ class CallSession {
           _onBusy();
           return;
         }
-        if (e.status == 'decline' && !config.video && !_ended) {
+        // [CALL-DECLINE-IS-TERMINAL-1 2026-08-01] OWNER RULING A — a plain
+        // Decline ENDS THE CALL IMMEDIATELY. It never starts Ava.
+        //
+        // The previous code handed off to Ava whenever the callee happened to
+        // have the receptionist lane on, which made Decline mean two different
+        // things depending on invisible per-user config. That ambiguity is the
+        // reason this path kept re-breaking, and it also meant a caller who
+        // pressed a red decline button on the other end still got dropped into
+        // a paid AI call they never asked for.
+        //
+        // Decline and Receptionist are now DISTINCT actions:
+        //   Decline      -> caller's leg ends now, disposition 'declined'
+        //   Receptionist -> callee's ring ends, caller is handed to Ava
+        // The callee signals `decline_ava` (handled above) when they explicitly
+        // choose Receptionist. See Specs/CALL-OUTCOMES-FROZEN-2026-08-01.md.
+        //
+        // INVARIANT: `declined` may NEVER transition to `receptionist_active`.
+        if (e.status == 'decline' && !_ended) {
           _ringTimeout?.cancel();
-          // [AVARECEPT-LANES-1] a plain reject only hands off to Ava when the callee
-          // enabled the AvaTOK lane AND the 'rejected' scenario (both default OFF).
-          // Otherwise it ends as an honest declined call (voicemail is retired).
-          if (_receptionistAllowedFor('rejected')) {
-            // ignore: unawaited_futures
-            _handoffToAva('decline');
-          } else {
-            _endWith('declined', reason: 'decline-recept-off');
-          }
+          _endWith('declined', reason: 'decline-explicit');
           return;
         }
         _endWith(e.status == 'decline' ? 'declined' : e.status);
@@ -3310,16 +3319,19 @@ class CallSession {
         break;
       case 'decline':
         if (_receptionistActive) break;
-        // [CALL-OUTCOME-MENU-1] Fast-WS decline → unified menu (all call kinds).
-        if (_menuEnabled && !_connected && !_ended) {
+        // [CALL-DECLINE-IS-TERMINAL-1 2026-08-01] OWNER RULING A. The SECOND
+        // copy of the decline branch — this is the fast socket path, the one
+        // above at ~:1562 is the durable push path. They must agree, and they
+        // did not: this one handed off to Ava for ANY non-video call, ignoring
+        // even the lane check the push path applied. Whichever path won the race
+        // decided whether the caller got Ava, which is exactly how "sometimes it
+        // goes to the receptionist, sometimes it doesn't" happened.
+        //
+        // Decline now ends the call on both paths, always.
+        // Receptionist arrives as `decline_ava` and is handled separately.
+        if (!_connected && !_ended) {
           _ringTimeout?.cancel();
-          _showOutcomeMenu('declined');
-          break;
-        }
-        if (!config.video && !_connected && !_ended) {
-          _ringTimeout?.cancel();
-          // ignore: unawaited_futures
-          _handoffToAva('decline');
+          _endWith('declined', reason: 'decline-explicit-ws');
         } else {
           _endWith('declined', reason: 'decline');
         }

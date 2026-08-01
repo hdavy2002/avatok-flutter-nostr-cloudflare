@@ -1157,6 +1157,19 @@ bool _maybeRouteBrandedIncoming(String? payload) {
   return false;
 }
 
+/// [CALL-IDENTITY-SNAPSHOT-1 2026-08-01] The ONE place that reads the caller's
+/// avatar out of a ring payload.
+///
+/// `callerAvatarUrl` is what the server now stamps from the caller's public
+/// AvaTOK profile (worker routes/api.ts → consumers fcm.ts). The legacy
+/// `avatarUrl` / `fromAvatar` keys are kept purely as fallbacks — and note that
+/// NO producer has ever emitted either of them, which is precisely why the
+/// incoming-call screen has only ever shown a letter tile. Both the FCM ring
+/// and the faster InboxDO WS ring carry the same key, so the fast path and the
+/// slow path paint the same thing and there is no flicker.
+String callerAvatarFromPayload(Map<String, dynamic> d) =>
+    (d['callerAvatarUrl'] ?? d['avatarUrl'] ?? d['fromAvatar'] ?? '').toString().trim();
+
 /// [AVACALL-INUI-2] Push the branded IncomingBusinessCallScreen from a decoded
 /// FSI payload. Retries briefly: on a COLD start (the FSI just launched us over
 /// the lock screen) the root navigator may not be mounted the instant the
@@ -1175,11 +1188,17 @@ Future<void> _routeToBrandedIncoming(Map<String, dynamic> d) async {
           callId: callId,
           fromUid: (d['from'] ?? d['fromPub'] ?? '').toString(),
           fromName: (d['fromName'] ?? 'AvaTOK').toString(),
-          avatarUrl: (d['avatarUrl'] ?? d['fromAvatar'] ?? '').toString(),
+          avatarUrl: callerAvatarFromPayload(d),
+          avatarVersion: (d['callerAvatarVersion'] ?? '').toString(),
           video: (d['kind'] ?? '') == 'video',
         ),
       ));
-      Analytics.capture('call_branded_fsi_routed', {'call_id': callId});
+      Analytics.capture('call_branded_fsi_routed', {
+        'call_id': callId,
+        // [CALL-IDENTITY-SNAPSHOT-1] has_avatar=false in prod means the ring
+        // screen is painting a letter tile instead of the caller's photo.
+        'has_avatar': callerAvatarFromPayload(d).isNotEmpty,
+      });
       return;
     }
     await Future<void>.delayed(const Duration(milliseconds: 250));
@@ -1539,7 +1558,8 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
           callId: (d['callId'] ?? '').toString(),
           fromUid: (d['fromPub'] ?? '').toString(),
           fromName: (d['fromName'] ?? 'AvaTOK').toString(),
-          avatarUrl: (d['avatarUrl'] ?? d['fromAvatar'] ?? '').toString(),
+          avatarUrl: callerAvatarFromPayload(d),
+          avatarVersion: (d['callerAvatarVersion'] ?? '').toString(),
           video: d['kind'] == 'video',
         ),
       ));
@@ -2570,10 +2590,25 @@ class PushService {
     _logMissed(extra);
   }
 
-  /// Decline routing (v2 Mode C). Audio calls only — Ava is audio. Reads the
-  /// per-account local mirror written by the Settings card (DiskCache keys
-  /// receptionist_enabled + receptionist_decline_to_ava) so it works even when
-  /// the app was woken cold for the call.
+  /// Decline routing.
+  ///
+  /// [CALL-DECLINE-IS-TERMINAL-1 2026-08-01] OWNER RULING A: a plain Decline
+  /// ALWAYS signals `decline`, which ends the caller's leg immediately. It NEVER
+  /// silently upgrades itself to `decline_ava`.
+  ///
+  /// What this used to do — and why it was wrong. It read a local DiskCache
+  /// mirror of `receptionist_enabled` and, if set, rewrote the callee's Decline
+  /// into `decline_ava`. So the SAME red button meant "end this call" for one
+  /// user and "put the caller through to my paid AI receptionist" for another,
+  /// with nothing on screen to say which. Worse, the mirror is written by a
+  /// Settings card and this method frequently runs in a COLD push-woken isolate
+  /// where the mirror may not be populated at all — so the same user got
+  /// different behaviour depending on whether their app happened to be warm.
+  /// That non-determinism is why decline behaviour kept "randomly" changing.
+  ///
+  /// Handing the caller to Ava is now an explicit, separate user choice — the
+  /// Receptionist action, which signals `decline_ava` via
+  /// [receptionistIncomingCall]. See Specs/CALL-OUTCOMES-FROZEN-2026-08-01.md.
   static Future<void> _declineRouting(Map extra) async {
     unawaited(_dismissBrandedFsi()); // [AVACALL-INUI-2] clear the lock-screen FSI banner
     final callId = (extra['callId'] ?? '').toString();
@@ -2584,26 +2619,91 @@ class PushService {
     // directly via the public `declineIncomingCall` wrapper and never goes
     // through the CallKit event listener at all.
     unawaited(_stopRingtoneFallback(callId));
-    var status = 'decline';
-    try {
-      final isAudio = extra['kind'] != 'video';
-      if (isAudio) {
-        // Owner decision 2026-06-25: when Ava is enabled, an explicit Decline
-        // should ALSO hand the caller to the receptionist to take a message.
-        // This was gated behind a separate decline_to_ava sub-toggle that was
-        // off by default, so Reject → dead end instead of "Ava takes a message".
-        // Enabling Ava is now sufficient (the caller still falls back to a plain
-        // decline if Ava can't actually pick up).
-        final enabled = (await DiskCache.read('receptionist_enabled')) == '1';
-        if (enabled) status = 'decline_ava';
-      }
-    } catch (_) {/* fall back to plain decline */}
-    _signalStatus(callId, status, from);
+    _signalStatus(callId, 'decline', from);
     // CALL-GLARE-1: dedupe duplicate decline events for the same call.
     if (_onceCallEvent(callId, 'declined')) {
       Analytics.capture('call_incoming_declined', {
         'call_id': callId,
-        'routed_to': status, // 'decline' | 'decline_ava'
+        'routed_to': 'decline',
+      });
+    }
+    _logMissed(extra);
+  }
+
+  /// [CALL-QUICK-REPLY-1 2026-08-01] "Message" on the incoming-call screen: end
+  /// the call on BOTH ends and send the caller a canned reply.
+  ///
+  /// Ordering is deliberate and load-bearing. The call is terminated FIRST
+  /// (`_signalStatus`), then the message is enqueued. Coupling them the other
+  /// way round — or transactionally — would mean a momentarily unavailable
+  /// messenger leaves the caller ringing at a callee who has already dismissed
+  /// the screen. The call ending is the user's primary intent; the text is a
+  /// courtesy that can retry.
+  ///
+  /// `quickReplyId` + `catalogVersion` are the authoritative content reference.
+  /// `fallbackText` is sent only so a server that does not yet know this catalog
+  /// version can still deliver something readable; the server must prefer its
+  /// own catalog entry whenever it recognises the id.
+  static Future<void> quickReplyIncomingCall(
+    Map extra, {
+    required String quickReplyId,
+    required int catalogVersion,
+    required String fallbackText,
+  }) async {
+    unawaited(_dismissBrandedFsi());
+    final callId = (extra['callId'] ?? '').toString();
+    final from = (extra['from'] ?? '').toString();
+    unawaited(_stopRingtoneFallback(callId));
+    // Terminal for the caller — Message ends the call, it does not park it.
+    _signalStatus(callId, 'decline', from);
+    if (_onceCallEvent(callId, 'declined')) {
+      Analytics.capture('call_incoming_declined', {
+        'call_id': callId,
+        'routed_to': 'quick_reply',
+        'quick_reply_id': quickReplyId,
+      });
+    }
+    _logMissed(extra);
+    if (from.isEmpty) return;
+    try {
+      final res = await ApiAuth.postJson(kCallQuickReplyUrl, {
+        'to': from,
+        'callId': callId,
+        'quickReplyId': quickReplyId,
+        'catalogVersion': catalogVersion,
+        'fallbackText': fallbackText,
+      });
+      Analytics.capture('call_quick_reply_sent', {
+        'call_id': callId, 'to_uid': from, 'quick_reply_id': quickReplyId,
+        'http_status': res.statusCode, 'ok': res.statusCode == 200,
+      });
+    } catch (e) {
+      Analytics.capture('call_quick_reply_failed', {
+        'call_id': callId, 'to_uid': from, 'quick_reply_id': quickReplyId,
+        'error': e.toString(),
+      });
+    }
+  }
+
+  /// [CALL-DECLINE-IS-TERMINAL-1 2026-08-01] "Receptionist" on the incoming-call
+  /// screen — the callee's ring stops and the CALLER is handed to Ava to leave a
+  /// message. This is the ONLY path that may produce `decline_ava`.
+  ///
+  /// Deliberately a sibling of [declineIncomingCall] rather than a flag on it:
+  /// the two are different user intentions with different outcomes for the
+  /// caller (one drops them, one keeps their leg alive), and collapsing them
+  /// into one function with a boolean is what created the ambiguity above.
+  static Future<void> receptionistIncomingCall(Map extra) async {
+    unawaited(_dismissBrandedFsi());
+    final callId = (extra['callId'] ?? '').toString();
+    final from = (extra['from'] ?? '').toString();
+    unawaited(_stopRingtoneFallback(callId));
+    _signalStatus(callId, 'decline_ava', from);
+    // Same dedupe key as decline — mutually exclusive outcomes of ONE ring.
+    if (_onceCallEvent(callId, 'declined')) {
+      Analytics.capture('call_incoming_declined', {
+        'call_id': callId,
+        'routed_to': 'decline_ava',
       });
     }
     _logMissed(extra);
