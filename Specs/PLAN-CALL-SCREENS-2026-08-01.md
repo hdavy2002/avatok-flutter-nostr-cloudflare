@@ -30,7 +30,7 @@ The full register, so nothing is lost. **Shipped** = in prod worker and/or build
 | 14 | Two Decline buttons behaving differently (top notification vs branded screen) | **NOT DONE** — P0-c |
 | 15 | Receptionist showing the caller "Declined" | **NOT DONE** — P0-a |
 | 16 | App icon not changing on the phone | **Diagnosed — see Part 5** |
-| 17 | Cross-user call control (any user could decline a stranger's call) | **Shipped** — found by Luna, was live ~40 min |
+| 17 | Cross-user call control (any user could decline a stranger's call) | **❌ OPEN — P0. I WAS WRONG TO MARK THIS SHIPPED.** See Part 7, finding A |
 | 18 | Release gates 1–5 | **4 of 5 closed**; gate 3 half-open (Part 4, P1) |
 | 19 | On Call screen — the icoming5 design | **This plan** |
 
@@ -184,19 +184,20 @@ clients know to update.
 
 The real infrastructure, and it is better than what I described:
 
-| Piece | Where |
-|---|---|
-| Cloudflare Realtime SFU routes | `worker/src/routes/groupcall.ts` |
-| Room authority DO | `worker/src/do/group_call_room.ts` |
-| Client | `app/lib/features/conference/cloudflare_conference_controller.dart` |
-| Flag | `cloudflareConferenceEnabled` |
-| Cap | `MAX_CONF_PARTICIPANTS = 25` — **already exactly what R5 wants** |
-| Join security | HMAC-SHA256 signed tickets: `{call_id, uid, session_id, generation, exp, nonce}` |
-| Bounded pulls | `MAX_AUDIO_PULLS = 6` — a 25-person room never pulls 25 audio streams |
+| Piece | Where | Reusable as-is? |
+|---|---|---|
+| Cloudflare Realtime SFU routes | `worker/src/routes/groupcall.ts` | mostly |
+| Room authority DO | `worker/src/do/group_call_room.ts` | mostly |
+| Client | `app/lib/features/conference/cloudflare_conference_controller.dart` | **no** — finding D |
+| Flag | `cloudflareConferenceEnabled` | yes |
+| Cap | `MAX_CONF_PARTICIPANTS = 25` — exactly what R5 wants | yes |
+| Join security | HMAC-SHA256 tickets `{call_id, uid, session_id, generation, exp, nonce}` | **no** — nonce never consumed, finding B |
+| Bounded pulls | `MAX_AUDIO_PULLS = 6` | **no** — it is a *cap*, not a *selection*, finding C |
+| Conference billing | — | **does not exist**, finding E |
 
-So the SFU is Cloudflare-native, same platform as everything else, already
-capped at 25, already ticket-secured, already bounded. **We are not building a
-conference. We are building a door into one that exists.**
+The SFU is Cloudflare-native, same platform as everything else, and capped at 25.
+**We are not building a conference — we are building a door into one that
+exists.** But the audit shows that door needs more than an address.
 
 ## The one real gap
 
@@ -206,8 +207,12 @@ escalation has no group.
 
 **Work item:** make a room addressable by an **ad-hoc room id derived from the
 call id**, with membership derived from the call's participant list instead of
-group membership. Everything else — tickets, caps, pull limits, telemetry —
-is reused untouched.
+group membership.
+
+> ⚠️ **I originally wrote "everything else — tickets, caps, pull limits,
+> telemetry — is reused untouched." That was wrong and is retracted.** The audit
+> found the tickets, the audio selection and the billing all need work before
+> they can carry this feature. See Part 7, findings B, C and E.
 
 ## The technique: **subscribe early, render late** (make-before-break)
 
@@ -515,6 +520,8 @@ in a diff.
 
 # PART 6 — BUILD ORDER
 
+> **Superseded by Part 7.** The audit's wave list replaces the one below.
+
 Sol's ordering verdict was unambiguous, and I accept it:
 
 > **"Add call must not enter implementation rollout until that autonomy is
@@ -551,3 +558,184 @@ the only change in the build.
 **Deleted entirely:** video toggle (R1).
 **Deferred as more dangerous than the media migration:** automatic billing-anchor
 transfer.
+
+---
+
+# PART 7 — CODEBASE AUDIT, 2026-08-01
+
+**Verdict: do not implement Add call from this plan yet.** The direction is
+sound — server authority, make-before-break, two-phase commit, drain/rollback,
+billing consent all survive. But the audit found release blockers in the code
+this plan assumed was ready, **including one live authorization hole**.
+
+I verified every finding below against the source myself before accepting it.
+
+## ⛔ Finding A — cross-user call control is NOT closed. I was wrong.
+
+**I marked issue 17 "Shipped". It is not shipped, and the hole is still open in
+production.**
+
+What I actually built: `/api/call/command`, with two proper gates — membership
+derived from the persisted record, then capability.
+
+What I failed to do: **move the client onto it.**
+
+```
+grep -rn "call/command" app/lib/     ->  NO MATCHES
+app/lib/core/config.dart:37          ->  kCallStatusUrl = '.../api/call-status'
+```
+
+Every Flutter decline, accept and receptionist action still goes through the
+**old** `/api/call-status`. That route calls `requireUser`, so it is
+*authenticated* — but it then forwards to the DO's `/mark-terminal` with a body
+of `{status, callId, terminal, commandId}` and **no `authenticatedUid`**. The
+comment on `runCommand` states the rule plainly:
+
+> *"When present, `actor` is IGNORED and derived from the persisted participants
+> instead. **Every client-originated command must pass this.**"*
+
+It is not passed. So Gate 1 — membership — is skipped, and the legacy hard-coded
+actor is trusted. Worse, the FCM fan-out then goes to the **client-supplied**
+recipient regardless of what the DO decided.
+
+**Impact:** any authenticated user with a call id can terminate a stranger's call
+and push a fabricated call-status to any user.
+
+**Why my verification missed it, which is the part worth remembering.** Luna told
+me *"a 401 check proves authentication, not authorization correctness"*, and
+release gate 4 required authorization tests. I wrote them — 35 tests, all
+passing. **They exercise `/api/call/command`, which no client uses.** The tests
+guarded the secure path while every real request went down the insecure one. A
+green suite over an unused code path is worse than no suite, because it produces
+confidence.
+
+`callQuickReply()` has the same membership gap, and additionally accepts
+client-supplied fallback text for unknown reply ids.
+
+**Action: P0, ahead of everything, including P0-b.**
+
+## Finding B — join tickets are replayable
+
+`verifyJoinTicket()` validates that a nonce is *present*; it is never consumed or
+revoked. A valid ticket replayed inside its window can displace the legitimate
+socket for that uid. There is also **no provisional membership state** — once
+connected, a participant may publish and pull.
+
+That kills the privacy rule I wrote in Part 3 (no recording/transcription/bots
+before commit): it needs **enforceable server-side ACLs**, not a documented
+promise. A provisional participant must be structurally unable to subscribe.
+
+## Finding C — the "6 of 25" audio selection does not exist
+
+I claimed the conference is "already smart enough not to pull all 25". **It is
+not.** The client loops the roster **in roster order** and pulls each audio
+track; the server accepts the first six and rejects the rest. Speaker updates
+drive *video* policy, not audio rebalance.
+
+So in a large room, **participants outside the first six may never be heard at
+all.** Speaker levels are also self-reported by clients, and the DO sorts the
+selected set alphabetically before naming a "dominant" speaker.
+
+`MAX_AUDIO_PULLS = 6` is a **cap**, not a **selection**. Dynamic
+loudest-speaker selection is a required wave, not a bonus.
+
+## Finding D — the client cannot do the silent warm-up
+
+Part 3 assumes "subscribed, renderer attached, zero gain". The conference
+controller today:
+
+- calls `getUserMedia()` **itself** — so migration would prompt for the
+  microphone, which Sol correctly called a design bug
+- forces the audio route toward **speaker**
+- **stops its microphone tracks** on teardown — exactly the `track.stop()` hazard
+  the plan forbids
+- has **no per-remote-track gain control or mixer**; remote audio auto-plays on
+  arrival
+
+Its health sampler runs every **5 s**, slower than the 4 s preparation deadline
+it is meant to feed, and does not produce the continuity evidence `sfu_ready`
+requires.
+
+**Zero-gain rendering is not an available switch — it needs a native audio
+feasibility spike before any of this is scheduled.**
+
+## Finding E — conference billing does not exist
+
+The real billing ticker lives in the **two-party `CallRoom`**, which settles the
+partial minute and refunds the remainder on end. `GroupCallRoom` has
+`started_by` and nothing else — **zero** occurrences of sponsor, escrow, tariff,
+billing segment or settle. Its client "billing beat" is telemetry only.
+
+**So promotion as designed would end P2P billing and start nothing.** The call
+becomes free and unmetered at the exact moment it becomes expensive to serve.
+
+"The initiator keeps paying after leaving" (D10) therefore needs a **dedicated
+server billing wave before promotion** — not a later host-transfer wave.
+
+## Finding F — quick replies conflict with the state machine
+
+D2 says Decline commits first, then the reply menu opens. But the FSM models
+`send_quick_reply` as **the terminal outcome itself** — so once Decline completes
+the aggregate, a later quick-reply command is rejected as already terminal. The
+standalone endpoint sidesteps this, but lacks membership and durable one-use
+authorization.
+
+**Decision required, and the owner's UX implies the first:**
+
+1. ✅ Decline is terminal; a quick reply afterwards is an **authenticated,
+   idempotent, one-use post-call courtesy message** — a separate capability, not
+   a call command.
+2. Quick reply remains the original terminal command (contradicts R4).
+
+## Finding G — server authority is genuinely not reached
+
+Confirms P0-b, and adds a second half I had not written down:
+
+- the caller still owns **12 s and 35 s** local timers in `call_session.dart`
+- `authorityEnforced: false` in `config.ts` — *"verdicts NOT yet enforced"*
+
+So the authority exists and is **switched off**. P0-b must therefore require a
+**server alarm/deadline**, with client timers demoted to display and request
+only.
+
+## Also corrected
+
+- **DTMF is a feasibility item, not free.** `flutter_webrtc` exposes DTMF
+  sending, but Cloudflare's documented SFU audio codecs are Opus and G.711 —
+  **not RFC 4733 telephone-event**. My "build it right now, it's free" line in D3
+  is retracted; SFU and IVR behaviour must be proven separately.
+- The companion `FEATURE-LIST-…` doc is **stale** — still says 6-second quick
+  replies, keypad hidden on AvaTOK calls, max 3 participants, host departure ends
+  the call. Reconciled.
+
+---
+
+# PART 8 — CORRECTED BUILD ORDER
+
+| Wave | Contents | Why here |
+|---|---|---|
+| **0** | **Finding A** — move the Flutter client onto `/api/call/command`; pass `authenticatedUid` on every client-originated DO command; fix `callQuickReply` membership; stop trusting the client-supplied push recipient. **Then write tests against the path the client actually uses.** | Live authorization hole |
+| **1** | Staging D1 `avatok_numbers` migration | *Moved from last to near-first — compatibility cannot be proved while `/api/me` 500s* |
+| **2** | **P0-b** — server alarm/deadline owns ring timeout; delete the 12 s/35 s client authority; flip `authorityEnforced` after shadow data is clean | Gates everything |
+| **3** | P0-a, P0-c, P0-d — separate decline/receptionist commands, one action coordinator, deterministic teardown | The bug class |
+| **4** | Incoming screen: 4 controls, spam sheet, persistent reply menu with ✕ (R4) via **finding F option 1**, voicemail as outcome (D1) | Low risk |
+| **5** | On Call: Pause + hold overlay, equaliser, toasts, portrait lock. **DTMF spike separately** | Low risk |
+| **6** | **Conference authorization**: nonce consumption/revocation, provisional membership ACLs that structurally forbid publish/subscribe/record before commit | Finding B |
+| **7** | **Dynamic audio selection** — real loudest-speaker rebalance, server-side, not roster order | Finding C |
+| **8** | **Conference billing** — sponsor, escrow, tariff snapshot, segments, server ticker, settlement | Finding E — must precede promotion |
+| **9** | **Native audio spike** — zero-gain rendering, shared capture source, route control, ≤1 s stats sampling | Finding D — go/no-go for the whole migration |
+| **10** | Freeze + test `CallRoom → conference` promotion semantics | |
+| **11** | Ad-hoc `ConferenceRoomDO` identity, tickets, reconnect tenure | |
+| **12** | Two-peer provisional preparation — **without ringing C** | |
+| **13** | Device-lab: overlap, background, Bluetooth, Wi-Fi→cellular, low-end Android, iPhone speaker, wired headset | Do not skip |
+| **14** | C reservation, invitation, provisional join | |
+| **15** | Commit / drain / rollback | |
+| **16** | Participants 4…25 | |
+| **17** | Host transfer (**not** billing transfer) | |
+| *later* | Explicit billing-sponsorship continuation, with consent | |
+
+**Wave 9 is a go/no-go.** If zero-gain rendering proves infeasible on real
+devices, the whole subscribe-early/render-late design needs rethinking — and
+that is far cheaper to learn at wave 9 than at wave 15.
+
+**Nothing was built, deployed or shipped during the audit.**

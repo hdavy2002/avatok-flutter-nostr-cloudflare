@@ -9,6 +9,15 @@ actually building; this file is the raw inventory it was derived from.
 
 > **OWNER RULING R1 (2026-08-01): VIDEO IS REMOVED.** Section B6 is void.
 > **OWNER RULING R2: Add call is AUDIO CONFERENCE ONLY.**
+> **R3: keypad stays visible on ALL calls** (IVR is coming) — supersedes D3 below.
+> **R4: the quick-reply menu stays open until dismissed**, with an ✕ exit icon —
+> no auto-dismiss timer. **R5: up to 25 participants**, not 3.
+>
+> ⚠️ **AUDIT 2026-08-01 — DO NOT BUILD ADD CALL FROM THIS FILE.** A codebase
+> audit found release blockers, including a live authorization hole
+> (cross-user call control is NOT closed — the client never moved onto the
+> secure endpoint). See PART 7 and the corrected 18-wave build order in PART 8
+> of `PLAN-CALL-SCREENS-2026-08-01.md`.
 
 Status key:
 **[BUILT]** exists and works · **[PARTIAL]** exists but needs change ·
@@ -88,7 +97,7 @@ Reduced from 7 controls to **4**. `Message`, `Voice Mail` and the standalone
 | # | Feature | Status |
 |---|---|---|
 | 18 | **Mute / Unmute** — toggles, label and colour change | **[BUILT]** |
-| 19 | **Keypad** — DTMF only, PSTN calls only (D3) | **[PARTIAL]** see B3 |
+| 19 | **Keypad** — DTMF, ALL calls (R3) | **[PARTIAL]** see B3 |
 | 20 | **Audio** (speaker toggle) | **[BUILT]** |
 | 21 | **Add call** — audio conference only (R2) | **[HARD]** see B5 |
 | 22 | ~~**Video**~~ | **REMOVED — owner ruling R1** |
@@ -263,17 +272,17 @@ Answered in `PLAN-CALL-SCREENS-2026-08-01.md`. Summary:
 
 | Question | Answer | Where |
 |---|---|---|
-| Message / quick-reply — dropped or moved? | **Moved.** Button removed; reply strip appears for ~6s *after* the decline commits, so it never delays the disconnect | D2 |
+| Message / quick-reply — dropped or moved? | **Moved.** Button removed; menu opens *after* the decline commits and **stays open until dismissed** via an ✕ icon (R4). Implemented as a post-call courtesy message, not a call command — see audit finding F | D2 / R4 |
 | Voice Mail — dropped or moved? | **Moved.** No longer a callee button — it becomes an automatic *outcome* offered to the caller when nobody takes the call | D1 |
-| Keypad — DTMF or dial? | **DTMF only**, and hidden entirely on AvaTOK-to-AvaTOK calls. Green dial button removed | D3 |
+| Keypad — DTMF or dial? | **DTMF only, visible on ALL calls** (R3 — IVR is coming). Green dial button still removed. **Feasibility unproven:** Cloudflare's SFU documents Opus and G.711, not RFC 4733 telephone-event | R3 |
 | Contacts — own button? | **No.** Reachable only via Add call, as drawn | D4 |
-| Add call — max participants? | **3** (you + 2) in v1 | D6 |
+| Add call — max participants? | **25** (R5), via a live switch to the Cloudflare SFU | R5 |
 | Add call — peer consent? | **Told, not asked.** Disclosure + join tone, no modal | D7 |
 | Add call — if they don't answer? | **Nothing happens.** Ring out-of-band, migrate to conference only *on answer* | D5 |
 | Video — consent model? | **Void — video removed** | R1 |
 | Call waiting? | **No** in v1 — second caller goes to receptionist | D8 |
 | Removing a participant? | **No** in v1 — anyone may leave, nobody may remove | D9 |
-| Leaving a 3-way? | **Host leaves → call ends** for all | D10 |
+| Leaving a call? | **Call continues.** Hosting transfers to the longest-present eligible participant; **billing does NOT transfer** — the initiator stays the sponsor. Automatic billing transfer is deferred as an abuse vector | D10 |
 | Added person's screen? | *"Adding you to a call with \<Peer\>"* | D12 |
 | Ringback during add? | **Adder only** | D11 |
 | Landscape? | **Portrait-locked** | D13 |
