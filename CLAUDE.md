@@ -370,9 +370,55 @@ building. It governs ALL AvaVerse apps. The two client rules that bite hardest:
 ### Tooling
 
 - Use **Desktop Commander** for all file and shell operations.
-- **No local build tools.** Do NOT attempt builds, compiles, or local verification
-  (no `npm build`, `flutter build`, `flutter analyze`, etc.) — they will fail. All
-  builds run in GitHub Actions.
+- **Local Flutter builds now WORK on the emulator (set up 2026-07-31).** This
+  REPLACES the old "No local build tools — they will fail" rule, which was true only
+  because no toolchain was installed. Hot reload is ~150–250 ms, versus a 40–80 min
+  CI round trip, so **UI/design iteration belongs on the emulator, not in CI.**
+
+  ```bash
+  scripts/dev-emulator.sh            # boot emulator + run app (hot reload live)
+  scripts/dev-emulator.sh reload     # push Dart changes, keeps app state
+  scripts/dev-emulator.sh restart    # full Dart restart
+  scripts/dev-emulator.sh log        # tail the run log
+  ```
+
+  Release/Play builds still run ONLY in GitHub Actions — never build a release
+  locally, and the "never trigger a build unless the owner asks" rule below is
+  unchanged.
+
+  **Four things that will break a local build if you touch them:**
+
+  1. **JDK must be 17, not Android Studio's bundled JBR.** The bundled JBR is JDK 25
+     and Gradle rejects it with the useless message `* What went wrong: 25.0.2`.
+     Temurin 17 lives at `~/Library/Java/JavaVirtualMachines/temurin-17`, wired via
+     `flutter config --jdk-dir` and `~/.gradle/gradle.properties`
+     (`org.gradle.java.home`). 17 matches CI, and `flutter_callkit_incoming` demands
+     a JDK-17 toolchain specifically.
+  2. **Run `python3 tool/postcreate.py` after any `android/` change.** CI runs it
+     every build; it bumps AGP 8.7.0 → 8.9.1 and Gradle 8.10.2 → 8.11.1. The
+     committed `android/` is the UN-patched state, so without it
+     `androidx.browser:1.9.0` fails `checkDebugAarMetadata`.
+  3. **Run `dart run build_runner build`.** The committed `db.g.dart` is stale
+     (missing `senderPub`); CI regenerates it on every build.
+  4. **`app/android/local.properties` and `app/android/app/google-services.json` are
+     gitignored** — a fresh clone has neither, and the build fails without them.
+
+  Local builds are DEBUG builds, signed with the committed `avatok-debug.keystore`.
+  Google sign-in works in debug as of 2026-07-31 via the "AvaTOK Android (debug
+  keystore)" OAuth client (SHA-1 `13:D9:F7:C1:…:ED:3C`) in `avatok-e19ef`; before
+  that, every debug build died with `ApiException: 10` (DEVELOPER_ERROR) because only
+  the Play and upload keys had OAuth clients. Adding a SHA-1 in Firebase does NOT
+  create the OAuth client — this project's credentials are managed by hand in the
+  Google Cloud console.
+
+- **THE REPO NO LONGER LIVES IN iCloud (moved 2026-07-31 — do not move it back).**
+  Real location is `/Users/davy/dev/avaTOK-2-Flutter`, with a symlink at the old
+  `~/Documents/websites/avaTOK-2-Flutter` path so every existing tool and script
+  keeps working. `~/Documents` is iCloud-synced, and iCloud silently corrupted the
+  old `.git` over ~2 months: conflict duplicates (`HEAD 2`, `config 2`, `objects 2`,
+  `index 2`…`index 8`) and finally an unreadable loose object that made `git status`,
+  `diff`, `fetch` and `fsck` all die with **SIGBUS**. Never put this repo, or any
+  git repo, back under `~/Documents` or `~/Desktop`.
 
 ### Git protocol (MANDATORY — this repo is shared by multiple agents)
 
