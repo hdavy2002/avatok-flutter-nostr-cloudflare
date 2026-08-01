@@ -59,8 +59,41 @@ already answers them. Run exactly:
 gh workflow run android.yml --ref main -f environment=prod -f artifact=both -f play_track=internal
 ```
 
-Then tell him the run URL and that it needs his approval (prod pauses on the
-`production` Environment gate). CI does the rest with no further input:
+**Then APPROVE the production gate yourself.** "ship it" means the whole thing;
+leaving the run parked on the gate and telling him to go and click a button in
+GitHub is exactly the hand-him-commands behaviour this section forbids. The
+`gh` CLI is authenticated as `hdavy2002`, who is the required reviewer, so the
+agent can approve. Discovered 2026-08-01 — before that, agents were stopping at
+the gate and the owner was clicking Approve by hand for no reason.
+
+```bash
+RUN=<run id printed by the command above>
+REPO=hdavy2002/avatok-flutter-nostr-cloudflare
+
+# 1. Get the environment id and confirm you're allowed to approve.
+gh api "repos/$REPO/actions/runs/$RUN/pending_deployments"
+#    -> read .[0].environment.id and check .[0].current_user_can_approve == true
+
+# 2. Approve. NOTE: must be piped as JSON via --input -.
+#    `-f "environment_ids[]=123"` FAILS with 422 "not an integer" because -f
+#    sends every value as a string and this endpoint wants a real int array.
+echo '{"environment_ids":[<ENV_ID>],"state":"approved","comment":"<why>"}' \
+  | gh api --method POST "repos/$REPO/actions/runs/$RUN/pending_deployments" --input -
+```
+
+**Only auto-approve when the owner actually said "ship it"** (or equivalent).
+The gate is a real checkpoint — the magic word IS the approval. Never approve a
+build he did not ask for, and never approve one you started speculatively.
+
+**Before shipping, check whether a build is already queued for the same code.**
+A build carries the SHA it was triggered from. If a run is already waiting and
+`git diff --name-only <run-sha> HEAD -- app/` is EMPTY, the client code is
+identical — approve that run instead of cancelling and burning another ~30
+minutes. Only re-trigger when `app/` genuinely differs. Conversely, if a queued
+run PREDATES a client fix, cancel it: approving it ships stale code to the
+internal track.
+
+CI does the rest with no further input:
 
 1. builds the `.aab` **and** the side-loadable arm64 `.apk`
 2. publishes the `.aab` to the Play **internal testing** track
@@ -148,6 +181,14 @@ value, then the old, then the new. That is propagation, **not** a failed deploy 
 not a gradual-deployment split (check `wrangler deployments list` — a normal deploy
 is one version at 100%). Wait a minute and re-probe several times before concluding
 anything. An agent burned a chunk of a session chasing a phantom rollback here.
+
+**0. A GREEN DEPLOY IS NOT A GREEN TYPECHECK. Run `npx tsc --noEmit` in
+`worker/` BEFORE every `cf.sh worker deploy`.** Wrangler builds with esbuild,
+which strips types without checking them, so a deploy succeeds on code that does
+not compile. On 2026-08-01 a `track()` call went to prod with 3 args instead of
+5; the props object landed in the `app_name` slot and the alert it powered would
+have fired malformed — which, for an alert, is the same as not firing. Nothing
+failed. Nothing warned. The deploy was green.
 
 **4. COMMIT worker source BEFORE `cf.sh worker deploy`.** The tree is shared by
 several agents. On 2026-07-15 an agent deployed an uncommitted `config.ts` edit;
