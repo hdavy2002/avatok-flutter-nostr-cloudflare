@@ -206,6 +206,12 @@ export interface PushMsg {
   callerAvatarUrl?: string | null;
   callerAvatarVersion?: string | null;
   identitySnapshotVersion?: number | string | null;
+  // [CALL-REDUCER-1 2026-08-01] kind === "call-status": the CallRoom DO's
+  // monotonic transition sequence, copied onto the FCM backstop by
+  // routes/api.ts so the socket path and the push path describe the SAME
+  // transition with the SAME number. The client reducer drops any sequence it
+  // has already applied.
+  seq?: number | null;
   // kind === "group_invite": the inviter added the recipient to a group. Carries
   // the group name + conv id so the app can deep-link straight to the group and
   // show the Accept/Decline prompt.

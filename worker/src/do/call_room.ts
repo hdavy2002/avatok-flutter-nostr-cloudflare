@@ -110,6 +110,10 @@ export class CallRoom {
   // can both refuse to ring / connect a call whose caller is already gone.
   private terminalStatus: string | null | undefined; // undefined = not loaded yet
   private terminalAt: number | null | undefined;
+  /** [CALL-REDUCER-1 2026-08-01] Monotonic transition counter stamped on every
+   *  authoritative status broadcast so clients can order and dedupe them.
+   *  See broadcastStatus() for why in-memory is sufficient. */
+  private transitionSeq = 0;
   // CALL-GEN-1: per-peer generation counter. Each accepted (re)join / reconnect of
   // a peer id bumps its gen; the 'welcome' tells the client its current gen, and it
   // stamps gen on every frame. A frame whose gen is LOWER than the DO's current gen
@@ -245,13 +249,29 @@ export class CallRoom {
    *  Hibernation-safe: an inbound fetch() wakes the DO and getWebSockets()
    *  returns the currently-attached sockets. A detached caller yields 0 sends —
    *  which is exactly why the FCM queue path stays as the durable backstop. */
-  private broadcastStatus(status: string, callId?: string, extra?: Record<string, unknown>): { seen: number; sent: number } {
+  private broadcastStatus(status: string, callId?: string, extra?: Record<string, unknown>): { seen: number; sent: number; seq: number } {
     let seen = 0, sent = 0;
+    // [CALL-REDUCER-1 2026-08-01] MONOTONIC TRANSITION SEQUENCE.
+    //
+    // Every authoritative transition carries a strictly increasing `seq`, so a
+    // client can ORDER what it receives and drop anything stale. Without this a
+    // late FCM redelivery, a socket reconnect replay, a duplicate queue message
+    // or a multi-device race can all re-apply an OLD transition on top of a
+    // newer one — which is how a call that had already moved on could snap back
+    // to a ringing UI. The client reducer (push_service.applyRingTransition)
+    // refuses any seq <= the one it has already applied.
+    //
+    // In-memory is sufficient and correct here: the sequence only has to be
+    // monotonic within one call's lifetime, and a DO eviction mid-call would
+    // also drop the sockets this is broadcast to. Persisting it would add a
+    // storage write to the latency-critical decline path for no benefit.
+    this.transitionSeq = (this.transitionSeq ?? 0) + 1;
     const frame = JSON.stringify({
       type: status,
       ...(callId ? { callId } : {}),
       ...(extra ?? {}),
       terminalAt: this.terminalAt ?? Date.now(),
+      seq: this.transitionSeq,
       src: "do",
     });
     for (const w of this.state.getWebSockets()) {
@@ -260,7 +280,7 @@ export class CallRoom {
       // throws here and must not be reported to the caller as a delivery.
       try { w.send(frame); sent++; } catch { /* stale socket */ }
     }
-    return { seen, sent };
+    return { seen, sent, seq: this.transitionSeq };
   }
 
   /** [WP2] `reason` drives the refund event's ReasonCode when this transition
@@ -617,6 +637,11 @@ export class CallRoom {
           already_terminal: already,
           sockets_seen: fan.seen,
           sockets_sent: fan.sent,
+          // [CALL-REDUCER-1] The caller (routes/api.ts) copies this onto the FCM
+          // backstop so BOTH delivery paths carry the SAME sequence number.
+          // If they carried different ones the client could not tell a socket
+          // frame and its own FCM duplicate apart, and would apply both.
+          seq: fan.seq,
         });
       }
       if (req.method === "POST") {

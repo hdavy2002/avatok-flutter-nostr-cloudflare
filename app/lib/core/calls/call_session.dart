@@ -3198,6 +3198,18 @@ class CallSession {
     }
     if (_ended) return;
     final d = jsonDecode(raw as String) as Map<String, dynamic>;
+    // [CALL-REDUCER-1 2026-08-01] Ring-surface cleanup for a DO-originated
+    // authoritative status is delegated to the ONE reducer, which orders on
+    // `seq` and drops anything stale. Only DO-stamped frames (src=='do') carry
+    // a transition sequence; peer-relayed signalling frames do not and are
+    // untouched here. This runs BEFORE the switch below so the ring surface is
+    // torn down even if a later branch returns early.
+    if ((d['src'] ?? '').toString() == 'do') {
+      final st = (d['type'] ?? '').toString();
+      final cid = (d['callId'] ?? config.room).toString();
+      final seq = d['seq'] is int ? d['seq'] as int : int.tryParse((d['seq'] ?? '').toString());
+      unawaited(applyRingTransition(cid, st, seq: seq, source: 'do_socket'));
+    }
     // CALL-GEN-2: drop stale-generation inbound frames PER SENDER. The DO re-stamps
     // every relayed frame with the sender's authoritative gen, and stamps `from` with
     // the sender's id. A frame is stale ONLY if its gen is lower than the last gen we

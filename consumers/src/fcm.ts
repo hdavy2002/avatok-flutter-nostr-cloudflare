@@ -637,6 +637,12 @@ function buildPayload(msg: PushMsg): { data: Record<string, string>; highPriorit
       ...(msg.busy_reason ? { busy_reason: String(msg.busy_reason) } : {}),
       ...(msg.receptionist_enabled != null ? { receptionist_enabled: msg.receptionist_enabled ? "1" : "0" } : {}),
       ...(msg.pronoun ? { pronoun: String(msg.pronoun) } : {}),
+      // [CALL-REDUCER-1 2026-08-01] The CallRoom DO's monotonic transition
+      // sequence. The client reducer orders on this and drops anything stale,
+      // which is what makes a late FCM redelivery, a socket reconnect replay
+      // and a duplicate queue message harmless rather than a source of UI
+      // flicker or a resurrected ring screen. FCM data values must be strings.
+      ...(msg.seq != null ? { seq: String(msg.seq) } : {}),
     } };
   }
   if (msg.kind === "group_invite") {

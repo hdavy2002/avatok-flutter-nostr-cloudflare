@@ -378,14 +378,17 @@ Future<void> _handleBackgroundMessage(RemoteMessage message) async {
       await _queuePendingCallOp(d);
     } else if (type == 'call-status') {
       // Caller cancelled / call ended before we answered → stop ringing.
-      final callId = (d['callId'] ?? '').toString();
-      if (callId.isNotEmpty && _terminalCallStatus((d['status'] ?? '').toString())) {
-        // [AVACALL-CANCEL-1] Record BEFORE we (async) end the CallKit ring, so an
-        // accept that races the cancel still finds the terminal marker.
-        _noteTerminalCall(callId);
-        await FlutterCallkitIncoming.endCall(callId);
-        await _dismissBrandedFsi(); // [AVACALL-INUI-2] tear down the lock-screen branded FSI too
-      }
+      // [CALL-REDUCER-1] Background isolate routes through the SAME reducer as
+      // the foreground. It used to run its own abbreviated teardown here (it
+      // forgot the ringtone fallback and the glare globals entirely), which is
+      // why a call ended while the app was backgrounded could leave state
+      // behind that only a restart cleared.
+      await applyRingTransition(
+        (d['callId'] ?? '').toString(),
+        (d['status'] ?? '').toString(),
+        seq: int.tryParse((d['seq'] ?? '').toString()),
+        source: 'fcm_bg',
+      );
     } else if (type == 'now_free' || type == 'call_now_free') {
       // [BUSY-CARD-1] A callee we asked to be notified about is now free →
       // surface the tap-to-call banner even when backgrounded/killed.
@@ -540,6 +543,116 @@ void _noteTerminalCall(String callId) {
   if (_terminalCallAt.length > 64) {
     _terminalCallAt.removeWhere((_, ts) => now - ts > _kTerminalCallTtlMs);
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// [CALL-REDUCER-1 2026-08-01] THE SINGLE AUTHORITATIVE RING-STATE REDUCER
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Spec: Specs/CALL-OUTCOMES-FROZEN-2026-08-01.md — "the piece that cannot be
+// deferred".
+//
+// WHY THIS EXISTS. Every recurrence of the stale-call-UI bug had the same
+// shape: the ringing -> not-ringing transition was implemented INDEPENDENTLY in
+// seven places — the foreground FCM handler, the background isolate handler, the
+// CallKit event listener, the branded incoming screen's five button handlers,
+// the WS ring path, CallSession, and the notification layer. Each one
+// remembered a slightly different subset of {stop ringtone, stop vibration,
+// cancel notification, dismiss full-screen UI, end CallKit, clear glare
+// globals}. Fixing one never fixed the others, which is why "the screen didn't
+// go away" kept coming back wearing a different hat.
+//
+// From now on there is exactly ONE cleanup path and every surface routes into
+// it. Button handlers may ONLY: disable repeated input, send a command,
+// optimistically anticipate the transition, and let this reducer clean up.
+// If you are about to write `FlutterCallkitIncoming.endCall` or
+// `_dismissBrandedFsi` in a new place — don't. Call the reducer.
+//
+// It is deliberately in push_service.dart rather than its own file because
+// every ring-surface primitive it drives (the CallKit bridge, the FSI
+// notification id, the ringtone fallback, the glare globals) is private to this
+// library. Splitting it out would mean exporting six internals and inviting
+// exactly the duplication this replaces.
+
+/// Ordering + idempotency state per callId. Server transitions carry a
+/// monotonic sequence; anything older than what we have already applied is a
+/// late/replayed delivery and must be dropped, not re-applied.
+class _RingTransition {
+  final int seq;
+  final int appliedAtMs;
+  const _RingTransition(this.seq, this.appliedAtMs);
+}
+
+final Map<String, _RingTransition> _ringApplied = <String, _RingTransition>{};
+
+/// The authoritative ring-state reducer.
+///
+/// Call this for EVERY event that ends a callee's ring, from any source:
+/// FCM foreground, FCM background isolate, the CallRoom DO socket, a local
+/// button tap, CallKit, or a ring timeout.
+///
+/// [status] is the authoritative call status (`decline`, `cancel`, `bye`, …).
+/// [seq] is the server's monotonic `transition_sequence` when the transition
+/// came from the server; pass `null` for a purely local optimistic tap, which
+/// is applied immediately but never blocks a later server transition.
+/// [source] is telemetry only — it must NEVER change behaviour, or we are back
+/// to per-source logic.
+///
+/// Idempotent: applying the same transition twice is a no-op. Safe to call
+/// from a background isolate (every step is individually guarded).
+Future<void> applyRingTransition(
+  String callId,
+  String status, {
+  int? seq,
+  required String source,
+}) async {
+  if (callId.isEmpty) return;
+  if (!_terminalCallStatus(status)) return; // not a ring-ending transition
+
+  final prior = _ringApplied[callId];
+  if (prior != null) {
+    // Out-of-order or duplicate server transition → drop. This is what makes a
+    // late FCM redelivery, a socket reconnect replay and a duplicate queue
+    // message harmless instead of a source of UI flicker.
+    if (seq != null && seq <= prior.seq) {
+      Analytics.capture('call_transition_dropped', {
+        'call_id': callId, 'status': status, 'source': source,
+        'seq': seq, 'applied_seq': prior.seq, 'reason': 'stale_seq',
+      });
+      return;
+    }
+    // Already cleaned up locally and this carries no newer sequence → nothing
+    // left to do. Still cheap to return early rather than re-run teardown.
+    if (seq == null) return;
+  }
+  _ringApplied[callId] = _RingTransition(seq ?? (prior?.seq ?? 0), DateTime.now().millisecondsSinceEpoch);
+  if (_ringApplied.length > 64) {
+    final cutoff = DateTime.now().millisecondsSinceEpoch - _kTerminalCallTtlMs;
+    _ringApplied.removeWhere((_, t) => t.appliedAtMs < cutoff);
+  }
+
+  // ── THE ONE CLEANUP PATH ──────────────────────────────────────────────────
+  // Order matters only in that the durable marker goes FIRST: an accept racing
+  // this teardown must find the terminal marker even if a later step throws.
+  _noteTerminalCall(callId);
+
+  // Every step is independently guarded — one failing surface must never
+  // prevent the others from being torn down. That was another way the old
+  // duplicated code left a screen up: an exception halfway through.
+  try { await FlutterCallkitIncoming.endCall(callId); } catch (_) {/* already ended */}
+  try { await _dismissBrandedFsi(); } catch (_) {/* no FSI posted */}
+  try { await _stopRingtoneFallback(callId); } catch (_) {/* not playing */}
+  if (gIncomingRingingCallId == callId) {
+    gIncomingRingingFrom = null;
+    gIncomingRingingCallId = null;
+  }
+
+  Analytics.capture('call_ring_transition_applied', {
+    'call_id': callId,
+    'status': status,
+    'source': source,
+    'seq': seq ?? -1, // -1 = local optimistic tap, no server sequence yet
+  });
 }
 
 // ── [AVANOTIF-VM-1] Recipient-side contact-name resolution for push banners ──
@@ -2074,20 +2187,15 @@ class PushService {
                   : null)
               : null,
         ));
-        // If we're the callee still ringing, dismiss the incoming-call UI.
-        if (callId.isNotEmpty && _terminalCallStatus(status)) {
-          // [AVACALL-CANCEL-1] Cache the terminal marker so a call accepted in
-          // the same instant (before its CallSession subscribes) is ended cleanly.
-          _noteTerminalCall(callId);
-          FlutterCallkitIncoming.endCall(callId);
-          _dismissBrandedFsi(); // [AVACALL-INUI-2] tear down the lock-screen branded FSI too
-          unawaited(_stopRingtoneFallback(callId)); // [CALL-REL-9] caller cancelled — stop the fallback too
-          // CALLFIX-14: clear glare tracking when the call is no longer ringing
-          if (gIncomingRingingCallId == callId) {
-            gIncomingRingingFrom = null;
-            gIncomingRingingCallId = null;
-          }
-        }
+        // [CALL-REDUCER-1] If we're the callee still ringing, tear the ring
+        // surface down — via the ONE reducer, which also enforces ordering so a
+        // late/duplicate FCM redelivery can't re-run teardown or undo a newer
+        // transition. `seq` is the server's monotonic transition_sequence.
+        unawaited(applyRingTransition(
+          callId, status,
+          seq: int.tryParse((d['seq'] ?? '').toString()),
+          source: 'fcm_fg',
+        ));
         return;
       }
       // [BUSY-CARD-1] "Now free" callback — the callee we asked to be notified

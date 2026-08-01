@@ -135,10 +135,18 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
   /// explicit programmatic exit — `pop()`, which PopScope does not intercept.
   /// Do NOT "fix" this by force-popping from `onPopInvoked`: that turns a
   /// deliberately-blocked back gesture back into an accidental dismissal.
-  void _dismiss({required String reason}) {
+  /// [CALL-REDUCER-1 2026-08-01] Ring-surface teardown is NOT done here. This
+  /// method owns exactly one thing — closing this route. Everything else
+  /// (CallKit, the lock-screen FSI notification, the ringtone fallback, the
+  /// glare globals) belongs to the single reducer, `applyRingTransition`, which
+  /// every surface shares. Each button used to re-implement its own subset of
+  /// that teardown and each one forgot something different.
+  void _dismiss({required String reason, String status = 'declined'}) {
+    // The reducer is idempotent and ordering-aware, so calling it from a local
+    // tap AND from the server transition that follows is safe by design.
+    unawaited(applyRingTransition(widget.callId, status, source: 'incoming_screen'));
     if (!mounted || _dismissed) return;
     _dismissed = true;
-    _clearRingGlobals();
     Analytics.capture('business_call_screen_dismissed', {
       'call_id': widget.callId,
       'reason': reason,

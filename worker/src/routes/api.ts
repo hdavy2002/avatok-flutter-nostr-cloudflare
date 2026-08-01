@@ -671,6 +671,12 @@ export async function callStatus(req: Request, env: Env): Promise<Response> {
     ...(b.busy_reason ? { busy_reason: String(b.busy_reason) } : {}),
     ...(re != null ? { receptionist_enabled: re === true || re === "1" || re === 1 } : {}),
     ...(b.pronoun ? { pronoun: String(b.pronoun) } : {}),
+    // [CALL-REDUCER-1 2026-08-01] Carry the DO's monotonic transition sequence
+    // onto the FCM backstop so BOTH paths describe the SAME transition with the
+    // SAME number. The client reducer drops any seq it has already applied, so
+    // whichever path arrives second is a harmless no-op instead of a second
+    // teardown — and a late redelivery can never undo a newer transition.
+    ...(typeof doResult?.seq === "number" ? { seq: doResult.seq } : {}),
   });
   // Telemetry: separate the four legs of delivery so a future regression is
   // diagnosable without guessing — DO persistence, socket fan-out, queue enqueue.
