@@ -988,7 +988,11 @@ class _CallScreenState extends State<CallScreen> {
               // user lands back on the thread and can read/send messages.
               _btn(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), onTap: _minimize),
               const SizedBox(width: 14),
-              _btn(PhosphorIcons.dialpad(PhosphorIconsStyle.bold), onTap: () => _showDtmfPad(s)),
+              // phosphor_flutter 2.1.0 names this icon `numpad`. The obvious
+              // guess (the one starting "dial") does NOT exist and fails at
+              // kernel snapshot — i.e. only in CI, ~5 minutes into a release
+              // build. Verify icon names against the package, not intuition.
+              _btn(PhosphorIcons.numpad(PhosphorIconsStyle.bold), onTap: () => _showDtmfPad(s)),
               const SizedBox(width: 14),
               _btn(
                   speaker
