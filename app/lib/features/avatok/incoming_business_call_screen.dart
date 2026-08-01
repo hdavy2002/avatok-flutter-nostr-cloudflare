@@ -193,7 +193,10 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
     // unambiguous user intent; making the screen wait on a network round-trip
     // (declineIncomingCall POSTs /api/call-status) is what made a slow network
     // look like a frozen ring screen. The signalling still runs to completion.
-    await _endNativeRing();
+    // Dismiss the Flutter route before waiting on the platform CallKit bridge.
+    // On some devices `endCall` can stall while the OS is already tearing down
+    // the native ring; awaiting it first leaves this branded screen stranded.
+    // `applyRingTransition` performs the same native cleanup best-effort.
     _dismiss(reason: 'decline');
     await PushService.declineIncomingCall(_extra);
   }
