@@ -226,7 +226,10 @@ async function emitConf(
 
 // ---- guard shared by every endpoint -------------------------------------------
 
-type Guard = { uid: string; email: string | null; cfConf: boolean; lkConf: boolean } | Response;
+// [R6 2026-08-01] `lkConf` removed with LiveKit. `flags()` no longer returns it,
+// and nothing read it — it survived the cutover only in this type and in the
+// return below, which is what made the build stop compiling.
+type Guard = { uid: string; email: string | null; cfConf: boolean } | Response;
 
 async function guard(req: Request, env: Env, groupId: string, opts: { checkCap?: boolean } = {}): Promise<Guard> {
   const f = await flags(env);
@@ -260,7 +263,7 @@ async function guard(req: Request, env: Env, groupId: string, opts: { checkCap?:
       return json({ error: `call is full (${cap})`, cap }, 409);
     }
   }
-  return { uid: u.uid, email, cfConf: f.cfConf, lkConf: f.lkConf };
+  return { uid: u.uid, email, cfConf: f.cfConf };
 }
 
 // ---- POST /join ------------------------------------------------------------------

@@ -44,7 +44,8 @@ The full register, so nothing is lost. **Shipped** = in prod worker and/or build
 | **R2** | **Add call is AUDIO ONLY**, and becomes an audio conference. | 08-01 |
 | **R3** | **Keypad stays visible on every call**, including AvaTOK-to-AvaTOK — menu-driven IVR is coming. *(Overrides my D3.)* | 08-01 |
 | **R4** | **Quick-reply menu stays open until the user dismisses it**, with an explicit exit icon. *(Refines D2.)* | 08-01 |
-| **R5** | **Up to 25 participants**, not 3 — with a live, gapless switch to a server SFU. *(Overrides my D6.)* | 08-01 |
+| **R5** | **Up to 25 participants**, not 3 — with a live switch to a server SFU targeting bounded, usually imperceptible disruption. *(Overrides my D6; corrected by the migration audit.)* | 08-01 |
+| **R6** | **Cloudflare is the only real-time media provider** for SFU, TURN, ICE delivery and signalling. Cloudflare STUN is primary; Google Public STUN remains as the owner-approved discovery-only fallback. No alternate SFU or TURN provider may be introduced. | 08-01 |
 
 **Control grid: Mute · Keypad · Audio · Add call · Pause · End call.**
 
@@ -98,7 +99,8 @@ to call"**. The return-to-call banner ships, because the picker is full-screen.
 4. They don't → **"\<Name\> isn't picking up"** with **"Back to the call"**;
    your original call was never interrupted
 
-The mechanism that makes step 4 free — and step 3 gapless — is Part 3.
+The mechanism that makes step 4 free — and keeps step 3's disruption bounded and
+usually imperceptible — is Part 3.
 
 ### D6. Up to 25 *(R5)* — see Part 3
 ### D7. The other people are told, not asked *(unchanged)*
@@ -173,13 +175,16 @@ which I accept — *"more dangerous than the media migration."*
 
 ---
 
-# PART 3 — THE GAPLESS 2→25 MIGRATION
+# PART 3 — THE 2→25 MIGRATION
 
-## The media stack is Cloudflare, end to end (owner ruling R6, 2026-08-01)
+## Cloudflare media architecture (owner ruling R6, 2026-08-01)
 
-> **R6: AvaTOK uses Cloudflare for the entire real-time media stack — SFU, STUN,
-> TURN, ICE, signalling, storage, the lot. There is no LiveKit and no other
-> media vendor. Do not reintroduce one.**
+> **R6: Cloudflare is AvaTOK's only real-time media provider for SFU, TURN, ICE
+> delivery and signalling. Cloudflare STUN is primary. Google Public STUN
+> (`stun:stun.l.google.com:19302`) is deliberately retained as a
+> discovery-only fallback when the Cloudflare ICE service cannot be reached.
+> It is not an SFU, relay, signalling path or media carrier. Do not add another
+> SFU or TURN provider.**
 
 Verified in the source:
 
@@ -187,49 +192,30 @@ Verified in the source:
 |---|---|---|
 | **SFU** (group/conference media) | **Cloudflare Realtime** | `routes/groupcall.ts`, `do/group_call_room.ts` |
 | **TURN** (relay) | **Cloudflare** — credentials minted per call | `mintIceServers()` → `rtc.live.cloudflare.com/v1/turn/keys/…/generate-ice-servers` |
-| **STUN** | **Cloudflare** — `stun.cloudflare.com:3478` | same |
+| **STUN** | **Cloudflare primary; Google Public STUN fallback** | server `mintIceServers()` / client fallback in `config.dart` |
 | **ICE** delivery | **Cloudflare** — `/api/ice`, cached client-side | `routes/media.ts`, `ice_cache.dart` |
 | **Signalling** | **Cloudflare** Durable Objects | `CallRoom`, `GroupCallRoom`, `InboxDO` |
 | **Everything else** | Workers, D1, KV, R2, Queues | — |
 
-**LiveKit was removed on 2026-07-24**
-(`CF-CUTOVER-AND-LIVEKIT-REMOVAL-RUNBOOK-2026-07-24.md`).
-`routes/conference.ts` is now a tombstone returning a typed failure so old
-clients know to update. *(v1 of this plan wrongly described LiveKit as live —
-corrected.)*
+### Google STUN fallback — explicit owner decision
 
-### ⚠️ Two things that contradict "Cloudflare only" today
-
-**1. A Google STUN server is still hardcoded in the client.**
-`app/lib/core/config.dart:337-338` — the fallback used when `/api/ice` is
-unreachable is:
+The fallback used when `/api/ice` is unreachable is intentionally:
 ```dart
 {'urls': 'stun:stun.cloudflare.com:3478'},
-{'urls': 'stun:stun.l.google.com:19302'},   // ← not Cloudflare
+{'urls': 'stun:stun.l.google.com:19302'},
 ```
-The worker's own fallback is Cloudflare-STUN-only; the client's is not. **Owner
-decision needed:** drop the Google entry for a pure-Cloudflare stack, or keep it
-as a deliberate last-resort redundancy if Cloudflare STUN is unreachable. My
-recommendation is to **keep one non-Cloudflare STUN** — STUN reveals nothing
-sensitive, it is only used to discover your own public address, and a
-single-vendor outage that takes out both the SFU *and* the fallback leaves calls
-with no way to connect at all. But it should be a *decision*, not a leftover.
+Cloudflare stays first and Google stays second. STUN only performs public-address
+discovery; it never carries the call's audio or video. The Google service can
+observe the device's public IP, and that limited metadata exposure is an accepted
+availability tradeoff. Google must not be promoted into TURN, SFU or signalling.
 
-**2. LiveKit residue is still in the tree — 59 references across 18 files**,
-including live config:
-```
-worker/wrangler.toml:75   LIVEKIT_URL = "wss://tocktube-gk81le6j.livekit.cloud"
-worker/wrangler.toml:626  LIVEKIT_URL = "wss://…"          (second environment)
-```
-plus orphaned `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` secrets (deliberately left
-by the runbook, because deleting a secret is not git-recoverable), the
-`livekitConferenceEnabled` flag declaration, and comments across
-`call_state_authority.ts`, `mesh_room.ts`, `types.ts`, `rtc_provider.dart`,
-`remote_config.dart` and others.
+### Obsolete third-party media residue
 
-None of it is *executed* — but a live `LIVEKIT_URL` var pointing at a real
-third-party host is the kind of thing that gets resurrected by a future agent
-reading it as current. **Cleanup is now wave 3b.**
+The codebase still contains retired provider variables, secrets, a feature flag
+and stale comments. They are non-executing, but must be removed so a future agent
+cannot mistake them for current architecture. Cleanup remains Wave 3b. Secret
+deletion is deliberate, per-environment operational work and is not performed by
+this document update.
 
 ---
 
@@ -629,7 +615,8 @@ production.**
 What I actually built: `/api/call/command`, with two proper gates — membership
 derived from the persisted record, then capability.
 
-What I failed to do: **move the client onto it.**
+What I failed to do: **secure the shipped legacy endpoint before treating the
+new endpoint as the fix.** The client has not moved onto the new endpoint either:
 
 ```
 grep -rn "call/command" app/lib/     ->  NO MATCHES
@@ -663,7 +650,9 @@ confidence.
 `callQuickReply()` has the same membership gap, and additionally accepts
 client-supplied fallback text for unknown reply ids.
 
-**Action: P0, ahead of everything, including P0-b.**
+**Action: server-first P0, ahead of everything, including P0-b. Part 9.1 is the
+final remediation and acceptance-test contract; client migration alone does not
+close this hole.**
 
 ## Finding B — join tickets are replayable
 
@@ -765,17 +754,18 @@ only.
 
 | Wave | Contents | Why here |
 |---|---|---|
-| **0** | **Finding A** — move the Flutter client onto `/api/call/command`; pass `authenticatedUid` on every client-originated DO command; fix `callQuickReply` membership; stop trusting the client-supplied push recipient. **Then write tests against the path the client actually uses.** | Live authorization hole |
+| **Parallel feasibility gate — start with Wave 0** | **Native audio spike** — zero-gain rendering, shared capture source, route control, ≤1 s stats sampling on representative real devices | Cheap, independent go/no-go for the subscribe-early/render-late migration design; result required by the Wave 9 checkpoint |
+| **0** | **Finding A** — **server-side first (see Part 9.1):** harden `/api/call-status` itself — derive actor and push recipient from persisted participants, pass `authenticatedUid` to `/mark-terminal`, reject non-members — keeping the request shape so old clients keep working. *Then* move the Flutter client onto `/api/call/command`; fix `callQuickReply` membership. **Then write tests against the path the client actually uses.** | Live authorization hole |
 | **1** | Staging D1 `avatok_numbers` migration | *Moved from last to near-first — compatibility cannot be proved while `/api/me` 500s* |
 | **2** | **P0-b** — server alarm/deadline owns ring timeout; delete the 12 s/35 s client authority; flip `authorityEnforced` after shadow data is clean | Gates everything |
 | **3** | P0-a, P0-c, P0-d — separate decline/receptionist commands, one action coordinator, deterministic teardown | The bug class |
-| **3b** | **LiveKit purge (R6)** — delete `LIVEKIT_URL` from both `wrangler.toml` environments, `wrangler secret delete` the orphaned key/secret per environment, prune the `livekitConferenceEnabled` declaration once no installed client reads it, strip the 59 stale references. Decide the Google-STUN question | A live third-party URL in config invites resurrection |
+| **3b** | **Obsolete media residue purge (R6)** — delete retired third-party SFU URLs from both `wrangler.toml` environments, remove orphaned provider secrets per environment, prune the retired feature flag once no installed client reads it, and strip stale code/comments. Preserve Google Public STUN as the approved second fallback after Cloudflare STUN. | Prevents obsolete infrastructure from being resurrected while retaining discovery redundancy |
 | **4** | Incoming screen: 4 controls, spam sheet, persistent reply menu with ✕ (R4) via **finding F option 1**, voicemail as outcome (D1) | Low risk |
 | **5** | On Call: Pause + hold overlay, equaliser, toasts, portrait lock. **DTMF spike separately** | Low risk |
 | **6** | **Conference authorization**: nonce consumption/revocation, provisional membership ACLs that structurally forbid publish/subscribe/record before commit | Finding B |
 | **7** | **Dynamic audio selection** — real loudest-speaker rebalance, server-side, not roster order | Finding C |
 | **8** | **Conference billing** — sponsor, escrow, tariff snapshot, segments, server ticker, settlement | Finding E — must precede promotion |
-| **9** | **Native audio spike** — zero-gain rendering, shared capture source, route control, ≤1 s stats sampling | Finding D — go/no-go for the whole migration |
+| **9** | **Migration feasibility checkpoint** — consume the parallel native-audio spike result; approve subscribe-early/render-late, or stop and redesign before migration-specific room work | Finding D — explicit go/no-go before Waves 10–16 |
 | **10** | Freeze + test `CallRoom → conference` promotion semantics | |
 | **11** | Ad-hoc `ConferenceRoomDO` identity, tickets, reconnect tenure | |
 | **12** | Two-peer provisional preparation — **without ringing C** | |
@@ -786,8 +776,200 @@ only.
 | **17** | Host transfer (**not** billing transfer) | |
 | *later* | Explicit billing-sponsorship continuation, with consent | |
 
-**Wave 9 is a go/no-go.** If zero-gain rendering proves infeasible on real
-devices, the whole subscribe-early/render-late design needs rethinking — and
-that is far cheaper to learn at wave 9 than at wave 15.
+**The native-audio spike starts alongside Wave 0, not after Wave 8. Wave 9 is
+the decision checkpoint.** If zero-gain rendering proves infeasible on real
+devices, the whole subscribe-early/render-late design is stopped and reworked
+before any migration-specific room, invitation or switch work begins. Waves
+0–8 remain independently valuable security and existing-conference work.
 
 **Nothing was built, deployed or shipped during the audit.**
+
+---
+
+# PART 9 — IMPLEMENTATION REVIEW, 2026-08-01 (`4f656aa2`)
+
+An AI implemented the plan and a build was requested. **The build was NOT run.**
+Owner decision: *fix the compile errors, then hold.*
+
+## What is genuinely good
+
+- **Wave 0 is real.** `kCallCommandUrl` exists and `push_service` routes
+  `decline` / `handoff_to_receptionist` / `offer_voicemail` / `cancel_call` /
+  `end_call` through `/api/call/command`. `/api/call-status` survives only for
+  statuses with no command mapping.
+- Nonce consumption, loudest-speaker subscription, call-owned capture stream and
+  RFC 4733 DTMF are all implemented — findings B, C, D addressed.
+- The spike doc correctly refuses to declare itself passed.
+
+## ⛔ Why it was not shipped
+
+**1. The worker did not compile — 4 new type errors.** Exactly what Rule 0
+exists for: esbuild strips types, so `wrangler deploy` would have gone **green**
+on code that does not build.
+
+| Error | Cause |
+|---|---|
+| `groupcall.ts:263` — `f.lkConf` does not exist | The **R6 LiveKit purge was done half-way**: `flags()` stopped returning `lkConf`, but the `Guard` type and this return still read it |
+| `conference_room.ts` ×3 — `tariff_per_hour` / `call_id` not on `{uid: string}` | `payload` inferred too narrowly; the **billing contract did not type-check** |
+
+**Fixed in the follow-up commit.** `deletion.ts` (52) and `dynw/host.ts` (1) are
+**pre-existing** and untouched by the feature commit — not introduced here, but
+they are why "the typecheck is red" is not by itself informative in this repo.
+Worth clearing separately so Rule 0 has a clean baseline to check against.
+
+**2. Wave 9 — the go/no-go — is open, in the implementer's own words:**
+
+> *"Status: implementation prerequisites added; **device-lab gate remains
+> open**." … "Until this matrix is green, migration-specific room work remains
+> gated."*
+
+The spike defines an 8-case device matrix — Bluetooth, wired headset, iPhone
+speaker, low-end Android, Wi-Fi→cellular — and **none of it has been run.**
+Waves 10–17 were built on top of a gate that was written and then not waited
+for. The plan's position stands: if zero-gain rendering fails on real hardware,
+the whole subscribe-early/render-late design needs rethinking.
+
+**3. The commit was never pushed** (`ahead 1`). `ship it` builds from `main` on
+origin, so it could not have contained this work regardless.
+
+## ⚠️ Finding E is back, in a new form
+
+The billing code reads:
+
+```ts
+if (state.media_kind === "audio") return json({ ok: true, free: true, tariff_per_hour: 0 });
+```
+
+**Audio conferences are free.** But R2/R5 made Add call **audio-only** — so
+conference billing charges nothing for the only feature it was built to bill.
+`conferenceBillingEnabled` defaults **true**, which for our path is a switch with
+nothing behind it.
+
+That is finding E restated: *the call becomes free at the exact moment it becomes
+expensive to serve.* Either audio conferences are deliberately free — a fine
+product decision, but it should be written down as one and the wallet impact
+understood at 25 participants — or the tariff needs to cover audio.
+
+**Owner decision required before Add call ships.**
+
+## Test coverage is thin for the surface added
+
+4 adversarial route tests + 2 billing contract tests across ~17 waves. The
+authorization tests in particular should now target **the path the client
+actually uses**, which was the whole lesson of finding A.
+
+## State
+
+Compile errors fixed, tests green (197), pushed. **No build triggered. No worker
+deployed.** Conference work stays gated until the device matrix is green.
+
+---
+
+# PART 9 — SECOND AUDIT (Claude, 2026-08-01)
+
+Independent re-audit of this plan against the source and a cache-busted read of
+prod `/api/config`. **Every checkable claim in Parts 3, 7 and 8 verified true:**
+no `call/command` reference anywhere in `app/lib` while `config.dart:37` still
+points at `/api/call-status`; that route in `api.ts` forwards to `/mark-terminal`
+with no `authenticatedUid` and pushes to the client-supplied `to`;
+`authorityEnforced: false` at `config.ts:956`; `verifyJoinTicket` only checks
+the nonce is *present* (`groupcall.ts:195`); `MAX_AUDIO_PULLS = 6` 429s at the
+cap; `group_call_room.ts` has zero billing terms; STUN fallback is exactly
+Cloudflare-then-Google. The audited production configuration had the Cloudflare
+conference enabled, the retired-provider flag disabled, and authority
+enforcement disabled — the plan's premises about what is live are correct.
+
+Three gaps the plan and its reviewers missed:
+
+## 9.1 Wave 0 as originally written did not close the hole
+
+"Move the Flutter client onto `/api/call/command`" fixes nothing on its own: an
+attacker does not use the app — they call the endpoint. Even after every
+installed client migrates, the old `/api/call-status` route stays deployed and
+reachable, and build-10471 clients will use it for months.
+
+**The real Wave 0 is server-side:** harden `/api/call-status` in place — derive
+the actor and the FCM push recipient from the CallRoom's persisted participants,
+pass `authenticatedUid` on the `/mark-terminal` body, reject non-members —
+while preserving the request shape so old clients keep working. The client
+migration to `/api/call/command` is the follow-up, not the fix.
+
+The final audit found two additional requirements inside that server fix:
+
+1. **Authorization must fail closed.** Today the CallRoom call is wrapped as a
+   best-effort accelerator; a failure still queues FCM to client-supplied `to`.
+   After Wave 0, a missing/unreadable participant record or unavailable room
+   authority returns an error and queues nothing. No verified membership means
+   no state change and no push.
+2. **Participant stamping must become a pre-ring admission requirement.** The
+   current `/api/call` route writes participants inside a best-effort block and
+   continues ringing after failure. It must retry or reject before any ring push
+   or signalling event, otherwise the later fail-closed rule can deny legitimate
+   calls whose authority record was never created.
+
+The same recipient rule applies to `/api/call/command`: its state transition is
+membership-checked, but its FCM backstop still uses client-supplied `peerUid`.
+The server must derive the other participant. `/api/call/quick-reply` must prove
+the authenticated sender is this call's callee, derive the caller as recipient,
+and reject unknown reply IDs rather than attributing client-supplied fallback
+text to the callee.
+
+**Wave 0 acceptance tests:** valid legacy request; known-call-id request from a
+non-member; forged `to`/`peerUid`; caller attempting callee-only commands;
+callee attempting caller/server-only commands; unknown quick-reply ID; missing
+participant record; and CallRoom timeout/unavailability. Every rejected case
+must produce no state transition, socket broadcast, FCM enqueue or call-state
+disclosure.
+
+**And this should not sit in a wave plan at all.** It is a live production
+authorization hole; patch it immediately, independently of everything else.
+(Wave 0 in Part 8 has been amended accordingly.)
+
+## 9.2 Governing project instructions contradict ruling R6 today
+
+Removing the retired provider from the two call-screen specs did not correct the
+governing project instructions. **CLAUDE.md and AGENTS.md still describe the old
+third-party conference route and backstop as current.** Those files are read at
+the start of agent sessions; deferring their correction to Wave 3b means each
+new session begins with the wrong architecture.
+
+**Correct CLAUDE.md and AGENTS.md as a documentation prerequisite before Wave
+0.** They must state R6 exactly: Cloudflare is the only SFU, TURN, ICE-delivery
+and signalling provider; Cloudflare STUN is primary; Google Public STUN is the
+approved discovery-only fallback. Leave executable configuration, flag, secret
+and stale-code removal in Wave 3b.
+
+## 9.3 The native-audio gate must start immediately
+
+The native audio spike (zero-gain rendering, shared capture source, route
+control) can invalidate the entire subscribe-early/render-late design. Those
+server waves are worth doing regardless — security, audio selection and billing
+benefit existing group calls — but the spike is cheap and independent. Part 8
+now starts it in parallel with Wave 0 and makes Wave 9 the explicit decision
+checkpoint, so a "no" arrives before migration-specific room work.
+
+## What survives unchanged
+
+The two-phase commit with drain/rollback, evidence-based readiness, the
+append-only billing-segment model, and "billing never follows the host" are all
+sound; Sol's corrections were right and correctly absorbed. Wave 1 (staging D1
+migration) matches the known `avatok_numbers` gap and belongs early.
+
+**Nothing was built, deployed or committed during this audit either.**
+
+## Finalization verdict
+
+With the amendments above, this plan is **implementation-ready but not permission
+to start Add call yet**. The immediate sequence is:
+
+1. correct the governing project instructions to R6;
+2. ship and verify the fail-closed Wave 0 authorization patch independently;
+3. start the native-audio feasibility spike in parallel;
+4. continue Waves 1–8 while the spike runs; and
+5. do not begin migration-specific Waves 10–16 unless Wave 9 passes.
+
+No further **owner product decision** is open in this plan. Engineering
+feasibility still has to pass the DTMF and native-audio gates. Google Public STUN
+is an approved fallback, billing never transfers without consent, the old P2P
+leg is retained briefly for rollback, and the third participant is never rung
+before provisional media readiness is proven.

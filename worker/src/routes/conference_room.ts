@@ -20,7 +20,10 @@ export async function conferenceRoomRoute(req: Request, env: Env, roomId: string
     const member = await env.DB_META.prepare("SELECT 1 AS ok FROM conversation_members WHERE conv_id=?1 AND uid=?2 LIMIT 1").bind(groupId, ctx.uid).first<{ ok: number }>();
     if (!member) return json({ error: "not a group participant" }, 403);
   }
-  const payload = { ...(body as Record<string, unknown>), uid: ctx.uid };
+  // Explicitly Record<string, unknown>: the billing branches below add
+  // `tariff_per_hour` / `call_id` after construction, and without the annotation
+  // TypeScript narrows this to `{ uid: string }` and rejects all three writes.
+  const payload: Record<string, unknown> = { ...(body as Record<string, unknown>), uid: ctx.uid };
   if (action === "billing/start") {
     const cfg = await readConfig(env);
     if (!cfg.conferenceBillingEnabled) return json({ error: "conference billing disabled" }, 503);

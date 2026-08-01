@@ -153,10 +153,10 @@ Adding a third person is therefore **not** "allow a third socket". It is a
 `cloudflareConferenceEnabled`, capped at 25. It is used today for *group* calls
 that start as conferences.
 
-> **OWNER RULING R6 (2026-08-01): Cloudflare is the ENTIRE media stack** — SFU,
-> STUN, TURN, ICE, signalling. No LiveKit, no other media vendor, and none is to
-> be reintroduced. (An earlier draft of this file described LiveKit as live; it
-> was removed on 2026-07-24 and that text is deleted.)
+> **OWNER RULING R6 (2026-08-01): Cloudflare is the only real-time media
+> provider** for SFU, TURN, ICE delivery and signalling. Cloudflare STUN remains
+> primary, with Google Public STUN retained as an approved discovery-only
+> fallback. No alternate SFU or TURN provider may be introduced.
 >
 > But the audit found the Cloudflare conference is **not** reusable as-is: join
 > tickets are replayable, the "6 of 25" audio limit is a cap rather than a
