@@ -175,14 +175,65 @@ which I accept — *"more dangerous than the media migration."*
 
 # PART 3 — THE GAPLESS 2→25 MIGRATION
 
-## First, a correction to v1 of this plan
+## The media stack is Cloudflare, end to end (owner ruling R6, 2026-08-01)
 
-**v1 said the conference runs on LiveKit. It does not — LiveKit was removed on
-2026-07-24** (`CF-CUTOVER-AND-LIVEKIT-REMOVAL-RUNBOOK-2026-07-24.md`).
-`routes/conference.ts` is now a tombstone that returns a typed failure so old
-clients know to update.
+> **R6: AvaTOK uses Cloudflare for the entire real-time media stack — SFU, STUN,
+> TURN, ICE, signalling, storage, the lot. There is no LiveKit and no other
+> media vendor. Do not reintroduce one.**
 
-The real infrastructure, and it is better than what I described:
+Verified in the source:
+
+| Layer | Provider | Where |
+|---|---|---|
+| **SFU** (group/conference media) | **Cloudflare Realtime** | `routes/groupcall.ts`, `do/group_call_room.ts` |
+| **TURN** (relay) | **Cloudflare** — credentials minted per call | `mintIceServers()` → `rtc.live.cloudflare.com/v1/turn/keys/…/generate-ice-servers` |
+| **STUN** | **Cloudflare** — `stun.cloudflare.com:3478` | same |
+| **ICE** delivery | **Cloudflare** — `/api/ice`, cached client-side | `routes/media.ts`, `ice_cache.dart` |
+| **Signalling** | **Cloudflare** Durable Objects | `CallRoom`, `GroupCallRoom`, `InboxDO` |
+| **Everything else** | Workers, D1, KV, R2, Queues | — |
+
+**LiveKit was removed on 2026-07-24**
+(`CF-CUTOVER-AND-LIVEKIT-REMOVAL-RUNBOOK-2026-07-24.md`).
+`routes/conference.ts` is now a tombstone returning a typed failure so old
+clients know to update. *(v1 of this plan wrongly described LiveKit as live —
+corrected.)*
+
+### ⚠️ Two things that contradict "Cloudflare only" today
+
+**1. A Google STUN server is still hardcoded in the client.**
+`app/lib/core/config.dart:337-338` — the fallback used when `/api/ice` is
+unreachable is:
+```dart
+{'urls': 'stun:stun.cloudflare.com:3478'},
+{'urls': 'stun:stun.l.google.com:19302'},   // ← not Cloudflare
+```
+The worker's own fallback is Cloudflare-STUN-only; the client's is not. **Owner
+decision needed:** drop the Google entry for a pure-Cloudflare stack, or keep it
+as a deliberate last-resort redundancy if Cloudflare STUN is unreachable. My
+recommendation is to **keep one non-Cloudflare STUN** — STUN reveals nothing
+sensitive, it is only used to discover your own public address, and a
+single-vendor outage that takes out both the SFU *and* the fallback leaves calls
+with no way to connect at all. But it should be a *decision*, not a leftover.
+
+**2. LiveKit residue is still in the tree — 59 references across 18 files**,
+including live config:
+```
+worker/wrangler.toml:75   LIVEKIT_URL = "wss://tocktube-gk81le6j.livekit.cloud"
+worker/wrangler.toml:626  LIVEKIT_URL = "wss://…"          (second environment)
+```
+plus orphaned `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` secrets (deliberately left
+by the runbook, because deleting a secret is not git-recoverable), the
+`livekitConferenceEnabled` flag declaration, and comments across
+`call_state_authority.ts`, `mesh_room.ts`, `types.ts`, `rtc_provider.dart`,
+`remote_config.dart` and others.
+
+None of it is *executed* — but a live `LIVEKIT_URL` var pointing at a real
+third-party host is the kind of thing that gets resurrected by a future agent
+reading it as current. **Cleanup is now wave 3b.**
+
+---
+
+The real infrastructure, and it is better than what v1 described:
 
 | Piece | Where | Reusable as-is? |
 |---|---|---|
@@ -718,6 +769,7 @@ only.
 | **1** | Staging D1 `avatok_numbers` migration | *Moved from last to near-first — compatibility cannot be proved while `/api/me` 500s* |
 | **2** | **P0-b** — server alarm/deadline owns ring timeout; delete the 12 s/35 s client authority; flip `authorityEnforced` after shadow data is clean | Gates everything |
 | **3** | P0-a, P0-c, P0-d — separate decline/receptionist commands, one action coordinator, deterministic teardown | The bug class |
+| **3b** | **LiveKit purge (R6)** — delete `LIVEKIT_URL` from both `wrangler.toml` environments, `wrangler secret delete` the orphaned key/secret per environment, prune the `livekitConferenceEnabled` declaration once no installed client reads it, strip the 59 stale references. Decide the Google-STUN question | A live third-party URL in config invites resurrection |
 | **4** | Incoming screen: 4 controls, spam sheet, persistent reply menu with ✕ (R4) via **finding F option 1**, voicemail as outcome (D1) | Low risk |
 | **5** | On Call: Pause + hold overlay, equaliser, toasts, portrait lock. **DTMF spike separately** | Low risk |
 | **6** | **Conference authorization**: nonce consumption/revocation, provisional membership ACLs that structurally forbid publish/subscribe/record before commit | Finding B |

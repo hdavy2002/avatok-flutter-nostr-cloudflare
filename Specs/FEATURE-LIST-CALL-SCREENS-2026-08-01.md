@@ -147,23 +147,22 @@ reconnect-grace and duplicate-session detection work.
 Adding a third person is therefore **not** "allow a third socket". It is a
 **mid-call migration from peer-to-peer to a conference server**.
 
-> ⚠️ **CORRECTED 2026-08-01 — the paragraph below was wrong when written.**
-> **LiveKit was REMOVED on 2026-07-24.** `worker/src/routes/conference.ts` is now
-> a tombstone that returns a typed failure so old clients know to update. The
-> real conference is Cloudflare-native: `worker/src/routes/groupcall.ts` +
-> `worker/src/do/group_call_room.ts` +
-> `app/lib/features/conference/cloudflare_conference_controller.dart`, flagged
-> `cloudflareConferenceEnabled`, capped at 25.
->
-> And the audit found it is **not** reusable as-is: join tickets are replayable,
-> the "6 of 25" audio limit is a cap rather than a selection, conference billing
-> does not exist, and the client cannot do the silent warm-up the migration
-> depends on. See PART 7 of `PLAN-CALL-SCREENS-2026-08-01.md`.
+**The conference infrastructure already exists, and it is Cloudflare** —
+`worker/src/routes/groupcall.ts` + `worker/src/do/group_call_room.ts` +
+`app/lib/features/conference/cloudflare_conference_controller.dart`, flagged
+`cloudflareConferenceEnabled`, capped at 25. It is used today for *group* calls
+that start as conferences.
 
-<s>The good news: **the conference infrastructure already exists** —
-`worker/src/routes/conference.ts` and `app/lib/features/conference/` (LiveKit,
-≤25 participants, behind `conferenceEnabled` / `livekitConferenceEnabled`). It is
-used today for *group* calls that start as conferences.</s>
+> **OWNER RULING R6 (2026-08-01): Cloudflare is the ENTIRE media stack** — SFU,
+> STUN, TURN, ICE, signalling. No LiveKit, no other media vendor, and none is to
+> be reintroduced. (An earlier draft of this file described LiveKit as live; it
+> was removed on 2026-07-24 and that text is deleted.)
+>
+> But the audit found the Cloudflare conference is **not** reusable as-is: join
+> tickets are replayable, the "6 of 25" audio limit is a cap rather than a
+> selection, conference billing does not exist, and the client cannot do the
+> silent warm-up the migration depends on. See PART 7 of
+> `PLAN-CALL-SCREENS-2026-08-01.md`.
 
 What does not exist is the **transition**: an established P2P call becoming a
 conference without dropping audio. Open questions I need answered before
