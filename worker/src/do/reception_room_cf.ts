@@ -1364,8 +1364,16 @@ export class ReceptionRoomCf {
       // (priority tier 2 in _resolveDisplayName), even when the caller IS an
       // AvaTOK contact. PSTN callers legitimately have no uid — `caller_uid` is
       // simply omitted for them, same as `caller_phone` today for uid-only paths.
-      await this.env.Q_PUSH.send({ kind: "notify", to: init.owner_uid, fromName: "Ava", title: "Ava took a message", body: bodyText.replace(/^📞\s*/, ""), data: { type: "receptionist", conv, caller_uid: init.caller_uid || undefined, caller_phone: init.caller_phone } });
-      this.ev("ava_recept_push_sent", { ok: true });
+      // [RECEPT-CALLER-IDENTITY-1 2026-08-01] `caller_name` added too: caller_uid
+      // only resolves a name when the caller is already in the OWNER's contact
+      // book. A first-time caller still fell through to "Unknown caller".
+      await this.env.Q_PUSH.send({ kind: "notify", to: init.owner_uid, fromName: "Ava", title: "Ava took a message", body: bodyText.replace(/^📞\s*/, ""), data: { type: "receptionist", conv, caller_uid: init.caller_uid || undefined, caller_name: init.caller_name || undefined, caller_phone: init.caller_phone } });
+      this.ev("ava_recept_push_sent", {
+        ok: true,
+        has_caller_uid: !!init.caller_uid,
+        has_caller_name: !!init.caller_name,
+        has_caller_phone: !!init.caller_phone,
+      });
     } catch (e) {
       this.ev("ava_recept_delivery_failed", { stage: "push", error_scrubbed: scrubSecrets(String(e)).slice(0, 200) });
     }

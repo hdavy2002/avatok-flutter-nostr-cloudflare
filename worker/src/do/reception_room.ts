@@ -215,6 +215,10 @@ export class ReceptionRoom {
   private callerPeak = 0; // peak |sample| of caller audio → drives adaptive normalization
   private inBytes = 0;   // caller audio bytes received (mic throughput / dead-mic)
   private turnCount = 0; // completed conversational turns
+  /** [RECEPT-GEMINI-DIAG-1] Last upstream error/close detail, folded into
+   *  ava_recept_error so a retired model id (1008) is distinguishable from a
+   *  transient network drop. Null until the upstream actually errors. */
+  private geminiErrorDetail: Record<string, unknown> | null = null;
   // Latest cumulative token usage reported by Gemini Live (usageMetadata). Lets us
   // bill the EXACT audio + text I/O instead of estimating from audio bytes alone.
   private liveTokIn = { audio: 0, text: 0 };
@@ -443,8 +447,35 @@ export class ReceptionRoom {
     (this as any)._aigId = resp.headers.get("cf-aig-log-id") || resp.headers.get("cf-ray") || null;
 
     gem.addEventListener("message", (ev) => this.onGeminiMessage(ev));
-    gem.addEventListener("close", () => this.finalize("model_closed"));
-    gem.addEventListener("error", () => this.failHard("gemini_error"));
+    // [RECEPT-GEMINI-DIAG-1 2026-08-01] Capture the close code/reason and the
+    // error payload. Before this both listeners threw their event away, so a
+    // 1008 "model not found / bad setup" from Gemini was INDISTINGUISHABLE from
+    // a transient network blip. Prod call avatok-f0c0ef5c died at ms=1807 with
+    // turns=0 — the signature of Gemini accepting the socket and then rejecting
+    // the setup frame — and there was no way to tell which. `-preview` model ids
+    // (we pin gemini-3.1-flash-live-preview) are exactly the ones Google retires,
+    // and this repo has already been bitten once by a dead model id. Diagnose
+    // before failing over: an engine fallback that masks an invalid model config
+    // is worse than the outage, because nobody ever fixes the config.
+    gem.addEventListener("close", (ev: any) => {
+      this.ev("ava_recept_gemini_closed", {
+        code: typeof ev?.code === "number" ? ev.code : null,
+        close_reason: typeof ev?.reason === "string" ? ev.reason.slice(0, 300) : null,
+        was_clean: ev?.wasClean === true,
+        turns: this.turnCount,
+        ms: Date.now() - this.startedAt,
+      });
+      this.finalize("model_closed");
+    });
+    gem.addEventListener("error", (ev: any) => {
+      const raw = ev?.error ?? ev?.message ?? null;
+      this.geminiErrorDetail = {
+        error: raw == null ? null : String(raw).slice(0, 300),
+        code: typeof ev?.code === "number" ? ev.code : null,
+        close_reason: typeof ev?.reason === "string" ? ev.reason.slice(0, 300) : null,
+      };
+      this.failHard("gemini_error");
+    });
 
     // Telemetry: upstream connected — connect latency. Direct path (no gateway).
     this.ev("ava_recept_gemini_connect", {
@@ -1017,7 +1048,18 @@ export class ReceptionRoom {
   }
 
   private failHard(reason: string): void {
-    this.ev("ava_recept_error", { stage: reason, fatal: true, ms: Date.now() - this.startedAt });
+    // [RECEPT-GEMINI-DIAG-1] Attach whatever the upstream told us. `turns` +
+    // `pre_first_turn` are the two fields that classify this as a setup
+    // rejection (turns 0, dead inside a couple of seconds) versus a mid-call
+    // drop — which is the precondition for the guarded engine failover.
+    this.ev("ava_recept_error", {
+      stage: reason,
+      fatal: true,
+      ms: Date.now() - this.startedAt,
+      turns: this.turnCount,
+      pre_first_turn: this.turnCount === 0,
+      ...(this.geminiErrorDetail ?? {}),
+    });
     try { this.client?.send(JSON.stringify({ t: "error", reason })); } catch { /* ignore */ }
     this.finalize(reason);
   }
@@ -1417,12 +1459,37 @@ export class ReceptionRoom {
       body: JSON.stringify({ ...payload, owner: init.owner_uid }),
     });
     try {
+      // [RECEPT-CALLER-IDENTITY-1 2026-08-01] Carry the caller's identity on the
+      // push. Without `caller_uid` + `caller_name` the recipient's
+      // `_resolveDisplayName` (push_service.dart) has nothing to match on and
+      // falls through every tier to the literal string "Unknown caller" — which
+      // is how prod produced a notification titled "Missed call from Unknown
+      // caller" whose BODY correctly read "Missed call from Davy". The title is
+      // built 100% on-device; the body is the server string. Both names were in
+      // hand right here (`init.caller_name` is the same value written to
+      // ava_recept_call_summary in this very finalize()), they were just never
+      // put on the payload.
+      //
+      // The CF twin (reception_room_cf.ts) already sends caller_uid — that fix
+      // was never back-ported to this, the LIVE Gemini lane. Sending both keys
+      // now: caller_uid lets the owner's own contact book resolve the name
+      // (tier 2), caller_name covers a caller who is not in their contacts.
       await this.env.Q_PUSH.send({
         kind: "notify", to: init.owner_uid, fromName: "Ava",
         title: "Ava took a message", body: bodyText.replace(/^📞\s*/, ""),
-        data: { type: "receptionist", conv, caller_phone: init.caller_phone },
+        data: {
+          type: "receptionist", conv,
+          caller_uid: init.caller_uid || undefined,
+          caller_name: init.caller_name || undefined,
+          caller_phone: init.caller_phone,
+        },
       });
-      this.ev("ava_recept_push_sent", { ok: true });
+      this.ev("ava_recept_push_sent", {
+        ok: true,
+        has_caller_uid: !!init.caller_uid,
+        has_caller_name: !!init.caller_name,
+        has_caller_phone: !!init.caller_phone,
+      });
     } catch (e) {
       this.exception(e, "owner_push_failed", { delivery: "push" });
       this.ev("ava_recept_delivery_failed", { stage: "push", error_scrubbed: scrubSecrets(String(e)).slice(0, 200) });

@@ -1455,12 +1455,26 @@ export class VobizAgentRoom {
       body: JSON.stringify({ ...payload, owner: init.owner_uid }),
     });
     try {
+      // [RECEPT-CALLER-IDENTITY-1 2026-08-01] Same defect as reception_room.ts —
+      // the notify push carried no caller identity, so the recipient's
+      // _resolveDisplayName fell through to "Unknown caller" in the title while
+      // the body had the real name. See reception_room.ts for the full write-up.
       await this.env.Q_PUSH.send({
         kind: "notify", to: init.owner_uid, fromName: "Ava",
         title: "Ava took a message", body: bodyText.replace(/^📞\s*/, ""),
-        data: { type: "receptionist", conv, caller_phone: init.caller_phone },
+        data: {
+          type: "receptionist", conv,
+          caller_uid: init.caller_uid || undefined,
+          caller_name: init.caller_name || undefined,
+          caller_phone: init.caller_phone,
+        },
       });
-      this.ev("ava_recept_push_sent", { ok: true });
+      this.ev("ava_recept_push_sent", {
+        ok: true,
+        has_caller_uid: !!init.caller_uid,
+        has_caller_name: !!init.caller_name,
+        has_caller_phone: !!init.caller_phone,
+      });
     } catch (e) {
       this.ev("ava_recept_delivery_failed", { stage: "push", error_scrubbed: scrubSecrets(String(e)).slice(0, 200) });
     }

@@ -148,6 +148,10 @@ export async function handlePush(msg: PushMsg, env: Env): Promise<void> {
   const notifIdentityProps = payload.data.type === "message" ? {
     has_from_uid: !!payload.data.fromUid,
     has_from_phone: !!payload.data.fromPhone,
+    // [RECEPT-CALLER-IDENTITY-1] The third resolver tier. All three false is the
+    // exact fingerprint of a push that will render as "Unknown caller".
+    has_caller_name: !!(payload.data as any).callerName,
+    has_title: !!(payload.data as any).title,
   } : {};
   // DEMO KILL-SWITCH (owner request 2026-07-01, demo): when DEMO_MUTE_NONCALL_PUSH="1",
   // suppress EVERY push except incoming calls + call-status, so a live demo isn't
@@ -664,10 +668,25 @@ function buildPayload(msg: PushMsg): { data: Record<string, string>; highPriorit
     // rendered as a plain chat-message banner titled with a raw number (the
     // reported bug). Additive: does not replace the existing recept/fromName checks.
     const subKind = (msg.data as any)?.type ? String((msg.data as any).type) : "";
+    // [RECEPT-CALLER-IDENTITY-1 2026-08-01] The caller's SERVER-RESOLVED display
+    // name, forwarded as `callerName` — the exact key the client already reads at
+    // push_service.dart `_resolveDisplayName(fromName: d['callerName'])`. That read
+    // has been dead code since it was written because NO producer ever emitted the
+    // key, so a receptionist push from a caller who is not in the recipient's
+    // contact book could only ever resolve to the literal "Unknown caller" (the
+    // reported "Missed call from Unknown caller" title). It is the LAST-priority
+    // tier on the client — a local contact override still wins, as it should.
+    const callerName = (msg.data as any)?.caller_name ? String((msg.data as any).caller_name).slice(0, 80) : "";
     return { highPriority: true, data: {
       type: "message", fromName: msg.fromName ?? "AvaTOK",
       ...(fromUid ? { fromUid: String(fromUid) } : {}),
       ...(fromPhone ? { fromPhone: String(fromPhone) } : {}),
+      ...(callerName ? { callerName } : {}),
+      // [RECEPT-CALLER-IDENTITY-1] Forward the producer's `title` when it set one.
+      // `PushMsg.title` existed and was populated ("Ava took a message") but this
+      // branch silently dropped it, so only `body` ever reached the device.
+      // Absent → the client keeps composing its own title, unchanged.
+      ...(msg.title ? { title: String(msg.title).slice(0, 120) } : {}),
       ...(subKind ? { subKind } : {}),
       // Short preview — the sender's own `preview`, or (fallback) the internal
       // DO senders' `body` field (e.g. a voicemail transcript snippet), so those
