@@ -2,8 +2,13 @@
 
 **Date:** 2026-08-01
 **Source:** `design/icoming5/Incoming Call.dc.html` + `design/icoming5/On Call.dc.html`
-**Status:** INVENTORY ONLY — nothing here is implemented yet. Review and tell me
-what is missing or wrong before I build.
+**Status:** INVENTORY ONLY — nothing here is implemented yet.
+**Decisions live in `PLAN-CALL-SCREENS-2026-08-01.md`** — owner rulings R1/R2 and
+decisions D1–D13 answer every open question below. Read that for what we are
+actually building; this file is the raw inventory it was derived from.
+
+> **OWNER RULING R1 (2026-08-01): VIDEO IS REMOVED.** Section B6 is void.
+> **OWNER RULING R2: Add call is AUDIO CONFERENCE ONLY.**
 
 Status key:
 **[BUILT]** exists and works · **[PARTIAL]** exists but needs change ·
@@ -79,14 +84,14 @@ Reduced from 7 controls to **4**. `Message`, `Voice Mail` and the standalone
 | 16 | Animated equaliser bars beside the timer | **[NEW]** cosmetic |
 | 17 | **Second avatar appears beside the first while adding a call**, with its own ripple + "Ringing <name>…" | **[NEW]** |
 
-## B2. The six controls
+## B2. The controls — now FIVE + End call (video removed, R1)
 | # | Feature | Status |
 |---|---|---|
 | 18 | **Mute / Unmute** — toggles, label and colour change | **[BUILT]** |
-| 19 | **Keypad** — DTMF sheet | **[PARTIAL]** see B3 |
+| 19 | **Keypad** — DTMF only, PSTN calls only (D3) | **[PARTIAL]** see B3 |
 | 20 | **Audio** (speaker toggle) | **[BUILT]** |
-| 21 | **Add call** — add a person to the live call | **[HARD]** see B5 |
-| 22 | **Video** — convert the live audio call to video | **[HARD]** see B6 |
+| 21 | **Add call** — audio conference only (R2) | **[HARD]** see B5 |
+| 22 | ~~**Video**~~ | **REMOVED — owner ruling R1** |
 | 23 | **Pause** (user-initiated hold) | **[PARTIAL]** see B4 |
 | 24 | **End call** | **[BUILT]** |
 
@@ -152,13 +157,22 @@ building:
   usually implies 3–5.
 - **Billing** — a conference is a different cost model to P2P.
 
-## B6. ⚠️ VIDEO — architecturally significant
+## ~~B6. VIDEO~~ — **DELETED (owner ruling R1, 2026-08-01)**
+
+**Video is removed from the design.** No toggle, no mid-call conversion.
+`config.video` stays immutable for the life of the call, which is what all 41
+read sites already assume. Nothing below is being built — it is kept only to
+record what the ruling saved us from.
+
+<details>
+<summary>Original analysis (void)</summary>
+
 | # | Feature | Status |
 |---|---|---|
-| 36 | Video toggle converts the live audio call to video | **[HARD]** |
-| 37 | Button shows active state when video is on | **[NEW]** |
+| 36 | Video toggle converts the live audio call to video | **VOID** |
+| 37 | Button shows active state when video is on | **VOID** |
 
-### Why this is not a small feature
+### Why this was not a small feature
 
 `config.video` is read **41 times** in `call_session.dart` and is treated as
 **fixed for the whole life of the call**. It is decided at dial time and several
@@ -176,6 +190,8 @@ Turning it into something that changes mid-call means:
   must be a request they accept, but confirm.)
 - One-way video (I show, you don't) — allowed or not?
 - Bandwidth/cost, and what happens when it fails.
+
+</details>
 
 ## B7. Contacts panel
 | # | Feature | Status |
@@ -241,12 +257,23 @@ you want to know which change did it.
 
 ---
 
-# E. WHAT I NEED FROM YOU
+# E. OPEN QUESTIONS — ALL ANSWERED
 
-1. Are **Message/quick-reply** and **Voice Mail** dropped, or moved?
-2. Keypad — **DTMF tones** into the live call, or **dial a new number**?
-3. Should **Contacts** have its own button, or stay inside Add call?
-4. Add call: does the original peer consent, what is the max, and what happens
-   if the added person doesn't answer?
-5. Video: does the other side have to **accept** becoming a video call?
-6. Anything in section C you have an opinion on.
+Answered in `PLAN-CALL-SCREENS-2026-08-01.md`. Summary:
+
+| Question | Answer | Where |
+|---|---|---|
+| Message / quick-reply — dropped or moved? | **Moved.** Button removed; reply strip appears for ~6s *after* the decline commits, so it never delays the disconnect | D2 |
+| Voice Mail — dropped or moved? | **Moved.** No longer a callee button — it becomes an automatic *outcome* offered to the caller when nobody takes the call | D1 |
+| Keypad — DTMF or dial? | **DTMF only**, and hidden entirely on AvaTOK-to-AvaTOK calls. Green dial button removed | D3 |
+| Contacts — own button? | **No.** Reachable only via Add call, as drawn | D4 |
+| Add call — max participants? | **3** (you + 2) in v1 | D6 |
+| Add call — peer consent? | **Told, not asked.** Disclosure + join tone, no modal | D7 |
+| Add call — if they don't answer? | **Nothing happens.** Ring out-of-band, migrate to conference only *on answer* | D5 |
+| Video — consent model? | **Void — video removed** | R1 |
+| Call waiting? | **No** in v1 — second caller goes to receptionist | D8 |
+| Removing a participant? | **No** in v1 — anyone may leave, nobody may remove | D9 |
+| Leaving a 3-way? | **Host leaves → call ends** for all | D10 |
+| Added person's screen? | *"Adding you to a call with \<Peer\>"* | D12 |
+| Ringback during add? | **Adder only** | D11 |
+| Landscape? | **Portrait-locked** | D13 |
