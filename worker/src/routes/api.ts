@@ -198,7 +198,9 @@ export async function call(req: Request, env: Env): Promise<Response> {
   // `degraded` volume means D1 is unhealthy on the call path.
   if (admission.degraded === true) {
     try {
-      await track(env, "call_admission_degraded", {
+      // Tagged to the CALLEE — this is their blocking policy that degraded, and
+      // they are the person exposed by it.
+      await track(env, b.to, "call_admission_degraded", "avatok", {
         call_id: b.callId,
         from_uid: ctx.uid,
         to_uid: b.to,
@@ -207,7 +209,7 @@ export async function call(req: Request, env: Env): Promise<Response> {
         // Present only on a denial; a cached block still enforcing is the good
         // outcome during an outage and should be visibly distinct.
         internal_reason: admission.admit ? null : admission.internal_reason,
-        app_name: "avatok", service_name: "avatok-api", worker: true,
+        service_name: "avatok-api", worker: true,
       });
     } catch { /* alerting must never change an admission decision */ }
   }
