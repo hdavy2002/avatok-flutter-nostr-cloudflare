@@ -12,7 +12,8 @@ import { metaSession } from "../db/shard";
 import { requireUser, isFail } from "../authz";
 import { verifyClerk, resolveCanonicalUid, linkClerkAlias } from "../auth";
 import { emailFor, nameFor, primaryVerifiedEmailFor, publicIdentityFor } from "../lib/identity";
-import { track, trackUser } from "../hooks";
+import { admitCall, unavailableBody, CALLER_VISIBLE_OUTCOME } from "../lib/call_admission";
+import { track, trackUser, trackException } from "../hooks";
 import { brainIngest } from "../lib/brain_ingest";
 import { avaReason } from "../lib/ava_reason"; // One Brain B1: unified reasoning gateway
 import { guardWrite } from "./moderate"; // save-time content validation (Nemotron)
@@ -166,6 +167,45 @@ export async function call(req: Request, env: Env): Promise<Response> {
   // channel (email/chat) calls never send this and are byte-for-byte unaffected.
   const isDialpad = b.via === "dialpad";
   if (!b.to || !b.callId) return json({ error: "to and callId required" }, 400);
+  // ── PRE-RING ADMISSION GATE ────────────────────────────────────────────────
+  // [CALL-ADMISSION-1 2026-08-01] Spec: Specs/CALL-OUTCOMES-FROZEN-2026-08-01.md
+  // (owner ruling B, freeze decisions 8 + 9).
+  //
+  // This is the EARLIEST possible rejection point and that placement is the
+  // whole feature: nothing below has run yet — no device/token lookup, no
+  // stale-device prune, no telemetry, no CallRoom DO, no Q_PUSH, no InboxDO WS
+  // ring. A suppressed call costs the callee nothing: their phone never wakes.
+  //
+  // Before this, the blocklist was consulted ONLY inside lib/call_routing.ts,
+  // only on the dialpad lane, and only when `businessCallUx` was on — so a
+  // blocked caller placing an ordinary friend-channel call rang straight
+  // through. Blocking someone did not stop them phoning you.
+  //
+  // Every denial returns the identical uniform body, so "fast rejection" no
+  // longer uniquely means "blocked" (see call_admission.ts for the reasoning).
+  const admission = await admitCall(env, ctx.uid, b.to);
+  if (!admission.admit) {
+    try {
+      // The internal reason lives ONLY here, server-side. It must never reach
+      // the caller in any form — body, push, error string or their analytics.
+      const [callerEmail, calleeEmail] = await Promise.all([
+        emailFor(env, ctx.uid).catch(() => null),
+        emailFor(env, b.to).catch(() => null),
+      ]);
+      await trackUser(env, b.to, calleeEmail, "call_admission_denied", "avatok", {
+        call_id: b.callId,
+        from_uid: ctx.uid,
+        to_uid: b.to,
+        from_email: callerEmail,
+        to_email: calleeEmail,
+        internal_reason: admission.internal_reason,
+        caller_visible_outcome: CALLER_VISIBLE_OUTCOME,
+        via: b.via ?? "chat",
+        app_name: "avatok", service_name: "avatok-api", worker: true,
+      });
+    } catch { /* telemetry must never change an admission decision */ }
+    return json(unavailableBody());
+  }
   // [TRACE-ID-1] Correlation id minted client-side at the dial boundary; propagate
   // it into the push payload (→ callee) and PostHog captures on this path so the
   // caller, Worker, and callee all stitch under one trace_id. Additive/optional.
@@ -606,7 +646,10 @@ export async function callStatus(req: Request, env: Env): Promise<Response> {
   // these were marked terminal the receptionist handoff would be killed before it
   // started (see call_session.dart _handoffToAva).
   const TERMINAL_CALL_STATUS = new Set(["cancel", "bye", "hangup", "ended", "decline", "declined", "missed", "no-answer"]);
-  const HANDOFF_CALL_STATUS = new Set(["decline_ava", "decline_agent"]);
+  // [CALL-VOICEMAIL-1] `decline_vm` joins the handoff set: the callee's ring is
+  // over but the CALLER's leg must stay alive so they can record a voicemail.
+  // Marking it terminal would tear their session down before the recorder opens.
+  const HANDOFF_CALL_STATUS = new Set(["decline_ava", "decline_agent", "decline_vm"]);
   const isTerminal = TERMINAL_CALL_STATUS.has(b.status);
   const isHandoff = HANDOFF_CALL_STATUS.has(b.status);
   let doResult: Record<string, unknown> | null = null;
@@ -763,6 +806,111 @@ export async function callQuickReply(req: Request, env: Env): Promise<Response> 
   } catch { /* telemetry must never break delivery */ }
 
   return json({ ok: true, queued: true, text });
+}
+
+/**
+ * [CALL-SPAM-REPORT-1 2026-08-01] POST /api/calls/report
+ *
+ * The callee reported an incoming CALLER as spam. Phase 2 of
+ * Specs/CALL-OUTCOMES-FROZEN-2026-08-01.md.
+ *
+ * WHY A NEW ROUTE rather than reusing an existing one. Neither existing spam
+ * surface fits an AvaTOK-to-AvaTOK caller:
+ *   - /api/spam/report is E.164-keyed (normalizePhone + hash, rejects <6
+ *     digits) — an AvaTOK caller is a uid, not a number — and 403s while the
+ *     `spamShield` flag is off.
+ *   - /api/safety/report is conv-keyed, requires message envelopes out of the
+ *     reporter's InboxDO, and ALWAYS blocks the sender.
+ *
+ * REPORT AND BLOCK ARE DIFFERENT ACTIONS. This route does not block by default.
+ * A user may want to flag a suspicious caller while still allowing future calls
+ * through to screening, and silently blocking on report would be a surprise the
+ * UI never promised. The client asks separately and sets `alsoBlock`.
+ *
+ * Idempotent per (reporter, call) via a UNIQUE index — a double-tap or a
+ * replayed FCM action must not inflate a caller's report count, which would be
+ * trivially weaponisable.
+ */
+export async function callReportSpam(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const b = (await req.json().catch(() => ({}))) as {
+    reportedUid?: string; callId?: string; category?: string;
+    callStartedAt?: number; ringDurationMs?: number;
+    contactsMatch?: boolean; priorRelationship?: string;
+    alsoBlock?: boolean; deviceId?: string;
+  };
+  if (!b.reportedUid || !b.callId) {
+    return json({ error: "reportedUid and callId required" }, 400);
+  }
+  if (b.reportedUid === ctx.uid) return json({ error: "cannot report yourself" }, 400);
+
+  const ALLOWED = new Set(["spam", "scam", "harassment", "other"]);
+  const category = ALLOWED.has(String(b.category)) ? String(b.category) : "spam";
+  const now = Date.now();
+  // Snapshot what the reporter actually SAW, so a later profile rename by the
+  // reported caller cannot rewrite the evidence.
+  const seen = await publicIdentityFor(env, b.reportedUid).catch(() => null);
+
+  let stored = false;
+  try {
+    const r = await env.DB_META.prepare(
+      `INSERT OR IGNORE INTO call_spam_reports
+       (id, reporter_uid, reported_uid, call_id, report_category, call_started_at,
+        report_created_at, ring_duration_ms, identity_snapshot_version,
+        reported_display_name, prior_relationship, contacts_match, also_blocked,
+        client_device_id)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)`,
+    ).bind(
+      crypto.randomUUID(), ctx.uid, b.reportedUid, b.callId, category,
+      b.callStartedAt ?? null, now, b.ringDurationMs ?? null,
+      seen?.profile_version ?? null, seen?.display_name ?? null,
+      String(b.priorRelationship ?? "none").slice(0, 24),
+      b.contactsMatch === true ? 1 : 0,
+      b.alsoBlock === true ? 1 : 0,
+      String(b.deviceId ?? "").slice(0, 64) || null,
+    ).run();
+    stored = (r.meta?.changes ?? 0) > 0;
+  } catch (e) {
+    // A missing table (migration not yet applied) must not make the UI look
+    // broken — the user's intent is recorded in telemetry either way.
+    try {
+      await trackException(env, e, {
+        route: "callReportSpam", uid: ctx.uid, app_name: "avatok",
+        extra: { call_id: b.callId },
+      });
+    } catch { /* ignore */ }
+  }
+
+  // Blocking is a SEPARATE, explicit choice — never implied by reporting.
+  let blocked = false;
+  if (b.alsoBlock === true) {
+    try {
+      await env.DB_META.prepare(
+        "INSERT OR IGNORE INTO blocks (uid, blocked_uid, created_at) VALUES (?1,?2,?3)",
+      ).bind(ctx.uid, b.reportedUid, now).run();
+      blocked = true;
+    } catch { /* reported successfully; the block can be retried by the user */ }
+  }
+
+  try {
+    const [reporterEmail, reportedEmail] = await Promise.all([
+      emailFor(env, ctx.uid).catch(() => null),
+      emailFor(env, b.reportedUid).catch(() => null),
+    ]);
+    await trackUser(env, ctx.uid, reporterEmail, "call_spam_reported", "avatok", {
+      call_id: b.callId, reported_uid: b.reportedUid, reporter_uid: ctx.uid,
+      reported_email: reportedEmail, category,
+      // stored=false with no exception means the UNIQUE index rejected a
+      // duplicate — i.e. a double-tap or a replayed action, not a failure.
+      stored, also_blocked: blocked,
+      ring_duration_ms: b.ringDurationMs ?? null,
+      contacts_match: b.contactsMatch === true,
+      app_name: "avatok", service_name: "avatok-api", worker: true,
+    });
+  } catch { /* telemetry must never fail a report */ }
+
+  return json({ ok: true, stored, blocked });
 }
 
 // [AVACALL-RING-CANCEL-1] GET /api/call-state?callId=<id> — thin authed proxy to

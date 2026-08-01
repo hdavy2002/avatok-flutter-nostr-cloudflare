@@ -165,6 +165,26 @@ Future<void> place1to1Call(
                 : 'This line is busy. Please try again later.';
           }
           Analytics.capture('paid_call_busy', {'to': uid, 'busy_kind': busyKind});
+        } else if (r == 'unavailable') {
+          // [CALL-ADMISSION-1 2026-08-01] Uniform pre-ring denial (owner ruling
+          // B). The server refused to place this call and will NOT tell us why:
+          // blocked, callee offline, privacy mode, rate limited and no-callable-
+          // device all arrive here identically. That uniformity is the point —
+          // if only blocks failed fast, the timing would be a perfect
+          // blocked-status oracle.
+          //
+          // Reuses the existing busy path purely for its mechanics (never ring,
+          // show a full-screen card, never open CallScreen). Do NOT "improve"
+          // this copy to be more specific; specificity is the leak.
+          busyMessage = (j['message'] ?? '').toString();
+          if (busyMessage!.isEmpty) {
+            busyMessage = "This person can't take calls right now.";
+          }
+          Analytics.capture('call_unavailable', {
+            'to': uid,
+            // The server never sends the real cause; this is its public code.
+            'outcome_code': (j['outcome_code'] ?? 'recipient_unavailable').toString(),
+          });
         }
       } catch (_) {/* not JSON / no routed field — normal ring path */}
     }
