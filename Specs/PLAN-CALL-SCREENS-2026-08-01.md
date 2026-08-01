@@ -1,318 +1,553 @@
-# Call screens — master plan
+# Call screens — master plan (v2)
 
 **Date:** 2026-08-01
-**Supersedes:** the scope sections of `PLAN-DECLINE-VS-RECEPTIONIST-2026-08-01.md`
-(its *diagnosis* is still valid and still referenced below)
-**Companion:** `FEATURE-LIST-CALL-SCREENS-2026-08-01.md` (the 42-item inventory)
-**Status:** PLAN. Decisions D1–D13 are my recommended defaults, taken because the
-owner asked for the most logical answer rather than another round of questions.
-Any of them can be overturned with one line.
+**Supersedes:** v1 of this file, and the scope sections of
+`PLAN-DECLINE-VS-RECEPTIONIST-2026-08-01.md` (its *diagnosis* remains valid)
+**Companion:** `FEATURE-LIST-CALL-SCREENS-2026-08-01.md`
 
 ---
 
-# PART 1 — OWNER RULINGS (2026-08-01)
+# PART 0 — EVERY ISSUE RAISED THIS SESSION
 
-| # | Ruling |
+The full register, so nothing is lost. **Shipped** = in prod worker and/or build
+10471.
+
+| # | Issue | Status |
+|---|---|---|
+| 1 | Declined call kept ringing on the caller's end (~5.4 s), then Ava took over | **Partly shipped** — decline now commits server-side, but see P0-b: the caller can still act on its own timer |
+| 2 | Callee's incoming screen never disappeared after declining | **Shipped** — `applyRingTransition()` is the single ring-surface reducer |
+| 3 | "Missed call from Unknown caller" in the title, right name in the body | **Shipped** |
+| 4 | Caller shown as the Gmail/Clerk name ("Davy"), not the AvaTOK profile name ("Arti Singh") | **Shipped** — `publicIdentityFor()` reads `DB_META.users` only; Clerk lookup deleted; KV prefix bumped to `ph_name4:` to evict poisoned entries |
+| 5 | Caller's profile **photo** on the incoming screen | **Shipped** |
+| 6 | "Davy called, Ava answered" leaked the Gmail name — should just say "Ava answered" | **Shipped** |
+| 7 | Gmail address must never be shown anywhere in the product | **Shipped** for the call paths; no audit done of the rest of the app |
+| 8 | New incoming-call screen from the designs | **Shipped** (7-control version); needs the 4-control rebuild |
+| 9 | Report Spam → row in the DB | **Shipped** — migration applied to prod |
+| 10 | Block → caller dropped immediately on the next call, never rings, no network lookup | **Shipped** — `admitCall()` runs before anything else |
+| 11 | Voicemail — caller records, lands as a normal audio message | **Shipped**, but the trigger moves (D1) |
+| 12 | Quick replies — pick a message, call ends both ends, caller gets it | **Shipped**, trigger moves (D2) |
+| 13 | Receptionist must hand to Ava **immediately**, not after more rings | **NOT DONE** — P0-a and P0-b |
+| 14 | Two Decline buttons behaving differently (top notification vs branded screen) | **NOT DONE** — P0-c |
+| 15 | Receptionist showing the caller "Declined" | **NOT DONE** — P0-a |
+| 16 | App icon not changing on the phone | **Diagnosed — see Part 5** |
+| 17 | Cross-user call control (any user could decline a stranger's call) | **Shipped** — found by Luna, was live ~40 min |
+| 18 | Release gates 1–5 | **4 of 5 closed**; gate 3 half-open (Part 4, P1) |
+| 19 | On Call screen — the icoming5 design | **This plan** |
+
+---
+
+# PART 1 — OWNER RULINGS
+
+| # | Ruling | Date |
+|---|---|---|
+| **R1** | **Video is REMOVED.** No toggle, no mid-call conversion. `config.video` stays immutable — which all 41 read sites already assume. | 08-01 |
+| **R2** | **Add call is AUDIO ONLY**, and becomes an audio conference. | 08-01 |
+| **R3** | **Keypad stays visible on every call**, including AvaTOK-to-AvaTOK — menu-driven IVR is coming. *(Overrides my D3.)* | 08-01 |
+| **R4** | **Quick-reply menu stays open until the user dismisses it**, with an explicit exit icon. *(Refines D2.)* | 08-01 |
+| **R5** | **Up to 25 participants**, not 3 — with a live, gapless switch to a server SFU. *(Overrides my D6.)* | 08-01 |
+
+**Control grid: Mute · Keypad · Audio · Add call · Pause · End call.**
+
+---
+
+# PART 2 — DECISIONS
+
+### D1. Voicemail is an outcome, not a button *(unchanged)*
+No phone asks the **callee** to press voicemail — it is what happens to the
+**caller** when nobody takes the call. When the callee's ring leg ends without an
+answer and the receptionist did not take it, the caller is offered *"Leave a
+voice message"*. The recording, upload and delivery built today are untouched;
+only the trigger moves to the server, which already owns the outcome.
+
+### D2. Quick replies — after the decline, and they stay until dismissed *(R4)*
+The Message button is gone. **The decline commits first** — the caller is
+dropped instantly, nothing sits between the tap and the disconnect.
+
+Then the reply menu opens **and stays open**, with an **✕ exit icon** top-right.
+It closes on: ✕, sending a reply, or the back gesture. **No auto-dismiss timer.**
+
+*Why the owner is right to want it persistent:* a timed strip creates a race
+against the user — they read, decide, reach, and it vanishes. A menu that waits
+costs nothing, because the call is already over. There is no longer any reason
+for urgency in this UI, so it should not behave urgently.
+
+Not shown after Report Spam or Block — messaging someone you just reported is
+incoherent.
+
+### D3. Keypad — DTMF, always visible *(R3)*
+The keypad sends DTMF and is present on every call. The green *dial* button is
+still removed: dialling mid-call is Add call, and two doors to one room is
+exactly how the two-Decline-buttons bug happened.
+
+On AvaTOK-to-AvaTOK calls today there is nothing listening for tones, so digits
+go nowhere — harmless, and the surface is ready for the IVR.
+
+**Build it right for IVR now, since that is the stated destination:** tones must
+travel as RFC 4733 telephone-events, not as audio the far end has to recognise.
+Doing that later means changing the media path; doing it now is free.
+
+### D4. Contacts stays inside Add call *(unchanged)*
+One reason to open contacts mid-call: to add someone. Panel title always **"Add
+to call"**. The return-to-call banner ships, because the picker is full-screen.
+
+### D5. Add call — the flow *(refined by owner)*
+1. Tap **Add call** → contact list opens
+2. Pick a person → their avatar appears beside the current peer, **"Ringing
+   \<Name\>…"**
+3. They answer → they join the conversation
+4. They don't → **"\<Name\> isn't picking up"** with **"Back to the call"**;
+   your original call was never interrupted
+
+The mechanism that makes step 4 free — and step 3 gapless — is Part 3.
+
+### D6. Up to 25 *(R5)* — see Part 3
+### D7. The other people are told, not asked *(unchanged)*
+No consent modal. A modal mid-conversation is unanswerable — you are talking,
+phone at your ear. Everyone sees who joined and when, plus a join tone. What
+protects privacy is **knowing**, not approving. Silent addition would be
+indefensible; this is not that.
+
+### D8. No call waiting in v1 *(unchanged)*
+A second incoming call while you are on one goes to the receptionist, else
+missed. Call waiting needs a *held incoming leg*, which the frozen model does not
+have — adding one recreates the bug class this session removed.
+
+### D9. Anyone may leave, nobody may remove *(unchanged)*
+Removal needs a moderation permission model. Out of scope.
+
+### D10. **REVISED TWICE** — continuity, hosting and paying are three things
+
+v1 said host-leaves-ends-it. That was sized for 3 people and is wrong at 25 —
+ending a 20-person call because one person's battery died is indefensible.
+
+My v2 fix was *also* wrong, and Sol was blunt about why: it transferred **room
+continuity, moderation authority and financial liability together**, as if they
+were one thing. They are three, and only two of them may move.
+
+| Concern | Rule |
 |---|---|
-| **R1** | **Video is REMOVED.** No video toggle, no mid-call video, no `config.video` mutation. The 6th control slot is freed. |
-| **R2** | **Add call is AUDIO CONFERENCE ONLY.** Adding a person converts the call to an audio conference. Never video. |
+| **Room continuity** | Survives the initiator. Ends when the **last** participant leaves. |
+| **Host / moderator** | Transfers automatically to the longest-present **eligible** participant. User-level tenure, preserved across a bounded reconnect grace — otherwise reconnecting resets seniority and a second device can game the election. |
+| **Financial liability** | **Does NOT transfer.** Immutable by default. |
 
-**What R1 buys us.** Section B6 of the feature list is deleted outright. The 41
-`config.video` reads in `call_session.dart` stay exactly as they are — immutable
-for the life of the call, which is what every one of them already assumes. This
-removes the single largest source of risk in the whole design, and it removes it
-for free. No renegotiation, no mid-call camera permission, no consent model, no
-audit of 41 branches.
+**Why billing must not follow the host.** Sol's abuse case is unanswerable:
 
-**Control grid is now 5 + End call:** Mute · Keypad · Audio · Add call · Pause.
+> A starts an expensive conference, invites a target, leaves immediately. The
+> target becomes longest-present and starts being charged for a call they did
+> not create and never agreed to fund.
 
----
+That is a financial abuse primitive, not an edge case. And the elected host may
+be structurally incapable of paying anyway — empty wallet, spending limit,
+parental restriction, account under review.
 
-# PART 2 — DECISIONS (the questions, answered)
+**v1 rule:** the initiator remains the sponsor after leaving, for a bounded grace
+(≈5 min or until their existing reserve is exhausted), then the room ends unless
+someone **explicitly accepts** sponsorship. Later, we can offer *"A left.
+Continue this call on your account?"* — transferring only after server-side
+acceptance **and** a successful new authorization.
 
-## D1. Voice Mail is an OUTCOME, not a button
+**Never rewrite the billing anchor in place.** Append a new segment:
 
-**Decision:** delete the Voice Mail button. Voicemail becomes automatic.
+```
+segment 1: sponsor=A, start=t0, end_exclusive=t1
+segment 2: sponsor=B, start=t1, end_exclusive=t2
+```
 
-**Why.** No phone on earth asks the *callee* to press "voicemail". Voicemail is
-what happens *to the caller* when nobody takes the call. Making it a button was
-always modelling it from the wrong side.
+Mutating one owner field produces double-charging across the handover, unbilled
+gaps while the new sponsor's authorization clears, ambiguous refunds, and
+disputes nobody can reconstruct.
 
-The rule:
+**And do not use one `owner_uid` for everything.** Explicit capabilities —
+`can_invite`, `can_remove_participants`, `can_end_for_all`,
+`can_manage_recording`, `can_view_billing`, `can_accept_sponsorship`. Otherwise
+electing a new host silently hands them access to billing details and recording
+controls.
 
-> When the callee's ring leg ends without an answer — declined, timed out, or
-> receptionist unavailable — **and** the receptionist did not take the call, the
-> caller is offered "Leave a voice message".
+**Not in the first release:** automatic billing-anchor transfer. Sol's judgement,
+which I accept — *"more dangerous than the media migration."*
 
-The Phase 3 work built today is **not wasted**. The recording flow, the upload,
-and the delivery as a normal audio message all stay. Only the trigger moves: from
-a callee button to a server-decided outcome. That is strictly better, because the
-server already owns the outcome — this puts voicemail on the same authority as
-every other disposition instead of beside it.
-
-**Gate:** `voicemailEnabled` flag, plus a per-user "let callers leave me voice
-messages" setting.
-
-## D2. Quick replies attach to Decline — and never delay it
-
-**Decision:** keep quick replies. Remove the Message button. After a decline
-commits, show the callee a **non-blocking strip for ~6 seconds**: *"Send <Name> a
-message?"* with the reply chips.
-
-**Why.** The whole point of the realtime-decline work is that Decline is
-instantaneous. Any UI that sits *between* the tap and the disconnect fights that.
-So the message step moves to *after* the call is already gone — the caller has
-been dropped, and the reply arrives a moment later as a chat message. The callee
-loses nothing; the caller's call still dies instantly.
-
-This is the only ordering that satisfies both goals at once.
-
-**Do not** show the strip when the action was Report Spam or Block — replying to
-someone you just reported is incoherent.
-
-## D3. Keypad = DTMF only, and hidden on app-to-app calls
-
-**Decision:** the keypad sends DTMF tones. It does **not** dial. Remove the green
-call button from that sheet. Show the Keypad control **only on PSTN/DID calls**;
-on AvaTOK-to-AvaTOK calls it is hidden.
-
-**Why.** DTMF exists to talk to phone menus — "press 1 for sales". An
-AvaTOK-to-AvaTOK call has no menu to talk to, so the keypad is dead weight there.
-And the green button in the mock is dialer boilerplate: dialling a new number
-mid-call is *exactly* Add call, so having both is two doors to one room, which is
-how the two-Decline-buttons bug happened in the first place.
-
-**Freed slot on app-to-app calls** — leave it empty rather than inventing a
-control to fill it.
-
-## D4. Contacts stays inside Add call
-
-**Decision:** no separate Contacts button. Contacts opens only via Add call, and
-the panel title is always **"Add to call"**.
-
-**Why.** During a live call there is exactly one reason to open contacts: to add
-someone. A standalone Contacts button invites the user to wander off mid-call,
-and then we owe them a whole browsing experience layered over an active session.
-The design as drawn is right — I was wrong to flag the missing button as a gap.
-
-The return-to-call banner still ships, because the picker is full-screen and the
-user must always be one tap from the conversation.
-
-## D5. Add call migrates on ANSWER, not on dial ⭐
-
-**Decision:** when you tap a contact, the current call **stays peer-to-peer** and
-the third person is rung **out of band**. Only when they **answer** do all three
-move to the audio conference.
-
-**Why this is the important one.** The obvious implementation — move to the
-conference first, then ring — puts the existing, working, healthy call at risk
-for a person who may never pick up. Most add-call attempts fail: no answer, busy,
-declined. Under the obvious design, every one of those failures has already
-degraded a call that was fine.
-
-Ringing out of band means:
-
-- If they **don't answer** → nothing happened. The P2P call was never touched.
-  There is no "migrate back", because there was no migrate.
-- If they **answer** → one migration, at the exact moment it is justified.
-
-This turns the risky path into the rare path.
-
-**Cost:** a brief audio gap at the moment of the switch. Budget **≤800 ms**, and
-cover it with a short local tone plus "Joining <Name>…". Measure it; if it
-exceeds 800 ms in the field, that is a release blocker.
-
-## D6. Maximum 3 participants in v1
-
-**Decision:** you + 2. The LiveKit room is capped at 3 for calls created by Add
-call, not 25.
-
-**Why.** Three is the phone-shaped expectation, it is the smallest thing that
-proves the migration works, and it bounds the cost of a feature whose billing we
-have not yet modelled. Raising the cap later is a number change, not a redesign.
-Shipping at 25 first and discovering a problem is not recoverable in the same way.
-
-## D7. The original peer is TOLD, not ASKED
-
-**Decision:** no consent prompt. Mandatory disclosure instead — the peer's screen
-shows the third avatar and *"Davy is adding <Name>"*, plus a short join tone when
-they arrive.
-
-**Why.** A consent dialog mid-conversation is unanswerable: you are talking, your
-phone is at your ear, and a modal is demanding a decision about something that
-has not happened yet. Every conference phone in existence discloses rather than
-asks.
-
-But privacy is real, and the thing that protects it is **knowing**, not
-approving. The peer sees who joined and when, and can leave. Silent third-party
-addition would be indefensible; this is not that.
-
-## D8. No call waiting in v1
-
-**Decision:** a second incoming call while you are on a call does **not** ring.
-It goes straight to the receptionist if enabled, otherwise to a missed call.
-
-**Why.** Call waiting needs a *held incoming leg* — a state the frozen multi-leg
-model does not have. Adding it means new leg states, new commands, new
-authorization, and a second ring surface competing with a live call. That is the
-exact shape of the bug class we just spent this session eliminating. It is a
-separate project and it should be one.
-
-The receptionist makes this a genuinely good outcome rather than a compromise:
-the caller gets Ava, not silence.
-
-## D9. Anyone can leave; nobody can remove
-
-**Decision:** no "remove participant" in v1. Each person can end their own leg.
-
-**Why.** Removal needs a permission model — who may eject whom, and what the
-ejected person is told. That is a moderation feature. For a 3-person call between
-people who know each other, the social protocol ("I'll drop off") is sufficient.
-
-## D10. If the host leaves, the call ends
-
-**Decision:** when the person who initiated the call hangs up, the conference
-ends for everyone, with *"<Name> ended the call"*.
-
-**Why.** The conference is anchored to the initiator's session and billed to
-them. Letting the other two continue means an active, billable conference whose
-owner has left — and no defined answer to who pays or who can end it. Host-leaves
-ends it is the honest, cheap rule. Host transfer is a real feature and can come
-later if it is ever wanted.
-
-## D11. Only the adder hears ringback
-
-**Decision:** during the out-of-band ring, ringback is audible **only** to the
-person adding. The original peer hears nothing and sees the UI change.
-
-**Why.** Pushing a ringing tone into someone's ear mid-sentence is unpleasant and
-serves no purpose — they are not the one waiting.
-
-## D12. The added person is told what they are joining
-
-**Decision:** their incoming screen reads *"<Name> is calling"* with the subtitle
-**"Adding you to a call with <Peer>"**.
-
-**Why.** Answering into a conversation you did not know was in progress, with a
-person you did not expect, is a genuine unpleasant surprise. One line removes it
-entirely.
-
-## D13. Portrait-lock the call screens
-
-**Decision:** lock Incoming and On Call to portrait.
-
-**Why.** The grid is a fixed three-column layout; landscape would need a second
-design that nobody has drawn. Every phone dialer is portrait-locked.
+### D11. Only the adder hears ringback *(unchanged)*
+### D12. The added person is told what they are joining *(unchanged)*
+*"\<Name\> is calling"* / *"Adding you to a call with \<Peer\>"*.
+### D13. Portrait-lock the call screens *(unchanged)*
 
 ---
 
-# PART 3 — REMAINING CORRECTNESS WORK (unchanged, still the priority)
+# PART 3 — THE GAPLESS 2→25 MIGRATION
 
-None of Part 2 should ship before this. These are the outstanding items from
-`REPORT-REALTIME-DECLINE` and `PLAN-DECLINE-VS-RECEPTIONIST`, still open:
+## First, a correction to v1 of this plan
+
+**v1 said the conference runs on LiveKit. It does not — LiveKit was removed on
+2026-07-24** (`CF-CUTOVER-AND-LIVEKIT-REMOVAL-RUNBOOK-2026-07-24.md`).
+`routes/conference.ts` is now a tombstone that returns a typed failure so old
+clients know to update.
+
+The real infrastructure, and it is better than what I described:
+
+| Piece | Where |
+|---|---|
+| Cloudflare Realtime SFU routes | `worker/src/routes/groupcall.ts` |
+| Room authority DO | `worker/src/do/group_call_room.ts` |
+| Client | `app/lib/features/conference/cloudflare_conference_controller.dart` |
+| Flag | `cloudflareConferenceEnabled` |
+| Cap | `MAX_CONF_PARTICIPANTS = 25` — **already exactly what R5 wants** |
+| Join security | HMAC-SHA256 signed tickets: `{call_id, uid, session_id, generation, exp, nonce}` |
+| Bounded pulls | `MAX_AUDIO_PULLS = 6` — a 25-person room never pulls 25 audio streams |
+
+So the SFU is Cloudflare-native, same platform as everything else, already
+capped at 25, already ticket-secured, already bounded. **We are not building a
+conference. We are building a door into one that exists.**
+
+## The one real gap
+
+`groupcall.ts` is addressed by **`groupId`**, and membership comes from
+`groupMembers(env, groupId)` — it is scoped to AvaTalk *groups*. An ad-hoc 1:1
+escalation has no group.
+
+**Work item:** make a room addressable by an **ad-hoc room id derived from the
+call id**, with membership derived from the call's participant list instead of
+group membership. Everything else — tickets, caps, pull limits, telemetry —
+is reused untouched.
+
+## The technique: **subscribe early, render late** (make-before-break)
+
+The naive migration — hang up P2P, then join the SFU — has a gap the length of
+an SFU join, and it risks a healthy call for someone who may never answer.
+
+Instead: WebRTC permits multiple PeerConnections at once, so the P2P call and the
+SFU session live side by side, and the SFU path is *proven working* before
+anything is torn down.
+
+## Reviewed adversarially by GPT-5.6 Sol (Medium), 2026-08-01
+
+Sol's verdict: **"directionally plausible but not safe enough to ship as
+described."** Five of my claims were wrong. They are corrected below rather than
+quietly patched, because each was wrong for a reason worth remembering.
+
+### ✗ Correction 1 — "gapless" was a false promise
+
+> *"You have two independent jitter buffers, clocks, network paths, decoders,
+> audio sinks and client state machines. A mute flip can produce a short gap,
+> duplicated speech, a delayed echo, clipping, one-way audio, or A and B
+> switching at different times."*
+
+**The target is now "bounded and usually imperceptible", not "gapless".** Saying
+gapless in a spec means nobody budgets for the cases where it is not, and every
+one of those cases is audible.
+
+### ✗ Correction 2 — "same frame" switching is fiction
+
+A and B have separate clocks, control paths and event loops. They cannot switch
+together. If A switches 300 ms early that is survivable — but if A *tears down
+P2P* on switching while B has not, that is **one-way audio**.
+
+**Replaced local flips with a two-phase commit:**
+
+```
+PREPARING   A and B build SFU send+receive paths alongside live P2P
+PREPARED    each reports EVIDENCE-BASED readiness (see correction 4)
+COMMIT      server authorises cutover, with an epoch
+COMMITTED   each crossfades output — and KEEPS P2P alive, muted
+DRAIN       both confirm SFU audio is actually continuing
+FINALIZE    server authorises P2P teardown
+```
+
+### ✗ Correction 3 — "there is no migrate back" is only true *before* commit
+
+**P2P must be retained, muted, for a 2–5 s drain window after commit.** If SFU
+audio dies immediately after the switch, we restore P2P without renegotiating.
+Tearing down at the mute flip throws away the only cheap recovery we have.
+
+### ✗ Correction 4 — `sfu_ready` as I defined it was meaningless
+
+It must **not** mean session created, ICE connected, SDP complete, or track
+published. It must be **evidence of media actually flowing**:
+
+- outbound RTP packets and `bytesSent` increasing, no sender failure
+- **inbound** RTP, `bytesReceived` and *decoded audio frames* increasing, with
+  RTP timestamps progressing — sustained over a 300–500 ms continuity window,
+  because one arrived packet may be comfort noise or stale
+- audio session active, expected audio route active
+- `migration_id` + generation + participant session all match
+
+**A must prove it can hear B over the SFU. B must prove it can hear A.** Proving
+both published is not the same thing and would have shipped a broken gate.
+
+### ✗ Correction 5 — "muted" was underspecified
+
+Merely disabling the remote track is not enough. The choice is:
+
+- *not subscribed* — safest, but defeats the whole point: no warmed jitter
+  buffer and no proof inbound media works
+- *subscribed, renderer detached* — better, but some implementations only fully
+  exercise the receive path once a sink exists, so readiness would be a lie
+- **subscribed, renderer attached, zero gain** ← **chosen.** Closest to a warmed
+  playback path, and it is the only option where readiness means what it says.
+
+**Crossfade over 40–100 ms** at commit. Not instant (clicks), not long (the two
+copies arrive at different delays, so a long crossfade produces audible comb
+filtering).
+
+## The corrected flow
+
+```
+1. A taps Add call, picks C.
+   Server: verifies A may invite, checks A+B capability declarations,
+           reserves ONE migration on the current call epoch,
+           reserves C via CallStateAuthorityDO (so C can't be double-rung),
+           allocates an ad-hoc conference_id, issues provisional tickets.
+
+2. A and B enter PREPARING — UI says "Preparing group call…" IMMEDIATELY.
+      - reuse the CALL-OWNED microphone source
+      - publish with the current mute state already applied
+      - subscribe to each other, renderer attached at ZERO GAIN
+      - P2P stays audible and untouched
+
+3. Both report evidence-based PREPARED within ~4 s.
+   Failure: revoke tickets, close provisional sessions, release C's
+            reservation, P2P completely unchanged.
+
+4. ONLY NOW is C rung. Not before.
+
+5. C declines / times out -> destroy the provisional conference, keep P2P.
+
+6. C answers -> joins PROVISIONALLY and proves media readiness.
+                C is NOT audible yet, and cannot hear, until commit —
+                otherwise C speaks into a half-migrated room.
+
+7. COMMIT -> A and B crossfade SFU in, P2P out, over 40-100 ms.
+             P2P transport stays ALIVE and muted.
+
+8. Server promotes CallRoom to conference: seals the old P2P generation,
+   redirects reconnects, rejects late P2P signalling.
+
+9. DRAIN confirmed (or deadline) -> close P2P.
+```
+
+**Deadlines, owned by the server — a client timeout is only a UI safeguard,
+because a backgrounded client may never run cleanup at all:**
+soft target 1.5–2 s · hard deadline ~4 s · cleanup watchdog ~6 s.
+A late `sfu_ready` must **not** revive an aborted migration; a retry gets a new
+`migration_id` and generation.
+
+## What will bite if missed
+
+1. **A reference-counted, call-owned audio source.** The real risk is below the
+   Dart object: does `flutter_webrtc` fan one native capturer into two senders,
+   or does attaching to the SFU reconfigure the source? Does removing the SFU
+   sender call `track.stop()` on the track P2P still needs?
+   ```
+   CallMediaController   owns local_audio_track, mute state, route state
+     ├── P2PTransport    attaches a sender to that track
+     └── SFUTransport    attaches a sender to the SAME track
+   ```
+   **Invariant: no cleanup path may call `track.stop()` until every sender using
+   it has been detached.** Neither transport may stop the source.
+2. **Mute is call-level, not per-sender.** A muted A must not briefly publish
+   audible audio because the SFU sender was built from the raw track before the
+   call's mute state was applied.
+3. **A microphone permission prompt during migration is a design bug**, not a
+   recoverable state. B is already transmitting; the SFU must reuse the existing
+   source. If a prompt appears, the SFU controller has wrongly taken ownership
+   of capture.
+4. **AEC instability.** Echo cancellation uses the audio actually sent to the
+   speaker as its reference. If SFU audio leaks to the output for even a moment,
+   A hears B twice at different delays, the canceller's reference contains both,
+   adaptation destabilises, and the user gets pumping or metallic audio *after*
+   the switch until it reconverges.
+5. **Audio route changes are dangerous, especially Bluetooth** — the OS may tear
+   down and rebuild the voice-processing unit, and iOS has **one shared
+   `AVAudioSession` per app**, not one per PeerConnection. Require
+   `audio_route_stable_for >= 500 ms` before commit. Abort or restart on
+   speaker↔earpiece, Bluetooth connect/disconnect, headphones, or any
+   interruption.
+6. **Backgrounding is a state transition, not an edge case.** iOS suspension can
+   deactivate the audio session and mute the mic. Bump a preparation generation
+   on interruption or resume, and reject stale readiness from the old one.
+7. **Network handoff invalidates readiness.** Wi-Fi→cellular may break the SFU
+   path while P2P briefly survives. Readiness carries `ready_at`,
+   `ready_network_fingerprint`, `ready_audio_route_generation` and expires when
+   the interface, candidate pair, or route generation changes. Don't trust the OS
+   "network changed" callback — re-confirm media flow.
+8. **The CallRoom 2-peer cap is never raised** — but "P2P simply ends" hides a
+   real ownership transition. One authoritative operation,
+   `promote_to_conference(call_id, call_epoch, migration_id, conference_id)`,
+   must seal the old generation so reconnects redirect, late signalling cannot
+   resurrect P2P, old clients don't read closure as an ordinary hang-up, and
+   telemetry doesn't record two calls.
+9. **Capability gating AND runtime handling — both, not either.** Known
+   unsupported → disable Add call up front with *"\<Name\>'s app version doesn't
+   support adding people"*. Supported or unknown → attempt with bounded
+   preparation. Never infer capability from "B is connected to P2P" — unrelated
+   capabilities. An old client that ignores the migration messages must produce
+   `prepare_timeout`, never assumed readiness.
+10. **Never drop B to connect A to C.** The user asked to *add* C, not replace B.
+    No automatic fallback.
+11. **Acoustic privacy — the one I had not considered at all.** During
+    preparation, A and B publish microphone audio **to Cloudflare before C has
+    answered**, changing the media path from pure P2P to server-routed. Enforce a
+    **provisional room state in which recording, transcription, bots and any
+    other subscription are forbidden**, and decide whether existing call
+    disclosures cover server publication that may never be used.
+
+## Ad-hoc conference identity
+
+`groupcall.ts` is keyed by `groupId` with membership from group membership. **Do
+not overload a fake group.** Create a first-class `ConferenceRoomDO(conference_id)`
+with an immutable origin link (`origin_call_id`, `origin_callroom_generation`,
+`created_by_uid`) and membership from server-issued invitations. Bind
+`conference_id`, `role`, `migration_id`, `membership_epoch` and `capabilities`
+into the ticket — a group-namespace ticket must not work for ad-hoc escalation.
+
+## Races that need explicit answers
+
+| Race | Rule |
+|---|---|
+| A and B both tap Add call | One migration reservation per call epoch; loser gets `escalation_already_in_progress` |
+| A leaves during preparation | Before C rung → abort. After rung, before answer → cancel C's invite. After answer, before commit → B may continue only by explicit policy, and **never** inherits billing. After commit → B and C continue |
+| B leaves during preparation | Abort immediately. Do not convert A+C into a replacement call |
+| C answers on two devices | First valid answer wins; other devices get invite-cancel; stale tickets revoked |
+| Capacity race at 24 | `reserved + joined <= 25` enforced in the ConferenceRoom DO, with expiring reservations |
+| Another call arrives mid-preparation | Reserve C's call authority *before* ringing, so Add call cannot race an ordinary inbound call |
+| Preparation fails after C's push was queued | Invalidate the token, cancel the native surface, **reject late answers server-side** — push cannot be recalled. Show "Call no longer available", never a spinner |
+| Replayed P2P-generation messages | Every command carries id + generation + session + command_id; cross-generation commands rejected |
+
+## UX consequence
+
+**Never show "Ringing C" before C is actually rung.** C's avatar appears
+immediately, but the label is *"Preparing group call…"*, then *"Still
+preparing…"* at 2 s, then at 4 s abort with **"Couldn't add C. Your call is
+unchanged."** Reason codes are bounded and human — `unsupported_client`,
+`network_unstable`, `sfu_unreachable` — never ICE jargon.
+
+## What to measure
+
+- `conference_switch_gap_ms` — alert above **150 ms** (target: usually imperceptible)
+- `conference_prepare_ms`, and the abort rate at the 4 s deadline
+- `conference_add_outcome` — `answered` / `no_answer` / `declined` /
+  `prepare_timeout` / `aborted` / `rolled_back`
+- `conference_rollback_used` — how often the drain window saved us
+- **`conference_p2p_survived_abort` — must be 100 %.** A failed add that damages
+  the original call is the one unacceptable outcome. Its own alarm.
+
+All three parties' emails on every event, per the project telemetry rule.
+
+---
+
+# PART 4 — CORRECTNESS WORK (still ahead of all features)
 
 ### P0-a. `decline` and `receptionist` become separate commands
-Not one command with a route flag. `call.decline` terminates the caller leg;
-`call.route_to_receptionist` **preserves** it. They share infrastructure —
-envelope, epoch CAS, idempotency, audit — and **no business semantics**. This is
-what makes the caller stop seeing "Declined" when the callee chose Ava.
+Not one command with a route flag. `call.decline` **terminates** the caller leg;
+`call.route_to_receptionist` **preserves** it. Shared infrastructure — envelope,
+epoch CAS, idempotency, audit — and **no shared business semantics**. This is
+what stops the caller seeing "Declined" when the callee chose Ava (issue 15).
 
-Failure of the receptionist must terminate as `receptionist_failed`, never
-through `declined`. *The caller was not declined. A service failed.*
+Receptionist failure terminates as `receptionist_failed`, never through
+`declined`. *The caller was not declined. A service failed.*
 
 ### P0-b. Remove the caller's autonomous ring-timeout authority
-**The single most important fix left.** Today the caller starts Ava when its own
-local ring timer expires. That is why a fast decline still loses sometimes —
-we are racing the caller's clock instead of obeying the server.
+**The most important fix left.** The caller still starts Ava when its own local
+timer expires, so a fast decline is *racing the caller's clock* rather than
+obeying the server.
 
 > The caller may REQUEST or DISPLAY. It must not DECIDE.
 
-Making decline faster only makes it *usually* win. This makes it *always* win.
+Making decline faster only makes it *usually* win. This makes it always win.
+Fixes issues 1 and 13.
 
 ### P0-c. One incoming-action coordinator
-Native CallKit, branded Flutter screen, notification action, timeout callback and
-the plugin's `ended` callback all enter through one function. The surface becomes
-telemetry (`interaction_source`) and never selects behaviour. This is the fix for
-"the top Decline behaves differently from the bottom one" — that bug is
-duplicated *interaction ownership*, not duplicated cleanup.
+Native CallKit, branded screen, notification action, timeout callback and the
+plugin's `ended` callback all enter through one function. The surface becomes
+telemetry (`interaction_source`) and never selects behaviour. Fixes issue 14 —
+that bug is duplicated *interaction ownership*, not duplicated cleanup.
 
 ### P0-d. Deterministic ring-surface teardown
-Call-derived notification id (`stableHash("incoming_call:$callId")`, not the
+Call-derived notification id (`stableHash("incoming_call:$callId")`, never the
 global `8005`), exact plugin call UUID for `endCall`, never "end all calls".
 
-### P1. Release gate 3 is still only half-closed
+### P1. Release gate 3 is half-open
 No live old-client → new-worker smoke test, because staging D1 is missing the
-`avatok_numbers` migration and `/api/me` 500s. **Apply that migration to staging**
-— it is blocking the only environment where compatibility can be proven.
+`avatok_numbers` migration and `/api/me` 500s. **Apply it to staging** — it
+blocks the only environment where compatibility can be proven.
 
 ---
 
-# PART 4 — THE APP ICON
+# PART 5 — THE APP ICON
 
-## What I found
+**The icon is correct and it did ship.**
 
-**The icon is correct and it did ship.** Provenance:
+- `232ebe06` committed the new icon at all six densities
+- Build 30690875915 = run **#471** = **versionCode 10471**, from `d3f29ded`
+- `232ebe06` is an ancestor of `d3f29ded` (verified, `git merge-base`)
+- Prod KV `latestAppBuild = 10471` — the update flag was bumped
+- Nothing in CI regenerates icons: no `flutter_launcher_icons`, and
+  `postcreate.py` only adds the `roundIcon` manifest attribute
 
-- `232ebe06` committed the new icon (cyan disc, serif A, white ring) at all six
-  densities plus foreground and round variants.
-- Build **30690875915** = run **#471** = **versionCode 10471**, built from
-  `d3f29ded`. `232ebe06` is an ancestor of `d3f29ded` — verified with
-  `git merge-base --is-ancestor`.
-- Prod KV `latestAppBuild = 10471` — the update flag was bumped correctly.
-- Nothing in CI regenerates icons: there is no `flutter_launcher_icons` package,
-  and `postcreate.py` only adds the `roundIcon` manifest attribute.
+So the pipeline worked. **The phone is the remaining variable:**
 
-So the pipeline did its job. **The phone is the remaining variable**, and it is
-one of two things:
-
-1. **The phone is still on an older build.** Check: AvaTOK → About. If it does
-   not say **10471**, the update was never installed and the old icon is correct
-   for the build that is running.
-2. **It installed 10471 but the launcher cached the old icon.** Android launchers
-   cache icons aggressively and often do not refresh on in-place update. A reboot
+1. **It never installed 10471** — check AvaTOK → About. If it does not say
+   10471, the old icon is correct for the build that is running.
+2. **It installed 10471 but the launcher cached the icon** — Android launchers
+   cache aggressively and often skip the refresh on an in-place update. A reboot
    settles it.
 
-I could not resolve which from telemetry — **no PostHog MCP is connected in this
-session**, so I could not read `$app_build` for the device. That check is
-normally mandatory before diagnosing anything device-shaped, and I am flagging
-that I could not do it rather than guessing past it.
+Could not resolve which: **no PostHog connector is attached to this session**, so
+`$app_build` for the device was unreadable. Flagging that rather than guessing
+past it.
 
-## The real bug I did find
+## The real bug found
 
-**The working tree had been reverted to the OLD icon.** All 15 PNGs were sitting
-modified-but-uncommitted, with the pre-`232ebe06` content and **filesystem
-timestamps of Jul 31 15:43** — i.e. old files restored *with their original
-mtimes*, which a plain `git checkout` does not do.
+**The working tree had been reverted to the OLD icon.** All 15 PNGs sat
+modified-but-uncommitted with pre-`232ebe06` content and filesystem mtimes of
+**Jul 31 15:43** — old files restored *with their original mtimes*, which a plain
+`git checkout` does not do. The next build would have silently shipped the old
+icon and looked like a recurrence.
 
-That matters twice over:
+**Restored; tree is clean.** The mtime preservation points at a file-copy or sync
+process writing over the tree — worth watching, given the repo was moved off
+iCloud on 07-31 for exactly that class of corruption.
 
-- The **next** build would have silently shipped the old icon again, and it would
-  have looked like the same bug recurring.
-- The mtime preservation suggests a file-copy or sync process wrote over the
-  tree. The repo moved out of iCloud on 2026-07-31 precisely because iCloud was
-  corrupting it. **Worth watching for other reverted files.**
-
-**Restored** — the tree now matches `HEAD` and is clean.
-
-## Recommended guard
-
-CI should fail if the committed icon hash does not match the icon generated from
-`design/app-logo2.png`. A silently reverted binary asset is invisible in a diff;
-a hash check makes it loud.
+**Guard:** CI should hash the committed icon against one generated from
+`design/app-logo2.png` and fail on mismatch. A reverted binary asset is invisible
+in a diff.
 
 ---
 
-# PART 5 — BUILD ORDER
+# PART 6 — BUILD ORDER
+
+Sol's ordering verdict was unambiguous, and I accept it:
+
+> **"Add call must not enter implementation rollout until that autonomy is
+> removed."**
+
+Not merely "fix it first" — Add call would **multiply the reachable states** of
+the existing race. It adds many new windows in which the caller sees delayed or
+unusual signalling: SFU preparation, C's reservation, C ringing, conference
+commit, P2P drain, backgrounding, network handoff. A stale local timer firing in
+any of them could start Ava while A and B are still talking, seize the caller leg
+mid-migration, compete with conference promotion, bill for Ava *and* the
+conference at once, or send contradictory terminal outcomes to B and C.
 
 | Wave | Contents | Risk |
 |---|---|---|
-| **1** | P0-a … P0-d. Separate commands, kill the caller's timeout authority, one coordinator, deterministic teardown. | Medium — but this is the bug class |
-| **2** | Incoming screen final: 4 controls, Report Spam sheet with 2 rows, post-decline quick-reply strip (D2), voicemail as an outcome (D1) | Low |
-| **3** | On Call self-contained: Pause + hold overlay, DTMF keypad on PSTN only (D3), equaliser, toasts, portrait lock | Low |
-| **4** | **Add call** — out-of-band ring, migrate on answer (D5), 3-person cap (D6), disclosure (D7), contacts panel, return-to-call banner | High |
-| **5** | Staging D1 migration → close release gate 3 | Low |
+| **1** | **P0-b first** — remove every caller-authoritative receptionist transition. Then P0-a, P0-c, P0-d | Medium — and it gates everything below |
+| **2** | Make all terminal/routing outcomes server-authoritative and epoch-guarded | Medium |
+| **3** | Incoming screen: 4 controls, Report Spam sheet, persistent quick-reply menu with ✕ (R4), voicemail as an outcome (D1) | Low |
+| **4** | On Call: Pause + hold overlay, DTMF keypad with RFC 4733 (R3), equaliser, toasts, portrait lock | Low |
+| **5** | Freeze and test `CallRoom → conference` promotion semantics | Medium |
+| **6** | Ad-hoc `ConferenceRoomDO` identity + authorization + tickets | Medium |
+| **7** | Two-peer provisional SFU preparation — **without ringing C at all**. Prove PREPARING/PREPARED in isolation | High |
+| **8** | **Device-lab pass**: overlap, backgrounding, Bluetooth route change, Wi-Fi→cellular, low-end Android, iPhone speaker, wired headset | High — do not skip |
+| **9** | C reservation + invitation + provisional join | High |
+| **10** | Commit / drain / rollback | High |
+| **11** | Participants 4…25 | Medium |
+| **12** | Host transfer (**not** billing transfer) | Low |
+| **13** | Staging D1 migration → close release gate 3 | Low |
+| *later* | Explicit billing-sponsorship continuation, with consent | — |
 
-Wave 4 does not travel with anything else. If a conference migration breaks a
-call, that must be the only change in the build.
+Waves 7–10 travel alone. If a conference migration breaks a call, that must be
+the only change in the build.
 
-**Deleted from the plan entirely:** video toggle (R1).
+**Deleted entirely:** video toggle (R1).
+**Deferred as more dangerous than the media migration:** automatic billing-anchor
+transfer.
