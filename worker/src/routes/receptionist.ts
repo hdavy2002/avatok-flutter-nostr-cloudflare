@@ -214,81 +214,43 @@ export const COUNTRY_LANG: Record<string, string> = {
   ZA: "en", US: "en", GB: "en", CA: "en", AU: "en",
 };
 
-// F1: self-migrating settings columns (this codebase's established D1 pattern —
-// guarded ADD COLUMN, once per isolate). Additive + backward-compatible; a proper
-// migration file also lives at worker/migrations/. loadSettings uses SELECT * so
-// the new columns surface automatically; the save INSERT needs them to exist.
-let _receptColsEnsured = false;
-async function ensureStatusColumns(env: Env): Promise<void> {
-  if (_receptColsEnsured) return;
-  _receptColsEnsured = true;
-  const db = metaDb(env);
-  for (const ddl of [
-    "ALTER TABLE receptionist_settings ADD COLUMN status_note TEXT",
-    "ALTER TABLE receptionist_settings ADD COLUMN status_expires_at INTEGER",
-    "ALTER TABLE receptionist_settings ADD COLUMN answer_lang TEXT",
-    // F2 (customizable greeting): a preset id (GREETING_PRESETS) and a festival
-    // auto-greeting toggle. Same guarded ADD-COLUMN self-migration pattern.
-    "ALTER TABLE receptionist_settings ADD COLUMN greeting_style TEXT",
-    "ALTER TABLE receptionist_settings ADD COLUMN festival_greeting INTEGER",
-    // [RECEPT-MODE-1] (owner 2026-07-19): per-user answering mode — "agent" (AI
-    // voice agent, Gemini Live) | "vm" (pre-recorded voicemail flow) | NULL
-    // (fall back to the global receptionistVmMode/receptionistUseCf flags).
-    // The two client toggles are mutually exclusive and map onto this ONE field.
-    "ALTER TABLE receptionist_settings ADD COLUMN mode TEXT",
-    // [RECEPT-ONBOARD-1] (owner 2026-07-19, plan §B3): WHERE the AI agent answers —
-    // "cell" (Vobiz DID / carrier-forwarded calls only) | "app" (AvaTOK-to-AvaTOK
-    // calls only) | "all". NULL/invalid → treated as "all" (fail-open) so a user
-    // who set mode=agent before this shipped keeps both lanes.
-    "ALTER TABLE receptionist_settings ADD COLUMN agent_scope TEXT",
-    // [AVACALL-SET-1] (owner decision WS3, 2026-07-20): two PAID per-user call-
-    // handling prefs, DEFAULT OFF (NULL/0). ai_receptionist_enabled → the AI
-    // receptionist takes over on reject/no-answer/phone-off for BOTH AvaTOK-to-
-    // AvaTOK AND PSTN calls. pstn_voicemail_enabled → a pre-recorded voicemail for
-    // PSTN calls only (the free AvaTOK↔AvaTOK voicemail from WS2 is separate and
-    // always available). These are the caller-flow-authoritative toggles: the
-    // dial-time /config probe returns them so the CALLER's session knows what the
-    // callee actually enabled, instead of assuming always-on.
-    "ALTER TABLE receptionist_settings ADD COLUMN ai_receptionist_enabled INTEGER",
-    "ALTER TABLE receptionist_settings ADD COLUMN pstn_voicemail_enabled INTEGER",
-    // [AVARECEPT-LANES-1] (owner decision 2026-07-21): voicemail is being retired;
-    // the AI receptionist becomes the ONLY unanswered-call handler, split into
-    // two independent per-LANE master toggles (both DEFAULT OFF / opt-in) plus
-    // three per-SCENARIO toggles that apply to BOTH lanes. recept_avatok_enabled
-    // → receptionist on AvaTOK↔AvaTOK calls; recept_pstn_enabled → receptionist on
-    // PSTN (cell) calls. recept_on_missed / recept_on_rejected / recept_on_unreachable
-    // → which trigger(s) hand off to Ava. All NULL/0 = OFF (nothing happens on an
-    // unanswered call). These SUPERSEDE ai_receptionist_enabled/pstn_voicemail_enabled
-    // (kept as columns for back-compat: ai_receptionist_enabled is mirrored FROM
-    // recept_avatok_enabled on save so old app builds still honour the AvaTOK lane).
-    "ALTER TABLE receptionist_settings ADD COLUMN recept_avatok_enabled INTEGER",
-    "ALTER TABLE receptionist_settings ADD COLUMN recept_pstn_enabled INTEGER",
-    "ALTER TABLE receptionist_settings ADD COLUMN recept_on_missed INTEGER",
-    "ALTER TABLE receptionist_settings ADD COLUMN recept_on_rejected INTEGER",
-    "ALTER TABLE receptionist_settings ADD COLUMN recept_on_unreachable INTEGER",
-    // [RECEPT-BACKEND-TOGGLES-1] (owner decision 2026-07-23, client RECEPT-SETTINGS-1):
-    // the shared per-scenario model above (recept_on_*) is SUPERSEDED by TWO
-    // independent groups — PSTN and AvaTOK↔AvaTOK — each with FOUR fully independent
-    // scenario toggles. Each toggle alone decides whether Ava answers in that
-    // scenario for that lane. Column NULL = "owner never set this" and resolves to
-    // the sensible default (not_picked_up + rejected → ON; unreachable + redirect_all
-    // → OFF), so a pre-migration row or an absent field never silences a scenario the
-    // owner would expect Ava on, nor opts them into one they didn't ask for. The old
-    // recept_on_* / recept_*_enabled columns are kept for back-compat echo only; the
-    // routing decision reads these 8 exclusively.
-    "ALTER TABLE receptionist_settings ADD COLUMN recept_pstn_not_picked_up INTEGER",
-    "ALTER TABLE receptionist_settings ADD COLUMN recept_pstn_rejected INTEGER",
-    "ALTER TABLE receptionist_settings ADD COLUMN recept_pstn_unreachable INTEGER",
-    "ALTER TABLE receptionist_settings ADD COLUMN recept_pstn_redirect_all INTEGER",
-    "ALTER TABLE receptionist_settings ADD COLUMN recept_avatok_not_picked_up INTEGER",
-    "ALTER TABLE receptionist_settings ADD COLUMN recept_avatok_rejected INTEGER",
-    "ALTER TABLE receptionist_settings ADD COLUMN recept_avatok_unreachable INTEGER",
-    "ALTER TABLE receptionist_settings ADD COLUMN recept_avatok_redirect_all INTEGER",
-    // Self-migration for receptionist_sessions columns:
-    "ALTER TABLE receptionist_sessions ADD COLUMN activation_mode TEXT",
-    "ALTER TABLE receptionist_sessions ADD COLUMN team_id TEXT",
-    "ALTER TABLE receptionist_sessions ADD COLUMN team_slot INTEGER",
-  ]) { try { await db.prepare(ddl).run(); } catch { /* column already present */ } }
+/**
+ * [RECEPT-NO-RUNTIME-DDL-1 2026-08-01] DELETED — this used to run 25 sequential
+ * `ALTER TABLE` statements on the receptionist HOT PATH.
+ *
+ * WHAT IT WAS. A "self-migrating columns" helper guarded by a module-level
+ * `_receptColsEnsured` boolean. That boolean is per-ISOLATE, not global, so
+ * every time Cloudflare spun up a cold isolate the very next call to
+ * `/api/receptionist/start` paid 25 SERIAL remote D1 round-trips before any
+ * receptionist work began. It sat directly inside the decline → Ava handoff and
+ * is a large part of why Ava took several seconds to start speaking (prod:
+ * ws_connect_ms 6994 and 7965 on two separate calls).
+ *
+ * It was also unbounded: every new column ever added made every cold-isolate
+ * call permanently slower.
+ *
+ * Schema migration is a DEPLOYMENT responsibility, not something a user waits
+ * for while their phone rings. The columns now ship via
+ * worker/migrations/2026-08-01-receptionist-columns-deploy-time.sql, which was
+ * applied to prod DB_META on 2026-08-01 (verified: 22 settings columns + 3
+ * session columns present) BEFORE this code was removed, so there is no window
+ * where the code expects a column the database lacks.
+ *
+ * Spec: Specs/CALL-OUTCOMES-FROZEN-2026-08-01.md, freeze decision 14 —
+ * "No runtime DDL on any call path."
+ *
+ * IF YOU ADD A COLUMN: add it to a dated migration file and apply it. Do NOT
+ * reintroduce a runtime ALTER TABLE here, and do not copy the "self-migrating"
+ * pattern from the other files that still use it — those are on cold paths,
+ * this one is not. `loadSettings` uses `SELECT *`, so a newly migrated column
+ * surfaces automatically with no code change here.
+ *
+ * Kept as a no-op rather than deleted outright so the two call sites read
+ * honestly ("we deliberately do nothing here") instead of silently losing a
+ * line that a future reader might think was an oversight.
+ */
+async function ensureStatusColumns(_env: Env): Promise<void> {
+  // Intentionally empty. See the doc comment above before adding anything.
 }
 
 // F2: fixed, validated greeting presets (id → the exact phrase Ava opens with,
@@ -1232,16 +1194,29 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   const to = String(b.to || "");
   if (!to) return json({ error: "to required" }, 400);
 
-  // Resolve the caller's contact once so EVERY start-path event (incl. the
-  // "why Ava didn't answer" skips) is pullable by the caller's email/phone.
-  const caller = await contactFor(env, ctx.uid).catch(() => ({ email: null, phone: null }));
+  // ── PARALLEL PREFETCH ──────────────────────────────────────────────────────
+  // [RECEPT-NO-RUNTIME-DDL-1 2026-08-01] These three lookups are mutually
+  // INDEPENDENT — the caller's contact record, the KV config blob, and the
+  // owner's settings row. They used to be three sequential `await`s at the head
+  // of the ring path, so their latencies ADDED even though none of them needs
+  // any other's result. Now they add only their MAXIMUM.
+  //
+  // This matters because this function sits inside the decline → Ava handoff:
+  // every serial round-trip here is silence the caller hears. Anything below
+  // that genuinely depends on `cfg` or `s` still awaits them; only the
+  // independent ones moved.
+  //
+  // Each keeps its own error behaviour: contactFor already failed soft (a
+  // missing email must never block a call), and readConfig/loadSettingsCached
+  // still throw as before, so a real config outage is not silently swallowed.
+  const [caller, cfg, sLoaded] = await Promise.all([
+    contactFor(env, ctx.uid).catch(() => ({ email: null, phone: null })),
+    readConfig(env),
+    loadSettingsCached(env, to),
+  ]);
   const skip = (reason: string, extra: Record<string, unknown> = {}) =>
     trackUserContact(env, ctx.uid, caller.email, caller.phone, "ava_recept_skipped", APP,
       { owner: to, reason, ...extra });
-
-  // Engine switch (KV flag): CF-native pipeline (Workers AI) vs Gemini Live. Read
-  // once so the init blob the DO consumes pins the engine for THIS call.
-  const cfg = await readConfig(env);
   // ZERO-COST VM MODE (owner 2026-07-19): vmMode routes to the CF DO in deterministic
   // voicemail flow (cached greeting + beep + 30s record; no STT/LLM/live-TTS).
   // [RECEPT-MODE-1]: these start as the GLOBAL defaults and are overridden per-owner
@@ -1259,7 +1234,7 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   // opt-out (saved row with enabled=0) is respected. betaFreePremium skips the
   // paid-tier gate + allowance below.
   const freeLaunch = (cfg as any).betaFreePremium === true;
-  let s = await loadSettingsCached(env, to);
+  let s = sLoaded; // [RECEPT-NO-RUNTIME-DDL-1] prefetched in parallel above
   // ALWAYS-ON (owner decision 2026-07-07): the per-user off switch is retired —
   // a saved enabled=0 row is ignored so Ava can always take the message.
   if (!s) s = defaultSettings(to);
@@ -1286,10 +1261,11 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   // Gemini engine needs a Gemini key (dedicated, else global); the CF engine runs
   // entirely on the Workers AI binding and needs no Gemini key.
   if (!useCf && !env.RECEPTIONIST_GEMINI_API_KEY && !env.GEMINI_API_KEY) { skip("no_model_key"); return json({ error: "receptionist_unavailable", reason: "no_model_key" }, 503); }
-  // PREMIUM-ONLY: the OWNER must be a paid subscriber (Plus/Pro/Max). A Free owner
-  // never gets Ava → caller falls back to a plain missed call.
-  const ownerTier = await tierOf(env, to);
-  void ownerTier;
+  // [RECEPT-NO-RUNTIME-DDL-1 2026-08-01] The subscription-tier gate was retired
+  // on 2026-07-19 (pay-per-use replaced it), but the `await tierOf(env, to)`
+  // that fed it was left behind with its result immediately discarded
+  // (`void ownerTier`). It was a blocking remote round-trip on the ring path
+  // computing a value nothing read. Deleted.
   // PAY-PER-USE START GATE (owner 2026-07-19 + pricing brief): agent mode needs
   // ≥3 tokens (1 minute of runway), voicemail needs ≥1 (1 token per voicemail).
   // Replaces the retired subscription-tier gate. Fail-open on wallet errors.
@@ -1312,17 +1288,13 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
       }
     } catch { /* fail-open */ }
   }
-  // Subscription allowance — consume one recept unit (only when NOT free; while
-  // betaFreePremium is on it's unlimited and unmetered).
-  const { tier, res } = await receptAllowance(env, to, false); // PAY-PER-USE: no daily-cap commit
-  if (false && !freeLaunch && !res.allowed) { // retired — tokens meter usage
-    skip("plan_limit", { tier, cap: res.cap, used: res.used });
-    // (ctx as UserCtx): same provably-unreachable `if (false && …)` narrowing loss
-    // as above.
-    trackUserContact(env, (ctx as UserCtx).uid, caller.email, caller.phone, "ava_recept_plan_block", APP,
-      { owner: to, tier, cap: res.cap, used: res.used });
-    return json({ error: "receptionist_unavailable", reason: "plan_limit", ...planLimitBody(res) }, 402);
-  }
+  // [RECEPT-NO-RUNTIME-DDL-1 2026-08-01] The daily subscription-allowance gate
+  // was retired on 2026-07-19 (tokens meter usage instead), but the
+  // `await receptAllowance(env, to, false)` feeding it stayed — and internally
+  // that is TWO more blocking round-trips (tierOf + enforceAllowance). Its only
+  // consumers were inside a provably-dead `if (false && …)` branch, so the ring
+  // path was waiting on three remote calls whose results were unreachable.
+  // Deleted along with the dead branch.
 
   // CALL OUTCOME MENU: per-CALLER daily cap (2/day per owner, owner 2026-07-09).
   // Applies on top of the owner-side allowance above; active only while the menu

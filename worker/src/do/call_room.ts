@@ -114,6 +114,11 @@ export class CallRoom {
    *  authoritative status broadcast so clients can order and dedupe them.
    *  See broadcastStatus() for why in-memory is sufficient. */
   private transitionSeq = 0;
+  /** [CALL-CMD-IDEMPOTENT-1 2026-08-01] commandId → the result that command
+   *  produced, so a retry/replay returns the ORIGINAL outcome instead of
+   *  performing the transition a second time. Insertion-ordered (JS Map) so
+   *  eviction is oldest-first. See the /mark-terminal handler. */
+  private seenCommands = new Map<string, Record<string, unknown>>();
   // CALL-GEN-1: per-peer generation counter. Each accepted (re)join / reconnect of
   // a peer id bumps its gen; the 'welcome' tells the client its current gen, and it
   // stamps gen on every frame. A frame whose gen is LOWER than the DO's current gen
@@ -622,6 +627,26 @@ export class CallRoom {
         const status = typeof body.status === "string" ? body.status : "ended";
         const callId = typeof body.callId === "string" ? body.callId : undefined;
         const asTerminal = body.terminal !== false;
+        // [CALL-CMD-IDEMPOTENT-1 2026-08-01] Command-level idempotency.
+        //
+        // A `commandId` is minted ONCE per user action on the device. Retries,
+        // FCM action replays, a double-tap and the app's own re-send after a
+        // flaky network all carry the SAME id, so they collapse into one
+        // transition instead of each bumping the sequence and re-broadcasting.
+        //
+        // Without this, the ordering fix alone is not enough: every duplicate
+        // would still be a NEW, higher sequence, so every client would dutifully
+        // apply it as if it were fresh. Ordering stops STALE work; this stops
+        // DUPLICATE work. Both are needed.
+        //
+        // The replay returns the ORIGINAL result rather than an error, so the
+        // caller cannot tell a retry from a first attempt — which is exactly
+        // what makes it safe for the client to retry freely.
+        const commandId = typeof body.commandId === "string" ? body.commandId.slice(0, 64) : "";
+        if (commandId) {
+          const prior = this.seenCommands.get(commandId);
+          if (prior) return Response.json({ ...prior, replayed: true });
+        }
         let already = false;
         if (asTerminal) {
           const r = await this.markTerminal(status);
@@ -630,7 +655,7 @@ export class CallRoom {
           await this.loadCallState();
         }
         const fan = this.broadcastStatus(status, callId);
-        return Response.json({
+        const result = {
           ok: true,
           terminal_status: this.terminalStatus ?? null,
           terminal_persisted: asTerminal,
@@ -642,7 +667,19 @@ export class CallRoom {
           // If they carried different ones the client could not tell a socket
           // frame and its own FCM duplicate apart, and would apply both.
           seq: fan.seq,
-        });
+        };
+        if (commandId) {
+          this.seenCommands.set(commandId, result);
+          // Bounded: a call room is short-lived, but a pathological client could
+          // otherwise grow this without limit. Oldest-first eviction is safe —
+          // an evicted id can only ever be replayed as a fresh command, which is
+          // the pre-idempotency behaviour, not a regression.
+          if (this.seenCommands.size > 64) {
+            const oldest = this.seenCommands.keys().next().value;
+            if (oldest !== undefined) this.seenCommands.delete(oldest);
+          }
+        }
+        return Response.json(result);
       }
       if (req.method === "POST") {
         let body: Record<string, unknown> = {};

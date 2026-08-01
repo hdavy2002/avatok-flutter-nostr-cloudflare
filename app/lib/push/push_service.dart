@@ -2560,8 +2560,17 @@ class PushService {
       return;
     }
     final t0 = DateTime.now().millisecondsSinceEpoch;
-    ApiAuth.postJson(kCallStatusUrl,
-        {'to': callerNpub, 'callId': callId, 'status': status, ...extra}).then((res) {
+    // [CALL-CMD-IDEMPOTENT-1 2026-08-01] One id per (call, status) — i.e. per
+    // USER ACTION, not per HTTP attempt. A retry, an FCM action replay, a
+    // double-tap or CallKit double-firing all reuse it, so the server collapses
+    // them into a single transition instead of each producing a new sequence
+    // and a fresh broadcast. Deliberately NOT random per call: randomness would
+    // make every duplicate look like a distinct command, which is the bug.
+    final commandId = '$callId:$status';
+    ApiAuth.postJson(kCallStatusUrl, {
+      'to': callerNpub, 'callId': callId, 'status': status,
+      'commandId': commandId, ...extra,
+    }).then((res) {
       // Telemetry for the ONE remaining path, split by leg so a regression is
       // diagnosable: did the DO persist it, and did it reach a live socket?
       var socketsSent = -1, socketsSeen = -1;

@@ -625,6 +625,12 @@ export async function callStatus(req: Request, env: Env): Promise<Response> {
     // status so the CALLER's device can render the personalized busy card. Purely
     // additive: absent → the caller shows the legacy "User is busy" line.
     busy_reason?: string; receptionist_enabled?: boolean | string | number; pronoun?: string;
+    // [CALL-CMD-IDEMPOTENT-1 2026-08-01] Minted once per user action on the
+    // device. A retry, an FCM action replay or a double-tap all carry the SAME
+    // id, so the DO collapses them into one transition instead of each one
+    // bumping the sequence and re-broadcasting. Optional: an older client that
+    // omits it behaves exactly as before.
+    commandId?: string;
   };
   if (!b.to || !b.callId || !b.status) return json({ error: "to, callId, status required" }, 400);
   // [AVACALL-RING-CANCEL-1] Persist a DURABLE terminal marker on the CallRoom DO
@@ -658,7 +664,10 @@ export async function callStatus(req: Request, env: Env): Promise<Response> {
       const stub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(b.callId));
       const r = await stub.fetch("https://call/mark-terminal", {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ status: b.status, callId: b.callId, terminal: isTerminal }),
+        body: JSON.stringify({
+          status: b.status, callId: b.callId, terminal: isTerminal,
+          ...(b.commandId ? { commandId: String(b.commandId).slice(0, 64) } : {}),
+        }),
       });
       doResult = (await r.json().catch(() => null)) as Record<string, unknown> | null;
     } catch { /* best-effort — durable marker is an accelerator, FCM stays the path */ }
