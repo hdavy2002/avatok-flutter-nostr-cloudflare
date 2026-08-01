@@ -184,6 +184,33 @@ export async function call(req: Request, env: Env): Promise<Response> {
   // Every denial returns the identical uniform body, so "fast rejection" no
   // longer uniquely means "blocked" (see call_admission.ts for the reasoning).
   const admission = await admitCall(env, ctx.uid, b.to);
+  // [CALL-ADMISSION-2 2026-08-01] ALERT ON A DEGRADED VERDICT.
+  //
+  // `degraded` means the authoritative blocklist could NOT be read and this
+  // decision came from the 60s cache or from the documented fail-open. Silence
+  // here was the reviewer's objection to the original fail-open: blocking could
+  // stop working for everyone and nothing would say so.
+  //
+  // Emitted for ADMITTED calls too — a denial is self-evidently working, an
+  // admission during an outage is the dangerous one. `policy` distinguishes
+  // "cached, still enforcing" from "no cache, let it through": a rising
+  // `unknown_failed_open` count is the alert condition, and any sustained
+  // `degraded` volume means D1 is unhealthy on the call path.
+  if (admission.degraded === true) {
+    try {
+      await track(env, "call_admission_degraded", {
+        call_id: b.callId,
+        from_uid: ctx.uid,
+        to_uid: b.to,
+        policy: admission.policy ?? "unknown",
+        admitted: admission.admit,
+        // Present only on a denial; a cached block still enforcing is the good
+        // outcome during an outage and should be visibly distinct.
+        internal_reason: admission.admit ? null : admission.internal_reason,
+        app_name: "avatok", service_name: "avatok-api", worker: true,
+      });
+    } catch { /* alerting must never change an admission decision */ }
+  }
   if (!admission.admit) {
     try {
       // The internal reason lives ONLY here, server-side. It must never reach
