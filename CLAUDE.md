@@ -455,14 +455,24 @@ building. It governs ALL AvaVerse apps. The two client rules that bite hardest:
   create the OAuth client — this project's credentials are managed by hand in the
   Google Cloud console.
 
-- **THE REPO NO LONGER LIVES IN iCloud (moved 2026-07-31 — do not move it back).**
-  Real location is `/Users/davy/dev/avaTOK-2-Flutter`, with a symlink at the old
-  `~/Documents/websites/avaTOK-2-Flutter` path so every existing tool and script
-  keeps working. `~/Documents` is iCloud-synced, and iCloud silently corrupted the
-  old `.git` over ~2 months: conflict duplicates (`HEAD 2`, `config 2`, `objects 2`,
-  `index 2`…`index 8`) and finally an unreadable loose object that made `git status`,
-  `diff`, `fetch` and `fsck` all die with **SIGBUS**. Never put this repo, or any
-  git repo, back under `~/Documents` or `~/Desktop`.
+- **REPO LOCATION — `/Users/davy/Documents/websites/avaTOK-2-Flutter` (verified 2026-08-02).**
+  This is a REAL directory holding the real `.git`, not a symlink. There is no
+  `~/dev` copy: the 2026-07-31 move to `/Users/davy/dev/avaTOK-2-Flutter` was
+  reverted, and what's left there is an empty `app/build` shell with no `.git`.
+  **Do not `cd` into `~/dev/avaTOK-2-Flutter` and do not "restore" the symlink** —
+  earlier revisions of this file described that layout and it is no longer true.
+
+  **This path is NOT iCloud-synced, so it is safe.** Desktop & Documents sync is
+  OFF (`defaults read com.apple.finder FXICloudDriveDocuments` → `0`), and
+  `~/Documents` is a plain local folder with a different inode from the real
+  iCloud Documents at `~/Library/Mobile Documents/com~apple~CloudDocs/Documents`.
+  **If that sync setting is ever turned back ON, this repo lands in iCloud and
+  must be moved out immediately** — iCloud silently corrupted the old `.git` over
+  ~2 months: conflict duplicates (`HEAD 2`, `config 2`, `objects 2`, `index 2`…
+  `index 8`) and finally an unreadable loose object that made `git status`,
+  `diff`, `fetch` and `fsck` all die with **SIGBUS**. Never keep a git repo under
+  an iCloud-synced path. The old corrupted copy survives only as
+  `…/CloudDocs/Documents/websites/avaTOK-2-Flutter-recover.nosync`.
 
 ### Git protocol (MANDATORY — this repo is shared by multiple agents)
 
