@@ -8,10 +8,12 @@ void main() {
     const marker = Key('wallet-content-after-money-tiles');
 
     await tester.pumpWidget(
-      const MaterialApp(
+      MaterialApp(
         home: Scaffold(
+          // ListView's default constructor is not const — the widget under test
+          // and its children keep const where the language allows it.
           body: ListView(
-            children: [
+            children: const [
               SizedBox(height: 80),
               WalletMoneyTilesRow(
                 moneyIn: SizedBox(height: 120, child: ColoredBox(color: Colors.green)),
