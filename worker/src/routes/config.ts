@@ -517,6 +517,7 @@ export interface PlatformConfig {
   // dark: no new UI, no new routes, no new event emission.
   businessCallUx: boolean;    // Phase A: channel split UI (named incoming-call screen, no-answer card, tappable numbers)
   brandedIncomingUi: boolean; // [AVACALL-INUI-1] branded IncomingBusinessCallScreen for ALL AvaTOK calls (friend+business), over the lock screen via full-screen intent. Default TRUE; false = native CallKit everywhere. Client mirror: RemoteConfig.brandedIncomingUi.
+  suppressOsRingInForeground: boolean; // [ONERING-1] When the app is FOREGROUNDED and the branded ring screen is pushed in-app, skip the native CallKit registration so Android's heads-up banner (its own Accept/Decline) does not stack on top of our screen. Foreground only — locked/backgrounded rings still use CallKit, and it remains the fallback where full-screen intent is denied. Default TRUE; false restores the old double-surface behaviour. Client mirror: RemoteConfig.suppressOsRingInForeground.
   voicemailBot: boolean;      // Phase B: server-side voice-prompt + 25s recording bot in the call room
   paidCalls: boolean;         // Legacy compatibility key; permanently forced false by the free-communication policy.
   voiceAgent: boolean;        // Phase C: Ava AI Voice Agent (Grok realtime session)
@@ -991,6 +992,7 @@ const DEFAULTS: PlatformConfig = {
   // device-verified on staging; flip one at a time in KV (never code).
   businessCallUx: false,
   brandedIncomingUi: true,           // [AVACALL-INUI-1] branded incoming-call screen for ALL AvaTOK calls; false = native CallKit everywhere
+  suppressOsRingInForeground: true,  // [ONERING-1] foreground rings show ONE surface (the branded screen); false = old behaviour with the OS banner stacked on top
   voicemailBot: false,
   paidCalls: false,                    // PERMANENT: human 1:1 audio/video calls are free.
   voiceAgent: false,

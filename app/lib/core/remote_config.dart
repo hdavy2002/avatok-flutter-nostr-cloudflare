@@ -365,6 +365,21 @@ class RemoteConfig {
   /// screen was the "friend call looks unbranded" tell). Flip false in KV to
   /// fall back to native CallKit everywhere. Mirrors config.ts `brandedIncomingUi`.
   static bool get brandedIncomingUi => _b('brandedIncomingUi', true);
+  /// [ONERING-1 2026-08-02] When the app is ALREADY FOREGROUNDED and we push the
+  /// branded incoming-call screen onto the live navigator, skip registering the
+  /// native CallKit ring so the OS heads-up banner (its own Decline/Answer pair)
+  /// does not appear on top of our own screen. Two call UIs for one call, each
+  /// with its own Decline, is the "why do I have to decline twice" report.
+  ///
+  /// ONLY affects the foreground case. Locked / backgrounded / screen-off rings
+  /// are untouched: CallKit still owns those, and it remains the fallback
+  /// wherever a full-screen intent is denied — that is load-bearing and must
+  /// stay. Mirrors config.ts `suppressOsRingInForeground`.
+  ///
+  /// Kill switch: set false in KV to restore the double-surface behaviour
+  /// instantly, with no build.
+  static bool get suppressOsRingInForeground =>
+      _b('suppressOsRingInForeground', true);
   /// Phase B — the server-side voicemail bot (5-rings → prompt → 25s record).
   /// Mirrors config.ts `voicemailBot`.
   static bool get voicemailBot => _b('voicemailBot', false);

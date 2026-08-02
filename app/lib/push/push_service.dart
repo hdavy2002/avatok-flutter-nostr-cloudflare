@@ -1632,16 +1632,53 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
   } catch (_) {/* bg isolate: no binding — keep the sentinel */}
   final swShown = DateTime.now();
   Object? showErr;
-  try {
-    await FlutterCallkitIncoming.showCallkitIncoming(params);
-  } catch (e) {
-    showErr = e;
+  // [ONERING-1 2026-08-02] ONE ring surface at a time.
+  //
+  // When the app is already foregrounded we push the branded screen onto the
+  // live navigator further down. Registering the native ring as well put
+  // Android's own heads-up banner — with its own Accept/Decline pair — on top
+  // of our screen: two call UIs for one call. The comment below used to call
+  // this a "user-silent CallKit registration"; it was never silent.
+  //
+  // The suppression is deliberately narrow. It applies ONLY when the app is
+  // foregrounded and the branded screen is definitely the surface we are about
+  // to show. Every other case still registers CallKit, because there it is
+  // load-bearing: it owns the ringtone, it survives the app being killed, and
+  // it is the fallback wherever Android denies a full-screen intent.
+  final brandedWillShowInApp = lifecycle == 'resumed' &&
+      (RemoteConfig.brandedIncomingUi ||
+          (RemoteConfig.businessCallUx && (d['via'] ?? '') == 'dialpad')) &&
+      !PushService.wasCallTerminated(ringCallId) &&
+      navigatorKey.currentState != null;
+  final suppressOsRing =
+      brandedWillShowInApp && RemoteConfig.suppressOsRingInForeground;
+  if (!suppressOsRing) {
+    try {
+      await FlutterCallkitIncoming.showCallkitIncoming(params);
+    } catch (e) {
+      showErr = e;
+    }
+  } else {
+    // CallKit owns the ringtone, so suppressing it means we own it now. This is
+    // the same in-app player the ring-audibility path already uses when the OS
+    // ring is inaudible, so the sound path is not new code.
+    unawaited(_startRingtoneFallback(ringCallId));
+    Analytics.capture('call_os_ring_suppressed', {
+      'call_id': ringCallId,
+      'route': route,
+      'reason': 'branded_in_app_foreground',
+    });
   }
   await _track(CallEvents.callIncomingShown, {
     'call_id': (d['callId'] ?? '').toString(),
     'kind': (d['kind'] ?? 'audio').toString(),
     'route': route,
-    'shown': showErr == null,
+    // [ONERING-1] `shown` means "a ring surface was raised", NOT "CallKit ran".
+    // A suppressed OS ring still shows the user a ring — the branded screen —
+    // so reporting shown:false here would look like a missed ring in the
+    // dashboards. `os_ring_suppressed` is what distinguishes the two.
+    'shown': suppressOsRing || showErr == null,
+    'os_ring_suppressed': suppressOsRing,
     if (showErr != null) 'error': showErr.toString(),
     'fsi_granted': fsiGranted,
     'bg_isolate': BadgeService.inBackgroundIsolate,
@@ -1660,7 +1697,10 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
   // Unawaited — telemetry/fallback must never delay or block the ring path.
   unawaited(_emitRingAudibilityAndMaybeFallback(
     d,
-    callkitShown: showErr == null,
+    // [ONERING-1] A suppressed OS ring is NOT a shown CallKit ring. Reporting
+    // true here would tell the audibility probe the OS is making noise when we
+    // are the ones playing it.
+    callkitShown: !suppressOsRing && showErr == null,
     route: route,
     lifecycle: lifecycle,
     fsiGranted: fsiGranted,
@@ -3253,7 +3293,23 @@ class PushService {
   /// CALLFIX-14 (glare): programmatically answer the currently-ringing incoming
   /// call — used when the user taps Call while the same peer is already ringing
   /// in. Dismisses the CallKit ring UI and opens the call like a normal accept.
-  static Future<void> acceptRingingCall(String callId) async {
+  /// [ONERING-1 2026-08-02] `fallbackExtra` lets a caller answer a ring that was
+  /// never registered with CallKit.
+  ///
+  /// This method used to be able to answer ONLY a call it could find in
+  /// `FlutterCallkitIncoming.activeCalls()` — it reads the call's `extra`
+  /// payload back out of the OS. That is a hard dependency on the native ring
+  /// existing, and it is why the OS banner could not simply be suppressed: with
+  /// no CallKit entry the loop below matches nothing, this method returns having
+  /// done nothing at all, and the branded screen's Accept button is a dead
+  /// button with no error anywhere.
+  ///
+  /// The branded screen already knows everything the payload contains (it was
+  /// built from the same push), so it can now hand its own copy in. CallKit
+  /// stays the source of truth whenever it HAS the call — `fallbackExtra` is
+  /// consulted only when the lookup finds nothing, so every existing path
+  /// behaves exactly as before.
+  static Future<void> acceptRingingCall(String callId, {Map? fallbackExtra}) async {
     unawaited(_dismissBrandedFsi()); // [AVACALL-INUI-2] clear the lock-screen FSI banner
     // [AVACALL-CANCEL-1] Don't answer into a call the caller already cancelled.
     if (wasCallTerminated(callId)) {
@@ -3276,6 +3332,16 @@ class PushService {
         }
       }
     } catch (_) {/* best-effort — worst case the incoming ring keeps ringing */}
+    // No native registration for this call. Either the OS ring was deliberately
+    // suppressed ([ONERING-1], app in foreground) or CallKit dropped it.
+    if (fallbackExtra != null) {
+      Analytics.capture('call_accept_via_fallback_extra', {
+        'call_id': callId,
+        'reason': 'no_callkit_entry',
+      });
+      unawaited(_stopRingtoneFallback(callId));
+      await _openCall(fallbackExtra);
+    }
   }
 
   static Future<void> _openCall(dynamic extra) async {

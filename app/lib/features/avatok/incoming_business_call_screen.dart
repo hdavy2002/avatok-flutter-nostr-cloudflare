@@ -216,7 +216,12 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
     if (_busy) return;
     setState(() => _busy = true);
     Analytics.capture('business_call_incoming_accept', {'call_id': widget.callId});
-    await PushService.acceptRingingCall(widget.callId); // ends the CallKit ring + opens CallScreen
+    // [ONERING-1 2026-08-02] Hand over our own payload. When the OS ring was
+    // suppressed (app foregrounded — this screen IS the only ring surface),
+    // there is no CallKit entry to read the call's `extra` back out of, and
+    // Accept would otherwise do nothing at all. CallKit still wins whenever it
+    // has the call; this is only consulted when the lookup comes back empty.
+    await PushService.acceptRingingCall(widget.callId, fallbackExtra: _extra);
     // [PIV-3 2026-08-02] MUST pass a non-terminal status. Accepting is the one
     // dismissal here that is NOT a ring-ending transition, and the `status`
     // default is `'declined'` — so this line used to run
