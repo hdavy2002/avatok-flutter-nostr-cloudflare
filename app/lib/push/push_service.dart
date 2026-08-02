@@ -58,6 +58,8 @@ typedef CallStatusEvent = ({
   String? busyReason,
   bool receptionistEnabled,
   String? pronoun,
+  String? activationMode,
+  String? noAnswerReason,
 });
 final callStatusBus = StreamController<CallStatusEvent>.broadcast();
 
@@ -1531,10 +1533,21 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
     return;
   }
   AvaLog.I.log('call', 'showing incoming-call UI callId=${d['callId']} kind=${d['kind']} from=${d['fromName']}');
+  final receivedAtMs = DateTime.now().millisecondsSinceEpoch;
+  final sentAtMs = int.tryParse((d['ts'] ?? '').toString());
+  final deliveryAgeMs = sentAtMs == null || sentAtMs <= 0
+      ? null
+      : (receivedAtMs >= sentAtMs ? receivedAtMs - sentAtMs : 0);
+  final ringDurationMs = ringInviteRemainingMs(d, nowMs: receivedAtMs)
+      .clamp(1, callRingLifetimeMs)
+      .toInt();
   Analytics.capture('call_incoming_received', {
     'call_id': ringCallId,
     'kind': (d['kind'] ?? 'audio').toString(),
     'state': route,
+    'route': route,
+    if (deliveryAgeMs != null) 'delivery_age_ms': deliveryAgeMs,
+    'ring_remaining_ms': ringDurationMs,
   });
   IceCache.prefetch(); // warm TURN creds while the phone is still ringing
   final params = CallKitParams(
@@ -1543,7 +1556,9 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
     appName: 'AvaTOK',
     handle: (d['fromPub'] ?? '').toString(),
     type: d['kind'] == 'video' ? 1 : 0, // 0 = audio, 1 = video
-    duration: 45000,
+    // Use the absolute server expiry. A push delivered 15 seconds late may
+    // ring for only the five seconds that remain.
+    duration: ringDurationMs,
     textAccept: 'Accept',
     textDecline: 'Decline',
     avatar: callerAvatarFromPayload(d),
@@ -2226,6 +2241,8 @@ class PushService {
                   ? d['pronoun'].toString()
                   : null)
               : null,
+          activationMode: d['activation_mode']?.toString(),
+          noAnswerReason: d['no_answer_reason']?.toString(),
         ));
         // [CALL-REDUCER-1] If we're the callee still ringing, tear the ring
         // surface down — via the ONE reducer, which also enforces ordering so a

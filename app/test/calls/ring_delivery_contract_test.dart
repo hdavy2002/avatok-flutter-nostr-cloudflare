@@ -11,7 +11,12 @@ void main() {
   });
 
   test('legacy timestamp uses canonical lifetime', () {
-    expect(ringInviteIsFresh({'ts': '1000'}, nowMs: 45999), isTrue);
-    expect(ringInviteIsFresh({'ts': '1000'}, nowMs: 46000), isFalse);
+    expect(ringInviteIsFresh({'ts': '1000'}, nowMs: 20999), isTrue);
+    expect(ringInviteIsFresh({'ts': '1000'}, nowMs: 21000), isFalse);
+  });
+
+  test('late delivery receives only the unexpired ring remainder', () {
+    expect(ringInviteRemainingMs({'tokenExpiresAt': '21000'}, nowMs: 16000), 5000);
+    expect(ringInviteRemainingMs({'tokenExpiresAt': '21000'}, nowMs: 21000), 0);
   });
 }

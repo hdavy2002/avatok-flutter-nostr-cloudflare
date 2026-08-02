@@ -121,6 +121,8 @@ export class CallRoom {
    *  (pure); this DO owns only persistence and delivery. */
   private session: CallSession | undefined;
   private ringDeadline: number | null | undefined; // undefined = not loaded
+  private autoReceptionistEligible: boolean | undefined;
+  private noAnswerReason: string | null | undefined;
   // CALL-GEN-1: per-peer generation counter. Each accepted (re)join / reconnect of
   // a peer id bumps its gen; the 'welcome' tells the client its current gen, and it
   // stamps gen on every frame. A frame whose gen is LOWER than the DO's current gen
@@ -422,7 +424,13 @@ export class CallRoom {
    *  AUTHENTICATED caller uid and the dialled callee uid. Everything downstream
    *  derives membership from this, so it must be written before any
    *  client-originated command can be accepted. Idempotent. */
-  private async setParticipants(callId: string, callerUid: string, calleeUid: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  private async setParticipants(
+    callId: string,
+    callerUid: string,
+    calleeUid: string,
+    autoReceptionistEligible = false,
+    noAnswerReason: string | null = null,
+  ): Promise<{ ok: true } | { ok: false; error: string }> {
     const s = await this.loadSession(callId);
     if (s.caller_uid || s.callee_uid) {
       if (s.caller_uid !== callerUid || s.callee_uid !== calleeUid) return { ok: false, error: "participant_mismatch" };
@@ -433,7 +441,13 @@ export class CallRoom {
     s.callee_uid = calleeUid;
     s.call_id = s.call_id || callId;
     this.session = s;
-    await this.state.storage.put("fsm", s);
+    this.autoReceptionistEligible = autoReceptionistEligible;
+    this.noAnswerReason = noAnswerReason;
+    await this.state.storage.put({
+      fsm: s,
+      autoReceptionistEligible,
+      noAnswerReason: noAnswerReason ?? "",
+    });
     const deadline = Date.now() + CALL_RING_LIFETIME_MS;
     this.ringDeadline = deadline;
     await this.state.storage.put("ringDeadline", deadline);
@@ -472,6 +486,7 @@ export class CallRoom {
       // the FSM's internal names are not part of it. New clients read `fsm`.
       type: legacyWireStatus(s),
       ...(callId ? { callId } : {}),
+      ...(s.handoff_reason === "no_answer" ? { activation_mode: "rings" } : {}),
       fsm: {
         session_state: s.session_state,
         caller_leg_state: s.caller_leg_state,
@@ -878,7 +893,13 @@ export class CallRoom {
         const callerUid = typeof body.callerUid === "string" ? body.callerUid : "";
         const calleeUid = typeof body.calleeUid === "string" ? body.calleeUid : "";
         if (!callerUid || !calleeUid) return Response.json({ error: "callerUid and calleeUid required" }, { status: 400 });
-        const result = await this.setParticipants(callId, callerUid, calleeUid);
+        const result = await this.setParticipants(
+          callId,
+          callerUid,
+          calleeUid,
+          body.autoReceptionistEligible === true,
+          typeof body.noAnswerReason === "string" ? body.noAnswerReason.slice(0, 48) : null,
+        );
         return Response.json(result, { status: result.ok ? 200 : 409 });
       }
       // Internal-only lookup used by authenticated API routes. Missing
@@ -1421,13 +1442,55 @@ export class CallRoom {
     if (this.ringDeadline === undefined) this.ringDeadline = (await this.state.storage.get<number>("ringDeadline")) ?? null;
     if (this.ringDeadline != null && now >= this.ringDeadline - 500) {
       const session = await this.loadSession("");
-      const result = await this.runCommand(session.call_id, "ring_timeout", "server");
+      if (this.autoReceptionistEligible === undefined) {
+        this.autoReceptionistEligible =
+          (await this.state.storage.get<boolean>("autoReceptionistEligible")) ?? false;
+      }
+      if (this.noAnswerReason === undefined) {
+        this.noAnswerReason =
+          (await this.state.storage.get<string>("noAnswerReason")) || null;
+      }
+      const autoAva = this.autoReceptionistEligible === true;
+      // The deadline itself decides the outcome. A client timer may only act as
+      // a delivery backstop; it cannot independently race no-answer against Ava.
+      const result = await this.runCommand(
+        session.call_id,
+        autoAva ? "handoff_to_receptionist" : "ring_timeout",
+        "server",
+        autoAva ? { data: { reason: "no_answer" } } : {},
+      );
       this.ringDeadline = null;
       try { await this.state.storage.delete("ringDeadline"); } catch { /* best-effort */ }
       if (result.ok === true && result.changed === true && typeof result.peer_uid === "string") {
         try {
-          await this.env.Q_PUSH.send({ kind: "call-status", to: result.peer_uid, callId: session.call_id, status: "no-answer", ts: Date.now(), seq: result.seq });
+          await this.env.Q_PUSH.send({
+            kind: "call-status",
+            to: result.peer_uid,
+            callId: session.call_id,
+            status: result.wire_status,
+            ...(autoAva ? { activation_mode: "rings" } : {}),
+            ...(!autoAva && this.noAnswerReason
+              ? { no_answer_reason: this.noAnswerReason }
+              : {}),
+            ts: Date.now(),
+            seq: result.seq,
+          });
         } catch { /* socket path remains authoritative for connected clients */ }
+        // The callee may have received the invite through FCM without ever
+        // attaching a socket. Explicitly cancel that native ring as well; this
+        // is what prevents a delayed invite from ringing past the server lease.
+        if (session.callee_uid && session.callee_uid !== result.peer_uid) {
+          try {
+            await this.env.Q_PUSH.send({
+              kind: "call-status",
+              to: session.callee_uid,
+              callId: session.call_id,
+              status: "cancel",
+              ts: Date.now(),
+              seq: result.seq,
+            });
+          } catch { /* native duration remains the final ring backstop */ }
+        }
       }
     }
     const away = await this.loadAway();

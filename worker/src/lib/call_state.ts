@@ -89,6 +89,9 @@ export type CallSession = {
   service_leg_state: ServiceLegState;
   disposition: Disposition;
 
+  /** Distinguishes the callee's button from the server's four-ring fallback. */
+  handoff_reason?: "manual" | "no_answer";
+
   created_at: number;
   updated_at: number;
 };
@@ -335,10 +338,14 @@ export function applyCommand(prev: CallSession, cmd: Command, now: number): Appl
     // is the distinction a single `status` field could not express, and the
     // reason receptionist/voicemail kept breaking when bolted onto it.
     case "handoff_to_receptionist":
+      // /start may repeat the handoff already committed by the server alarm.
+      // Treat that retry as a no-op instead of bumping the sequence again.
+      if (s.session_state === "handoff" && s.service_leg_state === "starting_receptionist") break;
       endCalleeRing("dismissed_for_receptionist");
       s.caller_leg_state = "connected_to_receptionist";
       s.service_leg_state = "starting_receptionist";
       s.session_state = "handoff";
+      s.handoff_reason = cmd.data?.reason === "no_answer" ? "no_answer" : "manual";
       events.push("callee_dismissed_for_receptionist", "receptionist_start_requested",
         "receptionist_started");
       break;

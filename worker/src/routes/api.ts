@@ -19,6 +19,7 @@ import { avaReason } from "../lib/ava_reason"; // One Brain B1: unified reasonin
 import { guardWrite } from "./moderate"; // save-time content validation (Nemotron)
 import { readConfig } from "./config"; // P11: profileCompletionGate
 import { CALL_RING_LIFETIME_MS } from "../lib/call_delivery_contract";
+import { receptionistNoAnswerEligibility } from "./receptionist";
 import { callerContactPolicy } from "../lib/call_contact_directory";
 // [WP1] Event-sourced call stream (Specs/PLAN-2026-07-11-dialpad-business-calls-ava-voice-agent.md §13/§14)
 import { emitCallEvent, emitRoutingDecision, newTraceId, EVENT_SCHEMA_VERSION } from "../lib/call_events";
@@ -599,13 +600,24 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   const nativeActionToken = crypto.randomUUID();
   const expiresAt = Date.now() + CALL_RING_LIFETIME_MS;
 
+  // [RECEPT-SERVER-TIMEOUT-1] The CallRoom owns the one four-ring deadline.
+  // Snapshot whether it should hand the caller to Ava or finish as no-answer;
+  // /receptionist/start checks the wallet again before opening the AI session.
+  const noAnswer = b.kind === "video"
+    ? { eligible: false, reason: "video" }
+    : await receptionistNoAnswerEligibility(env, b.to);
+
   // Register participants before the phone is rung. This is fail-closed: a
   // call without a durable participant record cannot authorize later commands.
   try {
     const callStub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(b.callId));
     const participantResponse = await callStub.fetch("https://call-room/participants", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ callId: b.callId, callerUid: ctx.uid, calleeUid: b.to }),
+      body: JSON.stringify({
+        callId: b.callId, callerUid: ctx.uid, calleeUid: b.to,
+        autoReceptionistEligible: noAnswer.eligible,
+        noAnswerReason: noAnswer.reason,
+      }),
     });
     const participantResult = await participantResponse.json().catch(() => null) as { ok?: boolean } | null;
     if (!participantResponse.ok || participantResult?.ok !== true) return json({ error: "call_authority_unavailable" }, 503);
@@ -749,7 +761,7 @@ export async function notify(req: Request, env: Env): Promise<Response> {
  * process (and therefore Clerk + Dart) is absent.
  *
  * This route deliberately accepts no uid, recipient or status from the device.
- * The CallRoom validates the unguessable 45-second capability, derives the
+ * The CallRoom validates the unguessable ring-lifetime capability, derives the
  * callee from its persisted participants, and applies the fixed `decline_call`
  * command through the one authoritative FSM. The route only handles delivery
  * of that already-authorized result to the caller.

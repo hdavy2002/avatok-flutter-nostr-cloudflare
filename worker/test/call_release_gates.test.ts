@@ -318,13 +318,25 @@ describe("core invariants", () => {
   it("server may atomically commit an automatic receptionist handoff", () => {
     expect(authorizeCommand("handoff_to_receptionist", "server")).toBe(true);
     const handoff = applyCommand(
-      ringing(), { name: "handoff_to_receptionist", actor: "server" }, NOW,
+      ringing(), {
+        name: "handoff_to_receptionist", actor: "server",
+        data: { reason: "no_answer" },
+      }, NOW,
     );
     expect(handoff.ok).toBe(true);
     if (!handoff.ok) return;
     expect(handoff.state.session_state).toBe("handoff");
     expect(handoff.state.caller_leg_state).toBe("connected_to_receptionist");
     expect(handoff.state.callee_leg_state).toBe("dismissed_for_receptionist");
+    expect(handoff.state.handoff_reason).toBe("no_answer");
+
+    const retry = applyCommand(
+      handoff.state, { name: "handoff_to_receptionist", actor: "server" }, NOW + 1,
+    );
+    expect(retry.ok).toBe(true);
+    if (!retry.ok) return;
+    expect(retry.changed).toBe(false);
+    expect(retry.state.transition_sequence).toBe(handoff.state.transition_sequence);
   });
 
   it("server handoff cannot revive a call cancelled by the caller", () => {

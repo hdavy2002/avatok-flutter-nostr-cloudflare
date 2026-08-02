@@ -461,7 +461,7 @@ class CallSession {
   String _myName = 'You';
   String _mySeed = 'me';
   String _receptMode = 'rings';
-  int _receptRings = 5;
+  int _receptRings = 4;
   // [AVACALL-SET-2] WS3 caller-authoritative call-handling prefs, read from the
   // callee's dial-time /config probe (_probeReceptionist). Owner decision (WS3):
   //  - _calleeAiReceptionist: the callee turned the AI Receptionist ON, so Ava
@@ -1348,7 +1348,7 @@ class CallSession {
     _setPhase((config.outgoing && !_takeoverGuard) ? 'ringing' : 'connecting');
     // [CALL-CONNECT-WATCHDOG-1 2026-07-14] Never sit on "Connecting…" forever.
     //
-    // Every existing timeout — `_deviceRingingTimer` (12s), `_ringTimeout` (35s),
+    // Every outgoing timeout — `_deviceRingingTimer` (12s), `_ringTimeout` (22s),
     // `_placeCallTimeout` (8s) — lives inside the `if (config.outgoing)` branch
     // below. An INCOMING call that was accepted but never established media had
     // NO deadline whatsoever: it painted 'connecting' and stayed there until the
@@ -1366,7 +1366,7 @@ class CallSession {
     // if we are not connected 45s after start, the call is not happening, and
     // saying so is strictly better than lying.
     //
-    // 45s is deliberately > the 35s outgoing `_ringTimeout`, so this never
+    // 45s is deliberately > the 22s outgoing `_ringTimeout`, so this never
     // pre-empts the richer outgoing no-answer flow (which has its own outcome
     // menu, receptionist hand-off, etc.). It is the backstop of last resort.
     _connectWatchdog = Timer(const Duration(seconds: 45), () {
@@ -1480,7 +1480,9 @@ class CallSession {
           });
         }
       } else {
-        _ringTimeout = Timer(const Duration(seconds: 35), () {
+        // The server alarm owns the 20s/four-ring outcome. This is only a
+        // delivery backstop if both the DO socket and its FCM status are lost.
+        _ringTimeout = Timer(const Duration(seconds: 22), () {
           if (!_ended && !_connected) _onNoAnswer();
         });
       }
@@ -1547,7 +1549,12 @@ class CallSession {
         if (e.status == 'decline_ava' && !config.video && !_ended) {
           _ringTimeout?.cancel();
           // ignore: unawaited_futures
-          _handoffToAva('decline');
+          _handoffToAva(e.activationMode == 'rings' ? 'rings' : 'decline');
+          return;
+        }
+        if (e.status == 'no-answer' && !_ended) {
+          _ringTimeout?.cancel();
+          _showOutcomeMenu('no-answer');
           return;
         }
         // [CALL-OUTCOME-MENU-1] Declines land on the unified menu (all call
@@ -3361,7 +3368,15 @@ class CallSession {
         if (!_connected && !_ended && !config.video) {
           _ringTimeout?.cancel();
           // ignore: unawaited_futures
-          _handoffToAva('decline');
+          _handoffToAva(d['activation_mode']?.toString() == 'rings'
+              ? 'rings'
+              : 'decline');
+        }
+        break;
+      case 'no-answer':
+        if (!_connected && !_ended) {
+          _ringTimeout?.cancel();
+          _showOutcomeMenu('no-answer');
         }
         break;
       case 'decline_vm':
@@ -4250,7 +4265,7 @@ class CallSession {
       final cfg = await ReceptionistApi.configFor(config.seed);
       if (_connected || _ended || cfg == null) return;
       _receptMode = (cfg['mode'] ?? 'rings').toString();
-      _receptRings = (cfg['rings'] as num?)?.toInt() ?? 5;
+      _receptRings = (cfg['rings'] as num?)?.toInt() ?? 4;
       // [AVACALL-SET-2] WS3 caller-authoritative prefs. Only enforce them when the
       // worker actually sent the keys (older workers omit them → legacy always-on).
       if (cfg.containsKey('aiReceptionistEnabled')) {
@@ -4267,15 +4282,13 @@ class CallSession {
         _calleeReceptRejected = cfg['receptOnRejected'] == true;
         _calleeReceptUnreachable = cfg['receptOnUnreachable'] == true;
       }
-      // The callee's native + branded actions remain live for the canonical
-      // 45-second server ring lease. Ending the caller's ring window earlier
-      // (the old 20–25s receptionist preference) made a still-visible
-      // Receptionist tap arrive after `ring_timeout` as `already_terminal`.
-      // One deadline owns the interaction; first-ring redirect remains the
-      // deliberate exception because it never exposes a late manual button.
+      // The server owns the canonical 20-second/four-ring lease. Keep the local
+      // timer two seconds behind it as a delivery backstop; it must never beat
+      // the authoritative DO transition. First-ring remains the explicit fast
+      // redirect exception.
       final Duration window = _receptMode == 'first_ring'
           ? const Duration(seconds: 6)
-          : const Duration(seconds: 45);
+          : const Duration(seconds: 22);
       _armNoAnswerWindow(window);
     } catch (_) {}
   }
@@ -4342,7 +4355,7 @@ class CallSession {
       Analytics.capture('call_ring_ack',
           {'call_id': config.room, 'source': 'fallback', 'honest': true});
       _setDialStage('Still trying to reach $_peerFirst…');
-      _startRingWindow(_pendingRingWindow ?? const Duration(seconds: 25));
+      _startRingWindow(_pendingRingWindow ?? const Duration(seconds: 22));
     });
   }
 
@@ -4404,7 +4417,7 @@ class CallSession {
       _ringAckFallback?.cancel();
       _deviceRingingTimer?.cancel();
       if (!_deviceRinging) {
-        _startRingWindow(_pendingRingWindow ?? const Duration(seconds: 25));
+        _startRingWindow(_pendingRingWindow ?? const Duration(seconds: 22));
         // [DIAL-NARRATION-1] The push verifiably reached the network — narrate it.
         // [FAKE-RING-HONEST-1] But an accepted push is NOT proof the device rang
         // (FCM-accepted != device-reached; delivered_semantics=
@@ -4550,7 +4563,7 @@ class CallSession {
       });
     }
 
-    _startRingWindow(_pendingRingWindow ?? const Duration(seconds: 25));
+    _startRingWindow(_pendingRingWindow ?? const Duration(seconds: 22));
   }
 
   Future<void> _handoffToAva(String activationMode) async {
@@ -4567,6 +4580,11 @@ class CallSession {
       // a lie (the message IS being taken). End this duplicate leg quietly.
       if (_receptFailReason == 'reattach_blocked') {
         _endWith('ended', reason: 'recept-reattach-noop');
+      } else if (_receptFailReason == 'insufficient_tokens' ||
+          _receptFailReason == 'wallet_unavailable') {
+        // The owner cannot fund Ava. Keep a clear, persistent caller message;
+        // never mislabel this as a decline or offer another broken Ava button.
+        _showOutcomeMenu('no-answer');
       } else {
         _endWith('declined', reason: 'receptionist-unavailable');
       }
@@ -5041,6 +5059,7 @@ class CallSession {
           'busy' => '$_peerFirst is busy on another call',
           'unreachable' => "$_peerFirst's phone appears to be off or unreachable",
           'declined' => "$_peerFirst can't take your call right now",
+          'no-answer' => 'User is not answering. Please try after sometime.',
           _ => "$_peerFirst isn't answering",
         },
         // [CALL-DIAL-FAIL-1]

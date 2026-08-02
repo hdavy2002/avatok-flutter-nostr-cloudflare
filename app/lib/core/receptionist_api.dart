@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'api_auth.dart';
 import 'config.dart';
 
-/// ReceptionistApi — Ava Receptionist ("Ava answers after 5 rings").
+/// ReceptionistApi — Ava Receptionist (four unanswered rings, five-token floor).
 /// Spec: Specs/PROPOSAL-AI-RECEPTIONIST.md. Premium-only. First AvaVoice
 /// deployment; the future AvaVoice pipeline reuses this plumbing.
 const String _base = 'https://$kSignalingHost/api/receptionist';
@@ -356,7 +356,7 @@ class ReceptionistApi {
     }
   }
 
-  /// Caller: open an Ava session after ~5 rings. Returns the DO WS info.
+  /// Caller: open a server-authorized Ava session after four rings.
   static Future<Map<String, dynamic>?> start({
     required String to,
     String? callId,

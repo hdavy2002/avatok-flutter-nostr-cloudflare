@@ -110,7 +110,14 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
   @override
   void initState() {
     super.initState();
-    _probeAva();
+    // A server `no-answer` means the four-ring authority already proved Ava
+    // unavailable (normally fewer than five tokens). Hide the Ava action on the
+    // first frame; do not flash a button that the caller cannot use.
+    if (widget.session.menuScenario == 'no-answer') {
+      _avaAvailable = false;
+    } else {
+      _probeAva();
+    }
   }
 
   Future<void> _probeAva() async {

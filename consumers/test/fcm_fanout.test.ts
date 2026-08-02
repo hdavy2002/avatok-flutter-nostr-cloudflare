@@ -72,14 +72,15 @@ describe("incoming-call delivery contract", () => {
 
   it("bounds FCM retention and keeps terminal status in its own collapse bucket", () => {
     const ring = buildPayload({
-      kind: "call", to: "callee", callId: "call-1", tokenExpiresAt: 46_000,
+      kind: "call", to: "callee", callId: "call-1", tokenExpiresAt: 21_000,
     }, 1_000);
     const cancel = buildPayload({
       kind: "call-status", to: "callee", callId: "call-1", status: "cancel",
     }, 1_000);
-    expect(ring.ttlSeconds).toBe(45);
+    expect(ring.ttlSeconds).toBe(20);
     expect(ring.collapseKey).toBe("call-1");
     expect(cancel.collapseKey).toBe("call-status:call-1");
+    expect(cancel.ttlSeconds).toBe(60);
     expect(ring.data).not.toHaveProperty("from");
   });
 });

@@ -1,10 +1,11 @@
-// Ava Receptionist — premium "Ava answers after 5 rings".
+// Ava Receptionist — Ava answers after four unanswered rings when the owner
+// has at least five spendable tokens.
 // Spec: Specs/PROPOSAL-AI-RECEPTIONIST.md. First real AvaVoice deployment.
 //
 // Flow:
 //   1. Owner (premium) enables Ava + writes "Leave Instructions for Ava".
-//   2. Caller's app rings owner; after ~5 rings with no answer, the caller's
-//      client calls POST /api/receptionist/start.
+//   2. Caller's app rings owner; after four rings with no answer, the CallRoom
+//      atomically hands the call to Ava when the owner is eligible.
 //   3. We stash a short-lived init blob in KV and hand the caller a WS URL to the
 //      ReceptionRoom DO (do/reception_room.ts). The DO opens Gemini Live THROUGH
 //      Cloudflare AI Gateway (key + system prompt + 70s cap all server-side, so
@@ -60,20 +61,19 @@ async function receptAllowance(env: Env, ownerUid: string, commit: boolean) {
 // turned off (billing enabled), the original premium gate below automatically
 // returns: Free (tier 0) loses it, paid tiers (≥1) keep it. The gate is applied
 // on every surface (settings read/write, dial-time probe, session start) and the
-// daily `recept` allowance is also skipped while free (unlimited).
+// daily `recept` allowance is also skipped while free (unlimited). The permanent
+// five-token wallet floor still applies during free beta.
 const RECEPT_MIN_TIER = 1;
 function isPaidTier(tier: number): boolean {
   return tier >= RECEPT_MIN_TIER;
 }
 
-// [TOKENS-100-GRANT-1] (owner decision 2026-07-23): the AI receptionist must NOT
-// operate when the OWNER's spendable balance is AT OR BELOW 2 tokens — the caller
-// gets a plain missed call, Ava never answers and nothing is recorded. Operating
-// requires spendable >= 3 (`< RECEPT_MIN_SPENDABLE` blocks), which is exactly the
-// client's own floor (receptionist_onboarding.dart `_needTokens = 3`, "you need at
-// least 3 tokens — one minute of Ava"). Kept as one constant so the /config probe
-// and /start gate can never drift apart, and to match the client to the token.
-const RECEPT_MIN_SPENDABLE = 3;
+// [RECEPT-5-TOKEN-FLOOR] Owner decision 2026-08-03: Ava may answer only when the
+// CALLEE/OWNER has at least five spendable tokens. This applies during the free
+// beta too: betaFreePremium removes subscription paywalls, not the explicit
+// wallet-safety floor. Kept public so call admission can snapshot the exact same
+// decision into the server-owned ring timeout; /config and /start re-check it.
+export const RECEPT_MIN_SPENDABLE = 5;
 
 const APP = "receptionist";
 
@@ -560,6 +560,34 @@ async function refreshSettingsCache(env: Env, uid: string): Promise<void> {
     const s = await loadSettings(env, uid);
     await env.TOKENS.put(settingsCacheKey(uid), s ? JSON.stringify(s) : "", { expirationTtl: SETTINGS_CACHE_TTL });
   } catch { /* best-effort — a stale entry still self-evicts via TTL */ }
+}
+
+/** Snapshot the automatic four-ring fallback before a call starts ringing.
+ * /start re-checks the wallet after the ring window, so this is permission to
+ * attempt a handoff, never permission to spend stale funds. */
+export async function receptionistNoAnswerEligibility(
+  env: Env,
+  ownerUid: string,
+): Promise<{ eligible: boolean; reason: string; spendable?: number }> {
+  try {
+    const cfg = await readConfig(env);
+    if ((cfg as any).receptionistEnabled === false) {
+      return { eligible: false, reason: "disabled" };
+    }
+    const settings = (await loadSettingsCached(env, ownerUid)) ?? defaultSettings(ownerUid);
+    if (!avatokHandoffAllowed(settings, "rings", false)) {
+      return { eligible: false, reason: "scenario_disabled" };
+    }
+    const balance = await walletOp(env, ownerUid, { op: "balance", uid: ownerUid });
+    if (balance.status !== 200) return { eligible: false, reason: "wallet_unavailable" };
+    const spendable = Number(balance.body?.spendable ?? balance.body?.balance ?? 0);
+    return spendable >= RECEPT_MIN_SPENDABLE
+      ? { eligible: true, reason: "available", spendable }
+      : { eligible: false, reason: "insufficient_tokens", spendable };
+  } catch {
+    // Provider-backed AI may not start unless the five-token floor is proven.
+    return { eligible: false, reason: "wallet_unavailable" };
+  }
 }
 
 /** Caller's local time-of-day word from their request timezone (Cloudflare geo),
@@ -1097,25 +1125,30 @@ export async function receptionistConfigFor(req: Request, env: Env): Promise<Res
   // (The global receptionistEnabled kill switch above still works for emergencies.)
   if (!s) s = defaultSettings(to);
   const ownerTier = await tierOf(env, to);
-  // PAY-PER-USE (owner 2026-07-19): the OWNER's token balance gates availability,
-  // not their subscription tier. <1 token → Ava can't answer (fail-open on errors).
-  if (!freeLaunch) {
-    void ownerTier;
-    try {
+  // The OWNER's spendable balance gates availability independently of tier.
+  // Fewer than five tokens, or an unreadable wallet, means Ava cannot answer.
+  void ownerTier;
+  try {
       const b = await walletOp(env, to, { op: "balance", uid: to });
       // [RECEPT-AVAIL-SPENDABLE-1] Gate on SPENDABLE (free daily grant + persistent
       // bonus + paid), NOT the paid-only `balance`. Every non-premium user gets 250
       // free AvaCoins/day that receptionist costs draw from first (allow_free), so a
       // paid-only check made Ava "unavailable" for everyone who hadn't topped up →
-      // caller fell to native voicemail. Fail-open on read errors as before.
-      // [TOKENS-100-GRANT-1] Block at spendable <= 2 (was < 1): the receptionist
-      // does not operate on a near-empty wallet, matching the client's >=3 floor.
+      // caller fell to native voicemail.
+      // [RECEPT-5-TOKEN-FLOOR] Five spendable tokens are required in every mode,
+      // including betaFreePremium. A lower balance produces a plain no-answer.
       const spendable = Number(b.body?.spendable ?? b.body?.balance ?? 0);
       if (b.status === 200 && spendable < RECEPT_MIN_SPENDABLE) {
         checked(false, "insufficient_tokens");
         return json({ available: false, reason: "insufficient_tokens" });
       }
-    } catch { /* fail-open — never drop a call over a wallet read */ }
+      if (b.status !== 200) {
+        checked(false, "wallet_unavailable");
+        return json({ available: false, reason: "wallet_unavailable" });
+      }
+  } catch {
+    checked(false, "wallet_unavailable");
+    return json({ available: false, reason: "wallet_unavailable" });
   }
   // Subscription allowance (peek — don't consume on a dial-time probe).
   const { res } = await receptAllowance(env, to, false);
@@ -1185,7 +1218,7 @@ export async function receptionistConfigFor(req: Request, env: Env): Promise<Res
 }
 
 // ---------------------------------------------------------------------------
-// POST /api/receptionist/start  — caller opens an Ava session after 5 rings
+// POST /api/receptionist/start  — caller opens the server-authorized Ava session
 // body: { to, call_id?, caller_phone?, caller_name? }
 // ---------------------------------------------------------------------------
 export async function receptionistStart(req: Request, env: Env): Promise<Response> {
@@ -1237,10 +1270,8 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   let useCf = vmMode || (cfg as any).receptionistUseCf === true;
   const sessionCaps = capsFor(cfg); // 3-min menu budget vs legacy 40/60/90s
 
-  // FREE FOR NOW + DEFAULT-ON: unconfigured owners get Ava by default; an explicit
-  // opt-out (saved row with enabled=0) is respected. betaFreePremium skips the
-  // paid-tier gate + allowance below.
-  const freeLaunch = (cfg as any).betaFreePremium === true;
+  // DEFAULT-ON: unconfigured owners get Ava by default. Subscription allowance
+  // was retired; the five-token spendable floor below is the active money gate.
   let s = sLoaded; // [RECEPT-NO-RUNTIME-DDL-1] prefetched in parallel above
   // ALWAYS-ON (owner decision 2026-07-07): the per-user off switch is retired —
   // a saved enabled=0 row is ignored so Ava can always take the message.
@@ -1273,16 +1304,13 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   // that fed it was left behind with its result immediately discarded
   // (`void ownerTier`). It was a blocking remote round-trip on the ring path
   // computing a value nothing read. Deleted.
-  // PAY-PER-USE START GATE (owner 2026-07-19 + pricing brief): agent mode needs
-  // ≥3 tokens (1 minute of runway), voicemail needs ≥1 (1 token per voicemail).
-  // Replaces the retired subscription-tier gate. Fail-open on wallet errors.
-  if (!freeLaunch) {
-    // [TOKENS-100-GRANT-1] Enforce the <=2 floor for BOTH modes: the receptionist
-    // (agent OR voicemail) must not operate at or below 2 spendable tokens, so the
-    // effective need is max(mode need, RECEPT_MIN_SPENDABLE) = at least 3. This
-    // matches the /config probe and the client onboarding floor exactly; a caller
-    // hitting a near-empty owner gets a plain missed call (no answer, no recording).
-    const needTokens = Math.max(vmMode ? 1 : 3, RECEPT_MIN_SPENDABLE);
+  // PAY-PER-USE START GATE. The permanent five-token floor supersedes the old
+  // 3-token agent / 1-token voicemail thresholds and fails closed on wallet errors.
+  {
+    // [RECEPT-5-TOKEN-FLOOR] Re-check at session start so spending during the
+    // four-ring window cannot overdraw the owner. Wallet uncertainty fails
+    // closed: an AI session must never start unless the five tokens are proven.
+    const needTokens = RECEPT_MIN_SPENDABLE;
     try {
       const b = await walletOp(env, to, { op: "balance", uid: to });
       // [RECEPT-AVAIL-SPENDABLE-1] Gate on SPENDABLE (free daily grant + bonus +
@@ -1293,7 +1321,14 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
         skip("insufficient_tokens", { need: needTokens });
         return json({ error: "receptionist_unavailable", reason: "insufficient_tokens", need: needTokens }, 402);
       }
-    } catch { /* fail-open */ }
+      if (b.status !== 200) {
+        skip("wallet_unavailable", { need: needTokens });
+        return json({ error: "receptionist_unavailable", reason: "wallet_unavailable", need: needTokens }, 503);
+      }
+    } catch {
+      skip("wallet_unavailable", { need: needTokens });
+      return json({ error: "receptionist_unavailable", reason: "wallet_unavailable", need: needTokens }, 503);
+    }
   }
   // [RECEPT-NO-RUNTIME-DDL-1 2026-08-01] The daily subscription-allowance gate
   // was retired on 2026-07-19 (tokens meter usage instead), but the

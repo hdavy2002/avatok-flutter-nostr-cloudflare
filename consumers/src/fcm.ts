@@ -617,7 +617,7 @@ export function buildPayload(msg: PushMsg, now = Date.now()): PushPayload {
     // NOTE: "from" is a RESERVED key in FCM data payloads — including it makes
     // Firebase reject the whole message (400 INVALID_ARGUMENT "Invalid data
     // payload key: from"), so calls never ring. Use "fromPub" instead.
-    const remainingMs = Math.max(1_000, (msg.tokenExpiresAt ?? (now + 45_000)) - now);
+    const remainingMs = Math.max(1_000, (msg.tokenExpiresAt ?? (now + 20_000)) - now);
     return { highPriority: true, ttlSeconds: Math.max(1, Math.ceil(remainingMs / 1000)),
       collapseKey: msg.callId || undefined, data: {
       type: "call", callId: msg.callId ?? "", fromPub: msg.from ?? "",
@@ -661,8 +661,15 @@ export function buildPayload(msg: PushMsg, now = Date.now()): PushPayload {
     // key lets an undelivered ring replace the cancellation (or vice versa),
     // which strands the callee's ringing UI even though Firebase accepted both
     // messages. The app's reducer already deduplicates by call id/sequence.
-    return { highPriority: true, collapseKey: msg.callId ? `call-status:${msg.callId}` : undefined, data: {
+    // Terminal/handoff call state is also perishable. Without a short TTL FCM's
+    // default is four weeks, allowing an obsolete call transition to wake a
+    // device long after the call. Sixty seconds covers the live ring and queue
+    // retry window without retaining stale call UI work.
+    return { highPriority: true, ttlSeconds: 60,
+      collapseKey: msg.callId ? `call-status:${msg.callId}` : undefined, data: {
       type: "call-status", callId: msg.callId ?? "", status: msg.status ?? "",
+      ...(msg.activation_mode ? { activation_mode: String(msg.activation_mode) } : {}),
+      ...(msg.no_answer_reason ? { no_answer_reason: String(msg.no_answer_reason) } : {}),
       ...(msg.busy_reason ? { busy_reason: String(msg.busy_reason) } : {}),
       ...(msg.receptionist_enabled != null ? { receptionist_enabled: msg.receptionist_enabled ? "1" : "0" } : {}),
       ...(msg.pronoun ? { pronoun: String(msg.pronoun) } : {}),

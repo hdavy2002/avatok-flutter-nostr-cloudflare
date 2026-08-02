@@ -83,8 +83,8 @@ class AvaBootstrap {
     // how native sherpa-onnx crashes (invisible to in-process telemetry) surface.
     // ignore: unawaited_futures
     VoiceBreadcrumb.checkAndReport();
-    // Ava Receptionist: "Ava answers after 5 rings" — premium section with the
-    // "Leave Instructions for Ava" box. First real AvaVoice deployment.
+    // Ava Receptionist: answers after four unanswered rings when token-eligible.
+    // Settings include the "Leave Instructions for Ava" box.
     // Spec: Specs/PROPOSAL-AI-RECEPTIONIST.md.
     registerReceptionistSection();
     // AVA-CAMP-FL-NAV: "Campaigns" settings section — outbound AI-calling

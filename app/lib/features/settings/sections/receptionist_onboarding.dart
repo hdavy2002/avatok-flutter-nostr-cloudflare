@@ -102,8 +102,9 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
   String _scope = kAgentScopeAll;
   bool _saving = false;
 
-  // Balance step — needs ≥3 tokens (1 minute of agent runway) to proceed.
-  static const int _needTokens = 3;
+  // Balance step — needs ≥5 tokens (owner rule 2026-08-03) to proceed.
+  // Owner rule 2026-08-03: Ava may answer only with at least five tokens.
+  static const int _needTokens = 5;
   int? _balance; // null = still loading, or CONFIRMED balance never resolved
   bool _balLoading = true;
   // [WALLET-GET-STATE-1] A failed GET (401/500/timeout/non-JSON) is a
@@ -326,8 +327,7 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
                 ? "We'll check again when you actually turn the agent on — you can continue."
                 : _balanceOk
                     ? 'That’s enough to get started (you need at least $_needTokens).'
-                    : 'You need at least $_needTokens tokens — one minute of Ava '
-                        'talking to a caller — to turn the agent on.',
+                    : 'You need at least $_needTokens tokens to turn Ava on.',
             style: _wizBody(),
           ),
           if (!_balanceUnavailable && !_balanceOk) ...[

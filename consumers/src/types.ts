@@ -196,6 +196,8 @@ export interface PushMsg {
   // CALLER so their device renders the personalized busy card; and the "now free"
   // signal (status === "now_free") the busy callee's authority fans out to waiters.
   busy_reason?: string; receptionist_enabled?: boolean; pronoun?: string;
+  activation_mode?: string;
+  no_answer_reason?: string;
   callee_uid?: string; generation?: number;
   // [TRACE-ID-1] Correlation id minted client-side at the dial boundary, carried
   // through to the callee's FCM `data.trace_id` so both devices + the Worker
