@@ -158,7 +158,24 @@ def patch_super_clipboard_provider() -> None:
 def patch_launcher_icon() -> None:
     """Install the AvaTOK launcher icons (legacy + adaptive) from app/android-res/
     into the freshly-generated android res tree (flutter create ships a default
-    icon each run, so we overlay ours every build)."""
+    icon each run, so we overlay ours every build).
+
+    !! app/android-res/ IS THE SOURCE OF TRUTH FOR THE APP ICON. !!
+
+    This copytree runs on EVERY CI build and OVERWRITES
+    app/android/app/src/main/res/mipmap-*. Editing the icon in that res tree
+    therefore changes nothing that ships: it looks right locally (a local build
+    may not re-run this script) and is silently reverted in CI.
+
+    That is exactly what happened on 2026-08-01. The new icon was committed to
+    the res tree only, so the emulator showed it while every real user kept the
+    old one — build 10477's APK still resolved mipmap/ic_launcher_foreground to
+    the previous artwork. Two files, one of them a decoy, and the decoy is the
+    one an editor finds first.
+
+    When changing the app icon: update app/android-res/, and keep the res tree
+    copy in sync so local builds match what ships.
+    """
     src = APP / "android-res"
     dest = APP / "android/app/src/main/res"
     if not src.exists():
