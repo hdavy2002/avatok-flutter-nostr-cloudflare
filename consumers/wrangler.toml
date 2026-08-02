@@ -498,10 +498,13 @@ ENVIRONMENT_NAME = "staging"
 # [STAGING-ISOLATION-1] Was "avatok-e19ef" — i.e. staging pushes were sent through
 # the PRODUCTION Firebase project's FCM API. Now points at the dedicated staging
 # project (created 2026-08-02, project number 446551295299).
-# FAIL-CLOSED ON PURPOSE: the FCM_SERVICE_ACCOUNT secret for --env staging is still
-# prod's key, which cannot mint tokens for avatok-staging, so staging push returns
-# 401 until the OWNER mints a staging service-account key (see the handover notes).
-# A dead staging push is acceptable; a staging push reaching a prod device is not.
+# RESOLVED 2026-08-02: the matching staging service-account key is now installed as
+# the FCM_SERVICE_ACCOUNT secret on avatok-consumers-staging (verified with
+# `wrangler secret list --env staging`), so staging push mints tokens for
+# avatok-staging and no longer 401s. The key file lives OUTSIDE the repo in
+# ~/.avatok-secrets/ and is never copied in. This var and worker/wrangler.toml
+# [env.staging.vars] FCM_PROJECT must always agree; consumers/src/fcm.ts is the
+# only code that actually calls FCM, so THIS is the load-bearing copy.
 FCM_PROJECT = "avatok-staging"
 AI_DAILY_CALL_BUDGET = "5000"
 ALERT_EMAIL = "hdavy2005@gmail.com"

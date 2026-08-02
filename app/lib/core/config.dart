@@ -3,8 +3,14 @@ library;
 
 import 'feature_flags.dart';
 
-/// Clerk publishable key (existing avatok.ai tenant) — public, ships in app.
-const String kClerkPublishableKey = 'pk_live_Y2xlcmsuYXZhdG9rLmFpJA';
+/// Clerk publishable key — public, ships in app. [STAGING-ISOLATION-1] Branches
+/// on kAvatokEnv exactly like [kSignalingHost]/[kCallsHost] below: the staging
+/// APK flavor uses the owner's Clerk DEVELOPMENT instance (sterling-termite-79)
+/// so staging signups never land in the prod Clerk tenant (avatok.ai). A Clerk
+/// publishable key is public and safe to ship either way.
+const String kClerkPublishableKey = kAvatokEnv == 'staging'
+    ? 'pk_test_c3RlcmxpbmctdGVybWl0ZS03OS5jbGVyay5hY2NvdW50cy5kZXYk'
+    : 'pk_live_Y2xlcmsuYXZhdG9rLmFpJA';
 
 /// Google WEB OAuth client id used as the native `google_sign_in` serverClientId
 /// (the ID-token audience the Worker `/api/auth/google` verifies). MIGRATED
@@ -155,7 +161,15 @@ const String kStorageSummaryUrl = 'https://$kSignalingHost/api/storage/summary';
 const String kBrainConsentUrl = 'https://$kSignalingHost/api/brain/consent';    // GET/POST toggles
 
 /// Public R2 read host (no Worker in the path) — content-addressed by sha256.
-const String kBlossomBaseUrl = 'https://blossom.avatok.ai';
+/// [STAGING-ISOLATION-1] Branches on kAvatokEnv like [kSignalingHost]/[kCallsHost]:
+/// media.dart's `AvaMedia.downloadUrl` (storage == 'blossom') builds the read URL
+/// straight from this constant, so a staging APK that stayed on the prod host
+/// would read (and 404-probe) PROD's bucket. The staging worker's own
+/// BLOSSOM_BASE_URL var was already split to blossom-staging.avatok.ai
+/// (worker/wrangler.toml [env.staging.vars]); this makes the client match.
+const String kBlossomBaseUrl = kAvatokEnv == 'staging'
+    ? 'https://blossom-staging.avatok.ai'
+    : 'https://blossom.avatok.ai';
 
 /// DEPRECATED (Nostr removed). Kept as a harmless constant so legacy screens that
 /// still construct a NostrClient(kNostrRelayUrl) compile; the client is now a

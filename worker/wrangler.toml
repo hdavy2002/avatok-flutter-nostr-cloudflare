@@ -611,14 +611,17 @@ custom_domain = true
 TEST_CLOCK_ALLOWED = "1"   # Phase 7 A2 — refund-engine test clock (staging ONLY)
 # [STAGING-ISOLATION-1] TAGS PostHog events with the environment (Phase-1 audit A1).
 ENVIRONMENT_NAME = "staging"
-# [STAGING-ISOLATION-1] STILL shares prod's Upstash Redis (crack-grackle-16293) —
-# NOT fixed this session. The Upstash account is on the free plan, which caps at
-# ONE database total; redis_database_create_new failed with "You cannot have more
-# than 1 database(s)". OWNER-ACTION: add a payment method to the Upstash account
-# (dashboard.upstash.com → billing) or upgrade off the free plan, then re-run this
-# task to create "avatok-genui-staging" (eu-central-1, matching prod's region) and
-# point this var + the UPSTASH_REDIS_REST_TOKEN secret at it.
-UPSTASH_REDIS_REST_URL = "https://crack-grackle-16293.upstash.io"   # GenUI template cache (token = secret)
+# [STAGING-ISOLATION-1] Staging-only Upstash Redis (2026-08-02). Staging used to
+# share PROD's database (crack-grackle-16293), so a staging GenUI compose could
+# read AND overwrite the same cache entries prod users were served. The owner
+# created a dedicated free-tier database (eu-central-1, matching prod's region)
+# and it is now wired here; the matching UPSTASH_REDIS_REST_TOKEN was set with
+# `wrangler secret put UPSTASH_REDIS_REST_TOKEN --env staging` (never committed).
+# Both halves are required: worker/src/lib/redis.ts creds() returns null if
+# EITHER the URL or the token is missing, and redisGetJson/redisSetJson then
+# no-op (get → null, set → ignored, never throws), which would silently degrade
+# the GenUI template cache to "recompose every time" rather than fail loudly.
+UPSTASH_REDIS_REST_URL = "https://helping-fawn-115110.upstash.io"   # GenUI template cache (token = secret)
 # [STAGING-ISOLATION-1] Staging-only R2 custom domain (2026-08-02) — was pointed at
 # prod's blossom.avatok.ai, serving staging media reads off the PROD bucket. Now
 # avatok-blobs-staging has its own custom domain, mirroring prod's setup exactly
@@ -643,8 +646,12 @@ AVAVISION_SNAPSHOT_MODEL = "gemini-3-flash-preview"   # AvaVision snapshot model
 WALLET_TOPUP_ENABLED = "1"   # staging: test-mode Stripe ON (2026-06-10)
 WALLET_RETURN_URL = "https://avatok.ai/wallet"
 STRIPE_PUBLISHABLE_KEY = "pk_test_51SZCqHJgoaTrScq1AvSiuZrl7OGF8OJrYNSvO7sNriLPtaGZRVColGpxgajHXUrLpcryoDfdIO4kK2vEENpmB2GL00Sphy2rVq"  # public; must match sk_test mode
-CLERK_JWKS_URL = "https://clerk.avatok.ai/.well-known/jwks.json"
-CLERK_ISSUER = "https://clerk.avatok.ai"
+# [STAGING-ISOLATION-1] Was pointed at prod's Clerk tenant (clerk.avatok.ai), so a
+# staging JWT verified against the SAME tenant prod users are in. Now verifies
+# against the owner's Clerk DEVELOPMENT instance for AvaTOK, so staging signups
+# never land in the prod Clerk tenant. Public values, not secrets.
+CLERK_JWKS_URL = "https://sterling-termite-79.clerk.accounts.dev/.well-known/jwks.json"
+CLERK_ISSUER = "https://sterling-termite-79.clerk.accounts.dev"
 ADMIN_UIDS = "user_3AuqQadIDHJftJtTkLD0DtKM8MB"
 PLAY_PACKAGE_ID = "ai.avatok.avatok_call"   # staging APK = applicationIdSuffix .staging, but the Play listing is the prod package
 # Mirrored from prod (2026-07-01) so staging is a true clone: AI Gateway routing,
