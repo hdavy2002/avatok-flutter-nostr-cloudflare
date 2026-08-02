@@ -101,10 +101,12 @@ bool callIsGenuinelyActive() {
 /// counter is healthy, so it's safe to call from every guard read.
 bool selfHealStaleLiveCallScreens() {
   if (gLiveCallScreens <= 0) return false;
-  if (gLiveCallScreensSince == 0) return false; // shouldn't happen, but never heal blind
+  if (gLiveCallScreensSince == 0)
+    return false; // shouldn't happen, but never heal blind
   final ageMs = DateTime.now().millisecondsSinceEpoch - gLiveCallScreensSince;
   if (ageMs <= kMaxCallLifeMs) return false;
-  if (CallSessionManager.instance.current != null) return false; // genuinely live — leave it alone
+  if (CallSessionManager.instance.current != null)
+    return false; // genuinely live — leave it alone
   final counterWas = gLiveCallScreens;
   gLiveCallScreens = 0;
   gLiveCallScreensSince = 0;
@@ -122,10 +124,12 @@ bool selfHealStaleLiveCallScreens() {
 /// call connects, ends, or is superseded. The incoming-push handler consults it
 /// to detect GLARE (two users dialing each other within ~1s). NOT set once
 /// connected (a connected call is genuinely busy and SHOULD auto-busy others).
-String? gOutgoingCallTo;     // the peer we are dialing (config.seed), null when idle/connected
-String? gOutgoingCallId;     // the call_id (room) of that outgoing dial
-int gOutgoingSince = 0;      // epoch-ms the dial was placed (staleness guard)
-const int kMaxDialLifeMs = 60 * 1000; // an unanswered dial can't ring longer than this
+String?
+    gOutgoingCallTo; // the peer we are dialing (config.seed), null when idle/connected
+String? gOutgoingCallId; // the call_id (room) of that outgoing dial
+int gOutgoingSince = 0; // epoch-ms the dial was placed (staleness guard)
+const int kMaxDialLifeMs =
+    60 * 1000; // an unanswered dial can't ring longer than this
 
 /// True while we have a LIVE outgoing dial to [peer] that has NOT yet connected —
 /// the glare condition. Stale entries (older than [kMaxDialLifeMs]) are treated
@@ -147,7 +151,9 @@ bool hasPendingOutgoingTo(String peer) {
 /// survives the switch. Idempotent. The AccountSwitcher runs this BEFORE
 /// swapping the account scope.
 Future<void> clearCallState() async {
-  try { await CallSessionManager.instance.destroyAll(); } catch (_) {}
+  try {
+    await CallSessionManager.instance.destroyAll();
+  } catch (_) {}
   gInCall = false;
   gActiveCallId = null;
   gInCallSince = 0;
@@ -158,7 +164,9 @@ Future<void> clearCallState() async {
   gOutgoingSince = 0;
   gIncomingRingingFrom = null;
   gIncomingRingingCallId = null;
-  try { await FlutterCallkitIncoming.endAllCalls(); } catch (_) {/* none active */}
+  try {
+    await FlutterCallkitIncoming.endAllCalls();
+  } catch (_) {/* none active */}
 }
 
 /// AvaTok 1:1 call — a PURE VIEW over a [CallSession]. All state/logic lives in
@@ -176,6 +184,7 @@ class CallScreen extends StatefulWidget {
   final String ringbackUrl;
   final String? teamId;
   final int? teamSlot;
+
   /// [TRACE-ID-1] Correlation id for this call, minted at the dial boundary
   /// (caller) or carried in the incoming push (callee). '' → the session mints one.
   final String traceId;
@@ -249,38 +258,47 @@ class _CallScreenState extends State<CallScreen> {
   // the 'agent-handoff' phase, an 'agent' routing decision, or the early
   // AGENT_AUTO probe) and rendering the live agent panel.
   AgentVoiceCall? _agentCall;
-  String _agentStatus = ''; // '' | 'connecting' | 'connected' | 'ended' | 'failed'
+  String _agentStatus =
+      ''; // '' | 'connecting' | 'connected' | 'ended' | 'failed'
   bool _agentStarted = false;
   Timer? _agentAutoProbe;
   // Post-ring busy (plan §15.1): /api/call/no-answer said 'busy' after a
   // genuine ring timeout — render the PaidBusyCard instead of the no-answer card.
   Map<String, dynamic>? _postRingBusy;
 
-  bool get _agentActive => _agentCall != null || _session.uiPhase.value == 'agent-handoff';
+  bool get _agentActive =>
+      _agentCall != null || _session.uiPhase.value == 'agent-handoff';
 
   void _maybeFetchNoAnswerRouting() {
-    if (_routingFetched || !RemoteConfig.businessCallUx || !widget.outgoing) return;
-    if (widget.initialRouted == 'voicemail' || widget.initialRouted == 'agent') {
+    if (_routingFetched || !RemoteConfig.businessCallUx || !widget.outgoing)
+      return;
+    if (widget.initialRouted == 'voicemail' ||
+        widget.initialRouted == 'agent') {
       // Pre-seeded by place_1to1_call.dart from the initial /api/call response
       // (ring was skipped server-side) — no need for a second round trip.
       _routingFetched = true;
       _routingInfo = {
         'next': widget.initialRouted,
         'voicemail_available': widget.initialRouted == 'voicemail',
-        if (widget.initialRoutingStart != null) 'start': widget.initialRoutingStart,
+        if (widget.initialRoutingStart != null)
+          'start': widget.initialRoutingStart,
       };
       return;
     }
     if (_session.uiPhase.value != 'no-answer') return;
     _routingFetched = true;
-    CallRoutingApi.noAnswer(callee: widget.seed, callId: widget.room, traceId: widget.traceId).then((r) {
+    CallRoutingApi.noAnswer(
+            callee: widget.seed, callId: widget.room, traceId: widget.traceId)
+        .then((r) {
       if (!mounted || r == null) return;
       setState(() => _routingInfo = r);
       // Phase C: the server routed this no-answer to the agent — connect
       // automatically (expectation: the caller HEARS the agent, not a card).
       if (r['next'] == 'agent' && RemoteConfig.voiceAgent) {
         // ignore: unawaited_futures
-        _startAgentBridge(r['start'] is Map ? (r['start'] as Map).cast<String, dynamic>() : null);
+        _startAgentBridge(r['start'] is Map
+            ? (r['start'] as Map).cast<String, dynamic>()
+            : null);
       } else if (r['next'] == 'busy') {
         _showPostRingBusy(r);
       }
@@ -299,7 +317,8 @@ class _CallScreenState extends State<CallScreen> {
     if (!RemoteConfig.businessCallUx || !RemoteConfig.voiceAgent) return;
     if (widget.initialRouted != null) return; // server already decided pre-ring
     _agentAutoProbe = Timer(const Duration(seconds: 12), () async {
-      if (!mounted || _agentStarted || _session.isConnected || _session.isEnded) return;
+      if (!mounted || _agentStarted || _session.isConnected || _session.isEnded)
+        return;
       final phase = _session.uiPhase.value;
       if (phase != 'ringing' && phase != 'connecting') return;
       final r = await CallRoutingApi.noAnswer(
@@ -319,9 +338,10 @@ class _CallScreenState extends State<CallScreen> {
   /// screen doesn't already have a decision, then bridges.
   void _maybeStartAgentFromPhase() {
     if (_session.uiPhase.value != 'agent-handoff' || _agentStarted) return;
-    final start = _routingInfo?['next'] == 'agent' && _routingInfo?['start'] is Map
-        ? (_routingInfo!['start'] as Map).cast<String, dynamic>()
-        : null;
+    final start =
+        _routingInfo?['next'] == 'agent' && _routingInfo?['start'] is Map
+            ? (_routingInfo!['start'] as Map).cast<String, dynamic>()
+            : null;
     if (start != null) {
       // ignore: unawaited_futures
       _startAgentBridge(start);
@@ -330,20 +350,28 @@ class _CallScreenState extends State<CallScreen> {
     final outcome = _session.agentHandoffOutcome ?? 'manual_send_to_agent';
     _agentStarted = true; // claim now — the probe below is async
     CallRoutingApi.noAnswer(
-      callee: widget.seed, callId: widget.room, traceId: widget.traceId,
+      callee: widget.seed,
+      callId: widget.room,
+      traceId: widget.traceId,
       outcome: outcome,
     ).then((r) {
       if (!mounted) return;
       if (r != null && r['next'] == 'agent') {
         _agentStarted = false; // hand back to the bridge starter
         // ignore: unawaited_futures
-        _startAgentBridge(r['start'] is Map ? (r['start'] as Map).cast<String, dynamic>() : null);
+        _startAgentBridge(r['start'] is Map
+            ? (r['start'] as Map).cast<String, dynamic>()
+            : null);
       } else if (r != null && r['next'] == 'busy') {
         _showPostRingBusy(r);
       } else if (r != null && r['next'] == 'voicemail') {
         // Agent slot gone between the tap and the probe (Mode A overflow) —
         // fall back to the voicemail card flow.
-        setState(() { _routingInfo = r; _routingFetched = true; _agentStatus = 'failed'; });
+        setState(() {
+          _routingInfo = r;
+          _routingFetched = true;
+          _agentStatus = 'failed';
+        });
       } else {
         setState(() => _agentStatus = 'failed');
       }
@@ -544,8 +572,10 @@ class _CallScreenState extends State<CallScreen> {
     try {
       await _session.dismissOutcomeAndWait(reason: reason);
     } catch (e, st) {
-      Analytics.captureException(e, st, handled: true,
-          screen: 'call_screen', extra: {'stage': 'outcome_close', 'reason': reason});
+      Analytics.captureException(e, st,
+          handled: true,
+          screen: 'call_screen',
+          extra: {'stage': 'outcome_close', 'reason': reason});
     } finally {
       _popIfMounted();
     }
@@ -566,7 +596,8 @@ class _CallScreenState extends State<CallScreen> {
     // Release our view-scoped hooks so a stale closure can't fire into a dead
     // context. If this exact session re-attaches to a new screen, it re-installs
     // them in initState.
-    if (identical(_session.onRequestPop, _popIfMounted)) _session.onRequestPop = null;
+    if (identical(_session.onRequestPop, _popIfMounted))
+      _session.onRequestPop = null;
     _session.setNoticeHooks();
     // [DIALPAD-BIZ-CALLS Phase C] Tear down an orphaned agent bridge — the
     // AgentVoiceRoom DO finalizes (settle/refund/summary card) on WS close.
@@ -608,7 +639,8 @@ class _CallScreenState extends State<CallScreen> {
       // for a session whose own terminal path already fully closed it.
       if (_session.isOutcomeSurface) {
         Analytics.capture('call_menu_option_selected', {
-          'call_id': widget.room, 'option': 'back_nav',
+          'call_id': widget.room,
+          'option': 'back_nav',
         });
       }
       unawaited(_session.dismissOutcomeAndWait(reason: 'back-nav'));
@@ -640,9 +672,15 @@ class _CallScreenState extends State<CallScreen> {
     final dialerSkin = widget.dialer && light;
     // [CALL-DIAL-FAIL-1] 'network-error' joins the failed-sticker set so a
     // dead place-call POST/timeout reads as a clear failure, not a silent hang.
-    final failed = phase == 'declined' || phase == 'busy' || phase == 'no-answer' ||
+    final failed = phase == 'declined' ||
+        phase == 'busy' ||
+        phase == 'no-answer' ||
         phase == 'network-error';
     final bottomInset = MediaQuery.of(context).padding.bottom;
+    // Five secondary controls now occupy two rows above the isolated hang-up.
+    // Reserve their real footprint so the avatar/status content scrolls above
+    // the controls instead of being centred underneath them on short phones.
+    const controlPanelHeight = 222.0;
     // [ISSUE-VIDEO-TEXTNOTE-KEYBOARD-1] Keyboard height (0 when closed) — the
     // video outcome-menu overlay bottoms out at its top edge while typing.
     final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
@@ -662,13 +700,21 @@ class _CallScreenState extends State<CallScreen> {
         if (showVideo) ...[
           Positioned.fill(
             child: connected
-                ? RTCVideoView(s.remoteRenderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover)
+                ? RTCVideoView(s.remoteRenderer,
+                    objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover)
                 : Container(color: AD.bg),
           ),
-          Positioned(top: 0, left: 0, right: 0, height: 128,
+          Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: 128,
               child: Container(color: Colors.black.withValues(alpha: 0.45))),
           Positioned(
-            top: 56, right: 16, width: 78, height: 112,
+            top: 56,
+            right: 16,
+            width: 78,
+            height: 112,
             child: Container(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(AD.rListCard),
@@ -676,7 +722,8 @@ class _CallScreenState extends State<CallScreen> {
                 boxShadow: const [],
               ),
               clipBehavior: Clip.antiAlias,
-              child: RTCVideoView(s.localRenderer, mirror: true,
+              child: RTCVideoView(s.localRenderer,
+                  mirror: true,
                   objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
             ),
           ),
@@ -693,15 +740,21 @@ class _CallScreenState extends State<CallScreen> {
                 const SizedBox(width: 12),
                 if (showVideo)
                   Expanded(
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(widget.title,
-                          maxLines: 1, overflow: TextOverflow.ellipsis,
-                          style: ADText.threadName(c: Colors.white)),
-                      const SizedBox(height: 2),
-                      Text((connected ? s.clock : s.statusText).toUpperCase(),
-                          maxLines: 1, overflow: TextOverflow.ellipsis,
-                          style: ADText.sectionLabel(c: Colors.white)),
-                    ]),
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(widget.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: ADText.threadName(c: Colors.white)),
+                          const SizedBox(height: 2),
+                          Text(
+                              (connected ? s.clock : s.statusText)
+                                  .toUpperCase(),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: ADText.sectionLabel(c: Colors.white)),
+                        ]),
                   )
                 else
                   const Spacer(),
@@ -722,213 +775,266 @@ class _CallScreenState extends State<CallScreen> {
         if (light)
           Positioned.fill(
             child: SingleChildScrollView(
-              padding: EdgeInsets.fromLTRB(
-                  24, 0, 24, 112 + (bottomInset > 0 ? bottomInset : 16)),
+              padding: EdgeInsets.fromLTRB(24, 0, 24,
+                  controlPanelHeight + (bottomInset > 0 ? bottomInset : 16)),
               child: ConstrainedBox(
                 constraints: BoxConstraints(
                   minHeight: MediaQuery.of(context).size.height -
                       MediaQuery.of(context).viewInsets.bottom -
-                      (112 + (bottomInset > 0 ? bottomInset : 16)),
+                      (controlPanelHeight +
+                          (bottomInset > 0 ? bottomInset : 16)),
                 ),
                 child: Center(
                   child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (s.isReceptDuo && s.receptionist != null) ...[
-                    _ReceptionistDuo(
-                      mic: s.receptionist!.micLevel,
-                      ava: s.receptionist!.avaLevel,
-                      me: Avatar(seed: s.mySeed, name: s.myName, size: 88,
-                          avatarUrl: s.myAvatar.isEmpty ? null : s.myAvatar),
-                      myLabel: s.myName,
-                    ),
-                    const SizedBox(height: 22),
-                    Text('Ava', textAlign: TextAlign.center,
-                        style: ADText.appTitle().copyWith(fontSize: 28)),
-                  ] else ...[
-                    Container(
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: phase == 'ava-countdown' ? AD.iconVideo : null,
-                        border: Border.all(color: AD.borderAvatar, width: 2),
-                        boxShadow: const [],
-                      ),
-                      child: phase == 'ava-countdown'
-                          ? SizedBox(
-                              width: 132, height: 132,
-                              child: Center(child: Text('${s.avaCount}',
-                                  style: ADText.appTitle().copyWith(fontSize: 76))),
-                            )
-                          : Avatar(seed: widget.seed, name: widget.title, size: 132,
-                              avatarUrl: widget.avatarUrl.isEmpty ? null : widget.avatarUrl),
-                    ),
-                    const SizedBox(height: 24),
-                    Text(widget.title, textAlign: TextAlign.center,
-                        style: ADText.appTitle(c: dialerSkin ? PhoneTheme.text : AD.textPrimary)
-                            .copyWith(fontSize: 28)),
-                  ],
-                  const SizedBox(height: 16),
-                  // [CALL-OUTCOME-MENU-1] Unified call outcome menu — ONE surface
-                  // for declined / no-answer / unreachable / busy while
-                  // callMenuEnabled (Specs/CALL-OUTCOME-MENU-SPEC-2026-07-09.md).
-                  // Renders instead of the busy card / plain sticker; with the
-                  // flag off it never constructs and everything below is legacy.
-                  if (s.showOutcomeMenu)
-                    // [ISSUE-VIDEO-OUTCOME-MENU-1] AUDIO path — unchanged. The menu
-                    // still renders right here, in the same slot and stacking order
-                    // as before, so the paper screen is pixel-identical. The SAME
-                    // widget is now ALSO rendered as a top-level overlay for VIDEO
-                    // calls (last child of this Stack); both call sites go through
-                    // _outcomeMenu() so their arguments can never drift apart.
-                    _outcomeMenu()
-                  // [BUSY-CARD-1] Personalized busy card — replaces the cold
-                  // "User is busy" sticker when the server told us WHY the callee
-                  // is busy (Specs §3.1). Only on the terminal 'busy' phase and
-                  // only when the field/flag gate is satisfied; otherwise the
-                  // legacy sticker below renders unchanged.
-                  else if (s.showBusyCard)
-                    BusyCard(
-                      name: widget.title,
-                      busyReason: s.busyReason ?? '',
-                      pronoun: s.busyPronoun,
-                      receptionistEnabled: s.busyReceptionistEnabled,
-                      notifyInFlight: s.busyNotifyInFlight,
-                      notifyRegistered: s.busyNotifyRegistered,
-                      onCancel: () {
-                        s.busyCancel();
-                        _popIfMounted();
-                      },
-                      onNotifyMe: () {
-                        // ignore: unawaited_futures
-                        s.busyNotifyMe();
-                      },
-                      onLeaveMessage: () {
-                        // ignore: unawaited_futures
-                        s.busyLeaveMessage();
-                      },
-                    )
-                  // [DIALPAD-BIZ-CALLS Phase C] Live Ava AI agent bridge — the
-                  // caller is talking (or connecting) to the callee's Grok
-                  // voice agent. Takes precedence over the no-answer card.
-                  else if (_agentActive || _agentStatus == 'connecting' || _agentStatus == 'connected')
-                    _AgentCallPanel(
-                      name: widget.title,
-                      status: _agentStatus,
-                      onHangup: _hangupAgent,
-                    )
-                  // [DIALPAD-BIZ-CALLS Phase C] Post-ring busy (plan §15.1):
-                  // the ring genuinely timed out and /api/call/no-answer said
-                  // 'busy' (paid line, all agents full / human busy) — busy
-                  // card, never voicemail.
-                  else if (_postRingBusy != null)
-                    PaidBusyCard(
-                      name: widget.title,
-                      message: (_postRingBusy!['message'] ?? '').toString(),
-                      onTryAgain: () async {
-                        Analytics.capture('call_menu_option_selected', {
-                          'call_id': widget.room, 'option': 'call_again',
-                        });
-                        final nav = Navigator.of(context);
-                        final uidSeed = widget.seed, title = widget.title,
-                            avatar = widget.avatarUrl, vid = widget.video;
-                        // [CALL-MENU-FIX-2] Serialized teardown BEFORE redial — same
-                        // leaked-guard-slot bug as the unified menu's Call again, just
-                        // on the legacy business post-ring-busy card.
-                        try {
-                          await s.dismissOutcomeAndWait(reason: 'call-again');
-                        } catch (e, st) {
-                          Analytics.captureException(e, st, handled: true,
-                              screen: 'call_screen', extra: {'stage': 'paid_busy_try_again'});
-                        }
-                        _popIfMounted();
-                        unawaited(place1to1Call(nav.context, uid: uidSeed, name: title, avatarUrl: avatar, video: vid, business: widget.business));
-                      },
-                      onClose: () {
-                        unawaited(_closeOutcomeAndPop(reason: 'paid-busy-close'));
-                      },
-                    )
-                  // [DIALPAD-BIZ-CALLS] Phone-style "no answer" card for the
-                  // CALLER on an outgoing business (dialpad) call — replaces
-                  // dropping straight into the messenger thread. Only the
-                  // legacy plain sticker below is shown while the flag is off
-                  // (existing behaviour preserved byte-for-byte).
-                  else if (RemoteConfig.businessCallUx && widget.outgoing && phase == 'no-answer')
-                    NoAnswerCard(
-                      name: widget.title,
-                      seed: widget.seed,
-                      avatarUrl: widget.avatarUrl,
-                      // [RECEPT-SETTINGS-1] voicemail removed — the card now
-                      // offers Call again / Save contact / Close only.
-                      onCallAgain: () async {
-                        Analytics.capture('call_menu_option_selected', {
-                          'call_id': widget.room, 'option': 'call_again',
-                        });
-                        final nav = Navigator.of(context);
-                        final uidSeed = widget.seed, title = widget.title,
-                            avatar = widget.avatarUrl, vid = widget.video;
-                        // [CALL-MENU-FIX-2] Serialized teardown BEFORE redial — the
-                        // legacy business no-answer card has the same shape as the
-                        // unified menu's Call again and leaked the same guard slot.
-                        try {
-                          await s.dismissOutcomeAndWait(reason: 'call-again');
-                        } catch (e, st) {
-                          Analytics.captureException(e, st, handled: true,
-                              screen: 'call_screen', extra: {'stage': 'no_answer_call_again'});
-                        }
-                        _popIfMounted();
-                        // nav.context stays mounted after this route pops (it's
-                        // the ancestor Navigator), so it's safe to push from here.
-                        unawaited(place1to1Call(nav.context, uid: uidSeed, name: title, avatarUrl: avatar, video: vid, business: widget.business));
-                      },
-                      onSaveContact: () async {
-                        try {
-                          await ContactsStore().add(Contact(
-                              uid: widget.seed, name: widget.title,
-                              avatarUrl: widget.avatarUrl));
-                        } catch (_) {/* best-effort */}
-                        if (mounted) {
-                          ScaffoldMessenger.of(context)
-                              .showSnackBar(const SnackBar(content: Text('Contact saved')));
-                        }
-                      },
-                      onClose: () {
-                        unawaited(_closeOutcomeAndPop(reason: 'no-answer-close'));
-                      },
-                    )
-                  else ...[
-                    AdSticker(
-                      connected ? s.clock : s.statusText,
-                      kind: failed ? AdStickerKind.no : AdStickerKind.plain,
-                    ),
-                  ],
-                  // [CALL-DIAL-FAIL-1] Retry affordance — only on the
-                  // network-error terminal state, only when the launch site
-                  // gave us a redial hook.
-                  if (phase == 'network-error' && widget.onRetry != null) ...[
-                    const SizedBox(height: 20),
-                    AdButton(
-                      label: 'Retry',
-                      icon: PhosphorIcons.arrowClockwise(PhosphorIconsStyle.bold),
-                      onPressed: () {
-                        final retry = widget.onRetry;
-                        _popIfMounted();
-                        retry?.call();
-                      },
-                    ),
-                  ],
-                ],
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (s.isReceptDuo && s.receptionist != null) ...[
+                        _ReceptionistDuo(
+                          mic: s.receptionist!.micLevel,
+                          ava: s.receptionist!.avaLevel,
+                          me: Avatar(
+                              seed: s.mySeed,
+                              name: s.myName,
+                              size: 88,
+                              avatarUrl:
+                                  s.myAvatar.isEmpty ? null : s.myAvatar),
+                          myLabel: s.myName,
+                        ),
+                        const SizedBox(height: 22),
+                        Text('Ava',
+                            textAlign: TextAlign.center,
+                            style: ADText.appTitle().copyWith(fontSize: 28)),
+                      ] else ...[
+                        Container(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color:
+                                phase == 'ava-countdown' ? AD.iconVideo : null,
+                            border:
+                                Border.all(color: AD.borderAvatar, width: 2),
+                            boxShadow: const [],
+                          ),
+                          child: phase == 'ava-countdown'
+                              ? SizedBox(
+                                  width: 132,
+                                  height: 132,
+                                  child: Center(
+                                      child: Text('${s.avaCount}',
+                                          style: ADText.appTitle()
+                                              .copyWith(fontSize: 76))),
+                                )
+                              : Avatar(
+                                  seed: widget.seed,
+                                  name: widget.title,
+                                  size: 132,
+                                  avatarUrl: widget.avatarUrl.isEmpty
+                                      ? null
+                                      : widget.avatarUrl),
+                        ),
+                        const SizedBox(height: 24),
+                        Text(widget.title,
+                            textAlign: TextAlign.center,
+                            style: ADText.appTitle(
+                                    c: dialerSkin
+                                        ? PhoneTheme.text
+                                        : AD.textPrimary)
+                                .copyWith(fontSize: 28)),
+                      ],
+                      const SizedBox(height: 16),
+                      // [CALL-OUTCOME-MENU-1] Unified call outcome menu — ONE surface
+                      // for declined / no-answer / unreachable / busy while
+                      // callMenuEnabled (Specs/CALL-OUTCOME-MENU-SPEC-2026-07-09.md).
+                      // Renders instead of the busy card / plain sticker; with the
+                      // flag off it never constructs and everything below is legacy.
+                      if (s.showOutcomeMenu)
+                        // [ISSUE-VIDEO-OUTCOME-MENU-1] AUDIO path — unchanged. The menu
+                        // still renders right here, in the same slot and stacking order
+                        // as before, so the paper screen is pixel-identical. The SAME
+                        // widget is now ALSO rendered as a top-level overlay for VIDEO
+                        // calls (last child of this Stack); both call sites go through
+                        // _outcomeMenu() so their arguments can never drift apart.
+                        _outcomeMenu()
+                      // [BUSY-CARD-1] Personalized busy card — replaces the cold
+                      // "User is busy" sticker when the server told us WHY the callee
+                      // is busy (Specs §3.1). Only on the terminal 'busy' phase and
+                      // only when the field/flag gate is satisfied; otherwise the
+                      // legacy sticker below renders unchanged.
+                      else if (s.showBusyCard)
+                        BusyCard(
+                          name: widget.title,
+                          busyReason: s.busyReason ?? '',
+                          pronoun: s.busyPronoun,
+                          receptionistEnabled: s.busyReceptionistEnabled,
+                          notifyInFlight: s.busyNotifyInFlight,
+                          notifyRegistered: s.busyNotifyRegistered,
+                          onCancel: () {
+                            s.busyCancel();
+                            _popIfMounted();
+                          },
+                          onNotifyMe: () {
+                            // ignore: unawaited_futures
+                            s.busyNotifyMe();
+                          },
+                          onLeaveMessage: () {
+                            // ignore: unawaited_futures
+                            s.busyLeaveMessage();
+                          },
+                        )
+                      // [DIALPAD-BIZ-CALLS Phase C] Live Ava AI agent bridge — the
+                      // caller is talking (or connecting) to the callee's Grok
+                      // voice agent. Takes precedence over the no-answer card.
+                      else if (_agentActive ||
+                          _agentStatus == 'connecting' ||
+                          _agentStatus == 'connected')
+                        _AgentCallPanel(
+                          name: widget.title,
+                          status: _agentStatus,
+                          onHangup: _hangupAgent,
+                        )
+                      // [DIALPAD-BIZ-CALLS Phase C] Post-ring busy (plan §15.1):
+                      // the ring genuinely timed out and /api/call/no-answer said
+                      // 'busy' (paid line, all agents full / human busy) — busy
+                      // card, never voicemail.
+                      else if (_postRingBusy != null)
+                        PaidBusyCard(
+                          name: widget.title,
+                          message: (_postRingBusy!['message'] ?? '').toString(),
+                          onTryAgain: () async {
+                            Analytics.capture('call_menu_option_selected', {
+                              'call_id': widget.room,
+                              'option': 'call_again',
+                            });
+                            final nav = Navigator.of(context);
+                            final uidSeed = widget.seed,
+                                title = widget.title,
+                                avatar = widget.avatarUrl,
+                                vid = widget.video;
+                            // [CALL-MENU-FIX-2] Serialized teardown BEFORE redial — same
+                            // leaked-guard-slot bug as the unified menu's Call again, just
+                            // on the legacy business post-ring-busy card.
+                            try {
+                              await s.dismissOutcomeAndWait(
+                                  reason: 'call-again');
+                            } catch (e, st) {
+                              Analytics.captureException(e, st,
+                                  handled: true,
+                                  screen: 'call_screen',
+                                  extra: {'stage': 'paid_busy_try_again'});
+                            }
+                            _popIfMounted();
+                            unawaited(place1to1Call(nav.context,
+                                uid: uidSeed,
+                                name: title,
+                                avatarUrl: avatar,
+                                video: vid,
+                                business: widget.business));
+                          },
+                          onClose: () {
+                            unawaited(
+                                _closeOutcomeAndPop(reason: 'paid-busy-close'));
+                          },
+                        )
+                      // [DIALPAD-BIZ-CALLS] Phone-style "no answer" card for the
+                      // CALLER on an outgoing business (dialpad) call — replaces
+                      // dropping straight into the messenger thread. Only the
+                      // legacy plain sticker below is shown while the flag is off
+                      // (existing behaviour preserved byte-for-byte).
+                      else if (RemoteConfig.businessCallUx &&
+                          widget.outgoing &&
+                          phase == 'no-answer')
+                        NoAnswerCard(
+                          name: widget.title,
+                          seed: widget.seed,
+                          avatarUrl: widget.avatarUrl,
+                          // [RECEPT-SETTINGS-1] voicemail removed — the card now
+                          // offers Call again / Save contact / Close only.
+                          onCallAgain: () async {
+                            Analytics.capture('call_menu_option_selected', {
+                              'call_id': widget.room,
+                              'option': 'call_again',
+                            });
+                            final nav = Navigator.of(context);
+                            final uidSeed = widget.seed,
+                                title = widget.title,
+                                avatar = widget.avatarUrl,
+                                vid = widget.video;
+                            // [CALL-MENU-FIX-2] Serialized teardown BEFORE redial — the
+                            // legacy business no-answer card has the same shape as the
+                            // unified menu's Call again and leaked the same guard slot.
+                            try {
+                              await s.dismissOutcomeAndWait(
+                                  reason: 'call-again');
+                            } catch (e, st) {
+                              Analytics.captureException(e, st,
+                                  handled: true,
+                                  screen: 'call_screen',
+                                  extra: {'stage': 'no_answer_call_again'});
+                            }
+                            _popIfMounted();
+                            // nav.context stays mounted after this route pops (it's
+                            // the ancestor Navigator), so it's safe to push from here.
+                            unawaited(place1to1Call(nav.context,
+                                uid: uidSeed,
+                                name: title,
+                                avatarUrl: avatar,
+                                video: vid,
+                                business: widget.business));
+                          },
+                          onSaveContact: () async {
+                            try {
+                              await ContactsStore().add(Contact(
+                                  uid: widget.seed,
+                                  name: widget.title,
+                                  avatarUrl: widget.avatarUrl));
+                            } catch (_) {/* best-effort */}
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                      content: Text('Contact saved')));
+                            }
+                          },
+                          onClose: () {
+                            unawaited(
+                                _closeOutcomeAndPop(reason: 'no-answer-close'));
+                          },
+                        )
+                      else ...[
+                        AdSticker(
+                          connected ? s.clock : s.statusText,
+                          kind: failed ? AdStickerKind.no : AdStickerKind.plain,
+                        ),
+                      ],
+                      // [CALL-DIAL-FAIL-1] Retry affordance — only on the
+                      // network-error terminal state, only when the launch site
+                      // gave us a redial hook.
+                      if (phase == 'network-error' &&
+                          widget.onRetry != null) ...[
+                        const SizedBox(height: 20),
+                        AdButton(
+                          label: 'Retry',
+                          icon: PhosphorIcons.arrowClockwise(
+                              PhosphorIconsStyle.bold),
+                          onPressed: () {
+                            final retry = widget.onRetry;
+                            _popIfMounted();
+                            retry?.call();
+                          },
+                        ),
+                      ],
+                    ],
                   ),
-                ),
                 ),
               ),
             ),
+          ),
 
         // [CALL-NETHUD-1] animated network health HUD — sits just under the
         // header, tap for a detail sheet. Only while the call is live.
         if (connected && !s.isReceptDuo)
           Positioned(
             top: MediaQuery.of(context).padding.top + 58,
-            left: 0, right: 0,
+            left: 0,
+            right: 0,
             child: Center(
               child: _CallNetHud(session: s, onVideo: showVideo),
             ),
@@ -938,107 +1044,97 @@ class _CallScreenState extends State<CallScreen> {
         // dialing leg has ended. Do not leave live-call controls underneath it:
         // they look tappable but the peer connection and tracks are already
         // stopped, which caused speaker/audio state to appear broken.
-        if (!s.showOutcomeMenu && !s.showBusyCard && phase != 'no-answer' && phase != 'agent-handoff')
-        Positioned(
-          left: 0, right: 0, bottom: 0,
-          child: Container(
-            color: light ? null : Colors.black.withValues(alpha: 0.45),
-            // [CALL-CTRL-2ROW-1 2026-08-02] Two rows, not one.
-            //
-            // This was a single centred Row of up to SEVEN controls separated by
-            // hard-coded 14px gaps. Fixed gaps plus fixed 48–60px buttons is a
-            // fixed total width, so on a normal handset the row simply ran off
-            // the screen — the owner's screenshot shows the last control clipped
-            // by ~24px, and adding the camera-flip button (video calls) made it
-            // worse. It also read as one cramped huddle because hang-up sat
-            // inline with the toggles at almost the same size.
-            //
-            // Now: secondary toggles share the width in equal `Expanded` slots
-            // (so spacing is divided, never overflows, at any width or control
-            // count), and hang-up gets its own row underneath — bigger, centred,
-            // and impossible to hit by accident while reaching for mute.
-            // Top padding cut 16 -> 8 so the cluster sits closer to the status
-            // line above it rather than floating at the bottom of the screen.
-            padding: EdgeInsets.fromLTRB(12, 8, 12, 16 + (bottomInset > 0 ? bottomInset : 12)),
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Row(children: [
-                // Chat: minimize the call (keeps it alive as a pill/PiP) so the
-                // user lands back on the thread and can read/send messages.
-                Expanded(
-                  child: Center(
-                    child: _btn(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold),
-                        onTap: _minimize),
-                  ),
-                ),
-                // phosphor_flutter 2.1.0 names this icon `numpad`. The obvious
-                // guess (the one starting "dial") does NOT exist and fails at
-                // kernel snapshot — i.e. only in CI, ~5 minutes into a release
-                // build. Verify icon names against the package, not intuition.
-                Expanded(
-                  child: Center(
-                    child: _btn(PhosphorIcons.numpad(PhosphorIconsStyle.bold),
-                        onTap: () => _showDtmfPad(s)),
-                  ),
-                ),
-                Expanded(
-                  child: Center(
-                    child: _btn(
-                        speaker
-                            ? PhosphorIcons.speakerHigh(PhosphorIconsStyle.bold)
-                            : PhosphorIcons.speakerSlash(PhosphorIconsStyle.bold),
-                        active: speaker, onTap: s.toggleSpeaker),
-                  ),
-                ),
-                Expanded(
-                  child: Center(
-                    child: _btn(
-                        video && camOn
-                            ? PhosphorIcons.videoCamera(PhosphorIconsStyle.bold)
-                            : PhosphorIcons.videoCameraSlash(PhosphorIconsStyle.bold),
-                        active: video && camOn, onTap: s.toggleCamera),
-                  ),
-                ),
-                // [CF-CALL-P2P-1] Front/back camera flip — only meaningful (and
-                // only shown) while a live camera feed is actually being sent.
-                // Equal slots mean adding it re-divides the row instead of
-                // pushing the last control off the edge.
-                if (video && camOn)
-                  Expanded(
+        if (!s.showOutcomeMenu &&
+            !s.showBusyCard &&
+            phase != 'no-answer' &&
+            phase != 'agent-handoff')
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: Container(
+              color: light ? null : Colors.black.withValues(alpha: 0.45),
+              // [CALL-CTRL-GRID-1 2026-08-02] Two toggle rows + isolated hang-up.
+              //
+              // This was a single centred Row of up to SEVEN controls separated by
+              // hard-coded 14px gaps. Fixed gaps plus fixed 48–60px buttons is a
+              // fixed total width, so on a normal handset the row simply ran off
+              // the screen — the owner's screenshot shows the last control clipped
+              // by ~24px, and adding the camera-flip button (video calls) made it
+              // worse. It also read as one cramped huddle because hang-up sat
+              // inline with the toggles at almost the same size.
+              //
+              // Now the five ordinary controls are deliberately split 3 + 2
+              // (3 + 3 while camera-flip is visible), with larger circles/icons.
+              // Hang-up remains alone underneath, impossible to hit while reaching
+              // for mute. Explicit rows keep the layout stable across phone widths.
+              padding: EdgeInsets.fromLTRB(
+                  12, 8, 12, 16 + (bottomInset > 0 ? bottomInset : 12)),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                _controlRow([
+                  // Chat: minimize the call (keeps it alive as a pill/PiP) so the
+                  // user lands back on the thread and can read/send messages.
+                  _btn(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold),
+                      onTap: _minimize),
+                  // phosphor_flutter 2.1.0 names this icon `numpad`. The obvious
+                  // guess (the one starting "dial") does NOT exist and fails at
+                  // kernel snapshot — i.e. only in CI, ~5 minutes into a release
+                  // build. Verify icon names against the package, not intuition.
+                  _btn(PhosphorIcons.numpad(PhosphorIconsStyle.bold),
+                      onTap: () => _showDtmfPad(s)),
+                  _btn(
+                      speaker
+                          ? PhosphorIcons.speakerHigh(PhosphorIconsStyle.bold)
+                          : PhosphorIcons.speakerSlash(PhosphorIconsStyle.bold),
+                      active: speaker,
+                      onTap: s.toggleSpeaker),
+                ]),
+                const SizedBox(height: 10),
+                _controlRow([
+                  _btn(
+                      video && camOn
+                          ? PhosphorIcons.videoCamera(PhosphorIconsStyle.bold)
+                          : PhosphorIcons.videoCameraSlash(
+                              PhosphorIconsStyle.bold),
+                      active: video && camOn,
+                      onTap: s.toggleCamera),
+                  // [CF-CALL-P2P-1] Front/back camera flip — only meaningful (and
+                  // only shown) while a live camera feed is actually being sent.
+                  // It fills the middle slot in row two without shifting row one.
+                  if (video && camOn)
+                    _btn(PhosphorIcons.cameraRotate(PhosphorIconsStyle.bold),
+                        onTap: s.flipCamera),
+                  _btn(
+                      muted
+                          ? PhosphorIcons.microphoneSlash(
+                              PhosphorIconsStyle.bold)
+                          : PhosphorIcons.microphone(PhosphorIconsStyle.bold),
+                      active: !muted,
+                      onTap: s.toggleMute),
+                ]),
+                const SizedBox(height: 12),
+                ZinePressable(
+                  onTap: _hangup,
+                  color: AD.destructiveBg,
+                  radius: BorderRadius.circular(100),
+                  boxShadow: const [],
+                  borderWidth: 1,
+                  borderColor: AD.destructiveBg,
+                  child: SizedBox(
+                    width: 64,
+                    height: 64,
                     child: Center(
-                      child: _btn(PhosphorIcons.cameraRotate(PhosphorIconsStyle.bold),
-                          onTap: s.flipCamera),
+                      child: PhosphorIcon(
+                          PhosphorIcons.phoneDisconnect(
+                              PhosphorIconsStyle.bold),
+                          size: 29,
+                          color: Colors.white),
                     ),
-                  ),
-                Expanded(
-                  child: Center(
-                    child: _btn(
-                        muted
-                            ? PhosphorIcons.microphoneSlash(PhosphorIconsStyle.bold)
-                            : PhosphorIcons.microphone(PhosphorIconsStyle.bold),
-                        active: !muted, onTap: s.toggleMute),
                   ),
                 ),
               ]),
-              const SizedBox(height: 16),
-              ZinePressable(
-                onTap: _hangup,
-                color: AD.destructiveBg,
-                radius: BorderRadius.circular(100),
-                boxShadow: const [],
-                borderWidth: 1,
-                borderColor: AD.destructiveBg,
-                child: SizedBox(
-                  width: 64, height: 64,
-                  child: Center(
-                    child: PhosphorIcon(
-                        PhosphorIcons.phoneDisconnect(PhosphorIconsStyle.bold),
-                        size: 29, color: Colors.white),
-                  ),
-                ),
-              ),
-            ]),
+            ),
           ),
-        ),
 
         // [ISSUE-VIDEO-OUTCOME-MENU-1] VIDEO path — the outcome menu used to live
         // ONLY inside the `if (light)` audio subtree, so on a video call
@@ -1114,11 +1210,25 @@ class _CallScreenState extends State<CallScreen> {
   }
 
   void _showDtmfPad(CallSession session) {
-    const keys = <String>['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'];
+    const keys = <String>[
+      '1',
+      '2',
+      '3',
+      '4',
+      '5',
+      '6',
+      '7',
+      '8',
+      '9',
+      '*',
+      '0',
+      '#'
+    ];
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: AD.card,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (sheetContext) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(20),
@@ -1127,10 +1237,15 @@ class _CallScreenState extends State<CallScreen> {
             crossAxisCount: 3,
             mainAxisSpacing: 12,
             crossAxisSpacing: 12,
-            children: keys.map((key) => TextButton(
-              onPressed: () { unawaited(session.sendDtmf(key)); },
-              child: Text(key, style: ADText.appTitle(c: AD.textPrimary)),
-            )).toList(),
+            children: keys
+                .map((key) => TextButton(
+                      onPressed: () {
+                        unawaited(session.sendDtmf(key));
+                      },
+                      child:
+                          Text(key, style: ADText.appTitle(c: AD.textPrimary)),
+                    ))
+                .toList(),
           ),
         ),
       ),
@@ -1159,19 +1274,28 @@ class _CallScreenState extends State<CallScreen> {
       // (audio; a declined/busy call is retried as the same modality it started).
       onCallAgain: () async {
         Analytics.capture('call_menu_option_selected', {
-          'call_id': widget.room, 'option': 'call_again',
+          'call_id': widget.room,
+          'option': 'call_again',
         });
         final nav = Navigator.of(context);
-        final uidSeed = widget.seed, title = widget.title,
-            avatar = widget.avatarUrl, vid = widget.video;
+        final uidSeed = widget.seed,
+            title = widget.title,
+            avatar = widget.avatarUrl,
+            vid = widget.video;
         await _session.dismissOutcomeAndWait(reason: 'menu-call-again');
         _popIfMounted();
-        unawaited(place1to1Call(nav.context, uid: uidSeed, name: title, avatarUrl: avatar, video: vid, business: widget.business));
+        unawaited(place1to1Call(nav.context,
+            uid: uidSeed,
+            name: title,
+            avatarUrl: avatar,
+            video: vid,
+            business: widget.business));
       },
       // [AVACALL-MENU-1] Message — pop and open the DM thread with the callee.
       onMessage: () {
         Analytics.capture('call_menu_option_selected', {
-          'call_id': widget.room, 'option': 'message',
+          'call_id': widget.room,
+          'option': 'message',
         });
         final nav = Navigator.of(context);
         final chat = Chat(
@@ -1183,7 +1307,8 @@ class _CallScreenState extends State<CallScreen> {
         );
         unawaited(_session.dismissOutcomeAndWait(reason: 'menu-message'));
         _popIfMounted();
-        nav.push(MaterialPageRoute(builder: (_) => ChatThreadScreen(chat: chat)));
+        nav.push(
+            MaterialPageRoute(builder: (_) => ChatThreadScreen(chat: chat)));
       },
       // [NOANSWER-LEAVE-NOTE-1] Save contact — parity with the phone-style
       // no-answer card; saves the callee without leaving the card (it stays open
@@ -1191,7 +1316,9 @@ class _CallScreenState extends State<CallScreen> {
       onSaveContact: () async {
         try {
           await ContactsStore().add(Contact(
-              uid: widget.seed, name: widget.title, avatarUrl: widget.avatarUrl));
+              uid: widget.seed,
+              name: widget.title,
+              avatarUrl: widget.avatarUrl));
         } catch (_) {/* best-effort */}
         if (mounted) {
           ScaffoldMessenger.of(context)
@@ -1205,7 +1332,21 @@ class _CallScreenState extends State<CallScreen> {
   }
 
   // Dark v2 control circle — card fill, hairline border; active = orange badge.
-  Widget _btn(IconData icon, {bool active = false, required VoidCallback onTap}) {
+  Widget _controlRow(List<Widget> controls) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        for (var i = 0; i < controls.length; i++) ...[
+          if (i > 0) const SizedBox(width: 28),
+          controls[i],
+        ],
+      ],
+    );
+  }
+
+  Widget _btn(IconData icon,
+      {bool active = false, required VoidCallback onTap}) {
     return ZinePressable(
       onTap: onTap,
       color: active ? AD.primaryBadge : AD.card,
@@ -1215,9 +1356,11 @@ class _CallScreenState extends State<CallScreen> {
       borderWidth: 1,
       borderColor: active ? AD.primaryBadge : AD.borderControl,
       child: SizedBox(
-        width: 48, height: 48,
-        child: Center(child: PhosphorIcon(icon, size: 21,
-            color: active ? AD.textOnInput : AD.textPrimary)),
+        width: 56,
+        height: 56,
+        child: Center(
+            child: PhosphorIcon(icon,
+                size: 25, color: active ? AD.textOnInput : AD.textPrimary)),
       ),
     );
   }
@@ -1287,7 +1430,8 @@ class _ReceptionistDuoState extends State<_ReceptionistDuo>
     super.dispose();
   }
 
-  Widget _pulse({required Widget child, required double level, required Color color}) {
+  Widget _pulse(
+      {required Widget child, required double level, required Color color}) {
     final g = level.clamp(0.0, 1.0);
     return SizedBox(
       width: 104,
@@ -1301,7 +1445,8 @@ class _ReceptionistDuoState extends State<_ReceptionistDuo>
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: color.withValues(alpha: 0.14 * g),
-              border: Border.all(color: color.withValues(alpha: 0.55 * g), width: 3),
+              border: Border.all(
+                  color: color.withValues(alpha: 0.55 * g), width: 3),
             ),
           ),
           child,
@@ -1325,8 +1470,9 @@ class _ReceptionistDuoState extends State<_ReceptionistDuo>
           width: 88,
           height: 88,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) =>
-              Center(child: Text('A', style: ADText.appTitle().copyWith(fontSize: 40))),
+          errorBuilder: (_, __, ___) => Center(
+              child:
+                  Text('A', style: ADText.appTitle().copyWith(fontSize: 40))),
         ),
       );
 
@@ -1358,7 +1504,8 @@ class _ReceptionistDuoState extends State<_ReceptionistDuo>
                   width: 92,
                   height: 104,
                   child: CustomPaint(
-                    painter: _LinkPainter(phase: _flow.value, mic: mic, ava: ava),
+                    painter:
+                        _LinkPainter(phase: _flow.value, mic: mic, ava: ava),
                   ),
                 ),
                 _pulse(child: _avaCircle(), level: ava, color: AD.iconVideo),
@@ -1384,8 +1531,8 @@ class _ReceptionistDuoState extends State<_ReceptionistDuo>
 class _LinkPainter extends CustomPainter {
   _LinkPainter({required this.phase, required this.mic, required this.ava});
   final double phase; // 0..1 repeating flow phase
-  final double mic;   // caller VU 0..1
-  final double ava;   // Ava VU 0..1
+  final double mic; // caller VU 0..1
+  final double ava; // Ava VU 0..1
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1402,7 +1549,8 @@ class _LinkPainter extends CustomPainter {
       double b;
       double r;
       if (speaking) {
-        final wave = (math.sin((t * dir - phase) * 2 * math.pi) + 1) / 2; // 0..1
+        final wave =
+            (math.sin((t * dir - phase) * 2 * math.pi) + 1) / 2; // 0..1
         b = (0.22 + 0.78 * wave) * (0.4 + 0.6 * level);
         r = 2.5 + 3.0 * level * wave;
       } else {
@@ -1448,9 +1596,8 @@ class _CallNetHudState extends State<_CallNetHud>
         vsync: this, duration: const Duration(milliseconds: 420))
       ..forward();
     _resolveTransport();
-    _connSub = Connectivity()
-        .onConnectivityChanged
-        .listen((r) => _applyTransport(r));
+    _connSub =
+        Connectivity().onConnectivityChanged.listen((r) => _applyTransport(r));
   }
 
   Future<void> _resolveTransport() async {
@@ -1486,9 +1633,8 @@ class _CallNetHudState extends State<_CallNetHud>
   }
 
   Color get _fg => widget.onVideo ? Colors.white : AD.textPrimary;
-  Color get _bg => widget.onVideo
-      ? Colors.black.withValues(alpha: 0.38)
-      : AD.card;
+  Color get _bg =>
+      widget.onVideo ? Colors.black.withValues(alpha: 0.38) : AD.card;
 
   @override
   Widget build(BuildContext context) {
@@ -1527,7 +1673,9 @@ class _CallNetHudState extends State<_CallNetHud>
         decoration: BoxDecoration(
           color: _bg,
           borderRadius: BorderRadius.circular(100),
-          border: widget.onVideo ? null : Border.all(color: AD.borderControl, width: 1),
+          border: widget.onVideo
+              ? null
+              : Border.all(color: AD.borderControl, width: 1),
           boxShadow: const [],
         ),
         child: Row(
@@ -1537,15 +1685,15 @@ class _CallNetHudState extends State<_CallNetHud>
                 _transport == 'Wi-Fi'
                     ? PhosphorIcons.wifiHigh(PhosphorIconsStyle.bold)
                     : PhosphorIcons.broadcast(PhosphorIconsStyle.bold),
-                size: 15, color: _fg),
+                size: 15,
+                color: _fg),
             const SizedBox(width: 6),
-            Text(_transport,
-                style: ADText.timestamp(c: _fg)),
+            Text(_transport, style: ADText.timestamp(c: _fg)),
             const SizedBox(width: 10),
             _QualityBars(quality: ns.quality, color: _fg),
             const SizedBox(width: 10),
-            _rateChip(
-                PhosphorIcons.arrowDownLeft(PhosphorIconsStyle.bold), ns.downKbps),
+            _rateChip(PhosphorIcons.arrowDownLeft(PhosphorIconsStyle.bold),
+                ns.downKbps),
             const SizedBox(width: 6),
             _rateChip(
                 PhosphorIcons.arrowUpRight(PhosphorIconsStyle.bold), ns.upKbps),
@@ -1558,13 +1706,14 @@ class _CallNetHudState extends State<_CallNetHud>
                 duration: const Duration(milliseconds: 300),
                 opacity: weak ? 1 : 0,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                   decoration: BoxDecoration(
                     color: AD.danger,
                     borderRadius: BorderRadius.circular(100),
                   ),
-                  child: Text('WEAK',
-                      style: ADText.statCaption(c: Colors.white)),
+                  child:
+                      Text('WEAK', style: ADText.statCaption(c: Colors.white)),
                 ),
               ),
             ],
@@ -1578,8 +1727,7 @@ class _CallNetHudState extends State<_CallNetHud>
     return Row(mainAxisSize: MainAxisSize.min, children: [
       PhosphorIcon(icon, size: 12, color: _fg),
       const SizedBox(width: 2),
-      Text('$kbps',
-          style: ADText.timestamp(c: _fg)),
+      Text('$kbps', style: ADText.timestamp(c: _fg)),
     ]);
   }
 
@@ -1602,8 +1750,7 @@ class _CallNetHudState extends State<_CallNetHud>
               Text(_transport, style: ADText.statCaption(c: AD.textTertiary)),
               const SizedBox(height: 16),
               _detailRow('Signal', _qualityLabel(ns.quality)),
-              _detailRow('Round-trip',
-                  ns.rttMs >= 0 ? '${ns.rttMs} ms' : '—'),
+              _detailRow('Round-trip', ns.rttMs >= 0 ? '${ns.rttMs} ms' : '—'),
               _detailRow('Packet loss',
                   ns.lossPct >= 0 ? '${ns.lossPct.toStringAsFixed(1)}%' : '—'),
               _detailRow('Download', '${ns.downKbps} kbps'),
@@ -1696,7 +1843,8 @@ class _AgentCallPanel extends StatelessWidget {
   final String name;
   final String status; // 'connecting' | 'connected' | 'failed' | 'ended' | ''
   final VoidCallback onHangup;
-  const _AgentCallPanel({required this.name, required this.status, required this.onHangup});
+  const _AgentCallPanel(
+      {required this.name, required this.status, required this.onHangup});
 
   String get _line => switch (status) {
         'connected' => "You're talking to $name's Ava AI agent",
