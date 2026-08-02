@@ -399,7 +399,14 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
         backgroundColor: AD.bg,
         body: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            // [PIV-5 2026-08-02] Horizontal padding is applied PER SECTION, not
+            // to the whole column. The action row needs the full width to divide
+            // into four; the caller's name needs a margin so a long one doesn't
+            // run to the bezel. A single 24px page inset served the text and
+            // starved the row — it left each of the four slots ~78px, which is
+            // narrower than the word "Receptionist" renders at, so that one
+            // label alone got scaled down and the row looked mismatched.
+            padding: const EdgeInsets.symmetric(vertical: 20),
             child: Column(
               children: [
                 const Spacer(),
@@ -409,12 +416,18 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
                       avatarUrl: widget.avatarUrl.isEmpty ? null : widget.avatarUrl),
                 ),
                 const SizedBox(height: 24),
-                Text('$name is calling',
-                    textAlign: TextAlign.center,
-                    style: ADText.appTitle(c: AD.textPrimary)),
-                const SizedBox(height: 8),
-                Text('This is an AvaTOK to AvaTOK call',
-                    style: ADText.preview(c: AD.textSecondary)),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Column(children: [
+                    Text('$name is calling',
+                        textAlign: TextAlign.center,
+                        style: ADText.appTitle(c: AD.textPrimary)),
+                    const SizedBox(height: 8),
+                    Text('This is an AvaTOK to AvaTOK call',
+                        textAlign: TextAlign.center,
+                        style: ADText.preview(c: AD.textSecondary)),
+                  ]),
+                ),
                 const Spacer(),
                 // ── [PIV-4 2026-08-02] ONE action row ─────────────────────────
                 // Was two stacked rows (Receptionist alone above; Report Spam /
@@ -435,7 +448,9 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
                 // saturated, Report Spam/Receptionist are recessive outlines, and
                 // Report Spam sits at the far edge NEXT TO DECLINE — never
                 // adjacent to Accept. Keep it that way.
-                Row(
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
@@ -475,6 +490,7 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
                       ),
                     ),
                   ],
+                ),
                 ),
                 // Real breathing room under the row (was 8px). Sits inside
                 // SafeArea, so this is clear space ABOVE the gesture bar rather
@@ -557,16 +573,28 @@ class _CallAction extends StatelessWidget {
         SizedBox(
           height: _labelBox,
           child: Center(
-            // "Receptionist" is far longer than "Accept" and the slots are
-            // equal, so it is allowed to shrink rather than overflow or get
-            // clipped — the row must stay intact on a narrow handset.
+            // [PIV-5 2026-08-02] `FittedBox` is a SAFETY NET, not the layout.
+            //
+            // It scales each label independently, so as soon as ONE label
+            // genuinely overflows it renders smaller than its neighbours and the
+            // row looks mismatched — which is exactly what "Receptionist" did.
+            // The real cause was tracking: `sectionLabel` is 11px with 0.88px
+            // letter-spacing (tuned for short all-caps headers like PINNED), and
+            // across 12 characters that spacing alone adds ~10px, pushing the
+            // word past its slot.
+            //
+            // So the label now uses the same 11px size with normal tracking and
+            // fits at full size in every slot. Keep the FittedBox anyway: it
+            // costs nothing and still guarantees no overflow at large system
+            // font scales or on an unusually narrow device.
             child: FittedBox(
               fit: BoxFit.scaleDown,
               child: Text(
                 label,
                 textAlign: TextAlign.center,
                 style: ADText.sectionLabel(
-                    c: filled ? AD.textPrimary : AD.textSecondary),
+                    c: filled ? AD.textPrimary : AD.textSecondary)
+                    .copyWith(letterSpacing: 0.1),
               ),
             ),
           ),
