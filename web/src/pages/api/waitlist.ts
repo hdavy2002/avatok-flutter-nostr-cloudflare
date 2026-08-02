@@ -29,7 +29,7 @@ function welcomeHtml(): string {
         <p style="margin:24px 0 0;font-size:14px;color:#6e6c5c;">— The avaTOK team</p>
       </div>
     </div>
-    <p style="max-width:520px;margin:16px auto 0;text-align:center;font-size:12px;color:#9a9684;line-height:1.5;">avaTOK · Ava Global International Pvt Ltd, Mumbai, India.<br/>Delaware subsidiary: AvaGlobal International, Inc.<br/>You received this because you joined the waitlist at avatok.ai.</p>
+    <p style="max-width:520px;margin:16px auto 0;text-align:center;font-size:12px;color:#9a9684;line-height:1.5;">avaTOK · Ava Global International Pvt Ltd, Mumbai, India.<br/>You received this because you joined the waitlist at avatok.ai.</p>
   </div></body></html>`;
 }
 
