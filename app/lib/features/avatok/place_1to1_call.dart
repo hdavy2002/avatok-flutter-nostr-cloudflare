@@ -132,7 +132,7 @@ Future<void> place1to1Call(
       try {
         final j = jsonDecode(res.body) as Map<String, dynamic>;
         final r = j['routed'];
-        if (r == 'voicemail' || r == 'agent') {
+        if (r == 'voicemail' || r == 'agent' || r == 'receptionist') {
           routed = r as String;
           final st = j['start'];
           if (st is Map) routingStart = st.cast<String, dynamic>();
@@ -294,10 +294,20 @@ Future<void> _dialerPlaceInBackground(
     }
 
     bool reachableFalse = false;
-    try { reachableFalse = jsonDecode(res.body)['reachable'] == false; } catch (_) {}
+    String routed = '';
+    try {
+      final body = jsonDecode(res.body);
+      reachableFalse = body['reachable'] == false;
+      routed = (body['routed'] ?? '').toString();
+    } catch (_) {}
 
     final session = CallSessionManager.instance.liveSessionFor(room);
-    if (res.statusCode == 200 && !reachableFalse) {
+    if (res.statusCode == 200 && routed == 'receptionist') {
+      Analytics.capture('call_server_receptionist_routed', {
+        'call_id': room, 'via': 'dialpad', 'reason': 'unknown_caller',
+      });
+      session?.noteServerReceptionistRoute();
+    } else if (res.statusCode == 200 && !reachableFalse) {
       Analytics.capture('call_place_ok', {'kind': callKind, 'via': 'dialpad', 'mount': 'optimistic'});
       session?.notePlaceResult(true);
     } else if (res.statusCode == 404 || reachableFalse) {

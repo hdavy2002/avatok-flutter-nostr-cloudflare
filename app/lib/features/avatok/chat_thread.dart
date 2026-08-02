@@ -3755,6 +3755,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     // (the exact "endless ringback, callee never rings" symptom). This flag short-
     // circuits the dial: show a clear message and stop, no ringback.
     bool unreachable = false;
+    String? initialRouted;
+    Map<String, dynamic>? initialRoutingStart;
     // Ring the callee's phone via FCM wake (real uid contacts only).
     if (to.startsWith('user_')) {
       try {
@@ -3771,7 +3773,15 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         // returns (`reachable:false` on both the zero-token 404 and — via a later
         // ring-ack — the all-tokens-pruned case). A 404 is always unreachable.
         bool reachableFalse = false;
-        try { reachableFalse = jsonDecode(res.body)['reachable'] == false; } catch (_) {}
+        try {
+          final decoded = jsonDecode(res.body);
+          reachableFalse = decoded['reachable'] == false;
+          if (decoded['routed'] == 'receptionist') {
+            initialRouted = 'receptionist';
+            final start = decoded['start'];
+            if (start is Map) initialRoutingStart = start.cast<String, dynamic>();
+          }
+        } catch (_) {}
         // [CALL-GLARE-2] Server-side mutual-dial resolution. The callee was ALREADY
         // dialing us within the glare window, so the server folded both dials into
         // one winning call (smaller callId) instead of ringing a second room. Join
@@ -3808,7 +3818,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
           );
           return;
         }
-        if (res.statusCode == 200 && !reachableFalse) {
+        if (res.statusCode == 200 && initialRouted == 'receptionist') {
+          Analytics.capture('call_server_receptionist_routed', {
+            'call_id': room, 'reason': 'unknown_caller', 'mount': 'awaited',
+          });
+        } else if (res.statusCode == 200 && !reachableFalse) {
           try { ringbackUrl = (jsonDecode(res.body)['ringbackUrl'] ?? '').toString(); } catch (_) {}
           Analytics.capture('call_place_ok', {'kind': callKind, 'has_ringback': ringbackUrl.isNotEmpty});
         } else if (res.statusCode == 404 || reachableFalse) {
@@ -3879,6 +3893,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
           room: room, title: widget.chat.name, seed: to, video: video,
           avatarUrl: widget.chat.avatarUrl, ringbackUrl: ringbackUrl,
           traceId: traceId, // [TRACE-ID-1]
+          initialRouted: initialRouted,
+          initialRoutingStart: initialRoutingStart,
           // [CALL-DIAL-FAIL-1] Retry affordance on the 'network-error' terminal
           // state: re-runs this exact dial flow (fresh room id, fresh POST)
           // instead of leaving the user stuck on a dead call screen.
@@ -3954,10 +3970,20 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       }
 
       bool reachableFalse = false;
-      try { reachableFalse = jsonDecode(res.body)['reachable'] == false; } catch (_) {}
+      String serverRoute = '';
+      try {
+        final body = jsonDecode(res.body);
+        reachableFalse = body['reachable'] == false;
+        serverRoute = (body['routed'] ?? '').toString();
+      } catch (_) {}
 
       final session = CallSessionManager.instance.liveSessionFor(room);
-      if (res.statusCode == 200 && !reachableFalse) {
+      if (res.statusCode == 200 && serverRoute == 'receptionist') {
+        Analytics.capture('call_server_receptionist_routed', {
+          'call_id': room, 'reason': 'unknown_caller', 'mount': 'optimistic',
+        });
+        session?.noteServerReceptionistRoute();
+      } else if (res.statusCode == 200 && !reachableFalse) {
         bool hasRingback = false;
         try { hasRingback = (jsonDecode(res.body)['ringbackUrl'] ?? '').toString().isNotEmpty; } catch (_) {}
         Analytics.capture('call_place_ok', {'kind': callKind, 'has_ringback': hasRingback, 'mount': 'optimistic'});

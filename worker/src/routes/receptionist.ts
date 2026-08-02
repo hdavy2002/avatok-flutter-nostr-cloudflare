@@ -518,7 +518,10 @@ function pstnLaneActive(s: SettingsRow | null | undefined): boolean {
 // (the caller explicitly pressed "Talk to Ava") and self-calls (owner testing) always
 // pass — an explicit human choice is never gated by a scenario toggle.
 function avatokHandoffAllowed(s: SettingsRow | null | undefined, activationMode: string, isSelf: boolean): boolean {
-  if (isSelf || activationMode === "menu") return true;
+  // `unknown_caller` is an owner-level server admission rule, not a missed-call
+  // preference. Once the synced contact directory classifies the caller as
+  // unknown, Ava is the intended first recipient.
+  if (isSelf || activationMode === "menu" || activationMode === "unknown_caller") return true;
   if (receptAvatokRedirectAll(s)) return true;
   switch (activationMode) {
     case "decline":      return receptAvatokRejectedNew(s);      // caller was Declined → rejected
@@ -1193,10 +1196,10 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   const b = (await req.json().catch(() => ({}))) as any;
   const to = String(b.to || "");
   if (!to) return json({ error: "to required" }, 400);
-  const VALID_MODES = new Set(["rings", "first_ring", "decline", "busy", "unreachable", "menu"]);
+  const VALID_MODES = new Set(["rings", "first_ring", "decline", "busy", "unreachable", "menu", "unknown_caller"]);
   let activationMode = String(b.activation_mode || "rings");
   if (!VALID_MODES.has(activationMode)) activationMode = "rings";
-  const automaticHandoff = ["rings", "first_ring", "busy", "unreachable"].includes(activationMode);
+  const automaticHandoff = ["rings", "first_ring", "busy", "unreachable", "unknown_caller"].includes(activationMode);
 
   // ── PARALLEL PREFETCH ──────────────────────────────────────────────────────
   // [RECEPT-NO-RUNTIME-DDL-1 2026-08-01] These three lookups are mutually

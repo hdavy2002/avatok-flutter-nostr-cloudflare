@@ -276,9 +276,16 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
     if (_busy) return;
     setState(() => _busy = true);
     Analytics.capture('business_call_incoming_receptionist', {'call_id': widget.callId});
-    await _endNativeRing();
-    _dismiss(reason: 'receptionist');
-    await PushService.receptionistIncomingCall(_extra);
+    // A receptionist choice ends this device's RING, not the caller's leg.
+    // Feed the real handoff status to the reducer and let that one owner clear
+    // CallKit + both notifications. Marking this as the default `declined`
+    // planted a contradictory local terminal outcome before the command ran.
+    _dismiss(reason: 'receptionist', status: 'decline_ava');
+    final handedOff = await PushService.receptionistIncomingCall(_extra);
+    Analytics.capture('business_call_receptionist_result', {
+      'call_id': widget.callId,
+      'ok': handedOff,
+    });
   }
 
   /// [CALL-QUICK-REPLY-1 2026-08-01] "Message" — end the call on BOTH ends and

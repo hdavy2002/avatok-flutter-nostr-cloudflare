@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Lock the killed-app Decline bridge into flutter_callkit_incoming 2.5.8.
+"""Lock AvaTOK's native call contracts into flutter_callkit_incoming 2.5.8.
 
 The upstream receiver targets its PendingIntent explicitly, so an additional app
 receiver cannot intercept it. We therefore add one reflection-only call into the
@@ -17,6 +17,7 @@ from urllib.parse import unquote, urlparse
 PACKAGE = "flutter_callkit_incoming"
 VERSION = "2.5.8"
 MARKER = "CALL-NATIVE-DECLINE-1"
+UI_MARKER = "CALL-NOTIF-OWNER-1"
 ANCHOR = """                    callkitNotificationManager?.clearIncomingNotification(data, false)
                     sendEventFlutter(CallkitConstants.ACTION_CALL_DECLINE, data)"""
 REPLACEMENT = """                    callkitNotificationManager?.clearIncomingNotification(data, false)
@@ -31,6 +32,17 @@ REPLACEMENT = """                    callkitNotificationManager?.clearIncomingNo
                         Log.e(TAG, \"Native decline bridge unavailable\", error)
                     }
                     sendEventFlutter(CallkitConstants.ACTION_CALL_DECLINE, data)"""
+UI_ANCHOR = """    private fun getActivityPendingIntent(id: Int, data: Bundle): PendingIntent {
+        val intent = CallkitIncomingActivity.getIntent(context, data)
+        return PendingIntent.getActivity(context, id, intent, getFlagPendingIntent())
+    }"""
+UI_REPLACEMENT = """    private fun getActivityPendingIntent(id: Int, data: Bundle): PendingIntent {
+        // [CALL-NOTIF-OWNER-1] Both a body tap and Android's full-screen intent
+        // enter AvaTOK's MainActivity. The app then renders the one branded UI;
+        // the plugin's old green activity is never a competing surface.
+        val intent = AppUtils.getAppIntent(context, action = \"avatok.incoming_call_tap\", data = data)
+        return PendingIntent.getActivity(context, id, intent, getFlagPendingIntent())
+    }"""
 
 
 def package_root(app_dir: pathlib.Path) -> pathlib.Path:
@@ -53,15 +65,21 @@ def package_root(app_dir: pathlib.Path) -> pathlib.Path:
 
 def main() -> None:
     app_dir = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else "app").resolve()
-    source = package_root(app_dir) / "android/src/main/kotlin/com/hiennv/flutter_callkit_incoming/CallkitIncomingBroadcastReceiver.kt"
+    root = package_root(app_dir) / "android/src/main/kotlin/com/hiennv/flutter_callkit_incoming"
+    source = root / "CallkitIncomingBroadcastReceiver.kt"
     text = source.read_text()
-    if MARKER in text:
-        print(f"{PACKAGE} killed-app decline bridge already locked")
-        return
-    if text.count(ANCHOR) != 1:
-        raise SystemExit("flutter_callkit_incoming decline handler changed; refusing to build without revalidating the native bridge")
-    source.write_text(text.replace(ANCHOR, REPLACEMENT))
-    print(f"locked killed-app decline bridge into {source}")
+    if MARKER not in text:
+        if text.count(ANCHOR) != 1:
+            raise SystemExit("flutter_callkit_incoming decline handler changed; refusing to build without revalidating the native bridge")
+        source.write_text(text.replace(ANCHOR, REPLACEMENT))
+
+    ui_source = root / "CallkitNotificationManager.kt"
+    ui_text = ui_source.read_text()
+    if UI_MARKER not in ui_text:
+        if ui_text.count(UI_ANCHOR) != 1:
+            raise SystemExit("flutter_callkit_incoming notification tap path changed; refusing to build without revalidating the branded UI bridge")
+        ui_source.write_text(ui_text.replace(UI_ANCHOR, UI_REPLACEMENT))
+    print(f"locked native decline + branded notification ownership into {root}")
 
 
 if __name__ == "__main__":

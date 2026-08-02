@@ -342,6 +342,18 @@ class ContactsStore {
           }),
           keyMat);
       await Vault.put('contacts', blob);
+      // The encrypted vault remains the restore authority. This separate,
+      // privacy-minimised uid set is the server-readable call-policy index that
+      // lets the edge decide whether a caller is saved without decrypting chat
+      // data or trusting whichever handset happens to be awake.
+      final contactUids = cs
+          .map((c) => c.uid)
+          .where((uid) => uid.startsWith('user_'))
+          .toSet()
+          .toList(growable: false);
+      await ApiAuth.postJson(kContactCallPolicyUrl, {
+        'contactUids': contactUids,
+      });
     } catch (_) {/* best-effort */}
   }
 

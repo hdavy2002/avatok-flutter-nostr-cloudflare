@@ -3,6 +3,7 @@ package ai.avatok.avatok_call
 import android.content.Context
 import android.os.Bundle
 import androidx.annotation.Keep
+import androidx.core.app.NotificationManagerCompat
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
@@ -39,6 +40,10 @@ object NativeCallDeclineBridge {
     @JvmStatic
     @Keep
     fun enqueue(context: Context, callkitData: Bundle) {
+        // The branded Flutter FSI is notification 8005, separate from the
+        // plugin notification that invoked this receiver. Flutter may be dead,
+        // so clear it natively before doing any parsing/network work.
+        NotificationManagerCompat.from(context.applicationContext).cancel(8005)
         @Suppress("DEPRECATION", "UNCHECKED_CAST")
         val extra = callkitData.getSerializable(EXTRA_CALLKIT_EXTRA) as? Map<String, Any?> ?: return
         val callId = extra["callId"]?.toString()?.trim().orEmpty()

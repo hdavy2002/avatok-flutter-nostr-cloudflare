@@ -44,7 +44,7 @@ class ReceptionistCall {
     this.callId,
     this.callerPhone,
     this.callerName,
-    this.activationMode = 'rings', // rings|first_ring|manual|decline|busy
+    this.activationMode = 'rings', // rings|first_ring|manual|decline|busy|unknown_caller
     this.speaker = false,          // initial route: earpiece for audio calls
     this.teamId,                   // Team IVR fallback: tags the voicemail card
     this.teamSlot,                 // for the manager's team inbox + attribution

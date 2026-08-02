@@ -1201,72 +1201,7 @@ Future<void> _handleNowFreeCallback(String? payload) async {
   // follow-up, kept identical to _handleMissedCallCallback so behaviour matches.
 }
 
-/// [AVACALL-INUI-2] Raise the BRANDED incoming-call screen over the lock screen
-/// via an Android full-screen-intent notification. Used when the app is NOT
-/// foregrounded (locked / screen-off / another app on top) — the case the
-/// in-app navigator push in [_showIncoming] cannot reach because there is no
-/// live route stack on top of the lock screen.
-///
-/// Why flutter_local_notifications and NOT a custom method channel: this is
-/// routinely reached from the FCM BACKGROUND isolate (phone locked, app killed),
-/// where custom platform channels have no attached engine and silently no-op —
-/// but `_local` is made safe in either isolate by [_ensureLocalInit] (the same
-/// path every other bg banner in this file already uses). A `fullScreenIntent`
-/// notification on a MAX-importance channel makes Android launch the app's main
-/// launcher activity (MainActivity, which declares showWhenLocked + turnScreenOn
-/// in the manifest) full-screen over the lock screen; the JSON payload then
-/// routes to IncomingBusinessCallScreen once Flutter is up (see
-/// [_maybeRouteBrandedIncoming] / [_routeToBrandedIncoming] and the cold-start
-/// handler in [_init]).
-///
-/// The native CallKit ring posted just above in [_showIncoming] is KEPT
-/// underneath: it owns the ringtone, it is what [PushService.acceptRingingCall]
-/// reads back via `FlutterCallkitIncoming.activeCalls()`, and it is the forced
-/// fallback where the OS denies a full-screen activity. This is purely additive.
-Future<void> _showBrandedIncomingFsi(Map<String, dynamic> d) async {
-  final callId = (d['callId'] ?? '').toString();
-  if (callId.isEmpty) return;
-  try {
-    final name = (d['fromName'] ?? 'AvaTOK').toString();
-    final payload = jsonEncode({
-      'k': _kBrandedIncomingPayloadKind,
-      'callId': callId,
-      'from': (d['fromPub'] ?? '').toString(),
-      'fromName': name,
-      'kind': (d['kind'] ?? 'audio').toString(),
-      'avatarUrl': (d['avatarUrl'] ?? d['fromAvatar'] ?? '').toString(),
-    });
-    await _ensureLocalInit();
-    await _local.show(
-      _kBrandedIncomingNotifId,
-      '$name is calling',
-      'AvaTOK call',
-      NotificationDetails(
-        android: AndroidNotificationDetails(
-          _incomingCallChannel.id, _incomingCallChannel.name,
-          channelDescription: _incomingCallChannel.description,
-          importance: Importance.max, priority: Priority.max,
-          category: AndroidNotificationCategory.call,
-          fullScreenIntent: true, // wake the screen + launch the branded UI when locked
-          ongoing: true,
-          autoCancel: false,
-          playSound: false, enableVibration: false,
-          ticker: '$name is calling',
-        ),
-      ),
-      payload: payload,
-    );
-    await _track('call_branded_fsi_shown', {
-      'call_id': callId,
-      'kind': (d['kind'] ?? 'audio').toString(),
-      'bg_isolate': BadgeService.inBackgroundIsolate,
-    });
-  } catch (e) {
-    await _track('call_branded_fsi_error', {'call_id': callId, 'error': e.toString()});
-  }
-}
-
-/// [AVACALL-INUI-2] Cancel the branded incoming-call FSI notification (call
+/// Cancel any branded incoming-call FSI notification left by an older build
 /// answered / declined / caller cancelled), so it can't linger over the lock
 /// screen. Best-effort and safe to call more than once.
 Future<void> _dismissBrandedFsi() async {
@@ -1422,9 +1357,8 @@ Future<void> _stopRingtoneFallback([String? callId]) async {
   } catch (_) {/* best-effort */}
 }
 
-/// Emit `call_ring_audibility` and, gated by `RemoteConfig.callRingAudibilityV1`,
-/// start the in-app fallback ringtone. Fired unawaited from [_showIncoming] —
-/// telemetry/fallback must never delay or block the ring path itself.
+/// Emit `call_ring_audibility` and its optional receipt echo. Fired unawaited
+/// from [_showIncoming] so telemetry never delays or blocks the ring itself.
 ///
 /// `audible`:
 ///  · `'false'`   — ringer mode silent/vibrate, DND is blocking, OR the ring
@@ -1509,27 +1443,12 @@ Future<void> _emitRingAudibilityAndMaybeFallback(
       ringVolumeMax: ok && ringVolumeMax >= 0 ? ringVolumeMax : null,
     ));
   }
-  // ── In-app ringtone fallback (gated) ────────────────────────────────────
-  // Only when: flag on, this is the MAIN isolate with a live navigator
-  // ('resumed' can't happen in the bg isolate anyway, but be explicit), the
-  // probe succeeded, ringer mode is NORMAL, DND isn't blocking, and ring
-  // volume > 0 — i.e. the user never chose silent/vibrate/DND. Never plays
-  // for a user who deliberately silenced their phone; that would be the exact
-  // regression this feature must not cause.
-  // [CALL-REL-9] `callkitShown` is now part of the start gate: if
-  // `showCallkitIncoming` above threw (no native ring UI at all), starting the
-  // in-app fallback anyway would leave a looping sound with no incoming-call UI
-  // behind it — worse than the failure it's meant to cover for.
-  if (RemoteConfig.callRingAudibilityV1 &&
-      !BadgeService.inBackgroundIsolate &&
-      callkitShown &&
-      lifecycle == 'resumed' &&
-      ok &&
-      ringerMode == 'normal' &&
-      !dndBlocking &&
-      ringVolume > 0) {
-    await _startRingtoneFallback(callId);
-  }
+  // [CALL-NOTIF-OWNER-1] Never start Dart audio while CallKit owns the native
+  // notification. This old "fallback" ran whenever the native probe reported a
+  // healthy audible ring — exactly when Android was already playing one — and
+  // produced the Motorola + AvaTOK double ringtone. Foreground branded calls
+  // that deliberately suppress CallKit start Dart audio in [_showIncoming]; all
+  // other lifecycle states have one native owner and one bundled product tone.
 }
 
 /// Show the native full-screen incoming-call UI (CallKit / ConnectionService),
@@ -1600,11 +1519,14 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
     duration: 45000,
     textAccept: 'Accept',
     textDecline: 'Decline',
+    avatar: callerAvatarFromPayload(d),
     extra: {
       'from': d['fromPub'] ?? '', // server sends 'fromPub' (FCM reserves 'from')
       'kind': d['kind'] ?? 'audio',
       'callId': d['callId'] ?? '',
       'fromName': d['fromName'] ?? 'AvaTOK',
+      'callerAvatarUrl': callerAvatarFromPayload(d),
+      'callerAvatarVersion': d['callerAvatarVersion'] ?? '',
       // [CALL-NATIVE-DECLINE-1] The CallKit plugin drops Dart events when the
       // app process is gone. Android's native bridge reads these fields straight
       // from the notification bundle and durably reports Decline via WorkManager.
@@ -1752,10 +1674,11 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
   // + a `via:'dialpad'` marker. When ON, every AvaTOK ring (type=='call') is
   // branded regardless of `via`.
   //
-  // INUI-1 covers the FOREGROUNDED case (live navigator on top). INUI-2 covers
-  // the locked / backgrounded / screen-off case: raise the branded screen OVER
-  // THE LOCK SCREEN via a full-screen-intent notification. Native CallKit stays
-  // the fallback only where the full-screen intent is unavailable/denied.
+  // Foreground calls use the live navigator. Background/locked calls now have
+  // ONE Android owner: CallKit's notification launches MainActivity with the
+  // `avatok.incoming_call_tap` payload, and MainActivity routes that payload to
+  // this same branded screen. Do not post a second local FSI here — that was the
+  // source of the duplicate ringtone/notification and stale "is calling" card.
   final brandedOn = RemoteConfig.brandedIncomingUi ||
       (RemoteConfig.businessCallUx && (d['via'] ?? '') == 'dialpad');
   if (brandedOn && !PushService.wasCallTerminated(ringCallId)) {
@@ -1772,12 +1695,6 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
           video: d['kind'] == 'video',
         ),
       ));
-    } else if (fsiGranted && NativeVoiceAudio.isSupported) {
-      // [AVACALL-INUI-2] Backgrounded / locked / screen-off AND we may post a
-      // full-screen intent → raise the branded screen over the lock screen. When
-      // FSI is unavailable/denied we do nothing here and the native CallKit ring
-      // (posted above) is the fallback screen, exactly as before.
-      await _showBrandedIncomingFsi(d);
     }
   }
 }
@@ -2162,6 +2079,23 @@ class PushService {
       return;
     }
     AvaLog.I.log('app', 'session start (app=${AvaLog.I.app}, session=${AvaLog.I.session})');
+    if (Platform.isAndroid) {
+      // [CALL-NOTIF-OWNER-1] The build-locked CallKit patch routes notification
+      // body/full-screen taps into MainActivity instead of the plugin's green
+      // CallkitIncomingActivity. Drain a cold-start tap and listen for warm taps
+      // so every route opens the same branded Flutter screen.
+      const tapChannel = MethodChannel('avatok/incoming_call_tap');
+      tapChannel.setMethodCallHandler((call) async {
+        if (call.method != 'incomingCallTapped' || call.arguments is! Map) return;
+        await _routeToBrandedIncoming(
+            Map<String, dynamic>.from(call.arguments as Map));
+      });
+      try {
+        final pending =
+            await tapChannel.invokeMapMethod<String, dynamic>('getPending');
+        if (pending != null) unawaited(_routeToBrandedIncoming(pending));
+      } catch (_) {/* native bridge unavailable on an older build */}
+    }
     // ── Notification-permission ordering contract (AVA-ONBOARD-1) ─────────────
     // There must be exactly ONE OS notification-permission dialog on a fresh
     // install, and the onboarding "notifications" step OWNS it. This init()
@@ -2728,6 +2662,10 @@ class PushService {
       if (event == null) return;
       switch (event.event) {
         case Event.actionCallAccept:
+          // The branded FSI is a separate notification from CallKit. Accepting
+          // the native action must clear it too or it remains tappable after the
+          // call has already moved on.
+          unawaited(_dismissBrandedFsi());
           IceCache.prefetch(); // accept tapped → call screen is next; warm TURN now
           final acc = event.body['extra'];
           if (acc is Map) {
@@ -3034,12 +2972,12 @@ class PushService {
   /// the two are different user intentions with different outcomes for the
   /// caller (one drops them, one keeps their leg alive), and collapsing them
   /// into one function with a boolean is what created the ambiguity above.
-  static Future<void> receptionistIncomingCall(Map extra) async {
+  static Future<bool> receptionistIncomingCall(Map extra) async {
     unawaited(_dismissBrandedFsi());
     final callId = (extra['callId'] ?? '').toString();
     final from = (extra['from'] ?? '').toString();
     unawaited(_stopRingtoneFallback(callId));
-    _signalStatus(callId, 'decline_ava', from);
+    final handedOff = await _signalStatus(callId, 'decline_ava', from);
     // Same dedupe key as decline — mutually exclusive outcomes of ONE ring.
     if (_onceCallEvent(callId, 'declined')) {
       Analytics.capture('call_incoming_declined', {
@@ -3048,6 +2986,7 @@ class PushService {
       });
     }
     _logMissed(extra);
+    return handedOff;
   }
 
   static void _logMissed(Map extra) {

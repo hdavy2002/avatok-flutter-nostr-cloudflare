@@ -489,7 +489,11 @@ class _CallScreenState extends State<CallScreen> {
     // [DIALPAD-BIZ-CALLS Phase C] Server said 'agent' before the ring even
     // started (offline / auto profile with no reachable device) — connect the
     // caller to the agent right away instead of ringing into nobody for 35s.
-    if (widget.initialRouted == 'agent' && RemoteConfig.voiceAgent) {
+    if (widget.initialRouted == 'receptionist') {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _session.noteServerReceptionistRoute();
+      });
+    } else if (widget.initialRouted == 'agent' && RemoteConfig.voiceAgent) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || _agentStarted) return;
         _session.businessAgentHandoff('no_answer');

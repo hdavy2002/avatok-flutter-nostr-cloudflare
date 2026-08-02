@@ -3,6 +3,8 @@ package ai.avatok.avatok_call
 import android.content.Intent
 import android.os.Bundle
 import android.view.WindowManager
+import com.hiennv.flutter_callkit_incoming.CallkitConstants
+import com.hiennv.flutter_callkit_incoming.FlutterCallkitIncomingPlugin
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -14,6 +16,12 @@ class MainActivity : FlutterFragmentActivity() {
     // profile-photo viewer) is on screen — blocks screenshots + screen recording
     // and hides the window in the app switcher.
     private val secureChannel = "avatok/secure_screen"
+    private val incomingTapChannelName = "avatok/incoming_call_tap"
+    private var incomingTapChannel: MethodChannel? = null
+
+    companion object {
+        private var pendingIncomingTap: Map<String, Any?>? = null
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -44,6 +52,21 @@ class MainActivity : FlutterFragmentActivity() {
                 }
             }
 
+        incomingTapChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger, incomingTapChannelName
+        ).also { channel ->
+            channel.setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "getPending" -> {
+                        val pending = pendingIncomingTap
+                        pendingIncomingTap = null
+                        result.success(pending)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+        }
+
         // CALL-BG-B3: if we were launched/foregrounded by the ongoing-call
         // notification tap, the engine is now attached (AvaVoiceAudioPlugin is
         // registered) — forward the pending intent's callId to Dart now. Handles the
@@ -67,6 +90,26 @@ class MainActivity : FlutterFragmentActivity() {
     /// AvaVoiceAudioPlugin.notifyNotificationTap so CallSession/CallScreen can route
     /// back to the active call instead of landing on the last-open route.
     private fun forwardNotificationTapIfPresent(intent: Intent?) {
+        if (intent?.action == "avatok.incoming_call_tap") {
+            @Suppress("DEPRECATION", "UNCHECKED_CAST")
+            val data = intent.getBundleExtra(FlutterCallkitIncomingPlugin.EXTRA_CALLKIT_CALL_DATA)
+            val extra = data?.getSerializable(CallkitConstants.EXTRA_CALLKIT_EXTRA)
+                    as? Map<String, Any?> ?: emptyMap()
+            val payload = mapOf<String, Any?>(
+                "callId" to (extra["callId"]
+                    ?: data?.getString(CallkitConstants.EXTRA_CALLKIT_ID).orEmpty()),
+                "from" to (extra["from"]
+                    ?: data?.getString(CallkitConstants.EXTRA_CALLKIT_HANDLE).orEmpty()),
+                "fromName" to (extra["fromName"]
+                    ?: data?.getString(CallkitConstants.EXTRA_CALLKIT_NAME_CALLER).orEmpty()),
+                "kind" to (extra["kind"] ?: "audio"),
+                "callerAvatarUrl" to (extra["callerAvatarUrl"]
+                    ?: data?.getString(CallkitConstants.EXTRA_CALLKIT_AVATAR).orEmpty()),
+                "callerAvatarVersion" to (extra["callerAvatarVersion"] ?: ""),
+            )
+            pendingIncomingTap = payload
+            incomingTapChannel?.invokeMethod("incomingCallTapped", payload)
+        }
         val from = intent?.getStringExtra("from")
         val callId = intent?.getStringExtra("callId")
         if (from == "call_notification" && !callId.isNullOrEmpty()) {

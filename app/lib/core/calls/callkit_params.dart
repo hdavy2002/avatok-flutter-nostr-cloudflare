@@ -34,7 +34,11 @@ const AndroidParams incomingCallAndroidParams = AndroidParams(
   isShowLogo: false,
   isShowFullLockedScreen: true,
   isImportant: true,
-  ringtonePath: 'system_ringtone_default',
+  // One product ringtone in every lifecycle state. `ringtone_default` is the
+  // native raw-resource twin of the foreground Dart fallback; using the system
+  // default here made background/killed calls sound like Motorola while a warm
+  // app sounded like AvaTOK.
+  ringtonePath: 'ringtone_default',
   backgroundColor: '#11A37F',
   actionColor: '#4CAF50',
   incomingCallNotificationChannelName: 'Incoming calls',

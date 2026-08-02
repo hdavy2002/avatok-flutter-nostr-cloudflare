@@ -42,4 +42,20 @@ describe("killed-app native decline contract", () => {
     expect(push).toContain("'nativeActionToken': d['nativeActionToken']");
     expect(push).toContain("'nativeDeclineUrl': kNativeCallDeclineUrl");
   });
+
+  it("locks Android incoming calls to one branded notification and one ringtone", () => {
+    const patcher = read("scripts/patch_callkit_native_decline.py");
+    const activity = read("app/android/app/src/main/kotlin/ai/avatok/avatok_call/MainActivity.kt");
+    const params = read("app/lib/core/calls/callkit_params.dart");
+    const push = read("app/lib/push/push_service.dart");
+    expect(patcher).toContain('action = \\"avatok.incoming_call_tap\\"');
+    expect(activity).toContain('incomingTapChannelName = "avatok/incoming_call_tap"');
+    expect(params).toContain("ringtonePath: 'ringtone_default'");
+    expect(push).not.toContain("_showBrandedIncomingFsi(d)");
+    // One declaration + the foreground branch that deliberately suppresses
+    // CallKit. A third occurrence would reintroduce two simultaneous players.
+    expect(push.match(/_startRingtoneFallback\(/g)).toHaveLength(2);
+    expect(readFileSync(resolve(root, "app/android/app/src/main/res/raw/ringtone_default.mp3")))
+      .toEqual(readFileSync(resolve(root, "app/assets/audio/catalog/classic.mp3")));
+  });
 });

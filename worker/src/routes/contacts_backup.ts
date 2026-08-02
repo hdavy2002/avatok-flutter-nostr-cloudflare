@@ -70,6 +70,10 @@ import { requireUser, isFail } from "../authz";
 import { rateLimit } from "../money";
 import { readConfig } from "./config";
 import { brainIngest } from "../lib/brain_ingest";
+import {
+  replaceAvatokCallDirectory,
+  replaceDeviceCallDirectory,
+} from "../lib/call_contact_directory";
 
 const WRAP_INFO = "avatok-contacts-book-v1";
 const enc = new TextEncoder();
@@ -620,6 +624,19 @@ export async function contactBookPut(req: Request, env: Env, ctx: ExecutionConte
     .bind(ctxUser.uid, merged.length, now, deviceCount)
     .run();
 
+  // Server-side unknown-caller policy index. Raw numbers remain only in the
+  // encrypted R2 backup; D1 receives sha256(E.164) membership. Awaited so the
+  // successful backup response means call policy is already coherent.
+  try {
+    await replaceDeviceCallDirectory(env, ctxUser.uid, merged);
+  } catch (e) {
+    track(env, ctxUser.uid, "contacts_call_directory_failed", {
+      source, error: String(e).slice(0, 160),
+    });
+    // Contact backup remains successful, but the policy marker was removed
+    // before rebuild and therefore fails open to normal ringing.
+  }
+
   // Background: (re)build the paginated chunks so restore can stream pages.
   if (cfg.contactsBookPaged !== false) scheduleChunk(env, ctx, ctxUser.uid);
 
@@ -659,6 +676,27 @@ export async function contactBookPut(req: Request, env: Env, ctx: ExecutionConte
     groups: groups?.length ?? 0,
     updatedAt: now,
   });
+}
+
+/** POST /api/contacts/call-policy { contactUids:[...] }. */
+export async function contactCallPolicyPut(req: Request, env: Env): Promise<Response> {
+  const ctxUser = await requireUser(req, env);
+  if (isFail(ctxUser)) return json({ error: ctxUser.error }, ctxUser.status);
+  const limited = await rateLimit(env, `call_contacts_put:${ctxUser.uid}`, 120, 3600);
+  if (limited) return limited;
+  const body = (await req.json().catch(() => ({}))) as { contactUids?: unknown };
+  if (!Array.isArray(body.contactUids)) return json({ error: "contactUids array required" }, 400);
+  if (body.contactUids.length > 5000) return json({ error: "too many contacts" }, 413);
+  try {
+    const count = await replaceAvatokCallDirectory(env, ctxUser.uid, body.contactUids);
+    track(env, ctxUser.uid, "contacts_call_policy_synced", { count, source: "avatok" });
+    return json({ ok: true, count });
+  } catch (e) {
+    track(env, ctxUser.uid, "contacts_call_directory_failed", {
+      source: "avatok", error: String(e).slice(0, 160),
+    });
+    return json({ error: "call contact directory unavailable" }, 503);
+  }
 }
 
 /**

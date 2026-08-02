@@ -143,6 +143,8 @@ const String kContactsMatchUrl = 'https://$kSignalingHost/api/contacts/match'; /
 const String kContactsListUrl = 'https://$kSignalingHost/api/contacts/list';   // GET
 // AvaTOK contact-book backup/restore (server-side encrypted, no Gmail needed).
 const String kContactBookUrl = 'https://$kSignalingHost/api/contacts/book';            // GET/POST
+const String kContactCallPolicyUrl =
+    'https://$kSignalingHost/api/contacts/call-policy';
 const String kContactBookStatusUrl = 'https://$kSignalingHost/api/contacts/book/status'; // GET
 
 /// Communities — create/join (NIP-98) / list (public).

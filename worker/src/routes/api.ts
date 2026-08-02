@@ -19,6 +19,7 @@ import { avaReason } from "../lib/ava_reason"; // One Brain B1: unified reasonin
 import { guardWrite } from "./moderate"; // save-time content validation (Nemotron)
 import { readConfig } from "./config"; // P11: profileCompletionGate
 import { CALL_RING_LIFETIME_MS } from "../lib/call_delivery_contract";
+import { callerContactPolicy } from "../lib/call_contact_directory";
 // [WP1] Event-sourced call stream (Specs/PLAN-2026-07-11-dialpad-business-calls-ava-voice-agent.md §13/§14)
 import { emitCallEvent, emitRoutingDecision, newTraceId, EVENT_SCHEMA_VERSION } from "../lib/call_events";
 import { buildCallSnapshot } from "../lib/call_snapshot";
@@ -184,7 +185,7 @@ export async function accountDevice(req: Request, env: Env): Promise<Response> {
   return json({ ok: true, active: !!active });
 }
 
-export async function call(req: Request, env: Env): Promise<Response> {
+export async function call(req: Request, env: Env, execCtx?: ExecutionContext): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as { to?: string; callId?: string; kind?: string; fromName?: string; via?: string };
@@ -264,6 +265,45 @@ export async function call(req: Request, env: Env): Promise<Response> {
   // it into the push payload (→ callee) and PostHog captures on this path so the
   // caller, Worker, and callee all stitch under one trace_id. Additive/optional.
   const traceId = req.headers.get("x-trace-id") ?? "";
+  // [CALL-UNKNOWN-ROUTE-1] The server, not a warm handset, owns unknown-caller
+  // routing. The decision is authoritative only after the callee has synced a
+  // device directory; missing/partial policy always fails open to a human ring.
+  // Video is also redirected: Ava answers as an audio receptionist rather than
+  // waking the callee with a video call from an unsaved person.
+  const contactPolicy = await callerContactPolicy(env, b.to, ctx.uid);
+  const contactPolicyTelemetry = track(env, b.to, "call_contact_policy_decision", "avatok", {
+      call_id: b.callId,
+      caller_uid: ctx.uid,
+      known: contactPolicy.known,
+      saved: contactPolicy.saved,
+      reason: contactPolicy.known ? contactPolicy.matched_by : contactPolicy.reason,
+      routed: contactPolicy.known && !contactPolicy.saved ? "receptionist" : "ring",
+      app_name: "avatok", service_name: "avatok-api", worker: true,
+    }).catch(() => { /* policy telemetry never changes routing */ });
+  if (execCtx) execCtx.waitUntil(contactPolicyTelemetry);
+  else await contactPolicyTelemetry;
+  if (contactPolicy.known && !contactPolicy.saved) {
+    try {
+      const callStub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(b.callId));
+      const participantResponse = await callStub.fetch("https://call-room/participants", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ callId: b.callId, callerUid: ctx.uid, calleeUid: b.to }),
+      });
+      if (!participantResponse.ok) return json({ error: "call_authority_unavailable" }, 503);
+    } catch {
+      return json({ error: "call_authority_unavailable" }, 503);
+    }
+    return json({
+      sent: 0,
+      reachable: true,
+      routed: "receptionist",
+      routing_reason: "unknown_caller",
+      start: { to: b.to, call_id: b.callId, trace_id: traceId, activation_mode: "unknown_caller" },
+    });
+  }
+  // Start the caller identity lookup alongside device reachability. Both are
+  // required before the push is constructed, but neither depends on the other.
+  const identityPromise = publicIdentityFor(env, ctx.uid).catch(() => null);
   // Read the callee's device count from the PRIMARY (plain prepare), not an
   // unconstrained replica — avoids a stale 0-token false-404 on a registered device.
   const n = await tokenCount(env.DB_META, b.to);
@@ -277,23 +317,24 @@ export async function call(req: Request, env: Env): Promise<Response> {
   // device mid-token-rotation (token briefly absent but the device is still real).
   // Best-effort and self-contained: it must NEVER block or fail the call, and
   // pre-migration D1s lacking these tables are caught just like the snapshot.
-  try {
-    const cutoff = Date.now() - 7 * 86400000; // 7 days unseen
-    const pr = await env.DB_META.prepare(
-      "UPDATE account_devices SET active=0 WHERE account_id=?1 AND active=1 AND last_seen < ?2 " +
-      "AND device_id NOT IN (SELECT device_id FROM device_tokens WHERE token IS NOT NULL)",
-    ).bind(b.to, cutoff).run();
-    const pruned = pr?.meta?.changes ?? 0;
-    if (pruned > 0) {
-      void env.Q_ANALYTICS.send({
-        event: "device_mappings_pruned", uid: ctx.uid, ts: Date.now(),
-        props: {
-          to: b.to, pruned, trace_id: traceId,
-          app_name: "avatok", service_name: "avatok-api", worker: true, account_id: ctx.uid,
-        },
-      });
-    }
-  } catch { /* pre-migration or transient: prune must never block the call */ }
+  const reachabilityTelemetry = (async () => {
+    try {
+      const cutoff = Date.now() - 7 * 86400000; // 7 days unseen
+      const pr = await env.DB_META.prepare(
+        "UPDATE account_devices SET active=0 WHERE account_id=?1 AND active=1 AND last_seen < ?2 " +
+        "AND device_id NOT IN (SELECT device_id FROM device_tokens WHERE token IS NOT NULL)",
+      ).bind(b.to, cutoff).run();
+      const pruned = pr?.meta?.changes ?? 0;
+      if (pruned > 0) {
+        await env.Q_ANALYTICS.send({
+          event: "device_mappings_pruned", uid: ctx.uid, ts: Date.now(),
+          props: {
+            to: b.to, pruned, trace_id: traceId,
+            app_name: "avatok", service_name: "avatok-api", worker: true, account_id: ctx.uid,
+          },
+        });
+      }
+    } catch { /* pre-migration or transient: prune must never block the call */ }
   // [CALL-TELEMETRY-1 2026-07-14] Always-on callee reachability snapshot at dial
   // time — one event per call attempt that says exactly what the callee's device/
   // token state looked like WHEN the caller dialed. Motivation: the 2026-07-11
@@ -301,17 +342,21 @@ export async function call(req: Request, env: Env): Promise<Response> {
   // in the consumer with all_tokens_pruned, and nothing recorded whether the
   // callee had an active device mapping, a switched-out mapping, or only stale
   // legacy tokens at dial time. Best-effort; never blocks the call.
-  try {
-    const snap = await calleeReachabilitySnapshot(env.DB_META, b.to);
-    void env.Q_ANALYTICS.send({
-      event: "call_callee_reachability", uid: ctx.uid, ts: Date.now(),
-      props: {
-        to: b.to, call_id: b.callId, call_type: b.kind ?? "audio", trace_id: traceId,
-        token_count: n, ...snap,
-        app_name: "avatok", service_name: "avatok-api", worker: true, account_id: ctx.uid,
-      },
-    });
-  } catch { /* telemetry must never block the call */ }
+    try {
+      const snap = await calleeReachabilitySnapshot(env.DB_META, b.to);
+      await env.Q_ANALYTICS.send({
+        event: "call_callee_reachability", uid: ctx.uid, ts: Date.now(),
+        props: {
+          to: b.to, call_id: b.callId, call_type: b.kind ?? "audio", trace_id: traceId,
+          token_count: n, ...snap,
+          app_name: "avatok", service_name: "avatok-api", worker: true, account_id: ctx.uid,
+        },
+      });
+    } catch { /* telemetry must never block the call */ }
+  })();
+  // These writes describe reachability; they must never delay reachability.
+  if (execCtx) execCtx.waitUntil(reachabilityTelemetry);
+  else await reachabilityTelemetry;
   if (n === 0) {
     // Visibility: the caller reached someone with 0 registered devices — the
     // exact "no device registered" failure. Emit telemetry (best-effort) keyed
@@ -368,7 +413,7 @@ export async function call(req: Request, env: Env): Promise<Response> {
   // The client-sent `fromName` is a LAST-resort fallback only — it is
   // unauthenticated and was the source of raw "user_xxx" uids appearing as
   // caller names. It must never outrank the server-resolved profile.
-  const ident = await publicIdentityFor(env, ctx.uid).catch(() => null);
+  const ident = await identityPromise;
   const clientName = (b.fromName ?? "").trim();
   const resolvedName = ident?.display_name || clientName || "AvaTOK";
   const nameSource = ident?.display_name ? "profile" : (clientName ? "client" : "fallback");
@@ -433,11 +478,11 @@ export async function call(req: Request, env: Env): Promise<Response> {
   // (blocked/offline/busy/business-hours/agent/voicemail/ring, §3/§15.1/§15.2);
   // every other 'via' keeps the WP1 'rang_owner' placeholder byte-for-byte.
   let routingResult: Awaited<ReturnType<typeof decideRouting>> | null = null;
-  try {
-    const cfg = await readConfig(env);
-    if (cfg.businessCallUx) {
-      const callTraceId = traceId || newTraceId();
-      if (isDialpad) {
+  if (isDialpad) {
+    try {
+      const cfg = await readConfig(env);
+      if (cfg.businessCallUx) {
+        const callTraceId = traceId || newTraceId();
         // decideRouting() ALSO emits routing_decision internally when
         // businessCallUx is on (lib/call_routing.ts finalize()) — so we do NOT
         // call emitRoutingDecision a second time here for the dialpad path.
@@ -456,7 +501,18 @@ export async function call(req: Request, env: Env): Promise<Response> {
           event_schema_version: EVENT_SCHEMA_VERSION,
           props: { snapshot: routingResult.snapshot, call_type: b.kind ?? "audio", via: "dialpad" },
         });
-      } else {
+      }
+    } catch { /* dialpad routing failure fails open to the normal human ring */ }
+  } else {
+    // Friend-call event snapshots are observability only. In production they
+    // previously consumed seconds before Q_PUSH was reached, which made the
+    // client's reachability guard expire on a healthy sleeping phone. Keep the
+    // events, but let Cloudflare finish them after the response/ring is underway.
+    const eventTelemetry = (async () => {
+      try {
+        const cfg = await readConfig(env);
+        if (!cfg.businessCallUx) return;
+      const callTraceId = traceId || newTraceId();
         const snapshot = await buildCallSnapshot(env);
         await emitCallEvent(env, {
           event: "call_created",
@@ -486,9 +542,11 @@ export async function call(req: Request, env: Env): Promise<Response> {
             concurrency_in_use: 0,
           },
         });
-      }
-    }
-  } catch { /* best-effort — event-stream emission must never block placing a call */ }
+      } catch { /* event-stream emission must never change the call */ }
+    })();
+    if (execCtx) execCtx.waitUntil(eventTelemetry);
+    else await eventTelemetry;
+  }
   // [WP3-ACT-1] ACT on the routing decision (plan §3/§15.1/§15.2) instead of
   // always ringing regardless of what decideRouting() said. Only reachable when
   // businessCallUx is on AND via:'dialpad' (routingResult is null otherwise, or

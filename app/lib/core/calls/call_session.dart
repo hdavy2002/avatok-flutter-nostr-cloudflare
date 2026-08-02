@@ -1463,15 +1463,22 @@ class CallSession {
         // beat a 6s deadline and every call fell to Ava "unreachable". The
         // searching beeps (CALL-SEARCH-TONE-1) give honest feedback meanwhile,
         // so the longer wait no longer feels like a hang.
-        _deviceRingingTimer = Timer(const Duration(seconds: 12), () {
-          if (!_ended && !_connected && !_deviceRinging) {
-            AvaLog.I.log('call', 'Device ringing timeout: callee unreachable.');
-            _ringback.stop();
-            _callUnreachable = true;
-            _unreachableNotice?.call();
-            _onNoAnswer();
-          }
-        });
+        // An optimistically mounted call starts BEFORE POST /api/call. Its
+        // backend latency is not evidence about the recipient's phone and must
+        // not consume this device-wake allowance. The placement result will
+        // drive `_onRingAck` once the ring has actually been enqueued. Legacy
+        // awaited placement still needs the 12s backstop here.
+        if (!config.deferRing) {
+          _deviceRingingTimer = Timer(const Duration(seconds: 12), () {
+            if (!_ended && !_connected && !_deviceRinging) {
+              AvaLog.I.log('call', 'Device ringing timeout: callee unreachable.');
+              _ringback.stop();
+              _callUnreachable = true;
+              _unreachableNotice?.call();
+              _onNoAnswer();
+            }
+          });
+        }
       } else {
         _ringTimeout = Timer(const Duration(seconds: 35), () {
           if (!_ended && !_connected) _onNoAnswer();
@@ -1534,18 +1541,21 @@ class CallSession {
           businessAgentHandoff('manual_send_to_agent');
           return;
         }
-        // [CALL-OUTCOME-MENU-1] Declines land on the unified menu (all call
-        // kinds — video simply hides Talk to Ava) instead of auto-Ava/plain end.
-        if (_menuEnabled && !_ended &&
-            (e.status == 'decline' || e.status == 'decline_ava')) {
-          _ringTimeout?.cancel();
-          _showOutcomeMenu('declined');
-          return;
-        }
+        // An explicit Receptionist tap is not a generic decline outcome. It
+        // must bypass the outcome menu even when that feature is enabled and
+        // connect the caller straight to Ava as the callee requested.
         if (e.status == 'decline_ava' && !config.video && !_ended) {
           _ringTimeout?.cancel();
           // ignore: unawaited_futures
           _handoffToAva('decline');
+          return;
+        }
+        // [CALL-OUTCOME-MENU-1] Declines land on the unified menu (all call
+        // kinds — video simply hides Talk to Ava) instead of auto-Ava/plain end.
+        if (_menuEnabled && !_ended &&
+            e.status == 'decline') {
+          _ringTimeout?.cancel();
+          _showOutcomeMenu('declined');
           return;
         }
         // [CALL-VOICEMAIL-1 2026-08-01] The callee chose "Voice Mail": their ring
@@ -3344,6 +3354,16 @@ class CallSession {
         if (_receptionistActive) break;
         if (!_connected && !_ended) businessAgentHandoff('manual_send_to_agent');
         break;
+      case 'decline_ava':
+        // Fast-WS twin of the durable call-status branch. Keep the explicit
+        // handoff out of the generic decline/outcome-menu path.
+        if (_receptionistActive) break;
+        if (!_connected && !_ended && !config.video) {
+          _ringTimeout?.cancel();
+          // ignore: unawaited_futures
+          _handoffToAva('decline');
+        }
+        break;
       case 'decline_vm':
         // [CALL-VOICEMAIL-1 2026-08-01] Fast-WS twin of the push branch above.
         // Both paths MUST agree — the decline bug happened because two copies of
@@ -4247,9 +4267,15 @@ class CallSession {
         _calleeReceptRejected = cfg['receptOnRejected'] == true;
         _calleeReceptUnreachable = cfg['receptOnUnreachable'] == true;
       }
+      // The callee's native + branded actions remain live for the canonical
+      // 45-second server ring lease. Ending the caller's ring window earlier
+      // (the old 20–25s receptionist preference) made a still-visible
+      // Receptionist tap arrive after `ring_timeout` as `already_terminal`.
+      // One deadline owns the interaction; first-ring redirect remains the
+      // deliberate exception because it never exposes a late manual button.
       final Duration window = _receptMode == 'first_ring'
           ? const Duration(seconds: 6)
-          : Duration(seconds: (_receptRings * 5).clamp(20, 45));
+          : const Duration(seconds: 45);
       _armNoAnswerWindow(window);
     } catch (_) {}
   }
@@ -4296,7 +4322,10 @@ class CallSession {
     _ringAckFallback?.cancel();
     _ringAckFallback = Timer(const Duration(seconds: 5), () {
       if (_ringAckHandled || _connected || _ended || _deviceRinging) return;
-      _ringAckHandled = true;
+      // This is a provisional "no ack yet", not an authoritative negative.
+      // Do not latch `_ringAckHandled`: POST /api/call or a delayed queue ack
+      // may still arrive milliseconds later and must be allowed to cancel the
+      // unreachable path. Prod call avatok-b6fd1397 hit exactly that 15ms race.
       // [FAKE-RING-HONEST-1] (2026-07-22 incident) A ring sound/status may ONLY
       // ever be driven by a real device-ringing receipt or a genuine peer
       // signaling frame (offer/answer/candidate). This 5s fallback fires when the
@@ -4361,6 +4390,7 @@ class CallSession {
     _ringAckOk = ok; // [CALL-TELEMETRY-1] recorded even if already handled
     if (_ringAckHandled) return;
     if (ok) {
+      _ringAckHandled = true;
       // [CALL-RINGACK-EXTEND-1] (2026-07-08 "everyone gets Ava" incident) Push sent
       // successfully — the ring push verifiably left the building, so the callee
       // must get the FULL ring window (config.ts receptTakeoverGuard contract:
@@ -4405,9 +4435,9 @@ class CallSession {
   // is shown the instant the user taps, before POST /api/call resolves), the
   // launch site runs that POST in the BACKGROUND and feeds the outcome back
   // here. This maps 1:1 onto the ring-ack machinery the guard flow already uses:
-  //   reachable == true  → the wake push verifiably left the building → give the
-  //                        callee the full ring window (the device-ringing
-  //                        receipt still refines phase/ringback when it lands).
+  //   reachable == true  → the backend has finished enqueueing the ring; START
+  //                        the device-wake allowance now. This is provisional,
+  //                        not the consumer's authoritative ring ack.
   //   reachable == false → no reachable device → honest unreachable → Ava, with
   //                        NO fake ringback ever having played.
   // Safe to call at most once; extra/late calls are absorbed by the ring-ack
@@ -4415,7 +4445,42 @@ class CallSession {
   // in guard/deferRing mode (_onRingAck early-returns when !_takeoverGuard).
   void notePlaceResult(bool reachable) {
     if (_ended || _connected) return;
-    _onRingAck(reachable);
+    if (!reachable) {
+      _onRingAck(false);
+      return;
+    }
+    // A 200 from /api/call proves placement completed, not that FCM found a
+    // live token or that the phone rang. Do not latch `_ringAckHandled`: the
+    // consumer's later ok=false must still be able to fast-fail honestly, and
+    // ok=true must still grant the full no-answer window. This timer replaces
+    // the one deliberately omitted in start() for deferRing sessions, so slow
+    // backend work can never consume the phone's 12-second wake allowance.
+    if (!_takeoverGuard || _ringAckHandled || _deviceRinging) return;
+    _deviceRingingTimer?.cancel();
+    _deviceRingingTimer = Timer(const Duration(seconds: 12), () {
+      if (_ended || _connected || _deviceRinging || _ringAckHandled) return;
+      AvaLog.I.log('call', 'Post-placement device ringing timeout: callee unreachable.');
+      _ringback.stop();
+      _callUnreachable = true;
+      _unreachableNotice?.call();
+      _onNoAnswer();
+    });
+    Analytics.capture('call_device_wake_guard_armed', {
+      'call_id': config.room,
+      'source': 'placement_complete',
+      'timeout_s': 12,
+    });
+  }
+
+  /// The edge classified this caller against the callee's synced contact
+  /// directory and intentionally skipped the human ring. Connect directly to
+  /// Ava; no local contact lookup or missed-call timer may reinterpret it.
+  void noteServerReceptionistRoute() {
+    if (_ended || _connected || _receptionistActive) return;
+    _deviceRingingTimer?.cancel();
+    _ringAckFallback?.cancel();
+    _ringTimeout?.cancel();
+    unawaited(_handoffToAva('unknown_caller'));
   }
 
   /// [INSTANT-CALL-MOUNT-1] The place-call POST itself failed hard (network/DNS
