@@ -7,6 +7,7 @@ Run AFTER `flutter create --platforms=android .` in CI. Idempotent.
 - Forces compileSdk 35 on plugin subprojects (flutter_webrtc pins a lower one)
 """
 import base64
+import os
 import re
 import shutil
 import sys
@@ -278,12 +279,31 @@ subprojects {{
 
 
 def patch_firebase() -> None:
-    """Apply the google-services Gradle plugin + place google-services.json."""
-    src = APP.parent / "firebase/google-services.json"
+    """Apply the google-services Gradle plugin + place google-services.json.
+
+    [STAGING-ISOLATION-1] AVATOK_ENV=staging now selects the dedicated
+    avatok-staging Firebase project's config (firebase/google-services-staging.json)
+    instead of the prod file (which only carries a fake duplicate .staging client
+    entry to satisfy the gms plugin's package check). Prod/unset stays on the
+    original prod file. Falls back to prod (with a loud warning) if the staging
+    file is ever missing, rather than crashing the build.
+    """
+    env = os.environ.get("AVATOK_ENV", "prod")
+    staging_src = APP.parent / "firebase/google-services-staging.json"
+    prod_src = APP.parent / "firebase/google-services.json"
+    if env == "staging" and staging_src.exists():
+        src = staging_src
+    elif env == "staging":
+        print(f"!! WARNING: AVATOK_ENV=staging but {staging_src} is missing — "
+              f"falling back to the PROD Firebase config ({prod_src}). "
+              f"Staging build will use prod Firebase project until this is fixed.")
+        src = prod_src
+    else:
+        src = prod_src
     dest = APP / "android/app/google-services.json"
     if src.exists():
         dest.write_text(src.read_text())
-        print("google-services.json placed in android/app/")
+        print(f"google-services.json placed in android/app/ (source: {src.name}, AVATOK_ENV={env})")
     else:
         print(f"!! google-services.json not found at {src}")
 

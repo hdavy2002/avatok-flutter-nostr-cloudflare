@@ -1,5 +1,11 @@
 /** Bindings for the AvaTok API Worker. See wrangler.toml. */
 export interface Env {
+  // [STAGING-ISOLATION-1] "prod" | "staging" — set via wrangler.toml [vars] (prod)
+  // and [env.staging.vars] (staging). Read ONLY by hooks.ts track()/trackException()
+  // to stamp `environment` on every PostHog event/exception so staging traffic can
+  // be filtered out of prod dashboards. Optional + hooks.ts falls back to "prod" so
+  // this compiles/deploys safely even before the wrangler.toml var lands.
+  ENVIRONMENT_NAME?: string;
   // [DYNW-CORE-1] Dynamic Workers loader. ONLY lib/dynw/host.ts may touch this —
   // it enforces the master kill switch, no-network default, timeout + telemetry.
   LOADER: import("./lib/dynw/types").WorkerLoaderBinding;

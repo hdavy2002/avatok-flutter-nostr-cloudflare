@@ -290,7 +290,8 @@ async function capturePush(env: Env, event: string, uid: string, props: Record<s
         api_key: env.POSTHOG_API_KEY,
         event,
         distinct_id: uid || "anonymous",
-        properties: { ...props, source: "consumer", service_name: "avatok-consumers", account_id: uid },
+        // [STAGING-ISOLATION-1] direct fetch, bypasses captureBatch — stamp env here too.
+        properties: { environment: env.ENVIRONMENT_NAME ?? "prod", ...props, source: "consumer", service_name: "avatok-consumers", account_id: uid },
         timestamp: new Date().toISOString(),
       }),
     });

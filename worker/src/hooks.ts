@@ -41,6 +41,13 @@ export function track(
         // WORKER_RELEASE:<sha>`), 'dev' when unset → ties server errors/metrics to
         // the exact deploy, matching the client's `release` property.
         release: String(props.release ?? (env as any).WORKER_RELEASE ?? "dev"),
+        // [STAGING-ISOLATION-1] "prod" | "staging" on EVERY server event + $exception
+        // (trackException() calls through this fn) so staging traffic can be filtered
+        // out of prod PostHog dashboards without a second project. Sourced from
+        // wrangler.toml [vars]/[env.staging.vars] ENVIRONMENT_NAME; defaults to "prod"
+        // (fail-safe) until that var lands. Matches the client's `environment` prop
+        // (analytics.dart _base()) so one filter works across client + server events.
+        environment: String(props.environment ?? env.ENVIRONMENT_NAME ?? "prod"),
         service_name: SERVICE,
         // Envelope (ANALYTICS-OBSERVABILITY §1/§4): server-truth events are
         // distinguishable from client mirrors and join on the same account_id.

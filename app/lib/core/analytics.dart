@@ -448,6 +448,12 @@ class Analytics {
         if (currentTraceId != null) 'trace_id': currentTraceId!,
         'build': appBuild, // real versionCode from PackageInfo — never kAppBuild
         'env': kAvatokEnv,
+        // [STAGING-ISOLATION-1] Same value as 'env' above, under the key the Worker
+        // uses (worker/src/hooks.ts track()) — so a single PostHog `environment`
+        // filter separates staging from prod across BOTH client and server events,
+        // instead of needing 'env' on one side and 'environment' on the other.
+        // Reuses the existing AVATOK_ENV dart-define flavor switch; no new mechanism.
+        'environment': kAvatokEnv,
         'net': _net,
         if (_deviceCountry.isNotEmpty) 'device_country': _deviceCountry,
         'session_seq': ++_seq,

@@ -274,6 +274,9 @@ async function captureConsumerException(
           $exception_message: message,
           $exception_level: "error",
           service_name: "avatok-consumers",
+          // [STAGING-ISOLATION-1] this fetch bypasses captureBatch entirely, so it
+          // needs its own environment stamp — see ENVIRONMENT_NAME in types.ts.
+          environment: env.ENVIRONMENT_NAME ?? "prod",
           queue: meta.queue,
           tx_id: meta.tx_id ?? "",
           app_name: "avatok",
@@ -312,7 +315,15 @@ async function captureBatch(batch: MessageBatch, env: Env): Promise<void> {
     return {
       event: b.event,
       distinct_id: b.uid ?? "anonymous",
-      properties: b.props ?? {},
+      // [STAGING-ISOLATION-1] Single chokepoint for EVERY event that reaches
+      // PostHog via the analytics queue — worker/src/hooks.ts track() (and its
+      // trackException()/$exception path), plus this consumer's OWN local track()
+      // helpers (auto_reply.ts, listing_expiry.ts, mkt_audio.ts, the account_deleted
+      // send in deletion.ts) which enqueue onto Q_ANALYTICS directly and never touch
+      // hooks.ts. This Worker's own ENVIRONMENT_NAME is the fallback default; a
+      // producer that already stamped `environment` (hooks.ts does) wins via the
+      // spread order below.
+      properties: { environment: env.ENVIRONMENT_NAME ?? "prod", ...(b.props ?? {}) },
       timestamp: new Date(b.ts ?? Date.now()).toISOString(),
     };
   });

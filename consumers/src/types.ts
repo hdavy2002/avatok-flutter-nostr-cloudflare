@@ -36,6 +36,12 @@ export interface Env {
   AVA_REASONER_ALT?: string;   // OpenRouter fallback (default google/gemini-2.5-flash-lite)
   OPENROUTER_API_KEY?: string; // enables the ALT fallback path (unset today in consumers)
   POSTHOG_HOST: string;
+  // [STAGING-ISOLATION-1] "prod" | "staging" — set via wrangler.toml [vars] (prod)
+  // and [env.staging.vars] (staging). Read by captureBatch/captureConsumerException
+  // (index.ts) and capturePush (fcm.ts) to stamp `environment` on every PostHog
+  // event/exception this Worker sends, so staging traffic can be filtered out of
+  // prod dashboards. Optional + all readers fall back to "prod".
+  ENVIRONMENT_NAME?: string;
   AI_DAILY_CALL_BUDGET?: string; // daily Workers AI call budget (default 5000); cron alarms past it
   STORAGE_COINS_PER_GB?: string; // AvaStorage over-quota price (coins/GB/month, default 20)
   ALERT_EMAIL?: string;          // ops alert recipient (default hdavy2005@gmail.com)

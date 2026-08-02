@@ -268,6 +268,10 @@ crons = ["* * * * *", "*/15 * * * *", "0 */6 * * *"]  # minute = Phase 7 money s
 #                          voice notes are not indexed, everything else works)
 
 [vars]
+# [STAGING-ISOLATION-1] Read by index.ts (captureBatch/captureConsumerException)
+# and fcm.ts (capturePush) to stamp `environment` on every PostHog event/exception
+# this Worker sends, matching worker/wrangler.toml's ENVIRONMENT_NAME convention.
+ENVIRONMENT_NAME = "prod"
 FCM_PROJECT = "avatok-e19ef"
 # DEMO kill-switch (2026-07-01): "1" = suppress all non-call pushes (message /
 # voicemail / reminders / silent sync wakes); incoming calls + call-status still
@@ -490,7 +494,15 @@ queue = "money-settlements-staging"
 crons = ["*/15 * * * *", "0 */6 * * *"]
 
 [env.staging.vars]
-FCM_PROJECT = "avatok-e19ef"
+ENVIRONMENT_NAME = "staging"
+# [STAGING-ISOLATION-1] Was "avatok-e19ef" — i.e. staging pushes were sent through
+# the PRODUCTION Firebase project's FCM API. Now points at the dedicated staging
+# project (created 2026-08-02, project number 446551295299).
+# FAIL-CLOSED ON PURPOSE: the FCM_SERVICE_ACCOUNT secret for --env staging is still
+# prod's key, which cannot mint tokens for avatok-staging, so staging push returns
+# 401 until the OWNER mints a staging service-account key (see the handover notes).
+# A dead staging push is acceptable; a staging push reaching a prod device is not.
+FCM_PROJECT = "avatok-staging"
 AI_DAILY_CALL_BUDGET = "5000"
 ALERT_EMAIL = "hdavy2005@gmail.com"
 AVA_REASONER = "@cf/google/gemma-4-26b-a4b-it"        # AVA CORE Phase 0 (see top-level [vars])

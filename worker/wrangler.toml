@@ -29,6 +29,9 @@ custom_domain = true
 # SECRET (`wrangler secret put AI_GATEWAY_TOKEN`), never in this file.
 AI_GATEWAY_ID = "avatok-ai"
 CF_ACCOUNT_ID = "fd3dbf43f8e6d8bf65bd36b02eb0abb0"
+# [STAGING-ISOLATION-1] TAGS PostHog events with the environment (Phase-1 audit A1).
+# Safe to add now — only takes effect on a future PROD deploy (not run this session).
+ENVIRONMENT_NAME = "prod"
 # [LIVE-DIDIT-1] didit.me liveness — the "AvaTOK Liveness" workflow (LIVENESS
 # feature only) created 2026-07-09 in the owner's Didit console. The API key is
 # a SECRET (`wrangler secret put DIDIT_API_KEY`), never in this file.
@@ -606,12 +609,29 @@ custom_domain = true
 
 [env.staging.vars]
 TEST_CLOCK_ALLOWED = "1"   # Phase 7 A2 — refund-engine test clock (staging ONLY)
+# [STAGING-ISOLATION-1] TAGS PostHog events with the environment (Phase-1 audit A1).
+ENVIRONMENT_NAME = "staging"
+# [STAGING-ISOLATION-1] STILL shares prod's Upstash Redis (crack-grackle-16293) —
+# NOT fixed this session. The Upstash account is on the free plan, which caps at
+# ONE database total; redis_database_create_new failed with "You cannot have more
+# than 1 database(s)". OWNER-ACTION: add a payment method to the Upstash account
+# (dashboard.upstash.com → billing) or upgrade off the free plan, then re-run this
+# task to create "avatok-genui-staging" (eu-central-1, matching prod's region) and
+# point this var + the UPSTASH_REDIS_REST_TOKEN secret at it.
 UPSTASH_REDIS_REST_URL = "https://crack-grackle-16293.upstash.io"   # GenUI template cache (token = secret)
-BLOSSOM_BASE_URL = "https://blossom.avatok.ai"
+# [STAGING-ISOLATION-1] Staging-only R2 custom domain (2026-08-02) — was pointed at
+# prod's blossom.avatok.ai, serving staging media reads off the PROD bucket. Now
+# avatok-blobs-staging has its own custom domain, mirroring prod's setup exactly
+# (R2 custom domain, public bucket, zone avatok.ai).
+BLOSSOM_BASE_URL = "https://blossom-staging.avatok.ai"
 # [AVA-MEDIA-AUTHZ-1] STAGING bucket name — must match [[env.staging.r2_buckets]]
 # binding="DIGITAL" bucket_name below ("avatok-digital-staging"), NOT production's.
 DIGITAL_BUCKET_NAME = "avatok-digital-staging"
-FCM_PROJECT = "avatok-e19ef"
+# [STAGING-ISOLATION-1] Dedicated staging Firebase project (created 2026-08-02).
+# The FCM send path actually lives in consumers/src/fcm.ts, so the load-bearing
+# copy of this var is consumers/wrangler.toml [env.staging.vars] — kept in sync
+# here so the two envs never disagree. See that file for the fail-closed note.
+FCM_PROJECT = "avatok-staging"
 BRAIN_REASONER_MODEL = "@cf/google/gemma-4-26b-a4b-it"
 BRAIN_EMBED_MODEL = "@cf/baai/bge-small-en-v1.5"
 BRAIN_RETRO_DELETE = "1"
@@ -797,9 +817,13 @@ enabled = true
 binding = "ANALYTICS"
 dataset = "avatok_metrics_staging"
 
+# [STAGING-ISOLATION-1] Staging-only index (was pointed at prod's avatok-semantic,
+# writing/reading staging embeddings into the prod vector space). Created
+# 2026-08-02: 384 dims / cosine (matches @cf/baai/bge-small-en-v1.5), with the
+# same uid/kind String metadata indexes as prod's avatok-semantic.
 [[env.staging.vectorize]]
 binding = "VECTOR_INDEX"
-index_name = "avatok-semantic"
+index_name = "avatok-semantic-staging"
 
 [[env.staging.durable_objects.bindings]]
 name = "CALL_ROOMS"

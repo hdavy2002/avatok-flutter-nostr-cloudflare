@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "446551295299",
+    "project_id": "avatok-staging",
+    "storage_bucket": "avatok-staging.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:446551295299:android:ee1c6363c86e9b68fe9bf6",
+        "android_client_info": {
+          "package_name": "ai.avatok.avatok_call.staging"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBlleOj-XQAA33obr_VaA63qwtZns4prRM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
