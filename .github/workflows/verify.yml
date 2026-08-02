@@ -40,8 +40,10 @@ jobs:
       # No deps beyond node:fs/node:path — runs with the Node 20 already set
       # up above, no `npm ci` needed.
       - name: Config contract (client/server flag symmetry)
+        if: always()
         run: node scripts/check-config-contract.mjs
       - name: Unit tests (vitest)
+        if: always()
         working-directory: worker
         # Scoped to test/ via --dir — src/spam/scoring.test.ts is a pre-existing
         # stub with no test suite, which vitest's default glob treats as a
