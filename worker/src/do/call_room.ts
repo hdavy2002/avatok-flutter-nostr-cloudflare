@@ -45,7 +45,7 @@ import { refundUnused } from "../lib/call_billing";
 import { brainIngest } from "../lib/brain_ingest";
 import {
   applyCommand, authorizeCommand, deriveActor, newCallSession, commandForLegacyStatus,
-  legacyWireStatus,
+  humanRoomAcceptsNewPeer, legacyWireStatus,
   type CallSession, type Command, type CommandName,
 } from "../lib/call_state";
 import { CALL_RING_LIFETIME_MS } from "../lib/call_delivery_contract";
@@ -704,6 +704,9 @@ export class CallRoom {
       const stateUrl = new URL(req.url);
       if (req.method === "GET" && stateUrl.pathname.endsWith("/state")) {
         await this.loadCallState();
+        const aggregate = await this.loadSession(
+          stateUrl.searchParams.get("callId") ?? (this.state.id.name ? String(this.state.id.name) : ""),
+        );
         return Response.json({
           answered: this.answeredAt != null,
           answered_at: this.answeredAt ?? null,
@@ -714,6 +717,16 @@ export class CallRoom {
           // still live. The accept path + ring fan-out both key off this.
           terminal_status: this.terminalStatus ?? null,
           terminal_at: this.terminalAt ?? null,
+          // [CALL-HANDOFF-CALLEE-CLOSE-1] Non-terminal for the CALLER does not
+          // mean the CALLEE may keep ringing. The public proxy uses these fields
+          // to expose a callee-only ring-ending status without marking Ava's
+          // caller leg terminal.
+          session_state: aggregate.session_state,
+          callee_leg_state: aggregate.callee_leg_state,
+          service_leg_state: aggregate.service_leg_state,
+          wire_status: legacyWireStatus(aggregate),
+          caller_uid: aggregate.caller_uid,
+          callee_uid: aggregate.callee_uid,
           // CALL-ANSWERED-LIVE-1: how many transports are on the call RIGHT NOW.
           // `answered` is sticky (set the instant a 2nd socket ever joined), so a
           // transient/zombie join — e.g. an offline callee's FCM-woken socket that
@@ -1114,6 +1127,34 @@ export class CallRoom {
     }
     const url = new URL(req.url);
     const peerId = (url.searchParams.get("id") || crypto.randomUUID()).slice(0, 64);
+
+    // [CALL-HANDOFF-CALLEE-CLOSE-1] The service handoff and the human room are
+    // mutually exclusive. A cancellation push can be delayed or missed, so the
+    // CallRoom itself must reject a late Accept after Ava/voicemail owns the
+    // caller leg. This is the final server-side safety boundary: even an old or
+    // modified client cannot join beside Ava and corrupt the call outcome.
+    const aggregate = await this.loadSession(
+      url.searchParams.get("callId") ?? (this.state.id.name ? String(this.state.id.name) : ""),
+    );
+    if (!humanRoomAcceptsNewPeer(aggregate)) {
+      try {
+        void this.env.Q_ANALYTICS.send({
+          event: "invariant_protected", uid: peerId, ts: Date.now(),
+          props: {
+            kind: "late_human_join_after_handoff_rejected",
+            call_id: aggregate.call_id,
+            session_state: aggregate.session_state,
+            wire_status: legacyWireStatus(aggregate),
+            app_name: "avatok", service_name: "avatok-api", worker: true,
+          },
+        });
+      } catch { /* best-effort — rejection is authoritative */ }
+      return Response.json({
+        error: "human_call_closed",
+        status: legacyWireStatus(aggregate),
+        session_state: aggregate.session_state,
+      }, { status: 409 });
+    }
 
     // CALL-RC-D1: is this the SAME peer re-attaching within its grace window?
     // Identity = the `id` query-param tag (the only identity the client already

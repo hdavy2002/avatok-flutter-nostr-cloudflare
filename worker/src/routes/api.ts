@@ -1272,11 +1272,22 @@ export async function callState(req: Request, env: Env): Promise<Response> {
     const r = await stub.fetch("https://call/state", { method: "GET" });
     if (!r.ok) return json({ ok: false, terminal_status: null });
     const j = (await r.json()) as Record<string, unknown>;
+    const sessionState = typeof j.session_state === "string" ? j.session_state : "";
+    const wireStatus = typeof j.wire_status === "string" ? j.wire_status : "";
+    const calleeHandoff = sessionState === "handoff" && j.callee_uid === ctx.uid;
+    // A handoff is intentionally non-terminal for the CALLER, who is speaking
+    // with Ava. It IS terminal for the CALLEE's ring. Returning a callee-only
+    // synthetic terminal status lets already-shipped clients' durable poll close
+    // their incoming screen even when FCM cancellation was missed.
+    const terminalStatus = (j.terminal_status as string | null) ??
+      (calleeHandoff ? (wireStatus || "decline_ava") : null);
     return json({
       ok: true,
       answered: j.answered === true,
       ended: j.ended === true,
-      terminal_status: (j.terminal_status as string | null) ?? null,
+      terminal_status: terminalStatus,
+      session_state: sessionState || null,
+      ring_status: calleeHandoff ? (wireStatus || "decline_ava") : null,
       peers: typeof j.peers === "number" ? j.peers : null,
     });
   } catch {

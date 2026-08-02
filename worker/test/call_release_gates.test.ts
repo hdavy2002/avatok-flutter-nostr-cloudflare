@@ -13,7 +13,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   applyCommand, authorizeCommand, deriveActor, newCallSession,
-  commandForLegacyStatus, legacyWireStatus, type CallSession,
+  commandForLegacyStatus, humanRoomAcceptsNewPeer, legacyWireStatus, type CallSession,
 } from "../src/lib/call_state";
 import { admitCall, __resetVerdictCache } from "../src/lib/call_admission";
 
@@ -329,6 +329,7 @@ describe("core invariants", () => {
     expect(handoff.state.caller_leg_state).toBe("connected_to_receptionist");
     expect(handoff.state.callee_leg_state).toBe("dismissed_for_receptionist");
     expect(handoff.state.handoff_reason).toBe("no_answer");
+    expect(humanRoomAcceptsNewPeer(handoff.state)).toBe(false);
 
     const retry = applyCommand(
       handoff.state, { name: "handoff_to_receptionist", actor: "server" }, NOW + 1,
@@ -337,6 +338,32 @@ describe("core invariants", () => {
     if (!retry.ok) return;
     expect(retry.changed).toBe(false);
     expect(retry.state.transition_sequence).toBe(handoff.state.transition_sequence);
+  });
+
+  it("a human peer cannot join after a service handoff", () => {
+    const handoff = applyCommand(
+      ringing(), { name: "handoff_to_receptionist", actor: "server" }, NOW,
+    );
+    expect(handoff.ok).toBe(true);
+    if (!handoff.ok) return;
+    expect(humanRoomAcceptsNewPeer(handoff.state)).toBe(false);
+    expect(humanRoomAcceptsNewPeer(ringing())).toBe(true);
+  });
+
+  it("a late callee accept cannot take the call back from Ava", () => {
+    const handoff = applyCommand(
+      ringing(), { name: "handoff_to_receptionist", actor: "server" }, NOW,
+    );
+    expect(handoff.ok).toBe(true);
+    if (!handoff.ok) return;
+    const lateAccept = applyCommand(
+      handoff.state, { name: "accept_call", actor: "callee" }, NOW + 1,
+    );
+    expect(lateAccept.ok).toBe(false);
+    if (lateAccept.ok) return;
+    expect(lateAccept.error).toBe("illegal_transition");
+    expect(lateAccept.state.session_state).toBe("handoff");
+    expect(lateAccept.state.caller_leg_state).toBe("connected_to_receptionist");
   });
 
   it("server handoff cannot revive a call cancelled by the caller", () => {

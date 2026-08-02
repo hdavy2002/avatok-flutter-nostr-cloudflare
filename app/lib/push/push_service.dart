@@ -3268,18 +3268,20 @@ class PushService {
     return DateTime.now().millisecondsSinceEpoch - ts < _kTerminalCallTtlMs;
   }
 
-  /// [AVACALL-CANCEL-1] Best-effort DURABLE call-status read. Proxies the
-  /// CallRoom DO's strongly-consistent state (answered / ended / terminal_status)
-  /// via GET /api/call-state. Returns the terminal status string ('cancel' |
-  /// 'bye' | 'ended' | …) when the call is already over, else null. FAIL-OPEN:
-  /// any error / missing endpoint / timeout returns null so the accept proceeds
-  /// exactly as before (never blocks a legitimate call on a flaky network).
-  static Future<String?> fetchDurableCallStatus(String callId) async {
+  /// [AVACALL-CANCEL-1/CALL-HANDOFF-CALLEE-CLOSE-1] Best-effort durable ring
+  /// status. For a callee, a server-owned Ava/voicemail handoff is ring-terminal
+  /// even though the caller's service leg remains live. The authenticated API
+  /// exposes that distinction as a callee-only status. FAIL-OPEN: a network
+  /// failure never blocks a legitimate answer.
+  static Future<String?> fetchDurableCallStatus(
+    String callId, {
+    Duration timeout = const Duration(seconds: 4),
+  }) async {
     if (callId.isEmpty) return null;
     try {
       final res = await ApiAuth.getSigned(
         '$kCallStateUrl?callId=${Uri.encodeQueryComponent(callId)}',
-        timeout: const Duration(seconds: 4),
+        timeout: timeout,
       );
       if (res.statusCode != 200) return null;
       final j = jsonDecode(res.body);
@@ -3361,6 +3363,55 @@ class PushService {
       final e = (extra as Map);
       final room = (e['callId'] ?? '').toString();
       if (room.isEmpty) return;
+      // The cancellation push and branded-screen durable poll are fast paths,
+      // but Accept is the dangerous boundary. Atomically claim the human leg in
+      // CallRoom before opening CallScreen. This command races the four-ring Ava
+      // alarm inside one Durable Object: exactly one can win.
+      String? authoritative;
+      try {
+        final claim = await ApiAuth.postJson(
+          kCallCommandUrl,
+          {
+            'callId': room,
+            'command': 'accept_call',
+            // One accept exists per call. Native/branded duplicate events must
+            // replay the same result, not create another transition.
+            'commandId': 'accept:$room',
+          },
+          timeout: const Duration(milliseconds: 1500),
+        );
+        if (claim.statusCode < 200 || claim.statusCode >= 300) {
+          authoritative = await fetchDurableCallStatus(
+            room,
+            timeout: const Duration(milliseconds: 1200),
+          );
+          // A 409 is authoritative proof that another outcome already won. If
+          // the follow-up status read is lost, still fail closed locally.
+          if (authoritative == null && claim.statusCode == 409) {
+            authoritative = 'ended';
+          }
+        }
+      } catch (_) {
+        // A transport failure is not proof the call ended. One short durable
+        // read can still recover the handoff; otherwise the server's WebSocket
+        // admission gate remains the final safety boundary.
+        authoritative = await fetchDurableCallStatus(
+          room,
+          timeout: const Duration(milliseconds: 1200),
+        );
+      }
+      if (authoritative != null) {
+        await applyRingTransition(
+          room,
+          authoritative,
+          source: 'accept_authority_preflight',
+        );
+        Analytics.capture('call_late_accept_blocked', {
+          'call_id': room,
+          'status': authoritative,
+        });
+        return;
+      }
       // [CALL-REL-9] Single choke point every accept path funnels through
       // (native CallKit `actionCallAccept`, the branded in-app screen via
       // `acceptRingingCall`, and CALLFIX-14 glare auto-accept) — stop the

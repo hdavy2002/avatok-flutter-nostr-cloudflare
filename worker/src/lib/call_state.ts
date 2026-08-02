@@ -113,6 +113,13 @@ export function newCallSession(callId: string, now: number): CallSession {
   };
 }
 
+/** A human WebRTC peer may join only while the human-call leg still owns the
+ * room. Once a receptionist/voicemail handoff or terminal outcome wins, a late
+ * Accept must never create a second human leg beside the service leg. */
+export function humanRoomAcceptsNewPeer(s: CallSession): boolean {
+  return s.session_state !== "handoff" && s.session_state !== "completed";
+}
+
 // ── Commands ───────────────────────────────────────────────────────────────
 
 export type CommandName =
