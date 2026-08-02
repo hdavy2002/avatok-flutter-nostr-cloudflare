@@ -416,46 +416,70 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
                 Text('This is an AvaTOK to AvaTOK call',
                     style: ADText.preview(c: AD.textSecondary)),
                 const Spacer(),
-                // ── Secondary row: non-destructive alternatives to answering ──
-                // [CALL-DECLINE-IS-TERMINAL-1] Receptionist lives HERE, not
-                // behind Decline. Decline drops the caller; Receptionist keeps
-                // their leg alive and hands them to Ava. Two buttons because
-                // they are two different outcomes for the person calling.
-                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  _SoftAction(
-                    icon: PhosphorIcons.headset(PhosphorIconsStyle.bold),
-                    label: 'Receptionist',
-                    onTap: _busy ? null : _receptionist,
-                  ),
-                ]),
-                const SizedBox(height: 26),
-                // Primary row. Decline and Accept are the big targets; Report
-                // Spam and Block are smaller and outboard, because they are
-                // irreversible-ish actions sitting on a high-pressure screen and
-                // a mis-tap should not land on one.
-                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  _MiniAction(
-                    icon: PhosphorIcons.shieldWarning(PhosphorIconsStyle.bold),
-                    label: 'Report\nSpam',
-                    tint: AD.danger,
-                    onTap: _busy ? null : _reportSpam,
-                  ),
-                  const SizedBox(width: 14),
-                  _ActionButton(
-                    icon: PhosphorIcons.phoneX(PhosphorIconsStyle.bold),
-                    label: 'Decline',
-                    color: AD.destructiveBg,
-                    onTap: _busy ? null : _decline,
-                  ),
-                  const SizedBox(width: 18),
-                  _ActionButton(
-                    icon: PhosphorIcons.phone(PhosphorIconsStyle.bold),
-                    label: 'Accept',
-                    color: AD.incomingCall,
-                    onTap: _busy ? null : _accept,
-                  ),
-                ]),
-                const SizedBox(height: 8),
+                // ── [PIV-4 2026-08-02] ONE action row ─────────────────────────
+                // Was two stacked rows (Receptionist alone above; Report Spam /
+                // Decline / Accept below) separated by 26px, with only 8px of
+                // breathing room beneath the whole cluster. On a real handset
+                // that read as cramped and lopsided — a single orphaned button
+                // hovering over a tight huddle of three.
+                //
+                // All four now sit on one row in equal `Expanded` slots, so the
+                // spacing is divided from the available width and stays even on
+                // any screen size instead of relying on hand-tuned 14/18px gaps
+                // that only balanced at one width.
+                //
+                // The old design encoded "don't mis-tap the irreversible one" as
+                // SIZE (a 46px Report Spam next to a 58px Accept). A single row
+                // needs uniform footprints to look deliberate, so that intent now
+                // rides on COLOUR and ORDER instead: Decline/Accept are solid and
+                // saturated, Report Spam/Receptionist are recessive outlines, and
+                // Report Spam sits at the far edge NEXT TO DECLINE — never
+                // adjacent to Accept. Keep it that way.
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: _CallAction(
+                        icon: PhosphorIcons.shieldWarning(PhosphorIconsStyle.bold),
+                        label: 'Report\nSpam',
+                        tint: AD.danger,
+                        filled: false,
+                        onTap: _busy ? null : _reportSpam,
+                      ),
+                    ),
+                    Expanded(
+                      child: _CallAction(
+                        icon: PhosphorIcons.phoneX(PhosphorIconsStyle.bold),
+                        label: 'Decline',
+                        tint: AD.destructiveBg,
+                        filled: true,
+                        onTap: _busy ? null : _decline,
+                      ),
+                    ),
+                    Expanded(
+                      child: _CallAction(
+                        icon: PhosphorIcons.phone(PhosphorIconsStyle.bold),
+                        label: 'Accept',
+                        tint: AD.incomingCall,
+                        filled: true,
+                        onTap: _busy ? null : _accept,
+                      ),
+                    ),
+                    Expanded(
+                      child: _CallAction(
+                        icon: PhosphorIcons.headset(PhosphorIconsStyle.bold),
+                        label: 'Receptionist',
+                        tint: AD.textSecondary,
+                        filled: false,
+                        onTap: _busy ? null : _receptionist,
+                      ),
+                    ),
+                  ],
+                ),
+                // Real breathing room under the row (was 8px). Sits inside
+                // SafeArea, so this is clear space ABOVE the gesture bar rather
+                // than padding fighting with it.
+                const SizedBox(height: 36),
               ],
             ),
           ),
@@ -465,98 +489,88 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
   }
 }
 
-class _ActionButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-  final VoidCallback? onTap;
-  const _ActionButton({required this.icon, required this.label, required this.color, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(mainAxisSize: MainAxisSize.min, children: [
-      GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 58, height: 58,
-          decoration: BoxDecoration(
-            color: onTap == null ? color.withValues(alpha: 0.4) : color,
-            shape: BoxShape.circle,
-            border: Border.all(color: AD.borderAvatar, width: 2),
-          ),
-          child: Icon(icon, color: AD.bg, size: 26),
-        ),
-      ),
-      const SizedBox(height: 6),
-      Text(label, style: ADText.sectionLabel(c: AD.textPrimary), textAlign: TextAlign.center),
-    ]);
-  }
-}
-
-/// A small outboard control for the irreversible-ish actions (Report Spam,
-/// Block). Deliberately smaller than Decline/Accept and set apart from them:
-/// this screen is answered under time pressure, often half-awake, and a mis-tap
-/// must not land on something the user cannot take back.
-class _MiniAction extends StatelessWidget {
+/// [PIV-4 2026-08-02] The ONE action control on this screen.
+///
+/// Replaces three near-identical widgets (`_ActionButton` 58px solid,
+/// `_MiniAction` 46px tinted, `_SoftAction` 54px outlined) that existed only to
+/// give each button a different diameter. Three sizes in one row is what made
+/// the cluster look uneven, and three classes meant a styling change had to be
+/// made three times and was made inconsistently.
+///
+/// Every action now has an IDENTICAL footprint — same circle, same fixed label
+/// box — so a row of them is visually regular whatever the labels say.
+/// Emphasis comes from [filled]: solid saturated fill for the two answers a
+/// user is reaching for (Decline/Accept), a recessive tinted outline for the
+/// side actions.
+class _CallAction extends StatelessWidget {
   final IconData icon;
   final String label;
   final Color tint;
+  /// Solid = primary call action. Outlined = recessive side action.
+  final bool filled;
   final VoidCallback? onTap;
-  const _MiniAction({required this.icon, required this.label, required this.tint, required this.onTap});
+  const _CallAction({
+    required this.icon,
+    required this.label,
+    required this.tint,
+    required this.filled,
+    required this.onTap,
+  });
+
+  static const double _diameter = 58;
+  /// Fixed so a one-line label ("Accept") and a two-line one ("Report\nSpam")
+  /// occupy the same height and every circle in the row stays on one baseline.
+  static const double _labelBox = 32;
 
   @override
   Widget build(BuildContext context) {
     final dim = onTap == null;
     return GestureDetector(
       onTap: onTap,
+      // Opaque so the whole slot is tappable, not just the circle's pixels —
+      // this screen is answered in a hurry and often without looking.
       behavior: HitTestBehavior.opaque,
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Container(
-          width: 46, height: 46,
+          width: _diameter, height: _diameter,
           decoration: BoxDecoration(
-            color: tint.withValues(alpha: dim ? 0.06 : 0.14),
+            color: filled
+                ? tint.withValues(alpha: dim ? 0.4 : 1.0)
+                : tint.withValues(alpha: dim ? 0.06 : 0.14),
             shape: BoxShape.circle,
-            border: Border.all(color: tint.withValues(alpha: 0.3)),
+            border: Border.all(
+              color: filled
+                  ? AD.borderAvatar
+                  : tint.withValues(alpha: dim ? 0.15 : 0.30),
+              width: filled ? 2 : 1,
+            ),
           ),
-          child: Icon(icon, color: tint.withValues(alpha: dim ? 0.4 : 1.0), size: 19),
-        ),
-        const SizedBox(height: 6),
-        Text(label,
-            textAlign: TextAlign.center,
-            style: ADText.sectionLabel(c: AD.textSecondary)),
-      ]),
-    );
-  }
-}
-
-/// A quiet, outlined circular action. Visually subordinate to the three primary
-/// call controls so a panicked tap on a ringing phone lands on Accept/Decline,
-/// not on an irreversible side action.
-class _SoftAction extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback? onTap;
-  const _SoftAction({required this.icon, required this.label, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final dim = onTap == null;
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Container(
-          width: 54, height: 54,
-          decoration: BoxDecoration(
-            color: AD.textPrimary.withValues(alpha: dim ? 0.03 : 0.06),
-            shape: BoxShape.circle,
-            border: Border.all(color: AD.textPrimary.withValues(alpha: 0.10)),
+          child: Icon(
+            icon,
+            size: 26,
+            // On a solid fill the icon reads as a knockout against the bg
+            // colour; on an outline it takes the tint itself.
+            color: filled ? AD.bg : tint.withValues(alpha: dim ? 0.4 : 1.0),
           ),
-          child: Icon(icon,
-              color: AD.textSecondary.withValues(alpha: dim ? 0.4 : 1.0), size: 22),
         ),
         const SizedBox(height: 7),
-        Text(label, style: ADText.sectionLabel(c: AD.textSecondary)),
+        SizedBox(
+          height: _labelBox,
+          child: Center(
+            // "Receptionist" is far longer than "Accept" and the slots are
+            // equal, so it is allowed to shrink rather than overflow or get
+            // clipped — the row must stay intact on a narrow handset.
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                style: ADText.sectionLabel(
+                    c: filled ? AD.textPrimary : AD.textSecondary),
+              ),
+            ),
+          ),
+        ),
       ]),
     );
   }
