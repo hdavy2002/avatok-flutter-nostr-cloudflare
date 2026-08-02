@@ -17,6 +17,8 @@ import '../../core/money_api.dart';
 import '../../core/remote_config.dart';
 import '../../core/wallet_topup_billing.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../shell/shell_v2.dart' show ShellScope;
+import '../../shell/v2/shell_chrome.dart' show ShellSidebar;
 import '../payout/payout_screen.dart';
 import 'admin_money_screen.dart';
 import 'wallet_balance_chip.dart' show WalletBalanceStore;
@@ -30,6 +32,9 @@ PreferredSizeWidget _darkHeader({
   String? tag,
   List<Widget> actions = const [],
   bool showBack = true,
+  // [WALLET-MENU-1] Optional leading widget (the shell hamburger). Rendered in
+  // place of the back button when showBack is false.
+  Widget? leading,
 }) {
   return PreferredSize(
     preferredSize: Size.fromHeight(tag == null ? 76 : 92),
@@ -45,6 +50,9 @@ PreferredSizeWidget _darkHeader({
           child: Row(children: [
             if (showBack) ...[
               const AdBackButton(),
+              const SizedBox(width: 8),
+            ] else if (leading != null) ...[
+              leading,
               const SizedBox(width: 8),
             ],
             Expanded(
@@ -148,6 +156,10 @@ class _WalletScreenState extends State<WalletScreen> {
   final _searchCtrl = TextEditingController();
   final _scroll = ScrollController();
   final _historyPaintKey = GlobalKey();
+
+  // [WALLET-MENU-1] Lets the header hamburger open the shell drawer without a
+  // Builder context (the app bar sits outside the Scaffold's body context).
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
 
   // [WALLET-REDESIGN-1] Inline day picker state (rendered under the search row).
   DateTime _calMonth = DateTime.now();
@@ -946,10 +958,28 @@ class _WalletScreenState extends State<WalletScreen> {
     final bars = _spendBars(daily);
     final rows = _visibleEntries;
 
+    // [WALLET-MENU-1] The wallet header carries the shell hamburger, matching
+    // every other main screen. ShellSidebar needs ShellScope, which is an
+    // ancestor of the shell's navigators — but the wallet can also be pushed
+    // from legacy/standalone contexts, so resolve it null-safely and only show
+    // the hamburger (and drawer) when the shell is actually there.
+    final shellScope = context.dependOnInheritedWidgetOfExactType<ShellScope>();
+
     return Scaffold(
+      key: _scaffoldKey,
       backgroundColor: AW.bg,
+      drawer: shellScope == null ? null : ShellSidebar(current: shellScope.activeRoot),
       appBar: _darkHeader(
         title: 'AvaWallet',
+        leading: shellScope == null
+            ? null
+            : AdBackButton(
+                icon: PhosphorIcons.list(PhosphorIconsStyle.bold),
+                onTap: () {
+                  Analytics.capture('wallet_menu_opened');
+                  _scaffoldKey.currentState?.openDrawer();
+                },
+              ),
         // [WALLET-UX-1] Owner decision: no "AvaCoins" branding in the UI — the
         // wallet's user-facing unit is Tokens (display copy only; code
         // identifiers and storage keys keep their historical names).
