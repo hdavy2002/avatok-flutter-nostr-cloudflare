@@ -1495,24 +1495,52 @@ class _WalletScreenState extends State<WalletScreen> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      // showModalBottomSheet otherwise strips the top MediaQuery padding before
+      // invoking its builder, so an inner SafeArea cannot move the X below the
+      // Android status-bar touch region.
+      useSafeArea: true,
       backgroundColor: AW.bg,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
       ),
       builder: (c) => SafeArea(
-        top: false,
+        // Keep the close button below Android's status-bar hit region. With
+        // top:false the X could be visible but taps were intercepted by System UI.
+        top: true,
         child: ConstrainedBox(
           constraints: BoxConstraints(maxHeight: MediaQuery.of(c).size.height * 0.9),
           child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(22, 14, 22, 26),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Center(
-                child: Container(
-                  width: 44, height: 5,
-                  decoration: BoxDecoration(color: AW.hair, borderRadius: BorderRadius.circular(100)),
+              // The modal route already handles Android's system Back gesture /
+              // button and swipe-down dismissal. Keep an explicit close control
+              // visible as well so nobody is trapped when those gestures are not
+              // discoverable (or when the phone uses gesture navigation).
+              Row(children: [
+                const SizedBox(width: 44),
+                Expanded(
+                  child: Center(
+                    child: Container(
+                      width: 44, height: 5,
+                      decoration: BoxDecoration(color: AW.hair, borderRadius: BorderRadius.circular(100)),
+                    ),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 22),
+                IconButton(
+                  tooltip: 'Close transaction details',
+                  visualDensity: VisualDensity.compact,
+                  style: IconButton.styleFrom(
+                    backgroundColor: AW.surf,
+                    side: BorderSide(color: AW.hair, width: 1.5),
+                  ),
+                  onPressed: () {
+                    Analytics.capture('wallet_txn_closed', {'id': id, 'method': 'close_button'});
+                    Navigator.pop(c);
+                  },
+                  icon: Icon(PhosphorIcons.x(PhosphorIconsStyle.bold), color: AW.tx, size: 20),
+                ),
+              ]),
+              const SizedBox(height: 10),
               WalletBadge(icon: _catIcon(cat), color: _catColor(cat), size: 66, radius: 20, glyph: 32),
               const SizedBox(height: 20),
               FittedBox(

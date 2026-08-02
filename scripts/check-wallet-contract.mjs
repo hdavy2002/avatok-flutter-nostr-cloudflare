@@ -14,6 +14,11 @@ const forbid = (source, pattern, message) => {
 
 requireText(screen, "WalletMoneyTilesRow(", "wallet screen must use the guarded Money In/Out row");
 requireText(screen, "wallet_list_painted", "wallet must report loaded-vs-painted telemetry");
+requireText(screen, "Close transaction details", "transaction details must retain an accessible close button");
+requireText(screen, "'method': 'close_button'", "transaction detail close action must remain wired and observable");
+if (!/isScrollControlled: true,[\s\S]{0,500}?useSafeArea: true,[\s\S]{0,1000}?builder: \(c\) => SafeArea\([\s\S]{0,500}?top: true,[\s\S]{0,2500}?Close transaction details/.test(screen)) {
+  failures.push("transaction detail close button must remain below the system status bar");
+}
 requireText(widgets, "return IntrinsicHeight(", "wallet Money In/Out row must establish finite height");
 forbid(
   screen,
