@@ -92,6 +92,14 @@ web/
 `/consult/<booking>` (D) · `/agent/<id>` (E). Link to a route you don't own with
 a plain `<a href>` — don't build the target.
 
+## Website email
+
+`POST /api/contact` sends contact-form messages to `support@avatok.ai` through
+Brevo. `POST /api/waitlist` also uses Brevo for list membership and welcome
+mail. The Cloudflare Pages project must provide `BREVO_API_KEY` as an encrypted
+secret. `BREVO_SENDER_EMAIL` and `BREVO_SENDER_NAME` are optional; the sender
+address must be verified in Brevo. Never commit the real API key.
+
 ## Auth + GuestGate
 
 See `src/components/README.md`. TL;DR: call `requireGuestAuth()` at a gated

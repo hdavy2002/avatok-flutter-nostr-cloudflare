@@ -1,23 +1,15 @@
 ---
-// Shared layout for long-form public content pages — legal policies, About,
-// Careers, Contact and blog posts. Wraps Base (nav + footer chrome) and renders
-// a centered, readable article column with the marketing "zine" look. Styles are
-// scoped here and define the few marketing tokens locally so nothing leaks into
-// app pages (same pattern as SiteFooter.astro).
 import Base from './Base.astro';
 
 export interface Props {
   title: string;
   description?: string;
-  /** Small eyebrow label above the title (e.g. "Legal", "Company"). */
   kicker?: string;
-  /** Optional sub-headline under the title. */
   lead?: string;
-  /** ISO date string shown as "Last updated …" (legal pages). */
   updated?: string;
-  /** Constrain the prose width; "narrow" for legal, "wide" for listings. */
   width?: 'narrow' | 'wide';
   noindex?: boolean;
+  tone?: 'cream' | 'sky' | 'lime' | 'pink';
 }
 
 const {
@@ -28,149 +20,162 @@ const {
   updated,
   width = 'narrow',
   noindex = false,
+  tone,
 } = Astro.props;
 
 const updatedLabel = updated
   ? new Date(updated).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
   : null;
+
+const routeTone = tone ?? (
+  Astro.url.pathname.startsWith('/privacy') ? 'sky' :
+  Astro.url.pathname.startsWith('/terms') ? 'lime' :
+  Astro.url.pathname.startsWith('/contact') ? 'pink' : 'cream'
+);
 ---
 
-<Base title={`${title} · avaTOK`} description={description} hideNavCtas noindex={noindex}>
-  <main class={`content ${width === 'wide' ? 'is-wide' : ''}`}>
-    <header class="content-head">
-      {kicker && <div class="kick">{kicker}</div>}
-      <h1>{title}</h1>
-      {lead && <p class="lead">{lead}</p>}
-      {updatedLabel && <p class="updated">Last updated {updatedLabel}</p>}
+<Base
+  title={`${title} · avaTOK`}
+  description={description ?? lead}
+  image="/og-editorial.png"
+  chrome={false}
+  noindex={noindex}
+>
+  <Fragment slot="head">
+    <link rel="icon" href="/app-logo2.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,ital,wght@6..96,400;6..96,600;6..96,800&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap" rel="stylesheet" />
+  </Fragment>
+
+  <div class={`editorial-page tone-${routeTone}`}>
+    <header class="editorial-nav">
+      <a class="editorial-brand" href="/" aria-label="avaTOK home">
+        <img src="/app-logo2.png" alt="" width="42" height="42" />
+        <span>ava<em>TOK</em></span>
+      </a>
+      <nav class="desktop-links" aria-label="Main navigation">
+        <a href="/about">About</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+        <a href="/contact">Contact</a>
+        <a class="home-link" href="/">Meet Ava ↗</a>
+      </nav>
+      <details class="mobile-links">
+        <summary aria-label="Open menu">Menu</summary>
+        <div>
+          <a href="/about">About</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/contact">Contact</a><a href="/">Home</a>
+        </div>
+      </details>
     </header>
-    <article class="prose">
-      <slot />
-    </article>
-  </main>
+
+    <main class={`content ${width === 'wide' ? 'is-wide' : ''}`}>
+      <span class="vertical-issue">avaTOK · THE HUMAN SIDE OF AI · 2026</span>
+      <header class="content-head">
+        {kicker && <p class="kick">{kicker}</p>}
+        <h1>{title}</h1>
+        {lead && <p class="lead">{lead}</p>}
+        {updatedLabel && <p class="updated">Last updated {updatedLabel}</p>}
+      </header>
+      <article class="prose">
+        <slot />
+      </article>
+    </main>
+
+    <footer class="editorial-footer">
+      <a class="footer-brand" href="/"><img src="/app-logo2.png" alt="" width="38" height="38" /><span>avaTOK</span></a>
+      <p>AI that remembers, helps and protects — without asking for your private number.</p>
+      <nav aria-label="Footer navigation"><a href="/about">About</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/contact">Contact</a></nav>
+      <small>© 2026 AvaGlobal International, Inc.</small>
+    </footer>
+  </div>
 </Base>
 
 <style is:global>
-  /* Marketing tokens, scoped to .content so app pages are unaffected. */
-  .content {
-    --paper: oklch(0.975 0.013 95);
-    --paper-2: oklch(0.955 0.018 92);
-    --card: oklch(0.995 0.004 95);
-    --ink: oklch(0.23 0.018 60);
-    --ink-soft: oklch(0.42 0.02 62);
-    --blue: oklch(0.92 0.085 190);
-    --blue-ink: oklch(0.52 0.12 196);
-    --coral: oklch(0.70 0.19 32);
-    --lime: oklch(0.88 0.18 124);
-    --line: oklch(0.23 0.018 60 / 0.14);
-    --shadow-sm: 3px 3px 0 var(--ink);
-
-    width: 100%;
-    max-width: 760px;
-    margin: 0 auto;
-    padding: 64px 26px 88px;
-    color: var(--ink);
-    font-family: 'Nunito', sans-serif;
+  .editorial-page {
+    --paper:#f8f4e8; --ink:#181816; --blue:#4f5cff; --sky:#cde9ff; --pink:#ff78a8;
+    --red:#f2533d; --lime:#d7f36b; --yellow:#ffd95e; --lav:#c9b9ff; --white:#fffdf7;
+    --sans:'DM Sans',Arial,sans-serif; --serif:'Bodoni Moda',Georgia,serif;
+    min-height:100vh; overflow:hidden; color:var(--ink); background:var(--paper); font-family:var(--sans); font-weight:500;
   }
-  .content.is-wide { max-width: 1080px; }
-
-  .content-head { margin-bottom: 40px; }
-  .content-head .kick {
-    display: inline-block;
-    font-family: 'Space Mono', monospace;
-    font-weight: 700;
-    font-size: 13px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--blue-ink);
-    background: var(--blue);
-    border: 2.5px solid var(--ink);
-    border-radius: 999px;
-    padding: 4px 12px;
-    box-shadow: var(--shadow-sm);
-    margin-bottom: 18px;
-  }
-  .content-head h1 {
-    font-family: 'Fredoka', sans-serif;
-    font-weight: 700;
-    font-size: clamp(32px, 5vw, 50px);
-    line-height: 1.04;
-    letter-spacing: -0.02em;
-    margin: 0;
-    color: var(--ink);
-    text-wrap: balance;
-  }
-  .content-head .lead {
-    font-size: 19px;
-    font-weight: 700;
-    color: var(--ink-soft);
-    line-height: 1.5;
-    margin: 16px 0 0;
-    max-width: 60ch;
-    text-wrap: pretty;
-  }
-  .content-head .updated {
-    font-family: 'Space Mono', monospace;
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--ink-soft);
-    margin: 18px 0 0;
-  }
-
-  .content .prose { font-size: 17px; line-height: 1.7; color: var(--ink-soft); }
-  .content .prose > * + * { margin-top: 18px; }
-  .content .prose h2 {
-    font-family: 'Fredoka', sans-serif;
-    font-weight: 600;
-    font-size: 26px;
-    letter-spacing: -0.01em;
-    color: var(--ink);
-    margin: 44px 0 0;
-    padding-top: 8px;
-  }
-  .content .prose h3 {
-    font-family: 'Fredoka', sans-serif;
-    font-weight: 600;
-    font-size: 20px;
-    color: var(--ink);
-    margin: 30px 0 0;
-  }
-  .content .prose a { color: var(--blue-ink); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
-  .content .prose a:hover { color: var(--coral); }
-  .content .prose strong, .content .prose b { color: var(--ink); font-weight: 800; }
-  .content .prose ul, .content .prose ol { padding-left: 22px; }
-  .content .prose li { margin-top: 8px; }
-  .content .prose hr { border: none; border-top: 2px dashed var(--line); margin: 36px 0; }
-  .content .prose blockquote {
-    border-left: 4px solid var(--blue-ink);
-    background: var(--paper-2);
-    padding: 14px 18px;
-    border-radius: 0 12px 12px 0;
-    font-weight: 700;
-    color: var(--ink);
-  }
-  .content .prose .note {
-    border: 2.5px solid var(--ink);
-    background: var(--card);
-    border-radius: 14px;
-    padding: 18px 20px;
-    box-shadow: var(--shadow-sm);
-    font-weight: 700;
-    color: var(--ink);
-  }
-  .content .prose code {
-    font-family: 'Space Mono', monospace;
-    background: var(--paper-2);
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    padding: 1px 6px;
-    font-size: 0.92em;
-  }
-  .content .prose table { width: 100%; border-collapse: collapse; font-size: 15.5px; }
-  .content .prose th, .content .prose td { border: 2px solid var(--ink); padding: 10px 12px; text-align: left; }
-  .content .prose th { background: var(--paper-2); font-family: 'Fredoka', sans-serif; color: var(--ink); }
-
-  @media (max-width: 560px) {
-    .content { padding: 44px 18px 64px; }
-    .content .prose { font-size: 16px; }
+  .editorial-page.tone-sky { background:var(--sky); }
+  .editorial-page.tone-lime { background:var(--lime); }
+  .editorial-page.tone-pink { background:linear-gradient(180deg,var(--pink) 0 410px,var(--paper) 410px); }
+  .editorial-page *, .editorial-page *::before, .editorial-page *::after { box-sizing:border-box; }
+  .editorial-page a { color:inherit; }
+  .editorial-nav { position:relative; z-index:20; width:min(calc(100% - 48px),1440px); height:70px; margin:18px auto 0; padding:0 20px; display:flex; align-items:center; justify-content:space-between; border:1px solid rgba(24,24,22,.16); border-radius:999px; background:rgba(255,253,247,.88); backdrop-filter:blur(18px); box-shadow:0 12px 34px rgba(42,36,25,.1); }
+  .editorial-brand { display:flex; align-items:center; gap:10px; text-decoration:none; font-size:24px; font-weight:700; letter-spacing:-.06em; }
+  .editorial-brand img { width:42px; height:42px; border-radius:50%; object-fit:cover; }
+  .editorial-brand em { color:#16aeb4; font-style:normal; }
+  .desktop-links { display:flex; align-items:center; gap:28px; }
+  .desktop-links a { position:relative; text-decoration:none; font-size:16px; font-weight:700; }
+  .desktop-links a:not(.home-link)::after { content:''; position:absolute; left:0; right:100%; bottom:-5px; height:2px; background:var(--ink); transition:right .2s ease; }
+  .desktop-links a:hover::after { right:0; }
+  .desktop-links .home-link { padding:12px 18px; border-radius:999px; background:var(--ink); color:white; }
+  .mobile-links { display:none; position:relative; }
+  .content { position:relative; width:min(calc(100% - 72px),980px); margin:0 auto; padding:104px 0 110px; }
+  .content.is-wide { width:min(calc(100% - 72px),1180px); }
+  .content::before { content:''; position:absolute; z-index:0; width:330px; height:330px; border-radius:50%; background:var(--yellow); top:24px; right:-220px; }
+  .tone-sky .content::before { background:var(--pink); }
+  .tone-lime .content::before { background:var(--lav); }
+  .tone-pink .content::before { background:var(--lime); }
+  .vertical-issue { position:absolute; top:115px; left:-94px; writing-mode:vertical-rl; transform:rotate(180deg); font-family:var(--serif); font-style:italic; font-size:16px; letter-spacing:.1em; }
+  .content-head { position:relative; z-index:1; padding-bottom:62px; border-bottom:1px solid var(--ink); }
+  .content-head .kick { margin:0 0 18px; color:var(--blue); font-size:18px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; }
+  .content-head h1 { max-width:950px; margin:0; font-family:var(--sans); font-size:clamp(68px,9vw,132px); line-height:.84; letter-spacing:-.075em; font-weight:700; text-wrap:balance; }
+  .content-head h1::first-letter { font-family:var(--serif); font-style:italic; color:var(--blue); }
+  .content-head .lead { max-width:800px; margin:30px 0 0; font-size:clamp(24px,2.3vw,34px); line-height:1.32; font-weight:500; text-wrap:pretty; }
+  .content-head .updated { display:inline-block; margin:24px 0 0; padding:9px 13px; border:1px solid var(--ink); border-radius:999px; background:var(--white); font-size:14px; font-weight:700; letter-spacing:.05em; }
+  .content .prose { position:relative; z-index:1; margin-top:54px; font-size:20px; line-height:1.72; color:rgba(24,24,22,.82); }
+  .content .prose > * + * { margin-top:22px; }
+  .content .prose > p:first-child { padding:28px 30px; border:1px solid var(--ink); border-radius:22px; background:var(--white); box-shadow:10px 10px 0 var(--blue); color:var(--ink); font-size:22px; }
+  .tone-sky .content .prose > p:first-child { box-shadow-color:var(--pink); }
+  .tone-lime .content .prose > p:first-child { box-shadow-color:var(--lav); }
+  .tone-pink .content .prose > p:first-child { box-shadow-color:var(--yellow); }
+  .content .prose h2 { margin:66px 0 0; font-family:var(--sans); font-size:clamp(34px,4vw,52px); line-height:1; letter-spacing:-.045em; color:var(--ink); }
+  .content .prose h2::before { content:'✦'; margin-right:12px; color:var(--blue); font-size:.55em; vertical-align:middle; }
+  .content .prose h3 { margin:38px 0 0; font-size:26px; color:var(--ink); }
+  .content .prose a { color:var(--blue); font-weight:700; text-decoration-thickness:2px; text-underline-offset:3px; }
+  .content .prose strong, .content .prose b { color:var(--ink); font-weight:800; }
+  .content .prose ul, .content .prose ol { padding-left:26px; }
+  .content .prose li { margin-top:12px; }
+  .content .prose hr { margin:44px 0; border:0; border-top:1px solid var(--ink); }
+  .content .prose blockquote, .content .prose .note { margin:40px 0; padding:24px 28px; border:1px solid var(--ink); border-radius:0 20px 20px 0; border-left:6px solid var(--blue); background:var(--white); color:var(--ink); }
+  .content .prose table { width:100%; border-collapse:separate; border-spacing:0; overflow:hidden; border:1px solid var(--ink); border-radius:16px; font-size:17px; }
+  .content .prose th, .content .prose td { padding:14px; border-bottom:1px solid rgba(24,24,22,.25); text-align:left; }
+  .content .prose th { background:var(--lav); color:var(--ink); }
+  .editorial-photo { margin:50px 0; }
+  .editorial-photo img { width:100%; max-height:560px; object-fit:cover; border:1px solid var(--ink); border-radius:180px 22px 22px 22px; }
+  .editorial-photo figcaption { margin-top:12px; font-family:var(--serif); font-size:22px; font-style:italic; }
+  .editorial-footer { position:relative; z-index:2; display:grid; grid-template-columns:auto minmax(240px,1fr) auto auto; gap:28px; align-items:center; padding:34px max(28px,calc((100vw - 1440px)/2)); border-top:1px solid var(--ink); background:var(--paper); }
+  .footer-brand { display:flex; align-items:center; gap:9px; text-decoration:none; font-size:22px; font-weight:700; }
+  .footer-brand img { width:38px; height:38px; border-radius:50%; }
+  .editorial-footer p { max-width:480px; margin:0; font-size:16px; }
+  .editorial-footer nav { display:flex; gap:20px; }
+  .editorial-footer nav a { font-weight:700; }
+  .editorial-footer small { font-size:14px; }
+  @media (max-width:820px) {
+    .editorial-nav { width:calc(100% - 20px); height:62px; margin-top:8px; padding:0 13px; }
+    .editorial-brand { font-size:21px; }.editorial-brand img { width:38px; height:38px; }
+    .desktop-links { display:none; }.mobile-links { display:block; }
+    .mobile-links summary { list-style:none; cursor:pointer; padding:10px 15px; border-radius:999px; background:var(--ink); color:#fff; font-weight:700; }
+    .mobile-links summary::-webkit-details-marker { display:none; }
+    .mobile-links div { position:absolute; right:0; top:50px; min-width:180px; padding:10px; display:flex; flex-direction:column; border:1px solid var(--ink); border-radius:16px; background:var(--white); box-shadow:8px 8px 0 var(--ink); }
+    .mobile-links div a { padding:10px 12px; text-decoration:none; font-weight:700; }
+    .content, .content.is-wide { width:calc(100% - 34px); padding:76px 0 76px; }
+    .content::before { width:200px; height:200px; right:-110px; top:20px; }
+    .vertical-issue { display:none; }
+    .content-head { padding-bottom:38px; }
+    .content-head .kick { font-size:15px; }
+    .content-head h1 { font-size:clamp(54px,16vw,82px); }
+    .content-head .lead { margin-top:20px; font-size:22px; }
+    .content .prose { margin-top:36px; font-size:18px; line-height:1.62; }
+    .content .prose > p:first-child { padding:21px; font-size:19px; box-shadow:7px 7px 0 var(--blue); }
+    .content .prose h2 { margin-top:48px; font-size:34px; }
+    .content .prose h3 { font-size:23px; }
+    .content .prose table { display:block; overflow-x:auto; }
+    .editorial-photo img { border-radius:80px 16px 16px 16px; }
+    .editorial-footer { grid-template-columns:1fr; gap:16px; padding:28px 18px; }
+    .editorial-footer nav { flex-wrap:wrap; gap:14px 20px; }
   }
 </style>

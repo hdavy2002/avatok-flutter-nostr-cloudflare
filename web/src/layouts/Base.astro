@@ -45,6 +45,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://avatok.ai')
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="/app-logo2.png" type="image/png" />
     <link rel="canonical" href={canonical} />
     {noindex && <meta name="robots" content="noindex, nofollow" />}
     <title>{title}</title>
