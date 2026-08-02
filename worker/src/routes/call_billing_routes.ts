@@ -1,5 +1,7 @@
-// Paid-call routes (WP2, plan §3B / §11 / §15.3 / §15.4 of
-// Specs/PLAN-2026-07-11-dialpad-business-calls-ava-voice-agent.md).
+// LEGACY paid-human-call routes. Owner decision 2026-08-02 permanently made
+// human audio/video calling free. Read paths report free/unavailable, mutation
+// paths cannot create rates or holds, and cancel remains as a refund escape
+// hatch for pre-transition clients.
 //
 //   GET  /api/call/paid/offer      — the CALLEE's published offer, resolved from
 //                                     a dialed number or uid (caller-facing, pre-prompt)
@@ -11,8 +13,9 @@
 //   POST /api/call/paid/cancel     — caller abandoned after confirm (identity gate /
 //                                     backed out) — disarm + refund the untouched hold
 //
-// ALL routes 403 unless readConfig(env).paidCalls === true (plan §7 item 12 /
-// §15.6 — every phase ships behind its own kill switch).
+// `readConfig()` permanently clamps paidCalls=false even when a stale KV
+// override says true. Do not reuse these endpoints for AI/provider billing;
+// those products require a separately named and scoped pricing contract.
 import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, isFail } from "../authz";
@@ -94,7 +97,9 @@ export async function getPaidCallOfferRoute(req: Request, env: Env): Promise<Res
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const cfg = await readConfig(env);
-  if (!paidCallsGate(cfg)) return json({ error: "disabled", flag: "paidCalls" }, 403);
+  if (!paidCallsGate(cfg)) {
+    return json({ available: false, free: true, reason: "human_calling_is_free" });
+  }
 
   const url = new URL(req.url);
   const to = (url.searchParams.get("to") || "").trim();
@@ -133,15 +138,15 @@ export async function getPaidCallOfferRoute(req: Request, env: Env): Promise<Res
 }
 
 // POST /api/call/paid/cancel { call_id } — the caller backed out AFTER
-// /api/call/paid/confirm already held escrow + armed the CallRoom ticker
+// /api/call/paid/confirm may have held escrow on a pre-transition deployment
 // (identity-gate 403 abort, abandoned dial). Disarm + refund via the DO's
-// existing /billing-disarm (refundUnused no-ops when nothing was held, so
-// this is safe to call unconditionally / repeatedly).
+// existing /billing-disarm (now refund-only and idempotent).
 export async function cancelPaidCallRoute(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
-  const cfg = await readConfig(env);
-  if (!paidCallsGate(cfg)) return json({ error: "disabled", flag: "paidCalls" }, 403);
+  // Do not gate legacy cancellation: after the permanent-free transition an
+  // older client may still be holding an escrow created before rollout. This
+  // endpoint must remain an idempotent full-refund escape hatch.
   const b = (await req.json().catch(() => ({}))) as { call_id?: string };
   const callId = String(b.call_id ?? "").trim();
   if (!callId) return json({ error: "call_id required" }, 400);
@@ -160,7 +165,7 @@ export async function getPaidCallSettingsRoute(req: Request, env: Env): Promise<
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const cfg = await readConfig(env);
-  if (!paidCallsGate(cfg)) return json({ error: "disabled", flag: "paidCalls" }, 403);
+  if (!paidCallsGate(cfg)) return json({ ok: true, free: true, settings: { rate: null, length_options: [] } });
   const s = await getPaidCallSettings(env, ctx.uid);
   return json({ ok: true, settings: s, min_service_rate: cfg.minServiceRate });
 }
@@ -170,7 +175,7 @@ export async function putPaidCallSettingsRoute(req: Request, env: Env): Promise<
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const cfg = await readConfig(env);
-  if (!paidCallsGate(cfg)) return json({ error: "disabled", flag: "paidCalls" }, 403);
+  if (!paidCallsGate(cfg)) return json({ error: "human calling is permanently free", code: "CALLING_IS_FREE" }, 409);
   if (await isChildAccount(env, ctx.uid)) return json({ error: "child accounts cannot set a paid-call rate" }, 403);
 
   const b = (await req.json().catch(() => ({}))) as { rate?: unknown; length_options?: unknown };
@@ -199,7 +204,7 @@ export async function preparePaidCallRoute(req: Request, env: Env): Promise<Resp
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const cfg = await readConfig(env);
-  if (!paidCallsGate(cfg)) return json({ error: "disabled", flag: "paidCalls" }, 403);
+  if (!paidCallsGate(cfg)) return json({ error: "human calling is permanently free", code: "CALLING_IS_FREE" }, 409);
   if (await isChildAccount(env, ctx.uid)) return json({ error: "child accounts cannot call paid lines" }, 403);
 
   const b = (await req.json().catch(() => ({}))) as { callee?: string; minutes?: unknown; call_id?: string };
@@ -230,7 +235,7 @@ export async function confirmPaidCallRoute(req: Request, env: Env): Promise<Resp
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const cfg = await readConfig(env);
-  if (!paidCallsGate(cfg)) return json({ error: "disabled", flag: "paidCalls" }, 403);
+  if (!paidCallsGate(cfg)) return json({ error: "human calling is permanently free", code: "CALLING_IS_FREE" }, 409);
   if (await isChildAccount(env, ctx.uid)) return json({ error: "child accounts cannot call paid lines" }, 403);
 
   const b = (await req.json().catch(() => ({}))) as {

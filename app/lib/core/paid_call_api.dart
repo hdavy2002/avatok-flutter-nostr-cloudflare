@@ -4,7 +4,11 @@ import 'dart:math';
 import 'api_auth.dart';
 import 'config.dart';
 
-/// PaidCallApi — caller-pays calls (Specs/PLAN-2026-07-11-dialpad-business-calls-
+/// LEGACY ONLY — human calls became permanently free on 2026-08-02. No active
+/// app surface imports this API. Retained temporarily so rollback/reconciliation
+/// history remains readable; never wire it back into human calling.
+///
+/// Former caller-pays calls (Specs/PLAN-2026-07-11-dialpad-business-calls-
 /// ava-voice-agent.md §3B/§11, Phase B2). Escrow is a HOLD, never an immediate
 /// charge: `prepare` verifies the wallet covers the full chosen length and holds
 /// it; `confirm` actually connects (server flips the hold live + starts the

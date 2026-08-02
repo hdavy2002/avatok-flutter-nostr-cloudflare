@@ -28,15 +28,16 @@ const KEY = "plan_config";
  * `ava_chat` is UNLIMITED on every tier and never shown to users as a meter
  * (Messenger calls Ava on-demand via #ava/@ava then exits; ChatAVA compresses its
  * own context after N turns). The genuinely expensive things — and the only ones
- * metered/gated — are realtime voice (Gemini Live: voice_min, recept,
- * translate_min), the LiveKit SFU (conf_min), and image gen (Nano Banana: image). */
+ * metered/gated — are AI/provider-backed realtime voice (Gemini Live:
+ * voice_min, recept, translate_min) and image generation. Human group calls
+ * are permanently free and `conf_min` remains only as a null legacy wire key. */
 export type Dim =
   | "ava_chat"        // UNLIMITED everywhere (kept for completeness; never capped)
   | "image"           // AI image generations/day
   | "voice_min"       // AI voice-agent minutes/day (AvaVoice/AvaVision)
   | "recept"          // AI receptionist sessions/day
   | "translate_min"   // live-translation minutes/day
-  | "conf_min";       // group-conference minutes/day
+  | "conf_min";       // LEGACY wire key; null/unlimited on every tier
 
 export type TierId = 0 | 1 | 2 | 3; // 0=Free 1=Plus 2=Pro 3=Max
 
@@ -51,7 +52,8 @@ export interface Plan {
   // (guideline: paid allowance ≈ priceUsd × 100, i.e. $10 → 1,000 tokens).
   tokensPerMonth: number | null;
   // Daily caps. null === unlimited. Human messaging + 1:1 P2P calls are NOT
-  // listed because they are unlimited on every tier (no AI cost to us).
+  // listed because they are unlimited on every tier. `conf_min` is retained
+  // only for old wire consumers and is permanently null on every tier.
   caps: Record<Dim, number | null>;
   confParticipants: number;    // max group-conference size on this tier
   features: {
@@ -73,27 +75,24 @@ export const PLANS: Record<TierId, Plan> = {
     tokensPerMonth: 200, // PLACEHOLDER (TBD): small monthly allowance for extras; basic chat stays free
     // recept: 0 — the AI Receptionist is PREMIUM-ONLY (paid tiers only). Free users
     // never get Ava answering their calls (owner decision 2026-06-28).
-    // conf_min: 60 — RULE CHANGE 2026-06-28: free group calls now run on the
-    // LiveKit Cloud SFU (max 5 people), metered to 60 min/day (≈ 6×10-min calls).
-    // EXPANSION PLANNED: bump to 180 (3h/day) once the self-hosted regional SFU is
-    // live and revenue covers it (Specs/AVA-SFU-SELFHOST-PLAYBOOK.md) — a one-line
-    // change here, no code edit needed.
-    caps: { ava_chat: null, image: 3, voice_min: 10, recept: 0, translate_min: 0, conf_min: 60 },
-    confParticipants: 5,
+    // Owner decision 2026-08-02: human group calls are unlimited and support the
+    // same product cap (25) on every tier. AI/provider-backed products remain metered.
+    caps: { ava_chat: null, image: 3, voice_min: 10, recept: 0, translate_min: 0, conf_min: null },
+    confParticipants: 25,
     features: { memory: false, fileAnalysis: false, webSearch: false, premiumImageModel: false },
   },
   1: {
     id: 1, key: "plus", name: "Plus", priceUsd: 10,
     tokensPerMonth: 1000, // PLACEHOLDER (TBD): $10 × 100
-    caps: { ava_chat: null, image: 30, voice_min: 60, recept: 30, translate_min: 30, conf_min: 180 },
-    confParticipants: 10,
+    caps: { ava_chat: null, image: 30, voice_min: 60, recept: 30, translate_min: 30, conf_min: null },
+    confParticipants: 25,
     features: { memory: true, fileAnalysis: true, webSearch: true, premiumImageModel: true },
     playProductId: "avatok_plus_monthly",
   },
   2: {
     id: 2, key: "pro", name: "Pro", priceUsd: 20,
     tokensPerMonth: 2000, // PLACEHOLDER (TBD): $20 × 100
-    caps: { ava_chat: null, image: 100, voice_min: 180, recept: 100, translate_min: 120, conf_min: 480 },
+    caps: { ava_chat: null, image: 100, voice_min: 180, recept: 100, translate_min: 120, conf_min: null },
     confParticipants: 25,
     features: { memory: true, fileAnalysis: true, webSearch: true, premiumImageModel: true },
     playProductId: "avatok_pro_monthly",
@@ -131,6 +130,14 @@ export const TEAM_PLAN = {
   playProductId: "avatok_team_monthly",
 };
 
+/** Stale `plan_config` must never restore conference charging/tier caps. */
+export function enforcePermanentFreeConference(plan: Plan): Plan {
+  return {
+    ...plan,
+    confParticipants: 25,
+    caps: { ...plan.caps, conf_min: null },
+  };
+}
 
 /** The matrix actually served — KV `plan_config` overrides merge over DEFAULTS. */
 export async function readPlans(env: Env): Promise<Record<TierId, Plan>> {
@@ -140,6 +147,7 @@ export async function readPlans(env: Env): Promise<Record<TierId, Plan>> {
     const merged: Record<TierId, Plan> = { ...PLANS };
     for (const t of VALID_TIERS) {
       if (stored[t]) merged[t] = { ...PLANS[t], ...stored[t], caps: { ...PLANS[t].caps, ...(stored[t]!.caps ?? {}) } } as Plan;
+      merged[t] = enforcePermanentFreeConference(merged[t]);
     }
     return merged;
   } catch {

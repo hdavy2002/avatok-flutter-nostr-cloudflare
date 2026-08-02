@@ -102,6 +102,8 @@ class CloudflareConferenceController extends ChangeNotifier {
   MediaStream? _localStream;
   bool _ownsLocalStream = false;
   WebSocketChannel? _ws;
+  StreamSubscription<dynamic>? _wsSub;
+  int _wsEpoch = 0;
   CfJoinResult? _join;
   int _ticketIssuedAtMs = 0;
   int _generation = 1;
@@ -316,17 +318,29 @@ class CloudflareConferenceController extends ChangeNotifier {
   void _joinConnectWs(CfJoinResult join, {required String route}) {
     final ticketAge = DateTime.now().millisecondsSinceEpoch - _ticketIssuedAtMs;
     _tel?.joinStarted(route: route, ticketAgeMs: ticketAge);
-    _ws = WebSocketChannel.connect(Uri.parse(join.wsUrl));
+    // A rejoin can happen while the previous socket is still delivering its
+    // close/error callback. Retire both the stream and the channel before
+    // publishing the replacement; generation alone is insufficient because a
+    // fresh join may reuse the same generation value from the server.
+    final oldSub = _wsSub;
+    _wsSub = null;
+    unawaited(oldSub?.cancel());
+    try { _ws?.sink.close(); } catch (_) {}
+
+    final wsEpoch = ++_wsEpoch;
+    final ws = WebSocketChannel.connect(Uri.parse(join.wsUrl));
+    _ws = ws;
     final generationAtOpen = _generation;
-    _ws!.stream.listen(
+    final sub = ws.stream.listen(
       (raw) => _onWsMessage(raw, generationAtOpen),
       onError: (_) {
-        if (!_ended) unawaited(_attemptReconnect(reason: 'socket_error'));
+        if (wsEpoch == _wsEpoch && !_ended) unawaited(_attemptReconnect(reason: 'socket_error'));
       },
       onDone: () {
-        if (!_ended) unawaited(_attemptReconnect(reason: 'socket_closed'));
+        if (wsEpoch == _wsEpoch && !_ended) unawaited(_attemptReconnect(reason: 'socket_closed'));
       },
     );
+    _wsSub = sub;
     _send({'t': 'hello'});
   }
 
@@ -936,6 +950,9 @@ class CloudflareConferenceController extends ChangeNotifier {
     } catch (_) {}
 
     try { _ws?.sink.close(); } catch (_) {}
+    await _wsSub?.cancel();
+    _wsSub = null;
+    _wsEpoch++;
     if (_join != null) {
       await CloudflareConferenceApi.close(gid, _join!.sessionId, const []);
     }

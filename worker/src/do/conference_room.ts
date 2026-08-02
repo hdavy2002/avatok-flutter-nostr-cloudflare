@@ -2,7 +2,7 @@
 // promotion. Media remains in Cloudflare Realtime/GroupCallRoom; this object
 // owns the durable protocol around it.
 import type { Env } from "../types";
-import { settleConferenceMinute, refundUnused, conferenceBillingId } from "../lib/call_billing";
+import { refundUnused, conferenceBillingId } from "../lib/call_billing";
 
 export type MigrationState = "idle" | "preparing" | "committed" | "aborted";
 export type RoomState = "starting" | "live" | "ending" | "ended";
@@ -150,6 +150,27 @@ export class ConferenceRoomDO {
     return this.member(r, uid) ? null : bad("not a present participant", 403);
   }
 
+  /**
+   * A room participant is not proof of conversation membership. The room can
+   * outlive a client reservation, and a caller who learns a room id must not
+   * be able to consume a roster slot by posting an arbitrary uid.
+   *
+   * Admission therefore checks the authoritative membership table on every
+   * reserve/join path. Fail closed if the membership lookup is unavailable.
+   */
+  private async isGroupMember(groupId: string, uid: string): Promise<boolean> {
+    if (!groupId || !uid) return false;
+    try {
+      const row = await this.env.DB_META
+        .prepare("SELECT 1 AS ok FROM conversation_members WHERE conv_id=?1 AND uid=?2 LIMIT 1")
+        .bind(groupId, uid)
+        .first<{ ok: number }>();
+      return row?.ok === 1;
+    } catch {
+      return false;
+    }
+  }
+
   private async start(b: any): Promise<Response> {
     const uid = String(b?.uid ?? "").trim();
     const groupId = String(b?.group_id ?? "").trim();
@@ -173,6 +194,7 @@ export class ConferenceRoomDO {
     const r = await this.load(); const uid = String(b?.uid ?? "");
     if (!uid) return bad("uid required");
     if (r.state === "ended") return bad("room ended", 409);
+    if (!(await this.isGroupMember(r.groupId, uid))) return bad("not a group participant", 403);
     if (r.participants.filter((p) => p.present).length >= MAX_PARTICIPANTS && !this.member(r, uid)) return bad("conference full", 409);
     const existing = r.participants.find((p) => p.uid === uid);
     if (existing) { existing.present = true; existing.provisional = true; existing.sessionId = String(b?.session_id ?? existing.sessionId); await this.save(r); return json({ ok: true, provisional: true, call_id: r.callId }); }
@@ -186,6 +208,7 @@ export class ConferenceRoomDO {
   private async joinParticipant(b: any): Promise<Response> {
     const r = await this.load(); const uid = String(b?.uid ?? "");
     const denied = this.requireMember(r, uid); if (denied) return denied;
+    if (!(await this.isGroupMember(r.groupId, uid))) return bad("not a group participant", 403);
     const p = this.member(r, uid)!;
     if (r.migration.state !== "committed") return bad("conference join requires committed migration", 409);
     p.provisional = false; p.sessionId = String(b?.session_id ?? p.sessionId);
@@ -238,49 +261,18 @@ export class ConferenceRoomDO {
   }
 
   private async startBilling(b: any): Promise<Response> {
-    const r = await this.load(); const uid = String(b?.uid ?? "");
-    if (uid !== r.sponsorUid) return bad("only the immutable sponsor may start billing", 403);
-    const tariff = Number(b?.tariff_per_hour);
-    const minutes = Math.trunc(Number(b?.reserved_minutes));
-    if (!(tariff > 0) || !(minutes > 0)) return bad("server tariff and reserved minutes required", 503);
-    r.billing = { tariffPerMinute: tariff, enabled: true, segments: [{ id: crypto.randomUUID(), sponsorUid: uid, startsAt: Date.now(), endsAt: null, tariffPerMinute: tariff, reservedMinutes: minutes, settledMinutes: 0, status: "active" }] };
-    await this.save(r); return json({ ok: true, sponsor_uid: uid, tariff_per_hour: tariff, segment_id: r.billing.segments[0].id });
+    void b;
+    return json({ ok: true, free: true, tariff_per_hour: 0, billing_disabled: true });
   }
 
   private async acceptSponsorship(b: any): Promise<Response> {
-    const r = await this.load(); const uid = String(b?.uid ?? "");
-    const denied = this.requireMember(r, uid); if (denied) return denied;
-    if (uid === r.sponsorUid || r.sponsorGraceUntil == null || Date.now() > r.sponsorGraceUntil) return bad("sponsorship is not transferable", 409);
-    const tariff = r.billing.tariffPerMinute; const minutes = Math.trunc(Number(b?.reserved_minutes));
-    if (!(tariff && tariff > 0 && minutes > 0)) return bad("new sponsor authorization required", 402);
-    const active = r.billing.segments.find((s) => s.status === "active"); if (active) { active.endsAt = Date.now(); active.status = "closed"; }
-    r.sponsorUid = uid; r.sponsorGraceUntil = null;
-    r.billing.segments.push({ id: crypto.randomUUID(), sponsorUid: uid, startsAt: Date.now(), endsAt: null, tariffPerMinute: tariff, reservedMinutes: minutes, settledMinutes: 0, status: "active" });
-    await this.save(r); return json({ ok: true, sponsor_uid: uid, segment_id: r.billing.segments.at(-1)!.id });
+    void b;
+    return json({ ok: true, free: true, tariff_per_hour: 0, billing_disabled: true });
   }
 
   private async billingTick(b: any): Promise<Response> {
-    const r = await this.load(); const segment = r.billing.segments.find((s) => s.id === b?.segment_id);
-    if (!segment || segment.status !== "active") return json({ ok: true, settled: false, reason: "inactive_segment" });
-    const minute = Math.trunc(Number(b?.minute_index));
-    if (minute !== segment.settledMinutes + 1) return bad("non-sequential billing minute", 409);
-    if (minute > segment.reservedMinutes) {
-      segment.status = "exhausted"; r.state = "ended"; r.endedAt = Date.now();
-      await this.save(r); await this.refundSponsor(r); return bad("sponsor reserve exhausted", 402);
-    }
-    const due = minute === 1 || (minute - 1) % 60 === 0;
-    if (due) {
-      const settled = await settleConferenceMinute(this.env, { call_id: r.callId, sponsor_id: segment.sponsorUid, minute_index: minute, amount: segment.tariffPerMinute });
-      if (!settled.ok || settled.settled < segment.tariffPerMinute) return bad("sponsor reserve exhausted", 402);
-    }
-    segment.settledMinutes = minute;
-    if (minute >= segment.reservedMinutes) {
-      segment.status = "exhausted"; r.state = "ended"; r.endedAt = Date.now();
-      for (const participant of r.participants) participant.present = false;
-    }
-    await this.save(r);
-    if (r.state === "ended") await this.refundSponsor(r);
-    return json({ ok: true, settled: true, sponsor_uid: segment.sponsorUid, tariff_per_minute: segment.tariffPerMinute, minute_index: minute });
+    void b;
+    return json({ ok: true, free: true, settled: false, billing_disabled: true });
   }
 
   private async transferHost(b: any): Promise<Response> {

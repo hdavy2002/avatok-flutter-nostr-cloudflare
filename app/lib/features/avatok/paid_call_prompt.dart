@@ -18,7 +18,11 @@ import '../../core/wallet_entitlement.dart';
 /// ava-voice-agent.md §3B, Phase B2). Shown to the CALLER before connecting,
 /// for either a human paid line or a paid AI agent. Full-screen, Ava-styled:
 /// price/min → callee's length options → computed total → wallet check →
-/// Confirm/Cancel. Gated on [RemoteConfig.paidCalls] by the caller (dialpad
+/// LEGACY ONLY — human calls became permanently free on 2026-08-02. No active
+/// call path imports this prompt. Retained temporarily for history while legacy
+/// escrow reconciliation completes; never reconnect it to human calling.
+///
+/// Former Confirm/Cancel flow. Gated on [RemoteConfig.paidCalls] by the caller (dialpad
 /// `_dial()` flow) — this widget itself does not re-check the flag so it can
 /// also be unit/preview-tested in isolation.
 ///

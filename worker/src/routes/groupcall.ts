@@ -36,7 +36,7 @@ import { json, sha256Hex } from "../util";
 import { isFail, requireUser } from "../authz";
 import { trackUser } from "../hooks";
 import { emailFor } from "../lib/identity";
-import { mintIceServers } from "./media";
+import { mintIceServersWithStatus } from "./media";
 
 const MAX_GROUP = 32;              // legacy audio-only backstop (groupAudioSfuEnabled)
 const MAX_CONF_PARTICIPANTS = 25;  // [CF-CALL-001] A/V cap — parity with conference.ts, never weakened
@@ -339,7 +339,7 @@ export async function groupCallJoin(req: Request, env: Env, groupId: string): Pr
     },
   });
 
-  const iceServers = await mintIceServers(env, ICE_TTL_S);
+  const ice = await mintIceServersWithStatus(env, ICE_TTL_S);
   const url = new URL(req.url);
   const wsUrl = `wss://${url.host}/api/groupcall/${groupId}/ws?ticket=${encodeURIComponent(ticket)}`;
 
@@ -361,7 +361,10 @@ export async function groupCallJoin(req: Request, env: Env, groupId: string): Pr
     call_trace_id: authority.call_trace_id,
     session_id: sessionId,
     join_ticket: ticket,
-    ice_servers: iceServers,
+    ice_servers: ice.iceServers,
+    relay_available: !ice.relayDegraded,
+    relay_degraded: ice.relayDegraded,
+    ...(ice.relayReason ? { relay_reason: ice.relayReason } : {}),
     media: { audio: true, video: authority.media_kind !== "audio" },
     max_participants: authority.max_participants,
     ws_url: wsUrl,
@@ -396,11 +399,13 @@ export async function groupCallRejoin(req: Request, env: Env, groupId: string): 
     call_id: auth.data.call_id, uid: g.uid, session_id: sessionId, generation: auth.data.generation,
   });
   if (!ticket) return json({ error: "call ticketing not configured" }, 503);
-  const iceServers = await mintIceServers(env, ICE_TTL_S);
+  const ice = await mintIceServersWithStatus(env, ICE_TTL_S);
   const url = new URL(req.url);
   return json({
     provider: PROVIDER, call_id: auth.data.call_id, call_trace_id: auth.data.call_trace_id,
-    session_id: sessionId, join_ticket: ticket, ice_servers: iceServers,
+    session_id: sessionId, join_ticket: ticket, ice_servers: ice.iceServers,
+    relay_available: !ice.relayDegraded, relay_degraded: ice.relayDegraded,
+    ...(ice.relayReason ? { relay_reason: ice.relayReason } : {}),
     media: { audio: true, video: auth.data.media_kind !== "audio" },
     max_participants: auth.data.max_participants, generation: auth.data.generation,
     ws_url: `wss://${url.host}/api/groupcall/${groupId}/ws?ticket=${encodeURIComponent(ticket)}`,

@@ -3,6 +3,10 @@
 // message via each member's InboxDO, pushes live or enqueues FCM when offline.
 // Messages are server-readable plaintext (TLS in transit) — no E2E, by design,
 // so moderation/reporting can operate.
+// PERMANENT PRODUCT RULE (owner 2026-08-02): ordinary human messaging is free
+// for every account/tier. Safety, spam, and throughput rate limits are allowed;
+// wallet, token, subscription, and per-message charging gates are not. AI tools
+// invoked from a conversation remain separate provider-backed products.
 import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, kycVerified, dmConvId, isFail } from "../authz";
@@ -1977,4 +1981,3 @@ export async function convDelete(req: Request, env: Env): Promise<Response> {
   trackGroup(env, ctx.uid, "group_deleted", { conv });
   return json({ ok: true });
 }
-

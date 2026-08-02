@@ -228,16 +228,14 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
     );
   }
 
-  // Plain-language feature lines. Ava text chat is unlimited on every tier and is
-  // folded into the first line (never shown as a meter — text is cheap; we only
-  // surface the costly things: AI images, AI voice/translation minutes, group
-  // video calls).
+  // Plain-language feature lines. Human messaging and human 1:1/group calls are
+  // permanently free on every tier. Only AI/provider-backed features are metered.
   List<String> _featureLines(Map<String, dynamic> plan) {
     final caps = (plan['caps'] as Map?)?.cast<String, dynamic>() ?? const {};
     final features = (plan['features'] as Map?)?.cast<String, dynamic>() ?? const {};
     final confSize = (plan['confParticipants'] as num?)?.toInt() ?? 0;
 
-    final out = <String>['Unlimited messaging, calls & Ava AI chat'];
+    final out = <String>['Unlimited messaging and audio/video calls'];
 
     final img = caps['image'];
     out.add(img == null ? 'Unlimited AI images' : '$img AI images / day');
@@ -256,9 +254,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
     }
 
     if (confSize > 0) {
-      final cm = caps['conf_min'];
-      final mins = cm == null ? 'unlimited minutes' : '$cm min/day';
-      out.add('Group video calls up to $confSize people ($mins)');
+      out.add('Group audio/video calls up to $confSize people');
     }
 
     if (features['premiumImageModel'] == true) out.add('Premium image model (Nano Banana)');

@@ -746,7 +746,8 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/call/notify-register" && req.method === "POST") return await api.callNotifyRegister(req, env);
       // [WP3-ACT-1] After-ring routing decision (plan §3 step 4) — 503 unless businessCallUx is on.
       if (p === "/api/call/no-answer" && req.method === "POST") return await api.callNoAnswer(req, env);
-      // [WP2] Paid calls (plan §3B/§11/§15.3) — all 403 unless paidCalls flag is on.
+      // Legacy paid-human-call compatibility/refund routes. Human calling is
+      // permanently free; server policy prevents these from creating charges.
       if (p === "/api/call/paid/offer" && req.method === "GET") return await getPaidCallOfferRoute(req, env);
       if (p === "/api/call/paid/settings" && req.method === "GET") return await getPaidCallSettingsRoute(req, env);
       if (p === "/api/call/paid/settings" && req.method === "PUT") return await putPaidCallSettingsRoute(req, env);

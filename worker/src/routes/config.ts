@@ -518,7 +518,7 @@ export interface PlatformConfig {
   businessCallUx: boolean;    // Phase A: channel split UI (named incoming-call screen, no-answer card, tappable numbers)
   brandedIncomingUi: boolean; // [AVACALL-INUI-1] branded IncomingBusinessCallScreen for ALL AvaTOK calls (friend+business), over the lock screen via full-screen intent. Default TRUE; false = native CallKit everywhere. Client mirror: RemoteConfig.brandedIncomingUi.
   voicemailBot: boolean;      // Phase B: server-side voice-prompt + 25s recording bot in the call room
-  paidCalls: boolean;         // Phase B2: caller-pays escrowed calls (§3B)
+  paidCalls: boolean;         // Legacy compatibility key; permanently forced false by the free-communication policy.
   voiceAgent: boolean;        // Phase C: Ava AI Voice Agent (Grok realtime session)
   serviceNumbers: boolean;    // Phase C: Mode-B-only additional AvaTOK numbers
   // Home · AvaDial · AvaTalk · Services 4-root shell (Specs/PLAN-2026-07-12-home-
@@ -628,8 +628,8 @@ export interface PlatformConfig {
   agentConcurrencyA: number;       // AGENT_CONCURRENCY_A — Mode A concurrent calls per primary number (1)
   agentConcurrencyB: number;       // AGENT_CONCURRENCY_B — Mode B concurrent escrowed sessions per service number (5)
   networkReconnectWindowSec: number; // NETWORK_RECONNECT_WINDOW — drop-past-this settles+refunds, seconds (20)
-  conferenceBillingEnabled: boolean;
-  conferenceVideoTokensPerHour: number;
+  conferenceBillingEnabled: boolean;     // Legacy compatibility key; permanently forced false.
+  conferenceVideoTokensPerHour: number;  // Legacy compatibility key; permanently forced to zero.
 
   // PSTN voicemail platform — Canonical Architecture v1.0 (Specs/PLAN-2026-07-16-
   // ava-receptionist-guardian-FINAL.md, "Rollout inversion": V1 SHIPS VOICEMAIL FOR
@@ -992,7 +992,7 @@ const DEFAULTS: PlatformConfig = {
   businessCallUx: false,
   brandedIncomingUi: true,           // [AVACALL-INUI-1] branded incoming-call screen for ALL AvaTOK calls; false = native CallKit everywhere
   voicemailBot: false,
-  paidCalls: false,
+  paidCalls: false,                    // PERMANENT: human 1:1 audio/video calls are free.
   voiceAgent: false,
   serviceNumbers: false,
   // 4-root shell (Home/AvaDial/AvaTalk/Services) — DARK. While false the client
@@ -1047,8 +1047,8 @@ const DEFAULTS: PlatformConfig = {
   agentConcurrencyA: 1,
   agentConcurrencyB: 5,
   networkReconnectWindowSec: 20,
-  conferenceBillingEnabled: true,
-  conferenceVideoTokensPerHour: 20,
+  conferenceBillingEnabled: false,     // PERMANENT: group audio/video calls are free.
+  conferenceVideoTokensPerHour: 0,
   // PSTN voicemail platform — DARK. While false, worker/src/routes/pstn.ts runs
   // pure-probe mode only (capture + orphan voicemail, no owner inbox delivery).
   // Flip ON in KV (staging first) once Phase 0 carrier verification passes.
@@ -1122,11 +1122,26 @@ const DEFAULTS: PlatformConfig = {
   deletionWorkflowEnabled: false,
 };
 
+/**
+ * Owner decision 2026-08-02: ordinary human messaging and audio/video calls are
+ * permanently free. Keep the old config keys for wire compatibility with
+ * installed clients, but never allow stale KV overrides to resurrect charging.
+ */
+export const PERMANENT_FREE_COMMUNICATION = Object.freeze({
+  paidCalls: false,
+  conferenceBillingEnabled: false,
+  conferenceVideoTokensPerHour: 0,
+});
+
+export function enforcePermanentFreeCommunication(config: PlatformConfig): PlatformConfig {
+  return { ...config, ...PERMANENT_FREE_COMMUNICATION };
+}
+
 /** Merged config for server-side gates (same blob getConfig serves). */
 export async function readConfig(env: Env): Promise<PlatformConfig> {
   let stored: Partial<PlatformConfig> = {};
   try { stored = ((await env.TOKENS.get(KEY, "json")) ?? {}) as Partial<PlatformConfig>; } catch { /* defaults */ }
-  return { ...DEFAULTS, ...stored };
+  return enforcePermanentFreeCommunication({ ...DEFAULTS, ...stored });
 }
 
 export async function getConfig(env: Env): Promise<Response> {
@@ -1138,7 +1153,7 @@ export async function getConfig(env: Env): Promise<Response> {
   // only opens party sockets when this is true. Flip via `wrangler secret put
   // PARTY_ENABLED` = "1" once the PartyDO migration (v11) is deployed.
   const partyEnabled = env.PARTY_ENABLED === "1";
-  return json({ ...DEFAULTS, ...stored, partyEnabled }, 200, {
+  return json({ ...enforcePermanentFreeCommunication({ ...DEFAULTS, ...stored }), partyEnabled }, 200, {
     "cache-control": "public, max-age=60",
   });
 }
@@ -1198,6 +1213,12 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
   ]);
   for (const [k, v] of Object.entries(body)) {
     if (!(k in DEFAULTS)) return json({ error: `unknown key: ${k}` }, 400);
+    if ((k === "paidCalls" || k === "conferenceBillingEnabled") && v !== false) {
+      return json({ error: `${k} is permanently disabled: human communication is free` }, 409);
+    }
+    if (k === "conferenceVideoTokensPerHour" && v !== 0) {
+      return json({ error: "conferenceVideoTokensPerHour is permanently zero: human communication is free" }, 409);
+    }
     if (numericKeys.has(k) ? typeof v !== "number" : typeof v !== "boolean") {
       return json({ error: `bad type for ${k}` }, 400);
     }
@@ -1206,5 +1227,5 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
   await env.TOKENS.put(KEY, JSON.stringify(next));
   // Echo the EFFECTIVE config (defaults + overrides) so the admin UI still sees
   // every flag, even though only `next` was persisted.
-  return json({ ok: true, config: { ...DEFAULTS, ...next }, overrides: next });
+  return json({ ok: true, config: enforcePermanentFreeCommunication({ ...DEFAULTS, ...next }), overrides: next });
 }

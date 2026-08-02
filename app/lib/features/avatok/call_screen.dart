@@ -28,7 +28,6 @@ import 'contacts.dart';
 import 'data.dart' show Chat; // [AVACALL-MENU-1] Chat model for the DM thread
 import 'no_answer_card.dart';
 import 'paid_busy_card.dart';
-import 'paid_call_prompt.dart' show CallCountdown;
 import 'place_1to1_call.dart';
 // Ringing globals (gIncomingRingingFrom/CallId) live here — cleared by
 // clearCallState() on account switch. push_service.dart also imports this file
@@ -204,10 +203,6 @@ class CallScreen extends StatefulWidget {
   // underlying CallSession logic is unchanged. Chat-initiated calls leave it
   // false and keep the zine look.
   final bool dialer;
-  // [WP6 §3B] Minutes the caller pre-paid via the price sheet ('' hold →
-  // confirm on connect). >0 arms the in-call countdown + end-of-time beeps
-  // (CallCountdown) once the call connects. 0 = not a paid call.
-  final int paidMinutes;
   // [INSTANT-CALL-MOUNT-1] true = this screen was mounted OPTIMISTICALLY (the
   // instant the user tapped the call icon), BEFORE POST /api/call resolved. The
   // session then runs the honest guard flow (connecting + searching tone, no
@@ -232,7 +227,6 @@ class CallScreen extends StatefulWidget {
     this.initialRoutingStart,
     this.business = false,
     this.dialer = false,
-    this.paidMinutes = 0,
     this.deferRing = false,
   });
   @override
@@ -261,10 +255,6 @@ class _CallScreenState extends State<CallScreen> {
   // Post-ring busy (plan §15.1): /api/call/no-answer said 'busy' after a
   // genuine ring timeout — render the PaidBusyCard instead of the no-answer card.
   Map<String, dynamic>? _postRingBusy;
-  // [WP6 §3B] Paid-call countdown + end-of-time beeps, armed on connect.
-  CallCountdown? _countdown;
-  bool _countdownStarted = false;
-  Timer? _paidEndTimer;
 
   bool get _agentActive => _agentCall != null || _session.uiPhase.value == 'agent-handoff';
 
@@ -432,27 +422,6 @@ class _CallScreenState extends State<CallScreen> {
         () => Future.delayed(const Duration(seconds: 3), player.dispose)));
   }
 
-  // ── [WP6 §3B] paid-call countdown ─────────────────────────────────────────
-
-  void _maybeStartPaidCountdown() {
-    if (_countdownStarted || widget.paidMinutes <= 0 || !_session.isConnected) return;
-    _countdownStarted = true;
-    _countdown = CallCountdown()..start(widget.paidMinutes);
-    // Local end-of-time stop — both sides agreed the duration up front (§3B);
-    // the server's CallRoom ticker is the billing authority either way.
-    _paidEndTimer = Timer(Duration(minutes: widget.paidMinutes), () {
-      if (mounted && _session.isConnected) _session.endByUser();
-    });
-  }
-
-  String? get _paidRemainingLabel {
-    if (!_countdownStarted || !_session.isConnected) return null;
-    final left = widget.paidMinutes * 60 - _session.elapsedSeconds.value;
-    if (left <= 0) return 'Paid time is up';
-    final m = left ~/ 60, s = left % 60;
-    return 'Paid call · $m:${s.toString().padLeft(2, '0')} left';
-  }
-
   @override
   void initState() {
     super.initState();
@@ -535,7 +504,6 @@ class _CallScreenState extends State<CallScreen> {
   void _onSessionChanged() {
     _maybeFetchNoAnswerRouting();
     _maybeStartAgentFromPhase(); // [DIALPAD-BIZ-CALLS Phase C]
-    _maybeStartPaidCountdown(); // [WP6 §3B]
     if (mounted) setState(() {});
   }
 
@@ -600,9 +568,6 @@ class _CallScreenState extends State<CallScreen> {
     // AgentVoiceRoom DO finalizes (settle/refund/summary card) on WS close.
     if (_agentCall != null) unawaited(_agentCall!.hangup());
     _agentAutoProbe?.cancel();
-    // [WP6 §3B]
-    _paidEndTimer?.cancel();
-    _countdown?.dispose();
     super.dispose();
   }
 
@@ -931,14 +896,6 @@ class _CallScreenState extends State<CallScreen> {
                       connected ? s.clock : s.statusText,
                       kind: failed ? AdStickerKind.no : AdStickerKind.plain,
                     ),
-                    // [WP6 §3B] Live paid-call countdown under the clock —
-                    // CallCountdown handles the T-60s/T-10s warning beeps.
-                    if (_paidRemainingLabel != null) ...[
-                      const SizedBox(height: 8),
-                      Text(_paidRemainingLabel!,
-                          style: ADText.preview(),
-                          textAlign: TextAlign.center),
-                    ],
                   ],
                   // [CALL-DIAL-FAIL-1] Retry affordance — only on the
                   // network-error terminal state, only when the launch site

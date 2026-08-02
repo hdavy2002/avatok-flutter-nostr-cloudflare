@@ -213,6 +213,18 @@ literal text / string search (TODOs, error messages, arbitrary tokens).
 
 ## Engineering rulebook (READ — applies to every app)
 
+**PERMANENT FREE COMMUNICATION RULE — owner decision 2026-08-02.** Ordinary
+human communication in AvaTOK is free for every account and subscription tier:
+1:1 audio calls, 1:1 video calls, AvaTalk group audio/video conferences (up to
+the product cap of 25), and human chat messaging. Never add a per-minute charge,
+escrow hold, wallet/balance gate, paid-call rate, daily conference-minute quota,
+or subscription-tier participant cap to these surfaces. This rule does not make
+third-party-cost services free: AI voice/video agents, AI receptionist, PSTN/
+carrier calling, live translation, paid events, marketplace services, storage
+overage, and other explicitly AI/provider-backed products retain their own
+pricing rules. If a future spec conflicts with this paragraph, this paragraph
+wins unless the owner explicitly changes the decision.
+
 **AvaTOK product rule — RULE CHANGE 2026-06-10 (owner decision, Phase 10).**
 Group conferences ARE allowed in AvaTalk groups, **≤25 participants, via Cloudflare Realtime**
 (`worker/src/routes/groupcall.ts` + `app/lib/features/conference/`). Cloudflare is

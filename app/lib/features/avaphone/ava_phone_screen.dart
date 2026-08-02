@@ -9,10 +9,7 @@ import '../../core/avatar.dart';
 import '../../core/call_log_store.dart';
 import '../../core/calls/call_room_id.dart'; // [CALL-ROOM-ID-1]
 import '../../core/ice_cache.dart';
-import '../../core/paid_call_api.dart';
-import '../../core/remote_config.dart';
 import '../../core/team_api.dart';
-import '../avatok/paid_call_prompt.dart';
 import '../avatok/place_1to1_call.dart';
 import '../team/team_ivr_screen.dart';
 import '../avatok/contact_actions.dart';
@@ -716,46 +713,8 @@ class _DialpadSheetState extends State<_DialpadSheet> with WidgetsBindingObserve
       setState(() { _dialing = false; _status = 'This number isn\'t on AvaTOK'; });
       return;
     }
-    // WP6 (Specs/PLAN-2026-07-11-dialpad-business-calls-ava-voice-agent.md §3B):
-    // before ringing, check whether the callee published a paid-call offer on
-    // this number. [PaidCallApi.offer] returns null for every ordinary/free
-    // number, so this is a no-op until a callee actually turns paid calls on.
-    String paidHoldId = '';
-    int paidMinutes = 0;
-    // [CALL-ROOM-ID-1 2026-07-14] Mint the call id ONCE, here, and hand the same
-    // one to both the escrow prompt and place1to1Call. Previously both sides
-    // independently derived `'avatok-${hit.uid}'`, which "agreed" only because
-    // it was a stable function of the callee — the very bug that made the
-    // callee's dedup cache drop every repeat call. They must still agree (the
-    // escrow hold + billing ticker are keyed to the CallRoom id), so agreement
-    // is now achieved by passing one value instead of by two identical guesses.
+    // [CALL-ROOM-ID-1] Every free human call still gets a fresh opaque room id.
     final dialRoom = CallRoomId.newRoomId();
-    if (RemoteConfig.paidCalls) {
-      // Offer lookup by the RESOLVED uid (the server route also accepts raw
-      // numbers, but the uid is unambiguous — hit.uid is already in hand).
-      final offer = await PaidCallApi.offer(to: hit.uid);
-      if (!mounted) return;
-      if (offer != null) {
-        final result = await showPaidCallPrompt(
-          context,
-          offer: offer,
-          to: qDigits,
-          calleeUid: offer.calleeUid.isNotEmpty ? offer.calleeUid : hit.uid,
-          // Must match place1to1Call's room id — the escrow hold + billing
-          // ticker are keyed to this exact CallRoom id. Guaranteed by passing
-          // `roomOverride: dialRoom` below rather than re-deriving it.
-          callId: dialRoom,
-        );
-        if (result == null) {
-          // Caller backed out at the price/length prompt (§11 — hold never taken).
-          setState(() { _dialing = false; });
-          return;
-        }
-        paidHoldId = result.holdId;
-        paidMinutes = result.minutes;
-        if (!mounted) return;
-      }
-    }
     Analytics.capture('avaphone_dial_connect', const {});
     IceCache.prefetch();
     final c = hit; // non-null local for the closure below
@@ -770,8 +729,7 @@ class _DialpadSheetState extends State<_DialpadSheet> with WidgetsBindingObserve
     await place1to1Call(navContext, uid: c.uid,
         name: c.name.isNotEmpty ? c.name : (c.number.isNotEmpty ? c.number : q),
         avatarUrl: c.avatarUrl, dialer: true,
-        paidHoldId: paidHoldId, paidMinutes: paidMinutes,
-        roomOverride: dialRoom); // [CALL-ROOM-ID-1] same id as the escrow hold
+        roomOverride: dialRoom);
   }
 
   @override

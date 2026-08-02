@@ -798,6 +798,13 @@ export async function getStorage(req: Request, env: Env): Promise<Response> {
 
 const STUN_FALLBACK = [{ urls: "stun:stun.cloudflare.com:3478" }];
 
+export interface IceServerResult {
+  iceServers: unknown[];
+  /** True when the response is STUN-only and TURN relay is unavailable. */
+  relayDegraded: boolean;
+  relayReason?: string;
+}
+
 /**
  * Mint short-lived STUN+TURN ICE servers from Cloudflare Calls. Returns the
  * `iceServers` value (array of RTCIceServer) — Cloudflare-STUN-only fallback when
@@ -805,8 +812,10 @@ const STUN_FALLBACK = [{ urls: "stun:stun.cloudflare.com:3478" }];
  * the group-conference token issue (so LiveKit clients can relay via Cloudflare
  * TURN). `ttl` seconds (default 24h). Never throws.
  */
-export async function mintIceServers(env: Env, ttl = 86400): Promise<unknown[]> {
-  if (!env.TURN_KEY_ID || !env.TURN_KEY_API_TOKEN) return STUN_FALLBACK;
+export async function mintIceServersWithStatus(env: Env, ttl = 86400): Promise<IceServerResult> {
+  if (!env.TURN_KEY_ID || !env.TURN_KEY_API_TOKEN) {
+    return { iceServers: STUN_FALLBACK, relayDegraded: true, relayReason: "turn_not_configured" };
+  }
   try {
     const r = await fetch(
       `https://rtc.live.cloudflare.com/v1/turn/keys/${env.TURN_KEY_ID}/credentials/generate-ice-servers`,
@@ -816,18 +825,25 @@ export async function mintIceServers(env: Env, ttl = 86400): Promise<unknown[]> 
         body: JSON.stringify({ ttl }),
       },
     );
-    if (!r.ok) return STUN_FALLBACK;
+    if (!r.ok) return { iceServers: STUN_FALLBACK, relayDegraded: true, relayReason: `turn_http_${r.status}` };
     const data = (await r.json()) as any;
     const ice = data.iceServers ?? data;
-    return Array.isArray(ice) ? ice : [ice];
+    const iceServers = Array.isArray(ice) ? ice : [ice];
+    if (!iceServers.length) return { iceServers: STUN_FALLBACK, relayDegraded: true, relayReason: "turn_empty_response" };
+    return { iceServers, relayDegraded: false };
   } catch {
-    return STUN_FALLBACK;
+    return { iceServers: STUN_FALLBACK, relayDegraded: true, relayReason: "turn_request_failed" };
   }
+}
+
+export async function mintIceServers(env: Env, ttl = 86400): Promise<unknown[]> {
+  return (await mintIceServersWithStatus(env, ttl)).iceServers;
 }
 
 // GET /ice — short-lived STUN+TURN credentials from Cloudflare Calls.
 export async function getIce(env: Env): Promise<Response> {
-  return json({ iceServers: await mintIceServers(env) });
+  const result = await mintIceServersWithStatus(env);
+  return json({ iceServers: result.iceServers, relay_available: !result.relayDegraded, relay_degraded: result.relayDegraded, ...(result.relayReason ? { relay_reason: result.relayReason } : {}) });
 }
 
 function mediaType(ct: string): string {

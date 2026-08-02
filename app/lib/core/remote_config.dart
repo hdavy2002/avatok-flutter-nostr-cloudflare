@@ -368,9 +368,10 @@ class RemoteConfig {
   /// Phase B — the server-side voicemail bot (5-rings → prompt → 25s record).
   /// Mirrors config.ts `voicemailBot`.
   static bool get voicemailBot => _b('voicemailBot', false);
-  /// Phase B2 — caller-pays paid calls (escrow + per-minute settle). Mirrors
-  /// config.ts `paidCalls`.
-  static bool get paidCalls => _b('paidCalls', false);
+  /// Legacy compatibility getter. Owner decision 2026-08-02 permanently made
+  /// human audio/video calls free; stale cached config must never reopen the
+  /// paid-call prompt before the next remote-config refresh.
+  static bool get paidCalls => false;
   /// Phase C — the Ava AI Voice Agent (Grok realtime session). Gates the
   /// "Send to Ava AI Agent" option on the incoming-business-call screen.
   /// Mirrors config.ts `voiceAgent`.

@@ -9,7 +9,6 @@ import '../../core/api_auth.dart';
 import '../../core/calls/call_room_id.dart'; // [CALL-ROOM-ID-1]
 import '../../core/calls/call_session_manager.dart'; // [INSTANT-CALL-MOUNT-1]
 import '../../core/config.dart';
-import '../../core/paid_call_api.dart';
 import '../../core/profile_store.dart';
 import '../../core/remote_config.dart'; // [INSTANT-CALL-MOUNT-1] kill switch
 import '../../core/ringback_player.dart';
@@ -41,12 +40,6 @@ Future<void> place1to1Call(
   required String name,
   String avatarUrl = '',
   bool video = false,
-  // WP6 (Specs/PLAN-2026-07-11-dialpad-business-calls-ava-voice-agent.md §3B):
-  // when the caller already confirmed + held funds via showPaidCallPrompt
-  // (paid_call_prompt.dart), thread the hold through so the server can tie the
-  // escrow to this call. '' = a normal free/callee-pays call (unchanged path).
-  String paidHoldId = '',
-  int paidMinutes = 0,
   // [DIALER-UI-SPLIT 2026-07-12] true when the call was started from the phone
   // DIALER ecosystem (dialpad / recents / phone-contacts) rather than a chat
   // thread. Only themes CallScreen with the dialer's PhoneTheme palette so the
@@ -55,14 +48,8 @@ Future<void> place1to1Call(
   // The dialer uses the business after-ring UX; chat retries must preserve
   // their original generic UX instead of inheriting that older default.
   bool business = true,
-  // [CALL-ROOM-ID-1] Pre-minted room id, for callers that must know the call id
-  // BEFORE dialing. Today that is only the PAID (Mode B) flow: `showPaidCallPrompt`
-  // takes the escrow hold keyed to the CallRoom id, so the prompt and the call
-  // MUST agree on it. Such callers mint once via `CallRoomId.newRoomId()` and
-  // pass it here. Everyone else omits it and gets a fresh id.
-  //
-  // Deliberately nullable with no `'avatok-$uid'` fallback — the whole point of
-  // this parameter is that no caller can reintroduce a per-callee id by accident.
+  // Optional pre-minted room id used by launch sites that create the call
+  // identity before navigation. Human calls are always free.
   String? roomOverride,
 }) async {
   if (uid.isEmpty) return;
@@ -75,16 +62,12 @@ Future<void> place1to1Call(
   // the room id never needed to carry it. See core/calls/call_room_id.dart.
   final room = roomOverride ?? CallRoomId.newRoomId();
   // [INSTANT-CALL-MOUNT-1] Optimistic mount FIRST — BEFORE any `await` — so the
-  // CallScreen appears the instant the user taps, for NORMAL (non-paid) dialer
-  // calls. POST /api/call (and even the local profile-name load for the ring
-  // push) run in the BACKGROUND inside _dialerPlaceInBackground. PAID (Mode B)
-  // calls are deliberately EXCLUDED — their POST response gates the busy card +
-  // escrow-hold lifecycle (routed:'busy', hold cancellation on 403) and MUST
-  // resolve before any UI is committed, so they keep the awaited path below. The
-  // optimistic session runs the honest guard flow (deferRing → connecting +
+  // CallScreen appears the instant the user taps. POST /api/call (and even the
+  // local profile-name load for the ring push) run in the BACKGROUND inside
+  // _dialerPlaceInBackground. The optimistic session runs the honest guard flow (deferRing → connecting +
   // searching tone, no fake ringback); the helper feeds the reachability/glare/
   // failure outcome back into it. Kill switch: RemoteConfig.instantCallMountEnabled.
-  if (paidHoldId.isEmpty && RemoteConfig.instantCallMountEnabled) {
+  if (RemoteConfig.instantCallMountEnabled) {
     if (!context.mounted) return;
     Analytics.capture('call_mount_optimistic',
         {'call_id': room, 'via': 'dialpad', 'kind': video ? 'video' : 'audio'});
@@ -130,8 +113,7 @@ Future<void> place1to1Call(
   // 2026-07-11): a PAID (Mode B) line whose agents are all full or whose
   // human callee is already on a call. Never a normal call outcome — set only
   // when the server's routing decision short-circuits BEFORE any ring, so
-  // below we skip both PaidCallApi.confirm() (never take the hold) and
-  // CallScreen entirely in favor of a full-screen busy card.
+  // below we skip CallScreen entirely in favor of a full-screen busy card.
   String? busyMessage;
   String? busyKind;
   try {
@@ -145,8 +127,6 @@ Future<void> place1to1Call(
       // the callee's ring push once the routing work lands, so the callee's
       // named incoming-business-call screen (businessCallUx) knows to show.
       'via': 'dialpad',
-      if (paidHoldId.isNotEmpty) 'paid_hold_id': paidHoldId,
-      if (paidHoldId.isNotEmpty) 'paid_minutes': paidMinutes,
     }, const <String, String>{});
     if (res.statusCode == 200) {
       try {
@@ -192,21 +172,8 @@ Future<void> place1to1Call(
       // The global 403 interceptor already launched the consent/liveness flow.
       // Do NOT open the call screen — the dial is gated until the user verifies.
       Analytics.capture('call_blocked_identity', {'via': 'dialpad', 'to': uid});
-      if (paidHoldId.isNotEmpty) {
-        // §11 "Caller abandons" — the call never placed, release the hold.
-        // (Server contract: the hold was taken at the price prompt's confirm,
-        // keyed by this call_id; /api/call/paid/cancel disarms + refunds it.)
-        // ignore: unawaited_futures
-        PaidCallApi.cancel(callId: room);
-      }
       return;
     }
-    // NOTE (server contract, call_billing_routes.ts): the escrow hold + the
-    // CallRoom billing-ticker arm ALREADY happened at the price prompt's
-    // Confirm (POST /api/call/paid/confirm, keyed by this call_id) — there is
-    // no second "flip live" call here. routed:'busy' above is disarmed
-    // server-side (api.ts busy path posts /billing-disarm), and a ring
-    // timeout auto-refunds per §11.
   } catch (_) {
     // Network error placing the call → fall through and still open the screen;
     // CallSession has its own reconnect/timeout handling, and this is no worse than
@@ -263,8 +230,6 @@ Future<void> place1to1Call(
       business: business,
       // [DIALER-UI-SPLIT 2026-07-12] dialer-styled call screen for dialpad calls.
       dialer: dialer,
-      // [WP6 §3B] arms the in-call countdown + end-of-time beeps on connect.
-      paidMinutes: paidHoldId.isNotEmpty ? paidMinutes : 0,
     ),
   ));
 }
@@ -272,8 +237,7 @@ Future<void> place1to1Call(
 /// [INSTANT-CALL-MOUNT-1] Runs POST /api/call AFTER the dialer CallScreen is
 /// already on screen (optimistic mount) and feeds the outcome to the live
 /// session — the same POST the awaited path did, just off the critical path.
-/// Only reached for NON-paid dialer calls (paid calls keep the awaited path),
-/// so there is no escrow hold or busy-card decision to gate here. Outcomes match
+/// Human dialer calls are free, so there is no escrow prompt to gate here. Outcomes match
 /// chat_thread._placeCallInBackground: reachable → full ring window; unreachable
 /// → Ava (no fake ringback); glare → supersede with the deterministic winner;
 /// identity gate → tear down; hard network fail → 'network-error' + Retry.
