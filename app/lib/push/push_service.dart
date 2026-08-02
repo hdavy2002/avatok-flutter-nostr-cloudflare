@@ -59,6 +59,24 @@ typedef CallStatusEvent = ({
 });
 final callStatusBus = StreamController<CallStatusEvent>.broadcast();
 
+/// [PIV-2 2026-08-02] Broadcasts "this device's RING for `callId` is over", from
+/// whatever source ended it — a CallKit notification tap, the branded screen's
+/// own buttons, a ring timeout, or a server transition.
+///
+/// Why this is NOT `callStatusBus`: that bus is the CALLER-side signal channel,
+/// and [CallSession] reacts to `decline` on it by opening the outcome menu
+/// (call_session.dart `_statusSub`). Publishing the callee's own local decline
+/// there would fire caller-side logic on the callee's device, and would ALSO
+/// double-deliver on the FCM path, which already adds to `callStatusBus` and
+/// then calls [applyRingTransition] — CallSession would see the same `decline`
+/// twice and re-enter `_showOutcomeMenu`. A ring ending and a call status are
+/// genuinely different facts, so they get different channels.
+///
+/// Emitted by [applyRingTransition] only, so every ring surface tears down
+/// through the one reducer instead of each button re-implementing teardown.
+typedef RingEndedEvent = ({String callId, String status});
+final ringEndedBus = StreamController<RingEndedEvent>.broadcast();
+
 // CALLFIX-14: Glare detection — track the currently ringing incoming call so if
 // the user starts dialing while an incoming call from the same peer is ringing,
 // we can auto-accept the incoming call instead. Cleared when the call is
@@ -646,6 +664,15 @@ Future<void> applyRingTransition(
     gIncomingRingingFrom = null;
     gIncomingRingingCallId = null;
   }
+
+  // [PIV-2 2026-08-02] Tell every in-app ring SURFACE the ring is over. The
+  // steps above tear down the surfaces this file owns (CallKit, the FSI banner,
+  // the ringtone, the glare globals) but the branded full-screen
+  // IncomingBusinessCallScreen is a Flutter route this file cannot pop, so
+  // without this it stayed up after a decline taken on the CallKit
+  // notification. Broadcast controllers drop events when nothing is listening,
+  // so this is safe in the FCM background isolate too.
+  ringEndedBus.add((callId: callId, status: status));
 
   Analytics.capture('call_ring_transition_applied', {
     'call_id': callId,
@@ -2682,6 +2709,14 @@ class PushService {
             _logMissed(ex);
             // [CALL-REL-9] Stop the in-app ringtone fallback (if it was playing).
             unawaited(_stopRingtoneFallback((ex['callId'] ?? '').toString()));
+            // [PIV-2 2026-08-02] An unanswered ring is a ring that ENDED, so it
+            // must go through the reducer as well — otherwise the branded
+            // full-screen ring survived a timeout exactly the way it survived a
+            // decline. Same root cause, same one-line fix.
+            unawaited(applyRingTransition(
+              (ex['callId'] ?? '').toString(), 'missed',
+              source: 'callkit_timeout',
+            ));
           }
           break;
         case Event.actionCallEnded:
@@ -2770,12 +2805,30 @@ class PushService {
     // directly via the public `declineIncomingCall` wrapper and never goes
     // through the CallKit event listener at all.
     unawaited(_stopRingtoneFallback(callId));
+    // [PIV-2 2026-08-02] Run the ONE reducer so the branded full-screen ring
+    // closes too. This path only ever signalled the decline OUTWARD to the
+    // caller and tore down its own subset of surfaces; the callee's device
+    // never gets a `call-status` push back for its OWN decline (the server
+    // broadcasts that to the caller), so nothing else was ever going to close
+    // the branded screen. Symptom: caller correctly saw "call declined" while
+    // the callee's ring screen stayed up forever — reported 2026-08-02 for a
+    // decline taken on the CallKit notification, where the branded screen
+    // underneath is a SEPARATE surface from the notification's own buttons.
+    // Idempotent, so the in-app screen calling this after its own
+    // `applyRingTransition` is a no-op.
+    unawaited(applyRingTransition(callId, 'decline', source: 'decline_routing'));
     _signalStatus(callId, 'decline', from);
     // CALL-GLARE-1: dedupe duplicate decline events for the same call.
     if (_onceCallEvent(callId, 'declined')) {
       Analytics.capture('call_incoming_declined', {
         'call_id': callId,
         'routed_to': 'decline',
+        // [PIV-2 2026-08-02] The CALLER's uid. `Analytics` auto-stamps the
+        // decliner's own email, so without the peer here a decline was only
+        // ever retrievable from one side — and a call bug is a conversation
+        // between two devices. Tagging both makes either tester's email pull
+        // the same interaction.
+        'peer_uid': from,
       });
     }
     _logMissed(extra);

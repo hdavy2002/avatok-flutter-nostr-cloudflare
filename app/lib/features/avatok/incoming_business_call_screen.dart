@@ -93,6 +93,8 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
   /// ring reads very differently from one after 20 seconds of deliberation.
   final int _shownAtMs = DateTime.now().millisecondsSinceEpoch;
   StreamSubscription<CallStatusEvent>? _statusSub;
+  /// [PIV-2 2026-08-02] Ring-ended subscription — see [initState].
+  StreamSubscription<RingEndedEvent>? _ringSub;
 
   @override
   void initState() {
@@ -114,6 +116,21 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
         'decline', 'declined', 'decline_ava', 'decline_agent',
       };
       if (terminal.contains(e.status)) _dismiss(reason: 'status_${e.status}');
+    });
+    // [PIV-2 2026-08-02] Close when THIS DEVICE's ring ends, whatever ended it.
+    //
+    // The subscription above only ever hears the SERVER's `call-status` push.
+    // That is enough for a caller cancel, but a decline taken on the CallKit
+    // notification is a purely LOCAL event: the device signals `decline`
+    // outward to the caller and the server relays it to the CALLER, never back
+    // to us. So the caller saw "call declined" while this screen — a separate
+    // surface sitting underneath that notification — stayed up with no reason
+    // to close. `ringEndedBus` is emitted by `applyRingTransition`, the one
+    // reducer every ring-ending path now goes through, so the notification's
+    // Decline, this screen's own Decline, and a ring timeout all land here.
+    _ringSub = ringEndedBus.stream.listen((e) {
+      if (e.callId != widget.callId) return;
+      _dismiss(reason: 'ring_ended_${e.status}');
     });
   }
 
@@ -149,6 +166,15 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
     Analytics.capture('business_call_screen_dismissed', {
       'call_id': widget.callId,
       'reason': reason,
+      // [PIV-2 2026-08-02] Both parties + how long the screen was actually up.
+      // `reason` now distinguishes WHICH surface closed it — `ring_ended_*`
+      // means the reducer did (CallKit notification decline, timeout), while
+      // `decline`/`accept` mean this screen's own buttons did. If the stuck-ring
+      // bug ever returns, the absence of a matching `business_call_screen_dismissed`
+      // after a `call_incoming_declined` for the same call_id is the signature.
+      'peer_uid': widget.fromUid,
+      'ring_ms': DateTime.now().millisecondsSinceEpoch - _shownAtMs,
+      'video': widget.video,
     });
     Navigator.of(context).pop();
   }
@@ -156,6 +182,7 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
   @override
   void dispose() {
     _statusSub?.cancel();
+    _ringSub?.cancel();
     super.dispose();
   }
 
