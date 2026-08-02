@@ -6,7 +6,7 @@
 //
 //   npm test   (vitest run, run from consumers/)
 import { describe, it, expect } from "vitest";
-import { classifyFanoutOutcome, resolveFanoutId, hashShort } from "../src/fcm";
+import { buildPayload, classifyFanoutOutcome, resolveFanoutId, hashShort, ringInviteExpired } from "../src/fcm";
 import type { PushMsg } from "../src/types";
 
 describe("classifyFanoutOutcome", () => {
@@ -61,5 +61,25 @@ describe("hashShort", () => {
     expect(h1).toBe(h2);
     expect(h1).not.toContain("real-conversation-id");
     expect(h1).toMatch(/^[0-9a-f]{16}$/);
+  });
+});
+
+describe("incoming-call delivery contract", () => {
+  it("suppresses invitations at or after their expiry", () => {
+    expect(ringInviteExpired(1000, 999)).toBe(false);
+    expect(ringInviteExpired(1000, 1000)).toBe(true);
+  });
+
+  it("bounds FCM retention and collapses ring/cancel by call id", () => {
+    const ring = buildPayload({
+      kind: "call", to: "callee", callId: "call-1", tokenExpiresAt: 46_000,
+    }, 1_000);
+    const cancel = buildPayload({
+      kind: "call-status", to: "callee", callId: "call-1", status: "cancel",
+    }, 1_000);
+    expect(ring.ttlSeconds).toBe(45);
+    expect(ring.collapseKey).toBe("call-1");
+    expect(cancel.collapseKey).toBe("call-1");
+    expect(ring.data).not.toHaveProperty("from");
   });
 });

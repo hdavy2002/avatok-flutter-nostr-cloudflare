@@ -85,6 +85,15 @@ export async function handlePush(msg: PushMsg, env: Env): Promise<void> {
   if (msg.kind === "app_update_broadcast") return handleAppUpdateBroadcast(msg, env);
   const uid = msg.to_uid || msg.to;
   if (!uid) return;
+  // A ring invitation is perishable. Queue retry/backlog must never turn an
+  // obsolete invite into a phantom call minutes later.
+  if (msg.kind === "call" && ringInviteExpired(msg.tokenExpiresAt)) {
+    await capturePush(env, "call_ring_suppressed", uid, {
+      call_id: msg.callId ?? null, reason: "expired_before_fcm",
+      token_expires_at: msg.tokenExpiresAt ?? null,
+    });
+    return;
+  }
   const res = await resolveTokens(env, uid);
   const tokens = res.tokens;
   // [CALL-TELEMETRY-1] Token-resolution context threaded into every push event
@@ -591,17 +600,31 @@ export async function maybeBroadcastAppUpdate(env: Env): Promise<number> {
 
 // Field names match what the Flutter app reads in its FCM handler (push_service):
 // type, callId, from, fromName, kind.
-function buildPayload(msg: PushMsg): { data: Record<string, string>; highPriority: boolean } {
+export type PushPayload = {
+  data: Record<string, string>;
+  highPriority: boolean;
+  ttlSeconds?: number;
+  collapseKey?: string;
+};
+
+export function ringInviteExpired(expiresAt: number | undefined, now = Date.now()): boolean {
+  return typeof expiresAt === "number" && expiresAt > 0 && now >= expiresAt;
+}
+
+export function buildPayload(msg: PushMsg, now = Date.now()): PushPayload {
   if (msg.kind === "call") {
     // NOTE: "from" is a RESERVED key in FCM data payloads — including it makes
     // Firebase reject the whole message (400 INVALID_ARGUMENT "Invalid data
     // payload key: from"), so calls never ring. Use "fromPub" instead.
-    return { highPriority: true, data: {
+    const remainingMs = Math.max(1_000, (msg.tokenExpiresAt ?? (now + 45_000)) - now);
+    return { highPriority: true, ttlSeconds: Math.max(1, Math.ceil(remainingMs / 1000)),
+      collapseKey: msg.callId || undefined, data: {
       type: "call", callId: msg.callId ?? "", fromPub: msg.from ?? "",
       fromName: msg.fromName ?? "AvaTOK", kind: msg.callType ?? "audio",
       // [TRACE-ID-1] Correlation id -> the callee's push handler reads it and
       // stitches its CallSession telemetry to the caller's + Worker's trace.
       trace_id: msg.traceId ?? "",
+      ...(msg.ts ? { ts: String(msg.ts) } : {}),
       ...(msg.ringReceiptToken ? { ringReceiptToken: msg.ringReceiptToken } : {}),
       ...(msg.tokenExpiresAt ? { tokenExpiresAt: msg.tokenExpiresAt.toString() } : {}),
       // [CALL-IDENTITY-SNAPSHOT-1 2026-08-01] Caller photo, as URL + version —
@@ -623,7 +646,7 @@ function buildPayload(msg: PushMsg): { data: Record<string, string>; highPriorit
     // call-status), so translate here. The caller resolves the callee's display
     // name locally from callee_uid (they just called them), so no name lookup here.
     if (msg.status === "now_free") {
-      return { highPriority: true, data: {
+      return { highPriority: true, collapseKey: msg.callId || undefined, data: {
         type: "now_free",
         fromPub: msg.from ?? msg.callee_uid ?? "",
         callee_uid: msg.callee_uid ?? msg.from ?? "",
@@ -632,7 +655,7 @@ function buildPayload(msg: PushMsg): { data: Record<string, string>; highPriorit
     }
     // [BUSY-CARD-1] Forward the busy metadata (why + whether Ava can take a message)
     // so the CALLER shows the personalized busy card. Absent → legacy "User is busy".
-    return { highPriority: true, data: {
+    return { highPriority: true, collapseKey: msg.callId || undefined, data: {
       type: "call-status", callId: msg.callId ?? "", status: msg.status ?? "",
       ...(msg.busy_reason ? { busy_reason: String(msg.busy_reason) } : {}),
       ...(msg.receptionist_enabled != null ? { receptionist_enabled: msg.receptionist_enabled ? "1" : "0" } : {}),
@@ -761,7 +784,7 @@ function buildPayload(msg: PushMsg): { data: Record<string, string>; highPriorit
 // (P1). Existing failure telemetry is preserved (additive) — this only adds a
 // return value and a success-path message-id parse.
 async function sendFcm(
-  env: Env, token: string, payload: { data: Record<string, string>; highPriority: boolean }, uid: string,
+  env: Env, token: string, payload: PushPayload, uid: string,
   // [CALL-TELEMETRY-1] optional send context — call_id + which store the token
   // came from — so prune/fail events are self-explanatory in PostHog.
   ctx?: { callId?: string | null; source?: string },
@@ -778,7 +801,11 @@ async function sendFcm(
       message: {
         token,
         data: payload.data,
-        android: { priority: payload.highPriority ? "high" : "normal" },
+        android: {
+          priority: payload.highPriority ? "high" : "normal",
+          ...(payload.ttlSeconds != null ? { ttl: `${payload.ttlSeconds}s` } : {}),
+          ...(payload.collapseKey ? { collapse_key: payload.collapseKey } : {}),
+        },
       },
     };
     res = await fetch(`https://fcm.googleapis.com/v1/projects/${env.FCM_PROJECT}/messages:send`, {

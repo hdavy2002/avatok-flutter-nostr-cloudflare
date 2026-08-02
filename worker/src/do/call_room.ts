@@ -48,6 +48,7 @@ import {
   legacyWireStatus,
   type CallSession, type Command, type CommandName,
 } from "../lib/call_state";
+import { CALL_RING_LIFETIME_MS } from "../lib/call_delivery_contract";
 
 // [ONEBRAIN-B2] Human-readable call length for a brain summary (e.g. "4m12s").
 function fmtCallDuration(sec: number): string {
@@ -346,7 +347,7 @@ export class CallRoom {
         await this.markTerminal(r.state.disposition);
       }
       fan = this.broadcastTransition(r.state, r.events, callId);
-      if (r.state.session_state === "connected" || r.state.session_state === "completed") {
+      if (r.state.session_state === "connected" || r.state.session_state === "handoff" || r.state.session_state === "completed") {
         this.ringDeadline = null;
         try { await this.state.storage.delete("ringDeadline"); } catch { /* best-effort */ }
       }
@@ -401,7 +402,7 @@ export class CallRoom {
     s.call_id = s.call_id || callId;
     this.session = s;
     await this.state.storage.put("fsm", s);
-    const deadline = Date.now() + 35_000;
+    const deadline = Date.now() + CALL_RING_LIFETIME_MS;
     this.ringDeadline = deadline;
     await this.state.storage.put("ringDeadline", deadline);
     // Seed the server-owned lifecycle before any ring push is sent. The client
@@ -772,6 +773,19 @@ export class CallRoom {
         // as a failure. 403 is a genuine authorization refusal.
         const denied = out.error === "unauthorized" || out.error === "not_a_participant";
         return Response.json(out, { status: out.ok === false ? (denied ? 403 : 409) : 200 });
+      }
+      // Internal-only atomic receptionist admission. Automatic no-answer paths
+      // must advance the SAME aggregate that owns cancel/accept; a separate
+      // read-then-start check leaves a race in which Ava starts after hangup.
+      if (req.method === "POST" && stateUrl.pathname.endsWith("/receptionist-admit")) {
+        let body: Record<string, unknown> = {};
+        try { body = (await req.json()) as Record<string, unknown>; } catch { /* empty */ }
+        const callId = typeof body.callId === "string" ? body.callId : "";
+        if (!callId) return Response.json({ error: "callId required" }, { status: 400 });
+        const out = await this.runCommand(callId, "handoff_to_receptionist", "server", {
+          commandId: typeof body.commandId === "string" ? body.commandId.slice(0, 128) : undefined,
+        });
+        return Response.json(out, { status: out.ok === false ? 409 : 200 });
       }
       // [CALL-AUTHZ-1] Internal-only: stamp the call's participants at
       // admission. Called from routes/api.ts call() with the AUTHENTICATED

@@ -211,11 +211,14 @@ export function authorizeCommand(name: CommandName, actor: Command["actor"]): bo
     case "accept_call":
     case "decline_call":
     case "send_quick_reply":
-    case "handoff_to_receptionist":
     case "offer_voicemail":
     case "report_spam":
     case "block_caller":
       return actor === "callee";
+    // The authenticated callee may explicitly send the call to Ava. The Worker
+    // may also commit an automatic no-answer/unreachable handoff atomically.
+    case "handoff_to_receptionist":
+      return actor === "callee" || actor === "server";
     // Only the caller may abandon their own call or record a voicemail.
     case "cancel_call":
     case "voicemail_recording_started":

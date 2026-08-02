@@ -18,6 +18,7 @@ import { brainIngest } from "../lib/brain_ingest";
 import { avaReason } from "../lib/ava_reason"; // One Brain B1: unified reasoning gateway
 import { guardWrite } from "./moderate"; // save-time content validation (Nemotron)
 import { readConfig } from "./config"; // P11: profileCompletionGate
+import { CALL_RING_LIFETIME_MS } from "../lib/call_delivery_contract";
 // [WP1] Event-sourced call stream (Specs/PLAN-2026-07-11-dialpad-business-calls-ava-voice-agent.md §13/§14)
 import { emitCallEvent, emitRoutingDecision, newTraceId, EVENT_SCHEMA_VERSION } from "../lib/call_events";
 import { buildCallSnapshot } from "../lib/call_snapshot";
@@ -534,7 +535,7 @@ export async function call(req: Request, env: Env): Promise<Response> {
   }
   // Generate a cryptographically secure token + expiration for the true ringing receipt
   const ringReceiptToken = crypto.randomUUID();
-  const expiresAt = Date.now() + 30000; // 30s expiration window
+  const expiresAt = Date.now() + CALL_RING_LIFETIME_MS;
 
   // Register participants before the phone is rung. This is fail-closed: a
   // call without a durable participant record cannot authorize later commands.
@@ -586,7 +587,7 @@ export async function call(req: Request, env: Env): Promise<Response> {
       body: JSON.stringify({
         type: "call_ring", callId: b.callId, fromPub: ctx.uid,
         fromName: resolvedName, kind: b.kind ?? "audio",
-        ringReceiptToken, trace_id: traceId, ts: Date.now(),
+        ringReceiptToken, tokenExpiresAt: expiresAt, trace_id: traceId, ts: Date.now(),
         // [CALL-IDENTITY-SNAPSHOT-1] The WS ring beats FCM by seconds for an
         // online callee, so it MUST carry the same identity fields — otherwise
         // the fast path paints a nameless, photoless screen and the slow path
@@ -1937,6 +1938,7 @@ interface RingAudibilityFields {
   dndBlocking?: boolean;
   ringVolume?: number;
   ringVolumeMax?: number;
+  route?: string;
 }
 
 export async function callRinging(req: Request, env: Env): Promise<Response> {
@@ -1959,6 +1961,7 @@ export async function callRinging(req: Request, env: Env): Promise<Response> {
   if (typeof b.dndBlocking === "boolean") audibility.dndBlocking = b.dndBlocking;
   if (typeof b.ringVolume === "number") audibility.ringVolume = b.ringVolume;
   if (typeof b.ringVolumeMax === "number") audibility.ringVolumeMax = b.ringVolumeMax;
+  if (typeof b.route === "string") audibility.route = b.route.slice(0, 24);
 
   try {
     const stub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(callId));

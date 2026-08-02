@@ -315,6 +315,30 @@ describe("GATE 3b: the wire vocabulary shipped clients understand", () => {
 // CORE INVARIANTS — the ones the frozen spec says must hold structurally.
 // ─────────────────────────────────────────────────────────────────────────────
 describe("core invariants", () => {
+  it("server may atomically commit an automatic receptionist handoff", () => {
+    expect(authorizeCommand("handoff_to_receptionist", "server")).toBe(true);
+    const handoff = applyCommand(
+      ringing(), { name: "handoff_to_receptionist", actor: "server" }, NOW,
+    );
+    expect(handoff.ok).toBe(true);
+    if (!handoff.ok) return;
+    expect(handoff.state.session_state).toBe("handoff");
+    expect(handoff.state.caller_leg_state).toBe("ringing");
+    expect(handoff.state.callee_leg_state).toBe("dismissed_for_receptionist");
+  });
+
+  it("server handoff cannot revive a call cancelled by the caller", () => {
+    const cancelled = applyCommand(ringing(), { name: "cancel_call", actor: "caller" }, NOW);
+    expect(cancelled.ok).toBe(true);
+    if (!cancelled.ok) return;
+    const late = applyCommand(
+      cancelled.state, { name: "handoff_to_receptionist", actor: "server" }, NOW,
+    );
+    expect(late.ok).toBe(false);
+    if (late.ok) return;
+    expect(late.error).toBe("already_terminal");
+  });
+
   it("declined can NEVER become receptionist_active", () => {
     const declined = applyCommand(ringing(), { name: "decline_call", actor: "callee" }, NOW);
     expect(declined.ok).toBe(true);

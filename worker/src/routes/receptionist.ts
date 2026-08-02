@@ -1193,6 +1193,10 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   const b = (await req.json().catch(() => ({}))) as any;
   const to = String(b.to || "");
   if (!to) return json({ error: "to required" }, 400);
+  const VALID_MODES = new Set(["rings", "first_ring", "decline", "busy", "unreachable", "menu"]);
+  let activationMode = String(b.activation_mode || "rings");
+  if (!VALID_MODES.has(activationMode)) activationMode = "rings";
+  const automaticHandoff = ["rings", "first_ring", "busy", "unreachable"].includes(activationMode);
 
   // ── PARALLEL PREFETCH ──────────────────────────────────────────────────────
   // [RECEPT-NO-RUNTIME-DDL-1 2026-08-01] These three lookups are mutually
@@ -1317,6 +1321,7 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   const callId = b.call_id == null ? null : String(b.call_id).slice(0, 64);
   if (callId) {
     let answered = false;
+    let terminal = false;
     // CALL-ANSWERED-LIVE-1: the DO is the strongly-consistent authority. `answered`
     // alone is STICKY (set forever once a 2nd socket ever joined), so a transient
     // /zombie join left it true and 409-blocked the unreachable→Ava handoff even
@@ -1329,9 +1334,10 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
       const stub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(callId));
       const r = await stub.fetch("https://call/state", { method: "GET" });
       if (r.ok) {
-        const st = (await r.json()) as { answered?: boolean; ended?: boolean; peers?: number };
+        const st = (await r.json()) as { answered?: boolean; ended?: boolean; terminal_status?: string | null; peers?: number };
         doStateKnown = true;
         answered = st.answered === true && st.ended !== true && (st.peers ?? 0) >= 2;
+        terminal = st.ended === true || !!st.terminal_status;
       }
     } catch { /* DO probe failed — fall through to KV fallback below */ }
     if (!doStateKnown) {
@@ -1384,10 +1390,34 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
       } catch { /* fail-open — legacy `answered` value stands unchanged */ }
     }
 
-    if (answered) {
+    // `menu` is a new, explicit caller choice made after the human call has
+    // ended; it is intentionally allowed to create a separate Ava session.
+    if (answered || (terminal && activationMode !== "menu")) {
       trackUserContact(env, ctx.uid, caller.email, caller.phone, "ava_recept_aborted_answered", APP,
-        { owner: to, call_id: callId, stage: "scheduled" });
-      return json({ error: "receptionist_unavailable", reason: "call_answered" }, 409);
+        { owner: to, call_id: callId, stage: "scheduled", terminal });
+      return json({ error: "receptionist_unavailable", reason: terminal ? "call_terminal" : "call_answered" }, 409);
+    }
+
+    // Commit automatic takeover in CallRoom itself. This is a single serialized
+    // transition against accept/cancel, so exactly one outcome wins. Menu is a
+    // new explicit caller action; decline is already committed by the callee.
+    if (automaticHandoff) {
+      try {
+        const stub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(callId));
+        const r = await stub.fetch("https://call/receptionist-admit", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ callId, commandId: `recept-admit:${callId}` }),
+        });
+        if (!r.ok) {
+          skip("call_terminal", { call_id: callId, activation_mode: activationMode });
+          return json({ error: "receptionist_unavailable", reason: "call_terminal" }, 409);
+        }
+      } catch {
+        // Fail closed: starting a paid/provider-backed session without proving
+        // ownership of the call outcome is worse than a missed receptionist.
+        skip("call_authority_unavailable", { call_id: callId });
+        return json({ error: "receptionist_unavailable", reason: "call_authority_unavailable" }, 503);
+      }
     }
   }
 
@@ -1498,10 +1528,6 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   // "menu" (CALL-OUTCOME-MENU 2026-07-09): the caller pressed "Talk to Ava" on the
   // call outcome menu — a deliberate choice, so Ava opens as a helpful assistant
   // ("what can I do for you?") rather than a voicemail-style message-taker.
-  const VALID_MODES = new Set(["rings", "first_ring", "decline", "busy", "unreachable", "menu"]);
-  let activationMode = String(b.activation_mode || "rings");
-  if (!VALID_MODES.has(activationMode)) activationMode = "rings";
-
   // [RECEPT-BACKEND-TOGGLES-1] (owner decision 2026-07-23): SERVER-SIDE per-lane +
   // per-scenario hand-off gate for the AvaTOK↔AvaTOK lane (this endpoint's lane; the
   // PSTN lane is gated in routes/pstn.ts). The caller's `activation_mode` maps to a
@@ -1645,6 +1671,29 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
       }
       if (!prior) await env.TOKENS.put(reattachKey, sid, { expirationTtl: REATTACH_LOCK_TTL });
     } catch { /* best-effort: the client-side _receptionistActive guard is the backstop */ }
+  }
+
+  // Close the remaining admission→session race. The atomic handoff above may
+  // win first and then the caller can hang up while D1/KV initialization runs.
+  // Never return live RTC credentials for that now-terminal call.
+  if (callId && automaticHandoff) {
+    try {
+      const stub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(callId));
+      const r = await stub.fetch("https://call/state", { method: "GET" });
+      const st = r.ok ? await r.json() as { ended?: boolean; terminal_status?: string | null } : null;
+      if (st && (st.ended === true || st.terminal_status)) {
+        await metaDb(env).prepare(
+          "UPDATE receptionist_sessions SET status='ended', ended_at=?2, cutoff_reason='caller_hangup_before_connect', updated_at=?2 WHERE id=?1",
+        ).bind(sid, Date.now()).run().catch(() => {});
+        await env.TOKENS.delete(`recept_rtc:${sid}`).catch(() => {});
+        if (reattachKey) await env.TOKENS.delete(reattachKey).catch(() => {});
+        skip("call_terminal", { call_id: callId, stage: "post_init" });
+        return json({ error: "receptionist_unavailable", reason: "call_terminal" }, 409);
+      }
+    } catch {
+      // Initial atomic admission succeeded; pending-start cancellation on the
+      // client remains the backstop if this final probe itself is unavailable.
+    }
   }
 
   // Stamp the caller's email/phone so support can pull a complainant's

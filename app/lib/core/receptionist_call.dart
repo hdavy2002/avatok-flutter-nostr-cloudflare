@@ -164,6 +164,7 @@ class ReceptionistCall {
   Future<bool> start() async {
     _connectMs = DateTime.now().millisecondsSinceEpoch;
     final cfg = await ReceptionistApi.configFor(calleeUid);
+    if (_ended) return false;
     if (cfg == null) {
       // not premium / disabled / off — record WHY Ava didn't pick up.
       Analytics.capture('ava_recept_skipped', {
@@ -176,6 +177,13 @@ class ReceptionistCall {
     final s = await ReceptionistApi.start(
       to: calleeUid, callId: callId, callerPhone: callerPhone, callerName: callerName,
       activationMode: activationMode, teamId: teamId, teamSlot: teamSlot);
+    if (_ended) {
+      final createdSid = s?['session_id'] as String?;
+      if (createdSid != null) {
+        await ReceptionistApi.finish(createdSid, reason: 'caller_hangup_before_connect');
+      }
+      return false;
+    }
     if (s == null || s['ok'] != true) {
       // [RECEPT-START-409-1] Record the server's actual refusal reason instead of
       // the blanket 'start_failed'. 'reattach_blocked' (409) is BENIGN: a session
@@ -707,6 +715,9 @@ class ReceptionistCall {
     avaLevel.value = 0;
     // Stop audio engines.
     Map<String, dynamic>? nativeCounters;
+    // Each ReceptionistCall owns a native bridge instance. Detach its callback
+    // before stopping so a delayed platform event cannot mutate the next call.
+    _native.onEvent = null;
     if (_useNative) {
       try { nativeCounters = await _native.stop(); } catch (_) {}
       await _nativeMicSub?.cancel();

@@ -115,3 +115,7 @@ jobs:
       - name: Analyze (fatal on errors)
         working-directory: app
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Flutter unit tests
+        working-directory: app
+        run: flutter test

@@ -4535,15 +4535,17 @@ class CallSession {
     }
     _receptionistActive = true;
     try {
-      _send({'type': 'bye'});
       try { _stream?.getTracks().forEach((t) => t.stop()); } catch (_) {}
       try { await _pc?.close(); } catch (_) {}
       _pc = null;
-      _notifyCalleeCanceled();
 
       final call = ReceptionistCall(
           calleeUid: config.seed, callId: config.room, activationMode: activationMode,
           speaker: _speaker, teamId: config.teamId, teamSlot: config.teamSlot);
+      // Publish the pending object BEFORE either async server request. Teardown
+      // can now cancel a start that is still in flight instead of losing the
+      // only reference and letting Ava begin after the caller hung up.
+      _receptionist = call;
       call.onStatus = (s) {
         if (_ended || _avaCountingDown) return;
         switch (s) {
@@ -4607,9 +4609,16 @@ class CallSession {
         // surface can distinguish "another leg already owns Ava for this call"
         // (benign 409 reattach) from a genuine receptionist outage.
         _receptFailReason = call.failReason;
+        if (identical(_receptionist, call)) _receptionist = null;
+        _receptionistActive = false;
         return false;
       }
-      _receptionist = call;
+      if (_ended || _teardownStarted) {
+        await call.hangup();
+        if (identical(_receptionist, call)) _receptionist = null;
+        _receptionistActive = false;
+        return false;
+      }
       // [RECEPT-CALLBACK-PREEMPT-1] Publish the receptionist's target (the
       // callee whose Ava we're now talking to) so an incoming callback FROM
       // that exact person can be recognized and let through to ring instead
@@ -4632,6 +4641,10 @@ class CallSession {
       });
       return true;
     } catch (_) {
+      try { await _receptionist?.hangup(); } catch (_) {}
+      _receptionist = null;
+      _receptionistActive = false;
+      _avaCountingDown = false;
       return false;
     }
   }
@@ -4823,7 +4836,7 @@ class CallSession {
     // [BUSY-CARD-1] cancel the abandoned-busy-card safety timer.
     _busyCardTimeout?.cancel();
     _busyCardTimeout = null;
-    try { _receptionist?.hangup(); } catch (_) {}
+    try { await _receptionist?.hangup(); } catch (_) {}
     try { WakelockPlus.disable(); } catch (_) {}
     // CALL-REL-1: one `endP2pSession` call replaces the scattered stop calls
     // when the controller owns the session. It is safe even if setup only

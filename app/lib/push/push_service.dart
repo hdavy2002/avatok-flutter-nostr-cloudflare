@@ -21,6 +21,7 @@ import '../core/badge_service.dart';
 import '../core/call_log_store.dart';
 import '../core/calls/call_overlay.dart' show returnToActiveCall;
 import '../core/calls/call_room_id.dart' show CallRoomId; // [CALL-DEDUP-TTL-1]
+import '../core/calls/ring_delivery_contract.dart';
 import '../core/calls/callkit_params.dart' show incomingCallAndroidParams;
 import '../core/calls/call_session_manager.dart';
 import '../core/calls/call_telemetry_events.dart' show CallEvents;
@@ -412,14 +413,6 @@ Future<void> _handleBackgroundMessage(RemoteMessage message) async {
       // surface the tap-to-call banner even when backgrounded/killed.
       await _showNowFreeNotif(d);
     } else {
-      if (type == 'call') {
-        final callId = (d['callId'] ?? '').toString();
-        final token = (d['ringReceiptToken'] ?? '').toString();
-        if (callId.isNotEmpty && token.isNotEmpty) {
-          // ignore: unawaited_futures
-          PushService.reportRinging(callId, token);
-        }
-      }
       await _showIncoming(d, route: 'fcm_bg');
     }
     await _bgTrack('fcm_bg_handled', {'type': type});
@@ -1555,12 +1548,28 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
     });
     return;
   }
+  final ringCallId = (d['callId'] ?? '').toString();
+  if (!ringInviteIsFresh(d)) {
+    Analytics.capture('call_ring_suppressed_expired', {
+      'call_id': ringCallId,
+      'route': route,
+      'token_expires_at': (d['tokenExpiresAt'] ?? '').toString(),
+      'sent_at': (d['ts'] ?? '').toString(),
+    });
+    await _track(CallEvents.callIncomingShown, {
+      'call_id': ringCallId,
+      'route': route,
+      'shown': false,
+      'skip_reason': 'expired',
+    });
+    try { await FlutterCallkitIncoming.endCall(ringCallId); } catch (_) {}
+    return;
+  }
   // [AVACALL-RING-CANCEL-1] Don't surface a ring for a call whose caller already
   // cancelled. The cancel call-status can beat the ring push to this device (or
   // arrive on its heels); if we've already recorded a terminal status for this
   // callId, skip the CallKit UI entirely rather than ring for a caller who is
   // gone — the exact dead-end the 2026-07-20 incident produced.
-  final ringCallId = (d['callId'] ?? '').toString();
   if (ringCallId.isNotEmpty && PushService.wasCallTerminated(ringCallId)) {
     Analytics.capture('call_ring_suppressed_cancelled', {
       'call_id': ringCallId,
@@ -1576,6 +1585,11 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
     return;
   }
   AvaLog.I.log('call', 'showing incoming-call UI callId=${d['callId']} kind=${d['kind']} from=${d['fromName']}');
+  Analytics.capture('call_incoming_received', {
+    'call_id': ringCallId,
+    'kind': (d['kind'] ?? 'audio').toString(),
+    'state': route,
+  });
   IceCache.prefetch(); // warm TURN creds while the phone is still ringing
   final params = CallKitParams(
     id: (d['callId'] ?? '').toString(),
@@ -1692,6 +1706,13 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
     'latency_ms': DateTime.now().difference(swShown).inMilliseconds,
     'trace_id': (d['trace_id'] ?? '').toString(),
   });
+  // A receipt means a user-visible ring surface was successfully raised—not
+  // merely that a transport callback ran. Centralizing it here prevents WS,
+  // foreground FCM and background FCM from reporting different semantics.
+  final receiptToken = (d['ringReceiptToken'] ?? '').toString();
+  if (receiptToken.isNotEmpty) {
+    unawaited(PushService.reportRinging(ringCallId, receiptToken, route: route));
+  }
   // [CALL-REL-9] REL-10: capture ring-audibility signals AT RING TIME and,
   // gated by callRingAudibilityV1, start the in-app fallback ringtone.
   // Unawaited — telemetry/fallback must never delay or block the ring path.
@@ -1805,15 +1826,6 @@ class PushService {
       gInCall = false;
       gActiveCallId = null;
       gInCallSince = 0;
-    }
-    Analytics.capture('call_incoming_received',
-        {'call_id': incomingId, 'kind': kind, 'state': 'ws'});
-    // Fire the true-ringing receipt NOW — this is the entire point of the WS
-    // path: the caller's device-ringing signal no longer waits on FCM.
-    final token = (d['ringReceiptToken'] ?? '').toString();
-    if (token.isNotEmpty) {
-      // ignore: unawaited_futures
-      reportRinging(incomingId, token);
     }
     gIncomingRingingFrom = fromPub;
     gIncomingRingingCallId = incomingId;
@@ -2080,6 +2092,7 @@ class PushService {
     bool? dndBlocking,
     int? ringVolume,
     int? ringVolumeMax,
+    String? route,
   }) async {
     if (callId.isEmpty || ringReceiptToken.isEmpty) return;
     try {
@@ -2095,6 +2108,7 @@ class PushService {
         if (dndBlocking != null) 'dndBlocking': dndBlocking,
         if (ringVolume != null) 'ringVolume': ringVolume,
         if (ringVolumeMax != null) 'ringVolumeMax': ringVolumeMax,
+        if (route != null) 'route': route,
       }));
       final response = await request.close();
       await response.drain();
@@ -2488,9 +2502,6 @@ class PushService {
           gActiveCallId = null;
           gInCallSince = 0;
         }
-        Analytics.capture('call_incoming_received', {
-          'call_id': incomingId, 'kind': kind, 'state': 'foreground',
-        });
         // CALLFIX-14: track the ringing incoming call for glare detection
         gIncomingRingingFrom = (d['from'] ?? '').toString();
         gIncomingRingingCallId = incomingId;
