@@ -323,7 +323,7 @@ describe("core invariants", () => {
     expect(handoff.ok).toBe(true);
     if (!handoff.ok) return;
     expect(handoff.state.session_state).toBe("handoff");
-    expect(handoff.state.caller_leg_state).toBe("ringing");
+    expect(handoff.state.caller_leg_state).toBe("connected_to_receptionist");
     expect(handoff.state.callee_leg_state).toBe("dismissed_for_receptionist");
   });
 
