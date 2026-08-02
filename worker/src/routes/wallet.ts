@@ -29,7 +29,7 @@ import { verifyPlayProduct } from "../play";
 // back-reference is only ever CALLED from inside an async handler (never at
 // module-init), so the ESM cycle resolves safely — function declarations are
 // hoisted before either module body runs.
-import { txDetailFor } from "./wallet_statement";
+import { txDetailFor, labelFor } from "./wallet_statement";
 
 // Token economics — CANONICAL, site-wide (incl. AvaPayout): 1 USD = 100 tokens,
 // i.e. 1 token = $0.01. So 1 token == 1 USD cent and usdCentsForTokens is identity.
@@ -690,9 +690,40 @@ export async function walletLedgerDetail(req: Request, env: Env, id: string): Pr
 }
 
 // POST /api/wallet/ledger/:id/receipt — "Email me this receipt" (A4 re-send).
+//
+// [WALLET-RECEIPT-1] The ids the app taps come from the STATEMENT feed, i.e.
+// wallet_transactions — but this endpoint only ever looked in wallet_ledger,
+// which shares ids with wallet_transactions ONLY for double-entry (escrow/
+// marketplace) messages. Ordinary spends (calls, AI, voicemail) have no
+// wallet_ledger row, so "Get receipt" 404'd on exactly the rows users see.
+// Look up wallet_transactions first (scoped to the caller's uid) and keep the
+// wallet_ledger lookup as the legacy fallback for old double-entry-only ids.
 export async function walletReceiptResend(req: Request, env: Env, id: string): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+
+  const tx = await env.DB_WALLET.prepare(
+    `SELECT id, type, amount, app_name, ref, created_at, context, duration_sec, rate_per_min
+     FROM wallet_transactions WHERE id=?1 AND uid=?2`,
+  ).bind(id, ctx.uid).first<any>();
+  if (tx) {
+    const amount = Number(tx.amount ?? 0);
+    const label = labelFor(String(tx.type || ""), tx.app_name ? String(tx.app_name) : null, amount);
+    const title = String(tx.context || "").trim() || label;
+    const lines = [{ label: title, amount: Math.abs(amount) }];
+    // Metered charges (calls): show the duration × rate math on the receipt.
+    if (tx.duration_sec && tx.rate_per_min) {
+      const m = Math.floor(Number(tx.duration_sec) / 60);
+      const s = String(Math.round(Number(tx.duration_sec) % 60)).padStart(2, "0");
+      lines.push({ label: `Metered: ${m}:${s} at ${Number(tx.rate_per_min)} tokens/min`, amount: 0 });
+    }
+    const ok = await sendReceipt(env, ctx.uid, tx.type === "topup" ? "topup" : "purchase", {
+      orderId: String(tx.ref || tx.id), title, lines, total: Math.abs(amount), date: Number(tx.created_at),
+    });
+    return json(ok ? { sent: true } : { sent: false, error: "no email on file or email disabled" }, ok ? 200 : 502);
+  }
+
+  // Legacy fallback: double-entry-only ids (escrow/marketplace rows).
   const acct = acctUser(ctx.uid);
   const r = await env.DB_WALLET.prepare(
     "SELECT id, debit, credit, amount, type, ref, meta, created_at FROM wallet_ledger WHERE id=?1 AND (debit=?2 OR credit=?2)",
