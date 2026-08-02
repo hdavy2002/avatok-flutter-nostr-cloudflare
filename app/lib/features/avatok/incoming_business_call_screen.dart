@@ -157,6 +157,14 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
   /// glare globals) belongs to the single reducer, `applyRingTransition`, which
   /// every surface shares. Each button used to re-implement its own subset of
   /// that teardown and each one forgot something different.
+  /// [PIV-3 2026-08-02] `status` is the RING transition this dismissal
+  /// represents, and it is load-bearing — it is fed straight to
+  /// `applyRingTransition`, which marks the call terminal in the cache
+  /// `CallSession` consults when a call is accepted. The `'declined'` default
+  /// is correct for every dismissal that really does end the ring (decline,
+  /// block, spam, quick reply, voicemail) and WRONG for any that does not.
+  /// If you add a dismissal path that is not a decline, pass its real status;
+  /// pass a non-terminal one (e.g. `'accepted'`) to make the reducer a no-op.
   void _dismiss({required String reason, String status = 'declined'}) {
     // The reducer is idempotent and ordering-aware, so calling it from a local
     // tap AND from the server transition that follows is safe by design.
@@ -209,7 +217,21 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
     setState(() => _busy = true);
     Analytics.capture('business_call_incoming_accept', {'call_id': widget.callId});
     await PushService.acceptRingingCall(widget.callId); // ends the CallKit ring + opens CallScreen
-    _dismiss(reason: 'accept');
+    // [PIV-3 2026-08-02] MUST pass a non-terminal status. Accepting is the one
+    // dismissal here that is NOT a ring-ending transition, and the `status`
+    // default is `'declined'` — so this line used to run
+    // `applyRingTransition(callId, 'declined')`, whose FIRST cleanup step is
+    // `_noteTerminalCall(callId)`. That cache is exactly what
+    // `CallSession.start()` reads back on the accepted side
+    // (`PushService.wasCallTerminated` -> `_endPreAcceptCancelled`) to honour a
+    // cancel that landed before it could subscribe. So accepting could plant
+    // the very marker that tells the new session the call was already dead, and
+    // kill the call the user just answered — a race decided by whether
+    // CallSession subscribed before or after this line.
+    // `applyRingTransition` early-returns on a non-terminal status, so this is
+    // a deliberate no-op: `acceptRingingCall` above already ended the native
+    // ring, and the accept path must not touch the terminal cache at all.
+    _dismiss(reason: 'accept', status: 'accepted');
   }
 
   Future<void> _decline() async {
