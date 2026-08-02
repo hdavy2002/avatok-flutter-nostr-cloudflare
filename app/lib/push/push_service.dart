@@ -39,6 +39,7 @@ import '../features/avatok/contacts.dart' show ContactsStore;
 import '../features/avatok/incoming_business_call_screen.dart';
 import '../identity/identity.dart' show AccountScope; // [AVANOTIF-VM-3] name-cache account namespacing
 import '../sync/sync_hub.dart';
+import 'call_ttl_gate.dart';
 
 /// Global key so we can navigate to the call screen when a call is accepted.
 final navigatorKey = GlobalKey<NavigatorState>();
@@ -596,6 +597,17 @@ class _RingTransition {
 
 final Map<String, _RingTransition> _ringApplied = <String, _RingTransition>{};
 
+/// Android OEMs do not agree on which CallKit event is emitted by a
+/// programmatic `endCall`. Some Motorola builds report `actionCallDecline`, the
+/// same event used for a human tapping Decline. Without this guard, ending the
+/// native ring for `decline_ava` immediately fed `_declineRouting` and raced a
+/// real `decline_call` against `handoff_to_receptionist`.
+final CallTtlGate _programmaticCallkitEnd =
+    CallTtlGate(ttlMs: _kTerminalCallTtlMs);
+
+bool _wasProgrammaticCallkitEnd(String callId) =>
+    _programmaticCallkitEnd.contains(callId);
+
 /// The authoritative ring-state reducer.
 ///
 /// Call this for EVERY event that ends a callee's ring, from any source:
@@ -650,6 +662,9 @@ Future<void> applyRingTransition(
   // Every step is independently guarded — one failing surface must never
   // prevent the others from being torn down. That was another way the old
   // duplicated code left a screen up: an exception halfway through.
+  // Set this BEFORE crossing the platform bridge. On affected Motorola builds
+  // the synthetic actionCallDecline can arrive synchronously from endCall().
+  _programmaticCallkitEnd.mark(callId);
   try { await FlutterCallkitIncoming.endCall(callId); } catch (_) {/* already ended */}
   try { await _dismissBrandedFsi(); } catch (_) {/* no FSI posted */}
   try { await _stopRingtoneFallback(callId); } catch (_) {/* not playing */}
@@ -1242,11 +1257,22 @@ String callerAvatarFromPayload(Map<String, dynamic> d) =>
 /// FSI payload. Retries briefly: on a COLD start (the FSI just launched us over
 /// the lock screen) the root navigator may not be mounted the instant the
 /// payload is delivered. Bounded so it never spins forever.
+final CallTtlGate _brandedRouteGate =
+    CallTtlGate(ttlMs: _kTerminalCallTtlMs);
+
 Future<void> _routeToBrandedIncoming(Map<String, dynamic> d) async {
   final callId = (d['callId'] ?? '').toString();
   if (callId.isEmpty) return;
   // Don't surface a screen for a call the caller already cancelled (WS5 guard).
   if (PushService.wasCallTerminated(callId)) return;
+  // Warm/cold native taps plus FCM/WS delivery can converge while the navigator
+  // is mounting. Reserve before awaiting so one callId opens exactly one route.
+  if (!_brandedRouteGate.tryReserve(callId)) {
+    Analytics.capture('call_branded_fsi_duplicate_suppressed', {
+      'call_id': callId,
+    });
+    return;
+  }
   for (var i = 0; i < 40; i++) { // ~10s max (40 × 250ms)
     final nav = navigatorKey.currentState;
     if (nav != null) {
@@ -1271,6 +1297,7 @@ Future<void> _routeToBrandedIncoming(Map<String, dynamic> d) async {
     }
     await Future<void>.delayed(const Duration(milliseconds: 250));
   }
+  _brandedRouteGate.release(callId);
   Analytics.capture('call_branded_fsi_route_timeout', {'call_id': callId});
 }
 
@@ -1683,18 +1710,8 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
       (RemoteConfig.businessCallUx && (d['via'] ?? '') == 'dialpad');
   if (brandedOn && !PushService.wasCallTerminated(ringCallId)) {
     if (lifecycle == 'resumed') {
-      // Foregrounded → push the branded screen straight onto the live navigator,
-      // on top of the (user-silent) CallKit registration.
-      navigatorKey.currentState?.push(MaterialPageRoute(
-        builder: (_) => IncomingBusinessCallScreen(
-          callId: (d['callId'] ?? '').toString(),
-          fromUid: (d['fromPub'] ?? '').toString(),
-          fromName: (d['fromName'] ?? 'AvaTOK').toString(),
-          avatarUrl: callerAvatarFromPayload(d),
-          avatarVersion: (d['callerAvatarVersion'] ?? '').toString(),
-          video: d['kind'] == 'video',
-        ),
-      ));
+      // Use the same reservation gate as native taps and cold-start payloads.
+      unawaited(_routeToBrandedIncoming(d));
     }
   }
 }
@@ -2688,6 +2705,20 @@ class PushService {
         case Event.actionCallDecline:
           final extra = event.body['extra'];
           if (extra is Map) {
+            final declineId =
+                (extra['callId'] ?? event.body['id'] ?? '').toString();
+            if (_wasProgrammaticCallkitEnd(declineId)) {
+              // A reducer-owned native teardown is not a second user intent.
+              // Never let an OEM's synthetic decline overwrite a receptionist,
+              // voicemail, or agent handoff already in flight.
+              Analytics.capture('call_programmatic_decline_suppressed', {
+                'call_id': declineId,
+              });
+              unawaited(_stopRingtoneFallback(declineId));
+              gIncomingRingingFrom = null;
+              gIncomingRingingCallId = null;
+              break;
+            }
             // v2 Mode C: if the owner enabled "let Ava take calls I decline",
             // signal 'decline_ava' so the caller hands off to the receptionist
             // instead of getting a plain decline. Else signal a normal decline.

@@ -115,7 +115,9 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
         'cancel', 'ended', 'missed', 'no-answer', 'bye', 'hangup',
         'decline', 'declined', 'decline_ava', 'decline_agent',
       };
-      if (terminal.contains(e.status)) _dismiss(reason: 'status_${e.status}');
+      if (terminal.contains(e.status)) {
+        _dismiss(reason: 'status_${e.status}', status: e.status);
+      }
     });
     // [PIV-2 2026-08-02] Close when THIS DEVICE's ring ends, whatever ended it.
     //
@@ -130,7 +132,10 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
     // Decline, this screen's own Decline, and a ring timeout all land here.
     _ringSub = ringEndedBus.stream.listen((e) {
       if (e.callId != widget.callId) return;
-      _dismiss(reason: 'ring_ended_${e.status}');
+      // Preserve the reducer's authoritative outcome. Falling back to this
+      // method's `declined` default turned a receptionist handoff into a second
+      // local decline when duplicate ring routes were briefly stacked.
+      _dismiss(reason: 'ring_ended_${e.status}', status: e.status);
     });
   }
 
@@ -166,11 +171,15 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
   /// If you add a dismissal path that is not a decline, pass its real status;
   /// pass a non-terminal one (e.g. `'accepted'`) to make the reducer a no-op.
   void _dismiss({required String reason, String status = 'declined'}) {
+    // Claim this route before starting asynchronous teardown. The reducer
+    // broadcasts `ringEndedBus`; on fast devices that broadcast can re-enter
+    // this method before Navigator has disposed the route. Re-entering used to
+    // run a second, default `declined` transition during a receptionist handoff.
+    if (!mounted || _dismissed) return;
+    _dismissed = true;
     // The reducer is idempotent and ordering-aware, so calling it from a local
     // tap AND from the server transition that follows is safe by design.
     unawaited(applyRingTransition(widget.callId, status, source: 'incoming_screen'));
-    if (!mounted || _dismissed) return;
-    _dismissed = true;
     Analytics.capture('business_call_screen_dismissed', {
       'call_id': widget.callId,
       'reason': reason,
