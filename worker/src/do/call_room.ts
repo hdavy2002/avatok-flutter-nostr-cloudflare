@@ -49,6 +49,9 @@ import {
   type CallSession, type Command, type CommandName,
 } from "../lib/call_state";
 import { CALL_RING_LIFETIME_MS } from "../lib/call_delivery_contract";
+import {
+  GLARE_WINDOW_MS, resolveGlarePlacement, type PendingGlareInvite,
+} from "../lib/call_glare";
 
 // [ONEBRAIN-B2] Human-readable call length for a brain summary (e.g. "4m12s").
 function fmtCallDuration(sec: number): string {
@@ -346,6 +349,15 @@ export class CallRoom {
       if (r.state.session_state === "completed" && !this.terminalStatus) {
         await this.markTerminal(r.state.disposition);
       }
+      if (r.state.session_state === "completed") {
+        // [CALL-GLARE-LIFECYCLE-1] A finished call cannot remain eligible for
+        // reciprocal-dial folding. The placement path also probes the durable
+        // terminal marker, so cleanup failure and pre-deploy calls stay safe.
+        // Do not await a cross-DO cleanup while the pair DO may be probing this
+        // call's terminal state. waitUntil avoids an A→B→A dependency cycle;
+        // the already-persisted terminal marker is the synchronous backstop.
+        this.state.waitUntil(this.clearPendingGlareInvite(r.state, callId));
+      }
       fan = this.broadcastTransition(r.state, r.events, callId);
       if (r.state.session_state === "connected" || r.state.session_state === "handoff" || r.state.session_state === "completed") {
         this.ringDeadline = null;
@@ -384,6 +396,22 @@ export class CallRoom {
       }
     }
     return result;
+  }
+
+  /** Remove this exact call from its pair-keyed glare index. The pair DO checks
+   *  the call id before deleting, so delayed cleanup cannot erase a newer dial. */
+  private async clearPendingGlareInvite(s: CallSession, callId: string): Promise<void> {
+    if (!callId || !s.caller_uid || !s.callee_uid) return;
+    const lo = s.caller_uid < s.callee_uid ? s.caller_uid : s.callee_uid;
+    const hi = s.caller_uid < s.callee_uid ? s.callee_uid : s.caller_uid;
+    try {
+      const pairStub = this.env.CALL_ROOMS.get(this.env.CALL_ROOMS.idFromName(`glare:${lo}__${hi}`));
+      await pairStub.fetch("https://call/glare-clear", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ placer: s.caller_uid, callId }),
+      });
+    } catch { /* durable terminal-state probe remains the correctness backstop */ }
   }
 
   /** [CALL-AUTHZ-1] Stamp the participants once, at admission, from the
@@ -694,6 +722,23 @@ export class CallRoom {
       // the lexicographically SMALLER callId wins as "the call", and BOTH placers are
       // told to auto-accept it instead of opening a second room. DO storage is
       // strongly consistent (no ordered state in KV), and this holds no socket.
+      // [CALL-GLARE-LIFECYCLE-1] Terminal call cleanup reaches the same pair DO
+      // that owns the pending invite. Compare call ids before deleting so a
+      // delayed completion can never erase a newer call by the same placer.
+      if (req.method === "POST" && stateUrl.pathname.endsWith("/glare-clear")) {
+        let body: Record<string, unknown> = {};
+        try { body = (await req.json()) as Record<string, unknown>; } catch { /* empty */ }
+        const placer = typeof body.placer === "string" ? body.placer : "";
+        const callId = typeof body.callId === "string" ? body.callId : "";
+        if (!placer || !callId) {
+          return Response.json({ error: "placer and callId required" }, { status: 400 });
+        }
+        const key = `glare_invite:${placer}`;
+        const current = await this.state.storage.get<PendingGlareInvite>(key);
+        if (current?.callId !== callId) return Response.json({ ok: true, cleared: false });
+        await this.state.storage.delete(key);
+        return Response.json({ ok: true, cleared: true });
+      }
       if (req.method === "POST" && stateUrl.pathname.endsWith("/glare-place")) {
         let body: Record<string, unknown> = {};
         try { body = (await req.json()) as Record<string, unknown>; } catch { /* empty */ }
@@ -703,29 +748,59 @@ export class CallRoom {
         if (!placer || !peer || !callId) {
           return Response.json({ error: "placer, peer, callId required" }, { status: 400 });
         }
-        const GLARE_MS = 30_000;
         const now = Date.now();
         // Reciprocal = a pending invite recorded by the PEER (peer→placer) still
         // inside the window. Stored per-direction keyed by the placer uid.
-        const recip = await this.state.storage.get<{ callId: string; ts: number }>(`glare_invite:${peer}`);
-        if (recip && recip.callId && recip.callId !== callId && now - recip.ts < GLARE_MS) {
+        const reciprocalKey = `glare_invite:${peer}`;
+        const recip = await this.state.storage.get<PendingGlareInvite>(reciprocalKey);
+        let reciprocalTerminal = false;
+        if (recip?.callId && recip.callId !== callId && now - recip.ts < GLARE_WINDOW_MS) {
+          // Time proximity is not enough: a declined/cancelled/timed-out call is
+          // not simultaneous with a callback. Read the candidate call's strongly
+          // consistent terminal marker before folding. Fail open only on a DO
+          // probe failure, preserving genuine simultaneous-dial behaviour.
+          try {
+            const callStub = this.env.CALL_ROOMS.get(this.env.CALL_ROOMS.idFromName(recip.callId));
+            const sr = await callStub.fetch("https://call/state");
+            const state = await sr.json() as { ended?: boolean; terminal_status?: string | null };
+            reciprocalTerminal = state.ended === true || Boolean(state.terminal_status);
+          } catch { reciprocalTerminal = false; }
+        }
+        const resolution = resolveGlarePlacement({
+          callId, reciprocal: recip, now, reciprocalTerminal,
+        });
+        if (resolution.kind === "merge") {
           // Mutual dial detected. Deterministic winner = smaller callId (both sides
           // compute the SAME verdict from the same two ids). Clear both pendings so a
           // later unrelated dial isn't mis-folded, and tell THIS placer to auto-accept
           // the winner (their own client CALL-GLARE-1 stays as the fallback).
-          const winner = callId < recip.callId ? callId : recip.callId;
+          const winner = resolution.winnerCallId;
           try { await this.state.storage.delete(`glare_invite:${placer}`); } catch { /* best-effort */ }
           try { await this.state.storage.delete(`glare_invite:${peer}`); } catch { /* best-effort */ }
           try {
             void this.env.Q_ANALYTICS.send({
               event: "call_glare_autoconnect", uid: placer, ts: now,
               props: {
-                winner_call_id: winner, this_call_id: callId, peer_call_id: recip.callId,
+                winner_call_id: winner, this_call_id: callId,
+                peer_call_id: resolution.reciprocalCallId,
                 app_name: "avatok", service_name: "avatok-api", worker: true,
               },
             });
           } catch { /* best-effort telemetry */ }
           return Response.json({ glare: true, join_call_id: winner });
+        }
+        if (resolution.pruneReciprocal) {
+          try { await this.state.storage.delete(reciprocalKey); } catch { /* best-effort */ }
+          try {
+            void this.env.Q_ANALYTICS.send({
+              event: "call_glare_stale_pruned", uid: placer, ts: now,
+              props: {
+                reason: resolution.reason, this_call_id: callId,
+                peer_call_id: recip?.callId ?? null,
+                app_name: "avatok", service_name: "avatok-api", worker: true,
+              },
+            });
+          } catch { /* telemetry never blocks call placement */ }
         }
         // No reciprocal yet — record this placer's pending invite for the window.
         try { await this.state.storage.put(`glare_invite:${placer}`, { callId, ts: now }); } catch { /* best-effort */ }
