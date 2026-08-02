@@ -33,6 +33,14 @@ jobs:
       - name: Type-check worker
         working-directory: worker
         run: npm run typecheck
+      # [WALLET-FREEZE-1] Runs on every PR, even when the change is unrelated to
+      # AvaWallet. This prevents a future transaction type or layout edit from
+      # silently hiding money/history again.
+      - name: AvaWallet regression contract
+        run: |
+          node scripts/check-wallet-contract.mjs
+          cd worker
+          npx vitest run test/wallet_statement_policy.test.ts
 
   consumers:
     runs-on: ubuntu-latest

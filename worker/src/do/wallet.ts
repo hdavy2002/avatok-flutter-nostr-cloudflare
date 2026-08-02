@@ -651,7 +651,8 @@ export class WalletDO {
     const available = Math.max(0, headroom - (outstandingAll + amount));
     const result = { ok: true, ref, reservedTotal: row.reserved, available, allow_free: allowFree };
     this.recordOp(b.op_id, result);
-    await this.audit(uid, { type: "campaign_reserve", amount: 0, balance_after: cur.balance, app_name: b.app_name || "campaign", ref }, b);
+    // Reservations do not move money. Keep them in DO-local `ops`/`resv`, not
+    // the user-facing wallet_transactions statement as noisy -0 rows.
     // [AI-WALLET-SPENDABLE-2] reserve() previously scheduled NO alarm at all —
     // schedule one now for this reservation's own expiry (created OR extended),
     // preserving any earlier hold/outbox alarm already pending.
@@ -745,9 +746,8 @@ export class WalletDO {
     const available = Math.max(0, cur.balance - this.outstandingReservations());
     const result = { ok: true, ref, refunded, available };
     this.recordOp(b.op_id, result);
-    if (refunded > 0) {
-      await this.audit(uid, { type: "campaign_release", amount: 0, balance_after: cur.balance, app_name: b.app_name || "campaign", ref }, b);
-    }
+    // Releasing unused headroom does not move money, so it is intentionally not
+    // written to the financial statement.
     this.broadcast();
     return json(result);
   }
@@ -809,7 +809,8 @@ export class WalletDO {
         charged_cost_micro_usd: actualCostMicroUsd, unrecovered_micro_usd: 0,
       };
       this.recordOp(b.op_id, result);
-      await this.audit(uid, { type: "ai_settle", amount: 0, balance_after: this.bal().balance, app_name: b.app_name || "ai_billing", ref, beta: true }, b);
+      // Beta-free settlement changes no balance. ai_job_completed telemetry and
+      // the DO op record retain the operational trace without a -0 statement row.
       this.broadcast();
       return json(result);
     }

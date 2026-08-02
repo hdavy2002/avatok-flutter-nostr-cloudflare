@@ -27,6 +27,37 @@ List<BoxShadow> _hardShadow(Offset offset) => [
       BoxShadow(color: Colors.black, offset: offset, blurRadius: 0),
     ];
 
+/// The wallet's Money In / Money Out pair.
+///
+/// This boundary is intentionally reusable and regression-tested inside a
+/// scrolling viewport. A plain [Row] with `CrossAxisAlignment.stretch` receives
+/// unbounded height from a [ListView] and can stop every later wallet section
+/// from painting in release builds.
+class WalletMoneyTilesRow extends StatelessWidget {
+  final Widget moneyIn;
+  final Widget moneyOut;
+
+  const WalletMoneyTilesRow({
+    super.key,
+    required this.moneyIn,
+    required this.moneyOut,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(child: moneyIn),
+          const SizedBox(width: 12),
+          Expanded(child: moneyOut),
+        ],
+      ),
+    );
+  }
+}
+
 // =============================================================================
 // 1. WalletCard
 // =============================================================================

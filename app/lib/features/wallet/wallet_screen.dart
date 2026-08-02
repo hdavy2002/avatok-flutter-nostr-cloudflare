@@ -147,6 +147,7 @@ class _WalletScreenState extends State<WalletScreen> {
   String _query = '';
   final _searchCtrl = TextEditingController();
   final _scroll = ScrollController();
+  final _historyPaintKey = GlobalKey();
 
   // [WALLET-REDESIGN-1] Inline day picker state (rendered under the search row).
   DateTime _calMonth = DateTime.now();
@@ -345,21 +346,23 @@ class _WalletScreenState extends State<WalletScreen> {
         'has_ledger': _entries.isNotEmpty,
         'filtered': _filtered,
       });
-      // DIAGNOSTIC: a positive PAID balance with an EMPTY (unfiltered) ledger
-      // means the user has coins but no transaction history — the exact "no log
-      // below my recent transaction" symptom. This usually means the balance was
+      // DIAGNOSTIC: a positive TRACEABLE balance (paid + persistent bonus) with
+      // an EMPTY unfiltered ledger means the user has coins but no history.
+      // This is the exact "no log below my recent transaction" symptom and
+      // usually means the balance was
       // credited outside the queue→wallet_ledger path (seed/admin adjust/
-      // DO-only), or the top-up's ledger row never landed. Keyed to the PAID
-      // balance (not spendable) so the daily free grant — which legitimately has
-      // no statement row — doesn't fire this for every user. email + phone ride
+      // DO-only), or the top-up's ledger row never landed. Daily free coins are
+      // deliberately excluded because they legitimately have no statement row.
+      // email + phone ride
       // every event (see Analytics._base), so support can pull THIS user by
       // email/phone in PostHog and reconcile the missing ledger row.
-      final paidCoins = ((b['balance'] as num?) ?? 0).toInt();
-      if (paidCoins > 0 && _entries.isEmpty && !_filtered && !_loading) {
+      final traceableCoins = ((b['balance'] as num?) ?? 0).toInt() +
+          ((b['bonus'] as num?) ?? 0).toInt();
+      if (traceableCoins > 0 && _entries.isEmpty && !_filtered && !_loading) {
         Analytics.capture('wallet_balance_without_ledger', {
-          'balance_coins': paidCoins,
+          'balance_coins': traceableCoins,
           'held_coins': _held,
-          'balance_usd_cents': (paidCoins * 100 / kCoinsPerUsd).round(),
+          'balance_usd_cents': (traceableCoins * 100 / kCoinsPerUsd).round(),
         });
       }
     } else if (mounted) {
@@ -368,6 +371,24 @@ class _WalletScreenState extends State<WalletScreen> {
   }
 
   Future<void> _loadMore() => _fetchPage();
+
+  /// Confirms the history anchor actually received layout after rows loaded.
+  /// This catches the "API returned rows but an earlier widget killed paint"
+  /// failure class that ordinary load-success telemetry cannot see.
+  void _reportLedgerPaint(int rowsLoaded) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final render = _historyPaintKey.currentContext?.findRenderObject();
+      final painted = render is RenderBox && render.attached && render.hasSize &&
+          render.size.width > 0 && render.size.height > 0;
+      Analytics.capture('wallet_list_painted', {
+        'rows_loaded': rowsLoaded,
+        'rows_painted': painted ? rowsLoaded : 0,
+        'wallet_body_painted': painted,
+        'filtered': _filtered,
+      });
+    });
+  }
 
   Future<void> _fetchPage({bool reset = false}) async {
     if (_loading || (_exhausted && !reset)) return;
@@ -409,6 +430,7 @@ class _WalletScreenState extends State<WalletScreen> {
             message: '$ledgerErr', screen: 'wallet_main', action: 'ledger_refresh',
           );
         }
+        _reportLedgerPaint(_entries.length);
       } else {
         Analytics.capture('wallet_ledger_more', {
           'added': list.length, 'total': _entries.length, 'exhausted': _exhausted,
@@ -439,8 +461,8 @@ class _WalletScreenState extends State<WalletScreen> {
     final lo = DateTime(now.year, now.month).millisecondsSinceEpoch;
     var inn = 0, out = 0;
     for (final e in _entries) {
-      if (((e['created_at'] as num?) ?? 0) < lo) continue;
-      final a = ((e['amount'] as num?) ?? 0).toInt();
+      if ((((e['ts'] ?? e['created_at']) as num?) ?? 0) < lo) continue;
+      final a = (((e['tokens'] ?? e['amount']) as num?) ?? 0).toInt();
       if (a >= 0) { inn += a; } else { out += -a; }
     }
     return (inn, out);
@@ -980,11 +1002,11 @@ class _WalletScreenState extends State<WalletScreen> {
             const SizedBox(height: 12),
 
             // 3 — money in / money out
-            Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Expanded(child: _moneyTile(true, earned)),
-              const SizedBox(width: 12),
-              Expanded(child: _moneyTile(false, spent)),
-            ]),
+            WalletMoneyTilesRow(
+              key: _historyPaintKey,
+              moneyIn: _moneyTile(true, earned),
+              moneyOut: _moneyTile(false, spent),
+            ),
 
             // 4 — daily spend
             if (bars.isNotEmpty) ...[

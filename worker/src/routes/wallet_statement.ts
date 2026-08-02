@@ -121,10 +121,13 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 /** [WALLET-REDESIGN-1] Category bucket for a feature/app key (never null). */
-function categoryFor(app: string | null | undefined): string {
+export function categoryFor(app: string | null | undefined): string {
   const key = (app || "").trim();
   const mapped = FEATURE_CATEGORIES[key];
   if (mapped) return mapped;
+  // The metered AI path prefixes the capability with `ai_` (for example
+  // ai_image_generate). These are Ava AI costs, never marketplace activity.
+  if (key.startsWith("ai_")) return "ava";
   return key.startsWith("ava_") ? "agent" : "market";
 }
 
@@ -163,7 +166,7 @@ function titleize(key: string): string {
 }
 
 /** Direction bucket for a wallet_transactions row (type first, sign fallback). */
-function directionFor(type: string, amount: number): string {
+export function directionFor(type: string, amount: number): string {
   switch (type) {
     case "spend": return "spend";
     case "earn": case "donation": case "gift": case "hold_release": return "earn";
@@ -171,12 +174,14 @@ function directionFor(type: string, amount: number): string {
     case "topup": return "topup";
     case "payout": return "payout";
     case "refund": return "refund";
-    default: return amount < 0 ? "spend" : "other";
+    // A new writer must not become invisible just because its type has not yet
+    // been added here. The signed amount remains the money-flow authority.
+    default: return amount < 0 ? "spend" : amount > 0 ? "earn" : "other";
   }
 }
 
 /** Human label for a row: direction-specific first, then the app/feature map. */
-function labelFor(type: string, app: string | null, amount: number): string {
+export function labelFor(type: string, app: string | null, amount: number): string {
   const dir = directionFor(type, amount);
   if (dir === "topup") return "Top-up";
   if (dir === "payout") return "Payout";
@@ -186,6 +191,18 @@ function labelFor(type: string, app: string | null, amount: number): string {
   if (!key) return dir === "earn" ? "Marketplace sale" : "Other";
   const mapped = FEATURE_LABELS[key];
   if (mapped) return dir === "earn" && key === "avaolx" ? "Marketplace sale" : mapped;
+  if (key.startsWith("ai_")) {
+    const capability = key.slice(3);
+    const aiLabels: Record<string, string> = {
+      image_generate: "AI image generation",
+      media_image_generate: "AI image generation",
+      ava_thread_tools: "Ava thread tools",
+      chat_thread: "Ava thread chat",
+      tts: "AI voice generation",
+      stt: "AI transcription",
+    };
+    return aiLabels[capability] || `AI ${titleize(capability)}`;
+  }
   return titleize(key);
 }
 
@@ -194,24 +211,20 @@ function decodeCursor(c: string | null): { t: number; id: string } | null {
   if (!c) return null;
   try {
     const [t, ...rest] = atob(c).split(":");
-    return { t: Number(t), id: rest.join(":") };
+    const ts = Number(t);
+    const id = rest.join(":");
+    return Number.isFinite(ts) && ts > 0 && id ? { t: ts, id } : null;
   } catch { return null; }
 }
 const encodeCursor = (t: number, id: string) => btoa(`${t}:${id}`);
 
 // Map a requested direction to the wallet_transactions types it covers.
 const DIRECTION_TYPES: Record<string, string[]> = {
-  spend: ["spend"],
-  earn: ["earn", "donation", "gift", "hold_release", "promo"],
+  spend: ["spend", "ai_settle", "campaign_call"],
+  earn: ["earn", "donation", "gift", "hold_release", "promo", "adjustment"],
   topup: ["topup"],
   payout: ["payout"],
   refund: ["refund"],
-  // [WALLET-REDESIGN-1] Coarse money-in / money-out buckets backing the wallet's
-  // All · In · Out chips. Without these the client had to filter "In" locally,
-  // which breaks keyset pagination (a page of pure spend renders as an empty
-  // list until more pages load). Server-side filtering keeps every page full.
-  in: ["earn", "donation", "gift", "hold_release", "promo", "topup", "refund"],
-  out: ["spend", "payout"],
 };
 
 // [WALLET-REDESIGN-1] Money formatting for top-up rows. topup_records stores the
@@ -256,19 +269,33 @@ export async function walletStatement(req: Request, env: Env): Promise<Response>
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const u = new URL(req.url);
-  const limit = Math.min(200, Math.max(1, Number(u.searchParams.get("limit") || 50)));
+  const requestedLimit = Number(u.searchParams.get("limit") || 50);
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.min(200, Math.max(1, Math.trunc(requestedLimit)))
+    : 50;
   const cur = decodeCursor(u.searchParams.get("cursor"));
   const direction = (u.searchParams.get("direction") || "").trim();
   const from = Number(u.searchParams.get("from") || 0);
   const to = Number(u.searchParams.get("to") || 0);
   const q = (u.searchParams.get("q") || "").trim();
 
-  const where: string[] = ["uid=?1"];
+  // `amount != 0` keeps reservation/release bookkeeping out of the user's
+  // financial statement. It also guarantees every visible row changes money.
+  const where: string[] = ["uid=?1", "amount != 0"];
   const binds: unknown[] = [ctx.uid];
   let i = 2;
   if (cur) { where.push(`(created_at < ?${i} OR (created_at = ?${i} AND id < ?${i + 1}))`); binds.push(cur.t, cur.id); i += 2; }
   const dirTypes = DIRECTION_TYPES[direction];
-  if (dirTypes) { where.push(`type IN (${dirTypes.map(() => `?${i++}`).join(",")})`); binds.push(...dirTypes); }
+  let directionFiltered = false;
+  // Money In/Out is deliberately sign-based. New transaction types therefore
+  // appear automatically instead of waiting for a hard-coded allow-list update.
+  if (direction === "in") { where.push("amount > 0"); directionFiltered = true; }
+  else if (direction === "out") { where.push("amount < 0"); directionFiltered = true; }
+  else if (dirTypes) {
+    where.push(`type IN (${dirTypes.map(() => `?${i++}`).join(",")})`);
+    binds.push(...dirTypes);
+    directionFiltered = true;
+  }
   if (from > 0) { where.push(`created_at >= ?${i++}`); binds.push(from); }
   if (to > 0) { where.push(`created_at <= ?${i++}`); binds.push(to); }
   // [WALLET-TXMETA-1] Search now also covers the human context / counterparty
@@ -326,7 +353,7 @@ export async function walletStatement(req: Request, env: Env): Promise<Response>
     if (r.balance_after != null) out.balance_after = Number(r.balance_after);
     return out;
   });
-  track(env, ctx.uid, "wallet_statement_viewed", "avawallet", { n: entries.length, direction: direction || "all", filtered: !!(dirTypes || from || to || q) });
+  track(env, ctx.uid, "wallet_statement_viewed", "avawallet", { n: entries.length, direction: direction || "all", filtered: !!(directionFiltered || from || to || q) });
   return json({
     entries,
     cursor: rows.length > limit && last ? encodeCursor(Number(last.created_at), String(last.id)) : null,
@@ -357,7 +384,7 @@ export async function walletStatementExport(req: Request, env: Env): Promise<Res
   const to = Number(u.searchParams.get("to") || 0);
   const tzOffsetMin = Math.max(-840, Math.min(840, Math.trunc(Number(u.searchParams.get("tz_offset_min") || 0)) || 0));
 
-  const where: string[] = ["uid=?1"];
+  const where: string[] = ["uid=?1", "amount != 0"];
   const binds: unknown[] = [ctx.uid];
   let i = 2;
   if (from > 0) { where.push(`created_at >= ?${i++}`); binds.push(from); }
@@ -498,21 +525,17 @@ export async function walletSummary(req: Request, env: Env): Promise<Response> {
   const free = Number(bal.body?.free ?? 0);
 
   const db = env.DB_WALLET.withSession("first-unconstrained");
-  // [WALLET-UX-1] 'promo' included: the statement feed already buckets promo
-  // grants (welcome bonus) under direction 'earn' (DIRECTION_TYPES), so the
-  // summary's earn aggregates must count them too — otherwise a user whose only
-  // activity is the welcome bonus sees empty cockpit panels above a statement
-  // row the same screen labels "Welcome bonus".
-  const earnTypes = "('earn','donation','gift','hold_release','promo')";
+  // Signed amount is the canonical money-flow contract. This makes future
+  // wallet transaction types visible in totals/charts without another list.
   const spends = await db.prepare(
-    `SELECT COALESCE(app_name,'') AS app, COALESCE(SUM(-amount),0) AS tokens, COUNT(*) AS n
-     FROM wallet_transactions WHERE uid=?1 AND created_at>=?2 AND type='spend' AND amount<0
-     GROUP BY COALESCE(app_name,'') ORDER BY tokens DESC LIMIT 500`,
+    `SELECT type, COALESCE(app_name,'') AS app, COALESCE(SUM(-amount),0) AS tokens, COUNT(*) AS n
+     FROM wallet_transactions WHERE uid=?1 AND created_at>=?2 AND amount<0
+     GROUP BY type, COALESCE(app_name,'') ORDER BY tokens DESC LIMIT 500`,
   ).bind(ctx.uid, since).all();
   const earns = await db.prepare(
-    `SELECT COALESCE(app_name,'') AS app, COALESCE(SUM(amount),0) AS tokens, COUNT(*) AS n
-     FROM wallet_transactions WHERE uid=?1 AND created_at>=?2 AND type IN ${earnTypes} AND amount>0
-     GROUP BY COALESCE(app_name,'') ORDER BY tokens DESC LIMIT 40`,
+    `SELECT type, COALESCE(app_name,'') AS app, COALESCE(SUM(amount),0) AS tokens, COUNT(*) AS n
+     FROM wallet_transactions WHERE uid=?1 AND created_at>=?2 AND amount>0
+     GROUP BY type, COALESCE(app_name,'') ORDER BY tokens DESC LIMIT 500`,
   ).bind(ctx.uid, since).all();
   const topups = await db.prepare(
     "SELECT COALESCE(SUM(amount),0) AS t FROM wallet_transactions WHERE uid=?1 AND created_at>=?2 AND type='topup' AND amount>0",
@@ -526,7 +549,7 @@ export async function walletSummary(req: Request, env: Env): Promise<Response> {
   // still emits at most the top 40 rows it always did.
   const byFeatureAll = ((spends.results ?? []) as any[]).map((r) => ({
     feature_key: String(r.app || "") || null,
-    label: labelFor("spend", String(r.app || "") || null, -1),
+    label: labelFor(String(r.type || "spend"), String(r.app || "") || null, -1),
     tokens: Number(r.tokens),
     count: Number(r.n),
   }));
@@ -546,15 +569,16 @@ export async function walletSummary(req: Request, env: Env): Promise<Response> {
     .map(([key, v]) => ({ key, label: CATEGORY_LABELS[key] || titleize(key), tokens: v.tokens, count: v.count }))
     .sort((a, b) => b.tokens - a.tokens);
 
-  const earnSources = ((earns.results ?? []) as any[]).map((r) => ({
+  const earnSourcesAll = ((earns.results ?? []) as any[]).map((r) => ({
     feature_key: String(r.app || "") || null,
-    label: labelFor("earn", String(r.app || "") || null, 1),
+    label: labelFor(String(r.type || "earn"), String(r.app || "") || null, 1),
     tokens: Number(r.tokens),
     count: Number(r.n),
   }));
+  const earnSources = earnSourcesAll.slice(0, 40);
 
-  const spentTotal = byFeature.reduce((s, f) => s + f.tokens, 0);
-  const earnedTotal = earnSources.reduce((s, f) => s + f.tokens, 0);
+  const spentTotal = byFeatureAll.reduce((s, f) => s + f.tokens, 0);
+  const earnedTotal = earnSourcesAll.reduce((s, f) => s + f.tokens, 0);
   const burnPerDay = Math.round((spentTotal / days) * 100) / 100;
   const runwayDays = burnPerDay > 0 ? Math.floor(spendable / burnPerDay) : null;
 
@@ -566,7 +590,7 @@ export async function walletSummary(req: Request, env: Env): Promise<Response> {
   try {
     const rs = await db.prepare(
       `SELECT date((created_at/1000) + (?3 * 60), 'unixepoch') AS d, COALESCE(SUM(-amount),0) AS tokens
-       FROM wallet_transactions WHERE uid=?1 AND created_at>=?2 AND type='spend' AND amount<0
+       FROM wallet_transactions WHERE uid=?1 AND created_at>=?2 AND amount<0
        GROUP BY d`,
     ).bind(ctx.uid, since, tzOffsetMin).all();
     const byDay = new Map<string, number>();
