@@ -1,3 +1,19 @@
+# ── Secrets — NEVER commit (added 2026-08-02, [SEC-KEYS-1]) ────────────────
+# `keys/` holds Google service-account JSON with live `private_key` values
+# (Play billing + closed-testers accounts). They were untracked but NOT
+# ignored, so `git status` listed them as addable. This repo is worked by
+# several agents at once and `git_safe_commit.py` still supports its legacy
+# no-paths form, which runs `git add -A` — one such commit would have pushed
+# both private keys to GitHub. Untracked is not the same as safe.
+keys/
+*service-account*.json
+*-service-account.json
+gha-creds-*.json
+
+# Local tool/agent config that can carry API tokens
+.mcp.json
+.codex/
+
 # macOS
 .DS_Store
 .AppleDouble
