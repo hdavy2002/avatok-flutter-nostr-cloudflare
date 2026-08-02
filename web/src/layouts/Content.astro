@@ -84,9 +84,9 @@ const routeTone = tone ?? (
 
     <footer class="editorial-footer">
       <a class="footer-brand" href="/"><img src="/app-logo2.png" alt="" width="38" height="38" /><span>avaTOK</span></a>
-      <p>AI that remembers, helps and protects — without asking for your private number.</p>
+      <p>A modern messenger powered by Sarvam AI — a made-in-India large language model built from scratch to remember, help, and protect your everyday conversations.</p>
       <nav aria-label="Footer navigation"><a href="/about">About</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/contact">Contact</a></nav>
-      <small>© 2026 AvaGlobal International, Inc.</small>
+      <small>Made in India <span class="love-icon" role="img" aria-label="with love">♥</span><br />© 2026 <a href="https://avaglobal.ai" target="_blank" rel="noopener">Ava Global International Pvt Ltd</a>, Mumbai, India · Delaware subsidiary: AvaGlobal International, Inc.</small>
     </footer>
   </div>
 </Base>
@@ -147,13 +147,14 @@ const routeTone = tone ?? (
   .editorial-photo { margin:50px 0; }
   .editorial-photo img { width:100%; max-height:560px; object-fit:cover; border:1px solid var(--ink); border-radius:180px 22px 22px 22px; }
   .editorial-photo figcaption { margin-top:12px; font-family:var(--serif); font-size:22px; font-style:italic; }
-  .editorial-footer { position:relative; z-index:2; display:grid; grid-template-columns:1fr; justify-items:center; gap:14px; align-items:center; padding:34px max(28px,calc((100vw - 1440px)/2)); border-top:1px solid var(--ink); background:var(--paper); text-align:center; }
+  .editorial-footer { position:relative; z-index:2; display:grid; grid-template-columns:1fr; justify-items:center; gap:22px; align-items:center; padding:34px max(28px,calc((100vw - 1440px)/2)); border-top:1px solid var(--ink); background:var(--paper); text-align:center; }
   .footer-brand { display:flex; align-items:center; gap:9px; text-decoration:none; font-size:22px; font-weight:700; }
   .footer-brand img { width:38px; height:38px; border-radius:50%; }
   .editorial-footer p { max-width:480px; margin:0; font-size:16px; }
   .editorial-footer nav { display:flex; justify-content:center; gap:20px; }
   .editorial-footer nav a { font-weight:700; }
-  .editorial-footer small { font-size:14px; }
+  .editorial-footer small { font-size:14px; line-height:1.9; }
+  .editorial-footer .love-icon { display:inline-block; margin-left:5px; color:#e53935; font-size:1.8em; line-height:.6; vertical-align:-.12em; }
   @media (max-width:820px) {
     .editorial-nav { width:calc(100% - 20px); height:62px; margin-top:8px; padding:0 13px; }
     .editorial-brand { font-size:21px; }.editorial-brand img { width:38px; height:38px; }
