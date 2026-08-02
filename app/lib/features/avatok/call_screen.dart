@@ -939,24 +939,83 @@ class _CallScreenState extends State<CallScreen> {
           left: 0, right: 0, bottom: 0,
           child: Container(
             color: light ? null : Colors.black.withValues(alpha: 0.45),
-            padding: EdgeInsets.fromLTRB(16, 16, 16, 20 + (bottomInset > 0 ? bottomInset : 16)),
-            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              // Chat: minimize the call (keeps it alive as a pill/PiP) so the
-              // user lands back on the thread and can read/send messages.
-              _btn(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), onTap: _minimize),
-              const SizedBox(width: 14),
-              // phosphor_flutter 2.1.0 names this icon `numpad`. The obvious
-              // guess (the one starting "dial") does NOT exist and fails at
-              // kernel snapshot — i.e. only in CI, ~5 minutes into a release
-              // build. Verify icon names against the package, not intuition.
-              _btn(PhosphorIcons.numpad(PhosphorIconsStyle.bold), onTap: () => _showDtmfPad(s)),
-              const SizedBox(width: 14),
-              _btn(
-                  speaker
-                      ? PhosphorIcons.speakerHigh(PhosphorIconsStyle.bold)
-                      : PhosphorIcons.speakerSlash(PhosphorIconsStyle.bold),
-                  active: speaker, onTap: s.toggleSpeaker),
-              const SizedBox(width: 14),
+            // [CALL-CTRL-2ROW-1 2026-08-02] Two rows, not one.
+            //
+            // This was a single centred Row of up to SEVEN controls separated by
+            // hard-coded 14px gaps. Fixed gaps plus fixed 48–60px buttons is a
+            // fixed total width, so on a normal handset the row simply ran off
+            // the screen — the owner's screenshot shows the last control clipped
+            // by ~24px, and adding the camera-flip button (video calls) made it
+            // worse. It also read as one cramped huddle because hang-up sat
+            // inline with the toggles at almost the same size.
+            //
+            // Now: secondary toggles share the width in equal `Expanded` slots
+            // (so spacing is divided, never overflows, at any width or control
+            // count), and hang-up gets its own row underneath — bigger, centred,
+            // and impossible to hit by accident while reaching for mute.
+            // Top padding cut 16 -> 8 so the cluster sits closer to the status
+            // line above it rather than floating at the bottom of the screen.
+            padding: EdgeInsets.fromLTRB(12, 8, 12, 16 + (bottomInset > 0 ? bottomInset : 12)),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Row(children: [
+                // Chat: minimize the call (keeps it alive as a pill/PiP) so the
+                // user lands back on the thread and can read/send messages.
+                Expanded(
+                  child: Center(
+                    child: _btn(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold),
+                        onTap: _minimize),
+                  ),
+                ),
+                // phosphor_flutter 2.1.0 names this icon `numpad`. The obvious
+                // guess (the one starting "dial") does NOT exist and fails at
+                // kernel snapshot — i.e. only in CI, ~5 minutes into a release
+                // build. Verify icon names against the package, not intuition.
+                Expanded(
+                  child: Center(
+                    child: _btn(PhosphorIcons.numpad(PhosphorIconsStyle.bold),
+                        onTap: () => _showDtmfPad(s)),
+                  ),
+                ),
+                Expanded(
+                  child: Center(
+                    child: _btn(
+                        speaker
+                            ? PhosphorIcons.speakerHigh(PhosphorIconsStyle.bold)
+                            : PhosphorIcons.speakerSlash(PhosphorIconsStyle.bold),
+                        active: speaker, onTap: s.toggleSpeaker),
+                  ),
+                ),
+                Expanded(
+                  child: Center(
+                    child: _btn(
+                        video && camOn
+                            ? PhosphorIcons.videoCamera(PhosphorIconsStyle.bold)
+                            : PhosphorIcons.videoCameraSlash(PhosphorIconsStyle.bold),
+                        active: video && camOn, onTap: s.toggleCamera),
+                  ),
+                ),
+                // [CF-CALL-P2P-1] Front/back camera flip — only meaningful (and
+                // only shown) while a live camera feed is actually being sent.
+                // Equal slots mean adding it re-divides the row instead of
+                // pushing the last control off the edge.
+                if (video && camOn)
+                  Expanded(
+                    child: Center(
+                      child: _btn(PhosphorIcons.cameraRotate(PhosphorIconsStyle.bold),
+                          onTap: s.flipCamera),
+                    ),
+                  ),
+                Expanded(
+                  child: Center(
+                    child: _btn(
+                        muted
+                            ? PhosphorIcons.microphoneSlash(PhosphorIconsStyle.bold)
+                            : PhosphorIcons.microphone(PhosphorIconsStyle.bold),
+                        active: !muted, onTap: s.toggleMute),
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 16),
               ZinePressable(
                 onTap: _hangup,
                 color: AD.destructiveBg,
@@ -965,33 +1024,14 @@ class _CallScreenState extends State<CallScreen> {
                 borderWidth: 1,
                 borderColor: AD.destructiveBg,
                 child: SizedBox(
-                  width: 60, height: 60,
+                  width: 64, height: 64,
                   child: Center(
                     child: PhosphorIcon(
                         PhosphorIcons.phoneDisconnect(PhosphorIconsStyle.bold),
-                        size: 27, color: Colors.white),
+                        size: 29, color: Colors.white),
                   ),
                 ),
               ),
-              const SizedBox(width: 14),
-              _btn(
-                  video && camOn
-                      ? PhosphorIcons.videoCamera(PhosphorIconsStyle.bold)
-                      : PhosphorIcons.videoCameraSlash(PhosphorIconsStyle.bold),
-                  active: video && camOn, onTap: s.toggleCamera),
-              // [CF-CALL-P2P-1] Front/back camera flip — only meaningful (and
-              // only shown) while a live camera feed is actually being sent.
-              if (video && camOn) ...[
-                const SizedBox(width: 14),
-                _btn(PhosphorIcons.cameraRotate(PhosphorIconsStyle.bold),
-                    onTap: s.flipCamera),
-              ],
-              const SizedBox(width: 14),
-              _btn(
-                  muted
-                      ? PhosphorIcons.microphoneSlash(PhosphorIconsStyle.bold)
-                      : PhosphorIcons.microphone(PhosphorIconsStyle.bold),
-                  active: !muted, onTap: s.toggleMute),
             ]),
           ),
         ),
