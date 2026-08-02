@@ -375,6 +375,10 @@ export class CallRoom {
       callee_leg_state: r.state.callee_leg_state,
       service_leg_state: r.state.service_leg_state,
       disposition: r.state.disposition,
+      // Keep the push/API contract on the legacy wire vocabulary. Internal
+      // dispositions such as `caller_cancelled` are not understood by older
+      // clients and otherwise leave their incoming ring alive.
+      wire_status: legacyWireStatus(r.state),
       epoch: r.state.epoch,
       seq: r.state.transition_sequence,
       sockets_seen: fan.seen,

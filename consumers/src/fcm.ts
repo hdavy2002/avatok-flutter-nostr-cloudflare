@@ -657,7 +657,11 @@ export function buildPayload(msg: PushMsg, now = Date.now()): PushPayload {
     }
     // [BUSY-CARD-1] Forward the busy metadata (why + whether Ava can take a message)
     // so the CALLER shows the personalized busy card. Absent → legacy "User is busy".
-    return { highPriority: true, collapseKey: msg.callId || undefined, data: {
+    // Keep terminal status in its own FCM collapse bucket. Sharing the invite's
+    // key lets an undelivered ring replace the cancellation (or vice versa),
+    // which strands the callee's ringing UI even though Firebase accepted both
+    // messages. The app's reducer already deduplicates by call id/sequence.
+    return { highPriority: true, collapseKey: msg.callId ? `call-status:${msg.callId}` : undefined, data: {
       type: "call-status", callId: msg.callId ?? "", status: msg.status ?? "",
       ...(msg.busy_reason ? { busy_reason: String(msg.busy_reason) } : {}),
       ...(msg.receptionist_enabled != null ? { receptionist_enabled: msg.receptionist_enabled ? "1" : "0" } : {}),

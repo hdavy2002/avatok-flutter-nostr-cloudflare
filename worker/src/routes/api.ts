@@ -1103,7 +1103,7 @@ export async function callCommand(req: Request, env: Env): Promise<Response> {
     try {
       await env.Q_PUSH.send({
         kind: "call-status", to: out.peer_uid, callId: b.callId,
-        status: String(out.callee_leg_state ?? out.disposition ?? ""),
+        status: String(out.wire_status ?? out.callee_leg_state ?? out.disposition ?? ""),
         ts: Date.now(),
         ...(typeof out.seq === "number" ? { seq: out.seq } : {}),
       });

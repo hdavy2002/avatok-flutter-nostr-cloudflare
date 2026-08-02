@@ -137,6 +137,34 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
       // local decline when duplicate ring routes were briefly stacked.
       _dismiss(reason: 'ring_ended_${e.status}', status: e.status);
     });
+    // FCM is a best-effort wake-up signal, not the source of truth. Firebase
+    // can accept a cancellation while Android never invokes the foreground or
+    // background handler (as seen in prod call avatok-8ad0e989). Reconcile the
+    // authoritative CallRoom state while this route is ringing so a missed
+    // push can never strand the branded incoming screen.
+    unawaited(_reconcileDurableRing());
+  }
+
+  Future<void> _reconcileDurableRing() async {
+    const delays = <Duration>[
+      Duration(seconds: 1),
+      Duration(seconds: 2),
+      Duration(seconds: 4),
+      Duration(seconds: 6),
+      Duration(seconds: 10),
+      Duration(seconds: 15),
+      Duration(seconds: 20),
+    ];
+    for (final delay in delays) {
+      await Future<void>.delayed(delay);
+      if (!mounted || _dismissed) return;
+      final status = await PushService.fetchDurableCallStatus(widget.callId);
+      if (!mounted || _dismissed) return;
+      if (status != null) {
+        _dismiss(reason: 'durable_status_$status', status: status);
+        return;
+      }
+    }
   }
 
   /// [CALL-TERMINAL-BCAST-1 2026-08-01] The ONE way this screen closes.

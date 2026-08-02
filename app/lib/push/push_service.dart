@@ -3268,9 +3268,15 @@ class PushService {
       final j = jsonDecode(res.body);
       if (j is! Map) return null;
       final terminal = (j['terminal_status'] ?? '').toString();
-      if (terminal.isNotEmpty && _terminalCallStatus(terminal)) {
+      if (terminal.isNotEmpty) {
         _noteTerminalCall(callId); // fold into the cache for any later checker
-        return terminal;
+        // The DO persists its internal disposition (for example
+        // `caller_cancelled`), while the client reducer intentionally accepts
+        // only the small legacy wire vocabulary. Any non-empty durable marker
+        // is authoritative terminal truth; normalize unknown internal names
+        // to the generic wire status so an offline/missed FCM cannot leave the
+        // incoming screen ringing forever.
+        return _terminalCallStatus(terminal) ? terminal : 'ended';
       }
       if (j['ended'] == true) return 'ended';
       return null;
