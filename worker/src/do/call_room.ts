@@ -1009,12 +1009,42 @@ export class CallRoom {
 
         if (type === "register-token") {
           const token = typeof body.token === "string" ? body.token : "";
+          const nativeActionToken = typeof body.nativeActionToken === "string"
+            ? body.nativeActionToken : "";
           const expiresAt = typeof body.expiresAt === "number" ? body.expiresAt : 0;
           if (token && expiresAt) {
             await this.state.storage.put("ring_receipt_token", token);
             await this.state.storage.put("token_expires_at", expiresAt);
           }
+          if (nativeActionToken && expiresAt) {
+            await this.state.storage.put("native_action_token", nativeActionToken);
+          }
           return Response.json({ ok: true });
+        }
+
+        // [CALL-NATIVE-DECLINE-1] The OS notification action can execute while
+        // Flutter is completely dead. Validate its short-lived per-call
+        // capability INSIDE the same DO that owns the lifecycle, derive the
+        // actor from persisted participants, then enter the one call FSM.
+        if (type === "native-decline") {
+          const clientToken = typeof body.token === "string" ? body.token : "";
+          const storedToken = await this.state.storage.get<string>("native_action_token");
+          const expiresAt = await this.state.storage.get<number>("token_expires_at") ?? 0;
+          const now = Date.now();
+          if (!storedToken || clientToken !== storedToken || now > expiresAt) {
+            return Response.json({ error: "invalid_or_expired_token" }, { status: 403 });
+          }
+          const callId = typeof body.callId === "string" ? body.callId : "";
+          const session = await this.loadSession(callId);
+          if (!callId || !session.callee_uid) {
+            return Response.json({ error: "call_authority_unavailable" }, { status: 503 });
+          }
+          const out = await this.runCommand(callId, "decline_call", "server", {
+            authenticatedUid: session.callee_uid,
+            commandId: `native-decline:${clientToken}`,
+          });
+          const denied = out.error === "unauthorized" || out.error === "not_a_participant";
+          return Response.json(out, { status: out.ok === false ? (denied ? 403 : 409) : 200 });
         }
 
         if (type === "device-ringing") {

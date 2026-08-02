@@ -92,6 +92,10 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    // [CALL-NATIVE-DECLINE-1] The notification Decline action must survive a
+    // killed Flutter process. NativeCallDeclineBridge persists the signed action
+    // as unique WorkManager work and retries it when connectivity returns.
+    implementation("androidx.work:work-runtime:2.10.2")
 
     // AvaVision on-device live-vision engine (CameraX + MediaPipe Tasks-Vision +
     // TFLite) REMOVED 2026-06-22 to cut ~30–50 MB of native libs from the launch

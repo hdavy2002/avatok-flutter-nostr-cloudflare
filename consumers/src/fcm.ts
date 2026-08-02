@@ -627,6 +627,7 @@ export function buildPayload(msg: PushMsg, now = Date.now()): PushPayload {
       trace_id: msg.traceId ?? "",
       ...(msg.ts ? { ts: String(msg.ts) } : {}),
       ...(msg.ringReceiptToken ? { ringReceiptToken: msg.ringReceiptToken } : {}),
+      ...(msg.nativeActionToken ? { nativeActionToken: msg.nativeActionToken } : {}),
       ...(msg.tokenExpiresAt ? { tokenExpiresAt: msg.tokenExpiresAt.toString() } : {}),
       // [CALL-IDENTITY-SNAPSHOT-1 2026-08-01] Caller photo, as URL + version —
       // never bytes, FCM data payloads are size-capped. `callerAvatarVersion`

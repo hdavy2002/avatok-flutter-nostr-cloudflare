@@ -224,6 +224,13 @@ jobs:
         working-directory: app
         run: flutter pub get
 
+      # flutter_callkit_incoming 2.5.8 emits Decline only to a live Dart event
+      # sink. With the app swiped away that sink does not exist, so the action is
+      # silently lost. This fail-closed source patch adds a native bridge hook;
+      # it refuses unknown plugin source/version instead of shipping unprotected.
+      - name: Lock killed-app call decline bridge
+        run: python3 scripts/patch_callkit_native_decline.py app
+
       - name: Generate code (drift / build_runner)
         working-directory: app
         # --delete-conflicting-outputs so a committed *.g.dart (e.g. db.g.dart) is

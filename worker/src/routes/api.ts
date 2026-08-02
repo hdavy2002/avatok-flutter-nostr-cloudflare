@@ -535,6 +535,10 @@ export async function call(req: Request, env: Env): Promise<Response> {
   }
   // Generate a cryptographically secure token + expiration for the true ringing receipt
   const ringReceiptToken = crypto.randomUUID();
+  // [CALL-NATIVE-DECLINE-1] A distinct capability for the Android notification
+  // action. The native button can run with no Clerk/Dart process, so it needs a
+  // narrowly scoped proof that cannot authorize any account-level operation.
+  const nativeActionToken = crypto.randomUUID();
   const expiresAt = Date.now() + CALL_RING_LIFETIME_MS;
 
   // Register participants before the phone is rung. This is fail-closed: a
@@ -549,7 +553,10 @@ export async function call(req: Request, env: Env): Promise<Response> {
     if (!participantResponse.ok || participantResult?.ok !== true) return json({ error: "call_authority_unavailable" }, 503);
     await callStub.fetch("https://call-room/control", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ type: "register-token", token: ringReceiptToken, expiresAt }),
+      body: JSON.stringify({
+        type: "register-token", token: ringReceiptToken,
+        nativeActionToken, expiresAt,
+      }),
     });
   } catch (e) {
     console.error("Failed to register ring receipt token / participants in CallRoom:", String(e));
@@ -559,7 +566,7 @@ export async function call(req: Request, env: Env): Promise<Response> {
   await env.Q_PUSH.send({
     kind: "call", to: b.to, from: ctx.uid, fromName: resolvedName,
     callId: b.callId, callType: b.kind ?? "audio", traceId, ts: Date.now(),
-    ringReceiptToken, tokenExpiresAt: expiresAt,
+    ringReceiptToken, nativeActionToken, tokenExpiresAt: expiresAt,
     // [CALL-IDENTITY-SNAPSHOT-1] Transport copy of the identity snapshot, so a
     // COLD phone can paint the caller's photo + real name on the first frame.
     // This is a copy, NOT an authority — if it ever disagrees with the call
@@ -587,7 +594,8 @@ export async function call(req: Request, env: Env): Promise<Response> {
       body: JSON.stringify({
         type: "call_ring", callId: b.callId, fromPub: ctx.uid,
         fromName: resolvedName, kind: b.kind ?? "audio",
-        ringReceiptToken, tokenExpiresAt: expiresAt, trace_id: traceId, ts: Date.now(),
+        ringReceiptToken, nativeActionToken, tokenExpiresAt: expiresAt,
+        trace_id: traceId, ts: Date.now(),
         // [CALL-IDENTITY-SNAPSHOT-1] The WS ring beats FCM by seconds for an
         // online callee, so it MUST carry the same identity fields — otherwise
         // the fast path paints a nameless, photoless screen and the slow path
@@ -676,6 +684,85 @@ export async function notify(req: Request, env: Env): Promise<Response> {
     queued++;
   }
   return json({ sent: queued });
+}
+
+/**
+ * [CALL-NATIVE-DECLINE-1] Report an Android notification Decline when the app
+ * process (and therefore Clerk + Dart) is absent.
+ *
+ * This route deliberately accepts no uid, recipient or status from the device.
+ * The CallRoom validates the unguessable 45-second capability, derives the
+ * callee from its persisted participants, and applies the fixed `decline_call`
+ * command through the one authoritative FSM. The route only handles delivery
+ * of that already-authorized result to the caller.
+ */
+export async function callNativeDecline(req: Request, env: Env): Promise<Response> {
+  const b = (await req.json().catch(() => ({}))) as { callId?: string; token?: string };
+  const callId = String(b.callId ?? "").trim().slice(0, 128);
+  const token = String(b.token ?? "").trim().slice(0, 128);
+  if (!callId || !token) return json({ error: "callId and token required" }, 400);
+  if (!env.CALL_ROOMS) return json({ error: "CALL_ROOMS binding missing" }, 500);
+
+  let out: Record<string, unknown> | null = null;
+  let status = 503;
+  try {
+    const stub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(callId));
+    const response = await stub.fetch("https://call-room/control", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "native-decline", callId, token }),
+    });
+    status = response.status;
+    out = await response.json().catch(() => null) as Record<string, unknown> | null;
+  } catch {
+    return json({ error: "call_authority_unavailable" }, 503);
+  }
+  if (status === 403) return json({ error: "invalid_or_expired_token" }, 403);
+  if (!out) return json({ error: "call_authority_unavailable" }, 503);
+  // A 409 means a race already ended or advanced the call. That is a successful
+  // notification action from the user's perspective: never resurrect/overwrite
+  // the authoritative outcome, and never invent a second decline delivery.
+  if (status === 409) return json({ ok: true, already_terminal: true }, 200);
+  if (status < 200 || status >= 300 || out.ok !== true) {
+    return json({ error: "call_authority_unavailable" }, 503);
+  }
+
+  const recipient = typeof out.peer_uid === "string" ? out.peer_uid : "";
+  if (!recipient) return json({ error: "call_authority_unavailable" }, 503);
+  await env.Q_PUSH.send({
+    kind: "call-status", to: recipient, callId, status: "decline", ts: Date.now(),
+    ...(typeof out.seq === "number" ? { seq: out.seq } : {}),
+  });
+
+  // Rich evidence for the exact path that was invisible in the 2026-08-02
+  // incident. Both identities are server-derived; the native request supplies
+  // neither one and therefore cannot forge telemetry attribution.
+  try {
+    const participants = await readCallParticipants(env, callId);
+    const callee = participants?.calleeUid ?? "";
+    const [calleeEmail, callerEmail] = participants ? await Promise.all([
+      emailFor(env, participants.calleeUid).catch(() => null),
+      emailFor(env, participants.callerUid).catch(() => null),
+    ]) : [null, null];
+    const props = {
+      call_id: callId,
+      path: "android_killed_app_native",
+      status: "decline",
+      from_uid: callee,
+      to_uid: recipient,
+      from_email: calleeEmail,
+      to_email: callerEmail,
+      changed: out.changed === true,
+      replayed: out.replayed === true,
+      seq: out.seq ?? null,
+      sockets_seen: out.sockets_seen ?? null,
+      sockets_sent: out.sockets_sent ?? null,
+      queued: true,
+    };
+    if (callee) await trackUser(env, callee, calleeEmail, "call_native_decline_relayed", "avatok", props);
+    await trackUser(env, recipient, callerEmail, "call_native_decline_relayed", "avatok", props);
+  } catch { /* telemetry must never change the call outcome */ }
+
+  return json({ ok: true, seq: out.seq ?? null });
 }
 
 export async function callStatus(req: Request, env: Env): Promise<Response> {

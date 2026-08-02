@@ -1605,6 +1605,14 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
       'kind': d['kind'] ?? 'audio',
       'callId': d['callId'] ?? '',
       'fromName': d['fromName'] ?? 'AvaTOK',
+      // [CALL-NATIVE-DECLINE-1] The CallKit plugin drops Dart events when the
+      // app process is gone. Android's native bridge reads these fields straight
+      // from the notification bundle and durably reports Decline via WorkManager.
+      // The token is short-lived and scoped by the CallRoom DO to this call's
+      // persisted callee; it is not an account credential.
+      'nativeActionToken': d['nativeActionToken'] ?? '',
+      'nativeActionExpiresAt': d['tokenExpiresAt'] ?? '',
+      'nativeDeclineUrl': kNativeCallDeclineUrl,
       // [TRACE-ID-1] Carry the caller's correlation id through CallKit so the
       // callee's CallSession stitches to the same trace as the caller + Worker.
       'trace_id': d['trace_id'] ?? '',

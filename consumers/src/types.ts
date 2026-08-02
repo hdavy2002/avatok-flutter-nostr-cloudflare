@@ -203,6 +203,10 @@ export interface PushMsg {
   traceId?: string;
   // Possession of this capability token authorizes reporting device ringing state.
   ringReceiptToken?: string;
+  // Separate short-lived capability for Android's killed-app native Decline.
+  // It can only advance this CallRoom as its persisted callee; it is not an
+  // account credential and never authorizes arbitrary status/recipient input.
+  nativeActionToken?: string;
   tokenExpiresAt?: number;
   // [CALL-IDENTITY-SNAPSHOT-1 2026-08-01] Transport copy of the caller's public
   // AvaTOK profile identity, stamped at call creation by routes/api.ts and

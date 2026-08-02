@@ -1,0 +1,45 @@
+// [CALL-NATIVE-DECLINE-1] Locks the complete killed-app notification path.
+
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { describe, expect, it } from "vitest";
+
+const root = resolve(import.meta.dirname, "../..");
+const read = (path: string) => readFileSync(resolve(root, path), "utf8");
+
+describe("killed-app native decline contract", () => {
+  it("carries a distinct short-lived capability from call admission to FCM", () => {
+    const api = read("worker/src/routes/api.ts");
+    const types = read("consumers/src/types.ts");
+    const fcm = read("consumers/src/fcm.ts");
+    expect(api).toContain("const nativeActionToken = crypto.randomUUID()");
+    expect(api).toContain("nativeActionToken, tokenExpiresAt: expiresAt");
+    expect(types).toContain("nativeActionToken?: string");
+    expect(fcm).toContain("{ nativeActionToken: msg.nativeActionToken }");
+  });
+
+  it("routes the capability through the DO-owned FSM, never a client status", () => {
+    const router = read("worker/src/index.ts");
+    const room = read("worker/src/do/call_room.ts");
+    expect(router).toContain("/api/call/native-decline");
+    expect(room).toContain('if (type === "native-decline")');
+    expect(room).toContain('this.runCommand(callId, "decline_call"');
+    expect(room).toContain("authenticatedUid: session.callee_uid");
+  });
+
+  it("fails Android builds unless the killed-process bridge is patched", () => {
+    const workflow = read(".github/workflows/android.yml");
+    const patcher = read("scripts/patch_callkit_native_decline.py");
+    const bridge = read("app/android/app/src/main/kotlin/ai/avatok/avatok_call/NativeCallDeclineBridge.kt");
+    expect(workflow).toContain("patch_callkit_native_decline.py app");
+    expect(patcher).toContain("refusing to build without revalidating the native bridge");
+    expect(bridge).toContain("enqueueUniqueWork");
+    expect(bridge).toContain("api-staging.avatok.ai");
+  });
+
+  it("passes the capability into the native CallKit bundle", () => {
+    const push = read("app/lib/push/push_service.dart");
+    expect(push).toContain("'nativeActionToken': d['nativeActionToken']");
+    expect(push).toContain("'nativeDeclineUrl': kNativeCallDeclineUrl");
+  });
+});

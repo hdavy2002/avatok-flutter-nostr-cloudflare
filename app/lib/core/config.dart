@@ -42,6 +42,13 @@ const String kCallUrl = 'https://$kSignalingHost/api/call';
 /// Relay a call status (declined / busy / ended) to the caller via FCM. (NIP-98)
 const String kCallStatusUrl = 'https://$kSignalingHost/api/call-status';
 
+/// Unauthenticated only in the HTTP sense: the killed-app Android Decline
+/// button cannot obtain a Clerk token because no Dart isolate exists. The
+/// request carries a short-lived, single-call capability minted by the Worker
+/// and delivered only inside that call's FCM payload.
+const String kNativeCallDeclineUrl =
+    'https://$kSignalingHost/api/call/native-decline';
+
 /// [CALL-AUTHZ-1] Authenticated call outcome command endpoint. The Worker
 /// derives the actor and peer from the persisted CallRoom participants.
 const String kCallCommandUrl = 'https://$kSignalingHost/api/call/command';
