@@ -272,8 +272,13 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   // authenticated AvaTOK call: the separate policy switch must be explicitly
   // enabled. Missing/partial policy and a missing config both fail open to a
   // normal human ring.
-  const contactPolicy = await callerContactPolicy(env, b.to, ctx.uid);
-  const callPolicyConfig = await readConfig(env).catch(() => null);
+  // [CALL-RING-FIRST-2] These two reads are independent (D1 contact lookup vs
+  // KV config) and were previously serial awaits for no reason — nothing here
+  // depends on the other's result until routeUnknownCaller() below.
+  const [contactPolicy, callPolicyConfig] = await Promise.all([
+    callerContactPolicy(env, b.to, ctx.uid),
+    readConfig(env).catch(() => null),
+  ]);
   const routeUnknownCaller = shouldRouteUnknownAvatokCaller(
     contactPolicy,
     callPolicyConfig?.unknownAvatokCallerReceptionistEnabled === true,
@@ -761,8 +766,44 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
         app_name: "avatok", service_name: "avatok-api", worker: true, account_id: ctx.uid,
       },
     });
+    // [CALL-RING-DELIVERED-1] The InboxDO just confirmed the ring frame landed
+    // on a LIVE websocket — that is NOT the same fact as "the phone is
+    // ringing" (see FAKE-RING-HONEST-1: only the callee's own device-ringing
+    // receipt may claim that). It IS enough to tell the caller's dial-stage
+    // copy "delivered to their phone" a couple of seconds sooner than waiting
+    // on FCM/device confirmation, without starting ringback or flipping phase.
+    // Best-effort + fire-and-forget: a hiccup here must never affect the ring.
+    if (calleeLive) {
+      // Captured as a plain const: b.callId is validated truthy at the top of
+      // this handler, but that narrowing does not survive into an async
+      // closure (same reason deferredCallId/deferredTo exist further below).
+      const ringDeliveredCallId = b.callId as string;
+      const ringDeliveredNotify = (async () => {
+        try {
+          const callStub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(ringDeliveredCallId));
+          await callStub.fetch("https://call-room/control", {
+            method: "POST", headers: { "content-type": "application/json" },
+            body: JSON.stringify({ type: "ring-delivered", callId: ringDeliveredCallId }),
+          });
+          void env.Q_ANALYTICS.send({
+            event: "call_ring_delivered_live", uid: ctx.uid, ts: Date.now(),
+            props: {
+              to: b.to, call_id: b.callId, trace_id: traceId,
+              app_name: "avatok", service_name: "avatok-api", worker: true, account_id: ctx.uid,
+            },
+          });
+        } catch { /* best-effort — this is a copy hint, never authoritative */ }
+      })();
+      if (execCtx) execCtx.waitUntil(ringDeliveredNotify); else await ringDeliveredNotify;
+    }
   } catch { /* best-effort — WS ring is an accelerator, FCM stays authoritative */ }
-  await env.Q_PUSH.send({
+  // [CALL-RING-FIRST-3] FCM stays ALWAYS-SENT (belt and braces — the WS ring is
+  // an accelerator, not a replacement), but when the callee already holds a
+  // live socket (calleeLive) the phone is already ringing via the fast lane,
+  // so the FCM enqueue no longer needs to sit in front of the response. When
+  // the callee is NOT live, FCM is the only ring in flight and must stay
+  // awaited exactly as before.
+  const pushSend = env.Q_PUSH.send({
     kind: "call", to: b.to, from: ctx.uid, fromName: resolvedName,
     callId: b.callId, callType: b.kind ?? "audio", traceId, ts: Date.now(),
     ringReceiptToken, nativeActionToken, tokenExpiresAt: expiresAt,
@@ -788,6 +829,12 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
     // incoming-call screen shows the named business UI (client already checks d['via']).
     ...(isDialpad ? { via: "dialpad" } : {}),
   });
+  // calleeLive: the ring already reached a live device over the fast lane, so
+  // FCM enqueue can finish after the response (still always sent — belt and
+  // braces for a socket that drops between the WS ring and the app opening
+  // it). Not live: FCM is the ONLY ring in flight, so it must stay awaited —
+  // byte-identical to prior behavior for a cold/offline callee.
+  if (calleeLive && execCtx) execCtx.waitUntil(pushSend); else await pushSend;
   // Observability: which path produced the caller name (resolved server-side vs
   // the legacy client value vs the generic fallback), plus the call attempt — so
   // the "incoming call shows uid/uid" fix is measurable and call volume/route is

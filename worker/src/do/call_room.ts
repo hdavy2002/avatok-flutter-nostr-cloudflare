@@ -1647,6 +1647,27 @@ export class CallRoom {
           return Response.json({ ok: true, sent });
         }
 
+        // [CALL-RING-DELIVERED-1] Internal-only, server-originated (routes/api.ts
+        // call()) the instant the InboxDO confirms the ring frame landed on a
+        // LIVE websocket. Deliberately NOT gated by ring_receipt_token — unlike
+        // device-ringing this never claims the callee's phone is ringing (that
+        // claim belongs solely to the callee's own device-ringing receipt, see
+        // FAKE-RING-HONEST-1), it only tells the CALLER's dial-stage copy that
+        // delivery reached a live device a little sooner than FCM/device
+        // confirmation would. Same trust boundary as /participants: only
+        // reachable from within this Worker, never client-exposed.
+        if (type === "ring-delivered") {
+          const frame = JSON.stringify({
+            type: "ring-delivered",
+            ...(typeof body.callId === "string" ? { callId: body.callId } : {}),
+          });
+          let sent = 0;
+          for (const w of this.state.getWebSockets()) {
+            try { w.send(frame); sent++; } catch { /* peer gone */ }
+          }
+          return Response.json({ ok: true, sent });
+        }
+
         if (type === "ring-ack") {
           const frame = JSON.stringify({
             type: "ring-ack",
