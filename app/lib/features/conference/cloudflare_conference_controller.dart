@@ -20,10 +20,12 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:uuid/uuid.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../core/analytics.dart';
@@ -65,6 +67,9 @@ class CloudflareConferenceController extends ChangeNotifier {
   static String? activeGid;
 
   final String gid;
+  /// Group name — shown on the ongoing-call notification the foreground
+  /// service posts. Without it the notification cannot say which call it is.
+  final String title;
   final bool wantVideo;
   final bool starter;
   final int maxVideoSubs;
@@ -77,6 +82,7 @@ class CloudflareConferenceController extends ChangeNotifier {
     required this.gid,
     required this.wantVideo,
     required this.starter,
+    this.title = 'Group call',
     this.maxVideoSubs = kDefaultMaxVideoSubs,
     this.sharedLocalStream,
   });
@@ -251,7 +257,20 @@ class CloudflareConferenceController extends ChangeNotifier {
         notice = 'This is an audio call — your camera stays off.';
       }
       relayDegraded = join.relayDegraded;
-      if (relayDegraded) notice = 'Call quality may be reduced on this network.';
+      // Cloudflare Realtime normally works without TURN, so a degraded relay is
+      // not automatically a problem — it only bites on restrictive networks.
+      // Word it as the caveat it is rather than an alarm.
+      if (relayDegraded) notice = 'No relay server available — the call may not connect on a restricted network.';
+
+      // [GCALL-W2-HOLD] Hold the process and the screen for the duration of the
+      // call. Neither wakelock_plus nor CallForegroundService was used anywhere
+      // in features/conference, though 1:1 calls use both: the screen slept
+      // mid-call, and on Android a backgrounded conference had nothing keeping
+      // the process alive, so mic capture and the call were subject to
+      // background kill with no notification to get back. Started here, right
+      // after /join, because that is the first moment a real call id exists.
+      await _startForegroundHold(join);
+      _startNetworkWatch();
 
       // 3. WS open + awaited `welcome` — the DO attachment publish depends on.
       await _joinConnectWs(join, route: 'join');
@@ -292,6 +311,79 @@ class CloudflareConferenceController extends ChangeNotifier {
     }
     if (e is TimeoutException) return 'The call server didn\'t respond. Check your connection and try again.';
     return 'Could not join the call';
+  }
+
+  // ---- [GCALL-W2-HOLD] process + screen hold ------------------------------------
+
+  bool _holdStarted = false;
+
+  Future<void> _startForegroundHold(CfJoinResult join) async {
+    if (_holdStarted || _ended) return;
+    _holdStarted = true;
+    try { await WakelockPlus.enable(); } catch (_) {/* unsupported platform */}
+    try {
+      await NativeVoiceAudio.instance.startCallForegroundService(
+        callId: join.callId,
+        peerName: title,
+        isVideo: _effectiveVideo,
+        at: 'conference_join',
+      );
+    } catch (_) {/* never let the notification block the call */}
+  }
+
+  Future<void> _stopForegroundHold(String reason) async {
+    if (!_holdStarted) return;
+    _holdStarted = false;
+    try { await WakelockPlus.disable(); } catch (_) {}
+    try { await NativeVoiceAudio.instance.stopCallForegroundService(reason: reason); } catch (_) {}
+  }
+
+  // ---- [GCALL-W2-NET] network-change recovery -----------------------------------
+
+  StreamSubscription<dynamic>? _netSub;
+
+  /// A WiFi→cellular switch used to be detected only when the peer connection
+  /// finally gave up — 15-30 seconds of dead audio before anything happened.
+  /// Watch the network directly, but do NOT recover on the event alone: a
+  /// connectivity change proves the network CLASS changed, not that media
+  /// broke. Take one health sample first and act only if it is actually
+  /// unhealthy, mirroring how 1:1 calls gate their recovery.
+  ///
+  /// NOTE: this triggers a targeted reconnect, not an ICE restart. Cloudflare
+  /// Realtime's renegotiate contract is server-offers / client-answers (see
+  /// developers.cloudflare.com/realtime/sfu/https-api), so there is no
+  /// client-initiated re-offer to carry `iceRestart` on this transport the way
+  /// there is for the 1:1 P2P path. Adding one would be a Worker contract
+  /// change, deliberately not smuggled into this wave.
+  void _startNetworkWatch() {
+    _netSub ??= Connectivity().onConnectivityChanged.listen((_) {
+      if (_ended || _reconnecting || state != CfConnState.connected) return;
+      _tel?.error(stage: 'network_changed', direction: 'socket', recoverable: true);
+      unawaited(_pollMediaHealth().then((_) {
+        if (_ended || _reconnecting || state != CfConnState.connected) return;
+        // Only meaningful if we are actually subscribed to someone. A call you
+        // are alone in has no inbound RTP by definition, so it always reads
+        // `no_rtp` — without this guard every network blip in a one-person call
+        // would tear down and rebuild a perfectly healthy session.
+        final expectingMedia = _pulledAudioMid.isNotEmpty || _pulledVideoMid.isNotEmpty;
+        final unhealthy = expectingMedia &&
+            (_lastMediaHealthClass == 'no_rtp' || _lastMediaHealthClass == 'render_no_playout');
+        if (unhealthy) {
+          _reconnectTry = 0;
+          unawaited(_attemptReconnect(reason: 'network_changed', forceRecreate: true));
+        }
+      }));
+    });
+  }
+
+  /// The app went to the background. The foreground service keeps the call
+  /// alive, so this does NOT leave — it only records the transition. Before
+  /// [GCALL-W2-HOLD] there was no lifecycle handling beyond `resumed` at all,
+  /// so backgrounding neither left cleanly nor survived: the user simply became
+  /// a ghost in everyone else's roster until the sweep evicted them.
+  void onBackgrounded() {
+    if (_ended) return;
+    _tel?.error(stage: 'app_backgrounded', direction: 'socket', recoverable: true);
   }
 
   /// [GCALL-W1-PERM] Ask for exactly what this call needs, before any server
@@ -945,6 +1037,10 @@ class CloudflareConferenceController extends ChangeNotifier {
         // below closes it if `_publish` throws, and leave()/dispose() close
         // it as a last resort.
         _retirePendingPcNow(); // safety: retire any earlier still-pending PC first
+        // [GCALL-W2-CLOSE] Capture what the OUTGOING session holds before the
+        // new one replaces it, so it can be retired instead of abandoned.
+        final oldSessionId = _join?.sessionId;
+        final oldMids = _join == null ? const <String>[] : _openMids();
         // Re-join with the EFFECTIVE media mode, not the original request: after
         // an audio-downgraded join (camera denied, or an audio-only call), a
         // reconnect that re-requested video would walk straight back into the
@@ -1010,6 +1106,11 @@ class CloudflareConferenceController extends ChangeNotifier {
         await _joinConnectWs(rejoin, route: 'join');
         await _publish(rejoin, specs, attempt: 1, generationAtStart: _generation);
         _announcePublishedTracks(rejoin);
+        // The new path is publishing; the old session is now dead weight.
+        // Best-effort and never awaited into the recovery critical path.
+        if (oldSessionId != null && oldSessionId != rejoin.sessionId) {
+          unawaited(_closeSupersededSession(oldSessionId, oldMids));
+        }
         _tel?.reconnectCompleted(
             attemptId: attemptId, mediaKeptAlive: true,
             elapsedMs: DateTime.now().millisecondsSinceEpoch - t0, pcRecreated: true);
@@ -1177,6 +1278,46 @@ class CloudflareConferenceController extends ChangeNotifier {
     }
   }
 
+  // ---- [GCALL-W2-CLOSE] SFU track/session teardown --------------------------------
+
+  /// Every mid this session currently holds open: our published local tracks
+  /// (mid 0 audio, mid 1 video, matching the publish specs) plus every remote
+  /// track we have pulled.
+  List<String> _openMids() {
+    final mids = <String>{
+      '0',
+      if (_cameraOn) '1',
+      ..._pulledAudioMid.values,
+      ..._pulledVideoMid.values,
+    };
+    return mids.toList(growable: false);
+  }
+
+  /// Pulled-track descriptors, so the DO can free the per-client pull slots it
+  /// counts against the audio/video caps rather than waiting for the socket to
+  /// drop.
+  List<Map<String, String>> _pulledTrackRefs() {
+    final out = <Map<String, String>>[];
+    for (final uid in _pulledAudioMid.keys) {
+      final t = _roster[uid]?.audioTrack;
+      if (t != null && t.isNotEmpty) out.add({'kind': 'audio', 'trackName': t});
+    }
+    for (final uid in _pulledVideoMid.keys) {
+      final t = _roster[uid]?.videoTrack;
+      if (t != null && t.isNotEmpty) out.add({'kind': 'video', 'trackName': t});
+    }
+    return out;
+  }
+
+  /// Retire the SFU session a reconnect is replacing. Every reconnect minted a
+  /// brand-new session and simply abandoned the previous one, so a call that
+  /// reconnected a few times left a trail of sessions still holding a publisher
+  /// slot until Cloudflare's own 30s track GC caught up.
+  Future<void> _closeSupersededSession(String sessionId, List<String> mids) async {
+    if (mids.isEmpty) return;
+    await CloudflareConferenceApi.close(gid, sessionId, mids);
+  }
+
   // ---- leave / dispose: deterministic order --------------------------------------
   // timers -> senders -> PC -> renderers -> streams
 
@@ -1206,8 +1347,21 @@ class CloudflareConferenceController extends ChangeNotifier {
     await _wsSub?.cancel();
     _wsSub = null;
     _wsEpoch++;
+    await _netSub?.cancel();
+    _netSub = null;
+    // [GCALL-W2-CLOSE] Close the tracks we actually hold. This passed an EMPTY
+    // mids list, which makes `PUT /tracks/close` a no-op — so nothing was ever
+    // closed on leave: not our published mic/camera, not any of the remote
+    // tracks we had pulled. Cloudflare garbage-collects a track ~30s after its
+    // media stops (and bills on egress, not sessions, so this was never a cost
+    // leak), but leaving it to the GC means ghost publishers linger and the
+    // DO's pull-cap bookkeeping stays wrong. Send the real mids, plus the
+    // track metadata that lets the DO release the pull slots precisely.
     if (_join != null) {
-      await CloudflareConferenceApi.close(gid, _join!.sessionId, const []);
+      await CloudflareConferenceApi.close(
+        gid, _join!.sessionId, _openMids(),
+        tracks: _pulledTrackRefs(),
+      );
     }
     try { await _pc?.close(); } catch (_) {}
     // Last-resort close for a still-pending retired PC (BLOCKER 2): normally
@@ -1230,6 +1384,7 @@ class CloudflareConferenceController extends ChangeNotifier {
     if (RemoteConfig.callAudioControllerV2 && _join != null) {
       try { await NativeVoiceAudio.instance.endP2pSession(callId: _join!.callId); } catch (_) {}
     }
+    await _stopForegroundHold(reason);
 
     _tel?.conferenceLeft(leaveReason: reason, sessionDurationMs: durationMs, finalMediaHealthClass: _lastMediaHealthClass);
     Analytics.capture('groupcall_leave_cf', {'gid_hash': gid.hashCode.toString(), 'duration_ms': durationMs});

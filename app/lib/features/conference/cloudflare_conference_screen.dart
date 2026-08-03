@@ -45,7 +45,8 @@ class _CloudflareConferenceScreenState extends State<CloudflareConferenceScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _ctrl = CloudflareConferenceController(gid: widget.gid, wantVideo: widget.video, starter: widget.starter);
+    _ctrl = CloudflareConferenceController(
+        gid: widget.gid, title: widget.title, wantVideo: widget.video, starter: widget.starter);
     _ctrl.addListener(_onChanged);
     unawaited(_ctrl.connect());
   }
@@ -56,7 +57,22 @@ class _CloudflareConferenceScreenState extends State<CloudflareConferenceScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _ctrl.onForegroundResume();
+    // [GCALL-W2-HOLD] Lifecycle handling was resume-only, so backgrounding
+    // neither survived nor left cleanly. `paused` now keeps the call (the
+    // foreground service holds the process) and merely records it; `detached`
+    // is the process actually going away, which must leave properly rather
+    // than let the DO discover it 45-60s later via the zombie sweep.
+    switch (state) {
+      case AppLifecycleState.resumed:
+        _ctrl.onForegroundResume();
+      case AppLifecycleState.paused:
+        _ctrl.onBackgrounded();
+      case AppLifecycleState.detached:
+        unawaited(_ctrl.leave(reason: 'app_detached'));
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.hidden:
+        break;
+    }
   }
 
   @override
