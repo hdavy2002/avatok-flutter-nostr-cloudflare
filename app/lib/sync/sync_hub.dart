@@ -685,6 +685,18 @@ class SyncHub {
         // open AvaStorage screen. Same multiplexed socket, no extra connection.
         _storage.add(m);
         break;
+      case 'group_call_ring_cancel':
+        // [GCALL-W4-RING] The group call ended (last person left, swept, or the
+        // starter gave up) while this phone was still ringing for it. Without
+        // this the ring would run to its own timeout and answering would drop
+        // the user into a call that no longer exists.
+        try {
+          PushService.cancelGroupRing(
+            (m['call_id'] ?? '').toString(),
+            gid: (m['gid'] ?? '').toString(),
+          );
+        } catch (_) {/* never let a cancel frame break the socket loop */}
+        break;
       case 'members_changed':
         // [GRP-W3-REACTIVE] Somebody was added to / removed from / promoted in a
         // group I'm in, the photo changed, or the group was deleted. Before this

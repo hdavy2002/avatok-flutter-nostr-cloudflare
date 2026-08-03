@@ -337,7 +337,12 @@ class _RemoteTile extends StatelessWidget {
           webrtc.RTCVideoView(renderer, objectFit: webrtc.RTCVideoViewObjectFit.RTCVideoViewObjectFitCover)
         else
           Center(child: Avatar(seed: p.uid, name: p.uid, size: 56)),
-        Positioned(left: 6, bottom: 6, child: _namePill(p.uid, muted: p.audioTrack == null)),
+        // [GCALL-W4-MUTE] Real mute state from the roster. This was
+        // `p.audioTrack == null`, which is only true BEFORE someone's first
+        // publish — so the mic-slash never appeared for anyone who had actually
+        // muted, and vanished for good once they published.
+        Positioned(left: 6, bottom: 6,
+            child: _namePill(p.uid, muted: p.muted || p.audioTrack == null)),
       ]),
     );
   }

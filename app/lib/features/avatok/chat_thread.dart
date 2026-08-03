@@ -4155,6 +4155,15 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
           content: Text('You are already in a call — leave it first')));
       return;
     }
+    // [GCALL-W4-BUSY] …and a 1:1 call counts too. This guarded conference vs
+    // conference only, so someone already on a one-to-one call could tap into a
+    // group call and end up nominally in both with one microphone.
+    if (callIsGenuinelyActive()) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('You are on another call — finish it first')));
+      Analytics.capture('groupcall_blocked_busy', {'reason': 'in_1to1_call'});
+      return;
+    }
     final s = await CloudflareConferenceApi.status(gid);
     if (!mounted) return;
     // [GCALL-W2-JOINGUARD] `status()` fails OPEN to live:false, so an unreachable

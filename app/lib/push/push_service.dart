@@ -38,6 +38,11 @@ import '../features/avadial/device_contacts.dart' show DeviceContacts;
 import '../features/avatok/call_screen.dart';
 import '../features/avatok/contacts.dart' show ContactsStore;
 import '../features/avatok/incoming_business_call_screen.dart';
+// [GCALL-W4-RING] group-call ring: busy check + accept destination
+import '../features/conference/cloudflare_conference_controller.dart'
+    show CloudflareConferenceController;
+import '../features/conference/cloudflare_conference_screen.dart'
+    show CloudflareConferenceScreen;
 import '../identity/identity.dart' show AccountScope; // [AVANOTIF-VM-3] name-cache account namespacing
 import '../sync/group_api.dart' show GroupApi; // [GRP-W3-RESYNC]
 import '../sync/sync_hub.dart';
@@ -1607,9 +1612,18 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
     'ring_remaining_ms': ringDurationMs,
   });
   IceCache.prefetch(); // warm TURN creds while the phone is still ringing
+  // [GCALL-W4-RING] A group ring names the GROUP, with the starter underneath —
+  // "Design team" is what the person needs to recognise, not one member's name.
+  final bool isGroupRing = d['group'] == true || d['group'] == 'true';
+  final String groupRingName = (d['groupName'] ?? '').toString();
+  if (isGroupRing && groupRingName.isNotEmpty) {
+    PushService.rememberGroupRingName(ringCallId, groupRingName);
+  }
   final params = CallKitParams(
     id: (d['callId'] ?? '').toString(),
-    nameCaller: (d['fromName'] ?? 'AvaTOK').toString(),
+    nameCaller: isGroupRing && groupRingName.isNotEmpty
+        ? '$groupRingName · ${(d['fromName'] ?? 'AvaTOK')}'
+        : (d['fromName'] ?? 'AvaTOK').toString(),
     appName: 'AvaTOK',
     handle: (d['fromPub'] ?? '').toString(),
     type: d['kind'] == 'video' ? 1 : 0, // 0 = audio, 1 = video
@@ -1637,6 +1651,14 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
       // [TRACE-ID-1] Carry the caller's correlation id through CallKit so the
       // callee's CallSession stitches to the same trace as the caller + Worker.
       'trace_id': d['trace_id'] ?? '',
+      // [GCALL-W4-RING] Group-call ring. These two fields are what make Accept
+      // open the conference screen instead of the 1:1 one — everything above is
+      // shared, so a group call now rings through exactly the same CallKit path
+      // that 1:1 calls have always used, rather than the content-less chat chime
+      // that used to be a group call's only announcement.
+      'group': d['group'] == true ? 'true' : '',
+      'gid': (d['gid'] ?? '').toString(),
+      'groupName': (d['groupName'] ?? '').toString(),
     },
     android: incomingCallAndroidParams,
     ios: const IOSParams(handleType: 'generic', supportsVideo: true),
@@ -1832,6 +1854,17 @@ class PushService {
           busyReason: 'active_call', receptionistEnabled: true);
       Analytics.capture('call_incoming_autobusy',
           {'call_id': incomingId, 'kind': kind, 'busy_reason': 'on_another_call'});
+      return;
+    }
+    // [GCALL-W4-BUSY] Being in a GROUP call counts as being on a call. The busy
+    // guards above only ever counted 1:1 sessions, so a conference participant
+    // still got rung for a 1:1 — and answering it did not leave the conference,
+    // leaving them nominally in two calls with one microphone.
+    if (CloudflareConferenceController.activeGid != null) {
+      _signalStatus(incomingId, 'busy', fromPub,
+          busyReason: 'active_call', receptionistEnabled: true);
+      Analytics.capture('call_incoming_autobusy',
+          {'call_id': incomingId, 'kind': kind, 'busy_reason': 'in_group_call'});
       return;
     }
     if (gInCall) {
@@ -3508,6 +3541,16 @@ class PushService {
       final e = (extra as Map);
       final room = (e['callId'] ?? '').toString();
       if (room.isEmpty) return;
+      // [GCALL-W4-RING] Accepting a GROUP ring joins the conference instead of
+      // opening a 1:1 CallScreen. It also skips the CallRoom accept-claim below:
+      // that claim exists to make exactly one leg win the race against the Ava
+      // receptionist alarm on a two-party call, and a group call has neither a
+      // CallRoom record nor a receptionist. The GroupCallRoom authority is what
+      // admits a joiner, and it admits everyone up to the cap.
+      if (e['group'] == true || e['group'] == 'true') {
+        await _openGroupCall(e);
+        return;
+      }
       // The cancellation push and branded-screen durable poll are fast paths,
       // but Accept is the dangerous boundary. Atomically claim the human leg in
       // CallRoom before opening CallScreen. This command races the four-ring Ava
@@ -3660,5 +3703,72 @@ class PushService {
         extra: {'stage': 'open_accepted_call'},
       );
     }
+  }
+
+  /// [GCALL-W4-RING] The group call this phone is ringing for has ended. Stop
+  /// the ring and record it as a missed group call.
+  ///
+  /// Goes through `_programmaticCallkitEnd` like every other programmatic end:
+  /// some Android OEMs emit `actionCallDecline` synchronously from `endCall()`,
+  /// and without the marker that synthetic event is indistinguishable from the
+  /// user having tapped Decline.
+  static void cancelGroupRing(String callId, {String gid = ''}) {
+    if (callId.isEmpty) return;
+    if (!_onceCallEvent(callId, 'group_ring_cancelled')) return;
+    _programmaticCallkitEnd.mark(callId);
+    unawaited(_stopRingtoneFallback(callId));
+    unawaited(FlutterCallkitIncoming.endCall(callId).catchError((_) {/* already gone */}));
+    unawaited(CallLogStore().add(CallEntry(
+      name: _groupRingNames.remove(callId) ?? 'Group call',
+      seed: gid.isEmpty ? 'group' : gid,
+      video: false,
+      dir: CallDir.missed,
+      ts: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+    )).catchError((_) {/* log is best-effort */}));
+    Analytics.capture('group_call_ring_cancelled',
+        {'call_id': callId, 'gid_hash': gid.hashCode.toString()});
+  }
+
+  /// callId → group name, remembered at ring time so a cancel (which carries no
+  /// title) can still write a recognisable call-log row.
+  static final Map<String, String> _groupRingNames = <String, String>{};
+
+  static void rememberGroupRingName(String callId, String name) {
+    if (callId.isEmpty || name.isEmpty) return;
+    if (_groupRingNames.length > 32) _groupRingNames.clear(); // bounded
+    _groupRingNames[callId] = name;
+  }
+
+  /// [GCALL-W4-RING] Accepting a group ring: dismiss the ring UI, then open the
+  /// conference. Joining is idempotent server-side (the authority admits anyone
+  /// up to the cap), so unlike the 1:1 path there is no leg to claim first.
+  static Future<void> _openGroupCall(Map e) async {
+    final gid = (e['gid'] ?? '').toString();
+    final callId = (e['callId'] ?? '').toString();
+    if (gid.isEmpty) return;
+    try { await FlutterCallkitIncoming.endAllCalls(); } catch (_) {/* ring already gone */}
+    if (CloudflareConferenceController.activeGid != null) {
+      Analytics.capture('group_call_accept_ignored',
+          {'call_id': callId, 'reason': 'already_in_call'});
+      return;
+    }
+    final nav = navigatorKey.currentState;
+    if (nav == null) {
+      Analytics.capture('group_call_accept_no_navigator', {'call_id': callId});
+      return;
+    }
+    final title = (e['groupName'] ?? '').toString();
+    nav.push(MaterialPageRoute(
+      builder: (_) => CloudflareConferenceScreen(
+        gid: gid,
+        title: title.isEmpty ? 'Group call' : title,
+        video: e['kind'] == 'video',
+        // Whoever accepts a ring is joining a call that already exists — never
+        // the starter. Getting this wrong would post a second "call started"
+        // message to the group.
+        starter: false,
+      ),
+    ));
+    Analytics.capture('group_call_accept_screen_opened', {'call_id': callId, 'gid_hash': gid.hashCode.toString()});
   }
 }

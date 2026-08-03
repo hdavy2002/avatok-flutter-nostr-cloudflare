@@ -31,6 +31,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../core/analytics.dart';
 import '../../core/audio_tuning.dart';
 import '../../core/ava_log.dart';
+import '../../core/call_log_store.dart'; // [GCALL-W4-LOG]
 import '../../core/remote_config.dart';
 import '../../core/voice/native_voice_audio.dart';
 import 'cloudflare_conference_api.dart';
@@ -43,12 +44,17 @@ class CfParticipant {
   final String? audioTrack;
   final String? videoTrack;
   final bool videoEnabled;
+  /// [GCALL-W4-MUTE] Server-known mute state. The UI used to infer "muted" from
+  /// `audioTrack == null`, which is only ever true BEFORE someone's first
+  /// publish — so everyone permanently looked unmuted no matter what they did.
+  final bool muted;
   const CfParticipant({
     required this.uid,
     required this.session,
     required this.audioTrack,
     required this.videoTrack,
     required this.videoEnabled,
+    this.muted = false,
   });
 }
 
@@ -271,6 +277,7 @@ class CloudflareConferenceController extends ChangeNotifier {
       // after /join, because that is the first moment a real call id exists.
       await _startForegroundHold(join);
       _startNetworkWatch();
+      _startInterruptionWatch();
 
       // 3. WS open + awaited `welcome` — the DO attachment publish depends on.
       await _joinConnectWs(join, route: 'join');
@@ -374,6 +381,68 @@ class CloudflareConferenceController extends ChangeNotifier {
         }
       }));
     });
+  }
+
+  // ---- [GCALL-W4-INTERRUPT] GSM calls and audio-focus loss ------------------------
+
+  StreamSubscription<Map<String, dynamic>>? _telephonySub;
+  bool _heldByPhone = false;
+  bool _heldByFocus = false;
+
+  /// A cellular call, or anything else that steals audio focus, takes the
+  /// microphone away. 1:1 calls have handled this since CALLFIX-23; the
+  /// conference subscribed to neither stream, so a GSM call silently took the
+  /// mic and the conference carried on "publishing" silence with no hold state
+  /// and nothing to tell the other participants.
+  void _startInterruptionWatch() {
+    if (!NativeVoiceAudio.isSupported) return;
+    try {
+      NativeVoiceAudio.instance.onAudioFocusLost = () {
+        if (_ended) return;
+        _heldByFocus = true;
+        unawaited(_setMuted(true, source: 'audio_focus_lost'));
+        notice = 'Paused — another app took the microphone.';
+        _safeNotify();
+      };
+      NativeVoiceAudio.instance.onAudioFocusRegained = () {
+        if (_ended) return;
+        _heldByFocus = false;
+        if (!_heldByPhone) {
+          unawaited(_setMuted(false, source: 'audio_focus_regained'));
+          notice = null;
+          _safeNotify();
+        }
+      };
+      unawaited(NativeVoiceAudio.instance.startTelephonyMonitoring());
+      _telephonySub = NativeVoiceAudio.instance.telephonyEventStream.listen((e) {
+        if (_ended) return;
+        final state = (e['state'] ?? '').toString();
+        if (state == 'held') {
+          _heldByPhone = true;
+          unawaited(_setMuted(true, source: 'cellular_hold'));
+          notice = 'On hold — you have a phone call.';
+          _safeNotify();
+        } else if (state == 'resumed') {
+          _heldByPhone = false;
+          if (!_heldByFocus) {
+            unawaited(_setMuted(false, source: 'cellular_resume'));
+            notice = null;
+            _safeNotify();
+          }
+        }
+      });
+    } catch (e) {
+      AvaLog.I.log('cfconf', 'interruption watch unavailable: $e');
+    }
+  }
+
+  void _stopInterruptionWatch() {
+    unawaited(_telephonySub?.cancel());
+    _telephonySub = null;
+    try {
+      NativeVoiceAudio.instance.onAudioFocusLost = null;
+      NativeVoiceAudio.instance.onAudioFocusRegained = null;
+    } catch (_) {/* already torn down */}
   }
 
   /// The app went to the background. The foreground service keeps the call
@@ -692,6 +761,7 @@ class CloudflareConferenceController extends ChangeNotifier {
           audioTrack: r['audio_track']?.toString(),
           videoTrack: r['video_track']?.toString(),
           videoEnabled: r['video_enabled'] == true,
+          muted: r['muted'] == true,
         );
       }
     }
@@ -708,12 +778,29 @@ class CloudflareConferenceController extends ChangeNotifier {
   // Audio subscriptions follow the server's debounced loudest-speaker set.
   // The old implementation pulled every roster member until the server's cap
   // rejected the rest, making roster order decide who could be heard.
+  // [GCALL-W4-CLIP] How long an audio pull is kept open after its owner drops
+  // out of the active-speaker set. Closing immediately is why the first word
+  // after someone unmutes (or after a pause) was clipped: the pull had already
+  // been torn down, so speaking again cost a full pull + renegotiate round trip
+  // before anyone heard them. Holding the subscription briefly costs one idle
+  // audio stream and removes the clipping entirely.
+  static const Duration _audioPullLinger = Duration(seconds: 20);
+  final Map<String, DateTime> _audioIdleSince = {};
+
   Future<void> _applyAudioSubscriptionPolicy() async {
     final wanted = _activeAudioUids.where((uid) {
       final p = _roster[uid];
       return p != null && p.audioTrack != null && p.audioTrack!.isNotEmpty;
     }).toSet();
-    for (final uid in _pulledAudioMid.keys.where((u) => !wanted.contains(u)).toList()) {
+    final now = DateTime.now();
+    for (final uid in _pulledAudioMid.keys.toList()) {
+      if (wanted.contains(uid)) { _audioIdleSince.remove(uid); continue; }
+      // Someone who has LEFT the call is dropped at once — the linger is for
+      // people who merely stopped talking, not for people who aren't there.
+      final stillHere = _roster.containsKey(uid);
+      final since = _audioIdleSince[uid] ??= now;
+      if (stillHere && now.difference(since) < _audioPullLinger) continue;
+      _audioIdleSince.remove(uid);
       await _closeAudioPull(uid);
     }
     for (final uid in wanted) {
@@ -915,10 +1002,22 @@ class CloudflareConferenceController extends ChangeNotifier {
   }
 
   Future<void> toggleMute() async {
-    _muted = !_muted;
+    await _setMuted(!_muted, source: 'user');
+  }
+
+  /// [GCALL-W4-MUTE] Mute is now announced. It used to be purely local — no
+  /// frame, no roster field — so nobody else could tell, and people talked over
+  /// each other believing they were being heard.
+  Future<void> _setMuted(bool value, {required String source}) async {
+    if (_muted == value) return;
+    _muted = value;
     for (final t in _localStream?.getAudioTracks() ?? const <MediaStreamTrack>[]) {
       t.enabled = !_muted;
     }
+    _send({'t': 'mute', 'muted': _muted});
+    Analytics.capture('groupcall_mute_toggled', {
+      'gid_hash': gid.hashCode.toString(), 'muted': _muted, 'source': source,
+    });
     _safeNotify();
   }
 
@@ -1349,6 +1448,7 @@ class CloudflareConferenceController extends ChangeNotifier {
     _wsEpoch++;
     await _netSub?.cancel();
     _netSub = null;
+    _stopInterruptionWatch();
     // [GCALL-W2-CLOSE] Close the tracks we actually hold. This passed an EMPTY
     // mids list, which makes `PUT /tracks/close` a no-op — so nothing was ever
     // closed on leave: not our published mic/camera, not any of the remote
@@ -1388,6 +1488,19 @@ class CloudflareConferenceController extends ChangeNotifier {
 
     _tel?.conferenceLeft(leaveReason: reason, sessionDurationMs: durationMs, finalMediaHealthClass: _lastMediaHealthClass);
     Analytics.capture('groupcall_leave_cf', {'gid_hash': gid.hashCode.toString(), 'duration_ms': durationMs});
+    // [GCALL-W4-LOG] Write the call to the call log. Group calls left NO trace
+    // anywhere: only the 1:1 paths ever touched CallLogStore, so a group call
+    // you took simply never happened as far as your history was concerned.
+    // Only logged if the call actually got going — a failed join is not a call.
+    if (_joinedAtMs > 0) {
+      unawaited(CallLogStore().add(CallEntry(
+        name: title,
+        seed: gid,
+        video: _effectiveVideo,
+        dir: starter ? CallDir.outgoing : CallDir.incoming,
+        ts: _joinedAtMs ~/ 1000,
+      )).catchError((_) {/* the log is best-effort, never blocks a hang-up */}));
+    }
     if (activeGid == gid) activeGid = null;
     _safeNotify();
   }
