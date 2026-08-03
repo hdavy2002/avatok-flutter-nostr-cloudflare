@@ -24,7 +24,11 @@ import '../core/calls/call_room_id.dart' show CallRoomId; // [CALL-DEDUP-TTL-1]
 import '../core/calls/ring_delivery_contract.dart';
 import '../core/calls/callkit_params.dart' show incomingCallAndroidParams;
 import '../core/calls/call_session_manager.dart';
-import '../core/calls/call_session.dart' show rememberCallRoomToken; // [CALL-WS-AUTH-1]
+// [CALL-WS-AUTH-1] + [CALL-REL-R4-3] `Durable` is the awaited variant the ring
+// path must use (the FCM background isolate can die before a lazy write lands);
+// `roomTokenFor` lets the accept path tell "already have it" from "must recover".
+import '../core/calls/call_session.dart'
+    show rememberCallRoomTokenDurable, roomTokenFor;
 import '../core/calls/call_telemetry_events.dart' show CallEvents;
 import '../core/config.dart';
 import '../core/disk_cache.dart';
@@ -616,6 +620,135 @@ final CallTtlGate _programmaticCallkitEnd =
 
 bool _wasProgrammaticCallkitEnd(String callId) =>
     _programmaticCallkitEnd.contains(callId);
+
+/// [CALL-REL-R4-B 2026-08-03] How long after the last `resumed` a `paused` app
+/// is still treated as being in front. Sized for the Android FSI-activity launch
+/// (tens of ms in practice); deliberately far shorter than a user actually
+/// leaving the app.
+const int _kAppFrontGraceMs = 1500;
+
+/// Verification delay for the OS-ring fallback. Long enough for the branded
+/// route to have been pushed and the activity to have settled, short enough that
+/// a fallback ring is still a ring and not a missed call.
+const int _kOsRingFallbackDelayMs = 900;
+
+/// [CALL-REL-R4-B] Tracks when this app was last actually in front.
+///
+/// `WidgetsBinding.instance.lifecycleState` is a POINT reading, and at ring time
+/// it lies: while Android launches CallKit's own full-screen-intent activity
+/// over a perfectly open app, MainActivity reports `paused`. Prod call
+/// `avatok-cb1618e6` rang with `lifecycle=paused` and consequently registered
+/// BOTH surfaces. Knowing how long ago we were resumed is what separates "the
+/// ring is launching over us" from "the user left".
+class _AppFrontTracker with WidgetsBindingObserver {
+  _AppFrontTracker._();
+  static final _AppFrontTracker I = _AppFrontTracker._();
+
+  int _lastResumedAtMs = 0;
+  bool _registered = false;
+
+  /// Idempotent. No-ops in the FCM background isolate, which has no binding —
+  /// and correctly so: an isolate with no UI is never "in front".
+  void ensureRegistered() {
+    if (_registered) return;
+    try {
+      WidgetsBinding.instance.addObserver(this);
+      _registered = true;
+      if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+        _lastResumedAtMs = DateTime.now().millisecondsSinceEpoch;
+      }
+    } catch (_) {/* no binding (bg isolate) — stays unregistered, reports "never" */}
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _lastResumedAtMs = DateTime.now().millisecondsSinceEpoch;
+    }
+  }
+
+  /// Milliseconds since the app was last resumed. Returns a very large number
+  /// when we have never seen a resume, so every grace comparison fails closed.
+  int get msSinceResumed => _lastResumedAtMs == 0
+      ? 1 << 30
+      : DateTime.now().millisecondsSinceEpoch - _lastResumedAtMs;
+}
+
+/// [CALL-REL-R4-B] Why we believe the app is in front, or null if it is not.
+///
+/// Returning a REASON rather than a bool is deliberate: it is what lets the
+/// suppression telemetry distinguish the safe strict case from a relaxed guess,
+/// and it is what decides whether the verification fallback gets armed.
+String? _resolveAppFrontReason(String lifecycle) {
+  if (lifecycle == 'resumed') return 'resumed';
+  if (!RemoteConfig.foregroundRingDetectionV2) return null;
+  // No navigator means nothing to show the branded screen on, so the app cannot
+  // own the ring no matter what the lifecycle says. This also excludes the FCM
+  // background isolate, whose sentinel is 'no_binding'.
+  if (navigatorKey.currentState == null) return null;
+  // 'inactive' is the transition state while another activity (ours or the
+  // system's) takes focus. On Android it is what a foregrounded app reports
+  // mid-hand-off, and it is where CallKit's FSI launch passes through.
+  if (lifecycle == 'inactive') return 'inactive_transient';
+  // 'paused' immediately after a resume is the FSI-launch window specifically.
+  // Anything older than the grace is a user who genuinely left.
+  if (lifecycle == 'paused' &&
+      _AppFrontTracker.I.msSinceResumed <= _kAppFrontGraceMs) {
+    return 'paused_within_grace';
+  }
+  return null;
+}
+
+/// [CALL-REL-R4-B] Safety net for a RELAXED foreground guess.
+///
+/// Suppressing the OS ring on `inactive`/`paused` is a bet that the branded
+/// screen is about to own the surface. If that bet is wrong the user gets no
+/// ring at all — strictly worse than the double-surface bug we are fixing. So:
+/// wait briefly, re-read the lifecycle, and register CallKit after all if the
+/// app did not actually come to front.
+///
+/// Bails out if the ring stopped mattering in the meantime — the call went
+/// terminal, or the user already accepted (`_programmaticCallkitEnd` is stamped
+/// by `_finishAcceptedRing` before it dismisses the ring). Posting an incoming
+/// -call notification for an accepted call would recreate the exact symptom this
+/// change exists to remove.
+Future<void> _verifyForegroundRingOrFallback({
+  required String callId,
+  required CallKitParams params,
+  required String route,
+  required String? frontReason,
+}) async {
+  await Future<void>.delayed(
+      const Duration(milliseconds: _kOsRingFallbackDelayMs));
+  if (callId.isNotEmpty &&
+      (PushService.wasCallTerminated(callId) ||
+          _wasProgrammaticCallkitEnd(callId))) {
+    return;
+  }
+  String now = 'no_binding';
+  try {
+    now = WidgetsBinding.instance.lifecycleState?.name ?? 'none';
+  } catch (_) {/* binding vanished — treat as not-in-front and fall back */}
+  if (now == 'resumed') return; // the guess was right; branded screen owns it.
+  try {
+    await FlutterCallkitIncoming.showCallkitIncoming(params);
+    // CallKit owns the ringtone again, so hand ours back rather than ringing twice.
+    unawaited(_stopRingtoneFallback(callId));
+    Analytics.capture('call_os_ring_fallback_registered', {
+      'call_id': callId,
+      'route': route,
+      'front_reason': frontReason ?? 'none',
+      'lifecycle_after': now,
+      'delay_ms': _kOsRingFallbackDelayMs,
+    });
+  } catch (e) {
+    Analytics.capture('call_os_ring_fallback_failed', {
+      'call_id': callId,
+      'route': route,
+      'error': e.toString(),
+    });
+  }
+}
 
 /// Close native/local ring surfaces after a HUMAN ACCEPT without manufacturing
 /// a terminal call outcome. Some Android/OEM CallKit implementations emit
@@ -1555,9 +1688,15 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
   // Absent on a push from a server that predates this change → nothing is
   // recorded and the join stays un-credentialed, which is admitted while
   // `callRoomAuthEnforced` is off.
+  // [CALL-REL-R4-3 2026-08-03] AWAITED on purpose. This runs in the FCM
+  // background isolate for a killed/backgrounded app, and that isolate can be
+  // torn down as soon as its handler returns — an unawaited secure-storage write
+  // races process death and the credential is silently lost. The accept that
+  // needs it runs in the MAIN isolate, whose heap does not see this map, so
+  // durable storage is the only channel between them.
   final incomingRoomToken = (d['roomToken'] ?? '').toString();
   if (ringCallId.isNotEmpty && incomingRoomToken.isNotEmpty) {
-    rememberCallRoomToken(ringCallId, incomingRoomToken);
+    await rememberCallRoomTokenDurable(ringCallId, incomingRoomToken);
   }
   if (!ringInviteIsFresh(d)) {
     Analytics.capture('call_ring_suppressed_expired', {
@@ -1667,6 +1806,14 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
       'nativeActionToken': d['nativeActionToken'] ?? '',
       'nativeActionExpiresAt': d['tokenExpiresAt'] ?? '',
       'nativeDeclineUrl': kNativeCallDeclineUrl,
+      // [CALL-REL-R4-3] Second, independent carrier for the CallRoom join
+      // credential. The primary path is the awaited secure-storage write above,
+      // but a cold-start Accept comes back through CallKit/MainActivity, and
+      // that bundle survives process death by construction — so carrying the
+      // token here gives the accept a recovery path that does not depend on the
+      // background isolate having lived long enough to finish its write.
+      // Same short-lived, call-scoped credential; not an account credential.
+      'roomToken': d['roomToken'] ?? '',
       // [TRACE-ID-1] Carry the caller's correlation id through CallKit so the
       // callee's CallSession stitches to the same trace as the caller + Worker.
       'trace_id': d['trace_id'] ?? '',
@@ -1729,7 +1876,23 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
   // to show. Every other case still registers CallKit, because there it is
   // load-bearing: it owns the ringtone, it survives the app being killed, and
   // it is the fallback wherever Android denies a full-screen intent.
-  final brandedWillShowInApp = lifecycle == 'resumed' &&
+  // [CALL-REL-R4-B 2026-08-03] "Is the app in front?" used to be the exact
+  // equality `lifecycle == 'resumed'`, and Android does not honour it: while it
+  // launches CallKit's own full-screen-intent activity over an open app,
+  // MainActivity reports `paused`. Prod `avatok-cb1618e6` rang with
+  // `lifecycle=paused`, so the suppression did not fire, CallKit was registered
+  // ALONGSIDE the branded screen, and its heads-up notification was still in the
+  // shade when the user hit Accept — the "ring starts in the header after I
+  // answer" report.
+  //
+  // V2 also accepts `inactive` (a transient hand-off, engine and navigator both
+  // alive) and a `paused` app that was resumed within `_kAppFrontGraceMs`. Both
+  // still require a live navigator: without one there is nothing to push the
+  // branded screen onto, and suppressing CallKit would leave no ring at all.
+  final appFrontReason = _resolveAppFrontReason(lifecycle);
+  final appIsInFront = appFrontReason != null;
+  final relaxedFront = appIsInFront && appFrontReason != 'resumed';
+  final brandedWillShowInApp = appIsInFront &&
       (RemoteConfig.brandedIncomingUi ||
           (RemoteConfig.businessCallUx && (d['via'] ?? '') == 'dialpad')) &&
       !PushService.wasCallTerminated(ringCallId) &&
@@ -1743,6 +1906,16 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
       showErr = e;
     }
   } else {
+    // Suppressing on a RELAXED reading is a guess. Getting it wrong would mean
+    // no ring at all, which is far worse than the bug being fixed — so verify
+    // shortly and register CallKit after all if the app is not really in front.
+    // Worst case is a slightly late OS ring; never a silent one.
+    if (relaxedFront) {
+      unawaited(_verifyForegroundRingOrFallback(
+        callId: ringCallId, params: params, route: route,
+        frontReason: appFrontReason,
+      ));
+    }
     // CallKit owns the ringtone, so suppressing it means we own it now. This is
     // the same in-app player the ring-audibility path already uses when the OS
     // ring is inaudible, so the sound path is not new code.
@@ -1751,6 +1924,14 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
       'call_id': ringCallId,
       'route': route,
       'reason': 'branded_in_app_foreground',
+      // [CALL-REL-R4-B] Which reading suppressed the OS ring. 'resumed' is the
+      // pre-existing strict case; anything else means V2 relaxed it and the
+      // fallback below is armed. A rise in `call_os_ring_fallback_registered`
+      // against a given front_reason is the signal that the grace is too loose.
+      // Non-null by construction here: suppressOsRing implies appIsInFront (the
+      // analyzer proves it — a `?? 'none'` on this line is flagged dead).
+      'front_reason': appFrontReason,
+      'relaxed_front': relaxedFront,
     });
   }
   await _track(CallEvents.callIncomingShown, {
@@ -1763,6 +1944,10 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
     // dashboards. `os_ring_suppressed` is what distinguishes the two.
     'shown': suppressOsRing || showErr == null,
     'os_ring_suppressed': suppressOsRing,
+    // [CALL-REL-R4-B] The prod tell for this bug was `os_ring_suppressed=false`
+    // with `lifecycle=paused` on an app the owner had open. `front_reason` makes
+    // that readable without inferring it: 'none' = we judged the app not in front.
+    'front_reason': appFrontReason ?? 'none',
     if (showErr != null) 'error': showErr.toString(),
     'fsi_granted': fsiGranted,
     'bg_isolate': BadgeService.inBackgroundIsolate,
@@ -1822,7 +2007,10 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
   final brandedOn = RemoteConfig.brandedIncomingUi ||
       (RemoteConfig.businessCallUx && (d['via'] ?? '') == 'dialpad');
   if (brandedOn && !PushService.wasCallTerminated(ringCallId)) {
-    if (lifecycle == 'resumed') {
+    // [CALL-REL-R4-B] MUST use the same reading as the suppression above. If
+    // these two ever disagree — suppress the OS ring but decline to push the
+    // branded screen — the call rings on no surface at all.
+    if (appIsInFront) {
       // Use the same reservation gate as native taps and cold-start payloads.
       unawaited(_routeToBrandedIncoming(d));
     }
@@ -2220,6 +2408,12 @@ class PushService {
       return;
     }
     AvaLog.I.log('app', 'session start (app=${AvaLog.I.app}, session=${AvaLog.I.session})');
+    // [CALL-REL-R4-B] Start tracking when we were last actually in front. The
+    // ring path needs "how long ago were we resumed", which the point-in-time
+    // `lifecycleState` cannot answer, and an observer only sees transitions that
+    // happen after it registers — so this must be armed at init, not at ring
+    // time. Idempotent, and a no-op where there is no binding.
+    _AppFrontTracker.I.ensureRegistered();
     if (Platform.isAndroid) {
       // [CALL-NOTIF-OWNER-1] The build-locked CallKit patch routes notification
       // body/full-screen taps into MainActivity instead of the plugin's green
@@ -3569,6 +3763,21 @@ class PushService {
       final e = (extra as Map);
       final room = (e['callId'] ?? '').toString();
       if (room.isEmpty) return;
+      // [CALL-REL-R4-3] Cold-start credential recovery. Every accept route —
+      // native CallKit, branded screen, lock-screen tap — funnels through here,
+      // and `extra` is the one carrier that provably survived process death. If
+      // the background isolate's write did not finish (or ran under a different
+      // account scope), this is where the token comes back. `_depositRoomToken`
+      // is first-non-empty-wins, so re-depositing an already-known token is a
+      // no-op and this can never overwrite a good value with a stale one.
+      final recoveredRoomToken = (e['roomToken'] ?? '').toString();
+      if (recoveredRoomToken.isNotEmpty && roomTokenFor(room).isEmpty) {
+        await rememberCallRoomTokenDurable(room, recoveredRoomToken);
+        Analytics.capture('call_room_token_recovered', {
+          'call_id': room,
+          'source': 'callkit_extra',
+        });
+      }
       // [GCALL-W4-RING] Accepting a GROUP ring joins the conference instead of
       // opening a 1:1 CallScreen. It also skips the CallRoom accept-claim below:
       // that claim exists to make exactly one leg win the race against the Ava

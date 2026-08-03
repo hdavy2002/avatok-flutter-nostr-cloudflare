@@ -268,7 +268,22 @@ export class ReceptionRoom {
   private audioRingBytes = 0;
   private serverSeq = 0;
   private static REATTACH_BUFFER_BYTES = 96_000; // ~2s @ 24kHz mono PCM16
-  private static RECONNECT_GRACE_MS = 8_000;      // bounded wait for a reattach after a non-clean close
+  // [CALL-REL-R4-2 2026-08-03] Bounded wait for a reattach after a non-clean
+  // close. This MUST stay strictly larger than the client's total reconnect
+  // budget (`maxBudgetMs`, app/lib/core/receptionist_call.dart) or the two
+  // deadlines race: at 8 s server vs 8 s client the caller's last legal attempt
+  // and the server's finalize fire in the same instant, and whichever wins is
+  // decided by network jitter. Three prod sessions on 2026-08-03
+  // (avatok-04a1fa01, avatok-25b3e99e, avatok-f0220ffb) closed 1006 and
+  // finalized `caller_reconnect_timeout` at exactly +8 s — after Ava had
+  // already answered, so the native-decline fix cannot prevent them.
+  //
+  // 15 s server vs 8 s client leaves ~7 s of margin for the final attempt's
+  // round trip. Do NOT raise the client budget to match: the margin only
+  // exists while one side is strictly larger. The cap below
+  // (`Math.min(..., remain)`) still bounds this by the reconnect token's own
+  // TTL (≤90 s from session start), so this cannot outlive the credential.
+  private static RECONNECT_GRACE_MS = 15_000;
 
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
@@ -993,14 +1008,30 @@ export class ReceptionRoom {
     // transport reports, rather than opening a pointless reconnect-grace window
     // for a call that isn't coming back.
     const clean = code === 1000 || this.clientSentTerminalFrame;
-    this.ev("ava_recept_socket_lost", { code, clean, at_ms: Date.now() - this.startedAt });
-    if (clean) { void this.finalize(this.clientSentTerminalFrame ? "owner_answered" : "caller_hangup"); return; }
+    if (clean) {
+      this.ev("ava_recept_socket_lost", { code, clean, at_ms: Date.now() - this.startedAt, grace_ms: 0 });
+      void this.finalize(this.clientSentTerminalFrame ? "owner_answered" : "caller_hangup");
+      return;
+    }
     const remain = this.reconnectToken ? Math.max(0, this.reconnectTokenExpiresAt - Date.now()) : 0;
     const graceMs = this.reconnectToken ? Math.min(ReceptionRoom.RECONNECT_GRACE_MS, remain) : 0;
+    // [CALL-REL-R4-2] `grace_ms` and `token_remain_ms` are what make the
+    // deadline race diagnosable from PostHog alone: a `caller_reconnect_timeout`
+    // whose grace_ms is at or below the client's 8 s budget is a margin bug, not
+    // a genuinely absent caller. Keep them on the same event as `code`.
+    this.ev("ava_recept_socket_lost", {
+      code, clean, at_ms: Date.now() - this.startedAt,
+      grace_ms: graceMs, token_remain_ms: remain, has_reconnect_token: !!this.reconnectToken,
+    });
     if (graceMs <= 0) { void this.finalize("caller_reconnect_timeout"); return; }
     if (this.reconnectGraceTimer) clearTimeout(this.reconnectGraceTimer);
+    const graceStartedAt = Date.now();
     this.reconnectGraceTimer = setTimeout(() => {
-      if (!this.finalized) void this.finalize("caller_reconnect_timeout");
+      if (this.finalized) return;
+      this.ev("ava_recept_reconnect_grace_expired", {
+        grace_ms: graceMs, waited_ms: Date.now() - graceStartedAt,
+      });
+      void this.finalize("caller_reconnect_timeout");
     }, graceMs);
   }
 

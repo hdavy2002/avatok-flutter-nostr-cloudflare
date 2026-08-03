@@ -892,7 +892,54 @@ export class CallRoom {
       try { await this.state.storage.deleteAlarm(); } catch { /* no alarm set */ }
       return;
     }
-    try { await this.state.storage.setAlarm(Math.min(...candidates)); } catch { /* best-effort */ }
+    // [CALL-REL-R4-4 2026-08-03] This single alarm owns ring expiry, away-peer
+    // reconnect expiry and legacy-billing retirement. Cloudflare's at-least-once
+    // alarm guarantee only begins ONCE THE ALARM IS SUCCESSFULLY SCHEDULED —
+    // swallowing setAlarm() failure therefore does not degrade gracefully, it
+    // opts the call out of the platform's retry entirely and leaves a ring that
+    // never times out or an away peer that is never reaped, with no signal.
+    //
+    // Ring + reconnect deadlines are CRITICAL: on persistent failure we rethrow
+    // so the enclosing request fails (client retries) or, when we are already
+    // inside alarm(), so the runtime retries the alarm itself. Legacy billing
+    // alone stays best-effort — a missed refund tick is money, not a stuck call,
+    // and failing dial setup over it would be a worse trade.
+    const critical = away != null || this.ringDeadline != null;
+    const at = Math.min(...candidates);
+    try {
+      await this.state.storage.setAlarm(at);
+      return;
+    } catch (firstErr) {
+      // One inline retry: setAlarm failures are dominated by transient storage
+      // contention, and retrying here is far cheaper than a whole failed dial.
+      try {
+        await this.state.storage.setAlarm(at);
+        this.reportAlarmScheduling("recovered_on_retry", at, critical, firstErr);
+        return;
+      } catch (err) {
+        this.reportAlarmScheduling("set_alarm_failed", at, critical, err);
+        if (critical) throw err;
+      }
+    }
+  }
+
+  /** [CALL-REL-R4-4] Make alarm-scheduling trouble visible. Previously every
+   *  setAlarm() failure was swallowed silently, so a call stuck with no ring
+   *  expiry was indistinguishable from a healthy one in telemetry. */
+  private reportAlarmScheduling(kind: string, at: number, critical: boolean, err: unknown): void {
+    try {
+      void this.env.Q_ANALYTICS.send({
+        event: "invariant_protected", uid: "", ts: Date.now(),
+        props: {
+          kind: `call_alarm_${kind}`, side: "server", critical,
+          scheduled_for: at, in_ms: at - Date.now(),
+          has_ring_deadline: this.ringDeadline != null,
+          error: err instanceof Error ? err.message.slice(0, 200) : String(err).slice(0, 200),
+          call_id: this.state.id.name ? String(this.state.id.name).slice(0, 64) : null,
+          app_name: "avatok", service_name: "avatok-api", worker: true,
+        },
+      });
+    } catch { /* best-effort — telemetry never blocks or breaks signaling */ }
   }
 
   /** Retire pre-free-policy billing without settling any additional minute. */

@@ -167,11 +167,40 @@ Future<String> _restoreRoomToken(String callId) async {
 
 /// Deposit the CallRoom join credential for [callId]. Safe to call more than
 /// once and from either the caller or callee path; first non-empty value wins.
+///
+/// Fire-and-forget persistence. Correct for the CALLER, whose process is alive
+/// and in the foreground by construction. The CALLEE ring path must use
+/// [rememberCallRoomTokenDurable] instead — see the note there.
 void rememberCallRoomToken(String callId, String token) {
-  if (callId.isEmpty || token.isEmpty) return;
-  if (_kRoomTokens.containsKey(callId)) return;
-  _kRoomTokens[callId] = token;
+  if (!_depositRoomToken(callId, token)) return;
   unawaited(_persistRoomToken(callId, token));
+}
+
+/// [CALL-REL-R4-3 2026-08-03] Deposit the credential and WAIT for it to reach
+/// secure storage.
+///
+/// The callee learns its token from the ring payload, which on Android is very
+/// often handled in the short-lived FCM background isolate. That isolate can be
+/// torn down the moment its handler returns — so an unawaited write races
+/// process death, and the token that a cold-start Accept later needs may never
+/// have been committed. The in-memory map does not survive either: the accept
+/// runs in the MAIN isolate, which has a different heap.
+///
+/// This is a rollout blocker rather than a live bug: `callRoomAuthEnforced` is
+/// false in production, so an un-credentialed join is currently admitted. Turn
+/// enforcement on with a lossy write here and locked-screen / killed-app accepts
+/// start failing at the socket.
+Future<void> rememberCallRoomTokenDurable(String callId, String token) async {
+  if (!_depositRoomToken(callId, token)) return;
+  await _persistRoomToken(callId, token);
+}
+
+/// In-memory half of the two deposit paths. Returns false when there is nothing
+/// to persist (empty input, or an earlier non-empty value already won).
+bool _depositRoomToken(String callId, String token) {
+  if (callId.isEmpty || token.isEmpty) return false;
+  if (_kRoomTokens.containsKey(callId)) return false;
+  _kRoomTokens[callId] = token;
   final w = _kRoomTokenWaiters.remove(callId);
   if (w != null && !w.isCompleted) w.complete(token);
   // Calls are short-lived and this map is tiny, but a long-running app process
@@ -179,6 +208,7 @@ void rememberCallRoomToken(String callId, String token) {
   if (_kRoomTokens.length > 64) {
     _kRoomTokens.remove(_kRoomTokens.keys.first);
   }
+  return true;
 }
 
 /// Drop a finished call's credential. Called from teardown.
