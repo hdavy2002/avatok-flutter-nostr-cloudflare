@@ -80,6 +80,11 @@ export type RtcProvider = "cloudflare" | "jitsi" | "livekit" | "mock" | "unknown
 
 const LEASE_MS = 30_000; // §2.4: lease = now + 30s, heartbeat refresh every 10s while CONNECTED
 const CALLBACK_RESERVATION_TTL_MS = 8_000; // §2.5 reserveCallback: expires = +8s
+/** [AUTHORITY-LEASE-1 2026-08-03] Lease for RECEPTIONIST_ACTIVE. Deliberately
+ *  far above `receptHardCapMs` (180 s in prod) so it can never truncate a live
+ *  Ava conversation — its only job is to reclaim a phase whose client died
+ *  before `/finish`, which previously pinned the owner as busy forever. */
+const RECEPTIONIST_LEASE_MS = 300_000;
 const TRANSITIONS_RETENTION_MS = 24 * 60 * 60 * 1000; // §2.2: 24h retention, debugging only
 
 // -----------------------------------------------------------------------------
@@ -280,7 +285,23 @@ export class CallStateAuthorityDO {
     // §2.9 hibernation wake: lease_expired? -> CONNECTED -> IDLE. This is one of the
     // three "return to idle" edges that must fire the busy-card now-free FCM
     // (§3.1 "Notify me" / handleRelease / handleAbandonReceptionist being the others).
-    if (row.phase === "connected" && row.lease_expiry_ms != null && Date.now() > row.lease_expiry_ms) {
+    // [AUTHORITY-LEASE-1 2026-08-03] `receptionist_active` MUST expire too.
+    //
+    // This condition was `row.phase === "connected"` alone, and the only paths
+    // out of `receptionist_active` were handleRelease / handleAbandonReceptionist
+    // — both reachable ONLY from routes/receptionist.ts `/finish`. So a client
+    // that died, lost its network, or was force-stopped between "Ava started"
+    // and `/finish` left the owner **permanently non-idle**, with no lease, no
+    // alarm and no timeout to recover it. lib/call_routing.ts then reads that
+    // phase to decide busy routing, so every subsequent call to that person
+    // would be treated as "they are on a call" forever.
+    //
+    // That is precisely the trap that made it unsafe to turn `authorityEnforced`
+    // on: enforcing a state machine that can get permanently stuck converts a
+    // dropped client into an indefinite outage for that user. A lease that is
+    // only honoured in one phase is not a lease.
+    const leasedPhase = row.phase === "connected" || row.phase === "receptionist_active";
+    if (leasedPhase && row.lease_expiry_ms != null && Date.now() > row.lease_expiry_ms) {
       row = this.applyTransition(row, "idle", "lease_expired_on_wake");
       row.peer_uid = null;
       row.call_id = null;
@@ -825,7 +846,23 @@ export class CallStateAuthorityDO {
     }
 
     // Refresh the lease whenever we (re)enter CONNECTED, per §2.4 heartbeat contract.
-    if (toPhase === "connected") row.lease_expiry_ms = Date.now() + LEASE_MS;
+    // [AUTHORITY-LEASE-1 2026-08-03] ...and RECEPTIONIST_ACTIVE, which had no
+    // lease stamped at all — so even once loadRow() learned to expire it, there
+    // would have been nothing to expire against.
+    //
+    // It gets its OWN, much longer bound. The 30 s connected lease exists because
+    // a connected client heartbeats every 10 s; a receptionist session has no
+    // such heartbeat and legitimately runs to `receptHardCapMs` — 180 s in
+    // production, with `receptCloseMs` at 160 s. Reusing LEASE_MS here would
+    // reclaim a LIVE Ava conversation after 30 seconds and hand the caller's
+    // busy-routing back mid-sentence. The bound only needs to be comfortably
+    // above the longest legitimate session, so that the only thing it ever
+    // reclaims is a session whose client vanished.
+    if (toPhase === "connected") {
+      row.lease_expiry_ms = Date.now() + LEASE_MS;
+    } else if (toPhase === "receptionist_active") {
+      row.lease_expiry_ms = Date.now() + RECEPTIONIST_LEASE_MS;
+    }
     this.applyTransition(row, toPhase, typeof body.reason === "string" ? body.reason : "transition", mutationUuid);
     this.persistRow(row);
 

@@ -1630,15 +1630,43 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
         direction: "in",
         rtc_provider: "unknown",
       });
-      await authorityTransition(env, to, {
-        to: "receptionist_active",
-        reason: "receptionist_start",
-        // receptionist_target_uid: the DO's current /transition handler does not
-        // persist this field yet (only /preempt-callback sets it) — passed here so
-        // the DO can start honoring it once wired, without another call-site change.
-        ...( { receptionist_target_uid: ctx.uid } as Record<string, unknown> ),
-      });
-      void acquireRes; // shadow-only for now; never read for a legacy decision here
+      // [AUTHORITY-BUSY-1 2026-08-03] HONOUR THE ACQUIRE VERDICT.
+      //
+      // This used to issue the transition unconditionally and then discard the
+      // verdict with `void acquireRes`. `handleAcquire` returns
+      // `decision: "busy"` WITHOUT mutating when the owner is already on a
+      // call — and the very next line then forced the phase to
+      // `receptionist_active` anyway, because `/transition`'s `expected_epoch`
+      // defaults to the row's CURRENT epoch, so its CAS can never fail. The DO
+      // answered "no", and we overwrote `connected` with `receptionist_active`
+      // on top of a live conversation.
+      //
+      // Harmless while `authorityEnforced` was off and nothing read the result;
+      // the moment enforcement is on, `lib/call_routing.ts` reads that phase to
+      // decide busy routing, and clobbering it means a person mid-call is
+      // advertised as "with the receptionist". Asking a question and ignoring
+      // the answer is worse than not asking: it writes a confident wrong value.
+      //
+      // The stale note this replaces claimed the DO "does not persist
+      // receptionist_target_uid yet". It does — see the /transition handler.
+      if (acquireRes?.decision === "busy") {
+        // Do not touch the phase. The legacy start below is unaffected — this
+        // block has always been observe-and-record, never a gate.
+        void env.Q_ANALYTICS.send({
+          event: "authority_transition_rejected", uid: to, ts: Date.now(),
+          props: {
+            reason: "acquire_busy_receptionist_start", call_id: callId || "",
+            peer_uid: ctx.uid,
+            app_name: "avatok", service_name: "avatok-api", worker: true,
+          },
+        });
+      } else {
+        await authorityTransition(env, to, {
+          to: "receptionist_active",
+          reason: "receptionist_start",
+          ...( { receptionist_target_uid: ctx.uid } as Record<string, unknown> ),
+        });
+      }
     } catch { /* fail-open — legacy start proceeds unaffected */ }
   }
 
