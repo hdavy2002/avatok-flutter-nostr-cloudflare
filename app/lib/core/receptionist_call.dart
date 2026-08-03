@@ -131,6 +131,11 @@ class ReceptionistCall {
 
   Future<String> get done => _done.future;
 
+  /// [AVA-PREWARM-1] Has this session already finished (naturally, or aborted)?
+  /// Lets a caller holding a pre-warmed instance tell a stale/dead one apart
+  /// from a still-usable one without reaching into private state.
+  bool get isEnded => _ended;
+
   /// Live VU levels (0..1) for the call screen's speaking animation. [micLevel]
   /// is the CALLER's mic energy (their icon + the link toward Ava light up when
   /// it's high); [avaLevel] is AVA's outgoing-audio energy (her icon + the link
@@ -523,6 +528,27 @@ class ReceptionistCall {
     // down (the DO finalizes on the frame; the close is the backstop).
     await Future<void>.delayed(const Duration(milliseconds: 120));
     await _finish('owner_answered');
+  }
+
+  /// [AVA-PREWARM-1] Abort a pre-warmed (not-yet-adopted, never-heard-by-the-
+  /// caller) session with ZERO caller-visible side effects: no message posted
+  /// to the owner's thread, no recording, no summary, no push. Sends an
+  /// explicit control frame FIRST so the DO finalizes with reason
+  /// `prewarm_abort` (worker/src/do/reception_room_cf.ts skips delivery for
+  /// that reason, mirroring the existing `takenOver` skip) before the socket
+  /// closes — same ordering as [yieldToOwner]. If the WS never connected, the
+  /// safety-finalize route (`POST /api/receptionist/finish`) never posts
+  /// anything either way, so this is side-effect-free even mid-`start()`.
+  Future<void> abortPrewarm() async {
+    if (_ended) return;
+    Analytics.capture('ava_recept_prewarm_abort_sent', {
+      'engine': _useNative ? 'native' : 'fallback',
+      'had_first_audio': _firstAudio,
+      if (callId case final id?) 'call_id': id,
+    });
+    try { _ws?.sink.add('{"t":"prewarm_abort"}'); } catch (_) {}
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+    await _finish('prewarm_abort');
   }
 
   // ── [CALL-REL-7] receptionist WS reattach ───────────────────────────────────

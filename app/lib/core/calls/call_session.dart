@@ -586,6 +586,24 @@ class CallSession {
   // reached ~3.8s, landing right on the old deadline and dropping live calls
   // (AVA-RECEPT-UNREACHABLE-WATCHDOG-RACE). 8s gives the fallback real headroom.
   static const int _avaLiveTimeoutMs = 8000;
+
+  // [AVA-PREWARM-1] Pre-warm the receptionist during the final rings so its
+  // HTTP/WS/mic/engine spin-up overlaps the ring instead of happening in dead
+  // air after it stops (the 10-11.5s gap: prod ava_recept_first_audio
+  // ms=9801/11461). The prewarmed session is held (buffered, silent) and is
+  // NEVER assigned to [_receptionist]/[_receptionistActive] until real
+  // takeover adopts it in [_tryReceptionist] — those flags mean "Ava owns this
+  // call" throughout the file (they gate the no-answer window, device-ringing
+  // signal, etc.), and a prewarm must not trip any of that while the caller is
+  // still just hearing the ring.
+  ReceptionistCall? _prewarmCall;
+  Future<bool>? _prewarmStartFuture;
+  Timer? _prewarmTimer;
+  bool _prewarmScheduleAttempted = false;
+  int? _prewarmStartedAtMs;
+  bool _handoffWasWarm = false; // was the just-adopted session pre-warmed?
+  static const int _prewarmLeadMs = 8000; // start ~8s before the ring deadline
+
   String _myAvatar = '';
   String _myName = 'You';
   String _mySeed = 'me';
@@ -673,7 +691,12 @@ class CallSession {
   /// the deadline out.
   void noteServerRingDeadline(int? deadlineMs) {
     if (deadlineMs == null || deadlineMs <= 0) return;
+    final firstTime = _serverRingDeadlineMs == null;
     _serverRingDeadlineMs ??= deadlineMs;
+    // [AVA-PREWARM-1] Now that the deadline is known, schedule the pre-warm
+    // relative to it. Only the first writer's deadline matters (see above), so
+    // only schedule once too.
+    if (firstTime) _schedulePrewarm();
   }
 
   /// [CALL-ROUTED-OPTIMISTIC-1 2026-08-03] The server answered the place-call
@@ -2737,6 +2760,13 @@ class CallSession {
         _failTimer?.cancel();
         _relayFallbackTimer?.cancel();
         _ringback.stop();
+        // [AVA-PREWARM-1] The callee answered for real — a pre-warmed
+        // receptionist session (if any) was never heard and must never
+        // surface (no message, no recording, no summary).
+        if (_prewarmCall != null) {
+          // ignore: unawaited_futures
+          _abortPrewarm('callee_answered');
+        }
         _telemetry.connected(pc);
         _telemetry.setMediaPath(_relayForced ? 'relay' : 'direct'); // [CALL-REL-4/5]
         HapticFeedback.mediumImpact();
@@ -3816,6 +3846,9 @@ class CallSession {
       case 'device-ringing':
         _onDeviceRinging();
         break;
+      case 'ring-delivered':
+        _onRingDelivered();
+        break;
       case 'ring-ack':
         _onRingAck(d['ok'] == true);
         break;
@@ -4352,7 +4385,14 @@ class CallSession {
     // (this method is now its entry point) — a second stale ring/timeout firing
     // must not re-attempt the receptionist under it.
     if (_phase == 'outcome-menu') return;
-    _ringback.stop();
+    // [AVA-PREWARM-1] The ringback tone used to be stopped unconditionally
+    // right here — before we even knew whether a receptionist handoff would
+    // be attempted — which is exactly what produced the 10-11.5s silent gap
+    // (prod ava_recept_first_audio ms=9801/11461: ringback stops, then dead
+    // air through the entire HTTP/WS/mic/engine spin-up). It now keeps
+    // playing through the attempt below and is stopped centrally at the
+    // ava-live gate ([_openAvaLiveGate], success) or via
+    // [_stopToneOnHandoffFailure] (failure / no attempt), never blindly here.
     // [AVACALL-MENU-1 / WS4] The outcome MENU is reserved for the caller's
     // ACTIVE-refusal scenarios — an explicit decline (callStatusBus / fast-WS
     // 'decline'|'decline_ava') and busy (_onBusy) — where the callee is present
@@ -4380,16 +4420,22 @@ class CallSession {
           activationMode: _callUnreachable
               ? 'unreachable'
               : (_receptMode == 'first_ring' ? 'first_ring' : 'rings'));
-      if (started) return;
-    } else if (_calleePrefsKnown && !_calleeAiReceptionist) {
-      Analytics.capture('ava_recept_skipped', {
-        'call_id': config.room,
-        'reason': 'callee_receptionist_off',
-        'business': config.business,
-        // For a PSTN/business call the pre-recorded PSTN voicemail lane owns the
-        // fallback when this is on; AvaTOK calls always drop to the WS2 free VM.
-        'pstn_voicemail_enabled': _calleePstnVoicemail,
-      });
+      if (started) return; // tone keeps playing — stops at the live gate or its own timeout
+      await _stopToneOnHandoffFailure('receptionist_failed');
+    } else {
+      // Receptionist not attempted at all (video / not allowed for this
+      // scenario) — nothing will ever stop the tone, so stop it here.
+      await _stopToneOnHandoffFailure('no_receptionist');
+      if (_calleePrefsKnown && !_calleeAiReceptionist) {
+        Analytics.capture('ava_recept_skipped', {
+          'call_id': config.room,
+          'reason': 'callee_receptionist_off',
+          'business': config.business,
+          // For a PSTN/business call the pre-recorded PSTN voicemail lane owns the
+          // fallback when this is on; AvaTOK calls always drop to the WS2 free VM.
+          'pstn_voicemail_enabled': _calleePstnVoicemail,
+        });
+      }
     }
     // [NOANSWER-LEAVE-NOTE-1] No answer AND no receptionist handoff (receptionist
     // off / scenario off / start failed / unreachable / tokens exhausted) →
@@ -5066,6 +5112,24 @@ class CallSession {
     _endWith('network-error', reason: 'place-call-failed');
   }
 
+  /// [CALL-RING-DELIVERED-1] The server confirms the ring frame reached a LIVE
+  /// websocket on the callee's device — a couple of seconds sooner than FCM or
+  /// the callee's own device-ringing receipt, which is what the caller's app
+  /// was still waiting on for this narration. This is delivery to a live
+  /// socket, NOT evidence the phone is physically ringing (only
+  /// [_onDeviceRinging]'s genuine receipt may claim that — FAKE-RING-HONEST-1),
+  /// so it may ONLY touch the dial-stage copy: no ringback, no phase change.
+  /// Guarded on `_deviceRinging` so a straggling/duplicate frame can never
+  /// supersede — or fight with — the real receipt once it lands.
+  void _onRingDelivered() {
+    if (_ended || _connected || _deviceRinging) return;
+    if (_receptionistActive || _receptionist != null || _avaCountingDown) return;
+    _setDialStage("Ringing $_peerFirst's phone…");
+    Analytics.capture('call_ring_delivered_copy_applied', {
+      'call_id': config.room,
+    });
+  }
+
   void _onDeviceRinging() {
     // [CALL-ECHO-FIX-2] Belt-and-braces. The `_onSignal` caller is now guarded
     // on `config.outgoing`, but this method has several call sites (the ring-ack
@@ -5127,28 +5191,135 @@ class CallSession {
     _startRingWindow(_pendingRingWindow ?? const Duration(seconds: 22));
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  //  [AVA-PREWARM-1] pre-warm the receptionist during the final rings
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /// Schedule [_beginPrewarm] for ~[_prewarmLeadMs] before the server's ring
+  /// deadline. Caller side, outgoing, audio-only, once per call. Guarded
+  /// again (eligibility, config) at fire time in [_beginPrewarm] since prefs
+  /// can still resolve between now and then.
+  void _schedulePrewarm() {
+    if (_prewarmScheduleAttempted) return;
+    _prewarmScheduleAttempted = true;
+    if (!config.outgoing || config.video || _businessFlow) return;
+    if (!RemoteConfig.avaPrewarmEnabled) return;
+    final deadline = _serverRingDeadlineMs;
+    if (deadline == null) return;
+    final delay = (deadline - _prewarmLeadMs) - DateTime.now().millisecondsSinceEpoch;
+    // Too close to the deadline (or already past it) for a head start to be
+    // worth the extra receptionist session — let the normal cold path handle
+    // the handoff exactly as before.
+    if (delay < 500) return;
+    _prewarmTimer?.cancel();
+    _prewarmTimer = Timer(Duration(milliseconds: delay), () {
+      // ignore: unawaited_futures
+      _beginPrewarm();
+    });
+  }
+
+  /// Start a receptionist session in the background, held (buffered, silent)
+  /// via [ReceptionistCall.beginHold]. Reuses the same eligibility signal the
+  /// real no-answer handoff uses ([_receptionistAllowedFor]) — already
+  /// resolved from the dial-time probe, so this adds no extra round trip. A
+  /// failed/ineligible pre-warm is invisible: [_tryReceptionist] falls back to
+  /// its normal cold start with no user-visible effect.
+  Future<void> _beginPrewarm() async {
+    if (_ended || _connected) return;
+    if (_receptionistActive || _receptionist != null || _avaCountingDown) return;
+    if (_prewarmCall != null) return; // already running
+    if (!_receptionistAllowedFor(_callUnreachable ? 'unreachable' : 'missed')) return;
+    final call = ReceptionistCall(
+        calleeUid: config.seed, callId: config.room,
+        activationMode: _callUnreachable
+            ? 'unreachable'
+            : (_receptMode == 'first_ring' ? 'first_ring' : 'rings'),
+        speaker: _speaker, teamId: config.teamId, teamSlot: config.teamSlot);
+    _prewarmCall = call;
+    _prewarmStartedAtMs = DateTime.now().millisecondsSinceEpoch;
+    final deadline = _serverRingDeadlineMs;
+    Analytics.capture('ava_prewarm_started', {
+      'call_id': config.room,
+      if (deadline != null)
+        'ms_before_deadline': deadline - DateTime.now().millisecondsSinceEpoch,
+    });
+    var readyReported = false;
+    call.onStatus = (s) {
+      // Lightweight while pre-warmed: only track "ready" telemetry. The real
+      // status handler (phase/gate wiring) is installed on adoption in
+      // [_tryReceptionist] — [ReceptionistCall.avaLevel] is call-owned state
+      // that survives the handler swap, so an already-live call is still
+      // detected correctly at adoption (see [_armAvaLiveWatchdog]'s own
+      // avaLevel check).
+      if (s == 'live' && !readyReported) {
+        readyReported = true;
+        Analytics.capture('ava_prewarm_ready', {
+          'call_id': config.room,
+          'ms': DateTime.now().millisecondsSinceEpoch - _prewarmStartedAtMs!,
+        });
+      }
+    };
+    call.beginHold();
+    final fut = call.start();
+    _prewarmStartFuture = fut;
+    final ok = await fut;
+    if (!identical(_prewarmCall, call)) return; // adopted/aborted/superseded already
+    if (!ok) {
+      _prewarmCall = null;
+      _prewarmStartFuture = null;
+      Analytics.capture('ava_prewarm_aborted', {'call_id': config.room, 'reason': 'failed'});
+    }
+  }
+
+  /// Abort a not-yet-adopted pre-warmed session (the callee answered, or the
+  /// call ended for any other reason before the ring deadline). Side-effect
+  /// free on the server — see [ReceptionistCall.abortPrewarm].
+  Future<void> _abortPrewarm(String reason) async {
+    final call = _prewarmCall;
+    if (call == null) return;
+    _prewarmCall = null;
+    _prewarmStartFuture = null;
+    _prewarmTimer?.cancel();
+    Analytics.capture('ava_prewarm_aborted', {'call_id': config.room, 'reason': reason});
+    try { await call.abortPrewarm(); } catch (_) {}
+  }
+
+  /// Stop the ringback tone on a receptionist-handoff FAILURE path (start()
+  /// returned false, or the final ava-live-timeout miss) so a failed handoff
+  /// can never loop the tone forever. A no-op if the tone already stopped at
+  /// the ava-live gate (success raced the failure check).
+  Future<void> _stopToneOnHandoffFailure(String reason) async {
+    if (_avaLiveGateOpen) return;
+    await _ringback.stop(reason: reason);
+    Analytics.capture('call_tone_stopped', {'call_id': config.room, 'reason': reason});
+  }
+
   Future<void> _handoffToAva(String activationMode) async {
     _handoffAuthorityPoll?.cancel();
-    // CALL-REL-3: wait for the tone to actually stop (confirmed via the
-    // ringback player's own generation counter) before handing audio to the
-    // receptionist — a late/superseded tone completion must never bleed into
-    // Ava's speech. See Specs/PERMANENT-P2P-CALL-RELIABILITY-IMPLEMENTATION-
-    // PLAN-2026-07-24.md §6.
-    await _ringback.stop(reason: 'receptionist_handoff');
+    // [AVA-PREWARM-1] The ringback tone now keeps playing through the whole
+    // receptionist spin-up instead of being stopped into silence here — it is
+    // stopped centrally at the moment Ava is provably about to be heard (the
+    // ava-live gate, [_openAvaLiveGate]) or on a failure path below, never
+    // blindly before the attempt. This is the fix for the 10-11.5s silent gap
+    // between ringback stopping and Ava's first audio (prod
+    // ava_recept_first_audio ms=9801/11461).
     final started = await _tryReceptionist(activationMode: activationMode);
-    if (!started && !_connected) {
-      // [RECEPT-START-409-1] A 409 reattach_blocked means Ava is ALREADY live on
-      // another leg of this exact call — ending with "Couldn't reach Ava" here was
-      // a lie (the message IS being taken). End this duplicate leg quietly.
-      if (_receptFailReason == 'reattach_blocked') {
-        _endWith('ended', reason: 'recept-reattach-noop');
-      } else if (_receptFailReason == 'insufficient_tokens' ||
-          _receptFailReason == 'wallet_unavailable') {
-        // The owner cannot fund Ava. Keep a clear, persistent caller message;
-        // never mislabel this as a decline or offer another broken Ava button.
-        _showOutcomeMenu('no-answer');
-      } else {
-        _endWith('declined', reason: 'receptionist-unavailable');
+    if (!started) {
+      await _stopToneOnHandoffFailure('receptionist_failed');
+      if (!_connected) {
+        // [RECEPT-START-409-1] A 409 reattach_blocked means Ava is ALREADY live on
+        // another leg of this exact call — ending with "Couldn't reach Ava" here was
+        // a lie (the message IS being taken). End this duplicate leg quietly.
+        if (_receptFailReason == 'reattach_blocked') {
+          _endWith('ended', reason: 'recept-reattach-noop');
+        } else if (_receptFailReason == 'insufficient_tokens' ||
+            _receptFailReason == 'wallet_unavailable') {
+          // The owner cannot fund Ava. Keep a clear, persistent caller message;
+          // never mislabel this as a decline or offer another broken Ava button.
+          _showOutcomeMenu('no-answer');
+        } else {
+          _endWith('declined', reason: 'receptionist-unavailable');
+        }
       }
     }
   }
@@ -5179,18 +5350,39 @@ class CallSession {
       return true;
     }
     _receptionistActive = true;
+    // [AVA-PREWARM-1] Adopt an already-warming session instead of a cold
+    // start when one exists and hasn't already died. `_prewarmCall` is only
+    // ever non-null here because [_beginPrewarm] created it; a dead one
+    // (start() failed) already cleared itself back to null, so `isEnded` only
+    // needs to catch the abort/ended-after-check race.
+    final warm = _prewarmCall;
+    final isWarm = warm != null && !warm.isEnded;
+    final warmStartFuture = _prewarmStartFuture;
+    if (warm != null) {
+      _prewarmCall = null;
+      _prewarmStartFuture = null;
+      _prewarmTimer?.cancel();
+    }
+    _handoffWasWarm = isWarm;
     try {
       try { _stream?.getTracks().forEach((t) => t.stop()); } catch (_) {}
       try { await _pc?.close(); } catch (_) {}
       _pc = null;
 
-      final call = ReceptionistCall(
-          calleeUid: config.seed, callId: config.room, activationMode: activationMode,
-          speaker: _speaker, teamId: config.teamId, teamSlot: config.teamSlot);
+      final call = isWarm
+          ? warm!
+          : ReceptionistCall(
+              calleeUid: config.seed, callId: config.room, activationMode: activationMode,
+              speaker: _speaker, teamId: config.teamId, teamSlot: config.teamSlot);
       // Publish the pending object BEFORE either async server request. Teardown
       // can now cancel a start that is still in flight instead of losing the
       // only reference and letting Ava begin after the caller hung up.
       _receptionist = call;
+      // Replace the lightweight pre-warm status handler (if any) with the real
+      // one below — [ReceptionistCall.avaLevel] is call-owned state that
+      // survives the swap, so a 'live' frame that arrived while pre-warmed is
+      // still picked up (via [_armAvaLiveWatchdog]'s own avaLevel check just
+      // below, or immediately if the gate races open first).
       call.onStatus = (s) {
         if (_ended || _avaCountingDown) return;
         switch (s) {
@@ -5217,6 +5409,7 @@ class CallSession {
             // cross its threshold before the watchdog fires. This is what fixes the
             // unreachable-mode race where a genuinely-live Ava got dropped as
             // 'ava_live_timeout' (AVA-RECEPT-UNREACHABLE-WATCHDOG-RACE).
+            // ignore: unawaited_futures
             _openAvaLiveGate();
             break;
           case 'reconnecting':
@@ -5236,6 +5429,7 @@ class CallSession {
           case 'wrapup':
             // Ava reached her soft-cap → she is unambiguously live: open the
             // gate (if not already) then show the wrap-up line.
+            // ignore: unawaited_futures
             _openAvaLiveGate();
             _setPhase('receptionist-wrapup');
             break;
@@ -5243,12 +5437,20 @@ class CallSession {
             break;
         }
       };
-      _avaCountingDown = true;
-      call.beginHold();
-      final startFut = call.start();
-      await _runAvaCountdown();
-      final ok = await startFut;
-      _avaCountingDown = false;
+      bool ok;
+      if (isWarm) {
+        // Already started (or still starting) in the background — just wait
+        // for it. No on-screen 3-2-1 countdown for an adopted warm session:
+        // the whole point of pre-warming is to skip that wait.
+        ok = await (warmStartFuture ?? call.start());
+      } else {
+        _avaCountingDown = true;
+        call.beginHold();
+        final startFut = call.start();
+        await _runAvaCountdown();
+        ok = await startFut;
+        _avaCountingDown = false;
+      }
       if (!ok) {
         // [RECEPT-START-409-1] Keep the server's refusal reason so the caller
         // surface can distinguish "another leg already owns Ava for this call"
@@ -5280,7 +5482,11 @@ class CallSession {
         _setPhase('receptionist-connecting');
         _armAvaLiveWatchdog(call);
       }
-      call.release();
+      // [AVA-PREWARM-1] No unconditional release() here anymore — Ava's audio
+      // stays held (buffered, silent) until the ava-live gate opens
+      // ([_openAvaLiveGate]), which stops the ringback tone THEN releases her
+      // audio, so the two can never overlap. If the gate already opened above
+      // (a warm/fast call), the release already happened there.
       call.done.then((_) {
         if (!_ended) _endWith('ended', reason: 'receptionist-done');
       });
@@ -5324,11 +5530,14 @@ class CallSession {
     if (_avaLevelListener == null) {
       _avaLevelListener = () {
         if (_ended || _avaLiveGateOpen) return;
+        // ignore: unawaited_futures
         if (call.avaLevel.value > 0.02) _openAvaLiveGate();
       };
       call.avaLevel.addListener(_avaLevelListener!);
       _avaLevelSource = call;
-      // Guard the race where audio already arrived before we attached.
+      // Guard the race where audio already arrived before we attached (this is
+      // exactly how an already-live pre-warmed session is caught on adoption).
+      // ignore: unawaited_futures
       if (call.avaLevel.value > 0.02) { _openAvaLiveGate(); return; }
     }
     _avaLiveWatchdog?.cancel();
@@ -5337,8 +5546,16 @@ class CallSession {
   }
 
   /// The ava-live ack arrived (first Ava audio / ready frame). Open the gate:
-  /// flip the confident "Ava is taking your call" status and stop the watchdog.
-  void _openAvaLiveGate() {
+  /// flip the confident "Ava is taking your call" status, stop the watchdog,
+  /// and — [AVA-PREWARM-1] — this is now the ONE place the ringback tone
+  /// stops for a successful handoff. `_avaLiveGateOpen` is set synchronously
+  /// (before the first `await`) so a second concurrent caller (onStatus vs
+  /// the avaLevel listener) sees it immediately and bails, same as before.
+  /// The tone is stopped and AWAITED before releasing Ava's held audio, so the
+  /// two can never overlap (CALL-REL-3) — this closes the 10-11.5s silent gap
+  /// (prod ava_recept_first_audio ms=9801/11461) by moving the stop from
+  /// "before we even try" to "the instant she's actually about to be heard".
+  Future<void> _openAvaLiveGate() async {
     if (_avaLiveGateOpen || _ended) return;
     _avaLiveGateOpen = true;
     _avaLiveConnecting = false;
@@ -5351,6 +5568,16 @@ class CallSession {
       'call_id': config.room,
       'announcement_delay_ms': delay,
       'attempt': _avaLiveAttempt,
+    });
+    final toneStopStart = DateTime.now().millisecondsSinceEpoch;
+    await _ringback.stop(reason: 'ava_live_gate');
+    Analytics.capture('call_tone_stopped',
+        {'call_id': config.room, 'reason': 'ava_live_gate'});
+    _receptionist?.release();
+    Analytics.capture('ava_takeover_warm', {
+      'call_id': config.room,
+      'gap_ms': DateTime.now().millisecondsSinceEpoch - toneStopStart,
+      'warm': _handoffWasWarm,
     });
     // Only advance the label if we're still in a receptionist-connecting state
     // (don't stomp a wrapup/ended phase that may have raced in).
@@ -5392,6 +5619,10 @@ class CallSession {
       'activation_mode': call.activationMode,
     });
     _clearAvaLiveGate();
+    // [AVA-PREWARM-1] The gate never opened, so the tone never stopped —
+    // stop it now on this final-failure path so a dead handoff can never loop
+    // the ringback forever.
+    await _stopToneOnHandoffFailure('receptionist_failed');
     // Tear down the dead receptionist leg so it can't linger under the fallback.
     try { call.hangup(); } catch (_) {}
     _receptionist = null;
@@ -5482,6 +5713,12 @@ class CallSession {
     _busyCardTimeout?.cancel();
     _busyCardTimeout = null;
     try { await _receptionist?.hangup(); } catch (_) {}
+    // [AVA-PREWARM-1] The call is ending (any reason) before the ring
+    // deadline ever took over the pre-warmed session — abort it so it leaves
+    // no trace. Also cancel a still-pending prewarm timer so a superseded
+    // session's leftover Timer can't fire after teardown.
+    _prewarmTimer?.cancel();
+    if (_prewarmCall != null) { try { await _abortPrewarm('call_ended'); } catch (_) {} }
     try { WakelockPlus.disable(); } catch (_) {}
     // CALL-REL-1: one `endP2pSession` call replaces the scattered stop calls
     // when the controller owns the session. It is safe even if setup only

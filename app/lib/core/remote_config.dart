@@ -225,6 +225,16 @@ class RemoteConfig {
   /// ring-ack (incoming-call FCM push outcome). Ships dark (default OFF); flip in
   /// KV after a device test. Mirrors config.ts `receptTakeoverGuard`.
   static bool get receptTakeoverGuard => _b('receptTakeoverGuard', false);
+  /// [AVA-PREWARM-1] Pre-warm the AI receptionist (HTTP /start + WS + mic +
+  /// engine) in the background while the outgoing ringback is still playing,
+  /// so a taken-over call's audio is already flowing instead of starting cold
+  /// after the ring window ends — the fix for the 10-11.5s silent gap between
+  /// ringback stopping and Ava's first audio (prod ava_recept_first_audio
+  /// ms=9801/11461). Declared in worker/src/routes/config.ts (PlatformConfig +
+  /// DEFAULTS, per the fake-flag rule) so it is a real, flippable switch.
+  /// Default TRUE; flip false in KV to fall back to the cold post-ring start
+  /// with no rebuild.
+  static bool get avaPrewarmEnabled => _b('avaPrewarmEnabled', true);
   /// P4: require video-liveness verification before creating/publishing a listing.
   /// Ships dark (default OFF); flip ON at launch. Mirrors config.ts.
   static bool get listingLivenessGate => _b('listingLivenessGate', false);

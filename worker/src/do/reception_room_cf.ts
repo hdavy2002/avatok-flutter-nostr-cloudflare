@@ -454,7 +454,18 @@ export class ReceptionRoomCf {
   private onClientMessage(ev: MessageEvent): void {
     if (this.finalized) return;
     const d = ev.data as any;
-    if (typeof d === "string") return; // no client control honored
+    if (typeof d === "string") {
+      // [AVA-PREWARM-1] The ONE client control frame this engine honors: the
+      // caller aborting a pre-warmed (never-taken-over) session — the callee
+      // answered elsewhere, or the call ended before the ring deadline. Finalize
+      // now with a reason that skips message/recording/summary/billing delivery
+      // (see finalize()), so a pre-warm the caller never heard leaves no trace.
+      try {
+        const m = JSON.parse(d);
+        if (m && m.t === "prewarm_abort") { void this.finalize("prewarm_abort"); }
+      } catch { /* ignore malformed control frames */ }
+      return;
+    }
     const bytes = d instanceof ArrayBuffer ? new Uint8Array(d) : null;
     if (!bytes) return;
     this.inBytes += bytes.byteLength;
@@ -1196,6 +1207,13 @@ export class ReceptionRoomCf {
   private async finalize(reason: string): Promise<void> {
     if (this.finalized) return;
     this.finalized = true;
+    // [AVA-PREWARM-1] A pre-warmed session the caller never heard (callee
+    // answered elsewhere, or the call ended before the ring deadline) must
+    // leave NO trace: no message, no recording, no summary, no billing —
+    // exactly the existing `takenOver` contract (owner picked up live), reused
+    // here rather than duplicated. Every gate below that already reads
+    // `this.takenOver` is widened to `skipDelivery`.
+    const skipDelivery = this.takenOver || reason === "prewarm_abort";
     // [RECEPT-FSM-COMPLETE-1 2026-08-03] See reception_room.ts — same reason,
     // same single hook. Reported here so the CF engine cannot strand a call in
     // `handoff` either.
@@ -1204,8 +1222,10 @@ export class ReceptionRoomCf {
     if (this.vmEndTimer) { clearTimeout(this.vmEndTimer); this.vmEndTimer = null; }
     // PAY-PER-USE (owner 2026-07-19): ₹1 per in-app voicemail, charged to the OWNER,
     // idempotent per session. Best-effort — never blocks delivery of the message.
+    // A pre-warm never bills — there is nothing to charge for a session the
+    // caller never actually heard.
     let vmChargedTokens = 0; // [RECEPT-STATS-1] actual tokens charged, for the call summary
-    if (this.init?.vm === true && this.init?.owner_uid) {
+    if (!skipDelivery && this.init?.vm === true && this.init?.owner_uid) {
       try {
         // [WALLET-TXMETA-1] Metadata only — the amount (flat per-voicemail fee)
         // is unchanged. No ratePerMin: this is NOT metered per minute, so
@@ -1240,7 +1260,7 @@ export class ReceptionRoomCf {
 
     let recordingUrl: string | null = null;
     try {
-      if (!this.takenOver && this.pcmBytes > 0) {
+      if (!skipDelivery && this.pcmBytes > 0) {
         const callerGain = this.callerPeak > 0 ? Math.min(8, Math.max(1, 22000 / this.callerPeak)) : 1;
         const wav = pcm16ToWav(this.pcmOut, this.pcmBytes, 24000, callerGain);
         const phoneKey = (init.caller_phone || "unknown").replace(/[^\d+]/g, "") || "unknown";
@@ -1253,10 +1273,10 @@ export class ReceptionRoomCf {
       this.ev("ava_recept_delivery_failed", { stage: "r2", error_scrubbed: scrubSecrets(String(e)).slice(0, 200) });
     }
 
-    // Live takeover → voicemail CANCELLED: no summary, no card, no ack.
-    const summary = this.takenOver ? null : await this.cfSummarize(transcript).catch(() => null);
+    // Live takeover / aborted pre-warm → voicemail CANCELLED: no summary, no card, no ack.
+    const summary = skipDelivery ? null : await this.cfSummarize(transcript).catch(() => null);
     const summaryJson = summary ? JSON.stringify(summary) : null;
-    if (!this.takenOver) this.ev("ava_recept_summary_generated", { ok: !!summary, urgency: summary?.urgency ?? null });
+    if (!skipDelivery) this.ev("ava_recept_summary_generated", { ok: !!summary, urgency: summary?.urgency ?? null });
 
     try {
       await this.env.DB_META.prepare(
@@ -1266,9 +1286,10 @@ export class ReceptionRoomCf {
     } catch { /* ignore */ }
 
     const hadConversation = this.firstAudioSent || this.inText.length > 0 || this.pcmBytes > 0;
-    // On a live takeover the owner & caller are now talking directly, so we post
-    // NO voicemail card and send NO caller ack — the call is not a message.
-    if (!this.takenOver) {
+    // On a live takeover the owner & caller are now talking directly, and on an
+    // aborted pre-warm the caller never heard Ava at all — either way there is
+    // no message to post and no ack to send.
+    if (!skipDelivery) {
       try { await this.postMessage(init, summary, transcript, recordingUrl, durationS, hadConversation); } catch { /* best-effort */ }
       this.ev("ava_recept_message_posted", {
         caller_phone: init.caller_phone, duration_s: durationS, cutoff_reason: reason,
@@ -1316,9 +1337,10 @@ export class ReceptionRoomCf {
 
     // ── [RECEPT-STATS-1] ONE canonical call summary (event + D1 mirror + 90d
     // retention + consent-gated AvaBrain feed) — lib/recept_stats.ts. Skipped on
-    // a live takeover: the owner picked the call up themselves, so there is no
-    // receptionist-handled call to count (mirrors the cancelled voicemail).
-    if (!this.takenOver) {
+    // a live takeover (the owner picked the call up themselves) and on an
+    // aborted pre-warm (the caller never actually reached Ava) — neither is a
+    // receptionist-handled call to count.
+    if (!skipDelivery) {
       await recordCallSummary(this.env, {
         id: init.sid,
         owner_uid: init.owner_uid,

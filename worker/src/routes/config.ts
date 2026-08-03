@@ -143,6 +143,16 @@ export interface PlatformConfig {
   // ring-ack within 5s → fall back to today's timer. Default OFF (ships dark;
   // flip after a device test). Client mirror: RemoteConfig.receptTakeoverGuard.
   receptTakeoverGuard: boolean;
+  // [AVA-PREWARM-1] Owner-requested fix for the 10-11.5s silent gap between
+  // ringback stopping and Ava's first audio on outgoing calls (prod
+  // ava_recept_first_audio ms=9801/11461). While the caller's ring is still
+  // playing, the client starts the receptionist session (HTTP /start + WS +
+  // mic + CF engine) in the background with the audio held, so spin-up
+  // overlaps the final rings instead of happening in dead air after they
+  // stop. Kill switch: default TRUE; flip false in KV to fall back to the
+  // cold post-ring start with no rebuild. Client mirror: RemoteConfig.avaPrewarmEnabled.
+  // Boolean → NOT in numericKeys.
+  avaPrewarmEnabled: boolean;
   // AvaAffiliate (Specs/proposals/PROPOSAL-AVA-AFFILIATE.md). OFF stops
   // registration, attribution + the settlement step (redirects keep working).
   avaAffiliateEnabled: boolean;      // master switch (default OFF until launch)
@@ -866,6 +876,7 @@ const DEFAULTS: PlatformConfig = {
   usdInrRate: 96.4,                // [RECEPT-BILLING-3] USD→INR for the internal call_cost_ledger (tune from KV as FX moves)
   receptMarginAlertPaise: 220,     // [RECEPT-BILLING-3] alert when real API cost > ₹2.20/min (price is ₹3/min)
   receptTakeoverGuard: false,      // P1: gate Ava takeover on FCM ring-ack — ships dark, flip after device test
+  avaPrewarmEnabled: true,         // [AVA-PREWARM-1] pre-warm the receptionist during the final rings — default ON
 
   avaAffiliateEnabled: false,      // launch gate — flip ON after A5 fraud checks
   affiliateAssetKitEnabled: false, // v2 asset kit (Gemini) — defined, not built
