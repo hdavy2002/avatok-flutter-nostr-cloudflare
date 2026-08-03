@@ -1574,6 +1574,29 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     } catch (_) { /* best-effort; live-only tallies remain */ }
   }
 
+  // ---- [GRP-W3-REACTIVE] keep an OPEN group thread's membership current --------
+  //
+  // `_group` / `_memberUids` were read once at setup and never looked at again,
+  // so a member added while this thread was open stayed invisible until the app
+  // was force-closed. That staleness also fed the seen-by thresholds, the notify
+  // recipients, and — since Wave 1 — the ≤25 group-call gate, which could refuse
+  // or allow a call on a member count that no longer existed.
+  StreamSubscription<String>? _groupChangeSub;
+
+  void _watchGroupChanges(String myUid) {
+    _groupChangeSub ??= GroupStore.changes.listen((changedId) async {
+      final gid = widget.chat.gid;
+      if (gid == null || !mounted) return;
+      if (changedId != gid && changedId != GroupStore.anyGroup) return;
+      final g = await GroupStore().byId(gid);
+      if (!mounted || g == null) return;
+      setState(() {
+        _group = g;
+        _memberUids = g.members.where((m) => m != myUid).toList();
+      });
+    });
+  }
+
   Future<void> _setupGroup(Identity id) async {
     final g = await GroupStore().byId(widget.chat.gid!);
     if (g == null || !mounted) return;
@@ -1599,6 +1622,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     _startPresenceHeartbeat();
     _memberUids = g.members.where((m) => m != id.uid).toList();
     _convKey = 'g:${g.id}';
+    _watchGroupChanges(id.uid);
     // [AVABRAIN-COMPANION-UI-1] Group Companion draft cards — group threads
     // only, fetched once on open (feature-detects a 404 → does nothing if the
     // server route/flag isn't live).
@@ -3059,6 +3083,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     // `AiMediaJobRepository.closeConversation`'s own doc comment).
     { final convId = _serverConvId ?? _convKey; if (convId != null) AiMediaJobRepository.I.closeConversation(convId); }
     _safetySub?.cancel();              // F6: live safety_flag frames
+    _groupChangeSub?.cancel();         // [GRP-W3-REACTIVE] live membership changes
     _scroll.removeListener(_maybePageArchive); // F3: archive pager
     _clockTimer?.cancel();              // Phase 5: live clock
     _reactionOverlay?.remove();        // Phase 5: tear down a floating reaction pill if open

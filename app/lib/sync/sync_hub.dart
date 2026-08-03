@@ -16,12 +16,14 @@ import '../core/chat_state.dart' show ReadStateStore, HiddenStore, DeletedStore;
 import '../core/config.dart';
 import '../core/db.dart';
 import '../core/disk_cache.dart';
+import '../core/group_store.dart' show GroupStore; // [GRP-W3-REACTIVE]
 import '../core/message_store.dart' show SafetyFlagStore;
 import '../core/net/connectivity_coordinator.dart';
 import '../core/remote_config.dart' show RemoteConfig; // [AVA-SYNC-SKIP] syncSkipEnabled kill switch
 import '../identity/identity.dart';
 import '../push/push_service.dart' show PushService; // [WS-RING-1]
 import 'dm.dart' show DmMessage;
+import 'group_api.dart' show GroupApi; // [GRP-W3-REACTIVE] members_changed → refresh
 import 'legacy_stubs.dart';
 import 'outbox.dart';
 
@@ -683,6 +685,24 @@ class SyncHub {
         // open AvaStorage screen. Same multiplexed socket, no extra connection.
         _storage.add(m);
         break;
+      case 'members_changed':
+        // [GRP-W3-REACTIVE] Somebody was added to / removed from / promoted in a
+        // group I'm in, the photo changed, or the group was deleted. Before this
+        // frame existed the server told nobody, and the local member cache was
+        // only ever refreshed unconditionally in ChatListScreen.initState — a
+        // screen that lives for the whole process — so the change did not land
+        // until the app was force-closed and relaunched.
+        //
+        // The frame is treated as a HINT: re-read the authoritative list from the
+        // server rather than applying a diff off the wire, so a duplicated or
+        // missed frame cannot corrupt the roster. GroupApi writes through
+        // GroupStore, whose change stream then updates every open screen.
+        _onMembersChanged(
+          (m['conv'] ?? '').toString(),
+          (m['reason'] ?? '').toString(),
+          (m['target'] ?? '').toString(),
+        );
+        break;
       case 'ava_stream':
         {
           // Live @ava token preview — derive the convKey the open thread uses so
@@ -721,6 +741,46 @@ class SyncHub {
         }
         break;
     }
+  }
+
+  // ---- [GRP-W3-REACTIVE] members_changed → authoritative refresh -----------------
+
+  /// Conversations with a refresh already scheduled. Adding five people fires
+  /// five frames; debouncing collapses them into one server read per group.
+  final Map<String, Timer> _memberRefresh = {};
+  static const Duration _memberRefreshDebounce = Duration(milliseconds: 400);
+
+  void _onMembersChanged(String conv, String reason, String target) {
+    if (conv.isEmpty) return;
+    // Cases where the right answer is "drop it", not "go and ask": the group is
+    // gone, or *I* am the one who left/was removed. These are decided from the
+    // frame, never from a failed fetch — see the null note below.
+    final me = _myUid ?? '';
+    final iAmOut = (reason == 'removed' || reason == 'left') && target.isNotEmpty && target == me;
+    if (reason == 'deleted' || iAmOut) {
+      _memberRefresh.remove(conv)?.cancel();
+      unawaited(GroupStore().remove(conv));
+      Analytics.capture('group_members_changed', {'reason': reason, 'applied': 'removed_local'});
+      return;
+    }
+    _memberRefresh[conv]?.cancel();
+    _memberRefresh[conv] = Timer(_memberRefreshDebounce, () {
+      _memberRefresh.remove(conv);
+      unawaited(GroupApi.refresh(conv).then((g) {
+        // refresh() writes through GroupStore, whose change stream updates the
+        // open thread, the chat list and the group-info screen.
+        //
+        // A null here is NOT treated as "I was removed": refresh() returns null
+        // for any failure at all, including a transient network error, so acting
+        // on it would delete a perfectly valid group off the back of one dropped
+        // request. Removal is decided above, from the frame that says so.
+        Analytics.capture('group_members_changed', {
+          'reason': reason,
+          'applied': g == null ? 'refresh_failed' : 'refreshed',
+          'member_count': g?.members.length ?? 0,
+        });
+      }).catchError((_) {/* next resync picks it up */}));
+    });
   }
 
   /// [G2] Fan out a (non-dismissed) guardian safety flag to any open thread. Derives

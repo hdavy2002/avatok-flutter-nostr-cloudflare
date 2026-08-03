@@ -48,11 +48,30 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
   bool _companionModeLoaded = false;
   bool _companionModeBusy = false;
 
+  // [GRP-W3-REACTIVE] This screen re-polled the server after ITS OWN edits, which
+  // is why the adder's device looked correct while everyone else's went stale.
+  // Listening to the store means a change made anywhere — another admin, another
+  // device — lands here too, without a reopen.
+  StreamSubscription<String>? _groupChangeSub;
+
   @override
   void initState() {
     super.initState();
     _group = widget.group;
     _load();
+    _groupChangeSub = GroupStore.changes.listen((changedId) async {
+      if (!mounted || (changedId != _group.id && changedId != GroupStore.anyGroup)) return;
+      final g = await GroupStore().byId(_group.id);
+      if (!mounted || g == null) return;
+      setState(() => _group = g);
+      unawaited(_load());
+    });
+  }
+
+  @override
+  void dispose() {
+    _groupChangeSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {

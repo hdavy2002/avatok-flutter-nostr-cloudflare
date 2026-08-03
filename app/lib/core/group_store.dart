@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
@@ -50,9 +51,31 @@ class GroupStore {
   // Bulk, non-secret → plain per-account file (DiskCache), not encrypted storage
   // (whose reads are slow on Samsung and were part of the ~1.2s cold-start load).
   static const _key = 'avatok_groups';
-  static const _legacy = FlutterSecureStorage(mOptions: MacOsOptions(useDataProtectionKeyChain: false), 
+  static const _legacy = FlutterSecureStorage(mOptions: MacOsOptions(useDataProtectionKeyChain: false),
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
+
+  // ---- [GRP-W3-REACTIVE] membership is now observable ----------------------------
+  //
+  // The member list was a passive cache: whoever happened to read it at screen
+  // setup kept whatever it said until the process restarted. An open group thread
+  // cached `_group`/`_memberUids` once and never looked again, which is why a new
+  // member stayed invisible until a force-close — and why the ≤25 group-call gate
+  // could be decided on a stale count.
+  //
+  // Static because every caller constructs `GroupStore()` fresh rather than
+  // sharing an instance; an instance-level stream would notify nobody. Emits the
+  // changed conversation id, or [anyGroup] for a whole-list change.
+  static const String anyGroup = '*';
+  static final StreamController<String> _changes = StreamController<String>.broadcast();
+
+  /// Fires whenever the locally-cached group list changes, from any source
+  /// (server sync, a `members_changed` push, a local edit).
+  static Stream<String> get changes => _changes.stream;
+
+  static void _emit(String id) {
+    if (!_changes.isClosed) _changes.add(id);
+  }
 
   Future<List<Group>> load() async {
     var raw = await DiskCache.read(_key);
@@ -73,6 +96,7 @@ class GroupStore {
     list.removeWhere((x) => x.id == g.id);
     list.insert(0, g);
     await DiskCache.write(_key, jsonEncode(list.map((x) => x.toJson()).toList()));
+    _emit(g.id);
     return list;
   }
 
@@ -80,6 +104,7 @@ class GroupStore {
     final list = await load();
     list.removeWhere((x) => x.id == id);
     await DiskCache.write(_key, jsonEncode(list.map((x) => x.toJson()).toList()));
+    _emit(id);
   }
 
   /// Wipe ALL locally-cached groups (both the DiskCache copy and the legacy
@@ -89,6 +114,7 @@ class GroupStore {
   Future<void> clear() async {
     await DiskCache.write(_key, '[]');
     try { await _legacy.delete(key: scopedKey(_key)); } catch (_) {/* best-effort */}
+    _emit(anyGroup);
   }
 
   Future<Group?> byId(String id) async {

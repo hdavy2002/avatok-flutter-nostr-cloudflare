@@ -39,6 +39,7 @@ import '../features/avatok/call_screen.dart';
 import '../features/avatok/contacts.dart' show ContactsStore;
 import '../features/avatok/incoming_business_call_screen.dart';
 import '../identity/identity.dart' show AccountScope; // [AVANOTIF-VM-3] name-cache account namespacing
+import '../sync/group_api.dart' show GroupApi; // [GRP-W3-RESYNC]
 import '../sync/sync_hub.dart';
 import 'call_ttl_gate.dart';
 
@@ -2412,6 +2413,14 @@ class PushService {
         // group thread appears in the list.
         _showGroupInviteNotif(d);
         SyncHub.I.ensureConnected();
+        // [GRP-W3-RESYNC] …and actually pull the group. The handler used to only
+        // show a banner and poke the socket, neither of which re-reads the member
+        // cache, so being added to a group still needed a relaunch to show up.
+        final inviteConv = (d['conv'] ?? d['gid'] ?? '').toString();
+        unawaited((inviteConv.isNotEmpty
+                ? GroupApi.refresh(inviteConv).then((_) {})
+                : GroupApi.sync().then((_) {}))
+            .catchError((_) {/* resume-resync is the backstop */}));
         return;
       }
       if (d['type'] == 'del') {

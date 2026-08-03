@@ -553,6 +553,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       _paintFromProjection();
     }
     _bootstrap();
+    _watchGroupChanges();
     _loadNotifCounts();
     _loadPendingRequests();
     // After the first frame, run the throttled Google Play update check: shows
@@ -561,6 +562,22 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     // Once per cold launch, Android-only, throttled — see UpdateService.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) UpdateService.maybePromptOnLaunch();
+    });
+  }
+
+  // ---- [GRP-W3-REACTIVE] live group membership -----------------------------------
+  //
+  // This screen's `GroupApi.sync()` in initState was the ONLY unconditional
+  // refresh of the group cache in the whole app — and it lives in an IndexedStack
+  // for the entire process, so it ran exactly once per launch. That is precisely
+  // why relaunching "fixed" a missing member. Now any write to the store (from a
+  // `members_changed` frame, a sync, or a local edit) repaints the list.
+  StreamSubscription<String>? _groupChangeSub;
+
+  void _watchGroupChanges() {
+    _groupChangeSub ??= GroupStore.changes.listen((_) async {
+      final list = await _groupStore.load();
+      if (mounted) setState(() => _groups = list);
     });
   }
 
@@ -812,6 +829,17 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       // so live delivery resumes at once, and clear the unread badge.
       _inbox?.ensureConnected();
       PushService.clearMessageBadge();
+      // [GRP-W3-RESYNC] Re-sync groups on every resume. The `members_changed`
+      // frame is transient — a device whose socket was closed while backgrounded
+      // never sees it — and resume previously reconnected the socket and re-read
+      // contacts but pointedly NOT groups. This is the catch-all that makes a
+      // missed frame cost one foreground, not one relaunch.
+      unawaited(GroupApi.sync().then((list) {
+        // Same blank-guard reasoning as contacts below: a failed/empty sync must
+        // never wipe a populated list.
+        if (!mounted || (list.isEmpty && _groups.isNotEmpty)) return;
+        setState(() => _groups = list);
+      }).catchError((_) {/* next resume retries */}));
       // Ship any telemetry the background FCM isolate parked while we were away
       // (including background crashes, which are otherwise invisible).
       PushService.drainPendingBgTelemetry();
@@ -851,6 +879,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     _searchCtl.dispose(); // [ISSUE-CHAT-SEARCH-1]
     _inboxSub?.cancel(); // stop listening, but leave the shared SyncHub socket alive
     _contactsSub?.cancel();
+    _groupChangeSub?.cancel(); // [GRP-W3-REACTIVE]
     super.dispose();
   }
 
@@ -1190,7 +1219,14 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
           final key = env['gid'] != null ? 'g:${env['gid']}' : '1:${u.senderPub}';
           // A group message for a group we don't have locally yet (e.g. we were
           // just added) → fetch it from the server so it appears in the Groups tab.
-          if (env['gid'] != null) _ensureGroup(env['gid'].toString());
+          // [GRP-W3-ENSURE] A `system:true` gtext IS the membership announcement
+          // ("X added Y", "X left") that GroupApi.announce sends. Treat it as a
+          // reason to re-read the roster, not just as a reason to materialise a
+          // group we've never seen — that early-return was why the very message
+          // announcing a membership change refreshed nothing.
+          if (env['gid'] != null) {
+            _ensureGroup(env['gid'].toString(), refreshExisting: env['system'] == true);
+          }
           if (_flags['blocked']!.contains(key)) return;
           // Durable, gift-wrapped DELIVERED receipt — fires from the global inbox
           // so it works with no thread open, and (unlike the ephemeral presence
@@ -1255,15 +1291,26 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   /// pulling its members from the server. De-duped so a burst of group messages
   /// only triggers one fetch.
   final Set<String> _syncingGroups = {};
-  Future<void> _ensureGroup(String gid) async {
-    if (gid.isEmpty || _groups.any((g) => g.id == gid) || !_syncingGroups.add(gid)) return;
+
+  /// [GRP-W3-ENSURE] `refreshExisting` lets a membership ANNOUNCEMENT ("X added
+  /// Y") refresh a group we already hold. This used to early-return whenever the
+  /// group was already present, so the one message that literally announces a
+  /// membership change refreshed nothing — the message arrived, the roster
+  /// didn't.
+  Future<void> _ensureGroup(String gid, {bool refreshExisting = false}) async {
+    if (gid.isEmpty) return;
+    final known = _groups.any((g) => g.id == gid);
+    if (known && !refreshExisting) return;
+    if (!_syncingGroups.add(gid)) return;
     final g = await GroupApi.refresh(gid);
     if (g != null) {
       final list = await _groupStore.load();
       if (mounted) setState(() => _groups = list);
-      // The user was added to a group and it just surfaced on this device.
-      Analytics.capture('group_materialized',
-          {'gid': gid, 'member_count': g.members.length, 'source': 'incoming_message'});
+      if (!known) {
+        // The user was added to a group and it just surfaced on this device.
+        Analytics.capture('group_materialized',
+            {'gid': gid, 'member_count': g.members.length, 'source': 'incoming_message'});
+      }
     }
     _syncingGroups.remove(gid);
   }
