@@ -94,6 +94,14 @@ const STARTING_GRACE_MS = 90_000;
 // Absolute backstop so a wedged room can't live forever.
 const MAX_ROOM_MS = 18 * 3600 * 1000;
 const TICKET_NONCE_PREFIX = "ticket_nonce:";
+// [GRP-W3-EVICT] A uid removed from the group while a call is running is barred
+// for this long. It only has to outlive an already-minted ticket (TTL 60 s):
+// after that the Worker's own membership guard refuses to issue them a new one,
+// so this window is the entire hole. Deliberately NOT implemented by bumping the
+// call generation — that would invalidate every OTHER participant's attachment
+// and force the whole room to reconnect to remove one person.
+const EVICT_PREFIX = "evicted:";
+const EVICT_BLOCK_MS = 120_000;
 
 interface Att {
   uid: string;
@@ -157,6 +165,7 @@ export class GroupCallRoom {
       case "/authority/session_check": return this.authoritySessionCheck(req);
       case "/authority/pull": return this.authorityPull(req);
       case "/authority/pull_close": return this.authorityPullClose(req);
+      case "/authority/evict": return this.authorityEvict(req);
       default: return json({ error: "not found" }, 404);
     }
   }
@@ -284,6 +293,41 @@ export class GroupCallRoom {
     return json({ ok: true });
   }
 
+  /** [GRP-W3-EVICT] Remove a uid from the live call immediately.
+   *
+   *  Called by routes/messaging.ts when someone is removed from (or leaves) the
+   *  group. Membership was purely a D1 concept: this DO never re-checked it, and
+   *  SFU media flows peer→SFU→peer with no per-packet Worker check, so a removed
+   *  member carried on sending and receiving audio/video for as long as they
+   *  kept the socket open. Closing the socket stops their publish and their
+   *  pulls; the bar below stops them walking straight back in with a ticket
+   *  minted seconds before the removal. */
+  private async authorityEvict(req: Request): Promise<Response> {
+    let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
+    const uid = String(b?.uid || "").slice(0, 128);
+    if (!uid) return json({ error: "uid required" }, 400);
+
+    await this.state.storage.put(`${EVICT_PREFIX}${uid}`, Date.now() + EVICT_BLOCK_MS);
+
+    const ws = this.findWsByUid(uid);
+    if (!ws) return json({ ok: true, evicted: false });
+    const gone = new Set<WebSocket>([ws]);
+    try { ws.close(1008, "removed from group"); } catch { /* already gone */ }
+    // A server-initiated close does NOT re-enter webSocketClose for hibernatable
+    // WebSockets, so nothing would otherwise tell the survivors — same trap the
+    // sweep had. Announce the departure explicitly.
+    for (const other of this.state.getWebSockets()) {
+      if (gone.has(other)) continue;
+      this.sendTo(other, { t: "left", uid });
+    }
+    this.broadcastRoster(gone);
+    this.recomputeSpeakers(gone);
+    if (this.state.getWebSockets().filter((w) => !gone.has(w)).length === 0) {
+      await this.endAuthority();
+    }
+    return json({ ok: true, evicted: true });
+  }
+
   // ---- WebSocket upgrade (ticket-authenticated) ---------------------------------
 
   private async handleWsUpgrade(url: URL, req: Request): Promise<Response> {
@@ -303,6 +347,13 @@ export class GroupCallRoom {
     const nonceExp = await this.state.storage.get<number>(nonceKey);
     if (nonceExp != null && nonceExp >= Date.now()) {
       return new Response("ticket already used", { status: 401 });
+    }
+
+    // [GRP-W3-EVICT] A ticket minted moments before this user was removed from
+    // the group is still cryptographically valid for its 60 s TTL. Refuse it.
+    const evictedUntil = await this.state.storage.get<number>(`${EVICT_PREFIX}${ticket.uid}`);
+    if (evictedUntil != null && evictedUntil >= Date.now()) {
+      return new Response("no longer a member of this group", { status: 403 });
     }
 
     const a = await this.loadAuthority();
@@ -437,6 +488,12 @@ export class GroupCallRoom {
     const nonces = await this.state.storage.list<number>({ prefix: TICKET_NONCE_PREFIX });
     for (const [key, exp] of nonces) {
       if (exp < now) await this.state.storage.delete(key);
+    }
+    // Eviction bars are short-lived by design — expire them on the same sweep so
+    // they cannot accumulate one key per removal for the DO's lifetime.
+    const bars = await this.state.storage.list<number>({ prefix: EVICT_PREFIX });
+    for (const [key, until] of bars) {
+      if (until < now) await this.state.storage.delete(key);
     }
     // [GCALL-W1-SWEEP-BCAST] Evict, then TELL EVERYONE. A server-initiated
     // close does NOT re-enter webSocketClose for hibernatable WebSockets, so

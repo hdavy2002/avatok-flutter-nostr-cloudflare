@@ -149,6 +149,64 @@ async function members(env: Env, conv: string): Promise<string[]> {
   return (rows.results || []).map((r) => r.uid);
 }
 
+// ---- [GRP-W3-FANOUT] membership changes are announced ---------------------------
+//
+// Every membership mutation wrote D1 and told NOBODY. The only signal that left
+// the Worker was a `group_invite` push to the newly-added user; existing members
+// got nothing at all, and the WS protocol had no group/member event type, so the
+// server could not have told them even if it wanted to. On the client the member
+// list lives in a per-account JSON cache whose only unconditional refresh runs in
+// ChatListScreen.initState — a screen kept alive for the whole process. Hence the
+// symptom: a new member was invisible until the app was force-closed and
+// relaunched.
+//
+// The InboxDO already has a generic transient-broadcast endpoint (`POST /event`,
+// used by storage/call_ring/ava_stream). Reuse it. `members_changed` is
+// deliberately a HINT, not a payload: the client re-reads the authoritative
+// member list from the server rather than trusting a diff off the wire, so a
+// missed or duplicated frame cannot corrupt the roster.
+//
+// NOTE ON OFFLINE MEMBERS: this is transient — someone whose socket is closed
+// misses it. That is covered by the client's resync-on-resume, added in the same
+// change. A Q_PUSH data-message kind (mirroring `kind:"del"`) would land it on
+// the next FCM wake instead of the next foreground, but it needs a new consumer
+// branch and a separate consumers deploy, so it is deliberately NOT bundled here.
+async function fanMembersChanged(
+  env: Env,
+  conv: string,
+  extra: { reason: string; actor?: string; target?: string },
+  recipients?: string[],
+): Promise<void> {
+  try {
+    const uids = [...new Set(recipients ?? (await members(env, conv)))].filter(Boolean);
+    const body = JSON.stringify({ type: "members_changed", conv, ts: Date.now(), ...extra });
+    await Promise.all(uids.map(async (uid) => {
+      try {
+        await env.INBOX.get(env.INBOX.idFromName(uid)).fetch("https://inbox/event", {
+          method: "POST", headers: { "content-type": "application/json" }, body,
+        });
+      } catch { /* one unreachable inbox must not fail the mutation */ }
+    }));
+  } catch { /* never allowed to fail the membership write it announces */ }
+}
+
+/** [GRP-W3-EVICT] Kick a removed member out of the group's live call, if any.
+ *
+ *  Removing someone touched D1 and nothing else. The GroupCallRoom DO has no
+ *  concept of membership — its WS auth is ticket-only and never re-checks D1 —
+ *  so a member removed mid-call kept SENDING AND RECEIVING audio and video
+ *  indefinitely: SFU media flows peer→SFU→peer with no per-packet Worker check.
+ *  They were blocked only from new API calls, which ironically also broke their
+ *  own /close, so their tracks were never cleaned up either. */
+async function evictFromGroupCall(env: Env, conv: string, uid: string): Promise<void> {
+  try {
+    await env.GROUP_CALL_ROOMS.get(env.GROUP_CALL_ROOMS.idFromName(conv)).fetch(
+      "https://room/authority/evict",
+      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ uid }) },
+    );
+  } catch { /* best-effort: never fail a removal because the call DO is unreachable */ }
+}
+
 // Phase 8 (AvaInbox): conversations carry a `context` tag — dm | event:<listingId>
 // | channel:<creatorId> | consult:<bookingId> | system. Set when the thread is
 // created (Phase 6 "Message" buttons pass event/channel); never overwritten once set.
@@ -1769,6 +1827,12 @@ export async function convAddMembers(req: Request, env: Env): Promise<Response> 
   trackGroup(env, ctx.uid, "group_members_added", { conv, count: add.length });
   // Notify the newly-added members (FCM wake + internal notification).
   await fanGroupInvites(env, ctx.uid, conv, grp?.title ?? null, add);
+  // [GRP-W3-FANOUT] …and tell the EXISTING members, who previously got nothing
+  // and so kept showing a stale roster until the app was relaunched. Recipients
+  // include the added uids: when invites are off they are already members, and
+  // when invites are on the extra hint is harmless.
+  await fanMembersChanged(env, conv, { reason: "added", actor: ctx.uid },
+    [...(await members(env, conv)), ...add]);
   return json({ ok: true, added: add });
 }
 
@@ -1847,6 +1911,13 @@ export async function convInviteRespond(req: Request, env: Env): Promise<Respons
       trackGroup(env, ctx.uid, "group_invite_block_adder", { conv, adder });
     }
   }
+  // [GRP-W3-FANOUT] An accepted invite is the moment the group actually gains a
+  // member — the add call earlier only created a pending invite, so this is the
+  // change existing members need to see. A decline removes a provisional row and
+  // is equally a membership change.
+  await fanMembersChanged(env, conv,
+    { reason: accept ? "invite_accepted" : "invite_declined", actor: ctx.uid, target: ctx.uid },
+    [...(await members(env, conv)), ctx.uid]);
   return json({ ok: true, conv, accepted: accept });
 }
 
@@ -1867,6 +1938,13 @@ export async function convRemoveMember(req: Request, env: Env): Promise<Response
   await env.DB_META.prepare("DELETE FROM conversation_members WHERE conv_id=?1 AND uid=?2").bind(conv, target).run();
   await env.DB_META.prepare("UPDATE conversations SET updated_at=?2 WHERE id=?1").bind(conv, Date.now()).run();
   trackGroup(env, ctx.uid, "group_member_removed", { conv, target });
+  // [GRP-W3-EVICT] Removal must reach the live call too, not just D1 — otherwise
+  // someone removed for cause keeps talking and listening.
+  await evictFromGroupCall(env, conv, target);
+  // [GRP-W3-FANOUT] The removed user is no longer in members(), but is exactly
+  // who most needs to hear this, so they are added to the recipient list.
+  await fanMembersChanged(env, conv, { reason: "removed", actor: ctx.uid, target },
+    [...(await members(env, conv)), target]);
   return json({ ok: true });
 }
 
@@ -1886,6 +1964,7 @@ export async function convSetRole(req: Request, env: Env): Promise<Response> {
   if (targetRole === "owner") return json({ error: "cannot_change_owner" }, 400);
   await env.DB_META.prepare("UPDATE conversation_members SET role=?3 WHERE conv_id=?1 AND uid=?2").bind(conv, target, role).run();
   trackGroup(env, ctx.uid, "group_role_changed", { conv, target, role });
+  await fanMembersChanged(env, conv, { reason: "role", actor: ctx.uid, target });
   return json({ ok: true, role });
 }
 
@@ -1917,6 +1996,7 @@ export async function convSetAvatar(req: Request, env: Env): Promise<Response> {
     "UPDATE conversations SET avatar_url=?2, updated_at=?3 WHERE id=?1 AND kind='group'",
   ).bind(conv, raw || null, Date.now()).run();
   trackGroup(env, ctx.uid, raw ? "group_avatar_set" : "group_avatar_removed", { conv });
+  await fanMembersChanged(env, conv, { reason: "avatar", actor: ctx.uid });
   return json({ ok: true, avatar_url: raw || null });
 }
 
@@ -1958,6 +2038,11 @@ export async function convLeave(req: Request, env: Env): Promise<Response> {
   }
   await env.DB_META.prepare("UPDATE conversations SET updated_at=?2 WHERE id=?1").bind(conv, Date.now()).run();
   trackGroup(env, ctx.uid, "group_left", { conv, was_owner: myRole === "owner" });
+  // Leaving is also a membership change — and can silently promote a new owner,
+  // which the remaining members equally need to see without a relaunch.
+  await evictFromGroupCall(env, conv, ctx.uid);
+  await fanMembersChanged(env, conv, { reason: "left", actor: ctx.uid, target: ctx.uid },
+    [...(await members(env, conv)), ctx.uid]);
   return json({ ok: true });
 }
 
@@ -1974,10 +2059,14 @@ export async function convDelete(req: Request, env: Env): Promise<Response> {
   if (!conv) return json({ error: "conv required" }, 400);
   const myRole = await convRoleOf(env, conv, ctx.uid);
   if (myRole !== "owner") return json({ error: "forbidden" }, 403);
+  // Capture the recipients BEFORE the delete — afterwards there is nobody left
+  // to look up, so reading members() later would fan out to an empty list.
+  const wasMembers = await members(env, conv);
   await env.DB_META.batch([
     env.DB_META.prepare("DELETE FROM conversation_members WHERE conv_id=?1").bind(conv),
     env.DB_META.prepare("DELETE FROM conversations WHERE id=?1").bind(conv),
   ]);
   trackGroup(env, ctx.uid, "group_deleted", { conv });
+  await fanMembersChanged(env, conv, { reason: "deleted", actor: ctx.uid }, wasMembers);
   return json({ ok: true });
 }
