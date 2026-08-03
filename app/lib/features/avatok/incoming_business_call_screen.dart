@@ -225,7 +225,36 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
       'ring_ms': DateTime.now().millisecondsSinceEpoch - _shownAtMs,
       'video': widget.video,
     });
-    Navigator.of(context).pop();
+    // [CALL-DISMISS-SELF-1 2026-08-03] REMOVE **THIS** ROUTE, NOT THE TOP ONE.
+    //
+    // This was `Navigator.of(context).pop()`, which removes whatever is topmost
+    // — fine for every dismissal that happens while this screen IS on top, and
+    // catastrophic for the one that does not.
+    //
+    // [CALL-ACCEPT-GAP-1] made the accept dismissal run AFTER `_openCall` pushes
+    // CallScreen, so that the ring screen is only removed once there is
+    // something behind it (no blank gap). The pop then removed the CallScreen it
+    // had just pushed. Prod call avatok-47c9070a, build 10499:
+    // `call_accept_screen_opened` at 15:43:57.418, `business_call_screen_dismissed`
+    // at 15:43:57.419 — 1 ms, same microtask chain, before the next frame.
+    // CallScreen was destroyed before it ever built (no `call_started`, no
+    // `call_session_extracted`, no audio, no `call_connected`), the ring screen
+    // stayed up frozen on "Connecting…" — with `_dismissed` now latched, so
+    // NOTHING could ever close it — and the caller, waiting on a peer that could
+    // no longer arrive, tore down 15.7 s later having never connected.
+    //
+    // `pop()` is a stack operation; what this method actually wants is "remove
+    // me". When this route is on top they are the same thing and we keep pop()
+    // for its animation; when it is buried under the call screen, removeRoute()
+    // takes it out from underneath without disturbing what is above it.
+    final nav = Navigator.of(context);
+    final route = ModalRoute.of(context);
+    if (route == null || !route.isActive) return;
+    if (route.isCurrent) {
+      nav.pop();
+    } else {
+      nav.removeRoute(route);
+    }
   }
 
   @override
