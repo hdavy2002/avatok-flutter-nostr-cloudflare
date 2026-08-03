@@ -230,7 +230,14 @@ export interface PushMsg {
   // routes/api.ts so the socket path and the push path describe the SAME
   // transition with the SAME number. The client reducer drops any sequence it
   // has already applied.
+  // [CALL-CALLEE-SEQ-1 2026-08-03] Now set on kind === "call" too. The RING had
+  // no sequence, so the callee had no ordering floor and stamped every local
+  // transition `-1` — a value that can never lose a comparison.
   seq?: number | null;
+  // [CALL-ONE-DEADLINE-1 2026-08-03] kind === "call": the absolute ms at which
+  // the CallRoom alarm will time this ring out. The one authoritative ring
+  // deadline, so no other layer has to re-derive it.
+  ringDeadlineMs?: number | null;
   // kind === "group_invite": the inviter added the recipient to a group. Carries
   // the group name + conv id so the app can deep-link straight to the group and
   // show the Accept/Decline prompt.

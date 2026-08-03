@@ -653,6 +653,74 @@ class CallSession {
   final List<RTCIceCandidate> _pendingCandidates = [];
   bool _remoteSet = false;
   late final CallTelemetry _telemetry;
+
+  /// [CALL-ONE-DEADLINE-1 2026-08-03] The absolute ms at which the CallRoom
+  /// alarm will time this ring out, as told to us by the server. `null` until
+  /// the place-call response (caller) or the ring payload (callee) supplies it,
+  /// and on older builds/pushes that never will — hence every read falls back.
+  int? _serverRingDeadlineMs;
+
+  /// Keep the client's no-answer window deliberately BEHIND the server's, so the
+  /// server always reaches `ring_timeout` first and the client reacts to an
+  /// authoritative transition instead of inventing its own. The previous
+  /// hand-tuned pair (server 20 s, client 22 s) encoded the same 2 s of slack;
+  /// this makes the relationship explicit rather than a coincidence of two
+  /// constants in different files.
+  static const int _kRingWindowSlackMs = 2000;
+
+  /// Adopt the server's ring deadline. First writer wins: the WS ring and the
+  /// FCM ring are the same fact arriving twice, and a later copy must not push
+  /// the deadline out.
+  void noteServerRingDeadline(int? deadlineMs) {
+    if (deadlineMs == null || deadlineMs <= 0) return;
+    _serverRingDeadlineMs ??= deadlineMs;
+  }
+
+  /// [CALL-ROUTED-OPTIMISTIC-1 2026-08-03] The server answered the place-call
+  /// with a terminal routing verdict — `busy` or `unavailable` — and sent NO
+  /// ring. Nothing will ever arrive on this leg, so the session must reach its
+  /// outcome now rather than waiting out a device-wake window for a ring that
+  /// was never placed.
+  ///
+  /// `busy` reuses the existing busy handling (card / tone / outcome menu, per
+  /// `busyCardEnabled`). `unavailable` is the admission layer's deliberately
+  /// uniform denial and must NOT be dressed up as anything more specific — it
+  /// tells the caller nothing about why, by design.
+  void noteServerRoutedTerminal(String routed) {
+    if (_ended || _connected) return;
+    if (routed == 'busy') {
+      // ignore: unawaited_futures
+      _onBusy();
+      return;
+    }
+    _endWith('ended', reason: 'server-unavailable');
+  }
+
+  /// [CALL-OBS-1 2026-08-03] One `call_transport_connected` per call, across
+  /// both the original and any post-migration PeerConnection.
+  bool _transportConnectedLogged = false;
+  final int _startedAtMs = DateTime.now().millisecondsSinceEpoch;
+
+  /// Emit the transport rung of the accept → transport → media funnel exactly
+  /// once. Deliberately NOT guarded on `_connected` or `_ended`: the whole point
+  /// is to observe calls that never reach either.
+  void _noteTransportConnected(RTCPeerConnectionState s, {bool postMigration = false}) {
+    if (_transportConnectedLogged) return;
+    if (s != RTCPeerConnectionState.RTCPeerConnectionStateConnected) return;
+    _transportConnectedLogged = true;
+    try {
+      Analytics.capture('call_transport_connected', {
+        'call_id': config.room,
+        'direction': config.outgoing ? 'outgoing' : 'incoming',
+        'ms_since_start': DateTime.now().millisecondsSinceEpoch - _startedAtMs,
+        // Did media follow? Join against `call_connected` on the same call_id:
+        // transport WITHOUT media is the interesting failure, and until now it
+        // was indistinguishable from a call that never got off the ground.
+        'had_media_yet': _connected,
+        'post_migration': postMigration,
+      });
+    } catch (_) {/* telemetry must never affect a call */}
+  }
   bool _weOffered = false;
   int _iceRestarts = 0;
   Timer? _failTimer;
@@ -2638,6 +2706,26 @@ class CallSession {
       }
     };
     pc.onConnectionState = (s) {
+      // [CALL-OBS-1 2026-08-03] THE MISSING RUNG, emitted BEFORE the guard below.
+      //
+      // `call_connected` fires from `onTrack` — first remote media — and it has
+      // not fired once in production since 2026-07-24. That event is not broken;
+      // it is telling the truth, which is that media never establishes. The
+      // problem was that nothing reported anything BETWEEN the accept and that
+      // silence, so "the callee accepted and the call was killed" and "the
+      // callee accepted and ICE never completed" produced identical telemetry:
+      // none.
+      //
+      // The handler that should have covered the gap could not: it returns early
+      // unless `_connected`, and `_connected` is only set in `onTrack` — after
+      // the very thing we are trying to observe. Every transport transition
+      // before first media was therefore dropped on the floor.
+      //
+      // This fires once, on the first transport connect, whatever the call state.
+      // With it the funnel accept → transport → media is finally separable: no
+      // transport event means signalling or ICE; transport but no
+      // `call_connected` means media or tracks.
+      _noteTransportConnected(s);
       if (_ended || !_connected) return;
       _telemetry.mediaFlowState(
         state: 'transport_${s.toString().split('.').last.toLowerCase()}',
@@ -3444,6 +3532,8 @@ class CallSession {
       if (e.streams.isNotEmpty) remoteRenderer.srcObject = e.streams[0];
     };
     pc.onConnectionState = (s) {
+      // [CALL-OBS-1] Same missing rung on the post-migration PC — see _newPC().
+      _noteTransportConnected(s, postMigration: true);
       if (_ended || !_connected) return;
       _telemetry.mediaFlowState(
         state: 'transport_${s.toString().split('.').last.toLowerCase()}',
@@ -4736,7 +4826,38 @@ class CallSession {
     // its _onNoAnswer would tear down the live receptionist session.
     if (_receptionistActive || _receptionist != null || _avaCountingDown) return;
     _ringTimeout?.cancel();
-    _ringTimeout = Timer(window, () { if (!_ended && !_connected) _onNoAnswer(); });
+    _ringTimeout = Timer(_serverAlignedRingWindow(window),
+        () { if (!_ended && !_connected) _onNoAnswer(); });
+  }
+
+  /// [CALL-ONE-DEADLINE-1 2026-08-03] Prefer the server's absolute ring deadline
+  /// over any locally-guessed duration.
+  ///
+  /// There were four numbers claiming to be "the ring timeout" — 20 s in the DO
+  /// (the only one that actually fires), 22 s here, 30 s in `ringTimeoutSec` and
+  /// in a dead campaign constant, 45 s in a comment. A duration computed on this
+  /// device also starts from the wrong instant: it begins when the CLIENT armed
+  /// it, while the server's deadline began when the ring was PLACED, and the gap
+  /// between those has been measured at 5–8 s on failing calls. So the two ran
+  /// on different clocks from different origins and drifted apart under exactly
+  /// the conditions where agreeing mattered.
+  ///
+  /// The deadline is a fact owned by the CallRoom alarm. When we have been told
+  /// it, honour it, and keep the deliberate ~2 s of slack so the SERVER always
+  /// decides no-answer first (the client firing first is what produced a local
+  /// "no answer" on a call the server was still ringing). When we have not been
+  /// told it — an older push, a WS ring that lost the field — fall back to the
+  /// caller-supplied window exactly as before.
+  Duration _serverAlignedRingWindow(Duration fallback) {
+    final deadline = _serverRingDeadlineMs;
+    if (deadline == null || deadline <= 0) return fallback;
+    final remaining =
+        deadline + _kRingWindowSlackMs - DateTime.now().millisecondsSinceEpoch;
+    // A deadline already in the past means the server has timed out or is about
+    // to; do not arm a zero/negative timer, and do not silently wait `fallback`
+    // as if nothing had happened.
+    if (remaining <= 0) return Duration.zero;
+    return Duration(milliseconds: remaining);
   }
 
   void _onRingAck(bool ok) {

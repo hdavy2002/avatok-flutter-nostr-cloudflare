@@ -715,11 +715,14 @@ export class CallRoom {
     calleeUid: string,
     autoReceptionistEligible = false,
     noAnswerReason: string | null = null,
-  ): Promise<{ ok: true; seq: number; epoch: number } | { ok: false; error: string }> {
+  ): Promise<{ ok: true; seq: number; epoch: number; ringDeadlineMs: number | null } | { ok: false; error: string }> {
     const s = await this.loadSession(callId);
     if (s.caller_uid || s.callee_uid) {
       if (s.caller_uid !== callerUid || s.callee_uid !== calleeUid) return { ok: false, error: "participant_mismatch" };
-      return { ok: true, seq: s.transition_sequence, epoch: s.epoch };
+      return {
+        ok: true, seq: s.transition_sequence, epoch: s.epoch,
+        ringDeadlineMs: this.ringDeadline ?? null,
+      };
     }
     if (!callId || !callerUid || !calleeUid || callerUid === calleeUid) return { ok: false, error: "invalid_participants" };
     s.caller_uid = callerUid;
@@ -750,7 +753,16 @@ export class CallRoom {
     // comparison, so the callee applied whatever arrived last. This is the seed
     // the callee's reducer needs to be able to order anything at all.
     const seeded = await this.loadSession(callId);
-    return { ok: true, seq: seeded.transition_sequence, epoch: seeded.epoch };
+    // [CALL-ONE-DEADLINE-1 2026-08-03] Hand out the ABSOLUTE ring deadline this
+    // DO will actually enforce, so no other layer has to guess it. Four numbers
+    // claimed to be "the ring timeout" — 20 s here, 22 s in the client, 30 s in
+    // `ringTimeoutSec` and in a dead campaign constant, 45 s in a comment — and
+    // only this one ever fires. A deadline is a fact the owner should state, not
+    // a constant every layer re-derives and drifts from.
+    return {
+      ok: true, seq: seeded.transition_sequence, epoch: seeded.epoch,
+      ringDeadlineMs: this.ringDeadline ?? deadline,
+    };
   }
 
   /**

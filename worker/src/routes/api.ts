@@ -648,6 +648,7 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   // Register participants before the phone is rung. This is fail-closed: a
   // call without a durable participant record cannot authorize later commands.
   let ringSeq: number | null = null;
+  let ringDeadlineMs: number | null = null;
   try {
     const callStub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(b.callId));
     const participantResponse = await callStub.fetch("https://call-room/participants", {
@@ -658,11 +659,16 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
         noAnswerReason: noAnswer.reason,
       }),
     });
-    const participantResult = await participantResponse.json().catch(() => null) as { ok?: boolean; seq?: number } | null;
+    const participantResult = await participantResponse.json().catch(() => null) as
+      { ok?: boolean; seq?: number; ringDeadlineMs?: number } | null;
     if (!participantResponse.ok || participantResult?.ok !== true) return json({ error: "call_authority_unavailable" }, 503);
     // [CALL-CALLEE-SEQ-1] The ring's authoritative sequence, carried on both
     // ring transports below so the callee can order what it receives.
     ringSeq = typeof participantResult.seq === "number" ? participantResult.seq : null;
+    // [CALL-ONE-DEADLINE-1] The absolute deadline the CallRoom alarm will
+    // enforce — the single ring timeout, stated once by its owner.
+    ringDeadlineMs = typeof participantResult.ringDeadlineMs === "number"
+      ? participantResult.ringDeadlineMs : null;
     await callStub.fetch("https://call-room/control", {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -685,6 +691,9 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
     // queue with max_retries:5 and no dedupe key — so a redelivered or reordered
     // ring was indistinguishable from a new one.
     ...(ringSeq != null ? { seq: ringSeq } : {}),
+    // [CALL-ONE-DEADLINE-1] The absolute ms at which this ring expires, as
+    // decided by the DO that will enforce it. The client can stop guessing.
+    ...(ringDeadlineMs != null ? { ringDeadlineMs } : {}),
     // [CALL-WS-AUTH-1] The CALLEE's half of the room credential. It travels with
     // the ring because the callee has no other authenticated round-trip before it
     // needs to join — accepting a call goes straight to the WebSocket.
@@ -722,6 +731,9 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
         // sharing the sequence is what lets the client's reducer collapse them
         // instead of racing them.
         ...(ringSeq != null ? { seq: ringSeq } : {}),
+    // [CALL-ONE-DEADLINE-1] The absolute ms at which this ring expires, as
+    // decided by the DO that will enforce it. The client can stop guessing.
+    ...(ringDeadlineMs != null ? { ringDeadlineMs } : {}),
         // [CALL-WS-AUTH-1] Same credential as the FCM payload. The WS ring beats
         // FCM by seconds for an online callee, so it MUST carry it too — a fast
         // path that arrives without the join credential would answer a call the
@@ -790,7 +802,15 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   // [CALL-WS-AUTH-1] The CALLER's half of the room credential, handed back on the
   // authenticated response to their own dial. An older client simply ignores the
   // extra field; a newer one appends it as `?t=` when it opens the room socket.
-  return json({ sent: n, reachable: true, ringbackUrl, roomToken: callerRoomToken });
+  // [CALL-ONE-DEADLINE-1] The CALLER needs the deadline too — it is their
+  // no-answer window that decides when the leg goes to Ava, and it was being
+  // guessed locally as 22 s from the moment the client armed its timer, while
+  // the server's clock started when the ring was PLACED. On failing calls the
+  // gap between those two instants has been measured at 5–8 s.
+  return json({
+    sent: n, reachable: true, ringbackUrl, roomToken: callerRoomToken,
+    ...(ringDeadlineMs != null ? { ringDeadlineMs } : {}),
+  });
 }
 
 export async function notify(req: Request, env: Env): Promise<Response> {

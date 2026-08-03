@@ -654,6 +654,13 @@ export function buildPayload(msg: PushMsg, now = Date.now()): PushPayload {
       // max_retries:5, two ring transports and two Dart isolates, that is not a
       // theoretical concern. FCM data values must be strings.
       ...(msg.seq != null ? { seq: String(msg.seq) } : {}),
+      // [CALL-ONE-DEADLINE-1 2026-08-03] The absolute ring deadline the CallRoom
+      // alarm will enforce. Note this is NOT the same as `tokenExpiresAt`, which
+      // is a credential lifetime that merely happens to be derived from the same
+      // 20 s today — conflating the two is how the numbers drifted apart in the
+      // first place. One is "when does the ring end", the other is "when does
+      // this token stop working".
+      ...(msg.ringDeadlineMs != null ? { ringDeadlineMs: String(msg.ringDeadlineMs) } : {}),
     } };
   }
   if (msg.kind === "call-status") {

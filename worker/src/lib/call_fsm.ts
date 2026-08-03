@@ -143,8 +143,17 @@ export function isTerminalHandover(s: HandoverState): boolean {
 // Timeout constants (ms) — spec §4 "Timeout rules"
 // ---------------------------------------------------------------------------
 
-/** Ring timeout for the primary outbound leg (provider `ring_timeout=30`). */
-export const RING_TIMEOUT_MS = 30_000;
+// [CALL-ONE-DEADLINE-1 2026-08-03] `RING_TIMEOUT_MS = 30_000` used to live here
+// and was referenced by NOTHING (verified repo-wide). It was worse than dead
+// code: this file is the CAMPAIGN DIALER's state machine, but the name reads as
+// if it governed AvaTOK calls, and anyone who found it would conclude the ring
+// lasts 30 seconds. It does not — the only ring deadline that ever fires is
+// CALL_RING_LIFETIME_MS (20_000) in lib/call_delivery_contract.ts, owned by the
+// CallRoom alarm. Four different numbers claimed to be "the ring timeout"
+// (20/22/30/45); this removes one of them rather than documenting it.
+//
+// The campaign leg's real ring timeout is RING_TIMEOUT_SEC in do/campaign_do.ts,
+// which is what the provider is actually told.
 /** Handover human-leg ring timeout. */
 export const HANDOVER_RING_MS = 25_000;
 /** `BridgeRequested` caller-leg join-event timeout -> `handover_failed`. */

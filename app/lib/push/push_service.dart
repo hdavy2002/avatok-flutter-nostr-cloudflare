@@ -3107,7 +3107,11 @@ class PushService {
             // signal 'decline_ava' so the caller hands off to the receptionist
             // instead of getting a plain decline. Else signal a normal decline.
             // ignore: unawaited_futures
-            _declineRouting(extra);
+            // [CALL-OBS-1] This is the OS notification's Decline action — the
+            // same event some Motorola builds emit for a programmatic endCall()
+            // on a call the user just ACCEPTED. Labelling it at the emission
+            // site is what makes phantom declines countable.
+            _declineRouting(extra, origin: 'callkit_native');
             // [CALL-REL-9] Stop the in-app ringtone fallback (if it was playing).
             unawaited(_stopRingtoneFallback((extra['callId'] ?? '').toString()));
           }
@@ -3118,7 +3122,7 @@ class PushService {
         case Event.actionCallTimeout:
           final ex = event.body['extra'];
           if (ex is Map) {
-            _logMissed(ex);
+            _logMissed(ex, origin: 'os_timeout');
             // [CALL-REL-9] Stop the in-app ringtone fallback (if it was playing).
             unawaited(_stopRingtoneFallback((ex['callId'] ?? '').toString()));
             // [PIV-2 2026-08-02] An unanswered ring is a ring that ENDED, so it
@@ -3159,7 +3163,8 @@ class PushService {
   /// missed-call log entry. Callers should also best-effort end the native
   /// CallKit ring (`FlutterCallkitIncoming.endCall(callId)`) and clear the
   /// `gIncomingRingingFrom`/`gIncomingRingingCallId` globals themselves.
-  static Future<void> declineIncomingCall(Map extra) => _declineRouting(extra);
+  static Future<void> declineIncomingCall(Map extra) =>
+      _declineRouting(extra, origin: 'user_tap');
 
   /// [DIALPAD-BIZ-CALLS Phase C] "Send to Ava AI Agent" from the in-app named
   /// incoming-business-call screen. Signals `decline_agent` to the CALLER
@@ -3183,9 +3188,10 @@ class PushService {
       Analytics.capture('call_incoming_declined', {
         'call_id': callId,
         'routed_to': 'decline_agent',
+        'origin': 'user_tap',
       });
     }
-    _logMissed(extra);
+    _logMissed(extra, origin: 'sent_to_agent');
   }
 
   /// Decline routing.
@@ -3207,7 +3213,22 @@ class PushService {
   /// Handing the caller to Ava is now an explicit, separate user choice — the
   /// Receptionist action, which signals `decline_ava` via
   /// [receptionistIncomingCall]. See Specs/CALL-OUTCOMES-FROZEN-2026-08-01.md.
-  static Future<void> _declineRouting(Map extra) async {
+  /// [CALL-OBS-1 2026-08-03] `origin` distinguishes a HUMAN decline from a
+  /// synthetic one, which is the single most important thing this telemetry
+  /// could not say.
+  ///
+  /// `call_incoming_declined` carried no source field at all, so the phantom
+  /// declines that killed five of the last seven accepts were, in the data,
+  /// indistinguishable from a user pressing the red button. Attribution had to
+  /// be inferred from an adjacent event's `source` and from millisecond
+  /// ordering against the accept — which is not a metric anyone can alert on.
+  ///
+  ///   `user_tap`       — the callee pressed Decline in the branded screen.
+  ///   `callkit_native` — the OS notification's Decline action. On affected
+  ///                      Motorola builds this ALSO fires for a programmatic
+  ///                      `endCall()` on an accepted call, which is the bug.
+  ///   `os_timeout`     — nobody answered.
+  static Future<void> _declineRouting(Map extra, {required String origin}) async {
     unawaited(_dismissBrandedFsi()); // [AVACALL-INUI-2] clear the lock-screen FSI banner
     final callId = (extra['callId'] ?? '').toString();
     final from = (extra['from'] ?? '').toString();
@@ -3235,6 +3256,8 @@ class PushService {
       Analytics.capture('call_incoming_declined', {
         'call_id': callId,
         'routed_to': 'decline',
+        // [CALL-OBS-1] WHO ended the ring — see _declineRouting's doc comment.
+        'origin': origin,
         // [PIV-2 2026-08-02] The CALLER's uid. `Analytics` auto-stamps the
         // decliner's own email, so without the peer here a decline was only
         // ever retrievable from one side — and a call bug is a conversation
@@ -3243,7 +3266,7 @@ class PushService {
         'peer_uid': from,
       });
     }
-    _logMissed(extra);
+    _logMissed(extra, origin: origin);
   }
 
   /// [CALL-QUICK-REPLY-1 2026-08-01] "Message" on the incoming-call screen: end
@@ -3278,10 +3301,11 @@ class PushService {
       Analytics.capture('call_incoming_declined', {
         'call_id': callId,
         'routed_to': 'quick_reply',
+        'origin': 'user_tap',
         'quick_reply_id': quickReplyId,
       });
     }
-    _logMissed(extra);
+    _logMissed(extra, origin: 'quick_reply');
     if (!declined || from.isEmpty) return;
     try {
       final res = await ApiAuth.postJson(kCallQuickReplyUrl, {
@@ -3322,9 +3346,10 @@ class PushService {
       Analytics.capture('call_incoming_declined', {
         'call_id': callId,
         'routed_to': 'decline_vm',
+        'origin': 'user_tap',
       });
     }
-    _logMissed(extra);
+    _logMissed(extra, origin: 'sent_to_voicemail');
   }
 
   /// [CALL-SPAM-REPORT-1 2026-08-01] "Report Spam" on the incoming-call screen.
@@ -3356,9 +3381,10 @@ class PushService {
       Analytics.capture('call_incoming_declined', {
         'call_id': callId,
         'routed_to': alsoBlock ? 'spam_and_block' : 'spam',
+        'origin': 'user_tap',
       });
     }
-    _logMissed(extra);
+    _logMissed(extra, origin: 'reported_spam');
     if (from.isEmpty) return;
     try {
       final res = await ApiAuth.postJson(kCallReportUrl, {
@@ -3398,20 +3424,42 @@ class PushService {
       Analytics.capture('call_incoming_declined', {
         'call_id': callId,
         'routed_to': 'decline_ava',
+        'origin': 'user_tap',
       });
     }
-    _logMissed(extra);
+    _logMissed(extra, origin: 'sent_to_receptionist');
     return handedOff;
   }
 
-  static void _logMissed(Map extra) {
+  /// [CALL-OBS-1 2026-08-03] `origin` says WHAT ENDED THE RING, and it decides
+  /// whether this was a missed call at all.
+  ///
+  /// Every terminal path called this, so `call_incoming_declined` and
+  /// `call_incoming_missed` were emitted together, in the same millisecond, on
+  /// every outcome — an explicit decline, a quick reply, a spam report, and a
+  /// perfectly successful receptionist handoff all counted as MISSED. Lifetime
+  /// counts were 65 and 66. The metric could not answer the one question it
+  /// exists to answer ("how often does nobody pick up?"), and a handoff to Ava
+  /// — a call that was ANSWERED, by Ava — was indistinguishable from a call
+  /// that rang out.
+  ///
+  /// A missed call is a ring that ended with no decision from the callee. An
+  /// explicit choice is not a miss, whatever the choice was.
+  ///
+  /// The LOCAL CALL LOG entry is deliberately unchanged and still written on
+  /// every path: showing a declined call in the recents list is a long-standing
+  /// product behaviour that users expect from every phone, and it is not what
+  /// this fix is about.
+  static void _logMissed(Map extra, {required String origin}) {
     final missedId = (extra['callId'] ?? '').toString();
-    // CALL-GLARE-1: dedupe duplicate missed events for the same call (a decline
-    // routes here too, and CallKit can fire timeout more than once).
-    if (_onceCallEvent(missedId, 'missed')) {
+    const noDecisionByCallee = {'os_timeout', 'unreachable', 'caller_cancelled'};
+    // CALL-GLARE-1: dedupe duplicate missed events for the same call (CallKit
+    // can fire timeout more than once).
+    if (noDecisionByCallee.contains(origin) && _onceCallEvent(missedId, 'missed')) {
       Analytics.capture('call_incoming_missed', {
         'call_id': missedId,
         'kind': extra['kind'] == 'video' ? 'video' : 'audio',
+        'origin': origin,
       });
     }
     CallLogStore().add(CallEntry(

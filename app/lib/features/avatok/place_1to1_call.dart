@@ -300,10 +300,14 @@ Future<void> _dialerPlaceInBackground(
 
     bool reachableFalse = false;
     String routed = '';
+    int? ringDeadlineMs;
     try {
       final body = jsonDecode(res.body);
       reachableFalse = body['reachable'] == false;
       routed = (body['routed'] ?? '').toString();
+      // [CALL-ONE-DEADLINE-1 2026-08-03] The server's absolute ring deadline.
+      final d = body['ringDeadlineMs'];
+      ringDeadlineMs = d is int ? d : int.tryParse((d ?? '').toString());
     } catch (_) {}
 
     // [CALL-WS-AUTH-1 2026-08-03] Deposit the CALLER's CallRoom join credential.
@@ -315,11 +319,35 @@ Future<void> _dialerPlaceInBackground(
       if (rt.isNotEmpty) rememberCallRoomToken(room, rt);
     } catch (_) {/* older server: no token, join stays un-credentialed */}
     final session = CallSessionManager.instance.liveSessionFor(room);
+    session?.noteServerRingDeadline(ringDeadlineMs);
     if (res.statusCode == 200 && routed == 'receptionist') {
       Analytics.capture('call_server_receptionist_routed', {
         'call_id': room, 'via': 'dialpad', 'reason': 'unknown_caller',
       });
       session?.noteServerReceptionistRoute();
+    } else if (res.statusCode == 200 && (routed == 'busy' || routed == 'unavailable')) {
+      // [CALL-ROUTED-OPTIMISTIC-1 2026-08-03] The optimistic mount is the LIVE
+      // dial path (`instantCallMountEnabled` is true in production) and it
+      // handled exactly ONE value of `routed` — 'receptionist'. Everything else
+      // fell through to the `!reachableFalse` branch below and was logged as
+      // `call_place_ok`.
+      //
+      // That silently broke two deliberate server behaviours, because both
+      // `busy` and `unavailable` return HTTP 200 with `reachable: true` and NO
+      // ring is ever sent. With no ring there is no ring-ack, so the session sat
+      // on "Connecting…" for the full 12 s device-wake window and then reported
+      // the callee as unreachable/no-answer. The caller never heard the busy
+      // tone, never saw the busy card, and — for `unavailable` — the uniform
+      // denial the admission layer goes out of its way to produce was rendered
+      // as a 12-second no-answer instead. The `paid_call_busy` and
+      // `call_unavailable` analytics were never emitted either.
+      //
+      // The already-dead classic path below handled both correctly; this is that
+      // handling brought over to the branch that actually runs.
+      Analytics.capture(routed == 'busy' ? 'paid_call_busy' : 'call_unavailable', {
+        'call_id': room, 'via': 'dialpad', 'mount': 'optimistic', 'routed': routed,
+      });
+      session?.noteServerRoutedTerminal(routed);
     } else if (res.statusCode == 200 && !reachableFalse) {
       Analytics.capture('call_place_ok', {'kind': callKind, 'via': 'dialpad', 'mount': 'optimistic'});
       session?.notePlaceResult(true);
