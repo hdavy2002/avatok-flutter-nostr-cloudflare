@@ -287,28 +287,30 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
     // leave a frozen screen with every button disabled — so `_busy` now renders
     // a "Connecting…" state rather than just greying the buttons out, and the
     // timeout below guarantees this route leaves regardless.
+    //
+    // [PIV-3 2026-08-02] The dismissal below MUST pass a non-terminal status.
+    // Accepting is the one dismissal here that is NOT a ring-ending transition,
+    // and `_dismiss`'s `status` default is `'declined'` — which would run
+    // `applyRingTransition(callId, 'declined')`, whose first cleanup step is
+    // `_noteTerminalCall(callId)`. That cache is exactly what
+    // `CallSession.start()` reads back on the accepted side
+    // (`PushService.wasCallTerminated` -> `_endPreAcceptCancelled`) to honour a
+    // cancel that landed before it could subscribe. So accepting could plant the
+    // very marker that tells the new session the call was already dead, and kill
+    // the call the user just answered. `applyRingTransition` early-returns on a
+    // non-terminal status, so `'accepted'` is a deliberate no-op.
     unawaited(
       _completeAccept(callId, extra)
           .timeout(const Duration(milliseconds: 2500), onTimeout: () {
+            // The BOUND is the contract. NONBLOCK-1's rule was "never leave the
+            // user looking at a screen where every action is dead"; holding the
+            // route briefly is fine, holding it on a wedged platform Future is
+            // not. If the accept has not produced a call screen by now, leave
+            // anyway — PushService still owns the rest independently.
             Analytics.capture('call_accept_hold_timeout', {'call_id': callId});
           })
           .whenComplete(() => _dismiss(reason: 'accept', status: 'accepted')),
     );
-    // [PIV-3 2026-08-02] MUST pass a non-terminal status. Accepting is the one
-    // dismissal here that is NOT a ring-ending transition, and the `status`
-    // default is `'declined'` — so this line used to run
-    // `applyRingTransition(callId, 'declined')`, whose FIRST cleanup step is
-    // `_noteTerminalCall(callId)`. That cache is exactly what
-    // `CallSession.start()` reads back on the accepted side
-    // (`PushService.wasCallTerminated` -> `_endPreAcceptCancelled`) to honour a
-    // cancel that landed before it could subscribe. So accepting could plant
-    // the very marker that tells the new session the call was already dead, and
-    // kill the call the user just answered — a race decided by whether
-    // CallSession subscribed before or after this line.
-    // `applyRingTransition` early-returns on a non-terminal status, so this is
-    // a deliberate no-op: `acceptRingingCall` above already ended the native
-    // ring, and the accept path must not touch the terminal cache at all.
-    _dismiss(reason: 'accept', status: 'accepted');
   }
 
   Future<void> _completeAccept(String callId, Map<String, dynamic> extra) async {
