@@ -119,10 +119,13 @@ async function roomFetch<T = any>(env: Env, groupId: string, path: string, body?
 }
 
 /** Current live participant count / call authority from the GroupCallRoom DO. */
-async function presence(env: Env, groupId: string): Promise<{ live: boolean; count: number; call_id: string | null; state: string }> {
-  const r = await roomFetch<{ live?: boolean; count?: number; call_id?: string | null; state?: string }>(env, groupId, "/presence");
-  if (!r.ok || !r.data) return { live: false, count: 0, call_id: null, state: "ended" };
-  return { live: !!r.data.live, count: r.data.count ?? 0, call_id: r.data.call_id ?? null, state: r.data.state ?? "ended" };
+async function presence(env: Env, groupId: string): Promise<{ live: boolean; count: number; call_id: string | null; state: string; media_kind: string | null }> {
+  const r = await roomFetch<{ live?: boolean; count?: number; call_id?: string | null; state?: string; media_kind?: string | null }>(env, groupId, "/presence");
+  if (!r.ok || !r.data) return { live: false, count: 0, call_id: null, state: "ended", media_kind: null };
+  return {
+    live: !!r.data.live, count: r.data.count ?? 0, call_id: r.data.call_id ?? null,
+    state: r.data.state ?? "ended", media_kind: r.data.media_kind ?? null,
+  };
 }
 
 // ---- signed join tickets [CF-CALL-001] ------------------------------------------
@@ -233,8 +236,29 @@ type Guard = { uid: string; email: string | null; cfConf: boolean } | Response;
 
 async function guard(req: Request, env: Env, groupId: string, opts: { checkCap?: boolean } = {}): Promise<Guard> {
   const f = await flags(env);
-  if (!f.conf || !f.enabled) return json({ error: "group calling is unavailable" }, 503);
-  if (!sfuConfigured(env)) return json({ error: "group call backend not configured" }, 503);
+  // [GCALL-W1-503] The two unavailable paths used to return a bare 503 and emit
+  // NOTHING server-side, so "group calls are down" was invisible in telemetry —
+  // indistinguishable from nobody trying. Identify the caller first (cheap
+  // relative to the SFU round trips this is refusing) so the block is
+  // attributable to a tester's email, then refuse with a reason the client can
+  // render honestly.
+  if (!f.conf || !f.enabled || !sfuConfigured(env)) {
+    const reason = !f.conf || !f.enabled ? "flags" : "unconfigured";
+    const who = await requireUser(req, env);
+    if (!isFail(who)) {
+      const whoEmail = await emailFor(env, who.uid).catch(() => null);
+      await trackUser(env, who.uid, whoEmail, "groupcall_blocked", "avatok", {
+        reason: `unavailable_${reason}`,
+        conference_enabled: f.conf, cf_conference_enabled: f.cfConf,
+        sfu_configured: sfuConfigured(env),
+        group_id: groupId, provider: PROVIDER, ...confGeo(req),
+      });
+    }
+    return json({
+      error: reason === "flags" ? "group calling is unavailable" : "group call backend not configured",
+      unavailable_reason: reason,
+    }, 503);
+  }
   const u = await requireUser(req, env);
   if (isFail(u)) return json({ error: u.error }, u.status);
   const email = await emailFor(env, u.uid).catch(() => null);
@@ -610,12 +634,29 @@ export async function groupCallClose(req: Request, env: Env, groupId: string): P
 
 // ---- GET /status (in-chat "ongoing call" banner) ------------------------------
 
+// [GCALL-W1-STATUS] The response gained four additive fields; old clients
+// ignore them, so the Worker can (and must) deploy ahead of the client build.
+//   available / unavailable_reason — "calls are switched off" and "the call
+//     backend is not configured" used to collapse into an ordinary
+//     {live:false}, indistinguishable from "there is no call right now". The
+//     thread therefore blamed every greyed-out call icon on ">25 members".
+//   state / media_kind — the banner previously hardcoded a VIDEO join, and a
+//     video publish into an audio call is rejected server-side, failing the
+//     whole join. It can now join with the call's actual media kind.
 export async function groupCallStatus(req: Request, env: Env, groupId: string): Promise<Response> {
   const f = await flags(env);
   const cap = f.cfConf ? MAX_CONF_PARTICIPANTS : MAX_GROUP;
-  if (!f.conf || !f.enabled || !sfuConfigured(env)) return json({ live: false, count: 0, max: cap });
+  if (!f.conf || !f.enabled) {
+    return json({ live: false, count: 0, max: cap, available: false, unavailable_reason: "flags" });
+  }
+  if (!sfuConfigured(env)) {
+    return json({ live: false, count: 0, max: cap, available: false, unavailable_reason: "unconfigured" });
+  }
   const u = await requireUser(req, env);
   if (isFail(u)) return json({ error: u.error }, u.status);
   const p = await presence(env, groupId);
-  return json({ live: p.live, count: p.count, max: cap, call_id: p.call_id });
+  return json({
+    live: p.live, count: p.count, max: cap, call_id: p.call_id,
+    state: p.state, media_kind: p.media_kind, available: true, unavailable_reason: null,
+  });
 }

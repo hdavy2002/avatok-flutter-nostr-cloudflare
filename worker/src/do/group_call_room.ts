@@ -84,6 +84,13 @@ const SPEAKER_COALESCE_MS = 1500;
 // Zombie sweep: evict a socket with no level/heartbeat for this long.
 const STALE_MS = 45_000;
 const SWEEP_MS = 15_000;
+// [GCALL-W1-SWEEP] Grace window for a call that has an authority but no socket
+// yet. The sweep is now armed at /authority/start (not only on a successful WS
+// upgrade), so a join whose WS never opens is reaped instead of wedging the
+// room forever. Without this grace the alarm would end a HEALTHY call whose
+// starter is still completing the upgrade on a slow network. Must exceed the
+// 60 s ticket TTL so a legitimately-slow first joiner is never killed.
+const STARTING_GRACE_MS = 90_000;
 // Absolute backstop so a wedged room can't live forever.
 const MAX_ROOM_MS = 18 * 3600 * 1000;
 const TICKET_NONCE_PREFIX = "ticket_nonce:";
@@ -135,7 +142,15 @@ export class GroupCallRoom {
       case "/presence": {
         const count = this.liveCount();
         const a = await this.loadAuthority();
-        return json({ live: count > 0, count, max: a?.max_participants ?? MAX_GROUP, call_id: a?.call_id ?? null, state: a?.state ?? "ended" });
+        // [GCALL-W1-KIND] media_kind is exposed here so routes/groupcall.ts can
+        // put it on /status: without it the in-thread banner cannot know whether
+        // the live call is audio or video and hardcodes a video join, which the
+        // publish path then rejects outright for an audio call.
+        return json({
+          live: count > 0, count, max: a?.max_participants ?? MAX_GROUP,
+          call_id: a?.call_id ?? null, state: a?.state ?? "ended",
+          media_kind: a?.media_kind ?? null,
+        });
       }
       case "/authority/start": return this.authorityStart(req);
       case "/authority/join": return this.authorityJoin(req);
@@ -170,6 +185,14 @@ export class GroupCallRoom {
         max_participants: maxParticipants,
       };
       await this.saveAuthority(a);
+      // [GCALL-W1-SWEEP] Arm the sweep the moment the authority exists. Before
+      // this, the alarm was only armed on a successful WS upgrade — so a join
+      // that failed after /authority/start (the publish-before-WS ordering
+      // defect, a permission denial, a dead network) left the authority stuck
+      // in state:"starting" with no sockets and NO alarm, wedging the room and
+      // freezing its media_kind forever. `alarm()` applies STARTING_GRACE_MS so
+      // this never reaps a call that is merely still connecting.
+      void this.ensureSweep();
     } else if (this.liveCount() >= a.max_participants) {
       return json({ error: `call is full (${a.max_participants})`, cap: a.max_participants }, 409);
     }
@@ -268,15 +291,19 @@ export class GroupCallRoom {
     const ticket = await verifyJoinTicket(this.env, ticketStr);
     if (!ticket) return new Response("invalid or expired ticket", { status: 401 });
 
-    // A signed ticket is a one-time capability, not a bearer token. Consume its
-    // nonce in the room before accepting the socket so replaying a valid ticket
-    // cannot displace the legitimate participant during its 60-second window.
+    // A signed ticket is a one-time capability, not a bearer token: a replay
+    // within its 60-second window must not be able to displace the legitimate
+    // participant. The REPLAY CHECK happens here (cheap, before any work), but
+    // the nonce is only CONSUMED further down, immediately before the socket is
+    // accepted — [GCALL-W1-NONCE]. Consuming it up here burned the ticket on
+    // every rejectable outcome (stale generation, full room), so a user turned
+    // away from a full call could not retry with the ticket they were just
+    // issued: the retry died as "ticket already used" instead of "call is full".
     const nonceKey = `${TICKET_NONCE_PREFIX}${ticket.nonce}`;
     const nonceExp = await this.state.storage.get<number>(nonceKey);
     if (nonceExp != null && nonceExp >= Date.now()) {
       return new Response("ticket already used", { status: 401 });
     }
-    await this.state.storage.put(nonceKey, ticket.exp);
 
     const a = await this.loadAuthority();
     if (!a || a.state === "ended") return new Response("call not active", { status: 409 });
@@ -300,6 +327,10 @@ export class GroupCallRoom {
     // are hard-rejected above), just the same user reconnecting.
     const existing = this.findWsByUid(ticket.uid);
     if (existing) { try { existing.close(1000, "superseded by reconnect"); } catch { /* ignore */ } }
+
+    // [GCALL-W1-NONCE] Every rejectable check has now passed — this socket is
+    // being accepted, so and only so is the one-time ticket spent.
+    await this.state.storage.put(nonceKey, ticket.exp);
 
     const pair = new WebSocketPair();
     const client = pair[0], server = pair[1];
@@ -407,19 +438,52 @@ export class GroupCallRoom {
     for (const [key, exp] of nonces) {
       if (exp < now) await this.state.storage.delete(key);
     }
+    // [GCALL-W1-SWEEP-BCAST] Evict, then TELL EVERYONE. A server-initiated
+    // close does NOT re-enter webSocketClose for hibernatable WebSockets, so
+    // the old code evicted silently: in a quiet call the survivors kept
+    // rendering the ghost's frozen tile until some unrelated event happened to
+    // trigger a roster broadcast. Collect the evicted sockets, exclude them
+    // from the roster we compute, and push both {t:'left'} and a fresh roster.
     const all = this.state.getWebSockets();
+    const evicted = new Set<WebSocket>();
+    const evictedUids: string[] = [];
     for (const ws of all) {
       const a = this.att(ws);
       if (!a) continue;
       if (now - a.ts > STALE_MS || now - a.born > MAX_ROOM_MS) {
+        evicted.add(ws);
+        evictedUids.push(a.uid);
         try { ws.close(1000, "evicted (idle/zombie)"); } catch { /* ignore */ }
       }
     }
-    if (this.state.getWebSockets().length > 0) {
-      try { await this.state.storage.setAlarm(now + SWEEP_MS); } catch { /* ignore */ }
-    } else {
-      void this.endAuthority();
+    if (evicted.size > 0) {
+      for (const uid of evictedUids) {
+        for (const ws of this.state.getWebSockets()) {
+          if (evicted.has(ws)) continue;
+          this.sendTo(ws, { t: "left", uid });
+        }
+      }
+      this.broadcastRoster(evicted);
+      this.recomputeSpeakers(evicted);
     }
+
+    const remaining = this.state.getWebSockets().filter((ws) => !evicted.has(ws)).length;
+    if (remaining > 0) {
+      try { await this.state.storage.setAlarm(now + SWEEP_MS); } catch { /* ignore */ }
+      return;
+    }
+    // Zero sockets. A room in state:"starting" may simply have a joiner still
+    // completing the WS handshake — ending it here would kill a healthy call
+    // and turn that upgrade into a 409. Wait out STARTING_GRACE_MS instead, and
+    // CRITICALLY re-arm the alarm ([GCALL-W1-SWEEP] R1): declining to end
+    // without scheduling the next check would leave the room wedged again, just
+    // politely, because the branch below is the only thing that re-arms.
+    const auth = await this.loadAuthority();
+    if (auth && auth.state === "starting" && now - auth.created_at <= STARTING_GRACE_MS) {
+      try { await this.state.storage.setAlarm(auth.created_at + STARTING_GRACE_MS); } catch { /* ignore */ }
+      return;
+    }
+    await this.endAuthority();
   }
 
   private async ensureSweep(): Promise<void> {
@@ -449,6 +513,15 @@ export class GroupCallRoom {
     a.state = "ended";
     a.ended_at = Date.now();
     await this.saveAuthority(a);
+    // [GCALL-W1-NONCE] The call is over and its generation is spent, so every
+    // ticket nonce recorded against it is dead weight. Dropping them here is
+    // the only bounded point available: the sweep alarm stops re-arming once
+    // the room empties, so expired nonces would otherwise accumulate one key
+    // per join/reconnect attempt for the lifetime of the DO.
+    try {
+      const stale = await this.state.storage.list<number>({ prefix: TICKET_NONCE_PREFIX });
+      for (const [key] of stale) await this.state.storage.delete(key);
+    } catch { /* best-effort cleanup */ }
   }
 
   // ---- socket/roster helpers -----------------------------------------------------
@@ -487,19 +560,31 @@ export class GroupCallRoom {
     if (ws && this.att(ws)?.session === sessionId) (ws as any).serializeAttachment(att);
   }
 
-  private roster(): { uid: string; session: string; audio_track: string | null; video_track: string | null; video_enabled: boolean }[] {
+  /** True when `ws` is the excluded socket / one of the excluded sockets. */
+  private isExcluded(ws: WebSocket, exclude?: WebSocket | Set<WebSocket>): boolean {
+    if (!exclude) return false;
+    return exclude instanceof Set ? exclude.has(ws) : ws === exclude;
+  }
+
+  // [GCALL-W1-SWEEP-BCAST] `exclude` now filters the roster CONTENT as well as
+  // the send list. It previously only skipped the send, so the roster broadcast
+  // that follows a departure still listed the departing member — and since the
+  // client applies a roster by clear-and-rebuild, that frame re-added the very
+  // participant the preceding {t:'left'} had just removed.
+  private roster(exclude?: WebSocket | Set<WebSocket>): { uid: string; session: string; audio_track: string | null; video_track: string | null; video_enabled: boolean }[] {
     const out: { uid: string; session: string; audio_track: string | null; video_track: string | null; video_enabled: boolean }[] = [];
     for (const ws of this.state.getWebSockets()) {
+      if (this.isExcluded(ws, exclude)) continue;
       const a = this.att(ws);
       if (a) out.push({ uid: a.uid, session: a.session, audio_track: a.audioTrack, video_track: a.videoTrack, video_enabled: a.videoEnabled });
     }
     return out;
   }
 
-  private broadcastRoster(exclude?: WebSocket): void {
-    const msg = JSON.stringify({ t: "roster", roster: this.roster() });
+  private broadcastRoster(exclude?: WebSocket | Set<WebSocket>): void {
+    const msg = JSON.stringify({ t: "roster", roster: this.roster(exclude) });
     for (const ws of this.state.getWebSockets()) {
-      if (ws === exclude) continue;
+      if (this.isExcluded(ws, exclude)) continue;
       try { ws.send(msg); } catch { /* gone */ }
     }
   }
@@ -507,10 +592,10 @@ export class GroupCallRoom {
   // Compute the top-N debounced talkers and broadcast — COALESCED so a change that
   // reverts within SPEAKER_COALESCE_MS never hits the wire (prevents SDP
   // renegotiation thrash). Uses the hysteresis `speaking` flag, not the raw level.
-  private recomputeSpeakers(exclude?: WebSocket): void {
+  private recomputeSpeakers(exclude?: WebSocket | Set<WebSocket>): void {
     const live: { uid: string; level: number }[] = [];
     for (const ws of this.state.getWebSockets()) {
-      if (ws === exclude) continue;
+      if (this.isExcluded(ws, exclude)) continue;
       const a = this.att(ws);
       if (a && a.speaking && a.level >= SPEAKING_FLOOR) live.push({ uid: a.uid, level: a.level });
     }
@@ -528,7 +613,7 @@ export class GroupCallRoom {
     this.speakers = next;
     const msg = JSON.stringify({ t: "speakers", uids: next, size: next.length, churn_ms: churnMs });
     for (const ws of this.state.getWebSockets()) {
-      if (ws === exclude) continue;
+      if (this.isExcluded(ws, exclude)) continue;
       try { ws.send(msg); } catch { /* gone */ }
     }
   }
