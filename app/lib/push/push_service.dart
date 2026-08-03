@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:audioplayers/audioplayers.dart' as ap;
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MethodChannel;
 import 'package:flutter_callkit_incoming/entities/entities.dart';
@@ -3080,8 +3081,9 @@ class PushService {
           unawaited(_dismissBrandedFsi());
           IceCache.prefetch(); // accept tapped → call screen is next; warm TURN now
           final acc = event.body['extra'];
+          var accId = '';
           if (acc is Map) {
-            final accId = (acc['callId'] ?? '').toString();
+            accId = (acc['callId'] ?? '').toString();
             // CALL-GLARE-1: dedupe duplicate accept events for the same call.
             if (_onceCallEvent(accId, 'accepted')) {
               Analytics.capture('call_incoming_accepted', {
@@ -3095,7 +3097,31 @@ class PushService {
           // CALLFIX-R6: Clear glare state when accept is tapped
           gIncomingRingingFrom = null;
           gIncomingRingingCallId = null;
-          unawaited(_openCall(event.body['extra'])); // CALLFIX-15
+          // [CALL-ACCEPT-FLASH-1] This used to go straight to the raw
+          // `_openCall`, which re-runs its OWN blocking `_claimHumanAccept` —
+          // a second claim POST on top of whatever the branded in-app screen
+          // may already be running for the same call — and never told the
+          // branded IncomingBusinessCallScreen (if it happened to also be
+          // mounted, e.g. accept tapped from the notification while the app is
+          // foregrounded on the branded ring) that its ring was over, so it
+          // survived indefinitely underneath CallScreen. Routing through the
+          // shared `acceptRingingCall` gets the single non-blocking claim; the
+          // explicit `ringEndedBus` post below is the same signal
+          // `applyRingTransition` uses to close that screen (it already
+          // listens for ANY status on this call's `ringEndedBus`), which
+          // `acceptRingingCall`'s own reducer path never has reason to send
+          // for 'accepted' since it isn't a terminal ring status.
+          if (accId.isNotEmpty) {
+            ringEndedBus.add((callId: accId, status: 'accepted'));
+            unawaited(acceptRingingCall(
+              accId,
+              fallbackExtra: acc is Map ? acc : null,
+            ));
+          } else {
+            // No callId to route through the shared helper — fall back to the
+            // raw open so a malformed payload still has a chance to connect.
+            unawaited(_openCall(event.body['extra'])); // CALLFIX-15
+          }
           break;
         case Event.actionCallDecline:
           final extra = event.body['extra'];
@@ -3806,48 +3832,98 @@ class PushService {
     // the Android heads-up ring from lingering after the user taps Accept.
     unawaited(_finishAcceptedRing(callId));
 
-    // Atomically race the human answer against the server-owned receptionist
-    // alarm after local UI cleanup. A failed/late claim still blocks CallScreen;
-    // it no longer gets to keep the phone visibly ringing while it resolves.
-    final authoritative = await _claimHumanAccept(callId);
+    if (openExtra == null) {
+      Analytics.capture('call_accept_payload_missing', {'call_id': callId});
+      return;
+    }
+
+    Analytics.capture('call_accept_open_scheduled', {
+      'call_id': callId,
+      'payload_source':
+          identical(openExtra, fallbackExtra) ? 'push_fallback' : 'callkit',
+    });
+    // [CALL-ACCEPT-FLASH-1] Open CallScreen BEFORE the network claim, not
+    // after it. The claim (`_claimHumanAccept`) races a POST against the
+    // server-owned receptionist alarm and can take up to ~2.7s worst case
+    // (1500ms POST timeout + 1200ms durable-status fallback fetch) — this used
+    // to be AWAITED here, so the branded ring screen sat on "Connecting…" for
+    // that whole window while its own 2500ms hold timeout raced it. When the
+    // hold timeout won, the ring route was removed before CallScreen ever
+    // existed: dead air, then a delayed CallScreen "re-appearance" (PostHog
+    // avatok call 2026-08-04: accept tap 18:07:19.57, screen_opened
+    // 18:07:21.56, dismissed 1ms later, call_connected only at 18:07:23.9).
+    //
+    // CallScreen is now pushed FIRST — one continuous forward transition, no
+    // gap — and the claim runs CONCURRENTLY in `_trackClaimAfterOpen`. If the
+    // claim later reports we lost the race (call already gone/taken), the
+    // existing applyRingTransition -> `_noteTerminalCall` marker plus
+    // CallSession's own pre-accept-cancel checks (`wasCallTerminated`,
+    // `_checkDurablePreAcceptCancel`) tear the just-opened CallScreen down
+    // honestly instead of leaving it live on a call nobody won.
+    await _openCall(openExtra, claimPending: true);
+    unawaited(_trackClaimAfterOpen(callId));
+  }
+
+  /// [CALL-ACCEPT-FLASH-1] Runs the human-accept claim CONCURRENTLY with
+  /// CallScreen already being on screen (see [acceptRingingCall]). Emits
+  /// `call_accept_claim_after_open` either way so a regression here is
+  /// measurable, and on an authoritative loss feeds the same reducer the old
+  /// blocking preflight used so CallScreen tears itself down honestly.
+  static Future<void> _trackClaimAfterOpen(String callId) async {
+    final t0 = DateTime.now().millisecondsSinceEpoch;
+    String? authoritative;
+    try {
+      authoritative = await _claimHumanAccept(callId);
+    } catch (e, st) {
+      Analytics.captureException(
+        e,
+        st,
+        handled: true,
+        screen: 'push_service',
+        extra: {'stage': 'claim_after_open', 'call_id': callId},
+      );
+    }
+    Analytics.capture('call_accept_claim_after_open', {
+      'call_id': callId,
+      'ok': authoritative == null,
+      'ms': DateTime.now().millisecondsSinceEpoch - t0,
+    });
     if (authoritative != null) {
       unawaited(applyRingTransition(
         callId,
         authoritative,
-        source: 'accept_authority_preflight',
+        source: 'accept_claim_after_open',
       ));
       Analytics.capture('call_late_accept_blocked', {
         'call_id': callId,
         'status': authoritative,
       });
-      return;
     }
-
-    if (openExtra != null) {
-      Analytics.capture('call_accept_open_scheduled', {
-        'call_id': callId,
-        'payload_source':
-            identical(openExtra, fallbackExtra) ? 'push_fallback' : 'callkit',
-      });
-      // [CALL-ACCEPT-GAP-1 2026-08-03] AWAITED now, so the caller of
-      // acceptRingingCall knows when the CallScreen is actually on screen and
-      // can keep the ring surface up until then. Previously this was
-      // fire-and-forget and the ring screen popped itself immediately, which is
-      // what produced the blank gap: pop (≈300 ms out) → dead air → push
-      // (≈300 ms in). Two transitions with nothing between them, read by the
-      // user as "the screen disappeared and then came back".
-      await _openCall(openExtra, acceptAlreadyClaimed: true);
-      return;
-    }
-
-    Analytics.capture('call_accept_payload_missing', {'call_id': callId});
   }
+
+  /// [CALL-ACCEPT-FLASH-1] Test-only override — mirrors the
+  /// `MoneyApi.debugGetOverride` seam already used in this codebase (see
+  /// `wallet_entitlement_test.dart`) so the accept flow's ORDERING contract
+  /// (CallScreen is requested before this claim resolves, not after) is
+  /// testable deterministically, with a controllable/delayable result, and
+  /// without a live network or the CallKit/webrtc plugin surface.
+  @visibleForTesting
+  static Future<String?> Function(String room)? debugClaimHumanAcceptOverride;
+
+  /// [CALL-ACCEPT-FLASH-1] Test-only hook fired the instant `_openCall`
+  /// reaches the point of requesting CallScreen (right before it reads
+  /// `navigatorKey.currentState`) — the moment this fix's contract cares
+  /// about, independent of whether a real Navigator is mounted.
+  @visibleForTesting
+  static void Function(String callId)? debugOnCallScreenOpenAttempt;
 
   /// Atomically race a human Accept against the server-owned four-ring alarm.
   /// Returns a terminal status when another outcome already won; null means
   /// the human leg is claimed (or the network failed open and WebSocket
   /// admission remains the final authority).
   static Future<String?> _claimHumanAccept(String room) async {
+    final override = debugClaimHumanAcceptOverride;
+    if (override != null) return override(room);
     String? authoritative;
     try {
       final claim = await ApiAuth.postJson(
@@ -3880,6 +3956,14 @@ class PushService {
   static Future<void> _openCall(
     dynamic extra, {
     bool acceptAlreadyClaimed = false,
+    // [CALL-ACCEPT-FLASH-1] True when the caller (acceptRingingCall) is
+    // running `_claimHumanAccept` CONCURRENTLY with this open rather than
+    // having already resolved it. Treated like `acceptAlreadyClaimed` here —
+    // this method must not ALSO block on its own claim, or opening CallScreen
+    // would wait on the very network round-trip this param exists to skip.
+    // The concurrent claim's own failure path (applyRingTransition) tears the
+    // screen down after the fact if it turns out to have lost the race.
+    bool claimPending = false,
   }) async {
     try {
       final e = (extra as Map);
@@ -3914,7 +3998,7 @@ class PushService {
       // but Accept is the dangerous boundary. Atomically claim the human leg in
       // CallRoom before opening CallScreen. This command races the four-ring Ava
       // alarm inside one Durable Object: exactly one can win.
-      final authoritative = acceptAlreadyClaimed
+      final authoritative = (acceptAlreadyClaimed || claimPending)
           ? null
           : await _claimHumanAccept(room);
       if (authoritative != null) {
@@ -4026,6 +4110,11 @@ class PushService {
           });
         }
       }
+      // [CALL-ACCEPT-FLASH-1] This is the moment CallScreen is genuinely being
+      // requested — everything above is guards/dedup, everything below is the
+      // actual push. Test-only signal for the accept flow's ordering contract
+      // (see `debugOnCallScreenOpenAttempt`'s doc comment).
+      debugOnCallScreenOpenAttempt?.call(room);
       final nav = navigatorKey.currentState;
       if (nav == null) {
         Analytics.capture('call_accept_navigator_missing', {'call_id': room});
@@ -4047,6 +4136,12 @@ class PushService {
           seed: (e['from'] ?? 'caller').toString(),
           video: e['kind'] == 'video',
           outgoing: false,
+          // [CALL-IDENTITY-SNAPSHOT-1] Without this CallScreen always fell
+          // back to an initials tile even when the caller's real photo was
+          // right there in the ring payload — a jarring identity swap the
+          // instant the branded ring screen (which DOES paint the avatar)
+          // hands off to CallScreen.
+          avatarUrl: callerAvatarFromPayload(Map<String, dynamic>.from(e)),
           traceId: (e['trace_id'] ?? '').toString(), // [TRACE-ID-1]
         ),
       ));

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -12,6 +13,76 @@ import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../push/push_service.dart';
 import 'call_screen.dart' show gIncomingRingingFrom, gIncomingRingingCallId;
+
+/// [CALL-ACCEPT-FLASH-1] Removes [route] once the route ABOVE it (typically
+/// CallScreen, pushed by [PushService.acceptRingingCall] while this ring
+/// route is held open — see `_IncomingBusinessCallScreenState._dismiss`) has
+/// finished animating in, instead of tearing this route out mid-transition.
+///
+/// `route.secondaryAnimation` is exactly the animation Flutter drives THIS
+/// route with while a new route is pushed on top of it — it runs 0→1 in
+/// lockstep with the new route's own entrance transition and lands on
+/// `AnimationStatus.completed` the instant that transition finishes. Waiting
+/// for that (rather than guessing the transition's duration) stays correct
+/// even if the push transition's duration ever changes.
+///
+/// Before this fix, `_dismiss` called `nav.removeRoute(route)` on the very
+/// next frame after CallScreen was pushed — un-animated disposal while
+/// CallScreen's own ~300ms ZoomPageTransition was still mid-flight, which
+/// showed as a visible flash of whatever the Navigator painted in the gap.
+///
+/// Bounded by [timeout]: if the route/animation is disposed mid-transition,
+/// swapped out, or the listener is otherwise never invoked, the ring route
+/// must still leave — parked forever underneath CallScreen is worse than one
+/// un-animated frame.
+///
+/// Extracted to a top-level function (rather than kept as a private method)
+/// so `dismiss_removes_own_route_test.dart` can exercise this exact removal
+/// contract directly with a minimal Navigator, without needing to drive the
+/// whole accept/decline flow through the plugin-backed services
+/// (PushService, flutter_callkit_incoming, CallScreen's webrtc stack) that a
+/// plain widget test can't safely touch. [isRemoved]/[markRemoved] let the
+/// caller keep its own dedup flag (mirrors
+/// `_IncomingBusinessCallScreenState._routeRemoved`) instead of this function
+/// owning mutable state itself, so it stays trivially re-callable in tests.
+@visibleForTesting
+void deferredRemoveRoute(
+  NavigatorState nav,
+  ModalRoute<dynamic> route, {
+  required bool Function() isRemoved,
+  required void Function() markRemoved,
+  void Function(Object error, StackTrace stackTrace)? onRemoveError,
+  Duration timeout = const Duration(milliseconds: 400),
+}) {
+  void doRemove() {
+    if (isRemoved()) return;
+    markRemoved();
+    if (!route.isActive) return; // already gone
+    try {
+      nav.removeRoute(route);
+    } catch (e, st) {
+      onRemoveError?.call(e, st);
+    }
+  }
+
+  final secondaryAnim = route.secondaryAnimation;
+  AnimationStatusListener? listener;
+  if (secondaryAnim != null &&
+      secondaryAnim.status != AnimationStatus.completed) {
+    listener = (status) {
+      if (status != AnimationStatus.completed) return;
+      secondaryAnim.removeStatusListener(listener!);
+      doRemove();
+    };
+    secondaryAnim.addStatusListener(listener);
+  }
+  Future.delayed(timeout, () {
+    // Safe even if the listener already fired and removed itself —
+    // `removeStatusListener` is a no-op for a listener that isn't present.
+    if (listener != null) secondaryAnim?.removeStatusListener(listener);
+    doRemove();
+  });
+}
 
 /// [DIALPAD-BIZ-CALLS] Named incoming-BUSINESS-call screen — "‹Name› is
 /// calling", full screen, with FOUR actions: Accept · Decline · Send to Ava AI
@@ -92,6 +163,11 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
   /// [CALL-TERMINAL-BCAST-1] Guards against a double pop when a local action and
   /// the remote status broadcast (now sub-100ms, not 5s) land back-to-back.
   bool _dismissed = false;
+  /// [CALL-ACCEPT-FLASH-1] Guards the DEFERRED `removeRoute` below against a
+  /// double removal — a second `_dismiss` can re-enter while the first is
+  /// still waiting out the transition (e.g. the reducer's terminal broadcast
+  /// landing right after this screen's own Accept already claimed teardown).
+  bool _routeRemoved = false;
   /// [CALL-SPAM-REPORT-1] When this screen appeared, so a spam report can carry
   /// how long it rang before the user gave up — an instant report on a first
   /// ring reads very differently from one after 20 seconds of deliberation.
@@ -253,8 +329,38 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
     if (route.isCurrent) {
       nav.pop();
     } else {
-      nav.removeRoute(route);
+      // [CALL-ACCEPT-FLASH-1] Removing a non-current route immediately — the
+      // very next frame after CallScreen was pushed on top of it — tore this
+      // route out of the tree while CallScreen's ~300ms ZoomPageTransition was
+      // still mid-flight. Nothing else was mounted underneath yet at that
+      // point, so the un-animated disposal showed as a visible flash of
+      // whatever the Navigator painted in the gap (a frame of the route below
+      // THIS one, or a blank surface) before the incoming CallScreen finished
+      // sliding in. Defer the removal until that transition has actually
+      // finished, so this route disappears only once CallScreen has already
+      // fully covered it.
+      _deferredRemoveRoute(nav, route);
     }
+  }
+
+  /// Delegates to the top-level [deferredRemoveRoute] (see its doc comment
+  /// for the full rationale) — kept as a thin wrapper here so this screen's
+  /// own `_routeRemoved` dedup flag and its error-reporting convention
+  /// (`Analytics.captureException`) stay exactly where they always were.
+  void _deferredRemoveRoute(NavigatorState nav, ModalRoute<dynamic> route) {
+    deferredRemoveRoute(
+      nav,
+      route,
+      isRemoved: () => _routeRemoved,
+      markRemoved: () => _routeRemoved = true,
+      onRemoveError: (e, st) => Analytics.captureException(
+        e,
+        st,
+        handled: true,
+        screen: 'incoming_business_call',
+        extra: {'stage': 'deferred_remove_route', 'call_id': widget.callId},
+      ),
+    );
   }
 
   @override
