@@ -611,6 +611,43 @@ final CallTtlGate _programmaticCallkitEnd =
 bool _wasProgrammaticCallkitEnd(String callId) =>
     _programmaticCallkitEnd.contains(callId);
 
+/// Close native/local ring surfaces after a HUMAN ACCEPT without manufacturing
+/// a terminal call outcome. Some Android/OEM CallKit implementations emit
+/// `actionCallDecline` synchronously from a programmatic `endCall()`, so mark
+/// the bridge operation before crossing it. Every platform await is time-boxed:
+/// an accepted call must continue opening even if an OEM call-service bridge is
+/// wedged.
+Future<void> _finishAcceptedRing(String callId) async {
+  if (callId.isEmpty) return;
+  _programmaticCallkitEnd.mark(callId);
+  try {
+    await FlutterCallkitIncoming.endCall(callId)
+        .timeout(const Duration(milliseconds: 1200));
+  } on TimeoutException {
+    Analytics.capture('call_accept_native_cleanup_timeout', {
+      'call_id': callId,
+      'stage': 'end_call',
+    });
+  } catch (e) {
+    Analytics.capture('call_accept_native_cleanup_failed', {
+      'call_id': callId,
+      'stage': 'end_call',
+      'error': e.toString(),
+    });
+  }
+  try {
+    await _dismissBrandedFsi().timeout(const Duration(milliseconds: 800));
+  } catch (_) {/* best-effort */}
+  try {
+    await _stopRingtoneFallback(callId)
+        .timeout(const Duration(milliseconds: 800));
+  } catch (_) {/* best-effort */}
+  if (gIncomingRingingCallId == callId) {
+    gIncomingRingingFrom = null;
+    gIncomingRingingCallId = null;
+  }
+}
+
 /// The authoritative ring-state reducer.
 ///
 /// Call this for EVERY event that ends a callee's ring, from any source:
@@ -3349,63 +3386,75 @@ class PushService {
   /// behaves exactly as before.
   static Future<void> acceptRingingCall(String callId, {Map? fallbackExtra}) async {
     unawaited(_dismissBrandedFsi()); // [AVACALL-INUI-2] clear the lock-screen FSI banner
-    // [CALL-ACCEPT-INTENT-1 2026-08-03] Claim the human answer BEFORE touching
-    // CallKit. `activeCalls()` crosses the Android platform bridge and can take
-    // several seconds on a busy/debug device. In PostHog call avatok-25b3e99e
-    // the server never received accept_call before its alarm won, while this
-    // bridge was still ahead of the authoritative claim on every accept path.
-    // That ordering made a near-deadline tap unnecessarily easy to lose and
-    // left the caller in ringback until Ava took over.
-    //
-    // The Durable Object command is the only operation that matters for the
-    // race. Native/in-app ring cleanup is local presentation work and happens
-    // after the claim. The command id is stable, so a duplicate native Accept
-    // can safely replay the same decision.
-    unawaited(_stopRingtoneFallback(callId));
     // [AVACALL-CANCEL-1] Don't answer into a call the caller already cancelled.
     if (wasCallTerminated(callId)) {
       Analytics.capture('call_accepted_dead', {
         'call_id': callId,
         'via': 'accept_ringing_cache',
       });
-      try { await FlutterCallkitIncoming.endCall(callId); } catch (_) {}
+      unawaited(_finishAcceptedRing(callId));
       return;
     }
+
+    // Claim the human answer before any Android platform bridge. This is the
+    // only operation that races the server-owned receptionist alarm.
     final authoritative = await _claimHumanAccept(callId);
     if (authoritative != null) {
-      await applyRingTransition(
+      unawaited(applyRingTransition(
         callId,
         authoritative,
         source: 'accept_authority_preflight',
-      );
+      ));
+      // `answered` by another device is authoritative but intentionally not a
+      // terminal reducer status. Always close this device's native ring too.
+      unawaited(_finishAcceptedRing(callId));
       Analytics.capture('call_late_accept_blocked', {
         'call_id': callId,
         'status': authoritative,
       });
-      try { await FlutterCallkitIncoming.endCall(callId); } catch (_) {}
       return;
     }
+
+    dynamic calls;
     try {
-      final calls = await FlutterCallkitIncoming.activeCalls();
-      if (calls is List) {
-        for (final c in calls) {
-          if (c is Map && (c['id'] ?? '').toString() == callId) {
-            try { await FlutterCallkitIncoming.endCall(callId); } catch (_) {}
-            await _openCall(c['extra'], acceptAlreadyClaimed: true);
-            return;
-          }
+      calls = await FlutterCallkitIncoming.activeCalls()
+          .timeout(const Duration(milliseconds: 900));
+    } on TimeoutException {
+      Analytics.capture('call_accept_native_lookup_timeout', {
+        'call_id': callId,
+        'timeout_ms': 900,
+      });
+    } catch (e) {
+      Analytics.capture('call_accept_native_lookup_failed', {
+        'call_id': callId,
+        'error': e.toString(),
+      });
+    }
+
+    dynamic openExtra = fallbackExtra;
+    if (calls is List) {
+      for (final c in calls) {
+        if (c is Map && (c['id'] ?? '').toString() == callId) {
+          openExtra = c['extra'] ?? fallbackExtra;
+          break;
         }
       }
-    } catch (_) {/* best-effort — worst case the incoming ring keeps ringing */}
-    // No native registration for this call. Either the OS ring was deliberately
-    // suppressed ([ONERING-1], app in foreground) or CallKit dropped it.
-    if (fallbackExtra != null) {
-      Analytics.capture('call_accept_via_fallback_extra', {
-        'call_id': callId,
-        'reason': 'no_callkit_entry',
-      });
-      await _openCall(fallbackExtra, acceptAlreadyClaimed: true);
     }
+
+    // Native cleanup and CallScreen preparation continue independently after
+    // the durable human-answer claim. Neither can lock the branded ring screen.
+    unawaited(_finishAcceptedRing(callId));
+    if (openExtra != null) {
+      Analytics.capture('call_accept_open_scheduled', {
+        'call_id': callId,
+        'payload_source':
+            identical(openExtra, fallbackExtra) ? 'push_fallback' : 'callkit',
+      });
+      unawaited(_openCall(openExtra, acceptAlreadyClaimed: true));
+      return;
+    }
+
+    Analytics.capture('call_accept_payload_missing', {'call_id': callId});
   }
 
   /// Atomically race a human Accept against the server-owned four-ring alarm.
@@ -3503,7 +3552,19 @@ class PushService {
       _openedCallId = room;
       _openedAt = nowSync;
       // CALLFIX-15: idempotent accept handling. Each call_id processed exactly once.
-      if (await _isCallIdProcessed(room)) {
+      final alreadyProcessed = await _isCallIdProcessed(room).timeout(
+        const Duration(milliseconds: 800),
+        onTimeout: () {
+          Analytics.capture('call_accept_local_dedup_timeout', {
+            'call_id': room,
+            'timeout_ms': 800,
+          });
+          // The synchronous reservation above still blocks a concurrent
+          // duplicate. Fail open so slow disk cannot suppress the accepted UI.
+          return false;
+        },
+      );
+      if (alreadyProcessed) {
         Analytics.capture('call_duplicate_open_ignored', {
           'call_id': room,
           'reason': 'already_processed',
@@ -3550,8 +3611,27 @@ class PushService {
       // any live receptionist (Ava) session (no voicemail/ack) and cleanly bye
       // any other live call leg. This is the acceptance path's single authority
       // point (delegated to the CallSessionManager).
-      try { await CallSessionManager.instance.prepareForAccept(room); } catch (_) {}
-      navigatorKey.currentState?.push(MaterialPageRoute(
+      try {
+        await CallSessionManager.instance
+            .prepareForAccept(room)
+            .timeout(const Duration(seconds: 5));
+      } on TimeoutException {
+        Analytics.capture('call_accept_prior_session_timeout', {
+          'call_id': room,
+          'timeout_ms': 5000,
+        });
+      } catch (e) {
+        Analytics.capture('call_accept_prior_session_failed', {
+          'call_id': room,
+          'error': e.toString(),
+        });
+      }
+      final nav = navigatorKey.currentState;
+      if (nav == null) {
+        Analytics.capture('call_accept_navigator_missing', {'call_id': room});
+        return;
+      }
+      nav.push(MaterialPageRoute(
         builder: (_) => CallScreen(
           room: (e['callId'] ?? '').toString(),
           title: (e['fromName'] ?? 'Caller').toString(),
@@ -3561,6 +3641,15 @@ class PushService {
           traceId: (e['trace_id'] ?? '').toString(), // [TRACE-ID-1]
         ),
       ));
-    } catch (_) {}
+      Analytics.capture('call_accept_screen_opened', {'call_id': room});
+    } catch (e, st) {
+      Analytics.captureException(
+        e,
+        st,
+        handled: true,
+        screen: 'push_service',
+        extra: {'stage': 'open_accepted_call'},
+      );
+    }
   }
 }

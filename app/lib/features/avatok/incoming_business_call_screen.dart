@@ -249,16 +249,25 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
     try { await FlutterCallkitIncoming.endCall(widget.callId); } catch (_) {/* already ended */}
   }
 
-  Future<void> _accept() async {
+  void _accept() {
     if (_busy) return;
     setState(() => _busy = true);
-    Analytics.capture('business_call_incoming_accept', {'call_id': widget.callId});
+    final callId = widget.callId;
+    final extra = _extra;
+    Analytics.capture('business_call_incoming_accept', {'call_id': callId});
     // [ONERING-1 2026-08-02] Hand over our own payload. When the OS ring was
     // suppressed (app foregrounded — this screen IS the only ring surface),
     // there is no CallKit entry to read the call's `extra` back out of, and
     // Accept would otherwise do nothing at all. CallKit still wins whenever it
     // has the call; this is only consulted when the lookup comes back empty.
-    await PushService.acceptRingingCall(widget.callId, fallbackExtra: _extra);
+    // [CALL-ACCEPT-NONBLOCK-1 2026-08-03] Accept is an intent, not a loading
+    // screen. The old path kept this route mounted with `_busy=true` while it
+    // awaited the Android CallKit bridge and prior-session teardown. If either
+    // platform Future stalled, EVERY action on this screen stayed disabled —
+    // including Decline — so the whole call UI looked frozen. Start the durable
+    // accept first, then close this ring surface immediately. PushService owns
+    // the remaining native cleanup and opens CallScreen independently.
+    unawaited(_completeAccept(callId, extra));
     // [PIV-3 2026-08-02] MUST pass a non-terminal status. Accepting is the one
     // dismissal here that is NOT a ring-ending transition, and the `status`
     // default is `'declined'` — so this line used to run
@@ -274,6 +283,20 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
     // a deliberate no-op: `acceptRingingCall` above already ended the native
     // ring, and the accept path must not touch the terminal cache at all.
     _dismiss(reason: 'accept', status: 'accepted');
+  }
+
+  Future<void> _completeAccept(String callId, Map<String, dynamic> extra) async {
+    try {
+      await PushService.acceptRingingCall(callId, fallbackExtra: extra);
+    } catch (e, st) {
+      Analytics.captureException(
+        e,
+        st,
+        handled: true,
+        screen: 'incoming_business_call',
+        extra: {'stage': 'accept_background', 'call_id': callId},
+      );
+    }
   }
 
   Future<void> _decline() async {
