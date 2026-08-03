@@ -24,6 +24,7 @@ import '../avaphone/phone_theme.dart';
 import 'busy_card.dart';
 import 'call_outcome_menu.dart';
 import 'chat_thread.dart'; // [AVACALL-MENU-1] Message → open DM thread
+import '../translation/call_translate_overlay.dart'; // [CALL-TRANSLATE-1]
 import 'contacts.dart';
 import 'data.dart' show Chat; // [AVACALL-MENU-1] Chat model for the DM thread
 import 'no_answer_card.dart';
@@ -1038,6 +1039,16 @@ class _CallScreenState extends State<CallScreen> {
             child: Center(
               child: _CallNetHud(session: s, onVideo: showVideo),
             ),
+          ),
+
+        // [CALL-TRANSLATE-1] Two-flag-gated call-only translation control.
+        // The overlay owns no call navigation and is safe across camera/layout
+        // changes because the CallSession remains the owner of the call.
+        if (connected && !s.isReceptDuo && !s.showOutcomeMenu && !s.showBusyCard)
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 88,
+            right: 12,
+            child: CallTranslateOverlay(callRef: s.room),
           ),
 
         // [CALL-MENU-UI-1] The outcome surface owns the screen after the

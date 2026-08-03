@@ -47,4 +47,41 @@ class TranslationApi {
     final r = await ApiAuth.postJson('$_base/$sessionId/token', const {});
     return {..._j(r.body), 'status': r.statusCode};
   }
+
+  // [CALL-TRANSLATE-1] Separate 1:1 call contract. This never calls the legacy
+  // TranslationEngine route, whose billing and source capture are different.
+  static Future<Map<String, dynamic>> callStart({
+    required String callRef,
+    required String targetLang,
+    required String sourceCapability,
+  }) async {
+    final r = await ApiAuth.postJson('$_base/call/start', {
+      'call_ref': callRef,
+      'target_lang': targetLang,
+      'source_capability': sourceCapability,
+    }, timeout: const Duration(seconds: 15));
+    return {..._j(r.body), 'status': r.statusCode};
+  }
+
+  static Future<Map<String, dynamic>> callActivate(String id, String lease) async {
+    final r = await ApiAuth.postJson('$_base/call/$id/activate', {
+      'source_lease': lease, 'source_ready': true,
+    }, timeout: const Duration(seconds: 15));
+    return {..._j(r.body), 'status': r.statusCode};
+  }
+
+  static Future<Map<String, dynamic>> callRenew(String id) async {
+    final r = await ApiAuth.postJson('$_base/call/$id/renew', const {});
+    return {..._j(r.body), 'status': r.statusCode};
+  }
+
+  static Future<Map<String, dynamic>> callStop(String id) async {
+    final r = await ApiAuth.postJson('$_base/call/$id/stop', const {});
+    return {..._j(r.body), 'status': r.statusCode};
+  }
+
+  static Future<Map<String, dynamic>> callToken(String id) async {
+    final r = await ApiAuth.postJson('$_base/call/$id/token', const {});
+    return {..._j(r.body), 'status': r.statusCode};
+  }
 }

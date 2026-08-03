@@ -118,6 +118,7 @@ import { conferenceStart, conferenceJoin, conferenceStatus, conferenceEnd, confe
 import { groupCallJoin, groupCallRejoin, groupCallPublish, groupCallPull, groupCallRenegotiate, groupCallClose, groupCallStatus } from "./routes/groupcall";
 import { conferenceRoomRoute } from "./routes/conference_room";
 import { translateStart, translateBeat, translateStop, translateToken, translateQuote } from "./routes/translate";
+import { callTranslationStart, callTranslationActivate, callTranslationRenew, callTranslationStop, callTranslationToken } from "./routes/call_translation";
 import { sttTranscribe } from "./routes/stt";
 import {
   avavoiceVoices, avavoiceMarketplace, avavoiceMine, avavoiceCreateAgent, avavoiceGetAgent,
@@ -1254,6 +1255,16 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // --- Live voice translation (Gemini 3.5 Live Translate; $3/h AvaCoins) ---
       if (p === "/api/translate/quote" && req.method === "GET") return translateQuote(req);
       if (p === "/api/translate/start" && req.method === "POST") return await translateStart(req, env);
+      if (p === "/api/translate/call/start" && req.method === "POST") return await callTranslationStart(req, env);
+      {
+        const ctr = p.match(/^\/api\/translate\/call\/([A-Za-z0-9-]{1,64})\/(activate|renew|stop|token)$/);
+        if (ctr && req.method === "POST") {
+          if (ctr[2] === "activate") return await callTranslationActivate(req, env, ctr[1]);
+          if (ctr[2] === "renew") return await callTranslationRenew(req, env, ctr[1]);
+          if (ctr[2] === "stop") return await callTranslationStop(req, env, ctr[1]);
+          return await callTranslationToken(req, env, ctr[1]);
+        }
+      }
       {
         const tr = p.match(/^\/api\/translate\/([A-Za-z0-9-]{1,64})\/(beat|stop|token)$/);
         if (tr && req.method === "POST") {

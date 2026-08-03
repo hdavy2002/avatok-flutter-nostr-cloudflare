@@ -459,6 +459,15 @@ def patch_signing() -> None:
         "# Last-resort safety net: never let a stray optional missing class abort\n"
         "# the side-load test APK build.\n"
         "-ignorewarnings\n"
+        "# [CALL-TRANSLATE-1] Pinned flutter_webrtc decoded-playback bridge.\n"
+        "-keepclassmembers class com.cloudwebrtc.webrtc.FlutterWebRTCPlugin { *** methodCallHandler; }\n"
+        "-keepclassmembers class com.cloudwebrtc.webrtc.MethodCallHandlerImpl {\n"
+        "    *** playbackSamplesReadyCallbackAdapter;\n"
+        "    *** audioDeviceModule;\n"
+        "}\n"
+        "-keepclassmembers class org.webrtc.audio.JavaAudioDeviceModule { *** audioOutput; }\n"
+        "-keepclassmembers class org.webrtc.audio.WebRtcAudioTrack { *** audioTrack; }\n"
+        "-keep class ai.avatok.calltranslation.** { *; }\n"
     )
     print("proguard: wrote android/app/proguard-rules.pro (Stripe/WebRTC/LiveKit keeps)")
 

@@ -96,6 +96,13 @@ dependencies {
     // killed Flutter process. NativeCallDeclineBridge persists the signed action
     // as unique WorkManager work and retries it when connectivity returns.
     implementation("androidx.work:work-runtime:2.10.2")
+    // [CALL-TRANSLATE-1] Native Gemini Live WebSocket for decoded WebRTC audio.
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // [CALL-TRANSLATE-1] flutter_webrtc depends on this as `implementation`, which
+    // Gradle keeps private to that module — CallTranslationAudioPlugin.java (in :app)
+    // can't see org.webrtc.audio.JavaAudioDeviceModule without it declared here too.
+    // Version MUST match flutter_webrtc's android/build.gradle exactly.
+    implementation("io.github.webrtc-sdk:android:125.6422.03")
 
     // AvaVision on-device live-vision engine (CameraX + MediaPipe Tasks-Vision +
     // TFLite) REMOVED 2026-06-22 to cut ~30–50 MB of native libs from the launch
