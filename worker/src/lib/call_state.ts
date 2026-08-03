@@ -450,7 +450,22 @@ export function applyCommand(prev: CallSession, cmd: Command, now: number): Appl
       events.push("voicemail_abandoned");
       break;
 
+    // [CALL-ATOMIC-1 2026-08-03] The CALLER-SIDE TWIN of the decline guard above.
+    //
+    // `cancel_call` means "I am abandoning a call that has not been answered". It
+    // had no guard at all, so a cancel racing an accept — the caller giving up at
+    // the same instant the callee picks up, which is common — completed a
+    // CONNECTED call and stamped it `caller_cancelled`. That both kills a live
+    // conversation and mislabels an answered call in every downstream consumer
+    // (call logs, brain ingest, the missed-call surface, billing disposition).
+    //
+    // Serializing the aggregate made this visible rather than causing it: with
+    // the two commands ordered, the accept commits and the cancel then legally
+    // walked all over it. Once answered, the caller's way out is `end_call`,
+    // which is authorized for them and records the correct disposition. This
+    // mirrors decline_call: a late cancel is a harmless no-op, never a rewrite.
     case "cancel_call":
+      if (s.session_state === "connected" || s.callee_leg_state === "accepted") break;
       if (s.callee_leg_state === "ringing" || s.callee_leg_state === "not_started") {
         endCalleeRing("ended");
       }

@@ -162,6 +162,9 @@ export class CallRoom {
    *  loaded from storage; see loadSession(). The RULES live in lib/call_state.ts
    *  (pure); this DO owns only persistence and delivery. */
   private session: CallSession | undefined;
+  /** [CALL-ATOMIC-1 2026-08-03] Re-entrancy flag for withAggregateLock().
+   *  See that method for why a plain boolean is sufficient and correct here. */
+  private inAggregateCriticalSection = false;
   private ringDeadline: number | null | undefined; // undefined = not loaded
   private autoReceptionistEligible: boolean | undefined;
   private noAnswerReason: string | null | undefined;
@@ -326,6 +329,13 @@ export class CallRoom {
    *  reason and a late `accept` could revive a call the callee had rejected.
    *  Returns whether this call was already terminal so callers can report it. */
   private async markTerminal(status: string): Promise<{ already: boolean; status: string }> {
+    // [CALL-ATOMIC-1 2026-08-03] The "first writer wins and is IMMUTABLE" rule
+    // above was a check-then-act across the `await` in loadCallState(): two
+    // terminal statuses arriving together both observed `terminalStatus === null`
+    // and both wrote, which is exactly the decline-replaced-by-cancel bug this
+    // comment says it prevents. Re-entrant: runCommandLocked() already holds the
+    // section, so that path runs inline.
+    return await this.withAggregateLock(async () => {
     await this.loadCallState();
     if (this.terminalStatus) {
       // Already terminal — immutable. Do not rewrite storage, do not move terminalAt.
@@ -339,6 +349,7 @@ export class CallRoom {
     this.terminalStatus = s;
     this.terminalAt = at;
     return { already: false, status: s };
+    });
   }
 
   /** [CALL-TERMINAL-BCAST-1 2026-08-01] Push a call-status frame to every socket
@@ -393,6 +404,68 @@ export class CallRoom {
   }
 
   /**
+   * [CALL-ATOMIC-1 2026-08-03] THE AGGREGATE CRITICAL SECTION. Read this before
+   * touching anything that mutates `fsm`.
+   *
+   * A Durable Object is single-threaded, and that fact was mistaken for atomicity
+   * across the whole file. It is not. Single-threaded means no PARALLELISM; it
+   * says nothing about what happens at an `await`. Every aggregate mutation was
+   *
+   *     await storage.get("fsm")   →   applyCommand(...)   →   await storage.put("fsm")
+   *
+   * and the runtime is free to run another request's continuation at either
+   * await. Two commands entering a COLD DO together therefore both resolved
+   * `loadSession()` against the same absent-then-stored snapshot, both evaluated
+   * the reducer's guards against that same `prev`, and the second `put` silently
+   * overwrote the first.
+   *
+   * PROD PROOF (call avatok-cb1618e6, 2026-08-03 08:44 UTC). `accept_call`
+   * returned `changed=true seq=3` and 245 ms later a native `decline_call`
+   * returned `changed=true seq=4`. Neither ordering can produce that pair:
+   *   - accept THEN decline → decline hits the `session_state === "connected"`
+   *     no-op guard in call_state.ts and returns `changed=false`;
+   *   - decline THEN accept → accept hits `isSessionTerminal` and returns
+   *     `ok=false, already_terminal`.
+   * Two mutually exclusive `changed=true` results are only possible if both
+   * commands read the SAME `prev`. The callee had answered; the caller was told
+   * the call was declined and tore down 96 ms later. Five of the seven accepts
+   * in the preceding fortnight died this way, and the same interleaving killed a
+   * receptionist session 932 ms after its first audio (avatok-b836d350).
+   *
+   * The reducer in lib/call_state.ts was never wrong — it guards this exact case
+   * explicitly. It was being handed a stale snapshot. That is why the fix is HERE
+   * and not another guard there: four layers of guard already existed, and the
+   * Dart one even FIRED on the failing call. All four are downstream of this.
+   *
+   * `blockConcurrencyWhile` is the right primitive rather than a promise-chain
+   * mutex because it also defers delivery of incoming WebSocket messages, alarms
+   * and fetches for the duration — so an alarm cannot fire mid-transition either.
+   * Keep the section SHORT and free of cross-DO/network calls: everything inside
+   * must be local storage plus synchronous socket sends, or the whole room stalls.
+   * (`clearPendingGlareInvite` is the one cross-DO touch and is deliberately
+   * dispatched via `waitUntil`, never awaited in here.)
+   *
+   * RE-ENTRANCY. `runCommand` calls `markTerminal`, and nesting a real
+   * `blockConcurrencyWhile` inside another one deadlocks. The boolean is safe
+   * because the DO is single-threaded: a nested call is by definition the SAME
+   * logical task that already holds the section, and a concurrent caller's
+   * callback is queued by the runtime and cannot observe the flag until it is
+   * genuinely its turn. Setting it synchronously as the first statement inside
+   * the callback — with no await in between — is what makes that true.
+   */
+  private async withAggregateLock<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.inAggregateCriticalSection) return await fn();
+    return await this.state.blockConcurrencyWhile(async () => {
+      this.inAggregateCriticalSection = true;
+      try {
+        return await fn();
+      } finally {
+        this.inAggregateCriticalSection = false;
+      }
+    });
+  }
+
+  /**
    * Execute one command against the aggregate.
    *
    * Idempotent by `command_id`: a retry, an FCM action replay or a double-tap
@@ -411,6 +484,20 @@ export class CallRoom {
       /** [CALL-AUTHZ-1] When present, `actor` is IGNORED and derived from the
        *  persisted participants instead. Every client-originated command must
        *  pass this. Only internal server-driven transitions omit it. */
+      authenticatedUid?: string;
+    } = {},
+  ): Promise<Record<string, unknown>> {
+    // [CALL-ATOMIC-1] load → authorize → reduce → persist → broadcast is ONE
+    // indivisible step. See withAggregateLock() for the incident this fixes.
+    return await this.withAggregateLock(() => this.runCommandLocked(callId, name, actor, opts));
+  }
+
+  /** The body of runCommand(). MUST only ever be called from inside
+   *  withAggregateLock() — it is not safe on its own. */
+  private async runCommandLocked(
+    callId: string, name: CommandName, actor: Command["actor"],
+    opts: {
+      commandId?: string; expectedEpoch?: number; data?: Record<string, unknown>;
       authenticatedUid?: string;
     } = {},
   ): Promise<Record<string, unknown>> {
@@ -570,9 +657,21 @@ export class CallRoom {
    *      repeat-handoff no-op also reports success. Both callers were told they
    *      had won.
    *
-   * A Durable Object is single-threaded and strongly consistent, so here
-   * check-then-put IS atomic — the property KV cannot provide at any price. The
-   * KV lock stays as a cheap first-line cache, but it is no longer the
+   * [CALL-ATOMIC-1 2026-08-03] CORRECTION TO THE PARAGRAPH THAT USED TO BE HERE.
+   * It read: "A Durable Object is single-threaded and strongly consistent, so
+   * here check-then-put IS atomic — the property KV cannot provide at any price."
+   * That is wrong, and it is the same mistake that let the accept/decline lost
+   * update through. Single-threaded means no PARALLELISM; it does not make a
+   * `get` and a `put` atomic when there is an `await` between them. Two
+   * concurrent /receptionist-admit calls both suspended on the get below, both
+   * saw `undefined`, both put, and both were told `claimed: true` — i.e. the fix
+   * for avatok-14739b84 had the same shape as the bug. It is narrower than the KV
+   * version (microseconds instead of cross-colo eventual consistency), which is
+   * why it mostly held, but narrower is not safe.
+   *
+   * What IS true: a DO gives strong consistency and, via blockConcurrencyWhile,
+   * real mutual exclusion. So the claim now runs inside the aggregate critical
+   * section. The KV lock stays as a cheap first-line cache, but it is not the
    * authority.
    *
    * Note this deliberately sits OUTSIDE the runCommand idempotency cache. The
@@ -582,10 +681,12 @@ export class CallRoom {
    * is exactly what the losing concurrent /start receives.
    */
   private async claimReceptionistSession(sid: string): Promise<{ already: boolean; sid: string }> {
-    const existing = await this.state.storage.get<string>("receptionist_sid");
-    if (existing) return { already: true, sid: existing };
-    await this.state.storage.put("receptionist_sid", sid);
-    return { already: false, sid };
+    return await this.withAggregateLock(async () => {
+      const existing = await this.state.storage.get<string>("receptionist_sid");
+      if (existing) return { already: true, sid: existing };
+      await this.state.storage.put("receptionist_sid", sid);
+      return { already: false, sid };
+    });
   }
 
   /** Remove this exact call from its pair-keyed glare index. The pair DO checks
@@ -1180,8 +1281,15 @@ export class CallRoom {
         // every serial round-trip is silence the caller hears — pays for only one
         // DO hop, not two. The claim runs even when `out` was an idempotent
         // REPLAY, which is the entire point: see claimReceptionistSession().
+        //
+        // [CALL-ATOMIC-1 2026-08-03] But NOT when the FSM refused the handoff.
+        // This used to claim unconditionally and then return 409 on the next
+        // line — so a call the aggregate had already declined, connected or
+        // completed still had a receptionist session id durably pinned to it,
+        // and the real winner's later claim was handed the loser's sid. A replay
+        // (`ok:true`, `changed:false`) still claims; a REJECTION does not.
         const sid = typeof body.sid === "string" ? body.sid.slice(0, 64) : "";
-        const claim = sid ? await this.claimReceptionistSession(sid) : null;
+        const claim = sid && out.ok !== false ? await this.claimReceptionistSession(sid) : null;
         return Response.json(
           claim ? { ...out, claimed: !claim.already, receptionist_sid: claim.sid } : out,
           { status: out.ok === false ? 409 : 200 },
@@ -1657,6 +1765,50 @@ export class CallRoom {
         reject[1].close(1000, "room full (1:1 only)");
       } catch { /* ignore */ }
       return new Response(null, { status: 101, webSocket: reject[0] });
+    }
+
+    // [CALL-ATOMIC-1 2026-08-03] RE-CHECK IMMEDIATELY BEFORE ADMISSION.
+    //
+    // The authority check above ("the final server-side safety boundary") ran
+    // roughly ten awaits ago — loadAway, setAway, scheduleNextAlarm, bumpGen,
+    // loadCallState, two puts and a KV write all sit between the decision and
+    // this line. A decline, cancel or receptionist handoff landing anywhere in
+    // that window was never reconsidered, and the peer was admitted into a call
+    // that was already over. That is a boundary with a hole in the middle of it.
+    //
+    // This costs nothing: runCommandLocked() assigns `this.session` on every
+    // transition, so loadSession() returns the current aggregate from memory
+    // without touching storage. Re-reading it is the whole fix.
+    const admitNow = await this.loadSession(
+      url.searchParams.get("callId") ?? (this.state.id.name ? String(this.state.id.name) : ""),
+    );
+    // Read `ended` back from storage rather than the in-memory mirror. Two
+    // reasons, and both matter. Correctness: markEnded() persists it (see that
+    // method), so storage is the fresher of the two after any interleaved
+    // teardown. Compilation: the earlier `this.ended === true` guard narrows the
+    // property to `false | undefined`, TypeScript does not reset that narrowing
+    // across an await, and a re-check written against the field therefore fails
+    // to compile as the runtime check it is meant to be. One extra read on a
+    // path that runs once or twice per call is a fair price.
+    const endedNow = (await this.state.storage.get<boolean>("ended")) === true;
+    if (endedNow || !humanRoomAcceptsNewPeer(admitNow)) {
+      try {
+        void this.env.Q_ANALYTICS.send({
+          event: "invariant_protected", uid: peerId, ts: Date.now(),
+          props: {
+            kind: "late_human_join_raced_admission",
+            call_id: admitNow.call_id,
+            session_state: admitNow.session_state,
+            wire_status: legacyWireStatus(admitNow),
+            app_name: "avatok", service_name: "avatok-api", worker: true,
+          },
+        });
+      } catch { /* best-effort — rejection is authoritative */ }
+      return Response.json({
+        error: "human_call_closed",
+        status: this.terminalStatus ?? legacyWireStatus(admitNow),
+        session_state: admitNow.session_state,
+      }, { status: 409 });
     }
 
     const pair = new WebSocketPair();

@@ -3,6 +3,10 @@ import { CallRoom } from "../src/do/call_room";
 
 function fakeRoom(seed: Record<string, unknown> = {}) {
   const data = new Map<string, unknown>(Object.entries(seed));
+  // [CALL-ATOMIC-1 2026-08-03] Aggregate mutations now run inside
+  // withAggregateLock(). Serialize like the runtime: one callback at a time,
+  // FIFO. See test/call_room_atomicity.test.ts for the races this guards.
+  let lock: Promise<unknown> = Promise.resolve();
   const state = {
     id: { name: "avatok-test" },
     storage: {
@@ -11,6 +15,11 @@ function fakeRoom(seed: Record<string, unknown> = {}) {
         if (typeof key === "string") data.set(key, value);
         else for (const [k, v] of Object.entries(key)) data.set(k, v);
       },
+    },
+    blockConcurrencyWhile: <T>(fn: () => Promise<T>): Promise<T> => {
+      const run = lock.then(fn, fn);
+      lock = run.then(() => undefined, () => undefined);
+      return run;
     },
   };
   return { room: new CallRoom(state as any, {} as any), data };
