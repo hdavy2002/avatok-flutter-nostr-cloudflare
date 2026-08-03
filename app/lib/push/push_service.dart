@@ -1616,8 +1616,27 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
   // "Design team" is what the person needs to recognise, not one member's name.
   final bool isGroupRing = d['group'] == true || d['group'] == 'true';
   final String groupRingName = (d['groupName'] ?? '').toString();
-  if (isGroupRing && groupRingName.isNotEmpty) {
-    PushService.rememberGroupRingName(ringCallId, groupRingName);
+  if (isGroupRing) {
+    if (groupRingName.isNotEmpty) {
+      PushService.rememberGroupRingName(ringCallId, groupRingName);
+    }
+    // [GCALL-TEL] The RECIPIENT half of a group ring. A call is a conversation
+    // between two people, so it has to be findable from either end: the server
+    // emits the send attributed to the starter's email, and this emits the
+    // receive attributed to the recipient's (Analytics stamps email + phone on
+    // every event). `from_uid`/`from_name` are what let you line the two
+    // timelines up when a tester says "he called and my phone never rang".
+    Analytics.capture('group_call_ring_received', {
+      'call_id': ringCallId,
+      'gid_hash': (d['gid'] ?? '').toString().hashCode.toString(),
+      'group_name': groupRingName,
+      'from_uid': (d['fromPub'] ?? '').toString(),
+      'from_name': (d['fromName'] ?? '').toString(),
+      'kind': (d['kind'] ?? 'audio').toString(),
+      'route': route,
+      if (deliveryAgeMs != null) 'delivery_age_ms': deliveryAgeMs,
+      'ring_remaining_ms': ringDurationMs,
+    });
   }
   final params = CallKitParams(
     id: (d['callId'] ?? '').toString(),
@@ -3438,8 +3457,49 @@ class PushService {
       return;
     }
 
-    // Claim the human answer before any Android platform bridge. This is the
-    // only operation that races the server-owned receptionist alarm.
+    dynamic openExtra = fallbackExtra;
+    // Capture the native payload only when the caller did not already supply
+    // the push payload. The branded screen always supplies it, so its Accept
+    // path can tear down the Android ring immediately instead of waiting up to
+    // 900 ms for an activeCalls lookup that cannot add any useful information.
+    if (openExtra == null) {
+      dynamic calls;
+      try {
+        calls = await FlutterCallkitIncoming.activeCalls()
+            .timeout(const Duration(milliseconds: 900));
+      } on TimeoutException {
+        Analytics.capture('call_accept_native_lookup_timeout', {
+          'call_id': callId,
+          'timeout_ms': 900,
+        });
+      } catch (e) {
+        Analytics.capture('call_accept_native_lookup_failed', {
+          'call_id': callId,
+          'error': e.toString(),
+        });
+      }
+      if (calls is List) {
+        for (final c in calls) {
+          if (c is Map && (c['id'] ?? '').toString() == callId) {
+            openExtra = c['extra'];
+            break;
+          }
+        }
+      }
+    }
+
+    // Accept is user intent: remove every ring surface NOW, before the network
+    // authority round-trip. flutter_callkit_incoming implements endCall() for
+    // an unaccepted ring by broadcasting ACTION_CALL_DECLINE; the build-locked
+    // native hook stamps that action as programmatic before it is broadcast,
+    // while _finishAcceptedRing provides the same guard to the live Dart VM.
+    // This ordering both closes the old 0-2700 ms false-decline window and stops
+    // the Android heads-up ring from lingering after the user taps Accept.
+    unawaited(_finishAcceptedRing(callId));
+
+    // Atomically race the human answer against the server-owned receptionist
+    // alarm after local UI cleanup. A failed/late claim still blocks CallScreen;
+    // it no longer gets to keep the phone visibly ringing while it resolves.
     final authoritative = await _claimHumanAccept(callId);
     if (authoritative != null) {
       unawaited(applyRingTransition(
@@ -3447,9 +3507,6 @@ class PushService {
         authoritative,
         source: 'accept_authority_preflight',
       ));
-      // `answered` by another device is authoritative but intentionally not a
-      // terminal reducer status. Always close this device's native ring too.
-      unawaited(_finishAcceptedRing(callId));
       Analytics.capture('call_late_accept_blocked', {
         'call_id': callId,
         'status': authoritative,
@@ -3457,35 +3514,6 @@ class PushService {
       return;
     }
 
-    dynamic calls;
-    try {
-      calls = await FlutterCallkitIncoming.activeCalls()
-          .timeout(const Duration(milliseconds: 900));
-    } on TimeoutException {
-      Analytics.capture('call_accept_native_lookup_timeout', {
-        'call_id': callId,
-        'timeout_ms': 900,
-      });
-    } catch (e) {
-      Analytics.capture('call_accept_native_lookup_failed', {
-        'call_id': callId,
-        'error': e.toString(),
-      });
-    }
-
-    dynamic openExtra = fallbackExtra;
-    if (calls is List) {
-      for (final c in calls) {
-        if (c is Map && (c['id'] ?? '').toString() == callId) {
-          openExtra = c['extra'] ?? fallbackExtra;
-          break;
-        }
-      }
-    }
-
-    // Native cleanup and CallScreen preparation continue independently after
-    // the durable human-answer claim. Neither can lock the branded ring screen.
-    unawaited(_finishAcceptedRing(callId));
     if (openExtra != null) {
       Analytics.capture('call_accept_open_scheduled', {
         'call_id': callId,
@@ -3769,6 +3797,13 @@ class PushService {
         starter: false,
       ),
     ));
-    Analytics.capture('group_call_accept_screen_opened', {'call_id': callId, 'gid_hash': gid.hashCode.toString()});
+    Analytics.capture('group_call_accept_screen_opened', {
+      'call_id': callId,
+      'gid_hash': gid.hashCode.toString(),
+      'group_name': title,
+      'from_uid': (e['from'] ?? '').toString(),
+      'from_name': (e['fromName'] ?? '').toString(),
+      'kind': (e['kind'] ?? 'audio').toString(),
+    });
   }
 }

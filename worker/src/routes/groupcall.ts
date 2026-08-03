@@ -273,13 +273,21 @@ async function ringGroup(
   };
   const body = JSON.stringify(frame);
 
+  // [GCALL-TEL] Per-target delivery outcome. "The phone never rang" has three
+  // completely different causes — the WS frame never went, the push never went,
+  // or both went and the handset dropped them — and without recording which leg
+  // landed for WHICH person there is no way to tell them apart afterwards.
+  let wsLive = 0, wsFailed = 0, pushQueued = 0, pushFailed = 0;
   await Promise.all(a.targets.map(async (to) => {
     // WS fast path — instant for anyone with the app open.
     try {
-      await env.INBOX.get(env.INBOX.idFromName(to)).fetch("https://inbox/event", {
+      const r = await env.INBOX.get(env.INBOX.idFromName(to)).fetch("https://inbox/event", {
         method: "POST", headers: { "content-type": "application/json" }, body,
       });
-    } catch { /* offline: the push below is the backstop */ }
+      try {
+        if (((await r.json()) as { live?: boolean })?.live) wsLive++; else wsFailed++;
+      } catch { wsFailed++; }
+    } catch { wsFailed++; /* offline: the push below is the backstop */ }
     // FCM path — for a phone in a pocket, which is the whole point.
     try {
       await env.Q_PUSH.send({
@@ -288,12 +296,22 @@ async function ringGroup(
         tokenExpiresAt: now + GROUP_RING_TTL_MS,
         group: true, gid: a.groupId, groupName,
       });
-    } catch { /* the WS frame may still have landed */ }
+      pushQueued++;
+    } catch { pushFailed++; /* the WS frame may still have landed */ }
   }));
 
   await emitConf(env, req, a.uid, a.email, "cloudflare_conference_ring_sent", {
     groupId: a.groupId, call_id: a.callId, call_trace_id: a.callTraceId, generation: a.generation,
-    extra: { targets: a.targets.length, media_kind: a.mediaKind, ttl_ms: GROUP_RING_TTL_MS },
+    extra: {
+      targets: a.targets.length, media_kind: a.mediaKind, ttl_ms: GROUP_RING_TTL_MS,
+      group_name: groupName, caller_name: callerName,
+      ws_live: wsLive, ws_failed: wsFailed, push_queued: pushQueued, push_failed: pushFailed,
+      // Raw uids, not hashes: this is the ONE event that has to be joinable
+      // against each recipient's own `group_call_ring_received` when a tester
+      // says "he called and my phone never rang". `emitConf` already carries
+      // the caller's email, so the pair is retrievable from either end.
+      target_uids: a.targets,
+    },
   });
 }
 

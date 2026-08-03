@@ -178,6 +178,29 @@ class CloudflareConferenceController extends ChangeNotifier {
   /// work over STUN/host candidates, but quality/connectivity is at risk.
   bool relayDegraded = false;
 
+  // ---- [GCALL-TEL] queryable group-call telemetry ---------------------------------
+  //
+  // `CloudflareConferenceTelemetry` implements the formal contract (hashed ids,
+  // strict event names) and is the right tool for funnel analysis. This helper
+  // is the OTHER thing you need at 2am: a plain event you can find in PostHog by
+  // a tester's email without knowing the contract. Analytics._base already
+  // stamps email + phone on every event, so one of these is retrievable by
+  // whoever's phone it came from — which is the whole point when several testers
+  // are on different devices and a call bug is a conversation between two of them.
+  void _ev(String name, [Map<String, Object> extra = const {}]) {
+    Analytics.capture(name, {
+      'gid_hash': gid.hashCode.toString(),
+      'call_id': _join?.callId ?? 'pending',
+      'generation': _generation,
+      'role': starter ? 'starter' : 'joiner',
+      'media_requested': wantVideo ? 'audio_video' : 'audio',
+      'media_effective': _effectiveVideo ? 'audio_video' : 'audio',
+      'participants': _roster.length + 1,
+      'state': state.name,
+      ...extra,
+    });
+  }
+
   bool get muted => _muted;
   bool get cameraOn => _cameraOn;
   bool get speakerOn => _speaker;
@@ -233,6 +256,7 @@ class CloudflareConferenceController extends ChangeNotifier {
       final perm = await _preflightPermissions();
       if (!perm.mic) {
         permissionDenied = true;
+        _ev('groupcall_failed', {'stage': 'permission_denied', 'denied': 'microphone'});
         _tel?.error(stage: 'permission_denied', direction: 'ticket', recoverable: false);
         state = CfConnState.failed;
         statusText = 'AvaTOK needs microphone access to join a call.';
@@ -244,6 +268,7 @@ class CloudflareConferenceController extends ChangeNotifier {
         // Camera denied, mic granted: join audio-only rather than failing. The
         // single combined getUserMedia used to kill audio along with video.
         notice = 'Camera access is off — joining with audio only.';
+        _ev('groupcall_media_downgraded', {'reason': 'camera_permission_denied'});
         _tel?.error(stage: 'camera_permission_downgrade', direction: 'publish', recoverable: true);
       }
 
@@ -261,6 +286,7 @@ class CloudflareConferenceController extends ChangeNotifier {
       if (!join.mediaVideo && _effectiveVideo) {
         _effectiveVideo = false;
         notice = 'This is an audio call — your camera stays off.';
+        _ev('groupcall_media_downgraded', {'reason': 'call_is_audio_only'});
       }
       relayDegraded = join.relayDegraded;
       // Cloudflare Realtime normally works without TURN, so a degraded relay is
@@ -291,10 +317,22 @@ class CloudflareConferenceController extends ChangeNotifier {
       _joinedAtMs = DateTime.now().millisecondsSinceEpoch;
       state = CfConnState.connected;
       statusText = 'Connected';
+      _ev('groupcall_connected', {
+        'elapsed_ms': DateTime.now().millisecondsSinceEpoch - t0,
+        'relay_degraded': relayDegraded,
+      });
       _tel?.joined(elapsedMs: DateTime.now().millisecondsSinceEpoch - t0, rosterSizeOnJoin: _roster.length);
       _safeNotify();
     } catch (e, st) {
       AvaLog.I.log('cfconf', 'connect failed: $e');
+      // The single most useful row when someone says "group calls don't work":
+      // which STAGE failed, on whose phone, with the server's own words.
+      _ev('groupcall_failed', {
+        'stage': e is TimeoutException ? 'welcome_timeout' : 'join_or_publish',
+        'elapsed_ms': DateTime.now().millisecondsSinceEpoch - t0,
+        'error': e.toString().length > 200 ? e.toString().substring(0, 200) : e.toString(),
+        'http_status': e is CloudflareConferenceException ? e.status : -1,
+      });
       _tel?.error(stage: 'session_create_failed', direction: 'ticket', recoverable: false, exception: e, stack: st);
       state = CfConnState.failed;
       // Show what the server actually said. Rendering every failure as one
@@ -375,6 +413,11 @@ class CloudflareConferenceController extends ChangeNotifier {
         final expectingMedia = _pulledAudioMid.isNotEmpty || _pulledVideoMid.isNotEmpty;
         final unhealthy = expectingMedia &&
             (_lastMediaHealthClass == 'no_rtp' || _lastMediaHealthClass == 'render_no_playout');
+        _ev('groupcall_network_changed', {
+          'health': _lastMediaHealthClass,
+          'acted': unhealthy,
+          'expecting_media': expectingMedia,
+        });
         if (unhealthy) {
           _reconnectTry = 0;
           unawaited(_attemptReconnect(reason: 'network_changed', forceRecreate: true));
@@ -400,6 +443,7 @@ class CloudflareConferenceController extends ChangeNotifier {
       NativeVoiceAudio.instance.onAudioFocusLost = () {
         if (_ended) return;
         _heldByFocus = true;
+        _ev('groupcall_interrupted', {'source': 'audio_focus', 'phase': 'held'});
         unawaited(_setMuted(true, source: 'audio_focus_lost'));
         notice = 'Paused — another app took the microphone.';
         _safeNotify();
@@ -419,11 +463,13 @@ class CloudflareConferenceController extends ChangeNotifier {
         final state = (e['state'] ?? '').toString();
         if (state == 'held') {
           _heldByPhone = true;
+          _ev('groupcall_interrupted', {'source': 'cellular', 'phase': 'held'});
           unawaited(_setMuted(true, source: 'cellular_hold'));
           notice = 'On hold — you have a phone call.';
           _safeNotify();
         } else if (state == 'resumed') {
           _heldByPhone = false;
+          _ev('groupcall_interrupted', {'source': 'cellular', 'phase': 'resumed'});
           if (!_heldByFocus) {
             unawaited(_setMuted(false, source: 'cellular_resume'));
             notice = null;
@@ -1488,6 +1534,16 @@ class CloudflareConferenceController extends ChangeNotifier {
 
     _tel?.conferenceLeft(leaveReason: reason, sessionDurationMs: durationMs, finalMediaHealthClass: _lastMediaHealthClass);
     Analytics.capture('groupcall_leave_cf', {'gid_hash': gid.hashCode.toString(), 'duration_ms': durationMs});
+    // The closing row of the call's story: how it ended, how long it ran, whether
+    // media ever actually flowed, and how many reconnects it took to get there.
+    _ev('groupcall_ended', {
+      'reason': reason,
+      'duration_ms': durationMs,
+      'media_health': _lastMediaHealthClass,
+      'ever_connected': _joinedAtMs > 0,
+      'reconnect_attempts': _reconnectTry,
+      'relay_degraded': relayDegraded,
+    });
     // [GCALL-W4-LOG] Write the call to the call log. Group calls left NO trace
     // anywhere: only the 1:1 paths ever touched CallLogStore, so a group call
     // you took simply never happened as far as your history was concerned.

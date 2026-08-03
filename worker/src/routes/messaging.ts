@@ -180,13 +180,26 @@ async function fanMembersChanged(
   try {
     const uids = [...new Set(recipients ?? (await members(env, conv)))].filter(Boolean);
     const body = JSON.stringify({ type: "members_changed", conv, ts: Date.now(), ...extra });
+    let live = 0;
     await Promise.all(uids.map(async (uid) => {
       try {
-        await env.INBOX.get(env.INBOX.idFromName(uid)).fetch("https://inbox/event", {
+        const r = await env.INBOX.get(env.INBOX.idFromName(uid)).fetch("https://inbox/event", {
           method: "POST", headers: { "content-type": "application/json" }, body,
         });
+        // The DO reports whether the frame reached an OPEN socket. That number is
+        // the difference between "the announcement went out" and "anyone actually
+        // heard it" — without it, a fan-out to entirely offline members looks
+        // identical to a successful one.
+        try { if (((await r.json()) as { live?: boolean })?.live) live++; } catch { /* no body */ }
       } catch { /* one unreachable inbox must not fail the mutation */ }
     }));
+    if (extra.actor) {
+      const actorEmail = await emailOf(env, extra.actor).catch(() => null);
+      trackGroup(env, extra.actor, "group_members_changed_fanout", {
+        conv, reason: extra.reason, target: extra.target ?? null,
+        recipients: uids.length, delivered_live: live, email: actorEmail,
+      });
+    }
   } catch { /* never allowed to fail the membership write it announces */ }
 }
 
@@ -198,13 +211,36 @@ async function fanMembersChanged(
  *  indefinitely: SFU media flows peer→SFU→peer with no per-packet Worker check.
  *  They were blocked only from new API calls, which ironically also broke their
  *  own /close, so their tracks were never cleaned up either. */
-async function evictFromGroupCall(env: Env, conv: string, uid: string): Promise<void> {
+async function evictFromGroupCall(env: Env, conv: string, uid: string, actor?: string): Promise<void> {
+  let evicted = false;
+  let ok = false;
   try {
-    await env.GROUP_CALL_ROOMS.get(env.GROUP_CALL_ROOMS.idFromName(conv)).fetch(
+    const r = await env.GROUP_CALL_ROOMS.get(env.GROUP_CALL_ROOMS.idFromName(conv)).fetch(
       "https://room/authority/evict",
       { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ uid }) },
     );
+    ok = r.ok;
+    try { evicted = ((await r.json()) as { evicted?: boolean })?.evicted === true; } catch { /* no body */ }
   } catch { /* best-effort: never fail a removal because the call DO is unreachable */ }
+  // [GCALL-TEL] A security action needs a durable record, and it is two-sided —
+  // emit against BOTH people so either email retrieves it. `evicted:true` is the
+  // one that matters: it means the person was genuinely mid-call when removed.
+  try {
+    const [targetEmail, actorEmail] = await Promise.all([
+      emailOf(env, uid).catch(() => null),
+      actor ? emailOf(env, actor).catch(() => null) : Promise.resolve(null),
+    ]);
+    // BOTH emails ride on BOTH rows, so pulling either person's telemetry
+    // retrieves the whole interaction — the rule for anything two-sided.
+    const props = {
+      conv, target: uid, actor: actor ?? null, was_in_call: evicted, do_ok: ok,
+      target_email: targetEmail, actor_email: actorEmail,
+    };
+    trackGroup(env, uid, "group_call_evicted", { ...props, side: "target", email: targetEmail });
+    if (actor) {
+      trackGroup(env, actor, "group_call_evicted", { ...props, side: "actor", email: actorEmail });
+    }
+  } catch { /* telemetry never fails the removal */ }
 }
 
 // Phase 8 (AvaInbox): conversations carry a `context` tag — dm | event:<listingId>
@@ -1940,7 +1976,7 @@ export async function convRemoveMember(req: Request, env: Env): Promise<Response
   trackGroup(env, ctx.uid, "group_member_removed", { conv, target });
   // [GRP-W3-EVICT] Removal must reach the live call too, not just D1 — otherwise
   // someone removed for cause keeps talking and listening.
-  await evictFromGroupCall(env, conv, target);
+  await evictFromGroupCall(env, conv, target, ctx.uid);
   // [GRP-W3-FANOUT] The removed user is no longer in members(), but is exactly
   // who most needs to hear this, so they are added to the recipient list.
   await fanMembersChanged(env, conv, { reason: "removed", actor: ctx.uid, target },
