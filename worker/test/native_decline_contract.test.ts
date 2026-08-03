@@ -37,6 +37,17 @@ describe("killed-app native decline contract", () => {
     expect(patcher).toContain("if (!suppressSyntheticDecline)");
     expect(patcher).toContain("CALL-NATIVE-PROGRAMMATIC-END-1");
     expect(patcher).toContain('getMethod("markProgrammaticEnd"');
+    // [CALL-REL-R4-NATIVE] The programmatic-end marker MUST be applied to
+    // FlutterCallkitIncomingPlugin.kt, not the broadcast receiver: endCall /
+    // endAllCalls are MethodChannel handlers, and by the time the receiver sees
+    // ACTION_CALL_DECLINE the "human or us" distinction is already gone. The
+    // first version of this patch targeted the receiver, so the anchor matched
+    // zero times and the build died on the guard (run 30814336459).
+    expect(patcher).toContain('plugin_source = root / "FlutterCallkitIncomingPlugin.kt"');
+    expect(patcher).toContain("plugin_text.count(PROGRAMMATIC_END_ANCHOR)");
+    // That file imports neither Log nor defines TAG, unlike the receiver.
+    expect(patcher).toContain('android.util.Log.e("AvaTOK"');
+    expect(patcher).not.toContain("Log.e(TAG, \"Native programmatic-end guard unavailable\"");
     expect(bridge).toContain("enqueueUniqueWork");
     expect(bridge).toContain("fun markProgrammaticEnd");
     expect(bridge).toContain("wasProgrammaticEnd(context, callId)");

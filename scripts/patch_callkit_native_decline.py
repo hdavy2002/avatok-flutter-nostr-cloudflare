@@ -67,7 +67,10 @@ PROGRAMMATIC_END_REPLACEMENT = """                    if (currentCall != null &&
                             bridge.getMethod("markProgrammaticEnd", Context::class.java, String::class.java)
                                 .invoke(null, context, currentCall.id)
                         } catch (error: Throwable) {
-                            Log.e(TAG, "Native programmatic-end guard unavailable", error)
+                            // FlutterCallkitIncomingPlugin.kt imports neither Log
+                            // nor defines TAG (unlike the broadcast receiver), so
+                            // this must be fully qualified with a literal tag.
+                            android.util.Log.e("AvaTOK", "Native programmatic-end guard unavailable", error)
                         }
                         if(currentCall.isAccepted) {"""
 PROGRAMMATIC_END_ALL_ANCHOR = """                    calls.forEach {
@@ -80,7 +83,10 @@ PROGRAMMATIC_END_ALL_REPLACEMENT = """                    calls.forEach {
                             bridge.getMethod("markProgrammaticEnd", Context::class.java, String::class.java)
                                 .invoke(null, context, it.id)
                         } catch (error: Throwable) {
-                            Log.e(TAG, "Native programmatic-end guard unavailable", error)
+                            // FlutterCallkitIncomingPlugin.kt imports neither Log
+                            // nor defines TAG (unlike the broadcast receiver), so
+                            // this must be fully qualified with a literal tag.
+                            android.util.Log.e("AvaTOK", "Native programmatic-end guard unavailable", error)
                         }
                         if (it.isAccepted) {"""
 UI_ANCHOR = """    private fun getActivityPendingIntent(id: Int, data: Bundle): PendingIntent {
@@ -129,14 +135,21 @@ def main() -> None:
                 raise SystemExit("flutter_callkit_incoming decline handler changed; refusing to build without revalidating the native bridge")
             source.write_text(text.replace(ANCHOR, REPLACEMENT))
 
-    text = source.read_text()
-    if PROGRAMMATIC_MARKER not in text:
-        if text.count(PROGRAMMATIC_END_ANCHOR) != 1:
+    # [CALL-NATIVE-PROGRAMMATIC-END-1] The programmatic-end marker goes in a
+    # DIFFERENT file from the decline relay above. `endCall`/`endAllCalls` are
+    # MethodChannel handlers and live in FlutterCallkitIncomingPlugin.kt; the
+    # broadcast receiver only sees the ACTION_* intents they emit — by which
+    # point the "was this a human or was this us" distinction is already lost.
+    # Marking has to happen upstream of the sendBroadcast, in the plugin.
+    plugin_source = root / "FlutterCallkitIncomingPlugin.kt"
+    plugin_text = plugin_source.read_text()
+    if PROGRAMMATIC_MARKER not in plugin_text:
+        if plugin_text.count(PROGRAMMATIC_END_ANCHOR) != 1:
             raise SystemExit("flutter_callkit_incoming endCall handler changed; refusing to build without revalidating the programmatic-end guard")
-        if text.count(PROGRAMMATIC_END_ALL_ANCHOR) != 1:
+        if plugin_text.count(PROGRAMMATIC_END_ALL_ANCHOR) != 1:
             raise SystemExit("flutter_callkit_incoming endAllCalls handler changed; refusing to build without revalidating the programmatic-end guard")
-        source.write_text(
-            text.replace(PROGRAMMATIC_END_ANCHOR, PROGRAMMATIC_END_REPLACEMENT)
+        plugin_source.write_text(
+            plugin_text.replace(PROGRAMMATIC_END_ANCHOR, PROGRAMMATIC_END_REPLACEMENT)
                 .replace(PROGRAMMATIC_END_ALL_ANCHOR, PROGRAMMATIC_END_ALL_REPLACEMENT)
         )
 
