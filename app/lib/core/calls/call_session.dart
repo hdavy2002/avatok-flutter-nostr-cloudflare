@@ -3657,7 +3657,7 @@ class CallSession {
         _ringTimeout?.cancel();
         Analytics.capture('call_handoff_recovered_authority_poll', {
           'call_id': config.room,
-          'status': status,
+          'status': status!,
         });
         await _handoffToAva('decline');
       }
