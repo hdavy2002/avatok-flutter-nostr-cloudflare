@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  GLARE_WINDOW_MS, resolveGlarePlacement, type PendingGlareInvite,
+  GLARE_WINDOW_MS, glareJoinRoomToken, resolveGlarePlacement, type PendingGlareInvite,
 } from "../src/lib/call_glare";
 
 const NOW = 1_700_000_000_000;
@@ -52,11 +52,22 @@ describe("call glare lifecycle", () => {
     });
   });
 
-  it("keeps deterministic winner selection for real simultaneous dials", () => {
+  it("keeps the already-registered reciprocal call as the winner", () => {
     const result = resolveGlarePlacement({
-      callId: "avatok-z", reciprocal: { callId: "avatok-a", ts: NOW - 100 },
+      // Even though the current id sorts first, it has not been initialized;
+      // the reciprocal call is already proceeding through registration.
+      callId: "avatok-a", reciprocal: { callId: "avatok-z", ts: NOW - 100 },
       now: NOW, reciprocalTerminal: false,
     });
-    expect(result).toMatchObject({ kind: "merge", winnerCallId: "avatok-a" });
+    expect(result).toMatchObject({ kind: "merge", winnerCallId: "avatok-z" });
+  });
+
+  it("hands the losing placer the reciprocal call's callee credential", () => {
+    expect(glareJoinRoomToken({
+      callId: "avatok-prior",
+      ts: NOW - 100,
+      callerRoomToken: "caller-secret",
+      calleeRoomToken: "callee-secret",
+    })).toBe("callee-secret");
   });
 });

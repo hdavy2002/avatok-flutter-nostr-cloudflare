@@ -5,6 +5,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:crypto/crypto.dart' show sha1; // [CALL-RESTORE-1] stable peer id
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:uuid/uuid.dart';
@@ -12,6 +13,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../analytics.dart';
+import '../account_storage.dart';
 import '../api_auth.dart';
 import '../ava_log.dart';
 import '../call_log_store.dart';
@@ -138,6 +140,30 @@ const CallSessionToken kCallSessionToken = CallSessionToken._();
 // code path learns it first deposit it, and lets a reconnect pick it up later.
 final Map<String, String> _kRoomTokens = <String, String>{};
 final Map<String, Completer<String>> _kRoomTokenWaiters = <String, Completer<String>>{};
+const FlutterSecureStorage _kRoomTokenStore = FlutterSecureStorage(
+  mOptions: MacOsOptions(useDataProtectionKeyChain: false),
+);
+
+String _roomTokenStorageKey(String callId) => scopedKey('call_room_token_v1_$callId');
+
+Future<void> _persistRoomToken(String callId, String token) async {
+  try {
+    await _kRoomTokenStore.write(key: _roomTokenStorageKey(callId), value: token);
+  } catch (_) {/* in-memory credential still supports this process */}
+}
+
+Future<String> _restoreRoomToken(String callId) async {
+  final have = _kRoomTokens[callId];
+  if (have != null && have.isNotEmpty) return have;
+  try {
+    final stored = await _kRoomTokenStore.read(key: _roomTokenStorageKey(callId));
+    if (stored != null && stored.isNotEmpty) {
+      _kRoomTokens[callId] = stored;
+      return stored;
+    }
+  } catch (_) {/* caller can still receive a fresh token */}
+  return '';
+}
 
 /// Deposit the CallRoom join credential for [callId]. Safe to call more than
 /// once and from either the caller or callee path; first non-empty value wins.
@@ -145,6 +171,7 @@ void rememberCallRoomToken(String callId, String token) {
   if (callId.isEmpty || token.isEmpty) return;
   if (_kRoomTokens.containsKey(callId)) return;
   _kRoomTokens[callId] = token;
+  unawaited(_persistRoomToken(callId, token));
   final w = _kRoomTokenWaiters.remove(callId);
   if (w != null && !w.isCompleted) w.complete(token);
   // Calls are short-lived and this map is tiny, but a long-running app process
@@ -157,6 +184,7 @@ void rememberCallRoomToken(String callId, String token) {
 /// Drop a finished call's credential. Called from teardown.
 void forgetCallRoomToken(String callId) {
   _kRoomTokens.remove(callId);
+  unawaited(_kRoomTokenStore.delete(key: _roomTokenStorageKey(callId)).catchError((_) {}));
   final w = _kRoomTokenWaiters.remove(callId);
   if (w != null && !w.isCompleted) w.complete('');
 }
@@ -1857,7 +1885,8 @@ class CallSession {
     // network-class check so capture and encoding bounds agree.
     final cellularCapture = config.video ? await _isLikelyCellular() : false;
     try {
-      _stream = await navigator.mediaDevices.getUserMedia({
+      var mediaTimedOut = false;
+      final mediaFuture = navigator.mediaDevices.getUserMedia({
         'audio': {
           'echoCancellation': true,
           'noiseSuppression': true,
@@ -1884,7 +1913,22 @@ class CallSession {
                 'frameRate': {'ideal': 30, 'max': 30},
               }
             : false,
-      })
+      });
+      // Future.timeout cannot cancel the platform acquisition. If Android
+      // returns a stream after our deadline, stop and dispose it immediately so
+      // an ended call cannot leave the microphone/camera active invisibly.
+      unawaited(mediaFuture.then((lateStream) async {
+        if (!mediaTimedOut) return;
+        for (final track in lateStream.getTracks()) {
+          try { await track.stop(); } catch (_) {}
+        }
+        try { await lateStream.dispose(); } catch (_) {}
+        Analytics.capture('call_media_late_stream_disposed', {
+          'call_id': config.room,
+          'video': config.video,
+        });
+      }).catchError((_) {}));
+      _stream = await mediaFuture
           // ── [CALL-MEDIA-TIMEOUT-1 2026-08-03] (audit M3) ──────────────────
           //
           // `getUserMedia` had no timeout. A REFUSAL was already handled well by
@@ -1903,6 +1947,7 @@ class CallSession {
           // The throw lands in the existing catch, so failure handling and
           // teardown are unchanged — only the diagnosis improves.
           .timeout(const Duration(seconds: 8), onTimeout: () {
+        mediaTimedOut = true;
         throw TimeoutException(
             'getUserMedia did not return within 8s (mic/camera acquisition hung)');
       });
@@ -2083,6 +2128,12 @@ class CallSession {
     // rebuild the socket. Bounded and fail-open: on timeout we connect exactly
     // as before, so this can never be the reason a call fails to start. The
     // callee already holds its token (it came with the ring) so it never waits.
+    // Process death clears the in-memory holding pen. Restore the account-scoped
+    // secure credential before any first/reconnect socket is constructed.
+    if (roomTokenFor(_room).isEmpty) {
+      await _restoreRoomToken(_room);
+      if (_ended) return;
+    }
     if (config.outgoing && roomTokenFor(_room).isEmpty) {
       await _awaitRoomToken(_room, const Duration(milliseconds: 2500));
       if (_ended) return;
@@ -2381,10 +2432,9 @@ class CallSession {
       // minutes. To the user that is a call still showing "connected" with
       // nobody there.
       //
-      // Incremented BEFORE the send, so the count is "pings outstanding". Two
-      // misses ≈ 30 s of provable silence before acting: fast enough to beat the
-      // OS, slack enough to ride out a single dropped frame on a marginal link.
-      _missedPongs++;
+      // Check the pings that were actually sent on earlier ticks. Incrementing
+      // before this check counted the current, not-yet-sent ping as missed and
+      // reconnected after only one unanswered request.
       if (_missedPongs >= 2) {
         _missedPongs = 0;
         Analytics.capture('call_ws_keepalive_timeout', {
@@ -2408,7 +2458,10 @@ class CallSession {
       }
       // RAW send — deliberately NOT `_send`. See above: adding a `gen` field
       // here is what silently disabled the server's auto-response.
-      try { _ws?.sink.add(jsonEncode({'type': 'ping'})); } catch (_) {/* socket gone */}
+      try {
+        _ws?.sink.add(jsonEncode({'type': 'ping'}));
+        _missedPongs++;
+      } catch (_) {/* socket gone */}
     });
   }
 

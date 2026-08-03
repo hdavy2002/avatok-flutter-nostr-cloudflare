@@ -19,6 +19,7 @@ import { avaReason } from "../lib/ava_reason"; // One Brain B1: unified reasonin
 import { guardWrite } from "./moderate"; // save-time content validation (Nemotron)
 import { readConfig } from "./config"; // P11: profileCompletionGate
 import { CALL_RING_LIFETIME_MS } from "../lib/call_delivery_contract";
+import { CALL_ROOM_TOKEN_LIFETIME_MS } from "../lib/call_room_auth";
 import { receptionistNoAnswerEligibility } from "./receptionist";
 import { callerContactPolicy, shouldRouteUnknownAvatokCaller } from "../lib/call_contact_directory";
 // [WP1] Event-sourced call stream (Specs/PLAN-2026-07-11-dialpad-business-calls-ava-voice-agent.md §13/§14)
@@ -430,6 +431,10 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   const callerAvatarUrl = ident?.avatar_url ?? null;
   const callerAvatarVersion = ident?.avatar_version ?? null;
   const identitySnapshotVersion = ident?.profile_version ?? 0;
+  // Mint before glare arbitration so the pair DO can atomically hand the
+  // losing placer the already-proceeding call's callee credential.
+  const callerRoomToken = crypto.randomUUID();
+  const calleeRoomToken = crypto.randomUUID();
   // ── LIVE TAKEOVER ──────────────────────────────────────────────────────────
   // If the caller (ctx.uid) is dialing the EXACT person (b.to) who is, RIGHT NOW,
   // leaving them a message via their AI Receptionist, this isn't a cold call — the
@@ -454,7 +459,7 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   // sorted-uid pair, so both dial directions hit the SAME instance) for a reciprocal
   // pending invite from the callee within the 30s glare window. If the callee is
   // ALREADY dialing us, we don't open a second room and ring them — we fold both
-  // dials into the winning call (smaller callId) and tell this caller to auto-accept
+  // dials into the already-registered reciprocal call and tell this caller to auto-accept
   // it. The client's CALL-GLARE-1 heuristic stays as the fallback for old servers.
   // Best-effort: any DO hiccup falls through to the normal ring below.
   try {
@@ -463,14 +468,22 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
     const pairStub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(`glare:${lo}__${hi}`));
     const gr = await pairStub.fetch("https://call/glare-place", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ placer: ctx.uid, peer: b.to, callId: b.callId }),
+      body: JSON.stringify({
+        placer: ctx.uid, peer: b.to, callId: b.callId,
+        callerRoomToken, calleeRoomToken,
+      }),
     });
-    const gj = (await gr.json().catch(() => ({}))) as { glare?: boolean; join_call_id?: string };
+    const gj = (await gr.json().catch(() => ({}))) as {
+      glare?: boolean; join_call_id?: string; roomToken?: string;
+    };
     if (gj.glare === true && gj.join_call_id) {
       // Mutual dial: this caller auto-accepts the winning call instead of placing a
       // new one. No push is enqueued for this leg — the peer's leg already rang (or
       // will resolve identically), and both devices join the one winning room.
-      return json({ glare: true, join_call_id: gj.join_call_id, reachable: true, sent: 0 });
+      return json({
+        glare: true, join_call_id: gj.join_call_id,
+        roomToken: gj.roomToken ?? "", reachable: true, sent: 0,
+      });
     }
   } catch { /* best-effort — glare detection never blocks placing a call */ }
   // [WP1] Event-sourced call stream (plan §13/§14) — emit `call_created` (with
@@ -618,11 +631,12 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   // [CALL-AUTHZ-1] fixed on the command endpoint, where a client-claimed `role`
   // was trusted instead of derived.
   //
-  // They are ring-lease scoped (same expiresAt as the ring receipt token): a JOIN
-  // credential, not a session key, so expiry can never disconnect a live call.
-  const callerRoomToken = crypto.randomUUID();
-  const calleeRoomToken = crypto.randomUUID();
+  // They are call-scoped JOIN credentials. Unlike ring receipts they must cover
+  // fresh reconnect admissions; terminal CallRoom state revokes them immediately.
   const expiresAt = Date.now() + CALL_RING_LIFETIME_MS;
+  // Reconnects are new WebSocket admissions, so this must outlive ringing.
+  // Terminal CallRoom state remains the authoritative revocation boundary.
+  const roomTokenExpiresAt = Date.now() + CALL_ROOM_TOKEN_LIFETIME_MS;
 
   // [RECEPT-SERVER-TIMEOUT-1] The CallRoom owns the one four-ring deadline.
   // Snapshot whether it should hand the caller to Ava or finish as no-answer;
@@ -651,7 +665,7 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
         type: "register-token", token: ringReceiptToken,
         nativeActionToken, expiresAt,
         // [CALL-WS-AUTH-1] The DO is the only place these are ever compared.
-        callerRoomToken, calleeRoomToken,
+        callerRoomToken, calleeRoomToken, roomTokenExpiresAt,
       }),
     });
   } catch (e) {

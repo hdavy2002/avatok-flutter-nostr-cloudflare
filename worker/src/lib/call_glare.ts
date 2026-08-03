@@ -7,6 +7,13 @@ export const GLARE_WINDOW_MS = 30_000;
 export interface PendingGlareInvite {
   callId: string;
   ts: number;
+  callerRoomToken?: string;
+  calleeRoomToken?: string;
+}
+
+/** The second placer joins the reciprocal call as its callee. */
+export function glareJoinRoomToken(reciprocal: PendingGlareInvite | null | undefined): string {
+  return reciprocal?.calleeRoomToken ?? "";
 }
 
 export type GlarePlacementResolution =
@@ -39,7 +46,10 @@ export function resolveGlarePlacement(args: {
   }
   return {
     kind: "merge",
-    winnerCallId: callId < reciprocal.callId ? callId : reciprocal.callId,
+    // The reciprocal placement is already proceeding through participant/token
+    // registration. Choosing the current placement can nominate an uninitialized
+    // room because this request returns immediately after the merge verdict.
+    winnerCallId: reciprocal.callId,
     reciprocalCallId: reciprocal.callId,
   };
 }

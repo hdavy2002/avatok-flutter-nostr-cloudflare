@@ -3785,7 +3785,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         } catch (_) {}
         // [CALL-GLARE-2] Server-side mutual-dial resolution. The callee was ALREADY
         // dialing us within the glare window, so the server folded both dials into
-        // one winning call (smaller callId) instead of ringing a second room. Join
+        // the already-registered reciprocal call instead of ringing a second room. Join
         // that winning room deterministically instead of mounting a new outgoing
         // CallScreen — no busy dead-end. Both devices compute the same winner.
         String glareJoin = '';
@@ -3796,6 +3796,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
           }
         } catch (_) {}
         if (glareJoin.isNotEmpty) {
+          try {
+            final rt = (jsonDecode(res.body)['roomToken'] ?? '').toString();
+            if (rt.isNotEmpty) rememberCallRoomToken(glareJoin, rt);
+          } catch (_) {}
           Analytics.capture('call_glare_autoconnect', {
             'winner_call_id': glareJoin,
             'my_call_id': room,
@@ -3945,6 +3949,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         if (jb is Map && jb['glare'] == true) glareJoin = (jb['join_call_id'] ?? '').toString();
       } catch (_) {}
       if (glareJoin.isNotEmpty && glareJoin != room) {
+        try {
+          final rt = (jsonDecode(res.body)['roomToken'] ?? '').toString();
+          if (rt.isNotEmpty) rememberCallRoomToken(glareJoin, rt);
+        } catch (_) {}
         Analytics.capture('call_glare_autoconnect', {
           'winner_call_id': glareJoin, 'my_call_id': room, 'kind': callKind, 'mount': 'optimistic',
         });
@@ -4088,7 +4096,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   /// When cloudflareConferenceEnabled is off, group calls are simply
   /// unavailable (the same notice as the pre-existing conferenceEnabled-off
   /// case) — this never falls back to any legacy transport.
-  Future<void> _groupCall(bool video) async {
+  /// [GCALL-W2-JOINGUARD] `joinOnly` marks the entry points whose intent is
+  /// "get me into the call that is happening" — the ongoing-call banner and the
+  /// Join affordance on a "call started" message — as opposed to the header
+  /// buttons, whose intent is "start a call". The distinction matters because
+  /// tapping Join on a call that has since ENDED used to silently start a brand
+  /// new one, post a fresh "call started" message to the whole group, and never
+  /// tell the person that what they tried to join was over.
+  Future<void> _groupCall(bool video, {bool joinOnly = false}) async {
     final gid = widget.chat.gid;
     if (gid == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -4102,12 +4117,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       return;
     }
     if (_groupMemberCount > 25) { _confLimitNotice(video); return; }
-    await _cfGroupCall(video);
+    await _cfGroupCall(video, joinOnly: joinOnly);
   }
 
   /// [CF-CALL-004] Cloudflare Realtime A/V group call launch site (audio OR
   /// video, ≤25). The ONLY group-call transport as of CF-CALL-007.
-  Future<void> _cfGroupCall(bool video) async {
+  Future<void> _cfGroupCall(bool video, {bool joinOnly = false}) async {
     final gid = widget.chat.gid;
     if (gid == null) return;
     if (CloudflareConferenceController.activeGid != null) {
@@ -4116,7 +4131,24 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       return;
     }
     final s = await CloudflareConferenceApi.status(gid);
+    if (!mounted) return;
+    // [GCALL-W2-JOINGUARD] `status()` fails OPEN to live:false, so an unreachable
+    // backend is indistinguishable from "no call in progress" — and `starting`
+    // is derived from exactly that. Refuse to start a call on the back of a
+    // status we could not actually read.
+    if (!s.available) {
+      _confLimitNotice(video);
+      return;
+    }
     final starting = !s.live;
+    if (starting && joinOnly) {
+      // They asked to JOIN. There is nothing to join — say so, and refresh the
+      // banner rather than starting a call nobody asked for.
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('That call has already ended')));
+      unawaited(_refreshConfStatus());
+      return;
+    }
     if (starting) {
       _sendSpecial('gcall', {'state': 'start', 'kind': video ? 'video' : 'audio', 'gid': gid, 'cf': true},
           video ? '📹 Video call started — tap 📞 to join' : '🎙️ Audio call started — tap 📞 to join');
@@ -4187,7 +4219,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   bool get _confIsVideo => _confMediaKind == 'audio_video' || _confMediaKind == 'video';
 
   Widget _confBanner() => GestureDetector(
-        onTap: () => _groupCall(_confIsVideo),
+        onTap: () => _groupCall(_confIsVideo, joinOnly: true),
         child: Container(
           decoration: const BoxDecoration(
             color: AD.online,
@@ -4741,7 +4773,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         // Call start/end system row — Join affordance while the call is live.
         final audio = e['kind'] == 'audio';
         return GestureDetector(
-          onTap: _confLive ? () => _groupCall(!audio) : null,
+          // Join affordance on a "call started" message: joining, never starting.
+          onTap: _confLive ? () => _groupCall(!audio, joinOnly: true) : null,
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             PhosphorIcon(
                 audio

@@ -465,7 +465,11 @@ export class ReceptionRoom {
         turns: this.turnCount,
         ms: Date.now() - this.startedAt,
       });
-      this.finalize("model_closed");
+      if (!this.finalized && this.turnCount === 0 && !this.firstAudioSent) {
+        this.failHard("gemini_closed_before_first_turn");
+      } else {
+        void this.finalize("model_closed");
+      }
     });
     gem.addEventListener("error", (ev: any) => {
       const raw = ev?.error ?? ev?.message ?? null;
@@ -561,6 +565,9 @@ export class ReceptionRoom {
         turnComplete: true,
       },
     });
+    // Gemini is now live and has accepted both setup and the opening turn.
+    // Keep the CallRoom aggregate in sync just like the CF engine does.
+    this.state.waitUntil(this.reportServiceOutcome("receptionist_connected"));
     this.bumpIdle(); // arm the silence backstop
   }
 
@@ -1060,8 +1067,29 @@ export class ReceptionRoom {
       pre_first_turn: this.turnCount === 0,
       ...(this.geminiErrorDetail ?? {}),
     });
+    this.state.waitUntil(this.reportServiceOutcome("receptionist_failed"));
     try { this.client?.send(JSON.stringify({ t: "error", reason })); } catch { /* ignore */ }
     this.finalize(reason);
+  }
+
+  private async reportServiceOutcome(
+    command: "receptionist_connected" | "receptionist_failed",
+  ): Promise<void> {
+    const callId = this.init?.call_id;
+    const sid = this.init?.sid;
+    if (!callId || !sid) return;
+    try {
+      const stub = this.env.CALL_ROOMS.get(this.env.CALL_ROOMS.idFromName(callId));
+      await stub.fetch("https://call/service-outcome", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          callId,
+          command,
+          commandId: `${command}:${sid}`,
+        }),
+      });
+    } catch { /* device teardown remains the last-resort backstop */ }
   }
 
   // -------------------------------------------------------------------------

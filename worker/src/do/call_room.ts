@@ -51,8 +51,12 @@ import {
 import { CALL_RING_LIFETIME_MS } from "../lib/call_delivery_contract";
 import { readConfig } from "../routes/config";
 import {
-  GLARE_WINDOW_MS, resolveGlarePlacement, type PendingGlareInvite,
+  GLARE_WINDOW_MS, glareJoinRoomToken, resolveGlarePlacement, type PendingGlareInvite,
 } from "../lib/call_glare";
+import {
+  authenticatedSideTag, roomSeatIsFull, roomTokenExpired, sameRoomSeat,
+  socketSeatKey, type RoomSideTag,
+} from "../lib/call_room_auth";
 
 // [ONEBRAIN-B2] Human-readable call length for a brain summary (e.g. "4m12s").
 function fmtCallDuration(sec: number): string {
@@ -62,6 +66,8 @@ function fmtCallDuration(sec: number): string {
 
 interface AwayPeer {
   id: string;
+  /** Authenticated seat identity. Absent on records created before room auth. */
+  side?: RoomSideTag;
   awaySince: number;
   /** Signaling messages addressed to this peer while it was away, oldest first. */
   buffered: string[];
@@ -272,14 +278,13 @@ export class CallRoom {
     const [callerTok, calleeTok, expiresAt] = await Promise.all([
       this.state.storage.get<string>("room_token_caller"),
       this.state.storage.get<string>("room_token_callee"),
-      this.state.storage.get<number>("token_expires_at"),
+      this.state.storage.get<number>("room_token_expires_at"),
     ]);
     if (!callerTok || !calleeTok) return { ok: false, reason: "unprovisioned" };
     if (!presented) return { ok: false, reason: "missing" };
-    // Ring-lease bound. A room token is a JOIN credential, not a session key —
-    // once a peer is admitted the socket carries the relationship, so expiry
-    // cannot disconnect a live call, it only stops a NEW join on a dead lease.
-    if (expiresAt && Date.now() > expiresAt) return { ok: false, reason: "expired" };
+    // Reconnects are NEW admissions, so this expiry deliberately outlives the
+    // ring lease. Terminal FSM/legacy state below revokes admission immediately.
+    if (roomTokenExpired(expiresAt, Date.now())) return { ok: false, reason: "expired" };
     if (presented === callerTok) return { ok: true, side: "caller" };
     if (presented === calleeTok) return { ok: true, side: "callee" };
     return { ok: false, reason: "mismatch" };
@@ -955,7 +960,9 @@ export class CallRoom {
           // call_answered (PostHog: /api/receptionist/start 409, call avatok-8caef3ce
           // 2026-07-08). Exposing the LIVE peer count lets the receptionist gate
           // distinguish "genuinely on a call now" (>=2) from "phantom-answered".
-          peers: this.state.getWebSockets().length,
+          peers: new Set(this.state.getWebSockets()
+            .map((w) => socketSeatKey(this.state.getTags(w)))
+            .filter(Boolean)).size,
         });
       }
       // P1 ring-ack control-plane (Phase 1, receptTakeoverGuard). A server worker
@@ -970,8 +977,8 @@ export class CallRoom {
       // place, we record the placer's pending invite (callId + placer uid + ts) and
       // check whether the OTHER party already has a live pending invite (a reciprocal
       // dial) within the 30s glare window. If so the two calls are folded into ONE:
-      // the lexicographically SMALLER callId wins as "the call", and BOTH placers are
-      // told to auto-accept it instead of opening a second room. DO storage is
+      // the already-registered reciprocal placement wins, because the current
+      // request returns before initializing its room. DO storage is
       // strongly consistent (no ordered state in KV), and this holds no socket.
       // [CALL-GLARE-LIFECYCLE-1] Terminal call cleanup reaches the same pair DO
       // that owns the pending invite. Compare call ids before deleting so a
@@ -996,6 +1003,8 @@ export class CallRoom {
         const placer = typeof body.placer === "string" ? body.placer : "";
         const peer = typeof body.peer === "string" ? body.peer : "";
         const callId = typeof body.callId === "string" ? body.callId : "";
+        const callerRoomToken = typeof body.callerRoomToken === "string" ? body.callerRoomToken : "";
+        const calleeRoomToken = typeof body.calleeRoomToken === "string" ? body.calleeRoomToken : "";
         if (!placer || !peer || !callId) {
           return Response.json({ error: "placer, peer, callId required" }, { status: 400 });
         }
@@ -1021,10 +1030,10 @@ export class CallRoom {
           callId, reciprocal: recip, now, reciprocalTerminal,
         });
         if (resolution.kind === "merge") {
-          // Mutual dial detected. Deterministic winner = smaller callId (both sides
-          // compute the SAME verdict from the same two ids). Clear both pendings so a
-          // later unrelated dial isn't mis-folded, and tell THIS placer to auto-accept
-          // the winner (their own client CALL-GLARE-1 stays as the fallback).
+          // The reciprocal call is already proceeding through registration;
+          // this call has not been initialized and returns here. Therefore the
+          // reciprocal call must win, and its callee credential belongs to this
+          // placer. This is both deterministic and free of a token/push race.
           const winner = resolution.winnerCallId;
           try { await this.state.storage.delete(`glare_invite:${placer}`); } catch { /* best-effort */ }
           try { await this.state.storage.delete(`glare_invite:${peer}`); } catch { /* best-effort */ }
@@ -1038,7 +1047,11 @@ export class CallRoom {
               },
             });
           } catch { /* best-effort telemetry */ }
-          return Response.json({ glare: true, join_call_id: winner });
+          return Response.json({
+            glare: true,
+            join_call_id: winner,
+            roomToken: glareJoinRoomToken(recip),
+          });
         }
         if (resolution.pruneReciprocal) {
           try { await this.state.storage.delete(reciprocalKey); } catch { /* best-effort */ }
@@ -1054,7 +1067,11 @@ export class CallRoom {
           } catch { /* telemetry never blocks call placement */ }
         }
         // No reciprocal yet — record this placer's pending invite for the window.
-        try { await this.state.storage.put(`glare_invite:${placer}`, { callId, ts: now }); } catch { /* best-effort */ }
+        try {
+          await this.state.storage.put(`glare_invite:${placer}`, {
+            callId, ts: now, callerRoomToken, calleeRoomToken,
+          } satisfies PendingGlareInvite);
+        } catch { /* best-effort */ }
         return Response.json({ glare: false });
       }
       // Legacy endpoint retained only to prevent old callers from creating new
@@ -1329,6 +1346,8 @@ export class CallRoom {
           const nativeActionToken = typeof body.nativeActionToken === "string"
             ? body.nativeActionToken : "";
           const expiresAt = typeof body.expiresAt === "number" ? body.expiresAt : 0;
+          const roomTokenExpiresAt = typeof body.roomTokenExpiresAt === "number"
+            ? body.roomTokenExpiresAt : 0;
           if (token && expiresAt) {
             await this.state.storage.put("ring_receipt_token", token);
             await this.state.storage.put("token_expires_at", expiresAt);
@@ -1343,13 +1362,15 @@ export class CallRoom {
           // token would let either party present it twice and occupy both seats.
           // Minted by routes/api.ts at dial time; the caller's is returned in the
           // /api/call response, the callee's rides the ring push (FCM + the
-          // InboxDO WS ring). Both expire with the ring lease.
+          // InboxDO WS ring). They outlive ringing because every reconnect is a
+          // fresh admission; terminal state is the revocation boundary.
           const callerRoomToken = typeof body.callerRoomToken === "string" ? body.callerRoomToken : "";
           const calleeRoomToken = typeof body.calleeRoomToken === "string" ? body.calleeRoomToken : "";
-          if (callerRoomToken && calleeRoomToken && expiresAt) {
+          if (callerRoomToken && calleeRoomToken && roomTokenExpiresAt) {
             await this.state.storage.put({
               room_token_caller: callerRoomToken,
               room_token_callee: calleeRoomToken,
+              room_token_expires_at: roomTokenExpiresAt,
             });
           }
           return Response.json({ ok: true });
@@ -1457,6 +1478,9 @@ export class CallRoom {
     // actually be flipped — the inAppUpdateEnabled failure of 2026-07-15).
     const presentedToken = (url.searchParams.get("t") || "").slice(0, 128);
     const authVerdict = await this.classifyRoomToken(presentedToken);
+    const authenticatedSide = authVerdict.ok
+      ? authenticatedSideTag(authVerdict.side)
+      : null;
     if (!authVerdict.ok) {
       const enforced = await this.roomAuthEnforced();
       try {
@@ -1523,7 +1547,16 @@ export class CallRoom {
     // Identity = the `id` query-param tag (the only identity the client already
     // sends and reconnects with — there is no separate auth uid on this route).
     const away = await this.loadAway();
-    const isRejoin = !!away && away.id === peerId;
+    const isRejoin = !!away && (authenticatedSide && away.side
+      ? away.side === authenticatedSide
+      : away.id === peerId);
+
+    // Once authenticated, the token's side—not the client-supplied peer id—is
+    // the seat identity. This prevents one valid side token opening two sockets
+    // under different ids and occupying both seats.
+    const isSameSeat = (w: WebSocket): boolean => {
+      return sameRoomSeat(this.state.getTags(w), authenticatedSide, peerId);
+    };
 
     // CALL-DUP-SESSION-2 (server backstop): a join whose `id` ALREADY has a live
     // socket in this room is the same peer re-attaching on a fresh transport (a
@@ -1536,7 +1569,7 @@ export class CallRoom {
     // transport in place), so the newest socket always wins and signaling stays live.
     const dupSockets = this.state
       .getWebSockets()
-      .filter((w) => this.state.getTags(w)[0] === peerId);
+      .filter(isSameSeat);
     if (dupSockets.length > 0) {
       for (const stale of dupSockets) {
         try { stale.close(1000, "superseded by newer socket for same peer"); } catch { /* already gone */ }
@@ -1564,8 +1597,12 @@ export class CallRoom {
     // So a same-peer reconnect/duplicate is never busy-rejected as a phantom 3rd peer.
     const otherPeerSockets = this.state
       .getWebSockets()
-      .filter((w) => this.state.getTags(w)[0] !== peerId);
-    if (!isRejoin && otherPeerSockets.length >= 2) {
+      .filter((w) => !isSameSeat(w));
+    const otherSeatCount = new Set(otherPeerSockets
+      .map((w) => socketSeatKey(this.state.getTags(w)))
+      .filter(Boolean)).size;
+    const roomIsFull = roomSeatIsFull(authenticatedSide, otherSeatCount);
+    if (!isRejoin && roomIsFull) {
       const reject = new WebSocketPair();
       reject[1].accept();
       try {
@@ -1587,7 +1624,7 @@ export class CallRoom {
     // upgrade handshake.
     this.state.acceptWebSocket(
       server,
-      authVerdict.ok ? [peerId, `side:${authVerdict.side}`] : [peerId],
+      authenticatedSide ? [peerId, authenticatedSide] : [peerId],
     );
     // Keepalive: let hibernated sockets answer client pings without waking the
     // DO (CALL-RC-D1 item 5). Same JSON ping/pong convention already used by
@@ -1612,7 +1649,7 @@ export class CallRoom {
       );
     } catch { /* older runtimes without auto-response: harmless no-op */ }
 
-    const others = this.state.getWebSockets().filter((ws) => ws !== server);
+    const others = this.state.getWebSockets().filter((ws) => ws !== server && !isSameSeat(ws));
     const otherIds = others
       .map((ws) => this.state.getTags(ws)[0])
       .filter((x) => x && x !== peerId);
@@ -1881,17 +1918,31 @@ export class CallRoom {
   /** CALL-RC-D1: shared close/error path — start the 30s reconnect grace
    *  instead of ending the call immediately. */
   private async beginAwayOrEnd(ws: WebSocket, code: number): Promise<void> {
-    const from = this.state.getTags(ws)[0];
+    const tags = this.state.getTags(ws);
+    const from = tags[0];
+    const side = tags[1] === "side:caller" || tags[1] === "side:callee"
+      ? tags[1] as RoomSideTag
+      : undefined;
     try { ws.close(code <= 1000 || code >= 3000 ? code : 1000); } catch { /* already closed */ }
 
-    const others = this.state.getWebSockets().filter((w) => w !== ws);
+    const allOthers = this.state.getWebSockets().filter((w) => w !== ws);
+    // Closing the stale half of adopt-and-replace must not mark that seat away.
+    const replacementAlive = allOthers.some((w) => {
+      const otherTags = this.state.getTags(w);
+      return side ? otherTags[1] === side : otherTags[0] === from;
+    });
+    if (replacementAlive) return;
+    const others = allOthers.filter((w) => {
+      const otherTags = this.state.getTags(w);
+      return side ? otherTags[1] !== side : otherTags[0] !== from;
+    });
     if (!from || others.length === 0) {
       // No `from` tag, or the other peer already isn't here (e.g. this was the
       // only socket, or it's already gone) — nothing to grace, nothing to notify.
       return;
     }
 
-    await this.setAway({ id: from, awaySince: Date.now(), buffered: [], bufferedBytes: 0 });
+    await this.setAway({ id: from, side, awaySince: Date.now(), buffered: [], bufferedBytes: 0 });
     await this.scheduleNextAlarm(); // [WP2] multiplexed with any pending billing tick
     for (const w of others) this.sendTo(w, { type: "peer-away", id: from });
   }
@@ -1947,7 +1998,7 @@ export class CallRoom {
       // connected call, which is a worse bug than the one being fixed.
       const liveTags = new Set(
         this.state.getWebSockets()
-          .map((w) => this.state.getTags(w)[0])
+          .map((w) => socketSeatKey(this.state.getTags(w)))
           .filter((t): t is string => typeof t === "string" && t.length > 0),
       );
       const callIsLive = session.session_state === "connected" || liveTags.size >= 2;

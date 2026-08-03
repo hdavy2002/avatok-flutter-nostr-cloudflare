@@ -278,6 +278,10 @@ Future<void> _dialerPlaceInBackground(
       if (jb is Map && jb['glare'] == true) glareJoin = (jb['join_call_id'] ?? '').toString();
     } catch (_) {}
     if (glareJoin.isNotEmpty && glareJoin != room) {
+      try {
+        final rt = (jsonDecode(res.body)['roomToken'] ?? '').toString();
+        if (rt.isNotEmpty) rememberCallRoomToken(glareJoin, rt);
+      } catch (_) {}
       Analytics.capture('call_glare_autoconnect',
           {'winner_call_id': glareJoin, 'my_call_id': room, 'kind': callKind, 'via': 'dialpad', 'mount': 'optimistic'});
       CallSessionManager.instance.liveSessionFor(room)?.hangup('glare-superseded');

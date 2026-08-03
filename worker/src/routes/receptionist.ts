@@ -1370,15 +1370,13 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   // this handler must COMPLETE the session rather than leave the caller parked in
   // a handoff with nothing on the line.
   //
-  // Moving the scenario toggle above the admit removed the one KNOWN post-commit
-  // refusal. This exists so the CLASS is closed: a future early return added
-  // between the admit and session creation cannot silently recreate the same
-  // shape. Declared out here, above the `if (callId)` block that performs the
-  // admit, because the failure sites it guards (the D1 session insert) are below
-  // that block's scope.
-  let handoffCommitted = false;
+  // Moving the scenario toggle above the admit removes refusal paths. This
+  // helper covers both required writes that remain after ownership is settled:
+  // the D1 session row and the RTC init blob. It deliberately also attempts the
+  // transition for caller-initiated decline/busy lanes; if their aggregate is
+  // not in handoff the reducer rejects it harmlessly.
   const rollbackHandoff = async (reason: string): Promise<void> => {
-    if (!handoffCommitted || !callId) return;
+    if (!callId) return;
     try {
       const stub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(callId));
       await stub.fetch("https://call/service-outcome", {
@@ -1511,7 +1509,6 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
         });
         if (r.ok) {
           // The aggregate is now in `handoff` and the human room is closed.
-          handoffCommitted = true;
           const admitBody = (await r.json().catch(() => null)) as
             { claimed?: boolean; receptionist_sid?: string } | null;
           // We lost the ownership race inside the DO. Another /start for this
@@ -1563,6 +1560,10 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ callId, sid }),
       });
+      if (!cr.ok) {
+        skip("call_authority_unavailable", { call_id: callId, stage: "session_claim" });
+        return json({ error: "receptionist_unavailable", reason: "call_authority_unavailable" }, 503);
+      }
       if (cr.ok) {
         const cj = (await cr.json().catch(() => null)) as
           { claimed?: boolean; receptionist_sid?: string } | null;
@@ -1576,11 +1577,10 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
         }
       }
     } catch {
-      // Fail OPEN, unlike the admit above. The admit proves we own the call
-      // OUTCOME — starting a paid session without that is a correctness failure.
-      // This only proves we own the SESSION, and the KV lock below plus the
-      // client's own `_receptionistActive` guard both still stand behind it.
-      // Refusing every decline-to-Ava on a DO blip would be a worse trade.
+      // Session ownership is correctness and billing authority. KV and a
+      // handset boolean are not substitutes for the strongly-consistent claim.
+      skip("call_authority_unavailable", { call_id: callId, stage: "session_claim" });
+      return json({ error: "receptionist_unavailable", reason: "call_authority_unavailable" }, 503);
     }
   }
 
@@ -1822,7 +1822,20 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
     caller_country: (((req as any)?.cf?.country as string | undefined) || null),
     caller_tz: (((req as any)?.cf?.timezone as string | undefined) || null),
   };
-  await env.TOKENS.put(`recept_rtc:${sid}`, JSON.stringify(init), { expirationTtl: INIT_TTL_SEC });
+  try {
+    await env.TOKENS.put(`recept_rtc:${sid}`, JSON.stringify(init), { expirationTtl: INIT_TTL_SEC });
+  } catch (e) {
+    // The human room is already closed. A missing init blob means neither
+    // receptionist engine can accept the caller, so complete the FSM and clean
+    // the session row instead of returning a bare 500 with the caller stranded.
+    await rollbackHandoff("rtc_init_store_failed");
+    await metaDb(env).prepare(
+      "UPDATE receptionist_sessions SET status='ended', ended_at=?2, cutoff_reason='rtc_init_store_failed', updated_at=?2 WHERE id=?1",
+    ).bind(sid, Date.now()).run().catch(() => {});
+    if (reattachKey) await env.TOKENS.delete(reattachKey).catch(() => {});
+    skip("rtc_init_store_failed", { call_id: callId, error: String(e).slice(0, 120) });
+    return json({ error: "receptionist_unavailable", reason: "rtc_init_store_failed" }, 503);
+  }
 
   // RECEPT-REATTACH-1: claim this call_id so any LATER /start for the same call is
   // rejected as a reattach (see the guard near the top of this handler). Best-effort
@@ -1886,8 +1899,12 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
 
   // CALL OUTCOME MENU: consume one unit of the caller's daily allowance for this
   // owner (only when the cap is active; self-calls exempt; fail-open).
-  if (ctx.uid !== to && (await callerSessionsLeft(env, cfg, ctx.uid, to)) !== null) {
-    await bumpCallerSessions(env, ctx.uid, to);
+  if (ctx.uid !== to) {
+    try {
+      if ((await callerSessionsLeft(env, cfg, ctx.uid, to)) !== null) {
+        await bumpCallerSessions(env, ctx.uid, to);
+      }
+    } catch { /* usage accounting is fail-open after a live session is ready */ }
   }
 
   return json({
