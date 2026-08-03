@@ -4043,6 +4043,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   Timer? _confTimer;
   bool _confLive = false;
   int _confCount = 0;
+  // [GCALL-W1-STATUS] Last known backend verdict, so the greyed-icon notice can
+  // name the real reason instead of always blaming group size, and so the
+  // ongoing-call banner can join with the call's actual media kind.
+  bool _confBackendAvailable = true;
+  String? _confUnavailableReason;
+  String? _confMediaKind;
 
   int get _groupMemberCount => _group?.members.length ?? widget.chat.members;
   bool get _confAllowed =>
@@ -4063,7 +4069,15 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     final gid = widget.chat.gid;
     if (gid == null || !RemoteConfig.conferenceEnabled || !RemoteConfig.cloudflareConferenceEnabled) return;
     final s = await CloudflareConferenceApi.status(gid);
-    if (mounted) setState(() { _confLive = s.live; _confCount = s.count; });
+    if (mounted) {
+      setState(() {
+        _confLive = s.live;
+        _confCount = s.count;
+        _confBackendAvailable = s.available;
+        _confUnavailableReason = s.unavailableReason;
+        _confMediaKind = s.mediaKind;
+      });
+    }
   }
 
   /// [CF-CALL-007] Group-call launch — Cloudflare Realtime A/V is the ONLY
@@ -4081,9 +4095,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
           content: Text('This group needs to sync once before it can hold calls')));
       return;
     }
+    // Both refusals route through the same notice, which now names the actual
+    // reason rather than reporting a flag outage as a group-size problem.
     if (!RemoteConfig.conferenceEnabled || !RemoteConfig.cloudflareConferenceEnabled) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Group calls are temporarily unavailable')));
+      _confLimitNotice(video);
       return;
     }
     if (_groupMemberCount > 25) { _confLimitNotice(video); return; }
@@ -4112,24 +4127,67 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     _refreshConfStatus();
   }
 
-  /// Exact copy required by PHASE-10 acceptance criteria.
+  /// [GCALL-W1-NOTICE] Why the call icons are greyed out — branched three ways.
+  ///
+  /// This always said "this group has more than 25 members", including when the
+  /// real cause was a kill switch or an unreachable backend. Owners chasing a
+  /// group of six were told to remove members. The >25 wording is preserved
+  /// verbatim for the case it actually describes (PHASE-10 acceptance
+  /// criteria); the other two branches are new.
   void _confLimitNotice(bool video) {
     final what = video ? 'video' : 'audio';
+    final tooBig = _groupMemberCount > 25;
+    final flagsOff = !RemoteConfig.conferenceEnabled ||
+        !RemoteConfig.cloudflareConferenceEnabled ||
+        _confUnavailableReason == 'flags';
+
+    final String title;
+    final String body;
+    if (tooBig) {
+      title = '${video ? 'Video' : 'Audio'} calls disabled';
+      body = 'This group has more than 25 members, so $what calls are '
+          'disabled. You need fewer than 25 people to have a $what conference.';
+    } else if (flagsOff) {
+      title = 'Group calls are off';
+      body = 'Group $what calls are switched off right now. This is a setting on '
+          'our side, not something wrong with your group — please try again later.';
+    } else if (!_confBackendAvailable) {
+      title = 'Group calls unavailable';
+      body = _confUnavailableReason == 'network'
+          ? 'We couldn\'t reach the call service. Check your connection and try again.'
+          : 'The call service isn\'t responding right now. Please try again in a moment.';
+    } else {
+      title = '${video ? 'Video' : 'Audio'} calls unavailable';
+      body = 'Group $what calls can\'t start in this chat right now. Please try again shortly.';
+    }
+
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('${video ? 'Video' : 'Audio'} calls disabled'),
-        content: Text('This group has more than 25 members, so $what calls are '
-            'disabled. You need fewer than 25 people to have a $what conference.'),
+        title: Text(title),
+        content: Text(body),
         actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
       ),
     );
   }
 
-  /// "Ongoing call · 6 — tap to join" banner (PiP return-to-call included:
-  /// if we're connected-but-minimized, tapping re-attaches to the live room).
+  /// "Ongoing call · 6 — tap to join" banner.
+  ///
+  /// [GCALL-W1-KIND] Joins with the call's ACTUAL media kind (from /status).
+  /// It used to hardcode `_groupCall(true)` — a video join into whatever was
+  /// running. A video publish into an audio call is rejected by the Worker
+  /// outright, so joining an audio call from this banner failed the entire
+  /// join, not just the camera. Falls back to audio when the backend hasn't
+  /// told us (an older Worker), because audio is the safe request: an audio
+  /// publish is legal in every call kind.
+  ///
+  /// (There is no PiP/minimize for conferences — leaving the screen leaves the
+  /// call, so tapping while already in it says "leave it first". The previous
+  /// comment here claimed otherwise.)
+  bool get _confIsVideo => _confMediaKind == 'audio_video' || _confMediaKind == 'video';
+
   Widget _confBanner() => GestureDetector(
-        onTap: () => _groupCall(true),
+        onTap: () => _groupCall(_confIsVideo),
         child: Container(
           decoration: const BoxDecoration(
             color: AD.online,
@@ -4137,7 +4195,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
           ),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           child: Row(children: [
-            PhosphorIcon(PhosphorIcons.videoCamera(PhosphorIconsStyle.fill), color: AD.textPrimary, size: 17),
+            PhosphorIcon(
+                _confIsVideo
+                    ? PhosphorIcons.videoCamera(PhosphorIconsStyle.fill)
+                    : PhosphorIcons.phone(PhosphorIconsStyle.fill),
+                color: AD.textPrimary, size: 17),
             const SizedBox(width: 8),
             Expanded(child: Text(
               _confOngoingHere

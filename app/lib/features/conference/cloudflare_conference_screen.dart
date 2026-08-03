@@ -11,6 +11,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart' as webrtc;
+import 'package:permission_handler/permission_handler.dart' show openAppSettings;
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/avatar.dart';
@@ -79,8 +80,17 @@ class _CloudflareConferenceScreenState extends State<CloudflareConferenceScreen>
         body: ZinePaper(
           child: SafeArea(
             child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+              // `statusText` now carries the server's real message (or a
+              // permission-specific one) instead of one generic line for every
+              // possible cause.
               ZineEmptyState(icon: PhosphorIcons.warning(PhosphorIconsStyle.bold), text: _ctrl.statusText),
               const SizedBox(height: 16),
+              // A permission refusal is the one failure the user can fix on the
+              // spot — give them the door instead of a dead end.
+              if (_ctrl.permissionDenied) ...[
+                ZineButton(label: 'Open settings', fontSize: 16, onPressed: openAppSettings),
+                const SizedBox(height: 8),
+              ],
               ZineButton(label: 'Close', variant: ZineButtonVariant.ghost, fontSize: 16,
                   onPressed: () => Navigator.pop(context)),
             ])),
@@ -121,10 +131,19 @@ class _CloudflareConferenceScreenState extends State<CloudflareConferenceScreen>
                   const SizedBox(width: 12),
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.cardTitle(size: 18)),
-                    Text('${members.length + 1} IN CALL · CLOUDFLARE', style: ZineText.kicker(size: 10.5)),
+                    Text(
+                      // A reconnect used to render as a completely frozen call:
+                      // `reconnecting` had no UI at all, so the only visible
+                      // difference between recovering and dead was neither.
+                      _ctrl.state == CfConnState.reconnecting
+                          ? 'RECONNECTING…'
+                          : '${members.length + 1} IN CALL · CLOUDFLARE',
+                      style: ZineText.kicker(size: 10.5),
+                    ),
                   ])),
                 ]),
               ),
+              if (_ctrl.notice != null) _noticeBar(_ctrl.notice!),
               Expanded(
                 child: pages == 1
                     ? _grid([_LocalTile(_ctrl), ...visible.map((p) => _RemoteTile(_ctrl, p))])
@@ -168,10 +187,15 @@ class _CloudflareConferenceScreenState extends State<CloudflareConferenceScreen>
                 child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
                   _ctl(_ctrl.muted ? PhosphorIcons.microphoneSlash(PhosphorIconsStyle.bold) : PhosphorIcons.microphone(PhosphorIconsStyle.bold),
                       _ctrl.muted ? 'Unmute' : 'Mute', _ctrl.toggleMute, active: !_ctrl.muted),
-                  if (widget.video)
+                  // Camera controls follow the EFFECTIVE media mode, not
+                  // `widget.video` (the request). A video call that downgraded
+                  // to audio — camera permission denied, or the call itself is
+                  // audio-only — used to keep showing a camera button that
+                  // could never do anything.
+                  if (_ctrl.effectiveVideo)
                     _ctl(_ctrl.cameraOn ? PhosphorIcons.videoCamera(PhosphorIconsStyle.bold) : PhosphorIcons.videoCameraSlash(PhosphorIconsStyle.bold),
                         'Camera', _ctrl.toggleCamera, active: _ctrl.cameraOn),
-                  if (widget.video && _ctrl.cameraOn)
+                  if (_ctrl.effectiveVideo && _ctrl.cameraOn)
                     _ctl(PhosphorIcons.cameraRotate(PhosphorIconsStyle.bold), 'Flip', _ctrl.flipCamera, active: true),
                   _ctl(_ctrl.speakerOn ? PhosphorIcons.speakerHigh(PhosphorIconsStyle.bold) : PhosphorIcons.ear(PhosphorIconsStyle.bold),
                       'Speaker', _ctrl.toggleSpeaker, active: _ctrl.speakerOn),
@@ -194,6 +218,29 @@ class _CloudflareConferenceScreenState extends State<CloudflareConferenceScreen>
       ),
     );
   }
+
+  /// Non-fatal condition worth stating plainly: an audio downgrade, or a
+  /// degraded TURN relay. Dismissible — it never blocks the call.
+  Widget _noticeBar(String text) => Container(
+        width: double.infinity,
+        decoration: const BoxDecoration(
+          color: Zine.card,
+          border: Border(bottom: BorderSide(color: Zine.ink, width: 2)),
+        ),
+        padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+        child: Row(children: [
+          PhosphorIcon(PhosphorIcons.info(PhosphorIconsStyle.bold), size: 16, color: Zine.ink),
+          const SizedBox(width: 8),
+          Expanded(child: Text(text, style: ZineText.value(size: 12.5))),
+          GestureDetector(
+            onTap: () => setState(() => _ctrl.notice = null),
+            child: Padding(
+              padding: const EdgeInsets.all(4),
+              child: PhosphorIcon(PhosphorIcons.x(PhosphorIconsStyle.bold), size: 14, color: Zine.ink),
+            ),
+          ),
+        ]),
+      );
 
   Widget _ctl(IconData icon, String tip, VoidCallback onTap, {required bool active}) => Tooltip(
         message: tip,

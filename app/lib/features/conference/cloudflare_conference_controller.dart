@@ -22,6 +22,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:uuid/uuid.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -139,6 +140,32 @@ class CloudflareConferenceController extends ChangeNotifier {
   Timer? _healthTimer;
   int? _lastAudioBytes, _lastVideoFrames, _lastPlayout;
 
+  // ---- [GCALL-W1-EFFMEDIA] effective vs requested media --------------------------
+  //
+  // `wantVideo` is the REQUEST, not the truth. Two things can downgrade a video
+  // call to audio-only after the user has asked for video:
+  //   1. the camera permission is denied while the mic is granted, and
+  //   2. the server says `media.video:false` because the call's media_kind was
+  //      fixed to `audio` by whoever started it.
+  // Both used to be fatal: the controller published video regardless, and the
+  // Worker rejected the WHOLE publish (not just the camera), failing the entire
+  // join. `_effectiveVideo` is what the controller actually does, and it is what
+  // drives capture, publish, reconnect, the camera controls and the pull policy.
+  bool _effectiveVideo = false;
+  bool get effectiveVideo => _effectiveVideo;
+
+  /// Non-fatal condition worth showing the user (camera downgrade, degraded
+  /// relay). Cleared by the screen once shown; never blocks the call.
+  String? notice;
+
+  /// True when the join was refused for a missing OS permission, so the screen
+  /// can offer an "Open settings" action instead of a dead-end error.
+  bool permissionDenied = false;
+
+  /// Cloudflare reported no usable TURN relay for this join — media may still
+  /// work over STUN/host candidates, but quality/connectivity is at risk.
+  bool relayDegraded = false;
+
   bool get muted => _muted;
   bool get cameraOn => _cameraOn;
   bool get speakerOn => _speaker;
@@ -149,9 +176,34 @@ class CloudflareConferenceController extends ChangeNotifier {
 
   // ---- lifecycle ---------------------------------------------------------------
 
+  /// [GCALL-W1-ORDER] Join sequence. The ORDER here is the whole feature:
+  ///
+  ///   permissions -> /join -> WS open -> **await `welcome`** -> publish
+  ///
+  /// It used to be `/join` -> publish -> WS (fire-and-forget). The Worker
+  /// refuses `/publish` unless the caller's socket is already attached to the
+  /// GroupCallRoom DO (`session_check` -> 409 "not connected to this call"), so
+  /// publishing first failed 100% of the time — for every user, on every
+  /// attempt, since the feature shipped. Opening the socket is not enough
+  /// either: the attachment only exists once the DO has accepted the upgrade,
+  /// which the `welcome` frame is the proof of. Hence the awaited handshake.
   Future<void> connect() async {
     final t0 = DateTime.now().millisecondsSinceEpoch;
     activeGid = gid;
+    // [GCALL-W1-TEL] Telemetry exists BEFORE the first network call. It was
+    // previously constructed after /join returned, so a failing /join emitted
+    // nothing at all client-side — the one stage most likely to fail was the
+    // one stage that was invisible. The constructor needs a call identity that
+    // only /join can supply, so it starts with a placeholder and the identity
+    // fields are mutated in place once /join answers. Never reallocate the
+    // instance: a fresh one resets the §0.5 error-dedup map.
+    _tel = CloudflareConferenceTelemetry(
+      groupId: gid,
+      callId: 'pending',
+      callTraceId: 'pending',
+      generation: 0,
+      mediaKindRequested: wantVideo ? 'audio_video' : 'audio',
+    );
     try {
       await localRenderer.initialize();
       _localRendererReady = true;
@@ -163,21 +215,50 @@ class CloudflareConferenceController extends ChangeNotifier {
         mediaKindRequested: wantVideo ? 'audio_video' : 'audio',
       );
 
-      final join = await CloudflareConferenceApi.join(gid, video: wantVideo);
+      // 1. Permissions FIRST. Asking after /join meant a denial arrived once the
+      //    Worker had already minted an SFU session, an authority and a ticket —
+      //    so saying "no" to a prompt wedged the room for everyone.
+      final perm = await _preflightPermissions();
+      if (!perm.mic) {
+        permissionDenied = true;
+        _tel?.error(stage: 'permission_denied', direction: 'ticket', recoverable: false);
+        state = CfConnState.failed;
+        statusText = 'AvaTOK needs microphone access to join a call.';
+        _safeNotify();
+        return;
+      }
+      _effectiveVideo = wantVideo && perm.camera;
+      if (wantVideo && !perm.camera) {
+        // Camera denied, mic granted: join audio-only rather than failing. The
+        // single combined getUserMedia used to kill audio along with video.
+        notice = 'Camera access is off — joining with audio only.';
+        _tel?.error(stage: 'camera_permission_downgrade', direction: 'publish', recoverable: true);
+      }
+
+      // 2. /join.
+      final join = await CloudflareConferenceApi.join(gid, video: _effectiveVideo);
       _join = join;
       _ticketIssuedAtMs = DateTime.now().millisecondsSinceEpoch;
       _generation = join.generation;
-      _tel = CloudflareConferenceTelemetry(
-        groupId: gid,
-        callId: join.callId,
-        callTraceId: join.callTraceId,
-        generation: join.generation,
-        mediaKindRequested: join.mediaVideo ? 'audio_video' : 'audio',
-      );
+      _tel?.callId = join.callId;
+      _tel?.callTraceId = join.callTraceId;
+      _tel?.generation = join.generation;
 
+      // The call's media_kind is owned by whoever started it. Honour it: a video
+      // publish into an audio call is rejected wholesale by the Worker.
+      if (!join.mediaVideo && _effectiveVideo) {
+        _effectiveVideo = false;
+        notice = 'This is an audio call — your camera stays off.';
+      }
+      relayDegraded = join.relayDegraded;
+      if (relayDegraded) notice = 'Call quality may be reduced on this network.';
+
+      // 3. WS open + awaited `welcome` — the DO attachment publish depends on.
+      await _joinConnectWs(join, route: 'join');
+
+      // 4. Capture and publish, now that the server will accept it.
       await _createPcAndPublish(join, generationAtStart: _generation);
 
-      _joinConnectWs(join, route: 'join');
       _startLevelReporting();
       _startBillingBeat();
       _startHealthSampler();
@@ -190,8 +271,49 @@ class CloudflareConferenceController extends ChangeNotifier {
       AvaLog.I.log('cfconf', 'connect failed: $e');
       _tel?.error(stage: 'session_create_failed', direction: 'ticket', recoverable: false, exception: e, stack: st);
       state = CfConnState.failed;
-      statusText = 'Could not join the call';
+      // Show what the server actually said. Rendering every failure as one
+      // generic line is why "calls are switched off", "this group is too big"
+      // and "the call ended" were indistinguishable to the person holding the
+      // phone — and to whoever they reported it to.
+      statusText = _userFacingError(e);
       _safeNotify();
+    }
+  }
+
+  String _userFacingError(Object e) {
+    if (e is CloudflareConferenceException) {
+      final m = e.message.trim();
+      if (m.isNotEmpty && !m.startsWith('Group call error')) {
+        return m.substring(0, 1).toUpperCase() + m.substring(1);
+      }
+      if (e.status == 503) return 'Group calls are temporarily unavailable.';
+      if (e.status == 403) return 'You can\'t join this call.';
+      if (e.status == 409) return 'This call is full.';
+    }
+    if (e is TimeoutException) return 'The call server didn\'t respond. Check your connection and try again.';
+    return 'Could not join the call';
+  }
+
+  /// [GCALL-W1-PERM] Ask for exactly what this call needs, before any server
+  /// state exists. An audio call asks for the microphone ONLY — it previously
+  /// demanded the camera too, via a combined `getUserMedia`, so joining an
+  /// audio call prompted for a camera the call would never use.
+  Future<({bool mic, bool camera})> _preflightPermissions() async {
+    // A shared capture source (1:1 hand-off / warm-up) is already permitted and
+    // running; re-requesting would prompt again for no reason.
+    if (sharedLocalStream != null) return (mic: true, camera: wantVideo);
+    try {
+      final wanted = <Permission>[Permission.microphone, if (wantVideo) Permission.camera];
+      final res = await wanted.request();
+      return (
+        mic: res[Permission.microphone]?.isGranted ?? false,
+        camera: wantVideo && (res[Permission.camera]?.isGranted ?? false),
+      );
+    } catch (e) {
+      // Platform without permission_handler support: fall through and let
+      // getUserMedia be the gate, exactly as before this change.
+      AvaLog.I.log('cfconf', 'permission preflight unavailable: $e');
+      return (mic: true, camera: wantVideo);
     }
   }
 
@@ -226,7 +348,7 @@ class CloudflareConferenceController extends ChangeNotifier {
 
     _localStream = sharedLocalStream ?? await navigator.mediaDevices.getUserMedia({
       'audio': avaMicConstraints(),
-      'video': wantVideo
+      'video': _effectiveVideo
           ? {
               'facingMode': 'user',
               'width': {'ideal': 640},
@@ -241,7 +363,7 @@ class CloudflareConferenceController extends ChangeNotifier {
     if (audioTracks.isEmpty || !audioTracks.first.enabled) {
       throw StateError('local audio capture failed');
     }
-    _cameraOn = wantVideo && _localStream!.getVideoTracks().isNotEmpty;
+    _cameraOn = _effectiveVideo && _localStream!.getVideoTracks().isNotEmpty;
     if (_cameraOn) localRenderer.srcObject = _localStream;
 
     final specs = <CfTrackSpec>[
@@ -275,6 +397,24 @@ class CloudflareConferenceController extends ChangeNotifier {
     }
 
     await _publish(join, specs, attempt: 1, generationAtStart: generationAtStart);
+    _announcePublishedTracks(join);
+  }
+
+  /// [GCALL-W1-TRACKFRAME] Tell the DO which track names we just published.
+  ///
+  /// The DO learns a member's `audioTrack`/`videoTrack` ONLY from this frame —
+  /// it is what populates the roster other clients pull from, and
+  /// `/authority/pull` rejects a pull with 403 "publisher is not publishing
+  /// that track" when it is missing. The controller only ever sent this frame
+  /// from `toggleCamera`, never after the initial publish, so every roster
+  /// entry carried `audio_track: null`. That was invisible while the join
+  /// itself could not complete; with the ordering fixed it would have been the
+  /// next wall — a call that connects and stays permanently silent.
+  void _announcePublishedTracks(CfJoinResult join) {
+    _send({'t': 'track', 'kind': 'audio', 'trackName': 'audio-${join.sessionId}', 'enabled': true});
+    if (_cameraOn) {
+      _send({'t': 'track', 'kind': 'video', 'trackName': 'video-${join.sessionId}', 'enabled': true});
+    }
   }
 
   Future<void> _publish(CfJoinResult join, List<CfTrackSpec> specs,
@@ -315,7 +455,34 @@ class CloudflareConferenceController extends ChangeNotifier {
 
   // ---- signaling WS --------------------------------------------------------------
 
-  void _joinConnectWs(CfJoinResult join, {required String route}) {
+  // ---- [GCALL-W1-ORDER] awaited `welcome` handshake -------------------------------
+  //
+  // The completer is keyed to `_wsEpoch`, NOT to the generation: a fresh join
+  // may reuse the same generation value the previous socket ran under (the same
+  // reason `_joinConnectWs` already retires the old subscription by epoch), so
+  // a `welcome` left over from a superseded socket could otherwise satisfy the
+  // wait of a brand-new one and let it publish against an attachment that does
+  // not exist.
+  Completer<void>? _welcomeCompleter;
+  int _welcomeEpoch = 0;
+  static const Duration _welcomeTimeout = Duration(seconds: 10);
+
+  void _completeWelcome(int epoch) {
+    if (epoch != _welcomeEpoch) return;
+    final c = _welcomeCompleter;
+    if (c != null && !c.isCompleted) c.complete();
+  }
+
+  void _failWelcome(int epoch, Object error) {
+    if (epoch != _welcomeEpoch) return;
+    final c = _welcomeCompleter;
+    if (c != null && !c.isCompleted) c.completeError(error);
+  }
+
+  /// Opens the signalling socket and resolves only once the DO has answered
+  /// with `welcome` — i.e. once this device is genuinely attached to the call.
+  /// Throws on socket error/close, a `full` rejection, or timeout.
+  Future<void> _joinConnectWs(CfJoinResult join, {required String route}) async {
     final ticketAge = DateTime.now().millisecondsSinceEpoch - _ticketIssuedAtMs;
     _tel?.joinStarted(route: route, ticketAgeMs: ticketAge);
     // A rejoin can happen while the previous socket is still delivering its
@@ -328,27 +495,42 @@ class CloudflareConferenceController extends ChangeNotifier {
     try { _ws?.sink.close(); } catch (_) {}
 
     final wsEpoch = ++_wsEpoch;
+    final completer = Completer<void>();
+    _welcomeCompleter = completer;
+    _welcomeEpoch = wsEpoch;
+    // A late completeError with no listener left (e.g. after the timeout below
+    // has already thrown) would surface as an unhandled async error.
+    unawaited(completer.future.catchError((_) {}));
+
     final ws = WebSocketChannel.connect(Uri.parse(join.wsUrl));
     _ws = ws;
     final generationAtOpen = _generation;
     final sub = ws.stream.listen(
-      (raw) => _onWsMessage(raw, generationAtOpen),
-      onError: (_) {
+      (raw) => _onWsMessage(raw, generationAtOpen, wsEpoch),
+      onError: (e) {
+        _failWelcome(wsEpoch, StateError('signalling socket error: $e'));
         if (wsEpoch == _wsEpoch && !_ended) unawaited(_attemptReconnect(reason: 'socket_error'));
       },
       onDone: () {
+        _failWelcome(wsEpoch, StateError('signalling socket closed before handshake'));
         if (wsEpoch == _wsEpoch && !_ended) unawaited(_attemptReconnect(reason: 'socket_closed'));
       },
     );
     _wsSub = sub;
     _send({'t': 'hello'});
+
+    await completer.future.timeout(_welcomeTimeout, onTimeout: () {
+      _tel?.error(stage: 'welcome_timeout', direction: 'socket', recoverable: true);
+      throw TimeoutException('call server did not confirm the join', _welcomeTimeout);
+    });
   }
 
   void _send(Map<String, dynamic> m) {
     try { _ws?.sink.add(jsonEncode(m)); } catch (_) {}
   }
 
-  Future<void> _onWsMessage(dynamic raw, int generationAtOpen) async {
+  Future<void> _onWsMessage(dynamic raw, int generationAtOpen, int wsEpoch) async {
+    if (wsEpoch != _wsEpoch) return; // superseded socket, ignore
     if (generationAtOpen != _generation || _ended) return; // stale socket, ignore
     if (raw is! String) return;
     Map<String, dynamic> d;
@@ -363,6 +545,9 @@ class CloudflareConferenceController extends ChangeNotifier {
         final you = d['you']?.toString();
         if (you != null && you.isNotEmpty) _selfUid = you;
         _applyRoster((d['roster'] as List?) ?? const []);
+        // The DO has accepted the upgrade and our attachment exists — this, and
+        // only this, is what makes a /publish legal.
+        _completeWelcome(wsEpoch);
         break;
       case 'roster':
         _applyRoster((d['roster'] as List?) ?? const []);
@@ -390,6 +575,7 @@ class CloudflareConferenceController extends ChangeNotifier {
       case 'full':
         state = CfConnState.failed;
         statusText = d['reason']?.toString() ?? 'Call is full';
+        _failWelcome(wsEpoch, StateError(statusText));
         _tel?.error(stage: 'capacity_rejected', direction: 'socket', recoverable: false);
         _safeNotify();
         await leave(reason: 'capacity_evicted');
@@ -464,7 +650,7 @@ class CloudflareConferenceController extends ChangeNotifier {
   }
 
   Future<void> _applyVideoSubscriptionPolicy() async {
-    if (!wantVideo || (_join?.mediaVideo ?? false) == false) return;
+    if (!_effectiveVideo || (_join?.mediaVideo ?? false) == false) return;
     final dominant = _dominantSpeakerUid;
     final wanted = <String>{
       if (dominant != null) dominant,
@@ -618,7 +804,9 @@ class CloudflareConferenceController extends ChangeNotifier {
   // ---- camera-off (WITHOUT a new session) ----------------------------------------
 
   Future<void> toggleCamera() async {
-    if (!wantVideo) return;
+    // Gate on the EFFECTIVE mode: `wantVideo` is only what was asked for, and a
+    // camera-denied or audio-only call has no video sender to toggle.
+    if (!_effectiveVideo) return;
     _cameraOn = !_cameraOn;
     for (final t in _localStream?.getVideoTracks() ?? const <MediaStreamTrack>[]) {
       t.enabled = _cameraOn;
@@ -690,8 +878,21 @@ class CloudflareConferenceController extends ChangeNotifier {
     if (pc != null) unawaited(pc.close());
   }
 
+  // [GCALL-W1-RETRY] Bounded reconnect retry. Recovery used to be ONE shot: a
+  // WiFi→cellular switch or a brief tunnel fires the single attempt while the
+  // network is still down, it fails, and the call is declared dead — with the
+  // user looking at a frozen screen. Three attempts over ~14s covers the
+  // ordinary blips. A connectivity listener and ICE restart (both of which 1:1
+  // calls already have) remain Wave 2; this is the minimum that makes the
+  // corrected rejoin path reachable at all.
+  static const List<int> _reconnectBackoffSec = [2, 4, 8];
+  int _reconnectTry = 0;
+  Timer? _reconnectRetryTimer;
+
   Future<void> _attemptReconnect({required String reason, bool forceRecreate = false}) async {
     if (_ended || _reconnecting) return;
+    _reconnectRetryTimer?.cancel();
+    _reconnectRetryTimer = null;
     _reconnecting = true;
     state = CfConnState.reconnecting;
     statusText = 'Reconnecting…';
@@ -708,18 +909,33 @@ class CloudflareConferenceController extends ChangeNotifier {
     _tel?.reconnectStarted(attemptId: attemptId, reason: reason, mediaKeptAlive: true);
     final t0 = DateTime.now().millisecondsSinceEpoch;
     try {
+      // The fast path is tried first, but it is NOT allowed to silently succeed
+      // without a handshake: `/rejoin` only mints a ticket for a session whose
+      // DO attachment still exists, and that attachment can lose the race with
+      // its own close event. If the awaited `welcome` doesn't arrive, fall
+      // through to the full join (which mints a brand-new SFU session) rather
+      // than reporting Connected over a socket the DO never accepted.
+      var fastPathDone = false;
       if (ticketFresh) {
-        // Ticket nonces are consumed by the DO on websocket upgrade. Mint a
-        // fresh ticket for every reconnect while keeping the media PC alive.
-        final refreshed = await CloudflareConferenceApi.rejoin(gid, sessionId: _join!.sessionId);
-        _join = refreshed;
-        _ticketIssuedAtMs = DateTime.now().millisecondsSinceEpoch;
-        _generation = refreshed.generation;
-        _joinConnectWs(refreshed, route: 'rejoin');
-        _tel?.reconnectCompleted(
-            attemptId: attemptId, mediaKeptAlive: true,
-            elapsedMs: DateTime.now().millisecondsSinceEpoch - t0, pcRecreated: false);
-      } else {
+        try {
+          // Ticket nonces are consumed by the DO on websocket upgrade. Mint a
+          // fresh ticket for every reconnect while keeping the media PC alive.
+          final refreshed = await CloudflareConferenceApi.rejoin(gid, sessionId: _join!.sessionId);
+          _join = refreshed;
+          _ticketIssuedAtMs = DateTime.now().millisecondsSinceEpoch;
+          _generation = refreshed.generation;
+          await _joinConnectWs(refreshed, route: 'rejoin');
+          _announcePublishedTracks(refreshed);
+          fastPathDone = true;
+          _tel?.reconnectCompleted(
+              attemptId: attemptId, mediaKeptAlive: true,
+              elapsedMs: DateTime.now().millisecondsSinceEpoch - t0, pcRecreated: false);
+        } catch (e) {
+          AvaLog.I.log('cfconf', 'fast rejoin failed, falling back to full join: $e');
+          _tel?.error(stage: 'rejoin_fastpath_failed', direction: 'socket', recoverable: true, exception: e);
+        }
+      }
+      if (!fastPathDone) {
         // Ticket expired (or PC Failed): mint a fresh ticket via /join,
         // reusing the existing PC — we only recreate the PC once the NEW
         // path has produced remote media evidence (a track event), never
@@ -729,8 +945,14 @@ class CloudflareConferenceController extends ChangeNotifier {
         // below closes it if `_publish` throws, and leave()/dispose() close
         // it as a last resort.
         _retirePendingPcNow(); // safety: retire any earlier still-pending PC first
-        final rejoin = await CloudflareConferenceApi.join(gid, video: wantVideo);
+        // Re-join with the EFFECTIVE media mode, not the original request: after
+        // an audio-downgraded join (camera denied, or an audio-only call), a
+        // reconnect that re-requested video would walk straight back into the
+        // publish rejection this wave exists to remove.
+        final rejoin = await CloudflareConferenceApi.join(gid, video: _effectiveVideo);
         if (_ended) return;
+        if (!rejoin.mediaVideo && _effectiveVideo) _effectiveVideo = false;
+        relayDegraded = rejoin.relayDegraded;
         _pendingRetirePc = _pc;
         _armPendingRetireTimer();
         _join = rejoin;
@@ -776,28 +998,51 @@ class CloudflareConferenceController extends ChangeNotifier {
           }
         }
         _pc = newPc;
+        _cameraOn = _cameraOn && _effectiveVideo;
         final specs = <CfTrackSpec>[
           CfTrackSpec(mid: '0', kind: 'audio', trackName: 'audio-${rejoin.sessionId}'),
           if (_cameraOn) CfTrackSpec(mid: '1', kind: 'video', trackName: 'video-${rejoin.sessionId}'),
         ];
+        // [GCALL-W1-ORDER] Same defect, second site: this branch published
+        // BEFORE opening the socket, so every PC-failure and ticket-expiry
+        // reconnect 409'd exactly like the original join did. Socket and
+        // handshake first, publish second.
+        await _joinConnectWs(rejoin, route: 'join');
         await _publish(rejoin, specs, attempt: 1, generationAtStart: _generation);
-        _joinConnectWs(rejoin, route: 'join');
+        _announcePublishedTracks(rejoin);
         _tel?.reconnectCompleted(
             attemptId: attemptId, mediaKeptAlive: true,
             elapsedMs: DateTime.now().millisecondsSinceEpoch - t0, pcRecreated: true);
       }
       state = CfConnState.connected;
       statusText = 'Connected';
+      _reconnectTry = 0;
     } catch (e, st) {
       // `_publish` (or an earlier await) threw mid-rejoin: the old PC must
       // not leak just because the new path failed to complete.
       _retirePendingPcNow();
+      final willRetry = !_ended && _reconnectTry < _reconnectBackoffSec.length;
       _tel?.reconnectFailed(
           attemptId: attemptId, elapsedMs: DateTime.now().millisecondsSinceEpoch - t0,
           terminalReason: 'socket_reconnect_timeout');
-      _tel?.error(stage: 'socket_reconnect_failed', direction: 'socket', recoverable: false, exception: e, stack: st);
-      state = CfConnState.failed;
-      statusText = 'Connection lost';
+      _tel?.error(stage: 'socket_reconnect_failed', direction: 'socket', recoverable: willRetry, exception: e, stack: st);
+      if (willRetry) {
+        final delay = Duration(seconds: _reconnectBackoffSec[_reconnectTry]);
+        _reconnectTry++;
+        state = CfConnState.reconnecting;
+        statusText = 'Reconnecting…';
+        _reconnectRetryTimer?.cancel();
+        _reconnectRetryTimer = Timer(delay, () {
+          if (_ended) return;
+          // A retry always takes the full recreate path: whatever the original
+          // trigger was, the previous attempt has just proven the cheap route
+          // isn't coming back on its own.
+          unawaited(_attemptReconnect(reason: 'retry:$reason', forceRecreate: true));
+        });
+      } else {
+        state = CfConnState.failed;
+        statusText = 'Connection lost';
+      }
     } finally {
       _reconnecting = false;
       _safeNotify();
@@ -870,7 +1115,7 @@ class CloudflareConferenceController extends ChangeNotifier {
         );
         _lastMediaHealthClass = cls;
       }
-      if (wantVideo && videoFramesDecoded != null) {
+      if (_effectiveVideo && videoFramesDecoded != null) {
         final decodeDelta = _lastVideoFrames != null ? videoFramesDecoded - _lastVideoFrames! : null;
         if (decodeDelta != null && decodeDelta > 0) {
           _tel?.mediaHealth(trackKind: 'video', cls: 'healthy', invariantReached: 'video_decode_progressing', decodeFramesDelta: decodeDelta);
@@ -925,6 +1170,9 @@ class CloudflareConferenceController extends ChangeNotifier {
     final drift = 0; // no server-authoritative counter wired client-side yet
     _tel?.billingReconciled(reconcileReason: 'foreground_resume', driftMs: drift);
     if (state != CfConnState.connected && !_reconnecting) {
+      // Coming back to the foreground is a new chance, not a continuation of a
+      // budget spent while the screen was off.
+      _reconnectTry = 0;
       unawaited(_attemptReconnect(reason: 'app_foregrounded'));
     }
   }
@@ -943,6 +1191,11 @@ class CloudflareConferenceController extends ChangeNotifier {
     _healthTimer?.cancel();
     _retireTimer?.cancel();
     _retireTimer = null;
+    // A pending reconnect retry must never outlive the call it was retrying,
+    // and a handshake still being awaited must not hang the leave path.
+    _reconnectRetryTimer?.cancel();
+    _reconnectRetryTimer = null;
+    _failWelcome(_welcomeEpoch, StateError('call ended'));
 
     try {
       final senders = await _pc?.getSenders() ?? const [];

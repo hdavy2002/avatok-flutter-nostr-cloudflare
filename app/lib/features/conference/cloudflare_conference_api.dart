@@ -31,6 +31,13 @@ class CfJoinResult {
   final int maxParticipants;
   final String wsUrl;
   final int generation;
+  /// [GCALL-W1-RELAY] The Worker has always sent `relay_available`/
+  /// `relay_degraded`/`relay_reason` on join; the client simply dropped them,
+  /// so a call running without a usable TURN relay looked identical to a
+  /// healthy one right up until the media didn't connect.
+  final bool relayAvailable;
+  final bool relayDegraded;
+  final String? relayReason;
 
   const CfJoinResult({
     required this.provider,
@@ -44,6 +51,9 @@ class CfJoinResult {
     required this.maxParticipants,
     required this.wsUrl,
     required this.generation,
+    this.relayAvailable = true,
+    this.relayDegraded = false,
+    this.relayReason,
   });
 
   /// Loggable / telemetry-safe form: bare `wss://host/path`, ticket query
@@ -71,6 +81,9 @@ class CfJoinResult {
       maxParticipants: (j['max_participants'] as num?)?.toInt() ?? 25,
       wsUrl: (j['ws_url'] ?? '').toString(),
       generation: (j['generation'] as num?)?.toInt() ?? 1,
+      relayAvailable: j['relay_available'] != false,
+      relayDegraded: j['relay_degraded'] == true,
+      relayReason: j['relay_reason']?.toString(),
     );
   }
 }
@@ -211,19 +224,50 @@ class CloudflareConferenceApi {
   }
 
   /// GET /status — in-chat "ongoing call" banner probe.
-  static Future<({bool live, int count, int max, String? callId})> status(String gid) async {
+  ///
+  /// [GCALL-W1-STATUS] The record now carries four more fields the Worker was
+  /// either already able to answer or has just been taught to:
+  ///  - `mediaKind`/`state`: so the banner can join with the call's ACTUAL media
+  ///    kind. It hardcoded a video join, and a video publish into an audio call
+  ///    is rejected server-side — which failed the entire join, not just the
+  ///    camera.
+  ///  - `available`/`unavailableReason`: so "calls are switched off", "we
+  ///    couldn't reach the call service" and "there is no call right now" stop
+  ///    collapsing into one indistinguishable `live:false`.
+  /// A transport failure reports `unavailableReason:'network'` rather than
+  /// pretending the service said no.
+  static Future<({
+    bool live,
+    int count,
+    int max,
+    String? callId,
+    String? state,
+    String? mediaKind,
+    bool available,
+    String? unavailableReason,
+  })> status(String gid) async {
     try {
       final res = await ApiAuth.getSigned('$kCfGroupCallBase/$gid/status');
-      if (res.statusCode != 200) return (live: false, count: 0, max: 25, callId: null);
+      if (res.statusCode != 200) {
+        return (live: false, count: 0, max: 25, callId: null, state: null,
+            mediaKind: null, available: false, unavailableReason: 'http_${res.statusCode}');
+      }
       final j = jsonDecode(res.body) as Map<String, dynamic>;
       return (
         live: j['live'] == true,
         count: (j['count'] as num?)?.toInt() ?? 0,
         max: (j['max'] as num?)?.toInt() ?? 25,
         callId: j['call_id']?.toString(),
+        state: j['state']?.toString(),
+        mediaKind: j['media_kind']?.toString(),
+        // Absent on a Worker that predates this field — treat silence as
+        // available so an old backend keeps behaving exactly as it used to.
+        available: j['available'] != false,
+        unavailableReason: j['unavailable_reason']?.toString(),
       );
     } catch (_) {
-      return (live: false, count: 0, max: 25, callId: null);
+      return (live: false, count: 0, max: 25, callId: null, state: null,
+          mediaKind: null, available: false, unavailableReason: 'network');
     }
   }
 }
