@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
 import '../analytics.dart';
@@ -41,8 +42,36 @@ class CallSessionManager with WidgetsBindingObserver {
   static const CallSessionToken _sessionToken = kCallSessionToken;
 
   final ValueNotifier<CallSession?> _active = ValueNotifier<CallSession?>(null);
+  CallSession? _logicalActive;
+  int _activePublishGeneration = 0;
   ValueListenable<CallSession?> get active => _active;
-  CallSession? get current => _active.value;
+  CallSession? get current => _logicalActive;
+
+  /// Update call ownership synchronously, but never notify CallOverlay while
+  /// Flutter is in its build pass. CallScreen attaches from initState; directly
+  /// assigning `_active.value` there can synchronously rebuild the overlay and
+  /// throws `setState() or markNeedsBuild() called during build` (production
+  /// incident avatok-25b3e99e). The logical value stays immediate for call
+  /// exclusion/dedup; only the UI notification is deferred to the frame end.
+  void _setActive(CallSession? next) {
+    _logicalActive = next;
+    final generation = ++_activePublishGeneration;
+
+    void publish() {
+      // A newer start/end in the same frame supersedes this publication.
+      if (generation != _activePublishGeneration) return;
+      if (_active.value != _logicalActive) {
+        _active.value = _logicalActive;
+      }
+    }
+
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      SchedulerBinding.instance.addPostFrameCallback((_) => publish());
+    } else {
+      publish();
+    }
+  }
 
   // [CALL-DUP-SESSION-1] Registry of LIVE (non-ended) sessions keyed by room
   // (== callId). WHY: `_active` is a single slot and is populated only after the
@@ -131,10 +160,10 @@ class CallSessionManager with WidgetsBindingObserver {
       });
       // Re-assert it as the active session (a restore path may attach while a
       // different/ended session momentarily sits in `_active`).
-      if (_active.value != live) _active.value = live;
+      if (_logicalActive != live) _setActive(live);
       return live;
     }
-    final existing = _active.value;
+    final existing = _logicalActive;
     if (existing != null && !existing.isEnded && existing.room == config.room) {
       _byRoom[config.room] = existing;
       return existing;
@@ -153,12 +182,12 @@ class CallSessionManager with WidgetsBindingObserver {
     // Register SYNCHRONOUSLY before start()/anything async so a concurrent
     // attach for the same room in this microtask sees it and dedups.
     _byRoom[config.room] = session;
-    _active.value = session;
+    _setActive(session);
     // When the session tears down, drop it from `active` AND the registry.
     void watch() {
       if (session.phase.value == CallPhase.ended) {
         session.phase.removeListener(watch);
-        if (_active.value == session) _active.value = null;
+        if (_logicalActive == session) _setActive(null);
         if (_byRoom[config.room] == session) _byRoom.remove(config.room);
       }
     }
@@ -193,7 +222,7 @@ class CallSessionManager with WidgetsBindingObserver {
     }
     // Also cover a session sitting in `_active` that (for any reason) isn't in the
     // keyed registry.
-    final a = _active.value;
+    final a = _logicalActive;
     if (a != null && !a.isEnded && a.room != room && !_byRoom.containsValue(a)) {
       try {
         if (a.hasLiveReceptionist) {
@@ -207,10 +236,10 @@ class CallSessionManager with WidgetsBindingObserver {
 
   /// End the current session (if any) via the single teardown path.
   Future<void> hangupActive(String reason) async {
-    final s = _active.value;
+    final s = _logicalActive;
     if (s == null) return;
     await s.hangup(reason);
-    if (_active.value == s) _active.value = null;
+    if (_logicalActive == s) _setActive(null);
     // [CALL-DUP-SESSION-1] Drop it from the keyed registry too.
     _byRoom.removeWhere((_, v) => v == s || v.isEnded);
   }
@@ -218,7 +247,7 @@ class CallSessionManager with WidgetsBindingObserver {
   /// End every live session (there is at most one 1:1 today). Called on account
   /// switch / logout via clearCallState().
   Future<void> destroyAll() async {
-    final s = _active.value;
+    final s = _logicalActive;
     if (s != null && !s.isEnded) {
       try { await s.hangup('account-switch'); } catch (_) {}
     }
@@ -228,12 +257,12 @@ class CallSessionManager with WidgetsBindingObserver {
       try { await other.hangup('account-switch'); } catch (_) {}
     }
     _byRoom.clear();
-    _active.value = null;
+    _setActive(null);
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    final s = _active.value;
+    final s = _logicalActive;
     if (s == null || s.isEnded) return;
     if (state == AppLifecycleState.paused) {
       // Keep the call alive in the background: ensure the FGS is running (it was

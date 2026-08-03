@@ -3330,11 +3330,38 @@ class PushService {
   /// behaves exactly as before.
   static Future<void> acceptRingingCall(String callId, {Map? fallbackExtra}) async {
     unawaited(_dismissBrandedFsi()); // [AVACALL-INUI-2] clear the lock-screen FSI banner
+    // [CALL-ACCEPT-INTENT-1 2026-08-03] Claim the human answer BEFORE touching
+    // CallKit. `activeCalls()` crosses the Android platform bridge and can take
+    // several seconds on a busy/debug device. In PostHog call avatok-25b3e99e
+    // the server never received accept_call before its alarm won, while this
+    // bridge was still ahead of the authoritative claim on every accept path.
+    // That ordering made a near-deadline tap unnecessarily easy to lose and
+    // left the caller in ringback until Ava took over.
+    //
+    // The Durable Object command is the only operation that matters for the
+    // race. Native/in-app ring cleanup is local presentation work and happens
+    // after the claim. The command id is stable, so a duplicate native Accept
+    // can safely replay the same decision.
+    unawaited(_stopRingtoneFallback(callId));
     // [AVACALL-CANCEL-1] Don't answer into a call the caller already cancelled.
     if (wasCallTerminated(callId)) {
       Analytics.capture('call_accepted_dead', {
         'call_id': callId,
         'via': 'accept_ringing_cache',
+      });
+      try { await FlutterCallkitIncoming.endCall(callId); } catch (_) {}
+      return;
+    }
+    final authoritative = await _claimHumanAccept(callId);
+    if (authoritative != null) {
+      await applyRingTransition(
+        callId,
+        authoritative,
+        source: 'accept_authority_preflight',
+      );
+      Analytics.capture('call_late_accept_blocked', {
+        'call_id': callId,
+        'status': authoritative,
       });
       try { await FlutterCallkitIncoming.endCall(callId); } catch (_) {}
       return;
@@ -3345,7 +3372,7 @@ class PushService {
         for (final c in calls) {
           if (c is Map && (c['id'] ?? '').toString() == callId) {
             try { await FlutterCallkitIncoming.endCall(callId); } catch (_) {}
-            await _openCall(c['extra']);
+            await _openCall(c['extra'], acceptAlreadyClaimed: true);
             return;
           }
         }
@@ -3358,12 +3385,48 @@ class PushService {
         'call_id': callId,
         'reason': 'no_callkit_entry',
       });
-      unawaited(_stopRingtoneFallback(callId));
-      await _openCall(fallbackExtra);
+      await _openCall(fallbackExtra, acceptAlreadyClaimed: true);
     }
   }
 
-  static Future<void> _openCall(dynamic extra) async {
+  /// Atomically race a human Accept against the server-owned four-ring alarm.
+  /// Returns a terminal status when another outcome already won; null means
+  /// the human leg is claimed (or the network failed open and WebSocket
+  /// admission remains the final authority).
+  static Future<String?> _claimHumanAccept(String room) async {
+    String? authoritative;
+    try {
+      final claim = await ApiAuth.postJson(
+        kCallCommandUrl,
+        {
+          'callId': room,
+          'command': 'accept_call',
+          'commandId': 'accept:$room',
+        },
+        timeout: const Duration(milliseconds: 1500),
+      );
+      if (claim.statusCode < 200 || claim.statusCode >= 300) {
+        authoritative = await fetchDurableCallStatus(
+          room,
+          timeout: const Duration(milliseconds: 1200),
+        );
+        if (authoritative == null && claim.statusCode == 409) {
+          authoritative = 'ended';
+        }
+      }
+    } catch (_) {
+      authoritative = await fetchDurableCallStatus(
+        room,
+        timeout: const Duration(milliseconds: 1200),
+      );
+    }
+    return authoritative;
+  }
+
+  static Future<void> _openCall(
+    dynamic extra, {
+    bool acceptAlreadyClaimed = false,
+  }) async {
     try {
       final e = (extra as Map);
       final room = (e['callId'] ?? '').toString();
@@ -3372,39 +3435,9 @@ class PushService {
       // but Accept is the dangerous boundary. Atomically claim the human leg in
       // CallRoom before opening CallScreen. This command races the four-ring Ava
       // alarm inside one Durable Object: exactly one can win.
-      String? authoritative;
-      try {
-        final claim = await ApiAuth.postJson(
-          kCallCommandUrl,
-          {
-            'callId': room,
-            'command': 'accept_call',
-            // One accept exists per call. Native/branded duplicate events must
-            // replay the same result, not create another transition.
-            'commandId': 'accept:$room',
-          },
-          timeout: const Duration(milliseconds: 1500),
-        );
-        if (claim.statusCode < 200 || claim.statusCode >= 300) {
-          authoritative = await fetchDurableCallStatus(
-            room,
-            timeout: const Duration(milliseconds: 1200),
-          );
-          // A 409 is authoritative proof that another outcome already won. If
-          // the follow-up status read is lost, still fail closed locally.
-          if (authoritative == null && claim.statusCode == 409) {
-            authoritative = 'ended';
-          }
-        }
-      } catch (_) {
-        // A transport failure is not proof the call ended. One short durable
-        // read can still recover the handoff; otherwise the server's WebSocket
-        // admission gate remains the final safety boundary.
-        authoritative = await fetchDurableCallStatus(
-          room,
-          timeout: const Duration(milliseconds: 1200),
-        );
-      }
+      final authoritative = acceptAlreadyClaimed
+          ? null
+          : await _claimHumanAccept(room);
       if (authoritative != null) {
         await applyRingTransition(
           room,
