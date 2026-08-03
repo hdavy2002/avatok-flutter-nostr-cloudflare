@@ -3297,6 +3297,11 @@ class PushService {
         // incoming screen ringing forever.
         return _terminalCallStatus(terminal) ? terminal : 'ended';
       }
+      final ringStatus = (j['ring_status'] ?? '').toString();
+      if (ringStatus == 'decline_ava' || ringStatus == 'decline_vm' ||
+          ringStatus == 'decline_agent') {
+        return ringStatus;
+      }
       if (j['ended'] == true) return 'ended';
       return null;
     } catch (_) {

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { callerContactPolicy } from "../src/lib/call_contact_directory";
+import {
+  callerContactPolicy,
+  shouldRouteUnknownAvatokCaller,
+} from "../src/lib/call_contact_directory";
 
 function envWith(rows: {
   synced?: boolean;
@@ -59,6 +62,24 @@ describe("server unknown-caller policy", () => {
       envWith({ synced: true, callerHash: "abc", phone: false }), "owner", "caller",
     );
     expect(result).toEqual({ known: true, saved: false, matched_by: "none" });
+  });
+
+  it("does not divert an unsaved authenticated caller without explicit policy", () => {
+    expect(shouldRouteUnknownAvatokCaller(
+      { known: true, saved: false, matched_by: "none" },
+      false,
+    )).toBe(false);
+  });
+
+  it("diverts an authoritatively unsaved caller only when policy is enabled", () => {
+    expect(shouldRouteUnknownAvatokCaller(
+      { known: true, saved: false, matched_by: "none" },
+      true,
+    )).toBe(true);
+    expect(shouldRouteUnknownAvatokCaller(
+      { known: false, saved: false, reason: "lookup_failed" },
+      true,
+    )).toBe(false);
   });
 
   it("fails open on a directory outage", async () => {

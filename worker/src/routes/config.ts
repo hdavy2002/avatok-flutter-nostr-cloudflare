@@ -66,6 +66,12 @@ export interface PlatformConfig {
   // + PROPOSAL-RECEPTIONIST-V2.md). First real AvaVoice deployment. Gemini Live via CF AI
   // Gateway, 2-min cap.
   receptionistEnabled: boolean;      // master switch for /api/receptionist/* (default OFF until tested)
+  // Authenticated AvaTOK users who are not in the callee's synced contacts still
+  // ring by default. Turning this on restores the opt-in privacy mode that sends
+  // such callers directly to Ava. It must never be inferred merely from a
+  // successful address-book sync: that made ordinary calls silently become
+  // voicemail after sync completed (production incident 2026-08-03).
+  unknownAvatokCallerReceptionistEnabled: boolean;
   // [AVACALL-VMFREE-1] FREE AvaTOK↔AvaTOK auto-voicemail (owner decision, Phase WS2).
   // When an AvaTOK→AvaTOK AUDIO call is rejected / unanswered / phone-off and the
   // callee has NO active AI receptionist, the CALLER auto-fires a pre-recorded
@@ -812,6 +818,7 @@ const DEFAULTS: PlatformConfig = {
   avavisionEnabled: false,         // FREE LAUNCH: agent builder hidden
   aiVoiceCallEnabled: false,       // [AI-FLAG-CONTRACT-1] hands-free Ava voice call — was a fake flag; declared now, still dark until explicitly flipped
   receptionistEnabled: true,       // FREE LAUNCH: AI receptionist ON (Gemini Live)
+  unknownAvatokCallerReceptionistEnabled: false, // [CALL-UNKNOWN-GATE-1] normal authenticated AvaTOK calls ring unless this policy is explicitly enabled
   avatokVoicemailFree: true,       // [AVACALL-VMFREE-1] FREE AvaTOK↔AvaTOK auto-voicemail ON. Kill switch — flip false in KV to end no-answer AvaTOK audio calls silently again. NOT gated by the paid voicemailBot.
   voicemailEnabled: true,          // [VM-KILL-1] GLOBAL voicemail master switch. Default true = no change. Flip false in prod KV to disable ALL voicemail lanes at once (reversible).
   instantCallMountEnabled: true,   // [INSTANT-CALL-MOUNT-1] instant 1:1 call screen; POST /api/call runs in background. Kill switch (flip false to restore awaited path)

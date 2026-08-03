@@ -20,7 +20,7 @@ import { guardWrite } from "./moderate"; // save-time content validation (Nemotr
 import { readConfig } from "./config"; // P11: profileCompletionGate
 import { CALL_RING_LIFETIME_MS } from "../lib/call_delivery_contract";
 import { receptionistNoAnswerEligibility } from "./receptionist";
-import { callerContactPolicy } from "../lib/call_contact_directory";
+import { callerContactPolicy, shouldRouteUnknownAvatokCaller } from "../lib/call_contact_directory";
 // [WP1] Event-sourced call stream (Specs/PLAN-2026-07-11-dialpad-business-calls-ava-voice-agent.md §13/§14)
 import { emitCallEvent, emitRoutingDecision, newTraceId, EVENT_SCHEMA_VERSION } from "../lib/call_events";
 import { buildCallSnapshot } from "../lib/call_snapshot";
@@ -266,24 +266,30 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   // it into the push payload (→ callee) and PostHog captures on this path so the
   // caller, Worker, and callee all stitch under one trace_id. Additive/optional.
   const traceId = req.headers.get("x-trace-id") ?? "";
-  // [CALL-UNKNOWN-ROUTE-1] The server, not a warm handset, owns unknown-caller
-  // routing. The decision is authoritative only after the callee has synced a
-  // device directory; missing/partial policy always fails open to a human ring.
-  // Video is also redirected: Ava answers as an audio receptionist rather than
-  // waking the callee with a video call from an unsaved person.
+  // [CALL-UNKNOWN-ROUTE-1/CALL-UNKNOWN-GATE-1] The server, not a warm handset,
+  // owns unknown-caller classification. Classification alone never diverts an
+  // authenticated AvaTOK call: the separate policy switch must be explicitly
+  // enabled. Missing/partial policy and a missing config both fail open to a
+  // normal human ring.
   const contactPolicy = await callerContactPolicy(env, b.to, ctx.uid);
+  const callPolicyConfig = await readConfig(env).catch(() => null);
+  const routeUnknownCaller = shouldRouteUnknownAvatokCaller(
+    contactPolicy,
+    callPolicyConfig?.unknownAvatokCallerReceptionistEnabled === true,
+  );
   const contactPolicyTelemetry = track(env, b.to, "call_contact_policy_decision", "avatok", {
       call_id: b.callId,
       caller_uid: ctx.uid,
       known: contactPolicy.known,
       saved: contactPolicy.saved,
       reason: contactPolicy.known ? contactPolicy.matched_by : contactPolicy.reason,
-      routed: contactPolicy.known && !contactPolicy.saved ? "receptionist" : "ring",
+      policy_enabled: callPolicyConfig?.unknownAvatokCallerReceptionistEnabled === true,
+      routed: routeUnknownCaller ? "receptionist" : "ring",
       app_name: "avatok", service_name: "avatok-api", worker: true,
     }).catch(() => { /* policy telemetry never changes routing */ });
   if (execCtx) execCtx.waitUntil(contactPolicyTelemetry);
   else await contactPolicyTelemetry;
-  if (contactPolicy.known && !contactPolicy.saved) {
+  if (routeUnknownCaller) {
     try {
       const callStub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(b.callId));
       const participantResponse = await callStub.fetch("https://call-room/participants", {
@@ -1142,6 +1148,11 @@ export async function callCommand(req: Request, env: Env): Promise<Response> {
       replayed: out.replayed === true,
       disposition: out.disposition ?? null,
       seq: out.seq ?? null,
+      // A successful send() is not a delivery acknowledgement, but exposing
+      // these legs lets PostHog distinguish a detached caller (0 sockets) from
+      // a ghost/stale socket that accepted send() yet never applied the frame.
+      sockets_seen: out.sockets_seen ?? null,
+      sockets_sent: out.sockets_sent ?? null,
       app_name: "avatok", service_name: "avatok-api", worker: true,
     });
   } catch { /* telemetry must never change an outcome */ }
@@ -1275,6 +1286,7 @@ export async function callState(req: Request, env: Env): Promise<Response> {
     const sessionState = typeof j.session_state === "string" ? j.session_state : "";
     const wireStatus = typeof j.wire_status === "string" ? j.wire_status : "";
     const calleeHandoff = sessionState === "handoff" && j.callee_uid === ctx.uid;
+    const callerHandoff = sessionState === "handoff" && j.caller_uid === ctx.uid;
     // A handoff is intentionally non-terminal for the CALLER, who is speaking
     // with Ava. It IS terminal for the CALLEE's ring. Returning a callee-only
     // synthetic terminal status lets already-shipped clients' durable poll close
@@ -1287,7 +1299,14 @@ export async function callState(req: Request, env: Env): Promise<Response> {
       ended: j.ended === true,
       terminal_status: terminalStatus,
       session_state: sessionState || null,
-      ring_status: calleeHandoff ? (wireStatus || "decline_ava") : null,
+      // The caller normally learns this over the room socket. Exposing the
+      // same participant-scoped status here gives the app a strongly-consistent
+      // recovery path when Android has left a ghost socket registered and FCM
+      // is delayed. It contains no identity data and is visible only to one of
+      // the two persisted participants.
+      ring_status: (calleeHandoff || callerHandoff)
+        ? (wireStatus || "decline_ava")
+        : null,
       peers: typeof j.peers === "number" ? j.peers : null,
     });
   } catch {

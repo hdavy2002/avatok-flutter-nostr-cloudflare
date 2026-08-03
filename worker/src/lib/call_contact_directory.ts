@@ -1,9 +1,22 @@
 import type { Env } from "../types";
 import { normalizePhone, sha256Hex } from "../util";
 
-type ContactPolicy =
+export type ContactPolicy =
   | { known: false; saved: false; reason: "device_directory_not_synced" | "lookup_failed" }
   | { known: true; saved: boolean; matched_by: "uid" | "phone" | "none" };
+
+/**
+ * An address-book result is classification, not permission to divert a call.
+ * Automatic receptionist routing is a separate, explicit policy switch. Keeping
+ * this decision pure makes it impossible for a completed contact sync to
+ * silently change ordinary AvaTOK calling behaviour again.
+ */
+export function shouldRouteUnknownAvatokCaller(
+  policy: ContactPolicy,
+  enabled: boolean,
+): boolean {
+  return enabled && policy.known && !policy.saved;
+}
 
 const UID_RE = /^user_[A-Za-z0-9_-]{4,160}$/;
 

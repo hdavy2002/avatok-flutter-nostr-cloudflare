@@ -412,6 +412,13 @@ class CallSession {
   bool _connected = false;
   String _phase = 'connecting';
   Timer? _ringTimeout;
+  // A room WebSocket send is not a delivery acknowledgement: Android can leave
+  // a ghost socket registered after the process/network path has stopped
+  // consuming frames. While an outgoing call is ringing, this small durable
+  // poll recovers a callee-requested Ava handoff from the authoritative DO
+  // instead of waiting for a delayed FCM backstop or the full ring timeout.
+  Timer? _handoffAuthorityPoll;
+  bool _handoffAuthorityPollInFlight = false;
   /// [CALL-CONNECT-WATCHDOG-1] Direction-agnostic backstop against an infinite
   /// "Connecting…". Armed in [start], cancelled on connect and in [_teardown].
   Timer? _connectWatchdog;
@@ -1446,6 +1453,7 @@ class CallSession {
       });
     }
     if (config.outgoing) {
+      _startHandoffAuthorityPoll();
       // CALL-GLARE-1: publish our pending outgoing dial for the incoming-push
       // handler's glare detection. Cleared on connect + on teardown.
       gOutgoingCallTo = config.seed;
@@ -3623,6 +3631,43 @@ class CallSession {
     } catch (_) {/* fail-open — never block call setup on a probe */}
   }
 
+  void _startHandoffAuthorityPoll() {
+    _handoffAuthorityPoll?.cancel();
+    _handoffAuthorityPoll = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (_ended || _connected || _receptionistActive || _avaCountingDown) {
+        _handoffAuthorityPoll?.cancel();
+        return;
+      }
+      if (!_handoffAuthorityPollInFlight) {
+        unawaited(_pollHandoffAuthority());
+      }
+    });
+  }
+
+  Future<void> _pollHandoffAuthority() async {
+    _handoffAuthorityPollInFlight = true;
+    try {
+      final status = await PushService.fetchDurableCallStatus(
+        config.room,
+        timeout: const Duration(milliseconds: 1200),
+      );
+      if (status == 'decline_ava' && !_ended && !_connected &&
+          !_receptionistActive && !_avaCountingDown && !config.video) {
+        _handoffAuthorityPoll?.cancel();
+        _ringTimeout?.cancel();
+        Analytics.capture('call_handoff_recovered_authority_poll', {
+          'call_id': config.room,
+          'status': status,
+        });
+        await _handoffToAva('decline');
+      }
+    } catch (_) {
+      // Fail open: the room socket and FCM remain the primary + backstop paths.
+    } finally {
+      _handoffAuthorityPollInFlight = false;
+    }
+  }
+
   void _notifyCalleeCanceled() {
     if (config.seed.isEmpty) return;
     // [CALL-DUP-SESSION-1] Never fan out a 'cancel' for a room that ANOTHER live
@@ -4567,6 +4612,7 @@ class CallSession {
   }
 
   Future<void> _handoffToAva(String activationMode) async {
+    _handoffAuthorityPoll?.cancel();
     // CALL-REL-3: wait for the tone to actually stop (confirmed via the
     // ringback player's own generation counter) before handing audio to the
     // receptionist — a late/superseded tone completion must never bleed into
@@ -4986,6 +5032,7 @@ class CallSession {
     if (config.outgoing && !_connected) _notifyCalleeCanceled();
     _timer?.cancel();
     _ringTimeout?.cancel();
+    _handoffAuthorityPoll?.cancel();
     _ringAckFallback?.cancel();
     _deviceRingingTimer?.cancel();
     for (final t in _dialStageTimers) { t.cancel(); } // [DIAL-NARRATION-1]
