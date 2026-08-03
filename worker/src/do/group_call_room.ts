@@ -103,6 +103,19 @@ const TICKET_NONCE_PREFIX = "ticket_nonce:";
 const EVICT_PREFIX = "evicted:";
 const EVICT_BLOCK_MS = 120_000;
 
+// [GCALL-W4-ATTCAP] Hibernation attachments are capped (~2 KB). `Att` carries two
+// client-supplied track names plus two pull lists, so unbounded 128-char names
+// could be used to overflow the attachment and make serializeAttachment throw
+// INSIDE authorityPull — breaking the call for everyone, not just the sender.
+// Track names are ours by construction (`audio-<sessionId>`), so a much tighter
+// budget costs nothing and removes the overflow entirely.
+const MAX_TRACK_NAME = 64;
+// Wire-protocol version, echoed on `welcome`. There was no version field
+// anywhere, and CfJoinResult defaults every missing key, so a future shape
+// change would have degraded silently into the generic failure rather than
+// saying "this build is too old".
+const WIRE_VERSION = 1;
+
 interface Att {
   uid: string;
   session: string;      // SFU sessionId, bound from the verified ticket
@@ -110,6 +123,11 @@ interface Att {
   audioTrack: string | null;
   videoTrack: string | null;
   videoEnabled: boolean;
+  /// [GCALL-W4-MUTE] Server-known mute state. Mute used to be purely local: no
+  /// frame, no roster field, so the mic-slash other people saw was derived from
+  /// `audioTrack == null`, which is only ever true BEFORE the first publish.
+  /// Everyone therefore appeared unmuted no matter what they did.
+  muted: boolean;
   audioPulls: string[]; // remote trackNames this client currently pulls (audio)
   videoPulls: string[]; // remote trackNames this client currently pulls (video)
   level: number;        // smoothed 0..1
@@ -175,6 +193,13 @@ export class GroupCallRoom {
     const uid = String(b?.uid || "").slice(0, 128);
     if (!uid) return json({ error: "uid required" }, 400);
     const mediaKind: MediaKind = (["audio", "video", "audio_video"].includes(b?.media_kind) ? b.media_kind : "audio") as MediaKind;
+    // [GCALL-W4-RING] Who to un-ring when this call ends. The DO is the only
+    // component that knows the call is over (the last leave, the sweep, an
+    // eviction), but it has no view of group membership — so the caller hands it
+    // the roster to cancel against, once, at start.
+    const ringTargets: string[] = Array.isArray(b?.ring_targets)
+      ? b.ring_targets.map((u: unknown) => String(u).slice(0, 128)).filter(Boolean).slice(0, 64)
+      : [];
     const requestedCap = Number(b?.max_participants) || MAX_CONF_PARTICIPANTS;
     const maxParticipants = Math.max(2, Math.min(requestedCap, MAX_CONF_PARTICIPANTS));
 
@@ -194,6 +219,15 @@ export class GroupCallRoom {
         max_participants: maxParticipants,
       };
       await this.saveAuthority(a);
+      if (ringTargets.length) {
+        // The DO is addressed by idFromName(groupId) and so cannot recover the
+        // group id from its own identity — the caller supplies it, purely so the
+        // cancel frame can tell the client WHICH group stopped ringing.
+        try {
+          await this.state.storage.put("ring_targets", ringTargets);
+          await this.state.storage.put("ring_gid", String(b?.gid ?? "").slice(0, 128));
+        } catch { /* best-effort */ }
+      }
       // [GCALL-W1-SWEEP] Arm the sweep the moment the authority exists. Before
       // this, the alarm was only armed on a successful WS upgrade — so a join
       // that failed after /authority/start (the publish-before-WS ordering
@@ -376,8 +410,16 @@ export class GroupCallRoom {
     // Duplicate uid+generation (reconnect flurry) → evict the stale socket so the
     // new (verified) one takes over; this is NOT a stale-generation ticket (those
     // are hard-rejected above), just the same user reconnecting.
-    const existing = this.findWsByUid(ticket.uid);
-    if (existing) { try { existing.close(1000, "superseded by reconnect"); } catch { /* ignore */ } }
+    // [GCALL-W4-DUPE] The superseded socket is closed server-side, which (as
+    // everywhere else in this DO) does NOT re-enter webSocketClose — so nothing
+    // announced it, `liveCount` transiently double-counted the same person
+    // against the cap, and `findWsByUid` could still hand back the DEAD socket,
+    // making the new device's own session_check 409. Track it as excluded from
+    // here on so every read below sees the room as it will actually be.
+    const superseded = this.findWsByUid(ticket.uid);
+    if (superseded) {
+      try { superseded.close(1000, "superseded by reconnect"); } catch { /* ignore */ }
+    }
 
     // [GCALL-W1-NONCE] Every rejectable check has now passed — this socket is
     // being accepted, so and only so is the one-time ticket spent.
@@ -389,7 +431,7 @@ export class GroupCallRoom {
     const now = Date.now();
     const att: Att = {
       uid: ticket.uid, session: ticket.session_id, generation: ticket.generation,
-      audioTrack: null, videoTrack: null, videoEnabled: false,
+      audioTrack: null, videoTrack: null, videoEnabled: false, muted: false,
       audioPulls: [], videoPulls: [], level: 0, ts: now, born: now,
     };
     (server as any).serializeAttachment(att);
@@ -398,7 +440,7 @@ export class GroupCallRoom {
 
     this.sendTo(server, {
       t: "welcome", you: ticket.uid, call_id: a.call_id, call_trace_id: a.call_trace_id,
-      generation: a.generation, roster: this.roster(),
+      generation: a.generation, v: WIRE_VERSION, media_kind: a.media_kind, roster: this.roster(),
     });
     this.broadcastRoster(server);
     void this.ensureSweep();
@@ -423,9 +465,20 @@ export class GroupCallRoom {
       // {kind:"video", trackName:null, enabled:false}: it clears/disables ONLY
       // the video track, never touches audioTrack, and never creates a new
       // session (Phase 2 requirement).
+      // [GCALL-W4-MUTE] Mute is now a call fact, not a private one. Without this
+      // the only mute indicator other people had was `audioTrack == null`, which
+      // is true only before the first publish — so a muted participant looked
+      // live to everyone, and people talked over each other believing they were
+      // being heard.
+      case "mute": {
+        att.muted = data.muted === true;
+        (ws as any).serializeAttachment(att);
+        this.broadcastRoster();
+        break;
+      }
       case "track": {
         const kind = data.kind === "video" ? "video" : "audio";
-        const trackName = typeof data.trackName === "string" && data.trackName ? data.trackName.slice(0, 128) : null;
+        const trackName = typeof data.trackName === "string" && data.trackName ? data.trackName.slice(0, MAX_TRACK_NAME) : null;
         const enabled = data.enabled !== false;
         if (kind === "audio") {
           att.audioTrack = trackName;
@@ -439,7 +492,7 @@ export class GroupCallRoom {
       }
       // Legacy alias (pre-Phase-2 clients): audio-only publish.
       case "published":
-        att.audioTrack = typeof data.track === "string" ? data.track.slice(0, 128) : null;
+        att.audioTrack = typeof data.track === "string" ? data.track.slice(0, MAX_TRACK_NAME) : null;
         (ws as any).serializeAttachment(att);
         this.broadcastRoster();
         break;
@@ -570,6 +623,11 @@ export class GroupCallRoom {
     a.state = "ended";
     a.ended_at = Date.now();
     await this.saveAuthority(a);
+    // [GCALL-W4-RING] Stop every phone that is still ringing for this call. Without
+    // this a call that ends before anyone answers leaves the rest of the group
+    // ringing until their own timeout — and answering it would drop them into a
+    // call that no longer exists.
+    await this.cancelRing(a);
     // [GCALL-W1-NONCE] The call is over and its generation is spent, so every
     // ticket nonce recorded against it is dead weight. Dropping them here is
     // the only bounded point available: the sweep alarm stops re-arming once
@@ -581,28 +639,69 @@ export class GroupCallRoom {
     } catch { /* best-effort cleanup */ }
   }
 
+  /** [GCALL-W4-RING] Fan a ring-cancel to everyone who was rung for this call. */
+  private async cancelRing(a: Authority): Promise<void> {
+    let targets: string[] = [];
+    try { targets = (await this.state.storage.get<string[]>("ring_targets")) ?? []; } catch { /* none */ }
+    if (!targets.length) return;
+    let gid = "";
+    try { gid = (await this.state.storage.get<string>("ring_gid")) ?? ""; } catch { /* unknown */ }
+    try {
+      await this.state.storage.delete("ring_targets");
+      await this.state.storage.delete("ring_gid");
+    } catch { /* best-effort */ }
+    const body = JSON.stringify({
+      type: "group_call_ring_cancel", call_id: a.call_id, gid, ts: Date.now(),
+    });
+    await Promise.all(targets.map(async (uid) => {
+      try {
+        await this.env.INBOX.get(this.env.INBOX.idFromName(uid)).fetch("https://inbox/event", {
+          method: "POST", headers: { "content-type": "application/json" }, body,
+        });
+      } catch { /* one unreachable inbox must not block the others */ }
+    }));
+  }
+
   // ---- socket/roster helpers -----------------------------------------------------
 
   private att(ws: WebSocket): Att | null {
     try { return (ws as any).deserializeAttachment() as Att; } catch { return null; }
   }
 
+  // [GCALL-W4-DUPE] Count PEOPLE, not sockets. During a reconnect flurry the same
+  // uid can briefly hold two sockets (the superseded one is closed server-side,
+  // which does not re-enter webSocketClose), and counting both let one person
+  // consume two seats — pushing a full-ish room over the cap and rejecting a
+  // legitimate joiner.
   private liveCount(exclude?: WebSocket): number {
-    let n = 0;
-    for (const ws of this.state.getWebSockets()) { if (ws !== exclude) n++; }
-    return n;
+    const uids = new Set<string>();
+    let anon = 0;
+    for (const ws of this.state.getWebSockets()) {
+      if (ws === exclude) continue;
+      const a = this.att(ws);
+      if (a?.uid) uids.add(a.uid); else anon++;
+    }
+    return uids.size + anon;
   }
 
   private hasLiveUid(uid: string): boolean {
     return !!this.findWsByUid(uid);
   }
 
+  // [GCALL-W4-DUPE] When a uid has more than one socket, always return the
+  // NEWEST. The old code returned whichever came first out of getWebSockets(),
+  // so a just-superseded socket could win and the new device's session_check
+  // would 409 against an attachment that was already dead.
   private findWsByUid(uid: string): WebSocket | null {
+    let best: WebSocket | null = null;
+    let bestBorn = -1;
     for (const ws of this.state.getWebSockets()) {
       const a = this.att(ws);
-      if (a && a.uid === uid) return ws;
+      if (!a || a.uid !== uid) continue;
+      const born = a.born ?? 0;
+      if (born >= bestBorn) { bestBorn = born; best = ws; }
     }
-    return null;
+    return best;
   }
 
   private findAtt(uid: string, sessionId: string): Att | null {
@@ -628,12 +727,22 @@ export class GroupCallRoom {
   // that follows a departure still listed the departing member — and since the
   // client applies a roster by clear-and-rebuild, that frame re-added the very
   // participant the preceding {t:'left'} had just removed.
-  private roster(exclude?: WebSocket | Set<WebSocket>): { uid: string; session: string; audio_track: string | null; video_track: string | null; video_enabled: boolean }[] {
-    const out: { uid: string; session: string; audio_track: string | null; video_track: string | null; video_enabled: boolean }[] = [];
+  private roster(exclude?: WebSocket | Set<WebSocket>): { uid: string; session: string; audio_track: string | null; video_track: string | null; video_enabled: boolean; muted: boolean }[] {
+    const out: { uid: string; session: string; audio_track: string | null; video_track: string | null; video_enabled: boolean; muted: boolean }[] = [];
+    const seen = new Set<string>();
     for (const ws of this.state.getWebSockets()) {
       if (this.isExcluded(ws, exclude)) continue;
       const a = this.att(ws);
-      if (a) out.push({ uid: a.uid, session: a.session, audio_track: a.audioTrack, video_track: a.videoTrack, video_enabled: a.videoEnabled });
+      if (!a) continue;
+      // [GCALL-W4-DUPE] One row per person: a reconnect flurry can leave the same
+      // uid on two sockets for a beat, and a duplicated roster row renders as a
+      // duplicate tile (and double-counts the participant total on screen).
+      if (seen.has(a.uid)) continue;
+      seen.add(a.uid);
+      out.push({
+        uid: a.uid, session: a.session, audio_track: a.audioTrack,
+        video_track: a.videoTrack, video_enabled: a.videoEnabled, muted: a.muted === true,
+      });
     }
     return out;
   }

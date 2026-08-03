@@ -227,6 +227,95 @@ async function emitConf(
   } catch { /* telemetry is never allowed to fail the call path */ }
 }
 
+// ---- [GCALL-W4-RING] ringing the group ------------------------------------------
+//
+// Mirrors the 1:1 ring in routes/api.ts (WS fast path + FCM offline path), with
+// the parts that only make sense for a two-party call left out: there is no
+// per-callee CallRoom participant record, no ring-receipt/native-action token
+// and no server ring deadline. A group ring is an invitation to a call that
+// already exists — the authority IS the call, and the DO cancels the ring when
+// it ends (see cancelRing in do/group_call_room.ts).
+//
+// The push reuses the EXISTING `kind:"call"` consumer branch rather than adding
+// a new push kind, so no consumers deploy is required for this to ring: the
+// group-ness rides along as extra fields the client reads.
+const GROUP_RING_TTL_MS = 45_000;
+
+async function ringGroup(
+  env: Env, req: Request,
+  a: {
+    groupId: string; uid: string; email: string | null; callId: string; callTraceId: string;
+    mediaKind: string; targets: string[]; generation: number;
+  },
+): Promise<void> {
+  const [callerName, groupName] = await Promise.all([
+    displayNameOf(env, a.uid),
+    groupTitleOf(env, a.groupId),
+  ]);
+  const now = Date.now();
+  const kind = a.mediaKind === "audio" ? "audio" : "video";
+  const frame = {
+    // `call_ring` is the type the client already routes to its incoming-call
+    // handler; `group:true` + `gid` are what make it open the conference screen
+    // instead of the 1:1 one. `fromPub` (not `from`) because FCM reserves `from`.
+    type: "call_ring",
+    group: true,
+    gid: a.groupId,
+    callId: a.callId,
+    fromPub: a.uid,
+    fromName: callerName,
+    groupName,
+    kind,
+    generation: a.generation,
+    tokenExpiresAt: now + GROUP_RING_TTL_MS,
+    trace_id: a.callTraceId,
+    ts: now,
+  };
+  const body = JSON.stringify(frame);
+
+  await Promise.all(a.targets.map(async (to) => {
+    // WS fast path — instant for anyone with the app open.
+    try {
+      await env.INBOX.get(env.INBOX.idFromName(to)).fetch("https://inbox/event", {
+        method: "POST", headers: { "content-type": "application/json" }, body,
+      });
+    } catch { /* offline: the push below is the backstop */ }
+    // FCM path — for a phone in a pocket, which is the whole point.
+    try {
+      await env.Q_PUSH.send({
+        kind: "call", to, from: a.uid, fromName: callerName, callId: a.callId,
+        callType: kind, traceId: a.callTraceId, ts: now,
+        tokenExpiresAt: now + GROUP_RING_TTL_MS,
+        group: true, gid: a.groupId, groupName,
+      });
+    } catch { /* the WS frame may still have landed */ }
+  }));
+
+  await emitConf(env, req, a.uid, a.email, "cloudflare_conference_ring_sent", {
+    groupId: a.groupId, call_id: a.callId, call_trace_id: a.callTraceId, generation: a.generation,
+    extra: { targets: a.targets.length, media_kind: a.mediaKind, ttl_ms: GROUP_RING_TTL_MS },
+  });
+}
+
+/** Best-effort display name for the caller shown on the ringing screen. */
+async function displayNameOf(env: Env, uid: string): Promise<string> {
+  try {
+    // Same shape (and same fallback chain) as senderName in routes/messaging.ts.
+    const r = await env.DB_META.prepare("SELECT display_name, handle FROM users WHERE uid=?1 LIMIT 1")
+      .bind(uid).first<{ display_name: string | null; handle: string | null }>();
+    return (r?.display_name || r?.handle || "AvaTOK").toString();
+  } catch { return "AvaTOK"; }
+}
+
+async function groupTitleOf(env: Env, conv: string): Promise<string> {
+  try {
+    const r = await env.DB_META.prepare("SELECT title FROM conversations WHERE id=?1")
+      .bind(conv).first<{ title: string | null }>();
+    const t = (r?.title ?? "").trim();
+    return t || "Group call";
+  } catch { return "Group call"; }
+}
+
 // ---- guard shared by every endpoint -------------------------------------------
 
 // [R6 2026-08-01] `lkConf` removed with LiveKit. `flags()` no longer returns it,
@@ -331,8 +420,12 @@ export async function groupCallJoin(req: Request, env: Env, groupId: string): Pr
   // Create/join the call authority (DO). This mints call_id/call_trace_id/
   // generation the first time, or hands back the live call's identity.
   const cap = g.cfConf ? MAX_CONF_PARTICIPANTS : MAX_GROUP;
-  const authRes = await roomFetch<{ call_id: string; call_trace_id: string; generation: number; state: string; media_kind: string; max_participants: number; error?: string; cap?: number }>(
-    env, groupId, "/authority/start", { uid: g.uid, media_kind: mediaKind, max_participants: cap },
+  // [GCALL-W4-RING] Hand the DO the roster to un-ring when the call ends.
+  const roster = await groupMembers(env, groupId);
+  const ringTargets = roster.filter((u) => u !== g.uid);
+  const authRes = await roomFetch<{ call_id: string; call_trace_id: string; generation: number; state: string; media_kind: string; max_participants: number; started_by?: string; error?: string; cap?: number }>(
+    env, groupId, "/authority/start",
+    { uid: g.uid, media_kind: mediaKind, max_participants: cap, ring_targets: ringTargets, gid: groupId },
   );
   if (!authRes.ok || !authRes.data?.call_id) {
     await emitConf(env, req, g.uid, g.email, "cloudflare_conference_error", { groupId, extra: { stage: "authority_start", status: authRes.status } });
@@ -378,6 +471,24 @@ export async function groupCallJoin(req: Request, env: Env, groupId: string): Pr
   });
   await trackUser(env, g.uid, g.email, "groupcall_join", "avatok",
     { session_id: sessionId, call_id: authority.call_id, group_id: groupId, provider: PROVIDER, ...confGeo(req) });
+
+  // [GCALL-W4-RING] Ring the rest of the group — the thing group calls have
+  // never done. Until now the ONLY notification a group call produced was an
+  // ordinary chat message ("📹 Video call started — tap 📞 to join") and its
+  // content-less chat chime: no call push, no CallKit, no ring frame. If your
+  // phone was in your pocket you simply never knew.
+  //
+  // Fired only by the person who actually CREATED the authority, and only into
+  // an empty room. That is also what settles the two-simultaneous-starters race:
+  // the DO converges both racers onto one call_id, and only the one whose start
+  // minted it rings anybody.
+  if (authority.started_by === g.uid && preJoin.count === 0 && ringTargets.length) {
+    await ringGroup(env, req, {
+      groupId, uid: g.uid, email: g.email, callId: authority.call_id,
+      callTraceId: authority.call_trace_id, mediaKind: authority.media_kind,
+      targets: ringTargets, generation: authority.generation,
+    });
+  }
 
   return json({
     provider: PROVIDER,
