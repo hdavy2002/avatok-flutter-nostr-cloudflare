@@ -1939,9 +1939,37 @@ class CallSession {
         .map((m) => m.group(1)!)
         .toSet();
     if (pts.isEmpty) return sdp;
+    // [CALL-AUDIO-DTX-1 2026-08-03] `usedtx` IS NOW 0. This is a quality call,
+    // deliberately paid for in bandwidth.
+    //
+    // DTX (discontinuous transmission) lets the encoder STOP sending whenever it
+    // decides the mic is silent, emitting an occasional ~2-5 byte comfort-noise
+    // frame instead of ~90 byte speech frames. It is a bandwidth optimisation
+    // and it is the classic cause of Opus sounding "robotic": anything the
+    // encoder misjudges as silence — quiet talkers, the start of a word, a room
+    // with background noise, or an aggressive AEC/NS chain that has already
+    // gated the uplink — is not transmitted at all, and the far end's packet-loss
+    // concealment SYNTHESISES a replacement. The listener hears an algorithm's
+    // guess rather than the speaker.
+    //
+    // Measured on 2026-08-03: one leg was delivering 26 bytes/packet at 28
+    // packets per 5 s, against a healthy 90 bytes/packet at 180 packets per 5 s
+    // on the same handset ten days earlier — with the receiver reporting 21%
+    // concealment and an inbound audio level of 3e-05 (digital silence). That
+    // particular leg was a CPU-starved emulator whose AEC had gated the mic, but
+    // DTX is what converted "quiet" into "nothing at all"; without it the far
+    // end would have received real, if quiet, audio instead of invented audio.
+    // The same failure mode reaches real handsets in quiet rooms and on
+    // speakerphone, which is where AEC suppression is strongest.
+    //
+    // Cost of turning it off: roughly 10-20 kbps during silence on a stream
+    // already capped at 40 kbps. For a product whose entire purpose is carrying
+    // someone's voice, continuous transmission is the right default, and
+    // `useinbandfec` below is the correct tool for the problem DTX was never
+    // solving anyway (packet loss, not silence).
     const want = <String, String>{
       'useinbandfec': '1',
-      'usedtx': '1',
+      'usedtx': '0',
       'maxaveragebitrate': '40000',
       'stereo': '0',
     };

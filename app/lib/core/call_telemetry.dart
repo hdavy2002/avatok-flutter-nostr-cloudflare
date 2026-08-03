@@ -501,6 +501,37 @@ class CallTelemetry {
         }
       }
       _candidatePairs = pairs.length;
+      // [CALL-ICE-TYPE-1 2026-08-03] Fall back to the nominated/succeeded pair.
+      //
+      // `ice_type` and `remote_ice_type` logged `unknown` on EVERY call in the
+      // project's history, which made `relay_used` and `network_restricted`
+      // permanently false and useless — during an audio-quality investigation
+      // the real transport had to be recovered from a different event's
+      // `local_candidate_type`. The cause: this only ever looked at
+      // `transport.selectedCandidatePairId` or a `selected == true` flag, and
+      // this WebRTC build populates neither. It does set `nominated` and
+      // `state: 'succeeded'`, which is the standard way to identify the winning
+      // pair, so prefer the explicit id when present and derive it otherwise.
+      if (selectedPairId == null) {
+        for (final e in pairs.entries) {
+          final v = e.value;
+          if (v['state'] == 'succeeded' && v['nominated'] == true) {
+            selectedPairId = e.key;
+            break;
+          }
+        }
+        // Last resort: the succeeded pair carrying the most bytes is the one in
+        // use. Better a derived answer than a permanent `unknown`.
+        if (selectedPairId == null) {
+          num best = -1;
+          for (final e in pairs.entries) {
+            if (e.value['state'] != 'succeeded') continue;
+            final b = e.value['bytesReceived'];
+            final n = b is num ? b : 0;
+            if (n > best) { best = n; selectedPairId = e.key; }
+          }
+        }
+      }
       final pair = selectedPairId != null ? pairs[selectedPairId] : null;
       final localId = pair?['localCandidateId'];
       final cand = localId is String ? locals[localId] : null;
