@@ -301,6 +301,7 @@ Future<void> _dialerPlaceInBackground(
     bool reachableFalse = false;
     String routed = '';
     int? ringDeadlineMs;
+    bool calleeLive = false;
     try {
       final body = jsonDecode(res.body);
       reachableFalse = body['reachable'] == false;
@@ -308,6 +309,9 @@ Future<void> _dialerPlaceInBackground(
       // [CALL-ONE-DEADLINE-1 2026-08-03] The server's absolute ring deadline.
       final d = body['ringDeadlineMs'];
       ringDeadlineMs = d is int ? d : int.tryParse((d ?? '').toString());
+      // [CALL-PRESENCE-1 2026-08-03] Does the callee hold a live WebSocket? The
+      // server has always known; it just never said.
+      calleeLive = body['callee_live'] == true;
     } catch (_) {}
 
     // [CALL-WS-AUTH-1 2026-08-03] Deposit the CALLER's CallRoom join credential.
@@ -320,6 +324,7 @@ Future<void> _dialerPlaceInBackground(
     } catch (_) {/* older server: no token, join stays un-credentialed */}
     final session = CallSessionManager.instance.liveSessionFor(room);
     session?.noteServerRingDeadline(ringDeadlineMs);
+    session?.noteCalleeLive(calleeLive);
     if (res.statusCode == 200 && routed == 'receptionist') {
       Analytics.capture('call_server_receptionist_routed', {
         'call_id': room, 'via': 'dialpad', 'reason': 'unknown_caller',

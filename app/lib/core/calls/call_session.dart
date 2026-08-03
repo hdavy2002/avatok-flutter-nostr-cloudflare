@@ -1662,10 +1662,29 @@ class CallSession {
       gOutgoingSince = DateTime.now().millisecondsSinceEpoch;
 
       if (_takeoverGuard) {
-        // [DIAL-NARRATION-1] Progressive, signal-tied status lines while beeping.
-        _setDialStage('Finding $_peerFirst on our network…');
-        _stageAt(const Duration(seconds: 3), () => "Checking if $_peerFirst's phone is on…");
-        _stageAt(const Duration(seconds: 7), () => "Trying to wake $_peerFirst's phone up…");
+        // [DIAL-NARRATION-2 2026-08-03] The 3s and 7s lines are GONE.
+        //
+        // They were described as "progressive, signal-tied status lines". They
+        // were not tied to any signal: both were plain wall-clock timers, and
+        // the app knew nothing at 7 seconds that it did not know at 0. They were
+        // written in July to fill the 5-8 seconds it took the server to ring the
+        // other phone — a progress bar dressed up as status, telling the user
+        // their friend's phone was being "woken up" when in reality our own
+        // backend was still doing paperwork.
+        //
+        // [CALL-RING-FIRST-1] removed that latency at the source: the ring now
+        // goes out before the wallet check, the takeover probe and the token
+        // count, and the fast WebSocket lane no longer queues behind FCM. With
+        // the ring arriving in well under a second for an online callee, there
+        // is nothing left to narrate — and narrating it anyway was the thing the
+        // owner objected to.
+        //
+        // One honest line remains for the brief moment before we know anything.
+        // It is replaced the instant real evidence arrives: `_onRingAck` (the
+        // push was accepted) or `_onDeviceRinging` (their phone is genuinely
+        // ringing — the only thing allowed to start a ringback, per
+        // FAKE-RING-HONEST-1).
+        _setDialStage('Calling $_peerFirst…');
         // [RING-WINDOW-12S-1] (2026-07-09): wait up to 12s for the ring-ack /
         // device-ringing. Was 6s — but PostHog (avatok-65f9100f) shows the push
         // FAN-OUT alone can take 6s server-side, so the ack physically cannot
@@ -4949,6 +4968,27 @@ class CallSession {
   // Safe to call at most once; extra/late calls are absorbed by the ring-ack
   // guards (_ringAckHandled / _pendingAckResult). A no-op unless this session is
   // in guard/deferRing mode (_onRingAck early-returns when !_takeoverGuard).
+  /// [CALL-PRESENCE-1 2026-08-03] The server told us the callee is holding a
+  /// live WebSocket right now.
+  ///
+  /// This is PRESENCE, not ringing, and the distinction is the whole point. On
+  /// 2026-07-22 a caller heard a complete ringback while the callee's phone was
+  /// unreachable, because a signal that merely *suggested* the callee was
+  /// reachable was allowed to manufacture a ring. FAKE-RING-HONEST-1 exists to
+  /// stop that recurring.
+  ///
+  /// So this may do exactly two things: soften the waiting copy, and note that
+  /// a real ring should arrive within a second. It must NEVER start a ringback,
+  /// set phase `ringing`, or say their phone is ringing — only a device-ringing
+  /// receipt does that, via [_onDeviceRinging].
+  void noteCalleeLive(bool live) {
+    if (!live || _ended || _connected || _deviceRinging) return;
+    _calleeLive = true;
+    _setDialStage('$_peerFirst is online — connecting…');
+  }
+
+  bool _calleeLive = false;
+
   void notePlaceResult(bool reachable) {
     if (_ended || _connected) return;
     if (!reachable) {

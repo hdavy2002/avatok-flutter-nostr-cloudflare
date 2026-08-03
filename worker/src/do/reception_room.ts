@@ -1104,7 +1104,7 @@ export class ReceptionRoom {
   }
 
   private async reportServiceOutcome(
-    command: "receptionist_connected" | "receptionist_failed",
+    command: "receptionist_connected" | "receptionist_failed" | "receptionist_completed",
   ): Promise<void> {
     const callId = this.init?.call_id;
     const sid = this.init?.sid;
@@ -1129,6 +1129,14 @@ export class ReceptionRoom {
   private async finalize(reason: string): Promise<void> {
     if (this.finalized) return;
     this.finalized = true;
+    // [RECEPT-FSM-COMPLETE-1 2026-08-03] Tell the CallRoom the service leg is
+    // over. finalize() is the single hook EVERY end reason funnels through —
+    // Ava's own end_call tool, inactivity, time_up, hard_cap, socket loss, the
+    // owner_answered yield. Previously only failHard() reported anything, so a
+    // session that ended NORMALLY told the aggregate nothing and the call stayed
+    // in `handoff` forever unless the client happened to post end_call.
+    // Idempotent: a call the client already completed hits already_terminal.
+    this.state.waitUntil(this.reportServiceOutcome("receptionist_completed"));
     if (this.goodbyeGraceTimer) { clearTimeout(this.goodbyeGraceTimer); this.goodbyeGraceTimer = null; }
     if (this.reconnectGraceTimer) { clearTimeout(this.reconnectGraceTimer); this.reconnectGraceTimer = null; } // [CALL-REL-7]
     if (this.wrapCueTimer) clearTimeout(this.wrapCueTimer);

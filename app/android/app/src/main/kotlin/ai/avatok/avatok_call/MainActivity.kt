@@ -63,6 +63,28 @@ class MainActivity : FlutterFragmentActivity() {
                         pendingIncomingTap = null
                         result.success(pending)
                     }
+                    // [CALL-STALE-TAP-1 2026-08-03] Let Dart drop a pending tap
+                    // once the call it refers to is over.
+                    //
+                    // `pendingIncomingTap` was only ever cleared by a successful
+                    // drain. A tap that arrived while the engine was starting, or
+                    // one belonging to a call that ended before Dart reached it,
+                    // stayed in this companion object for the life of the process
+                    // — and was then drained on a LATER launch, routing the user
+                    // into a ring surface for a call that finished long ago.
+                    // AvaDialPlugin already solved exactly this with
+                    // clearPendingIncoming(); the P2P side had no equivalent.
+                    "clearPending" -> {
+                        val callId = call.argument<String>("callId")
+                        val pendingId = pendingIncomingTap?.get("callId") as? String
+                        // Clear unconditionally when no id is given, otherwise only
+                        // on a match — a newer ring must not be erased by a late
+                        // clear belonging to an older one.
+                        if (callId == null || callId == pendingId) {
+                            pendingIncomingTap = null
+                        }
+                        result.success(null)
+                    }
                     else -> result.notImplemented()
                 }
             }

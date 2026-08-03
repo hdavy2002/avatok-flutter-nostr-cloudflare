@@ -128,7 +128,7 @@ export type CommandName =
   | "handoff_to_receptionist" | "offer_voicemail"
   | "report_spam" | "block_caller"
   | "cancel_call" | "ring_timeout"
-  | "receptionist_connected" | "receptionist_failed"
+  | "receptionist_connected" | "receptionist_failed" | "receptionist_completed"
   | "voicemail_recording_started" | "voicemail_stored" | "voicemail_abandoned"
   | "end_call";
 
@@ -157,6 +157,7 @@ export type CallEvent =
   | "callee_dismissed_for_receptionist" | "callee_dismissed_for_voicemail"
   | "callee_dismissed_for_spam" | "callee_dismissed_for_block"
   | "receptionist_started" | "receptionist_connected" | "receptionist_failed"
+  | "receptionist_completed"
   | "voicemail_offered" | "voicemail_recording_started" | "voicemail_message_created"
   | "voicemail_abandoned"
   | "caller_cancelled" | "ring_timed_out" | "call_completed"
@@ -242,6 +243,7 @@ export function authorizeCommand(name: CommandName, actor: Command["actor"]): bo
     case "ring_timeout":
     case "receptionist_connected":
     case "receptionist_failed":
+    case "receptionist_completed":
       return actor === "server";
     // Either party may hang up an established call.
     case "end_call":
@@ -427,6 +429,32 @@ export function applyCommand(prev: CallSession, cmd: Command, now: number): Appl
       s.service_leg_state = "failed";
       complete("receptionist_failed");
       events.push("receptionist_failed");
+      break;
+
+    // [RECEPT-FSM-COMPLETE-1 2026-08-03] Ava finished normally.
+    //
+    // This command did not exist, and its absence stranded calls. There were
+    // exactly two service outcomes — connected and failed — and NOTHING moved a
+    // session from `receptionist_active` to completed. A successful Ava
+    // conversation was therefore only ever completed as a side effect of the
+    // CLIENT posting `end_call` when the user hung up. When AVA ended the call
+    // herself (her own end_call tool, inactivity, time_up, hard_cap) or the app
+    // died, no command was sent at all — and by then `ringDeadline` had been
+    // deleted on entering handoff, so no alarm remained to notice. The call sat
+    // in `session_state: handoff` / `service_leg_state: receptionist_active`
+    // indefinitely, where `humanRoomAcceptsNewPeer` is false, so the caller
+    // could not even fall back to the human leg.
+    //
+    // Idempotent by construction: `complete()` makes the session terminal, so a
+    // duplicate report hits the `already_terminal` guard and is a harmless no-op.
+    // The disposition is PRESERVED when Ava had already answered — the call was
+    // answered by the receptionist, and how it wound up does not change that.
+    case "receptionist_completed":
+      s.service_leg_state = "completed";
+      complete(s.disposition === "answered_by_receptionist"
+        ? "answered_by_receptionist"
+        : "receptionist_failed");
+      events.push("receptionist_completed");
       break;
 
     case "voicemail_recording_started":

@@ -85,6 +85,10 @@ class IncomingBusinessCallScreen extends StatefulWidget {
 
 class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen> {
   bool _busy = false;
+  /// [CALL-ACCEPT-GAP-1] Accept specifically — distinct from `_busy`, which is
+  /// also set by decline/spam/quick-reply. Only the accept path holds this route
+  /// open and needs the "Connecting…" treatment.
+  bool _accepting = false;
   /// [CALL-TERMINAL-BCAST-1] Guards against a double pop when a local action and
   /// the remote status broadcast (now sub-100ms, not 5s) land back-to-back.
   bool _dismissed = false;
@@ -251,7 +255,7 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
 
   void _accept() {
     if (_busy) return;
-    setState(() => _busy = true);
+    setState(() { _busy = true; _accepting = true; });
     final callId = widget.callId;
     final extra = _extra;
     Analytics.capture('business_call_incoming_accept', {'call_id': callId});
@@ -267,7 +271,29 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
     // including Decline — so the whole call UI looked frozen. Start the durable
     // accept first, then close this ring surface immediately. PushService owns
     // the remaining native cleanup and opens CallScreen independently.
-    unawaited(_completeAccept(callId, extra));
+    // [CALL-ACCEPT-GAP-1 2026-08-03] HOLD THIS SCREEN UNTIL THE CALL SCREEN IS UP.
+    //
+    // This route used to pop on the very next line, while the accept was still
+    // in flight. Because CallScreen is only pushed once the accept resolves, the
+    // user got: ring screen slides out (~300 ms) → whatever was underneath, or a
+    // blank/splash surface on a locked phone → CallScreen slides in (~300 ms).
+    // Reported as "the incoming call screen disappears, I get confused, then it
+    // re-appears" — the "re-appearance" being CallScreen, which shows the same
+    // avatar at the same size with the same centred name.
+    //
+    // Keeping this route mounted until the push means CallScreen slides in OVER
+    // it and this one is removed underneath: one forward transition, no dead air.
+    // NONBLOCK-1's concern still stands — a stalled platform Future must not
+    // leave a frozen screen with every button disabled — so `_busy` now renders
+    // a "Connecting…" state rather than just greying the buttons out, and the
+    // timeout below guarantees this route leaves regardless.
+    unawaited(
+      _completeAccept(callId, extra)
+          .timeout(const Duration(milliseconds: 2500), onTimeout: () {
+            Analytics.capture('call_accept_hold_timeout', {'call_id': callId});
+          })
+          .whenComplete(() => _dismiss(reason: 'accept', status: 'accepted')),
+    );
     // [PIV-3 2026-08-02] MUST pass a non-terminal status. Accepting is the one
     // dismissal here that is NOT a ring-ending transition, and the `status`
     // default is `'declined'` — so this line used to run
@@ -404,6 +430,12 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
   /// button labelled "Report" silently blocking would be a surprise.
   Future<void> _reportSpam() async {
     if (_busy) return;
+    // [CALL-DOUBLE-TAP-1 2026-08-03] Claim the guard BEFORE the awaited sheet.
+    // `_busy` was set AFTER this await, so a double-tap opened two sheets and
+    // ran the whole flow twice. The block itself is a TOGGLE, so the second run
+    // silently UN-BLOCKED the caller the user had just blocked. Released below
+    // if the sheet is dismissed without a choice.
+    setState(() => _busy = true);
     final alsoBlock = await showModalBottomSheet<bool>(
       context: context,
       backgroundColor: AD.card,
@@ -422,8 +454,13 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
         ),
       ),
     );
-    if (alsoBlock == null || !mounted) return; // cancelled — keep ringing
-    setState(() => _busy = true);
+    if (alsoBlock == null || !mounted) {
+      // Cancelled — keep ringing, and RELEASE the guard claimed before the
+      // sheet. Without this, dismissing the sheet would leave every button on
+      // the ring screen dead, including Accept and Decline.
+      if (mounted) setState(() => _busy = false);
+      return;
+    }
     Analytics.capture('business_call_incoming_report_spam', {
       'call_id': widget.callId, 'also_block': alsoBlock,
     });
@@ -491,11 +528,20 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: Column(children: [
-                    Text('$name is calling',
+                    Text(_accepting ? name : '$name is calling',
                         textAlign: TextAlign.center,
                         style: ADText.appTitle(c: AD.textPrimary)),
                     const SizedBox(height: 8),
-                    Text('This is an AvaTOK to AvaTOK call',
+                    // [CALL-ACCEPT-GAP-1 2026-08-03] This route is now held for
+                    // the few hundred ms between the tap and CallScreen being
+                    // pushed, so it must not sit there looking frozen with every
+                    // button greyed out. Saying "Connecting…" makes the wait
+                    // legible, and it is also the exact word CallScreen shows on
+                    // its first frame — so the handover reads as one continuous
+                    // screen rather than two.
+                    Text(_accepting
+                            ? 'Connecting…'
+                            : 'This is an AvaTOK to AvaTOK call',
                         textAlign: TextAlign.center,
                         style: ADText.preview(c: AD.textSecondary)),
                   ]),

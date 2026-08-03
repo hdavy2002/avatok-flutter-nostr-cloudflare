@@ -86,7 +86,12 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> {
     _close();
   }
 
+  /// [CALL-DOUBLE-POP-1 2026-08-03] Latched — see in_call_screen.dart. Same
+  /// two producers (user tap + native removedCalls), same double-pop.
+  bool _closed = false;
   void _close() {
+    if (_closed) return;
+    _closed = true;
     if (mounted && Navigator.of(context).canPop()) Navigator.of(context).pop();
   }
 

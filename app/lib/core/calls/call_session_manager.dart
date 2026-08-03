@@ -207,6 +207,26 @@ class CallSessionManager with WidgetsBindingObserver {
   ///       concurrent audio sessions (the 2026-07-05 "Ava listened to davy talk
   ///       to Sat" bug). A live session for [room] itself is left untouched — the
   ///       accept path re-attaches to it.
+  /// [CALL-ACCEPT-GAP-1 2026-08-03] Is there anything for [prepareForAccept] to
+  /// actually do? SYNCHRONOUS on purpose — the accept path uses this to decide
+  /// whether to block the UI on the yield.
+  ///
+  /// On a clean accept (no other call, no live Ava) the loop below has nothing
+  /// to iterate, so `prepareForAccept` is a no-op that nonetheless sat on the
+  /// critical path behind a 5-second timeout, contributing to the blank gap the
+  /// user sees between the ring screen closing and the call screen opening. When
+  /// there IS another audio owner the yield genuinely must finish first — two
+  /// concurrent audio sessions is the 2026-07-05 "Ava listened to davy talk to
+  /// Sat" bug — so that case still blocks. This just stops the common case
+  /// paying for the rare one.
+  bool hasOtherLiveAudioSession(String room) {
+    for (final s in _byRoom.values) {
+      if (!s.isEnded && s.room != room) return true;
+    }
+    final a = _logicalActive;
+    return a != null && !a.isEnded && a.room != room;
+  }
+
   Future<void> prepareForAccept(String room) async {
     Analytics.capture('call_prepare_for_accept', {'accept_room': room});
     for (final s in List<CallSession>.of(_byRoom.values)) {

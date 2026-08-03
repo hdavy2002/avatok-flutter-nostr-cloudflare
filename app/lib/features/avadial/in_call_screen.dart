@@ -122,7 +122,14 @@ class _InCallScreenState extends State<InCallScreen> {
     _close();
   }
 
+  /// [CALL-DOUBLE-POP-1 2026-08-03] Latched. This is reachable from BOTH the
+  /// user tapping End and the native `removedCalls` stream, and both routinely
+  /// fire for one hang-up. Without the latch the second call popped the route
+  /// UNDERNEATH this screen, dumping the user out of wherever they were.
+  bool _closed = false;
   void _close() {
+    if (_closed) return;
+    _closed = true;
     _timer?.cancel();
     if (mounted && Navigator.of(context).canPop()) Navigator.of(context).pop();
   }

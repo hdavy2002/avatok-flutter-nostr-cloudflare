@@ -1344,7 +1344,7 @@ export class CallRoom {
         const callId = typeof body.callId === "string" ? body.callId : "";
         const name = String(body.command ?? "");
         const ALLOWED: ReadonlySet<string> = new Set([
-          "receptionist_connected", "receptionist_failed",
+          "receptionist_connected", "receptionist_failed", "receptionist_completed",
         ]);
         if (!ALLOWED.has(name)) {
           return Response.json({ error: "command_not_allowed", command: name }, { status: 400 });
@@ -1378,6 +1378,31 @@ export class CallRoom {
         const callerUid = typeof body.callerUid === "string" ? body.callerUid : "";
         const calleeUid = typeof body.calleeUid === "string" ? body.calleeUid : "";
         if (!callerUid || !calleeUid) return Response.json({ error: "callerUid and calleeUid required" }, { status: 400 });
+        // [CALL-RING-FIRST-1 2026-08-03] The ring credentials now register in
+        // THIS request instead of a second round-trip to the same stub. Two
+        // sequential DO fetches sat between the caller pressing dial and the
+        // phone ringing, for data that was ready at the same moment. Optional,
+        // so an older caller that still posts /control separately keeps working.
+        const tokens = {
+          token: typeof body.token === "string" ? body.token : "",
+          nativeActionToken: typeof body.nativeActionToken === "string" ? body.nativeActionToken : "",
+          expiresAt: typeof body.expiresAt === "number" ? body.expiresAt : 0,
+          callerRoomToken: typeof body.callerRoomToken === "string" ? body.callerRoomToken : "",
+          calleeRoomToken: typeof body.calleeRoomToken === "string" ? body.calleeRoomToken : "",
+          roomTokenExpiresAt: typeof body.roomTokenExpiresAt === "number" ? body.roomTokenExpiresAt : 0,
+        };
+        if (tokens.token && tokens.expiresAt) {
+          await this.state.storage.put("ring_receipt_token", tokens.token);
+          await this.state.storage.put("token_expires_at", tokens.expiresAt);
+        }
+        if (tokens.nativeActionToken && tokens.expiresAt) {
+          await this.state.storage.put("native_action_token", tokens.nativeActionToken);
+        }
+        if (tokens.callerRoomToken && tokens.calleeRoomToken && tokens.roomTokenExpiresAt) {
+          await this.state.storage.put("room_token_caller", tokens.callerRoomToken);
+          await this.state.storage.put("room_token_callee", tokens.calleeRoomToken);
+          await this.state.storage.put("room_token_expires_at", tokens.roomTokenExpiresAt);
+        }
         const result = await this.setParticipants(
           callId,
           callerUid,
@@ -1386,6 +1411,28 @@ export class CallRoom {
           typeof body.noAnswerReason === "string" ? body.noAnswerReason.slice(0, 48) : null,
         );
         return Response.json(result, { status: result.ok ? 200 : 409 });
+      }
+      // [CALL-RING-FIRST-1 2026-08-03] Set the no-answer receptionist verdict
+      // AFTER the ring has already gone out.
+      //
+      // Computing it required a KV read, a settings load and a WalletDO
+      // round-trip, and it ran BEFORE the phone rang — a wallet balance check
+      // gating a decision the CallRoom alarm does not consult until the ring
+      // deadline, twenty seconds later. Deferring it removes three network hops
+      // from in front of every single call. The alarm is the only reader and it
+      // is 20 s away; this lands within a second of the ring.
+      if (req.method === "POST" && stateUrl.pathname.endsWith("/no-answer-policy")) {
+        let body: Record<string, unknown> = {};
+        try { body = (await req.json()) as Record<string, unknown>; } catch { /* empty */ }
+        const eligible = body.autoReceptionistEligible === true;
+        const reason = typeof body.noAnswerReason === "string" ? body.noAnswerReason.slice(0, 48) : null;
+        this.autoReceptionistEligible = eligible;
+        this.noAnswerReason = reason;
+        await this.state.storage.put({
+          autoReceptionistEligible: eligible,
+          noAnswerReason: reason ?? "",
+        });
+        return Response.json({ ok: true });
       }
       // Internal-only lookup used by authenticated API routes. Missing
       // participants return no identity data, so call ids cannot be used as an
@@ -2037,7 +2084,6 @@ export class CallRoom {
       // fall through to the generic `to`-scoped relay below
     }
 
-    const all = this.state.getWebSockets();
     const out = JSON.stringify(data);
 
     // CALL-RC-D1: explicit hangup ends the call immediately for both sides —
@@ -2064,9 +2110,32 @@ export class CallRoom {
       // peer identity is the room's own tagging, not an authenticated uid, so
       // it must not claim to be the caller or the callee — `end_call` is the
       // one command either party may legitimately issue.
+      //
+      // [CALL-WIRE-DECLINE-1 2026-08-03] ...but a socket that PROVED its side at
+      // join time is a different case, and collapsing it into `end_call` re-broke
+      // the bug [CALL-WIRE-COMPAT-1] was written to fix.
+      //
+      // Walk the downgrade through: `decline_call` → `end_call` with
+      // actor `server` and `wasConnected` false → the reducer infers
+      // `ring_timeout` → `legacyWireStatus` emits `no-answer`, not `decline`.
+      // So a callee who declined over the socket was recorded, broadcast and
+      // pushed as NOBODY ANSWERED — and the caller, seeing a no-answer, handed
+      // the call to Ava. That is prod call avatok-b7741a74 exactly, reintroduced
+      // on the socket lane. The disposition is not cosmetic: it is what the
+      // caller's client switches on.
+      //
+      // When [CALL-WS-AUTH-1] gave us a proven side (tag[1], set at join and
+      // surviving hibernation), we can issue the REAL command as the REAL actor.
+      // Without a proven side we keep the conservative downgrade — an
+      // unauthenticated socket must not be able to stamp a decline on someone
+      // else's call.
       const cmd = commandForLegacyStatus(String(data.type));
       if (cmd) {
-        await this.runCommand(this.state.id.name ?? "", cmd.name === "decline_call" ? "end_call" : cmd.name, "server");
+        const provenSide = this.state.getTags(ws)[1];
+        const canActAsPeer = provenSide === "caller" || provenSide === "callee";
+        const name = cmd.name === "decline_call" && !canActAsPeer ? "end_call" : cmd.name;
+        const actor = canActAsPeer ? provenSide : "server";
+        await this.runCommand(this.state.id.name ?? "", name, actor);
       }
     }
     if (data.type === "bye" || data.type === "hangup") {
@@ -2077,7 +2146,18 @@ export class CallRoom {
 
     if (typeof data.to === "string" && data.to) {
       let delivered = false;
-      for (const w of all) {
+      // [CALL-STALE-SOCKETS-1 2026-08-03] Re-read the socket list.
+      //
+      // `all` was captured at the top of this handler, BEFORE up to five awaits
+      // (setAway, runCommand — which itself loads, persists and broadcasts —
+      // markEnded, scheduleNextAlarm). A peer that joined, left or was replaced
+      // during those awaits is missing from, or stale in, this list: we relay
+      // into a closed socket and record it as delivered, or we miss the socket
+      // that is actually there and fall through to buffering for a peer who is
+      // present. getWebSockets() is a cheap in-memory read; capturing it early
+      // bought nothing and cost correctness.
+      const live = this.state.getWebSockets();
+      for (const w of live) {
         if (this.state.getTags(w)[0] === data.to) {
           try { w.send(out); delivered = true; } catch { /* peer gone */ }
         }
@@ -2116,12 +2196,15 @@ export class CallRoom {
       // peer that hasn't registered (hangup-before-welcome) or already left
       // must NOT be dropped — broadcast it so the other side ends cleanly.
       if (!delivered && (data.type === "bye" || data.type === "decline")) {
-        for (const w of all) {
+        // [CALL-STALE-SOCKETS-1] `live`, not the pre-await capture — see above.
+        for (const w of live) {
           if (w !== ws) { try { w.send(out); } catch { /* peer gone */ } }
         }
       }
     } else {
-      for (const w of all) {
+      // [CALL-STALE-SOCKETS-1] Re-read here too: this broadcast is the fallback
+      // path for every unaddressed frame and it ran against the same stale list.
+      for (const w of this.state.getWebSockets()) {
         if (w !== ws) { try { w.send(out); } catch { /* peer gone */ } }
       }
     }
@@ -2327,9 +2410,19 @@ export class CallRoom {
       // (so the admission check refuses the late rejoin), and the reducer picks
       // the honest disposition from the evidence — `answered_by_callee` if the
       // call had connected, `ring_timeout` if it never did.
-      try {
-        await this.runCommand(String(this.state.id.name ?? ""), "end_call", "server");
-      } catch { /* the markEnded + close below still tears the room down */ }
+      // [CALL-FAILCLOSED-2 2026-08-03] Was: try { runCommand } catch { /* the
+      // markEnded + close below still tears the room down */ }.
+      //
+      // The comment above this block explains at length that markEnded() ALONE
+      // leaves the aggregate `connected`, so `humanRoomAcceptsNewPeer` keeps
+      // returning true and a device reconnecting a moment later resurrects a
+      // dead call. The swallow made the code take exactly that path whenever the
+      // command failed — the one circumstance where the guarantee mattered.
+      // Every other transition in this file was made fail-closed by
+      // [CALL-FAILCLOSED-1]; this one was missed. Letting it throw hands the
+      // problem to Cloudflare's output gate, which resets the DO and holds the
+      // outgoing messages, rather than half-ending a call.
+      await this.runCommand(String(this.state.id.name ?? ""), "end_call", "server");
       await this.markEnded(); // CALL-KV-STATE-1: grace expired, call ended (also disarms billing → refundUnused)
       for (const w of this.state.getWebSockets()) {
         this.sendTo(w, { type: "peer-left", id: away.id });

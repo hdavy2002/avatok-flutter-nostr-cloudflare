@@ -1148,7 +1148,7 @@ export class ReceptionRoomCf {
    * path in particular would be dropped exactly when it matters most — the DO is
    * being torn down in the same tick by finalize().
    */
-  private async reportServiceOutcome(command: "receptionist_connected" | "receptionist_failed"): Promise<void> {
+  private async reportServiceOutcome(command: "receptionist_connected" | "receptionist_failed" | "receptionist_completed"): Promise<void> {
     const callId = this.init?.call_id;
     const sid = this.init?.sid;
     if (!callId || !sid) return;
@@ -1196,6 +1196,10 @@ export class ReceptionRoomCf {
   private async finalize(reason: string): Promise<void> {
     if (this.finalized) return;
     this.finalized = true;
+    // [RECEPT-FSM-COMPLETE-1 2026-08-03] See reception_room.ts — same reason,
+    // same single hook. Reported here so the CF engine cannot strand a call in
+    // `handoff` either.
+    this.state.waitUntil(this.reportServiceOutcome("receptionist_completed"));
     if (this.vmWarnTimer) { clearTimeout(this.vmWarnTimer); this.vmWarnTimer = null; }
     if (this.vmEndTimer) { clearTimeout(this.vmEndTimer); this.vmEndTimer = null; }
     // PAY-PER-USE (owner 2026-07-19): ₹1 per in-app voicemail, charged to the OWNER,

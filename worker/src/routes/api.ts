@@ -442,18 +442,32 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   // session to bow out ("here's <owner> now, connecting you") and CANCEL the
   // voicemail; the call below then rings through so they connect live. Best-effort:
   // a takeover hiccup must never block placing the call.
-  try {
-    const sess = await env.DB_META.prepare(
-      "SELECT id FROM receptionist_sessions WHERE owner_uid=?1 AND caller_uid=?2 AND status='active' ORDER BY created_at DESC LIMIT 1",
-    ).bind(ctx.uid, b.to).first<{ id: string }>();
-    if (sess?.id) {
-      const stub = env.RECEPTION_ROOM_CF.get(env.RECEPTION_ROOM_CF.idFromName(sess.id));
-      await stub.fetch("https://do/takeover", {
-        method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ owner_name: resolvedName, call_id: b.callId }),
-      }).catch(() => {});
-    }
-  } catch { /* best-effort — takeover is an enhancement, never block the call */ }
+  //
+  // [CALL-RING-FIRST-1 2026-08-03] MOVED OFF THE CRITICAL PATH.
+  //
+  // This ran a D1 SELECT plus, when it matched, a Durable Object round-trip
+  // BEFORE the phone was rung — on EVERY call, for a case that is almost never
+  // true (the callee must be mid-conversation with this exact caller's Ava right
+  // now). The takeover only has to beat the callee ANSWERING, which is seconds
+  // away; it never had to beat the ring. Paying for it up front made every call
+  // slower so that a rare one could be marginally tidier.
+  //
+  // `waitUntil` keeps it running to completion after the response — it is not
+  // dropped, just no longer in front of the ring.
+  const runLiveTakeover = async () => {
+    try {
+      const sess = await env.DB_META.prepare(
+        "SELECT id FROM receptionist_sessions WHERE owner_uid=?1 AND caller_uid=?2 AND status='active' ORDER BY created_at DESC LIMIT 1",
+      ).bind(ctx.uid, b.to).first<{ id: string }>();
+      if (sess?.id) {
+        const stub = env.RECEPTION_ROOM_CF.get(env.RECEPTION_ROOM_CF.idFromName(sess.id));
+        await stub.fetch("https://do/takeover", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ owner_name: resolvedName, call_id: b.callId }),
+        }).catch(() => {});
+      }
+    } catch { /* best-effort — takeover is an enhancement, never block the call */ }
+  };
   // [CALL-GLARE-2] Deterministic mutual-dial (glare) resolution — server side.
   // Before we push the ring, check a PAIR-keyed CallRoom DO instance (addressed by
   // sorted-uid pair, so both dial directions hit the SAME instance) for a reciprocal
@@ -638,25 +652,33 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   // Terminal CallRoom state remains the authoritative revocation boundary.
   const roomTokenExpiresAt = Date.now() + CALL_ROOM_TOKEN_LIFETIME_MS;
 
-  // [RECEPT-SERVER-TIMEOUT-1] The CallRoom owns the one four-ring deadline.
-  // Snapshot whether it should hand the caller to Ava or finish as no-answer;
-  // /receptionist/start checks the wallet again before opening the AI session.
-  const noAnswer = b.kind === "video"
-    ? { eligible: false, reason: "video" }
-    : await receptionistNoAnswerEligibility(env, b.to);
-
   // Register participants before the phone is rung. This is fail-closed: a
   // call without a durable participant record cannot authorize later commands.
+  //
+  // [CALL-RING-FIRST-1 2026-08-03] This is now the ONLY thing between the caller
+  // pressing dial and the phone ringing, and it is one round-trip rather than
+  // two — the ring credentials ride along in the same request.
+  //
+  // What used to be here as well: a wallet/KV/settings check for the no-answer
+  // receptionist verdict, and a D1+DO live-takeover probe. Both are consumed
+  // seconds later, neither had to precede the ring, and together with the rest
+  // of the pre-ring chain they are why `call_started` → `call_ws_ring_sent` was
+  // measured at 5.3–8.0 SECONDS. The caller stared at invented progress text
+  // ("Checking if their phone is on…", "Trying to wake their phone up…") for the
+  // duration. The honest fix is to ring sooner, not to narrate the wait better.
   let ringSeq: number | null = null;
   let ringDeadlineMs: number | null = null;
+  let calleeLive = false;
   try {
     const callStub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(b.callId));
     const participantResponse = await callStub.fetch("https://call-room/participants", {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({
         callId: b.callId, callerUid: ctx.uid, calleeUid: b.to,
-        autoReceptionistEligible: noAnswer.eligible,
-        noAnswerReason: noAnswer.reason,
+        // Ring credentials, merged in from the old second /control hop.
+        token: ringReceiptToken, nativeActionToken, expiresAt,
+        // [CALL-WS-AUTH-1] The DO is the only place these are ever compared.
+        callerRoomToken, calleeRoomToken, roomTokenExpiresAt,
       }),
     });
     const participantResult = await participantResponse.json().catch(() => null) as
@@ -669,46 +691,11 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
     // enforce — the single ring timeout, stated once by its owner.
     ringDeadlineMs = typeof participantResult.ringDeadlineMs === "number"
       ? participantResult.ringDeadlineMs : null;
-    await callStub.fetch("https://call-room/control", {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        type: "register-token", token: ringReceiptToken,
-        nativeActionToken, expiresAt,
-        // [CALL-WS-AUTH-1] The DO is the only place these are ever compared.
-        callerRoomToken, calleeRoomToken, roomTokenExpiresAt,
-      }),
-    });
   } catch (e) {
     console.error("Failed to register ring receipt token / participants in CallRoom:", String(e));
     return json({ error: "call_authority_unavailable" }, 503);
   }
 
-  await env.Q_PUSH.send({
-    kind: "call", to: b.to, from: ctx.uid, fromName: resolvedName,
-    callId: b.callId, callType: b.kind ?? "audio", traceId, ts: Date.now(),
-    ringReceiptToken, nativeActionToken, tokenExpiresAt: expiresAt,
-    // [CALL-CALLEE-SEQ-1] The ring push carried NO sequence, on an at-least-once
-    // queue with max_retries:5 and no dedupe key — so a redelivered or reordered
-    // ring was indistinguishable from a new one.
-    ...(ringSeq != null ? { seq: ringSeq } : {}),
-    // [CALL-ONE-DEADLINE-1] The absolute ms at which this ring expires, as
-    // decided by the DO that will enforce it. The client can stop guessing.
-    ...(ringDeadlineMs != null ? { ringDeadlineMs } : {}),
-    // [CALL-WS-AUTH-1] The CALLEE's half of the room credential. It travels with
-    // the ring because the callee has no other authenticated round-trip before it
-    // needs to join — accepting a call goes straight to the WebSocket.
-    roomToken: calleeRoomToken,
-    // [CALL-IDENTITY-SNAPSHOT-1] Transport copy of the identity snapshot, so a
-    // COLD phone can paint the caller's photo + real name on the first frame.
-    // This is a copy, NOT an authority — if it ever disagrees with the call
-    // state, the DO wins and the mismatch is a pipeline bug worth logging.
-    ...(callerAvatarUrl ? { callerAvatarUrl } : {}),
-    ...(callerAvatarVersion ? { callerAvatarVersion } : {}),
-    identitySnapshotVersion,
-    // [WP3] 'dialpad' marks this as a business-channel call so the callee's
-    // incoming-call screen shows the named business UI (client already checks d['via']).
-    ...(isDialpad ? { via: "dialpad" } : {}),
-  });
   // [WS-RING-1] (2026-07-08): PARALLEL ring over the callee's live InboxDO
   // WebSocket. FCM delivery routinely takes 8-15s (the "everyone gets Ava"
   // incident), but an ONLINE callee already holds an open hibernatable WS —
@@ -718,6 +705,13 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   // persisted, offline devices simply miss it and rely on FCM as before.
   // Field names mirror the FCM data payload (fromPub, not from — client
   // contract). Best-effort: a DO hiccup must never block placing the call.
+  // [CALL-RING-FIRST-1 2026-08-03] The FAST lane now runs FIRST.
+  //
+  // This block used to sit BEHIND `await env.Q_PUSH.send(...)` — the fast path
+  // queued up behind the slow one. For a callee who has the app open the WS
+  // ring reaches them in well under a second, while FCM is routinely 8-15s, so
+  // ordering these the wrong way round delayed the only ring that was ever
+  // going to be quick.
   try {
     const inboxStub = env.INBOX.get(env.INBOX.idFromName(b.to));
     const wr = await inboxStub.fetch("https://inbox/event", {
@@ -752,6 +746,14 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
       }),
     });
     const wj = (await wr.json().catch(() => ({}))) as { live?: number | boolean };
+    // [CALL-PRESENCE-1 2026-08-03] The InboxDO just told us whether the callee
+    // holds a live WebSocket RIGHT NOW. That fact was computed on every call and
+    // used only for this telemetry row; the caller was never told, so their app
+    // narrated "Finding them on our network…" about someone demonstrably online.
+    // Returned to the caller below. NOTE: presence is NOT evidence the phone is
+    // ringing — see FAKE-RING-HONEST-1. It may suppress filler text; it may never
+    // start a ringback or claim the ring.
+    calleeLive = wj.live === true || (typeof wj.live === "number" && wj.live > 0);
     void env.Q_ANALYTICS.send({
       event: "call_ws_ring_sent", uid: ctx.uid, ts: Date.now(),
       props: {
@@ -760,6 +762,32 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
       },
     });
   } catch { /* best-effort — WS ring is an accelerator, FCM stays authoritative */ }
+  await env.Q_PUSH.send({
+    kind: "call", to: b.to, from: ctx.uid, fromName: resolvedName,
+    callId: b.callId, callType: b.kind ?? "audio", traceId, ts: Date.now(),
+    ringReceiptToken, nativeActionToken, tokenExpiresAt: expiresAt,
+    // [CALL-CALLEE-SEQ-1] The ring push carried NO sequence, on an at-least-once
+    // queue with max_retries:5 and no dedupe key — so a redelivered or reordered
+    // ring was indistinguishable from a new one.
+    ...(ringSeq != null ? { seq: ringSeq } : {}),
+    // [CALL-ONE-DEADLINE-1] The absolute ms at which this ring expires, as
+    // decided by the DO that will enforce it. The client can stop guessing.
+    ...(ringDeadlineMs != null ? { ringDeadlineMs } : {}),
+    // [CALL-WS-AUTH-1] The CALLEE's half of the room credential. It travels with
+    // the ring because the callee has no other authenticated round-trip before it
+    // needs to join — accepting a call goes straight to the WebSocket.
+    roomToken: calleeRoomToken,
+    // [CALL-IDENTITY-SNAPSHOT-1] Transport copy of the identity snapshot, so a
+    // COLD phone can paint the caller's photo + real name on the first frame.
+    // This is a copy, NOT an authority — if it ever disagrees with the call
+    // state, the DO wins and the mismatch is a pipeline bug worth logging.
+    ...(callerAvatarUrl ? { callerAvatarUrl } : {}),
+    ...(callerAvatarVersion ? { callerAvatarVersion } : {}),
+    identitySnapshotVersion,
+    // [WP3] 'dialpad' marks this as a business-channel call so the callee's
+    // incoming-call screen shows the named business UI (client already checks d['via']).
+    ...(isDialpad ? { via: "dialpad" } : {}),
+  });
   // Observability: which path produced the caller name (resolved server-side vs
   // the legacy client value vs the generic fallback), plus the call attempt — so
   // the "incoming call shows uid/uid" fix is measurable and call volume/route is
@@ -807,9 +835,47 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   // guessed locally as 22 s from the moment the client armed its timer, while
   // the server's clock started when the ring was PLACED. On failing calls the
   // gap between those two instants has been measured at 5–8 s.
+  // [CALL-RING-FIRST-1 2026-08-03] Everything the ring did not have to wait for,
+  // now that the phone is already ringing. Both were previously serial awaits in
+  // front of the ring; both are consumed seconds later. `waitUntil` keeps them
+  // running to completion after the response is sent — deferred, not dropped.
+  // Captured before the closure: TypeScript's narrowing of `b.to`/`b.callId`
+  // from the guard at the top of this function does not survive into an async
+  // callback, and re-asserting inside it would be a lie about where the check
+  // happened.
+  const deferredTo = b.to;
+  const deferredCallId = b.callId;
+  const deferredKind = b.kind;
+  const afterRing = (async () => {
+    await runLiveTakeover();
+    // [RECEPT-SERVER-TIMEOUT-1] The CallRoom owns the one four-ring deadline and
+    // reads this verdict only when that deadline expires — 20 seconds from now.
+    // Computing it cost a KV read, a settings load and a WalletDO round-trip, all
+    // in front of the ring, to decide something nothing would ask about for
+    // twenty seconds.
+    try {
+      const noAnswer = deferredKind === "video"
+        ? { eligible: false, reason: "video" }
+        : await receptionistNoAnswerEligibility(env, deferredTo);
+      const stub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(deferredCallId));
+      await stub.fetch("https://call-room/no-answer-policy", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          autoReceptionistEligible: noAnswer.eligible,
+          noAnswerReason: noAnswer.reason,
+        }),
+      });
+    } catch { /* the alarm falls back to eligible:false — a no-answer, not a wrong charge */ }
+  })();
+  if (execCtx) execCtx.waitUntil(afterRing); else await afterRing;
+
   return json({
     sent: n, reachable: true, ringbackUrl, roomToken: callerRoomToken,
     ...(ringDeadlineMs != null ? { ringDeadlineMs } : {}),
+    // [CALL-PRESENCE-1] Is the callee holding a live WebSocket right now? The
+    // caller's app uses this to stop inventing progress text about someone who
+    // is demonstrably online. Presence only — never a claim that the phone rang.
+    callee_live: calleeLive,
   });
 }
 

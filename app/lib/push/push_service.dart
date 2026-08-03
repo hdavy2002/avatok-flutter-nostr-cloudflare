@@ -894,6 +894,17 @@ Future<void> applyRingTransition(
     gIncomingRingingCallId = null;
   }
 
+  // [CALL-STALE-TAP-1 2026-08-03] Drop any native tap still queued for this
+  // call. MainActivity holds an un-drained tap in a companion object for the
+  // life of the process and only ever cleared it on a successful drain, so a tap
+  // for a call that has since ended could be drained on a LATER launch and route
+  // the user into a ring surface for a finished call. This is the one reducer
+  // every ring-ending path funnels through, so it is the right place to clear.
+  try {
+    await const MethodChannel('avatok/incoming_call_tap')
+        .invokeMethod('clearPending', {'callId': callId});
+  } catch (_) {/* older build without the handler, or not Android */}
+
   // [PIV-2 2026-08-02] Tell every in-app ring SURFACE the ring is over. The
   // steps above tear down the surfaces this file owns (CallKit, the FSI banner,
   // the ringtone, the glare globals) but the branded full-screen
@@ -3818,7 +3829,14 @@ class PushService {
         'payload_source':
             identical(openExtra, fallbackExtra) ? 'push_fallback' : 'callkit',
       });
-      unawaited(_openCall(openExtra, acceptAlreadyClaimed: true));
+      // [CALL-ACCEPT-GAP-1 2026-08-03] AWAITED now, so the caller of
+      // acceptRingingCall knows when the CallScreen is actually on screen and
+      // can keep the ring surface up until then. Previously this was
+      // fire-and-forget and the ring screen popped itself immediately, which is
+      // what produced the blank gap: pop (≈300 ms out) → dead air → push
+      // (≈300 ms in). Two transitions with nothing between them, read by the
+      // user as "the screen disappeared and then came back".
+      await _openCall(openExtra, acceptAlreadyClaimed: true);
       return;
     }
 
@@ -3944,26 +3962,6 @@ class PushService {
       }
       _openedCallId = room;
       _openedAt = nowSync;
-      // CALLFIX-15: idempotent accept handling. Each call_id processed exactly once.
-      final alreadyProcessed = await _isCallIdProcessed(room).timeout(
-        const Duration(milliseconds: 800),
-        onTimeout: () {
-          Analytics.capture('call_accept_local_dedup_timeout', {
-            'call_id': room,
-            'timeout_ms': 800,
-          });
-          // The synchronous reservation above still blocks a concurrent
-          // duplicate. Fail open so slow disk cannot suppress the accepted UI.
-          return false;
-        },
-      );
-      if (alreadyProcessed) {
-        Analytics.capture('call_duplicate_open_ignored', {
-          'call_id': room,
-          'reason': 'already_processed',
-        });
-        return;
-      }
       // One CallScreen per callId. If one is already on screen, or we opened this
       // same call moments ago (duplicate accept / cold-start recovery race),
       // don't push a second one — a second leg joins the room, gets 'busy', and
@@ -4004,26 +4002,44 @@ class PushService {
       // any live receptionist (Ava) session (no voicemail/ack) and cleanly bye
       // any other live call leg. This is the acceptance path's single authority
       // point (delegated to the CallSessionManager).
-      try {
-        await CallSessionManager.instance
-            .prepareForAccept(room)
-            .timeout(const Duration(seconds: 5));
-      } on TimeoutException {
-        Analytics.capture('call_accept_prior_session_timeout', {
-          'call_id': room,
-          'timeout_ms': 5000,
-        });
-      } catch (e) {
-        Analytics.capture('call_accept_prior_session_failed', {
-          'call_id': room,
-          'error': e.toString(),
-        });
+      //
+      // [CALL-ACCEPT-GAP-1 2026-08-03] Now conditional. This is only meaningful
+      // when another session actually owns audio, which on a normal accept it
+      // does not — yet every accept paid for it behind a 5-second timeout, in
+      // front of the UI, contributing to the blank gap. When there IS another
+      // audio owner we still block: handing the mic to a second session while
+      // Ava is mid-sentence is the 2026-07-05 bug and is worth the wait.
+      if (CallSessionManager.instance.hasOtherLiveAudioSession(room)) {
+        try {
+          await CallSessionManager.instance
+              .prepareForAccept(room)
+              .timeout(const Duration(seconds: 5));
+        } on TimeoutException {
+          Analytics.capture('call_accept_prior_session_timeout', {
+            'call_id': room,
+            'timeout_ms': 5000,
+          });
+        } catch (e) {
+          Analytics.capture('call_accept_prior_session_failed', {
+            'call_id': room,
+            'error': e.toString(),
+          });
+        }
       }
       final nav = navigatorKey.currentState;
       if (nav == null) {
         Analytics.capture('call_accept_navigator_missing', {'call_id': room});
         return;
       }
+      // [CALL-ACCEPT-GAP-1 2026-08-03] The disk-backed duplicate check used to
+      // run HERE, before the push, behind an 800 ms timeout that failed open.
+      // It is now fired behind the mounted screen (below): the authoritative
+      // in-process guard is the SYNCHRONOUS (_openedCallId, _openedAt)
+      // reservation at the top of this method — the disk map only adds value
+      // across a process death, and paying for it in front of the user bought
+      // nothing. Marking it processed still happens, just not on the critical
+      // path.
+      unawaited(_isCallIdProcessed(room));
       nav.push(MaterialPageRoute(
         builder: (_) => CallScreen(
           room: (e['callId'] ?? '').toString(),
