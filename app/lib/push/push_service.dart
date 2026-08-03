@@ -610,6 +610,31 @@ class _RingTransition {
 
 final Map<String, _RingTransition> _ringApplied = <String, _RingTransition>{};
 
+/// [CALL-CALLEE-SEQ-1 2026-08-03] callId → the CallRoom `transition_sequence`
+/// carried by the RING, which is the ordering floor for that call.
+///
+/// Per-isolate, like every other map in this file: the FCM background isolate
+/// has its own Dart heap, so it keeps its own copy seeded from its own copy of
+/// the ring. That is correct — both isolates see the same ring and therefore
+/// derive the same floor, which is precisely what a shared *server* sequence
+/// buys that a local counter never could.
+final Map<String, int> _ringBaselineSeq = <String, int>{};
+
+/// Record the ring's authoritative sequence. Bounded the same way as
+/// [_ringApplied]: a call whose ring is older than the terminal TTL can no
+/// longer receive a transition worth ordering.
+void _noteRingSequence(String callId, int? seq) {
+  if (callId.isEmpty || seq == null) return;
+  // Keep the FIRST sequence seen for a call. The WS ring and the FCM ring are
+  // the same transition arriving twice; the later copy must not raise the floor
+  // above a transition that legitimately landed in between them.
+  _ringBaselineSeq.putIfAbsent(callId, () => seq);
+  if (_ringBaselineSeq.length > 64) {
+    final live = _ringApplied.keys.toSet()..add(callId);
+    _ringBaselineSeq.removeWhere((k, _) => !live.contains(k));
+  }
+}
+
 /// Android OEMs do not agree on which CallKit event is emitted by a
 /// programmatic `endCall`. Some Motorola builds report `actionCallDecline`, the
 /// same event used for a human tapping Decline. Without this guard, ending the
@@ -812,6 +837,19 @@ Future<void> applyRingTransition(
   if (!_terminalCallStatus(status)) return; // not a ring-ending transition
 
   final prior = _ringApplied[callId];
+  // [CALL-CALLEE-SEQ-1] The ring's own sequence is the floor for this call. A
+  // server transition at or below it predates the ring we are showing, so it is
+  // a replay (at-least-once queue, socket reconnect, the other Dart isolate) and
+  // must not tear down a live ring. Checked BEFORE `prior` so it applies to the
+  // very first transition too — which is exactly the one that had no floor.
+  final baseline = _ringBaselineSeq[callId];
+  if (seq != null && baseline != null && seq <= baseline) {
+    Analytics.capture('call_transition_dropped', {
+      'call_id': callId, 'status': status, 'source': source,
+      'seq': seq, 'ring_seq': baseline, 'reason': 'stale_vs_ring',
+    });
+    return;
+  }
   if (prior != null) {
     // Out-of-order or duplicate server transition → drop. This is what makes a
     // late FCM redelivery, a socket reconnect replay and a duplicate queue
@@ -827,7 +865,11 @@ Future<void> applyRingTransition(
     // left to do. Still cheap to return early rather than re-run teardown.
     if (seq == null) return;
   }
-  _ringApplied[callId] = _RingTransition(seq ?? (prior?.seq ?? 0), DateTime.now().millisecondsSinceEpoch);
+  // A local tap carries no sequence — it is an INTENT, not an authoritative
+  // transition. Record the ring's floor rather than 0 so a later stale server
+  // transition still loses to it.
+  _ringApplied[callId] = _RingTransition(
+    seq ?? (prior?.seq ?? baseline ?? 0), DateTime.now().millisecondsSinceEpoch);
   if (_ringApplied.length > 64) {
     final cutoff = DateTime.now().millisecondsSinceEpoch - _kTerminalCallTtlMs;
     _ringApplied.removeWhere((_, t) => t.appliedAtMs < cutoff);
@@ -1674,6 +1716,20 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
     return;
   }
   final ringCallId = (d['callId'] ?? '').toString();
+  // [CALL-CALLEE-SEQ-1 2026-08-03] Seed the callee's ordering baseline from the
+  // ring itself, on every ring route.
+  //
+  // The caller's transitions have always carried the CallRoom's monotonic
+  // `transition_sequence` and this reducer correctly drops the stale ones (59
+  // `stale_seq` drops in a fortnight). The CALLEE had no sequence to compare
+  // against: the ring — the message that opens the interaction — carried none,
+  // so local taps recorded a floor of 0 and any server transition, however old,
+  // beat it. `-1` and `0` can never lose a comparison.
+  //
+  // The ring's sequence is the floor for everything that follows on this call:
+  // a genuine later transition is strictly greater, and anything at or below it
+  // is a replay from an at-least-once queue, a reconnect, or the other isolate.
+  _noteRingSequence(ringCallId, int.tryParse((d['seq'] ?? '').toString()));
   // [CALL-WS-AUTH-1 2026-08-03] Deposit the CALLEE's CallRoom join credential
   // the moment the ring payload arrives, and BEFORE any of the freshness /
   // suppression / surface-raising work below.

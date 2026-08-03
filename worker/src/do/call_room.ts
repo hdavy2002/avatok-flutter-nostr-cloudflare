@@ -715,11 +715,11 @@ export class CallRoom {
     calleeUid: string,
     autoReceptionistEligible = false,
     noAnswerReason: string | null = null,
-  ): Promise<{ ok: true } | { ok: false; error: string }> {
+  ): Promise<{ ok: true; seq: number; epoch: number } | { ok: false; error: string }> {
     const s = await this.loadSession(callId);
     if (s.caller_uid || s.callee_uid) {
       if (s.caller_uid !== callerUid || s.callee_uid !== calleeUid) return { ok: false, error: "participant_mismatch" };
-      return { ok: true };
+      return { ok: true, seq: s.transition_sequence, epoch: s.epoch };
     }
     if (!callId || !callerUid || !calleeUid || callerUid === calleeUid) return { ok: false, error: "invalid_participants" };
     s.caller_uid = callerUid;
@@ -741,7 +741,16 @@ export class CallRoom {
     await this.runCommand(callId, "admit_call", "server");
     await this.runCommand(callId, "callee_ringing", "server");
     await this.scheduleNextAlarm();
-    return { ok: true };
+    // [CALL-CALLEE-SEQ-1 2026-08-03] Hand the ring's authoritative sequence back
+    // to the placing route so it can travel WITH the ring. Until now the callee
+    // had no sequence at all: caller-side transitions carried the DO's
+    // `transition_sequence` and correctly dropped stale ones (59 recorded
+    // `call_transition_dropped reason=stale_seq` in a fortnight), while every
+    // callee-side transition was stamped `-1` — a value that can never lose a
+    // comparison, so the callee applied whatever arrived last. This is the seed
+    // the callee's reducer needs to be able to order anything at all.
+    const seeded = await this.loadSession(callId);
+    return { ok: true, seq: seeded.transition_sequence, epoch: seeded.epoch };
   }
 
   /**

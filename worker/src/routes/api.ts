@@ -647,6 +647,7 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
 
   // Register participants before the phone is rung. This is fail-closed: a
   // call without a durable participant record cannot authorize later commands.
+  let ringSeq: number | null = null;
   try {
     const callStub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(b.callId));
     const participantResponse = await callStub.fetch("https://call-room/participants", {
@@ -657,8 +658,11 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
         noAnswerReason: noAnswer.reason,
       }),
     });
-    const participantResult = await participantResponse.json().catch(() => null) as { ok?: boolean } | null;
+    const participantResult = await participantResponse.json().catch(() => null) as { ok?: boolean; seq?: number } | null;
     if (!participantResponse.ok || participantResult?.ok !== true) return json({ error: "call_authority_unavailable" }, 503);
+    // [CALL-CALLEE-SEQ-1] The ring's authoritative sequence, carried on both
+    // ring transports below so the callee can order what it receives.
+    ringSeq = typeof participantResult.seq === "number" ? participantResult.seq : null;
     await callStub.fetch("https://call-room/control", {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -677,6 +681,10 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
     kind: "call", to: b.to, from: ctx.uid, fromName: resolvedName,
     callId: b.callId, callType: b.kind ?? "audio", traceId, ts: Date.now(),
     ringReceiptToken, nativeActionToken, tokenExpiresAt: expiresAt,
+    // [CALL-CALLEE-SEQ-1] The ring push carried NO sequence, on an at-least-once
+    // queue with max_retries:5 and no dedupe key — so a redelivered or reordered
+    // ring was indistinguishable from a new one.
+    ...(ringSeq != null ? { seq: ringSeq } : {}),
     // [CALL-WS-AUTH-1] The CALLEE's half of the room credential. It travels with
     // the ring because the callee has no other authenticated round-trip before it
     // needs to join — accepting a call goes straight to the WebSocket.
@@ -709,6 +717,11 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
         type: "call_ring", callId: b.callId, fromPub: ctx.uid,
         fromName: resolvedName, kind: b.kind ?? "audio",
         ringReceiptToken, nativeActionToken, tokenExpiresAt: expiresAt,
+        // [CALL-CALLEE-SEQ-1] Same sequence as the FCM copy. The WS ring and the
+        // FCM ring are the SAME transition arriving twice by different routes;
+        // sharing the sequence is what lets the client's reducer collapse them
+        // instead of racing them.
+        ...(ringSeq != null ? { seq: ringSeq } : {}),
         // [CALL-WS-AUTH-1] Same credential as the FCM payload. The WS ring beats
         // FCM by seconds for an online callee, so it MUST carry it too — a fast
         // path that arrives without the join credential would answer a call the
@@ -1286,6 +1299,62 @@ export async function callReportSpam(req: Request, env: Env): Promise<Response> 
   // reported caller cannot rewrite the evidence.
   const seen = await publicIdentityFor(env, b.reportedUid).catch(() => null);
 
+  // ── [CALL-ATOMIC-1 2026-08-03] COMMIT THE CALL DISPOSITION FIRST ──────────
+  //
+  // `report_spam` and `block_caller` were DEFINED in call_state.ts, reduced,
+  // and authorized to the callee — and issued by nobody. This route wrote D1
+  // and never told the CallRoom anything, which had three consequences:
+  //
+  //   * Reporting spam mid-ring did not end the call. The client sent a
+  //     separate `decline` first, so the outcome depended on which of the two
+  //     landed — and if the decline lost a race to an accept, the report and
+  //     the block landed anyway while the two parties were still talking.
+  //   * The report had NO participant check against the call record. Only
+  //     `reportedUid !== ctx.uid` was enforced, so anyone holding a call id
+  //     could file a report against a call they were not on.
+  //   * `reported_spam` / `blocked_by_callee` were unreachable dispositions.
+  //
+  // The FSM decides the CALL; D1 records the EVIDENCE. Ordering matters: the
+  // disposition is committed before the evidence so a report can never end up
+  // attached to a call that is simultaneously being answered.
+  //
+  // Only one terminal transition can win, so an explicit block — the stronger
+  // statement, and the one with an ongoing consequence — takes precedence over
+  // the report when the user asked for both.
+  //
+  // DELIBERATELY NON-FATAL. Reports are also filed from call history, minutes
+  // or days later, where the aggregate is legitimately `already_terminal`, and
+  // for calls that predate the FSM it is `not_a_participant` because the DO has
+  // no participant record at all. Refusing those would delete a safety feature
+  // to satisfy a state machine. The rejection is recorded, not enforced.
+  let callDisposition: string | null = null;
+  let fsmRejected: string | null = null;
+  try {
+    const stub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(b.callId));
+    const r = await stub.fetch("https://call/command", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        command: b.alsoBlock === true ? "block_caller" : "report_spam",
+        callId: b.callId,
+        authenticatedUid: ctx.uid,
+        // Keyed by call + action so a double-tap, a retry, or an FCM action
+        // replay collapse into one transition instead of each re-broadcasting.
+        commandId: `spam:${b.callId}:${b.alsoBlock === true ? "block" : "report"}`,
+      }),
+    });
+    const out = (await r.json().catch(() => null)) as Record<string, unknown> | null;
+    if (out?.ok === false) fsmRejected = String(out.error ?? "rejected");
+    else if (typeof out?.disposition === "string") callDisposition = out.disposition;
+  } catch (e) {
+    fsmRejected = "call_authority_unavailable";
+    try {
+      await trackException(env, e, {
+        route: "callReportSpam.fsm", uid: ctx.uid, app_name: "avatok",
+        extra: { call_id: b.callId },
+      });
+    } catch { /* ignore */ }
+  }
+
   let stored = false;
   try {
     const r = await env.DB_META.prepare(
@@ -1340,11 +1409,16 @@ export async function callReportSpam(req: Request, env: Env): Promise<Response> 
       stored, also_blocked: blocked,
       ring_duration_ms: b.ringDurationMs ?? null,
       contacts_match: b.contactsMatch === true,
+      // [CALL-ATOMIC-1] Did the report also END the call, or was it filed
+      // against a call that had already finished? `fsm_rejected` distinguishes
+      // a history report (already_terminal) from a genuine authority failure.
+      call_disposition: callDisposition,
+      fsm_rejected: fsmRejected,
       app_name: "avatok", service_name: "avatok-api", worker: true,
     });
   } catch { /* telemetry must never fail a report */ }
 
-  return json({ ok: true, stored, blocked });
+  return json({ ok: true, stored, blocked, call_disposition: callDisposition });
 }
 
 // [AVACALL-RING-CANCEL-1] GET /api/call-state?callId=<id> — thin authed proxy to

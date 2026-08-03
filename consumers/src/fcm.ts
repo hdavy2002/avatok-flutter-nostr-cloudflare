@@ -645,6 +645,15 @@ export function buildPayload(msg: PushMsg, now = Date.now()): PushPayload {
       ...(msg.callerAvatarVersion ? { callerAvatarVersion: String(msg.callerAvatarVersion) } : {}),
       ...(msg.identitySnapshotVersion != null
         ? { identitySnapshotVersion: String(msg.identitySnapshotVersion) } : {}),
+      // [CALL-CALLEE-SEQ-1 2026-08-03] The ring's authoritative sequence. The
+      // `call-status` payload below has carried one since [CALL-REDUCER-1]; the
+      // RING — the message that opens the whole interaction — did not. So the
+      // callee's reducer had no ordering token to seed from, every callee-side
+      // transition was stamped `-1`, and `-1` can never lose a comparison: the
+      // last arrival won regardless of age. On an at-least-once queue with
+      // max_retries:5, two ring transports and two Dart isolates, that is not a
+      // theoretical concern. FCM data values must be strings.
+      ...(msg.seq != null ? { seq: String(msg.seq) } : {}),
     } };
   }
   if (msg.kind === "call-status") {
