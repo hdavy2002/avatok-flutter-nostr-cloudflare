@@ -628,6 +628,11 @@ export function buildPayload(msg: PushMsg, now = Date.now()): PushPayload {
       ...(msg.ts ? { ts: String(msg.ts) } : {}),
       ...(msg.ringReceiptToken ? { ringReceiptToken: msg.ringReceiptToken } : {}),
       ...(msg.nativeActionToken ? { nativeActionToken: msg.nativeActionToken } : {}),
+      // [CALL-WS-AUTH-1] The callee's CallRoom join credential. Must reach the
+      // device on the SAME payload as the ring: accepting a call goes straight
+      // to the WebSocket with no authenticated round-trip in between, so if the
+      // token is not already in hand there is nowhere to fetch it from.
+      ...(msg.roomToken ? { roomToken: msg.roomToken } : {}),
       ...(msg.tokenExpiresAt ? { tokenExpiresAt: msg.tokenExpiresAt.toString() } : {}),
       // [CALL-IDENTITY-SNAPSHOT-1 2026-08-01] Caller photo, as URL + version —
       // never bytes, FCM data payloads are size-capped. `callerAvatarVersion`

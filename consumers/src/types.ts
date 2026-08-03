@@ -209,6 +209,13 @@ export interface PushMsg {
   // It can only advance this CallRoom as its persisted callee; it is not an
   // account credential and never authorizes arbitrary status/recipient input.
   nativeActionToken?: string;
+  // [CALL-WS-AUTH-1 2026-08-03] The CALLEE's half of the per-side CallRoom join
+  // credential. Presented as `?t=` when the device opens the signalling socket;
+  // it proves which SEAT the joiner is entitled to, which is what stopped a
+  // leaked call id from being enough to join a stranger's call. Ring-lease
+  // scoped (same tokenExpiresAt), so it is a JOIN credential and cannot
+  // disconnect a call that is already up.
+  roomToken?: string;
   tokenExpiresAt?: number;
   // [CALL-IDENTITY-SNAPSHOT-1 2026-08-01] Transport copy of the caller's public
   // AvaTOK profile identity, stamped at call creation by routes/api.ts and

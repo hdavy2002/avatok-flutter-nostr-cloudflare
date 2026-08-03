@@ -24,6 +24,7 @@ import '../core/calls/call_room_id.dart' show CallRoomId; // [CALL-DEDUP-TTL-1]
 import '../core/calls/ring_delivery_contract.dart';
 import '../core/calls/callkit_params.dart' show incomingCallAndroidParams;
 import '../core/calls/call_session_manager.dart';
+import '../core/calls/call_session.dart' show rememberCallRoomToken; // [CALL-WS-AUTH-1]
 import '../core/calls/call_telemetry_events.dart' show CallEvents;
 import '../core/config.dart';
 import '../core/disk_cache.dart';
@@ -1497,6 +1498,24 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
     return;
   }
   final ringCallId = (d['callId'] ?? '').toString();
+  // [CALL-WS-AUTH-1 2026-08-03] Deposit the CALLEE's CallRoom join credential
+  // the moment the ring payload arrives, and BEFORE any of the freshness /
+  // suppression / surface-raising work below.
+  //
+  // Placement matters: accepting a call goes straight from the ring surface to
+  // the signalling WebSocket with no authenticated round-trip in between, so if
+  // the token is not already deposited by the time the user taps Accept there is
+  // nowhere left to fetch it from. This runs on every ring route (background
+  // FCM, foreground FCM and the InboxDO WS ring), which is the whole reason it
+  // lives in `_showIncoming` rather than in each caller.
+  //
+  // Absent on a push from a server that predates this change → nothing is
+  // recorded and the join stays un-credentialed, which is admitted while
+  // `callRoomAuthEnforced` is off.
+  final incomingRoomToken = (d['roomToken'] ?? '').toString();
+  if (ringCallId.isNotEmpty && incomingRoomToken.isNotEmpty) {
+    rememberCallRoomToken(ringCallId, incomingRoomToken);
+  }
   if (!ringInviteIsFresh(d)) {
     Analytics.capture('call_ring_suppressed_expired', {
       'call_id': ringCallId,

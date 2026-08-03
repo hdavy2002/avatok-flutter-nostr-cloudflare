@@ -51,6 +51,8 @@ export interface PlatformConfig {
   // handler is unrouted). Liveness only, no phone anywhere; the flag gated nothing reachable.
   // Live voice translation (Gemini 3.5 Live Translate, $3/h in AvaCoins).
   translationEnabled: boolean;       // master switch for /api/translate/*
+  /** 1:1 P2P call translation. Independent gate: remains dark by default. */
+  callTranslationEnabled: boolean;
   translationGroupEnabled: boolean;  // group conferences (multi-speaker caveat)
   // AvaVoice — creator-built AI voice agents (Specs/AVAVOICE-PROPOSAL.md).
   avavoiceEnabled: boolean;          // master switch for /api/avavoice/*
@@ -240,6 +242,23 @@ export interface PlatformConfig {
   callRelayMigrationV1: boolean;       // relay migration during a live call
   receptionistReconnectV1: boolean;    // receptionist reattach-on-reconnect
   callRingAudibilityV1: boolean;       // REL-10 ring audibility fix
+  /** [CALL-WS-AUTH-1 2026-08-03] ENFORCE per-side room-token authentication on
+   *  CallRoom WebSocket joins (`/room/<id>?t=<token>`).
+   *
+   *  OFF (the default) = observe only: an unauthenticated join is admitted and
+   *  tagged `call_ws_join_unauthenticated` in telemetry. ON = an unauthenticated
+   *  or mismatched join is refused with 403.
+   *
+   *  It ships dark because flipping it BEFORE a build carrying the client half is
+   *  in the field would break calling for every installed app — those builds do
+   *  not send `?t=` and would be refused at admission. Flip it only once
+   *  `call_ws_join_unauthenticated` has gone quiet in PostHog.
+   *
+   *  Boolean → NOT in numericKeys. Declared here (interface + DEFAULTS in the
+   *  same change) per the fake-flag rule: a flag config.ts does not declare is
+   *  rejected by putConfig with "unknown key" and can never be flipped, so the
+   *  kill switch would not exist. */
+  callRoomAuthEnforced: boolean;
   // BETA PHASE (2026-06-21, owner): open EVERYTHING at premium tier, free for all.
   // When true: isPremiumAI is true for every user (all AI tools unlocked, daily cap
   // bypassed), chargeFeature deducts nothing (no AvaCoin metering), and the wallet
@@ -813,6 +832,7 @@ const DEFAULTS: PlatformConfig = {
   // [M-D1 2026-07-17 / M-D11 2026-07-18] simOnlyPhoneEnabled removed from DEFAULTS —
   // phone OTP is gone app-wide; the flag gated an unrouted, 410'd endpoint.
   translationEnabled: false,       // FREE LAUNCH: Gemini-Live cost — hidden
+  callTranslationEnabled: false,   // [CALL-TRANSLATE-1] dark until CI + two-device verification
   translationGroupEnabled: false,  // FREE LAUNCH: hidden
   avavoiceEnabled: false,          // FREE LAUNCH: agent builder hidden
   avavisionEnabled: false,         // FREE LAUNCH: agent builder hidden
@@ -879,6 +899,9 @@ const DEFAULTS: PlatformConfig = {
   callRelayMigrationV1: false,     // call-reliability program — ships dark
   receptionistReconnectV1: false,  // call-reliability program — ships dark
   callRingAudibilityV1: false,     // call-reliability program — ships dark
+  // [CALL-WS-AUTH-1] OFF = observe-only. Flip ONLY after a build carrying the
+  // client `?t=` half is in the field, or every installed app loses calling.
+  callRoomAuthEnforced: false,
   betaFreePremium: true,           // FREE LAUNCH: no paywalls — everyone premium, no metering
   billingEnabled: false,           // FREE LAUNCH: subscriptions/checkout off
   playTopupEnabled: true,          // AvaWallet Google Play top-up (gated also by Play service account)

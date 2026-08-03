@@ -11,7 +11,7 @@ export function apnsConfigured(env: Env): boolean {
 export async function sendApns(
   env: Env,
   token: string,
-  payload: { data: Record<string, string>; highPriority: boolean },
+  payload: { data: Record<string, string>; highPriority: boolean; ttlSeconds?: number },
 ): Promise<void> {
   if (!apnsConfigured(env)) { console.warn("APNs not configured; skipping iOS token"); return; }
 
@@ -26,6 +26,22 @@ export async function sendApns(
     ? { aps: { alert: { title: payload.data.fromName || "AvaTOK", body: "Incoming call" }, sound: "default", "interruption-level": "time-sensitive" }, ...payload.data }
     : { aps: { "content-available": 1 }, ...payload.data };
 
+  // [CALL-APNS-EXPIRY-1 2026-08-03] (audit M6) APNS-EXPIRATION.
+  //
+  // The Android side already gets ring-lifetime TTL and per-call collapse keys,
+  // so an FCM ring push that misses its window is discarded by the transport.
+  // iOS had NO expiry at all: APNs defaults to storing an undelivered push and
+  // delivering it whenever the device next comes online. For a call invite that
+  // is not a late notification, it is a phone ringing for a call that ended
+  // minutes ago, with nobody on the other end when it is answered.
+  //
+  // `apns-expiration` is an ABSOLUTE unix time, not a duration (unlike FCM's
+  // `ttl`), and 0 means "deliver once now or discard" — which is exactly right
+  // for a ring. Derived from the same ttlSeconds the FCM path computes from the
+  // remaining ring lease, so both transports expire the invite at one moment.
+  const expirationEpoch = payload.ttlSeconds != null
+    ? Math.floor(Date.now() / 1000) + Math.max(0, payload.ttlSeconds)
+    : null;
   const res = await fetch(`${host}/3/device/${token}`, {
     method: "POST",
     headers: {
@@ -33,6 +49,11 @@ export async function sendApns(
       "apns-topic": topic,
       "apns-push-type": isCall ? "alert" : "background",
       "apns-priority": payload.highPriority ? "10" : "5",
+      ...(expirationEpoch != null ? { "apns-expiration": String(expirationEpoch) } : {}),
+      // Per-call collapse bucket, mirroring the FCM collapseKey: a redelivered
+      // invite for the same call replaces the stored one instead of queueing a
+      // second ring behind it.
+      ...(isCall && payload.data.callId ? { "apns-collapse-id": payload.data.callId.slice(0, 64) } : {}),
     },
     body: JSON.stringify(body),
   });

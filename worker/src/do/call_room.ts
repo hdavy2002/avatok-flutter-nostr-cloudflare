@@ -49,6 +49,7 @@ import {
   type CallSession, type Command, type CommandName,
 } from "../lib/call_state";
 import { CALL_RING_LIFETIME_MS } from "../lib/call_delivery_contract";
+import { readConfig } from "../routes/config";
 import {
   GLARE_WINDOW_MS, resolveGlarePlacement, type PendingGlareInvite,
 } from "../lib/call_glare";
@@ -64,6 +65,11 @@ interface AwayPeer {
   awaySince: number;
   /** Signaling messages addressed to this peer while it was away, oldest first. */
   buffered: string[];
+  /** [CALL-AWAYBUF-BYTES-1] Running serialized size of `buffered`. Optional on
+   *  the type because records persisted before this change do not have it —
+   *  loadAway() hydrates it rather than letting `undefined + n` produce NaN
+   *  (`NaN > MAX` is false, which would silently restore the unbounded buffer). */
+  bufferedBytes?: number;
 }
 
 // Legacy persisted shape only. New state cannot be armed; old state is read so
@@ -82,8 +88,38 @@ interface BillingState {
   stopped: boolean;
 }
 
-const RECONNECT_GRACE_MS = 30_000;
+/** [CALL-GRACE-MARGIN-1 2026-08-03] (audit H4) 30 s → 45 s.
+ *
+ *  The client gives up reconnecting at exactly 30 s (`_kReconnectGiveUp`,
+ *  call_session.dart) and the server expired the peer at exactly 30 s. Zero
+ *  margin: a reconnect that lands at t≈29.5 s races this alarm, and which one
+ *  wins is decided by scheduler jitter. The loser's user sees a call that
+ *  reconnected and then died anyway.
+ *
+ *  45 s gives the client's final attempt a 15 s runway to complete. The cost is
+ *  paid only by a peer that is genuinely gone: 15 s more "reconnecting" before
+ *  peer-left. The margin is added on ONE side deliberately — moving the client
+ *  down to ~20 s AS WELL would just re-create the tight coupling in the other
+ *  direction. */
+const RECONNECT_GRACE_MS = 45_000;
 const MAX_BUFFERED_MESSAGES = 100;
+/** [CALL-AWAYBUF-BYTES-1 2026-08-03] (audit H2) Byte budget for the away-peer
+ *  replay buffer, measured on the JSON-SERIALIZED AwayPeer — not on the raw
+ *  frames, and not on a message COUNT.
+ *
+ *  The count cap alone is not a bound: a Durable Object storage VALUE is capped
+ *  at 128 KiB, and `awayPeer` is written as ONE value containing up to 100
+ *  buffered frames. SDP offers are multi-kilobyte, and a re-offer storm during
+ *  ICE recovery can put several of them in the buffer, so 100 frames can exceed
+ *  the cap comfortably. The put then THROWS, and because it was unguarded that
+ *  throw propagated out of webSocketMessage and killed the relay for that
+ *  message — a buffering optimisation taking down live signalling.
+ *
+ *  110 KiB leaves headroom for the id/timestamp fields and the array's own
+ *  serialization overhead. Enforced by drop-oldest-until-it-fits (not a fixed
+ *  splice count) against a RUNNING byte counter, so nothing has to re-serialize
+ *  the whole buffer on every message. */
+const MAX_BUFFERED_BYTES = 110 * 1024;
 const BILLING_TICK_MS = 60_000;
 
 export class CallRoom {
@@ -197,6 +233,58 @@ export class CallRoom {
     this.env = env;
   }
 
+  /** [CALL-WS-AUTH-1 2026-08-03] Is WS join authentication ENFORCED right now?
+   *
+   *  Cached per DO instance. The value is read from the config KV blob exactly
+   *  once per instance lifetime rather than on every join, because this sits on
+   *  the call-setup critical path and a KV round-trip here is time-to-ring.
+   *  Caching also means a flag flip takes effect as rooms turn over rather than
+   *  mid-call, which is the behaviour you want from a security enforcement
+   *  switch: no call changes its admission rules halfway through.
+   *
+   *  Fails OPEN on a config read error. That is deliberate and is not a weakening
+   *  of the gate: the flag defaults to false anyway, so a config outage cannot
+   *  make the system LESS safe than its own default, whereas failing closed would
+   *  turn a KV blip into a total calling outage. */
+  private authEnforced: boolean | undefined;
+  private async roomAuthEnforced(): Promise<boolean> {
+    if (this.authEnforced !== undefined) return this.authEnforced;
+    try {
+      const cfg = await readConfig(this.env);
+      this.authEnforced = cfg.callRoomAuthEnforced === true;
+    } catch {
+      this.authEnforced = false;
+    }
+    return this.authEnforced;
+  }
+
+  /** [CALL-WS-AUTH-1] Resolve a presented `?t=` room token to the call SIDE it
+   *  entitles the holder to occupy.
+   *
+   *  Returns a reason on failure so the telemetry can distinguish "old client
+   *  that sends nothing" (`missing`) from "credentials were never minted for this
+   *  call" (`unprovisioned` — a call placed before this shipped) from an actual
+   *  bad token (`mismatch`). Those three want very different responses when the
+   *  flag is flipped, and collapsing them into one boolean would hide that. */
+  private async classifyRoomToken(
+    presented: string,
+  ): Promise<{ ok: true; side: "caller" | "callee" } | { ok: false; reason: string }> {
+    const [callerTok, calleeTok, expiresAt] = await Promise.all([
+      this.state.storage.get<string>("room_token_caller"),
+      this.state.storage.get<string>("room_token_callee"),
+      this.state.storage.get<number>("token_expires_at"),
+    ]);
+    if (!callerTok || !calleeTok) return { ok: false, reason: "unprovisioned" };
+    if (!presented) return { ok: false, reason: "missing" };
+    // Ring-lease bound. A room token is a JOIN credential, not a session key —
+    // once a peer is admitted the socket carries the relationship, so expiry
+    // cannot disconnect a live call, it only stops a NEW join on a dead lease.
+    if (expiresAt && Date.now() > expiresAt) return { ok: false, reason: "expired" };
+    if (presented === callerTok) return { ok: true, side: "caller" };
+    if (presented === calleeTok) return { ok: true, side: "callee" };
+    return { ok: false, reason: "mismatch" };
+  }
+
   /** CALL-KV-STATE-1: hydrate answered/ended state from DO storage on first use
    *  after a restart so GET /state is correct even if the instance was evicted. */
   private async loadCallState(): Promise<void> {
@@ -217,7 +305,14 @@ export class CallRoom {
    *  bye/hangup skip legacy-billing retirement and the call_completed ingest
    *  ([AVACALL-RING-CANCEL-2] fix). Every terminal-status consumer keys off
    *  `terminal_status`, not `ended`, so suppression is unaffected.
-   *  Idempotent + never throws — a status write must not break signaling.
+   *  Idempotent. [CALL-FAILCLOSED-1 2026-08-03] IT NO LONGER SWALLOWS ITS PUTS,
+   *  so the "never throws" contract this comment used to advertise is gone and
+   *  propagation is now INTENTIONAL. `terminalStatus` is not decoration: the FCM
+   *  ring-suppression probe (consumers/src/fcm.ts) reads it to decide whether to
+   *  ring a phone at all, and `/api/call-state` reads it to decide whether a late
+   *  Accept may proceed. A silently-lost write fails BOTH of those OPEN — a
+   *  cancelled call rings anyway, and a late accept joins a call that is over.
+   *  Better to reset the DO and make the caller retry.
    *
    *  [CALL-TERMINAL-BCAST-1 2026-08-01] MONOTONIC. The first terminal status to
    *  land wins and is IMMUTABLE; a later/racing terminal request must NOT
@@ -232,10 +327,12 @@ export class CallRoom {
       return { already: true, status: this.terminalStatus };
     }
     const s = (status || "ended").slice(0, 24);
+    const at = Date.now();
+    // One put, fail-closed. Written BEFORE the in-memory mirrors so nothing in
+    // this instance believes the call is terminal until storage agrees.
+    await this.state.storage.put({ terminalStatus: s, terminalAt: at });
     this.terminalStatus = s;
-    this.terminalAt = Date.now();
-    try { await this.state.storage.put("terminalStatus", s); } catch { /* best-effort */ }
-    try { await this.state.storage.put("terminalAt", this.terminalAt); } catch { /* best-effort */ }
+    this.terminalAt = at;
     return { already: false, status: s };
   }
 
@@ -267,10 +364,25 @@ export class CallRoom {
   // which outcomes end the caller's leg, which keep it alive — live in one
   // readable file that can be unit-tested without a network.
 
-  /** Hydrate the aggregate from storage on first touch after an eviction. */
+  /** Hydrate the aggregate from storage on first touch after an eviction.
+   *
+   *  [CALL-FAILCLOSED-1 2026-08-03] THIS READ MUST NOT BE SWALLOWED.
+   *
+   *  It used to end in `.catch(() => undefined)`, which turned a storage READ
+   *  failure into `stored === undefined` — indistinguishable from "this call has
+   *  no aggregate yet". The DO then FABRICATED a brand-new `ringing` session for
+   *  a call that may already have been declined, connected or completed, and
+   *  every guard downstream (already_terminal, CALLEE_TERMINAL, the WS admission
+   *  check) evaluated against that fiction. A transient storage blip could
+   *  therefore resurrect a dead call and let a late Accept join it.
+   *
+   *  Letting the read throw is the correct behaviour: Cloudflare's output gate
+   *  resets the DO and holds outgoing messages, and the caller retries against a
+   *  fresh instance. "I could not read the call" must never be reported as "the
+   *  call is new". Absent state and unreadable state are different facts. */
   private async loadSession(callId: string): Promise<CallSession> {
     if (this.session) return this.session;
-    const stored = await this.state.storage.get<CallSession>("fsm").catch(() => undefined);
+    const stored = await this.state.storage.get<CallSession>("fsm");
     this.session = stored ?? newCallSession(callId, Date.now());
     return this.session;
   }
@@ -341,10 +453,38 @@ export class CallRoom {
       };
     }
 
-    this.session = r.state;
     let fan = { seen: 0, sent: 0, seq: r.state.transition_sequence };
     if (r.changed) {
-      try { await this.state.storage.put("fsm", r.state); } catch { /* best-effort */ }
+      // [CALL-FAILCLOSED-1 2026-08-03] PERSIST BEFORE ANYONE IS TOLD.
+      //
+      // Two things changed here and they only work together.
+      //
+      // 1. The put is no longer wrapped in `try {} catch { /* best-effort */ }`.
+      //    A swallowed put meant the DO advanced IN MEMORY, broadcast the new
+      //    state to both phones, and returned it to the HTTP caller — while
+      //    storage still held the OLD state. After the next eviction the call
+      //    silently rewound to a state every participant had already been told
+      //    was over. Broadcast was reliable; persistence was not; the two
+      //    disagreed and the unreliable one was the one nobody was told about.
+      //    Letting it throw hands the problem to Cloudflare's output gate, which
+      //    exists for exactly this: the DO is reset, the in-memory advance is
+      //    discarded, and any outgoing messages are HELD rather than delivered.
+      //    That is the fail-closed semantics we want, and the old catch is
+      //    precisely what defeated the platform guarantee.
+      //
+      // 2. `this.session = r.state` moved to AFTER the put. With output gates a
+      //    failed put resets the instance anyway, so this is belt-and-braces —
+      //    but it costs nothing and it makes the invariant readable: nothing in
+      //    this process believes a transition happened until it is durable.
+      //
+      // NOT every swallowed put in this file becomes fail-closed — see the
+      // `cmd:` idempotency record and `gens` below, which are deliberately
+      // best-effort. Failing a transition that ALREADY succeeded durably,
+      // because its replay-record could not be written, would be strictly worse
+      // than the degraded behaviour a lost record causes (the FSM's own
+      // already_terminal / no-change guards catch the retry and hand back state).
+      await this.state.storage.put("fsm", r.state);
+      this.session = r.state;
       // Keep the legacy terminal marker in lock-step: /api/call-state and the
       // ring-suppression probe still read it, and they must never disagree with
       // the aggregate. Two sources of truth is the bug we are removing.
@@ -402,6 +542,45 @@ export class CallRoom {
       }
     }
     return result;
+  }
+
+  /**
+   * [RECEPT-DO-OWNERSHIP-1 2026-08-03] (audit A3) THE receptionist session owner
+   * for this call. First writer wins; every later claimant is handed the winner.
+   *
+   * WHY THIS MOVED INTO THE DO. Ownership used to be decided by a KV lock in
+   * routes/receptionist.ts, and it had two independent holes that together
+   * reproduced the exact avatok-14739b84 incident the lock was written to
+   * prevent — two greetings, two recordings, two billing events for one call:
+   *
+   *   1. The KV "claim" was READ-then-PUT, while the comment above it described
+   *      a write-then-read-back protocol the code did not implement. Even the
+   *      described version would not have worked: KV is EVENTUALLY consistent,
+   *      so two concurrent /start requests in different colos both read null,
+   *      both write their own sid, and both believe they won. There is no
+   *      arrangement of KV operations that makes this safe.
+   *   2. The DO admit gate did not dedupe either. Both requests send
+   *      `receptionist-admit` with the SAME commandId, so the idempotency cache
+   *      replays the original `ok:true` to the second one, and the FSM's
+   *      repeat-handoff no-op also reports success. Both callers were told they
+   *      had won.
+   *
+   * A Durable Object is single-threaded and strongly consistent, so here
+   * check-then-put IS atomic — the property KV cannot provide at any price. The
+   * KV lock stays as a cheap first-line cache, but it is no longer the
+   * authority.
+   *
+   * Note this deliberately sits OUTSIDE the runCommand idempotency cache. The
+   * two answer different questions: the cache asks "have I already performed
+   * this command?", this asks "who owns the session?" — and the second question
+   * still needs a real answer when the first one was a replay, because a replay
+   * is exactly what the losing concurrent /start receives.
+   */
+  private async claimReceptionistSession(sid: string): Promise<{ already: boolean; sid: string }> {
+    const existing = await this.state.storage.get<string>("receptionist_sid");
+    if (existing) return { already: true, sid: existing };
+    await this.state.storage.put("receptionist_sid", sid);
+    return { already: false, sid };
   }
 
   /** Remove this exact call from its pair-keyed glare index. The pair DO checks
@@ -621,6 +800,15 @@ export class CallRoom {
   private async loadAway(): Promise<AwayPeer | null> {
     if (this.away !== undefined) return this.away;
     const stored = await this.state.storage.get<AwayPeer>("awayPeer");
+    if (stored && !Array.isArray(stored.buffered)) stored.buffered = [];
+    // [CALL-AWAYBUF-BYTES-1] MIGRATION. A record written before this change has
+    // no `bufferedBytes`. Without this line the first `+=` yields NaN, every
+    // `NaN > MAX_BUFFERED_BYTES` comparison is false, the drop loop never runs,
+    // and the buffer grows unbounded again — silently, which is the worst
+    // possible way for a size guard to fail.
+    if (stored && typeof stored.bufferedBytes !== "number") {
+      stored.bufferedBytes = stored.buffered.reduce((n, f) => n + f.length + 3, 0);
+    }
     this.away = stored ?? null;
     return this.away;
   }
@@ -629,6 +817,37 @@ export class CallRoom {
     this.away = peer;
     if (peer) await this.state.storage.put("awayPeer", peer);
     else await this.state.storage.delete("awayPeer");
+  }
+
+  /** [CALL-AWAYBUF-BYTES-1 2026-08-03] (audit H2) Append one signalling frame to
+   *  an away peer's replay buffer, bounded by BOTH a message count and a byte
+   *  budget, dropping OLDEST first until the new frame fits.
+   *
+   *  Drop-oldest-until-it-fits rather than a fixed `splice(0, 5)`: the frames are
+   *  wildly different sizes (a candidate is ~200 bytes, an SDP offer several KB),
+   *  so any fixed count either drops far more than needed or still leaves the
+   *  buffer over budget. Oldest-first is also the right eviction order for
+   *  signalling replay — the newest offer/candidates are the ones that still
+   *  describe reality when the peer comes back.
+   *
+   *  Sizing uses the frame's own serialized length + 3 (the surrounding quotes
+   *  and separating comma in the persisted array). `out` is already a JSON
+   *  string, so `.length` is its true contribution; nothing re-measures the whole
+   *  buffer per message. */
+  private bufferForAwayPeer(away: AwayPeer, out: string): void {
+    if (typeof away.bufferedBytes !== "number") away.bufferedBytes = 0;
+    const cost = out.length + 3;
+    away.buffered.push(out);
+    away.bufferedBytes += cost;
+    while (
+      away.buffered.length > 0 &&
+      (away.buffered.length > MAX_BUFFERED_MESSAGES || away.bufferedBytes > MAX_BUFFERED_BYTES)
+    ) {
+      const dropped = away.buffered.shift();
+      if (dropped === undefined) break;
+      away.bufferedBytes -= dropped.length + 3;
+      if (away.bufferedBytes < 0) away.bufferedBytes = 0;
+    }
   }
 
   // ---------------------------------------------------------------------
@@ -892,7 +1111,67 @@ export class CallRoom {
         const out = await this.runCommand(callId, "handoff_to_receptionist", "server", {
           commandId: typeof body.commandId === "string" ? body.commandId.slice(0, 128) : undefined,
         });
+        // [RECEPT-DO-OWNERSHIP-1] The admit and the session claim ride together
+        // so the automatic no-answer handoff — the latency-sensitive one, where
+        // every serial round-trip is silence the caller hears — pays for only one
+        // DO hop, not two. The claim runs even when `out` was an idempotent
+        // REPLAY, which is the entire point: see claimReceptionistSession().
+        const sid = typeof body.sid === "string" ? body.sid.slice(0, 64) : "";
+        const claim = sid ? await this.claimReceptionistSession(sid) : null;
+        return Response.json(
+          claim ? { ...out, claimed: !claim.already, receptionist_sid: claim.sid } : out,
+          { status: out.ok === false ? 409 : 200 },
+        );
+      }
+      // ── [RECEPT-FSM-LIFECYCLE-1 2026-08-03] (audit A4) SERVICE-LEG OUTCOMES ──
+      //
+      // `receptionist_connected` and `receptionist_failed` were DEFINED in
+      // call_state.ts and issued by nobody — grep found zero call sites in any
+      // route or DO. Three things followed from that:
+      //   * `service_leg_state` was stuck at `starting_receptionist` for the life
+      //     of every call that ever reached Ava, so nothing downstream could tell
+      //     a session that connected from one that never did;
+      //   * a FAILED Ava start never completed the session, parking the caller in
+      //     `handoff` — where `humanRoomAcceptsNewPeer` is false, so they could
+      //     not fall back to the human leg either — with no service on the line;
+      //   * a SUCCESSFUL session's teardown arrived as the client's own
+      //     cancel_call/bye, recording `caller_cancelled` for a call Ava actually
+      //     answered. The `answered_by_receptionist` disposition was unreachable
+      //     dead code.
+      //
+      // This is the internal-only entry point that closes that loop. Same trust
+      // boundary as GET /state and /participants: only reachable from within this
+      // Worker, never client-exposed. It accepts ONLY server-lifecycle commands —
+      // an allowlist, not a general command proxy, because a route that could
+      // issue any command with server authority would quietly reintroduce the
+      // client-claimed-role hole that [CALL-AUTHZ-1] closed.
+      if (req.method === "POST" && stateUrl.pathname.endsWith("/service-outcome")) {
+        let body: Record<string, unknown> = {};
+        try { body = (await req.json()) as Record<string, unknown>; } catch { /* empty */ }
+        const callId = typeof body.callId === "string" ? body.callId : "";
+        const name = String(body.command ?? "");
+        const ALLOWED: ReadonlySet<string> = new Set([
+          "receptionist_connected", "receptionist_failed",
+        ]);
+        if (!ALLOWED.has(name)) {
+          return Response.json({ error: "command_not_allowed", command: name }, { status: 400 });
+        }
+        const out = await this.runCommand(callId, name as CommandName, "server", {
+          commandId: typeof body.commandId === "string" ? body.commandId.slice(0, 128) : undefined,
+        });
         return Response.json(out, { status: out.ok === false ? 409 : 200 });
+      }
+      // [RECEPT-DO-OWNERSHIP-1] Claim WITHOUT a handoff transition, for the
+      // caller-initiated lanes (decline-to-Ava, busy) where the callee's own
+      // command already advanced the aggregate and only the duplicate-session
+      // question is open.
+      if (req.method === "POST" && stateUrl.pathname.endsWith("/receptionist-claim")) {
+        let body: Record<string, unknown> = {};
+        try { body = (await req.json()) as Record<string, unknown>; } catch { /* empty */ }
+        const sid = typeof body.sid === "string" ? body.sid.slice(0, 64) : "";
+        if (!sid) return Response.json({ error: "sid required" }, { status: 400 });
+        const claim = await this.claimReceptionistSession(sid);
+        return Response.json({ ok: true, claimed: !claim.already, receptionist_sid: claim.sid });
       }
       // [CALL-AUTHZ-1] Internal-only: stamp the call's participants at
       // admission. Called from routes/api.ts call() with the AUTHENTICATED
@@ -1057,6 +1336,22 @@ export class CallRoom {
           if (nativeActionToken && expiresAt) {
             await this.state.storage.put("native_action_token", nativeActionToken);
           }
+          // [CALL-WS-AUTH-1 2026-08-03] (audit A1) Per-SIDE room credentials.
+          //
+          // Two separate tokens, not one shared secret, because the point is not
+          // only "is this a participant" but "which participant". A single call
+          // token would let either party present it twice and occupy both seats.
+          // Minted by routes/api.ts at dial time; the caller's is returned in the
+          // /api/call response, the callee's rides the ring push (FCM + the
+          // InboxDO WS ring). Both expire with the ring lease.
+          const callerRoomToken = typeof body.callerRoomToken === "string" ? body.callerRoomToken : "";
+          const calleeRoomToken = typeof body.calleeRoomToken === "string" ? body.calleeRoomToken : "";
+          if (callerRoomToken && calleeRoomToken && expiresAt) {
+            await this.state.storage.put({
+              room_token_caller: callerRoomToken,
+              room_token_callee: calleeRoomToken,
+            });
+          }
           return Response.json({ ok: true });
         }
 
@@ -1128,6 +1423,58 @@ export class CallRoom {
     const url = new URL(req.url);
     const peerId = (url.searchParams.get("id") || crypto.randomUUID()).slice(0, 64);
 
+    // ── [CALL-WS-AUTH-1 2026-08-03] AUTHENTICATE THE WEBSOCKET JOIN (audit A1) ─
+    //
+    // THE HOLE: index.ts matches `/(api/)?room/<id>` BEFORE any auth and forwards
+    // the request straight here, and this handler took `peerId` from a query
+    // string with no identity check at all. The only join gates were the session
+    // phase, the 2-peer cap and duplicate-socket adoption — none of which asks
+    // WHO is joining. Call ids are `avatok-` + 8 hex characters (~32 bits) and
+    // they travel through pushes, telemetry and logs. Anyone holding a live call
+    // id could:
+    //   * join as the second peer — which sets `answeredAt`, so the REAL callee's
+    //     accept then hits the 2-peer cap and is busy-rejected, and the
+    //     no-answer→Ava handoff is suppressed by the answered probe;
+    //   * read and inject SDP/candidates, since the relay is scoped only by
+    //     self-declared peer ids;
+    //   * simply occupy a seat so neither real party can connect.
+    //
+    // [CALL-AUTHZ-1] is NOT a mitigation: it gates /api/call/command, an entirely
+    // different surface from this relay.
+    //
+    // THE GATE: a per-side token minted at dial time (see register-token above),
+    // presented as `?t=`. It proves both membership AND which seat the joiner is
+    // entitled to. Note the check runs BEFORE the aggregate is loaded and before
+    // any telemetry that would echo call state — an unauthenticated joiner must
+    // not be able to use this endpoint as an oracle for whether a call exists.
+    //
+    // ROLLOUT: enforcement is behind `callRoomAuthEnforced`, default FALSE, so
+    // installed builds that do not yet send `?t=` keep working. Until it is
+    // flipped this only OBSERVES — every join is tagged authenticated or not, so
+    // the flip can be timed on real data rather than hope. The flag is declared
+    // in the PlatformConfig interface AND in DEFAULTS in the same change, per the
+    // fake-flag rule (a client-read flag config.ts does not declare can never
+    // actually be flipped — the inAppUpdateEnabled failure of 2026-07-15).
+    const presentedToken = (url.searchParams.get("t") || "").slice(0, 128);
+    const authVerdict = await this.classifyRoomToken(presentedToken);
+    if (!authVerdict.ok) {
+      const enforced = await this.roomAuthEnforced();
+      try {
+        void this.env.Q_ANALYTICS.send({
+          event: "invariant_protected", uid: peerId, ts: Date.now(),
+          props: {
+            kind: "call_ws_join_unauthenticated", side: "server",
+            reason: authVerdict.reason, enforced,
+            call_id: this.state.id.name ? String(this.state.id.name).slice(0, 64) : null,
+            app_name: "avatok", service_name: "avatok-api", worker: true,
+          },
+        });
+      } catch { /* best-effort */ }
+      if (enforced) {
+        return Response.json({ error: "room_auth_required", reason: authVerdict.reason }, { status: 403 });
+      }
+    }
+
     // [CALL-HANDOFF-CALLEE-CLOSE-1] The service handoff and the human room are
     // mutually exclusive. A cancellation push can be delayed or missed, so the
     // CallRoom itself must reject a late Accept after Ava/voicemail owns the
@@ -1136,6 +1483,22 @@ export class CallRoom {
     const aggregate = await this.loadSession(
       url.searchParams.get("callId") ?? (this.state.id.name ? String(this.state.id.name) : ""),
     );
+    // [CALL-GRACE-ENDCALL-1 2026-08-03] (audit A2, belt half) The FSM is the
+    // primary admission authority and, with the grace-expiry `end_call` above, it
+    // is now correct on its own. This second check exists because the two
+    // "is the call over" records reached the same conclusion by different routes
+    // for a long time, and a room that has been torn down — sockets closed,
+    // peer-left delivered — must not accept a new peer under ANY reading. If a
+    // future path calls markEnded() without advancing the aggregate, admission
+    // stays closed instead of silently reopening the room.
+    await this.loadCallState();
+    if (this.ended === true) {
+      return Response.json({
+        error: "human_call_closed",
+        status: this.terminalStatus ?? legacyWireStatus(aggregate),
+        session_state: aggregate.session_state,
+      }, { status: 409 });
+    }
     if (!humanRoomAcceptsNewPeer(aggregate)) {
       try {
         void this.env.Q_ANALYTICS.send({
@@ -1216,14 +1579,30 @@ export class CallRoom {
     const client = pair[0], server = pair[1];
     // Hibernation: the runtime manages the socket; the peer id rides in the tag
     // so we can address messages and report joins/leaves across hibernation.
-    this.state.acceptWebSocket(server, [peerId]);
+    // [CALL-WS-AUTH-1] A SECOND tag records the side the presented room token
+    // entitled this socket to. Tag[0] stays the peer id — every existing lookup
+    // in this file reads getTags(w)[0] and is untouched — so this is purely
+    // additive: it survives hibernation and makes the socket's proven identity
+    // inspectable later, rather than being a fact that existed only during the
+    // upgrade handshake.
+    this.state.acceptWebSocket(
+      server,
+      authVerdict.ok ? [peerId, `side:${authVerdict.side}`] : [peerId],
+    );
     // Keepalive: let hibernated sockets answer client pings without waking the
     // DO (CALL-RC-D1 item 5). Same JSON ping/pong convention already used by
-    // do/inbox.ts and do/party.ts — the WS-D client half (CallSession reconnect
-    // state machine) sends jsonEncode({'type':'ping'}) every ~15s and expects
-    // {"type":"pong"} back. The manual webSocketMessage handler never sees
-    // these frames once auto-response is armed, so no extra handling needed
-    // there; unmatched/older-client frames just fall through as before.
+    // do/inbox.ts and do/party.ts — the client sends
+    // jsonEncode({'type':'ping'}) every ~15s and expects {"type":"pong"} back.
+    //
+    // [CALL-KEEPALIVE-1 2026-08-03] This comment used to end "the manual
+    // webSocketMessage handler never sees these frames once auto-response is
+    // armed, so no extra handling needed there". THAT WAS FALSE for every
+    // connected call: the match is an EXACT string comparison, and the client
+    // stamped `gen` on the frame after `welcome`, so nothing matched, every ping
+    // woke the DO, and every ping was relayed to the peer as noise. The client
+    // now sends the keepalive raw — but old builds do not, and never will, so
+    // webSocketMessage ALSO answers and absorbs `ping` explicitly. Both halves
+    // are required; neither is redundant.
     try {
       this.state.setWebSocketAutoResponse(
         new WebSocketRequestResponsePair(
@@ -1295,6 +1674,28 @@ export class CallRoom {
     if (typeof message !== "string") return;
     let data: Record<string, unknown>;
     try { data = JSON.parse(message); } catch { return; }
+
+    // ── [CALL-KEEPALIVE-1 2026-08-03] (audit H5, server half) ────────────────
+    //
+    // A `ping` should never reach this handler at all: `setWebSocketAutoResponse`
+    // is supposed to answer it while the DO stays hibernated. It reached here for
+    // every connected call anyway, because the client stamped `gen` on the frame
+    // and the auto-response is an EXACT string match. The client fix stops that
+    // for new builds; this covers every build already in the field, and it must
+    // stay for as long as one of them exists.
+    //
+    // Two behaviours, both previously wrong:
+    //   * ANSWER it. Without a pong the client's new keepalive deadline would
+    //     trip on a perfectly healthy call.
+    //   * Do NOT RELAY it. With no `to`, a ping fell through to the broadcast
+    //     branch below and was forwarded to the PEER — one useless wakeup and one
+    //     useless frame per peer every 15 seconds, for the life of every call.
+    // `pong` is likewise absorbed: nothing downstream has ever acted on one.
+    if (data.type === "ping") {
+      try { ws.send(JSON.stringify({ type: "pong" })); } catch { /* socket gone */ }
+      return;
+    }
+    if (data.type === "pong") return;
 
     data.from = this.state.getTags(ws)[0];
 
@@ -1430,9 +1831,28 @@ export class CallRoom {
       // above via broadcast fallback, never buffered, so it isn't delayed.
       const away = await this.loadAway();
       if (!delivered && away && away.id === data.to && data.type !== "bye" && data.type !== "decline" && data.type !== "hangup") {
-        away.buffered.push(out);
-        if (away.buffered.length > MAX_BUFFERED_MESSAGES) away.buffered.shift(); // drop oldest
-        await this.setAway(away);
+        this.bufferForAwayPeer(away, out);
+        // [CALL-AWAYBUF-BYTES-1 2026-08-03] THIS TRY/CATCH IS THE H2 CRASH FIX,
+        // and it is the one place in this change where swallowing is CORRECT.
+        //
+        // `setAway` was called bare here. Its put is the only unbounded write in
+        // the relay path, so when the buffer exceeded the 128 KiB DO value cap
+        // the throw propagated straight out of webSocketMessage and took the
+        // relay down for that frame — an optimisation killing the thing it was
+        // optimising. The byte cap above should now make that unreachable, but
+        // the correct failure mode if it ever isn't must be stated explicitly,
+        // not left to whatever the runtime does.
+        //
+        // Fail-open is right HERE and fail-closed is right for `fsm` because the
+        // stakes are opposite: losing the buffer costs a peer some replayed
+        // candidates it can renegotiate for, while losing an FSM write means
+        // every participant was told an outcome the server has forgotten.
+        try {
+          await this.setAway(away);
+        } catch {
+          // Buffer lost, relay alive. Keep the in-memory copy — it may still
+          // replay if this instance survives to the rejoin.
+        }
         delivered = true; // handled via buffer, not a delivery failure
       }
       // Ringing race (zombie-call hotfix A4.3): a bye/decline addressed to a
@@ -1471,7 +1891,7 @@ export class CallRoom {
       return;
     }
 
-    await this.setAway({ id: from, awaySince: Date.now(), buffered: [] });
+    await this.setAway({ id: from, awaySince: Date.now(), buffered: [], bufferedBytes: 0 });
     await this.scheduleNextAlarm(); // [WP2] multiplexed with any pending billing tick
     for (const w of others) this.sendTo(w, { type: "peer-away", id: from });
   }
@@ -1483,6 +1903,82 @@ export class CallRoom {
     if (this.ringDeadline === undefined) this.ringDeadline = (await this.state.storage.get<number>("ringDeadline")) ?? null;
     if (this.ringDeadline != null && now >= this.ringDeadline - 500) {
       const session = await this.loadSession("");
+      // ── [CALL-ALARM-ANSWERED-1 2026-08-03] DO NOT TIME OUT A LIVE CALL ──────
+      //
+      // Scenario 4's residual gap. This branch used to consult NOTHING except
+      // the clock: at the ring deadline it ran `ring_timeout` — or started Ava —
+      // regardless of whether two people were already talking. The FSM only ever
+      // learned about an answer from the client POSTing `accept_call`, and there
+      // are several ordinary ways that POST never lands: an old build that never
+      // sends it, a lost request, or the client's own 1500 ms claim timeout,
+      // which fails OPEN to WebSocket admission by design. In every one of those
+      // the room has two live peers on a working call while the aggregate still
+      // says `ringing`, and 20 s in the alarm broadcasts `no-answer` over the top
+      // of the conversation or drops Ava into the middle of it.
+      //
+      // EVIDENCE USED, and one that deliberately is NOT:
+      //   * `session_state === "connected"` — the aggregate already knows.
+      //   * two DISTINCT peer tags holding sockets right now. Distinct tags, not
+      //     `getWebSockets().length`: the adopt-and-close path for a duplicate
+      //     socket on the SAME peer id can transiently show two entries for one
+      //     participant, and counting those as a connected call would suppress
+      //     no-answer for a callee who never picked up.
+      //   * `answeredAt` is NOT sufficient on its own and is deliberately not
+      //     part of this test. It is STICKY — set the instant a second socket
+      //     ever attached, never cleared — so a zombie join (an FCM-woken socket
+      //     on an offline callee that dies before media) leaves it true forever.
+      //     That exact staleness already vetoed the unreachable→Ava handoff with
+      //     409 call_answered in prod (avatok-8caef3ce). Trusting it here would
+      //     re-import that bug into the timeout path: a phantom-answered call
+      //     would never time out and never reach Ava. Live sockets are evidence;
+      //     a sticky historical flag is not.
+      //
+      // On a trip we also issue `mark_connected`, so the aggregate stops
+      // disagreeing with the sockets. Without it the session would sit in
+      // `ringing` for a call that is demonstrably live, and a later `end_call`
+      // would mislabel the disposition — `wasConnected` reads the FSM, not the
+      // room (call_state.ts). The command is idempotent, so an alarm that trips
+      // this guard repeatedly costs nothing.
+      //
+      // STRUCTURE: this skips the RING BRANCH ONLY and falls through. `alarm()`
+      // is multiplexed — reconnect-grace expiry, legacy-billing retirement and
+      // scheduleNextAlarm() all live below. An early `return` here would silently
+      // kill the away-peer grace expiry and the billing refund retry on any
+      // connected call, which is a worse bug than the one being fixed.
+      const liveTags = new Set(
+        this.state.getWebSockets()
+          .map((w) => this.state.getTags(w)[0])
+          .filter((t): t is string => typeof t === "string" && t.length > 0),
+      );
+      const callIsLive = session.session_state === "connected" || liveTags.size >= 2;
+      if (callIsLive) {
+        // Hydrate before the telemetry below reads `answeredAt`. It is NOT part
+        // of the guard (see above — it is sticky and would re-import the
+        // phantom-answered bug), but it is the single most useful field for
+        // telling a genuine lost-accept from a zombie join when reading these
+        // events back, and after an eviction it is `undefined` until this runs.
+        await this.loadCallState();
+        this.ringDeadline = null;
+        try { await this.state.storage.delete("ringDeadline"); } catch { /* best-effort */ }
+        if (session.session_state !== "connected") {
+          // The room proves what the aggregate missed. Teach it.
+          await this.runCommand(session.call_id || String(this.state.id.name ?? ""), "mark_connected", "server");
+        }
+        try {
+          void this.env.Q_ANALYTICS.send({
+            event: "invariant_protected", uid: session.callee_uid ?? "", ts: now,
+            props: {
+              kind: "ring_timeout_suppressed_call_live", side: "server",
+              call_id: session.call_id || (this.state.id.name ? String(this.state.id.name).slice(0, 64) : null),
+              session_state: session.session_state,
+              live_peers: liveTags.size,
+              answered_at: this.answeredAt ?? null,
+              caller_uid: session.caller_uid, callee_uid: session.callee_uid,
+              app_name: "avatok", service_name: "avatok-api", worker: true,
+            },
+          });
+        } catch { /* best-effort — the guard itself is authoritative */ }
+      } else {
       if (this.autoReceptionistEligible === undefined) {
         this.autoReceptionistEligible =
           (await this.state.storage.get<boolean>("autoReceptionistEligible")) ?? false;
@@ -1533,13 +2029,36 @@ export class CallRoom {
           } catch { /* native duration remains the final ring backstop */ }
         }
       }
+      } // ← end of the connected-guard `else` (ring branch). Fall through.
     }
     const away = await this.loadAway();
     if (away && now >= away.awaySince + RECONNECT_GRACE_MS - 500) {
-      // CALL-RC-D1: fires ~30s after a peer's WS closed/errored. If it never
+      // CALL-RC-D1: fires ~45s after a peer's WS closed/errored. If it never
       // reconnected (still marked away), end the call the old way: peer-left
       // to whoever's left, then close their socket too.
       await this.setAway(null);
+      // ── [CALL-GRACE-ENDCALL-1 2026-08-03] (audit A2) ───────────────────────
+      //
+      // This branch used to call markEnded() ONLY, which sets the legacy `ended`
+      // flag and nothing else. The AGGREGATE was never advanced, so a call whose
+      // grace had expired — peer-left already sent, both sockets closed, the
+      // surviving user already shown "call ended" — was still `connected` or
+      // `ringing` as far as the FSM was concerned.
+      //
+      // WS admission consults the FSM and only the FSM (humanRoomAcceptsNewPeer),
+      // so `connected` still ACCEPTS new peers. A device that reconnected a
+      // moment after expiry was therefore admitted into a room the server had
+      // already declared over, resurrecting a dead call against a peer who was
+      // gone. It also meant a graced-out call never recorded a disposition at
+      // all, so it was invisible in call history and analytics.
+      //
+      // Issuing `end_call` as `server` fixes both: the session becomes terminal
+      // (so the admission check refuses the late rejoin), and the reducer picks
+      // the honest disposition from the evidence — `answered_by_callee` if the
+      // call had connected, `ring_timeout` if it never did.
+      try {
+        await this.runCommand(String(this.state.id.name ?? ""), "end_call", "server");
+      } catch { /* the markEnded + close below still tears the room down */ }
       await this.markEnded(); // CALL-KV-STATE-1: grace expired, call ended (also disarms billing → refundUnused)
       for (const w of this.state.getWebSockets()) {
         this.sendTo(w, { type: "peer-left", id: away.id });

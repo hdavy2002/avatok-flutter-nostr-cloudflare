@@ -54,6 +54,7 @@ import '../../core/chat_state.dart';
 import '../../core/wallpaper.dart';
 import '../../core/config.dart';
 import '../../core/calls/call_session_manager.dart';
+import '../../core/calls/call_session.dart' show rememberCallRoomToken; // [CALL-WS-AUTH-1]
 import '../../core/ice_cache.dart';
 import '../../core/profile_store.dart';
 import '../../core/drive_service.dart';
@@ -3977,6 +3978,16 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         serverRoute = (body['routed'] ?? '').toString();
       } catch (_) {}
 
+      // [CALL-WS-AUTH-1 2026-08-03] Deposit the CALLER's CallRoom join credential
+      // as early as possible: the optimistic mount has already opened (or is
+      // about to open) the signalling socket, and it waits briefly for exactly
+      // this value before connecting. Deliberately outside every status branch —
+      // a token is worth keeping even on a response we otherwise treat as a
+      // failure, because the session may still be live and reconnecting.
+      try {
+        final rt = (jsonDecode(res.body)['roomToken'] ?? '').toString();
+        if (rt.isNotEmpty) rememberCallRoomToken(room, rt);
+      } catch (_) {/* older server: no token, join stays un-credentialed */}
       final session = CallSessionManager.instance.liveSessionFor(room);
       if (res.statusCode == 200 && serverRoute == 'receptionist') {
         Analytics.capture('call_server_receptionist_routed', {

@@ -1357,6 +1357,39 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   // read-fallback ONLY, kept for ONE release; REMOVE the KV branch once the Call
   // FSM (CALL-FSM-1) lands and this becomes a straight FSM-state check.
   const callId = b.call_id == null ? null : String(b.call_id).slice(0, 64);
+  // [RECEPT-DO-OWNERSHIP-1 2026-08-03] (audit A3) The session id is minted HERE,
+  // ahead of the CallRoom admit, because it is now also the ownership CLAIM this
+  // request stakes inside the Durable Object. It used to be minted ~120 lines
+  // below, after the admit had already succeeded — by which point there was
+  // nothing left to arbitrate with and two concurrent /start requests had both
+  // been told they had won.
+  const sid = crypto.randomUUID();
+  // [RECEPT-GATE-ORDER-1 2026-08-03] (audit A5, rollback half) Once
+  // `receptionist-admit` succeeds the human room is CLOSED
+  // (`humanRoomAcceptsNewPeer` is false in `handoff`), so ANY later failure in
+  // this handler must COMPLETE the session rather than leave the caller parked in
+  // a handoff with nothing on the line.
+  //
+  // Moving the scenario toggle above the admit removed the one KNOWN post-commit
+  // refusal. This exists so the CLASS is closed: a future early return added
+  // between the admit and session creation cannot silently recreate the same
+  // shape. Declared out here, above the `if (callId)` block that performs the
+  // admit, because the failure sites it guards (the D1 session insert) are below
+  // that block's scope.
+  let handoffCommitted = false;
+  const rollbackHandoff = async (reason: string): Promise<void> => {
+    if (!handoffCommitted || !callId) return;
+    try {
+      const stub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(callId));
+      await stub.fetch("https://call/service-outcome", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          callId, command: "receptionist_failed",
+          commandId: `recept-rollback:${callId}:${reason}`,
+        }),
+      });
+    } catch { /* the caller's own hangup remains the backstop */ }
+  };
   if (callId) {
     let answered = false;
     let terminal = false;
@@ -1436,6 +1469,33 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
       return json({ error: "receptionist_unavailable", reason: terminal ? "call_terminal" : "call_answered" }, 409);
     }
 
+    // ── [RECEPT-GATE-ORDER-1 2026-08-03] (audit A5) GATES BEFORE THE ADMIT ────
+    //
+    // `avatokHandoffAllowed` — the owner's per-scenario hand-off toggle — used to
+    // be evaluated ~140 lines BELOW, long after `receptionist-admit` had already
+    // advanced and PERSISTED the aggregate to `handoff`. The comment justifying
+    // that early return said "Nothing has been persisted for this session yet at
+    // this point", and it was simply false.
+    //
+    // The consequence was the worst possible combination: no Ava session was
+    // created, but the human room was permanently closed
+    // (`humanRoomAcceptsNewPeer` is false in `handoff`), so a late Accept could
+    // no longer join — and the caller's leg read `connected_to_receptionist`
+    // with nobody on the other end. A toggle meant to mean "don't hand off"
+    // instead destroyed the call.
+    //
+    // A gate that can refuse must be evaluated BEFORE the commit it is gating.
+    // Moving it here is a strictly smaller change than adding a rollback path,
+    // and it needs no new FSM transition. The other money gate — the five-token
+    // spendable floor — was already ahead of the admit and is unchanged.
+    //
+    // `menu` (the caller pressed "Talk to Ava") and self-calls (the owner
+    // testing) still always pass: an explicit human choice is not scenario-gated.
+    if (!avatokHandoffAllowed(s, activationMode, ctx.uid === to)) {
+      skip("scenario_disabled", { activation_mode: activationMode });
+      return json({ error: "receptionist_unavailable", reason: "scenario_disabled", activation_mode: activationMode }, 403);
+    }
+
     // Commit automatic takeover in CallRoom itself. This is a single serialized
     // transition against accept/cancel, so exactly one outcome wins. Menu is a
     // new explicit caller action; decline is already committed by the callee.
@@ -1444,8 +1504,29 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
         const stub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(callId));
         const r = await stub.fetch("https://call/receptionist-admit", {
           method: "POST", headers: { "content-type": "application/json" },
-          body: JSON.stringify({ callId, commandId: `recept-admit:${callId}` }),
+          // [RECEPT-DO-OWNERSHIP-1] `sid` rides along so the admit and the
+          // strongly-consistent ownership claim cost ONE DO hop on the
+          // latency-sensitive automatic path. See claimReceptionistSession().
+          body: JSON.stringify({ callId, sid, commandId: `recept-admit:${callId}` }),
         });
+        if (r.ok) {
+          // The aggregate is now in `handoff` and the human room is closed.
+          handoffCommitted = true;
+          const admitBody = (await r.json().catch(() => null)) as
+            { claimed?: boolean; receptionist_sid?: string } | null;
+          // We lost the ownership race inside the DO. Another /start for this
+          // exact call already owns the session — reattach the caller to it
+          // rather than opening a second Ava beside the first.
+          if (admitBody && admitBody.claimed === false && admitBody.receptionist_sid
+              && admitBody.receptionist_sid !== sid) {
+            trackUserContact(env, ctx.uid, caller.email, caller.phone, "ava_recept_reattach_blocked", APP,
+              { owner: to, call_id: callId, stage: "do_claim", existing_sid: admitBody.receptionist_sid });
+            return json({
+              error: "receptionist_unavailable", reason: "reattach_blocked",
+              session_id: admitBody.receptionist_sid,
+            }, 409);
+          }
+        }
         if (!r.ok) {
           skip("call_terminal", { call_id: callId, activation_mode: activationMode });
           return json({ error: "receptionist_unavailable", reason: "call_terminal" }, 409);
@@ -1459,18 +1540,66 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
     }
   }
 
+  // ── [RECEPT-DO-OWNERSHIP-1 2026-08-03] (audit A3) THE AUTHORITATIVE CLAIM ───
+  //
+  // The automatic lanes already claimed ownership as part of `receptionist-admit`
+  // above (one DO hop). The CALLER-INITIATED lanes — decline-to-Ava, busy — never
+  // touch that endpoint, because the callee's own command already advanced the
+  // aggregate. They still need arbitrating: a decline, a busy status push and the
+  // client's own cancel echo can all trigger /start for the SAME call within a
+  // couple of seconds.
+  //
+  // `menu` is deliberately excluded. It is a new, explicit caller choice made
+  // after the human call has ended, and is allowed to create its own session —
+  // that exemption is pre-existing behaviour, not a gap.
+  //
+  // This is the STRONGLY CONSISTENT gate. The KV lock below is now a cache in
+  // front of it, not the authority (see claimReceptionistSession() in the DO for
+  // why no arrangement of KV reads and writes can be made safe here).
+  if (callId && !automaticHandoff && activationMode !== "menu") {
+    try {
+      const stub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(callId));
+      const cr = await stub.fetch("https://call/receptionist-claim", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ callId, sid }),
+      });
+      if (cr.ok) {
+        const cj = (await cr.json().catch(() => null)) as
+          { claimed?: boolean; receptionist_sid?: string } | null;
+        if (cj && cj.claimed === false && cj.receptionist_sid && cj.receptionist_sid !== sid) {
+          trackUserContact(env, ctx.uid, caller.email, caller.phone, "ava_recept_reattach_blocked", APP,
+            { owner: to, call_id: callId, stage: "do_claim", existing_sid: cj.receptionist_sid });
+          return json({
+            error: "receptionist_unavailable", reason: "reattach_blocked",
+            session_id: cj.receptionist_sid,
+          }, 409);
+        }
+      }
+    } catch {
+      // Fail OPEN, unlike the admit above. The admit proves we own the call
+      // OUTCOME — starting a paid session without that is a correctness failure.
+      // This only proves we own the SESSION, and the KV lock below plus the
+      // client's own `_receptionistActive` guard both still stand behind it.
+      // Refusing every decline-to-Ava on a DO blip would be a worse trade.
+    }
+  }
+
   // RECEPT-REATTACH-1: idempotency — AT MOST ONE receptionist session per call_id.
   // Multiple caller-side triggers can hit /start for the SAME call (no-answer
   // timeout + a 'busy' status push + our own 'cancel' echo, all within a couple of
   // seconds). Before this guard, a second /start spawned a SECOND ReceptionRoom on
   // the same call — Ava restarted her greeting from scratch, producing two
   // recordings, two posted messages, and TWO ava_recept_cost billing events for one
-  // call (PostHog avatok-14739b84, 2026-07-03 18:39). We claim the call_id in KV on
-  // the first /start (first-write-wins via a compare-after-put race check); a second
-  // /start for the same call_id is a NO-OP that emits ava_recept_reattach_blocked and
-  // returns the already-active session so the caller stays on it (never restarts).
-  // Keyed per (call_id, caller, owner) so an unrelated later call can't be blocked;
-  // TTL bounds it to the ~90s call life so a crashed session never wedges the id.
+  // call (PostHog avatok-14739b84, 2026-07-03 18:39).
+  //
+  // [RECEPT-DO-OWNERSHIP-1 2026-08-03] THIS IS NO LONGER THE AUTHORITY. It is a
+  // cheap first-line cache in front of the DO claim above. Keeping it is still
+  // worth it — a KV hit short-circuits a duplicate /start without a DO round trip
+  // — but it CANNOT be relied on to decide the race, and the read-then-put below
+  // must not be mistaken for a lock. KV is eventually consistent: two concurrent
+  // /starts in different colos both read null and both write. That is precisely
+  // how the avatok-14739b84 incident this guard cites happened AGAIN after the
+  // guard was added.
   const REATTACH_LOCK_TTL = 120; // sec — covers the 90s hard cap + slack
   const reattachKey = callId ? `recept_call:${callId}:${ctx.uid}:${to}` : null;
   if (reattachKey) {
@@ -1513,7 +1642,8 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
     } catch { /* fail-open — legacy start proceeds unaffected */ }
   }
 
-  const sid = crypto.randomUUID();
+  // [RECEPT-DO-OWNERSHIP-1] `sid` is minted much earlier now (before the CallRoom
+  // admit) because it doubles as this request's ownership claim. Do not re-mint.
   const rtcToken = crypto.randomUUID();
   // [CALL-REL-7] Opaque, single-session reattach credential (Specs/PERMANENT-
   // P2P-CALL-RELIABILITY-IMPLEMENTATION-PLAN-2026-07-24.md §8). Minted once here,
@@ -1566,21 +1696,17 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   // "menu" (CALL-OUTCOME-MENU 2026-07-09): the caller pressed "Talk to Ava" on the
   // call outcome menu — a deliberate choice, so Ava opens as a helpful assistant
   // ("what can I do for you?") rather than a voicemail-style message-taker.
-  // [RECEPT-BACKEND-TOGGLES-1] (owner decision 2026-07-23): SERVER-SIDE per-lane +
-  // per-scenario hand-off gate for the AvaTOK↔AvaTOK lane (this endpoint's lane; the
-  // PSTN lane is gated in routes/pstn.ts). The caller's `activation_mode` maps to a
-  // scenario and Ava only takes the call when the owner enabled that scenario for the
-  // AvaTOK lane (or that lane's redirect_all is on → Ava answers first for EVERY call).
-  // If the toggle is OFF we do NOT hand off — the call ends as a plain missed/rejected
-  // call. This runs AFTER the [TOKENS-100-GRANT-1] spendable<=2 floor above, so the
-  // token floor always wins (a near-empty owner never hands off regardless of toggles).
-  // `menu` (caller pressed "Talk to Ava") and self-calls (owner testing) always pass —
-  // an explicit human choice is never gated by a scenario toggle. Nothing has been
-  // persisted for this session yet at this point, so the early return needs no cleanup.
-  if (!avatokHandoffAllowed(s, activationMode, ctx.uid === to)) {
-    skip("scenario_disabled", { activation_mode: activationMode });
-    return json({ error: "receptionist_unavailable", reason: "scenario_disabled", activation_mode: activationMode }, 403);
-  }
+  // [RECEPT-BACKEND-TOGGLES-1] (owner decision 2026-07-23): the SERVER-SIDE
+  // per-lane + per-scenario hand-off gate USED TO BE EVALUATED HERE.
+  //
+  // [RECEPT-GATE-ORDER-1 2026-08-03] (audit A5) It MOVED UP, to immediately
+  // before `receptionist-admit`. The comment that used to sit here claimed
+  // "Nothing has been persisted for this session yet at this point, so the early
+  // return needs no cleanup" — which was false: the admit had already advanced
+  // and persisted the aggregate to `handoff` well above this line, so refusing
+  // here left the human room permanently closed with no Ava to replace it.
+  // A gate that can refuse must run BEFORE the commit it gates. See the moved
+  // block for the full reasoning. Do NOT re-add a copy here.
 
   // DETERMINISTIC GREETING (owner decision 2026-06-29): composed server-side and
   // spoken immediately by the CF engine — NO LLM round-trip — so there's no dead
@@ -1627,11 +1753,24 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   const teamSlot = b.team_slot == null ? null : (Number(b.team_slot) || null);
 
   // Session row (active). The DO finalizes it on close.
-  await metaDb(env).prepare(
-    `INSERT INTO receptionist_sessions
-       (id, owner_uid, caller_uid, caller_phone, caller_name, call_id, activation_mode, team_id, team_slot, status, started_at, created_at, updated_at)
-     VALUES (?1,?2,?3,?4,?5,?6,?7,?9,?10,'active',?8,?8,?8)`,
-  ).bind(sid, to, ctx.uid, callerPhone, callerName, callId, activationMode, now, teamId, teamSlot).run();
+  // [RECEPT-GATE-ORDER-1 2026-08-03] (audit A5) The handoff is already committed
+  // by this point, so a D1 failure here would leave the human room closed with no
+  // Ava session behind it — the same "caller parked in handoff with nothing on
+  // the line" shape the scenario toggle used to produce. Complete the session
+  // instead of letting the exception escape as a bare 500.
+  try {
+    await metaDb(env).prepare(
+      `INSERT INTO receptionist_sessions
+         (id, owner_uid, caller_uid, caller_phone, caller_name, call_id, activation_mode, team_id, team_slot, status, started_at, created_at, updated_at)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?9,?10,'active',?8,?8,?8)`,
+    ).bind(sid, to, ctx.uid, callerPhone, callerName, callId, activationMode, now, teamId, teamSlot).run();
+  } catch (e) {
+    await rollbackHandoff("session_insert_failed");
+    await env.TOKENS.delete(`recept_rtc:${sid}`).catch(() => {});
+    if (reattachKey) await env.TOKENS.delete(reattachKey).catch(() => {});
+    skip("session_insert_failed", { call_id: callId, error: String(e).slice(0, 120) });
+    return json({ error: "receptionist_unavailable", reason: "session_insert_failed" }, 503);
+  }
   // Meter the team's monthly receptionist-minute pool (~1 min/session; the call is
   // capped at 70s). Best-effort; the per-owner daily allowance above is the hard gate.
   if (teamId) {

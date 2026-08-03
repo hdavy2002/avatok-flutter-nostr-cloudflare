@@ -276,10 +276,18 @@ export class ReceptionRoomCf {
     }
 
     void this.connectStt(); // live transcription in parallel with the greeting
-    this.startCfEngine().catch((e) => {
-      this.ev("ava_recept_cf_start_failed", { error_scrubbed: scrubSecrets(String(e)).slice(0, 200), ms: Date.now() - this.startedAt });
-      this.failHard("cf_start_failed");
-    });
+    this.startCfEngine().then(
+      () => {
+        // [RECEPT-FSM-LIFECYCLE-1 2026-08-03] (audit A4) Ava is live. Tell the
+        // call aggregate, which until now had no way of learning it — see
+        // reportServiceOutcome().
+        this.state.waitUntil(this.reportServiceOutcome("receptionist_connected"));
+      },
+      (e) => {
+        this.ev("ava_recept_cf_start_failed", { error_scrubbed: scrubSecrets(String(e)).slice(0, 200), ms: Date.now() - this.startedAt });
+        this.failHard("cf_start_failed");
+      },
+    );
 
     this.softTimer = setTimeout(() => this.onSoftCap(), init.soft_cap_ms);
     this.hardTimer = setTimeout(() => this.finalize("hard_cap"), init.hard_cap_ms);
@@ -1113,8 +1121,46 @@ export class ReceptionRoomCf {
 
   private failHard(reason: string): void {
     this.ev("ava_recept_error", { stage: reason, fatal: true, ms: Date.now() - this.startedAt });
+    // [RECEPT-FSM-LIFECYCLE-1 2026-08-03] (audit A4) A fatal Ava failure must
+    // COMPLETE the call. Before this, the aggregate stayed in `handoff` with
+    // `service_leg_state: "starting_receptionist"` forever: the caller could not
+    // reach Ava (she had just died) and could not fall back to the human leg
+    // either, because `humanRoomAcceptsNewPeer` is false in `handoff`. The call
+    // was over on the device and never over on the server. `receptionist_failed`
+    // is the transition that was written for exactly this and never issued.
+    this.state.waitUntil(this.reportServiceOutcome("receptionist_failed"));
     try { this.client?.send(JSON.stringify({ t: "error", reason })); } catch { /* ignore */ }
     this.finalize(reason);
+  }
+
+  /**
+   * [RECEPT-FSM-LIFECYCLE-1 2026-08-03] Report a service-leg outcome to the
+   * CallRoom aggregate that owns this call.
+   *
+   * Internal DO→DO hop on the same trust boundary as the existing `/state` probe.
+   * No-op when the session carries no `call_id` — the PSTN and menu lanes can
+   * create a receptionist session with no CallRoom behind it, and inventing one
+   * would be worse than reporting nothing.
+   *
+   * `waitUntil`, not a bare `void`. Audit M5 flagged the fire-and-forget pattern
+   * across this codebase as harmless-today-because-it-is-only-telemetry; this is
+   * NOT telemetry. It is a state transition, and a bare `void` on the failure
+   * path in particular would be dropped exactly when it matters most — the DO is
+   * being torn down in the same tick by finalize().
+   */
+  private async reportServiceOutcome(command: "receptionist_connected" | "receptionist_failed"): Promise<void> {
+    const callId = this.init?.call_id;
+    const sid = this.init?.sid;
+    if (!callId || !sid) return;
+    try {
+      const stub = this.env.CALL_ROOMS.get(this.env.CALL_ROOMS.idFromName(callId));
+      await stub.fetch("https://call/service-outcome", {
+        method: "POST", headers: { "content-type": "application/json" },
+        // Per-session command id: a retry or a duplicate teardown collapses
+        // instead of transitioning twice.
+        body: JSON.stringify({ callId, command, commandId: `${command}:${sid}` }),
+      });
+    } catch { /* the call's own teardown paths remain the backstop */ }
   }
 
   /** Live takeover: the owner dialed the caller who is mid-message. Ava bows out

@@ -604,6 +604,24 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   // action. The native button can run with no Clerk/Dart process, so it needs a
   // narrowly scoped proof that cannot authorize any account-level operation.
   const nativeActionToken = crypto.randomUUID();
+  // [CALL-WS-AUTH-1 2026-08-03] (audit A1) Per-SIDE CallRoom join credentials.
+  //
+  // The signalling relay (`/room/<id>`) is matched in index.ts BEFORE any auth
+  // and had no identity check of its own, so a leaked call id was enough to join
+  // a stranger's call, occupy a seat and read/inject SDP. These are the proof of
+  // membership that admission was missing.
+  //
+  // TWO tokens, one per seat, minted here where both identities are already
+  // known and authenticated: `ctx.uid` placed the call, `b.to` is being dialled.
+  // A single shared call token would prove membership but not WHICH side, so one
+  // party could present it twice and take both seats — the same class of bug
+  // [CALL-AUTHZ-1] fixed on the command endpoint, where a client-claimed `role`
+  // was trusted instead of derived.
+  //
+  // They are ring-lease scoped (same expiresAt as the ring receipt token): a JOIN
+  // credential, not a session key, so expiry can never disconnect a live call.
+  const callerRoomToken = crypto.randomUUID();
+  const calleeRoomToken = crypto.randomUUID();
   const expiresAt = Date.now() + CALL_RING_LIFETIME_MS;
 
   // [RECEPT-SERVER-TIMEOUT-1] The CallRoom owns the one four-ring deadline.
@@ -632,6 +650,8 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
       body: JSON.stringify({
         type: "register-token", token: ringReceiptToken,
         nativeActionToken, expiresAt,
+        // [CALL-WS-AUTH-1] The DO is the only place these are ever compared.
+        callerRoomToken, calleeRoomToken,
       }),
     });
   } catch (e) {
@@ -643,6 +663,10 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
     kind: "call", to: b.to, from: ctx.uid, fromName: resolvedName,
     callId: b.callId, callType: b.kind ?? "audio", traceId, ts: Date.now(),
     ringReceiptToken, nativeActionToken, tokenExpiresAt: expiresAt,
+    // [CALL-WS-AUTH-1] The CALLEE's half of the room credential. It travels with
+    // the ring because the callee has no other authenticated round-trip before it
+    // needs to join — accepting a call goes straight to the WebSocket.
+    roomToken: calleeRoomToken,
     // [CALL-IDENTITY-SNAPSHOT-1] Transport copy of the identity snapshot, so a
     // COLD phone can paint the caller's photo + real name on the first frame.
     // This is a copy, NOT an authority — if it ever disagrees with the call
@@ -671,6 +695,11 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
         type: "call_ring", callId: b.callId, fromPub: ctx.uid,
         fromName: resolvedName, kind: b.kind ?? "audio",
         ringReceiptToken, nativeActionToken, tokenExpiresAt: expiresAt,
+        // [CALL-WS-AUTH-1] Same credential as the FCM payload. The WS ring beats
+        // FCM by seconds for an online callee, so it MUST carry it too — a fast
+        // path that arrives without the join credential would answer a call the
+        // client then cannot join once enforcement is on.
+        roomToken: calleeRoomToken,
         trace_id: traceId, ts: Date.now(),
         // [CALL-IDENTITY-SNAPSHOT-1] The WS ring beats FCM by seconds for an
         // online callee, so it MUST carry the same identity fields — otherwise
@@ -731,7 +760,10 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   // the CallRoom ring-ack (the consumer emits ok=false + push_no_device when every
   // token turns out stale/pruned after a re-login). The client shows ringback on
   // this optimistic result but MUST fall back to "unreachable" when ring-ack ok=false.
-  return json({ sent: n, reachable: true, ringbackUrl });
+  // [CALL-WS-AUTH-1] The CALLER's half of the room credential, handed back on the
+  // authenticated response to their own dial. An older client simply ignores the
+  // extra field; a newer one appends it as `?t=` when it opens the room socket.
+  return json({ sent: n, reachable: true, ringbackUrl, roomToken: callerRoomToken });
 }
 
 export async function notify(req: Request, env: Env): Promise<Response> {

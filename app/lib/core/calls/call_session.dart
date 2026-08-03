@@ -116,6 +116,70 @@ class CallSessionToken {
 /// [CALL-REG-SEAL-1] The single token the manager presents to build sessions.
 const CallSessionToken kCallSessionToken = CallSessionToken._();
 
+// ── [CALL-WS-AUTH-1 2026-08-03] CallRoom join credentials (audit A1) ─────────
+//
+// The signalling relay (`/room/<id>`) is routed in the Worker BEFORE any auth
+// and, until this change, took the joiner's peer id straight from a query string
+// with no identity check. A call id — 8 hex characters, present in pushes, logs
+// and telemetry — was therefore sufficient to join a stranger's call, take a
+// seat under the 2-peer cap, and read or inject SDP.
+//
+// The server now mints one token PER SIDE at dial time. This registry is the
+// device-side holding pen for whichever side this device is on:
+//   * CALLER — from the `roomToken` field of the /api/call response.
+//   * CALLEE — from the `roomToken` field of the ring push (FCM data + the WS
+//     ring), because accepting a call goes straight to the socket with no
+//     authenticated round-trip in between.
+//
+// A REGISTRY rather than a CallSessionConfig field on purpose. The optimistic
+// mount ([INSTANT-CALL-MOUNT-1]) creates the session the instant the user taps,
+// BEFORE the POST that mints the token has returned, so the value simply does
+// not exist when the config is constructed. Keying by call id lets whichever
+// code path learns it first deposit it, and lets a reconnect pick it up later.
+final Map<String, String> _kRoomTokens = <String, String>{};
+final Map<String, Completer<String>> _kRoomTokenWaiters = <String, Completer<String>>{};
+
+/// Deposit the CallRoom join credential for [callId]. Safe to call more than
+/// once and from either the caller or callee path; first non-empty value wins.
+void rememberCallRoomToken(String callId, String token) {
+  if (callId.isEmpty || token.isEmpty) return;
+  if (_kRoomTokens.containsKey(callId)) return;
+  _kRoomTokens[callId] = token;
+  final w = _kRoomTokenWaiters.remove(callId);
+  if (w != null && !w.isCompleted) w.complete(token);
+  // Calls are short-lived and this map is tiny, but a long-running app process
+  // places a lot of them. Bound it rather than leak one entry per call forever.
+  if (_kRoomTokens.length > 64) {
+    _kRoomTokens.remove(_kRoomTokens.keys.first);
+  }
+}
+
+/// Drop a finished call's credential. Called from teardown.
+void forgetCallRoomToken(String callId) {
+  _kRoomTokens.remove(callId);
+  final w = _kRoomTokenWaiters.remove(callId);
+  if (w != null && !w.isCompleted) w.complete('');
+}
+
+/// The credential for [callId], or '' if this device never received one (an
+/// inbound call from a server that predates this change, for instance).
+String roomTokenFor(String callId) => _kRoomTokens[callId] ?? '';
+
+/// Wait briefly for a credential that is expected but has not landed yet.
+///
+/// Only the OUTGOING first connect needs this, and only because of the
+/// optimistic mount: the socket is opened before POST /api/call has returned the
+/// caller's token. Bounded and fail-open — if it does not arrive we connect
+/// anyway, which is exactly the pre-change behaviour and is what keeps this from
+/// being able to delay a call. The wait costs nothing in practice because an
+/// outgoing socket has nothing to do until the callee joins.
+Future<String> _awaitRoomToken(String callId, Duration timeout) {
+  final have = _kRoomTokens[callId];
+  if (have != null && have.isNotEmpty) return Future<String>.value(have);
+  final w = _kRoomTokenWaiters.putIfAbsent(callId, () => Completer<String>());
+  return w.future.timeout(timeout, onTimeout: () => '');
+}
+
 /// [CALL-NETHUD-1] A snapshot of live network health for the in-call HUD.
 /// Published on [CallSession.netStats] every watchdog tick (~5s) from the SAME
 /// `getStats()` poll the media watchdog already runs (no second poller). All
@@ -602,6 +666,17 @@ class CallSession {
   Timer? _reconnectRetryTimer;
   Timer? _reconnectGiveUpTimer;
   Timer? _pingTimer;
+  /// [CALL-DEADPEER-1 2026-08-03] (audit H3) Keepalive pings sent with no
+  /// inbound traffic seen since. Reset by ANY frame from the server, not only by
+  /// a pong — any traffic at all proves the socket is alive, and counting a busy
+  /// signalling channel as "missed pongs" would be a false positive.
+  ///
+  /// Resetting on any frame is a COMPLEMENT to the pong, not a substitute for
+  /// it: mid-call the signalling WS is otherwise silent, because media flows over
+  /// the WebRTC transport and not through here. Pongs are the only regular
+  /// inbound traffic on an established call, which is precisely why their absence
+  /// is diagnostic.
+  int _missedPongs = 0;
 
   // ── [CALL-MEDIA-WATCH-1] mid-call media-flow watchdog ───────────────────
   // Detects the "connected but silent" failure mode: ICE stays Connected and
@@ -1809,11 +1884,32 @@ class CallSession {
                 'frameRate': {'ideal': 30, 'max': 30},
               }
             : false,
+      })
+          // ── [CALL-MEDIA-TIMEOUT-1 2026-08-03] (audit M3) ──────────────────
+          //
+          // `getUserMedia` had no timeout. A REFUSAL was already handled well by
+          // the catch below — but a HANG was not handled at all. On Android 12+
+          // a mic acquisition made while the app is in the background can simply
+          // never return: no permission dialog, no error, no completion. The
+          // Future stayed pending and the only thing that eventually ended the
+          // call was a generic 10–45 s connect watchdog, which reports "could
+          // not connect" — the wrong diagnosis, and one that sends the user
+          // looking at their network instead of at a microphone the OS refused
+          // to open.
+          //
+          // 8 s is comfortably longer than a real capture (tens of ms) or a
+          // human tapping through a permission prompt, and well inside the
+          // connect watchdogs so this surfaces FIRST and names the actual cause.
+          // The throw lands in the existing catch, so failure handling and
+          // teardown are unchanged — only the diagnosis improves.
+          .timeout(const Duration(seconds: 8), onTimeout: () {
+        throw TimeoutException(
+            'getUserMedia did not return within 8s (mic/camera acquisition hung)');
       });
     } catch (e, st) {
       Analytics.error(
         domain: 'call_setup',
-        code: 'media_denied',
+        code: e is TimeoutException ? 'media_timeout' : 'media_denied',
         message: e.toString(),
         action: config.video ? 'getUserMedia_av' : 'getUserMedia_audio',
         extra: {'call_id': config.room, 'video': config.video},
@@ -1981,7 +2077,17 @@ class CallSession {
       _secs++;
       elapsedSeconds.value = _secs;
     });
-    final url = 'wss://$kSignalingHost/room/$_room?id=$_myId';
+    // [CALL-WS-AUTH-1] For an OUTGOING call the join credential arrives on the
+    // /api/call response, which the optimistic mount has not necessarily
+    // received yet. Wait briefly rather than connect un-credentialed and have to
+    // rebuild the socket. Bounded and fail-open: on timeout we connect exactly
+    // as before, so this can never be the reason a call fails to start. The
+    // callee already holds its token (it came with the ring) so it never waits.
+    if (config.outgoing && roomTokenFor(_room).isEmpty) {
+      await _awaitRoomToken(_room, const Duration(milliseconds: 2500));
+      if (_ended) return;
+    }
+    final url = _signalingUrl();
     _ws = WebSocketChannel.connect(Uri.parse(url));
     _ws!.stream.listen(_onSignal, onError: (_) => _onSocketLost(), onDone: _onSocketLost);
     _startPingTimer();
@@ -2012,7 +2118,32 @@ class CallSession {
       });
     }
     _relayFallbackTimer = Timer(const Duration(seconds: 4), () {
-      if (!_connected && !_ended) _forceRelayRestart();
+      if (_connected || _ended) return;
+      // ── [CALL-RELAY-ANSWERER-1 2026-08-03] (audit M1, answerer half) ───────
+      //
+      // `_forceRelayRestart` returns early unless `_weOffered`, so only the
+      // OFFERER could ever escalate to a relay. On a symmetric-NAT pair that is
+      // precisely half a fix: if the offerer's own escalation is what fails or
+      // is delayed, the ANSWERER sits at 4 s, 10 s, 45 s with a perfectly good
+      // TURN path available and no way to ask for it. It waits on a peer that
+      // may not act.
+      //
+      // The answerer cannot simply escalate itself — a second unsolicited offer
+      // is glare, which is the bug the offerer-only rule exists to avoid. So it
+      // ASKS. That keeps ONE side authoritative for renegotiation (unchanged)
+      // while letting either side start the clock, and it reuses the exact
+      // request/initiator pattern already established for mid-call relay
+      // migration ([BLOCKER-2 fix], `relay-migrate-request`).
+      if (_weOffered) {
+        _forceRelayRestart();
+      } else if (_remoteId != null) {
+        Analytics.capture('call_relay_fallback_requested', {
+          'call_id': config.room,
+          'video': config.video,
+          'role': 'answerer',
+        });
+        _send({'type': 'relay-fallback-request', 'to': _remoteId});
+      }
     });
   }
 
@@ -2096,7 +2227,7 @@ class CallSession {
       if (isConnected && !_connected) return;
       if (!isConnected && (_phase != 'ringing' && _phase != 'connecting')) return;
       try { _ws?.sink.close(); } catch (_) {}
-      final url = 'wss://$kSignalingHost/room/$_room?id=$_myId';
+      final url = _signalingUrl(); // [CALL-WS-AUTH-1] carries ?t= on reconnect
       try {
         _ws = WebSocketChannel.connect(Uri.parse(url));
         _ws!.stream.listen(_onSignal, onError: (_) => _onSocketLost(), onDone: _onSocketLost);
@@ -2153,7 +2284,7 @@ class CallSession {
     if (_ended || !_reconnecting) return;
     // Give-up timer is the source of truth for the 30s cap; just try again.
     try { _ws?.sink.close(); } catch (_) {}
-    final url = 'wss://$kSignalingHost/room/$_room?id=$_myId';
+    final url = _signalingUrl(); // [CALL-WS-AUTH-1] carries ?t= on reconnect
     try {
       _ws = WebSocketChannel.connect(Uri.parse(url));
       _ws!.stream.listen(_onSignal, onError: (_) => _onSocketLost(), onDone: _onSocketLost);
@@ -2194,22 +2325,97 @@ class CallSession {
     }
   }
 
-  /// 15s client ping over the signaling WS, matching the DO's
-  /// `setWebSocketAutoResponse({type:"ping"}->{type:"pong"})` (CALL-RC-D1).
-  /// No manual pong handling needed client-side — the DO answers without
-  /// waking, and stray {"type":"pong"} frames are ignored by `_onSignal`'s
-  /// switch (no matching case).
+  /// [CALL-WS-AUTH-1] The signalling URL, carrying the CallRoom join credential
+  /// as `?t=` when this device holds one.
+  ///
+  /// One builder for all three connect sites (first connect, pre-connect
+  /// reconnect, post-connect reconnect) so a reconnect can never drop the
+  /// credential and get refused at re-admission — which, once
+  /// `callRoomAuthEnforced` is on, would turn every network blip into a dead
+  /// call. Omitting `t` when we have none is deliberate: while the flag is off
+  /// the server admits and merely tags the join, so old servers and this client
+  /// interoperate unchanged in both directions.
+  String _signalingUrl() {
+    final t = roomTokenFor(_room);
+    final base = 'wss://$kSignalingHost/room/$_room?id=$_myId';
+    return t.isEmpty ? base : '$base&t=${Uri.encodeQueryComponent(t)}';
+  }
+
+  /// 15s keepalive over the signalling WS, matching the DO's
+  /// `setWebSocketAutoResponse({type:"ping"} -> {type:"pong"})` (CALL-RC-D1).
+  ///
+  /// ── [CALL-KEEPALIVE-1 2026-08-03] (audit H5) THE PING WAS BROKEN ──────────
+  ///
+  /// This used to call `_send({'type': 'ping'})`. `_send` stamps `gen` on EVERY
+  /// frame once we have received `welcome` (CALL-GEN-1), so from the moment a
+  /// call is actually up the wire carried `{"type":"ping","gen":N}` — and
+  /// `setWebSocketAutoResponse` is an EXACT STRING match against
+  /// `{"type":"ping"}`. It never matched. On every connected call, therefore:
+  ///
+  ///   * NO PONG WAS EVER RETURNED. The comment that used to sit here — "the DO
+  ///     answers without waking" — described behaviour that had not actually
+  ///     happened since CALL-GEN-1 shipped.
+  ///   * Every ping WOKE THE DO, defeating the hibernation this was designed to
+  ///     preserve; fell through to `webSocketMessage`; matched no case; carried
+  ///     no `to` — and was therefore BROADCAST TO THE PEER as noise, which the
+  ///     peer silently ignored.
+  ///
+  /// Two things follow. The fix is to send the keepalive RAW, bypassing `_send`'s
+  /// gen stamping so it exact-matches the auto-response — which works against
+  /// every already-deployed server and needs no worker change. And the
+  /// missed-pong deadline below is only MEANINGFUL because of that fix: a
+  /// counter layered on top of the broken ping would have seen zero pongs on
+  /// every healthy call and forced a reconnect every 30 s, on every call.
   void _startPingTimer() {
     _pingTimer?.cancel();
+    _missedPongs = 0;
     _pingTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       if (_ended) return;
-      _send({'type': 'ping'});
+      // ── [CALL-DEADPEER-1 2026-08-03] (audit H3) DEAD-BUT-OPEN DETECTION ────
+      //
+      // Neither side could see a socket that is open but dead. The server's only
+      // death signal is webSocketClose/Error, and auto-response frames never wake
+      // the DO to notice silence. The client sent pings and tracked nothing. A
+      // silent TCP death — the classic WiFi→5G handover — was invisible to both
+      // ends until the OS eventually surfaced it, which on Android can take
+      // minutes. To the user that is a call still showing "connected" with
+      // nobody there.
+      //
+      // Incremented BEFORE the send, so the count is "pings outstanding". Two
+      // misses ≈ 30 s of provable silence before acting: fast enough to beat the
+      // OS, slack enough to ride out a single dropped frame on a marginal link.
+      _missedPongs++;
+      if (_missedPongs >= 2) {
+        _missedPongs = 0;
+        Analytics.capture('call_ws_keepalive_timeout', {
+          'call_id': config.room,
+          'phase': _phase,
+          'connected': _connected,
+        });
+        // PHASE-CORRECT RECOVERY. There are two reconnect machines and they are
+        // not interchangeable: `_beginReconnect` is the POST-connect ladder
+        // (phase → 'reconnecting', give-up timer, hangup on failure), while
+        // `_reconnectSignaling` is the PRE-connect one for a call still ringing
+        // or connecting. Calling the post-connect machine during ringing would
+        // drive a call that has not started yet into a state machine built to
+        // end it.
+        if (_connected) {
+          _beginReconnect();
+        } else {
+          _reconnectSignaling(isConnected: false);
+        }
+        return;
+      }
+      // RAW send — deliberately NOT `_send`. See above: adding a `gen` field
+      // here is what silently disabled the server's auto-response.
+      try { _ws?.sink.add(jsonEncode({'type': 'ping'})); } catch (_) {/* socket gone */}
     });
   }
 
   void _stopPingTimer() {
     _pingTimer?.cancel();
     _pingTimer = null;
+    _missedPongs = 0;
   }
 
   void _send(Map<String, dynamic> o) {
@@ -3222,7 +3428,36 @@ class CallSession {
       return;
     }
     if (_ended) return;
-    final d = jsonDecode(raw as String) as Map<String, dynamic>;
+    // [CALL-DEADPEER-1 2026-08-03] (audit H3) ANY inbound frame proves the socket
+    // is alive. Reset here, at the top, so the reset cannot be skipped by an
+    // early return in one of the branches below.
+    _missedPongs = 0;
+    // [CALL-SIGNAL-PARSE-1 2026-08-03] (audit M4) GUARDED PARSE.
+    //
+    // This was a bare `jsonDecode(raw as String) as Map<String, dynamic>` inside
+    // an async handler, so a malformed or unexpectedly-shaped frame did not
+    // "fail to parse" — it became an UNHANDLED ASYNC ERROR, with no catch frame
+    // above it because the handler is invoked by the stream, not by our code.
+    // The server side of this same relay has been guarded since it was written
+    // (call_room.ts wraps its JSON.parse and returns); the client half never was.
+    //
+    // The `as Map<String, dynamic>` cast is part of the hazard, not just the
+    // decode: a well-formed JSON scalar or list parses fine and then throws on
+    // the cast. Both are covered here.
+    final Map<String, dynamic> d;
+    try {
+      final parsed = jsonDecode(raw as String);
+      if (parsed is! Map<String, dynamic>) {
+        Analytics.capture('call_signal_frame_malformed',
+            {'call_id': config.room, 'reason': 'not_an_object'});
+        return;
+      }
+      d = parsed;
+    } catch (_) {
+      Analytics.capture('call_signal_frame_malformed',
+          {'call_id': config.room, 'reason': 'json_decode_failed'});
+      return;
+    }
     // [CALL-REDUCER-1 2026-08-01] Ring-surface cleanup for a DO-originated
     // authoritative status is delegated to the ONE reducer, which orders on
     // `seq` and drops anything stale. Only DO-stamped frames (src=='do') carry
@@ -3504,6 +3739,15 @@ class CallSession {
       // start a migration instead of racing it with its own attempt.
       case 'relay-migrate-request':
         _onRelayMigrateRequest(d);
+        break;
+      // [CALL-RELAY-ANSWERER-1] The ANSWERER hit its 4s pre-connect deadline and
+      // is asking us — the offerer, the only side allowed to renegotiate — to
+      // escalate to a relay. `_forceRelayRestart` re-checks `_weOffered`,
+      // `_connected`, `_ended` and `_relayForced` itself, so a request that
+      // arrives late, twice, or at the wrong peer is a no-op rather than a
+      // second offer racing the first.
+      case 'relay-fallback-request':
+        _forceRelayRestart();
         break;
       case 'ping':
       case 'pong':

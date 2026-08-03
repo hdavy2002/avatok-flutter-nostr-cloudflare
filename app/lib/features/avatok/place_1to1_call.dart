@@ -8,6 +8,7 @@ import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
 import '../../core/calls/call_room_id.dart'; // [CALL-ROOM-ID-1]
 import '../../core/calls/call_session_manager.dart'; // [INSTANT-CALL-MOUNT-1]
+import '../../core/calls/call_session.dart' show rememberCallRoomToken; // [CALL-WS-AUTH-1]
 import '../../core/config.dart';
 import '../../core/profile_store.dart';
 import '../../core/remote_config.dart'; // [INSTANT-CALL-MOUNT-1] kill switch
@@ -301,6 +302,14 @@ Future<void> _dialerPlaceInBackground(
       routed = (body['routed'] ?? '').toString();
     } catch (_) {}
 
+    // [CALL-WS-AUTH-1 2026-08-03] Deposit the CALLER's CallRoom join credential.
+    // See the identical deposit in chat_thread.dart — both dial entry points
+    // must do this or the dialpad lane would be the one that cannot join once
+    // `callRoomAuthEnforced` is flipped on.
+    try {
+      final rt = (jsonDecode(res.body)['roomToken'] ?? '').toString();
+      if (rt.isNotEmpty) rememberCallRoomToken(room, rt);
+    } catch (_) {/* older server: no token, join stays un-credentialed */}
     final session = CallSessionManager.instance.liveSessionFor(room);
     if (res.statusCode == 200 && routed == 'receptionist') {
       Analytics.capture('call_server_receptionist_routed', {

@@ -124,7 +124,7 @@ export function humanRoomAcceptsNewPeer(s: CallSession): boolean {
 
 export type CommandName =
   | "admit_call" | "callee_ringing"
-  | "accept_call" | "decline_call" | "send_quick_reply"
+  | "accept_call" | "mark_connected" | "decline_call" | "send_quick_reply"
   | "handoff_to_receptionist" | "offer_voicemail"
   | "report_spam" | "block_caller"
   | "cancel_call" | "ring_timeout"
@@ -238,6 +238,7 @@ export function authorizeCommand(name: CommandName, actor: Command["actor"]): bo
     // Server-driven lifecycle.
     case "admit_call":
     case "callee_ringing":
+    case "mark_connected":
     case "ring_timeout":
     case "receptionist_connected":
     case "receptionist_failed":
@@ -313,6 +314,35 @@ export function applyCommand(prev: CallSession, cmd: Command, now: number): Appl
       events.push("callee_accepted", "ring_surface_cancel_requested");
       break;
 
+    // [CALL-ALARM-ANSWERED-1 2026-08-03] SERVER-OBSERVED CONNECTION.
+    //
+    // `accept_call` is the CLIENT telling us it accepted. This is the SERVER
+    // noticing that the call is demonstrably live — two peers holding sockets in
+    // the same room — for a call whose `accept_call` POST never arrived. That
+    // gap was real: `commandForLegacyStatus` had no `accept` mapping, the WS
+    // second-join path set `answeredAt` without touching the aggregate, and the
+    // client's accept-claim fails OPEN to WS admission after 1500 ms. So a live
+    // conversation could sit in `ringing` until the 20 s ring alarm fired
+    // `ring_timeout` (or started Ava) on top of two people already talking.
+    //
+    // Deliberately NOT a synonym for accept_call at the CALLER: it produces the
+    // same aggregate, but only the DO may issue it, and only from evidence it
+    // observed itself. It is idempotent — a call already `connected` is a no-op,
+    // so the guard may trip on every alarm without bumping the sequence.
+    case "mark_connected":
+      if (s.session_state === "connected") break; // already known — no-op
+      if (CALLEE_TERMINAL.has(s.callee_leg_state)) {
+        // Declined / handed to Ava / timed out. The room should never have had
+        // two live human peers; refuse rather than resurrect the human leg.
+        return { ok: false, error: "illegal_transition", state: prev };
+      }
+      s.callee_leg_state = "accepted";
+      s.caller_leg_state = "connected_to_callee";
+      s.session_state = "connected";
+      s.disposition = "answered_by_callee";
+      events.push("callee_accepted", "ring_surface_cancel_requested");
+      break;
+
     // OWNER RULING A: Decline ends the call. It NEVER starts the receptionist.
     // The invariant `declined may never transition to receptionist_active` is
     // guaranteed here by completing the session, which makes every later
@@ -369,6 +399,19 @@ export function applyCommand(prev: CallSession, cmd: Command, now: number): Appl
     case "receptionist_connected":
       if (s.service_leg_state !== "starting_receptionist") break;
       s.service_leg_state = "receptionist_active";
+      // [RECEPT-FSM-LIFECYCLE-1 2026-08-03] (audit A4) STAMP THE DISPOSITION NOW,
+      // not at teardown. Ava answering IS the outcome of this call; what happens
+      // afterwards is just how it ends.
+      //
+      // Without this line `answered_by_receptionist` was unreachable dead code.
+      // A successful Ava session ends when the CALLER hangs up, so teardown
+      // arrived as `cancel_call`/`bye` and `end_call` — finding no disposition
+      // and `wasConnected` false, because the caller's leg is
+      // `connected_to_receptionist` and not `connected_to_callee` — recorded
+      // `caller_cancelled`. Every call Ava successfully answered was filed as the
+      // caller giving up on it. Setting it here means `end_call`'s
+      // `disposition !== "none"` branch preserves the real outcome.
+      s.disposition = "answered_by_receptionist";
       events.push("receptionist_connected");
       break;
 
