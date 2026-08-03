@@ -848,6 +848,42 @@ export async function callNativeDecline(req: Request, env: Env): Promise<Respons
     return json({ error: "call_authority_unavailable" }, 503);
   }
 
+  // Defense in depth for clients already in the field: a delayed native
+  // ACTION_CALL_DECLINE must never overwrite a human accept, receptionist
+  // handoff, or any other callee-leg winner. The FSM returns a successful
+  // no-op for those races; stop here instead of manufacturing a decline push
+  // from unchanged authoritative state.
+  const declineNoop = out.changed !== true;
+  if (declineNoop) {
+    const ignoreReason = out.session_state === "connected" || out.callee_leg_state === "accepted"
+      ? "callee_already_accepted"
+      : "call_already_advanced";
+    try {
+      const participants = await readCallParticipants(env, callId);
+      const [calleeEmail, callerEmail] = participants ? await Promise.all([
+        emailFor(env, participants.calleeUid).catch(() => null),
+        emailFor(env, participants.callerUid).catch(() => null),
+      ]) : [null, null];
+      const props = {
+        call_id: callId,
+        path: "android_killed_app_native",
+        reason: ignoreReason,
+        session_state: out.session_state ?? null,
+        callee_leg_state: out.callee_leg_state ?? null,
+        seq: out.seq ?? null,
+      };
+      if (participants?.calleeUid) {
+        await trackUser(env, participants.calleeUid, calleeEmail,
+          "call_native_decline_ignored", "avatok", props);
+      }
+      if (participants?.callerUid) {
+        await trackUser(env, participants.callerUid, callerEmail,
+          "call_native_decline_ignored", "avatok", props);
+      }
+    } catch { /* telemetry must never change the call outcome */ }
+    return json({ ok: true, ignored: ignoreReason, seq: out.seq ?? null });
+  }
+
   const recipient = typeof out.peer_uid === "string" ? out.peer_uid : "";
   if (!recipient) return json({ error: "call_authority_unavailable" }, 503);
   await env.Q_PUSH.send({

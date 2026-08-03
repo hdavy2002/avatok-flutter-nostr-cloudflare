@@ -30,6 +30,7 @@ class MainActivity : FlutterFragmentActivity() {
         // Full-duplex voice-call audio engine with platform echo cancellation
         // (Gemini Live "AI Voice Agent" — true barge-in on speaker).
         flutterEngine.plugins.add(ai.avatok.avavoiceaudio.AvaVoiceAudioPlugin())
+        flutterEngine.plugins.add(ai.avatok.calltranslation.CallTranslationAudioPlugin())
         // AvaDial PSTN telecom bridge (default-dialer role, InCallService,
         // CallScreeningService, device contacts/call-log). DARK behind the Flutter
         // `avaDialer` flag — the plugin only ever registers a MethodChannel; nothing
@@ -106,6 +107,13 @@ class MainActivity : FlutterFragmentActivity() {
                 "callerAvatarUrl" to (extra["callerAvatarUrl"]
                     ?: data?.getString(CallkitConstants.EXTRA_CALLKIT_AVATAR).orEmpty()),
                 "callerAvatarVersion" to (extra["callerAvatarVersion"] ?: ""),
+                // [CALL-REL-R4-3] Carry the CallRoom join credential through the
+                // cold-start tap. A killed app accepting from the lock screen has
+                // no Dart heap and may have no completed secure-storage write
+                // either; this notification bundle is the one thing guaranteed to
+                // have survived, so it is the recovery path for the token the
+                // signalling socket needs. Short-lived and call-scoped.
+                "roomToken" to (extra["roomToken"] ?: ""),
             )
             pendingIncomingTap = payload
             incomingTapChannel?.invokeMethod("incomingCallTapped", payload)

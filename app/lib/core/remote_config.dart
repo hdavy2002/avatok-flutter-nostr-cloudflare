@@ -123,6 +123,9 @@ class RemoteConfig {
   static bool get cloudReasoningOverPrivate => _b('cloudReasoningOverPrivate', true);
   static bool get verseEnabled => _b('verseEnabled', false);
   static bool get translationEnabled => _b('translationEnabled', false);
+  /// 1:1 call translation is separately gated from marketplace/live translation.
+  /// Both this flag and [translationEnabled] must be true at runtime.
+  static bool get callTranslationEnabled => _b('callTranslationEnabled', false);
   static bool get translationGroupEnabled => _b('translationGroupEnabled', false);
   static bool get avavoiceEnabled => _b('avavoiceEnabled', false);
   static bool get avavisionEnabled => _b('avavisionEnabled', false);
@@ -380,6 +383,28 @@ class RemoteConfig {
   /// instantly, with no build.
   static bool get suppressOsRingInForeground =>
       _b('suppressOsRingInForeground', true);
+
+  /// [CALL-REL-R4-B 2026-08-03] Relaxed "is the app actually in front" test.
+  ///
+  /// [suppressOsRingInForeground] only ever fires when we believe the branded
+  /// screen is about to own the surface, and that belief used to be the exact
+  /// equality `lifecycle == 'resumed'`. Android does not cooperate: the moment
+  /// CallKit's own full-screen-intent activity starts launching over an open
+  /// app, MainActivity reports `paused` — so on a real prod call the ring saw
+  /// `os_ring_suppressed=false lifecycle=paused`, registered CallKit *and*
+  /// showed the branded screen, and the OS notification was still sitting in the
+  /// shade when the user accepted. That is the "ring appears in the header after
+  /// I answer" report.
+  ///
+  /// V2 accepts `inactive` and a briefly-`paused` app as still-in-front, and —
+  /// because guessing wrong here would mean NO ring at all — arms a short
+  /// verification fallback that registers CallKit after all if the app turns out
+  /// not to be in front. Worst case is a slightly late OS ring, never a silent
+  /// one. Mirrors config.ts `foregroundRingDetectionV2`.
+  ///
+  /// Kill switch: set false in KV to restore the strict equality, no build.
+  static bool get foregroundRingDetectionV2 =>
+      _b('foregroundRingDetectionV2', true);
   /// Phase B — the server-side voicemail bot (5-rings → prompt → 25s record).
   /// Mirrors config.ts `voicemailBot`.
   static bool get voicemailBot => _b('voicemailBot', false);

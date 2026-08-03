@@ -33,8 +33,24 @@ describe("killed-app native decline contract", () => {
     const bridge = read("app/android/app/src/main/kotlin/ai/avatok/avatok_call/NativeCallDeclineBridge.kt");
     expect(workflow).toContain("patch_callkit_native_decline.py app");
     expect(patcher).toContain("refusing to build without revalidating the native bridge");
+    expect(patcher).toContain("CALL-NATIVE-DECLINE-2");
+    expect(patcher).toContain("if (!suppressSyntheticDecline)");
+    expect(patcher).toContain("CALL-NATIVE-PROGRAMMATIC-END-1");
+    expect(patcher).toContain('getMethod("markProgrammaticEnd"');
     expect(bridge).toContain("enqueueUniqueWork");
+    expect(bridge).toContain("fun markProgrammaticEnd");
+    expect(bridge).toContain("wasProgrammaticEnd(context, callId)");
+    expect(bridge).toContain("fun shouldSuppressProgrammaticDecline");
     expect(bridge).toContain("api-staging.avatok.ai");
+  });
+
+  it("never broadcasts a native decline after the callee leg is accepted", () => {
+    const state = read("worker/src/lib/call_state.ts");
+    const api = read("worker/src/routes/api.ts");
+    expect(state).toContain('s.session_state === "connected" || s.callee_leg_state === "accepted" ||');
+    expect(state).toContain("CALLEE_TERMINAL.has(s.callee_leg_state)");
+    expect(api).toContain('"call_native_decline_ignored"');
+    expect(api).toContain('"call_already_advanced"');
   });
 
   it("passes the capability into the native CallKit bundle", () => {

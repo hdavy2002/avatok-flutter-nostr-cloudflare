@@ -348,6 +348,14 @@ export function applyCommand(prev: CallSession, cmd: Command, now: number): Appl
     // guaranteed here by completing the session, which makes every later
     // command hit the `already_terminal` guard above.
     case "decline_call":
+      // A native notification can deliver a delayed/synthetic Decline after
+      // the human accept already won. Accepted is irreversible: once the
+      // callee leg is connected, a decline is a harmless no-op and only an
+      // explicit end_call may terminate the conversation. This is the server
+      // backstop for old clients and Android processes that lack the native
+      // programmatic-end marker.
+      if (s.session_state === "connected" || s.callee_leg_state === "accepted" ||
+          CALLEE_TERMINAL.has(s.callee_leg_state)) break;
       endCalleeRing("declined");
       complete("declined");
       events.push("callee_declined");

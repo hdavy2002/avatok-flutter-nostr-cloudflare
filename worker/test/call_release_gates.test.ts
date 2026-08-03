@@ -129,6 +129,48 @@ describe("GATE 5a: ringing hang-up disposition", () => {
     expect(r.state.callee_leg_state).toBe("declined");
     expect(r.state.caller_leg_state).toBe("ended");
   });
+
+  it("a delayed native decline cannot overwrite an accepted human leg", () => {
+    const accepted = applyCommand(ringing(), { name: "accept_call", actor: "callee" }, NOW);
+    expect(accepted.ok).toBe(true);
+    if (!accepted.ok) return;
+
+    const delayed = applyCommand(
+      accepted.state,
+      { name: "decline_call", actor: "callee" },
+      NOW + 1,
+    );
+    expect(delayed.ok).toBe(true);
+    if (!delayed.ok) return;
+    expect(delayed.changed).toBe(false);
+    expect(delayed.state.session_state).toBe("connected");
+    expect(delayed.state.callee_leg_state).toBe("accepted");
+    expect(delayed.state.disposition).toBe("answered_by_callee");
+    expect(delayed.events).toEqual([]);
+  });
+
+  it("a delayed native decline cannot overwrite a receptionist handoff", () => {
+    const handedOff = applyCommand(
+      ringing(),
+      { name: "handoff_to_receptionist", actor: "callee" },
+      NOW,
+    );
+    expect(handedOff.ok).toBe(true);
+    if (!handedOff.ok) return;
+
+    const delayed = applyCommand(
+      handedOff.state,
+      { name: "decline_call", actor: "callee" },
+      NOW + 1,
+    );
+    expect(delayed.ok).toBe(true);
+    if (!delayed.ok) return;
+    expect(delayed.changed).toBe(false);
+    expect(delayed.state.session_state).toBe("handoff");
+    expect(delayed.state.callee_leg_state).toBe("dismissed_for_receptionist");
+    expect(delayed.state.service_leg_state).toBe("starting_receptionist");
+    expect(delayed.events).toEqual([]);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
