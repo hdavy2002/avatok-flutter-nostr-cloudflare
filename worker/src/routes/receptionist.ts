@@ -1399,13 +1399,26 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
     // exclusively (no KV fallback), because the KV `call_answered` flag has the SAME
     // stale-phantom problem and would reintroduce the bug.
     let doStateKnown = false;
+    let doPeers: number | null = null;
+    let doAnsweredBy: string | null = null;
     try {
       const stub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(callId));
       const r = await stub.fetch("https://call/state", { method: "GET" });
       if (r.ok) {
-        const st = (await r.json()) as { answered?: boolean; ended?: boolean; terminal_status?: string | null; peers?: number };
+        const st = (await r.json()) as { answered?: boolean; ended?: boolean; terminal_status?: string | null; peers?: number; answered_by?: string | null };
         doStateKnown = true;
-        answered = st.answered === true && st.ended !== true && (st.peers ?? 0) >= 2;
+        doPeers = st.peers ?? null;
+        doAnsweredBy = st.answered_by ?? null;
+        // [RECEPT-SELF-ANSWER-1 2026-08-04] `answered` is stamped the instant ANY
+        // second socket joins the room — including the CALLER's own duplicate
+        // socket after a network blip (netbrain_recovering devices reconnect the
+        // signaling WS mid-ring, and the zombie + fresh socket briefly count as
+        // 2 peers). A call can never be "answered" by the caller joining twice:
+        // only the OTHER side joining means a human picked up. Without this,
+        // the decline→Ava / no-answer→Ava handoff 409s as "call_answered" on
+        // flaky-network callers (ava_recept_skipped reason=refused_call_answered).
+        const selfAnswered = !!st.answered_by && st.answered_by === ctx.uid;
+        answered = st.answered === true && st.ended !== true && (st.peers ?? 0) >= 2 && !selfAnswered;
         terminal = st.ended === true || !!st.terminal_status;
       }
     } catch { /* DO probe failed — fall through to KV fallback below */ }
@@ -1480,8 +1493,21 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
     // `menu` is a new, explicit caller choice made after the human call has
     // ended; it is intentionally allowed to create a separate Ava session.
     if (answered || (terminal && activationMode !== "menu")) {
-      trackUserContact(env, ctx.uid, caller.email, caller.phone, "ava_recept_aborted_answered", APP,
-        { owner: to, call_id: callId, stage: "scheduled", terminal });
+      // [RECEPT-SELF-ANSWER-1] AWAITED: this used to be fire-and-forget and the
+      // immediate 409 return dropped the pending promise, so this event (and the
+      // shadow record above) NEVER reached PostHog — the refusal branch was
+      // completely blind in prod. Diagnostics ride along so the next refusal
+      // tells us WHICH gate fired without another deploy.
+      try {
+        await trackUserContact(env, ctx.uid, caller.email, caller.phone, "ava_recept_aborted_answered", APP, {
+          owner: to, call_id: callId, stage: "scheduled", terminal,
+          activation_mode: activationMode,
+          do_state_known: doStateKnown,
+          do_peers: doPeers,
+          do_answered_by: doAnsweredBy,
+          legacy_answered: answered,
+        });
+      } catch { /* telemetry must not block the response */ }
       return json({ error: "receptionist_unavailable", reason: terminal ? "call_terminal" : "call_answered" }, 409);
     }
 
