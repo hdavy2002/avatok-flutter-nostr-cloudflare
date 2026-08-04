@@ -15,6 +15,22 @@ import { track } from "../hooks";
 import { rateLimit } from "../money";
 
 export const CALL_TRANSLATION_MODEL = "gemini-3.5-live-translate-preview";
+/**
+ * [CALL-TRANSLATE-APIVER-1] ONE place for the provider API version in this layer.
+ *
+ * The Android bridge holds the matching constant (`API_VERSION` in
+ * CallTranslationAudioPlugin.java) and the two MUST move together: a token minted
+ * under one version and presented to a socket on another is the exact failure this
+ * constant exists to make impossible to reintroduce by a scattered literal.
+ *
+ * `v1alpha` matches the Live Translate guide ("you must use the v1alpha endpoint"
+ * with ephemeral tokens) AND the two lanes in this repo that are already proven in
+ * production — routes/translate.ts mints on v1alpha and
+ * avachat/voice_call/live_voice_controller.dart connects on v1alpha. Probed live on
+ * 2026-08-04: v1beta and v1alpha accept an identical mint body and behave identically
+ * on the socket, so this is a consistency choice, not a functional one.
+ */
+export const CALL_TRANSLATION_API_VERSION = "v1alpha";
 export const CALL_TRANSLATION_RATE = 5;
 export const CALL_TRANSLATION_MIN_START = 5;
 // Android's host bridge attaches to flutter_webrtc's decoded-playback callback;
@@ -142,23 +158,48 @@ async function chargeMinute(env: Env, s: CallSession, minute: number): Promise<b
 async function mintToken(env: Env, targetLang: string): Promise<{ token: string; expiresAt: number } | null> {
   if (!env.GEMINI_API_KEY) return null;
   const expiresAt = Date.now() + 30 * 60_000;
-  const response = await fetch("https://generativelanguage.googleapis.com/v1beta/auth_tokens", {
+  const response = await fetch(`https://generativelanguage.googleapis.com/${CALL_TRANSLATION_API_VERSION}/auth_tokens`, {
     method: "POST",
     headers: { "content-type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
+    /**
+     * [CALL-TRANSLATE-APIVER-1] `bidiGenerateContentSetup` is the REAL wire field.
+     *
+     * `liveConnectConstraints` — which this used to send, and which the published
+     * REST curl on ai.google.dev/gemini-api/docs/live-api/ephemeral-tokens still
+     * shows — is an SDK-LEVEL name only. The genai SDKs rewrite it to
+     * `bidiGenerateContentSetup` before it reaches the wire
+     * (`createAuthTokenConfigToMldev` -> `liveConnectConstraintsToMldev` in
+     * @google/genai). Posted raw it is rejected outright:
+     *
+     *   400 Invalid JSON payload received. Unknown name "liveConnectConstraints"
+     *       at 'auth_token': Cannot find field.
+     *
+     * Probed against the live endpoint 2026-08-04 on BOTH v1beta and v1alpha —
+     * body validation runs before key validation, so this needs no key to
+     * reproduce. Every mint therefore returned null and every /start, /language
+     * and /token answered 502 provider_unavailable: the feature could not have
+     * worked once. routes/translate.ts has had the correct shape since
+     * 2026-06-11; this route diverged from it.
+     *
+     * Note the nesting, which is NOT the SDK's: `responseModalities` and
+     * `translationConfig` live under `generationConfig`, while `sessionResumption`
+     * and `contextWindowCompression` are siblings of it — this object is a
+     * BidiGenerateContentSetup, not a LiveConnectConfig.
+     */
     body: JSON.stringify({
       uses: 1, expireTime: new Date(expiresAt).toISOString(),
-      liveConnectConstraints: {
+      bidiGenerateContentSetup: {
         model: `models/${CALL_TRANSLATION_MODEL}`,
-        config: {
+        generationConfig: {
           // [CALL-TRANSLATE-2A-1] Captions are deferred (owner). Transcription is
           // deliberately NOT requested here: the token constraints and the native
           // setup JSON must agree, and no transcript text may ever leave the
           // provider session for this feature.
           responseModalities: ["AUDIO"],
           translationConfig: { targetLanguageCode: targetLang, echoTargetLanguage: false },
-          sessionResumption: {},
-          contextWindowCompression: { slidingWindow: {} },
         },
+        sessionResumption: {},
+        contextWindowCompression: { slidingWindow: {} },
       },
     }),
   });

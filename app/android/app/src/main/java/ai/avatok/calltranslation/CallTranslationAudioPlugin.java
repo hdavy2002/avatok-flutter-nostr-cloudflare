@@ -57,8 +57,38 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
     private static final String METHOD = "avatok/call_translation_audio";
     private static final String EVENTS = "avatok/call_translation_audio_events";
     private static final String MODEL = "gemini-3.5-live-translate-preview";
+    /**
+     * [CALL-TRANSLATE-APIVER-1] ONE place for the provider API version in this layer.
+     * Must move in lockstep with {@code CALL_TRANSLATION_API_VERSION} in
+     * worker/src/routes/call_translation.ts — a token minted under one version and
+     * presented to a socket on another is precisely the failure a scattered literal
+     * causes. See that constant for why v1alpha.
+     */
+    private static final String API_VERSION = "v1alpha";
+    /**
+     * [CALL-TRANSLATE-APIVER-1] The CONSTRAINED method — not plain BidiGenerateContent.
+     *
+     * An ephemeral token (a name beginning {@code auth_tokens/}) authenticates ONLY
+     * against {@code BidiGenerateContentConstrained}. Probed against the live endpoint
+     * on 2026-08-04, with a deliberately bogus token, on both v1beta and v1alpha:
+     *
+     *   BidiGenerateContent            -> close 1008 "Method doesn't allow unregistered
+     *                                     callers (callers without established identity).
+     *                                     Please use API Key ..."   (access_token IGNORED)
+     *   BidiGenerateContentConstrained -> close 1007 "Missing or malformed auth token in
+     *                                     request. Obtain one from CreateAuthToken and
+     *                                     pass it in an `access_token` query parameter"
+     *                                                               (access_token READ)
+     *
+     * i.e. the URL this used to build could never have authenticated, whatever the token.
+     * The official SDK agrees: @google/genai switches method to
+     * BidiGenerateContentConstrained and keyName to access_token the moment the api key
+     * starts with "auth_tokens/". The same lesson is already recorded, from a live
+     * verification, in app/lib/features/avachat/voice_call/live_voice_controller.dart.
+     */
     private static final String WS_URL = "wss://generativelanguage.googleapis.com/ws/"
-            + "google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
+            + "google.ai.generativelanguage." + API_VERSION
+            + ".GenerativeService.BidiGenerateContentConstrained";
 
     /** ~3 s of 100 ms uplink chunks. Overflow drops the OLDEST (stale-audio policy). */
     private static final int UPLINK_QUEUE_CAPACITY = 30;
@@ -395,7 +425,7 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
      * The language is captured PER SOCKET rather than read from {@link #targetLanguage} at
      * send time: during a Phase C cutover two sockets are alive on two OkHttp reader threads,
      * and the pending one must announce the NEW language (matching the new token's
-     * {@code liveConnectConstraints}) while the live one keeps translating in the old one.
+     * {@code bidiGenerateContentSetup}) while the live one keeps translating in the old one.
      * The field is only moved to the new value once THIS socket reaches setupComplete.
      */
     private void connectSocket(String handle, String language) {
@@ -417,8 +447,18 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
                             .put("targetLanguageCode", socketLanguage)
                             .put("echoTargetLanguage", false);
                     // NOTE: input/outputAudioTranscription are deliberately ABSENT — captions are
-                    // deferred and the minted token's liveConnectConstraints omit them too. The two
-                    // setups MUST match or the provider rejects the session.
+                    // deferred and the minted token's bidiGenerateContentSetup omits them too. The
+                    // two setups MUST match or the provider rejects the session.
+                    //
+                    // [CALL-TRANSLATE-APIVER-1] This frame is kept faithful on purpose even though
+                    // the token may make it redundant: the mint sends no `fieldMask`, and per
+                    // ai.google.dev/api/live that means the effective setup is taken ENTIRELY from
+                    // the token and this message is ignored. Keeping it identical to the token
+                    // means the session is correct either way. The one thing that CANNOT survive
+                    // that rule is `sessionResumption.handle` below — a resume may therefore start
+                    // a fresh session rather than resuming. Needs a keyed end-to-end check; the
+                    // fix, if it does not resume, is `lockAdditionalFields: []` on the mint so only
+                    // the model/config fields are locked and the client may still supply a handle.
                     JSONObject generation = new JSONObject()
                             .put("responseModalities", new JSONArray().put("AUDIO"))
                             .put("translationConfig", translation);
