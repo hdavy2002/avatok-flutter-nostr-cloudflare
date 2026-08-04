@@ -88,9 +88,11 @@ async function mintToken(env: Env, targetLang: string): Promise<{ token: string;
       liveConnectConstraints: {
         model: `models/${CALL_TRANSLATION_MODEL}`,
         config: {
+          // [CALL-TRANSLATE-2A-1] Captions are deferred (owner). Transcription is
+          // deliberately NOT requested here: the token constraints and the native
+          // setup JSON must agree, and no transcript text may ever leave the
+          // provider session for this feature.
           responseModalities: ["AUDIO"],
-          outputAudioTranscription: {},
-          inputAudioTranscription: {},
           translationConfig: { targetLanguageCode: targetLang, echoTargetLanguage: false },
           sessionResumption: {},
           contextWindowCompression: { slidingWindow: {} },
