@@ -528,6 +528,18 @@ class CloudflareConferenceController extends ChangeNotifier {
     final pc = await createPeerConnection({
       'iceServers': join.iceServers,
       'sdpSemantics': 'unified-plan',
+      // [CALL-SFU-JITTER-1 2026-08-05] The same NetEq bounds the 1:1 path has
+      // carried since [CALL-SURVIVE-1]. Group calls were left out of that fix
+      // for no reason other than being a different file, so a conference on
+      // flappy cellular could sit at the 600-745ms inbound jitter-buffer delay
+      // that produced the "distant/underwater" voice complaints — with more
+      // participants, i.e. more chances for one bad link to do it.
+      // 50 packets ≈ 1s hard ceiling; fastAccelerate drains accumulated delay
+      // once the network recovers.
+      'audioJitterBufferMaxPackets': 50,
+      'audioJitterBufferFastAccelerate': true,
+      // Pre-gather a couple of candidates, matching `_newPC` in call_session.
+      'iceCandidatePoolSize': 2,
     });
     _pc = pc;
 
@@ -1210,7 +1222,16 @@ class CloudflareConferenceController extends ChangeNotifier {
         _tel?.callId = rejoin.callId;
         _tel?.callTraceId = rejoin.callTraceId;
         _tel?.generation = rejoin.generation;
-        final newPc = await createPeerConnection({'iceServers': rejoin.iceServers, 'sdpSemantics': 'unified-plan'});
+        // [CALL-SFU-JITTER-1] Same bounds on the rejoin PC — a rejoin happens
+        // precisely when the network is misbehaving, so it is the LAST place
+        // that should fall back to an unbounded jitter buffer.
+        final newPc = await createPeerConnection({
+          'iceServers': rejoin.iceServers,
+          'sdpSemantics': 'unified-plan',
+          'audioJitterBufferMaxPackets': 50,
+          'audioJitterBufferFastAccelerate': true,
+          'iceCandidatePoolSize': 2,
+        });
         final generationAtRecreate = _generation;
         // Wire the same Failed-state handler onto the recreated PC — without
         // this, a second ICE/DTLS failure after a rejoin would go completely
