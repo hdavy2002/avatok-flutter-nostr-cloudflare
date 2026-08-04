@@ -14,6 +14,13 @@ compatibility_date = "2025-05-01"
 # bump, NOT a compatibility_date bump.
 compatibility_flags = ["nodejs_compat", "enable_ctx_exports"]
 
+# [AFF-PLAY-VOID-1] Hourly qualification + Play voided-purchase reconciliation.
+# Both handlers fail closed behind their existing feature/config gates. The
+# schedule is code wiring only; production remains dark until the flags and
+# migration are deliberately enabled.
+[triggers]
+crons = ["17 * * * *"]
+
 # Apex-zone custom domain. The long *.workers.dev host intermittently fails mobile
 # DNS resolution (errno 7) on wifi/LTE transitions — fatal for the persistent
 # InboxDO WebSocket. api.avatok.ai (zone avatok.ai, on Cloudflare) is far more

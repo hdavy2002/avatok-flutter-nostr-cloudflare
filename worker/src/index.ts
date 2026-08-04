@@ -23,7 +23,7 @@ import { ingestCallTelemetry } from "./routes/telemetry_calls";
 // [AVA-IDGATE-1] idSession / idResult / idPhoneConfirm are NO LONGER ROUTED — they
 // minted verification without a Didit check. See LEGACY_GONE in the router.
 import { idStatus, idEmailStart, idEmailVerify, idPasswordStart, idPasswordSet } from "./routes/id";
-import { walletTopup, walletTopupIntent, walletTopupPlayVerify, stripeWebhook, walletSpend, walletBalance, walletTransactions, walletEarnings, walletLive, walletLedger, walletLedgerDetail, walletReceiptResend } from "./routes/wallet";
+import { walletTopup, walletTopupIntent, walletTopupPlayVerify, runPlayVoidedPurchaseSweep, stripeWebhook, walletSpend, walletBalance, walletTransactions, walletEarnings, walletLive, walletLedger, walletLedgerDetail, walletReceiptResend } from "./routes/wallet";
 import { walletStatement, walletStatementExport, walletSummary, walletTopupQuote } from "./routes/wallet_statement";
 import { adminLedger, adminRefund, adminAdjust, adminAccount, adminRecon, adminEscrowHold, adminEscrowRelease, adminTaxExport, adminFailedSettlements, adminRetrySettlement, requireAdmin } from "./routes/admin_money";
 import { dynwAcceptance } from "./routes/dynw_test"; // [DYNW-CORE-1] Phase 0 acceptance battery (admin-only, dark behind dynamicWorkersEnabled)
@@ -341,9 +341,14 @@ export default {
   // each tick is bounded to QUALIFY_BATCH rows.
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(
-      runAffiliateQualification(env)
-        .then((r) => { if (r.scanned) console.log("[affiliate-qualify]", JSON.stringify(r)); })
-        .catch((e) => { console.error("[affiliate-qualify] failed:", String(e)); }),
+      Promise.all([
+        runAffiliateQualification(env)
+          .then((r) => { if (r.scanned) console.log("[affiliate-qualify]", JSON.stringify(r)); })
+          .catch((e) => { console.error("[affiliate-qualify] failed:", String(e)); }),
+        runPlayVoidedPurchaseSweep(env)
+          .then((r) => { if (r.scanned) console.log("[play-voids]", JSON.stringify(r)); })
+          .catch((e) => { console.error("[play-voids] failed:", String(e)); }),
+      ]),
     );
   },
 };

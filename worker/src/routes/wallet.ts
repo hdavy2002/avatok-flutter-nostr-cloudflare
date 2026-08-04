@@ -20,11 +20,11 @@ import { brainIngest } from "../lib/brain_ingest";
 import { notifyUser } from "../notify";
 import { withIdempotency, rateLimit, RL } from "../money";
 import { acctUser, sendReceipt } from "../ledger";
-import { payAffiliateOnTopup } from "./affiliate";
+import { payAffiliateOnTopup, reverseAffiliate } from "./affiliate";
 import { readConfig } from "./config";
 import { getSub } from "./plans";
 import { subscribeWebhookEvent } from "./subscribe";
-import { verifyPlayProduct } from "../play";
+import { listVoidedPlayPurchases, verifyPlayProduct } from "../play";
 // [WALLET-TXMETA-1] wallet_statement.ts already imports walletOp from here; this
 // back-reference is only ever CALLED from inside an async handler (never at
 // module-init), so the ESM cycle resolves safely — function declarations are
@@ -391,7 +391,7 @@ export async function walletTopupPlayVerify(req: Request, env: Env): Promise<Res
 
   // Idempotency key = Google order id (falls back to the token if absent).
   const orderRef = v.orderId || `token:${purchaseToken.slice(0, 40)}`;
-  return creditPlayTopup(env, ctx.uid, coins, orderRef, productId);
+  return creditPlayTopup(env, ctx.uid, coins, orderRef, productId, purchaseToken, v);
 }
 
 // Credit a verified Play top-up. Idempotent twice over: a topup_records row keyed
@@ -400,6 +400,7 @@ export async function walletTopupPlayVerify(req: Request, env: Env): Promise<Res
 // racing double-submit credits exactly once.
 async function creditPlayTopup(
   env: Env, uid: string, coins: number, orderRef: string, productId: string,
+  purchaseToken: string, play: { priceAmountMicros?: number; priceCurrencyCode?: string; purchaseTimeMillis?: number },
 ): Promise<Response> {
   const existing = await env.DB_WALLET.prepare(
     "SELECT status FROM topup_records WHERE stripe_session_id=?1 AND uid=?2",
@@ -410,11 +411,18 @@ async function creditPlayTopup(
   }
 
   const id = crypto.randomUUID();
-  const cents = usdCentsForTokens(coins);
+  const priceCurrency = String(play.priceCurrencyCode || "usd").toLowerCase();
+  const priceMinor = Number.isFinite(Number(play.priceAmountMicros))
+    ? Math.max(0, Math.round(Number(play.priceAmountMicros) / 10_000))
+    : usdCentsForTokens(coins);
   try {
     await env.DB_WALLET.prepare(
-      "INSERT INTO topup_records (id, uid, stripe_session_id, amount_coins, amount_cents, currency, status, paid_at, created_at) VALUES (?1,?2,?3,?4,?5,'usd','paid',?6,?6)",
-    ).bind(id, uid, orderRef, coins, cents, Date.now()).run();
+      `INSERT INTO topup_records
+       (id, uid, stripe_session_id, amount_coins, amount_cents, currency, status, paid_at, created_at,
+        provider, provider_purchase_token, provider_order_id, provider_price_minor, provider_price_currency, provider_purchase_at)
+       VALUES (?1,?2,?3,?4,?5,?6,'paid',?7,?7,'google_play',?8,?3,?9,?10,?11)`,
+    ).bind(id, uid, orderRef, coins, priceMinor, priceCurrency, Date.now(), purchaseToken,
+      priceMinor, priceCurrency, play.purchaseTimeMillis ?? null).run();
   } catch {
     // UNIQUE(stripe_session_id) violation → a concurrent request already recorded
     // this order. Treat as a duplicate; the op_id dedup guarantees single credit.
@@ -422,7 +430,10 @@ async function creditPlayTopup(
     return json({ ok: true, duplicate: true, coins, balance: bal.body?.balance ?? null });
   }
 
-  const meta: any = { title: `Top-up ${coins} Tokens`, cents, source: "topup", method: "google_play", product: productId };
+  const meta: any = {
+    title: `Top-up ${coins} Tokens`, amount_minor: priceMinor, currency: priceCurrency,
+    source: "topup", method: "google_play", product: productId,
+  };
   const r = await walletOp(env, uid, {
     op: "credit", uid, amount: coins, type: "topup", app_name: "avawallet", ref: orderRef, op_id: `topup:play:${orderRef}`,
     ledger: { debit: "external:google_play", credit: acctUser(uid), type: "topup", ref: orderRef, meta: JSON.stringify(meta) },
@@ -434,6 +445,55 @@ async function creditPlayTopup(
   try { await notifyUser(env, uid, { type: "wallet", title: `Added ${coins} Tokens`, data: { deeplink: "/wallet", amount: coins } }); } catch { /* best-effort */ }
   track(env, uid, "wallet_topup_completed", "avawallet", { coins, source: "play" });
   return json({ ok: true, credited: coins, coins, balance: r.body?.balance ?? null });
+}
+
+/**
+ * Reconcile Google Play one-time refunds/voids. Google does not push these to
+ * this Worker, so this sweep is the authoritative safety net for affiliate
+ * commissions earned from Play top-ups. It is deliberately idempotent: the
+ * top-up row is marked voided and the affiliate reversal uses a stable op id.
+ */
+export async function runPlayVoidedPurchaseSweep(env: Env): Promise<{ scanned: number; matched: number; clawed: number; failed: number }> {
+  if (!(env as any).PLAY_SERVICE_ACCOUNT_JSON) return { scanned: 0, matched: 0, clawed: 0, failed: 0 };
+  const out = { scanned: 0, matched: 0, clawed: 0, failed: 0 };
+  const start = Date.now() - 180 * 86_400_000;
+  let page: string | undefined;
+  for (let i = 0; i < 5; i++) {
+    const batch = await listVoidedPlayPurchases(env, start, page);
+    if (!batch.ok) { out.failed++; break; }
+    for (const v of batch.purchases) {
+      out.scanned++;
+      const topup = await env.DB_WALLET.prepare(
+        `SELECT id, uid, amount_coins, status FROM topup_records
+         WHERE provider_purchase_token=?1 OR provider_order_id=?2 OR stripe_session_id=?2
+         ORDER BY created_at ASC LIMIT 1`,
+      ).bind(v.purchaseToken, v.orderId || "").first<{ id: string; uid: string; amount_coins: number; status: string }>();
+      if (!topup || topup.status === "voided") continue;
+      out.matched++;
+      try {
+        const reason = `google_play_void:${String(v.voidedReason ?? "unknown")}`;
+        const clawed = await reverseAffiliate(env, String(topup.id), Number(topup.amount_coins), reason, `play_voided:${v.purchaseToken}`);
+        await env.DB_WALLET.prepare(
+          `UPDATE topup_records SET status='voided', voided_at=?2, voided_reason=?3
+           WHERE id=?1 AND status='paid'`,
+        ).bind(String(topup.id), Number(v.voidedTimeMillis || Date.now()), reason).run();
+        await env.DB_WALLET.prepare(
+          `INSERT INTO play_voided_purchases
+           (purchase_token, order_id, product_id, voided_at, voided_reason, topup_id, processed_at)
+           VALUES (?1,?2,?3,?4,?5,?6,?7) ON CONFLICT(purchase_token) DO NOTHING`,
+        ).bind(v.purchaseToken, v.orderId || null, v.productId || null,
+          Number(v.voidedTimeMillis || Date.now()), v.voidedReason == null ? null : String(v.voidedReason),
+          String(topup.id), Date.now()).run();
+        out.clawed += clawed;
+      } catch (e) {
+        out.failed++;
+        console.error("play voided purchase reconciliation failed:", String(e));
+      }
+    }
+    page = batch.nextPageToken;
+    if (!page) break;
+  }
+  return out;
 }
 
 // POST /webhooks/stripe — credit coins when Stripe confirms a payment. Handles

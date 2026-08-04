@@ -154,6 +154,9 @@ export interface PlayProductResult {
   orderId?: string;
   purchaseState?: number;   // 0 purchased, 1 canceled, 2 pending
   consumptionState?: number; // 0 yet-to-consume, 1 consumed
+  priceAmountMicros?: number;
+  priceCurrencyCode?: string;
+  purchaseTimeMillis?: number;
   reason?: string;
 }
 
@@ -191,5 +194,49 @@ export async function verifyPlayProduct(
     orderId: data.orderId,
     purchaseState,
     consumptionState,
+    priceAmountMicros: Number.isFinite(Number(data.priceAmountMicros)) ? Number(data.priceAmountMicros) : undefined,
+    priceCurrencyCode: typeof data.priceCurrencyCode === "string" ? data.priceCurrencyCode.toLowerCase() : undefined,
+    purchaseTimeMillis: Number.isFinite(Number(data.purchaseTimeMillis)) ? Number(data.purchaseTimeMillis) : undefined,
+  };
+}
+
+export interface PlayVoidedPurchase {
+  purchaseToken: string;
+  orderId?: string;
+  productId?: string;
+  voidedTimeMillis?: number;
+  voidedReason?: number;
+}
+
+/** List one-time Play purchases voided/refunded since startTimeMillis. */
+export async function listVoidedPlayPurchases(
+  env: Env,
+  startTimeMillis: number,
+  pageToken?: string,
+): Promise<{ ok: boolean; purchases: PlayVoidedPurchase[]; nextPageToken?: string; reason?: string }> {
+  let accessToken: string;
+  try { accessToken = await getAccessToken(env); }
+  catch (e) { return { ok: false, purchases: [], reason: (e as Error).message }; }
+
+  const u = new URL(
+    `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${encodeURIComponent(playPackageId(env))}/purchases/voidedpurchases`,
+  );
+  u.searchParams.set("startTime", String(Math.max(0, Math.trunc(startTimeMillis))));
+  u.searchParams.set("maxResults", "1000");
+  if (pageToken) u.searchParams.set("pageToken", pageToken);
+  const res = await fetch(u.toString(), { headers: { Authorization: `Bearer ${accessToken}` } });
+  const data = (await res.json().catch(() => ({}))) as any;
+  if (!res.ok) return { ok: false, purchases: [], reason: data?.error?.message || `play_api_${res.status}` };
+  const rows = Array.isArray(data.voidedPurchases) ? data.voidedPurchases : [];
+  return {
+    ok: true,
+    purchases: rows.map((p: any) => ({
+      purchaseToken: String(p.purchaseToken || ""),
+      orderId: typeof p.orderId === "string" ? p.orderId : undefined,
+      productId: typeof p.productId === "string" ? p.productId : undefined,
+      voidedTimeMillis: Number.isFinite(Number(p.voidedTimeMillis)) ? Number(p.voidedTimeMillis) : undefined,
+      voidedReason: Number.isFinite(Number(p.voidedReason)) ? Number(p.voidedReason) : undefined,
+    })).filter((p: PlayVoidedPurchase) => p.purchaseToken),
+    nextPageToken: typeof data.tokenPagination?.nextPageToken === "string" ? data.tokenPagination.nextPageToken : undefined,
   };
 }
