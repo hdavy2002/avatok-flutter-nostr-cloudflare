@@ -81,6 +81,8 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
     /** Reasons carried on stalled/recovered events. Categories only — never content. */
     public static final String REASON_DEAD_AIR = "dead_air";
     public static final String REASON_SWITCHING = "switching";
+    /** Fallback/cancel reason tags are categories, never content — hard-capped defensively. */
+    private static final int MAX_REASON_LEN = 40;
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private final Object audioLock = new Object();
@@ -105,16 +107,24 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
      */
     private volatile WebSocket pendingSocket;
     private AudioTrack translatedTrack;
-    private AudioTrack webRtcOutputTrack;
-    private MethodChannel.Result pendingPrepare;
+    /**
+     * D-3: volatile. Written from the guard thread, the OkHttp reader threads, the decoded-audio
+     * callback and main; a stale read here means restoring volume on a dead AudioTrack while the
+     * live one stays at 0 — a permanently silent call, the invariant failing in the worst way.
+     */
+    private volatile AudioTrack webRtcOutputTrack;
+    private volatile MethodChannel.Result pendingPrepare;
     private boolean attached;
-    private boolean prepared;
+    private volatile boolean prepared;
     private volatile boolean active;
     private volatile boolean paid;
     private volatile boolean stopping;
+    /** D-7: only the prepare that armed a timeout may be failed by it. */
+    private volatile int prepareGeneration;
     private int resamplePhase;
     private int lastInputRate;
-    private long lastOutputLookupMs;
+    /** D-3: volatile, and set to 0 to force a fresh lookup before any unmute. */
+    private volatile long lastOutputLookupMs;
     private String authToken;
     /**
      * The language of the LIVE session — never the one a pending socket is trying to reach.
@@ -134,6 +144,13 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
     // --- dead-air guard state (all under fallbackLock unless volatile) -------
     private volatile boolean fallbackActive;
     private String fallbackReason;
+    /**
+     * D-2: whether the CURRENTLY OPEN fallback is a dead-air one. Deliberate fallbacks
+     * (language switch, route change, focus blip) must not move the stall statistics or the
+     * degraded-cycle window, or two clean language switches inside 60 s tell the user his
+     * connection is unstable and poison the p95 thresholds derived from stall_count/stall_ms.
+     */
+    private boolean fallbackWasDeadAir;
     private long fallbackStartedAtMs;
     private volatile long lastTranslatedPcmMs;
     private volatile long lastVoiceInputMs;
@@ -143,8 +160,10 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
 
     // --- telemetry counters (no content, ever) ------------------------------
     private volatile long sessionStartedAtMs;
-    private volatile int stallCount;
-    private volatile long stallMsTotal;
+    private volatile int stallCount;        // DEAD-AIR fallbacks only (D-2)
+    private volatile long stallMsTotal;     // DEAD-AIR fallback duration only (D-2)
+    private volatile int fallbackCount;     // deliberate fallbacks: switching/route/focus
+    private volatile long fallbackMsTotal;  // deliberate fallback duration
     private volatile int pcmDropCount;      // uplink chunks dropped on queue overflow
     private volatile int uplinkFailCount;   // webSocket.send() returned false / threw
     private volatile int uplinkSentCount;
@@ -214,6 +233,7 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
                     paid = true;
                     // The guard measures dead air from the moment the original is muted.
                     lastTranslatedPcmMs = System.currentTimeMillis();
+                    lastOutputLookupMs = 0L; // D-3: fresh handle across the transition
                     applyOutputMute();
                     result.success(true);
                 }
@@ -263,6 +283,21 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
                 result.success(true);
                 break;
             }
+            case "cancelSwitch": {
+                // D-4: the ONLY way Dart can abandon a cutover it has given up on (its own
+                // cutover_timeout). Without it `pendingSocket` stayed non-null for the rest of
+                // the call, so every later switch returned `switch_in_flight` AND goAway-driven
+                // provider resume — gated on `pendingSocket == null` — was silently dead.
+                //
+                // Touches the pending socket and NOTHING else: the live socket, `targetLanguage`,
+                // `active`, `paid` and the fallback state are all left exactly as they are, so
+                // the user keeps hearing the language he is already being translated into.
+                String cancelReason = call.argument("reason");
+                boolean cancelled = abandonPendingSocket(cancelReason == null || cancelReason.isEmpty()
+                        ? "cancelled" : cancelReason);
+                result.success(cancelled);
+                break;
+            }
             case "setFallback": {
                 Boolean enabled = call.argument("enabled");
                 String reason = call.argument("reason");
@@ -270,8 +305,7 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
                     result.error("invalid_arguments", "enabled is required", null);
                     return;
                 }
-                setFallbackToOriginal(enabled, reason == null || reason.isEmpty()
-                        ? REASON_SWITCHING : reason);
+                setFallbackToOriginal(enabled, tag(reason, REASON_SWITCHING));
                 result.success(true);
                 break;
             }
@@ -308,12 +342,51 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
         startGuardThread();
         connectSocket(null, targetLanguage);
 
+        // D-7: the timeout is scoped to THIS prepare. A second prepare inside 15 s — a discarded
+        // warm-up followed by the real start is exactly that shape — used to be killed by the
+        // FIRST prepare's timer, because the old runnable only checked `pendingPrepare != null`.
+        final int generation = ++prepareGeneration;
         main.postDelayed(() -> {
+            if (prepareGeneration != generation) return; // superseded or stopped: not ours to fail
             if (pendingPrepare != null) {
                 failPrepare("provider_timeout", "Gemini setup did not complete in time");
                 stopInternal(true);
             }
         }, 15_000);
+    }
+
+    /**
+     * D-4: closes and clears the pending (make-before-break) socket without touching the live
+     * session. Safe to call from any thread and idempotent.
+     *
+     * <p>The abandoned socket's {@code onFailure}/{@code onClosed}/{@code onMessage} callbacks
+     * are already inert once it is neither {@link #socket} nor {@link #pendingSocket} — every
+     * listener path identity-checks against those two fields — so cancelling cannot fail the
+     * live session or steal it via a late {@code setupComplete}.
+     *
+     * @return true if a pending socket was actually abandoned.
+     */
+    private boolean abandonPendingSocket(String reason) {
+        WebSocket pending = pendingSocket;
+        if (pending == null) return false;
+        pendingSocket = null;
+        if (pending != socket) {
+            // cancel(), not close(): no close handshake to wait on, and the callbacks it fires
+            // are ignored by the identity checks above.
+            try { pending.cancel(); } catch (Exception ignored) {}
+        }
+        JSONObject extra = new JSONObject();
+        try {
+            extra.put("liveLanguage", targetLanguage == null ? "" : targetLanguage);
+        } catch (Exception ignored) {}
+        emitJson("switch_cancelled", tag(reason, "cancelled"), extra);
+        return true;
+    }
+
+    /** Category tags only — bounded, never content. */
+    private static String tag(String reason, String fallbackTag) {
+        if (reason == null || reason.isEmpty()) return fallbackTag;
+        return reason.length() > MAX_REASON_LEN ? reason.substring(0, MAX_REASON_LEN) : reason;
     }
 
     /**
@@ -327,6 +400,9 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
      */
     private void connectSocket(String handle, String language) {
         final String socketLanguage = language;
+        // D-4: never orphan a previous pending socket by overwriting the field — that leaked a
+        // live socket and left the abandon bookkeeping inconsistent.
+        abandonPendingSocket("superseded");
         HttpUrl socketUrl = HttpUrl.get(WS_URL).newBuilder()
                 .addQueryParameter("access_token", authToken)
                 .build();
@@ -356,7 +432,8 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
                                     .put("slidingWindow", new JSONObject()));
                     webSocket.send(new JSONObject().put("setup", setup).toString());
                 } catch (Exception e) {
-                    failPrepare("setup_failed", e.getMessage());
+                    // L-1: exception CATEGORY only. Provider-derived strings can carry the frame.
+                    failPrepare("setup_failed", errorCategory(e));
                 }
             }
 
@@ -368,39 +445,72 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
             @Override
             public void onFailure(@NonNull WebSocket webSocket, @NonNull Throwable t, Response response) {
                 if (stopping) return;
-                if (webSocket == pendingSocket && socket != null) {
+                if (webSocket == pendingSocket && socket != null && webSocket != socket) {
                     // The LIVE socket survives, so targetLanguage is deliberately NOT touched —
                     // it must keep describing what the user is actually hearing.
                     pendingSocket = null;
-                    JSONObject extra = new JSONObject();
-                    try {
-                        boolean wasSwitch = socketLanguage != null
-                                && !socketLanguage.equals(targetLanguage);
-                        extra.put("switching", wasSwitch);
-                        // Language CODES only (e.g. "es") — never content.
-                        if (wasSwitch) extra.put("attemptedLanguage", socketLanguage);
-                        extra.put("liveLanguage", targetLanguage == null ? "" : targetLanguage);
-                    } catch (Exception ignored) {}
-                    emitJson("resume_failed", t.getMessage(), extra);
+                    emitJson("resume_failed", errorCategory(t),
+                            pendingFailureExtra(socketLanguage, -1));
                     return;
                 }
                 if (webSocket != socket && webSocket != pendingSocket) return;
-                failPrepare("provider_failed", t.getMessage());
-                emit("provider_error", t.getMessage());
+                failPrepare("provider_failed", errorCategory(t));
+                emit("provider_error", errorCategory(t));
                 stopInternal(true);
             }
 
             @Override
             public void onClosed(@NonNull WebSocket webSocket, int code, @NonNull String reason) {
                 if (stopping) return;
+                // D-5: the SAME pending-vs-live discrimination onFailure has. A provider that
+                // refuses a switch token answers with a close frame (1008/1011 is the normal
+                // shape), and killing a working translation for that defeats the whole
+                // "failure is cheap" premise of make-before-break.
+                if (webSocket == pendingSocket && socket != null && webSocket != socket) {
+                    pendingSocket = null;
+                    emitJson("resume_failed", "closed_" + code,
+                            pendingFailureExtra(socketLanguage, code));
+                    return;
+                }
                 if (webSocket != socket && webSocket != pendingSocket) return;
-                emit("provider_closed", reason);
+                // L-1: the provider's close `reason` string is provider-authored text and never
+                // crosses the channel — the numeric code is the category.
+                emit("provider_closed", "closed_" + code);
                 stopInternal(true);
             }
         });
     }
 
+    /** Shared by the pending-socket failure and close paths. Language CODES + counters only. */
+    private JSONObject pendingFailureExtra(String socketLanguage, int closeCode) {
+        JSONObject extra = new JSONObject();
+        try {
+            boolean wasSwitch = socketLanguage != null && !socketLanguage.equals(targetLanguage);
+            extra.put("switching", wasSwitch);
+            // Language CODES only (e.g. "es") — never content.
+            if (wasSwitch) extra.put("attemptedLanguage", socketLanguage);
+            extra.put("liveLanguage", targetLanguage == null ? "" : targetLanguage);
+            if (closeCode >= 0) extra.put("closeCode", closeCode);
+        } catch (Exception ignored) {}
+        return extra;
+    }
+
+    /**
+     * L-1: a stable, bounded category for an exception. NEVER {@code getMessage()} — org.json
+     * embeds the offending payload in its message, and a provider frame contains base64 audio in
+     * {@code inlineData.data}. No audio-derived content may cross the channel, ever.
+     */
+    private static String errorCategory(Throwable t) {
+        if (t == null) return "unknown";
+        String name = t.getClass().getSimpleName();
+        return name == null || name.isEmpty() ? "unknown" : name;
+    }
+
     private void handleProviderMessage(WebSocket webSocket, String text, String socketLanguage) {
+        // D-4: an abandoned socket is neither the live one nor the pending one. Its frames are
+        // dropped here so a late setupComplete from a cancelled cutover can never steal the
+        // session or move `targetLanguage` away from what the user is actually hearing.
+        if (webSocket != socket && webSocket != pendingSocket) return;
         try {
             JSONObject message = new JSONObject(text);
             if (message.has("setupComplete")) {
@@ -460,7 +570,9 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
                 if (!data.isEmpty()) playTranslated(Base64.decode(data, Base64.DEFAULT));
             }
         } catch (Exception e) {
-            emit("protocol_error", e.getMessage());
+            // L-1: FIXED category. `new JSONObject(rawProviderFrame)` throwing embeds the frame —
+            // which carries base64 audio in inlineData.data — in its message. It never leaves here.
+            emit("protocol_error", "provider_frame_parse");
         }
     }
 
@@ -537,7 +649,8 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
                 else uplinkFailCount++;
             } catch (Exception e) {
                 uplinkFailCount++;
-                emit("protocol_error", e.getMessage());
+                // L-1: fixed category. The chunk being encoded IS audio; its message must not leak.
+                emit("protocol_error", "uplink_encode_failed");
             }
         }
     }
@@ -642,6 +755,7 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
         long now = System.currentTimeMillis();
         boolean changedOn = false;
         boolean changedOff = false;
+        boolean deadAir = false;
         long duration = 0L;
         int cyclesInWindow = 0;
         boolean degraded = false;
@@ -653,30 +767,48 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
                 fallbackReason = tag;
                 fallbackStartedAtMs = now;
                 recoverPcmBytes = 0;
-                stallCount++;
+                // D-2: ONLY dead air is a stall. A language switch, a route change or a focus
+                // blip is a deliberate fallback and must not inflate stall_count / stall_ms.
+                deadAir = REASON_DEAD_AIR.equals(tag);
+                fallbackWasDeadAir = deadAir;
+                if (deadAir) stallCount++; else fallbackCount++;
                 changedOn = true;
             } else {
                 if (!fallbackActive) return;
                 fallbackActive = false;
                 duration = now - fallbackStartedAtMs;
-                stallMsTotal += duration;
                 recoverPcmBytes = 0;
                 tag = fallbackReason == null ? tag : fallbackReason;
                 fallbackReason = null;
-                stallCycleAt[stallCycleIndex % stallCycleAt.length] = now;
-                stallCycleIndex++;
-                for (long at : stallCycleAt) {
-                    if (at > 0 && now - at <= DEGRADED_WINDOW_MS) cyclesInWindow++;
-                }
-                if (cyclesInWindow >= DEGRADED_CYCLES
-                        && now - lastDegradedEmitMs >= DEGRADED_REEMIT_MS) {
-                    lastDegradedEmitMs = now;
-                    degraded = true;
+                // The kind is decided by the fallback that OPENED, not by this call's reason —
+                // recovery is driven by translated PCM and passes reason == null.
+                deadAir = fallbackWasDeadAir;
+                fallbackWasDeadAir = false;
+                if (deadAir) {
+                    stallMsTotal += duration;
+                    // D-2: the degraded-cycle window is a DEAD-AIR window. Two clean language
+                    // switches inside 60 s must never produce "Translation quality is unstable".
+                    stallCycleAt[stallCycleIndex % stallCycleAt.length] = now;
+                    stallCycleIndex++;
+                    for (long at : stallCycleAt) {
+                        if (at > 0 && now - at <= DEGRADED_WINDOW_MS) cyclesInWindow++;
+                    }
+                    if (cyclesInWindow >= DEGRADED_CYCLES
+                            && now - lastDegradedEmitMs >= DEGRADED_REEMIT_MS) {
+                        lastDegradedEmitMs = now;
+                        degraded = true;
+                    }
+                } else {
+                    fallbackMsTotal += duration;
                 }
                 changedOff = true;
             }
         }
 
+        // D-3: force a fresh AudioTrack lookup across the transition. flutter_webrtc recreates
+        // its output track on route changes; restoring volume on a stale handle would leave the
+        // live one at 0 — a permanently silent call.
+        lastOutputLookupMs = 0L;
         // The mute itself lives outside the lock; it only touches the WebRTC AudioTrack volume.
         applyOutputMute();
 
@@ -684,7 +816,9 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
             JSONObject extra = new JSONObject();
             try {
                 extra.put("reason", tag);
+                extra.put("deadAir", deadAir);
                 extra.put("stallCount", stallCount);
+                extra.put("fallbackCount", fallbackCount);
                 extra.put("sinceLastAudioMs", Math.max(0L, now - lastTranslatedPcmMs));
             } catch (Exception ignored) {}
             emitJson("stalled", tag, extra);
@@ -693,9 +827,14 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
             JSONObject extra = new JSONObject();
             try {
                 extra.put("reason", tag);
+                extra.put("deadAir", deadAir);
+                // stallDurationMs stays the duration of THIS fallback whatever its kind (Dart
+                // already reads it); only the accumulated stall totals are dead-air-only.
                 extra.put("stallDurationMs", duration);
                 extra.put("stallCount", stallCount);
                 extra.put("stallMsTotal", stallMsTotal);
+                extra.put("fallbackCount", fallbackCount);
+                extra.put("fallbackMsTotal", fallbackMsTotal);
             } catch (Exception ignored) {}
             emitJson("recovered", tag, extra);
             if (degraded) {
@@ -779,7 +918,7 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
             return adapter instanceof PlaybackSamplesReadyCallbackAdapter
                     ? (PlaybackSamplesReadyCallbackAdapter) adapter : null;
         } catch (Exception e) {
-            if (emitFailure) emit("bridge_error", e.getMessage());
+            if (emitFailure) emit("bridge_error", errorCategory(e));
             return null;
         }
     }
@@ -789,10 +928,20 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
         muteWebRtcOutput(paid && active && !fallbackActive);
     }
 
-    /** Mutes/restores only flutter_webrtc's decoded incoming playback sink. */
+    /**
+     * Mutes/restores only flutter_webrtc's decoded incoming playback sink.
+     *
+     * <p>D-3: the cached handle can be up to 1 s stale and flutter_webrtc recreates its
+     * AudioTrack on route changes. Callers force a fresh lookup across any transition by setting
+     * {@link #lastOutputLookupMs} to 0; on top of that, an UNMUTE also restores the previously
+     * cached track when the lookup returned a different (or no) one, so a track we muted can
+     * never be left at volume 0.
+     */
     private void muteWebRtcOutput(boolean mute) {
+        AudioTrack previous = webRtcOutputTrack;
         long now = System.currentTimeMillis();
-        if (webRtcOutputTrack == null || now - lastOutputLookupMs > 1000) {
+        if (webRtcOutputTrack == null || lastOutputLookupMs == 0L
+                || now - lastOutputLookupMs > 1000) {
             lastOutputLookupMs = now;
             try {
                 FlutterWebRTCPlugin plugin = FlutterWebRTCPlugin.sharedSingleton;
@@ -813,8 +962,14 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
                 webRtcOutputTrack = null;
             }
         }
-        if (webRtcOutputTrack != null) {
-            try { webRtcOutputTrack.setVolume(mute ? 0f : 1f); } catch (Exception ignored) {}
+        AudioTrack track = webRtcOutputTrack;
+        if (track != null) {
+            try { track.setVolume(mute ? 0f : 1f); } catch (Exception ignored) {}
+        }
+        if (!mute && previous != null && previous != track) {
+            // A track we may have muted was replaced (or the lookup failed). Restore it too —
+            // leaving it at 0 is the permanently-silent-call failure.
+            try { previous.setVolume(1f); } catch (Exception ignored) {}
         }
     }
 
@@ -858,6 +1013,7 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
         synchronized (fallbackLock) {
             fallbackActive = false;
             fallbackReason = null;
+            fallbackWasDeadAir = false;
             fallbackStartedAtMs = 0L;
             recoverPcmBytes = 0;
             stallCycleIndex = 0;
@@ -874,6 +1030,8 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
         lastVoiceInputMs = 0L;
         stallCount = 0;
         stallMsTotal = 0L;
+        fallbackCount = 0;
+        fallbackMsTotal = 0L;
         pcmDropCount = 0;
         uplinkFailCount = 0;
         uplinkSentCount = 0;
@@ -890,8 +1048,12 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
         lastStatsEmitMs = now;
         JSONObject stats = new JSONObject();
         try {
+            // D-2: stall* is DEAD AIR only; deliberate fallbacks (switch/route/focus) are
+            // counted separately so the p95 stall thresholds are not poisoned by them.
             stats.put("stallCount", stallCount);
             stats.put("stallMsTotal", stallMsTotal);
+            stats.put("fallbackCount", fallbackCount);
+            stats.put("fallbackMsTotal", fallbackMsTotal);
             stats.put("pcmDropCount", pcmDropCount);
             stats.put("uplinkFailCount", uplinkFailCount);
             stats.put("uplinkSentCount", uplinkSentCount);
@@ -914,16 +1076,24 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
         active = false;
         paid = false;
         prepared = false;
+        prepareGeneration++; // D-7: invalidate any armed prepare timeout
         stopGuardThread();
         stopSenderThread();
         if (wasRunning) emitStats(true);
         synchronized (fallbackLock) {
             fallbackActive = false;
             fallbackReason = null;
+            fallbackWasDeadAir = false;
         }
         failPrepare("stopped", "Translation stopped");
+        // D-3: `active=false` above stops the callback refreshing the cached output track, so the
+        // handle here may name an AudioTrack flutter_webrtc has already replaced (a route change
+        // is exactly when it does). Force a fresh lookup, then unmute BOTH the live track and the
+        // one we were holding — restoring the wrong one leaves the call permanently silent.
+        lastOutputLookupMs = 0L;
         muteWebRtcOutput(false);
         webRtcOutputTrack = null;
+        lastOutputLookupMs = 0L;
         WebSocket oldSocket = socket;
         socket = null;
         WebSocket oldPendingSocket = pendingSocket;
