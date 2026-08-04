@@ -1582,8 +1582,40 @@ String? _fallbackRingtoneCallId;
 /// in-hand/OEM heads-up-only failure mode REL-10 targets. Reuses the bundled
 /// ringtone catalog asset (assets/audio/catalog/) already shipped for the
 /// ringback picker — no new asset, no new audio plugin.
+/// ⚠️ [CALL-RING-OWNER-1 2026-08-05] READ BEFORE "FIXING" THIS.
+///
+/// The name "fallback" and the reason string below both describe a design that
+/// is NOT what this is. There is no audibility check gating it: the only caller
+/// starts it unconditionally the moment the OS ring is suppressed, one line
+/// before capturing `call_os_ring_suppressed`. Nothing anywhere sets, clears or
+/// waits on a "confirmed sound" signal — grep the repo, the symbol does not
+/// exist — and `IncomingBusinessCallScreen` contains no audio code at all, so
+/// the branded surface is structurally incapable of confirming anything.
+///
+/// Which means: WHEN THE APP IS FOREGROUND, THIS IS THE ONLY THING THAT MAKES A
+/// RINGING SOUND. `suppressOsRingInForeground` is true in production, so the OS
+/// ring is off; delete or gate this and foreground calls arrive in silence.
+/// A 2026-08-05 investigation into a "double ring" report nearly did exactly
+/// that. The second ring was not this — it was a GHOST full-screen surface
+/// re-raised 34s after hang-up for an already-ended call (see
+/// [CALL-GHOST-RING-1] in call_session.dart), which brought CallKit's own ring
+/// back with it.
+///
+/// So the reason string is now honest about what actually triggered it, and the
+/// audibility-conditional behaviour the old string implied remains UNBUILT.
+/// If it is ever built, `callRingAudibilityV1` is the flag to gate it behind.
 Future<void> _startRingtoneFallback(String callId) async {
   if (_fallbackRingtonePlayer != null) return; // already running for this or another call
+  // [CALL-GHOST-RING-1] Never ring for a call that has already ended. Cheap, and
+  // the terminal marker is now actually set on local hang-up, so unlike before
+  // this guard can really fire.
+  if (PushService.wasCallTerminated(callId)) {
+    await _track('call_ring_fallback_suppressed', {
+      'call_id': callId,
+      'reason': 'call_already_terminated',
+    });
+    return;
+  }
   try {
     final player = ap.AudioPlayer();
     _fallbackRingtonePlayer = player;
@@ -1592,7 +1624,9 @@ Future<void> _startRingtoneFallback(String callId) async {
     await player.play(ap.AssetSource('audio/catalog/classic.mp3'));
     await _track('call_ring_fallback_played', {
       'call_id': callId,
-      'reason': 'foreground_normal_ringer_no_confirmed_sound',
+      // Was 'foreground_normal_ringer_no_confirmed_sound', which named a check
+      // that has never existed. This is the real trigger.
+      'reason': 'os_ring_suppressed_app_owns_ring',
     });
   } catch (e) {
     _fallbackRingtonePlayer = null;

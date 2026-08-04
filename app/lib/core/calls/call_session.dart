@@ -4020,7 +4020,13 @@ class CallSession {
       // even more likely to starve the link than on the direct path.
       await _addStreamTracks(newPc, _stream!, stage: 'migration_add_track_failed');
       if (config.video) {
-        await _preferResolutionOnVideo(newPc, cellular: true);
+        // [CALL-VIDEO-LOSS-1 2026-08-05] Was hardcoded `cellular: true`, which
+        // pinned every recovery/migration PC to the 800 kbps cap even for a user
+        // sitting on wifi the whole time — a permanent quality downgrade bought
+        // by one network blip. Ask the device instead; `_isLikelyCellular()`
+        // already falls back to `false` (the higher cap) on any error, so this
+        // can still only ever be as conservative as before, never less.
+        await _preferResolutionOnVideo(newPc, cellular: await _isLikelyCellular());
       }
       newPc.onIceCandidate = (c) {
         if (!identical(_activeMigration, attempt) || attempt.completed) return;
@@ -4110,7 +4116,13 @@ class CallSession {
       // even more likely to starve the link than on the direct path.
       await _addStreamTracks(newPc, _stream!, stage: 'migration_add_track_failed');
       if (config.video) {
-        await _preferResolutionOnVideo(newPc, cellular: true);
+        // [CALL-VIDEO-LOSS-1 2026-08-05] Was hardcoded `cellular: true`, which
+        // pinned every recovery/migration PC to the 800 kbps cap even for a user
+        // sitting on wifi the whole time — a permanent quality downgrade bought
+        // by one network blip. Ask the device instead; `_isLikelyCellular()`
+        // already falls back to `false` (the higher cap) on any error, so this
+        // can still only ever be as conservative as before, never less.
+        await _preferResolutionOnVideo(newPc, cellular: await _isLikelyCellular());
       }
       newPc.onIceCandidate = (c) {
         if (!identical(_activeMigration, attempt) || attempt.completed) return;
@@ -6463,13 +6475,48 @@ class CallSession {
     // [BUSY-CARD-1] cancel the abandoned-busy-card safety timer.
     _busyCardTimeout?.cancel();
     _busyCardTimeout = null;
-    try { await _receptionist?.hangup(); } catch (_) {}
+    // ── [CALL-GHOST-RING-1 2026-08-05] Mark this call terminated. FIRST. ─────
+    //
+    // `applyRingTransition` calls itself "THE ONE CLEANUP PATH", and it is —
+    // it stamps `_terminalCallAt`, ends the CallKit call, dismisses the branded
+    // FSI, stops the fallback ringtone, clears the glare globals, and clears
+    // MainActivity's queued native tap. Every ring-ENDING path funnels through
+    // it. Every path except the most common one: hanging up.
+    //
+    // `endByUser()` did `_telemetry.ended(...)` then `hangup(...)`, and neither
+    // touched the reducer. So for a call the user ended, `wasCallTerminated()`
+    // stayed FALSE and the native pending tap was never cleared — which made
+    // every downstream "has this call ended?" guard a no-op, including the two
+    // inside `_routeToBrandedIncoming`. On 2026-08-04 a stale tap for
+    // avatok-528020ce drained 34 SECONDS after the user hung up and put a
+    // full-screen incoming-call surface plus a status-bar notification back on
+    // screen for a finished conversation.
+    //
+    // Placed at the TOP of teardown, before any await, because the ghost landed
+    // INSIDE the teardown window — the guards have to be armed before the slow
+    // part starts, not after it. Idempotent: with no `seq` the reducer returns
+    // early when it has already run for this call, so the remote-bye path
+    // (which does reach it via the DO socket) is unaffected.
+    unawaited(() async {
+      try {
+        await applyRingTransition(config.room, 'ended', source: 'local_teardown');
+      } catch (_) {/* never let cleanup bookkeeping block a hangup */}
+    }());
+    // [CALL-GHOST-RING-1] Both of these were UNBOUNDED awaits sitting directly
+    // in the teardown path — the only two that weren't wrapped in `_safeAwait`.
+    // The same 2026-08-04 call took 39s from `call_ended` to `call_teardown_slow`
+    // (threshold: 5s), and that long tail is the window the ghost ring appeared
+    // in. A receptionist or prewarm socket that refuses to close must not be
+    // able to hold a hang-up open; 2s matches every other teardown step.
+    await _safeAwait(() => _receptionist?.hangup() ?? Future.value());
     // [AVA-PREWARM-1] The call is ending (any reason) before the ring
     // deadline ever took over the pre-warmed session — abort it so it leaves
     // no trace. Also cancel a still-pending prewarm timer so a superseded
     // session's leftover Timer can't fire after teardown.
     _prewarmTimer?.cancel();
-    if (_prewarmCall != null) { try { await _abortPrewarm('call_ended'); } catch (_) {} }
+    if (_prewarmCall != null) {
+      await _safeAwait(() => _abortPrewarm('call_ended'));
+    }
     try { WakelockPlus.disable(); } catch (_) {}
     // CALL-REL-1: one `endP2pSession` call replaces the scattered stop calls
     // when the controller owns the session. It is safe even if setup only
