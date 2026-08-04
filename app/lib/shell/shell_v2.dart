@@ -12,6 +12,7 @@ import '../core/config.dart';
 import '../core/profile_store.dart';
 import '../core/remote_config.dart';
 import '../core/ui/avatok_dark.dart';
+import '../features/affiliate/affiliate_home.dart'; // [AFF-NAV-1] footer slot
 import '../features/askava/askava_screen.dart';
 import '../features/avadial/avadial_channel.dart';
 import '../features/avadial/block_list.dart';
@@ -193,6 +194,11 @@ class _ShellV2State extends State<ShellV2> {
   /// 2026-07-16: Inbox icon stayed unselected while inside the Inbox).
   bool _inboxOpen = false;
 
+  /// [AFF-NAV-1] True while the footer-pushed AvaAffiliate route is on top.
+  /// Same reason as [_inboxOpen]: Affiliate occupies a footer slot but is a
+  /// pushed screen, not a root, so the indicator has to be tracked by hand.
+  bool _affiliateOpen = false;
+
   /// [AVA-NAV-STUCK-1] (owner bug 2026-07-17) The live Inbox / Ask Ava overlay
   /// routes, plus the root whose Navigator they were pushed onto.
   ///
@@ -208,6 +214,9 @@ class _ShellV2State extends State<ShellV2> {
   /// without disturbing anything the user pushed on top of it.
   Route<void>? _inboxRoute;
   Route<void>? _askAvaRoute;
+  /// [AFF-NAV-1] Same stranding hazard as [_inboxRoute] — tracked so a root
+  /// switch can tear the Affiliate overlay down from whichever root owns it.
+  Route<void>? _affiliateRoute;
   RootId? _overlayRoot;
 
   // User-chosen app-switcher order (AVA-SHELL-8). Drives BOTH the Home footer
@@ -493,20 +502,24 @@ class _ShellV2State extends State<ShellV2> {
   /// user has on top instead. `removeRoute` does not fire the push future's
   /// `whenComplete`, so the flags are cleared here explicitly.
   void _dismissOverlays() {
-    if (_inboxRoute == null && _askAvaRoute == null) return;
+    if (_inboxRoute == null && _askAvaRoute == null && _affiliateRoute == null) {
+      return;
+    }
     final nav = _navKeys[_overlayRoot ?? _root]?.currentState;
-    for (final route in [_inboxRoute, _askAvaRoute]) {
+    for (final route in [_inboxRoute, _askAvaRoute, _affiliateRoute]) {
       if (route != null && route.isActive) nav?.removeRoute(route);
     }
     _inboxRoute = null;
     _askAvaRoute = null;
+    _affiliateRoute = null;
     _overlayRoot = null;
     _inboxOpen = false;
     _askAvaOpen = false;
+    _affiliateOpen = false;
   }
 
   void _switchRoot(RootId r) {
-    if (r == _root && !_inboxOpen && !_askAvaOpen) {
+    if (r == _root && !_inboxOpen && !_askAvaOpen && !_affiliateOpen) {
       // Re-tapping the active app pops it back to its first route (common
       // bottom-nav affordance). Guarded on the overlay flags: while Inbox or
       // Ask Ava is up, the "active app" the user sees in the footer is the
@@ -554,7 +567,35 @@ class _ShellV2State extends State<ShellV2> {
       setState(() {
         _inboxOpen = false;
         _inboxRoute = null;
-        if (_askAvaRoute == null) _overlayRoot = null;
+        if (_askAvaRoute == null && _affiliateRoute == null) _overlayRoot = null;
+      });
+    });
+  }
+
+  /// [AFF-NAV-1] (owner 2026-08-05) The footer slot that AvaAffiliate borrows
+  /// from Services while `avaAffiliateEnabled` is on. Affiliate is a screen, not
+  /// a root, so this is a PUSH onto the active root's navigator — identical to
+  /// [_openInbox], including the overlay bookkeeping that keeps the footer
+  /// indicator honest and stops the route stranding on another root's stack.
+  ///
+  /// The flag is checked in TWO places on purpose: the footer only renders this
+  /// slot when it is on, and [AffiliateHomeScreen] itself refuses to render its
+  /// content when it is off — so no build can leak the feature by nav alone.
+  void _openAffiliate() {
+    Analytics.capture('shellv2_affiliate_opened', {'root': _root.key});
+    setState(() => _affiliateOpen = true);
+    final nav = _navKeys[_root]?.currentState ?? Navigator.of(context);
+    final route = MaterialPageRoute<void>(
+      builder: (_) => const AffiliateHomeScreen(),
+    );
+    _affiliateRoute = route;
+    _overlayRoot = _root;
+    nav.push(route).whenComplete(() {
+      if (!mounted || !identical(_affiliateRoute, route)) return;
+      setState(() {
+        _affiliateOpen = false;
+        _affiliateRoute = null;
+        if (_askAvaRoute == null && _inboxRoute == null) _overlayRoot = null;
       });
     });
   }
@@ -581,7 +622,7 @@ class _ShellV2State extends State<ShellV2> {
       setState(() {
         _askAvaOpen = false;
         _askAvaRoute = null;
-        if (_inboxRoute == null) _overlayRoot = null;
+        if (_inboxRoute == null && _affiliateRoute == null) _overlayRoot = null;
       });
     });
   }
@@ -672,6 +713,8 @@ class _ShellV2State extends State<ShellV2> {
             onAskAva: _askAva,
             onOpenInbox: _openInbox,
             inboxActive: _inboxOpen,
+            onOpenAffiliate: _openAffiliate,
+            affiliateActive: _affiliateOpen,
           ),
         ),
       ),

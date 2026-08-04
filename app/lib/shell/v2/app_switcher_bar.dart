@@ -57,6 +57,16 @@ class AppSwitcherBar extends StatefulWidget {
   /// root underneath and Inbox looks unselected while you're inside it.
   final bool inboxActive;
 
+  /// [AFF-NAV-1] Opens AvaAffiliate (a PUSH onto the active root's navigator,
+  /// like [onOpenInbox] — Affiliate is a screen, not a root). Only ever invoked
+  /// from the slot that TEMPORARILY replaces Services while
+  /// `RemoteConfig.avaAffiliateEnabled` is on.
+  final VoidCallback onOpenAffiliate;
+
+  /// True while the pushed Affiliate route is on top — same indicator fix as
+  /// [inboxActive]/[askAvaActive].
+  final bool affiliateActive;
+
   /// Personalisation accent for the active-root indicator (falls back to lime).
   final Color? indicatorColor;
 
@@ -70,6 +80,8 @@ class AppSwitcherBar extends StatefulWidget {
     required this.onAskAva,
     required this.onOpenInbox,
     this.inboxActive = false,
+    required this.onOpenAffiliate,
+    this.affiliateActive = false,
     this.indicatorColor,
   });
 
@@ -106,6 +118,27 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
     RootId.avaTalk: (Icons.chat_bubble_outline, Icons.chat_bubble, 'AvaTalk'),
     RootId.services: (Icons.storefront_outlined, Icons.storefront, 'Services'),
   };
+
+  /// [AFF-NAV-1] Footer display for the AvaAffiliate slot that takes over the
+  /// Services position while the affiliate kill switch is ON.
+  static const (IconData, IconData, String) _affiliateMeta =
+      (Icons.handshake_outlined, Icons.handshake, 'Affiliate');
+
+  /// [AFF-NAV-1] (owner 2026-08-05) Services is DEFERRED, not deleted: while
+  /// `avaAffiliateEnabled` is on, the Services footer slot renders AvaAffiliate
+  /// instead and a tap PUSHES [AffiliateHomeScreen] rather than switching root.
+  ///
+  /// Deliberately flag-CONDITIONAL rather than an unconditional removal:
+  /// `avaAffiliateEnabled` is false in production, and an unconditional swap
+  /// would ship an empty (or dead-end "coming soon") footer slot to live users.
+  /// With the flag off the footer is byte-for-byte what it is today — Services.
+  ///
+  /// NOTHING about Services is removed: `RootId.services` stays in the persisted
+  /// order (so the slot keeps its position and stays drag-reorderable), the
+  /// ServicesRoot navigator stays mounted in the shell's IndexedStack, and the
+  /// ShellSidebar's "Services" row (shell_chrome.dart) still switches to it.
+  /// Re-enabling the footer icon is one flag flip back to false.
+  bool get _affiliateTakesServicesSlot => RemoteConfig.avaAffiliateEnabled;
 
   Color get _indicator => widget.indicatorColor ?? AD.primaryBadge;
 
@@ -158,12 +191,24 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
 
   Widget _draggableSlot(int index) {
     final root = widget.order[index];
+    // [AFF-NAV-1] Services slot on loan to AvaAffiliate while the flag is on.
+    final affiliate = root == RootId.services && _affiliateTakesServicesSlot;
     // While Ask Ava is open, no root is "active" — the indicator lives on the
     // Ava action instead.
-    final item = _rootItem(root,
-        selected: !widget.askAvaActive &&
-            !widget.inboxActive &&
-            root == widget.activeRoot);
+    final item = affiliate
+        ? _labelledIcon(
+            icon: _affiliateMeta.$1,
+            selectedIcon: _affiliateMeta.$2,
+            label: _affiliateMeta.$3,
+            // Affiliate is a pushed route, not a root: it is "active" only while
+            // its own overlay is on top (same rule as Inbox / Ask Ava).
+            selected: widget.affiliateActive,
+          )
+        : _rootItem(root,
+            selected: !widget.askAvaActive &&
+                !widget.inboxActive &&
+                !widget.affiliateActive &&
+                root == widget.activeRoot);
 
     // DragTarget lets any OTHER root be dropped onto this slot; the whole row of
     // three roots is a reorder surface.
@@ -195,14 +240,15 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
             _dragging = null;
             _hoverTarget = null;
           }),
-          feedback: _dragFeedback(root),
+          feedback: _dragFeedback(root, affiliate: affiliate),
           childWhenDragging: Opacity(opacity: 0.25, child: item),
           child: AnimatedScale(
             duration: const Duration(milliseconds: 160),
             scale: isHover ? 1.12 : 1.0,
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: () => widget.onSelect(root),
+              onTap: () =>
+                  affiliate ? widget.onOpenAffiliate() : widget.onSelect(root),
               child: item,
             ),
           ),
@@ -342,8 +388,8 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
 
   /// The lifted item that follows the finger — a bordered dark v2 tile,
   /// so the drag reads as a physical pick-up.
-  Widget _dragFeedback(RootId root) {
-    final m = _meta[root]!;
+  Widget _dragFeedback(RootId root, {bool affiliate = false}) {
+    final m = affiliate ? _affiliateMeta : _meta[root]!;
     return Transform.translate(
       // Center-ish under the finger (pointerDragAnchorStrategy anchors at origin).
       offset: const Offset(-32, -34),
