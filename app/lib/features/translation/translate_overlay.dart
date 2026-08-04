@@ -54,10 +54,10 @@ class _TranslateOverlayState extends State<TranslateOverlay> {
     if (!mounted) return;
     final s = _engine.state.value;
     if (s == TranslationState.fundsExhausted) {
-      // Pop-up #2 — coins ran out mid-call.
+      // Pop-up #2 — Tokens ran out mid-call.
       _fundsDialog(
         'You have utilized your Tokens for your voice translation. '
-        'Please top up your wallet to add some more coins.',
+        'Please top up your wallet to add some more Tokens.',
         resume: true,
       );
     }
