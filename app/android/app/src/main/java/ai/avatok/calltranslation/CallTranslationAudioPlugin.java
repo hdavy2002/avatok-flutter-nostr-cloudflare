@@ -2,7 +2,6 @@ package ai.avatok.calltranslation;
 
 import android.media.AudioAttributes;
 import android.media.AudioFormat;
-import android.media.AudioManager;
 import android.media.AudioTrack;
 import android.os.Handler;
 import android.os.Looper;
@@ -19,6 +18,7 @@ import org.webrtc.audio.JavaAudioDeviceModule;
 
 import java.io.ByteArrayOutputStream;
 import java.lang.reflect.Field;
+import java.util.ArrayDeque;
 import java.util.concurrent.TimeUnit;
 
 import io.flutter.embedding.engine.plugins.FlutterPlugin;
@@ -36,11 +36,19 @@ import okhttp3.WebSocketListener;
  * Android bridge for payer-local 1:1 call translation.
  *
  * It consumes flutter_webrtc's decoded playback callback, resamples that
- * incoming call audio to PCM16/16 kHz, and sends it directly to a constrained
- * Gemini Live socket. The original WebRTC AudioTrack is muted only after the
- * server has charged the first minute; translated PCM16/24 kHz is played on a
- * separate voice-call AudioTrack. No second microphone or CallRoom PCM relay is
- * used.
+ * incoming call audio to PCM16/16 kHz, and hands it to a bounded queue drained
+ * by a dedicated sender thread that talks to a constrained Gemini Live socket.
+ * The original WebRTC AudioTrack is muted only after the server has charged the
+ * first minute; translated PCM16/24 kHz is played on a separate voice-call
+ * AudioTrack. No second microphone or CallRoom PCM relay is used.
+ *
+ * THE INVARIANT: translation may fail or stall; the underlying call must stay
+ * usable and the original audio must be restored automatically. The mute lives
+ * here (native) precisely so restoration works even when Dart is wedged — see
+ * the dead-air guard below.
+ *
+ * Privacy: no transcript text, no audio bytes and nothing audio-derived is ever
+ * logged or emitted. Counters, timings, state names and error categories only.
  */
 public final class CallTranslationAudioPlugin implements FlutterPlugin,
         MethodChannel.MethodCallHandler, EventChannel.StreamHandler,
@@ -52,9 +60,35 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
     private static final String WS_URL = "wss://generativelanguage.googleapis.com/ws/"
             + "google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
 
+    /** ~3 s of 100 ms uplink chunks. Overflow drops the OLDEST (stale-audio policy). */
+    private static final int UPLINK_QUEUE_CAPACITY = 30;
+    /** No translated PCM for this long (while the far end is actually speaking) = dead air. */
+    private static final long STALL_THRESHOLD_MS = 2_000L;
+    /** Input counts as "flowing" only if voiced audio was seen this recently. */
+    private static final long INPUT_ACTIVE_WINDOW_MS = 1_500L;
+    /** Anti-flap: never re-mute sooner than this after falling back. */
+    private static final long MIN_FALLBACK_MS = 800L;
+    /** Anti-flap: a single late chunk must not end a fallback; require sustained PCM. */
+    private static final int RECOVER_PCM_BYTES = 9_600; // 200 ms @ 24 kHz mono PCM16
+    private static final long DEGRADED_WINDOW_MS = 60_000L;
+    private static final int DEGRADED_CYCLES = 2;
+    private static final long DEGRADED_REEMIT_MS = 30_000L;
+    private static final long GUARD_TICK_MS = 250L;
+    private static final long STATS_INTERVAL_MS = 30_000L;
+    /** Peak amplitude (of 32767) above which an input chunk counts as speech, not silence. */
+    private static final int VOICE_PEAK_THRESHOLD = 600;
+
+    /** Reasons carried on stalled/recovered events. Categories only — never content. */
+    public static final String REASON_DEAD_AIR = "dead_air";
+    public static final String REASON_SWITCHING = "switching";
+
     private final Handler main = new Handler(Looper.getMainLooper());
     private final Object audioLock = new Object();
+    private final Object queueLock = new Object();
+    private final Object fallbackLock = new Object();
     private final ByteArrayOutputStream pcm16k = new ByteArrayOutputStream(4096);
+    private final ArrayDeque<byte[]> uplinkQueue = new ArrayDeque<>(UPLINK_QUEUE_CAPACITY);
+    private final long[] stallCycleAt = new long[8];
     private final OkHttpClient http = new OkHttpClient.Builder()
             .pingInterval(20, TimeUnit.SECONDS)
             .readTimeout(0, TimeUnit.MILLISECONDS)
@@ -64,22 +98,52 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
     private EventChannel eventChannel;
     private EventChannel.EventSink eventSink;
     private PlaybackSamplesReadyCallbackAdapter playbackAdapter;
-    private WebSocket socket;
+    private volatile WebSocket socket;
     private WebSocket pendingSocket;
     private AudioTrack translatedTrack;
     private AudioTrack webRtcOutputTrack;
     private MethodChannel.Result pendingPrepare;
     private boolean attached;
     private boolean prepared;
-    private boolean active;
-    private boolean paid;
-    private boolean stopping;
+    private volatile boolean active;
+    private volatile boolean paid;
+    private volatile boolean stopping;
     private int resamplePhase;
     private int lastInputRate;
     private long lastOutputLookupMs;
     private String authToken;
     private String targetLanguage;
     private String resumeHandle;
+
+    // --- worker threads -----------------------------------------------------
+    private Thread senderThread;
+    private volatile boolean senderRunning;
+    private Thread guardThread;
+    private volatile boolean guardRunning;
+
+    // --- dead-air guard state (all under fallbackLock unless volatile) -------
+    private volatile boolean fallbackActive;
+    private String fallbackReason;
+    private long fallbackStartedAtMs;
+    private volatile long lastTranslatedPcmMs;
+    private volatile long lastVoiceInputMs;
+    private int recoverPcmBytes;
+    private int stallCycleIndex;
+    private long lastDegradedEmitMs;
+
+    // --- telemetry counters (no content, ever) ------------------------------
+    private volatile long sessionStartedAtMs;
+    private volatile int stallCount;
+    private volatile long stallMsTotal;
+    private volatile int pcmDropCount;      // uplink chunks dropped on queue overflow
+    private volatile int uplinkFailCount;   // webSocket.send() returned false / threw
+    private volatile int uplinkSentCount;
+    private volatile int queuePeak;
+    private volatile int shortWriteCount;   // AudioTrack.write wrote fewer bytes than offered
+    private volatile long shortWriteBytes;
+    private volatile int playbackErrorCount; // AudioTrack.write returned a negative error code
+    private volatile int translatedChunkCount;
+    private volatile long lastStatsEmitMs;
 
     @Override
     public void onAttachedToEngine(@NonNull FlutterPluginBinding binding) {
@@ -138,7 +202,9 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
                     result.error("not_active", "Translation transport is not active", null);
                 } else {
                     paid = true;
-                    muteWebRtcOutput(true);
+                    // The guard measures dead air from the moment the original is muted.
+                    lastTranslatedPcmMs = System.currentTimeMillis();
+                    applyOutputMute();
                     result.success(true);
                 }
                 break;
@@ -152,6 +218,22 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
                     connectSocket(handle);
                     result.success(true);
                 }
+                break;
+            case "setFallback": {
+                Boolean enabled = call.argument("enabled");
+                String reason = call.argument("reason");
+                if (enabled == null) {
+                    result.error("invalid_arguments", "enabled is required", null);
+                    return;
+                }
+                setFallbackToOriginal(enabled, reason == null || reason.isEmpty()
+                        ? REASON_SWITCHING : reason);
+                result.success(true);
+                break;
+            }
+            case "stats":
+                emitStats(false);
+                result.success(true);
                 break;
             case "stop":
                 stopInternal(false);
@@ -177,6 +259,9 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
         pendingPrepare = result;
         authToken = token;
         this.targetLanguage = targetLanguage;
+        resetTelemetry();
+        startSenderThread();
+        startGuardThread();
         connectSocket(null);
 
         main.postDelayed(() -> {
@@ -201,10 +286,11 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
                     JSONObject translation = new JSONObject()
                             .put("targetLanguageCode", targetLanguage)
                             .put("echoTargetLanguage", false);
+                    // NOTE: input/outputAudioTranscription are deliberately ABSENT — captions are
+                    // deferred and the minted token's liveConnectConstraints omit them too. The two
+                    // setups MUST match or the provider rejects the session.
                     JSONObject generation = new JSONObject()
                             .put("responseModalities", new JSONArray().put("AUDIO"))
-                            .put("inputAudioTranscription", new JSONObject())
-                            .put("outputAudioTranscription", new JSONObject())
                             .put("translationConfig", translation);
                     JSONObject setup = new JSONObject()
                             .put("model", "models/" + MODEL)
@@ -275,8 +361,8 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
             }
             JSONObject content = message.optJSONObject("serverContent");
             if (content == null) return;
-            JSONObject transcription = content.optJSONObject("outputTranscription");
-            if (transcription != null) emit("caption", transcription.optString("text", ""));
+            // Transcription is disabled in setup; any outputTranscription that still arrives is
+            // ignored on purpose — captions are deferred and content never leaves this method.
             JSONObject turn = content.optJSONObject("modelTurn");
             if (turn == null) return;
             JSONArray parts = turn.optJSONArray("parts");
@@ -293,25 +379,91 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
         }
     }
 
+    // ------------------------------------------------------------------------
+    // A5 — decoded-audio callback: resample + enqueue ONLY. No network work here.
+    // ------------------------------------------------------------------------
+
     @Override
     public void onWebRtcAudioTrackSamplesReady(JavaAudioDeviceModule.AudioSamples samples) {
         if (!active || socket == null || samples.getAudioFormat() != AudioFormat.ENCODING_PCM_16BIT) return;
-        if (paid) muteWebRtcOutput(true);
+        if (paid) applyOutputMute();
         byte[] chunk = resampleTo16k(samples.getData(), samples.getSampleRate(), samples.getChannelCount());
         if (chunk == null) return;
-        try {
-            JSONObject audio = new JSONObject()
-                    .put("data", Base64.encodeToString(chunk, Base64.NO_WRAP))
-                    .put("mimeType", "audio/pcm;rate=16000");
-            socket.send(new JSONObject().put("realtimeInput", new JSONObject().put("audio", audio)).toString());
-        } catch (Exception e) {
-            emit("protocol_error", e.getMessage());
+        enqueueUplink(chunk);
+    }
+
+    /** Bounded queue; on overflow the OLDEST chunk goes (stale audio is worse than a gap). */
+    private void enqueueUplink(byte[] chunk) {
+        synchronized (queueLock) {
+            while (uplinkQueue.size() >= UPLINK_QUEUE_CAPACITY) {
+                uplinkQueue.pollFirst();
+                pcmDropCount++;
+            }
+            uplinkQueue.addLast(chunk);
+            if (uplinkQueue.size() > queuePeak) queuePeak = uplinkQueue.size();
+            queueLock.notifyAll();
         }
     }
 
-    /** Produces exact 100 ms (3200-byte) PCM16 mono chunks. */
+    private void startSenderThread() {
+        stopSenderThread();
+        senderRunning = true;
+        senderThread = new Thread(this::senderLoop, "avatok-xlate-uplink");
+        senderThread.setDaemon(true);
+        senderThread.start();
+    }
+
+    private void stopSenderThread() {
+        senderRunning = false;
+        Thread t = senderThread;
+        senderThread = null;
+        synchronized (queueLock) {
+            uplinkQueue.clear();
+            queueLock.notifyAll();
+        }
+        if (t != null) t.interrupt();
+    }
+
+    private void senderLoop() {
+        while (senderRunning) {
+            byte[] chunk;
+            synchronized (queueLock) {
+                while (senderRunning && uplinkQueue.isEmpty()) {
+                    try {
+                        queueLock.wait(200L);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                }
+                if (!senderRunning) return;
+                chunk = uplinkQueue.pollFirst();
+            }
+            if (chunk == null) continue;
+            WebSocket ws = socket;
+            if (ws == null || !active) continue;
+            try {
+                JSONObject audio = new JSONObject()
+                        .put("data", Base64.encodeToString(chunk, Base64.NO_WRAP))
+                        .put("mimeType", "audio/pcm;rate=16000");
+                boolean queued = ws.send(new JSONObject()
+                        .put("realtimeInput", new JSONObject().put("audio", audio)).toString());
+                if (queued) uplinkSentCount++;
+                else uplinkFailCount++;
+            } catch (Exception e) {
+                uplinkFailCount++;
+                emit("protocol_error", e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Produces exact 100 ms (3200-byte) PCM16 mono chunks, and tracks whether the far end is
+     * actually speaking (peak amplitude) so the dead-air guard never fires on genuine silence.
+     */
     private byte[] resampleTo16k(byte[] input, int sampleRate, int channels) {
         if (input == null || input.length < 2 || sampleRate <= 0 || channels <= 0) return null;
+        int peak = 0;
         synchronized (audioLock) {
             if (lastInputRate != sampleRate) {
                 resamplePhase = 0;
@@ -326,6 +478,8 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
                     mixed += (short) ((input[p] & 0xff) | (input[p + 1] << 8));
                 }
                 short mono = (short) (mixed / channels);
+                int magnitude = mono < 0 ? -mono : mono;
+                if (magnitude > peak) peak = magnitude;
                 resamplePhase += 16_000;
                 if (resamplePhase >= sampleRate) {
                     resamplePhase -= sampleRate;
@@ -333,6 +487,7 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
                     pcm16k.write((mono >> 8) & 0xff);
                 }
             }
+            if (peak >= VOICE_PEAK_THRESHOLD) lastVoiceInputMs = System.currentTimeMillis();
             if (pcm16k.size() < 3200) return null;
             byte[] all = pcm16k.toByteArray();
             byte[] out = new byte[3200];
@@ -365,7 +520,165 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
     private void playTranslated(byte[] pcm24k) {
         if (!active || pcm24k == null || pcm24k.length == 0) return;
         ensureTranslatedTrack();
-        translatedTrack.write(pcm24k, 0, pcm24k.length, AudioTrack.WRITE_NON_BLOCKING);
+        int written;
+        try {
+            written = translatedTrack.write(pcm24k, 0, pcm24k.length, AudioTrack.WRITE_NON_BLOCKING);
+        } catch (Exception e) {
+            playbackErrorCount++;
+            return;
+        }
+        if (written < 0) {
+            playbackErrorCount++;
+        } else if (written < pcm24k.length) {
+            shortWriteCount++;
+            shortWriteBytes += (pcm24k.length - written);
+        }
+        translatedChunkCount++;
+        onTranslatedPcm(pcm24k.length);
+    }
+
+    // ------------------------------------------------------------------------
+    // A4 — dead-air guard
+    // ------------------------------------------------------------------------
+
+    /**
+     * Restores or re-mutes the ORIGINAL decoded call audio. Public so Phase C's mid-call
+     * language switch can hold the original audio open across the cutover
+     * ({@code setFallbackToOriginal(true, REASON_SWITCHING)}); the guard's own
+     * recovery path re-mutes automatically once translated PCM flows again.
+     *
+     * @param fallback true = play the original speaker (translation muted-out),
+     *                 false = return to translated-only playback.
+     * @param reason   short category tag (e.g. {@code dead_air}, {@code switching}).
+     *                 Never content — it is emitted to Dart and telemetry.
+     */
+    public void setFallbackToOriginal(boolean fallback, String reason) {
+        String tag = (reason == null || reason.isEmpty()) ? REASON_DEAD_AIR : reason;
+        long now = System.currentTimeMillis();
+        boolean changedOn = false;
+        boolean changedOff = false;
+        long duration = 0L;
+        int cyclesInWindow = 0;
+        boolean degraded = false;
+
+        synchronized (fallbackLock) {
+            if (fallback) {
+                if (fallbackActive) return;
+                fallbackActive = true;
+                fallbackReason = tag;
+                fallbackStartedAtMs = now;
+                recoverPcmBytes = 0;
+                stallCount++;
+                changedOn = true;
+            } else {
+                if (!fallbackActive) return;
+                fallbackActive = false;
+                duration = now - fallbackStartedAtMs;
+                stallMsTotal += duration;
+                recoverPcmBytes = 0;
+                tag = fallbackReason == null ? tag : fallbackReason;
+                fallbackReason = null;
+                stallCycleAt[stallCycleIndex % stallCycleAt.length] = now;
+                stallCycleIndex++;
+                for (long at : stallCycleAt) {
+                    if (at > 0 && now - at <= DEGRADED_WINDOW_MS) cyclesInWindow++;
+                }
+                if (cyclesInWindow >= DEGRADED_CYCLES
+                        && now - lastDegradedEmitMs >= DEGRADED_REEMIT_MS) {
+                    lastDegradedEmitMs = now;
+                    degraded = true;
+                }
+                changedOff = true;
+            }
+        }
+
+        // The mute itself lives outside the lock; it only touches the WebRTC AudioTrack volume.
+        applyOutputMute();
+
+        if (changedOn) {
+            JSONObject extra = new JSONObject();
+            try {
+                extra.put("reason", tag);
+                extra.put("stallCount", stallCount);
+                extra.put("sinceLastAudioMs", Math.max(0L, now - lastTranslatedPcmMs));
+            } catch (Exception ignored) {}
+            emitJson("stalled", tag, extra);
+        }
+        if (changedOff) {
+            JSONObject extra = new JSONObject();
+            try {
+                extra.put("reason", tag);
+                extra.put("stallDurationMs", duration);
+                extra.put("stallCount", stallCount);
+                extra.put("stallMsTotal", stallMsTotal);
+            } catch (Exception ignored) {}
+            emitJson("recovered", tag, extra);
+            if (degraded) {
+                JSONObject deg = new JSONObject();
+                try {
+                    deg.put("cyclesInWindow", cyclesInWindow);
+                    deg.put("windowMs", DEGRADED_WINDOW_MS);
+                    deg.put("stallCount", stallCount);
+                    deg.put("stallMsTotal", stallMsTotal);
+                } catch (Exception ignored) {}
+                emitJson("stall_degraded", REASON_DEAD_AIR, deg);
+            }
+        }
+    }
+
+    /** Called on every translated chunk; ends a fallback once PCM is sustained (anti-flap). */
+    private void onTranslatedPcm(int bytes) {
+        long now = System.currentTimeMillis();
+        lastTranslatedPcmMs = now;
+        if (!fallbackActive) return;
+        boolean recover = false;
+        synchronized (fallbackLock) {
+            if (!fallbackActive) return;
+            recoverPcmBytes += bytes;
+            if (recoverPcmBytes >= RECOVER_PCM_BYTES
+                    && now - fallbackStartedAtMs >= MIN_FALLBACK_MS) {
+                recover = true;
+            }
+        }
+        if (recover) setFallbackToOriginal(false, null);
+    }
+
+    private void startGuardThread() {
+        stopGuardThread();
+        guardRunning = true;
+        guardThread = new Thread(this::guardLoop, "avatok-xlate-guard");
+        guardThread.setDaemon(true);
+        guardThread.start();
+    }
+
+    private void stopGuardThread() {
+        guardRunning = false;
+        Thread t = guardThread;
+        guardThread = null;
+        if (t != null) t.interrupt();
+    }
+
+    private void guardLoop() {
+        while (guardRunning) {
+            try {
+                Thread.sleep(GUARD_TICK_MS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            if (!guardRunning) return;
+            long now = System.currentTimeMillis();
+            // Input counts as flowing if the far end spoke since the last translated chunk, or
+            // is speaking right now. Genuine silence on the call therefore never trips the guard.
+            boolean inputFlowing = lastVoiceInputMs > lastTranslatedPcmMs
+                    || (lastVoiceInputMs > 0 && now - lastVoiceInputMs <= INPUT_ACTIVE_WINDOW_MS);
+            if (active && paid && !fallbackActive && inputFlowing
+                    && now - lastTranslatedPcmMs >= STALL_THRESHOLD_MS) {
+                // Dead air: the far end is speaking but no translated audio has arrived.
+                setFallbackToOriginal(true, REASON_DEAD_AIR);
+            }
+            if (active && now - lastStatsEmitMs >= STATS_INTERVAL_MS) emitStats(false);
+        }
     }
 
     private PlaybackSamplesReadyCallbackAdapter resolvePlaybackAdapter(boolean emitFailure) {
@@ -384,6 +697,11 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
             if (emitFailure) emit("bridge_error", e.getMessage());
             return null;
         }
+    }
+
+    /** Single decision point: original audio is muted only while paid AND not falling back. */
+    private void applyOutputMute() {
+        muteWebRtcOutput(paid && active && !fallbackActive);
     }
 
     /** Mutes/restores only flutter_webrtc's decoded incoming playback sink. */
@@ -422,6 +740,14 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
     }
 
     private void emit(String type, String value) {
+        emitJson(type, value, null);
+    }
+
+    /**
+     * Emits {@code {"type":..,"value":..,<extra keys>}}. Extra keys are counters/timings only —
+     * never transcript text or anything audio-derived.
+     */
+    private void emitJson(String type, String value, JSONObject extra) {
         EventChannel.EventSink sink = eventSink;
         if (sink == null) return;
         main.post(() -> {
@@ -429,16 +755,87 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
             try {
                 payload.put("type", type);
                 if (value != null) payload.put("value", value);
+                if (extra != null) {
+                    JSONArray names = extra.names();
+                    if (names != null) {
+                        for (int i = 0; i < names.length(); i++) {
+                            String key = names.optString(i);
+                            if (key != null && !key.isEmpty()) payload.put(key, extra.opt(key));
+                        }
+                    }
+                }
                 sink.success(payload.toString());
             } catch (Exception ignored) {}
         });
     }
 
+    private void resetTelemetry() {
+        synchronized (fallbackLock) {
+            fallbackActive = false;
+            fallbackReason = null;
+            fallbackStartedAtMs = 0L;
+            recoverPcmBytes = 0;
+            stallCycleIndex = 0;
+            lastDegradedEmitMs = 0L;
+            for (int i = 0; i < stallCycleAt.length; i++) stallCycleAt[i] = 0L;
+        }
+        synchronized (queueLock) {
+            uplinkQueue.clear();
+        }
+        long now = System.currentTimeMillis();
+        sessionStartedAtMs = now;
+        lastStatsEmitMs = now;
+        lastTranslatedPcmMs = now;
+        lastVoiceInputMs = 0L;
+        stallCount = 0;
+        stallMsTotal = 0L;
+        pcmDropCount = 0;
+        uplinkFailCount = 0;
+        uplinkSentCount = 0;
+        queuePeak = 0;
+        shortWriteCount = 0;
+        shortWriteBytes = 0L;
+        playbackErrorCount = 0;
+        translatedChunkCount = 0;
+    }
+
+    /** Counters only. Emitted periodically and once with {@code final:true} at session end. */
+    private void emitStats(boolean isFinal) {
+        long now = System.currentTimeMillis();
+        lastStatsEmitMs = now;
+        JSONObject stats = new JSONObject();
+        try {
+            stats.put("stallCount", stallCount);
+            stats.put("stallMsTotal", stallMsTotal);
+            stats.put("pcmDropCount", pcmDropCount);
+            stats.put("uplinkFailCount", uplinkFailCount);
+            stats.put("uplinkSentCount", uplinkSentCount);
+            stats.put("queuePeak", queuePeak);
+            stats.put("queueCapacity", UPLINK_QUEUE_CAPACITY);
+            stats.put("shortWriteCount", shortWriteCount);
+            stats.put("shortWriteBytes", shortWriteBytes);
+            stats.put("playbackErrorCount", playbackErrorCount);
+            stats.put("translatedChunkCount", translatedChunkCount);
+            stats.put("uptimeMs", sessionStartedAtMs == 0L ? 0L : now - sessionStartedAtMs);
+            stats.put("fallbackActive", fallbackActive);
+            stats.put("final", isFinal);
+        } catch (Exception ignored) {}
+        emitJson("stats", isFinal ? "final" : "periodic", stats);
+    }
+
     private void stopInternal(boolean providerFailure) {
+        boolean wasRunning = active || prepared || senderRunning || guardRunning;
         stopping = true;
         active = false;
         paid = false;
         prepared = false;
+        stopGuardThread();
+        stopSenderThread();
+        if (wasRunning) emitStats(true);
+        synchronized (fallbackLock) {
+            fallbackActive = false;
+            fallbackReason = null;
+        }
         failPrepare("stopped", "Translation stopped");
         muteWebRtcOutput(false);
         webRtcOutputTrack = null;
