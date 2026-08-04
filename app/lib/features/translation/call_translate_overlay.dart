@@ -6,7 +6,6 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/money_api.dart';
 import '../../core/remote_config.dart';
 import '../../core/ui/zine.dart';
-import '../../core/ui/zine_widgets.dart';
 import 'call_translation_controller.dart';
 import 'call_translation_audio_bridge.dart';
 import 'translation_langs.dart';
@@ -47,16 +46,22 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
   void _changed() {
     if (!mounted) return;
     setState(() {});
-    if (_controller?.state.value == CallTranslationState.active) _hadActiveTranslation = true;
-    if (_controller?.state.value == CallTranslationState.fundsStopped && _hadActiveTranslation && !_fundsDialogShown) {
-      _fundsDialogShown = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _showFundsDialog(); });
+    final controller = _controller;
+    if (controller == null) return;
+    final s = controller.state.value;
+    if (s == CallTranslationState.active) _hadActiveTranslation = true;
+    if (s == CallTranslationState.failed && _hadActiveTranslation) {
+      final why = controller.failure.value;
+      if (why == CallTranslationFailure.insufficientTokens && !_fundsDialogShown) {
+        _fundsDialogShown = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _showFundsDialog(); });
+      } else if (why != CallTranslationFailure.insufficientTokens && !_providerDialogShown) {
+        _providerDialogShown = true;
+        final terminal = why == CallTranslationFailure.circuitOpen;
+        WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _showProviderStoppedDialog(terminal); });
+      }
     }
-    if (_controller?.state.value == CallTranslationState.error && _hadActiveTranslation && !_providerDialogShown) {
-      _providerDialogShown = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _showProviderStoppedDialog(); });
-    }
-    if (_controller?.state.value == CallTranslationState.off) _hadActiveTranslation = false;
+    if (s == CallTranslationState.idle) _hadActiveTranslation = false;
   }
 
   Future<void> _showFundsDialog() async {
@@ -77,10 +82,14 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
     ));
   }
 
-  Future<void> _showProviderStoppedDialog() async {
+  Future<void> _showProviderStoppedDialog(bool terminalForCall) async {
     await showDialog<void>(context: context, builder: (d) => AlertDialog(
-      title: const Text('Translation stopped'),
-      content: const Text('Live translation became unavailable. Original call audio has been restored and your call is still connected.'),
+      title: Text(terminalForCall ? 'Translation unavailable' : 'Translation stopped'),
+      content: Text(terminalForCall
+          // Circuit breaker tripped: 3 provider failures in one call. Saying
+          // "try again" here would be a lie — start() refuses from now on.
+          ? 'Translation is unavailable for this call. Original call audio has been restored and your call is still connected.'
+          : 'Live translation became unavailable. Original call audio has been restored and your call is still connected.'),
       actions: [TextButton(onPressed: () => Navigator.pop(d), child: const Text('OK'))],
     ));
   }
@@ -99,15 +108,17 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
     if (!mounted || error == null) return;
     final message = error == 'source_capture_unavailable'
         ? 'Live translation is not ready on this device yet.'
-        : error == 'insufficient_avacoins'
+        : error == 'insufficient_tokens'
             ? 'You need at least 5 Tokens to start live translation.'
-            : 'Live translation could not start. Your call is unchanged.';
+            : error == 'unavailable_for_call'
+                ? 'Translation is unavailable for this call. Your call is unchanged.'
+                : 'Live translation could not start. Your call is unchanged.';
     await showDialog<void>(context: context, builder: (d) => AlertDialog(
       title: const Text('Translate unavailable'),
       content: Text(message),
       actions: [
         TextButton(onPressed: () => Navigator.pop(d), child: const Text('NOT NOW')),
-        if (error == 'insufficient_avacoins')
+        if (error == 'insufficient_tokens')
           TextButton(onPressed: () async {
             Navigator.pop(d);
             final topup = await MoneyApi.topup(500);
@@ -126,15 +137,33 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
     if (!_nativeSupported || controller == null || !controller.available) return const SizedBox.shrink();
     final active = controller.active;
     final preparing = controller.preparing;
+    final stalled = controller.state.value == CallTranslationState.stalled;
+    final label = preparing
+        ? (controller.state.value == CallTranslationState.recovering
+            ? 'Reconnecting translation…'
+            : 'Starting translation…')
+        : active
+            ? '${translationLangLabel(controller.targetLanguage.value ?? '')} · Stop translation'
+            : 'Translate';
     return SafeArea(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.end, children: [
       GestureDetector(
         onTap: preparing ? null : (active ? controller.stop : _pick),
-        child: Container(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9), decoration: BoxDecoration(color: active ? Zine.lilac : Zine.card, borderRadius: BorderRadius.circular(100), border: Border.all(color: Zine.ink, width: Zine.bw), boxShadow: Zine.shadowXs), child: Row(mainAxisSize: MainAxisSize.min, children: [PhosphorIcon(PhosphorIcons.translate(PhosphorIconsStyle.bold), size: 17), const SizedBox(width: 6), Text(preparing ? 'Starting translation…' : active ? '${translationLangLabel(controller.targetLanguage.value ?? '')} · Stop translation' : 'Translate', style: ZineText.value(size: 13, weight: FontWeight.w700))])),
+        child: Container(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9), decoration: BoxDecoration(color: active ? Zine.lilac : Zine.card, borderRadius: BorderRadius.circular(100), border: Border.all(color: Zine.ink, width: Zine.bw), boxShadow: Zine.shadowXs), child: Row(mainAxisSize: MainAxisSize.min, children: [PhosphorIcon(PhosphorIcons.translate(PhosphorIconsStyle.bold), size: 17), const SizedBox(width: 6), Text(label, style: ZineText.value(size: 13, weight: FontWeight.w700))])),
       ),
       if (active) ...[
         const SizedBox(height: 5),
         ValueListenableBuilder<int>(valueListenable: controller.billedTokens, builder: (_, tokens, __) => ValueListenableBuilder<int>(valueListenable: controller.elapsedSeconds, builder: (_, elapsed, __) => Text('5/min · $tokens Tokens · ${elapsed ~/ 60}:${(elapsed % 60).toString().padLeft(2, '0')}', style: ZineText.tag(size: 10)))),
-        ValueListenableBuilder<String>(valueListenable: controller.caption, builder: (_, text, __) => ConstrainedBox(constraints: const BoxConstraints(maxWidth: 320), child: Text(text, textAlign: TextAlign.right, semanticsLabel: 'Translated caption', style: ZineText.sub(size: 14)))),
+        // Dead-air guard: the plugin has already restored the original audio,
+        // so this line explains what the user is hearing rather than warning
+        // about a broken call.
+        if (stalled)
+          Text('Translator catching up… you are hearing the original voice', textAlign: TextAlign.right, style: ZineText.tag(size: 10)),
+        ValueListenableBuilder<bool>(
+          valueListenable: controller.qualityDegraded,
+          builder: (_, degraded, __) => degraded && !stalled
+              ? Text('Translation quality is unstable on this connection', textAlign: TextAlign.right, style: ZineText.tag(size: 10))
+              : const SizedBox.shrink(),
+        ),
       ],
     ]));
   }
