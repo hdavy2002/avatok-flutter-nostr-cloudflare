@@ -92,11 +92,40 @@ async function participantInActiveCall(env: Env, callRef: string, uid: string): 
   }
 }
 
-async function balance(env: Env, uid: string): Promise<number> {
+/**
+ * [CALL-TRANSLATE-2D-3] OWNER DECISION 2026-08-04 — call translation is PAID-ONLY.
+ *
+ * `.balance` is the PAID wallet balance. It deliberately excludes `free` (the
+ * daily AI grant) and `bonus` (the 100-token welcome grant), which is why a user
+ * whose only tokens are the welcome grant is refused here. That is INTENDED, not
+ * a bug: this is a metered third-party provider lane, not an in-house AI feature.
+ *
+ * Do NOT "fix" this by switching the gate to `.spendable` or by adding
+ * `allow_free: true` to `chargeMinute` — the two must always agree, and the owner
+ * has ruled that welcome-grant tokens are not spendable on call translation.
+ * The CLAUDE-adjacent note "no premium gating, 100 free tokens at signup" is about
+ * AI features generally; THIS feature is the documented exception.
+ *
+ * `spendable` is still read so the 402 can say WHY (see `insufficientTokens`).
+ */
+async function balance(env: Env, uid: string): Promise<{ paid: number; spendable: number }> {
   const r = await walletOp(env, uid, { op: "balance", uid });
-  return Number(r.body?.balance ?? 0);
+  return {
+    paid: Number(r.body?.balance ?? 0),
+    spendable: Number(r.body?.spendable ?? r.body?.balance ?? 0),
+  };
 }
 
+/**
+ * [CALL-TRANSLATE-2D-3] PAID-ONLY — see `balance()` above (owner, 2026-08-04).
+ *
+ * `allow_free` is OMITTED on purpose, which the WalletDO reads as `false`:
+ * headroom and drawdown come from the PAID `balance` only, never from
+ * `free + bonus`. This must stay in lockstep with the `/start` gate, which
+ * checks `.balance`. Adding `allow_free: true` here without changing that gate
+ * (or vice versa) creates a user who passes /start and fails /activate — charged
+ * expectations, no translation.
+ */
 async function chargeMinute(env: Env, s: CallSession, minute: number): Promise<boolean> {
   const r = await walletOp(env, s.payer_uid, {
     op: "spend", uid: s.payer_uid, amount: CALL_TRANSLATION_RATE, type: "spend",
@@ -153,11 +182,20 @@ async function nonceRejection(env: Env, s: CallSession, route: string): Promise<
  * so any build that string-matches `insufficient_avacoins` keeps working; the
  * HTTP status stays 402, which is what the current Dart client actually branches
  * on. Delete `error_legacy` once no pre-rename build is in the field.
+ *
+ * [CALL-TRANSLATE-2D-3] `paid_only: true` is always present so the client can
+ * write accurate copy. It means: this refusal is about PAID balance, and free /
+ * bonus (welcome-grant) tokens can never satisfy it (owner decision — see
+ * `balance()`). When `spendable > balance` the user genuinely holds tokens that
+ * simply do not apply here, and the copy must say "top up" rather than
+ * "you have no tokens", which would be visibly wrong next to their wallet.
  */
 function insufficientTokens(extra: Record<string, unknown> = {}): Response {
   return json({
     error: "insufficient_tokens",
     error_legacy: "insufficient_avacoins",
+    paid_only: true,
+    rate_per_min: CALL_TRANSLATION_RATE,
     ...extra,
   }, 402);
 }
@@ -181,35 +219,29 @@ async function reconcileActivating(env: Env, id: string): Promise<Response> {
   if (fresh.status === "active") {
     return json({
       ok: true, billed_minute: Math.max(1, fresh.last_billed_minute),
+      billed_tokens: fresh.billed_tokens, call_ref: fresh.call_ref,
       rate_per_min: CALL_TRANSLATION_RATE, reconciled: "already_active",
     });
   }
-  if (fresh.status === "activating" && Date.now() - fresh.updated_at > ACTIVATING_STUCK_MS) {
-    const now = Date.now();
-    await metaDb(env).prepare(
-      `UPDATE translation_call_sessions
-          SET status='active', started_at=COALESCE(started_at,?2),
-              last_billed_minute=MAX(last_billed_minute,1),
-              billed_tokens=MAX(billed_tokens,?3), updated_at=?2
-        WHERE id=?1 AND status='activating'`,
-    ).bind(id, now, CALL_TRANSLATION_RATE).run();
-    const repaired = await load(env, id);
-    if (repaired && repaired.status === "active") {
-      await track(env, repaired.payer_uid, "call_translation_activation_repaired", APP, {
-        session_id: id, call_ref: repaired.call_ref, stuck_ms: now - fresh.updated_at,
-      });
-      return json({
-        ok: true, billed_minute: Math.max(1, repaired.last_billed_minute),
-        rate_per_min: CALL_TRANSLATION_RATE, reconciled: "repaired",
-      });
-    }
-  }
+  // [CALL-TRANSLATE-2D-3] There is deliberately NO `status === 'activating'`
+  // repair branch here. The version that used to sit at this spot compared
+  // `updated_at` against ACTIVATING_STUCK_MS — but this same request refreshed
+  // `updated_at` when it claimed the row (see the claim UPDATE in
+  // `callTranslationActivate`), so the age test could never pass. It was dead
+  // code advertising a self-heal that could not fire. Worse, reaching here at
+  // all requires `UPDATE ... WHERE status='activating'` to have matched zero
+  // rows, which by definition means the status is no longer 'activating'.
+  //
+  // The genuine stuck-row case — an attempt that charged minute one and then
+  // died before writing the row — is now repaired at its real entry point, in
+  // `callTranslationActivate`'s stuck-claim path, where the age is measured
+  // against the claim that is actually stale. See A2 there.
   if (fresh.status === "stopped" || fresh.status === "funds-stopped" || fresh.status === "provider-stopped") {
-    return json({ error: fresh.status, billable: true }, 409);
+    return json({ error: fresh.status, billable: true, call_ref: fresh.call_ref }, 409);
   }
   // Still genuinely in flight (another attempt is inside its own charge). The
   // client retries this exact call; it is idempotent by construction.
-  return json({ error: "activation_in_progress", billable: true, retry_after_ms: 750 }, 409);
+  return json({ error: "activation_in_progress", billable: true, retry_after_ms: 750, call_ref: fresh.call_ref }, 409);
 }
 
 /** Create an unbilled pending session. The source-ready activation is the paid boundary. */
@@ -228,12 +260,50 @@ export async function callTranslationStart(req: Request, env: Env): Promise<Resp
   const deviceNonce = readNonce(b.device_nonce);
   if (deviceNonce && !DEVICE_NONCE_RE.test(deviceNonce)) return json({ error: "invalid_device_nonce", billable: false }, 400);
   if (!(await participantInActiveCall(env, callRef, ctx.uid))) return json({ error: "not an active 1:1 call" }, 403);
-  const limited = await rateLimit(env, `call-trl:${ctx.uid}`, 10, 3600);
-  if (limited) return limited;
+  // Check for an existing session BEFORE spending rate-limit budget: a duplicate
+  // /start is the client converging, not abuse, and burning quota on the 409 was
+  // part of how a legitimate payer got locked out.
   const existing = await metaDb(env).prepare("SELECT id FROM translation_call_sessions WHERE payer_uid=?1 AND call_ref=?2 AND status IN ('pending','activating','active') LIMIT 1").bind(ctx.uid, callRef).first<{ id: string }>();
-  if (existing) return json({ error: "translation already active", session_id: existing.id }, 409);
+  if (existing) return json({ error: "translation already active", session_id: existing.id, call_ref: callRef }, 409);
+  /**
+   * [CALL-TRANSLATE-2D-3] Rate limiting: two buckets, both tunable from KV.
+   *
+   * The old single 10/hour ceiling predated Phase C's speculative warm-up. A
+   * warm-up creates a REAL session row via this route when the language sheet
+   * opens, and `start()` creates another when that warm session is not adopted —
+   * so ~5 sheet opens per hour locked the payer out with a 429 rendered as
+   * "Live translation could not start." That is a paying user being told the
+   * product is broken because they browsed the language list.
+   *
+   * Warm-ups are therefore counted in their OWN bucket, with a higher ceiling,
+   * because they are cheap: `/start` never moves money (the paid boundary is
+   * `/activate`), so a discarded warm-up costs one provider token mint and one
+   * D1 row. A caller who lies and always sends `warm_up:true` gets the warm-up
+   * ceiling instead of the start ceiling — same order of magnitude, still
+   * bounded, and still unable to spend a single token. That is the trade.
+   */
+  const warmUp = b.warm_up === true;
+  const rlMax = Math.max(1, Math.trunc(
+    warmUp ? cfg.callTranslationWarmupsPerHour : cfg.callTranslationStartsPerHour,
+  ));
+  const limited = await rateLimit(env, `call-trl${warmUp ? "-warm" : ""}:${ctx.uid}`, rlMax, 3600);
+  if (limited) {
+    await track(env, ctx.uid, "call_translation_start_rate_limited", APP, {
+      call_ref: callRef, warm_up: warmUp, ceiling_per_hour: rlMax,
+    });
+    return limited;
+  }
   const bal = await balance(env, ctx.uid);
-  if (bal < CALL_TRANSLATION_MIN_START) return insufficientTokens({ needed: CALL_TRANSLATION_MIN_START, balance: bal });
+  if (bal.paid < CALL_TRANSLATION_MIN_START) {
+    return insufficientTokens({
+      needed: CALL_TRANSLATION_MIN_START,
+      balance: bal.paid,
+      // Non-paid tokens the user DOES hold. > balance means "you have tokens,
+      // but not the kind this feature spends" — see the paid-only note above.
+      spendable: bal.spendable,
+      call_ref: callRef,
+    });
+  }
   const now = Date.now();
   const id = crypto.randomUUID();
   const lease = crypto.randomUUID();
@@ -248,18 +318,27 @@ export async function callTranslationStart(req: Request, env: Env): Promise<Resp
     ).bind(id, ctx.uid, callRef, lang, lease, now, deviceNonce).run();
   } catch {
     const winner = await metaDb(env).prepare("SELECT id FROM translation_call_sessions WHERE payer_uid=?1 AND call_ref=?2 AND status IN ('pending','activating','active') LIMIT 1").bind(ctx.uid, callRef).first<{ id: string }>();
-    return json({ error: "translation already active", session_id: winner?.id }, 409);
+    return json({ error: "translation already active", session_id: winner?.id, call_ref: callRef }, 409);
   }
-  track(env, ctx.uid, "call_translation_start_ready", APP, { call_ref: callRef, language: lang });
+  await track(env, ctx.uid, "call_translation_start_ready", APP, {
+    session_id: id, call_ref: callRef, language: lang, warm_up: warmUp,
+  });
   return json({
     ok: true,
     session_id: id,
+    // [CALL-TRANSLATE-2D-3] Echoed so the client can stamp the SAME identifier the
+    // Worker stamps on its own PostHog events. Without it the two timelines for
+    // one call cannot be joined: Dart events carried session_id only.
+    call_ref: callRef,
+    // Echoed so the client knows the server agreed this row is speculative.
+    warm_up: warmUp,
     source_lease: lease,
     token: token.token,
     token_expires_at: token.expiresAt,
     model: CALL_TRANSLATION_MODEL,
     rate_per_min: CALL_TRANSLATION_RATE,
-    balance: bal,
+    balance: bal.paid,
+    spendable: bal.spendable,
     // Tells the client whether this session is nonce-bound, so it knows to send
     // the same value back on activate/renew/token/language.
     device_bound: deviceNonce !== null,
@@ -272,12 +351,43 @@ export async function callTranslationActivate(req: Request, env: Env, id: string
   if (isFail(ctx)) return authError(ctx);
   const s = await load(env, id);
   if (!s || s.payer_uid !== ctx.uid) return json({ error: "not found" }, 404);
-  if (s.status === "active") return json({ ok: true, billed_minute: s.last_billed_minute, rate_per_min: CALL_TRANSLATION_RATE });
-  if (s.status !== "pending" && s.status !== "activating") return json({ error: s.status }, 409);
+  if (s.status === "active") {
+    return json({
+      ok: true, billed_minute: s.last_billed_minute, billed_tokens: s.billed_tokens,
+      call_ref: s.call_ref, rate_per_min: CALL_TRANSLATION_RATE,
+    });
+  }
+  if (s.status !== "pending" && s.status !== "activating") return json({ error: s.status, call_ref: s.call_ref }, 409);
   const b = await req.json().catch(() => ({})) as Record<string, unknown>;
   if (nonceRejected(s, b.device_nonce)) return await nonceRejection(env, s, "activate");
-  if (b.source_lease !== s.source_lease || b.source_ready !== true || Date.now() - s.updated_at > SOURCE_LEASE_MS) return json({ error: "source_not_ready", billable: false }, 412);
-  if (!(await participantInActiveCall(env, s.call_ref, ctx.uid))) return json({ error: "call_ended_or_source_invalid", billable: false }, 409);
+  /**
+   * [CALL-TRANSLATE-2D-3 / A2] Stuck-claim repair — the REACHABLE version.
+   *
+   * For an 'activating' row, `updated_at` is the moment this row was CLAIMED,
+   * not the moment the source became ready. Measuring source-lease freshness
+   * against it is the actual bug: an attempt that claimed the row, charged
+   * minute one under the deterministic op id, then died before writing the row
+   * leaves it 'activating' forever. Every later retry is then rejected with a
+   * 412 `source_not_ready` once the claim passes SOURCE_LEASE_MS — a payer whose
+   * charge succeeded, permanently unable to get translation. That is exactly the
+   * A2 guarantee failing.
+   *
+   * So past ACTIVATING_STUCK_MS we treat the row as a crashed prior attempt and
+   * skip ONLY the staleness test. Ownership, nonce, lease identity,
+   * `source_ready` and live-participant checks all still apply, and the repair
+   * runs `chargeMinute(s, 1)` rather than assuming the money moved: that call is
+   * idempotent on `call-translation:<sid>:minute:1`, so it is a no-op returning
+   * success if minute one was already debited, and a real charge if the crash
+   * happened before the debit. Correct in both directions, never double-billed.
+   */
+  const stuckClaim = s.status === "activating" && Date.now() - s.updated_at > ACTIVATING_STUCK_MS;
+  if (b.source_lease !== s.source_lease || b.source_ready !== true || (!stuckClaim && Date.now() - s.updated_at > SOURCE_LEASE_MS)) return json({ error: "source_not_ready", billable: false, call_ref: s.call_ref }, 412);
+  if (!(await participantInActiveCall(env, s.call_ref, ctx.uid))) return json({ error: "call_ended_or_source_invalid", billable: false, call_ref: s.call_ref }, 409);
+  if (stuckClaim) {
+    await track(env, ctx.uid, "call_translation_activation_repaired", APP, {
+      session_id: id, call_ref: s.call_ref, stuck_ms: Date.now() - s.updated_at,
+    });
+  }
   if (s.status === "pending") {
     const claimed = await metaDb(env).prepare("UPDATE translation_call_sessions SET status='activating',updated_at=?2 WHERE id=?1 AND status='pending'").bind(id, Date.now()).run();
     if (claimed.meta.changes !== 1) {
@@ -287,21 +397,34 @@ export async function callTranslationActivate(req: Request, env: Env, id: string
       if (fresh && fresh.status === "active") {
         return json({
           ok: true, billed_minute: Math.max(1, fresh.last_billed_minute),
+          billed_tokens: fresh.billed_tokens, call_ref: fresh.call_ref,
           rate_per_min: CALL_TRANSLATION_RATE, reconciled: "already_active",
         });
       }
-      return json({ error: "activation_in_progress", billable: false, retry_after_ms: 750 }, 409);
+      return json({ error: "activation_in_progress", billable: false, retry_after_ms: 750, call_ref: s.call_ref }, 409);
     }
   }
   if (!(await chargeMinute(env, s, 1))) {
     await metaDb(env).prepare("UPDATE translation_call_sessions SET status='pending',updated_at=?2 WHERE id=?1 AND status='activating'").bind(id, Date.now()).run();
-    return insufficientTokens({ needed: CALL_TRANSLATION_MIN_START, billable: false });
+    // PAID-ONLY refusal (owner 2026-08-04). `spendable` is included so the client
+    // can distinguish "no tokens at all" from "tokens, but not paid ones".
+    const bal = await balance(env, ctx.uid);
+    return insufficientTokens({
+      reason: "paid_balance_required", needed: CALL_TRANSLATION_MIN_START, billable: false,
+      balance: bal.paid, spendable: bal.spendable, call_ref: s.call_ref,
+    });
   }
   const now = Date.now();
   const activated = await metaDb(env).prepare("UPDATE translation_call_sessions SET status='active',started_at=?2,last_billed_minute=1,billed_tokens=?3,updated_at=?2 WHERE id=?1 AND status='activating'").bind(id, now, CALL_TRANSLATION_RATE).run();
   // The charge landed. Never surface an opaque 409 from here — reconcile instead.
   if (activated.meta.changes !== 1) return await reconcileActivating(env, id);
-  return json({ ok: true, billed_minute: 1, rate_per_min: CALL_TRANSLATION_RATE });
+  // [CALL-TRANSLATE-2D-3 / L-2] `billed_tokens` is returned here for parity with
+  // renew; the client used to fall back to a hardcoded 5. This is authoritative:
+  // the UPDATE above just wrote exactly this value under `status='activating'`.
+  return json({
+    ok: true, billed_minute: 1, billed_tokens: CALL_TRANSLATION_RATE,
+    call_ref: s.call_ref, rate_per_min: CALL_TRANSLATION_RATE,
+  });
 }
 
 /** Idempotent one-minute renewal. Call state is never changed by billing failure. */
@@ -310,19 +433,32 @@ export async function callTranslationRenew(req: Request, env: Env, id: string): 
   if (isFail(ctx)) return authError(ctx);
   const s = await load(env, id);
   if (!s || s.payer_uid !== ctx.uid) return json({ error: "not found" }, 404);
-  if (s.status !== "active") return json({ error: s.status }, 409);
+  if (s.status !== "active") return json({ error: s.status, call_ref: s.call_ref }, 409);
   const rb = await req.json().catch(() => ({})) as Record<string, unknown>;
   if (nonceRejected(s, rb.device_nonce)) return await nonceRejection(env, s, "renew");
-  if (!(await participantInActiveCall(env, s.call_ref, ctx.uid))) return json({ error: "call_ended" }, 409);
+  if (!(await participantInActiveCall(env, s.call_ref, ctx.uid))) return json({ error: "call_ended", call_ref: s.call_ref }, 409);
   const elapsed = Math.max(1, Math.ceil((Date.now() - Number(s.started_at)) / 60_000));
-  if (elapsed <= s.last_billed_minute) return json({ ok: true, billed_minute: s.last_billed_minute, billed_tokens: s.billed_tokens });
+  if (elapsed <= s.last_billed_minute) return json({ ok: true, billed_minute: s.last_billed_minute, billed_tokens: s.billed_tokens, call_ref: s.call_ref });
   const minute = s.last_billed_minute + 1;
   if (!(await chargeMinute(env, s, minute))) {
     await metaDb(env).prepare("UPDATE translation_call_sessions SET status='funds-stopped',updated_at=?2 WHERE id=?1 AND status='active'").bind(id, Date.now()).run();
     await track(env, ctx.uid, "call_translation_funds_stopped", APP, { session_id: id, call_ref: s.call_ref, minute });
-    return insufficientTokens({ reason: "balance_exhausted", billable: true });
+    // PAID-ONLY (owner 2026-08-04): the wallet refused against paid `balance`.
+    // `spendable` lets the client say "your remaining tokens are free/bonus
+    // tokens, which translation cannot spend" instead of a misleading "empty".
+    const bal = await balance(env, ctx.uid);
+    return insufficientTokens({
+      reason: "balance_exhausted", billable: true,
+      balance: bal.paid, spendable: bal.spendable,
+      billed_minute: s.last_billed_minute, billed_tokens: s.billed_tokens, call_ref: s.call_ref,
+    });
   }
-  const billed = s.billed_tokens + CALL_TRANSLATION_RATE;
+  // [CALL-TRANSLATE-2D-3 / L-3] Derived from the guarded minute counter, not from
+  // the possibly-stale `s.billed_tokens` we read before the charge. Every minute
+  // costs exactly CALL_TRANSLATION_RATE and activate seeds minute 1 with that
+  // same rate, so `billed_tokens === last_billed_minute * RATE` is an invariant
+  // of the row. `MAX(...)` below therefore only ever guards against a regression.
+  const billed = minute * CALL_TRANSLATION_RATE;
   // [CALL-TRANSLATE-2A-2] Guard on the minute counter, not on status. The money
   // for `minute` has already moved under a deterministic op id, so the row must
   // record it even if a concurrent stop/funds-stop changed status underneath us —
@@ -338,11 +474,20 @@ export async function callTranslationRenew(req: Request, env: Env, id: string): 
       });
       return json({
         ok: true, billed_minute: fresh.last_billed_minute,
-        billed_tokens: fresh.billed_tokens, reconciled: "already_billed",
+        billed_tokens: fresh.billed_tokens, call_ref: fresh.call_ref, reconciled: "already_billed",
       });
     }
   }
-  return json({ ok: true, billed_minute: minute, billed_tokens: billed });
+  // Re-read rather than echoing the value we computed: `MAX()` means the stored
+  // figure is the authority, and a concurrent writer may legitimately have set a
+  // higher one. Falling back to `billed` only if the row vanished mid-flight.
+  const settled = await load(env, id);
+  return json({
+    ok: true,
+    billed_minute: settled?.last_billed_minute ?? minute,
+    billed_tokens: settled?.billed_tokens ?? billed,
+    call_ref: s.call_ref,
+  });
 }
 
 export async function callTranslationStop(req: Request, env: Env, id: string): Promise<Response> {
@@ -351,8 +496,10 @@ export async function callTranslationStop(req: Request, env: Env, id: string): P
   const s = await load(env, id);
   if (!s || s.payer_uid !== ctx.uid) return json({ error: "not found" }, 404);
   await metaDb(env).prepare("UPDATE translation_call_sessions SET status='stopped',updated_at=?2 WHERE id=?1 AND status NOT IN ('stopped','funds-stopped','provider-stopped')").bind(id, Date.now()).run();
-  track(env, ctx.uid, "call_translation_stopped", APP, { call_ref: s.call_ref });
-  return json({ ok: true, billed_tokens: s.billed_tokens });
+  await track(env, ctx.uid, "call_translation_stopped", APP, {
+    session_id: id, call_ref: s.call_ref, billed_minute: s.last_billed_minute,
+  });
+  return json({ ok: true, billed_tokens: s.billed_tokens, billed_minute: s.last_billed_minute, call_ref: s.call_ref });
 }
 
 /**
@@ -372,26 +519,42 @@ export async function callTranslationStop(req: Request, env: Env, id: string): P
 export async function callTranslationLanguage(req: Request, env: Env, id: string): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return authError(ctx);
+  const cfg = await readConfig(env);
   const s = await load(env, id);
   if (!s || s.payer_uid !== ctx.uid) return json({ error: "not found" }, 404);
-  if (s.status !== "active") return json({ error: s.status, billable: false }, 409);
+  if (s.status !== "active") return json({ error: s.status, billable: false, call_ref: s.call_ref }, 409);
   const b = await req.json().catch(() => ({})) as Record<string, unknown>;
   if (nonceRejected(s, b.device_nonce)) return await nonceRejection(env, s, "language");
   const lang = String(b.target_lang ?? "");
-  if (!CALL_TRANSLATION_LANGS.has(lang)) return json({ error: "unsupported target_lang", lang, billable: false }, 400);
-  if (!(await participantInActiveCall(env, s.call_ref, ctx.uid))) return json({ error: "call_ended", billable: false }, 409);
-  // Generous relative to the UI's debounce; this is an abuse ceiling, not a
-  // product limit — a user changing their mind must never be told "slow down".
-  const limited = await rateLimit(env, `call-trl-lang:${ctx.uid}`, 40, 3600);
-  if (limited) return limited;
+  if (!CALL_TRANSLATION_LANGS.has(lang)) return json({ error: "unsupported target_lang", lang, billable: false, call_ref: s.call_ref }, 400);
+  if (!(await participantInActiveCall(env, s.call_ref, ctx.uid))) return json({ error: "call_ended", billable: false, call_ref: s.call_ref }, 409);
+  /**
+   * [CALL-TRANSLATE-2D-3] Abuse ceiling, not a product limit — a user changing
+   * their mind must never be told "slow down".
+   *
+   * The previous 40/hour was written as if one switch were one request. Phase C
+   * consumes this route 2–3 times per switch (speculative pre-mint, restoring
+   * the speculative row, then the real switch), so 40 meant ~13 switches an hour
+   * before a 429. Now KV-tunable and sized for the client's actual behaviour.
+   * A switch is free — it does not touch the wallet or the minute clock — so
+   * what this bounds is provider token mints, not spend.
+   */
+  const langMax = Math.max(1, Math.trunc(cfg.callTranslationSwitchesPerHour));
+  const limited = await rateLimit(env, `call-trl-lang:${ctx.uid}`, langMax, 3600);
+  if (limited) {
+    await track(env, ctx.uid, "call_translation_language_rate_limited", APP, {
+      session_id: id, call_ref: s.call_ref, ceiling_per_hour: langMax,
+    });
+    return limited;
+  }
   const updated = await metaDb(env).prepare(
     "UPDATE translation_call_sessions SET target_lang=?2,updated_at=?3 WHERE id=?1 AND status='active'",
   ).bind(id, lang, Date.now()).run();
-  if (updated.meta.changes !== 1) return json({ error: "switch_conflict", billable: false }, 409);
+  if (updated.meta.changes !== 1) return json({ error: "switch_conflict", billable: false, call_ref: s.call_ref }, 409);
   // Mint against the RE-READ row, never against the request: if a concurrent
   // switch won, the token must carry the language that is actually recorded.
   const fresh = await load(env, id);
-  if (!fresh || fresh.status !== "active") return json({ error: fresh?.status ?? "not found", billable: false }, 409);
+  if (!fresh || fresh.status !== "active") return json({ error: fresh?.status ?? "not found", billable: false, call_ref: s.call_ref }, 409);
   const wantToken = b.mint !== false;
   const token = wantToken ? await mintToken(env, fresh.target_lang) : null;
   if (wantToken && !token) {
@@ -400,7 +563,7 @@ export async function callTranslationLanguage(req: Request, env: Env, id: string
     await track(env, ctx.uid, "call_translation_language_switch_failed", APP, {
       session_id: id, call_ref: s.call_ref, from_language: s.target_lang, to_language: lang, reason: "provider_unavailable",
     });
-    return json({ error: "provider_unavailable", target_lang: fresh.target_lang, previous_target_lang: s.target_lang, billable: false }, 502);
+    return json({ error: "provider_unavailable", target_lang: fresh.target_lang, previous_target_lang: s.target_lang, billable: false, call_ref: s.call_ref }, 502);
   }
   await track(env, ctx.uid, "call_translation_language_switched", APP, {
     session_id: id, call_ref: s.call_ref, from_language: s.target_lang, to_language: fresh.target_lang,
@@ -409,6 +572,7 @@ export async function callTranslationLanguage(req: Request, env: Env, id: string
   return json({
     ok: true,
     session_id: id,
+    call_ref: fresh.call_ref,
     target_lang: fresh.target_lang,
     previous_target_lang: s.target_lang,
     token: token?.token,
@@ -437,11 +601,16 @@ export async function callTranslationToken(req: Request, env: Env, id: string): 
   if (!s || s.payer_uid !== ctx.uid || s.status !== "active") return json({ error: "not found" }, 404);
   const b = await req.json().catch(() => ({})) as Record<string, unknown>;
   if (nonceRejected(s, b.device_nonce)) return await nonceRejection(env, s, "token");
-  if (!(await participantInActiveCall(env, s.call_ref, ctx.uid))) return json({ error: "call_ended" }, 409);
+  if (!(await participantInActiveCall(env, s.call_ref, ctx.uid))) return json({ error: "call_ended", call_ref: s.call_ref }, 409);
   const limited = await rateLimit(env, `call-trl-token:${ctx.uid}`, 24, 3600);
-  if (limited) return limited;
+  if (limited) {
+    await track(env, ctx.uid, "call_translation_token_rate_limited", APP, {
+      session_id: s.id, call_ref: s.call_ref, ceiling_per_hour: 24,
+    });
+    return limited;
+  }
   const token = await mintToken(env, s.target_lang);
   return token
-    ? json({ ok: true, session_id: s.id, token: token.token, token_expires_at: token.expiresAt, target_lang: s.target_lang, model: CALL_TRANSLATION_MODEL })
-    : json({ error: "provider_unavailable" }, 502);
+    ? json({ ok: true, session_id: s.id, call_ref: s.call_ref, token: token.token, token_expires_at: token.expiresAt, target_lang: s.target_lang, model: CALL_TRANSLATION_MODEL })
+    : json({ error: "provider_unavailable", call_ref: s.call_ref }, 502);
 }

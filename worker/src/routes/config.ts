@@ -53,6 +53,17 @@ export interface PlatformConfig {
   translationEnabled: boolean;       // master switch for /api/translate/*
   /** 1:1 P2P call translation. Independent gate: remains dark by default. */
   callTranslationEnabled: boolean;
+  // [CALL-TRANSLATE-2D-3] Call-translation abuse ceilings, per payer per hour.
+  // These MUST stay tunable from KV: the client's speculative warm-up (Phase C)
+  // creates REAL /start rows that are frequently discarded, so a ceiling written
+  // for "one start per call" locks a legitimate payer out. Numeric → all three
+  // also appear in `numericKeys` below (see the fake-flag rule in CLAUDE.md).
+  /** Real (adopted) POST /api/call-translation/start calls allowed per hour. */
+  callTranslationStartsPerHour: number;
+  /** Speculative warm-up starts (`warm_up:true`, never activated) per hour. */
+  callTranslationWarmupsPerHour: number;
+  /** POST /api/call-translation/:id/language calls per hour (2–3 per switch). */
+  callTranslationSwitchesPerHour: number;
   translationGroupEnabled: boolean;  // group conferences (multi-speaker caveat)
   // AvaVoice — creator-built AI voice agents (Specs/AVAVOICE-PROPOSAL.md).
   avavoiceEnabled: boolean;          // master switch for /api/avavoice/*
@@ -844,6 +855,14 @@ const DEFAULTS: PlatformConfig = {
   // phone OTP is gone app-wide; the flag gated an unrouted, 410'd endpoint.
   translationEnabled: false,       // FREE LAUNCH: Gemini-Live cost — hidden
   callTranslationEnabled: false,   // [CALL-TRANSLATE-1] dark until CI + two-device verification
+  // [CALL-TRANSLATE-2D-3] Abuse ceilings, not product limits. Sized off worst-case
+  // legitimate behaviour with ~2x headroom: back-to-back short calls ≈30 starts/h,
+  // 2–3 language-sheet opens per call ≈60 warm-ups/h, ≈15 switches/h × 3 requests
+  // each ≈45 /language calls. None of these three spend money — the paid boundary
+  // is /activate — so the cost they bound is provider token mints + D1 rows.
+  callTranslationStartsPerHour: 60,
+  callTranslationWarmupsPerHour: 120,
+  callTranslationSwitchesPerHour: 200,
   translationGroupEnabled: false,  // FREE LAUNCH: hidden
   avavoiceEnabled: false,          // FREE LAUNCH: agent builder hidden
   avavisionEnabled: false,         // FREE LAUNCH: agent builder hidden
@@ -1255,6 +1274,9 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     "unrecoveredPlatformAlertMicroUsd",
     // [DYNW-CORE-1] dynamic-module source size cap — numeric or flags.sh 400s.
     "dynModuleMaxBytes",
+    // [CALL-TRANSLATE-2D-3] call-translation abuse ceilings — numeric, must be
+    // here or `flags.sh set callTranslationStartsPerHour=90` 400s `bad type`.
+    "callTranslationStartsPerHour", "callTranslationWarmupsPerHour", "callTranslationSwitchesPerHour",
   ]);
   for (const [k, v] of Object.entries(body)) {
     if (!(k in DEFAULTS)) return json({ error: `unknown key: ${k}` }, 400);
