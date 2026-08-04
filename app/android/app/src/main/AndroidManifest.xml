@@ -94,9 +94,31 @@
                   activity finishes. The plugin's excludeFromRecents + noHistory are
                   honoured on stock Android but unreliable on the Samsung/Oppo/
                   Huawei/Xiaomi launchers we target (see badge permissions above). -->
+        <!-- [ISSUE-DUPTASK 2026-08-05] `android:taskAffinity=""` REMOVED — it was
+             the other half of this bug, and it is why fix (1) above did not stick.
+
+             `singleTask` reuses an existing task by looking one up BY AFFINITY.
+             An empty affinity means "this activity has no affinity", so there is
+             nothing to match on: every FLAG_ACTIVITY_NEW_TASK launch from
+             CallForegroundService.kt:107 (the ongoing-call notification, a
+             SERVICE context, which is why NEW_TASK is mandatory there) failed to
+             find the running task and started a SECOND one. Hence two AvaTOK
+             cards in Recents, reliably after a call or a call-back — exactly the
+             trigger reported on 2026-08-05, alongside two Play in-app-update
+             surfaces because the update UI renders inside whichever task hosts it.
+
+             The empty affinity was added on the mistaken belief (recorded, and
+             corrected, in the comment above) that it would separate MainActivity
+             from the CallKit ring task. It never could: the plugin declares
+             `launchMode="singleInstance"` plus its OWN dedicated
+             `taskAffinity="com.hiennv.flutter_callkit_incoming.INCOMING_CALL_AFFINITY"`,
+             so that activity is in its own task regardless. Removing the empty
+             string restores the default (package name) affinity, which is what
+             `singleTask` needs to do its job — and changes nothing about the
+             CallKit, IncomingCallActivity or InCallActivity tasks, all of which
+             carry explicit affinities of their own. -->
         <activity
             android:name=".MainActivity"
-            android:taskAffinity=""
             android:exported="true"
             android:launchMode="singleTask"
             android:theme="@style/LaunchTheme"
