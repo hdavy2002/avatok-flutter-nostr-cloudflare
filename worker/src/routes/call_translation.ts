@@ -22,6 +22,11 @@ export const CALL_TRANSLATION_MIN_START = 5;
 export const CALL_TRANSLATION_SOURCE_BRIDGE_ENABLED = true;
 const SOURCE_LEASE_MS = 90_000;
 const APP = "avatok_call_translation";
+// [CALL-TRANSLATE-2A-2] A row left in 'activating' beyond this is a crash-retry
+// casualty, not a live activation: minute one's deterministic op id proves the
+// money already moved, so the row is repaired forward instead of stranding a
+// payer who was charged. Kept short — the whole activate path is sub-second.
+const ACTIVATING_STUCK_MS = 15_000;
 
 // Keep this list server-owned. The client mirrors it for the picker, but the
 // Worker is authoritative and rejects unknown BCP-47 values.
@@ -108,6 +113,52 @@ function authError(ctx: unknown): Response {
   return json({ error: (ctx as { error: string }).error }, (ctx as { status: number }).status);
 }
 
+/**
+ * [CALL-TRANSLATE-2A-2] Post-charge reconciliation for the activate race.
+ *
+ * `chargeMinute` is keyed on the deterministic op id `call-translation:<sid>:minute:1`,
+ * so the debit can never be applied twice however many times activate is retried.
+ * The only thing that can actually race is the row UPDATE. Once money has moved we
+ * therefore never return an opaque 409 that the client reads as "charged, no
+ * translation" — we converge the row and answer 200.
+ */
+async function reconcileActivating(env: Env, id: string): Promise<Response> {
+  const fresh = await load(env, id);
+  if (!fresh) return json({ error: "not found" }, 404);
+  if (fresh.status === "active") {
+    return json({
+      ok: true, billed_minute: Math.max(1, fresh.last_billed_minute),
+      rate_per_min: CALL_TRANSLATION_RATE, reconciled: "already_active",
+    });
+  }
+  if (fresh.status === "activating" && Date.now() - fresh.updated_at > ACTIVATING_STUCK_MS) {
+    const now = Date.now();
+    await metaDb(env).prepare(
+      `UPDATE translation_call_sessions
+          SET status='active', started_at=COALESCE(started_at,?2),
+              last_billed_minute=MAX(last_billed_minute,1),
+              billed_tokens=MAX(billed_tokens,?3), updated_at=?2
+        WHERE id=?1 AND status='activating'`,
+    ).bind(id, now, CALL_TRANSLATION_RATE).run();
+    const repaired = await load(env, id);
+    if (repaired && repaired.status === "active") {
+      await track(env, repaired.payer_uid, "call_translation_activation_repaired", APP, {
+        session_id: id, call_ref: repaired.call_ref, stuck_ms: now - fresh.updated_at,
+      });
+      return json({
+        ok: true, billed_minute: Math.max(1, repaired.last_billed_minute),
+        rate_per_min: CALL_TRANSLATION_RATE, reconciled: "repaired",
+      });
+    }
+  }
+  if (fresh.status === "stopped" || fresh.status === "funds-stopped" || fresh.status === "provider-stopped") {
+    return json({ error: fresh.status, billable: true }, 409);
+  }
+  // Still genuinely in flight (another attempt is inside its own charge). The
+  // client retries this exact call; it is idempotent by construction.
+  return json({ error: "activation_in_progress", billable: true, retry_after_ms: 750 }, 409);
+}
+
 /** Create an unbilled pending session. The source-ready activation is the paid boundary. */
 export async function callTranslationStart(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
@@ -170,15 +221,27 @@ export async function callTranslationActivate(req: Request, env: Env, id: string
   if (!(await participantInActiveCall(env, s.call_ref, ctx.uid))) return json({ error: "call_ended_or_source_invalid", billable: false }, 409);
   if (s.status === "pending") {
     const claimed = await metaDb(env).prepare("UPDATE translation_call_sessions SET status='activating',updated_at=?2 WHERE id=?1 AND status='pending'").bind(id, Date.now()).run();
-    if (claimed.meta.changes !== 1) return json({ error: "activation_in_progress", billable: false }, 409);
+    if (claimed.meta.changes !== 1) {
+      // Pre-charge race: a concurrent retry claimed it. If that retry already
+      // finished, this attempt is an idempotent success rather than a failure.
+      const fresh = await load(env, id);
+      if (fresh && fresh.status === "active") {
+        return json({
+          ok: true, billed_minute: Math.max(1, fresh.last_billed_minute),
+          rate_per_min: CALL_TRANSLATION_RATE, reconciled: "already_active",
+        });
+      }
+      return json({ error: "activation_in_progress", billable: false, retry_after_ms: 750 }, 409);
+    }
   }
   if (!(await chargeMinute(env, s, 1))) {
     await metaDb(env).prepare("UPDATE translation_call_sessions SET status='pending',updated_at=?2 WHERE id=?1 AND status='activating'").bind(id, Date.now()).run();
     return json({ error: "insufficient_avacoins", needed: CALL_TRANSLATION_MIN_START, billable: false }, 402);
   }
   const now = Date.now();
-  const activated = await metaDb(env).prepare("UPDATE translation_call_sessions SET status='active',started_at=?2,last_billed_minute=1,billed_tokens=5,updated_at=?2 WHERE id=?1 AND status='activating'").bind(id, now).run();
-  if (activated.meta.changes !== 1) return json({ error: "activation_in_progress", billable: true }, 409);
+  const activated = await metaDb(env).prepare("UPDATE translation_call_sessions SET status='active',started_at=?2,last_billed_minute=1,billed_tokens=?3,updated_at=?2 WHERE id=?1 AND status='activating'").bind(id, now, CALL_TRANSLATION_RATE).run();
+  // The charge landed. Never surface an opaque 409 from here — reconcile instead.
+  if (activated.meta.changes !== 1) return await reconcileActivating(env, id);
   return json({ ok: true, billed_minute: 1, rate_per_min: CALL_TRANSLATION_RATE });
 }
 
@@ -199,7 +262,25 @@ export async function callTranslationRenew(req: Request, env: Env, id: string): 
     return json({ error: "insufficient_avacoins", reason: "balance_exhausted", billable: true }, 402);
   }
   const billed = s.billed_tokens + CALL_TRANSLATION_RATE;
-  await metaDb(env).prepare("UPDATE translation_call_sessions SET last_billed_minute=?2,billed_tokens=?3,updated_at=?4 WHERE id=?1 AND status='active'").bind(id, minute, billed, Date.now()).run();
+  // [CALL-TRANSLATE-2A-2] Guard on the minute counter, not on status. The money
+  // for `minute` has already moved under a deterministic op id, so the row must
+  // record it even if a concurrent stop/funds-stop changed status underneath us —
+  // and `last_billed_minute<?2` makes a replay a no-op rather than a double count.
+  const applied = await metaDb(env).prepare(
+    "UPDATE translation_call_sessions SET last_billed_minute=?2,billed_tokens=MAX(billed_tokens,?3),updated_at=?4 WHERE id=?1 AND last_billed_minute<?2",
+  ).bind(id, minute, billed, Date.now()).run();
+  if (applied.meta.changes !== 1) {
+    const fresh = await load(env, id);
+    if (fresh) {
+      await track(env, ctx.uid, "call_translation_renew_reconciled", APP, {
+        session_id: id, call_ref: s.call_ref, minute, status: fresh.status,
+      });
+      return json({
+        ok: true, billed_minute: fresh.last_billed_minute,
+        billed_tokens: fresh.billed_tokens, reconciled: "already_billed",
+      });
+    }
+  }
   return json({ ok: true, billed_minute: minute, billed_tokens: billed });
 }
 
