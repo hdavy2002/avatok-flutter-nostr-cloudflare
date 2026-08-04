@@ -168,11 +168,60 @@ class CallTranslationController with WidgetsBindingObserver {
   /// timeout for `prepare`; `switchLanguage` has no native timer of its own.
   static const Duration _kSwitchCutoverTimeout = Duration(seconds: 15);
 
+  /// [CALL-TRANSLATE-2D-5] CEILING ON THE DART-OWNED 'switching' FALLBACK.
+  ///
+  /// A successful cutover raises `setFallback(true, 'switching')` so the user
+  /// hears the real speaker across the new pipeline's refill (see
+  /// [_onLanguageSwitched]). The plugin's dead-air guard is gated on
+  /// `!fallbackActive`, so while that reason is held the guard CANNOT fire — and
+  /// the only thing that lowers it is the guard's own `recovered`, which needs
+  /// translated PCM that a dead new session never produces. Held forever, the
+  /// user hears the original speaker indefinitely, the pill still says
+  /// "translating", and `_renewMinute` keeps charging 5 Tokens/min for nothing.
+  ///
+  /// So the reason is BOUNDED. On expiry Dart lowers the reason it raised (owner
+  /// model unchanged — Dart never lowers the native dead-air reason) and the
+  /// plugin returns to its normal armed state, where the guard owns dead air.
+  ///
+  /// 5 s is deliberate: a make-before-break cutover's first chunk is bounded by
+  /// the new pipeline's first-chunk latency (near-zero by design), and the
+  /// plugin's own anti-flap floor is 800 ms of fallback + ~200 ms of sustained
+  /// PCM — so 5 s is ~5x a healthy release and cannot clip one. It is also well
+  /// inside the 12 s [_kSwitchGapTimeout] probe, so the guard gets ≥7 s of armed
+  /// time before that probe reports, and the whole detect-then-stop chain
+  /// finishes far short of the 60 s billing minute.
+  static const Duration _kSwitchFallbackMaxHold = Duration(seconds: 5);
+
+  /// [CALL-TRANSLATE-2D-5] DEAD-TRANSLATION DEADLINE.
+  ///
+  /// How long the NATIVE dead-air guard may hold the fallback continuously
+  /// before we stop the session cleanly instead of billing another minute of it.
+  ///
+  /// The guard only raises dead air when input audio IS flowing (`inputFlowing`
+  /// in the plugin's guard loop: the far end spoke since the last translated
+  /// chunk, or is speaking now), so this timer can never be tripped by ordinary
+  /// silence on the call — it means someone is talking and nothing is coming
+  /// back. 20 s is long enough to ride out a provider hiccup and a full resume
+  /// (mint + socket), short enough that a stall can at worst carry one more
+  /// minute boundary rather than an unbounded number of them.
+  ///
+  /// This is the general backstop, not a switch-specific one: it also bounds a
+  /// cold start, a route change and a focus blip that end in dead translation.
+  static const Duration _kDeadTranslationDeadline = Duration(seconds: 20);
+
   Timer? _renew;
   Timer? _clock;
   Timer? _firstAudioPoll;
   Timer? _fallbackRelease;
   Timer? _switchGapPoll;
+
+  /// [CALL-TRANSLATE-2D-5] Bounds the Dart-owned 'switching' reason — see
+  /// [_kSwitchFallbackMaxHold].
+  Timer? _switchFallbackCeiling;
+
+  /// [CALL-TRANSLATE-2D-5] Armed while the native dead-air guard holds the
+  /// fallback — see [_kDeadTranslationDeadline].
+  Timer? _deadTranslation;
   StreamSubscription<CallTranslationAudioEvent>? _bridgeEvents;
   StreamSubscription<CallAudioRouteResult>? _routeEvents;
   StreamSubscription<Map<String, dynamic>>? _telephonyEvents;
@@ -820,6 +869,11 @@ class CallTranslationController with WidgetsBindingObserver {
         if (event.boolOf('deadAir', !_isSwitchFallback(event))) {
           // NATIVE now owns the fallback. Nothing in Dart may lower it.
           _nativeFallbackHeld = true;
+          // [CALL-TRANSLATE-2D-5] …but a fallback nobody can lower is not a
+          // resting state we may bill indefinitely. The guard fires only while
+          // input audio is flowing, so this is "they are speaking and nothing
+          // comes back": give it a deadline, then stop cleanly.
+          _armDeadTranslationWatchdog();
           _transition(CallTranslationState.stalled, 'native_stalled_${event.value ?? 'unknown'}');
         }
         break;
@@ -1143,11 +1197,15 @@ class CallTranslationController with WidgetsBindingObserver {
     _fallbackRelease?.cancel();
     _switchGapPoll?.cancel();
     _switchCutoverTimer?.cancel();
+    _switchFallbackCeiling?.cancel();
+    _deadTranslation?.cancel();
     _renew = null;
     _clock = null;
     _firstAudioPoll = null;
     _switchGapPoll = null;
     _switchCutoverTimer = null;
+    _switchFallbackCeiling = null;
+    _deadTranslation = null;
     // A switch in flight is over the moment the session is: nothing may be left
     // holding `warming` semantics, an unresolved gap measurement, or a caller
     // awaiting a cutover that can no longer happen.
@@ -1403,6 +1461,10 @@ class CallTranslationController with WidgetsBindingObserver {
     final tag = event.data['reason']?.toString() ?? event.value ?? '';
     if (deadAir) {
       _nativeFallbackHeld = false;
+      // [CALL-TRANSLATE-2D-5] Translated PCM is flowing again — the session is
+      // producing audio, so it is allowed to keep billing.
+      _deadTranslation?.cancel();
+      _deadTranslation = null;
     } else if (tag.isNotEmpty) {
       _dartFallbackReasons.remove(tag);
     }
@@ -1433,6 +1495,54 @@ class CallTranslationController with WidgetsBindingObserver {
   void _clearFallbackOwners() {
     _dartFallbackReasons.clear();
     _nativeFallbackHeld = false;
+    // [CALL-TRANSLATE-2D-5] Both deadlines exist only to bound a HELD fallback.
+    // Nobody holds one now (either the plugin says so in `stats`, or we are
+    // tearing down), so neither may survive to fire against a later session.
+    _switchFallbackCeiling?.cancel();
+    _switchFallbackCeiling = null;
+    _deadTranslation?.cancel();
+    _deadTranslation = null;
+  }
+
+  /// [CALL-TRANSLATE-2D-5] Arm the dead-translation deadline. Idempotent-ish by
+  /// design: a re-raise restarts the clock, because each raise is a fresh
+  /// dead-air episode rather than a continuation of the previous one.
+  void _armDeadTranslationWatchdog() {
+    if (_disposed) return;
+    _deadTranslation?.cancel();
+    _deadTranslation = Timer(_kDeadTranslationDeadline, () {
+      unawaited(_stopDeadTranslation());
+    });
+  }
+
+  /// The deadline expired: the guard has been holding the fallback — i.e. the
+  /// far end has been speaking and no translated audio has come back — for
+  /// [_kDeadTranslationDeadline]. Stop rather than bill another minute of it.
+  ///
+  /// Routed through [_failFromProvider] on purpose: this IS a provider failure,
+  /// so it should count against the circuit breaker, tear down through the one
+  /// invariant-respecting path (`bridge.stop` restores the original audio
+  /// unconditionally), leave the machine in `failed`/`providerUnavailable` — so
+  /// the pill stops claiming it is translating and the overlay surfaces
+  /// "Translation stopped … your call is still connected" — and cancel `_renew`,
+  /// which is what actually stops the 5 Tokens/min.
+  Future<void> _stopDeadTranslation() async {
+    _deadTranslation = null;
+    if (_disposed || _id == null || !_nativeFallbackHeld) return;
+    Analytics.capture('call_translation_dead_translation', {
+      ..._tags,
+      // Language CODES and timings only — never transcript text or audio.
+      'language': targetLanguage.value ?? '',
+      'deadline_ms': _kDeadTranslationDeadline.inMilliseconds,
+      // True when this dead session is the one a language cutover handed us,
+      // which is the case the switch watchdog exists for.
+      'after_language_switch': _switchGapStartMs > 0,
+      'elapsed_seconds': elapsedSeconds.value,
+      'billed_tokens': billedTokens.value,
+      'stall_count': _stallCount,
+      'resume_count': _resumeCount,
+    });
+    await _failFromProvider('dead_translation');
   }
 
   /// Fall back to the original audio for [window], then release OUR reason. Used
@@ -1729,8 +1839,45 @@ class CallTranslationController with WidgetsBindingObserver {
     // reason ('switching'): the guard drops it and Dart's `recovered` handler
     // reconciles, so no timer and no other owner can clear it early.
     unawaited(_raiseFallback('switching'));
+    // [CALL-TRANSLATE-2D-5] …but BOUNDED. See [_kSwitchFallbackMaxHold]: the
+    // guard is gated on `!fallbackActive`, so holding this reason indefinitely
+    // is exactly what stops the guard from noticing that the new session is
+    // producing nothing. Lowering it hands dead-air ownership back to native.
+    _armSwitchFallbackCeiling();
 
     if (completer != null && !completer.isCompleted) completer.complete(null);
+  }
+
+  /// [CALL-TRANSLATE-2D-5] Bound the 'switching' fallback raised at a successful
+  /// cutover, so a new session that reaches `setupComplete` and then produces no
+  /// audio cannot hold the original speaker up — un-noticed, un-lowerable and
+  /// still billing — for the rest of the call.
+  ///
+  /// Lowering our OWN reason is exactly what the owner model permits, and it is
+  /// a no-op if the guard already dropped it (`recovered` with `deadAir:false`
+  /// removes the reason first) or if a teardown cleared the owners. Nothing here
+  /// touches the native dead-air reason.
+  ///
+  /// The cost of lowering early is at most one guard window (~2 s) of re-mute
+  /// before the guard re-raises — the same bounded cost `route_change`'s 1500 ms
+  /// release already accepts, and the only way the guard can ever take over.
+  void _armSwitchFallbackCeiling() {
+    _switchFallbackCeiling?.cancel();
+    _switchFallbackCeiling = Timer(_kSwitchFallbackMaxHold, () async {
+      _switchFallbackCeiling = null;
+      if (_disposed || !_dartFallbackReasons.contains('switching')) return;
+      // No translated PCM from the new session yet (the gap probe is still open)
+      // — this is the dead-cutover shape rather than a slow-but-alive one.
+      final noAudioYet = _switchGapStartMs > 0;
+      Analytics.capture('call_translation_switch_fallback_released', {
+        ..._tags,
+        'language': targetLanguage.value ?? '',
+        'held_ms': _kSwitchFallbackMaxHold.inMilliseconds,
+        'translated_audio_seen': !noAudioYet,
+        'dead_air_held': _nativeFallbackHeld,
+      });
+      await _lowerFallback('switching');
+    });
   }
 
   /// The cutover failed AFTER the second socket was requested. Under
@@ -1887,6 +2034,16 @@ class CallTranslationController with WidgetsBindingObserver {
       'since_last_audio_ms': _switchGapSinceLastAudioMs,
       'cutover_ms': _switchCutoverMs,
       if (measured) 'switch_gap_ms': gap,
+      // [CALL-TRANSLATE-2D-5] `gap_measured:false` used to be the ONLY trace of a
+      // cutover that produced no audio, and it made no state change — a dead
+      // switch was invisible past this point. These say what the watchdogs saw,
+      // so "switch completed, nothing ever came out" is a query rather than an
+      // inference: the 'switching' reason should be gone by now
+      // (`_kSwitchFallbackMaxHold`), and dead_air_held true means the native
+      // guard has taken over and `_kDeadTranslationDeadline` is running.
+      if (!measured) 'switching_fallback_held': _dartFallbackReasons.contains('switching'),
+      if (!measured) 'dead_air_held': _nativeFallbackHeld,
+      if (!measured) 'dead_translation_armed': _deadTranslation != null,
     });
   }
 
@@ -2085,6 +2242,8 @@ class CallTranslationController with WidgetsBindingObserver {
     _fallbackRelease?.cancel();
     _switchGapPoll?.cancel();
     _switchCutoverTimer?.cancel();
+    _switchFallbackCeiling?.cancel();
+    _deadTranslation?.cancel();
     _warmGeneration++;
     WidgetsBinding.instance.removeObserver(this);
     _unhookAudioFocus();
