@@ -1,5 +1,22 @@
-import { describe, expect, it } from "vitest";
-import { CALL_TRANSLATION_LANGS, CALL_TRANSLATION_MIN_START, CALL_TRANSLATION_RATE, CALL_TRANSLATION_MODEL, CALL_TRANSLATION_SOURCE_BRIDGE_ENABLED, mintFailureClass, stopEndReason } from "../src/routes/call_translation";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// [CALL-TRANSLATE-OBS-3] `requireUser` is the ONE dependency of these routes that
+// cannot be faked through `env` — it verifies a Clerk JWT over the network. Every
+// other collaborator (D1, the wallet DO, the CallRoom DO, the analytics queue,
+// the config KV) is reached through `env` and is a plain object below, so the
+// code under test is the real handler, not a re-implementation of it.
+vi.mock("../src/authz", () => ({
+  isFail: (x: { error?: string }) => x.error !== undefined,
+  requireUser: async () => ({ uid: "u_payer" }),
+}));
+
+import {
+  CALL_TRANSLATION_LANGS, CALL_TRANSLATION_MIN_START, CALL_TRANSLATION_RATE, CALL_TRANSLATION_MODEL,
+  CALL_TRANSLATION_SOURCE_BRIDGE_ENABLED, mintFailureClass, stopEndReason, stopReasonOrDefault,
+  STOP_BODY_TIMEOUT_MS,
+  callTranslationStart, callTranslationActivate, callTranslationRenew, callTranslationStop,
+} from "../src/routes/call_translation";
+import type { Env } from "../src/types";
 
 describe("[CALL-TRANSLATE-1] contract", () => {
   it("uses the documented Gemini model and paid one-minute tariff", () => {
@@ -50,5 +67,473 @@ describe("[CALL-TRANSLATE-OBS-2] telemetry categories", () => {
     // A client must never be able to inject a free string into the taxonomy.
     expect(stopEndReason("whatever the user typed")).toBe("user_stop");
     expect(stopEndReason({ nope: 1 })).toBe("user_stop");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// [CALL-TRANSLATE-OBS-3] Harness for the routes that move money and emit the
+// outcome funnel.
+//
+// The point of these tests is the `changes === 1` guards and the reaper — the
+// logic that decides whether a session gets counted once, twice or not at all,
+// and whether a row can be taken out from under a payer mid-charge. All of it is
+// concurrency-shaped, so the fake D1 below supports `db.interrupt(...)`: a
+// one-shot hook that fires immediately BEFORE a chosen statement executes, which
+// is how a "concurrent /stop landed between the load and the UPDATE" is written
+// down as a test rather than as a comment.
+// ---------------------------------------------------------------------------
+
+const UID = "u_payer";
+const MIN = 60_000;
+
+type Row = {
+  id: string; payer_uid: string; call_ref: string; target_lang: string;
+  source_lease: string; status: string; started_at: number | null;
+  last_billed_minute: number; billed_tokens: number; updated_at: number;
+  device_nonce: string | null;
+};
+
+function row(over: Partial<Row> & { id: string }): Row {
+  return {
+    payer_uid: UID, call_ref: "call-" + over.id, target_lang: "fr",
+    source_lease: "lease-" + over.id, status: "pending", started_at: null,
+    last_billed_minute: 0, billed_tokens: 0, updated_at: Date.now(),
+    device_nonce: null, ...over,
+  };
+}
+
+class FakeDb {
+  rows = new Map<string, Row>();
+  sql: string[] = [];
+  private hooks: Array<{ match: RegExp; fn: () => void }> = [];
+
+  seed(...rs: Row[]) { for (const r of rs) this.rows.set(r.id, { ...r }); }
+  /** Fire [fn] exactly once, just before the next statement matching [match]. */
+  interrupt(match: RegExp, fn: () => void) { this.hooks.push({ match, fn }); }
+
+  private fire(sql: string) {
+    const i = this.hooks.findIndex((h) => h.match.test(sql));
+    if (i >= 0) { const h = this.hooks[i]; this.hooks.splice(i, 1); h.fn(); }
+  }
+
+  prepare(sql: string) {
+    const db = this;
+    const flat = sql.replace(/\s+/g, " ").trim();
+    return {
+      bind(...a: unknown[]) {
+        const enter = () => { db.sql.push(flat); db.fire(flat); };
+        return {
+          async first<T>(): Promise<T | null> { enter(); return (db.select(flat, a)[0] ?? null) as T | null; },
+          async all<T>(): Promise<{ results: T[] }> { enter(); return { results: db.select(flat, a) as T[] }; },
+          async run() { enter(); return { meta: { changes: db.mutate(flat, a) } }; },
+        };
+      },
+    };
+  }
+
+  private select(sql: string, a: unknown[]): Row[] {
+    if (sql.startsWith("SELECT * FROM translation_call_sessions WHERE id=?1")) {
+      const r = this.rows.get(String(a[0]));
+      return r ? [{ ...r }] : [];
+    }
+    if (sql.includes("status IN ('pending','activating') AND updated_at < ?2")) {
+      return [...this.rows.values()]
+        .filter((r) => r.payer_uid === a[0] && (r.status === "pending" || r.status === "activating") && r.updated_at < Number(a[1]))
+        .sort((x, y) => x.updated_at - y.updated_at)
+        .slice(0, Number(a[2]))
+        .map((r) => ({ ...r }));
+    }
+    if (sql.startsWith("SELECT id FROM translation_call_sessions")) {
+      return [...this.rows.values()]
+        .filter((r) => r.payer_uid === a[0] && r.call_ref === a[1] && ["pending", "activating", "active"].includes(r.status))
+        .slice(0, 1).map((r) => ({ ...r }));
+    }
+    throw new Error("FakeDb: unhandled SELECT " + sql);
+  }
+
+  private mutate(sql: string, a: unknown[]): number {
+    if (sql.startsWith("INSERT INTO translation_call_sessions")) {
+      const dup = [...this.rows.values()].some((r) => r.payer_uid === a[1] && r.call_ref === a[2] && ["pending", "activating", "active"].includes(r.status));
+      if (dup) throw new Error("UNIQUE constraint failed");
+      this.rows.set(String(a[0]), row({
+        id: String(a[0]), payer_uid: String(a[1]), call_ref: String(a[2]), target_lang: String(a[3]),
+        source_lease: String(a[4]), status: "pending", updated_at: Number(a[5]),
+        device_nonce: (a[6] as string | null) ?? null,
+      }));
+      return 1;
+    }
+    const r = this.rows.get(String(a[0]));
+    if (!r) return 0;
+    const upd = (guard: boolean, apply: () => void) => { if (!guard) return 0; apply(); return 1; };
+
+    if (sql.includes("SET status='stopped'") && sql.includes("status IN ('pending','activating')")) {
+      return upd(r.status === "pending" || r.status === "activating", () => { r.status = "stopped"; r.updated_at = Number(a[1]); });
+    }
+    if (sql.includes("SET status='stopped'") && sql.includes("status NOT IN")) {
+      return upd(!["stopped", "funds-stopped", "provider-stopped"].includes(r.status), () => { r.status = "stopped"; r.updated_at = Number(a[1]); });
+    }
+    if (sql.includes("SET status='funds-stopped'")) {
+      return upd(r.status === "active", () => { r.status = "funds-stopped"; r.updated_at = Number(a[1]); });
+    }
+    if (sql.includes("SET status='activating'")) {
+      return upd(r.status === "pending", () => { r.status = "activating"; r.updated_at = Number(a[1]); });
+    }
+    if (sql.startsWith("UPDATE translation_call_sessions SET updated_at=?2 WHERE id=?1 AND status='activating'")) {
+      return upd(r.status === "activating", () => { r.updated_at = Number(a[1]); });
+    }
+    if (sql.includes("SET status='active',started_at=?2")) {
+      return upd(r.status === "activating", () => {
+        r.status = "active"; r.started_at = Number(a[1]); r.updated_at = Number(a[1]);
+        r.last_billed_minute = 1; r.billed_tokens = Number(a[2]);
+      });
+    }
+    if (sql.includes("SET status='pending'")) {
+      return upd(r.status === "activating", () => { r.status = "pending"; r.updated_at = Number(a[1]); });
+    }
+    if (sql.includes("SET last_billed_minute=?2")) {
+      return upd(r.last_billed_minute < Number(a[1]), () => {
+        r.last_billed_minute = Number(a[1]);
+        r.billed_tokens = Math.max(r.billed_tokens, Number(a[2]));
+        r.updated_at = Number(a[3]);
+      });
+    }
+    if (sql.includes("SET target_lang=?2")) {
+      return upd(r.status === "active", () => { r.target_lang = String(a[1]); r.updated_at = Number(a[2]); });
+    }
+    throw new Error("FakeDb: unhandled UPDATE " + sql);
+  }
+}
+
+type Harness = {
+  env: Env;
+  db: FakeDb;
+  events: Array<{ event: string; uid: string; props: Record<string, unknown> }>;
+  charges: Array<{ op_id: string; rowAtCharge: Row | undefined }>;
+  outcomes: () => Array<Record<string, unknown>>;
+  named: (name: string) => Array<Record<string, unknown>>;
+};
+
+function harness(opts: { spendOk?: boolean; inCall?: boolean; paidBalance?: number } = {}): Harness {
+  const db = new FakeDb();
+  const events: Harness["events"] = [];
+  const kv = new Map<string, string>([["platform_config", JSON.stringify({ translationEnabled: true, callTranslationEnabled: true })]]);
+  const charges: Harness["charges"] = [];
+  const spendOk = opts.spendOk ?? true;
+  const inCall = opts.inCall ?? true;
+
+  const callRoom = {
+    fetch: async (req: Request) => {
+      const u = new URL(req.url);
+      if (!inCall) return new Response("{}", { status: 404 });
+      if (u.pathname === "/participants") return new Response(JSON.stringify({ ok: true, callerUid: UID, calleeUid: "u_peer" }), { status: 200 });
+      return new Response(JSON.stringify({ session: { session_state: "connected", terminal: false } }), { status: 200 });
+    },
+  };
+  const wallet = {
+    fetch: async (_u: string, init: { body: string }) => {
+      const op = JSON.parse(init.body) as { op: string; op_id?: string; ref?: string };
+      if (op.op === "balance") {
+        const paid = opts.paidBalance ?? 100;
+        return new Response(JSON.stringify({ balance: paid, spendable: paid + 25 }), { status: 200 });
+      }
+      // Snapshot the row AS IT IS at the instant money moves. That snapshot is
+      // the whole subject of the stuck-claim test below.
+      charges.push({ op_id: String(op.op_id), rowAtCharge: db.rows.get(String(op.ref)) ? { ...db.rows.get(String(op.ref))! } : undefined });
+      return new Response(JSON.stringify(spendOk ? { ok: true } : { error: "insufficient" }), { status: spendOk ? 200 : 402 });
+    },
+  };
+
+  const env = {
+    DB_META: db,
+    TOKENS: {
+      get: async (k: string, type?: string) => {
+        const v = kv.get(k) ?? null;
+        return v !== null && type === "json" ? JSON.parse(v) : v;
+      },
+      put: async (k: string, v: string) => { kv.set(k, v); },
+    },
+    Q_ANALYTICS: { send: async (m: { event: string; uid: string; props: Record<string, unknown> }) => { events.push(m); } },
+    CALL_ROOMS: { idFromName: (n: string) => n, get: () => callRoom },
+    WALLET_DO: { idFromName: (n: string) => n, get: () => wallet },
+    // No GEMINI_API_KEY on purpose: the provider mint short-circuits (and says so
+    // on its own event) so no test here ever reaches out to Google.
+  } as unknown as Env;
+
+  const named = (name: string) => events.filter((e) => e.event === name).map((e) => e.props);
+  return { env, db, events, charges, outcomes: () => named("call_translation_outcome"), named };
+}
+
+function post(body: unknown): Request {
+  return new Request("https://api.avatok.ai/x", { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json" } });
+}
+
+describe("[CALL-TRANSLATE-OBS-3] reapAbandoned", () => {
+  let h: Harness;
+  beforeEach(() => { h = harness(); });
+
+  // The reaper runs inside /start, before the dedupe read. Driving it through
+  // the real route is deliberate: a reaper that works but is wired in after the
+  // 409 would still leave the payer locked out.
+  const start = (callRef: string) => callTranslationStart(
+    post({ call_ref: callRef, target_lang: "fr", source_capability: "webrtc_same_capture_pcm16_v1" }), h.env,
+  );
+
+  it("closes only rows that are old enough, and only this payer's", async () => {
+    const now = Date.now();
+    h.db.seed(
+      row({ id: "old1", call_ref: "c1", updated_at: now - 20 * MIN }),
+      row({ id: "old2", call_ref: "c2", status: "activating", updated_at: now - 11 * MIN }),
+      row({ id: "young", call_ref: "c3", updated_at: now - 60_000 }),
+      row({ id: "other", call_ref: "c4", payer_uid: "u_someone_else", updated_at: now - 30 * MIN }),
+    );
+    // The mint has no API key, so /start ends 502 — the reap has already run.
+    const res = await start("c_new");
+    expect(res.status).toBe(502);
+
+    expect(h.db.rows.get("old1")!.status).toBe("stopped");
+    expect(h.db.rows.get("old2")!.status).toBe("stopped");
+    expect(h.db.rows.get("young")!.status).toBe("pending");
+    expect(h.db.rows.get("other")!.status).toBe("pending");
+
+    const out = h.outcomes();
+    expect(out.map((o) => o.session_id).sort()).toEqual(["old1", "old2"]);
+    for (const o of out) {
+      expect(o.end_reason).toBe("abandoned");
+      expect(o.reached_active).toBe(false);
+      expect(o.outcome).toBe("never_activated");
+      expect(o.reaped_at_start).toBe(true);
+      expect(String(o.discovered_by_session).length).toBeGreaterThan(0);
+      expect(o.undetected_ms as number).toBeGreaterThan(10 * MIN);
+      // A reaped row cannot vouch for its own billing state (defect 5).
+      expect(o.billed_minutes_verified).toBe(false);
+    }
+  });
+
+  it("bounds one /start to ABANDON_REAP_LIMIT rows so it can never fan out", async () => {
+    const now = Date.now();
+    for (let i = 0; i < 9; i++) h.db.seed(row({ id: "z" + i, call_ref: "c" + i, updated_at: now - (20 + i) * MIN }));
+    await start("c_new");
+    const closed = [...h.db.rows.values()].filter((r) => r.status === "stopped");
+    expect(closed).toHaveLength(5);
+    expect(h.outcomes()).toHaveLength(5);
+    // Oldest first — the rows that have been dead longest are the ones freed.
+    expect(closed.map((r) => r.id).sort()).toEqual(["z4", "z5", "z6", "z7", "z8"]);
+  });
+
+  it("emits no outcome for a row that activates underneath the reaper", async () => {
+    const now = Date.now();
+    h.db.seed(
+      row({ id: "raced", call_ref: "c1", updated_at: now - 20 * MIN }),
+      row({ id: "dead", call_ref: "c2", updated_at: now - 21 * MIN }),
+    );
+    // The row wakes up between the reaper's SELECT and its guarded UPDATE.
+    h.db.interrupt(/SET status='stopped'.*status IN \('pending','activating'\)/, () => {
+      const r = h.db.rows.get("raced")!;
+      r.status = "active"; r.started_at = Date.now(); r.last_billed_minute = 1; r.billed_tokens = 5;
+    });
+    await start("c_new");
+
+    expect(h.db.rows.get("raced")!.status).toBe("active");
+    expect(h.db.rows.get("dead")!.status).toBe("stopped");
+    // Only the writer that actually closed a row reports one.
+    expect(h.outcomes().map((o) => o.session_id)).toEqual(["dead"]);
+  });
+
+  it("frees a wedged row for the same call_ref instead of 409ing forever", async () => {
+    h.db.seed(row({ id: "wedged", call_ref: "c_same", updated_at: Date.now() - 30 * MIN }));
+    const res = await start("c_same");
+    // Not the 409 "translation already active" the wedged row used to force.
+    expect(res.status).toBe(502);
+    expect(await res.json()).toMatchObject({ error: "provider_unavailable" });
+    expect(h.named("call_translation_start_failed").map((p) => p.reason)).toContain("provider_unavailable");
+  });
+});
+
+describe("[CALL-TRANSLATE-OBS-3] outcome is emitted once, by the writer that closed the row", () => {
+  it("/stop counts a session once however many times it is called", async () => {
+    const h = harness();
+    h.db.seed(row({ id: "s1", status: "active", started_at: Date.now() - 3 * MIN, last_billed_minute: 3, billed_tokens: 15 }));
+
+    const first = await callTranslationStop(post({ reason: "call_ended" }), h.env, "s1");
+    const second = await callTranslationStop(post({ reason: "call_ended" }), h.env, "s1");
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+
+    // The convergence event still fires twice; the FUNNEL event must not.
+    expect(h.named("call_translation_stopped")).toHaveLength(2);
+    const out = h.outcomes();
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({
+      session_id: "s1", end_reason: "call_ended", reached_active: true,
+      outcome: "activated", status_at_end: "active", billed_minutes: 3,
+      billed_minutes_verified: true,
+    });
+  });
+
+  it("/renew does NOT emit insufficient_funds when a concurrent /stop closed the row", async () => {
+    const h = harness({ spendOk: false });
+    h.db.seed(row({ id: "s2", status: "active", started_at: Date.now() - 3 * MIN, last_billed_minute: 1, billed_tokens: 5 }));
+    // /stop lands between renew's load() and its funds-stopped UPDATE. This is
+    // defect 1: the emit used to run unconditionally, so this session was counted
+    // twice — once as `user_stop`, once as `insufficient_funds`.
+    h.db.interrupt(/SET status='funds-stopped'/, () => { h.db.rows.get("s2")!.status = "stopped"; });
+
+    const res = await callTranslationRenew(post({}), h.env, "s2");
+    expect(res.status).toBe(402);
+    expect(h.db.rows.get("s2")!.status).toBe("stopped");
+    expect(h.named("call_translation_funds_stopped")).toHaveLength(1);
+    expect(h.outcomes()).toHaveLength(0);
+  });
+
+  it("/renew emits exactly one insufficient_funds outcome when it is the writer", async () => {
+    const h = harness({ spendOk: false });
+    h.db.seed(row({ id: "s3", status: "active", started_at: Date.now() - 3 * MIN, last_billed_minute: 1, billed_tokens: 5 }));
+    const res = await callTranslationRenew(post({}), h.env, "s3");
+    expect(res.status).toBe(402);
+    expect(h.db.rows.get("s3")!.status).toBe("funds-stopped");
+    const out = h.outcomes();
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({
+      session_id: "s3", end_reason: "insufficient_funds", stopped_at_minute: 2,
+      reached_active: true, billed_minutes: 1, billed_minutes_verified: true,
+    });
+  });
+
+  it("two concurrent /renew calls that both run out of funds report one ending", async () => {
+    const h = harness({ spendOk: false });
+    h.db.seed(row({ id: "s4", status: "active", started_at: Date.now() - 3 * MIN, last_billed_minute: 1, billed_tokens: 5 }));
+    // Both loaded `active`; both failed the same minute. One UPDATE wins.
+    const [a, b] = await Promise.all([
+      callTranslationRenew(post({}), h.env, "s4"),
+      callTranslationRenew(post({}), h.env, "s4"),
+    ]);
+    expect(a.status).toBe(402);
+    expect(b.status).toBe(402);
+    expect(h.outcomes()).toHaveLength(1);
+  });
+});
+
+describe("[CALL-TRANSLATE-OBS-3] /stop is not blockable by the request body", () => {
+  it("closes the row before the body is read, then falls back to user_stop", async () => {
+    vi.useFakeTimers();
+    try {
+      const h = harness();
+      h.db.seed(row({ id: "s5", status: "active", started_at: Date.now() - MIN, last_billed_minute: 1, billed_tokens: 5 }));
+      // A client that announces a body and then stalls forever.
+      const stalled = { json: () => new Promise<never>(() => {}) } as unknown as Request;
+
+      const pending = callTranslationStop(stalled, h.env, "s5");
+      // Let every microtask up to (and past) the terminal UPDATE settle. No real
+      // timer is involved before it — only the hung body is on a timer.
+      for (let i = 0; i < 50; i++) await Promise.resolve();
+      // The product outcome — meter stopped, audio restored — has already landed
+      // while the body is still hanging.
+      expect(h.db.rows.get("s5")!.status).toBe("stopped");
+
+      await vi.advanceTimersByTimeAsync(STOP_BODY_TIMEOUT_MS + 1);
+      const res = await pending;
+      expect(res.status).toBe(200);
+      expect(h.outcomes()).toHaveLength(1);
+      expect(h.outcomes()[0].end_reason).toBe("user_stop");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("still honours a body that arrives in time", async () => {
+    const reason = await stopReasonOrDefault(post({ reason: "dead_translation" }), 50);
+    expect(reason).toBe("dead_translation");
+  });
+
+  it("gives up on a stalled body and returns the documented default", async () => {
+    const stalled = { json: () => new Promise<never>(() => {}) } as unknown as Request;
+    expect(await stopReasonOrDefault(stalled, 5)).toBe("user_stop");
+  });
+});
+
+describe("[CALL-TRANSLATE-OBS-3 / A2] stuck-claim repair holds the row before charging", () => {
+  const activate = (h: Harness, id: string, lease: string) => callTranslationActivate(
+    post({ source_lease: lease, source_ready: true }), h.env, id,
+  );
+
+  it("refreshes updated_at before the charge, so a reaper cannot take the row mid-repair", async () => {
+    const h = harness();
+    const stale = Date.now() - 20 * MIN;
+    h.db.seed(row({ id: "a1", status: "activating", source_lease: "lease-a1", updated_at: stale }));
+
+    const res = await activate(h, "a1", "lease-a1");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, billed_minute: 1 });
+    expect(h.db.rows.get("a1")!.status).toBe("active");
+
+    // The repair was recognised as a repair...
+    expect(h.named("call_translation_activation_repaired")).toHaveLength(1);
+    // ...and by the time money moved, the row was no longer reapable: its
+    // `updated_at` had been refreshed out of the abandoned window.
+    expect(h.charges).toHaveLength(1);
+    expect(h.charges[0].op_id).toBe("call-translation:a1:minute:1");
+    expect(h.charges[0].rowAtCharge!.updated_at).toBeGreaterThan(Date.now() - MIN);
+  });
+
+  it("never charges when the row is lost before the repair takes it", async () => {
+    const h = harness();
+    h.db.seed(row({ id: "a2", status: "activating", source_lease: "lease-a2", updated_at: Date.now() - 20 * MIN }));
+    // A concurrent reaper/stop closes the row an instant before the hold.
+    h.db.interrupt(/^UPDATE translation_call_sessions SET updated_at=\?2 WHERE id=\?1 AND status='activating'/, () => {
+      h.db.rows.get("a2")!.status = "stopped";
+    });
+
+    const res = await activate(h, "a2", "lease-a2");
+    expect(res.status).toBe(409);
+    // No money moved, so the refusal must not claim it did.
+    expect(await res.json()).toMatchObject({ error: "stopped", billable: false });
+    expect(h.charges).toHaveLength(0);
+  });
+
+  it("still converges to 200 if the row went active while the repair was in flight", async () => {
+    const h = harness();
+    h.db.seed(row({ id: "a3", status: "activating", source_lease: "lease-a3", updated_at: Date.now() - 20 * MIN }));
+    h.db.interrupt(/^UPDATE translation_call_sessions SET updated_at=\?2 WHERE id=\?1 AND status='activating'/, () => {
+      const r = h.db.rows.get("a3")!;
+      r.status = "active"; r.started_at = Date.now(); r.last_billed_minute = 1; r.billed_tokens = 5;
+    });
+    const res = await activate(h, "a3", "lease-a3");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, reconciled: "already_active", billed_minute: 1 });
+    expect(h.charges).toHaveLength(0);
+  });
+
+  it("a fresh pending claim is unaffected — no repair, one charge, one active row", async () => {
+    const h = harness();
+    h.db.seed(row({ id: "a4", status: "pending", source_lease: "lease-a4", updated_at: Date.now() - 2_000 }));
+    const res = await activate(h, "a4", "lease-a4");
+    expect(res.status).toBe(200);
+    expect(h.named("call_translation_activation_repaired")).toHaveLength(0);
+    expect(h.charges).toHaveLength(1);
+    expect(h.db.rows.get("a4")!.status).toBe("active");
+    expect(h.db.rows.get("a4")!.last_billed_minute).toBe(1);
+  });
+});
+
+describe("[CALL-TRANSLATE-OBS-3] telemetry never carries an unbounded client string", () => {
+  it("caps the rejected language on the unsupported_lang event", async () => {
+    const h = harness();
+    const res = await callTranslationStart(post({
+      call_ref: "c_len", target_lang: "x".repeat(5000), source_capability: "webrtc_same_capture_pcm16_v1",
+    }), h.env);
+    expect(res.status).toBe(400);
+    const failed = h.named("call_translation_start_failed");
+    expect(failed).toHaveLength(1);
+    expect(failed[0].reason).toBe("unsupported_lang");
+    expect(String(failed[0].language)).toHaveLength(32);
+  });
+
+  it("caps a call_ref that has not been validated yet", async () => {
+    const h = harness();
+    const res = await callTranslationStart(post({
+      call_ref: "c".repeat(4000), target_lang: "fr", source_capability: "nope",
+    }), h.env);
+    expect(res.status).toBe(412);
+    expect(String(h.named("call_translation_start_failed")[0].call_ref)).toHaveLength(128);
   });
 });

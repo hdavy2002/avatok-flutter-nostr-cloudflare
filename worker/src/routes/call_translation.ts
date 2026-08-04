@@ -339,6 +339,27 @@ export function stopEndReason(raw: unknown): OutcomeReason {
   return CLIENT_STOP_REASONS.has(s as OutcomeReason) ? (s as OutcomeReason) : "user_stop";
 }
 
+/** How long `/stop` will wait for an optional body before giving up on it. */
+export const STOP_BODY_TIMEOUT_MS = 2_000;
+
+/**
+ * [CALL-TRANSLATE-OBS-3] Read the optional stop reason WITHOUT letting the body
+ * hold anything up.
+ *
+ * `/stop` must never be blockable — it is what restores the user's audio and
+ * stops the meter — and a client that announces a Content-Length and then stalls
+ * would otherwise park `await req.json()` until the Cloudflare request timeout.
+ * The terminal UPDATE has already run by the time this is called; this races the
+ * body against a short deadline so even the OUTCOME event still gets emitted, on
+ * the documented default, instead of being lost with the hung request.
+ */
+export async function stopReasonOrDefault(req: Request, timeoutMs = STOP_BODY_TIMEOUT_MS): Promise<OutcomeReason> {
+  const body = req.json().catch(() => ({} as unknown));
+  const deadline = new Promise<unknown>((resolve) => setTimeout(() => resolve({}), timeoutMs));
+  const b = await Promise.race([body, deadline]) as Record<string, unknown> | null;
+  return stopEndReason(b?.reason);
+}
+
 /**
  * Emit the outcome for a session that has just left the live set.
  *
@@ -363,6 +384,24 @@ async function emitOutcome(
     language: s.target_lang,
     billed_minutes: s.last_billed_minute,
     billed_tokens: s.billed_tokens,
+    /**
+     * [CALL-TRANSLATE-OBS-3] Is `billed_minutes` above a fact, or the best the row
+     * can say?
+     *
+     * TRUE on every path where this request observed the row's own lifecycle:
+     * activate wrote minute 1 in the same request that charged it, renew writes
+     * the minute it just charged, /stop reads the row a moment after. On those,
+     * the row IS the billing record.
+     *
+     * The reaper overrides this to FALSE (see `reapAbandoned`) because a row it
+     * finds abandoned may have been left by an attempt that charged minute 1 under
+     * `call-translation:<sid>:minute:1` and then died before writing the row. Such
+     * a session is reported `never_activated` with `billed_minutes: 0` while a
+     * token actually moved. Money spend is answered by the ledger; this flag tells
+     * a dashboard which outcome rows may under-report it, so the funnel is never
+     * quietly summed as if it were spend truth.
+     */
+    billed_minutes_verified: true,
     // Measured from `started_at` once the session activated; otherwise from the
     // last row write, which for a `pending` row is its creation and for an
     // `activating` row is the moment it was claimed.
@@ -425,6 +464,12 @@ async function reapAbandoned(env: Env, uid: string, discoveredBy: string): Promi
       // How long the row sat dead before anything noticed. This is the honesty
       // number: the outcome is real, the timestamp is late by this much.
       undetected_ms: Date.now() - row.updated_at,
+      // [CALL-TRANSLATE-OBS-3] Nobody watched this session end, so nobody can
+      // vouch for its billing state either: a crashed attempt can have debited
+      // minute 1 (deterministic op id) and died before writing the row, which
+      // reaches here as `billed_minutes: 0`. Say so on the event rather than let
+      // a spend query silently under-count. See `emitOutcome`.
+      billed_minutes_verified: false,
     });
   }
   return reaped;
@@ -443,7 +488,10 @@ async function startFailed(
   env: Env, uid: string, callRef: string, reason: string, extra: Record<string, unknown> = {},
 ): Promise<void> {
   await track(env, uid, "call_translation_start_failed", APP, {
-    session_id: "", call_ref: callRef, reason, ...extra,
+    // [CALL-TRANSLATE-OBS-3] Several refusals fire BEFORE `call_ref` has been
+    // validated, so this is raw client input. Capped at the length the ref regex
+    // allows, which leaves every legitimate value untouched.
+    session_id: "", call_ref: callRef.slice(0, 128), reason, ...extra,
   });
 }
 
@@ -541,7 +589,11 @@ export async function callTranslationStart(req: Request, env: Env): Promise<Resp
     return json({ error: "source_capture_unavailable", billable: false }, 412);
   }
   if (!CALL_TRANSLATION_LANGS.has(lang)) {
-    await startFailed(env, ctx.uid, callRef, "unsupported_lang", { language: lang });
+    // [CALL-TRANSLATE-OBS-3] Capped: by the time we are here the value has FAILED
+    // the server-owned language check, so it is attacker-controlled and not a
+    // language. A BCP-47 tag never exceeds this; anything longer is not data we
+    // want unbounded amounts of in the event stream.
+    await startFailed(env, ctx.uid, callRef, "unsupported_lang", { language: lang.slice(0, 32) });
     return json({ error: "unsupported target_lang", lang }, 400);
   }
   const deviceNonce = readNonce(b.device_nonce);
@@ -700,8 +752,48 @@ export async function callTranslationActivate(req: Request, env: Env, id: string
   if (b.source_lease !== s.source_lease || b.source_ready !== true || (!stuckClaim && Date.now() - s.updated_at > SOURCE_LEASE_MS)) return json({ error: "source_not_ready", billable: false, call_ref: s.call_ref }, 412);
   if (!(await participantInActiveCall(env, s.call_ref, ctx.uid))) return json({ error: "call_ended_or_source_invalid", billable: false, call_ref: s.call_ref }, 409);
   if (stuckClaim) {
+    const stuckMs = Date.now() - s.updated_at;
+    /**
+     * [CALL-TRANSLATE-OBS-3 / A2] Take the row before spending money on it.
+     *
+     * A row old enough to be repaired here is, by definition, also old enough to
+     * be REAPED (`ABANDONED_AFTER_MS`, 10 min > `ACTIVATING_STUCK_MS`, 15 s). In
+     * the `pending` path below the claim UPDATE refreshes `updated_at`; the
+     * stuck-claim path skipped that UPDATE entirely, so the row stayed reapable
+     * for the whole duration of the repair. A concurrent `/start` by the SAME
+     * payer landing between `chargeMinute(s, 1)` and the activate UPDATE would
+     * close the row, the activate would match 0 rows, and `reconcileActivating`
+     * would answer `409 {billable:true}` to a payer whose minute 1 had just been
+     * debited — the exact A2 failure (charged, no translation) this file exists
+     * to prevent. Refreshing `updated_at` first makes the row un-reapable for
+     * another 10 minutes, which is orders of magnitude more than the repair takes.
+     *
+     * This is NOT the dead-code bug documented in `reconcileActivating`. That one
+     * refreshed a timestamp and then, in the SAME request, tested its age — so the
+     * test could never pass. Here `stuckClaim` was computed above from the
+     * PRE-touch snapshot and is never re-derived; nothing downstream in this
+     * request reads `updated_at` again.
+     */
+    const held = await metaDb(env).prepare(
+      "UPDATE translation_call_sessions SET updated_at=?2 WHERE id=?1 AND status='activating'",
+    ).bind(id, Date.now()).run();
+    if (held.meta.changes !== 1) {
+      // Lost the row before any money moved (a reaper or a /stop closed it, or a
+      // concurrent repair finished it). Nothing was charged by THIS request, so
+      // the refusal must say `billable:false` rather than inherit reconcile's
+      // post-charge wording.
+      const fresh = await load(env, id);
+      if (fresh && fresh.status === "active") {
+        return json({
+          ok: true, billed_minute: Math.max(1, fresh.last_billed_minute),
+          billed_tokens: fresh.billed_tokens, call_ref: fresh.call_ref,
+          rate_per_min: CALL_TRANSLATION_RATE, reconciled: "already_active",
+        });
+      }
+      return json({ error: fresh?.status ?? "not found", billable: false, call_ref: s.call_ref }, 409);
+    }
     await track(env, ctx.uid, "call_translation_activation_repaired", APP, {
-      session_id: id, call_ref: s.call_ref, stuck_ms: Date.now() - s.updated_at,
+      session_id: id, call_ref: s.call_ref, stuck_ms: stuckMs,
     });
   }
   if (s.status === "pending") {
@@ -757,12 +849,23 @@ export async function callTranslationRenew(req: Request, env: Env, id: string): 
   if (elapsed <= s.last_billed_minute) return json({ ok: true, billed_minute: s.last_billed_minute, billed_tokens: s.billed_tokens, call_ref: s.call_ref });
   const minute = s.last_billed_minute + 1;
   if (!(await chargeMinute(env, s, minute))) {
-    await metaDb(env).prepare("UPDATE translation_call_sessions SET status='funds-stopped',updated_at=?2 WHERE id=?1 AND status='active'").bind(id, Date.now()).run();
+    const fundsStopped = await metaDb(env).prepare("UPDATE translation_call_sessions SET status='funds-stopped',updated_at=?2 WHERE id=?1 AND status='active'").bind(id, Date.now()).run();
     await track(env, ctx.uid, "call_translation_funds_stopped", APP, { session_id: id, call_ref: s.call_ref, minute });
-    // [CALL-TRANSLATE-OBS-2] The session is over — say so once, in the same
+    // [CALL-TRANSLATE-OBS-3] The session is over — say so ONCE, in the same
     // shape as every other ending, so "how do translated sessions end" is one
     // breakdown rather than a union of three event names.
-    await emitOutcome(env, s, "insufficient_funds", { stopped_at_minute: minute });
+    //
+    // Gated on the terminal UPDATE exactly like /stop and the reaper: the emit
+    // belongs to the writer that actually closed the row. Two real duplicates
+    // existed while this ran unconditionally — (a) two concurrent /renew calls
+    // both reading `active` and both failing `chargeMinute` on the same minute,
+    // one UPDATE winning and BOTH emitting; (b) a /stop landing between this
+    // handler's `load()` and this UPDATE, so /stop emitted `user_stop` and this
+    // emitted `insufficient_funds` for one session. Double-counting the funnel
+    // on the money path is precisely what this event exists to measure.
+    if (fundsStopped.meta.changes === 1) {
+      await emitOutcome(env, s, "insufficient_funds", { stopped_at_minute: minute });
+    }
     // PAID-ONLY (owner 2026-08-04): the wallet refused against paid `balance`.
     // `spendable` lets the client say "your remaining tokens are free/bonus
     // tokens, which translation cannot spend" instead of a misleading "empty".
@@ -815,15 +918,17 @@ export async function callTranslationStop(req: Request, env: Env, id: string): P
   if (isFail(ctx)) return authError(ctx);
   const s = await load(env, id);
   if (!s || s.payer_uid !== ctx.uid) return json({ error: "not found" }, 404);
-  // [CALL-TRANSLATE-OBS-2] Optional, closed-set stop reason. Every build in the
-  // field today sends nothing, which maps to `user_stop` — the default is the
-  // honest reading of a POST to /stop with no explanation.
-  const sb = await req.json().catch(() => ({})) as Record<string, unknown>;
-  const endReason = stopEndReason(sb.reason);
+  // [CALL-TRANSLATE-OBS-3] The terminal write happens FIRST, before the body is
+  // read. Stopping is the last line of defence for "restore the user's audio and
+  // stop the meter", and the stated invariant is that it must never be blockable
+  // — but `await req.json()` sat in front of this UPDATE, so a client that sends
+  // a Content-Length and then stalls held the row open until the Cloudflare
+  // request timeout. The reason is telemetry; the close is the product.
   const closed = await metaDb(env).prepare("UPDATE translation_call_sessions SET status='stopped',updated_at=?2 WHERE id=?1 AND status NOT IN ('stopped','funds-stopped','provider-stopped')").bind(id, Date.now()).run();
   await track(env, ctx.uid, "call_translation_stopped", APP, {
     session_id: id, call_ref: s.call_ref, billed_minute: s.last_billed_minute,
   });
+  const endReason = await stopReasonOrDefault(req);
   // Only the request that actually closed the row emits the outcome, so a
   // duplicate /stop (the client converging, or a retry) cannot double-count a
   // session in the funnel. `s` is the PRE-update snapshot on purpose:
