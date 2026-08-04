@@ -89,7 +89,11 @@ export type WalletOperation =
   // [AVA-CAMP-B1-WALLET] escrow ops — `allow_free` is MANDATORY on both
   // `reserve` and `consume_reserved`, with NO DEFAULT.
   | (WalletOpBase & { op: "reserve"; amount: number; ref: string; allow_free: boolean; expires_at?: number })
-  | (WalletOpBase & { op: "consume_reserved"; amount: number; ref: string; allow_free: boolean })
+  // [AFF-G6-WALLET-1] §4.6: optional `type` labels the audit/statement row the
+  // DO writes on consume. Omitted (every existing campaign caller) → the DO
+  // still writes "campaign_call". A payout passes `type: "payout"` so it is not
+  // filed in the user's statement and `wallet_ledger` as a campaign charge.
+  | (WalletOpBase & { op: "consume_reserved"; amount: number; ref: string; allow_free: boolean; type?: string })
   | (WalletOpBase & { op: "release_reservation"; ref: string })
   // [AI-WALLET-SPENDABLE-2] atomic AI-accrual settlement — ONE DO round trip,
   // never a Worker-side read-modify-write across two separate walletOp calls.

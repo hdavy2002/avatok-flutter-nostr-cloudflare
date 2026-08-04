@@ -130,6 +130,18 @@ export interface AiSettlementInput {
   /** free + bonus + paid balance, in whole wallet tokens, at settle time. */
   spendableTokens: number;
 }
+/**
+ * [AFF-G6-WALLET-1] One reservation released by reapExpiredReservations().
+ * `kind` distinguishes the legacy AI-job case (which keeps its exact prior
+ * telemetry/audit behaviour) from every other expired ref (payouts today).
+ */
+export interface ReapedReservation {
+  ref: string;
+  reserved: number;
+  uid: string;
+  kind: "aijob" | "other";
+}
+
 export interface AiSettlementResult {
   chargedTokens: number;
   debtMicroUsdAfter: number;
@@ -612,7 +624,8 @@ export class WalletDO {
     // reserve() call — a crashed/abandoned aijob reservation must not eat into
     // this (or anyone else's, since outstandingReservations() sums ALL refs for
     // this uid) headroom forever. Cheap: bounded to this uid's own resv rows.
-    await this.reapStaleAiJobReservations();
+    // [AFF-G6-WALLET-1] now reaps ANY expired reservation, not just aijob refs.
+    await this.reapExpiredReservations();
 
     const existing = this.getResv(ref);
     if (existing && !existing.released && existing.allow_free !== (allowFree ? 1 : 0)) {
@@ -678,7 +691,19 @@ export class WalletDO {
 
     const row = this.getResv(ref);
     if (!row || row.released) {
-      const result = { ok: false, error: "no_active_reservation", ref, consumed: 0 };
+      // [AFF-G6-WALLET-1] §4.7/§B2: a 404 here is AMBIGUOUS — it means either
+      // "already consumed successfully" (the op_id replay cache has since aged
+      // out at OPS_TTL_MS = 48h) or "never reserved at all". It must never be
+      // read as failure and never as success. These three additive fields are
+      // the DO's local half of the disambiguation; the AUTHORITATIVE answer is
+      // the `wallet_ledger` row for this ref (§4.7 step 5), because the resv
+      // row alone cannot survive a DO that never saw the reserve.
+      const result = {
+        ok: false, error: "no_active_reservation", ref, consumed: 0,
+        existed: !!row,
+        already_spent: row ? row.spent : 0,
+        expired: !!row && row.expires_at > 0 && row.expires_at <= Date.now(),
+      };
       this.recordOp(b.op_id, result);
       return json(result, 404);
     }
@@ -721,7 +746,15 @@ export class WalletDO {
     };
     this.recordOp(b.op_id, result);
     if (clamp > 0) {
-      await this.audit(uid, { type: "campaign_call", amount: -clamp, balance_after: balanceAfter, app_name: b.app_name || "campaign", ref, ...txMeta(b) }, b);
+      // [AFF-G6-WALLET-1] §4.6: `type` was HARDCODED to "campaign_call" while
+      // `app_name` was already overridable, so a payout consumed through this
+      // op would be filed in the user's statement AND in `wallet_ledger` as a
+      // campaign charge. Backward-compatible by construction: every existing
+      // campaign caller passes no `type` and still gets "campaign_call".
+      // Compile-time half is `type?: string` on the consume_reserved arm of the
+      // WalletOperation union in routes/wallet.ts.
+      const auditType = typeof b.type === "string" && b.type ? b.type : "campaign_call";
+      await this.audit(uid, { type: auditType, amount: -clamp, balance_after: balanceAfter, app_name: b.app_name || "campaign", ref, ...txMeta(b) }, b);
     }
     this.broadcast();
     return json(result);
@@ -1177,45 +1210,80 @@ export class WalletDO {
   // with no expires_at (expires_at=0 — pre-migration rows, or any caller that
   // didn't supply one).
   //
-  // SCOPE: STRICTLY `ref LIKE 'aijob:%'` (the exact prefix reserveAiJob() uses,
-  // `aijob:<opId>`). Campaign escrow reservations ([AVA-CAMP-B1-WALLET], ref =
-  // the call's attempt_uuid, no prefix) are NEVER touched here — a live outbound
-  // call can legitimately hold its reservation open for the call's full
-  // multi-minute duration, campaigns already have their own explicit
-  // release/consume path on call end, and reaping them early would let a
-  // still-running call's cost blow past its escrowed budget. Only ai_billing's
-  // own aijob refs are provably safe to time out this way, since ai_billing
-  // itself always resolves (settle or release) within one HTTP request.
+  // SCOPE — [AFF-G6-WALLET-1] (Specs/proposals/PROPOSAL-AFFILIATE-UPI-2026-08-05.md
+  // §B1 + §4.3) GENERALISED from "aijob refs only" to "any reservation whose
+  // caller gave it an explicit `expires_at`". The old predicate was
+  // `ref LIKE 'aijob:%'`, which meant a `upi_payout:<id>` reservation could
+  // carry `expires_at` and still never be reaped — setting the field was inert.
+  // Two cases now, and the split is deliberate:
+  //
+  //   (a) expires_at > 0  — ANY ref. The caller made an explicit, bounded
+  //       promise about when this reservation stops being valid, so honouring
+  //       it is exactly what it asked for. This is the payout path (§4.3
+  //       requires `expires_at` on every payout reservation) and the normal
+  //       AI-job path.
+  //   (b) expires_at = 0  — STRICTLY `ref LIKE 'aijob:%'`, legacy fallback on
+  //       AIJOB_RESV_TTL_MS age. UNCHANGED, and it must stay aijob-only:
+  //       campaign escrow ([AVA-CAMP-B1-WALLET], ref = the call's
+  //       attempt_uuid, no prefix, no expires_at) is NEVER reaped on age — a
+  //       live outbound call can legitimately hold its reservation open for
+  //       the call's full multi-minute duration, campaigns already have their
+  //       own explicit release/consume path on call end, and reaping them
+  //       early would let a still-running call's cost blow past its escrowed
+  //       budget. A campaign reservation therefore still never appears here.
+  //
+  // The aijob behaviour is preserved EXACTLY as one case: same
+  // `ai_budget_released` telemetry, same `ai_reservation_reaped` audit row,
+  // same `ai_job_reaper` app_name. Non-aijob refs get their own distinguishable
+  // pair (`wallet_reservation_expired` / `reservation_expired`) so §4.7's
+  // reconciler can tell "expired and released" from "never existed" from the
+  // ledger alone.
   //
   // Idempotent by construction: a reaped row flips released=1, dropping it out
   // of the WHERE clause, so it can never be reaped twice — no op_id needed.
-  private readonly AIJOB_RESV_TTL_MS = 6 * 3_600_000; // legacy fallback only (rows with no expires_at)
-  private async reapStaleAiJobReservations(): Promise<number> {
+  private readonly AIJOB_RESV_TTL_MS = 6 * 3_600_000; // legacy fallback only (aijob rows with no expires_at)
+  private async reapExpiredReservations(): Promise<ReapedReservation[]> {
     const now = Date.now();
     const legacyCutoff = now - this.AIJOB_RESV_TTL_MS;
     const rows = this.sql.exec(
-      "SELECT ref, reserved, uid FROM resv WHERE released=0 AND reserved>0 AND ref LIKE 'aijob:%' " +
-      "AND ((expires_at>0 AND expires_at<?1) OR (expires_at=0 AND created_at<?2))",
+      "SELECT ref, reserved, uid FROM resv WHERE released=0 AND reserved>0 " +
+      "AND ((expires_at>0 AND expires_at<=?1) OR (expires_at=0 AND ref LIKE 'aijob:%' AND created_at<?2))",
       now, legacyCutoff,
     ).toArray() as any[];
-    if (!rows.length) return 0;
+    if (!rows.length) return [];
+    const reaped: ReapedReservation[] = [];
     for (const r of rows) {
       const ref = String(r.ref);
       const refunded = Number(r.reserved);
       const uid = String(r.uid || "") || "server"; // pre-migration rows may predate the uid column
+      const kind: ReapedReservation["kind"] = ref.startsWith("aijob:") ? "aijob" : "other";
       // Guard against a race with a concurrent settle/release between the SELECT
       // above and this UPDATE — only flip rows still outstanding.
       this.sql.exec("UPDATE resv SET reserved=0, released=1, updated_at=?1 WHERE ref=?2 AND released=0", now, ref);
-      Promise.resolve(track(this.env, uid, "ai_budget_released", "ai_billing", {
-        ref, reserved: refunded, used: 0, released: refunded, reason: "reaper",
-      })).catch(() => {});
-      await this.audit(uid, {
-        type: "ai_reservation_reaped", amount: 0, balance_after: this.bal().balance,
-        app_name: "ai_job_reaper", ref, reason: "reaper",
-      });
+      if (kind === "aijob") {
+        Promise.resolve(track(this.env, uid, "ai_budget_released", "ai_billing", {
+          ref, reserved: refunded, used: 0, released: refunded, reason: "reaper",
+        })).catch(() => {});
+        await this.audit(uid, {
+          type: "ai_reservation_reaped", amount: 0, balance_after: this.bal().balance,
+          app_name: "ai_job_reaper", ref, reason: "reaper",
+        });
+      } else {
+        // Distinguishable signal for every non-AI expiry (payouts today, any
+        // future escrow with a bounded TTL). Amount 0 — a reservation never
+        // moved money, so this is a bookkeeping row, not a charge.
+        Promise.resolve(track(this.env, uid, "wallet_reservation_expired", "avatok", {
+          ref, reserved: refunded, released: refunded, reason: "expiry_reaper",
+        })).catch(() => {});
+        await this.audit(uid, {
+          type: "reservation_expired", amount: 0, balance_after: this.bal().balance,
+          app_name: "wallet_reservation_reaper", ref, reason: "expiry_reaper",
+        });
+      }
+      reaped.push({ ref, reserved: refunded, uid, kind });
     }
     this.broadcast();
-    return rows.length;
+    return reaped;
   }
 
   private releaseMatured(): number {
@@ -1240,13 +1308,18 @@ export class WalletDO {
     // call) still eventually self-heals instead of relying solely on the next
     // reserve() to trigger it. This is the path the "expired AI reservation is
     // released by a scheduled alarm with no further request" test exercises.
-    await this.reapStaleAiJobReservations();
+    await this.reapExpiredReservations();
     if (released > 0) this.broadcast();
-    // Reschedule for the next pending hold or the next outstanding AI-job
-    // reservation expiry, whichever is sooner.
+    // Reschedule for the next pending hold or the next outstanding reservation
+    // expiry, whichever is sooner.
+    // [AFF-G6-WALLET-1] the `ref LIKE 'aijob:%'` filter is GONE from this query
+    // (§B1): with it, the DO would never even WAKE for a `upi_payout:` expiry,
+    // so the reaper above — however general — would only ever run when some
+    // unrelated alarm happened to fire. Any ref with a bounded expires_at now
+    // schedules its own wakeup.
     const next = this.sql.exec("SELECT MIN(available_at) AS t FROM holds WHERE released=0").one() as any;
     const nextResv = this.sql.exec(
-      "SELECT MIN(expires_at) AS t FROM resv WHERE released=0 AND reserved>0 AND ref LIKE 'aijob:%' AND expires_at>0",
+      "SELECT MIN(expires_at) AS t FROM resv WHERE released=0 AND reserved>0 AND expires_at>0",
     ).one() as any;
     const pending = await this.state.storage.list({ prefix: "wallet:audit:", limit: 1 });
     // Keep the outbox alive even when there are no earning holds. A failed
