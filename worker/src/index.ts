@@ -64,6 +64,7 @@ import { createSlot, listSlots, cancelSlot, bookSlot, cancelBooking, listEvents,
 import { listBookings, getPolicies, putPolicies, proposeReschedule, respondReschedule, listReschedules, joinInfo } from "./routes/booking";
 import { gcalConnect, gcalCallback, gcalStatus, gcalDisconnect, gcalWebhook } from "./cal/gcal";
 import { payoutSetup, payoutAccounts, payoutRequest, payoutStatus, wiseWebhook } from "./routes/payout";
+import { upiAccount, upiAccountGet, upiPayoutQuote, upiPayoutRequest, upiPayoutRequests, adminUpiPayouts, adminUpiAccountVerify, adminUpiApprove, adminUpiReject, adminUpiPaid, adminUpiReconcile } from "./routes/upi_payout";
 import { olxCreate, olxBrowse, olxGet, olxUpdate, olxDelete, olxUploadFile, olxBuy, olxRefund, olxDownloads, olxDownloadFile } from "./routes/olx";
 import { listPersonas, upsertPersona, converse, getInbox, getInboxItem, approveInbox, agentTask } from "./routes/agent";
 import { agentTts, agentAudio } from "./routes/agent_tts";
@@ -1067,6 +1068,17 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/payout/accounts" && req.method === "GET") return await payoutAccounts(req, env);
       if (p === "/api/payout/request" && req.method === "POST") return await payoutRequest(req, env);
       if (p === "/api/payout/status" && req.method === "GET") return await payoutStatus(req, env);
+      if (p === "/api/payout/upi/account" && req.method === "POST") return await upiAccount(req, env);
+      if (p === "/api/payout/upi/account" && req.method === "GET") return await upiAccountGet(req, env);
+      if (p === "/api/payout/upi/quote" && req.method === "GET") return await upiPayoutQuote(req, env);
+      if (p === "/api/payout/upi/request" && req.method === "POST") return await upiPayoutRequest(req, env);
+      if (p === "/api/payout/upi/requests" && req.method === "GET") return await upiPayoutRequests(req, env);
+      if (p === "/api/admin/payouts/upi" && req.method === "GET") return await adminUpiPayouts(req, env);
+      { const m = p.match(/^\/api\/admin\/payouts\/upi\/account\/([A-Za-z0-9-]{8,64})\/verify$/); if (m && req.method === "POST") return await adminUpiAccountVerify(req, env, m[1]); }
+      { const m = p.match(/^\/api\/admin\/payouts\/upi\/([A-Za-z0-9-]{8,64})\/(approve|reject|paid|reconcile)$/); if (m && req.method === "POST") {
+        const fn: any = { approve: adminUpiApprove, reject: adminUpiReject, paid: adminUpiPaid, reconcile: adminUpiReconcile }[m[2]];
+        return await fn(req, env, m[1]);
+      } }
       if (p === "/webhooks/wise" && req.method === "POST") return await wiseWebhook(req, env);
 
       // --- AvaOLX (Phase 5; browse open, list/sell Tier-2) ---

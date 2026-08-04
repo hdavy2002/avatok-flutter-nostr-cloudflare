@@ -413,6 +413,7 @@ export interface Env {
   // package the token is checked against is PLAY_PACKAGE_ID (above).
   PLAY_SERVICE_ACCOUNT_JSON?: string;
   AFFILIATE_TOKEN_SECRET?: string;
+  AFFILIATE_PAYOUT_ALLOWLIST?: string;
 
   // R2 S3 API creds for presigned digital-download URLs (Phase 5). Unset → the
   // OLX download route streams bytes through the Worker as a fallback.

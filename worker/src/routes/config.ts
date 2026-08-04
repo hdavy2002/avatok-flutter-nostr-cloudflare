@@ -169,6 +169,11 @@ export interface PlatformConfig {
   avaAffiliateEnabled: boolean;      // master switch (default OFF until launch)
   affiliateJoinLinkEnabled: boolean;
   affiliateAssetKitEnabled: boolean; // v2 Gemini promo-image kit (flag only; no code in v1)
+  upiPayoutEnabled: boolean;
+  affiliatePayoutAllowlistOnly: boolean;
+  upiPayoutMinCoins: number;
+  upiPayoutReservationTtlHours: number;
+  upiVpaCooldownHours: number;
   // [AFF-COMM-LIFECYCLE-1] Commission qualification lifecycle
   // (Specs/proposals/PROPOSAL-AFFILIATE-UPI-2026-08-05.md §6.1/§6.2/§7). A top-up
   // commission is now a D1 `pending` row with NO wallet credit; the qualification
@@ -939,6 +944,11 @@ const DEFAULTS: PlatformConfig = {
   avaAffiliateEnabled: false,      // launch gate — flip ON after A5 fraud checks
   affiliateJoinLinkEnabled: false, // generic signup links remain dark independently
   affiliateAssetKitEnabled: false, // v2 asset kit (Gemini) — defined, not built
+  upiPayoutEnabled: false,
+  affiliatePayoutAllowlistOnly: true,
+  upiPayoutMinCoins: 1000,
+  upiPayoutReservationTtlHours: 72,
+  upiVpaCooldownHours: 72,
   // [AFF-COMM-LIFECYCLE-1] §7 launch values. Nothing here is live while
   // avaAffiliateEnabled is false — the whole lifecycle is dark.
   affiliateQualifyDays: 30,
@@ -1312,7 +1322,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
   const numericKeys = new Set([
     "minAppBuild", "latestAppBuild", "dailyAvaTurnLimit", "receptionistRings", "agentDailyCap", "livenessAuditSampleRate",
     "receptWrapCueMs", "receptCloseMs", "receptHardCapMs",
-    "usdInrRate", "receptMarginAlertPaise", // [RECEPT-BILLING-3] cost-ledger FX + margin alert threshold
+    "usdInrRate", "receptMarginAlertPaise", "upiPayoutMinCoins", "upiPayoutReservationTtlHours", "upiVpaCooldownHours",
     // [AVABRAIN-FLAGS-1] media_memory caps + export cap + companion knobs.
     "mediaMemoryMaxSec", "mediaMemoryMaxBytes", "mediaMemoryFrameBudget", "mediaMemoryDailyPerUser",
     "mediaMemoryConcurrency", "avaBrainExportDailyCap", "companionGroupCooldownSec", "companionGroupDailyBudget",
