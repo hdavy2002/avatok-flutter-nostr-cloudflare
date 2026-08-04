@@ -844,6 +844,60 @@ class CallSession {
   // clobber a concurrent cellular-hold's mute state.
   bool _onFocusHold = false;
   int? _focusLostMs;
+  // [CALL-FOCUS-DEADLOCK-1] Android only re-grants AUDIOFOCUS_GAIN to a holder
+  // that suffered a *transient* loss. A permanent AUDIOFOCUS_LOSS — which is
+  // what the platform delivers when anything (including another player inside
+  // THIS app) requests a plain AUDIOFOCUS_GAIN — is never followed by a regain
+  // callback. `onAudioFocusRegained` therefore never fires, `_onFocusHold`
+  // latches true, and the mic stays muted for the REST OF THE CALL while RTP
+  // keeps flowing perfectly. Verified in prod 2026-08-04 (call avatok-e9226773,
+  // hdavy2026@gmail.com → hdavy2002@gmail.com): 36 `call_audio_focus_lost`
+  // events over 7 days against ZERO `call_audio_focus_regained`, peer inbound
+  // audio_level pinned at 9.16e-05 (digital silence) while inbound RTP ran at
+  // 18.5 kB / 245 packets per 5 s interval. A hold that can never be released
+  // is worse than no hold at all, so this watchdog releases it.
+  Timer? _focusHoldWatchdog;
+  static const Duration _kFocusHoldMaxDuration = Duration(seconds: 6);
+
+  /// [CALL-FOCUS-DEADLOCK-1] Release a focus hold the platform is never going
+  /// to lift on its own.
+  ///
+  /// Fires [_kFocusHoldMaxDuration] after `onAudioFocusLost` when no regain
+  /// arrived. At that point the choice is between a permanently dead mic and
+  /// resuming capture into a route the OS may have reassigned. Resuming wins:
+  /// at worst the peer hears what they already hear (silence), and in the
+  /// common case — the loss came from another player inside THIS app, which
+  /// requests a plain AUDIOFOCUS_GAIN and so triggers a *permanent* loss on
+  /// our own AUDIOFOCUS_GAIN_TRANSIENT holder — the route was never reassigned
+  /// at all and audio simply comes back.
+  ///
+  /// Deliberately does NOT fire while a cellular call holds us
+  /// ([_onCellularHold]): that hold belongs to the telephony monitor, which
+  /// has its own resume signal, and un-muting into a live GSM call is the one
+  /// case where staying muted is correct.
+  void _releaseStuckFocusHold() {
+    _focusHoldWatchdog = null;
+    if (_ended || !_onFocusHold) return;
+    if (_onCellularHold) return; // telephony owns this hold; it will resume us
+    final heldMs = _focusLostMs == null
+        ? 0
+        : DateTime.now().millisecondsSinceEpoch - _focusLostMs!;
+    _onFocusHold = false;
+    _focusLostMs = null;
+    onCellularHold.value = false;
+    if (_muted) {
+      _muted = false;
+      muted.value = false;
+      _send({'type': 'mute', 'muted': false});
+    }
+    Analytics.capture('call_audio_focus_hold_released', {
+      'call_id': config.room,
+      'held_ms': heldMs,
+      'reason': 'watchdog_no_regain',
+    });
+    AvaLog.I.log('call',
+        'focus hold released by watchdog after ${heldMs}ms — no AUDIOFOCUS_GAIN arrived');
+  }
 
   // ── CALL-RC-D2: post-connect reconnect state machine ────────────────────
   // Distinct from the pre-connect `_wsReconnects`/`_reconnectSignaling` path
@@ -2439,8 +2493,15 @@ class CallSession {
           _send({'type': 'mute', 'muted': true});
         }
         Analytics.capture('call_audio_focus_lost', {'call_id': config.room});
+        // [CALL-FOCUS-DEADLOCK-1] Arm the release watchdog — see the field doc.
+        // A permanent AUDIOFOCUS_LOSS never produces a regain callback, so
+        // without this the mute below is forever.
+        _focusHoldWatchdog?.cancel();
+        _focusHoldWatchdog = Timer(_kFocusHoldMaxDuration, _releaseStuckFocusHold);
       };
       NativeVoiceAudio.instance.onAudioFocusRegained = () {
+        _focusHoldWatchdog?.cancel();
+        _focusHoldWatchdog = null;
         if (!_onFocusHold) return;
         _onFocusHold = false;
         final heldMs = _focusLostMs == null
@@ -6108,6 +6169,10 @@ class CallSession {
         .stopCallForegroundService(reason: reason ?? 'hangup'));
     await _safeAwait(() => NativeVoiceAudio().stopTelephonyMonitoring());
     _telephonySub?.cancel();
+    // [CALL-FOCUS-DEADLOCK-1] Kill the release watchdog with the session, so a
+    // torn-down call can never un-mute into the next one.
+    _focusHoldWatchdog?.cancel();
+    _focusHoldWatchdog = null;
     // CALL-FOCUS-1: detach our focus callbacks so a torn-down session can't keep
     // holding/resuming after the singleton is reused by the next call.
     if (NativeVoiceAudio.instance.onAudioFocusLost != null ||

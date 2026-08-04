@@ -8,7 +8,6 @@ import 'package:path_provider/path_provider.dart';
 import 'analytics.dart';
 import 'ava_log.dart';
 import 'feature_flags.dart';
-import 'remote_config.dart';
 import 'ringtone_catalog.dart';
 import '../identity/identity.dart';
 
@@ -47,6 +46,33 @@ import '../identity/identity.dart';
 /// controller path), not the permanent architecture — a native `AudioTrack`
 /// on `USAGE_VOICE_COMMUNICATION` is the target end state (plan §6).
 ///
+/// ⚠️ [CALL-FOCUS-DEADLOCK-1] (2026-08-05) — the flag gate below was REMOVED.
+/// [_ensureCallAudioContext] now runs on BOTH paths, unconditionally, because
+/// the flag-on path was the live cause of a total-silence call bug:
+///
+///   `callAudioControllerV2` was flipped TRUE in prod KV (config.ts still
+///   defaults it false, so reading the default told you nothing — see the
+///   "flags will lie to you" section of CLAUDE.md). With the flag on, every
+///   tone skipped the context write and inherited the audioplayers default
+///   `AudioContextAndroid` — `USAGE_MEDIA` / `MODE_NORMAL` / audio-focus
+///   **GAIN**. That plain GAIN request evicted the call's own
+///   `AUDIOFOCUS_GAIN_TRANSIENT` holder in `AvaVoiceAudioPlugin`, and Android
+///   delivers a PERMANENT `AUDIOFOCUS_LOSS` for that, never a transient one.
+///   `CallSession.onAudioFocusLost` force-mutes the mic; the matching
+///   `AUDIOFOCUS_GAIN` never comes back for a permanent loss, so the mic
+///   stayed muted for the whole call. Prod telemetry 2026-07-29→08-04: 36
+///   `call_audio_focus_lost`, ZERO `call_audio_focus_regained`; the callee's
+///   inbound `audio_level` sat at 9.16e-05 while RTP flowed normally.
+///
+/// `audioFocus: AndroidAudioFocus.none` in [_ensureCallAudioContext] is the
+/// thing that prevents this, so it must never be conditional again. The
+/// device-wide `mode`/`isSpeakerphoneOn` writes it also performs agree with
+/// what the controller has already applied (MODE_IN_COMMUNICATION + the
+/// current route), so running it on the flag-on path is a no-op in practice.
+/// The permanent fix is the native `AudioTrack` on
+/// `USAGE_VOICE_COMMUNICATION` described above, which needs no focus request
+/// at all.
+///
 /// When the flag is FALSE — the default for all users as of 2026-07-24 —
 /// `RingbackPlayer` is the ONLY thing that ever calls
 /// `NativeVoiceAudio.startP2pAudioMode()`'s Android-side equivalent for
@@ -76,10 +102,12 @@ class RingbackPlayer {
   static String _assetRel(String p) => p.startsWith('assets/') ? p.substring(7) : p;
 
   /// [CALL-REL-3] Legacy (pre-2026-07-24) audio-context write, restored
-  /// verbatim and now called ONLY when `RemoteConfig.callAudioControllerV2`
-  /// is false — see the class doc above for why the flag-off path still
-  /// needs this. When the flag is true, the new controller owns
-  /// `AudioManager` state end-to-end and this method is never called.
+  /// verbatim. [CALL-FOCUS-DEADLOCK-1] (2026-08-05): now called on EVERY tone
+  /// regardless of `RemoteConfig.callAudioControllerV2`. The
+  /// `audioFocus: AndroidAudioFocus.none` pin below is load-bearing — without
+  /// it audioplayers requests AUDIOFOCUS_GAIN and permanently evicts the
+  /// call's own focus holder, muting the mic for the rest of the call. See the
+  /// class doc for the prod incident. Do not re-gate this.
   ///
   /// `AudioPlayer.setAudioContext` is NOT player-local on Android (verified
   /// in audioplayers 6.1.0, `WrappedPlayer.updateAudioContext`): it writes
@@ -209,11 +237,9 @@ class RingbackPlayer {
     final gen = ++_generation;
     _toneRequested('ringback', gen, speakerOn: speakerOn);
     try {
-      if (!RemoteConfig.callAudioControllerV2) {
-        await _ensureCallAudioContext(
-            speakerOn: speakerOn, mode: AndroidAudioMode.inCommunication);
-        if (_disposed || gen != _generation) return; // superseded — drop it
-      }
+      await _ensureCallAudioContext(
+          speakerOn: speakerOn, mode: AndroidAudioMode.inCommunication);
+      if (_disposed || gen != _generation) return; // superseded — drop it
       await _p.setReleaseMode(ReleaseMode.loop);
       Source src;
       if (value.isEmpty) {
@@ -270,11 +296,9 @@ class RingbackPlayer {
   Future<void> _playDefaultRingback({required bool speakerOn, required int generation}) async {
     if (_disposed || generation != _generation) return;
     try {
-      if (!RemoteConfig.callAudioControllerV2) {
-        await _ensureCallAudioContext(
-            speakerOn: speakerOn, mode: AndroidAudioMode.inCommunication);
-        if (_disposed || generation != _generation) return;
-      }
+      await _ensureCallAudioContext(
+          speakerOn: speakerOn, mode: AndroidAudioMode.inCommunication);
+      if (_disposed || generation != _generation) return;
       await _p.setReleaseMode(ReleaseMode.loop);
       if (_disposed || generation != _generation) return;
       await _p.play(AssetSource(_assetRel(kDefaultRingbackAsset)));
@@ -298,11 +322,9 @@ class RingbackPlayer {
     _toneRequested('searching', gen, speakerOn: speakerOn);
     if (_disposed) return;
     try {
-      if (!RemoteConfig.callAudioControllerV2) {
-        await _ensureCallAudioContext(
-            speakerOn: speakerOn, mode: AndroidAudioMode.inCommunication);
-        if (_disposed || gen != _generation) return;
-      }
+      await _ensureCallAudioContext(
+          speakerOn: speakerOn, mode: AndroidAudioMode.inCommunication);
+      if (_disposed || gen != _generation) return;
       await _p.setReleaseMode(ReleaseMode.loop);
       // [AVACALL-TONE-1] Pin the tone to full volume — the caller experienced it
       // as inaudible (2026-07-20) even though `searching_tone_played` was logged.
@@ -351,13 +373,11 @@ class RingbackPlayer {
     _toneRequested('busy', gen, speakerOn: speakerOn);
     if (_disposed) return;
     try {
-      if (!RemoteConfig.callAudioControllerV2) {
-        // Call is over — agree with the concurrent `_teardown()` restoring
-        // MODE_NORMAL rather than asserting inCommunication (see
-        // [_ensureCallAudioContext] doc).
-        await _ensureCallAudioContext(speakerOn: speakerOn, mode: AndroidAudioMode.normal);
-        if (_disposed || gen != _generation) return;
-      }
+      // Call is over — agree with the concurrent `_teardown()` restoring
+      // MODE_NORMAL rather than asserting inCommunication (see
+      // [_ensureCallAudioContext] doc).
+      await _ensureCallAudioContext(speakerOn: speakerOn, mode: AndroidAudioMode.normal);
+      if (_disposed || gen != _generation) return;
       await _p.setReleaseMode(ReleaseMode.release);
       if (_disposed || gen != _generation) return;
       await _p.play(AssetSource(_assetRel(kBusyToneAsset)));
