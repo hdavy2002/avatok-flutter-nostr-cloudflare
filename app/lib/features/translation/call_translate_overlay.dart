@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatf
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/analytics.dart';
 import '../../core/money_api.dart';
 import '../../core/remote_config.dart';
 import '../../core/ui/zine.dart';
@@ -38,14 +39,44 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
   static const Duration _kWarmUpDelay = Duration(milliseconds: 500);
   Timer? _warmUpTimer;
 
+  /// [CALL-TRANSLATE-OBS-1 / F2] The native support probe reflects into
+  /// flutter_webrtc. If the WebRTC plugin is not attached at the instant we ask
+  /// — which is exactly the shape of a cold call screen — `isSupported()` answers
+  /// false and, before this, was never asked again: the pill stayed invisible for
+  /// the WHOLE call with no log, no event and no dialog. So the probe is now
+  /// retried on a bounded backoff and reports what it saw either way.
+  static const List<Duration> _kProbeBackoff = <Duration>[
+    Duration(milliseconds: 400),
+    Duration(milliseconds: 900),
+    Duration(milliseconds: 1800),
+    Duration(milliseconds: 3500),
+  ];
+  int _probeAttempts = 0;
+
+  /// [CALL-TRANSLATE-OBS-1 / F1] `build()` runs constantly during a call, so the
+  /// visibility event is emitted only when the REASON changes, and never more
+  /// than [_kMaxVisibilityEvents] times per mount. A handful of rows per call,
+  /// not a flood.
+  String? _lastVisibilityReason;
+  int _visibilityEvents = 0;
+  static const int _kMaxVisibilityEvents = 8;
+
   @override
   void initState() {
     super.initState();
+    // [CALL-TRANSLATE-OBS-1 / F3] RemoteConfig starts with an empty `_cfg` (both
+    // flags read false) and only polls every 15 minutes. Reading the flags in
+    // `build()` WITHOUT listening meant the pill was hidden on a cold start until
+    // some unrelated rebuild happened to re-read them — it self-corrected by luck,
+    // because the call screen rebuilds often. Listening to the revision makes the
+    // pill appear the moment config actually lands.
+    RemoteConfig.revision.addListener(_changed);
     _initializeBridge();
   }
 
   Future<void> _initializeBridge() async {
     final bridge = CallTranslationAudioBridge.instance;
+    _probeAttempts = 1;
     final supported = await bridge.isSupported();
     if (!mounted) return;
     final controller = CallTranslationController(callRef: widget.callRef, bridge: bridge);
@@ -55,11 +86,70 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
       _nativeSupported = supported;
       _controller = controller;
     });
+    if (!supported) unawaited(_retryNativeProbe(bridge));
+  }
+
+  /// [CALL-TRANSLATE-OBS-1 / F2] Bounded re-probe. Never spins: at most
+  /// [_kProbeBackoff].length extra attempts (~6.6 s total), then it gives up and
+  /// says so. A flip from false→true is the interesting signal — it means the
+  /// device CAN translate and only the first probe was early.
+  Future<void> _retryNativeProbe(CallTranslationAudioBridge bridge) async {
+    for (final backoff in _kProbeBackoff) {
+      await Future<void>.delayed(backoff);
+      if (!mounted || _nativeSupported) return;
+      _probeAttempts++;
+      final ok = await bridge.isSupported();
+      if (!mounted) return;
+      if (ok) {
+        setState(() => _nativeSupported = true);
+        unawaited(Analytics.capture('call_translation_native_probe', {
+          'result': 'recovered',
+          'attempts': _probeAttempts,
+          'call_ref': widget.callRef,
+          'app_build': Analytics.appBuild,
+        }));
+        return;
+      }
+    }
+    if (!mounted) return;
+    // Terminal: this device will not show the pill for this call. The ONLY
+    // genuine per-device failure mode, and it used to be completely invisible.
+    unawaited(Analytics.capture('call_translation_native_probe', {
+      'result': 'unsupported',
+      'attempts': _probeAttempts,
+      'call_ref': widget.callRef,
+      'app_build': Analytics.appBuild,
+    }));
+  }
+
+  /// [CALL-TRANSLATE-OBS-1 / F1] ONE event that says exactly why the pill is (or
+  /// is not) on screen, plus the app build — because "which build is this person
+  /// on" is the question that actually cost a session. Deduped by reason, capped
+  /// per mount. Timings, flags and codes only; never anything audio-derived.
+  void _reportVisibility(String reason, {required bool visible}) {
+    if (reason == _lastVisibilityReason) return;
+    _lastVisibilityReason = reason;
+    if (_visibilityEvents >= _kMaxVisibilityEvents) return;
+    _visibilityEvents++;
+    unawaited(Analytics.capture('call_translation_pill_visibility', {
+      'visible': visible,
+      'reason': reason,
+      'call_ref': widget.callRef,
+      'app_build': Analytics.appBuild,
+      'is_android': defaultTargetPlatform == TargetPlatform.android,
+      'translation_enabled': RemoteConfig.translationEnabled,
+      'call_translation_enabled': RemoteConfig.callTranslationEnabled,
+      'native_supported': _nativeSupported,
+      'native_probe_attempts': _probeAttempts,
+      'controller_ready': _controller != null,
+      'config_revision': RemoteConfig.revision.value,
+    }));
   }
 
   @override
   void dispose() {
     _warmUpTimer?.cancel();
+    RemoteConfig.revision.removeListener(_changed);
     final c = _controller;
     c?.state.removeListener(_changed);
     c?.switchingTo.removeListener(_changed);
@@ -141,6 +231,12 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
     _sheetOpen = true;
     _lastSheetAt = now;
 
+    // [CALL-TRANSLATE-OBS-1 / F4] FIRST rung of the client funnel. Everything
+    // downstream shares this call's `call_ref` (and `session_id` once one
+    // exists), so a session that dies before `active` shows up as a step that
+    // stops rather than as an absence of `call_translation_started`.
+    _controller?.notePillTapped(currentCode == null ? 'start' : 'switch');
+
     // Pre-mint (and, from idle, pre-open the socket) for the LAST-USED language
     // once the sheet has been open ~500 ms. Everything it creates is unbilled
     // and discardable; see CallTranslationController.warmUp.
@@ -161,7 +257,12 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
       _sheetOpen = false;
       _lastSheetAt = DateTime.now();
     }
-    if (lang == null) unawaited(_controller?.discardWarmUp('sheet_dismissed'));
+    if (lang == null) {
+      _controller?.noteFunnel('language_chosen', ok: false, reason: 'sheet_dismissed');
+      unawaited(_controller?.discardWarmUp('sheet_dismissed'));
+    } else {
+      _controller?.noteFunnel('language_chosen', extra: {'chosen_language': lang});
+    }
     return lang;
   }
 
@@ -228,9 +329,40 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
   }
 
   @override Widget build(BuildContext context) {
-    if (defaultTargetPlatform != TargetPlatform.android || !RemoteConfig.translationEnabled || !RemoteConfig.callTranslationEnabled) return const SizedBox.shrink();
+    // [CALL-TRANSLATE-OBS-1 / F1] Every hide path used to be a bare
+    // `SizedBox.shrink()` — no log, no event, no dialog — so "I don't see the
+    // Translate pill" was un-diagnosable without a device in hand. Each cause now
+    // has its own reason code and one event carries it (deduped; see
+    // [_reportVisibility]).
+    if (defaultTargetPlatform != TargetPlatform.android) {
+      _reportVisibility('not_android', visible: false);
+      return const SizedBox.shrink();
+    }
+    if (!RemoteConfig.translationEnabled) {
+      _reportVisibility('flag_translation_off', visible: false);
+      return const SizedBox.shrink();
+    }
+    if (!RemoteConfig.callTranslationEnabled) {
+      _reportVisibility('flag_call_translation_off', visible: false);
+      return const SizedBox.shrink();
+    }
     final controller = _controller;
-    if (!_nativeSupported || controller == null || !controller.available) return const SizedBox.shrink();
+    if (controller == null) {
+      // Transient by nature: the async bridge probe has not returned yet.
+      _reportVisibility('controller_null', visible: false);
+      return const SizedBox.shrink();
+    }
+    if (!_nativeSupported) {
+      _reportVisibility('native_unsupported', visible: false);
+      return const SizedBox.shrink();
+    }
+    if (!controller.available) {
+      // Same two flags read through the controller. Practically unreachable
+      // given the checks above; kept so a future divergence is not silent.
+      _reportVisibility('controller_unavailable', visible: false);
+      return const SizedBox.shrink();
+    }
+    _reportVisibility('shown', visible: true);
     final active = controller.active;
     final preparing = controller.preparing;
     final stalled = controller.state.value == CallTranslationState.stalled;
@@ -283,6 +415,11 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
           Text('Translator catching up… you are hearing the original voice', textAlign: TextAlign.right, style: ZineText.tag(size: 10)),
         ValueListenableBuilder<bool>(
           valueListenable: controller.qualityDegraded,
+          // [CALL-TRANSLATE-OBS-1 / F1] This `SizedBox.shrink()` is NOT a pill
+          // hide path: the pill is already on screen and this is only the
+          // optional "quality is unstable" caption under it. Absence of a
+          // warning is the healthy case, so it emits nothing — instrumenting it
+          // would be an event on every rebuild of a working call.
           builder: (_, degraded, __) => degraded && !stalled
               ? Text('Translation quality is unstable on this connection', textAlign: TextAlign.right, style: ZineText.tag(size: 10))
               : const SizedBox.shrink(),

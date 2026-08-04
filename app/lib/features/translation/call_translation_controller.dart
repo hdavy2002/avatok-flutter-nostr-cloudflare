@@ -293,6 +293,67 @@ class CallTranslationController with WidgetsBindingObserver {
         'call_ref': _serverCallRef ?? callRef,
       };
 
+  // ── [CALL-TRANSLATE-OBS-1 / F4] THE CLIENT FUNNEL ─────────────────────────
+  //
+  // Three days of production produced 12 `call_translation_stopped` events
+  // (emitted by the WORKER) and ZERO `call_translation_started` (emitted here,
+  // and only once `active` is reached). Sessions were therefore being created
+  // server-side and torn down without ever reaching active — and because the
+  // only client event on that road was the LAST one, the failure was visible
+  // solely as an absence, which no PostHog query can attribute.
+  //
+  // So every rung of the road now emits ONE event, `call_translation_funnel`,
+  // carrying the same `call_ref` (and `session_id` once it exists). Steps, in
+  // order: pill_tapped → language_chosen → start_requested → session_created →
+  // provider_ready → activated → first_audio; plus switch_requested →
+  // switch_completed for a mid-call change. A failure emits the SAME step with
+  // `ok:false` and a category `reason`, so one breakdown-by-step query says
+  // where it died. Codes, timings and language codes only — never transcript
+  // text or anything audio-derived.
+  int _funnelAtMs = 0;
+  String _funnelEntry = '';
+
+  /// Called by the overlay the moment the language sheet is opened — the first
+  /// user-visible action of the whole flow. [entry] is `start` or `switch`.
+  void notePillTapped(String entry) {
+    _funnelEntry = entry;
+    _funnelAtMs = DateTime.now().millisecondsSinceEpoch;
+    noteFunnel('pill_tapped');
+  }
+
+  /// Public funnel rung, so the overlay can report the steps it owns (sheet
+  /// open, language chosen) against the same join keys as the controller's.
+  void noteFunnel(
+    String step, {
+    bool ok = true,
+    String reason = '',
+    Map<String, Object> extra = const {},
+  }) =>
+      _funnel(step, ok: ok, reason: reason, extra: extra);
+
+  void _funnel(
+    String step, {
+    bool ok = true,
+    String reason = '',
+    Map<String, Object> extra = const {},
+  }) {
+    if (_disposed) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    Analytics.capture('call_translation_funnel', {
+      ..._tags,
+      'step': step,
+      'ok': ok,
+      'reason': reason,
+      'entry': _funnelEntry,
+      'language': targetLanguage.value ?? '',
+      'state': state.value.name,
+      // Same question that cost a whole session: which build is this person on.
+      'app_build': Analytics.appBuild,
+      'ms_since_tap': _funnelAtMs > 0 ? now - _funnelAtMs : -1,
+      ...extra,
+    });
+  }
+
   /// Records the server's `call_ref` from any response that carries one.
   void _absorbCallRef(Map<String, dynamic> response) {
     final ref = response['call_ref']?.toString();
@@ -449,17 +510,21 @@ class CallTranslationController with WidgetsBindingObserver {
   /// Returns null on success, else a stable error code the overlay maps to copy.
   Future<String?> start(String lang) async {
     if (!available) {
+      _funnel('start_requested', ok: false, reason: 'flags_off');
       _enterFailed(CallTranslationFailure.disabled, 'flags_off');
       return 'disabled';
     }
     if (circuitOpen) {
       // Terminal for this call — do not spend another token proving it again.
+      _funnel('start_requested', ok: false, reason: 'circuit_open');
       _enterFailed(CallTranslationFailure.circuitOpen, 'circuit_open');
       return 'unavailable_for_call';
     }
     if (state.value != CallTranslationState.idle && state.value != CallTranslationState.failed) {
+      _funnel('start_requested', ok: false, reason: 'busy_${state.value.name}');
       return 'busy';
     }
+    _funnel('start_requested', extra: {'requested_language': lang});
     _tapAtMs = DateTime.now().millisecondsSinceEpoch;
     _firstAudioMs = null;
     _notify(failure, CallTranslationFailure.none);
@@ -484,11 +549,13 @@ class CallTranslationController with WidgetsBindingObserver {
       // unbilled setup interval while /activate performs the first debit.
       await bridge.activate();
     } catch (_) {
+      _funnel('activated', ok: false, reason: 'activate_native_failed');
       await _stopUnbilledPending();
       _enterFailed(CallTranslationFailure.playbackUnavailable, 'activate_native_failed');
       return 'playback_unavailable';
     }
     if (state.value != CallTranslationState.warming || _id == null || _lease == null) {
+      _funnel('activated', ok: false, reason: 'warming_lost');
       await _stopUnbilledPending();
       _enterFailed(CallTranslationFailure.providerUnavailable, 'warming_lost');
       return 'provider_unavailable';
@@ -501,6 +568,7 @@ class CallTranslationController with WidgetsBindingObserver {
     _absorbCallRef(activate);
     final activateStatus = (activate['status'] as num?)?.toInt() ?? 0;
     if (activateStatus != 200) {
+      _funnel('activated', ok: false, reason: 'activate_$activateStatus');
       // A2: past this point the payer MAY already have been charged (the race
       // this retry loop exists for). Never leak the row — stop it explicitly
       // even though the charge is not refunded.
@@ -532,6 +600,7 @@ class CallTranslationController with WidgetsBindingObserver {
     try {
       await bridge.commitPaid();
     } catch (_) {
+      _funnel('activated', ok: false, reason: 'commit_paid_failed');
       await _stopInternal('commit_paid_failed', toFailed: false);
       _enterFailed(CallTranslationFailure.playbackUnavailable, 'commit_paid_failed');
       return 'playback_unavailable';
@@ -543,9 +612,11 @@ class CallTranslationController with WidgetsBindingObserver {
     _notify(billedTokens,
         (activate['billed_tokens'] as num?)?.toInt() ?? TranslationApi.ratePerMin);
     if (!_transition(CallTranslationState.active, 'activated')) {
+      _funnel('activated', ok: false, reason: 'active_rejected');
       await _stopInternal('active_rejected', toFailed: false);
       return 'busy';
     }
+    _funnel('activated', extra: {'warm_start': adopted});
     _renew = Timer.periodic(const Duration(minutes: 1), (_) => unawaited(_renewMinute()));
     _clock = Timer.periodic(const Duration(seconds: 1), (_) => elapsedSeconds.value++);
     _startFirstAudioProbe();
@@ -592,7 +663,13 @@ class CallTranslationController with WidgetsBindingObserver {
         warmUp: warm,
       );
     } catch (_) {
-      if (!warm) _enterFailed(CallTranslationFailure.network, 'start_unreachable');
+      // [CALL-TRANSLATE-OBS-1 / F4] Failures are reported only on the REAL path.
+      // A warm-up is speculative and invisible by design (superseded warm-ups are
+      // routine), so instrumenting its failures would drown the funnel.
+      if (!warm) {
+        _funnel('session_created', ok: false, reason: 'start_unreachable');
+        _enterFailed(CallTranslationFailure.network, 'start_unreachable');
+      }
       return 'network_unavailable';
     }
     _absorbCallRef(pending);
@@ -600,7 +677,10 @@ class CallTranslationController with WidgetsBindingObserver {
     if (status != 200) {
       if (status == 402 || TranslationApi.isInsufficientTokens(pending)) {
         _absorbPaidOnlyRefusal(pending);
-        if (!warm) _enterFailed(CallTranslationFailure.insufficientTokens, 'start_402');
+        if (!warm) {
+          _funnel('session_created', ok: false, reason: 'start_402');
+          _enterFailed(CallTranslationFailure.insufficientTokens, 'start_402');
+        }
         return 'insufficient_tokens';
       }
       // [CALL-TRANSLATE-2D-4 / D-6] A 409 CARRYING A SESSION_ID IS RECOVERABLE.
@@ -641,7 +721,10 @@ class CallTranslationController with WidgetsBindingObserver {
         CallTranslationDeviceNonce.invalidate();
         _nonce = null;
       }
-      if (!warm) _enterFailed(CallTranslationFailure.providerUnavailable, 'start_$status');
+      if (!warm) {
+        _funnel('session_created', ok: false, reason: 'start_$status');
+        _enterFailed(CallTranslationFailure.providerUnavailable, 'start_$status');
+      }
       return 'failed';
     }
     // Locals, not fields: a SUPERSEDED warm-up must never be able to overwrite
@@ -652,7 +735,10 @@ class CallTranslationController with WidgetsBindingObserver {
     final token = pending['token']?.toString();
     if (sid == null || lease == null || token == null || token.isEmpty) {
       if (sid != null) unawaited(_releaseRow(sid));
-      if (!warm) _enterFailed(CallTranslationFailure.providerUnavailable, 'start_incomplete');
+      if (!warm) {
+        _funnel('session_created', ok: false, reason: 'start_incomplete');
+        _enterFailed(CallTranslationFailure.providerUnavailable, 'start_incomplete');
+      }
       return 'failed';
     }
 
@@ -674,7 +760,12 @@ class CallTranslationController with WidgetsBindingObserver {
       Analytics.capture('call_translation_nonce_unbound', {..._tags, 'session_id': sid});
     }
 
+    // The billing row exists server-side from here on — which is exactly the
+    // point the 12-stopped/0-started gap proved we could not see from the client.
+    _funnel('session_created', extra: {'warm': warm, 'device_bound': _deviceBound});
+
     if (!warm && !_transition(CallTranslationState.warming, 'session_created')) {
+      _funnel('provider_ready', ok: false, reason: 'warming_rejected');
       await _stopInternal('warming_rejected', toFailed: false);
       return 'busy';
     }
@@ -695,7 +786,10 @@ class CallTranslationController with WidgetsBindingObserver {
         return 'superseded';
       }
       await _stopUnbilledPending();
-      if (!warm) _enterFailed(CallTranslationFailure.sourceUnavailable, 'prepare_failed');
+      if (!warm) {
+        _funnel('provider_ready', ok: false, reason: 'prepare_failed');
+        _enterFailed(CallTranslationFailure.sourceUnavailable, 'prepare_failed');
+      }
       return 'source_capture_unavailable';
     }
     if (warm && _warmGeneration != warmGeneration) {
@@ -706,6 +800,10 @@ class CallTranslationController with WidgetsBindingObserver {
       await _releaseRow(sid);
       return 'superseded';
     }
+    // Provider socket reached setupComplete. Still UNBILLED — /activate is the
+    // paid boundary — so this rung is what separates "the provider never came
+    // up" from "the provider came up and the money step failed".
+    _funnel('provider_ready', extra: {'warm': warm});
     return null;
   }
 
@@ -1007,6 +1105,10 @@ class CallTranslationController with WidgetsBindingObserver {
         source: 'network',
         extra: {..._tags, 'language': targetLanguage.value ?? ''},
       ));
+      // [CALL-TRANSLATE-OBS-1 / F4] Last rung: translated audio actually reached
+      // the user. A funnel that reaches `activated` but never `first_audio` is
+      // the "billed but silent" shape.
+      _funnel('first_audio', extra: {'first_audio_ms': _firstAudioMs!});
     }
 
     // Far edge of `switch_gap_ms`: the first translated chunk produced by the
@@ -1682,8 +1784,15 @@ class CallTranslationController with WidgetsBindingObserver {
 
   Future<String?> _runSwitch(String lang) async {
     final id = _id;
-    if (id == null) return 'busy';
-    if (!_beginLanguageSwitch(lang)) return 'busy';
+    if (id == null) {
+      _funnel('switch_requested', ok: false, reason: 'no_session');
+      return 'busy';
+    }
+    if (!_beginLanguageSwitch(lang)) {
+      _funnel('switch_requested', ok: false, reason: 'busy_${state.value.name}');
+      return 'busy';
+    }
+    _funnel('switch_requested', extra: {'to_language': lang});
 
     // ── step 1: row update + token mint (old session still translating) ──────
     String? token = _claimWarmToken(lang);
@@ -1830,6 +1939,7 @@ class CallTranslationController with WidgetsBindingObserver {
     // stall would both lie to the user and spam the illegal-transition counter.
     _armSwitchGapProbe(lang, from, event.intOf('sinceLastAudioMs'));
     _transition(CallTranslationState.active, 'language_switched_$lang');
+    _funnel('switch_completed', extra: {'to_language': lang, 'from_language': from});
 
     // Safety net over the new pipeline's refill — the user hears the real
     // speaker rather than silence. NO setFallback(false) anywhere: the native
@@ -1918,6 +2028,7 @@ class CallTranslationController with WidgetsBindingObserver {
       'recovered_to_previous': true,
       ...extra,
     });
+    _funnel('switch_completed', ok: false, reason: reason, extra: {'to_language': target ?? ''});
     if (completer != null && !completer.isCompleted) completer.complete('switch_failed');
   }
 
@@ -1946,6 +2057,9 @@ class CallTranslationController with WidgetsBindingObserver {
       'to_language': target ?? '',
       'reason': reason,
       'recovered_to_previous': true,
+    });
+    _funnel('switch_completed', ok: false, reason: 'aborted_$reason', extra: {
+      'to_language': target ?? '',
     });
   }
 
