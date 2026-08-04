@@ -38,7 +38,35 @@ type CallSession = {
   id: string; payer_uid: string; call_ref: string; target_lang: string;
   source_lease: string; status: string; started_at: number | null;
   last_billed_minute: number; billed_tokens: number; updated_at: number;
+  // [CALL-TRANSLATE-2B-3] Device-scoped binding for provider tokens. NULL for
+  // sessions created by clients from before the nonce shipped.
+  device_nonce: string | null;
 };
+
+// [CALL-TRANSLATE-2B-3] Opaque client-generated value; the Worker only ever
+// compares it, never interprets it. Bounded so it cannot be used as storage.
+const DEVICE_NONCE_RE = /^[A-Za-z0-9_.:-]{8,128}$/;
+
+function readNonce(v: unknown): string | null {
+  const s = typeof v === "string" ? v.trim() : "";
+  return s.length ? s : null;
+}
+
+/**
+ * [CALL-TRANSLATE-2B-3] Token issuance is bound to the session row AND to the
+ * device that created it.
+ *
+ * The nonce is OPTIONAL for one release cycle: a request that omits it is
+ * accepted (existing builds send nothing), and a session created without one
+ * can never mismatch. It is enforced the moment BOTH sides carry a value — that
+ * is what stops a token minted for one device being refreshed from another.
+ * Tighten to mandatory once no pre-nonce build is in the field.
+ */
+function nonceRejected(s: CallSession, supplied: unknown): boolean {
+  const got = readNonce(supplied);
+  if (!got || !s.device_nonce) return false;
+  return got !== s.device_nonce;
+}
 
 async function load(env: Env, id: string): Promise<CallSession | null> {
   return await metaDb(env).prepare("SELECT * FROM translation_call_sessions WHERE id=?1").bind(id).first<CallSession>();
@@ -109,6 +137,14 @@ async function mintToken(env: Env, targetLang: string): Promise<{ token: string;
   return response.ok && body.name ? { token: body.name, expiresAt } : null;
 }
 
+/** Awaited on purpose: workerd cancels un-awaited sends on early-return paths. */
+async function nonceRejection(env: Env, s: CallSession, route: string): Promise<Response> {
+  await track(env, s.payer_uid, "call_translation_nonce_mismatch", APP, {
+    session_id: s.id, call_ref: s.call_ref, route,
+  });
+  return json({ error: "device_nonce_mismatch", billable: false }, 403);
+}
+
 function authError(ctx: unknown): Response {
   return json({ error: (ctx as { error: string }).error }, (ctx as { status: number }).status);
 }
@@ -172,6 +208,8 @@ export async function callTranslationStart(req: Request, env: Env): Promise<Resp
   // must provide this exact capability before a provider token can be used.
   if (!CALL_TRANSLATION_SOURCE_BRIDGE_ENABLED || b.source_capability !== "webrtc_same_capture_pcm16_v1") return json({ error: "source_capture_unavailable", billable: false }, 412);
   if (!CALL_TRANSLATION_LANGS.has(lang)) return json({ error: "unsupported target_lang", lang }, 400);
+  const deviceNonce = readNonce(b.device_nonce);
+  if (deviceNonce && !DEVICE_NONCE_RE.test(deviceNonce)) return json({ error: "invalid_device_nonce", billable: false }, 400);
   if (!(await participantInActiveCall(env, callRef, ctx.uid))) return json({ error: "not an active 1:1 call" }, 403);
   const limited = await rateLimit(env, `call-trl:${ctx.uid}`, 10, 3600);
   if (limited) return limited;
@@ -188,9 +226,9 @@ export async function callTranslationStart(req: Request, env: Env): Promise<Resp
   if (!token) return json({ error: "provider_unavailable", billable: false }, 502);
   try {
     await metaDb(env).prepare(
-      `INSERT INTO translation_call_sessions (id,payer_uid,call_ref,target_lang,source_lease,status,started_at,last_billed_minute,billed_tokens,updated_at)
-       VALUES (?1,?2,?3,?4,?5,'pending',NULL,0,0,?6)`,
-    ).bind(id, ctx.uid, callRef, lang, lease, now).run();
+      `INSERT INTO translation_call_sessions (id,payer_uid,call_ref,target_lang,source_lease,status,started_at,last_billed_minute,billed_tokens,updated_at,device_nonce)
+       VALUES (?1,?2,?3,?4,?5,'pending',NULL,0,0,?6,?7)`,
+    ).bind(id, ctx.uid, callRef, lang, lease, now, deviceNonce).run();
   } catch {
     const winner = await metaDb(env).prepare("SELECT id FROM translation_call_sessions WHERE payer_uid=?1 AND call_ref=?2 AND status IN ('pending','activating','active') LIMIT 1").bind(ctx.uid, callRef).first<{ id: string }>();
     return json({ error: "translation already active", session_id: winner?.id }, 409);
@@ -205,6 +243,9 @@ export async function callTranslationStart(req: Request, env: Env): Promise<Resp
     model: CALL_TRANSLATION_MODEL,
     rate_per_min: CALL_TRANSLATION_RATE,
     balance: bal,
+    // Tells the client whether this session is nonce-bound, so it knows to send
+    // the same value back on activate/renew/token/language.
+    device_bound: deviceNonce !== null,
   });
 }
 
@@ -217,6 +258,7 @@ export async function callTranslationActivate(req: Request, env: Env, id: string
   if (s.status === "active") return json({ ok: true, billed_minute: s.last_billed_minute, rate_per_min: CALL_TRANSLATION_RATE });
   if (s.status !== "pending" && s.status !== "activating") return json({ error: s.status }, 409);
   const b = await req.json().catch(() => ({})) as Record<string, unknown>;
+  if (nonceRejected(s, b.device_nonce)) return await nonceRejection(env, s, "activate");
   if (b.source_lease !== s.source_lease || b.source_ready !== true || Date.now() - s.updated_at > SOURCE_LEASE_MS) return json({ error: "source_not_ready", billable: false }, 412);
   if (!(await participantInActiveCall(env, s.call_ref, ctx.uid))) return json({ error: "call_ended_or_source_invalid", billable: false }, 409);
   if (s.status === "pending") {
@@ -252,6 +294,8 @@ export async function callTranslationRenew(req: Request, env: Env, id: string): 
   const s = await load(env, id);
   if (!s || s.payer_uid !== ctx.uid) return json({ error: "not found" }, 404);
   if (s.status !== "active") return json({ error: s.status }, 409);
+  const rb = await req.json().catch(() => ({})) as Record<string, unknown>;
+  if (nonceRejected(s, rb.device_nonce)) return await nonceRejection(env, s, "renew");
   if (!(await participantInActiveCall(env, s.call_ref, ctx.uid))) return json({ error: "call_ended" }, 409);
   const elapsed = Math.max(1, Math.ceil((Date.now() - Number(s.started_at)) / 60_000));
   if (elapsed <= s.last_billed_minute) return json({ ok: true, billed_minute: s.last_billed_minute, billed_tokens: s.billed_tokens });
@@ -294,14 +338,28 @@ export async function callTranslationStop(req: Request, env: Env, id: string): P
   return json({ ok: true, billed_tokens: s.billed_tokens });
 }
 
+/**
+ * Mint a replacement single-use provider token for an existing live session.
+ *
+ * [CALL-TRANSLATE-2B-3] Issuance is bound to three things, all checked here:
+ * the session row (must exist, be owned by the caller, and be `active`), the
+ * call (the payer must still be a participant in that exact connected CallRoom),
+ * and the device nonce recorded at session create. `uses: 1` keeps the minted
+ * token single-use provider-side. The target language always comes from the row,
+ * never from the request — so a switch (see /language) is the only way to change it.
+ */
 export async function callTranslationToken(req: Request, env: Env, id: string): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return authError(ctx);
   const s = await load(env, id);
   if (!s || s.payer_uid !== ctx.uid || s.status !== "active") return json({ error: "not found" }, 404);
+  const b = await req.json().catch(() => ({})) as Record<string, unknown>;
+  if (nonceRejected(s, b.device_nonce)) return await nonceRejection(env, s, "token");
   if (!(await participantInActiveCall(env, s.call_ref, ctx.uid))) return json({ error: "call_ended" }, 409);
   const limited = await rateLimit(env, `call-trl-token:${ctx.uid}`, 24, 3600);
   if (limited) return limited;
   const token = await mintToken(env, s.target_lang);
-  return token ? json({ ok: true, token: token.token, token_expires_at: token.expiresAt, model: CALL_TRANSLATION_MODEL }) : json({ error: "provider_unavailable" }, 502);
+  return token
+    ? json({ ok: true, session_id: s.id, token: token.token, token_expires_at: token.expiresAt, target_lang: s.target_lang, model: CALL_TRANSLATION_MODEL })
+    : json({ error: "provider_unavailable" }, 502);
 }
