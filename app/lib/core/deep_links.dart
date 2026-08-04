@@ -8,6 +8,7 @@ import '../features/avatok/ava_number.dart';
 import '../features/avatok/contacts.dart';
 import '../features/explore/listing_detail.dart';
 import 'analytics.dart';
+import 'affiliate_bind_service.dart';
 
 /// Routes incoming deep links into the app.
 ///
@@ -43,6 +44,12 @@ class DeepLinks {
   }
 
   static void _handle(Uri uri) {
+    final affiliateToken = _affiliateToken(uri);
+    if (affiliateToken.isNotEmpty) {
+      unawaited(AffiliateBindService.savePendingToken(affiliateToken));
+      Analytics.capture('affiliate_referral_link_opened', {'scheme': uri.scheme});
+      return;
+    }
     // [MKT7] Marketplace listing link — https://avatok.ai/l/<id> or avatok://l/<id>
     // (the QR on a listing detail page). Open the listing directly.
     final listingId = _listingId(uri);
@@ -103,6 +110,14 @@ class DeepLinks {
         messenger?.showSnackBar(SnackBar(content: Text('Added ${contact.name}')));
       }
     });
+  }
+
+  static String _affiliateToken(Uri uri) {
+    final custom = uri.scheme == 'avatok' && (uri.host == 'join' || uri.path == 'join');
+    final web = (uri.scheme == 'https' || uri.scheme == 'http') &&
+        uri.host.endsWith('avatok.ai') && uri.path.startsWith('/a/');
+    if (!custom && !web) return '';
+    return (uri.queryParameters['aff'] ?? '').trim();
   }
 
   /// Listing id from a `/l/<id>` link (https://avatok.ai/l/<id> or avatok://l/<id>),

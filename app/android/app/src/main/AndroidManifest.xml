@@ -166,6 +166,18 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="https" android:host="avatok.ai" android:pathPrefix="/l/"/>
             </intent-filter>
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https" android:host="avatok.ai" android:pathPrefix="/a/"/>
+            </intent-filter>
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https" android:host="avatok.ai" android:pathPrefix="/i/"/>
+            </intent-filter>
             <!-- Custom-scheme deeplink fallback (avatok://booking/<id>, avatok://add?t=). -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW"/>

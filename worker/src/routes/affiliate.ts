@@ -40,7 +40,10 @@ const APPS = new Set(["avalive", "avaconsult", "avavoice"]);
 const PENDING_TTL_S = 30 * 86_400;   // pending-attribution KV — 30 days, last write wins
 const CLICK_DEDUPE_TTL_S = 3_600;    // funnel click events deduped per device per hour
 const LINK_BASE = "https://api.avatok.ai/a/";
-const DEEP_LINK = (listingId: string, linkId: string) => `avatok://listing/${listingId}?aff=${linkId}`;
+const PLATFORM_LISTING = "__platform__";
+const DEEP_LINK = (listingId: string, token: string) => listingId === PLATFORM_LISTING
+  ? `avatok://join?aff=${encodeURIComponent(token)}`
+  : `avatok://listing/${encodeURIComponent(listingId)}?aff=${encodeURIComponent(token)}`;
 
 // Unambiguous lowercase alphabet for public affiliate codes (no 0/o/1/l/i).
 const CODE_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
@@ -50,6 +53,40 @@ function randId(alphabet: string, len: number): string {
   let s = "";
   for (const b of bytes) s += alphabet[b % alphabet.length];
   return s;
+}
+
+function b64url(bytes: Uint8Array): string {
+  let s = ""; for (const b of bytes) s += String.fromCharCode(b);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function unb64url(s: string): Uint8Array {
+  const pad = "=".repeat((4 - (s.length % 4)) % 4);
+  const raw = atob(s.replace(/-/g, "+").replace(/_/g, "/") + pad);
+  return Uint8Array.from(raw, c => c.charCodeAt(0));
+}
+async function affiliateToken(env: Env, linkId: string, source = "link"): Promise<string> {
+  if (!env.AFFILIATE_TOKEN_SECRET) throw new Error("affiliate_token_unconfigured");
+  const payload = b64url(new TextEncoder().encode(JSON.stringify({ link_id: linkId, issued_at: Date.now(), source })));
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(env.AFFILIATE_TOKEN_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload));
+  return `aff1.${payload}.${b64url(new Uint8Array(sig))}`;
+}
+async function verifyAffiliateToken(env: Env, token: string): Promise<{ link_id: string; issued_at: number; source?: string } | null> {
+  try {
+    if (!env.AFFILIATE_TOKEN_SECRET) return null;
+    const [version, payload, signature] = String(token).split(".");
+    if (version !== "aff1" || !payload || !signature) return null;
+    const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(env.AFFILIATE_TOKEN_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
+    if (!await crypto.subtle.verify("HMAC", key, unb64url(signature), new TextEncoder().encode(payload))) return null;
+    const p = JSON.parse(new TextDecoder().decode(unb64url(payload))) as any;
+    const issued = Number(p.issued_at);
+    if (!p.link_id || !Number.isFinite(issued) || Date.now() - issued < 0 || Date.now() - issued > 30 * 86_400_000) return null;
+    return { link_id: String(p.link_id), issued_at: issued, source: typeof p.source === "string" ? p.source : undefined };
+  } catch { return null; }
+}
+function linkLive(cfg: any, link: LinkRow): boolean {
+  if (cfg.avaAffiliateEnabled !== true || link.status !== "active") return false;
+  return link.app !== "avatok" || cfg.affiliateJoinLinkEnabled === true;
 }
 
 async function flagOff(env: Env): Promise<Response | null> {
@@ -105,7 +142,8 @@ export async function affiliateRegister(req: Request, env: Env): Promise<Respons
   const existing = await loadAffiliate(env, ctx.uid);
   if (existing) {
     if (existing.status === "suspended") return json({ error: "affiliate account suspended" }, 403);
-    return json({ ok: true, already: true, code: existing.code, status: existing.status });
+    const pl = await metaDb(env).prepare("SELECT * FROM affiliate_links WHERE affiliate_uid=?1 AND app='avatok' AND listing_id=?2").bind(ctx.uid, PLATFORM_LISTING).first<any>();
+    return json({ ok: true, already: true, code: existing.code, status: existing.status, platform_link: pl ? linkJson(pl) : null });
   }
   const now = Date.now();
   // Retry on the (astronomically unlikely) UNIQUE collision of the short code.
@@ -115,9 +153,15 @@ export async function affiliateRegister(req: Request, env: Env): Promise<Respons
       await metaDb(env).prepare(
         "INSERT INTO affiliates (uid, code, status, created_at) VALUES (?1,?2,'active',?3)",
       ).bind(ctx.uid, code, now).run();
+      if (env.AFFILIATE_TOKEN_SECRET) {
+        await metaDb(env).prepare(
+          "INSERT OR IGNORE INTO affiliate_links (id, affiliate_uid, listing_id, app, status, clicks, created_at) VALUES (?1,?2,?3,'avatok','active',0,?4)",
+        ).bind(randId(ID_ALPHABET, 10), ctx.uid, PLATFORM_LISTING, now).run();
+      }
       track(env, ctx.uid, "affiliate_signup_completed", APP, { identity_level: 1, code });
       metric(env, "affiliate_signup", [1]);
-      return json({ ok: true, code, status: "active" });
+      const pl = await metaDb(env).prepare("SELECT * FROM affiliate_links WHERE affiliate_uid=?1 AND app='avatok' AND listing_id=?2").bind(ctx.uid, PLATFORM_LISTING).first<any>();
+      return json({ ok: true, code, status: "active", platform_link: pl ? linkJson(pl) : null });
     } catch (e: any) {
       const msg = String(e?.message ?? e);
       if (/UNIQUE|constraint/i.test(msg) && /code/i.test(msg)) continue; // re-roll code
@@ -258,17 +302,20 @@ export async function affiliateLinkCreate(req: Request, env: Env): Promise<Respo
   const b = (await req.json().catch(() => ({}))) as any;
   const listingId = String(b.listing_id || "").trim();
   const app = String(b.app || "").trim().toLowerCase();
-  if (!listingId || !APPS.has(app)) return json({ error: "listing_id and app (avalive|avaconsult|avavoice) required" }, 400);
+  const platform = app === "avatok";
+  if ((!listingId && !platform) || (!APPS.has(app) && !platform)) return json({ error: "listing_id and app required" }, 400);
+  if (platform && !env.AFFILIATE_TOKEN_SECRET) return json({ error: "affiliate link signing not configured" }, 503);
+  const effectiveListingId = platform ? PLATFORM_LISTING : listingId;
 
-  const listing = await loadListing(env, app, listingId);
-  if (!listing || listing.status !== "published") return json({ error: "listing not promotable" }, 404);
+  const listing = platform ? null : await loadListing(env, app, listingId);
+  if (!platform && (!listing || listing.status !== "published")) return json({ error: "listing not promotable" }, 404);
   // Creator-self-promo is meaningless — block at mint (also re-blocked at bind + settle).
-  if (listing.creator_id === ctx.uid) return json({ error: "cannot promote your own listing" }, 403);
+  if (listing && listing.creator_id === ctx.uid) return json({ error: "cannot promote your own listing" }, 403);
 
   const db = metaDb(env);
   const existing = await db.prepare(
     "SELECT * FROM affiliate_links WHERE affiliate_uid=?1 AND listing_id=?2",
-  ).bind(ctx.uid, listingId).first<any>();
+  ).bind(ctx.uid, effectiveListingId).first<any>();
   if (existing) {
     return json({ ok: true, already: true, link: linkJson(existing as LinkRow) });
   }
@@ -277,7 +324,7 @@ export async function affiliateLinkCreate(req: Request, env: Env): Promise<Respo
   try {
     await db.prepare(
       "INSERT INTO affiliate_links (id, affiliate_uid, listing_id, app, status, clicks, created_at) VALUES (?1,?2,?3,?4,'active',0,?5)",
-    ).bind(id, ctx.uid, listingId, app, now).run();
+    ).bind(id, ctx.uid, effectiveListingId, app, now).run();
   } catch {
     // Lost a race with ourselves — return the winner (idempotent pair).
     const again = await db.prepare("SELECT * FROM affiliate_links WHERE affiliate_uid=?1 AND listing_id=?2").bind(ctx.uid, listingId).first<any>();
@@ -285,16 +332,16 @@ export async function affiliateLinkCreate(req: Request, env: Env): Promise<Respo
     return json({ error: "could not create link" }, 500);
   }
   track(env, ctx.uid, "affiliate_link_created", APP,
-      { link_id: id, listing_id: listingId, app, listing_price: listing.price });
+      { link_id: id, listing_id: effectiveListingId, app, listing_price: listing?.price ?? null });
   metric(env, "affiliate_link_created", [1], [app]);
-  return json({ ok: true, link: linkJson({ id, affiliate_uid: ctx.uid, listing_id: listingId, app, status: "active", clicks: 0, created_at: now }) });
+  return json({ ok: true, link: linkJson({ id, affiliate_uid: ctx.uid, listing_id: effectiveListingId, app, status: "active", clicks: 0, created_at: now }) });
 }
 
 function linkJson(l: LinkRow): any {
   return {
     id: l.id, listing_id: l.listing_id, app: l.app, status: l.status,
     clicks: Number(l.clicks ?? 0), created_at: l.created_at,
-    url: LINK_BASE + l.id, deep_link: DEEP_LINK(l.listing_id, l.id),
+    url: LINK_BASE + l.id, deep_link: l.app === "avatok" ? null : DEEP_LINK(l.listing_id, l.id),
   };
 }
 
@@ -513,7 +560,7 @@ export async function affiliateClick(req: Request, env: Env, linkId: string): Pr
   if (!link) return htmlResponse(previewHtml(env, { title: "Link not found", missing: true }), 404);
   const [affiliate, listing, cfg] = await Promise.all([
     loadAffiliate(env, link.affiliate_uid),
-    loadListing(env, link.app, link.listing_id),
+    link.app === "avatok" ? Promise.resolve(null) : loadListing(env, link.app, link.listing_id),
     readConfig(env),
   ]);
 
@@ -546,20 +593,28 @@ export async function affiliateClick(req: Request, env: Env, linkId: string): Pr
 
   // Pending attribution — flag ON + link active + affiliate active only. OFF ⇒
   // the redirect still works, no attribution (§10 kill-switch semantics).
-  if (cfg.avaAffiliateEnabled === true && link.status === "active" && affiliate?.status === "active") {
+  if (linkLive(cfg, link) && affiliate?.status === "active") {
     await env.TOKENS.put(`aff_pending:${device}`,
       JSON.stringify({ link_id: linkId, ts: Date.now(), source }),
       { expirationTtl: PENDING_TTL_S }).catch(() => null); // plain put = last write wins
   }
 
-  const deep = DEEP_LINK(link.listing_id, linkId);
+  if (link.app === "avatok" && !linkLive(cfg, link)) {
+    return htmlResponse(previewHtml(env, { title: "Join AvaTOK", missing: true }), 200);
+  }
+  let token = linkId;
+  if (link.app === "avatok") {
+    try { token = await affiliateToken(env, linkId, source); }
+    catch { return htmlResponse(previewHtml(env, { title: "Join AvaTOK", missing: true }), 503); }
+  }
+  const deep = DEEP_LINK(link.listing_id, token);
   const html = previewHtml(env, {
-    title: listing?.title ?? "AvaTok",
+    title: listing?.title ?? (link.app === "avatok" ? "Join AvaTOK" : "AvaTok"),
     price: listing?.price ?? null,
     app: link.app,
     creator: listing?.creator_id ?? null,
     deepLink: deep,
-    linkId,
+    linkId, token,
   });
   return htmlResponse(html, 200, {
     "set-cookie": `ava_aff_dev=${device}; Max-Age=${PENDING_TTL_S}; Path=/; Secure; SameSite=Lax`,
@@ -578,13 +633,13 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
  *  Store links are config-driven: PLAY_PACKAGE_ID (var; falls back to the real
  *  applicationId) and APP_STORE_ID (unset on the Android-only launch ⇒ NO App
  *  Store badge is rendered at all — never a dead id000000000 link). */
-function previewHtml(env: Env, p: { title: string; price?: number | null; app?: string; creator?: string | null; deepLink?: string; linkId?: string; missing?: boolean }): string {
+function previewHtml(env: Env, p: { title: string; price?: number | null; app?: string; creator?: string | null; deepLink?: string; linkId?: string; token?: string; missing?: boolean }): string {
   const price = p.price != null && p.price > 0 ? `$${(p.price / 100).toFixed(2)}` : "";
   const appLabel = p.app ? APP_LABEL[p.app] ?? "AvaTok" : "AvaTok";
   const open = p.deepLink ? `<script>setTimeout(function(){window.location.href=${JSON.stringify(p.deepLink)};},300);</script>` : "";
   const playId = (env.PLAY_PACKAGE_ID || "ai.avatok.avatok_call").trim();
   const appStoreId = (env.APP_STORE_ID || "").trim();
-  const playBadge = `<a href="https://play.google.com/store/apps/details?id=${encodeURIComponent(playId)}${p.linkId ? `&referrer=aff%3D${encodeURIComponent(p.linkId)}` : ""}" style="display:inline-block;border:1px solid #ccc;border-radius:10px;padding:10px 16px;text-decoration:none;color:#222;margin:0 6px 8px 0">Google&nbsp;Play</a>`;
+  const playBadge = `<a href="https://play.google.com/store/apps/details?id=${encodeURIComponent(playId)}${p.token ? `&referrer=${encodeURIComponent(`aff=${p.token}`)}` : ""}" style="display:inline-block;border:1px solid #ccc;border-radius:10px;padding:10px 16px;text-decoration:none;color:#222;margin:0 6px 8px 0">Google&nbsp;Play</a>`;
   const appStoreBadge = appStoreId
     ? `<a href="https://apps.apple.com/app/avatok/id${encodeURIComponent(appStoreId)}" style="display:inline-block;border:1px solid #ccc;border-radius:10px;padding:10px 16px;text-decoration:none;color:#222;margin:0 0 8px 0">App&nbsp;Store</a>`
     : "";
@@ -615,48 +670,53 @@ export async function affiliateBind(req: Request, env: Env): Promise<Response> {
   if (cfg.avaAffiliateEnabled !== true) return json({ ok: true, bound: false, reason: "disabled" });
 
   const b = (await req.json().catch(() => ({}))) as any;
+  const tokenPayload = b.token ? await verifyAffiliateToken(env, String(b.token)) : null;
+  if (b.token && !tokenPayload) return json({ ok: true, bound: false, reason: "invalid_token" });
   const cookie = req.headers.get("cookie") || "";
   const cm = cookie.match(/(?:^|;\s*)ava_aff_dev=([A-Za-z0-9-]{8,64})/);
   const device = String(b.device_id || (cm ? cm[1] : "")).slice(0, 64);
-  if (!device) return json({ ok: true, bound: false, reason: "no_device" });
+  if (!device && !tokenPayload) return json({ ok: true, bound: false, reason: "no_device" });
 
-  const pendingKey = `aff_pending:${device}`;
-  let pending: { link_id: string; ts: number; source?: string } | null = null;
-  try { pending = (await env.TOKENS.get(pendingKey, "json")) as any; } catch { /* none */ }
+  const pendingKey = device ? `aff_pending:${device}` : "";
+  let pending: { link_id: string; ts: number; source?: string } | null = tokenPayload
+    ? { link_id: tokenPayload.link_id, ts: tokenPayload.issued_at, source: tokenPayload.source }
+    : null;
+  if (!pending && pendingKey) try { pending = (await env.TOKENS.get(pendingKey, "json")) as any; } catch { /* none */ }
   if (!pending?.link_id) return json({ ok: true, bound: false, reason: "no_pending" });
 
   const link = await loadLink(env, String(pending.link_id));
-  if (!link || link.status !== "active") {
-    await env.TOKENS.delete(pendingKey).catch(() => null);
+  if (!link || !linkLive(cfg, link)) {
+    if (pendingKey) await env.TOKENS.delete(pendingKey).catch(() => null);
     return json({ ok: true, bound: false, reason: "link_inactive" });
   }
   const [affiliate, listing] = await Promise.all([
     loadAffiliate(env, link.affiliate_uid),
-    loadListing(env, link.app, link.listing_id),
+    link.app === "avatok" ? Promise.resolve(null) : loadListing(env, link.app, link.listing_id),
   ]);
   // Suspended affiliates get NO new bindings (§10).
-  if (!affiliate || affiliate.status !== "active" || !listing) {
-    await env.TOKENS.delete(pendingKey).catch(() => null);
+  if (!affiliate || affiliate.status !== "active" || (link.app !== "avatok" && !listing)) {
+    if (pendingKey) await env.TOKENS.delete(pendingKey).catch(() => null);
     return json({ ok: true, bound: false, reason: "affiliate_inactive" });
   }
   // Fraud gates: self-referral + creator-self-promo (§10, re-checked at settle).
   const reject = ctx.uid === link.affiliate_uid ? "self_referral"
-    : link.affiliate_uid === listing.creator_id ? "creator_self_promo" : null;
+    : (listing && link.affiliate_uid === listing.creator_id ? "creator_self_promo" : null);
   if (reject) {
     track(env, ctx.uid, "affiliate_attribution_rejected", APP,
         { reason: reject, link_id: link.id, listing_id: link.listing_id, app: link.app });
     metric(env, "affiliate_bind_rejected", [1], [reject]);
-    await env.TOKENS.delete(pendingKey).catch(() => null);
+    if (pendingKey) await env.TOKENS.delete(pendingKey).catch(() => null);
     return json({ ok: true, bound: false, reason: reject });
   }
 
-  const source = ["qr", "link", "share"].includes(String(b.source ?? pending.source)) ? String(b.source ?? pending.source) : "link";
+  const rawSource = String(b.source ?? pending.source ?? "link");
+  const source = ["qr", "link", "share", "play_install_referrer", "deep_link"].includes(rawSource) ? rawSource : "link";
   const now = Date.now();
   const r = await metaDb(env).prepare(
     `INSERT INTO affiliate_attributions (referred_uid, listing_id, link_id, affiliate_uid, bound_at, source)
      VALUES (?1,?2,?3,?4,?5,?6) ON CONFLICT(referred_uid, listing_id) DO NOTHING`,
   ).bind(ctx.uid, link.listing_id, link.id, link.affiliate_uid, now, source).run();
-  await env.TOKENS.delete(pendingKey).catch(() => null);
+  if (pendingKey) await env.TOKENS.delete(pendingKey).catch(() => null);
   const fresh = (r.meta?.changes ?? 0) > 0; // set once — an existing binding never moves
   if (fresh) {
     track(env, ctx.uid, "affiliate_attribution_bound", APP, {

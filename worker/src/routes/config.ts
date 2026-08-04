@@ -167,6 +167,7 @@ export interface PlatformConfig {
   // AvaAffiliate (Specs/proposals/PROPOSAL-AVA-AFFILIATE.md). OFF stops
   // registration, attribution + the settlement step (redirects keep working).
   avaAffiliateEnabled: boolean;      // master switch (default OFF until launch)
+  affiliateJoinLinkEnabled: boolean;
   affiliateAssetKitEnabled: boolean; // v2 Gemini promo-image kit (flag only; no code in v1)
   // [AFF-COMM-LIFECYCLE-1] Commission qualification lifecycle
   // (Specs/proposals/PROPOSAL-AFFILIATE-UPI-2026-08-05.md §6.1/§6.2/§7). A top-up
@@ -936,6 +937,7 @@ const DEFAULTS: PlatformConfig = {
   avaPrewarmEnabled: true,         // [AVA-PREWARM-1] pre-warm the receptionist during the final rings — default ON
 
   avaAffiliateEnabled: false,      // launch gate — flip ON after A5 fraud checks
+  affiliateJoinLinkEnabled: false, // generic signup links remain dark independently
   affiliateAssetKitEnabled: false, // v2 asset kit (Gemini) — defined, not built
   // [AFF-COMM-LIFECYCLE-1] §7 launch values. Nothing here is live while
   // avaAffiliateEnabled is false — the whole lifecycle is dark.

@@ -6,6 +6,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../auth/clerk_client.dart';
 import '../../core/account_restore.dart';
+import '../../core/affiliate_bind_service.dart';
 import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
 import '../../core/config.dart';
@@ -286,6 +287,7 @@ class _SignInScreenState extends State<SignInScreen> {
   Future<void> _claimReferral() async {
     // Redeem any pending invite reward for whoever referred this new user.
     try { await ReferralService.I.claimPendingAfterSignup(); } catch (_) {/* best-effort */}
+    try { await AffiliateBindService.bindPending(); } catch (_) {/* best-effort */}
   }
 
   void _finish() {
