@@ -327,15 +327,9 @@ export default {
     }
   },
 
-  // [AFF-COMM-LIFECYCLE-1] Affiliate commission qualification (§6.1). This is
-  // this Worker's FIRST scheduled() handler — until now it had none, and
-  // wrangler.toml has no [triggers] block, so nothing calls this yet. Adding the
-  // cron expression is a deliberate go-live step, not part of this change:
-  //
-  //   [triggers]
-  //   crons = ["17 * * * *"]     # hourly is ample for a 30-day window
-  //
-  // Safe either way: runAffiliateQualification returns immediately unless
+  // [AFF-COMM-LIFECYCLE-1] Affiliate commission qualification (§6.1). The
+  // hourly cron is wired in wrangler.toml, but both handlers remain safe while
+  // the feature flags are off: runAffiliateQualification returns immediately unless
   // avaAffiliateEnabled is true (default false), and it never throws — the
   // affiliate program must not be able to take a cron tick down. Hourly (not
   // per-minute) on purpose: the qualification window is measured in days, and
