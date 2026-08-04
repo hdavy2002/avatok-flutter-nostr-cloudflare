@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
+import 'package:flutter_webrtc/flutter_webrtc.dart' show WebRTC;
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -104,6 +105,22 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
   Future<void> _initializeBridge() async {
     final bridge = CallTranslationAudioBridge.instance;
     _probeAttempts = 1;
+    // [CALL-TRANSLATE-BIND-1 2026-08-05] Force flutter_webrtc to finish its
+    // native init before probing.
+    //
+    // `playbackSamplesReadyCallbackAdapter` — the field this whole feature hangs
+    // off — is created in exactly ONE place: `MethodCallHandlerImpl.initialize()`,
+    // reached only via the `initialize` method channel call. The package's own
+    // doc calls it optional ("If this is not manually called, will be initialized
+    // with default settings") because `WebRTC.invokeMethod` lazily awaits it, so
+    // in the normal flow it has already run by the time a call connects. Calling
+    // it explicitly is idempotent (guarded by a static `initialized` bool on the
+    // Dart side and by `if (mFactory != null) return;` natively) and removes any
+    // dependence on that ordering holding.
+    try {
+      await WebRTC.initialize();
+    } catch (_) {/* non-fatal: the probe below reports what it finds */}
+    if (!mounted) return;
     final supported = await bridge.isSupported();
     if (!mounted) return;
     final controller = CallTranslationController(callRef: widget.callRef, bridge: bridge);
@@ -146,10 +163,14 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
     // (build 10507) and on the emulator, with no way to tell which of the five
     // null exits inside the native resolver had been taken. Carry the cause.
     final cause = await bridge.lastProbeFailure();
+    final source = await bridge.lastProbeSource();
     if (!mounted) return;
     unawaited(Analytics.capture('call_translation_native_probe', {
       'result': 'unsupported',
       'cause': cause,
+      // [CALL-TRANSLATE-BIND-1] `engine_bound_singleton_mismatch` here is proof
+      // the old sharedSingleton-only lookup was reading the wrong plugin.
+      'source': source,
       'attempts': _probeAttempts,
       'call_ref': widget.callRef,
       'app_build': Analytics.appBuild,

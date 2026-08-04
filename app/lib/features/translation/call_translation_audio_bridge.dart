@@ -93,6 +93,18 @@ class CallTranslationAudioBridge {
     }
   }
 
+  /// [CALL-TRANSLATE-BIND-1] Which plugin instance the probe resolved against:
+  /// `engine_bound`, `shared_singleton`, `engine_bound_singleton_mismatch` or
+  /// `none`. A `mismatch` proves the old `sharedSingleton`-only lookup was
+  /// reading a plugin from a different engine than the one running the call.
+  Future<String> lastProbeSource() async {
+    try {
+      return await _methods.invokeMethod<String>('lastProbeSource') ?? 'unknown';
+    } catch (_) {
+      return 'channel_unavailable';
+    }
+  }
+
   Future<void> prepare({required String token, required String targetLanguage}) async {
     await _methods.invokeMethod<void>('prepare', {
       'token': token,

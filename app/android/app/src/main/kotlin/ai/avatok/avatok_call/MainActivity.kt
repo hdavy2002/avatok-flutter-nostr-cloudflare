@@ -31,6 +31,28 @@ class MainActivity : FlutterFragmentActivity() {
         // (Gemini Live "AI Voice Agent" — true barge-in on speaker).
         flutterEngine.plugins.add(ai.avatok.avavoiceaudio.AvaVoiceAudioPlugin())
         flutterEngine.plugins.add(ai.avatok.calltranslation.CallTranslationAudioPlugin())
+        // [CALL-TRANSLATE-BIND-1 2026-08-05] Hand the call-translation bridge the
+        // flutter_webrtc plugin belonging to THIS engine.
+        //
+        // The bridge taps decoded incoming audio by reflecting into
+        // flutter_webrtc's `playbackSamplesReadyCallbackAdapter`, and it used to
+        // reach that field through `FlutterWebRTCPlugin.sharedSingleton` — a
+        // public static assigned in the plugin's CONSTRUCTOR, so the most
+        // recently constructed instance always wins, whether or not it is the one
+        // running the call. On 2026-08-04 the probe returned `adapter_field_null`
+        // on both a real device and the emulator (build 10507), and the translate
+        // control never appeared.
+        //
+        // `plugins.get()` returns the instance registered on the engine we are
+        // configuring right now, which is the one whose Dart isolate places calls.
+        // That is a fact about this engine rather than a global race, so prefer it
+        // and keep the static only as a fallback.
+        //
+        // Must run AFTER super.configureFlutterEngine — GeneratedPluginRegistrant
+        // is what registers flutter_webrtc, and before it runs this returns null.
+        ai.avatok.calltranslation.CallTranslationAudioPlugin.boundWebRtcPlugin =
+            flutterEngine.plugins.get(com.cloudwebrtc.webrtc.FlutterWebRTCPlugin::class.java)
+                as? com.cloudwebrtc.webrtc.FlutterWebRTCPlugin
         // AvaDial PSTN telecom bridge (default-dialer role, InCallService,
         // CallScreeningService, device contacts/call-log). DARK behind the Flutter
         // `avaDialer` flag — the plugin only ever registers a MethodChannel; nothing

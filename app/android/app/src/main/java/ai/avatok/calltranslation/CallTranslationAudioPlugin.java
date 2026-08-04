@@ -245,6 +245,11 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
                 result.success(supported);
                 break;
             }
+            case "lastProbeSource":
+                // [CALL-TRANSLATE-BIND-1] "engine_bound" | "shared_singleton" |
+                // "engine_bound_singleton_mismatch" | "none".
+                result.success(lastAdapterSource);
+                break;
             case "lastProbeFailure":
                 // [CALL-TRANSLATE-PROBE-OBS-1] Pull-based twin of the event above, so the
                 // Dart retry ladder can attach a cause to the terminal
@@ -975,9 +980,35 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
      */
     private volatile String lastAdapterResolveFailure = "none";
 
+    /**
+     * [CALL-TRANSLATE-BIND-1 2026-08-05] The flutter_webrtc plugin belonging to the engine we
+     * are actually running in, set by MainActivity.configureFlutterEngine.
+     *
+     * <p>Preferred over {@link FlutterWebRTCPlugin#sharedSingleton}, which is assigned in that
+     * plugin's CONSTRUCTOR — so whichever instance was built most recently owns the static,
+     * regardless of which one is running the call. Every Flutter engine created over the
+     * process lifetime (activity recreation, a cold start from a notification tap) constructs a
+     * fresh one and silently steals the pointer, and the stolen-from instance is the one that
+     * actually ran {@code initialize()} and therefore the only one holding a non-null adapter.
+     * That is the shape of the 2026-08-04 failure: `adapter_field_null` on both devices, with
+     * the translate control never appearing.
+     */
+    public static volatile FlutterWebRTCPlugin boundWebRtcPlugin;
+
+    /** Which source resolved the plugin last — reported alongside the failure cause. */
+    private volatile String lastAdapterSource = "none";
+
     private PlaybackSamplesReadyCallbackAdapter resolvePlaybackAdapter(boolean emitFailure) {
         try {
-            FlutterWebRTCPlugin plugin = FlutterWebRTCPlugin.sharedSingleton;
+            // Engine-bound instance first; the global static only as a fallback.
+            FlutterWebRTCPlugin plugin = boundWebRtcPlugin;
+            lastAdapterSource = plugin != null ? "engine_bound" : "shared_singleton";
+            if (plugin == null) plugin = FlutterWebRTCPlugin.sharedSingleton;
+            else if (FlutterWebRTCPlugin.sharedSingleton != plugin) {
+                // Direct proof that the static was pointing somewhere else. If this
+                // ever shows up in telemetry, the old code could not have worked.
+                lastAdapterSource = "engine_bound_singleton_mismatch";
+            }
             if (plugin == null) {
                 lastAdapterResolveFailure = "webrtc_singleton_null";
                 return null;
