@@ -73,6 +73,26 @@ class CallTranslationAudioBridge {
     }
   }
 
+  /// [CALL-TRANSLATE-PROBE-OBS-1] Why the last [isSupported] returned false.
+  ///
+  /// One of `webrtc_singleton_null`, `method_call_handler_null`,
+  /// `adapter_field_null`, `adapter_type_mismatch:<class>`, `exception:<Type>`,
+  /// or `none`. Exists because a bare `false` from [isSupported] was
+  /// indistinguishable between "flutter_webrtc hasn't attached yet" (transient,
+  /// retry helps) and "the reflected field is gone" (permanent, needs a code
+  /// change) — which is exactly the ambiguity that stalled the 2026-08-04
+  /// missing-translate-pill investigation on build 10507.
+  ///
+  /// Never throws: a device where the channel is missing returns
+  /// `channel_unavailable` rather than failing the caller.
+  Future<String> lastProbeFailure() async {
+    try {
+      return await _methods.invokeMethod<String>('lastProbeFailure') ?? 'unknown';
+    } catch (_) {
+      return 'channel_unavailable';
+    }
+  }
+
   Future<void> prepare({required String token, required String targetLanguage}) async {
     await _methods.invokeMethod<void>('prepare', {
       'token': token,

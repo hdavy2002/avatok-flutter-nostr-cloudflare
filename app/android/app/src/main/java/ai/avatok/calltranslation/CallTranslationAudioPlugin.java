@@ -235,8 +235,22 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
     @Override
     public void onMethodCall(@NonNull MethodCall call, @NonNull MethodChannel.Result result) {
         switch (call.method) {
-            case "isSupported":
-                result.success(resolvePlaybackAdapter(false) != null);
+            case "isSupported": {
+                // [CALL-TRANSLATE-PROBE-OBS-1] Still returns a plain bool for the existing
+                // caller, but publishes WHY it was false on the event channel so
+                // `call_translation_native_probe` can carry a real cause instead of a bare
+                // `unsupported`. See lastAdapterResolveFailure for the 2026-08-04 incident.
+                boolean supported = resolvePlaybackAdapter(false) != null;
+                if (!supported) emit("probe_unsupported_reason", lastAdapterResolveFailure);
+                result.success(supported);
+                break;
+            }
+            case "lastProbeFailure":
+                // [CALL-TRANSLATE-PROBE-OBS-1] Pull-based twin of the event above, so the
+                // Dart retry ladder can attach a cause to the terminal
+                // `call_translation_native_probe result=unsupported` without depending on
+                // the event channel being subscribed at that moment.
+                result.success(lastAdapterResolveFailure);
                 break;
             case "prepare":
                 String token = call.argument("token");
@@ -945,19 +959,54 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
         }
     }
 
+    /**
+     * [CALL-TRANSLATE-PROBE-OBS-1] Last reason {@link #resolvePlaybackAdapter} returned null.
+     *
+     * <p>The resolver has FIVE distinct null exits and, before 2026-08-05, every one of them
+     * returned a bare `false` to `isSupported` with nothing written anywhere. That produced the
+     * 2026-08-04 dead end: both a real motorola edge 70 fusion (build 10507) AND the emulator
+     * reported `call_translation_pill_visibility reason=native_unsupported` with
+     * `call_translation_native_probe result=unsupported attempts=5`, and there was no way to tell
+     * whether flutter_webrtc had not attached yet, the reflected field had been renamed by a
+     * package bump, or R8 had stripped it. The same phone reported `shown` on build 10506 an hour
+     * earlier, so this is a real regression that the telemetry could not localise.
+     *
+     * <p>Never make this silent again: every exit path must set a distinct token here.
+     */
+    private volatile String lastAdapterResolveFailure = "none";
+
     private PlaybackSamplesReadyCallbackAdapter resolvePlaybackAdapter(boolean emitFailure) {
         try {
             FlutterWebRTCPlugin plugin = FlutterWebRTCPlugin.sharedSingleton;
-            if (plugin == null) return null;
+            if (plugin == null) {
+                lastAdapterResolveFailure = "webrtc_singleton_null";
+                return null;
+            }
             Field handlerField = FlutterWebRTCPlugin.class.getDeclaredField("methodCallHandler");
             handlerField.setAccessible(true);
             Object handler = handlerField.get(plugin);
-            if (handler == null) return null;
+            if (handler == null) {
+                lastAdapterResolveFailure = "method_call_handler_null";
+                return null;
+            }
             Field adapterField = handler.getClass().getField("playbackSamplesReadyCallbackAdapter");
             Object adapter = adapterField.get(handler);
-            return adapter instanceof PlaybackSamplesReadyCallbackAdapter
-                    ? (PlaybackSamplesReadyCallbackAdapter) adapter : null;
+            if (adapter == null) {
+                lastAdapterResolveFailure = "adapter_field_null";
+                return null;
+            }
+            if (!(adapter instanceof PlaybackSamplesReadyCallbackAdapter)) {
+                // Two copies of the class on the classpath, or a package bump changed the type.
+                lastAdapterResolveFailure =
+                        "adapter_type_mismatch:" + adapter.getClass().getName();
+                return null;
+            }
+            lastAdapterResolveFailure = "none";
+            return (PlaybackSamplesReadyCallbackAdapter) adapter;
         } catch (Exception e) {
+            // NoSuchFieldException here = the reflected field was renamed by a flutter_webrtc
+            // bump or stripped by R8. Carry the exception class so the two are distinguishable.
+            lastAdapterResolveFailure = "exception:" + e.getClass().getSimpleName();
             if (emitFailure) emit("bridge_error", errorCategory(e));
             return null;
         }

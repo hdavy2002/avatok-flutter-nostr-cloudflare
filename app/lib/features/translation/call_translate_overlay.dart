@@ -114,8 +114,15 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
     if (!mounted) return;
     // Terminal: this device will not show the pill for this call. The ONLY
     // genuine per-device failure mode, and it used to be completely invisible.
+    // [CALL-TRANSLATE-PROBE-OBS-1] `result: unsupported` alone was still a dead
+    // end — on 2026-08-04 it fired identically on a real motorola edge 70 fusion
+    // (build 10507) and on the emulator, with no way to tell which of the five
+    // null exits inside the native resolver had been taken. Carry the cause.
+    final cause = await bridge.lastProbeFailure();
+    if (!mounted) return;
     unawaited(Analytics.capture('call_translation_native_probe', {
       'result': 'unsupported',
+      'cause': cause,
       'attempts': _probeAttempts,
       'call_ref': widget.callRef,
       'app_build': Analytics.appBuild,
