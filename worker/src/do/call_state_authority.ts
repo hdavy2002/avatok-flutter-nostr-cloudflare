@@ -313,6 +313,32 @@ export class CallStateAuthorityDO {
       // any bounded waiters and bump the generation. Fire-and-forget; never blocks.
       this.onReturnedToIdle("lease_expired_on_wake");
     }
+    // [AUTHORITY-CBRES-EXPIRE-1 2026-08-04] `callback_reserved` MUST expire too —
+    // same trap as above, different phase. handlePreemptCallback sets
+    // callback_reservation_until = +8s, but NOTHING ever returned the row to idle
+    // when that deadline passed: the only exits were an explicit release, which a
+    // dead/abandoned client never sends. A row stuck in callback_reserved reports
+    // busy forever, and with authorityEnforced=true that 409-blocked EVERY
+    // subsequent receptionist start for the owner (observed in prod 2026-08-04:
+    // account stuck on avatok-0f02f911's reservation for 34+ minutes, every
+    // decline→Ava thereafter refused as "call_answered"). "A lease that is only
+    // honoured in one phase is not a lease."
+    if (
+      row.phase === "callback_reserved" &&
+      row.callback_reservation_until != null &&
+      Date.now() > row.callback_reservation_until
+    ) {
+      row = this.applyTransition(row, "idle", "callback_reservation_expired_on_wake");
+      row.peer_uid = null;
+      row.call_id = null;
+      row.callback_reserved_peer = null;
+      row.callback_reservation_until = null;
+      row.owner_session_id = null;
+      row.owner_device_id = null;
+      row.lease_expiry_ms = null;
+      this.persistRow(row);
+      this.onReturnedToIdle("callback_reservation_expired_on_wake");
+    }
     return row;
   }
 

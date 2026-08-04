@@ -1440,12 +1440,19 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
     // path below (no new suppression path is introduced).
     if (authorityEnabled(cfg)) {
       try {
-        const [queryRes, preemptRes] = await Promise.all([
-          authorityQuery(env, to),
-          authorityPreemptForCallback(env, to, { caller: ctx.uid, call_id: callId }),
-        ]);
+        // [AUTHORITY-CBRES-EXPIRE-1 2026-08-04] READ-ONLY probe. This used to also
+        // call authorityPreemptForCallback — a MUTATING endpoint — as part of a
+        // shadow "is it answered" check. When the owner's authority happened to be
+        // receptionist_active with this caller as target, that probe TRANSITIONED
+        // the row to callback_reserved (a reservation nobody asked for), and since
+        // callback_reserved had no expiry edge, the row reported busy forever and
+        // every later receptionist start for this owner 409ed as "call_answered"
+        // (observed in prod 2026-08-04, stuck 34+ min on avatok-0f02f911). A probe
+        // must never mutate. /query is read-only and returns the same
+        // decision/busy fields, derived, without touching state.
+        const queryRes = await authorityQuery(env, to);
         const authorityPhase = (queryRes?.phase as string | undefined) ?? null;
-        const authorityDecision = (preemptRes?.decision as string | undefined) ?? null;
+        const authorityDecision = (queryRes?.decision as string | undefined) ?? null;
         const authoritySaysConnected =
           authorityPhase === "connected" || authorityPhase === "connecting";
         const authoritySaysPreempted =
@@ -1462,11 +1469,20 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
         // because the ring lease is already released by the time it starts.
         // The verdict is only meaningful when the authority is busy with a
         // DIFFERENT call (a real concurrent call / receptionist session).
-        const authorityCallId =
-          ((queryRes?.call_id ?? preemptRes?.call_id) as string | undefined) ?? null;
+        const authorityCallId = (queryRes?.call_id as string | undefined) ?? null;
         const sameCall = !!callId && authorityCallId === callId;
-        const authorityVerdict =
-          (authoritySaysConnected || authoritySaysPreempted) && !sameCall;
+        // [AUTHORITY-CBRES-EXPIRE-1] The verdict means "THIS call was answered by
+        // a human", so it must require connected/connecting ON THIS CALL. The old
+        // form ((connected || preempted/busy) && !sameCall) had it inverted twice:
+        // busy-with-a-DIFFERENT-call marked this call answered (wrong — the owner
+        // being on another call is exactly when Ava SHOULD take the message; busy
+        // routing at placement is call_routing.ts's job, not this gate's), and
+        // [RECEPT-AUTH-SAMECALL-1] then exempted same-call entirely, which also
+        // exempted the one genuinely-correct case (human connected on this call
+        // via another device). authoritySaysPreempted stays in the shadow record
+        // for observability but no longer feeds the verdict.
+        void authoritySaysPreempted;
+        const authorityVerdict = authoritySaysConnected && sameCall;
         void shadowRecord(env, to, "authority_shadow_decision", {
           call_id: callId,
           owner: to,
