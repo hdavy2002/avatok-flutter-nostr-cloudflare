@@ -1437,7 +1437,23 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
           authorityPhase === "connected" || authorityPhase === "connecting";
         const authoritySaysPreempted =
           authorityDecision === "preempt" || authorityDecision === "busy";
-        const authorityVerdict = authoritySaysConnected || authoritySaysPreempted;
+        // [RECEPT-AUTH-SAMECALL-1 2026-08-04] The authority being "busy" with
+        // THIS VERY CALL must never block Ava from answering it. During a ring
+        // the callee's authority row holds phase=incoming_ringing with
+        // call_id=<this call> (isBusy -> busy_reason=active_call), so the
+        // decline-to-Ava handoff — which fires MID-RING — was 409-refused as
+        // "call_answered" by its own ring lease, and the caller saw "call
+        // declined" instead of the receptionist (PostHog 2026-08-04 00:36:44 /
+        // 00:36:59, ava_recept_skipped reason=refused_call_answered, calls
+        // avatok-0f02f911 / avatok-77bb67f5). The no-answer path only survived
+        // because the ring lease is already released by the time it starts.
+        // The verdict is only meaningful when the authority is busy with a
+        // DIFFERENT call (a real concurrent call / receptionist session).
+        const authorityCallId =
+          ((queryRes?.call_id ?? preemptRes?.call_id) as string | undefined) ?? null;
+        const sameCall = !!callId && authorityCallId === callId;
+        const authorityVerdict =
+          (authoritySaysConnected || authoritySaysPreempted) && !sameCall;
         void shadowRecord(env, to, "authority_shadow_decision", {
           call_id: callId,
           owner: to,
@@ -1447,6 +1463,8 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
           authority_phase: authorityPhase,
           authority_decision: authorityDecision,
           authority_verdict: authorityVerdict,
+          authority_call_id: authorityCallId,
+          same_call: sameCall,
           diverged: answered !== authorityVerdict,
           enforced: cfg.authorityEnforced === true,
         });
