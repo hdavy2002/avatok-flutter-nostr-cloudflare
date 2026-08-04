@@ -168,6 +168,22 @@ export interface PlatformConfig {
   // registration, attribution + the settlement step (redirects keep working).
   avaAffiliateEnabled: boolean;      // master switch (default OFF until launch)
   affiliateAssetKitEnabled: boolean; // v2 Gemini promo-image kit (flag only; no code in v1)
+  // [AFF-COMM-LIFECYCLE-1] Commission qualification lifecycle
+  // (Specs/proposals/PROPOSAL-AFFILIATE-UPI-2026-08-05.md §6.1/§6.2/§7). A top-up
+  // commission is now a D1 `pending` row with NO wallet credit; the qualification
+  // cron (runAffiliateQualification, routes/affiliate.ts) re-checks refunds, caps,
+  // clustering and affiliate standing AT PROMOTION TIME and only then calls
+  // walletOp 'earn' (which starts the usual 7-day hold). Total time to
+  // withdrawable = affiliateQualifyDays + 7. ALL FIVE ARE NUMERIC — they MUST
+  // also appear in `numericKeys` below or `flags.sh set affiliateQualifyDays=45`
+  // 400s `bad type` (the fake-flag rule, CLAUDE.md). Caps are deliberately
+  // conservative: they can be raised on evidence, but coins paid out on a
+  // fraudulent referral cannot be un-paid.
+  affiliateQualifyDays: number;              // days from top-up to promotion (launch: 30)
+  affiliateMinQualifyingTopupCoins: number;  // dust-farming floor on the SOURCE top-up
+  affiliateDailyEarnCapCoins: number;        // per-affiliate promoted coins per UTC day
+  affiliateMonthlyEarnCapCoins: number;      // per-affiliate promoted coins per UTC month
+  affiliatePerReferredCapCoins: number;      // per (affiliate, referred user) within one qualify window
   // Ava in-chat AI kill-switches (Phase 0 — Foundations). These gate the
   // SERVER-SIDE Ava surfaces/tiers; the client mirrors the defaults in
   // app/lib/core/feature_flags.dart. NOTE: runtime "is Ava on for THIS user" is
@@ -921,6 +937,13 @@ const DEFAULTS: PlatformConfig = {
 
   avaAffiliateEnabled: false,      // launch gate — flip ON after A5 fraud checks
   affiliateAssetKitEnabled: false, // v2 asset kit (Gemini) — defined, not built
+  // [AFF-COMM-LIFECYCLE-1] §7 launch values. Nothing here is live while
+  // avaAffiliateEnabled is false — the whole lifecycle is dark.
+  affiliateQualifyDays: 30,
+  affiliateMinQualifyingTopupCoins: 100,
+  affiliateDailyEarnCapCoins: 2000,
+  affiliateMonthlyEarnCapCoins: 20000,
+  affiliatePerReferredCapCoins: 1000,
   // Ava in-chat AI defaults (proposal §7.1 anti-abuse tiering).
   aiEnabled: true,                 // basic free Ava chat ON
   aiWalletMeteringEnabled: false,  // [AI-BILLING-CORE-1] DARK — flip ON only after the owner reviews H4's route-by-route premium-gate audit; see interface comment above
@@ -1324,6 +1347,10 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     "callQosHeadroomFactor", "callQosLossDownshiftPct", "callQosStableLossPct",
     "callQosStableRttMs", "callQosStableSamples",
     "callVideoLossDegradePct", "callVideoLossPausePct", "callVideoStableSamples",
+    // [AFF-COMM-LIFECYCLE-1 2026-08-05] affiliate qualification window + caps —
+    // numeric, must be here or `flags.sh set affiliateQualifyDays=45` 400s `bad type`.
+    "affiliateQualifyDays", "affiliateMinQualifyingTopupCoins",
+    "affiliateDailyEarnCapCoins", "affiliateMonthlyEarnCapCoins", "affiliatePerReferredCapCoins",
   ]);
   for (const [k, v] of Object.entries(body)) {
     if (!(k in DEFAULTS)) return json({ error: `unknown key: ${k}` }, 400);

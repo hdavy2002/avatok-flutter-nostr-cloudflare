@@ -162,7 +162,7 @@ import { composeSession, composeTurn, composePublish } from "./routes/compose";
 import {
   affiliateRegister, affiliateMe, affiliateListings, affiliateLinkCreate, affiliateLinks,
   affiliateLinkStats, affiliateLinkSubscribers, affiliateLinkPause, affiliateClick,
-  affiliateBind, adminAffiliates, adminAffiliateSuspend,
+  affiliateBind, adminAffiliates, adminAffiliateSuspend, runAffiliateQualification,
 } from "./routes/affiliate";
 import { affiliateAssetsGenerate, affiliateAssetsList } from "./routes/affiliate_assets";
 // --- Ava in-chat AI (Phase 0 — Foundations) ---
@@ -324,6 +324,27 @@ export default {
         msg.retry();
       }
     }
+  },
+
+  // [AFF-COMM-LIFECYCLE-1] Affiliate commission qualification (§6.1). This is
+  // this Worker's FIRST scheduled() handler — until now it had none, and
+  // wrangler.toml has no [triggers] block, so nothing calls this yet. Adding the
+  // cron expression is a deliberate go-live step, not part of this change:
+  //
+  //   [triggers]
+  //   crons = ["17 * * * *"]     # hourly is ample for a 30-day window
+  //
+  // Safe either way: runAffiliateQualification returns immediately unless
+  // avaAffiliateEnabled is true (default false), and it never throws — the
+  // affiliate program must not be able to take a cron tick down. Hourly (not
+  // per-minute) on purpose: the qualification window is measured in days, and
+  // each tick is bounded to QUALIFY_BATCH rows.
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(
+      runAffiliateQualification(env)
+        .then((r) => { if (r.scanned) console.log("[affiliate-qualify]", JSON.stringify(r)); })
+        .catch((e) => { console.error("[affiliate-qualify] failed:", String(e)); }),
+    );
   },
 };
 

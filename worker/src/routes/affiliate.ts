@@ -30,7 +30,8 @@ import { metaDb } from "../db/shard";
 import { walletOp, commissionRate } from "./wallet";
 import { acctUser, ACCT_PLATFORM_FEES } from "../ledger";
 import { rateLimit } from "../money";
-import { track, metric } from "../hooks";
+import { track, trackUser, metric } from "../hooks";
+import { emailFor } from "../lib/identity";
 import { readConfig } from "./config";
 import { geoOf } from "./insights";
 
@@ -139,17 +140,23 @@ export async function affiliateMe(req: Request, env: Env): Promise<Response> {
   const aff = await loadAffiliate(env, ctx.uid);
   if (!aff) return json({ error: "not an affiliate", registered: false }, 404);
 
-  // Lazy hold→settled flip mirrors the WalletDO's 7-day maturity (reporting only).
+  // Lazy hold→available flip mirrors the WalletDO's 7-day maturity (reporting only).
+  // [AFF-COMM-LIFECYCLE-1] The hold now starts at PROMOTION, not at top-up, so
+  // maturity is measured from promoted_at. Using created_at here would report a
+  // just-promoted 30-day-old commission as available on day one — pure fiction,
+  // since the WalletDO hold it mirrors was created seconds ago. COALESCE keeps
+  // pre-migration rows (promoted_at = created_at, backfilled) behaving as before.
   const now = Date.now();
   await env.DB_WALLET.prepare(
-    "UPDATE affiliate_commissions SET status='settled' WHERE status='held' AND created_at<?1",
+    "UPDATE affiliate_commissions SET status='available' WHERE status='held' AND COALESCE(promoted_at, created_at)<?1",
   ).bind(now - 7 * 86_400_000).run().catch(() => null);
 
   const monthStart = Date.UTC(new Date(now).getUTCFullYear(), new Date(now).getUTCMonth(), 1);
   const [totals, monthRow, links, referred] = await Promise.all([
     env.DB_WALLET.prepare(
       `SELECT COALESCE(SUM(affiliate_coins - reversed_coins),0) AS lifetime,
-              COALESCE(SUM(CASE WHEN status='held' THEN affiliate_coins - reversed_coins ELSE 0 END),0) AS held
+              COALESCE(SUM(CASE WHEN status='held' THEN affiliate_coins - reversed_coins ELSE 0 END),0) AS held,
+              COALESCE(SUM(CASE WHEN status IN ('pending','held_review') THEN affiliate_coins - reversed_coins ELSE 0 END),0) AS pending
          FROM affiliate_commissions WHERE affiliate_uid=?1 AND status!='reversed'`,
     ).bind(ctx.uid).first<any>(),
     env.DB_WALLET.prepare(
@@ -166,6 +173,10 @@ export async function affiliateMe(req: Request, env: Env): Promise<Response> {
       lifetime_coins: Number(totals?.lifetime ?? 0),
       month_coins: Number(monthRow?.month ?? 0),
       held_coins: Number(totals?.held ?? 0),
+      // [AFF-COMM-LIFECYCLE-1] Coins that exist only in D1 and NOT in the wallet:
+      // awaiting the affiliateQualifyDays window (or parked in held_review). The
+      // affiliate home screen must label these as not-yet-earned (§9 pending explainer).
+      pending_coins: Number(totals?.pending ?? 0),
       links: Number(links?.n ?? 0),
       referred_users: Number(referred?.n ?? 0),
     },
@@ -708,6 +719,65 @@ export async function adminAffiliateSuspend(req: Request, env: Env, uid: string)
 // ---------------------------------------------------------------------------
 const TOPUP_AFFILIATE_RATE = 0.10;
 
+// [AFF-COMM-LIFECYCLE-1] Fallbacks for the §7 flags, used only if KV/DEFAULTS are
+// unreadable. They match DEFAULTS in routes/config.ts — never let these two drift.
+const DEFAULT_QUALIFY_DAYS = 30;
+const DEFAULT_MIN_QUALIFYING_TOPUP = 100;
+const DEFAULT_DAILY_CAP = 2_000;
+const DEFAULT_MONTHLY_CAP = 20_000;
+const DEFAULT_PER_REFERRED_CAP = 1_000;
+/** How many due commissions one cron tick promotes. Bounded so a backlog can
+ *  never blow the Worker CPU/subrequest budget — the next tick picks up the rest. */
+const QUALIFY_BATCH = 200;
+
+function numFlag(v: unknown, dflt: number): number {
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : dflt;
+}
+
+/** risk_flags is a JSON array of short strings; tolerate NULL/garbage. */
+function parseRiskFlags(raw: unknown): string[] {
+  if (raw === null || raw === undefined || raw === "") return [];
+  try {
+    const a = JSON.parse(String(raw));
+    return Array.isArray(a) ? a.map((x) => String(x)) : [];
+  } catch { return []; }
+}
+function riskJson(flags: string[]): string | null {
+  const uniq = [...new Set(flags)];
+  return uniq.length ? JSON.stringify(uniq) : null;
+}
+
+/** Flags that BLOCK promotion outright and park the row for a human
+ *  (§6.2 clustering / same-person / dispute). Written by the attribution +
+ *  fraud paths; this module only reads them. */
+const BLOCKING_RISK_FLAGS = new Set([
+  "same_person", "cluster", "device_cluster", "ip_cluster", "payment_cluster",
+  "phone_cluster", "identity_cluster", "dispute", "chargeback", "manual_review",
+]);
+
+/**
+ * TOP-UP COMMISSION, STEP 1 OF 2 — D1 ONLY, NO WALLET OPERATION (§6.1).
+ *
+ * This function deliberately does NOT credit anything. It records a `pending`
+ * commission with `qualify_at = now + affiliateQualifyDays`. The credit happens
+ * later, in runAffiliateQualification(), and only if every re-check still passes
+ * AT THAT TIME.
+ *
+ * DO NOT "optimise" this back into an immediate `walletOp op:"earn"`. That was
+ * the original design and it is unfixable: `earn` starts the 7-day WalletDO hold
+ * at top-up time, the hold matures on day 7, and the coins become spendable and
+ * withdrawable while the D1 row still reads 'pending'. Withdrawal eligibility is
+ * decided by the wallet, so no D1 status can hold them back. Delaying the credit
+ * makes the invariant structural: a pending commission does not exist in the
+ * wallet at all.
+ *
+ * Idempotency is unchanged: the D1 primary key stays `aff_topup:<topupId>` with
+ * ON CONFLICT DO NOTHING, and it is the SAME string later used as the walletOp
+ * `op_id`, so a promotion can never be applied twice.
+ *
+ * Returns the ACCRUED (pending) commission, not a paid amount.
+ */
 export async function payAffiliateOnTopup(env: Env, referredUid: string, coins: number, topupId: string): Promise<number> {
   try {
     const cfg = await readConfig(env);
@@ -727,30 +797,238 @@ export async function payAffiliateOnTopup(env: Env, referredUid: string, coins: 
     const aff = Math.floor(gross * TOPUP_AFFILIATE_RATE);
     if (!(aff > 0)) return 0;
 
+    const now = Date.now();
+    const qualifyDays = numFlag(cfg.affiliateQualifyDays, DEFAULT_QUALIFY_DAYS);
+    const qualifyAt = now + qualifyDays * 86_400_000;
     const commId = `aff_topup:${topupId}`;
-    // Money first (WalletDO op_id dedupe = idempotent), then the reporting row.
-    await walletOp(env, attr.affiliate_uid, {
-      op: "earn", uid: attr.affiliate_uid, amount: aff, commission: 0,
-      app_name: APP, counterparty_uid: referredUid, ref: topupId, op_id: commId,
-      ledger: {
-        debit: ACCT_PLATFORM_FEES, credit: acctUser(attr.affiliate_uid),
-        type: "affiliate_topup_commission", ref: topupId,
-        meta: JSON.stringify({ link_id: attr.link_id, topup_id: topupId, coins: gross, rate: TOPUP_AFFILIATE_RATE }),
-      },
-    });
     const ins = await env.DB_WALLET.prepare(
-      `INSERT INTO affiliate_commissions (id, order_id, link_id, affiliate_uid, referred_uid, listing_id, app, gross_coins, affiliate_coins, admin_coins, reversed_coins, status, created_at)
-       VALUES (?1,?2,?3,?4,?5,'topup','avawallet',?6,?7,0,0,'held',?8) ON CONFLICT(id) DO NOTHING`,
-    ).bind(commId, topupId, attr.link_id, attr.affiliate_uid, referredUid, gross, aff, Date.now()).run();
+      `INSERT INTO affiliate_commissions (id, order_id, link_id, affiliate_uid, referred_uid, listing_id, app, gross_coins, affiliate_coins, admin_coins, reversed_coins, status, created_at, qualify_at)
+       VALUES (?1,?2,?3,?4,?5,'topup','avawallet',?6,?7,0,0,'pending',?8,?9) ON CONFLICT(id) DO NOTHING`,
+    ).bind(commId, topupId, attr.link_id, attr.affiliate_uid, referredUid, gross, aff, now, qualifyAt).run();
     if ((ins.meta?.changes ?? 0) > 0) {
-      track(env, attr.affiliate_uid, "affiliate_topup_commission", APP, { coins: gross, affiliate_coins: aff, rate: TOPUP_AFFILIATE_RATE });
-      metric(env, "affiliate_topup_commission", [aff, gross]);
+      track(env, attr.affiliate_uid, "affiliate_topup_commission", APP, {
+        coins: gross, affiliate_coins: aff, rate: TOPUP_AFFILIATE_RATE,
+        // Explicit so a PostHog reader never mistakes accrual for payment.
+        status: "pending", pending: true, wallet_credited: false,
+        qualify_at: qualifyAt, qualify_days: qualifyDays,
+        referred_uid: referredUid, link_id: attr.link_id, topup_id: topupId,
+      });
+      metric(env, "affiliate_topup_commission_pending", [aff, gross]);
     }
     return aff;
   } catch (e) {
     console.error("payAffiliateOnTopup failed:", String(e));
     return 0;
   }
+}
+
+// ---------------------------------------------------------------------------
+// TOP-UP COMMISSION, STEP 2 OF 2 — the qualification cron (§6.1/§6.2).
+// ---------------------------------------------------------------------------
+export interface QualificationRun {
+  scanned: number;      // due rows examined this tick
+  promoted: number;     // rows credited to a wallet
+  promoted_coins: number;
+  flagged: number;      // over a cap — LEFT pending, retried next tick, never dropped
+  review: number;       // parked in held_review (suspension, clustering, disputes)
+  reversed: number;     // cancelled in D1; no money ever existed
+  failed: number;       // transient errors — row untouched, retried next tick
+}
+
+/**
+ * Promote every commission whose qualification window has elapsed.
+ *
+ * The gates below are evaluated HERE, at promotion time — not at top-up time —
+ * because that is the whole point of the 30-day window: a refund, a chargeback,
+ * a suspension or a clustering signal that arrives on day 20 must still be able
+ * to stop the money.
+ *
+ * MIGRATION SAFETY (the single highest-risk line in this file): rows written
+ * before 2026-08-05-affiliate-commission-status.sql were ALREADY credited under
+ * the old immediate-earn path. Promoting one pays the same commission twice. The
+ * WHERE clause therefore carries three independent guards, any ONE of which
+ * excludes a legacy row: status='pending' (the migration forces legacy rows to
+ * 'held'/'available'), promoted_at IS NULL (the migration backfills it to
+ * created_at), and qualify_at IS NOT NULL (legacy rows have no qualify_at and
+ * nothing ever sets one). Do not relax any of them.
+ */
+export async function runAffiliateQualification(env: Env, now: number = Date.now()): Promise<QualificationRun> {
+  const out: QualificationRun = { scanned: 0, promoted: 0, promoted_coins: 0, flagged: 0, review: 0, reversed: 0, failed: 0 };
+  let cfg: Awaited<ReturnType<typeof readConfig>>;
+  try {
+    cfg = await readConfig(env);
+  } catch (e) {
+    console.error("affiliate qualification: config read failed:", String(e));
+    return out;
+  }
+  // Master kill switch: OFF means the program is stopped, including promotions.
+  // Accrued rows keep sitting in 'pending' and promote when it is turned back on.
+  if (cfg.avaAffiliateEnabled !== true) return out;
+
+  const minTopup = numFlag(cfg.affiliateMinQualifyingTopupCoins, DEFAULT_MIN_QUALIFYING_TOPUP);
+  const dailyCap = numFlag(cfg.affiliateDailyEarnCapCoins, DEFAULT_DAILY_CAP);
+  const monthlyCap = numFlag(cfg.affiliateMonthlyEarnCapCoins, DEFAULT_MONTHLY_CAP);
+  const perReferredCap = numFlag(cfg.affiliatePerReferredCapCoins, DEFAULT_PER_REFERRED_CAP);
+  const qualifyDays = numFlag(cfg.affiliateQualifyDays, DEFAULT_QUALIFY_DAYS) || DEFAULT_QUALIFY_DAYS;
+
+  let due: { results?: unknown[] };
+  try {
+    due = await env.DB_WALLET.prepare(
+      `SELECT * FROM affiliate_commissions
+        WHERE status='pending' AND promoted_at IS NULL AND qualify_at IS NOT NULL AND qualify_at<=?1
+        ORDER BY qualify_at ASC LIMIT ?2`,
+    ).bind(now, QUALIFY_BATCH).all();
+  } catch (e) {
+    console.error("affiliate qualification: due-row query failed:", String(e));
+    return out;
+  }
+
+  const emailCache = new Map<string, string | null>();
+  const emailOf = async (uid: string): Promise<string | null> => {
+    if (emailCache.has(uid)) return emailCache.get(uid) ?? null;
+    let e: string | null = null;
+    try { e = await emailFor(env, uid); } catch { e = null; }
+    emailCache.set(uid, e);
+    return e;
+  };
+
+  const d = new Date(now);
+  const dayStart = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  const monthStart = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1);
+  const windowStart = now - qualifyDays * 86_400_000;
+
+  for (const raw of (due.results ?? []) as Record<string, unknown>[]) {
+    out.scanned++;
+    const id = String(raw.id);
+    const affUid = String(raw.affiliate_uid);
+    const referredUid = String(raw.referred_uid);
+    const grossCoins = Number(raw.gross_coins ?? 0);
+    const reversedCoins = Number(raw.reversed_coins ?? 0);
+    const amount = Number(raw.affiliate_coins ?? 0) - reversedCoins;
+    const flags = parseRiskFlags(raw.risk_flags);
+
+    /** Terminal outcome: never a silent skip (§6.1). */
+    const finish = async (status: "reversed" | "held_review", reason: string): Promise<void> => {
+      flags.push(reason);
+      await env.DB_WALLET.prepare(
+        "UPDATE affiliate_commissions SET status=?2, risk_flags=?3 WHERE id=?1 AND status='pending'",
+      ).bind(id, status, riskJson(flags)).run();
+      if (status === "reversed") out.reversed++; else out.review++;
+      await trackUser(env, affUid, await emailOf(affUid), "affiliate_commission_reversed", APP, {
+        commission_id: id, affiliate_uid: affUid, referred_uid: referredUid,
+        link_id: String(raw.link_id ?? ""), order_id: String(raw.order_id ?? ""),
+        gross_coins: grossCoins, affiliate_coins: amount,
+        outcome: status, reason, wallet_clawback: false, stage: "qualification",
+      }).catch(() => undefined);
+      metric(env, "affiliate_commission_reversed", [amount], [status, reason]);
+    };
+
+    try {
+      // --- Gate 1: the commission itself is already (partly) reversed ---------
+      if (!(amount > 0) || reversedCoins > 0) { await finish("reversed", "refunded"); continue; }
+
+      // --- Gate 2: a fraud/clustering flag already parked this row -----------
+      const blocking = flags.find((f) => BLOCKING_RISK_FLAGS.has(f));
+      if (blocking) { await finish("held_review", blocking); continue; }
+
+      // --- Gate 3: self-referral (re-checked; attributions can be rewritten) --
+      if (affUid === referredUid) { await finish("reversed", "self_referral"); continue; }
+
+      // --- Gate 4: dust farming (§6.2 minimum qualifying top-up) -------------
+      if (grossCoins < minTopup) { await finish("reversed", "below_min_topup"); continue; }
+
+      // --- Gate 5: the SOURCE top-up must still be paid ----------------------
+      // A missing row is NOT evidence of a refund (Play top-ups and deleted
+      // accounts legitimately have none), so only an existing non-paid row
+      // reverses. Never fail the commission because a lookup threw.
+      let src: { status?: unknown } | null = null;
+      try {
+        src = await env.DB_WALLET.prepare("SELECT status FROM topup_records WHERE id=?1")
+          .bind(String(raw.order_id ?? "")).first<{ status?: unknown }>();
+      } catch { src = null; }
+      if (src && String(src.status) !== "paid") { await finish("reversed", "source_topup_not_paid"); continue; }
+
+      // --- Gate 6: the affiliate must still be in good standing --------------
+      // held_review, NOT reversed: a suspension can be lifted, and the coins
+      // were genuinely accrued. Suspension freezes; it does not confiscate.
+      const affiliate = await loadAffiliate(env, affUid);
+      if (!affiliate || affiliate.status !== "active") { await finish("held_review", "affiliate_not_active"); continue; }
+
+      // --- Gate 7: earning caps (§6.2) --------------------------------------
+      // Over a cap the row STAYS pending and is flagged — it is retried on every
+      // later tick and promotes once the window rolls over. Never dropped.
+      const [dayRow, monthRow, referredRow] = await Promise.all([
+        env.DB_WALLET.prepare(
+          "SELECT COALESCE(SUM(affiliate_coins - reversed_coins),0) AS n FROM affiliate_commissions WHERE affiliate_uid=?1 AND status!='reversed' AND promoted_at IS NOT NULL AND promoted_at>=?2",
+        ).bind(affUid, dayStart).first<{ n: number }>(),
+        env.DB_WALLET.prepare(
+          "SELECT COALESCE(SUM(affiliate_coins - reversed_coins),0) AS n FROM affiliate_commissions WHERE affiliate_uid=?1 AND status!='reversed' AND promoted_at IS NOT NULL AND promoted_at>=?2",
+        ).bind(affUid, monthStart).first<{ n: number }>(),
+        env.DB_WALLET.prepare(
+          "SELECT COALESCE(SUM(affiliate_coins - reversed_coins),0) AS n FROM affiliate_commissions WHERE affiliate_uid=?1 AND referred_uid=?2 AND status!='reversed' AND promoted_at IS NOT NULL AND promoted_at>=?3",
+        ).bind(affUid, referredUid, windowStart).first<{ n: number }>(),
+      ]);
+      const capHit = Number(dayRow?.n ?? 0) + amount > dailyCap ? "cap_daily"
+        : Number(monthRow?.n ?? 0) + amount > monthlyCap ? "cap_monthly"
+        : Number(referredRow?.n ?? 0) + amount > perReferredCap ? "cap_per_referred" : null;
+      if (capHit) {
+        flags.push(capHit);
+        await env.DB_WALLET.prepare(
+          "UPDATE affiliate_commissions SET risk_flags=?2 WHERE id=?1 AND status='pending'",
+        ).bind(id, riskJson(flags)).run();
+        out.flagged++;
+        await trackUser(env, affUid, await emailOf(affUid), "affiliate_commission_cap_hit", APP, {
+          commission_id: id, affiliate_uid: affUid, referred_uid: referredUid,
+          affiliate_coins: amount, cap: capHit,
+          day_promoted: Number(dayRow?.n ?? 0), month_promoted: Number(monthRow?.n ?? 0),
+          referred_promoted: Number(referredRow?.n ?? 0),
+          daily_cap: dailyCap, monthly_cap: monthlyCap, per_referred_cap: perReferredCap,
+          outcome: "stays_pending",
+        }).catch(() => undefined);
+        metric(env, "affiliate_commission_cap_hit", [amount], [capHit]);
+        continue;
+      }
+
+      // --- PROMOTE: the money is created here and nowhere else ---------------
+      // op_id is the commission id — byte-identical to the key the old immediate
+      // path used — so WalletDO's op dedupe makes a double promotion impossible
+      // even if this tick dies between the walletOp and the UPDATE below.
+      const r = await walletOp(env, affUid, {
+        op: "earn", uid: affUid, amount, commission: 0,
+        app_name: APP, counterparty_uid: referredUid, ref: String(raw.order_id ?? id), op_id: id,
+        ledger: {
+          debit: ACCT_PLATFORM_FEES, credit: acctUser(affUid),
+          type: "affiliate_topup_commission", ref: String(raw.order_id ?? id),
+          meta: JSON.stringify({
+            link_id: String(raw.link_id ?? ""), topup_id: String(raw.order_id ?? ""),
+            coins: grossCoins, rate: TOPUP_AFFILIATE_RATE, qualified_at: now,
+          }),
+        },
+      });
+      if (r.status >= 400) { out.failed++; continue; } // transient — row stays pending, retried
+
+      await env.DB_WALLET.prepare(
+        "UPDATE affiliate_commissions SET status='held', promoted_at=?2, risk_flags=?3 WHERE id=?1 AND status='pending'",
+      ).bind(id, now, riskJson(flags)).run();
+      out.promoted++;
+      out.promoted_coins += amount;
+      await trackUser(env, affUid, await emailOf(affUid), "affiliate_commission_promoted", APP, {
+        commission_id: id, affiliate_uid: affUid, referred_uid: referredUid,
+        link_id: String(raw.link_id ?? ""), order_id: String(raw.order_id ?? ""),
+        gross_coins: grossCoins, affiliate_coins: amount, rate: TOPUP_AFFILIATE_RATE,
+        qualify_days: qualifyDays, created_at: Number(raw.created_at ?? 0), promoted_at: now,
+        days_pending: Math.round((now - Number(raw.created_at ?? now)) / 86_400_000),
+        wallet_credited: true, hold_days: 7,
+      }).catch(() => undefined);
+      metric(env, "affiliate_commission_promoted", [amount, grossCoins]);
+    } catch (e) {
+      // Never let one bad row stop the batch; the row keeps its 'pending' status
+      // and is retried on the next tick.
+      out.failed++;
+      console.error("affiliate qualification failed for", id, String(e));
+    }
+  }
+  return out;
 }
 
 export async function settleAffiliate(env: Env, p: {
@@ -787,6 +1065,30 @@ export async function reverseAffiliate(env: Env, orderId: string, refundAmount: 
       if (!(grossC > 0) || !(remaining > 0)) continue;
       const claw = Math.min(remaining, Math.floor(Number(c.affiliate_coins) * Math.min(refund, grossC) / grossC));
       if (!(claw > 0)) continue;
+
+      // [AFF-COMM-LIFECYCLE-1] CHEAP PATH — a commission still in 'pending' has
+      // never been credited to a wallet (§6.1), so there is nothing to claw back:
+      // no hold to debit, no spendable balance to reach into, no ledger entry to
+      // reverse. Issuing debit_hold/spend here would take real coins the affiliate
+      // earned elsewhere. It is a pure D1 status flip, and the amount does NOT
+      // count towards clawedTotal, which reports coins actually recovered from a
+      // wallet. This is why most fraud now costs nothing to unwind: it is caught
+      // inside the qualification window, before any money exists.
+      if (String(c.status) === "pending") {
+        const reversedP = Number(c.reversed_coins) + claw;
+        await env.DB_WALLET.prepare(
+          "UPDATE affiliate_commissions SET reversed_coins=?2, risk_flags=?3, status=CASE WHEN ?2>=affiliate_coins THEN 'reversed' ELSE status END WHERE id=?1",
+        ).bind(String(c.id), reversedP, riskJson([...parseRiskFlags(c.risk_flags), "refunded_before_qualification"])).run();
+        track(env, String(c.affiliate_uid), "affiliate_commission_reversed", APP, {
+          commission_id: String(c.id), link_id: String(c.link_id),
+          affiliate_uid: String(c.affiliate_uid), listing_id: String(c.listing_id), app: String(c.app),
+          gross_coins: grossC, affiliate_coins: claw, reason,
+          outcome: reversedP >= Number(c.affiliate_coins) ? "reversed" : "pending",
+          wallet_clawback: false, stage: "pre_qualification",
+        });
+        metric(env, "affiliate_commission_reversed", [claw], ["pending"]);
+        continue;
+      }
 
       // Hold-first clawback; any matured remainder comes from spendable balance.
       const dh = await walletOp(env, String(c.affiliate_uid), {
