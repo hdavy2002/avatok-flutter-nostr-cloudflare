@@ -87,10 +87,26 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
     if (s == CallTranslationState.idle) _hadActiveTranslation = false;
   }
 
+  /// [CALL-TRANSLATE-2D-4] Live translation is PAID-ONLY (owner, 2026-08-04):
+  /// the 100-token welcome grant and the daily free grant are deliberately not
+  /// spendable on it. So a user can be refused while their wallet visibly shows
+  /// tokens, and "you have no Tokens" would be plainly wrong on their screen.
+  /// The Worker's 402 reports the paid balance and the spendable balance
+  /// separately so this copy can be honest about WHICH tokens are missing.
+  String _outOfTokensCopy(String suffix) {
+    final c = _controller;
+    if (c != null && c.needsPaidTopUp) {
+      return 'Live translation is paid only — your remaining ${c.nonPaidTokens} '
+          'Tokens are free/bonus Tokens, which it cannot use. Top up to '
+          'continue.$suffix';
+    }
+    return 'You do not have enough Tokens for live translation.$suffix';
+  }
+
   Future<void> _showFundsDialog() async {
     await showDialog<void>(context: context, builder: (d) => AlertDialog(
       title: const Text('Translation stopped'),
-      content: const Text('You do not have enough Tokens to continue live translation. Your call is still connected.'),
+      content: Text(_outOfTokensCopy(' Your call is still connected.')),
       actions: [
         TextButton(onPressed: () => Navigator.pop(d), child: const Text('Not now')),
         TextButton(onPressed: () async {
@@ -189,7 +205,7 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
     final message = error == 'source_capture_unavailable'
         ? 'Live translation is not ready on this device yet.'
         : error == 'insufficient_tokens'
-            ? 'You need at least 5 Tokens to start live translation.'
+            ? _outOfTokensCopy(' Live translation costs 5 Tokens per started minute.')
             : error == 'unavailable_for_call'
                 ? 'Translation is unavailable for this call. Your call is unchanged.'
                 : 'Live translation could not start. Your call is unchanged.';

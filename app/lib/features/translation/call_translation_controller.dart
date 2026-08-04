@@ -124,6 +124,9 @@ class CallTranslationController with WidgetsBindingObserver {
 
   /// True while the ORIGINAL call audio is being played instead of the
   /// translation (dead-air guard, route change, focus blip, Phase C cutover).
+  ///
+  /// Read-only mirror of the PLUGIN's actual mute state — see the fallback
+  /// owner model in [_raiseFallback]. Never write it directly.
   final fallbackToOriginal = ValueNotifier<bool>(false);
 
   /// [CALL-TRANSLATE-2C-2] The language a mid-call switch is cutting over TO,
@@ -140,6 +143,13 @@ class CallTranslationController with WidgetsBindingObserver {
 
   // ── internals ─────────────────────────────────────────────────────────────
   static const int kMaxProviderFailuresPerCall = 3;
+
+  /// [CALL-TRANSLATE-2D-4 / L-6] Provider resumes allowed in ONE call, whether
+  /// they succeed or fail. A `goAway` is normal housekeeping once or twice in a
+  /// long call; a session that needs six is not working, and every resume is an
+  /// audible gap. Bounding it here is what stops a succeed-then-goAway provider
+  /// looping until `/token`'s hourly rate limit happens to catch it.
+  static const int kMaxResumesPerCall = 6;
   static const int _kMaxWriteAttempts = 3;
   static const Duration _kDefaultRetryAfter = Duration(milliseconds: 750);
 
@@ -174,14 +184,97 @@ class CallTranslationController with WidgetsBindingObserver {
   bool _resumingProvider = false;
   bool _disposed = false;
   int _providerFailures = 0;
+
+  /// [L-6] Provider resumes attempted in this call — see [kMaxResumesPerCall].
+  /// Deliberately NOT reset by a successful resume: the budget is per call.
+  int _resumeCount = 0;
   int _tapAtMs = 0;
   int? _firstAudioMs;
   int _firstAudioPolls = 0;
   bool _deviceBound = false;
 
+  /// [CALL-TRANSLATE-2D-4 / L-5] The Worker now echoes `call_ref` on EVERY
+  /// response, success and error alike, precisely so the client and server
+  /// PostHog timelines for one call can be joined (Dart used to stamp
+  /// `session_id` only, which does not exist yet at /start-failure time and is
+  /// different per session when a call has more than one). We already know our
+  /// own [callRef]; this holds the server's echo so a mismatch is visible rather
+  /// than assumed away.
+  String? _serverCallRef;
+
+  // ── paid-only refusal detail (402) ────────────────────────────────────────
+  //
+  // OWNER DECISION 2026-08-04: live call translation is PAID-ONLY. The 100-token
+  // welcome grant and the daily free grant are deliberately NOT spendable here,
+  // because this is a metered third-party provider lane. The Worker's 402 now
+  // says so explicitly (`paid_only: true`) and reports BOTH balances, so the
+  // client can tell "you have no tokens" apart from "you have tokens, but not
+  // the kind this feature spends". Telling a user with a visibly non-empty
+  // wallet that they have no tokens is the bug this exists to prevent.
+  int _paidBalance = 0;
+  int _spendableBalance = 0;
+  bool _paidOnlyRefusal = false;
+
+  /// True when the last 402 was refused for lack of PAID tokens while the user
+  /// still holds free/bonus tokens. The copy must say "top up", not "empty".
+  bool get needsPaidTopUp => _paidOnlyRefusal && _spendableBalance > _paidBalance;
+
+  /// Tokens the user holds that this feature cannot spend (free + bonus).
+  int get nonPaidTokens =>
+      _spendableBalance > _paidBalance ? _spendableBalance - _paidBalance : 0;
+
+  void _absorbPaidOnlyRefusal(Map<String, dynamic> body) {
+    _paidOnlyRefusal = body['paid_only'] == true;
+    _paidBalance = (body['balance'] as num?)?.toInt() ?? _paidBalance;
+    _spendableBalance = (body['spendable'] as num?)?.toInt() ?? _spendableBalance;
+    Analytics.capture('call_translation_insufficient_tokens', {
+      ..._tags,
+      // `paid_balance_required` (start/activate) or `balance_exhausted` (renew).
+      'reason': body['reason']?.toString() ?? '',
+      'paid_only': _paidOnlyRefusal,
+      'balance': _paidBalance,
+      'spendable': _spendableBalance,
+      'has_non_paid_tokens': needsPaidTopUp,
+    });
+  }
+
+  /// Stamped on every client event for this call. `call_ref` is the join key.
+  Map<String, dynamic> get _tags => <String, dynamic>{
+        'session_id': _id ?? '',
+        'call_ref': _serverCallRef ?? callRef,
+      };
+
+  /// Records the server's `call_ref` from any response that carries one.
+  void _absorbCallRef(Map<String, dynamic> response) {
+    final ref = response['call_ref']?.toString();
+    if (ref == null || ref.isEmpty) return;
+    if (_serverCallRef != null && _serverCallRef != ref) {
+      AvaLog.I.log('calltranslate', 'call_ref echo changed');
+    }
+    _serverCallRef = ref;
+  }
+
+  /// [CALL-TRANSLATE-2D-4 / D-8] Every notifier write goes through this.
+  /// [dispose] sets `_disposed` and then disposes the notifiers synchronously,
+  /// while `_stopInternal` is still resuming after `await bridge.stop()` — the
+  /// resulting write to a disposed ValueNotifier tripped a debug assertion and
+  /// reported a spurious `$exception` on EVERY teardown while translating.
+  void _notify<T>(ValueNotifier<T> notifier, T value) {
+    if (_disposed) return;
+    notifier.value = value;
+  }
+
   // Native counters, last-known values from `stats` (monotonic within a call).
+  //
+  // [CALL-TRANSLATE-2D-4] `stallCount`/`stallMsTotal` are now DEAD-AIR ONLY. A
+  // deliberate fallback (language switch, route change, focus blip) lands in
+  // `fallbackCount`/`fallbackMsTotal` instead. The launch-gate p95 stall
+  // thresholds are derived from the stall pair, so the two must never be merged
+  // back together — a clean language switch is not a quality incident.
   int _stallCount = 0;
   int _stallMsTotal = 0;
+  int _fallbackCount = 0;
+  int _fallbackMsTotal = 0;
   int _pcmDropCount = 0;
   int _uplinkFailCount = 0;
   int _shortWriteCount = 0;
@@ -280,6 +373,7 @@ class CallTranslationController with WidgetsBindingObserver {
     if (!allowed.contains(next)) {
       AvaLog.I.log('calltranslate', 'illegal transition ${from.name} -> ${next.name} ($reason)');
       Analytics.capture('call_translation_illegal_transition', {
+        ..._tags,
         'from': from.name,
         'to': next.name,
         'reason': reason,
@@ -293,7 +387,7 @@ class CallTranslationController with WidgetsBindingObserver {
       'from': from.name,
       'to': next.name,
       'reason': reason,
-      'session_id': _id ?? '',
+      ..._tags,
       'provider_failures': _providerFailures,
     });
     return true;
@@ -319,10 +413,10 @@ class CallTranslationController with WidgetsBindingObserver {
     }
     _tapAtMs = DateTime.now().millisecondsSinceEpoch;
     _firstAudioMs = null;
-    failure.value = CallTranslationFailure.none;
-    qualityDegraded.value = false;
+    _notify(failure, CallTranslationFailure.none);
+    _notify(qualityDegraded, false);
     if (!_transition(CallTranslationState.starting, 'user_tap')) return 'busy';
-    targetLanguage.value = lang;
+    _notify(targetLanguage, lang);
 
     // [CALL-TRANSLATE-2C-2] P1 fast start: while the user was still scrolling
     // the language sheet, [warmUp] may have already created the session row AND
@@ -355,6 +449,7 @@ class CallTranslationController with WidgetsBindingObserver {
       'activate',
       () => TranslationApi.callActivate(_id!, _lease!, deviceNonce: _nonce),
     );
+    _absorbCallRef(activate);
     final activateStatus = (activate['status'] as num?)?.toInt() ?? 0;
     if (activateStatus != 200) {
       // A2: past this point the payer MAY already have been charged (the race
@@ -362,6 +457,7 @@ class CallTranslationController with WidgetsBindingObserver {
       // even though the charge is not refunded.
       await _stopInternal('activate_failed_$activateStatus', toFailed: false);
       if (activateStatus == 402 || TranslationApi.isInsufficientTokens(activate)) {
+        _absorbPaidOnlyRefusal(activate);
         _enterFailed(CallTranslationFailure.insufficientTokens, 'activate_402');
         return 'insufficient_tokens';
       }
@@ -380,7 +476,7 @@ class CallTranslationController with WidgetsBindingObserver {
       Analytics.capture('call_translation_reconciled', {
         'op': 'activate',
         'reconciled': reconciled,
-        'session_id': _id ?? '',
+        ..._tags,
       });
     }
 
@@ -392,7 +488,11 @@ class CallTranslationController with WidgetsBindingObserver {
       return 'playback_unavailable';
     }
 
-    billedTokens.value = (activate['billed_tokens'] as num?)?.toInt() ?? TranslationApi.ratePerMin;
+    // [CALL-TRANSLATE-2D-4] activate's 200 now carries `billed_tokens` too (it
+    // used to be renew-only, and the client fell back to a hardcoded 5). The
+    // server value is authoritative — never add the rate locally on top of it.
+    _notify(billedTokens,
+        (activate['billed_tokens'] as num?)?.toInt() ?? TranslationApi.ratePerMin);
     if (!_transition(CallTranslationState.active, 'activated')) {
       await _stopInternal('active_rejected', toFailed: false);
       return 'busy';
@@ -404,7 +504,7 @@ class CallTranslationController with WidgetsBindingObserver {
     Analytics.capture('call_translation_started', {
       'language': lang,
       'rate_per_min': TranslationApi.ratePerMin,
-      'session_id': _id ?? '',
+      ..._tags,
       'device_bound': _deviceBound,
       'warm_start': adopted,
     });
@@ -420,7 +520,12 @@ class CallTranslationController with WidgetsBindingObserver {
   /// On the non-warm path it also enters `warming` and marks [failure]; the warm
   /// path deliberately touches NEITHER, so a speculative attempt that fails is
   /// invisible to the user and to the state machine.
-  Future<String?> _openSession(String lang, {required bool warm, int warmGeneration = 0}) async {
+  Future<String?> _openSession(
+    String lang, {
+    required bool warm,
+    int warmGeneration = 0,
+    bool afterConflictRepair = false,
+  }) async {
     _nonce = await CallTranslationDeviceNonce.ensure();
 
     Map<String, dynamic> pending;
@@ -430,16 +535,56 @@ class CallTranslationController with WidgetsBindingObserver {
         targetLang: lang,
         sourceCapability: CallTranslationAudioBridge.sourceCapability,
         deviceNonce: _nonce,
+        // [CALL-TRANSLATE-2D-4] Speculative warm-ups declare themselves so the
+        // Worker charges them to the WARM-UP rate bucket (120/h) rather than the
+        // real-start one (60/h). Without this flag a few language-sheet opens
+        // burn the payer's start budget and the next genuine tap gets a 429
+        // rendered as "Live translation could not start."
+        warmUp: warm,
       );
     } catch (_) {
       if (!warm) _enterFailed(CallTranslationFailure.network, 'start_unreachable');
       return 'network_unavailable';
     }
+    _absorbCallRef(pending);
     final status = (pending['status'] as num?)?.toInt() ?? 0;
     if (status != 200) {
       if (status == 402 || TranslationApi.isInsufficientTokens(pending)) {
+        _absorbPaidOnlyRefusal(pending);
         if (!warm) _enterFailed(CallTranslationFailure.insufficientTokens, 'start_402');
         return 'insufficient_tokens';
+      }
+      // [CALL-TRANSLATE-2D-4 / D-6] A 409 CARRYING A SESSION_ID IS RECOVERABLE.
+      //
+      // A crash or force-stop mid-session leaves the row `pending`/`activating`/
+      // `active`, and so does a warm-up whose teardown `/stop` never landed. The
+      // Worker then answers every later `/start` for this (payer, call_ref) with
+      // `409 {error, session_id, call_ref}` — and the old code treated any
+      // non-200 as fatal and THREW THE SESSION_ID AWAY, so translation was
+      // unstartable for the rest of the call. That is the plan's own
+      // "kill/relaunch mid-session" test failing.
+      //
+      // We cannot adopt the row: a 409 carries no `source_lease` and no provider
+      // token, both of which `/activate` and `prepare` require. So we do the next
+      // best thing — release the abandoned row and start exactly one fresh
+      // session. `afterConflictRepair` makes that strictly once: a 409 that
+      // survives the repair is a real conflict (another device, a live session)
+      // and must not become a retry loop.
+      final stale = pending['session_id']?.toString();
+      if (status == 409 && stale != null && stale.isNotEmpty && !afterConflictRepair) {
+        Analytics.capture('call_translation_start_conflict_repair', {
+          ..._tags,
+          'stale_session_id': stale,
+          'warm': warm,
+          'error': pending['error']?.toString() ?? '',
+        });
+        await _releaseRow(stale);
+        return _openSession(
+          lang,
+          warm: warm,
+          warmGeneration: warmGeneration,
+          afterConflictRepair: true,
+        );
       }
       if (pending['error']?.toString() == 'invalid_device_nonce') {
         // Our stored nonce is unusable. Drop it so the next attempt mints a
@@ -477,7 +622,7 @@ class CallTranslationController with WidgetsBindingObserver {
     if (pending['device_bound'] == false && _nonce != null) {
       // Not fatal — the session simply is not nonce-bound server-side. Record
       // it so a silently-unbound fleet is visible rather than assumed.
-      Analytics.capture('call_translation_nonce_unbound', {'session_id': sid});
+      Analytics.capture('call_translation_nonce_unbound', {..._tags, 'session_id': sid});
     }
 
     if (!warm && !_transition(CallTranslationState.warming, 'session_created')) {
@@ -517,10 +662,31 @@ class CallTranslationController with WidgetsBindingObserver {
 
   /// Releases a session row without touching the native pipeline. Used for
   /// speculative rows that must not outlive their warm-up.
+  ///
+  /// [CALL-TRANSLATE-2D-4 / D-6] Retried, because a `/stop` that quietly fails is
+  /// not a lost cleanup — it is a row that stays `pending` for this (payer,
+  /// call_ref) and makes EVERY later `/start` answer 409. That is the same defect
+  /// D-6 repairs from the other end, and the two together are what make an
+  /// abandoned warm-up harmless. Still best-effort: the 409 repair in
+  /// [_openSession] is the backstop when even the retries cannot reach the
+  /// network.
   Future<void> _releaseRow(String id) async {
-    try {
-      await TranslationApi.callStop(id);
-    } catch (_) {}
+    for (var attempt = 1; attempt <= 3; attempt++) {
+      try {
+        final r = await TranslationApi.callStop(id);
+        final status = (r['status'] as num?)?.toInt() ?? 0;
+        // 404 = already gone, which is the outcome we wanted.
+        if (status == 200 || status == 404) return;
+      } catch (_) {}
+      if (attempt == 3 || _disposed) break;
+      // Short: some callers sit on the start path, and a slow cleanup would be
+      // felt as a slow tap→translation.
+      await Future<void>.delayed(const Duration(milliseconds: 250) * attempt);
+    }
+    Analytics.capture('call_translation_row_release_failed', {
+      ..._tags,
+      'stale_session_id': id,
+    });
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -554,7 +720,7 @@ class CallTranslationController with WidgetsBindingObserver {
           'attempt': attempt,
           'status': status,
           'wait_ms': wait.inMilliseconds,
-          'session_id': _id ?? '',
+          ..._tags,
         });
         await Future<void>.delayed(wait * attempt);
       } catch (_) {
@@ -565,7 +731,7 @@ class CallTranslationController with WidgetsBindingObserver {
           'attempt': attempt,
           'status': 0,
           'wait_ms': (_kDefaultRetryAfter * attempt).inMilliseconds,
-          'session_id': _id ?? '',
+          ..._tags,
         });
         await Future<void>.delayed(_kDefaultRetryAfter * attempt);
       }
@@ -586,6 +752,7 @@ class CallTranslationController with WidgetsBindingObserver {
       'renew',
       () => TranslationApi.callRenew(id, deviceNonce: _nonce),
     );
+    _absorbCallRef(r);
     final status = (r['status'] as num?)?.toInt() ?? 0;
     if (status == 200) {
       final reconciled = r['reconciled']?.toString();
@@ -595,17 +762,29 @@ class CallTranslationController with WidgetsBindingObserver {
         Analytics.capture('call_translation_reconciled', {
           'op': 'renew',
           'reconciled': reconciled,
-          'session_id': id,
+          ..._tags,
         });
       }
-      billedTokens.value = (r['billed_tokens'] as num?)?.toInt() ??
-          billedTokens.value + TranslationApi.ratePerMin;
+      // [CALL-TRANSLATE-2D-4] `billed_tokens` is now re-read from the row
+      // server-side and is AUTHORITATIVE on every 200, reconciled or not. The
+      // local `+5` is a last-resort fallback for a response that omits it.
+      _notify(billedTokens, (r['billed_tokens'] as num?)?.toInt() ??
+          billedTokens.value + TranslationApi.ratePerMin);
       return;
     }
     if (status == 402 || TranslationApi.isInsufficientTokens(r)) {
+      _absorbPaidOnlyRefusal(r);
+      // Captured BEFORE the teardown: `_stopInternal` nulls `_id`, and an event
+      // with an empty session_id cannot be lined up against the Worker's.
+      Analytics.capture('call_translation_funds_stopped', {
+        ..._tags,
+        'reason': r['reason']?.toString() ?? 'balance_exhausted',
+        'paid_only': _paidOnlyRefusal,
+        'has_non_paid_tokens': needsPaidTopUp,
+        'billed_tokens': billedTokens.value,
+      });
       await _stopInternal('funds_exhausted', toFailed: false);
       _enterFailed(CallTranslationFailure.insufficientTokens, 'renew_402');
-      Analytics.capture('call_translation_funds_stopped', {'reason': 'balance_exhausted'});
       return;
     }
     if (status == 0) {
@@ -631,11 +810,16 @@ class CallTranslationController with WidgetsBindingObserver {
         // The PLUGIN has already un-muted the original audio — Dart is only
         // reflecting it. Do not touch the mute here or the two owners fight.
         _stallCount = event.intOf('stallCount', _stallCount);
-        fallbackToOriginal.value = true;
-        // A Phase C cutover raises the SAME fallback deliberately ('switching').
-        // Reporting that as a stall would both lie to the user and spam the
-        // illegal-transition counter, since a switch sits in `warming`.
-        if (!_isSwitchFallback(event)) {
+        _fallbackCount = event.intOf('fallbackCount', _fallbackCount);
+        _notify(fallbackToOriginal, true);
+        // [CALL-TRANSLATE-2D-4] `deadAir` is now the authoritative discriminator
+        // (the native counters are split on it too). A deliberate fallback — a
+        // Phase C cutover, a route swap, a focus blip — is NOT a stall: reporting
+        // it as one would lie to the user AND spam the illegal-transition
+        // counter, since a switch sits in `warming`.
+        if (event.boolOf('deadAir', !_isSwitchFallback(event))) {
+          // NATIVE now owns the fallback. Nothing in Dart may lower it.
+          _nativeFallbackHeld = true;
           _transition(CallTranslationState.stalled, 'native_stalled_${event.value ?? 'unknown'}');
         }
         break;
@@ -643,23 +827,30 @@ class CallTranslationController with WidgetsBindingObserver {
       case 'recovered':
         _stallCount = event.intOf('stallCount', _stallCount);
         _stallMsTotal = event.intOf('stallMsTotal', _stallMsTotal);
-        fallbackToOriginal.value = false;
-        if (_isSwitchFallback(event)) {
-          // First SUSTAINED translated PCM from the new language — the plugin
-          // re-muted the original by itself. This is the far edge of the gap.
-          _resolveSwitchGap('native_recovered');
-        } else {
-          _transition(CallTranslationState.active, 'native_recovered');
-        }
+        _fallbackCount = event.intOf('fallbackCount', _fallbackCount);
+        _fallbackMsTotal = event.intOf('fallbackMsTotal', _fallbackMsTotal);
+        unawaited(_onNativeRecovered(event));
+        break;
+
+      case 'switch_cancelled':
+        // [CALL-TRANSLATE-2D-4] Acknowledgement that a pending socket was
+        // abandoned (by our own `cancelSwitch`, or superseded by another). The
+        // live session is untouched, so there is no state change to make — this
+        // exists so an abandoned-cutover rate is visible in telemetry.
+        Analytics.capture('call_translation_switch_cancelled', {
+          ..._tags,
+          'reason': event.value ?? '',
+          'live_language': event.data['liveLanguage']?.toString() ?? '',
+        });
         break;
 
       case 'stall_degraded':
         // 2+ stall/recover cycles in the window. Still translating — warn only.
-        qualityDegraded.value = true;
+        _notify(qualityDegraded, true);
         _stallCount = event.intOf('stallCount', _stallCount);
         _stallMsTotal = event.intOf('stallMsTotal', _stallMsTotal);
         Analytics.capture('call_translation_degraded', {
-          'session_id': _id ?? '',
+          ..._tags,
           'cycles_in_window': event.intOf('cyclesInWindow'),
           'window_ms': event.intOf('windowMs'),
           'stall_count': _stallCount,
@@ -696,12 +887,27 @@ class CallTranslationController with WidgetsBindingObserver {
             // Language CODES only, straight from the plugin. Never content.
             'attempted_language': event.data['attemptedLanguage']?.toString() ?? '',
             'live_language': event.data['liveLanguage']?.toString() ?? '',
+            // [CALL-TRANSLATE-2D-4] `resume_failed` is now ALSO emitted from the
+            // plugin's CLOSE path, where `value` is `closed_<code>` and this
+            // extra carries the numeric code. A provider that refuses a switch
+            // token answers with a close frame, so this is the common shape.
+            // Both are fixed CATEGORIES — never parse them as prose.
+            'failure': event.value ?? '',
+            'close_code': event.intOf('closeCode', -1),
           }));
           break;
         }
         // [CALL-TRANSLATE-2A-3] Previously ignored: the pill showed "active" on
         // a dead provider session. The resume socket is gone; the breaker
         // decides whether one more attempt is allowed.
+        Analytics.capture('call_translation_resume_failed', {
+          ..._tags,
+          // Fixed category: an exception class name, or `closed_<code>` when the
+          // plugin's close path raised it. Never provider prose.
+          'failure': event.value ?? '',
+          'close_code': event.intOf('closeCode', -1),
+          'resumes': _resumeCount,
+        });
         unawaited(_handleResumeFailed());
         break;
 
@@ -721,11 +927,19 @@ class CallTranslationController with WidgetsBindingObserver {
   void _absorbStats(CallTranslationAudioEvent event) {
     _stallCount = event.intOf('stallCount', _stallCount);
     _stallMsTotal = event.intOf('stallMsTotal', _stallMsTotal);
+    _fallbackCount = event.intOf('fallbackCount', _fallbackCount);
+    _fallbackMsTotal = event.intOf('fallbackMsTotal', _fallbackMsTotal);
     _pcmDropCount = event.intOf('pcmDropCount', _pcmDropCount);
     _uplinkFailCount = event.intOf('uplinkFailCount', _uplinkFailCount);
     _shortWriteCount = event.intOf('shortWriteCount', _shortWriteCount);
     _queuePeak = event.intOf('queuePeak', _queuePeak);
-    fallbackToOriginal.value = event.boolOf('fallbackActive', fallbackToOriginal.value);
+    // `fallbackActive` is the PLUGIN's real mute state and therefore the
+    // authority. If it says the original is muted again, every owner has been
+    // released natively — drop our bookkeeping to match rather than holding a
+    // reason that can never be lowered.
+    final pluginFallback = event.boolOf('fallbackActive', _fallbackHeld);
+    if (!pluginFallback && _fallbackHeld) _clearFallbackOwners();
+    _notify(fallbackToOriginal, pluginFallback);
 
     if (_firstAudioMs == null && event.intOf('translatedChunkCount') > 0 && _tapAtMs > 0) {
       _firstAudioMs = DateTime.now().millisecondsSinceEpoch - _tapAtMs;
@@ -737,7 +951,7 @@ class CallTranslationController with WidgetsBindingObserver {
         _firstAudioMs!,
         phase: 'interactive',
         source: 'network',
-        extra: {'session_id': _id ?? '', 'language': targetLanguage.value ?? ''},
+        extra: {..._tags, 'language': targetLanguage.value ?? ''},
       ));
     }
 
@@ -780,10 +994,18 @@ class CallTranslationController with WidgetsBindingObserver {
   void _emitQualityTelemetry(String at, {int? uptimeMs}) {
     Analytics.capture('call_translation_quality', {
       'at': at,
-      'session_id': _id ?? '',
+      ..._tags,
       'language': targetLanguage.value ?? '',
+      // [CALL-TRANSLATE-2D-4] stall_* is DEAD AIR ONLY (the plugin narrowed the
+      // semantics); deliberate fallbacks are reported separately. The launch
+      // gate's p95 stall thresholds read the stall pair, so merging them back
+      // together would make a clean language switch look like a quality
+      // incident and move the threshold for everyone.
       'stall_count': _stallCount,
       'stall_ms': _stallMsTotal,
+      'fallback_count': _fallbackCount,
+      'fallback_ms': _fallbackMsTotal,
+      'resume_count': _resumeCount,
       'pcm_drop_count': _pcmDropCount,
       'uplink_fail_count': _uplinkFailCount,
       'short_write_count': _shortWriteCount,
@@ -833,18 +1055,36 @@ class CallTranslationController with WidgetsBindingObserver {
       'reason': reason,
       'provider_failures': _providerFailures,
       'circuit_open': circuitOpen,
-      'session_id': _id ?? '',
+      ..._tags,
     });
   }
 
   Future<void> _resumeProvider(String handle, {bool alreadyRecovering = false}) async {
     final id = _id;
     if (id == null || _resumingProvider) return;
+    // [CALL-TRANSLATE-2D-4 / L-6] The circuit breaker counts FAILURES, and a
+    // resume that succeeds is not one — so a provider that issues `goAway` after
+    // every successful resume never trips it. The only thing that stopped the
+    // loop was `/token`'s 24/hour rate limit, i.e. ~24 reconnects an hour before
+    // the user saw anything, each one a gap in their call. Resumes are therefore
+    // budgeted per call in their own right; exhausting the budget is a provider
+    // failure like any other and opens the breaker.
+    if (_resumeCount >= kMaxResumesPerCall) {
+      Analytics.capture('call_translation_resume_budget_exhausted', {
+        ..._tags,
+        'resumes': _resumeCount,
+        'budget': kMaxResumesPerCall,
+      });
+      _providerFailures = kMaxProviderFailuresPerCall;
+      await _failFromProvider('resume_budget_exhausted');
+      return;
+    }
     if (!alreadyRecovering) {
       if (!active) return;
       if (!_transition(CallTranslationState.recovering, 'resume_token_needed')) return;
     }
     _resumingProvider = true;
+    _resumeCount++;
     try {
       // [CALL-TRANSLATE-2C-2] `/token` mints against whatever language the ROW
       // holds. If a sheet-open pre-mint speculatively moved the row, that is NOT
@@ -867,7 +1107,7 @@ class CallTranslationController with WidgetsBindingObserver {
   }
 
   void _enterFailed(CallTranslationFailure why, String reason) {
-    failure.value = why;
+    _notify(failure, why);
     _transition(CallTranslationState.failed, reason);
   }
 
@@ -882,12 +1122,13 @@ class CallTranslationController with WidgetsBindingObserver {
     await _stopInternal('user_stop', toFailed: false);
     if (!_disposed && state.value != CallTranslationState.failed) {
       _transition(CallTranslationState.idle, 'stopped');
-      failure.value = CallTranslationFailure.none;
+      _notify(failure, CallTranslationFailure.none);
     }
     if (hadSession) {
       Analytics.capture('call_translation_stopped', {
-        'billed_tokens': billedTokens.value,
+        ..._tags,
         'session_id': sessionId,
+        'billed_tokens': billedTokens.value,
       });
     }
   }
@@ -914,7 +1155,7 @@ class CallTranslationController with WidgetsBindingObserver {
     _switchGapStartMs = 0;
     _switchGapBaselineChunks = -1;
     _queuedSwitch = null;
-    switchingTo.value = null;
+    _notify(switchingTo, null);
     final pendingSwitch = _switchCompleter;
     _switchCompleter = null;
     if (pendingSwitch != null && !pendingSwitch.isCompleted) {
@@ -933,8 +1174,11 @@ class CallTranslationController with WidgetsBindingObserver {
       _transition(CallTranslationState.stopping, reason);
     }
     if (_id != null) _emitQualityTelemetry(reason);
+    // `stop` restores the original audio unconditionally and resets the plugin's
+    // own fallback state, so every owner is released by definition.
+    _clearFallbackOwners();
     await bridge.stop();
-    fallbackToOriginal.value = false;
+    _notify(fallbackToOriginal, false);
     final id = _id;
     _id = null;
     _lease = null;
@@ -950,15 +1194,17 @@ class CallTranslationController with WidgetsBindingObserver {
   }
 
   Future<void> _stopUnbilledPending() async {
+    _clearFallbackOwners();
     await bridge.stop();
     final id = _id;
     _id = null;
     _lease = null;
-    if (id != null) {
-      try {
-        await TranslationApi.callStop(id);
-      } catch (_) {}
-    }
+    // [CALL-TRANSLATE-2D-4 / D-6] Retried in the BACKGROUND. The native stop is
+    // what the caller must wait for (a new `prepare` cannot run over a live
+    // pipeline); the row release only has to happen, not to happen now — and
+    // this runs on the start path, where blocking on a retrying HTTP call would
+    // be felt directly as a slow tap→translation.
+    if (id != null) unawaited(_releaseRow(id));
   }
 
   /// A stopped lease cannot be resumed silently; the caller must start a new
@@ -996,7 +1242,7 @@ class CallTranslationController with WidgetsBindingObserver {
           Analytics.capture('call_translation_lifecycle', {
             'event': state.name,
             'action': 'survive',
-            'session_id': _id ?? '',
+            ..._tags,
           });
         }
         break;
@@ -1014,7 +1260,7 @@ class CallTranslationController with WidgetsBindingObserver {
           'event': 'audio_route',
           'action': 'fallback_bridge',
           'active_route': result.active.name,
-          'session_id': _id ?? '',
+          ..._tags,
         });
         _fallbackAcross(const Duration(milliseconds: 1500), 'route_change');
       });
@@ -1032,7 +1278,7 @@ class CallTranslationController with WidgetsBindingObserver {
           Analytics.capture('call_translation_lifecycle', {
             'event': 'cellular_interruption',
             'action': 'stop',
-            'session_id': _id ?? '',
+            ..._tags,
           });
           unawaited(stop());
         }
@@ -1057,14 +1303,17 @@ class CallTranslationController with WidgetsBindingObserver {
       Analytics.capture('call_translation_lifecycle', {
         'event': 'audio_focus_lost',
         'action': 'fallback_original',
-        'session_id': _id ?? '',
+        ..._tags,
       });
-      unawaited(_setFallback(true, 'audio_focus_lost'));
+      unawaited(_raiseFallback('audio_focus_lost'));
     };
     _ourFocusRegained = () {
       _prevFocusRegained?.call();
-      if (_disposed || !active) return;
-      unawaited(_setFallback(false, 'audio_focus_regained'));
+      if (_disposed) return;
+      // Releases OUR reason by name. If the dead-air guard is holding the
+      // fallback, this is a no-op: re-muting here would put the user back into
+      // silence on a translation that is still dead (the D-1 bug).
+      unawaited(_lowerFallback('audio_focus_lost'));
     };
     nva.onAudioFocusLost = _ourFocusLost;
     nva.onAudioFocusRegained = _ourFocusRegained;
@@ -1080,19 +1329,122 @@ class CallTranslationController with WidgetsBindingObserver {
     _ourFocusRegained = null;
   }
 
-  Future<void> _setFallback(bool enabled, String reason) async {
-    fallbackToOriginal.value = enabled;
-    await bridge.setFallback(enabled: enabled, reason: reason);
+  // ───────────────────────────────────────────────────────────────────────────
+  // [CALL-TRANSLATE-2D-4 / D-1] FALLBACK OWNER MODEL — read this before touching
+  // anything that calls setFallback.
+  //
+  // "Fallback" = the plugin un-mutes the ORIGINAL decoded call audio and stops
+  // muting it behind the translation. It is a SINGLE physical switch with TWO
+  // classes of owner, and the bug this model exists to kill was a shared boolean
+  // with none: `_fallbackAcross`'s 1500 ms timer and `_ourFocusRegained` both
+  // called setFallback(false) UNCONDITIONALLY, so a route change or a focus blip
+  // during a dead-air stall RE-MUTED the original while translation was still
+  // dead — manufactured dead air, repeatable, and needing another 2 s of voiced
+  // input before the native guard could fire again.
+  //
+  // THE RULE: **an owner may lower only a fallback it raised itself.**
+  //
+  //  • NATIVE owns the dead-air fallback ([_nativeFallbackHeld]). It raises it
+  //    (`stalled` with deadAir:true) and lowers it (`recovered` with
+  //    deadAir:true) on the new session's first SUSTAINED translated PCM. Dart
+  //    NEVER lowers it — there is deliberately no code path that can.
+  //  • DART owns its deliberate reasons ([_dartFallbackReasons]): 'switching'
+  //    (Phase C cutover), 'route_change', 'audio_focus_lost'. Each is raised and
+  //    lowered by name; lowering a reason we do not hold is a no-op.
+  //  • The plugin is un-muted only when NOBODY holds a reason. The physical
+  //    setFallback(false) is issued exactly once, by whoever releases last.
+  //  • The plugin's own guard may also drop a DELIBERATE fallback once translated
+  //    PCM resumes (`recovered` with deadAir:false, carrying the tag). That is
+  //    authoritative — we drop the matching reason and re-assert only if a
+  //    DIFFERENT Dart reason is still outstanding, so the same reason can never
+  //    flap against the guard.
+  // ───────────────────────────────────────────────────────────────────────────
+
+  /// Deliberate fallback reasons Dart itself raised. Dart may lower ONLY these.
+  final Set<String> _dartFallbackReasons = <String>{};
+
+  /// True while the NATIVE dead-air guard holds the fallback. Only a `recovered`
+  /// event with `deadAir: true` (or a full teardown) clears it — never Dart.
+  bool _nativeFallbackHeld = false;
+
+  bool get _fallbackHeld => _nativeFallbackHeld || _dartFallbackReasons.isNotEmpty;
+
+  /// Raise the fallback for a reason DART owns.
+  Future<void> _raiseFallback(String reason) async {
+    if (_disposed) return;
+    final wasHeld = _fallbackHeld;
+    _dartFallbackReasons.add(reason);
+    _notify(fallbackToOriginal, true);
+    // A duplicate raise is a native no-op, but skipping it keeps the plugin's
+    // fallbackReason (and therefore its stall-vs-deliberate accounting) owned by
+    // whoever raised FIRST, which is what the counters assume.
+    if (!wasHeld) await bridge.setFallback(enabled: true, reason: reason);
   }
 
-  /// Fall back to the original audio for [window], then re-mute. Used for
-  /// transient events (route swap) where the stream is briefly unusable.
+  /// Lower a reason DART owns. Lowering something we did not raise — the D-1
+  /// bug — is silently ignored, and the plugin stays un-muted as long as ANY
+  /// owner still holds it.
+  Future<void> _lowerFallback(String reason) async {
+    if (!_dartFallbackReasons.remove(reason)) return;
+    if (_fallbackHeld) return; // someone else (usually the dead-air guard) holds it
+    _notify(fallbackToOriginal, false);
+    if (_disposed) return;
+    await bridge.setFallback(enabled: false, reason: reason);
+  }
+
+  /// The plugin dropped the fallback and re-muted the original by itself. Which
+  /// owner it just released is told by `deadAir`, and the release is
+  /// AUTHORITATIVE — the plugin is un-muted no matter what our bookkeeping says.
+  /// We therefore reconcile rather than argue, and re-assert only if a DIFFERENT
+  /// Dart reason is still outstanding (re-asserting the same one would flap
+  /// against the guard forever).
+  Future<void> _onNativeRecovered(CallTranslationAudioEvent event) async {
+    final deadAir = event.boolOf('deadAir', !_isSwitchFallback(event));
+    final tag = event.data['reason']?.toString() ?? event.value ?? '';
+    if (deadAir) {
+      _nativeFallbackHeld = false;
+    } else if (tag.isNotEmpty) {
+      _dartFallbackReasons.remove(tag);
+    }
+    final remaining = _dartFallbackReasons.isEmpty ? null : _dartFallbackReasons.first;
+    if (_nativeFallbackHeld || remaining != null) {
+      _notify(fallbackToOriginal, true);
+      if (remaining != null && !_nativeFallbackHeld && !_disposed) {
+        // The plugin re-muted, but we still owe the user original audio for a
+        // different reason. Re-raise it explicitly rather than leaving the
+        // notifier and the plugin disagreeing.
+        await bridge.setFallback(enabled: true, reason: remaining);
+      }
+    } else {
+      _notify(fallbackToOriginal, false);
+    }
+
+    if (!deadAir && _isSwitchFallback(event)) {
+      // First SUSTAINED translated PCM from the NEW language — the far edge of
+      // the switch gap.
+      _resolveSwitchGap('native_recovered');
+      return;
+    }
+    if (deadAir) _transition(CallTranslationState.active, 'native_recovered');
+  }
+
+  /// Forget every owner without touching the plugin. Teardown only: `bridge.stop`
+  /// restores the original audio unconditionally, so there is nothing to release.
+  void _clearFallbackOwners() {
+    _dartFallbackReasons.clear();
+    _nativeFallbackHeld = false;
+  }
+
+  /// Fall back to the original audio for [window], then release OUR reason. Used
+  /// for transient events (route swap) where the stream is briefly unusable.
+  /// The release is a no-op if the dead-air guard has taken the fallback over in
+  /// the meantime — that is the whole point of the owner model.
   void _fallbackAcross(Duration window, String reason) {
     _fallbackRelease?.cancel();
-    unawaited(_setFallback(true, reason));
+    unawaited(_raiseFallback(reason));
     _fallbackRelease = Timer(window, () {
-      if (_disposed || !active) return;
-      unawaited(_setFallback(false, reason));
+      if (_disposed) return;
+      unawaited(_lowerFallback(reason));
     });
   }
 
@@ -1199,7 +1551,7 @@ class CallTranslationController with WidgetsBindingObserver {
       // Guardrail: exactly one in-flight switch. Remember only the LATEST ask.
       _queuedSwitch = lang;
       Analytics.capture('call_translation_language_switch_queued', {
-        'session_id': _id ?? '',
+        ..._tags,
         'language': lang,
       });
       return null;
@@ -1330,7 +1682,7 @@ class CallTranslationController with WidgetsBindingObserver {
     if (!canSwitchLanguage) return false;
     if (!_transition(CallTranslationState.warming, 'language_switch_$lang')) return false;
     _switchTarget = lang;
-    switchingTo.value = lang;
+    _notify(switchingTo, lang);
     return true;
   }
 
@@ -1356,8 +1708,8 @@ class CallTranslationController with WidgetsBindingObserver {
         : (targetLanguage.value ?? '');
 
     _switchTarget = null;
-    switchingTo.value = null;
-    targetLanguage.value = lang;
+    _notify(switchingTo, null);
+    _notify(targetLanguage, lang);
     // The row was moved to `lang` by /language and the plugin now agrees with
     // it, so there is nothing speculative left to repair.
     _speculativeRowLang = null;
@@ -1373,8 +1725,10 @@ class CallTranslationController with WidgetsBindingObserver {
     // speaker rather than silence. NO setFallback(false) anywhere: the native
     // dead-air guard drops it on the new session's first sustained translated
     // PCM. Dropping it by hand would re-mute before any translated audio exists,
-    // manufacturing the exact dead air this design avoids.
-    unawaited(_setFallback(true, 'switching'));
+    // manufacturing the exact dead air this design avoids. Raised as a DART-owned
+    // reason ('switching'): the guard drops it and Dart's `recovered` handler
+    // reconciles, so no timer and no other owner can clear it early.
+    unawaited(_raiseFallback('switching'));
 
     if (completer != null && !completer.isCompleted) completer.complete(null);
   }
@@ -1397,13 +1751,19 @@ class CallTranslationController with WidgetsBindingObserver {
     _switchCutoverTimer = null;
     if (target == null && completer == null) return;
     _switchTarget = null;
-    switchingTo.value = null;
+    _notify(switchingTo, null);
+    // [CALL-TRANSLATE-2D-4 / D-4] TELL THE PLUGIN. Giving up in Dart alone left
+    // `pendingSocket` non-null for the rest of the call, which wedged every later
+    // switch with `switch_in_flight` and silently disabled goAway-driven provider
+    // resume. Idempotent: false simply means the socket was already gone (the
+    // `resume_failed` path nulls it natively before it emits).
+    await bridge.cancelSwitch(reason: reason);
     await _restoreSpeculativeRow();
     if (state.value == CallTranslationState.warming) {
       _transition(CallTranslationState.active, 'language_switch_failed_$reason');
     }
     Analytics.capture('call_translation_language_switch_failed', {
-      'session_id': _id ?? '',
+      ..._tags,
       'from_language': targetLanguage.value ?? '',
       'to_language': target ?? '',
       'reason': reason,
@@ -1424,12 +1784,17 @@ class CallTranslationController with WidgetsBindingObserver {
     _switchCutoverTimer?.cancel();
     _switchCutoverTimer = null;
     _switchTarget = null;
-    switchingTo.value = null;
+    _notify(switchingTo, null);
     if (completer != null && !completer.isCompleted) completer.complete('switch_failed');
+    // [CALL-TRANSLATE-2D-4 / D-4] Most abort paths run BEFORE `switchLanguage`
+    // was ever called, so there is nothing pending; the one that does not is the
+    // `switchLanguage` throw, where a socket may already have been opened. Cheap
+    // and idempotent either way — never leave a pending socket behind.
+    await bridge.cancelSwitch(reason: reason);
     if (restoreRow) await _restoreSpeculativeRow();
     _transition(CallTranslationState.active, 'language_switch_aborted_$reason');
     Analytics.capture('call_translation_language_switch_failed', {
-      'session_id': _id ?? '',
+      ..._tags,
       'from_language': targetLanguage.value ?? '',
       'to_language': target ?? '',
       'reason': reason,
@@ -1513,7 +1878,7 @@ class CallTranslationController with WidgetsBindingObserver {
     _switchGapPoll?.cancel();
     _switchGapPoll = null;
     Analytics.capture('call_translation_language_switched', {
-      'session_id': _id ?? '',
+      ..._tags,
       'language': _switchGapLang,
       'from_language': _switchGapFrom,
       'via': via,
@@ -1596,7 +1961,7 @@ class CallTranslationController with WidgetsBindingObserver {
     Analytics.capture('call_translation_warm_ready', {
       'kind': 'session',
       'language': lang,
-      'session_id': _id ?? '',
+      ..._tags,
     });
   }
 
@@ -1623,7 +1988,7 @@ class CallTranslationController with WidgetsBindingObserver {
       Analytics.capture('call_translation_warm_ready', {
         'kind': 'token',
         'language': lang,
-        'session_id': id,
+        ..._tags,
       });
     } catch (_) {}
   }
@@ -1728,6 +2093,15 @@ class CallTranslationController with WidgetsBindingObserver {
     unawaited(_telephonyEvents?.cancel());
     // Widget disposal is one of the invariant's named paths: the bridge MUST be
     // stopped (restoring the original audio) even though nothing is listening.
+    //
+    // [CALL-TRANSLATE-2D-4 / D-8] This is deliberately NOT awaited — the call is
+    // tearing down and must not wait on the network — so `_stopInternal`
+    // continues running after the notifiers below are disposed. `_disposed` is
+    // already true and every notifier write in this class goes through [_notify],
+    // which drops writes once it is, so the resume after `await bridge.stop()`
+    // can no longer write to a disposed ValueNotifier. That write used to trip a
+    // debug assertion and report a spurious `$exception` on EVERY teardown while
+    // translating. Do not "simplify" [_notify] away.
     unawaited(_stopInternal('disposed', toFailed: false));
     state.dispose();
     failure.dispose();

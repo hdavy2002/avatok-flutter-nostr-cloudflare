@@ -59,17 +59,28 @@ class TranslationApi {
   // EXCEPT stop — stopping must never be blockable, so callStop deliberately
   // sends no nonce. A null nonce is omitted rather than sent as null: the
   // Worker validates `^[A-Za-z0-9_.:-]{8,128}$` and 400s on a malformed value.
+  /// [CALL-TRANSLATE-2D-4] [warmUp] marks a SPECULATIVE start (Phase C's
+  /// language-sheet pre-open). The Worker meters warm-ups in their own hourly
+  /// bucket (120/h) separately from real starts (60/h); omitting the flag spends
+  /// the real-start budget on speculation, and a payer who browses the language
+  /// list a few times then gets a 429 on the tap that mattered.
+  ///
+  /// 409 carries `{error, session_id, call_ref}` — the session_id is RECOVERABLE
+  /// (an abandoned row from a crash or a warm-up whose /stop never landed), not
+  /// a dead end. See `_openSession`'s conflict repair.
   static Future<Map<String, dynamic>> callStart({
     required String callRef,
     required String targetLang,
     required String sourceCapability,
     String? deviceNonce,
+    bool warmUp = false,
   }) async {
     final r = await ApiAuth.postJson('$_base/call/start', {
       'call_ref': callRef,
       'target_lang': targetLang,
       'source_capability': sourceCapability,
       if (deviceNonce != null) 'device_nonce': deviceNonce,
+      if (warmUp) 'warm_up': true,
     }, timeout: const Duration(seconds: 15));
     return {..._j(r.body), 'status': r.statusCode};
   }
@@ -135,6 +146,13 @@ class TranslationApi {
   /// with `error_legacy: "insufficient_avacoins"` for one release cycle. Read
   /// BOTH: a client shipped before the rename is still in the field, and a
   /// Worker rolled back would still send only the legacy key.
+  ///
+  /// [CALL-TRANSLATE-2D-4] The 402 body now also carries `paid_only: true`,
+  /// `rate_per_min`, `balance` (PAID balance) and `spendable` (free+bonus+paid),
+  /// with `reason` = `paid_balance_required` or `balance_exhausted`. Call
+  /// translation is PAID-ONLY by owner decision (2026-08-04), so `spendable >
+  /// balance` means the user genuinely holds tokens that this feature cannot
+  /// spend — the copy must say "top up", never "you have no tokens".
   static bool isInsufficientTokens(Map<String, dynamic> body) {
     const hits = {'insufficient_tokens', 'insufficient_avacoins'};
     return hits.contains(body['error']?.toString()) ||

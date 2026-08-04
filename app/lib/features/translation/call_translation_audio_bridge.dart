@@ -125,6 +125,30 @@ class CallTranslationAudioBridge {
         if (handle != null && handle.isNotEmpty) 'handle': handle,
       });
 
+  /// [CALL-TRANSLATE-2D-4] Abandon a pending make-before-break socket that Dart
+  /// has given up on (its own cutover deadline, or a channel-level failure).
+  ///
+  /// Closes and nulls `pendingSocket` and NOTHING else: the live session, the
+  /// language it is speaking, `active`/`paid`, the fallback state and the worker
+  /// threads are all untouched, so the user keeps hearing the language they are
+  /// already being translated into. Without this, a timed-out cutover left
+  /// `pendingSocket` non-null for the rest of the call, which wedged every later
+  /// `switchLanguage` with `switch_in_flight` AND silently disabled goAway-driven
+  /// provider resume (the plugin gates resume on `pendingSocket == null`).
+  ///
+  /// [reason] is a short CATEGORY tag (≤40 chars, hard-capped natively) — never
+  /// content. Returns true if a pending socket was actually abandoned.
+  ///
+  /// Dart still owns clearing any `setFallback(true, …)` it raised itself; this
+  /// method deliberately does not touch the mute.
+  Future<bool> cancelSwitch({String reason = 'cancelled'}) async {
+    try {
+      return await _methods.invokeMethod<bool>('cancelSwitch', {'reason': reason}) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// [CALL-TRANSLATE-2B-2] Ask the plugin to un-mute (or re-mute) the ORIGINAL
   /// decoded call audio without tearing the session down. This is the same
   /// mechanism the native dead-air guard uses, exposed so Dart can invoke it
