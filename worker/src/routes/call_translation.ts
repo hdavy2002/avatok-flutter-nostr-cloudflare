@@ -145,6 +145,23 @@ async function nonceRejection(env: Env, s: CallSession, route: string): Promise<
   return json({ error: "device_nonce_mismatch", billable: false }, 403);
 }
 
+/**
+ * [CALL-TRANSLATE-2B-4] The out-of-funds wire contract for call translation.
+ *
+ * The canonical key is now `insufficient_tokens` (owner: the currency is Tokens,
+ * not coins). `error_legacy` carries the previous spelling for ONE release cycle
+ * so any build that string-matches `insufficient_avacoins` keeps working; the
+ * HTTP status stays 402, which is what the current Dart client actually branches
+ * on. Delete `error_legacy` once no pre-rename build is in the field.
+ */
+function insufficientTokens(extra: Record<string, unknown> = {}): Response {
+  return json({
+    error: "insufficient_tokens",
+    error_legacy: "insufficient_avacoins",
+    ...extra,
+  }, 402);
+}
+
 function authError(ctx: unknown): Response {
   return json({ error: (ctx as { error: string }).error }, (ctx as { status: number }).status);
 }
@@ -216,7 +233,7 @@ export async function callTranslationStart(req: Request, env: Env): Promise<Resp
   const existing = await metaDb(env).prepare("SELECT id FROM translation_call_sessions WHERE payer_uid=?1 AND call_ref=?2 AND status IN ('pending','activating','active') LIMIT 1").bind(ctx.uid, callRef).first<{ id: string }>();
   if (existing) return json({ error: "translation already active", session_id: existing.id }, 409);
   const bal = await balance(env, ctx.uid);
-  if (bal < CALL_TRANSLATION_MIN_START) return json({ error: "insufficient_avacoins", needed: CALL_TRANSLATION_MIN_START, balance: bal }, 402);
+  if (bal < CALL_TRANSLATION_MIN_START) return insufficientTokens({ needed: CALL_TRANSLATION_MIN_START, balance: bal });
   const now = Date.now();
   const id = crypto.randomUUID();
   const lease = crypto.randomUUID();
@@ -278,7 +295,7 @@ export async function callTranslationActivate(req: Request, env: Env, id: string
   }
   if (!(await chargeMinute(env, s, 1))) {
     await metaDb(env).prepare("UPDATE translation_call_sessions SET status='pending',updated_at=?2 WHERE id=?1 AND status='activating'").bind(id, Date.now()).run();
-    return json({ error: "insufficient_avacoins", needed: CALL_TRANSLATION_MIN_START, billable: false }, 402);
+    return insufficientTokens({ needed: CALL_TRANSLATION_MIN_START, billable: false });
   }
   const now = Date.now();
   const activated = await metaDb(env).prepare("UPDATE translation_call_sessions SET status='active',started_at=?2,last_billed_minute=1,billed_tokens=?3,updated_at=?2 WHERE id=?1 AND status='activating'").bind(id, now, CALL_TRANSLATION_RATE).run();
@@ -302,8 +319,8 @@ export async function callTranslationRenew(req: Request, env: Env, id: string): 
   const minute = s.last_billed_minute + 1;
   if (!(await chargeMinute(env, s, minute))) {
     await metaDb(env).prepare("UPDATE translation_call_sessions SET status='funds-stopped',updated_at=?2 WHERE id=?1 AND status='active'").bind(id, Date.now()).run();
-    track(env, ctx.uid, "call_translation_funds_stopped", APP, { call_ref: s.call_ref });
-    return json({ error: "insufficient_avacoins", reason: "balance_exhausted", billable: true }, 402);
+    await track(env, ctx.uid, "call_translation_funds_stopped", APP, { session_id: id, call_ref: s.call_ref, minute });
+    return insufficientTokens({ reason: "balance_exhausted", billable: true });
   }
   const billed = s.billed_tokens + CALL_TRANSLATION_RATE;
   // [CALL-TRANSLATE-2A-2] Guard on the minute counter, not on status. The money
