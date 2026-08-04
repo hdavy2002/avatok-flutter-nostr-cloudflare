@@ -125,6 +125,7 @@ import '../../core/media_auto_download.dart';
 import '../messaging/widgets/media_download_placeholder.dart';
 // STREAM E: WhatsApp-parity input bar + emoji/GIF/sticker panel.
 import '../messaging/widgets/rich_input_bar.dart';
+import '../messaging/widgets/mention_text_controller.dart';
 import '../messaging/widgets/gif_api.dart';
 import '../messaging/widgets/picker_recents_store.dart';
 import '../messaging/widgets/sticker_media.dart';
@@ -612,7 +613,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   // null when unknown. Stranger-gate (Stream B) will populate this; until then it
   // stays null (treated as accepted). A 'pending' thread NEVER auto-downloads.
   String? _threadAcceptState;
-  final _ctrl = TextEditingController();
+  // [CHAT-MENTIONS-1] MentionTextController is a drop-in TextEditingController
+  // that only overrides buildTextSpan, so `@name` / `#ava` tokens paint in
+  // colour. `.text` is untouched — _send, ava_invoke's parser and the draft
+  // store all keep seeing exactly what the user typed.
+  final _ctrl = MentionTextController();
   final _searchCtrl = TextEditingController(); // in-thread search box (literal + AI)
   final _composerFocus = FocusNode(); // keep the keyboard up after each send
   final _scroll = ScrollController();
@@ -9839,6 +9844,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         onChanged: _onInputChanged,
         onGif: _sendGif,
         onSticker: _sendStickerAsset,
+        onMention: _openMentionPicker,
         topSlot: Column(mainAxisSize: MainAxisSize.min, children: [
           _composerTopDivider(),
           if (_replyTo != null || _editing != null) _replyBanner(),
@@ -10020,7 +10026,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     // [WALLET-GET-STATE-1] 2026-07-25: was PAID-ONLY (`if (!_premium) return
     // ...shrink()`) — owner decision (Root-Cause Report §10/§12c) made
     // Ava-in-chat text free for everyone, so the hint is no longer gated.
-    return _avaHintNote();
+    //
+    // [CHAT-MENTIONS-1] 2026-08-04: the hint line is RETIRED. It was a permanent
+    // banner teaching a syntax that the new "@" control in the composer now does
+    // for you — you pick "@ava (private)" or "#ava (public)" off a list instead
+    // of remembering to type it. `_avaHintNote()` is left below (unused) so this
+    // stays a one-line revert if the owner wants the text back.
+    return const SizedBox.shrink();
   }
 
   /// Tiny reminder above the field: how to call Ava without a button.
@@ -11069,6 +11081,220 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     _ctrl.text = v;
     _ctrl.selection = TextSelection.collapsed(offset: v.length);
     setState(() { _mentionMatches = []; _hasText = v.trim().isNotEmpty; });
+  }
+
+  // ---- [CHAT-MENTIONS-1] The "@" picker (owner request 2026-08-04) ----------
+  //
+  // Typing `@` still opens the inline `_mentionBar()` autocomplete above; this is
+  // the DELIBERATE path — tap "@" in the composer and choose from a list, so you
+  // never have to know a name's spelling or that `@ava` / `#ava` exist at all.
+  //
+  // Order is fixed by the owner and is NOT alphabetical: Ava first, because the
+  // two Ava entries are the ones people forget, and because "private" vs
+  // "public" is the one choice here with a consequence — a private ask is never
+  // sent to the room, a public one is. People come second.
+
+  /// Everything that can be mentioned in this thread, already in display order.
+  List<_MentionOption> _mentionOptions() {
+    final out = <_MentionOption>[
+      const _MentionOption(
+        token: '@ava',
+        label: 'Ava',
+        trailing: 'Private',
+        subtitle: 'Only you see the reply — never sent to the chat',
+        kind: 'ava_private',
+      ),
+      const _MentionOption(
+        token: '#ava',
+        label: 'Ava',
+        trailing: 'Public',
+        subtitle: 'Ava answers in the chat, everyone sees it',
+        kind: 'ava_public',
+      ),
+    ];
+
+    if (_isGroup) {
+      final myUid = _meId?.uid;
+      final seen = <String>{};
+      for (final uid in (_group?.members ?? const <String>[])) {
+        if (uid == myUid) continue;                    // you can't mention yourself
+        final name = _memberNames[uid] ?? _shortPub(uid);
+        if (name == 'You' || name.trim().isEmpty) continue;
+        final token = _mentionToken(name);
+        if (token == null || !seen.add(token.toLowerCase())) continue;
+        out.add(_MentionOption(
+          token: token,
+          label: name,
+          uid: uid,
+          avatarUrl: _memberAvatars[uid] ?? '',
+          kind: 'member',
+        ));
+      }
+    } else {
+      // 1:1 — the owner asked for the control in BOTH chat types. There is one
+      // other person, and listing them keeps the interaction identical whichever
+      // thread you're in (and saves typing a long or awkwardly-spelt name).
+      final token = _mentionToken(widget.chat.name);
+      if (token != null) {
+        out.add(_MentionOption(
+          token: token,
+          label: widget.chat.name,
+          avatarUrl: widget.chat.avatarUrl,
+          kind: 'peer',
+        ));
+      }
+    }
+    return out;
+  }
+
+  /// `"Sonal Sharma"` → `"@Sonal"`. Deliberately FIRST WORD ONLY: a mention has
+  /// to be one unbroken `@word` or it can't be highlighted, can't be re-parsed,
+  /// and a trailing surname would just read as ordinary text. Returns null when
+  /// nothing usable survives (e.g. an emoji-only display name).
+  String? _mentionToken(String name) {
+    final first = name.trim().split(RegExp(r'\s+')).first;
+    final cleaned = first.replaceAll(RegExp(r'[^\w]'), '');
+    if (cleaned.isEmpty) return null;
+    // Guard the collision called out in the code read: a PERSON literally named
+    // "Ava" would produce `@ava`, which `_send()` routes to the AI instead of to
+    // them. Suffix it so the human is still mentionable and the AI is not
+    // summoned by accident.
+    if (cleaned.toLowerCase() == 'ava') return '@Ava_';
+    return '@$cleaned';
+  }
+
+  Future<void> _openMentionPicker() async {
+    final options = _mentionOptions();
+    Analytics.capture('mention_picker_opened', <String, Object>{
+      'is_group': _isGroup,
+      'option_count': options.length,
+      if (Analytics.currentEmail != null) 'email': Analytics.currentEmail!,
+    });
+    final picked = await showModalBottomSheet<_MentionOption>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: AD.overlaySheet,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(AD.rSheet)),
+          border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
+        ),
+        padding: const EdgeInsets.fromLTRB(18, 14, 18, 8),
+        child: SafeArea(
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('MENTION', style: ADText.sectionLabel()),
+            const SizedBox(height: 10),
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: options.length,
+                itemBuilder: (_, i) => _mentionOptionRow(ctx, options[i]),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    _insertMentionToken(picked);
+  }
+
+  Widget _mentionOptionRow(BuildContext ctx, _MentionOption o) {
+    final isAva = o.kind.startsWith('ava');
+    final tokenColour = o.token.startsWith('#')
+        ? MentionTextController.shareGreen
+        : MentionTextController.mentionBlue;
+    // ZinePressable's default surface is PAPER, not the dark band — so the row's
+    // supporting text has to be dark ink. ADText.preview()'s default is white at
+    // 60%, which on this card is all but invisible (caught on the emulator).
+    const onPaper = Color(0xFF17171B);
+    final subStyle = ADText.preview(c: onPaper).copyWith(
+      color: onPaper.withValues(alpha: 0.66),
+    );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: ZinePressable(
+        onTap: () => Navigator.pop(ctx, o),
+        radius: BorderRadius.circular(AD.rListCard),
+        boxShadow: const [],
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(children: [
+          if (isAva)
+            ZineIconBadge(
+              icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
+              color: o.kind == 'ava_private' ? AD.iconVideo : AD.online,
+              size: 36,
+            )
+          else
+            Avatar(seed: o.uid ?? o.label, name: o.label, size: 36,
+                avatarUrl: o.avatarUrl.isEmpty ? null : o.avatarUrl),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Flexible(
+                  child: Text(o.token,
+                      overflow: TextOverflow.ellipsis,
+                      style: ADText.rowName(c: tokenColour)
+                          .copyWith(fontWeight: FontWeight.w800)),
+                ),
+                if (o.trailing != null) ...[
+                  const SizedBox(width: 6),
+                  Text('(${o.trailing!.toLowerCase()})', style: subStyle),
+                ],
+              ]),
+              if (o.subtitle != null) ...[
+                const SizedBox(height: 2),
+                Text(o.subtitle!, style: subStyle),
+              ] else if (o.label.toLowerCase() != o.token.substring(1).toLowerCase()) ...[
+                const SizedBox(height: 2),
+                Text(o.label, style: subStyle),
+              ],
+            ]),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  /// Drop the chosen token in at the cursor (not blindly at the end — people
+  /// mention someone mid-sentence), collapse any half-typed `@qu` it is
+  /// replacing, and keep the keyboard up so typing continues uninterrupted.
+  void _insertMentionToken(_MentionOption o) {
+    final text = _ctrl.text;
+    final sel = _ctrl.selection;
+    var start = sel.isValid ? sel.start : text.length;
+    var end = sel.isValid ? sel.end : text.length;
+
+    // If the caret sits just after a partially-typed `@abc`, swallow it so we
+    // don't end up with `@so@Sonal`.
+    final partial = RegExp(r'[@#]\w*$').firstMatch(text.substring(0, start));
+    if (partial != null) start = partial.start;
+
+    final before = text.substring(0, start);
+    final needsLeadingSpace = before.isNotEmpty && !before.endsWith(' ') && !before.endsWith('\n');
+    final insert = '${needsLeadingSpace ? ' ' : ''}${o.token} ';
+    final next = text.replaceRange(start, end, insert);
+    final caret = start + insert.length;
+
+    _ctrl.value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: caret),
+    );
+    setState(() {
+      _mentionMatches = [];
+      _hasText = next.trim().isNotEmpty;
+    });
+    _composerFocus.requestFocus();
+
+    Analytics.capture('mention_inserted', <String, Object>{
+      'kind': o.kind,
+      'is_group': _isGroup,
+      'via': 'picker',
+      if (o.uid != null) 'target_uid': o.uid!,
+      if (Analytics.currentEmail != null) 'email': Analytics.currentEmail!,
+    });
   }
 
   Widget _mentionBar() => Container(
@@ -13224,3 +13450,27 @@ class _Dot extends StatelessWidget {
 // [NOANSWER-LEAVE-NOTE-1] The live recording waveform moved to the shared
 // `voice_note_waveform.dart` (LiveWaveform) so the call "leave a voice note"
 // card draws the identical waveform from ONE definition. Usage above updated.
+
+// [CHAT-MENTIONS-1] One row in the composer's "@" picker. Immutable value type:
+// `token` is the exact string inserted into the input box, everything else is
+// display-only. `kind` is what telemetry reports, so keep the values stable
+// ('ava_private' | 'ava_public' | 'member' | 'peer').
+class _MentionOption {
+  final String token;      // '@ava', '#ava', '@Sonal'
+  final String label;      // human name, may contain spaces
+  final String? trailing;  // 'Private' / 'Public' badge, Ava rows only
+  final String? subtitle;  // one-line explanation, Ava rows only
+  final String? uid;       // group member uid, when known
+  final String avatarUrl;
+  final String kind;
+
+  const _MentionOption({
+    required this.token,
+    required this.label,
+    required this.kind,
+    this.trailing,
+    this.subtitle,
+    this.uid,
+    this.avatarUrl = '',
+  });
+}

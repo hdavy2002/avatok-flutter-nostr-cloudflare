@@ -1,10 +1,18 @@
 // WhatsApp-parity chat input bar + emoji/GIF/sticker panel (STREAM E).
 //
-// Layout (owner's WhatsApp screenshot):
-//   [emoji]  [ expanding text field ]  [attach 📎]  [camera]     ( ( mic ) )
-// The trailing green round button is a MIC when the field is empty and morphs to
-// a SEND paper-plane the moment there's text. Tapping the emoji icon opens a
-// keyboard-height panel BELOW the input that smoothly swaps with the OS keyboard.
+// Layout — [CHAT-MENTIONS-1] 2026-08-04 (owner request). Everything now lives
+// INSIDE one wide pill, all controls right-aligned, and the hint line that used
+// to sit above the bar is gone:
+//   [ expanding text field  😊 @ 📎 📷 🎤 ]
+// and, only once there is text, a green send circle slides in outside it:
+//   [ expanding text field  😊 @ 📎 ]  ( ▶ )
+// The camera and mic hide while typing because send takes over that job — this
+// is why the bar can carry five controls without crowding the text.
+//
+// The previous layout put the emoji picker OUTSIDE on the left and kept a
+// permanent green mic circle on the right; both moved in to make the bar read as
+// a single object. Tapping the emoji icon opens a keyboard-height panel BELOW
+// the input that smoothly swaps with the OS keyboard.
 //
 // This is a pure view driven by callbacks — it owns NO chat state. The host
 // (chat_thread.dart) passes in the controller, focus node, the "has text" flag,
@@ -16,6 +24,7 @@ import 'package:flutter/services.dart';
 
 import '../../../core/ui/avatok_dark.dart';
 import 'gif_api.dart';
+import 'mention_text_controller.dart';
 import 'picker_recents_store.dart';
 import 'rich_picker_panel.dart';
 
@@ -31,6 +40,12 @@ class RichInputBar extends StatefulWidget {
   final VoidCallback onCamera;
   final VoidCallback onMic;
   final ValueChanged<String> onChanged;
+
+  /// [CHAT-MENTIONS-1] Tapping the "@" control. The HOST owns the picker (it is
+  /// the only thing that knows who is in the thread), so this bar just reports
+  /// the tap — keeping this widget a pure view, as the header promises.
+  /// Null hides the control entirely.
+  final VoidCallback? onMention;
 
   // Panel senders.
   final ValueChanged<GifResult> onGif;
@@ -51,6 +66,7 @@ class RichInputBar extends StatefulWidget {
     required this.onChanged,
     required this.onGif,
     required this.onSticker,
+    this.onMention,
     this.hintText = 'Message',
     this.fieldColor = AD.inputField,
     this.topSlot,
@@ -169,23 +185,12 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           if (widget.topSlot != null) widget.topSlot!,
           Padding(
-            padding: const EdgeInsets.fromLTRB(6, 6, 8, 8),
+            padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
             child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              // Emoji toggle (left).
-              IconButton(
-                icon: Icon(
-                    _panelOpen && _tab == PickerTab.emoji
-                        ? Icons.keyboard_alt_outlined
-                        : Icons.emoji_emotions_outlined,
-                    color: AD.iconEmoji,
-                    size: 26),
-                visualDensity: VisualDensity.compact,
-                onPressed: _toggleEmoji,
-              ),
-              // Expanding text field with attach + camera trailing INSIDE it.
+              // ONE wide pill holding the field and every control, right-aligned.
               Expanded(
                 child: Container(
-                  padding: const EdgeInsets.only(left: 14, right: 4),
+                  padding: const EdgeInsets.only(left: 14, right: 2),
                   decoration: BoxDecoration(
                     color: widget.fieldColor,
                     borderRadius: BorderRadius.circular(22),
@@ -218,25 +223,59 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
                         ),
                       ),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.attach_file_rounded,
-                          color: AD.iconClipOnWhite, size: 22),
-                      visualDensity: VisualDensity.compact,
-                      onPressed: widget.onAttach,
+                    // ── Controls, in reach order: emoji · @ · clip · camera · mic
+                    _barIcon(
+                      icon: _panelOpen && _tab == PickerTab.emoji
+                          ? Icons.keyboard_alt_outlined
+                          : Icons.emoji_emotions_outlined,
+                      color: AD.iconEmoji,
+                      tooltip: 'Emoji, GIFs & stickers',
+                      onTap: _toggleEmoji,
                     ),
-                    if (!widget.hasText)
-                      IconButton(
-                        icon: const Icon(Icons.photo_camera_outlined,
-                            color: AD.iconCameraOnWhite, size: 22),
-                        visualDensity: VisualDensity.compact,
-                        onPressed: widget.onCamera,
+                    if (widget.onMention != null)
+                      _barIcon(
+                        icon: Icons.alternate_email_rounded,
+                        color: MentionTextController.mentionBlue,
+                        tooltip: 'Mention someone',
+                        onTap: widget.onMention!,
                       ),
+                    _barIcon(
+                      icon: Icons.attach_file_rounded,
+                      color: AD.iconClipOnWhite,
+                      tooltip: 'Attach a file',
+                      onTap: widget.onAttach,
+                    ),
+                    // Camera and mic step aside once there is text: send has taken
+                    // over the right-hand slot, and dropping two icons is what
+                    // keeps the field readable on a narrow phone.
+                    if (!widget.hasText) ...[
+                      _barIcon(
+                        icon: Icons.photo_camera_outlined,
+                        color: AD.iconCameraOnWhite,
+                        tooltip: 'Take a photo',
+                        onTap: widget.onCamera,
+                      ),
+                      _barIcon(
+                        icon: Icons.mic_rounded,
+                        color: AD.micIdleInk,
+                        tooltip: 'Record a voice note',
+                        onTap: widget.onMic,
+                      ),
+                    ],
                   ]),
                 ),
               ),
-              const SizedBox(width: 6),
-              // Green round mic → send-morph.
-              _greenButton(),
+              // Green send circle — only while there is something to send.
+              AnimatedSize(
+                duration: const Duration(milliseconds: 160),
+                curve: Curves.easeOut,
+                child: widget.hasText
+                    ? Padding(
+                        padding: const EdgeInsets.only(left: 8),
+                        child: _greenButton(),
+                      )
+                    : const SizedBox(height: 46),
+              ),
             ]),
           ),
         ]),
@@ -266,38 +305,42 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
     ]);
   }
 
-  Widget _greenButton() {
-    final send = widget.hasText;
-    // Send = green send pill; idle = lilac mic (dark v2).
-    // [CHAT-UI-COMPOSER-1] Mic<->send morph: the fill colour animates via
-    // AnimatedContainer and the glyph cross-fades + scales via AnimatedSwitcher
-    // instead of hard-swapping — this button used to instant-swap despite a
-    // "morphs" comment that was never actually implemented.
-    return GestureDetector(
-      onTap: send ? widget.onSend : widget.onMic,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOut,
-        width: 46,
-        height: 46,
-        decoration: BoxDecoration(
-          color: send ? AD.sendActiveBg : AD.micIdleBg,
-          shape: BoxShape.circle,
-        ),
-        child: Center(
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 180),
-            transitionBuilder: (child, anim) =>
-                ScaleTransition(scale: anim, child: FadeTransition(opacity: anim, child: child)),
-            child: Icon(
-              send ? Icons.send_rounded : Icons.mic_rounded,
-              key: ValueKey(send),
-              color: send ? AD.sendActiveInk : AD.micIdleInk,
-              size: 22,
-            ),
+  /// One in-pill control. Deliberately NOT an `IconButton`: that ships a 48dp
+  /// minimum square each, and five of those would eat most of a 360dp screen and
+  /// squeeze the text field down to a couple of words.
+  Widget _barIcon({
+    required IconData icon,
+    required Color color,
+    required String tooltip,
+    required VoidCallback onTap,
+  }) =>
+      Tooltip(
+        message: tooltip,
+        child: InkResponse(
+          onTap: onTap,
+          radius: 22,
+          child: SizedBox(
+            width: 34,
+            height: 44,
+            child: Icon(icon, color: color, size: 21),
           ),
         ),
-      ),
-    );
-  }
+      );
+
+  /// Send-only now that the mic lives inside the pill. Kept as a circle in
+  /// `AD.sendActiveBg` so the one primary action on the screen is unchanged.
+  Widget _greenButton() => GestureDetector(
+        onTap: widget.onSend,
+        child: Container(
+          width: 46,
+          height: 46,
+          decoration: const BoxDecoration(
+            color: AD.sendActiveBg,
+            shape: BoxShape.circle,
+          ),
+          child: const Center(
+            child: Icon(Icons.send_rounded, color: AD.sendActiveInk, size: 22),
+          ),
+        ),
+      );
 }
