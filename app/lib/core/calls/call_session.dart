@@ -993,6 +993,9 @@ class CallSession {
       int inboundPacketsRecv = 0, inboundPacketsLost = 0;
       int rttMs = -1;
       double? availableOutgoingKbps;
+      // [CALL-VIDEO-LOSS-1] Send-side video counters, cumulative from the
+      // report; converted to a per-interval rate below.
+      int? outVideoPacketsSent, outVideoPacketsLost;
       final stats = await pc.getStats();
       for (final s in stats) {
         final v = s.values;
@@ -1011,14 +1014,40 @@ class CallSession {
         } else if (s.type == 'outbound-rtp') {
           final b = v['bytesSent'];
           if (b is num) totalSentBytes += b.toInt();
+          // [CALL-VIDEO-LOSS-1] SEND-side VIDEO loss, for the video degrader.
+          // `packetsSent` is ours; the loss figure lives on the peer's RTCP
+          // report, surfaced as `remote-inbound-rtp` below.
+          if ((v['kind'] ?? v['mediaType'])?.toString() == 'video') {
+            final ps = v['packetsSent'];
+            if (ps is num) outVideoPacketsSent = ps.toInt();
+          }
+        } else if (s.type == 'remote-inbound-rtp') {
+          // [CALL-VIDEO-LOSS-1] What the PEER reports losing on what WE sent.
+          // This is the only loss signal that describes the direction the video
+          // degrader actually controls.
+          if ((v['kind'] ?? v['mediaType'])?.toString() == 'video') {
+            final pl = v['packetsLost'];
+            if (pl is num) outVideoPacketsLost = pl.toInt();
+          }
         } else if (s.type == 'candidate-pair') {
           // Prefer the nominated/selected pair's RTT (seconds → ms).
           final selected = v['selected'] == true || v['nominated'] == true;
           final rtt = v['currentRoundTripTime'];
           if (selected && rtt is num) rttMs = (rtt.toDouble() * 1000).round();
           else if (rttMs < 0 && rtt is num) rttMs = (rtt.toDouble() * 1000).round();
+          // [CALL-VIDEO-LOSS-1] Only the SELECTED pair's bandwidth estimate is
+          // meaningful. This used to be last-one-wins across every pair, so on a
+          // multi-pair connection the BWE could come from a pair carrying no
+          // media at all — while the RTT read two lines above already filtered
+          // correctly. Fall back to any pair only if nothing was nominated.
           final ao = v['availableOutgoingBitrate'];
-          if (ao is num && ao > 0) availableOutgoingKbps = ao.toDouble() / 1000.0;
+          if (ao is num && ao > 0) {
+            if (selected) {
+              availableOutgoingKbps = ao.toDouble() / 1000.0;
+            } else {
+              availableOutgoingKbps ??= ao.toDouble() / 1000.0;
+            }
+          }
         }
       }
       _publishNetStats(
@@ -1040,10 +1069,43 @@ class CallSession {
         ));
       }
       if (config.video && RemoteConfig.callVideoDegradeV1) {
-        final lossPct = inboundPacketsRecv + inboundPacketsLost == 0
-            ? null
-            : inboundPacketsLost * 100.0 / (inboundPacketsRecv + inboundPacketsLost);
-        unawaited(_adaptVideoForNetwork(lossPct: lossPct, rttMs: rttMs));
+        // [CALL-VIDEO-LOSS-1 2026-08-05] The degrader used to be fed a loss
+        // ratio that was wrong in three independent ways, all of them biasing
+        // it toward needlessly killing the camera:
+        //
+        //   1. CUMULATIVE since call start, so a burst in the first seconds
+        //      permanently poisoned the ratio and could never decay enough to
+        //      allow recovery (recovery needs loss < 1%).
+        //   2. AUDIO-CONTAMINATED — `inboundPacketsLost/Recv` summed every
+        //      inbound-rtp report regardless of kind, so audio loss throttled
+        //      video and, because audio carries far more packets, it also
+        //      diluted real video loss into invisibility.
+        //   3. RECEIVE-side, used to throttle the SEND direction. Congestion is
+        //      routinely asymmetric; what we receive says little about what our
+        //      uplink can push.
+        //
+        // Now: per-interval, video-only, send-side — derived from the peer's
+        // RTCP report (`remote-inbound-rtp`) against our own `packetsSent`.
+        // Falls back to null (degrader holds its level) until two samples exist
+        // or if the peer hasn't reported yet, rather than inventing a number.
+        double? sendVideoLossPct;
+        if (outVideoPacketsSent != null && outVideoPacketsLost != null) {
+          final sentPrev = _lastOutVideoPacketsSent;
+          final lostPrev = _lastOutVideoPacketsLost;
+          if (sentPrev != null && lostPrev != null) {
+            final dSent = outVideoPacketsSent - sentPrev;
+            final dLost = outVideoPacketsLost - lostPrev;
+            // Loss counters can go DOWN across an SSRC change (ICE restart,
+            // relay migration, track replace). Treat a negative delta as a
+            // baseline reset, never as negative loss.
+            if (dSent > 0 && dLost >= 0) {
+              sendVideoLossPct = (dLost * 100.0 / dSent).clamp(0.0, 100.0);
+            }
+          }
+          _lastOutVideoPacketsSent = outVideoPacketsSent;
+          _lastOutVideoPacketsLost = outVideoPacketsLost;
+        }
+        unawaited(_adaptVideoForNetwork(lossPct: sendVideoLossPct, rttMs: rttMs));
       }
       if (!sawInboundAudio) return; // no inbound audio stat yet — don't judge
       final prev = _lastInboundAudioBytes;
@@ -1148,6 +1210,9 @@ class CallSession {
   // [CALL-MIC-OBS-1] Outbound (microphone) baselines — see the capture site.
   int? _phBytesSent, _phPacketsSent;
   double? _phOutboundAudioEnergy;
+  // [CALL-VIDEO-LOSS-1] Send-side VIDEO packet baselines, so the degrader gets
+  // a per-interval rate instead of a cumulative-since-call-start ratio.
+  int? _lastOutVideoPacketsSent, _lastOutVideoPacketsLost;
   int _noRtpStreak = 0;
   int _noPlayoutStreak = 0;
   // [CF-CALL-P2P-1] Extends this sampler with inbound-VIDEO decode/render
@@ -2343,9 +2408,23 @@ class CallSession {
 
   RTCSessionDescription _tuned(RTCSessionDescription d) {
     final sdp = _tuneOpusSdp(d.sdp);
-    if (RemoteConfig.callAudioRedExperimentV1 &&
-        RegExp(r'a=rtpmap:\d+ red/48000', caseSensitive: false).hasMatch(sdp)) {
-      Analytics.capture('call_audio_red_negotiated', {'call_id': config.room});
+    if (RemoteConfig.callAudioRedExperimentV1) {
+      // [CALL-RED-1] Report whether RED is ACTUALLY ENGAGED, not merely listed.
+      //
+      // The old check fired on any `red/48000` rtpmap, which every modern
+      // libwebrtc build advertises — so `call_audio_red_negotiated` read as
+      // success for days while RED did nothing at all (the tuner's RED branch
+      // was an empty `if` body). `applied` is the honest signal: red payload
+      // first on the m=audio line AND carrying an fmtp block list. Alert on
+      // `applied=false` while the flag is on — that means the local build has
+      // no RFC-2198 support and we are running on in-band FEC alone.
+      final applied = audio_tuning.sdpHasActiveRed(sdp);
+      Analytics.capture('call_audio_red_negotiated', {
+        'call_id': config.room,
+        'applied': applied,
+        'distance': audio_tuning.kOpusRedDistance,
+        'sdp_type': d.type ?? 'unknown',
+      });
     }
     return RTCSessionDescription(sdp, d.type);
   }
@@ -3061,11 +3140,27 @@ class CallSession {
         final params = s.parameters;
         params.degradationPreference = RTCDegradationPreference.BALANCED;
         final encodings = params.encodings;
+        // [CALL-VIDEO-CODEC-1] Temporal SVC. `L1T3` = one spatial layer, three
+        // TEMPORAL layers: the encoder emits a frame hierarchy where the top
+        // layers can be dropped without breaking decode of the ones beneath.
+        // Under congestion the picture drops to a lower framerate instead of
+        // FREEZING until the next keyframe, which is the visible difference
+        // between "degrades gracefully" and "hangs then jumps".
+        //
+        // L1T3 not L3T3 deliberately: spatial layers cost encode CPU and only
+        // pay off when a server can forward different layers to different
+        // subscribers. In 1:1 P2P there is exactly one receiver, so spatial SVC
+        // is pure overhead. (The group SFU path could use L3T3 — it doesn't set
+        // any encoding parameters at all today, which is a separate gap.)
+        final svc = RemoteConfig.callVideoCodecPrefV1 ? 'L1T3' : null;
         if (encodings == null || encodings.isEmpty) {
-          params.encodings = [RTCRtpEncoding(active: true, maxBitrate: maxBitrateBps)];
+          params.encodings = [
+            RTCRtpEncoding(active: true, maxBitrate: maxBitrateBps, scalabilityMode: svc),
+          ];
         } else {
           for (final e in encodings) {
             e.maxBitrate = maxBitrateBps;
+            if (svc != null) e.scalabilityMode = svc;
           }
         }
         await s.setParameters(params);
@@ -3076,6 +3171,63 @@ class CallSession {
         error: e,
         stack: st,
         extra: {'operation': 'bounded_encoding', 'cellular': cellular},
+      );
+    }
+  }
+
+  /// [CALL-VIDEO-CODEC-1 2026-08-05] Express a video codec preference.
+  ///
+  /// Previously the app made no codec choice at all — no `setCodecPreferences`
+  /// anywhere — so the negotiated video codec was whatever order libwebrtc's
+  /// `createOffer` happened to emit, which in practice puts VP8 first on most
+  /// Android builds. VP8 is the weakest option here on exactly the links that
+  /// matter: at 200-400 kbps AV1 and VP9 hold a usable picture where VP8
+  /// smears, and VP8 has no SVC support worth the name, so the temporal-layer
+  /// work above is inert unless a codec that implements it is negotiated.
+  ///
+  /// Order: AV1 > VP9 > VP8 > H264. H264 is ranked LAST rather than dropped —
+  /// on some devices it is the only hardware-accelerated encoder, and removing
+  /// it would force software encoding (battery, thermals) or fail negotiation
+  /// outright against a peer that offers nothing else.
+  ///
+  /// Best-effort and non-fatal by construction: anything unexpected leaves the
+  /// transceiver untouched and the call proceeds on libwebrtc's default order.
+  Future<void> _applyVideoCodecPreference(RTCPeerConnection pc) async {
+    if (!RemoteConfig.callVideoCodecPrefV1 || !config.video) return;
+    try {
+      final caps = await getRtpSenderCapabilities('video');
+      final codecs = caps.codecs;
+      if (codecs == null || codecs.isEmpty) return;
+      int rank(String mime) {
+        final m = mime.toLowerCase();
+        if (m.endsWith('av1')) return 0;
+        if (m.endsWith('vp9')) return 1;
+        if (m.endsWith('vp8')) return 2;
+        if (m.endsWith('h264')) return 3;
+        return 4; // rtx / red / ulpfec / unknown — keep after the real codecs
+      }
+      final sorted = [...codecs]
+        ..sort((a, b) => rank(a.mimeType).compareTo(rank(b.mimeType)));
+      final transceivers = await pc.getTransceivers();
+      var applied = 0;
+      for (final t in transceivers) {
+        if (t.sender.track?.kind != 'video' &&
+            t.receiver.track?.kind != 'video') continue;
+        await t.setCodecPreferences(sorted);
+        applied++;
+      }
+      Analytics.capture('call_video_codec_preference', {
+        'call_id': config.room,
+        'transceivers': applied,
+        'order': sorted.take(4).map((c) => c.mimeType).join(','),
+        'svc': 'L1T3',
+      });
+    } catch (e, st) {
+      _telemetry.runtimeError(
+        stage: 'video_codec_preference_failed',
+        error: e,
+        stack: st,
+        extra: const {'operation': 'set_codec_preferences'},
       );
     }
   }
@@ -3135,6 +3287,10 @@ class CallSession {
     final myPcGen = ++_pcGeneration;
     await _addStreamTracks(pc, _stream!, stage: 'add_track_failed');
     if (config.video) {
+      // [CALL-VIDEO-CODEC-1] Codec preference must be applied BEFORE the offer
+      // is created — setCodecPreferences changes the m-line payload order, and
+      // an offer already generated cannot be retro-fitted.
+      await _applyVideoCodecPreference(pc);
       await _preferResolutionOnVideo(pc, cellular: await _isLikelyCellular());
     }
     _telemetry.onIceGatheringStart();
@@ -3272,6 +3428,51 @@ class CallSession {
     return pc;
   }
 
+  /// [CALL-ICE-CFG-1 2026-08-05] Push freshly-minted TURN credentials onto the
+  /// LIVE PeerConnection before an ICE restart.
+  ///
+  /// Both restart paths already did `_ice = await IceCache.get()` — and then
+  /// issued `createOffer({iceRestart: true})` on the EXISTING pc. The refreshed
+  /// credentials only ever reached a connection built afterwards, so on the
+  /// restart path they were fetched, stored, and ignored: the restart re-used
+  /// whatever `iceServers` the pc was constructed with. Cloudflare mints TURN
+  /// credentials with a 24h TTL and [IceCache] holds them for 2 minutes, so on
+  /// a short call this is harmless — but a long call, or one that spans a
+  /// credential rollover, restarts ICE with dead TURN creds and every relay
+  /// candidate fails authentication. That is precisely the "restart silently
+  /// fails" failure mode, and it is invisible: ICE just never nominates.
+  ///
+  /// `setConfiguration` is additive here — we re-assert the SAME transport
+  /// policy and jitter-buffer bounds the pc was built with, changing only the
+  /// credentials. Best-effort by design: a platform that rejects the call is no
+  /// worse off than before this existed, so we log and continue to the restart.
+  Future<void> _pushRefreshedIceToPc(RTCPeerConnection pc, String why) async {
+    try {
+      final cellPair = RemoteConfig.callCellPresetV1 && _localCellular && _peerCellular;
+      await pc.setConfiguration({
+        'iceServers': _ice,
+        'iceCandidatePoolSize': 2,
+        if (CallDiag.turnOnly || _relayForced || cellPair) 'iceTransportPolicy': 'relay',
+        'audioJitterBufferMaxPackets': 50,
+        'audioJitterBufferFastAccelerate': true,
+      });
+      Analytics.capture('call_ice_config_refreshed', {
+        'call_id': config.room,
+        'why': why,
+        'server_count': _ice.length,
+        'ok': true,
+      });
+    } catch (e) {
+      Analytics.capture('call_ice_config_refreshed', {
+        'call_id': config.room,
+        'why': why,
+        'ok': false,
+        'error': e.toString(),
+      });
+      AvaLog.I.log('call', 'setConfiguration before ICE restart failed: $e');
+    }
+  }
+
   Future<void> _tryIceRestart(String why) async {
     final pc = _pc;
     if (pc == null || _ended || !_weOffered || _remoteId == null) return;
@@ -3284,6 +3485,7 @@ class CallSession {
     _telemetry.onIceRestart();
     try {
       _ice = await IceCache.get();
+      await _pushRefreshedIceToPc(pc, why); // [CALL-ICE-CFG-1]
       final offer = _tuned(await pc.createOffer({'iceRestart': true}));
       await pc.setLocalDescription(offer);
       _send({'type': 'offer', 'to': _remoteId, 'sdp': offer.toMap()});
@@ -3430,6 +3632,7 @@ class CallSession {
     }
     try {
       _ice = await IceCache.get();
+      await _pushRefreshedIceToPc(pc, attempt.reason.wire); // [CALL-ICE-CFG-1]
       final offer = _tuned(await pc.createOffer({'iceRestart': true}));
       await pc.setLocalDescription(offer);
       _send({'type': 'offer', 'to': _remoteId, 'sdp': offer.toMap()});
@@ -4315,6 +4518,36 @@ class CallSession {
         }
         break;
       case 'offer':
+        // [CALL-GLARE-OBS-1 2026-08-05] Detect and REPORT offer collisions.
+        //
+        // This app does not implement perfect negotiation, and mostly does not
+        // need to: glare is prevented structurally (the DO's newcomer-offers
+        // rule, the `_weOffered` guard on every renegotiation, and a server-side
+        // pair-keyed glare DO with a 30s mutual-dial window). But "mostly" was
+        // being enforced by a bare `catch (_) {}` — if a collision ever DID
+        // happen, `setRemoteDescription` would throw in the wrong signaling
+        // state, the answer would never be sent, and the call would hang with
+        // no event, no log and no way to know it had occurred.
+        //
+        // Deliberately still NOT rollback-based: silently rolling back would
+        // paper over a violation of the structural invariants above, which is
+        // information worth having. Detect, name it, and let the existing
+        // recovery ladder handle the call.
+        final sigState = _pc?.signalingState;
+        final collision = sigState != null &&
+            sigState != RTCSignalingState.RTCSignalingStateStable &&
+            sigState != RTCSignalingState.RTCSignalingStateHaveRemoteOffer;
+        if (collision) {
+          Analytics.capture('call_offer_glare_detected', {
+            'call_id': config.room,
+            'signaling_state': sigState.toString().split('.').last,
+            'we_offered': _weOffered,
+            'connected': _connected,
+            'video_renego_in_flight': _videoRenegoInFlight,
+          });
+          AvaLog.I.log('call',
+              'offer arrived in signaling state $sigState — glare, answer may fail');
+        }
         try {
           _remoteId = d['from'] as String;
           final pc = _pc ?? await _newPC();
@@ -4323,7 +4556,19 @@ class CallSession {
           final ans = _tuned(await pc.createAnswer());
           await pc.setLocalDescription(ans);
           _send({'type': 'answer', 'to': _remoteId, 'sdp': ans.toMap()});
-        } catch (_) {}
+        } catch (e, st) {
+          // Was `catch (_) {}` — a failed answer is how a call dies silently.
+          _telemetry.runtimeError(
+            stage: 'offer_handling_failed',
+            error: e,
+            stack: st,
+            extra: {
+              'glare_suspected': collision,
+              'signaling_state': sigState?.toString() ?? 'unknown',
+              'we_offered': _weOffered,
+            },
+          );
+        }
         break;
       case 'answer':
         // [CALL-TELEMETRY-1] Mark that SDP answer arrived — never_connected
