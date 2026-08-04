@@ -99,7 +99,11 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
     private EventChannel.EventSink eventSink;
     private PlaybackSamplesReadyCallbackAdapter playbackAdapter;
     private volatile WebSocket socket;
-    private WebSocket pendingSocket;
+    /**
+     * The make-before-break socket. Volatile because it is written from the MethodChannel
+     * (main) thread and read from BOTH sockets' OkHttp reader threads during a cutover.
+     */
+    private volatile WebSocket pendingSocket;
     private AudioTrack translatedTrack;
     private AudioTrack webRtcOutputTrack;
     private MethodChannel.Result pendingPrepare;
@@ -112,7 +116,13 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
     private int lastInputRate;
     private long lastOutputLookupMs;
     private String authToken;
-    private String targetLanguage;
+    /**
+     * The language of the LIVE session — never the one a pending socket is trying to reach.
+     * Committed only on the pending socket's {@code setupComplete} (see
+     * {@link #handleProviderMessage}), so a failed switch leaves it describing what the user
+     * is actually hearing.
+     */
+    private volatile String targetLanguage;
     private String resumeHandle;
 
     // --- worker threads -----------------------------------------------------
@@ -208,17 +218,51 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
                     result.success(true);
                 }
                 break;
-            case "resume":
+            case "resume": {
                 String replacement = call.argument("token");
                 String handle = call.argument("handle");
+                // OPTIONAL. Absent (the plain-resume case) => the pending socket announces the
+                // LIVE language and behaviour is unchanged. Present => Phase C's language switch.
+                String nextLanguage = call.argument("targetLanguage");
                 if (replacement == null || replacement.isEmpty() || handle == null || handle.isEmpty()) {
                     result.error("invalid_resume", "token and handle are required", null);
                 } else {
                     authToken = replacement;
-                    connectSocket(handle);
+                    // `this.` is load-bearing: case "prepare" declares a local `targetLanguage`
+                    // and switch cases share one scope, so a bare read resolves to that local.
+                    connectSocket(handle, nextLanguage == null || nextLanguage.isEmpty()
+                            ? this.targetLanguage : nextLanguage);
                     result.success(true);
                 }
                 break;
+            }
+            case "switchLanguage": {
+                // Phase C make-before-break: open a SECOND socket announcing the new language
+                // while the live one keeps translating. The live session is untouched until the
+                // new socket reports setupComplete.
+                String switchToken = call.argument("token");
+                String switchLanguage = call.argument("targetLanguage");
+                String switchHandle = call.argument("handle"); // optional; null = fresh session
+                if (!prepared || socket == null) {
+                    result.error("not_prepared", "Gemini session is not ready", null);
+                    return;
+                }
+                if (switchToken == null || switchToken.isEmpty()
+                        || switchLanguage == null || switchLanguage.isEmpty()) {
+                    result.error("invalid_arguments", "token and targetLanguage are required", null);
+                    return;
+                }
+                if (pendingSocket != null) {
+                    // Guardrail: one in-flight switch at a time. Dart queues the latest request.
+                    result.error("switch_in_flight", "A session cutover is already in flight", null);
+                    return;
+                }
+                authToken = switchToken;
+                connectSocket(switchHandle == null || switchHandle.isEmpty() ? null : switchHandle,
+                        switchLanguage);
+                result.success(true);
+                break;
+            }
             case "setFallback": {
                 Boolean enabled = call.argument("enabled");
                 String reason = call.argument("reason");
@@ -262,7 +306,7 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
         resetTelemetry();
         startSenderThread();
         startGuardThread();
-        connectSocket(null);
+        connectSocket(null, targetLanguage);
 
         main.postDelayed(() -> {
             if (pendingPrepare != null) {
@@ -272,7 +316,17 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
         }, 15_000);
     }
 
-    private void connectSocket(String handle) {
+    /**
+     * Opens a socket that announces {@code language} in its setup frame.
+     *
+     * The language is captured PER SOCKET rather than read from {@link #targetLanguage} at
+     * send time: during a Phase C cutover two sockets are alive on two OkHttp reader threads,
+     * and the pending one must announce the NEW language (matching the new token's
+     * {@code liveConnectConstraints}) while the live one keeps translating in the old one.
+     * The field is only moved to the new value once THIS socket reaches setupComplete.
+     */
+    private void connectSocket(String handle, String language) {
+        final String socketLanguage = language;
         HttpUrl socketUrl = HttpUrl.get(WS_URL).newBuilder()
                 .addQueryParameter("access_token", authToken)
                 .build();
@@ -284,7 +338,7 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
             public void onOpen(@NonNull WebSocket webSocket, @NonNull Response response) {
                 try {
                     JSONObject translation = new JSONObject()
-                            .put("targetLanguageCode", targetLanguage)
+                            .put("targetLanguageCode", socketLanguage)
                             .put("echoTargetLanguage", false);
                     // NOTE: input/outputAudioTranscription are deliberately ABSENT — captions are
                     // deferred and the minted token's liveConnectConstraints omit them too. The two
@@ -308,15 +362,26 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
 
             @Override
             public void onMessage(@NonNull WebSocket webSocket, @NonNull String text) {
-                handleProviderMessage(webSocket, text);
+                handleProviderMessage(webSocket, text, socketLanguage);
             }
 
             @Override
             public void onFailure(@NonNull WebSocket webSocket, @NonNull Throwable t, Response response) {
                 if (stopping) return;
                 if (webSocket == pendingSocket && socket != null) {
+                    // The LIVE socket survives, so targetLanguage is deliberately NOT touched —
+                    // it must keep describing what the user is actually hearing.
                     pendingSocket = null;
-                    emit("resume_failed", t.getMessage());
+                    JSONObject extra = new JSONObject();
+                    try {
+                        boolean wasSwitch = socketLanguage != null
+                                && !socketLanguage.equals(targetLanguage);
+                        extra.put("switching", wasSwitch);
+                        // Language CODES only (e.g. "es") — never content.
+                        if (wasSwitch) extra.put("attemptedLanguage", socketLanguage);
+                        extra.put("liveLanguage", targetLanguage == null ? "" : targetLanguage);
+                    } catch (Exception ignored) {}
+                    emitJson("resume_failed", t.getMessage(), extra);
                     return;
                 }
                 if (webSocket != socket && webSocket != pendingSocket) return;
@@ -335,12 +400,20 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
         });
     }
 
-    private void handleProviderMessage(WebSocket webSocket, String text) {
+    private void handleProviderMessage(WebSocket webSocket, String text, String socketLanguage) {
         try {
             JSONObject message = new JSONObject(text);
             if (message.has("setupComplete")) {
                 WebSocket previous = socket;
+                String previousLanguage = targetLanguage;
+                boolean languageChanged = socketLanguage != null
+                        && !socketLanguage.equals(previousLanguage);
                 socket = webSocket;
+                // COMMIT POINT. Only now — the provider has accepted this socket and it is the
+                // live one — does the plugin's idea of the session language move. If the pending
+                // socket had failed instead, the field still names the language the user hears,
+                // so a later plain `resume` announces the right one.
+                if (socketLanguage != null) targetLanguage = socketLanguage;
                 if (pendingSocket == webSocket) pendingSocket = null;
                 prepared = true;
                 MethodChannel.Result result = pendingPrepare;
@@ -348,6 +421,18 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
                 if (result != null) main.post(() -> result.success(true));
                 if (previous != null && previous != webSocket) previous.close(1000, "resumed");
                 emit("ready", null);
+                if (previous != null && previous != webSocket && languageChanged) {
+                    // Phase C cutover completed. Dart re-mutes via the A4 guard's own recovery
+                    // path (first sustained translated PCM) — this event is the UI signal, not
+                    // the audio one. Codes and timings only; never content.
+                    JSONObject extra = new JSONObject();
+                    try {
+                        extra.put("previousLanguage", previousLanguage == null ? "" : previousLanguage);
+                        extra.put("sinceLastAudioMs",
+                                Math.max(0L, System.currentTimeMillis() - lastTranslatedPcmMs));
+                    } catch (Exception ignored) {}
+                    emitJson("language_switched", socketLanguage, extra);
+                }
                 return;
             }
             JSONObject resumption = message.optJSONObject("sessionResumptionUpdate");
