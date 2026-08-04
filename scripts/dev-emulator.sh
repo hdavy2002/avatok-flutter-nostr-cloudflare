@@ -28,7 +28,30 @@ case "$1" in
   stop)    p=$(tool_pid); [ -n "$p" ] && kill "$p" && echo stopped || echo "not running";;
   log)     tr '\r' '\n' < "$LOG" | grep -v "^[[:space:]]*$" | tail -40;;
   *)
-    adb devices | grep -q emulator- || { echo "booting emulator..."; nohup flutter emulators --launch Pixel_10a >/dev/null 2>&1 &
+    # [CALL-MIC-OBS-1] `-allow-host-audio` is MANDATORY for any call testing.
+    #
+    # Without it the emulator does not fail, warn, or deny the microphone — it
+    # hands the guest a perfectly working AudioRecord that returns ZEROS. The
+    # emulator's own help text says so: "Allows sending of audio from audio
+    # input devices. Otherwise, zeroes out audio."
+    #
+    # Cost of not knowing that (2026-08-03/04): eight consecutive emulator→phone
+    # calls where the phone reported `remote_quiet` with inbound audio_level
+    # pinned at ~3e-05 while receiving a flawless 250-packet/5s RTP stream at 0%
+    # concealment. Inside the guest everything passed — RECORD_AUDIO granted,
+    # hw.audioInput=yes, `verifyAudioConfig: PASS` on TYPE_BUILTIN_MIC — so the
+    # silence was invisible from every angle except this flag. It also sent a
+    # real audio-focus bug hunt down the wrong path first.
+    #
+    # `flutter emulators --launch` cannot pass emulator flags, so boot the
+    # emulator directly. Falls back to the flutter path if the binary moves.
+    adb devices | grep -q emulator- || { echo "booting emulator (host audio input ENABLED)..."
+      if [ -x "$ANDROID_HOME/emulator/emulator" ]; then
+        nohup "$ANDROID_HOME/emulator/emulator" -avd Pixel_10a -allow-host-audio >/dev/null 2>&1 &
+      else
+        echo "WARNING: emulator binary not found; falling back WITHOUT -allow-host-audio (mic will be silent)"
+        nohup flutter emulators --launch Pixel_10a >/dev/null 2>&1 &
+      fi
       for i in $(seq 1 60); do [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ] && break; sleep 5; done; }
     cd "$APP" || exit 1
     echo "starting app (first build after a clean is slow; later runs ~1-2 min)"

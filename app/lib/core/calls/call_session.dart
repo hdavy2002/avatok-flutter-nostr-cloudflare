@@ -1145,6 +1145,9 @@ class CallSession {
   double? _phJbufDelaySec;
   double? _phConcealed, _phSilentConcealed, _phTotalSamples;
   double? _phTotalAudioEnergy;
+  // [CALL-MIC-OBS-1] Outbound (microphone) baselines — see the capture site.
+  int? _phBytesSent, _phPacketsSent;
+  double? _phOutboundAudioEnergy;
   int _noRtpStreak = 0;
   int _noPlayoutStreak = 0;
   // [CF-CALL-P2P-1] Extends this sampler with inbound-VIDEO decode/render
@@ -1174,6 +1177,8 @@ class CallSession {
     _phJbufDelaySec = null;
     _phConcealed = _phSilentConcealed = _phTotalSamples = null;
     _phTotalAudioEnergy = null;
+    _phBytesSent = _phPacketsSent = null;
+    _phOutboundAudioEnergy = null;
     _noRtpStreak = 0;
     _noPlayoutStreak = 0;
     _phVideoBytes = _phVideoFramesDecoded = _phVideoFramesDropped = null;
@@ -1205,6 +1210,18 @@ class CallSession {
 
       int? bytesReceived, packetsReceived, packetsLost;
       double? jitterSec, audioLevel, totalAudioEnergy;
+      // [CALL-MIC-OBS-1] OUTBOUND audio — "is my own mic alive?".
+      //
+      // Every other number in this sampler describes the INBOUND stream, so the
+      // telemetry could say "I can't hear them" but never "they can't hear me".
+      // On 2026-08-04 that gap cost an entire investigation: the emulator sent a
+      // flawless RTP stream (250 packets / 5 s, 0% concealment) carrying nothing
+      // but silence, and proving the microphone was the source required reading
+      // logcat on the device by hand. `outbound-rtp` + the local media-source
+      // stat answer it directly, so a dead mic is now a PostHog query.
+      int? audioBytesSent, audioPacketsSent;
+      double? outboundAudioLevel, outboundTotalAudioEnergy;
+      bool foundOutboundAudio = false;
       int? jbufEmitted;
       double? jbufDelaySec;
       double? concealedSamples, silentConcealedSamples, totalSamplesReceived;
@@ -1264,6 +1281,30 @@ class CallSession {
           if (tsr is num) totalSamplesReceived = tsr.toDouble();
           final lprt = v['lastPacketReceivedTimestamp'];
           if (lprt is num) lastPacketReceivedTsMs = lprt.toInt();
+        } else if (s.type == 'outbound-rtp') {
+          // [CALL-MIC-OBS-1] Bytes/packets we are PUTTING ON THE WIRE.
+          final kind = (v['kind'] ?? v['mediaType'])?.toString();
+          if (kind != 'audio') continue;
+          foundOutboundAudio = true;
+          final b = v['bytesSent'];
+          if (b is num) audioBytesSent = b.toInt();
+          final ps = v['packetsSent'];
+          if (ps is num) audioPacketsSent = ps.toInt();
+        } else if (s.type == 'media-source') {
+          // [CALL-MIC-OBS-1] THE mic-alive signal. `media-source` is the local
+          // capture BEFORE encoding, so its audioLevel is what the microphone
+          // is actually picking up — independent of the network, the codec, RED
+          // and DTX. A live mic in a quiet room reads ~1e-3..1e-2 and jumps to
+          // ~0.1-0.8 on speech; a mic handed silence by the OS pins at ~3e-05,
+          // the same floor the far end reported for all eight emulator calls on
+          // 2026-08-03/04. `totalAudioEnergy` is cumulative, so its delta
+          // distinguishes "quiet room" from "no signal at all" over an interval.
+          final kind = (v['kind'] ?? v['mediaType'])?.toString();
+          if (kind != null && kind != 'audio') continue;
+          final al = v['audioLevel'];
+          if (al is num) outboundAudioLevel = al.toDouble();
+          final tae = v['totalAudioEnergy'];
+          if (tae is num) outboundTotalAudioEnergy = tae.toDouble();
         } else if (s.type == 'transport') {
           final id = v['selectedCandidatePairId'];
           if (id is String && id.isNotEmpty) selectedPairId = id;
@@ -1337,6 +1378,28 @@ class CallSession {
         } catch (_) {/* renderer disposed mid-poll — stays unknown */}
       }
 
+      // [CALL-MIC-OBS-1] Outbound deltas are computed BEFORE the no-inbound
+      // early return below, deliberately: "I hear nothing from them" is exactly
+      // the sample where you most want to know whether YOUR mic is alive, and
+      // burying it after the return would reproduce the blind spot this change
+      // exists to remove.
+      int? audioBytesSentDelta, audioPacketsSentDelta;
+      double? outboundEnergyDelta;
+      if (foundOutboundAudio) {
+        if (_phBytesSent != null && audioBytesSent != null) {
+          audioBytesSentDelta = audioBytesSent - _phBytesSent!;
+        }
+        if (_phPacketsSent != null && audioPacketsSent != null) {
+          audioPacketsSentDelta = audioPacketsSent - _phPacketsSent!;
+        }
+        _phBytesSent = audioBytesSent;
+        _phPacketsSent = audioPacketsSent;
+      }
+      if (_phOutboundAudioEnergy != null && outboundTotalAudioEnergy != null) {
+        outboundEnergyDelta = outboundTotalAudioEnergy - _phOutboundAudioEnergy!;
+      }
+      _phOutboundAudioEnergy = outboundTotalAudioEnergy;
+
       if (!foundInboundAudio) {
         // No inbound-audio stat exists yet at all — unknown, never inferred.
         _telemetry.mediaHealth(MediaHealthSnapshot(
@@ -1349,6 +1412,10 @@ class CallSession {
           videoFramesDroppedDelta: videoFramesDroppedDelta,
           videoDecodeProgressing: videoDecodeProgressing,
           rendererBound: rendererBound,
+          outboundAudioLevel: outboundAudioLevel,
+          outboundTotalAudioEnergyDelta: outboundEnergyDelta,
+          audioBytesSentDelta: audioBytesSentDelta,
+          audioPacketsSentDelta: audioPacketsSentDelta,
         ));
         return;
       }
@@ -1470,6 +1537,10 @@ class CallSession {
         videoFramesDroppedDelta: videoFramesDroppedDelta,
         videoDecodeProgressing: videoDecodeProgressing,
         rendererBound: rendererBound,
+        outboundAudioLevel: outboundAudioLevel,
+        outboundTotalAudioEnergyDelta: outboundEnergyDelta,
+        audioBytesSentDelta: audioBytesSentDelta,
+        audioPacketsSentDelta: audioPacketsSentDelta,
       ));
       if (sampleMigration) {
         // [CALL-REL-6] This sample is for the migration's NEW pc — feed the

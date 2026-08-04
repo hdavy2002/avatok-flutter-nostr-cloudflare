@@ -84,6 +84,34 @@ class MediaHealthSnapshot {
   /// paint), false if bound to nothing/audio-only, null = unknown/not video.
   final bool? rendererBound;
 
+  // ── [CALL-MIC-OBS-1] OUTBOUND (microphone) side ──────────────────────────
+  // Everything above describes what we RECEIVE. These four describe what we
+  // SEND, and exist because the absence of them cost a whole investigation on
+  // 2026-08-04: the far end reported `remote_quiet` for eight consecutive calls
+  // and there was no way to tell a broken network from a dead microphone
+  // without reading logcat on the device. Same "never infer zero" rule.
+
+  /// Instantaneous 0..1 level of the LOCAL capture, read from the `media-source`
+  /// stat — i.e. BEFORE encoding, so it is independent of the codec, RED and
+  /// DTX. This is the "is my mic alive?" number.
+  ///
+  /// Rule of thumb: a working mic in a quiet room sits around 1e-3..1e-2 and
+  /// jumps to 0.1-0.8 on speech. A mic the OS is handing silence pins at ~3e-05
+  /// and never moves — that flat floor, not the network stats, is the signature
+  /// of a dead capture device.
+  final double? outboundAudioLevel;
+
+  /// Δ of the local capture's cumulative `totalAudioEnergy` over the interval.
+  /// Distinguishes "quiet room" (small but non-zero) from "no signal at all"
+  /// (exactly 0 across every sample) far more reliably than a single level read.
+  final double? outboundTotalAudioEnergyDelta;
+
+  /// Bytes/packets we actually put on the wire this interval (`outbound-rtp`).
+  /// Non-zero here WITH a flat [outboundAudioLevel] is the exact fingerprint of
+  /// encoding-and-transmitting silence — a healthy pipe carrying nothing.
+  final int? audioBytesSentDelta;
+  final int? audioPacketsSentDelta;
+
   const MediaHealthSnapshot({
     required this.cls,
     required this.atMs,
@@ -112,6 +140,10 @@ class MediaHealthSnapshot {
     this.videoFramesDroppedDelta,
     this.videoDecodeProgressing,
     this.rendererBound,
+    this.outboundAudioLevel,
+    this.outboundTotalAudioEnergyDelta,
+    this.audioBytesSentDelta,
+    this.audioPacketsSentDelta,
   });
 
   Map<String, Object> toTelemetryMap() => {
@@ -157,6 +189,26 @@ class MediaHealthSnapshot {
           'video_frames_dropped_delta': 'unknown',
         'video_decode_progressing': videoDecodeProgressing?.toString() ?? 'unknown',
         'renderer_bound': rendererBound?.toString() ?? 'unknown',
+        // [CALL-MIC-OBS-1] "Is my own mic alive?" — query
+        // `mic_audio_level` alongside `audio_level` to see BOTH directions of a
+        // call in one row instead of inferring the send side from the peer's
+        // inbound stats.
+        if (outboundAudioLevel != null)
+          'mic_audio_level': outboundAudioLevel!
+        else
+          'mic_audio_level': 'unknown',
+        if (outboundTotalAudioEnergyDelta != null)
+          'mic_energy_delta': outboundTotalAudioEnergyDelta!
+        else
+          'mic_energy_delta': 'unknown',
+        if (audioBytesSentDelta != null)
+          'audio_bytes_sent_delta': audioBytesSentDelta!
+        else
+          'audio_bytes_sent_delta': 'unknown',
+        if (audioPacketsSentDelta != null)
+          'audio_packets_sent_delta': audioPacketsSentDelta!
+        else
+          'audio_packets_sent_delta': 'unknown',
       };
 }
 
@@ -316,6 +368,10 @@ class CallTelemetry {
   bool? _audioPlayoutOk; // null = unknown
   double? _concealmentPctInterval;
   double? _jitterBufferMsInterval;
+  // [CALL-MIC-OBS-1] Last-known LOCAL capture level, so the 30s call_progress
+  // heartbeat carries "is my mic alive?" even on calls that never change
+  // media-health class (and therefore emit call_media_health only once).
+  double? _micAudioLevel;
   // [CF-CALL-P2P-1] last-known video decode/render confirmation, surfaced onto
   // call_progress the same way the audio playout fields above are — null stays
   // 'unknown' (audio-only calls, or before the first video sample lands).
@@ -727,6 +783,12 @@ class CallTelemetry {
       // stays 'unknown' for audio calls, matching the audio playout fields).
       'video_decode_progressing': _videoDecodeProgressing?.toString() ?? 'unknown',
       'renderer_bound': _rendererBound?.toString() ?? 'unknown',
+      // [CALL-MIC-OBS-1] Last-known microphone level, carried on the 30s
+      // heartbeat too. `call_media_health` only fires on a CLASS TRANSITION, so
+      // a call that stays in one class the whole time emits it once or twice —
+      // riding the heartbeat means a dead mic is visible on every call, not
+      // just the ones that happen to change class.
+      'mic_audio_level': _micAudioLevel ?? 'unknown',
     });
   }
 
@@ -766,6 +828,10 @@ class CallTelemetry {
     }
     if (snapshot.jitterBufferDelayMsAvg != null) {
       _jitterBufferMsInterval = snapshot.jitterBufferDelayMsAvg;
+    }
+    // [CALL-MIC-OBS-1] Cache the mic level for the call_progress heartbeat.
+    if (snapshot.outboundAudioLevel != null) {
+      _micAudioLevel = snapshot.outboundAudioLevel;
     }
     // [CF-CALL-P2P-1] Cache the latest known value; only overwrite when this
     // sample actually observed it, so a momentary "unknown" sample doesn't
