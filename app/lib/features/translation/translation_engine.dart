@@ -34,6 +34,18 @@ enum TranslationState {
 class TranslationEngine {
   TranslationEngine({required this.context, required this.ref});
 
+  /// [CALL-TRANSLATE-2B-3] Compile-time marker: this engine's mic-loopback
+  /// capture (`_startMic`) is DEPRECATED for 1:1 call contexts. Referencing it
+  /// from any call surface raises a deprecation warning at the call site, which
+  /// is the point — a call must use `CallTranslationController` /
+  /// `CallTranslationAudioBridge` (decoded WebRTC playback tap, no second mic).
+  ///
+  /// The engine itself is NOT deprecated: consult, live and conference surfaces
+  /// have no decoded WebRTC playback to tap and continue to use it unchanged.
+  @Deprecated('Call contexts must use CallTranslationController; the mic '
+      'loopback engine stays supported for consult/live surfaces only')
+  static const bool micLoopbackSupportedForCalls = false;
+
   /// consult | live | conference
   final String context;
   /// booking id / listing id / conversation id
@@ -213,6 +225,23 @@ class TranslationEngine {
   // ---------------------------------------------------------------------------
   // audio in (16 kHz PCM16 mono mic stream) / out (24 kHz PCM16 playback)
   // ---------------------------------------------------------------------------
+
+  /// [CALL-TRANSLATE-2B-3] DEPRECATED FOR 1:1 CALL CONTEXTS ONLY — see
+  /// [TranslationEngine.micLoopbackSupportedForCalls].
+  ///
+  /// This is the original mic-loopback capture: it opens a SECOND microphone
+  /// stream and relies on the call playing out of the loudspeaker so the mic
+  /// picks the far end up again. In a 1:1 AvaTOK call that is wrong in three
+  /// ways — it fights the call's own AEC, it breaks entirely on earpiece or
+  /// Bluetooth, and it captures the LOCAL speaker as well as the remote one.
+  ///
+  /// Calls must use `CallTranslationController` + `CallTranslationAudioBridge`,
+  /// which tap flutter_webrtc's already-decoded incoming playback and never
+  /// open a microphone at all.
+  ///
+  /// It remains LIVE and supported for the consult / live-stream surfaces
+  /// (`context` = consult | live | conference), where there is no decoded WebRTC
+  /// playback to tap. DO NOT DELETE IT and do not "clean up" those call sites.
   Future<void> _startMic() async {
     if (_micSub != null) return;
     try {
