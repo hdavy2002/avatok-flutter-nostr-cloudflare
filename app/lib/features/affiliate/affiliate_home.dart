@@ -9,6 +9,7 @@ import '../../core/ui/zine_widgets.dart';
 import '../identity/identity_screen.dart';
 import 'affiliate_api.dart';
 import 'earnings_screen.dart';
+import 'link_created_sheet.dart';
 import 'link_detail_screen.dart';
 import 'product_picker.dart';
 
@@ -77,9 +78,17 @@ class _AffiliateHomeScreenState extends State<AffiliateHomeScreen> {
     setState(() => _registering = false);
     if (r['ok'] == true) {
       Analytics.capture('affiliate_signup_completed', {});
-      setState(() { _me = r['me'] as AffiliateMe; _meKnown = true; _links = []; });
+      final platform = r['platform_link'] as AffiliateLink?;
+      setState(() {
+        _me = r['me'] as AffiliateMe;
+        _meKnown = true;
+        _links = platform == null ? [] : [platform];
+      });
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('Welcome aboard! Pick a product to start earning.')));
+      if (platform != null && mounted) {
+        await showLinkCreatedSheet(context, platform);
+      }
       _openPicker();
       return;
     }

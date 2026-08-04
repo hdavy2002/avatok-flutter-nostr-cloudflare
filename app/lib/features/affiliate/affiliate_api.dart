@@ -204,7 +204,12 @@ class AffiliateApi {
       if (r.statusCode == 200) {
         final me = AffiliateMe(AffiliateProfile.fromJson(j), const AffiliateTotals.zero());
         await _cacheMe(me);
-        return {'ok': true, 'me': me};
+        final platform = (j['platform_link'] as Map?)?.cast<String, dynamic>();
+        return {
+          'ok': true,
+          'me': me,
+          if (platform != null) 'platform_link': AffiliateLink.fromJson(platform),
+        };
       }
       return {'error': _s(j['error'], 'register_failed'), 'status': r.statusCode};
     } catch (_) {
