@@ -263,6 +263,14 @@ export interface PlatformConfig {
   callRelayMigrationV1: boolean;       // relay migration during a live call
   receptionistReconnectV1: boolean;    // receptionist reattach-on-reconnect
   callRingAudibilityV1: boolean;       // REL-10 ring audibility fix
+  // [CALL-SURVIVE-1 2026-08-04] Handover-survival tunables (numeric — MUST
+  // also be in numericKeys below, fake-flag rule). Client mirrors:
+  // RemoteConfig.callRecoveryDeadlineSec / callMigrationDeadlineSec /
+  // callRecoveryMaxAttempts. Deadlines per attempt; attempts ride the
+  // client's 2/4/8/16/30s backoff ladder.
+  callRecoveryDeadlineSec: number;     // ICE-recovery attempt deadline (was fixed 30)
+  callMigrationDeadlineSec: number;    // relay-migration attempt deadline (was fixed 20)
+  callRecoveryMaxAttempts: number;     // retry-ladder length before resting in `reconnecting`
   /** [CALL-WS-AUTH-1 2026-08-03] ENFORCE per-side room-token authentication on
    *  CallRoom WebSocket joins (`/room/<id>?t=<token>`).
    *
@@ -930,6 +938,9 @@ const DEFAULTS: PlatformConfig = {
   callRelayMigrationV1: false,     // call-reliability program — ships dark
   receptionistReconnectV1: false,  // call-reliability program — ships dark
   callRingAudibilityV1: false,     // call-reliability program — ships dark
+  callRecoveryDeadlineSec: 12,     // [CALL-SURVIVE-1] per-attempt ICE-recovery deadline
+  callMigrationDeadlineSec: 8,     // [CALL-SURVIVE-1] per-attempt relay-migration deadline
+  callRecoveryMaxAttempts: 5,      // [CALL-SURVIVE-1] retry ladder length (2/4/8/16/30s backoff)
   // [CALL-WS-AUTH-1] OFF = observe-only. Flip ONLY after a build carrying the
   // client `?t=` half is in the field, or every installed app loses calling.
   callRoomAuthEnforced: false,
@@ -1277,6 +1288,9 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     // [CALL-TRANSLATE-2D-3] call-translation abuse ceilings — numeric, must be
     // here or `flags.sh set callTranslationStartsPerHour=90` 400s `bad type`.
     "callTranslationStartsPerHour", "callTranslationWarmupsPerHour", "callTranslationSwitchesPerHour",
+    // [CALL-SURVIVE-1 2026-08-04] handover-survival tunables — numeric, must
+    // be here or `flags.sh set callRecoveryDeadlineSec=15` 400s `bad type`.
+    "callRecoveryDeadlineSec", "callMigrationDeadlineSec", "callRecoveryMaxAttempts",
   ]);
   for (const [k, v] of Object.entries(body)) {
     if (!(k in DEFAULTS)) return json({ error: `unknown key: ${k}` }, 400);

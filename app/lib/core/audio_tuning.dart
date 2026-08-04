@@ -20,10 +20,15 @@ Map<String, dynamic> avaMicConstraints() => {
     };
 
 /// Tune the Opus encoder on a LOCAL SDP for voice — in-band FEC (packet-loss
-/// resilience), DTX (silence suppression → less bandwidth), and a ~40 kbps
-/// average-bitrate cap (the 32–48 kbps voice sweet spot). Only the opus
-/// `a=fmtp` line is rewritten; everything else is untouched. No-op when no opus
-/// payload exists.
+/// resilience), DTX **OFF** ([CALL-AUDIO-DTX-1] 2026-08-03: DTX converts
+/// "quiet talker / gated AEC" into digital silence the far end synthesises
+/// over — continuous transmission is the right default for a voice product),
+/// and a 56 kbps average-bitrate cap (CALLFIX-17: enough FEC headroom without
+/// starving primary audio). Only the opus `a=fmtp` line is rewritten;
+/// everything else is untouched. No-op when no opus payload exists.
+/// [CALL-SURVIVE-1 2026-08-04]: this is now the ONLY Opus tuner — the 1:1
+/// path's private 40 kbps copy in call_session.dart was deleted (bitrate
+/// regression, audit Finding 4).
 String tuneOpusSdp(String? sdp) {
   if (sdp == null || sdp.isEmpty) return sdp ?? '';
   final pts = RegExp(r'a=rtpmap:(\d+) opus/', caseSensitive: false)

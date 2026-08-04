@@ -223,8 +223,21 @@ export class CallRoom {
     const away = await this.loadAway();
     const awayId = away?.id ?? null;
 
+    // [CALL-SURVIVE-1 2026-08-04] The offerer must have a LIVE WebSocket, not
+    // merely be "not away": during a WiFi↔cell handover the moving peer sits
+    // in reconnect-grace with a half-dead socket — electing it as offerer
+    // hands the ICE restart to the one endpoint least able to complete it
+    // (prod 2026-08-04: recovery offers replayed ~17s late from the away
+    // buffer, burning most of the attempt deadline). Prefer, in order:
+    // original offerer IF connected-and-not-away → any connected-and-not-away
+    // peer (lexicographic) → the requester (it provably has a live socket —
+    // this request just arrived on it).
     let offererId: string | null =
-      this.originalOffererId && this.originalOffererId !== awayId ? this.originalOffererId : null;
+      this.originalOffererId &&
+      this.originalOffererId !== awayId &&
+      ids.includes(this.originalOffererId)
+        ? this.originalOffererId
+        : null;
     if (!offererId) {
       const candidates = ids.filter((id) => id !== awayId);
       candidates.sort();
@@ -2077,14 +2090,15 @@ export class CallRoom {
       await this.loadRecoveryState();
       const attemptId = typeof data.attemptId === "string" ? data.attemptId.slice(0, 64) : "";
       if (!attemptId) return;
-      if (this.migrationUsed && this.activeMigrationAttemptId !== attemptId) {
-        this.sendTo(ws, { type: "relay-migrate-reject", attemptId, reason: "migration_already_used" });
-        return;
-      }
-      if (this.activeMigrationAttemptId && this.activeMigrationAttemptId !== attemptId) {
-        this.sendTo(ws, { type: "relay-migrate-reject", attemptId, reason: "migration_in_progress" });
-        return;
-      }
+      // [CALL-SURVIVE-1 2026-08-04] The `migrationUsed` one-per-call gate is
+      // GONE: on a moving phone the first migration routinely lands mid-flap
+      // and fails; rejecting the retry (`migration_already_used`) is what made
+      // the second failure terminal (`relay_migration_timeout` ended live prod
+      // calls, 2026-08-04). A NEW attemptId now REPLACES the active one
+      // (last-writer-wins) — the client's glare handling already abandons its
+      // own attempt and answers the peer's real offer, so replacement is the
+      // behavior both ends expect. `migrationUsed` is still written for
+      // storage compatibility but no longer gates anything.
       this.activeMigrationAttemptId = attemptId;
       this.migrationUsed = true;
       try {

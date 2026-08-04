@@ -15,6 +15,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../analytics.dart';
 import '../account_storage.dart';
 import '../api_auth.dart';
+import '../audio_tuning.dart' as audio_tuning; // [CALL-SURVIVE-1] shared Opus tuner
 import '../ava_log.dart';
 import '../call_log_store.dart';
 import '../call_telemetry.dart';
@@ -764,6 +765,23 @@ class CallSession {
   RelayMigrationAttempt? _activeMigration;
   Timer? _migrationDeadlineTimer;
   int _relayThresholdStreak = 0;
+  // ── [CALL-SURVIVE-1 2026-08-04] handover-survival retry ladder ────────────
+  // Replaces "recovery failed → end the call". A failed recovery/migration no
+  // longer terminates: it schedules the NEXT attempt with exponential backoff
+  // (2/4/8/16/30s). Terminal call end is owned ONLY by (a) explicit hangup,
+  // (b) the signaling-WS reconnect ladder giving up (`reconnect_failed` —
+  // peer's app is genuinely gone), or (c) the DO's dead-peer/away expiry. A
+  // network-interface change resets the ladder: a fresh interface deserves an
+  // immediate attempt (see the connectivity listener). Prod incident
+  // avatok-999a650b / avatok-10d4696b (2026-08-04): WiFi↔cell flaps killed
+  // live calls with `relay_migration_timeout` after ~50s of dead air.
+  int _survivalRetries = 0;
+  Timer? _survivalRetryTimer;
+  static const List<int> _kSurvivalBackoffSec = [2, 4, 8, 16, 30];
+  // Interface class ('wifi'/'cell'/'none'/'other') at the last connectivity
+  // event — lets the handover telemetry report from→to and lets the listener
+  // distinguish a real interface change from metadata churn.
+  String _lastNetClass = 'unknown';
   StreamSubscription? _netSub;
   int _wsReconnects = 0;
   Timer? _wsReconnectTimer;
@@ -960,12 +978,16 @@ class CallSession {
       if (_mediaStaleCount == 1) {
         _mediaStallStartMs = DateTime.now().millisecondsSinceEpoch;
       }
-      if (_mediaStaleCount == 2 && !_mediaStalledFlagged) {
+      // [CALL-SURVIVE-1 2026-08-04] Trigger on the FIRST stale 5s interval,
+      // not the second: with DTX off (CALL-AUDIT-DTX-1) a healthy inbound leg
+      // ALWAYS advances bytes every interval, so one flat interval is already
+      // a real stall — waiting 10s just added dead air to every handover.
+      if (_mediaStaleCount == 1 && !_mediaStalledFlagged) {
         _mediaStalledFlagged = true;
         _mediaStalls++; // [CALL-RELSCORE-1] count distinct stall episodes
         Analytics.capture('call_media_stalled', {
           'call_id': config.room,
-          'stale_s': 10,
+          'stale_s': 5,
           'video': config.video,
         });
         if (RemoteConfig.callIceRecoveryV2) {
@@ -1526,30 +1548,61 @@ class CallSession {
       _bump();
     }).catchError((_) {});
     // Wi-Fi ⇆ cellular handoff → proactive ICE restart.
-    _netSub = Connectivity().onConnectivityChanged.listen((_) {
-      if (_connected && !_ended) {
-        _telemetry.onNetChange();
-        if (RemoteConfig.callIceRecoveryV2) {
-          // [CALL-REL-5 §7.5] connectivity_plus proves the reported network
-          // CLASS changed, not that the media path failed. Take ONE immediate
-          // health sample and recover only if it's actually unhealthy —
-          // avoids a needless renegotiation on a harmless metadata change.
+    _netSub = Connectivity().onConnectivityChanged.listen((results) {
+      // [CALL-SURVIVE-1] Classify the interface so a REAL wifi↔cell handover
+      // is distinguishable from metadata churn (bluetooth toggles etc.).
+      final cls = results.contains(ConnectivityResult.wifi) ||
+              results.contains(ConnectivityResult.ethernet)
+          ? 'wifi'
+          : results.contains(ConnectivityResult.mobile)
+              ? 'cell'
+              : results.contains(ConnectivityResult.none)
+                  ? 'none'
+                  : 'other';
+      final prev = _lastNetClass;
+      final interfaceChanged = prev != 'unknown' && cls != prev;
+      _lastNetClass = cls;
+      if (!_connected || _ended) return;
+      _telemetry.onNetChange();
+      if (interfaceChanged) {
+        // Structured handover telemetry — correlates handovers to recovery
+        // attempts in one query (audit item 11).
+        Analytics.capture('call_network_handover', {
+          'call_id': config.room,
+          'from': prev,
+          'to': cls,
+          'recovery_attempt_id': _activeRecovery?.id ?? _activeMigration?.id ?? 'none',
+        });
+      }
+      if (RemoteConfig.callIceRecoveryV2) {
+        if (interfaceChanged && cls != 'none') {
+          // [CALL-SURVIVE-1] The interface itself changed: any in-flight
+          // attempt is gathering on a dead interface — abort it and start a
+          // fresh attempt NOW (backoff reset). Waiting for a health sample
+          // here is what let attempts burn 30s deadlines on stale candidates
+          // (prod 2026-08-04).
+          _abortInFlightRecoveryForNetChange();
           // ignore: unawaited_futures
-          _pollPlayoutHealth().then((_) {
-            if (_ended || !_connected) return;
-            final cls = _lastPlayoutHealthClass;
-            final unhealthy = cls == MediaHealthClass.noRtp ||
-                cls == MediaHealthClass.noPlayout ||
-                cls == MediaHealthClass.routeBroken ||
-                cls == MediaHealthClass.networkDegraded;
-            if (unhealthy) {
-              // ignore: unawaited_futures
-              _requestRecovery(RecoveryReason.networkChanged);
-            }
-          });
-        } else {
-          _tryIceRestart('net-change');
+          _requestRecovery(RecoveryReason.networkChanged);
+          return;
         }
+        // Same-interface metadata change (or lost connectivity entirely —
+        // nothing to gather on): keep the health-sample gate.
+        // ignore: unawaited_futures
+        _pollPlayoutHealth().then((_) {
+          if (_ended || !_connected) return;
+          final h = _lastPlayoutHealthClass;
+          final unhealthy = h == MediaHealthClass.noRtp ||
+              h == MediaHealthClass.noPlayout ||
+              h == MediaHealthClass.routeBroken ||
+              h == MediaHealthClass.networkDegraded;
+          if (unhealthy) {
+            // ignore: unawaited_futures
+            _requestRecovery(RecoveryReason.networkChanged);
+          }
+        });
+      } else {
+        _tryIceRestart('net-change');
       }
     });
     _video = config.video;
@@ -1955,72 +2008,15 @@ class CallSession {
   }
 
   /// FREE LAUNCH §2: tune the Opus encoder on the LOCAL SDP for voice.
-  static String _tuneOpusSdp(String? sdp) {
-    if (sdp == null || sdp.isEmpty) return sdp ?? '';
-    final pts = RegExp(r'a=rtpmap:(\d+) opus/', caseSensitive: false)
-        .allMatches(sdp)
-        .map((m) => m.group(1)!)
-        .toSet();
-    if (pts.isEmpty) return sdp;
-    // [CALL-AUDIO-DTX-1 2026-08-03] `usedtx` IS NOW 0. This is a quality call,
-    // deliberately paid for in bandwidth.
-    //
-    // DTX (discontinuous transmission) lets the encoder STOP sending whenever it
-    // decides the mic is silent, emitting an occasional ~2-5 byte comfort-noise
-    // frame instead of ~90 byte speech frames. It is a bandwidth optimisation
-    // and it is the classic cause of Opus sounding "robotic": anything the
-    // encoder misjudges as silence — quiet talkers, the start of a word, a room
-    // with background noise, or an aggressive AEC/NS chain that has already
-    // gated the uplink — is not transmitted at all, and the far end's packet-loss
-    // concealment SYNTHESISES a replacement. The listener hears an algorithm's
-    // guess rather than the speaker.
-    //
-    // Measured on 2026-08-03: one leg was delivering 26 bytes/packet at 28
-    // packets per 5 s, against a healthy 90 bytes/packet at 180 packets per 5 s
-    // on the same handset ten days earlier — with the receiver reporting 21%
-    // concealment and an inbound audio level of 3e-05 (digital silence). That
-    // particular leg was a CPU-starved emulator whose AEC had gated the mic, but
-    // DTX is what converted "quiet" into "nothing at all"; without it the far
-    // end would have received real, if quiet, audio instead of invented audio.
-    // The same failure mode reaches real handsets in quiet rooms and on
-    // speakerphone, which is where AEC suppression is strongest.
-    //
-    // Cost of turning it off: roughly 10-20 kbps during silence on a stream
-    // already capped at 40 kbps. For a product whose entire purpose is carrying
-    // someone's voice, continuous transmission is the right default, and
-    // `useinbandfec` below is the correct tool for the problem DTX was never
-    // solving anyway (packet loss, not silence).
-    const want = <String, String>{
-      'useinbandfec': '1',
-      'usedtx': '0',
-      'maxaveragebitrate': '40000',
-      'stereo': '0',
-    };
-    final lines = sdp.split(RegExp(r'\r\n|\n'));
-    for (var i = 0; i < lines.length; i++) {
-      for (final pt in pts) {
-        final prefix = 'a=fmtp:$pt ';
-        if (!lines[i].startsWith(prefix)) continue;
-        final params = <String, String>{};
-        for (final kv in lines[i].substring(prefix.length).split(';')) {
-          final t = kv.trim();
-          if (t.isEmpty) continue;
-          final eq = t.indexOf('=');
-          if (eq < 0) {
-            params[t] = '';
-          } else {
-            params[t.substring(0, eq)] = t.substring(eq + 1);
-          }
-        }
-        params.addAll(want);
-        lines[i] = prefix +
-            params.entries
-                .map((e) => e.value.isEmpty ? e.key : '${e.key}=${e.value}')
-                .join(';');
-      }
-    }
-    return lines.join('\r\n');
-  }
+  ///
+  /// [CALL-SURVIVE-1 2026-08-04] Now DELEGATES to the shared tuner in
+  /// core/audio_tuning.dart — this file used to carry its own copy with
+  /// `maxaveragebitrate=40000`, silently regressing the CALLFIX-17 decision
+  /// (56 kbps) on exactly the 1:1 path that needed the FEC headroom most.
+  /// One tuner, one bitrate: 56000, `useinbandfec=1`, `usedtx=0` (DTX
+  /// rationale lives with the shared tuner and in [CALL-AUDIO-DTX-1]),
+  /// `stereo=0`.
+  static String _tuneOpusSdp(String? sdp) => audio_tuning.tuneOpusSdp(sdp);
 
   RTCSessionDescription _tuned(RTCSessionDescription d) =>
       RTCSessionDescription(_tuneOpusSdp(d.sdp), d.type);
@@ -2055,18 +2051,9 @@ class CallSession {
     try {
       var mediaTimedOut = false;
       final mediaFuture = navigator.mediaDevices.getUserMedia({
-        'audio': {
-          'echoCancellation': true,
-          'noiseSuppression': true,
-          'autoGainControl': true,
-          'mandatory': {
-            'googEchoCancellation': true,
-            'googNoiseSuppression': true,
-            'googAutoGainControl': true,
-            'googHighpassFilter': true,
-          },
-          'optional': [],
-        },
+        // [CALL-SURVIVE-1] de-dup: the shared capture-DSP constraints
+        // (AEC/NS/AGC/high-pass) are defined ONCE in core/audio_tuning.dart.
+        'audio': audio_tuning.avaMicConstraints(),
         // [CF-CALL-P2P-1] Explicit, bounded capture constraints (proposal
         // Phase 5 "camera constraints"): 1280x720@30 max on wifi/unknown,
         // 960x540@30 on a detected cellular network. `ideal` lets the camera
@@ -2724,6 +2711,15 @@ class CallSession {
       'iceServers': _ice,
       'iceCandidatePoolSize': 2,
       if (CallDiag.turnOnly || forceRelay) 'iceTransportPolicy': 'relay',
+      // [CALL-SURVIVE-1 2026-08-04] Bound the NetEq jitter buffer. Prod calls
+      // showed inbound jitter-buffer delay sitting at 600-745ms on flappy
+      // cellular ("distant/underwater" voice) because the buffer had no cap
+      // and no fast-drain. 50 packets ≈ 1s hard ceiling; fastAccelerate
+      // drains accumulated delay quickly once the network recovers. Both keys
+      // verified as parsed by flutter_webrtc 0.12.12 Android
+      // (MethodCallHandlerImpl.parseRTCConfiguration) — NOT decoys.
+      'audioJitterBufferMaxPackets': 50,
+      'audioJitterBufferFastAccelerate': true,
     });
     // [CF-CALL-P2P-1] Stamp this PC's generation BEFORE installing any
     // callback closure below, so every closure's guard check is meaningful
@@ -2936,10 +2932,11 @@ class CallSession {
       'reason': why.wire,
       'path': attempt.targetPath,
     });
-    // Deadline (plan §7.2: "terminate: 30 seconds after recovery begins with
-    // no recovered playout") — owned here, NOT by the old watchdog.
+    // Deadline — owned here, NOT by the old watchdog. [CALL-SURVIVE-1] was a
+    // fixed 30s AND terminal; now remote-config (default 12s) and expiry
+    // feeds the retry ladder instead of ending the call.
     _recoveryDeadlineTimer?.cancel();
-    _recoveryDeadlineTimer = Timer(const Duration(seconds: 30), () {
+    _recoveryDeadlineTimer = Timer(Duration(seconds: RemoteConfig.callRecoveryDeadlineSec), () {
       if (_activeRecovery?.id == id && !_activeRecovery!.completed) {
         _failRecovery('recovery_timeout_no_playout');
       }
@@ -2971,7 +2968,8 @@ class CallSession {
       _telemetry.setRecoveryState('recovering_ice', attemptCount: _recoveryAttemptCount);
       if (!_ended && _connected) _setPhase('reconnecting');
       _recoveryDeadlineTimer?.cancel();
-      _recoveryDeadlineTimer = Timer(const Duration(seconds: 30), () {
+      // [CALL-SURVIVE-1] remote-config deadline (default 12s), non-terminal.
+      _recoveryDeadlineTimer = Timer(Duration(seconds: RemoteConfig.callRecoveryDeadlineSec), () {
         if (_activeRecovery?.id == id && !_activeRecovery!.completed) {
           _failRecovery('recovery_timeout_no_playout');
         }
@@ -3110,6 +3108,8 @@ class CallSession {
     });
     if (identical(_activeRecovery, attempt)) _activeRecovery = null;
     _telemetry.setRecoveryState('none', attemptCount: _recoveryAttemptCount);
+    _survivalRetries = 0; // [CALL-SURVIVE-1] success resets the ladder
+    _survivalRetryTimer?.cancel();
     if (!_ended && _connected) _setPhase('connected');
   }
 
@@ -3141,6 +3141,8 @@ class CallSession {
     });
     if (identical(_activeRecovery, attempt)) _activeRecovery = null;
     _telemetry.setRecoveryState('none', attemptCount: _recoveryAttemptCount);
+    _survivalRetries = 0; // [CALL-SURVIVE-1] success resets the ladder
+    _survivalRetryTimer?.cancel();
     if (!_ended && _connected) _setPhase('connected');
   }
 
@@ -3185,9 +3187,77 @@ class CallSession {
       }
       return;
     }
-    if (!_ended) {
-      _endWith('ended', reason: reason);
+    // [CALL-SURVIVE-1 2026-08-04] A failed recovery is no longer terminal.
+    // Stay in `reconnecting` and schedule the next attempt; explicit hangup /
+    // the signaling-WS ladder (`reconnect_failed`) own actual termination.
+    _scheduleSurvivalRetry(a.reason, from: reason);
+  }
+
+  /// [CALL-SURVIVE-1] Schedule the next recovery attempt after a failure,
+  /// with exponential backoff so retries don't flood a network that is still
+  /// recovering. NEVER ends the call: after the ladder is exhausted the call
+  /// stays in `reconnecting` (the WS reconnect ladder ends it if the peer is
+  /// genuinely gone; otherwise the users decide when to hang up). Prod
+  /// incident avatok-999a650b / avatok-10d4696b (2026-08-04): WiFi↔cell flaps
+  /// ended live calls with `relay_migration_timeout` after ~50s of dead air.
+  void _scheduleSurvivalRetry(RecoveryReason why, {required String from}) {
+    if (_ended || !_connected) return;
+    _setPhase('reconnecting');
+    final max = RemoteConfig.callRecoveryMaxAttempts;
+    if (_survivalRetries >= max) {
+      Analytics.capture('call_recovery_exhausted', {
+        'call_id': config.room,
+        'attempts': _survivalRetries,
+        'last_failure': from,
+      });
+      return; // stay alive in `reconnecting`; no further automatic attempts
     }
+    final idx = _survivalRetries.clamp(0, _kSurvivalBackoffSec.length - 1);
+    _survivalRetries++;
+    _survivalRetryTimer?.cancel();
+    _survivalRetryTimer = Timer(Duration(seconds: _kSurvivalBackoffSec[idx]), () {
+      if (_ended || !_connected) return;
+      if (_activeRecovery != null || _activeMigration != null) return;
+      // ignore: unawaited_futures
+      _requestRecovery(why);
+    });
+    Analytics.capture('call_recovery_retry_scheduled', {
+      'call_id': config.room,
+      'attempt': _survivalRetries,
+      'delay_s': _kSurvivalBackoffSec[idx],
+      'last_failure': from,
+    });
+  }
+
+  /// [CALL-SURVIVE-1] Abort any in-flight recovery/migration because the local
+  /// network interface just changed — their candidates were gathered on the
+  /// OLD interface and can only burn their deadlines. Resets the backoff
+  /// ladder: a fresh interface deserves an immediate fresh attempt.
+  void _abortInFlightRecoveryForNetChange() {
+    final r = _activeRecovery;
+    if (r != null && !r.completed) {
+      r.completed = true;
+      _recoveryDeadlineTimer?.cancel();
+      _activeRecovery = null;
+      Analytics.capture('call_recovery_aborted', {
+        'call_id': config.room,
+        'attempt_id': r.id,
+        'why': 'network_changed',
+      });
+    }
+    final m = _activeMigration;
+    if (m != null && !m.completed) {
+      // Abandon WITHOUT burning any cap (glare-style cleanup) — the retry on
+      // the new interface is the attempt that matters.
+      _abandonOwnMigrationAttempt(m);
+      Analytics.capture('call_recovery_aborted', {
+        'call_id': config.room,
+        'attempt_id': m.id,
+        'why': 'network_changed_migration',
+      });
+    }
+    _survivalRetries = 0;
+    _survivalRetryTimer?.cancel();
   }
 
   Future<void> _flushCandidates() async {
@@ -3282,18 +3352,23 @@ class CallSession {
   /// keeps running (still audible) until [_maybeCompleteMigration] cuts over.
   Future<void> _migrateToRelay(RecoveryReason why) async {
     if (!RemoteConfig.callRelayMigrationV1) {
-      if (!_ended) _endWith('ended', reason: 'recovery_timeout_no_playout');
+      // [CALL-SURVIVE-1] Flag off is not a reason to end a live call — fall
+      // back to the plain ICE-recovery retry ladder.
+      _scheduleSurvivalRetry(why, from: 'relay_migration_disabled');
       return;
     }
     if (_ended || !_connected) return;
-    if (_migrationAttempted || _activeMigration != null) {
-      // MAX one migration per call already used, or one already in flight.
-      if (!_ended) _endWith('ended', reason: 'relay_migration_unavailable');
+    if (_activeMigration != null) return; // one in flight at a time
+    if (_migrationAttempted) {
+      // A migration already COMPLETED this call (we're on relay) — nothing to
+      // upgrade to. Retry plain recovery instead of ending the call.
+      _scheduleSurvivalRetry(why, from: 'relay_migration_unavailable');
       return;
     }
     final remoteId = _remoteId;
     if (remoteId == null || _stream == null) {
-      if (!_ended) _endWith('ended', reason: 'relay_migration_no_peer');
+      // [CALL-SURVIVE-1] was a hard end (`relay_migration_no_peer`).
+      _scheduleSurvivalRetry(why, from: 'relay_migration_no_peer');
       return;
     }
     // [BLOCKER-2 fix] `_migrationAttempted` (the one-per-call CAP) is now set
@@ -3322,6 +3397,9 @@ class CallSession {
         'iceServers': _ice,
         'iceCandidatePoolSize': 2,
         'iceTransportPolicy': 'relay',
+        // [CALL-SURVIVE-1] same jitter-buffer bounds as _newPC.
+        'audioJitterBufferMaxPackets': 50,
+        'audioJitterBufferFastAccelerate': true,
       });
       attempt.newPc = newPc;
       // [CF-CALL-P2P-1] Await installation and apply the same bounded
@@ -3369,7 +3447,8 @@ class CallSession {
       return;
     }
     _migrationDeadlineTimer?.cancel();
-    _migrationDeadlineTimer = Timer(const Duration(seconds: 20), () {
+    // [CALL-SURVIVE-1] remote-config deadline (default 8s), non-terminal.
+    _migrationDeadlineTimer = Timer(Duration(seconds: RemoteConfig.callMigrationDeadlineSec), () {
       if (identical(_activeMigration, attempt) && !attempt.completed) {
         _failMigration(attempt, 'relay_migration_timeout');
       }
@@ -3408,6 +3487,9 @@ class CallSession {
         'iceServers': _ice,
         'iceCandidatePoolSize': 2,
         'iceTransportPolicy': 'relay',
+        // [CALL-SURVIVE-1] same jitter-buffer bounds as _newPC.
+        'audioJitterBufferMaxPackets': 50,
+        'audioJitterBufferFastAccelerate': true,
       });
       attempt.newPc = newPc;
       // [CF-CALL-P2P-1] Await installation and apply the same bounded
@@ -3457,7 +3539,8 @@ class CallSession {
       return;
     }
     _migrationDeadlineTimer?.cancel();
-    _migrationDeadlineTimer = Timer(const Duration(seconds: 20), () {
+    // [CALL-SURVIVE-1] remote-config deadline (default 8s), non-terminal.
+    _migrationDeadlineTimer = Timer(Duration(seconds: RemoteConfig.callMigrationDeadlineSec), () {
       if (identical(_activeMigration, attempt) && !attempt.completed) {
         _failMigration(attempt, 'relay_migration_timeout');
       }
@@ -3586,6 +3669,8 @@ class CallSession {
       'two_side_ack': true,
     });
     _telemetry.setRecoveryState('none', attemptCount: _recoveryAttemptCount);
+    _survivalRetries = 0; // [CALL-SURVIVE-1] success resets the ladder
+    _survivalRetryTimer?.cancel();
     if (!_ended && _connected) _setPhase('connected');
   }
 
@@ -3641,10 +3726,12 @@ class CallSession {
   void _failMigration(RelayMigrationAttempt a, String reason) {
     if (a.completed) return;
     a.completed = true;
-    // [BLOCKER-2 fix] Genuine terminal failure (not glare — glare rejects go
-    // through [_abandonOwnMigrationAttempt] instead, which does NOT set this)
-    // — burn the one-migration-per-call cap here.
-    _migrationAttempted = true;
+    // [CALL-SURVIVE-1 2026-08-04] The one-migration-per-call cap is GONE for
+    // failures. On a moving phone (train/lift) the first migration routinely
+    // lands mid-flap and fails through no fault of the design; burning the cap
+    // there guaranteed the next failure was terminal (`relay_migration_timeout`
+    // ended live calls — prod 2026-08-04). `_migrationAttempted` is now set
+    // only by a COMPLETED migration (already on relay → no repeat needed).
     _migrationDeadlineTimer?.cancel();
     final elapsedMs = DateTime.now().millisecondsSinceEpoch - a.startedAtMs;
     Analytics.capture('call_recovery_failed', {
@@ -3662,7 +3749,10 @@ class CallSession {
         oldPc.connectionState != RTCPeerConnectionState.RTCPeerConnectionStateFailed;
     _telemetry.setRecoveryState(oldPcAlive ? 'none' : 'failed', attemptCount: _recoveryAttemptCount);
     if (!oldPcAlive) {
-      if (!_ended) _endWith('ended', reason: reason);
+      // [CALL-SURVIVE-1] Old PC dead + migration failed used to END the call
+      // here (`relay_migration_timeout`). Now: stay in `reconnecting` and
+      // retry — termination belongs to hangup / the WS ladder only.
+      _scheduleSurvivalRetry(RecoveryReason.transportDisconnected, from: reason);
     } else if (!_ended && _connected) {
       // Old PC still has playout — a failed upgrade must not create an outage.
       _setPhase('connected');
@@ -5807,6 +5897,7 @@ class CallSession {
     _stopPlayoutHealthSampler(); // [CALL-REL-4]
     _recoveryDeadlineTimer?.cancel(); // [CALL-REL-5]
     _activeRecovery = null;
+    _survivalRetryTimer?.cancel(); // [CALL-SURVIVE-1]
     _migrationDeadlineTimer?.cancel(); // [CALL-REL-6]
     await _safeAwait(() => _activeMigration?.newPc?.close());
     _activeMigration = null;

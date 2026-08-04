@@ -293,6 +293,8 @@ class CallTelemetry {
   final List<double> _recvKbps = [];
   final List<double> _sendKbps = [];
   final List<double> _mos = [];
+  // [CALL-SURVIVE-1] inside a poor-quality episode (est MOS < 3.0)?
+  bool _qualityPoorActive = false;
   double _lossPct = 0; // last cumulative inbound loss %
   double _fps = 0; // last video fps
   int _frameW = 0, _frameH = 0;
@@ -639,9 +641,37 @@ class CallTelemetry {
       _lastRecvBytes = recvBytes;
       _lastSendBytes = sendBytes;
       _lastBytesAt = now;
-      // running MOS estimate for this interval
-      final mos = _estimateMos(rtt ?? 0.0, jitter ?? 0.0, _lossPct);
-      if (mos > 0) _mos.add(mos);
+      // running MOS estimate for this interval.
+      // [CALL-SURVIVE-1 2026-08-04] feed the E-model the EFFECTIVE loss: on a
+      // concealment-heavy leg (relay + flappy cellular) packetsLost stays low
+      // while the decoder synthesises a large share of samples — concealment
+      // IS loss as far as the listener's ear is concerned (prod 2026-08-04:
+      // 13-33% concealment intervals scored as near-perfect MOS).
+      final mos = _estimateMos(
+          rtt ?? 0.0, jitter ?? 0.0, math.max(_lossPct, _audioGlitchPct));
+      if (mos > 0) {
+        _mos.add(mos);
+        // Poor-quality episode transitions, with hysteresis (poor < 3.0,
+        // recovered > 3.4) so a score oscillating around the line doesn't
+        // spam events. One event per transition, not per sample.
+        if (!_qualityPoorActive && mos < 3.0) {
+          _qualityPoorActive = true;
+          Analytics.capture('call_quality_poor', {
+            'call_id': callId,
+            'est_mos': _round2(mos),
+            'loss_pct': _round2(_lossPct),
+            'concealment_pct': _round2(_audioGlitchPct),
+            'jitter_ms': jitter ?? -1,
+            'rtt_ms': rtt ?? -1,
+          });
+        } else if (_qualityPoorActive && mos > 3.4) {
+          _qualityPoorActive = false;
+          Analytics.capture('call_quality_recovered', {
+            'call_id': callId,
+            'est_mos': _round2(mos),
+          });
+        }
+      }
       // device memory footprint (RSS) during the call
       final rss = _sampleRssMb();
       if (rss > 0) {
@@ -752,6 +782,9 @@ class CallTelemetry {
       'video': video,
       'outgoing': outgoing,
       'media_path': _mediaPath,
+      // [CALL-SURVIVE-1] latest E-model estimate rides along so quality is
+      // queryable per health transition, not just on call_progress beats.
+      if (_mos.isNotEmpty) 'est_mos': _round2(_mos.last),
       ...snapshot.toTelemetryMap(),
     });
   }

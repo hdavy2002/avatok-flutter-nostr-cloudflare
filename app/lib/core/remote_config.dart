@@ -298,6 +298,17 @@ class RemoteConfig {
   static bool get callRelayMigrationV1 => _b('callRelayMigrationV1', false);
   static bool get receptionistReconnectV1 => _b('receptionistReconnectV1', false);
   static bool get callRingAudibilityV1 => _b('callRingAudibilityV1', false);
+  /// [CALL-SURVIVE-1 2026-08-04] Handover-survival tunables. Declared in the
+  /// Worker's DEFAULTS + numericKeys in the SAME change (fake-flag rule) so
+  /// they are flippable from KV without a client build. Defaults mirror the
+  /// server: 12s ICE-recovery deadline, 8s relay-migration deadline, 5 retry
+  /// attempts (2/4/8/16/30s backoff) before the ladder rests in `reconnecting`.
+  static int get callRecoveryDeadlineSec =>
+      (_asNum(_cfg['callRecoveryDeadlineSec'])?.toInt()) ?? 12;
+  static int get callMigrationDeadlineSec =>
+      (_asNum(_cfg['callMigrationDeadlineSec'])?.toInt()) ?? 8;
+  static int get callRecoveryMaxAttempts =>
+      (_asNum(_cfg['callRecoveryMaxAttempts'])?.toInt()) ?? 5;
   /// In-chat AI image generation (ChatAVA "make an image"). Server kill switch —
   /// reads the Worker's key EXACTLY, `generativeEnabled` (routes/config.ts,
   /// enforced in routes/ava_image.ts). [AI-FLAG-CONTRACT-1] 2026-07-25: this
