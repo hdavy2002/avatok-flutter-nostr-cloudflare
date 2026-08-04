@@ -778,11 +778,24 @@ class CallSession {
   int _survivalRetries = 0;
   Timer? _survivalRetryTimer;
   static const List<int> _kSurvivalBackoffSec = [2, 4, 8, 16, 30];
-  // Interface class ('wifi'/'cell'/'none'/'other') at the last connectivity
-  // event — lets the handover telemetry report from→to and lets the listener
-  // distinguish a real interface change from metadata churn.
+  // Interface class ('wifi'/'cell'/'none'/'other') we last ACTED on — lets
+  // the handover telemetry report from→to and lets the listener distinguish
+  // a real interface change from metadata churn. Updated only when a change
+  // survives the debounce, so bursts net out.
   String _lastNetClass = 'unknown';
+  // [CALL-SURVIVE-2] 2s settle window before acting on an interface change.
+  Timer? _netDebounceTimer;
   StreamSubscription? _netSub;
+
+  static String _classifyNet(List<ConnectivityResult> results) =>
+      results.contains(ConnectivityResult.wifi) ||
+              results.contains(ConnectivityResult.ethernet)
+          ? 'wifi'
+          : results.contains(ConnectivityResult.mobile)
+              ? 'cell'
+              : results.contains(ConnectivityResult.none)
+                  ? 'none'
+                  : 'other';
   int _wsReconnects = 0;
   Timer? _wsReconnectTimer;
   Timer? _relayFallbackTimer;
@@ -1551,59 +1564,84 @@ class CallSession {
     _netSub = Connectivity().onConnectivityChanged.listen((results) {
       // [CALL-SURVIVE-1] Classify the interface so a REAL wifi↔cell handover
       // is distinguishable from metadata churn (bluetooth toggles etc.).
-      final cls = results.contains(ConnectivityResult.wifi) ||
-              results.contains(ConnectivityResult.ethernet)
-          ? 'wifi'
-          : results.contains(ConnectivityResult.mobile)
-              ? 'cell'
-              : results.contains(ConnectivityResult.none)
-                  ? 'none'
-                  : 'other';
-      final prev = _lastNetClass;
-      final interfaceChanged = prev != 'unknown' && cls != prev;
-      _lastNetClass = cls;
-      if (!_connected || _ended) return;
+      final cls = _classifyNet(results);
+      if (_lastNetClass == 'unknown') {
+        _lastNetClass = cls; // first observation — baseline, never a handover
+        return;
+      }
+      if (!_connected || _ended) {
+        _lastNetClass = cls;
+        return;
+      }
       _telemetry.onNetChange();
-      if (interfaceChanged) {
+      if (cls == _lastNetClass) {
+        // Interface class unchanged (or a flap netted out back to the class
+        // we last acted on) — cancel any pending debounce and keep the
+        // health-sample gate: Connectivity() is a HINT; RTP flow is the
+        // authority on whether anything actually broke.
+        _netDebounceTimer?.cancel();
+        if (RemoteConfig.callIceRecoveryV2) {
+          // ignore: unawaited_futures
+          _pollPlayoutHealth().then((_) {
+            if (_ended || !_connected) return;
+            final h = _lastPlayoutHealthClass;
+            final unhealthy = h == MediaHealthClass.noRtp ||
+                h == MediaHealthClass.noPlayout ||
+                h == MediaHealthClass.routeBroken ||
+                h == MediaHealthClass.networkDegraded;
+            if (unhealthy) {
+              // ignore: unawaited_futures
+              _requestRecovery(RecoveryReason.networkChanged);
+            }
+          });
+        }
+        return;
+      }
+      // [CALL-SURVIVE-2 2026-08-04] Interface class CHANGED — debounce 2s
+      // before acting. WiFi↔cell events arrive in bursts on a moving phone;
+      // acting on each one thrashed abort/restart cycles. The new interface
+      // must survive the settle window (re-confirmed via checkConnectivity)
+      // before we abort in-flight work and start a fresh attempt. A real
+      // outage in the meantime is caught by the 5s media watchdog anyway.
+      _netDebounceTimer?.cancel();
+      _netDebounceTimer = Timer(const Duration(seconds: 2), () async {
+        if (_ended || !_connected) return;
+        List<ConnectivityResult> nowResults;
+        try {
+          nowResults = await Connectivity().checkConnectivity();
+        } catch (_) {
+          return;
+        }
+        final confirmed = _classifyNet(nowResults);
+        if (confirmed == _lastNetClass) return; // flap netted out — no action
+        final from = _lastNetClass;
+        _lastNetClass = confirmed;
         // Structured handover telemetry — correlates handovers to recovery
         // attempts in one query (audit item 11).
         Analytics.capture('call_network_handover', {
           'call_id': config.room,
-          'from': prev,
-          'to': cls,
+          'from': from,
+          'to': confirmed,
           'recovery_attempt_id': _activeRecovery?.id ?? _activeMigration?.id ?? 'none',
         });
-      }
-      if (RemoteConfig.callIceRecoveryV2) {
-        if (interfaceChanged && cls != 'none') {
-          // [CALL-SURVIVE-1] The interface itself changed: any in-flight
-          // attempt is gathering on a dead interface — abort it and start a
-          // fresh attempt NOW (backoff reset). Waiting for a health sample
-          // here is what let attempts burn 30s deadlines on stale candidates
-          // (prod 2026-08-04).
-          _abortInFlightRecoveryForNetChange();
-          // ignore: unawaited_futures
-          _requestRecovery(RecoveryReason.networkChanged);
-          return;
-        }
-        // Same-interface metadata change (or lost connectivity entirely —
-        // nothing to gather on): keep the health-sample gate.
-        // ignore: unawaited_futures
-        _pollPlayoutHealth().then((_) {
-          if (_ended || !_connected) return;
-          final h = _lastPlayoutHealthClass;
-          final unhealthy = h == MediaHealthClass.noRtp ||
-              h == MediaHealthClass.noPlayout ||
-              h == MediaHealthClass.routeBroken ||
-              h == MediaHealthClass.networkDegraded;
-          if (unhealthy) {
+        if (_ended || !_connected) return;
+        if (RemoteConfig.callIceRecoveryV2) {
+          if (confirmed != 'none') {
+            // [CALL-SURVIVE-1] Any in-flight attempt is gathering on a dead
+            // interface — abort it and start a fresh attempt NOW (backoff
+            // reset). Waiting for a health sample here is what let attempts
+            // burn 30s deadlines on stale candidates (prod 2026-08-04).
+            _abortInFlightRecoveryForNetChange();
             // ignore: unawaited_futures
             _requestRecovery(RecoveryReason.networkChanged);
           }
-        });
-      } else {
-        _tryIceRestart('net-change');
-      }
+          // confirmed == 'none': nothing to gather on — the media watchdog /
+          // WS ladder handle it when an interface comes back.
+        } else {
+          // ignore: unawaited_futures
+          _tryIceRestart('net-change');
+        }
+      });
     });
     _video = config.video;
     _camOn = config.video;
@@ -2465,16 +2503,72 @@ class CallSession {
       Analytics.capture('call_reconnect_start', {'call_id': config.room, 'video': config.video});
       _reconnectGiveUpTimer?.cancel();
       _reconnectGiveUpTimer = Timer(_kReconnectGiveUp, () {
-        if (_ended || !_reconnecting) return;
-        Analytics.capture('call_reconnect_fail', {
-          'call_id': config.room,
-          'elapsed_ms': DateTime.now().millisecondsSinceEpoch - (_reconnectStartMs ?? 0),
-          'attempts': _reconnectAttempt,
-        });
-        _endWith('ended', reason: 'reconnect_failed');
+        // ignore: unawaited_futures
+        _onReconnectGiveUpDeadline();
       });
     }
     _scheduleReconnectAttempt();
+  }
+
+  /// [CALL-SURVIVE-2 2026-08-04] The WS give-up deadline is now MEDIA-AWARE.
+  /// Signaling and media are independent transports: the WS can be down (edge
+  /// blip, DO restart, captive re-auth) while P2P/relay RTP flows perfectly.
+  /// Ending the call on a 30s signaling outage alone (`reconnect_failed`)
+  /// hung up on two people who could still hear each other — and undercut the
+  /// [CALL-SURVIVE-1] rule that only a genuinely-gone peer ends a call.
+  /// On deadline: probe inbound audio directly (the samplers are stopped
+  /// during the ladder, so cached health is stale). Media alive → keep
+  /// retrying the WS and re-arm the deadline; media dead too → NOW it's a
+  /// real `reconnect_failed`.
+  Future<void> _onReconnectGiveUpDeadline() async {
+    if (_ended || !_reconnecting) return;
+    final mediaAlive = await _probeInboundAudioAlive();
+    if (_ended || !_reconnecting) return;
+    if (mediaAlive) {
+      Analytics.capture('call_ws_down_media_alive', {
+        'call_id': config.room,
+        'elapsed_ms': DateTime.now().millisecondsSinceEpoch - (_reconnectStartMs ?? 0),
+        'attempts': _reconnectAttempt,
+      });
+      _reconnectGiveUpTimer = Timer(_kReconnectGiveUp, () {
+        // ignore: unawaited_futures
+        _onReconnectGiveUpDeadline();
+      });
+      return;
+    }
+    Analytics.capture('call_reconnect_fail', {
+      'call_id': config.room,
+      'elapsed_ms': DateTime.now().millisecondsSinceEpoch - (_reconnectStartMs ?? 0),
+      'attempts': _reconnectAttempt,
+    });
+    _endWith('ended', reason: 'reconnect_failed');
+  }
+
+  /// [CALL-SURVIVE-2] Direct liveness probe: inbound audio bytes advancing
+  /// over a 2s window. Used only at the WS give-up deadline, where the
+  /// watchdog/sampler caches are deliberately stopped and therefore stale.
+  Future<bool> _probeInboundAudioAlive() async {
+    try {
+      final pc = _pc;
+      if (pc == null) return false;
+      Future<int> readBytes() async {
+        var b = 0;
+        for (final s in await pc.getStats()) {
+          if (s.type != 'inbound-rtp') continue;
+          final kind = (s.values['kind'] ?? s.values['mediaType'])?.toString();
+          if (kind != 'audio') continue;
+          final v = s.values['bytesReceived'];
+          if (v is num) b += v.toInt();
+        }
+        return b;
+      }
+      final before = await readBytes();
+      await Future.delayed(const Duration(seconds: 2));
+      if (_ended) return false;
+      return await readBytes() > before;
+    } catch (_) {
+      return false; // unprobeable = treat as dead (conservative)
+    }
   }
 
   void _scheduleReconnectAttempt() {
@@ -5898,6 +5992,7 @@ class CallSession {
     _recoveryDeadlineTimer?.cancel(); // [CALL-REL-5]
     _activeRecovery = null;
     _survivalRetryTimer?.cancel(); // [CALL-SURVIVE-1]
+    _netDebounceTimer?.cancel(); // [CALL-SURVIVE-2]
     _migrationDeadlineTimer?.cancel(); // [CALL-REL-6]
     await _safeAwait(() => _activeMigration?.newPc?.close());
     _activeMigration = null;
