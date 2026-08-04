@@ -44,6 +44,20 @@ const APP = "avatok_call_translation";
 // payer who was charged. Kept short — the whole activate path is sub-second.
 const ACTIVATING_STUCK_MS = 15_000;
 
+/**
+ * [CALL-TRANSLATE-OBS-2] How long a `pending`/`activating` row may sit before the
+ * next `/start` by the SAME payer treats it as abandoned and closes it out.
+ *
+ * Sized far above every real timing in the flow: the client activates within
+ * seconds of `/start`, and even a speculative warm-up row is adopted or replaced
+ * within one language-sheet interaction. A row still un-activated ten minutes
+ * later is a session that died on the client, on the provider, or in the app
+ * being killed — never one that is about to succeed.
+ */
+const ABANDONED_AFTER_MS = 10 * 60_000;
+/** Bound the reconciliation sweep so one `/start` can never fan out. */
+const ABANDON_REAP_LIMIT = 5;
+
 // Keep this list server-owned. The client mirrors it for the picker, but the
 // Worker is authoritative and rejects unknown BCP-47 values.
 export const CALL_TRANSLATION_LANGS = new Set([
@@ -155,10 +169,65 @@ async function chargeMinute(env: Env, s: CallSession, minute: number): Promise<b
   return r.status === 200;
 }
 
-async function mintToken(env: Env, targetLang: string): Promise<{ token: string; expiresAt: number } | null> {
-  if (!env.GEMINI_API_KEY) return null;
+/**
+ * [CALL-TRANSLATE-OBS-2] Why the provider mint is instrumented at all.
+ *
+ * `mintToken` returning `null` is what killed EVERY session between launch and
+ * 2026-08-04: the body carried the SDK-only field name `liveConnectConstraints`,
+ * Google answered 400, every mint returned null, and every `/start`, `/language`
+ * and `/token` answered 502. The only trace that left in PostHog was an absence —
+ * twelve `call_translation_stopped` events and zero `call_translation_started`.
+ * A whole session of digging went into noticing a gap between two event streams.
+ *
+ * So the mint now states its own outcome. One event, `call_translation_mint`,
+ * carrying Google's HTTP status and a failure CLASS, on success and on every
+ * failure. If Google changes the contract again this is one breakdown query, not
+ * one archaeology session.
+ *
+ * NEVER put the API key, the minted token, or any response body in here. The
+ * status code and the class below are the whole payload; a response body from
+ * this endpoint is not audio-derived, but "we only log bodies that look safe" is
+ * exactly the rule that erodes, so the body is simply never read on a failure.
+ */
+export type MintPurpose = "start" | "warm_up" | "switch" | "refresh";
+
+/**
+ * Bucket an HTTP status from Google into an actionable class. These strings are
+ * the values a dashboard breaks down on, so treat them as a wire contract:
+ * `bad_request` means WE are sending something the API rejects (the 2026-08-04
+ * bug), `auth`/`quota` mean the account, `provider_error` means Google.
+ */
+export function mintFailureClass(status: number): string {
+  if (status === 400) return "bad_request";
+  if (status === 401 || status === 403) return "auth";
+  if (status === 404) return "not_found";
+  if (status === 408 || status === 504) return "timeout";
+  if (status === 429) return "quota";
+  if (status >= 500) return "provider_error";
+  return "http_other";
+}
+
+type MintCtx = { uid: string; sessionId: string; callRef: string; purpose: MintPurpose };
+
+async function mintToken(env: Env, targetLang: string, mctx: MintCtx): Promise<{ token: string; expiresAt: number } | null> {
+  const startedAt = Date.now();
+  // Every mint event joins to the client funnel on BOTH keys.
+  const base = {
+    session_id: mctx.sessionId, call_ref: mctx.callRef, purpose: mctx.purpose,
+    language: targetLang, api_version: CALL_TRANSLATION_API_VERSION, model: CALL_TRANSLATION_MODEL,
+  };
+  // Awaited, not fire-and-forget: workerd cancels an un-awaited send the moment
+  // the response returns, and every branch below is an early return.
+  if (!env.GEMINI_API_KEY) {
+    await track(env, mctx.uid, "call_translation_mint", APP, {
+      ...base, ok: false, http_status: 0, failure_class: "no_api_key", duration_ms: 0,
+    });
+    return null;
+  }
   const expiresAt = Date.now() + 30 * 60_000;
-  const response = await fetch(`https://generativelanguage.googleapis.com/${CALL_TRANSLATION_API_VERSION}/auth_tokens`, {
+  let response: Response;
+  try {
+    response = await fetch(`https://generativelanguage.googleapis.com/${CALL_TRANSLATION_API_VERSION}/auth_tokens`, {
     method: "POST",
     headers: { "content-type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
     /**
@@ -202,9 +271,180 @@ async function mintToken(env: Env, targetLang: string): Promise<{ token: string;
         contextWindowCompression: { slidingWindow: {} },
       },
     }),
-  });
+    });
+  } catch (e) {
+    // Transport failure: no status exists. `error_name` is the exception CLASS
+    // only (never the message, which can carry a URL with the key in it).
+    const name = String((e as { name?: string } | null)?.name ?? "Error").slice(0, 40);
+    await track(env, mctx.uid, "call_translation_mint", APP, {
+      ...base, ok: false, http_status: 0,
+      failure_class: /abort|timeout/i.test(name) ? "timeout" : "network",
+      error_name: name, duration_ms: Date.now() - startedAt,
+    });
+    return null;
+  }
+  if (!response.ok) {
+    await track(env, mctx.uid, "call_translation_mint", APP, {
+      ...base, ok: false, http_status: response.status,
+      failure_class: mintFailureClass(response.status), duration_ms: Date.now() - startedAt,
+    });
+    return null;
+  }
   const body = await response.json().catch(() => ({})) as { name?: string };
-  return response.ok && body.name ? { token: body.name, expiresAt } : null;
+  if (!body.name) {
+    // 200 with no `name` — the contract changed shape rather than erroring. This
+    // is the class that looks like success in Cloudflare logs and isn't.
+    await track(env, mctx.uid, "call_translation_mint", APP, {
+      ...base, ok: false, http_status: response.status,
+      failure_class: "malformed_response", duration_ms: Date.now() - startedAt,
+    });
+    return null;
+  }
+  await track(env, mctx.uid, "call_translation_mint", APP, {
+    ...base, ok: true, http_status: response.status, failure_class: "",
+    duration_ms: Date.now() - startedAt, token_ttl_ms: expiresAt - startedAt,
+  });
+  return { token: body.name, expiresAt };
+}
+
+/**
+ * [CALL-TRANSLATE-OBS-2] Session OUTCOME as a first-class server event.
+ *
+ * Before this, "created but never activated" was not a fact anyone could query —
+ * it was an inference you had to draw by joining `call_translation_stopped`
+ * (worker) against `call_translation_started` (client) and noticing that one
+ * stream was empty. That is how a feature that never once worked end to end
+ * survived three days of testing.
+ *
+ * `call_translation_outcome` states it directly, exactly once per session, at
+ * the moment the session leaves the live set. `reached_active` is the whole
+ * question; `end_reason` is why it stopped; `billed_*` is what the payer was
+ * charged for it.
+ */
+type OutcomeReason =
+  | "user_stop" | "call_ended" | "insufficient_funds" | "provider_failure"
+  | "dead_translation" | "lifecycle" | "switch_failed" | "abandoned" | "unknown";
+
+/**
+ * Client-supplied stop reasons are mapped through a CLOSED set — a category, not
+ * a free string. Anything unrecognised (including a client that sends nothing,
+ * which is every build shipped so far) lands on the documented default.
+ */
+const CLIENT_STOP_REASONS = new Set<OutcomeReason>([
+  "user_stop", "call_ended", "provider_failure", "dead_translation", "lifecycle", "switch_failed",
+]);
+
+export function stopEndReason(raw: unknown): OutcomeReason {
+  const s = typeof raw === "string" ? raw.trim() : "";
+  return CLIENT_STOP_REASONS.has(s as OutcomeReason) ? (s as OutcomeReason) : "user_stop";
+}
+
+/**
+ * Emit the outcome for a session that has just left the live set.
+ *
+ * [s] must be the snapshot read BEFORE the terminal UPDATE, so `status_at_end`
+ * says what the session was doing when it ended rather than what we just wrote.
+ * Awaited at every call site — all of them are early-return paths.
+ */
+async function emitOutcome(
+  env: Env, s: CallSession, endReason: OutcomeReason, extra: Record<string, unknown> = {},
+): Promise<void> {
+  const now = Date.now();
+  // Ground truth for "did this ever work": the row only gets `started_at` and a
+  // billed minute inside the activate transaction.
+  const reachedActive = s.started_at != null && s.last_billed_minute > 0;
+  await track(env, s.payer_uid, "call_translation_outcome", APP, {
+    session_id: s.id,
+    call_ref: s.call_ref,
+    outcome: reachedActive ? "activated" : "never_activated",
+    reached_active: reachedActive,
+    end_reason: endReason,
+    status_at_end: s.status,
+    language: s.target_lang,
+    billed_minutes: s.last_billed_minute,
+    billed_tokens: s.billed_tokens,
+    // Measured from `started_at` once the session activated; otherwise from the
+    // last row write, which for a `pending` row is its creation and for an
+    // `activating` row is the moment it was claimed.
+    lived_ms: reachedActive ? now - Number(s.started_at) : now - s.updated_at,
+    device_bound: s.device_nonce !== null,
+    ...extra,
+  });
+}
+
+/**
+ * [CALL-TRANSLATE-OBS-2] The abandoned-session problem, and the honest fix.
+ *
+ * A row stuck in `pending` or `activating` is precisely the case that was
+ * invisible, and it is also the case with NOBODY left to report it: the client
+ * that created it has been killed, has lost the network, or has crashed, and a
+ * Worker only runs while it is handling a request. There is no honest way to
+ * emit at the moment of abandonment. A cron/alarm sweep could, but this table is
+ * per-payer and tiny, and standing up scheduled infrastructure to close out a
+ * handful of dead rows is not a cost this earns.
+ *
+ * So the cheapest honest mechanism is reconciliation at the next natural touch
+ * point: the SAME payer's next `/start`. That request is already loading their
+ * live rows to dedupe, is already rate-limited, and is the moment the stale row
+ * would otherwise cause harm. The event is therefore emitted LATE (up to the
+ * payer's next translation attempt) and is honest about it — `reaped_at_start`
+ * and `discovered_by_session` say so on the event, and `lived_ms` is measured
+ * from the row's last write, not from now. A dead row belonging to a payer who
+ * never comes back is never reported at all, and that is stated rather than
+ * papered over.
+ *
+ * This also fixes a real defect on the way past: a wedged `pending` row for a
+ * call_ref made every later `/start` for that call answer 409 "translation
+ * already active" forever.
+ *
+ * NOTE the terminal status written here is `stopped`, not a new `abandoned`
+ * value: the table carries a CHECK constraint on `status`, and adding an enum
+ * value to SQLite means rebuilding the table — a migration against a live prod
+ * table, for a distinction that already lives in `end_reason: "abandoned"`.
+ */
+async function reapAbandoned(env: Env, uid: string, discoveredBy: string): Promise<number> {
+  const cutoff = Date.now() - ABANDONED_AFTER_MS;
+  const stale = await metaDb(env).prepare(
+    `SELECT * FROM translation_call_sessions
+      WHERE payer_uid=?1 AND status IN ('pending','activating') AND updated_at < ?2
+      ORDER BY updated_at ASC LIMIT ?3`,
+  ).bind(uid, cutoff, ABANDON_REAP_LIMIT).all<CallSession>();
+  let reaped = 0;
+  for (const row of stale.results ?? []) {
+    // Guarded by status so a row that just activated underneath us is untouched;
+    // the event is emitted only for the writer that actually closed the row, so
+    // one abandoned session can never produce two outcomes.
+    const closed = await metaDb(env).prepare(
+      "UPDATE translation_call_sessions SET status='stopped',updated_at=?2 WHERE id=?1 AND status IN ('pending','activating')",
+    ).bind(row.id, Date.now()).run();
+    if (closed.meta.changes !== 1) continue;
+    reaped++;
+    await emitOutcome(env, row, "abandoned", {
+      reaped_at_start: true,
+      discovered_by_session: discoveredBy,
+      // How long the row sat dead before anything noticed. This is the honesty
+      // number: the outcome is real, the timestamp is late by this much.
+      undetected_ms: Date.now() - row.updated_at,
+    });
+  }
+  return reaped;
+}
+
+/**
+ * [CALL-TRANSLATE-OBS-2] `/start` refusals, as one queryable event.
+ *
+ * `/start` had eight ways to refuse and told PostHog about none of them, so a
+ * user who could never begin translation left no server-side trace at all. One
+ * event with a category `reason` makes "why did starts fail today" a single
+ * breakdown. `session_id` is empty on purpose where no row exists yet — the
+ * property is always present so the join key never has to be conditional.
+ */
+async function startFailed(
+  env: Env, uid: string, callRef: string, reason: string, extra: Record<string, unknown> = {},
+): Promise<void> {
+  await track(env, uid, "call_translation_start_failed", APP, {
+    session_id: "", call_ref: callRef, reason, ...extra,
+  });
 }
 
 /** Awaited on purpose: workerd cancels un-awaited sends on early-return paths. */
@@ -296,16 +536,37 @@ export async function callTranslationStart(req: Request, env: Env): Promise<Resp
   const lang = String(b.target_lang ?? "");
   // This is a capability assertion, not a fallback. The native same-capture tap
   // must provide this exact capability before a provider token can be used.
-  if (!CALL_TRANSLATION_SOURCE_BRIDGE_ENABLED || b.source_capability !== "webrtc_same_capture_pcm16_v1") return json({ error: "source_capture_unavailable", billable: false }, 412);
-  if (!CALL_TRANSLATION_LANGS.has(lang)) return json({ error: "unsupported target_lang", lang }, 400);
+  if (!CALL_TRANSLATION_SOURCE_BRIDGE_ENABLED || b.source_capability !== "webrtc_same_capture_pcm16_v1") {
+    await startFailed(env, ctx.uid, callRef, "source_capture_unavailable");
+    return json({ error: "source_capture_unavailable", billable: false }, 412);
+  }
+  if (!CALL_TRANSLATION_LANGS.has(lang)) {
+    await startFailed(env, ctx.uid, callRef, "unsupported_lang", { language: lang });
+    return json({ error: "unsupported target_lang", lang }, 400);
+  }
   const deviceNonce = readNonce(b.device_nonce);
-  if (deviceNonce && !DEVICE_NONCE_RE.test(deviceNonce)) return json({ error: "invalid_device_nonce", billable: false }, 400);
-  if (!(await participantInActiveCall(env, callRef, ctx.uid))) return json({ error: "not an active 1:1 call" }, 403);
+  if (deviceNonce && !DEVICE_NONCE_RE.test(deviceNonce)) {
+    await startFailed(env, ctx.uid, callRef, "invalid_device_nonce");
+    return json({ error: "invalid_device_nonce", billable: false }, 400);
+  }
+  if (!(await participantInActiveCall(env, callRef, ctx.uid))) {
+    await startFailed(env, ctx.uid, callRef, "not_in_active_call");
+    return json({ error: "not an active 1:1 call" }, 403);
+  }
+  // [CALL-TRANSLATE-OBS-2] Close out this payer's dead rows BEFORE the dedupe
+  // read below, for two reasons: an abandoned row for THIS call_ref would
+  // otherwise 409 a legitimate start forever, and this is the only honest moment
+  // at which a session nobody is left to report can produce an outcome event.
+  const id = crypto.randomUUID();
+  await reapAbandoned(env, ctx.uid, id);
   // Check for an existing session BEFORE spending rate-limit budget: a duplicate
   // /start is the client converging, not abuse, and burning quota on the 409 was
   // part of how a legitimate payer got locked out.
   const existing = await metaDb(env).prepare("SELECT id FROM translation_call_sessions WHERE payer_uid=?1 AND call_ref=?2 AND status IN ('pending','activating','active') LIMIT 1").bind(ctx.uid, callRef).first<{ id: string }>();
-  if (existing) return json({ error: "translation already active", session_id: existing.id, call_ref: callRef }, 409);
+  if (existing) {
+    await startFailed(env, ctx.uid, callRef, "already_active", { existing_session_id: existing.id, warm_up: b.warm_up === true });
+    return json({ error: "translation already active", session_id: existing.id, call_ref: callRef }, 409);
+  }
   /**
    * [CALL-TRANSLATE-2D-3] Rate limiting: two buckets, both tunable from KV.
    *
@@ -330,12 +591,17 @@ export async function callTranslationStart(req: Request, env: Env): Promise<Resp
   const limited = await rateLimit(env, `call-trl${warmUp ? "-warm" : ""}:${ctx.uid}`, rlMax, 3600);
   if (limited) {
     await track(env, ctx.uid, "call_translation_start_rate_limited", APP, {
-      call_ref: callRef, warm_up: warmUp, ceiling_per_hour: rlMax,
+      // Empty on purpose — no row exists yet. The property is always present so
+      // a join on session_id never has to special-case this event.
+      session_id: "", call_ref: callRef, warm_up: warmUp, ceiling_per_hour: rlMax,
     });
     return limited;
   }
   const bal = await balance(env, ctx.uid);
   if (bal.paid < CALL_TRANSLATION_MIN_START) {
+    await startFailed(env, ctx.uid, callRef, "insufficient_tokens", {
+      warm_up: warmUp, balance: bal.paid, spendable: bal.spendable, needed: CALL_TRANSLATION_MIN_START,
+    });
     return insufficientTokens({
       needed: CALL_TRANSLATION_MIN_START,
       balance: bal.paid,
@@ -346,12 +612,20 @@ export async function callTranslationStart(req: Request, env: Env): Promise<Resp
     });
   }
   const now = Date.now();
-  const id = crypto.randomUUID();
   const lease = crypto.randomUUID();
   // Provision the constrained provider session before the paid boundary. The
   // Android bridge must receive setupComplete before it calls /activate.
-  const token = await mintToken(env, lang);
-  if (!token) return json({ error: "provider_unavailable", billable: false }, 502);
+  // `id` is minted at the top of the handler so the mint event and the row that
+  // follows carry the SAME session id — never a second identifier scheme.
+  const token = await mintToken(env, lang, {
+    uid: ctx.uid, sessionId: id, callRef, purpose: warmUp ? "warm_up" : "start",
+  });
+  if (!token) {
+    // The mint event above says WHY (status + failure class); this one says what
+    // the user experienced, so one funnel query still shows where starts die.
+    await startFailed(env, ctx.uid, callRef, "provider_unavailable", { warm_up: warmUp, language: lang });
+    return json({ error: "provider_unavailable", billable: false }, 502);
+  }
   try {
     await metaDb(env).prepare(
       `INSERT INTO translation_call_sessions (id,payer_uid,call_ref,target_lang,source_lease,status,started_at,last_billed_minute,billed_tokens,updated_at,device_nonce)
@@ -359,6 +633,7 @@ export async function callTranslationStart(req: Request, env: Env): Promise<Resp
     ).bind(id, ctx.uid, callRef, lang, lease, now, deviceNonce).run();
   } catch {
     const winner = await metaDb(env).prepare("SELECT id FROM translation_call_sessions WHERE payer_uid=?1 AND call_ref=?2 AND status IN ('pending','activating','active') LIMIT 1").bind(ctx.uid, callRef).first<{ id: string }>();
+    await startFailed(env, ctx.uid, callRef, "insert_conflict", { existing_session_id: winner?.id ?? "", warm_up: warmUp });
     return json({ error: "translation already active", session_id: winner?.id, call_ref: callRef }, 409);
   }
   await track(env, ctx.uid, "call_translation_start_ready", APP, {
@@ -484,6 +759,10 @@ export async function callTranslationRenew(req: Request, env: Env, id: string): 
   if (!(await chargeMinute(env, s, minute))) {
     await metaDb(env).prepare("UPDATE translation_call_sessions SET status='funds-stopped',updated_at=?2 WHERE id=?1 AND status='active'").bind(id, Date.now()).run();
     await track(env, ctx.uid, "call_translation_funds_stopped", APP, { session_id: id, call_ref: s.call_ref, minute });
+    // [CALL-TRANSLATE-OBS-2] The session is over — say so once, in the same
+    // shape as every other ending, so "how do translated sessions end" is one
+    // breakdown rather than a union of three event names.
+    await emitOutcome(env, s, "insufficient_funds", { stopped_at_minute: minute });
     // PAID-ONLY (owner 2026-08-04): the wallet refused against paid `balance`.
     // `spendable` lets the client say "your remaining tokens are free/bonus
     // tokens, which translation cannot spend" instead of a misleading "empty".
@@ -536,10 +815,20 @@ export async function callTranslationStop(req: Request, env: Env, id: string): P
   if (isFail(ctx)) return authError(ctx);
   const s = await load(env, id);
   if (!s || s.payer_uid !== ctx.uid) return json({ error: "not found" }, 404);
-  await metaDb(env).prepare("UPDATE translation_call_sessions SET status='stopped',updated_at=?2 WHERE id=?1 AND status NOT IN ('stopped','funds-stopped','provider-stopped')").bind(id, Date.now()).run();
+  // [CALL-TRANSLATE-OBS-2] Optional, closed-set stop reason. Every build in the
+  // field today sends nothing, which maps to `user_stop` — the default is the
+  // honest reading of a POST to /stop with no explanation.
+  const sb = await req.json().catch(() => ({})) as Record<string, unknown>;
+  const endReason = stopEndReason(sb.reason);
+  const closed = await metaDb(env).prepare("UPDATE translation_call_sessions SET status='stopped',updated_at=?2 WHERE id=?1 AND status NOT IN ('stopped','funds-stopped','provider-stopped')").bind(id, Date.now()).run();
   await track(env, ctx.uid, "call_translation_stopped", APP, {
     session_id: id, call_ref: s.call_ref, billed_minute: s.last_billed_minute,
   });
+  // Only the request that actually closed the row emits the outcome, so a
+  // duplicate /stop (the client converging, or a retry) cannot double-count a
+  // session in the funnel. `s` is the PRE-update snapshot on purpose:
+  // `status_at_end` should say what the session was doing when it ended.
+  if (closed.meta.changes === 1) await emitOutcome(env, s, endReason);
   return json({ ok: true, billed_tokens: s.billed_tokens, billed_minute: s.last_billed_minute, call_ref: s.call_ref });
 }
 
@@ -597,7 +886,9 @@ export async function callTranslationLanguage(req: Request, env: Env, id: string
   const fresh = await load(env, id);
   if (!fresh || fresh.status !== "active") return json({ error: fresh?.status ?? "not found", billable: false, call_ref: s.call_ref }, 409);
   const wantToken = b.mint !== false;
-  const token = wantToken ? await mintToken(env, fresh.target_lang) : null;
+  const token = wantToken
+    ? await mintToken(env, fresh.target_lang, { uid: ctx.uid, sessionId: id, callRef: fresh.call_ref, purpose: "switch" })
+    : null;
   if (wantToken && !token) {
     // The row already carries the new language; the client stays on the old
     // socket and may retry the mint via /token. Never leave the caller guessing.
@@ -650,7 +941,9 @@ export async function callTranslationToken(req: Request, env: Env, id: string): 
     });
     return limited;
   }
-  const token = await mintToken(env, s.target_lang);
+  const token = await mintToken(env, s.target_lang, {
+    uid: ctx.uid, sessionId: s.id, callRef: s.call_ref, purpose: "refresh",
+  });
   return token
     ? json({ ok: true, session_id: s.id, call_ref: s.call_ref, token: token.token, token_expires_at: token.expiresAt, target_lang: s.target_lang, model: CALL_TRANSLATION_MODEL })
     : json({ error: "provider_unavailable", call_ref: s.call_ref }, 502);
