@@ -535,6 +535,14 @@ class CallSession {
   bool _speaker = true;
   String? _lastAudioRouteRequestId;
   bool _connected = false;
+  // [CALL-SURVIVE-3] Best-effort local/remote network-class flags used to
+  // gate the conservative cellular resolution/bitrate preset. Refreshed by
+  // [_refreshAndAnnounceNetClass] / [_isLikelyCellular]; remote value arrives
+  // via the peer's 'net-class' message. Default false (non-cellular) so an
+  // unknown state never makes behavior more conservative than before this
+  // feature existed.
+  bool _localCellular = false;
+  bool _peerCellular = false;
   int _qosAudioBitrateBps = 56000;
   int _qosStableSamples = 0;
   double? _qosLastAvailableOutKbps;
