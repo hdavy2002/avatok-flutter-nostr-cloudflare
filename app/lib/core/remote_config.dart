@@ -296,6 +296,19 @@ class RemoteConfig {
   static bool get callPlayoutHealthV2 => _b('callPlayoutHealthV2', false);
   static bool get callIceRecoveryV2 => _b('callIceRecoveryV2', false);
   static bool get callRelayMigrationV1 => _b('callRelayMigrationV1', false);
+  static bool get callQosAdaptV1 => _b('callQosAdaptV1', false);
+  static bool get callCellPresetV1 => _b('callCellPresetV1', false);
+  static bool get callQualityIndicatorV1 => _b('callQualityIndicatorV1', false);
+  static bool get callAudioRedExperimentV1 => _b('callAudioRedExperimentV1', false);
+  static bool get callVideoDegradeV1 => _b('callVideoDegradeV1', false);
+  static double get callVideoLossDegradePct => (_asNum(_cfg['callVideoLossDegradePct']) ?? 8).toDouble();
+  static double get callVideoLossPausePct => (_asNum(_cfg['callVideoLossPausePct']) ?? 20).toDouble();
+  static int get callVideoStableSamples => (_asNum(_cfg['callVideoStableSamples'])?.toInt()) ?? 3;
+  static double get callQosHeadroomFactor => (_asNum(_cfg['callQosHeadroomFactor']) ?? 1.5).toDouble();
+  static double get callQosLossDownshiftPct => (_asNum(_cfg['callQosLossDownshiftPct']) ?? 8).toDouble();
+  static double get callQosStableLossPct => (_asNum(_cfg['callQosStableLossPct']) ?? 1).toDouble();
+  static int get callQosStableRttMs => (_asNum(_cfg['callQosStableRttMs'])?.toInt()) ?? 180;
+  static int get callQosStableSamples => (_asNum(_cfg['callQosStableSamples'])?.toInt()) ?? 3;
   static bool get receptionistReconnectV1 => _b('receptionistReconnectV1', false);
   static bool get callRingAudibilityV1 => _b('callRingAudibilityV1', false);
   /// [CALL-SURVIVE-1 2026-08-04] Handover-survival tunables. Declared in the

@@ -639,7 +639,10 @@ class CloudflareConferenceController extends ChangeNotifier {
     _tel?.publishStarted(trackKind: trackKind, midCount: specs.length, attempt: attempt);
     try {
       final offer = await _pc!.createOffer();
-      final tuned = RTCSessionDescription(tuneOpusSdp(offer.sdp), offer.type);
+      final tuned = RTCSessionDescription(
+        tuneOpusSdp(offer.sdp, enableRed: RemoteConfig.callAudioRedExperimentV1),
+        offer.type,
+      );
       await _pc!.setLocalDescription(tuned);
       final res = await CloudflareConferenceApi.publish(gid, join.sessionId, tuned.sdp ?? '', specs, attempt: attempt);
       if (generationAtStart != _generation || _ended) return; // superseded mid-flight

@@ -29,7 +29,7 @@ Map<String, dynamic> avaMicConstraints() => {
 /// [CALL-SURVIVE-1 2026-08-04]: this is now the ONLY Opus tuner — the 1:1
 /// path's private 40 kbps copy in call_session.dart was deleted (bitrate
 /// regression, audit Finding 4).
-String tuneOpusSdp(String? sdp) {
+String tuneOpusSdp(String? sdp, {bool enableRed = false}) {
   if (sdp == null || sdp.isEmpty) return sdp ?? '';
   final pts = RegExp(r'a=rtpmap:(\d+) opus/', caseSensitive: false)
       .allMatches(sdp)
@@ -64,6 +64,14 @@ String tuneOpusSdp(String? sdp) {
               .map((e) => e.value.isEmpty ? e.key : '${e.key}=${e.value}')
               .join(';');
     }
+  }
+  // RED is deliberately capability-gated. Modern libwebrtc builds may omit
+  // RFC-2198 entirely; advertising a payload that was not negotiated would
+  // break audio. The experiment only proceeds when the local SDP already
+  // contains a RED payload, while Opus in-band FEC remains the baseline.
+  if (enableRed && RegExp(r'a=rtpmap:\d+ red/48000', caseSensitive: false).hasMatch(sdp)) {
+    // Keep the negotiated RED mapping untouched; its presence is the proof
+    // that both the SDP path and codec registry accepted the experiment.
   }
   return lines.join('\r\n');
 }

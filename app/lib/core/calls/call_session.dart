@@ -257,6 +257,7 @@ class CallNetStats {
   final double lossPct;
   /// Discrete quality bucket 0 (worst) … 4 (best), derived from rtt + loss.
   final int quality;
+  final double? estMos;
   const CallNetStats({
     this.rttMs = -1,
     this.downKbps = 0,
@@ -264,6 +265,7 @@ class CallNetStats {
     this.bytesTotal = 0,
     this.lossPct = -1,
     this.quality = 0,
+    this.estMos,
   });
 
   static const CallNetStats empty = CallNetStats();
@@ -533,6 +535,11 @@ class CallSession {
   bool _speaker = true;
   String? _lastAudioRouteRequestId;
   bool _connected = false;
+  int _qosAudioBitrateBps = 56000;
+  int _qosStableSamples = 0;
+  double? _qosLastAvailableOutKbps;
+  int _videoDegradeLevel = 0;
+  int _videoStableSamples = 0;
   String _phase = 'connecting';
   Timer? _ringTimeout;
   // A room WebSocket send is not a delivery acknowledgement: Android can leave
@@ -923,6 +930,7 @@ class CallSession {
       int totalRecvBytes = 0, totalSentBytes = 0;
       int inboundPacketsRecv = 0, inboundPacketsLost = 0;
       int rttMs = -1;
+      double? availableOutgoingKbps;
       final stats = await pc.getStats();
       for (final s in stats) {
         final v = s.values;
@@ -947,6 +955,8 @@ class CallSession {
           final rtt = v['currentRoundTripTime'];
           if (selected && rtt is num) rttMs = (rtt.toDouble() * 1000).round();
           else if (rttMs < 0 && rtt is num) rttMs = (rtt.toDouble() * 1000).round();
+          final ao = v['availableOutgoingBitrate'];
+          if (ao is num && ao > 0) availableOutgoingKbps = ao.toDouble() / 1000.0;
         }
       }
       _publishNetStats(
@@ -955,7 +965,24 @@ class CallSession {
         packetsRecv: inboundPacketsRecv,
         packetsLost: inboundPacketsLost,
         rttMs: rttMs,
+        availableOutgoingKbps: availableOutgoingKbps,
       );
+      _qosLastAvailableOutKbps = availableOutgoingKbps;
+      if (RemoteConfig.callQosAdaptV1) {
+        unawaited(_adaptAudioSender(
+          availableOutgoingKbps: availableOutgoingKbps,
+          lossPct: inboundPacketsRecv + inboundPacketsLost == 0
+              ? null
+              : inboundPacketsLost * 100.0 / (inboundPacketsRecv + inboundPacketsLost),
+          rttMs: rttMs,
+        ));
+      }
+      if (config.video && RemoteConfig.callVideoDegradeV1) {
+        final lossPct = inboundPacketsRecv + inboundPacketsLost == 0
+            ? null
+            : inboundPacketsLost * 100.0 / (inboundPacketsRecv + inboundPacketsLost);
+        unawaited(_adaptVideoForNetwork(lossPct: lossPct, rttMs: rttMs));
+      }
       if (!sawInboundAudio) return; // no inbound audio stat yet — don't judge
       final prev = _lastInboundAudioBytes;
       _lastInboundAudioBytes = inboundAudioBytes;
@@ -1445,7 +1472,9 @@ class CallSession {
     required int packetsRecv,
     required int packetsLost,
     required int rttMs,
+    double? availableOutgoingKbps,
   }) {
+    _qosLastAvailableOutKbps = availableOutgoingKbps;
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     int upKbps = 0, downKbps = 0;
     final prevTs = _lastNetTs;
@@ -1495,7 +1524,127 @@ class CallSession {
       bytesTotal: totalSentBytes + totalRecvBytes,
       lossPct: lossPct,
       quality: q,
+      estMos: _telemetry.latestEstimatedMos,
     );
+  }
+
+  Future<void> _adaptAudioSender({
+    required double? availableOutgoingKbps,
+    required double? lossPct,
+    required int rttMs,
+  }) async {
+    if (_ended || !_connected) return;
+    final congested = (availableOutgoingKbps != null &&
+            availableOutgoingKbps < _qosAudioBitrateBps / 1000.0 *
+                RemoteConfig.callQosHeadroomFactor) ||
+        (lossPct != null && lossPct >= RemoteConfig.callQosLossDownshiftPct);
+    if (congested) {
+      _qosStableSamples = 0;
+      final next = _qosAudioBitrateBps == 56000 ? 40000 :
+          (_qosAudioBitrateBps == 40000 ? 32000 : 32000);
+      if (next != _qosAudioBitrateBps) {
+        _qosAudioBitrateBps = next;
+        await _applyAudioBitrate(next);
+      }
+      return;
+    }
+    final stable = (lossPct == null || lossPct < RemoteConfig.callQosStableLossPct) &&
+        (rttMs < 0 || rttMs <= RemoteConfig.callQosStableRttMs);
+    if (!stable) { _qosStableSamples = 0; return; }
+    if (++_qosStableSamples < RemoteConfig.callQosStableSamples) return;
+    _qosStableSamples = 0;
+    final next = _qosAudioBitrateBps == 32000 ? 40000 :
+        (_qosAudioBitrateBps == 40000 ? 56000 : 56000);
+    if (next != _qosAudioBitrateBps) {
+      _qosAudioBitrateBps = next;
+      await _applyAudioBitrate(next);
+    }
+  }
+
+  Future<void> _applyAudioBitrate(int bitrateBps) async {
+    final pc = _pc;
+    if (pc == null) return;
+    try {
+      final senders = await pc.getSenders();
+      for (final sender in senders) {
+        if (sender.track?.kind != 'audio') continue;
+        final params = sender.parameters;
+        final encodings = params.encodings;
+        if (encodings == null || encodings.isEmpty) {
+          params.encodings = [RTCRtpEncoding(active: true, maxBitrate: bitrateBps)];
+        } else {
+          for (final encoding in encodings) encoding.maxBitrate = bitrateBps;
+        }
+        await sender.setParameters(params);
+      }
+      Analytics.capture('call_qos_bitrate_changed', {
+        'call_id': config.room,
+        'max_bitrate_kbps': bitrateBps ~/ 1000,
+        'available_out_kbps': _qosLastAvailableOutKbps ?? -1,
+      });
+    } catch (e, st) {
+      _telemetry.runtimeError(stage: 'audio_qos_parameters_failed', error: e, stack: st);
+    }
+  }
+
+  Future<void> _adaptVideoForNetwork({required double? lossPct, required int rttMs}) async {
+    if (_ended || !_connected || !config.video) return;
+    final severe = lossPct != null && lossPct >= RemoteConfig.callVideoLossPausePct;
+    final degraded = severe || (lossPct != null && lossPct >= RemoteConfig.callVideoLossDegradePct);
+    if (degraded || rttMs >= 500) {
+      _videoStableSamples = 0;
+      final next = severe ? 2 : (_videoDegradeLevel < 1 ? 1 : _videoDegradeLevel);
+      if (next != _videoDegradeLevel) {
+        _videoDegradeLevel = next;
+        await _applyVideoDegradeLevel(next);
+      }
+      return;
+    }
+    if (lossPct != null && lossPct < 1 && (rttMs < 0 || rttMs < 180)) {
+      if (++_videoStableSamples < RemoteConfig.callVideoStableSamples) return;
+      _videoStableSamples = 0;
+      if (_videoDegradeLevel > 0) {
+        _videoDegradeLevel--;
+        await _applyVideoDegradeLevel(_videoDegradeLevel);
+      }
+    } else {
+      _videoStableSamples = 0;
+    }
+  }
+
+  Future<void> _applyVideoDegradeLevel(int level) async {
+    final pc = _pc;
+    if (pc == null) return;
+    try {
+      final senders = await pc.getSenders();
+      for (final sender in senders) {
+        if (sender.track?.kind != 'video') continue;
+        final params = sender.parameters;
+        final encodings = params.encodings;
+        final maxBitrate = level == 0 ? 1200000 : (level == 1 ? 450000 : 180000);
+        if (encodings == null || encodings.isEmpty) {
+          params.encodings = [RTCRtpEncoding(active: true, maxBitrate: maxBitrate)];
+        } else {
+          for (final encoding in encodings) encoding.maxBitrate = maxBitrate;
+        }
+        params.degradationPreference = RTCDegradationPreference.BALANCED;
+        await sender.setParameters(params);
+      }
+      final track = _stream?.getVideoTracks().isNotEmpty == true
+          ? _stream!.getVideoTracks().first
+          : null;
+      if (track != null) {
+        track.enabled = level < 2 && _camOn;
+        videoActive.value = track.enabled;
+      }
+      Analytics.capture('call_video_network_degraded', {
+        'call_id': config.room,
+        'level': level,
+        'audio_preserved': true,
+      });
+    } catch (e, st) {
+      _telemetry.runtimeError(stage: 'video_degrade_parameters_failed', error: e, stack: st);
+    }
   }
 
   int get avaCount => _avaCount; // for the countdown ring in the view
@@ -2054,10 +2203,19 @@ class CallSession {
   /// One tuner, one bitrate: 56000, `useinbandfec=1`, `usedtx=0` (DTX
   /// rationale lives with the shared tuner and in [CALL-AUDIO-DTX-1]),
   /// `stereo=0`.
-  static String _tuneOpusSdp(String? sdp) => audio_tuning.tuneOpusSdp(sdp);
+  static String _tuneOpusSdp(String? sdp) => audio_tuning.tuneOpusSdp(
+        sdp,
+        enableRed: RemoteConfig.callAudioRedExperimentV1,
+      );
 
-  RTCSessionDescription _tuned(RTCSessionDescription d) =>
-      RTCSessionDescription(_tuneOpusSdp(d.sdp), d.type);
+  RTCSessionDescription _tuned(RTCSessionDescription d) {
+    final sdp = _tuneOpusSdp(d.sdp);
+    if (RemoteConfig.callAudioRedExperimentV1 &&
+        RegExp(r'a=rtpmap:\d+ red/48000', caseSensitive: false).hasMatch(sdp)) {
+      Analytics.capture('call_audio_red_negotiated', {'call_id': config.room});
+    }
+    return RTCSessionDescription(sdp, d.type);
+  }
 
   /// [CF-CALL-P2P-1] Best-effort network-class check used ONLY to pick a
   /// conservative capture resolution / sender bitrate ceiling for 1:1 video
@@ -2075,6 +2233,17 @@ class CallSession {
     } catch (_) {
       return false;
     }
+  }
+
+  void _announceNetClass() {
+    if (!RemoteConfig.callCellPresetV1 || _remoteId == null) return;
+    _send({'type': 'net-class', 'to': _remoteId, 'cellular': _localCellular});
+  }
+
+  Future<void> _refreshAndAnnounceNetClass() async {
+    if (!RemoteConfig.callCellPresetV1) return;
+    _localCellular = await _isLikelyCellular();
+    _announceNetClass();
   }
 
   Future<void> _bootMedia() async {
@@ -2801,10 +2970,15 @@ class CallSession {
   }
 
   Future<RTCPeerConnection> _newPC({bool forceRelay = false}) async {
+    if (RemoteConfig.callCellPresetV1) {
+      _localCellular = await _isLikelyCellular();
+      _announceNetClass();
+    }
+    final cellPair = RemoteConfig.callCellPresetV1 && _localCellular && _peerCellular;
     final pc = await createPeerConnection({
       'iceServers': _ice,
       'iceCandidatePoolSize': 2,
-      if (CallDiag.turnOnly || forceRelay) 'iceTransportPolicy': 'relay',
+      if (CallDiag.turnOnly || forceRelay || cellPair) 'iceTransportPolicy': 'relay',
       // [CALL-SURVIVE-1 2026-08-04] Bound the NetEq jitter buffer. Prod calls
       // showed inbound jitter-buffer delay sitting at 600-745ms on flappy
       // cellular ("distant/underwater" voice) because the buffer had no cap
@@ -2954,6 +3128,7 @@ class CallSession {
       }
     };
     _pc = pc;
+    if (cellPair) unawaited(_applyAudioBitrate(40000));
     return pc;
   }
 
@@ -3978,6 +4153,7 @@ class CallSession {
         final peers = (d['peers'] as List).cast<String>();
         if (peers.isNotEmpty) {
           _remoteId = peers.first;
+          unawaited(_refreshAndAnnounceNetClass());
           _weOffered = true;
           if (_connected && _pc != null) {
             _wsReconnects = 0;
@@ -4185,6 +4361,12 @@ class CallSession {
       // second offer racing the first.
       case 'relay-fallback-request':
         _forceRelayRestart();
+        break;
+      case 'net-class':
+        _peerCellular = d['cellular'] == true;
+        if (RemoteConfig.callCellPresetV1 && _localCellular && _peerCellular) {
+          unawaited(_applyAudioBitrate(40000));
+        }
         break;
       case 'ping':
       case 'pong':

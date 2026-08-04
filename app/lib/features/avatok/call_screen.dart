@@ -1674,6 +1674,9 @@ class _CallNetHudState extends State<_CallNetHud>
 
   Widget _strip(CallNetStats ns) {
     final weak = _peerWeak(ns);
+    final mos = ns.estMos;
+    final poor = mos != null && mos < 3.0;
+    final indicatorOn = RemoteConfig.callQualityIndicatorV1;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => _openDetail(ns),
@@ -1692,6 +1695,21 @@ class _CallNetHudState extends State<_CallNetHud>
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (indicatorOn && mos != null) ...[
+              Container(
+                width: 9,
+                height: 9,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: poor
+                      ? AD.danger
+                      : mos < 3.5
+                          ? Colors.amber
+                          : Colors.greenAccent,
+                ),
+              ),
+              const SizedBox(width: 6),
+            ],
             PhosphorIcon(
                 _transport == 'Wi-Fi'
                     ? PhosphorIcons.wifiHigh(PhosphorIconsStyle.bold)
@@ -1724,9 +1742,13 @@ class _CallNetHudState extends State<_CallNetHud>
                     borderRadius: BorderRadius.circular(100),
                   ),
                   child:
-                      Text('WEAK', style: ADText.statCaption(c: Colors.white)),
+                  Text('WEAK', style: ADText.statCaption(c: Colors.white)),
                 ),
               ),
+            ],
+            if (indicatorOn && poor) ...[
+              const SizedBox(width: 8),
+              Text('Poor network — try WiFi', style: ADText.statCaption(c: AD.danger)),
             ],
           ],
         ),

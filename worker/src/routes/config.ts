@@ -261,6 +261,11 @@ export interface PlatformConfig {
   callPlayoutHealthV2: boolean;        // playout/media health monitoring v2
   callIceRecoveryV2: boolean;          // ICE restart / recovery v2
   callRelayMigrationV1: boolean;       // relay migration during a live call
+  callQosAdaptV1: boolean;
+  callCellPresetV1: boolean;
+  callQualityIndicatorV1: boolean;
+  callAudioRedExperimentV1: boolean;
+  callVideoDegradeV1: boolean;
   receptionistReconnectV1: boolean;    // receptionist reattach-on-reconnect
   callRingAudibilityV1: boolean;       // REL-10 ring audibility fix
   // [CALL-SURVIVE-1 2026-08-04] Handover-survival tunables (numeric — MUST
@@ -271,6 +276,14 @@ export interface PlatformConfig {
   callRecoveryDeadlineSec: number;     // ICE-recovery attempt deadline (was fixed 30)
   callMigrationDeadlineSec: number;    // relay-migration attempt deadline (was fixed 20)
   callRecoveryMaxAttempts: number;     // retry-ladder length before resting in `reconnecting`
+  callQosHeadroomFactor: number;
+  callQosLossDownshiftPct: number;
+  callQosStableLossPct: number;
+  callQosStableRttMs: number;
+  callQosStableSamples: number;
+  callVideoLossDegradePct: number;
+  callVideoLossPausePct: number;
+  callVideoStableSamples: number;
   /** [CALL-WS-AUTH-1 2026-08-03] ENFORCE per-side room-token authentication on
    *  CallRoom WebSocket joins (`/room/<id>?t=<token>`).
    *
@@ -936,11 +949,24 @@ const DEFAULTS: PlatformConfig = {
   callPlayoutHealthV2: false,      // call-reliability program — ships dark
   callIceRecoveryV2: false,        // call-reliability program — ships dark
   callRelayMigrationV1: false,     // call-reliability program — ships dark
+  callQosAdaptV1: false,
+  callCellPresetV1: false,
+  callQualityIndicatorV1: false,
+  callAudioRedExperimentV1: false,
+  callVideoDegradeV1: false,
   receptionistReconnectV1: false,  // call-reliability program — ships dark
   callRingAudibilityV1: false,     // call-reliability program — ships dark
   callRecoveryDeadlineSec: 12,     // [CALL-SURVIVE-1] per-attempt ICE-recovery deadline
   callMigrationDeadlineSec: 8,     // [CALL-SURVIVE-1] per-attempt relay-migration deadline
   callRecoveryMaxAttempts: 5,      // [CALL-SURVIVE-1] retry ladder length (2/4/8/16/30s backoff)
+  callQosHeadroomFactor: 1.5,
+  callQosLossDownshiftPct: 8,
+  callQosStableLossPct: 1,
+  callQosStableRttMs: 180,
+  callQosStableSamples: 3,
+  callVideoLossDegradePct: 8,
+  callVideoLossPausePct: 20,
+  callVideoStableSamples: 3,
   // [CALL-WS-AUTH-1] OFF = observe-only. Flip ONLY after a build carrying the
   // client `?t=` half is in the field, or every installed app loses calling.
   callRoomAuthEnforced: false,
@@ -1291,6 +1317,9 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     // [CALL-SURVIVE-1 2026-08-04] handover-survival tunables — numeric, must
     // be here or `flags.sh set callRecoveryDeadlineSec=15` 400s `bad type`.
     "callRecoveryDeadlineSec", "callMigrationDeadlineSec", "callRecoveryMaxAttempts",
+    "callQosHeadroomFactor", "callQosLossDownshiftPct", "callQosStableLossPct",
+    "callQosStableRttMs", "callQosStableSamples",
+    "callVideoLossDegradePct", "callVideoLossPausePct", "callVideoStableSamples",
   ]);
   for (const [k, v] of Object.entries(body)) {
     if (!(k in DEFAULTS)) return json({ error: `unknown key: ${k}` }, 400);

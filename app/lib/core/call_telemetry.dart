@@ -183,6 +183,7 @@ class CallTelemetry {
   final String callId;
   final bool video;
   final bool outgoing;
+  double? get latestEstimatedMos => _mos.isEmpty ? null : _mos.last;
   /// Media topology: 'p2p' (direct), 'relay' (via TURN), or 'sfu' (a group
   /// conference routed through the Cloudflare Realtime SFU). 1:1 calls pass
   /// 'p2p'; it's promoted to 'relay' automatically once we see the selected
