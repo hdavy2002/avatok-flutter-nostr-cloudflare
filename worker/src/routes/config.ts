@@ -266,6 +266,7 @@ export interface PlatformConfig {
   callQualityIndicatorV1: boolean;
   callAudioRedExperimentV1: boolean;
   callVideoDegradeV1: boolean;
+  callVideoCodecPrefV1: boolean;
   receptionistReconnectV1: boolean;    // receptionist reattach-on-reconnect
   callRingAudibilityV1: boolean;       // REL-10 ring audibility fix
   // [CALL-SURVIVE-1 2026-08-04] Handover-survival tunables (numeric — MUST
@@ -954,6 +955,9 @@ const DEFAULTS: PlatformConfig = {
   callQualityIndicatorV1: false,
   callAudioRedExperimentV1: false,
   callVideoDegradeV1: false,
+  // [CALL-VIDEO-CODEC-1] AV1>VP9>VP8>H264 preference + temporal SVC (L1T3) on
+  // the 1:1 video sender. Ships dark — see remote_config.dart for why.
+  callVideoCodecPrefV1: false,
   receptionistReconnectV1: false,  // call-reliability program — ships dark
   callRingAudibilityV1: false,     // call-reliability program — ships dark
   callRecoveryDeadlineSec: 12,     // [CALL-SURVIVE-1] per-attempt ICE-recovery deadline

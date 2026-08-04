@@ -301,6 +301,17 @@ class RemoteConfig {
   static bool get callQualityIndicatorV1 => _b('callQualityIndicatorV1', false);
   static bool get callAudioRedExperimentV1 => _b('callAudioRedExperimentV1', false);
   static bool get callVideoDegradeV1 => _b('callVideoDegradeV1', false);
+
+  /// [CALL-VIDEO-CODEC-1] Express a video codec preference (AV1 > VP9 > VP8 >
+  /// H264) and request temporal SVC (L1T3) on the 1:1 video sender.
+  ///
+  /// Ships dark. Video is currently a second-class path here — every
+  /// `CallConfig` construction in the app passes `video: false` — so this
+  /// changes the wire format of a feature with almost no traffic, and the blast
+  /// radius of a bad codec ordering (a call that negotiates a codec the device
+  /// cannot hardware-encode) is a black or frozen picture. Turn it on
+  /// deliberately, after a real video call has been verified end to end.
+  static bool get callVideoCodecPrefV1 => _b('callVideoCodecPrefV1', false);
   static double get callVideoLossDegradePct => (_asNum(_cfg['callVideoLossDegradePct']) ?? 8).toDouble();
   static double get callVideoLossPausePct => (_asNum(_cfg['callVideoLossPausePct']) ?? 20).toDouble();
   static int get callVideoStableSamples => (_asNum(_cfg['callVideoStableSamples'])?.toInt()) ?? 3;
