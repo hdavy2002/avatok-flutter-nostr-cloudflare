@@ -65,7 +65,13 @@ export interface DeletionWorkflowParams {
 // divergence, not a bug: this Workflow is a dark parallel, not yet the source of
 // truth, so a bounded retry ceiling here is the safer failure mode (surfaces loudly
 // in the Workflow's error state rather than silently retrying forever).
-const STEP_RETRY = { retries: { limit: 3, delay: "10 seconds", backoff: "exponential" as const } };
+// TYPES-ONLY NOTE ([WORKER-TSC-1]): `delay` must keep its literal type. Without the
+// `as const` it widens to `string`, which no longer satisfies `WorkflowDelayDuration`
+// (a `${number} ${label}${"s"|""}` template-literal type in current
+// @cloudflare/workers-types). That single widening made every `step.do(name, STEP_RETRY, cb)`
+// pick the 2-arg overload, so `T` collapsed to `Serializable<unknown>` and every step
+// result below lost its shape. Value is unchanged: still literally "10 seconds".
+const STEP_RETRY = { retries: { limit: 3, delay: "10 seconds" as const, backoff: "exponential" as const } };
 
 async function deleteR2Prefix(bucket: R2Bucket, prefix: string): Promise<number> {
   let cursor: string | undefined, n = 0;

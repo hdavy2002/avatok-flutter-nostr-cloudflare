@@ -330,6 +330,10 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   // device mid-token-rotation (token briefly absent but the device is still real).
   // Best-effort and self-contained: it must NEVER block or fail the call, and
   // pre-migration D1s lacking these tables are caught just like the snapshot.
+  // Captured as a plain const: `b.to` is validated truthy at the top of this
+  // handler (line ~197) and never reassigned, but that narrowing does not survive
+  // into an async closure (same reason ringDeliveredCallId/deferredTo exist below).
+  const reachabilityTo = b.to as string;
   const reachabilityTelemetry = (async () => {
     try {
       const cutoff = Date.now() - 7 * 86400000; // 7 days unseen
@@ -356,7 +360,7 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   // callee had an active device mapping, a switched-out mapping, or only stale
   // legacy tokens at dial time. Best-effort; never blocks the call.
     try {
-      const snap = await calleeReachabilitySnapshot(env.DB_META, b.to);
+      const snap = await calleeReachabilitySnapshot(env.DB_META, reachabilityTo);
       await env.Q_ANALYTICS.send({
         event: "call_callee_reachability", uid: ctx.uid, ts: Date.now(),
         props: {
@@ -547,6 +551,11 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
     // previously consumed seconds before Q_PUSH was reached, which made the
     // client's reachability guard expire on a healthy sleeping phone. Keep the
     // events, but let Cloudflare finish them after the response/ring is underway.
+    // Captured as plain consts: both are validated truthy at the top of this
+    // handler (line ~197) and never reassigned, but that narrowing does not
+    // survive into an async closure (same idiom as reachabilityTo above).
+    const eventCallId = b.callId as string;
+    const eventTo = b.to as string;
     const eventTelemetry = (async () => {
       try {
         const cfg = await readConfig(env);
@@ -555,20 +564,20 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
         const snapshot = await buildCallSnapshot(env);
         await emitCallEvent(env, {
           event: "call_created",
-          call_id: b.callId,
+          call_id: eventCallId,
           trace_id: callTraceId,
           caller_id: ctx.uid,
-          callee_id: b.to,
+          callee_id: eventTo,
           call_mode: "business",
           ts: Date.now(),
           event_schema_version: EVENT_SCHEMA_VERSION,
           props: { snapshot, call_type: b.kind ?? "audio" },
         });
         await emitRoutingDecision(env, {
-          call_id: b.callId,
+          call_id: eventCallId,
           trace_id: callTraceId,
           caller_id: ctx.uid,
-          callee_id: b.to,
+          callee_id: eventTo,
           // @ts-expect-error pre-existing: runtime reason code 'rang_owner' vs ReasonCode type casing — changing either is a behaviour change, needs domain review
           reason: "rang_owner",
           snapshot: {

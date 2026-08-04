@@ -26,7 +26,7 @@ import type { Env } from "../../types";
 import type { PlatformConfig } from "../../routes/config";
 import { readConfig } from "../../routes/config";
 import { track, trackException } from "../../hooks";
-import type { DynResult, DynWorkerCode, DynModule } from "./types";
+import type { DynResult, DynWorkerCode, DynModule, DynEntrypointStub } from "./types";
 
 export type DynArea =
   | "acceptance"      // Phase 0 staging acceptance battery (master flag only)
@@ -95,7 +95,12 @@ export async function runDynamic<T = unknown>(
   if (areaFlag && cfg[areaFlag] !== true) return done({ ok: false, error: "area_flag_off" });
 
   // ── load ──────────────────────────────────────────────────────────────────
-  let entry: { [m: string]: unknown };
+  // TYPES-ONLY ([WORKER-TSC-1]): `stub.getEntrypoint()` already returns this
+  // project's own `DynEntrypointStub`, which declares `fetch(req): Promise<Response>`
+  // alongside the dynamic-RPC index signature. Re-annotating the binding as a bare
+  // `{ [m: string]: unknown }` discarded that, so `entry.fetch` was `unknown` and
+  // uncallable. Only `.fetch` is ever used on this binding (see below).
+  let entry: DynEntrypointStub;
   try {
     const stub = env.LOADER.get(opts.codeId, (): DynWorkerCode => ({
       compatibilityDate: CHILD_COMPAT_DATE,
