@@ -1041,15 +1041,13 @@ class _CallScreenState extends State<CallScreen> {
             ),
           ),
 
-        // [CALL-TRANSLATE-1] Two-flag-gated call-only translation control.
-        // The overlay owns no call navigation and is safe across camera/layout
-        // changes because the CallSession remains the owner of the call.
-        if (connected && !s.isReceptDuo && !s.showOutcomeMenu && !s.showBusyCard)
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 88,
-            right: 12,
-            child: CallTranslateOverlay(callRef: s.room),
-          ),
+        // [CALL-TRANSLATE-UI-1 2026-08-05] The translate control used to live
+        // HERE — a floating light-themed pill pinned top-right, the only
+        // interactive thing on the call screen that wasn't in the control row.
+        // It is now a normal 56x56 call control alongside mute/speaker/video;
+        // see the `_controlRow` below. Nothing is rendered at this position any
+        // more, and `CallTranslateOverlay` itself renders nothing at all unless
+        // the flags and the native bridge allow translation.
 
         // [CALL-MENU-UI-1] The outcome surface owns the screen after the
         // dialing leg has ended. Do not leave live-call controls underneath it:
@@ -1101,6 +1099,19 @@ class _CallScreenState extends State<CallScreen> {
                       onTap: s.toggleSpeaker),
                 ]),
                 const SizedBox(height: 10),
+                // [CALL-TRANSLATE-UI-1] Row two is wrapped in an outer Row so
+                // the Translate control can append itself WITHOUT going through
+                // `_controlRow`. That matters: `_controlRow` inserts a 28px
+                // spacer before every child after the first, unconditionally —
+                // and Translate is invisible on most calls (non-Android, flags
+                // off, or no native bridge). Passing it as a `_controlRow` child
+                // would leave a 28px phantom gap dangling off the mic button
+                // whenever it hides. Instead it carries its own leading gap and
+                // collapses to genuinely nothing.
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
                 _controlRow([
                   _btn(
                       video && camOn
@@ -1123,6 +1134,14 @@ class _CallScreenState extends State<CallScreen> {
                       active: !muted,
                       onTap: s.toggleMute),
                 ]),
+                    // Translate. Styles ITSELF to match `_btn` exactly (56x56,
+                    // AD tokens, 25px bold Phosphor icon) rather than being
+                    // wrapped here, because it owns its own active/preparing
+                    // state and the session caption shown while translating.
+                    if (connected && !s.isReceptDuo)
+                      CallTranslateOverlay(callRef: s.room),
+                  ],
+                ),
                 const SizedBox(height: 12),
                 ZinePressable(
                   onTap: _hangup,

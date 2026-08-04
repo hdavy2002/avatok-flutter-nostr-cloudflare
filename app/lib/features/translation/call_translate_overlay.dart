@@ -8,13 +8,40 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/analytics.dart';
 import '../../core/money_api.dart';
 import '../../core/remote_config.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
+// [CALL-TRANSLATE-UI-1] `zine.dart` (the legacy LIGHT palette) is deliberately
+// no longer imported — this widget now renders entirely in the dark `AD` tokens
+// the rest of the call screen uses. `zine_widgets.dart` stays for
+// `ZinePressable`, which is the shared press primitive, not a palette.
+import '../../core/ui/zine_widgets.dart';
 import 'call_translation_controller.dart';
 import 'call_translation_audio_bridge.dart';
 import 'translation_langs.dart';
 
-/// CallScreen overlay for Android 1:1 audio and video calls. It is hidden while
-/// either master flag is false or the pinned decoded-playback bridge is absent.
+/// The in-call Translate control, for Android 1:1 audio and video calls.
+/// Renders nothing while either master flag is off or the pinned
+/// decoded-playback bridge is absent.
+///
+/// ## [CALL-TRANSLATE-UI-1 2026-08-05] Was a floating pill, now a call control
+///
+/// This used to be a `Positioned` lozenge pinned to the top-right of the call
+/// screen, styled in the LIGHT `Zine` palette — near-white fill, ink borders,
+/// hard offset shadows — while the call screen around it is the DARK `AD`
+/// palette. It read as a notification from a different app rather than a thing
+/// you could press, and it was the only interactive control on the screen that
+/// wasn't in the control row with mute/speaker/video.
+///
+/// It is now a 56x56 circle that is visually IDENTICAL to those controls
+/// (`_btn` in call_screen.dart): same size, same `AD.card` / `AD.primaryBadge`
+/// fill, same `AD.borderControl` hairline, same 25px Phosphor bold icon, same
+/// `ZinePressable` press behaviour. Active (translating) lights up orange
+/// exactly like an engaged speaker or camera toggle.
+///
+/// The session detail the pill used to carry — target language, running token
+/// cost, stall and quality warnings — moves under the button as a compact
+/// caption that appears ONLY during a session. Cost stays continuously visible
+/// because this is a metered feature; hiding the meter behind a tap would be
+/// the wrong trade for something that bills per minute.
 class CallTranslateOverlay extends StatefulWidget {
   const CallTranslateOverlay({super.key, required this.callRef});
   final String callRef;
@@ -252,10 +279,29 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
 
     String? lang;
     try {
+      // [CALL-TRANSLATE-UI-1] Dark sheet, matching the network sheet in
+      // call_screen.dart, and BOUNDED so it cannot run off the screen.
+      //
+      // The old sheet was `Zine.paper` (light) with a hard
+      // `height: screenHeight * .78` inside, and its search field autofocused.
+      // With `isScrollControlled: true` the sheet does NOT shrink for the
+      // keyboard, so 0.78·H of content had to fit in roughly 0.55·H of visible
+      // space the moment it opened — the list and the bottom of the header ran
+      // off the screen every single time. `constraints` replaces the magic
+      // fraction with a real ceiling, and the picker now pads for the keyboard
+      // itself instead of ignoring it.
       lang = await showModalBottomSheet<String>(
         context: context,
-        backgroundColor: Zine.paper,
+        backgroundColor: AD.overlaySheet,
         isScrollControlled: true,
+        useSafeArea: true,
+        showDragHandle: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(AD.rSheet)),
+        ),
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.85,
+        ),
         builder: (_) => _CallTranslationLanguagePicker(currentCode: currentCode),
       );
     } finally {
@@ -388,51 +434,122 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
             : active
                 ? 'Stop translation'
                 : 'Translate';
-    return SafeArea(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.end, children: [
-      Row(mainAxisSize: MainAxisSize.min, children: [
-        // The language chip: reopens the SAME searchable sheet mid-session so
-        // the payer can change target language without stopping anything.
-        if (session) ...[
-          GestureDetector(
-            onTap: switching != null ? null : _switchLanguage,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-              decoration: BoxDecoration(color: Zine.card, borderRadius: BorderRadius.circular(100), border: Border.all(color: Zine.ink, width: Zine.bw), boxShadow: Zine.shadowXs),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Text(currentLang, style: ZineText.value(size: 13, weight: FontWeight.w700)),
-                const SizedBox(width: 4),
-                PhosphorIcon(PhosphorIcons.caretDown(PhosphorIconsStyle.bold), size: 13),
-              ]),
+    // [CALL-TRANSLATE-UI-1] A control-row button, byte-for-byte the same
+    // geometry and palette as `_btn` in call_screen.dart. Do not restyle this
+    // in isolation — if the call controls change, this changes with them.
+    //
+    // Tap semantics, unchanged from the pill:
+    //   idle       -> open the language sheet, then start
+    //   active     -> stop immediately (no confirm; it is billed by the minute)
+    //   preparing  -> inert, so a double tap can't start two sessions
+    final button = Semantics(
+      button: true,
+      label: label, // 'Translate' / 'Stop translation' / 'Switching to X…'
+      child: Tooltip(
+        message: label,
+        child: ZinePressable(
+          onTap: preparing ? null : (active ? controller.stop : _pick),
+          color: active ? AD.primaryBadge : AD.card,
+          pressedColor: AD.primaryBadge,
+          radius: BorderRadius.circular(100),
+          boxShadow: const [],
+          borderWidth: 1,
+          borderColor: active ? AD.primaryBadge : AD.borderControl,
+          child: SizedBox(
+            width: 56,
+            height: 56,
+            child: Center(
+              child: PhosphorIcon(
+                PhosphorIcons.translate(PhosphorIconsStyle.bold),
+                size: 25,
+                color: active ? AD.textOnInput : AD.textPrimary,
+              ),
             ),
           ),
-          const SizedBox(width: 6),
-        ],
-        GestureDetector(
-          onTap: preparing ? null : (active ? controller.stop : _pick),
-          child: Container(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9), decoration: BoxDecoration(color: active ? Zine.lilac : Zine.card, borderRadius: BorderRadius.circular(100), border: Border.all(color: Zine.ink, width: Zine.bw), boxShadow: Zine.shadowXs), child: Row(mainAxisSize: MainAxisSize.min, children: [PhosphorIcon(PhosphorIcons.translate(PhosphorIconsStyle.bold), size: 17), const SizedBox(width: 6), Text(label, style: ZineText.value(size: 13, weight: FontWeight.w700))])),
         ),
-      ]),
-      if (session) ...[
-        const SizedBox(height: 5),
-        ValueListenableBuilder<int>(valueListenable: controller.billedTokens, builder: (_, tokens, __) => ValueListenableBuilder<int>(valueListenable: controller.elapsedSeconds, builder: (_, elapsed, __) => Text('5/min · $tokens Tokens · ${elapsed ~/ 60}:${(elapsed % 60).toString().padLeft(2, '0')}', style: ZineText.tag(size: 10)))),
-        // Dead-air guard: the plugin has already restored the original audio,
-        // so this line explains what the user is hearing rather than warning
-        // about a broken call.
+      ),
+    );
+
+    // The 28px leading gap is OURS, not the row's — call_screen deliberately
+    // appends this widget outside `_controlRow` so that when translation is
+    // unavailable (every `SizedBox.shrink()` return above) it collapses to
+    // genuinely nothing, with no phantom gap left hanging off the mic button.
+    if (!session) return Padding(padding: const EdgeInsets.only(left: 28), child: button);
+
+    // Session detail. Only while translating, so an idle call shows a bare
+    // circle indistinguishable from mute/speaker — which is the point.
+    // `IntrinsicWidth` + centre alignment keeps the caption from stretching the
+    // control row: the Row that hosts this centres its children, so a taller
+    // child grows the row symmetrically rather than shoving the others.
+    return Padding(
+      padding: const EdgeInsets.only(left: 28),
+      child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        button,
+        const SizedBox(height: 6),
+        // Language chip: reopens the SAME searchable sheet mid-session so the
+        // payer can change target language without stopping (and without being
+        // re-billed for a new session).
+        GestureDetector(
+          onTap: switching != null ? null : _switchLanguage,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+            decoration: BoxDecoration(
+              color: AD.card,
+              borderRadius: BorderRadius.circular(100),
+              border: Border.all(color: AD.borderControl, width: 1),
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Text(currentLang,
+                  style: ADText.timestamp().copyWith(color: AD.textPrimary)),
+              const SizedBox(width: 3),
+              PhosphorIcon(PhosphorIcons.caretDown(PhosphorIconsStyle.bold),
+                  size: 10, color: AD.textSecondary),
+            ]),
+          ),
+        ),
+        const SizedBox(height: 3),
+        // The meter. Continuously visible on purpose — see the class doc.
+        ValueListenableBuilder<int>(
+          valueListenable: controller.billedTokens,
+          builder: (_, tokens, __) => ValueListenableBuilder<int>(
+            valueListenable: controller.elapsedSeconds,
+            builder: (_, elapsed, __) => Text(
+              '5/min · $tokens · ${elapsed ~/ 60}:${(elapsed % 60).toString().padLeft(2, '0')}',
+              style: ADText.timestamp(),
+            ),
+          ),
+        ),
+        // Dead-air guard: the plugin has ALREADY restored the original audio by
+        // the time this shows, so it explains what the user is hearing rather
+        // than warning about a broken call. Width-capped so a long string can't
+        // widen the control row on a small handset.
         if (stalled)
-          Text('Translator catching up… you are hearing the original voice', textAlign: TextAlign.right, style: ZineText.tag(size: 10)),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 190),
+            child: Text('Catching up — you are hearing the original voice',
+                textAlign: TextAlign.center, style: ADText.timestamp()),
+          ),
         ValueListenableBuilder<bool>(
           valueListenable: controller.qualityDegraded,
-          // [CALL-TRANSLATE-OBS-1 / F1] This `SizedBox.shrink()` is NOT a pill
-          // hide path: the pill is already on screen and this is only the
-          // optional "quality is unstable" caption under it. Absence of a
-          // warning is the healthy case, so it emits nothing — instrumenting it
-          // would be an event on every rebuild of a working call.
+          // [CALL-TRANSLATE-OBS-1 / F1] This `SizedBox.shrink()` is NOT a hide
+          // path: the button is already on screen and this is only the optional
+          // "quality is unstable" caption. Absence of a warning is the healthy
+          // case, so it emits nothing — instrumenting it would fire an event on
+          // every rebuild of a working call.
           builder: (_, degraded, __) => degraded && !stalled
-              ? Text('Translation quality is unstable on this connection', textAlign: TextAlign.right, style: ZineText.tag(size: 10))
+              ? ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 190),
+                  child: Text('Translation quality is unstable',
+                      textAlign: TextAlign.center, style: ADText.timestamp()),
+                )
               : const SizedBox.shrink(),
         ),
       ],
-    ]));
+    ),
+    );
   }
 }
 
@@ -465,54 +582,114 @@ class _CallTranslationLanguagePickerState extends State<_CallTranslationLanguage
         ? kTranslationLangs
         : kTranslationLangs.where((item) =>
             item.label.toLowerCase().contains(q) || item.code.toLowerCase().contains(q)).toList();
-    return SafeArea(
-      child: SizedBox(
-        height: MediaQuery.sizeOf(context).height * .78,
-        child: Column(children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(widget.currentCode == null ? 'Translate incoming voice' : 'Change language',
-                  style: ZineText.cardTitle()),
-              const SizedBox(height: 6),
-              Text(
-                widget.currentCode == null
-                    ? 'Choose your language · 5 Tokens per started minute'
-                    : 'Switching is free — the same session keeps running',
-                style: ZineText.sub(size: 13),
-              ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: _search,
-                autofocus: true,
-                onChanged: (value) => setState(() => _query = value),
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.search),
-                  hintText: 'Search languages',
-                  border: OutlineInputBorder(),
+    // [CALL-TRANSLATE-UI-1] Fully rebuilt. Three things were wrong:
+    //
+    //  1. OFF-SCREEN. A hard `height: screenHeight * .78` inside an
+    //     `isScrollControlled` sheet, with the search field autofocused. The
+    //     sheet does not resize for the keyboard, so 0.78·H of content had to
+    //     fit in ~0.55·H — the list and part of the header were pushed off the
+    //     bottom on open, every time. Now: no fixed height (the parent supplies
+    //     a `maxHeight` ceiling), `mainAxisSize.min` so a short filtered list
+    //     shrinks the sheet, and explicit `viewInsets.bottom` padding so the
+    //     content sits ABOVE the keyboard when it does appear.
+    //  2. NO AUTOFOCUS (owner decision 2026-08-05). The list is visible the
+    //     instant the sheet opens; the keyboard only appears if you tap search.
+    //     Picking a common language is now one tap, not type-then-tap.
+    //  3. LIGHT THEME in a dark call screen. `ZineText`/`Zine` swapped for the
+    //     `AD`/`ADText` tokens the rest of the call UI uses.
+    //
+    // Everything renders from bundled assets — Material icons and the local
+    // Nunito face. No network image, no WebView, no remote font. It was already
+    // true and is stated here so it stays true.
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottomInset),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 10),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(
+              widget.currentCode == null ? 'Translate incoming voice' : 'Change language',
+              style: ADText.appTitle().copyWith(fontSize: 18),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              widget.currentCode == null
+                  ? 'Choose your language · 5 Tokens per started minute'
+                  : 'Switching is free — the same session keeps running',
+              style: ADText.preview(),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _search,
+              // Deliberately NOT autofocused — see (2) above.
+              autofocus: false,
+              textInputAction: TextInputAction.search,
+              style: ADText.rowName().copyWith(color: AD.textPrimary),
+              cursorColor: AD.primaryBadge,
+              onChanged: (value) => setState(() => _query = value),
+              decoration: InputDecoration(
+                isDense: true,
+                filled: true,
+                fillColor: AD.card,
+                prefixIcon: Icon(Icons.search, size: 20, color: AD.textSecondary),
+                suffixIcon: _query.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: Icon(Icons.close, size: 18, color: AD.textSecondary),
+                        onPressed: () {
+                          _search.clear();
+                          setState(() => _query = '');
+                        },
+                      ),
+                hintText: 'Search languages',
+                hintStyle: ADText.preview(),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(color: AD.borderControl, width: 1),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(color: AD.primaryBadge, width: 1.5),
                 ),
               ),
-            ]),
-          ),
-          Expanded(
-            child: languages.isEmpty
-                ? const Center(child: Text('No matching language'))
-                : ListView.builder(
-                    itemCount: languages.length,
-                    itemBuilder: (_, index) {
-                      final item = languages[index];
-                      final isCurrent = item.code == widget.currentCode;
-                      return ListTile(
-                        title: Text(item.label),
-                        subtitle: Text(isCurrent ? '${item.code} · translating now' : item.code),
-                        trailing: isCurrent ? const Icon(Icons.check) : null,
-                        onTap: () => Navigator.pop(context, item.code),
-                      );
-                    },
-                  ),
-          ),
-        ]),
-      ),
+            ),
+          ]),
+        ),
+        // Flexible, not Expanded: with a filtered list of two results the sheet
+        // shrinks to fit instead of holding a screen-height box of empty space.
+        Flexible(
+          child: languages.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 32),
+                  child: Text('No matching language', style: ADText.preview()),
+                )
+              : ListView.builder(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.only(bottom: 12),
+                  itemCount: languages.length,
+                  itemBuilder: (_, index) {
+                    final item = languages[index];
+                    final isCurrent = item.code == widget.currentCode;
+                    return ListTile(
+                      dense: true,
+                      title: Text(item.label,
+                          style: ADText.rowName().copyWith(
+                              color: isCurrent ? AD.primaryBadge : AD.textPrimary)),
+                      subtitle: Text(
+                        isCurrent ? '${item.code} · translating now' : item.code,
+                        style: ADText.preview(),
+                      ),
+                      trailing: isCurrent
+                          ? Icon(Icons.check, size: 20, color: AD.primaryBadge)
+                          : null,
+                      onTap: () => Navigator.pop(context, item.code),
+                    );
+                  },
+                ),
+        ),
+      ]),
     );
   }
 }
