@@ -356,6 +356,71 @@ export async function callTranslationStop(req: Request, env: Env, id: string): P
 }
 
 /**
+ * [CALL-TRANSLATE-2C-1] Mid-call language switch.
+ *
+ * Updates `target_lang` on the EXISTING session row and mints a token bound to
+ * the updated row. Deliberately NOT a new session: the user changed language,
+ * not product, so the same billing session continues — `started_at`,
+ * `last_billed_minute` and `billed_tokens` are untouched and no minute-1 charge
+ * is taken. A switch is therefore free; the running per-minute clock keeps
+ * ticking through it.
+ *
+ * The client does make-before-break: it keeps the old provider socket alive
+ * until the new one reports setupComplete, so this route must be safe to call
+ * while a session is actively translating.
+ */
+export async function callTranslationLanguage(req: Request, env: Env, id: string): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return authError(ctx);
+  const s = await load(env, id);
+  if (!s || s.payer_uid !== ctx.uid) return json({ error: "not found" }, 404);
+  if (s.status !== "active") return json({ error: s.status, billable: false }, 409);
+  const b = await req.json().catch(() => ({})) as Record<string, unknown>;
+  if (nonceRejected(s, b.device_nonce)) return await nonceRejection(env, s, "language");
+  const lang = String(b.target_lang ?? "");
+  if (!CALL_TRANSLATION_LANGS.has(lang)) return json({ error: "unsupported target_lang", lang, billable: false }, 400);
+  if (!(await participantInActiveCall(env, s.call_ref, ctx.uid))) return json({ error: "call_ended", billable: false }, 409);
+  // Generous relative to the UI's debounce; this is an abuse ceiling, not a
+  // product limit — a user changing their mind must never be told "slow down".
+  const limited = await rateLimit(env, `call-trl-lang:${ctx.uid}`, 40, 3600);
+  if (limited) return limited;
+  const updated = await metaDb(env).prepare(
+    "UPDATE translation_call_sessions SET target_lang=?2,updated_at=?3 WHERE id=?1 AND status='active'",
+  ).bind(id, lang, Date.now()).run();
+  if (updated.meta.changes !== 1) return json({ error: "switch_conflict", billable: false }, 409);
+  // Mint against the RE-READ row, never against the request: if a concurrent
+  // switch won, the token must carry the language that is actually recorded.
+  const fresh = await load(env, id);
+  if (!fresh || fresh.status !== "active") return json({ error: fresh?.status ?? "not found", billable: false }, 409);
+  const wantToken = b.mint !== false;
+  const token = wantToken ? await mintToken(env, fresh.target_lang) : null;
+  if (wantToken && !token) {
+    // The row already carries the new language; the client stays on the old
+    // socket and may retry the mint via /token. Never leave the caller guessing.
+    await track(env, ctx.uid, "call_translation_language_switch_failed", APP, {
+      session_id: id, call_ref: s.call_ref, from_language: s.target_lang, to_language: lang, reason: "provider_unavailable",
+    });
+    return json({ error: "provider_unavailable", target_lang: fresh.target_lang, previous_target_lang: s.target_lang, billable: false }, 502);
+  }
+  await track(env, ctx.uid, "call_translation_language_switched", APP, {
+    session_id: id, call_ref: s.call_ref, from_language: s.target_lang, to_language: fresh.target_lang,
+    billed_minute: fresh.last_billed_minute,
+  });
+  return json({
+    ok: true,
+    session_id: id,
+    target_lang: fresh.target_lang,
+    previous_target_lang: s.target_lang,
+    token: token?.token,
+    token_expires_at: token?.expiresAt,
+    model: CALL_TRANSLATION_MODEL,
+    rate_per_min: CALL_TRANSLATION_RATE,
+    billed_minute: fresh.last_billed_minute,
+    billed_tokens: fresh.billed_tokens,
+  });
+}
+
+/**
  * Mint a replacement single-use provider token for an existing live session.
  *
  * [CALL-TRANSLATE-2B-3] Issuance is bound to three things, all checked here:
