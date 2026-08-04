@@ -84,8 +84,46 @@ class CallTranslationAudioBridge {
 
   Future<void> commitPaid() => _methods.invokeMethod<void>('commitPaid');
 
-  Future<void> resume({required String token, required String handle}) =>
-      _methods.invokeMethod<void>('resume', {'token': token, 'handle': handle});
+  /// [CALL-TRANSLATE-2C-4] `targetLanguage` is OPTIONAL and additive: omitted (the
+  /// plain-resume case) the pending socket announces the language the plugin is
+  /// already speaking, exactly as before.
+  Future<void> resume({
+    required String token,
+    required String handle,
+    String? targetLanguage,
+  }) =>
+      _methods.invokeMethod<void>('resume', {
+        'token': token,
+        'handle': handle,
+        if (targetLanguage != null && targetLanguage.isNotEmpty) 'targetLanguage': targetLanguage,
+      });
+
+  /// [CALL-TRANSLATE-2C-4] TRUE make-before-break for a mid-call language switch.
+  ///
+  /// Opens a SECOND provider socket announcing [targetLanguage] while the live
+  /// one KEEPS TRANSLATING. Nothing about the live session changes until the new
+  /// socket reports `setupComplete`; at that instant the plugin swaps them and
+  /// emits `language_switched`. This future completing means only "the second
+  /// socket is being opened" — the cutover itself is signalled by that event, or
+  /// by `resume_failed` with `switching: true` if the pending socket dies.
+  ///
+  /// [handle] is optional: null/omitted opens a FRESH session rather than
+  /// resuming the old one's context.
+  ///
+  /// Throws [PlatformException] with:
+  ///  * `not_prepared`      — no live session to switch away from
+  ///  * `invalid_arguments` — empty token or language
+  ///  * `switch_in_flight`  — a pending socket already exists (one at a time)
+  Future<void> switchLanguage({
+    required String token,
+    required String targetLanguage,
+    String? handle,
+  }) =>
+      _methods.invokeMethod<void>('switchLanguage', {
+        'token': token,
+        'targetLanguage': targetLanguage,
+        if (handle != null && handle.isNotEmpty) 'handle': handle,
+      });
 
   /// [CALL-TRANSLATE-2B-2] Ask the plugin to un-mute (or re-mute) the ORIGINAL
   /// decoded call audio without tearing the session down. This is the same

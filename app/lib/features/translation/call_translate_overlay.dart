@@ -158,7 +158,10 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
     final lang = await _showLanguageSheet(currentCode: from);
     if (lang == null || !mounted || lang == from) return;
     final error = await controller.switchLanguage(lang);
-    if (error == null || !mounted) return;
+    // 'stopped' = the session ended under the switch (user stop, teardown,
+    // provider failure). Those paths own their own UI; a language toast on top
+    // of them would be noise.
+    if (error == null || error == 'stopped' || !mounted) return;
     final fromLabel = translationLangLabel(from ?? '');
     final message = error == 'switch_lost'
         // The cutover failed AND the previous language could not be restored.

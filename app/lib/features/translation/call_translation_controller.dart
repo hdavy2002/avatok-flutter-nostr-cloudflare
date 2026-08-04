@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter/widgets.dart' show AppLifecycleState, WidgetsBinding, WidgetsBindingObserver;
 
 import '../../core/analytics.dart';
@@ -150,6 +151,12 @@ class CallTranslationController with WidgetsBindingObserver {
   /// language before giving up on measuring `switch_gap_ms`. The switch itself
   /// is already complete by then — this only bounds the telemetry probe.
   static const Duration _kSwitchGapTimeout = Duration(seconds: 12);
+
+  /// [CALL-TRANSLATE-2C-4] Deadline on a make-before-break cutover: how long the
+  /// pending socket may take to reach `setupComplete` before we give up, stay on
+  /// the (still live) old session and toast. Matches the plugin's own 15 s setup
+  /// timeout for `prepare`; `switchLanguage` has no native timer of its own.
+  static const Duration _kSwitchCutoverTimeout = Duration(seconds: 15);
 
   Timer? _renew;
   Timer? _clock;
@@ -569,7 +576,12 @@ class CallTranslationController with WidgetsBindingObserver {
 
   Future<void> _renewMinute() async {
     final id = _id;
-    if (id == null || !active) return;
+    // [CALL-TRANSLATE-2C-4] `isSwitchingLanguage` is deliberately allowed: a
+    // make-before-break cutover sits in `warming` (so `active` is false) while
+    // the OLD session is still translating and still owes its per-minute debit.
+    // Skipping the renewal here would silently stop billing a session that never
+    // stopped working.
+    if (id == null || (!active && !isSwitchingLanguage)) return;
     final r = await _writeWithRetry(
       'renew',
       () => TranslationApi.callRenew(id, deviceNonce: _nonce),
@@ -667,7 +679,26 @@ class CallTranslationController with WidgetsBindingObserver {
         }
         break;
 
+      case 'language_switched':
+        // [CALL-TRANSLATE-2C-4] The cutover completed: a pending socket replaced
+        // a LIVE one and the language actually changed. Ordering guarantee from
+        // the plugin: `ready` fires first, then this.
+        _onLanguageSwitched(event);
+        break;
+
       case 'resume_failed':
+        if (event.boolOf('switching')) {
+          // [CALL-TRANSLATE-2C-4] The PENDING socket died. The plugin commits
+          // its language field only at a successful swap, so the live session
+          // and the language it is speaking are untouched — this is a failed
+          // SWITCH, not a failed session. Stay where we are and toast.
+          unawaited(_failSwitch('pending_socket_failed', extra: {
+            // Language CODES only, straight from the plugin. Never content.
+            'attempted_language': event.data['attemptedLanguage']?.toString() ?? '',
+            'live_language': event.data['liveLanguage']?.toString() ?? '',
+          }));
+          break;
+        }
         // [CALL-TRANSLATE-2A-3] Previously ignored: the pill showed "active" on
         // a dead provider session. The resume socket is gone; the breaker
         // decides whether one more attempt is allowed.
@@ -711,10 +742,16 @@ class CallTranslationController with WidgetsBindingObserver {
     }
 
     // Far edge of `switch_gap_ms`: the first translated chunk produced by the
-    // NEW language's socket. `prepare` resets the native counters, so a non-zero
-    // count after a cutover can only come from the new session.
-    if (_switchGapStartMs > 0 && event.intOf('translatedChunkCount') > 0) {
-      _resolveSwitchGap('stats');
+    // NEW language's socket. `switchLanguage` does NOT reset the native counters
+    // (only `prepare` does), so this is measured against a baseline sampled at
+    // the swap rather than against zero.
+    if (_switchGapStartMs > 0) {
+      final chunks = event.intOf('translatedChunkCount');
+      if (_switchGapBaselineChunks < 0) {
+        _switchGapBaselineChunks = chunks;
+      } else if (chunks > _switchGapBaselineChunks) {
+        _resolveSwitchGap('stats');
+      }
     }
 
     if (event.boolOf('final') || event.value == 'final') {
@@ -864,16 +901,28 @@ class CallTranslationController with WidgetsBindingObserver {
     _firstAudioPoll?.cancel();
     _fallbackRelease?.cancel();
     _switchGapPoll?.cancel();
+    _switchCutoverTimer?.cancel();
     _renew = null;
     _clock = null;
     _firstAudioPoll = null;
     _switchGapPoll = null;
+    _switchCutoverTimer = null;
     // A switch in flight is over the moment the session is: nothing may be left
-    // holding `warming` semantics or an unresolved gap measurement.
+    // holding `warming` semantics, an unresolved gap measurement, or a caller
+    // awaiting a cutover that can no longer happen.
     _switchTarget = null;
     _switchGapStartMs = 0;
+    _switchGapBaselineChunks = -1;
     _queuedSwitch = null;
     switchingTo.value = null;
+    final pendingSwitch = _switchCompleter;
+    _switchCompleter = null;
+    if (pendingSwitch != null && !pendingSwitch.isCompleted) {
+      // NOT 'switch_failed': the session is going away for its own reasons (user
+      // stop, teardown, provider failure) and each of those already has its own
+      // UI. A "could not switch language" toast on top would be noise.
+      pendingSwitch.complete('stopped');
+    }
     _warmGeneration++;
     _warmToken = null;
     _warmLang = null;
@@ -1056,42 +1105,75 @@ class CallTranslationController with WidgetsBindingObserver {
   // and billed_tokens are untouched — the per-minute clock keeps ticking and a
   // switch itself is free.
   //
-  // HOW CLOSE TO MAKE-BEFORE-BREAK THIS ACTUALLY GETS — read before changing it
+  // [CALL-TRANSLATE-2C-4] TRUE MAKE-BEFORE-BREAK — read before changing it
   // ---------------------------------------------------------------------------
-  // The native plugin CAN hold two provider sockets at once: `resume` opens a
-  // `pendingSocket` while the live `socket` keeps translating, and swaps on the
-  // new socket's `setupComplete`. That is textbook make-before-break — but it is
-  // unusable for a LANGUAGE switch, because the setup frame the pending socket
-  // sends is built from the plugin's `this.targetLanguage`, which is only ever
-  // assigned by `prepare`. The new socket would therefore announce the OLD
-  // language against a token whose `liveConnectConstraints` pin the NEW one, and
-  // the provider rejects the mismatch. Teaching `resume` to take a language
-  // means editing CallTranslationAudioPlugin.java, which is out of scope here.
+  // Phase C originally cut over SEQUENTIALLY (`prepare` tore the live socket
+  // down before the new one existed) because the plugin's pending-socket path
+  // built its setup frame from `this.targetLanguage`, which only `prepare` ever
+  // assigned — so a pending socket could not announce a NEW language. Commit
+  // 3af9fd72 fixed that natively. The cutover is now:
   //
-  // So the cutover is SEQUENTIAL, and the gap is covered rather than hidden:
-  //   1. `/language` runs while the OLD session is still translating normally.
-  //   2. `bridge.prepare(newToken, newLang)` tears the old socket down. The
-  //      plugin's own teardown un-mutes the original audio, so from this instant
-  //      the user hears the real speaker — never silence.
-  //   3. `activate` → `setFallback(true, 'switching')` → `commitPaid`. The
-  //      fallback flag MUST be raised before `commitPaid`, because `commitPaid`
-  //      re-applies the mute; with the flag up, `applyOutputMute()` evaluates
-  //      `paid && active && !fallbackActive` to false and the original keeps
-  //      playing through the new pipeline's refill.
-  //   4. Nothing re-mutes by hand. The A4 dead-air guard drops the fallback on
-  //      the new session's first SUSTAINED translated PCM and emits `recovered`,
-  //      which is also the far edge of `switch_gap_ms`.
-  // Net effect: continuous audio throughout, with an audible language gap of one
-  // socket handshake instead of the silence a naive stop/start would produce.
+  //   1. `/language` updates the SAME row and mints a token for the new
+  //      language, while the OLD session keeps translating normally.
+  //   2. `bridge.switchLanguage(token, lang)` opens a SECOND socket announcing
+  //      the new language. The live socket is untouched and still translating —
+  //      there is no teardown, no un-mute, and nothing to recover from.
+  //   3. The plugin swaps them at the new socket's `setupComplete` (its commit
+  //      point for the language field), closes the old socket and emits
+  //      `language_switched`. THAT event — not the method future — is the
+  //      cutover-completed signal.
+  //   4. On `language_switched` Dart raises `setFallback(true, 'switching')` so
+  //      the user hears the real speaker across the new pipeline's refill. This
+  //      stays the safety net rather than the main mechanism: the A4 dead-air
+  //      guard would raise it anyway after 2 s of no translated PCM, and the
+  //      guard drops it again on the new session's first SUSTAINED translated
+  //      PCM (~200 ms of audio, min 800 ms of fallback — an anti-flap floor, not
+  //      a gap). Nothing re-mutes by hand.
+  //
+  // ORDER STILL LOAD-BEARING: any `setFallback(true)` must precede a `commitPaid`
+  // because `applyOutputMute()` evaluates `paid && active && !fallbackActive`.
+  // A switch no longer calls activate/commitPaid AT ALL — `switchLanguage` never
+  // resets the plugin's `active`/`paid`/telemetry state the way `prepare` does —
+  // so the constraint only binds `start()` today. Do not reintroduce a
+  // commitPaid here without putting the setFallback before it.
+  //
+  // FAILURE IS NOW CHEAP: if the pending socket dies the plugin emits
+  // `resume_failed` with `switching: true` and leaves the live session and its
+  // language untouched, so "stay on the old session + toast" is literally free.
+  // The old post-cutover `_recoverToLanguage` re-prepare existed ONLY because
+  // the sequential design had already destroyed the old socket; it is gone.
   // ───────────────────────────────────────────────────────────────────────────
 
   String? _switchTarget;
   int _switchStartedAtMs = 0;
 
+  /// Completes when the in-flight cutover resolves: null on success
+  /// (`language_switched`), a stable error code on failure. The native
+  /// `switchLanguage` future only means "the second socket is being opened", so
+  /// the public [switchLanguage] awaits THIS instead.
+  Completer<String?>? _switchCompleter;
+
+  /// `switchLanguage` has no native timeout of its own (unlike `prepare`, which
+  /// self-fails after 15 s), and a pending socket that never reaches
+  /// `setupComplete` would otherwise block every future switch with
+  /// `switch_in_flight`. Dart owns the deadline.
+  Timer? _switchCutoverTimer;
+
   /// Non-zero while a `switch_gap_ms` measurement is open.
   int _switchGapStartMs = 0;
   String _switchGapLang = '';
   int _switchGapPolls = 0;
+
+  /// `translatedChunkCount` observed at the instant of the cutover. Unlike
+  /// `prepare`, `switchLanguage` does NOT reset the native counters, so the far
+  /// edge of the gap is "count went UP from this baseline", not "count > 0".
+  /// -1 means the baseline sample has not landed yet.
+  int _switchGapBaselineChunks = -1;
+
+  /// How much pre-switch silence may still be attributed to the switch. The old
+  /// session stops producing translated PCM whenever nobody is speaking, so a
+  /// `sinceLastAudioMs` larger than this is call silence, not a switch gap.
+  static const int _kMaxAttributableSilenceMs = 3000;
 
   /// Latest-only queue. A user flicking through three languages must produce ONE
   /// more cutover, to the last one they touched — not three.
@@ -1139,12 +1221,17 @@ class CallTranslationController with WidgetsBindingObserver {
   Future<String?> _runSwitch(String lang) async {
     final id = _id;
     if (id == null) return 'busy';
-    final from = targetLanguage.value ?? '';
     if (!_beginLanguageSwitch(lang)) return 'busy';
 
     // ── step 1: row update + token mint (old session still translating) ──────
     String? token = _claimWarmToken(lang);
-    if (token == null) {
+    if (token != null) {
+      // The pre-mint already moved the ROW to `lang`. Under make-before-break a
+      // failed cutover STAYS on the old session, so the row now disagrees with
+      // what the plugin is speaking and must be repairable — record it. It is
+      // cleared only when the cutover actually completes.
+      _speculativeRowLang = lang;
+    } else {
       Map<String, dynamic> r;
       try {
         r = await TranslationApi.callLanguage(id, targetLang: lang, deviceNonce: _nonce);
@@ -1155,7 +1242,7 @@ class CallTranslationController with WidgetsBindingObserver {
       final status = (r['status'] as num?)?.toInt() ?? 0;
       if (status == 200) {
         token = r['token']?.toString();
-        _speculativeRowLang = null;
+        _speculativeRowLang = lang;
       } else if (status == 502) {
         // TRAP: on 502 the ROW IS ALREADY on the new language; only the mint
         // failed. Retry the mint via /token, which now returns the new language.
@@ -1175,79 +1262,55 @@ class CallTranslationController with WidgetsBindingObserver {
       }
     }
     if (token == null || token.isEmpty) {
-      // Everything up to here is reversible: the OLD socket has not been
-      // touched, so we simply stay on it (restoring the row if 502 moved it).
+      // Nothing has been opened yet: the OLD socket has not been touched, so we
+      // simply stay on it (restoring the row if /language already moved it).
       await _abortLanguageSwitch('mint_failed', restoreRow: true);
       return 'switch_failed';
     }
 
-    // ── step 2: the cutover. Past this line the old socket is gone. ──────────
+    // ── step 2: open the SECOND socket. The live one keeps translating. ──────
+    // Past this line NOTHING about the live session has changed, and nothing
+    // will until the plugin reports `language_switched`.
     _switchStartedAtMs = DateTime.now().millisecondsSinceEpoch;
-    final cutOver = await _cutOverTo(lang, token);
-    if (cutOver) {
-      await _completeLanguageSwitch(lang, from: from);
-      return null;
+    final completer = Completer<String?>();
+    _switchCompleter = completer;
+    try {
+      await bridge.switchLanguage(
+        token: token,
+        targetLanguage: lang,
+        // Deliberately NO resumption handle: it belongs to the OLD-language
+        // session, and what a resumed session restores is provider-defined —
+        // if it restored the old target language the switch would report
+        // success while the user still heard the old language, which nothing
+        // client-side can detect. A fresh session's only cost is one handshake,
+        // and make-before-break already hides that behind the live socket.
+        handle: null,
+      );
+    } catch (e) {
+      _switchCompleter = null;
+      final code = e is PlatformException ? e.code : 'switch_channel_error';
+      if (code == 'switch_in_flight') {
+        // Belt and braces: [canSwitchLanguage] + [_switchTarget] already permit
+        // exactly one in-flight switch, so the plugin's own guardrail should be
+        // unreachable. Log it and no-op — never crash the call over it.
+        AvaLog.I.log('calltranslate', 'switch rejected: pending socket already in flight');
+      }
+      await _abortLanguageSwitch('switch_$code', restoreRow: true);
+      if (code == 'not_prepared') {
+        // There is no live session to switch away from — translation is already
+        // gone. The invariant path (stop → original audio restored) owns this.
+        await _failFromProvider('switch_not_prepared');
+        return 'switch_lost';
+      }
+      return 'switch_failed';
     }
 
-    // The new pipeline would not come up AND the old socket is already down, so
-    // "stay on the old session" is no longer physically available. One bounded
-    // recovery attempt puts the ORIGINAL language back on the same billing
-    // session; if even that fails, the invariant takes over (bridge stopped →
-    // original audio restored → call untouched).
-    final recovered = await _recoverToLanguage(from);
-    _switchTarget = null;
-    switchingTo.value = null;
-    Analytics.capture('call_translation_language_switch_failed', {
-      'session_id': _id ?? '',
-      'from_language': from,
-      'to_language': lang,
-      'reason': 'cutover_failed',
-      'recovered_to_previous': recovered,
+    _switchCutoverTimer?.cancel();
+    _switchCutoverTimer = Timer(_kSwitchCutoverTimeout, () {
+      unawaited(_failSwitch('cutover_timeout'));
     });
-    if (!recovered) {
-      await _failFromProvider('language_switch_cutover_failed');
-      return 'switch_lost';
-    }
-    _transition(CallTranslationState.active, 'language_switch_recovered');
-    return 'switch_failed';
-  }
-
-  /// Brings the native pipeline up on [lang] with [token] and hands playback
-  /// over, holding the original audio open across the refill. Returns false if
-  /// any leg failed (the plugin is then stopped and the original is audible).
-  Future<bool> _cutOverTo(String lang, String token) async {
-    try {
-      // Tears the old socket down and opens the new one. The plugin's teardown
-      // un-mutes the original audio, so the user is never in silence here.
-      await bridge.prepare(token: token, targetLanguage: lang);
-      await bridge.activate();
-      // BEFORE commitPaid — see the header comment. Order is load-bearing.
-      await bridge.setFallback(enabled: true, reason: 'switching');
-      fallbackToOriginal.value = true;
-      await bridge.commitPaid();
-      return true;
-    } catch (_) {
-      await bridge.stop();
-      fallbackToOriginal.value = false;
-      return false;
-    }
-  }
-
-  /// Last-ditch: put [lang] (the language we came FROM) back on the same billing
-  /// session after a failed cutover. One attempt, no retry loop.
-  Future<bool> _recoverToLanguage(String lang) async {
-    final id = _id;
-    if (id == null || lang.isEmpty || _disposed) return false;
-    try {
-      final r = await TranslationApi.callLanguage(id, targetLang: lang, deviceNonce: _nonce);
-      final status = (r['status'] as num?)?.toInt() ?? 0;
-      final token = status == 200 ? r['token']?.toString() : await _mintForCurrentRow(id);
-      if (token == null || token.isEmpty) return false;
-      _speculativeRowLang = null;
-      return _cutOverTo(lang, token);
-    } catch (_) {
-      return false;
-    }
+    // Resolved by `language_switched` (success) or `resume_failed`/timeout.
+    return completer.future;
   }
 
   /// `/token` re-mints against whatever language the ROW currently holds — which
@@ -1271,17 +1334,84 @@ class CallTranslationController with WidgetsBindingObserver {
     return true;
   }
 
-  Future<void> _completeLanguageSwitch(String lang, {required String from}) async {
+  /// The cutover-completed signal. The plugin has already swapped sockets, moved
+  /// its own language field and closed the old socket; by the time this runs the
+  /// NEW language is what the user is (about to be) hearing.
+  void _onLanguageSwitched(CallTranslationAudioEvent event) {
+    final completer = _switchCompleter;
+    _switchCompleter = null;
+    _switchCutoverTimer?.cancel();
+    _switchCutoverTimer = null;
+
+    final value = event.value ?? '';
+    final lang = value.isNotEmpty ? value : (_switchTarget ?? '');
+    if (lang.isEmpty) {
+      // Cannot happen with the current plugin; never throw over it.
+      AvaLog.I.log('calltranslate', 'language_switched without a language');
+      if (completer != null && !completer.isCompleted) completer.complete(null);
+      return;
+    }
+    final from = event.data['previousLanguage']?.toString().isNotEmpty == true
+        ? event.data['previousLanguage']!.toString()
+        : (targetLanguage.value ?? '');
+
     _switchTarget = null;
     switchingTo.value = null;
     targetLanguage.value = lang;
+    // The row was moved to `lang` by /language and the plugin now agrees with
+    // it, so there is nothing speculative left to repair.
+    _speculativeRowLang = null;
     unawaited(CallTranslationLastLang.write(lang));
-    // NO setFallback(false) here on purpose: the native dead-air guard drops the
-    // fallback itself on the new session's first sustained translated PCM. Doing
-    // it by hand would re-mute the original before any translated audio exists —
-    // manufacturing the exact dead air this whole design avoids.
+
+    // Arm the gap measurement BEFORE anything can raise a 'switching' fallback:
+    // [_isSwitchFallback] keys off it, and a `stalled` event misread as a real
+    // stall would both lie to the user and spam the illegal-transition counter.
+    _armSwitchGapProbe(lang, from, event.intOf('sinceLastAudioMs'));
     _transition(CallTranslationState.active, 'language_switched_$lang');
-    _armSwitchGapProbe(lang, from);
+
+    // Safety net over the new pipeline's refill — the user hears the real
+    // speaker rather than silence. NO setFallback(false) anywhere: the native
+    // dead-air guard drops it on the new session's first sustained translated
+    // PCM. Dropping it by hand would re-mute before any translated audio exists,
+    // manufacturing the exact dead air this design avoids.
+    unawaited(_setFallback(true, 'switching'));
+
+    if (completer != null && !completer.isCompleted) completer.complete(null);
+  }
+
+  /// The cutover failed AFTER the second socket was requested. Under
+  /// make-before-break the LIVE session was never touched — it is still
+  /// translating in the old language — so recovery is just bookkeeping:
+  /// clear the switch, put the server row back on the live language, and let the
+  /// overlay toast "Could not switch language. Still translating to X."
+  ///
+  /// Nothing is un-muted or re-muted here on purpose. A failed switch never
+  /// raised the 'switching' fallback (that happens only on success), and a
+  /// fallback that IS up belongs to the dead-air guard — clearing it would
+  /// re-mute the original during genuine dead air.
+  Future<void> _failSwitch(String reason, {Map<String, dynamic> extra = const {}}) async {
+    final completer = _switchCompleter;
+    final target = _switchTarget;
+    _switchCompleter = null;
+    _switchCutoverTimer?.cancel();
+    _switchCutoverTimer = null;
+    if (target == null && completer == null) return;
+    _switchTarget = null;
+    switchingTo.value = null;
+    await _restoreSpeculativeRow();
+    if (state.value == CallTranslationState.warming) {
+      _transition(CallTranslationState.active, 'language_switch_failed_$reason');
+    }
+    Analytics.capture('call_translation_language_switch_failed', {
+      'session_id': _id ?? '',
+      'from_language': targetLanguage.value ?? '',
+      'to_language': target ?? '',
+      'reason': reason,
+      // Always true now: the old session is alive by construction.
+      'recovered_to_previous': true,
+      ...extra,
+    });
+    if (completer != null && !completer.isCompleted) completer.complete('switch_failed');
   }
 
   /// Nothing has been cut over yet — stay on the OLD session. [restoreRow] puts
@@ -1289,8 +1419,13 @@ class CallTranslationController with WidgetsBindingObserver {
   /// later `/token` cannot mint for a language the plugin is not speaking.
   Future<void> _abortLanguageSwitch(String reason, {required bool restoreRow}) async {
     final target = _switchTarget;
+    final completer = _switchCompleter;
+    _switchCompleter = null;
+    _switchCutoverTimer?.cancel();
+    _switchCutoverTimer = null;
     _switchTarget = null;
     switchingTo.value = null;
+    if (completer != null && !completer.isCompleted) completer.complete('switch_failed');
     if (restoreRow) await _restoreSpeculativeRow();
     _transition(CallTranslationState.active, 'language_switch_aborted_$reason');
     Analytics.capture('call_translation_language_switch_failed', {
@@ -1304,11 +1439,26 @@ class CallTranslationController with WidgetsBindingObserver {
 
   // ── switch_gap_ms ─────────────────────────────────────────────────────────
   //
-  // Defined as old-session-last-PCM → new-session-first-PCM. The old session
-  // produces its last chunk the instant `prepare` tears its socket down, so
-  // [_switchStartedAtMs] (stamped immediately before the cutover) IS that edge;
-  // the far edge is the plugin's `recovered` for the 'switching' fallback, or a
-  // `stats` sample showing a non-zero translated-chunk count on the new session.
+  // Defined as old-session-last-PCM → new-session-first-PCM, measured from the
+  // real signals rather than from when Dart asked for the switch.
+  //
+  // NEAR edge: the old socket translates right up to the swap, so the last
+  // chunk it produced is `language_switched.sinceLastAudioMs` before the plugin
+  // committed the new language. (The old sequential design had to use "when we
+  // called prepare" because that WAS the moment the audio died.) Silence on the
+  // call also stops translated PCM, so a `sinceLastAudioMs` beyond
+  // [_kMaxAttributableSilenceMs] is not switch-attributable and the swap instant
+  // is used instead — the raw value is still reported.
+  //
+  // FAR edge: the first translated chunk from the NEW socket, seen as
+  // `translatedChunkCount` rising above the baseline sampled at the swap
+  // (`switchLanguage` does NOT reset the native counters — only `prepare` does,
+  // which is why "count > 0" no longer works). The plugin's `recovered` for the
+  // 'switching' fallback also closes it, but it carries an 800 ms anti-flap
+  // floor, so the 300 ms stats poll normally wins.
+  //
+  // With true make-before-break this number should now be near-zero (bounded by
+  // the new pipeline's first-chunk latency), not a socket handshake.
 
   bool _isSwitchFallback(CallTranslationAudioEvent event) {
     if (_switchGapStartMs == 0 && !isSwitchingLanguage) return false;
@@ -1316,10 +1466,20 @@ class CallTranslationController with WidgetsBindingObserver {
     return reason == 'switching';
   }
 
-  void _armSwitchGapProbe(String lang, String from) {
-    _switchGapStartMs = _switchStartedAtMs;
+  void _armSwitchGapProbe(String lang, String from, int sinceLastAudioMs) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    // How long the second socket took to come up. This is NOT audible — the old
+    // session translated throughout it — but it is what a regression in the
+    // provider handshake would show up as.
+    _switchCutoverMs = _switchStartedAtMs > 0 ? now - _switchStartedAtMs : 0;
+    _switchGapSinceLastAudioMs = sinceLastAudioMs;
+    _switchGapStartMs = sinceLastAudioMs > 0 && sinceLastAudioMs <= _kMaxAttributableSilenceMs
+        ? now - sinceLastAudioMs
+        : now;
     _switchGapLang = lang;
+    _switchGapFrom = from;
     _switchGapPolls = 0;
+    _switchGapBaselineChunks = -1;
     _switchGapPoll?.cancel();
     _switchGapPoll = Timer.periodic(const Duration(milliseconds: 300), (t) {
       _switchGapPolls++;
@@ -1336,15 +1496,20 @@ class CallTranslationController with WidgetsBindingObserver {
       }
       unawaited(bridge.requestStats());
     });
-    _switchGapFrom = from;
+    // Sample the baseline immediately: the old socket is already closed, so any
+    // chunk counted from here on can only have come from the new one.
+    unawaited(bridge.requestStats());
   }
 
   String _switchGapFrom = '';
+  int _switchGapSinceLastAudioMs = 0;
+  int _switchCutoverMs = 0;
 
   void _resolveSwitchGap(String via, {bool measured = true}) {
     if (_switchGapStartMs == 0) return;
     final gap = DateTime.now().millisecondsSinceEpoch - _switchGapStartMs;
     _switchGapStartMs = 0;
+    _switchGapBaselineChunks = -1;
     _switchGapPoll?.cancel();
     _switchGapPoll = null;
     Analytics.capture('call_translation_language_switched', {
@@ -1353,6 +1518,9 @@ class CallTranslationController with WidgetsBindingObserver {
       'from_language': _switchGapFrom,
       'via': via,
       'gap_measured': measured,
+      'make_before_break': true,
+      'since_last_audio_ms': _switchGapSinceLastAudioMs,
+      'cutover_ms': _switchCutoverMs,
       if (measured) 'switch_gap_ms': gap,
     });
   }
@@ -1551,6 +1719,7 @@ class CallTranslationController with WidgetsBindingObserver {
     _firstAudioPoll?.cancel();
     _fallbackRelease?.cancel();
     _switchGapPoll?.cancel();
+    _switchCutoverTimer?.cancel();
     _warmGeneration++;
     WidgetsBinding.instance.removeObserver(this);
     _unhookAudioFocus();
