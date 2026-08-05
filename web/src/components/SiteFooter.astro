@@ -99,33 +99,6 @@ const columns = [
       ))}
     </div>
 
-    <div class="entities">
-      <div class="ent">
-        <h5>India</h5>
-        <p>
-          <strong>Ava Global International Pvt Ltd</strong>, Mumbai, India.<br />
-          Serves customers, transactions and payouts in India. GST compliant. Payouts are made to a
-          verified UPI address linked to your Indian bank account.
-        </p>
-      </div>
-      <div class="ent">
-        <h5>International</h5>
-        <p>
-          <strong>Ava Global International, Inc.</strong>, Delaware, USA.<br />
-          Serves international customers, transactions and payouts outside India.
-        </p>
-      </div>
-      <div class="ent">
-        <h5>Good to know</h5>
-        <p>
-          Top-ups are converted into tokens. <strong>1 token = 1 US cent (US$0.01).</strong> Tokens
-          are non-refundable except where the law or your app store requires. Unused tokens can be withdrawn — a transfer fee and, in India, GST
-          apply, shown before you confirm. See <a href="/tokens">Tokens</a>,
-          <a href="/refunds">Refunds</a> and <a href="/payouts">Payouts</a>.
-        </p>
-      </div>
-    </div>
-
     <div class="bottom">
       <span>© {year} Ava Global International Pvt Ltd &amp; Ava Global International, Inc. All rights reserved.</span>
       <span class="mini">
@@ -195,18 +168,6 @@ const columns = [
 
   .ava-footer .acc { display: none; }
 
-  /* ---------- entities ---------- */
-  .ava-footer .entities {
-    display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px;
-    padding: 28px 0; border-bottom: 1px solid var(--rule);
-  }
-  .ava-footer .ent h5 {
-    margin: 0 0 7px; font-size: 12px; font-weight: 800;
-    letter-spacing: .1em; text-transform: uppercase;
-  }
-  .ava-footer .ent p { margin: 0; font-size: 13px; line-height: 1.65; color: var(--ink-soft); }
-  .ava-footer .ent a { color: var(--ink); font-weight: 700; text-decoration: underline; }
-
   /* ---------- bottom ---------- */
   .ava-footer .bottom {
     display: flex; flex-wrap: wrap; gap: 12px 22px;
@@ -237,11 +198,6 @@ const columns = [
     .ava-footer .desc { max-width: 520px; }
   }
 
-  /* Entity block gets cramped at three-up well before the columns do. */
-  @media (max-width: 900px) {
-    .ava-footer .entities { grid-template-columns: 1fr 1fr; gap: 22px; }
-  }
-
   /* ---------- phone: columns become accordions ---------- */
   /* Phone type is deliberately much larger than desktop. At the previous
      13–15px the footer read as fine print next to the 18px body copy on the
@@ -269,11 +225,8 @@ const columns = [
     /* padding, not gap, so each row is a ≥44px tap target */
     .ava-footer .acc a { font-size: 19px; line-height: 1.35; padding: 9px 0; color: var(--ink-soft); }
 
-    .ava-footer .entities { grid-template-columns: 1fr; gap: 24px; padding: 24px 0; border-top: 1px solid var(--rule); }
-    .ava-footer .ent h5 { font-size: 15px; }
-    .ava-footer .ent p { font-size: 16px; line-height: 1.6; }
-
-    .ava-footer .bottom { flex-direction: column; align-items: flex-start; gap: 14px; font-size: 16px; }
+    /* the entity block used to carry this rule; .top drops its border on phones */
+    .ava-footer .bottom { flex-direction: column; align-items: flex-start; gap: 14px; font-size: 16px; border-top: 1px solid var(--rule); padding-top: 22px; }
     .ava-footer .mini { gap: 14px 22px; }
     .ava-footer .mini a { font-size: 17px; padding: 4px 0; }
     .ava-footer .made { font-size: 16px; }
