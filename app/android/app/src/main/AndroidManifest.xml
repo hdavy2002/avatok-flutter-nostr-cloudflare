@@ -27,9 +27,42 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
-    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <!-- [PLAY-MEDIA-PERMS-1 2026-08-05] READ_MEDIA_IMAGES / READ_MEDIA_VIDEO /
+         READ_MEDIA_AUDIO are REMOVED. Google flagged them in the Play "Photo and
+         video permissions" declaration and the app never actually needed them:
+
+           • Every gallery/attachment flow goes through image_picker (1.1.x →
+             image_picker_android 0.8.13) or file_picker (8.x). image_picker uses
+             ActivityResultContracts.PickVisualMedia (the system Photo Picker,
+             backported to old Android via the Play-services photopicker module
+             the plugin's own manifest pulls in) or ACTION_GET_CONTENT; file_picker
+             uses the Storage Access Framework. All of those hand back a
+             already-granted content:// URI — NO runtime read permission at ANY
+             API level. The only permission image_picker_android ever requests is
+             CAMERA (ImagePickerDelegate.needRequestCameraPermission), which is
+             declared above.
+           • Nothing in the app reads media by path or queries MediaStore for
+             READING. The one MediaStore use (AvaDialPlugin.kt, saving a call
+             recording) INSERTS into MediaStore.Downloads, which needs no
+             permission on API 29+ and falls back to WRITE_EXTERNAL_STORAGE below
+             that.
+           • No audio is ever picked from the device's music library, so
+             READ_MEDIA_AUDIO had no caller at all.
+
+         The matching "Photos & media" step was removed from the onboarding
+         permission page in the same change (features/onboarding/onboarding_flow.dart)
+         so we no longer ask for a permission we don't hold.
+
+         tools:node="remove" is belt-and-braces: no current plugin or AAR declares
+         these (verified against every hosted package's library manifest and the
+         GIPHY/coil/glide/transcoder/mlkit/exifinterface AARs), but a future
+         dependency bump must not silently re-add them and re-trigger the Play
+         declaration. If a feature ever genuinely needs gallery-wide access,
+         delete these three lines rather than adding a duplicate declaration. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" tools:node="remove" />
+
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />

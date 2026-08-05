@@ -650,8 +650,15 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           _PermSpec('battery', PhosphorIcons.batteryCharging(PhosphorIconsStyle.bold), AD.primaryBadge,
               'Background activity', 'So your calls still ring when AvaTOK is running '
                   'in the background.'),
-        _PermSpec('photos', PhosphorIcons.image(PhosphorIconsStyle.bold), AD.iconVideo,
-            'Photos & media', 'To share photos and videos and to set your avatar.'),
+        // [PLAY-MEDIA-PERMS-1 2026-08-05] The "Photos & media" row is GONE, along
+        // with READ_MEDIA_IMAGES/VIDEO/AUDIO in AndroidManifest.xml. Sharing a
+        // photo/video and setting an avatar go through image_picker's system
+        // Photo Picker and file_picker's Storage Access Framework, both of which
+        // return an already-granted content:// URI and need NO runtime
+        // permission. Asking for it here requested a permission the app does not
+        // hold — the prompt either did nothing or (on Android 13+) advertised
+        // gallery-wide access we never use, which is exactly what Google flagged
+        // in the Play "Photo and video permissions" declaration. Do NOT re-add it.
       ];
 
   /// Best-effort status probe for one row (never requests a permission).
@@ -663,7 +670,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         case 'microphone': return await Permission.microphone.isGranted;
         case 'camera': return await Permission.camera.isGranted;
         case 'battery': return await Permission.ignoreBatteryOptimizations.isGranted;
-        case 'photos': return await Permission.photos.isGranted;
         case 'lockscreen':
           if (!Platform.isAndroid) return true;
           return await AvaDialChannel.I.canUseFullScreenIntent();
@@ -681,7 +687,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         case 'microphone': return (await Permission.microphone.request()).isGranted;
         case 'camera': return (await Permission.camera.request()).isGranted;
         case 'battery': return (await Permission.ignoreBatteryOptimizations.request()).isGranted;
-        case 'photos': return (await Permission.photos.request()).isGranted;
         case 'lockscreen':
           if (!Platform.isAndroid) return true;
           // Full-screen-intent is a settings toggle, not a runtime dialog: if the
