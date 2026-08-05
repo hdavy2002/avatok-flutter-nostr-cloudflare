@@ -5,35 +5,50 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/platform_api.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../consult/prejoin_screen.dart';
 import 'calendar_data.dart';
 
-/// Zine accent for a calendar source app (event dots, icon badges).
+/// Card / dialog / sheet title — the dark-system stand-in for the old
+/// `ZineText.cardTitle()`.
+TextStyle get _cardTitle =>
+    ADText.threadName().copyWith(fontSize: 19, height: 1.1, letterSpacing: -0.2);
+
+/// Accent for a calendar source app (event dots, icon badges).
+///
+/// These are FILLS that carry a glyph, so they are the saturated `solid`
+/// avatar-family variants (white glyph on top), not the old pale poster
+/// colours — a pale fill on the near-black canvas read as a bright blob and
+/// its dark ink would have inverted to white and vanished.
 Color zineSourceColor(String? sourceApp) => switch (sourceApp) {
-      'avacalendar' => Zine.lime,
-      'avabooking' => Zine.coral,
-      'avalive' => Zine.lilac,
-      'avaconsult' => Zine.blue,
-      'gcal' => Zine.mint,
-      'manual' => Zine.inkMute,
-      _ => Zine.inkMute,
+      'avacalendar' => AD.primaryBadge,
+      'avabooking' => AD.familyByName('terra').solid,
+      'avalive' => AD.familyByName('lilac').solid,
+      'avaconsult' => AD.familyByName('sky').solid,
+      'gcal' => AD.familyByName('mint').solid,
+      // Neutral grey for "manual"/unknown. Deliberately NOT `AD.iconNeutral`
+      // (#B9BCC4): its luminance sits a hair under 0.5, so `_inkOn` would put
+      // WHITE on a light grey at ~1.9:1 and the glyph would disappear. White
+      // @45% renders as a mid grey that is visible as a dot on the near-black
+      // canvas AND takes dark ink at ~4.8:1 when used as a badge fill.
+      'manual' => AD.textTertiary,
+      _ => AD.textTertiary,
     };
 
-/// Phosphor (bold) icon for a calendar source app.
+/// Phosphor icon for a calendar source app.
 IconData zineSourceIcon(String? sourceApp) => switch (sourceApp) {
-      'avacalendar' => PhosphorIcons.calendarBlank(PhosphorIconsStyle.bold),
-      'avabooking' => PhosphorIcons.calendarCheck(PhosphorIconsStyle.bold),
-      'avalive' => PhosphorIcons.broadcast(PhosphorIconsStyle.bold),
-      'avaconsult' => PhosphorIcons.videoCamera(PhosphorIconsStyle.bold),
-      'gcal' => PhosphorIcons.googleLogo(PhosphorIconsStyle.bold),
-      'manual' => PhosphorIcons.prohibit(PhosphorIconsStyle.bold),
-      _ => PhosphorIcons.calendarX(PhosphorIconsStyle.bold),
+      'avacalendar' => PhosphorIcons.calendarBlank(PhosphorIconsStyle.regular),
+      'avabooking' => PhosphorIcons.calendarCheck(PhosphorIconsStyle.regular),
+      'avalive' => PhosphorIcons.broadcast(PhosphorIconsStyle.regular),
+      'avaconsult' => PhosphorIcons.videoCamera(PhosphorIconsStyle.regular),
+      'gcal' => PhosphorIcons.googleLogo(PhosphorIconsStyle.regular),
+      'manual' => PhosphorIcons.prohibit(PhosphorIconsStyle.regular),
+      _ => PhosphorIcons.calendarX(PhosphorIconsStyle.regular),
     };
 
-/// Status sticker per the zine system: confirmed = ok, pending = hint,
-/// cancelled = coral.
+/// Status sticker: confirmed = ok, pending = hint, cancelled = destructive.
 ZineSticker zineStatusSticker(String status) => ZineSticker(
       status,
       kind: switch (status) {
@@ -63,46 +78,46 @@ Future<void> showBookingCard(
   await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: Zine.paper,
+    backgroundColor: AD.overlaySheet,
     shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      side: BorderSide(color: Zine.ink, width: Zine.bw),
+      borderRadius: Msg.brSheetTop,
+      side: BorderSide(color: AD.borderHairline, width: 1),
     ),
     builder: (sheetCtx) => SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(22, 18, 22, 24),
+        padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, Msg.s5),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(children: [
               ZineIconBadge(icon: zineSourceIcon(sourceApp), color: zineSourceColor(sourceApp), size: 40),
-              const SizedBox(width: 12),
+              const SizedBox(width: Msg.s3),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(title, style: ZineText.cardTitle()),
+                  Text(title, style: _cardTitle),
                   const SizedBox(height: 2),
-                  Text(st.label.toUpperCase(), style: ZineText.kicker(size: 10.5)),
+                  Text(st.label, style: ADText.sectionLabel()),
                 ]),
               ),
               if (status != null) zineStatusSticker(status),
             ]),
-            const SizedBox(height: 16),
-            _row(PhosphorIcons.calendarBlank(PhosphorIconsStyle.bold), fmtDate(startsAt)),
-            _row(PhosphorIcons.clock(PhosphorIconsStyle.bold), '${fmtRange(startsAt, endsAt)} · ${fmtTimeBoth(startsAt)}'),
+            const SizedBox(height: Msg.s4),
+            _row(PhosphorIcons.calendarBlank(PhosphorIconsStyle.regular), fmtDate(startsAt)),
+            _row(PhosphorIcons.clock(PhosphorIconsStyle.regular), '${fmtRange(startsAt, endsAt)} · ${fmtTimeBoth(startsAt)}'),
             if (counterpart != null && counterpart.isNotEmpty)
-              _row(PhosphorIcons.user(PhosphorIconsStyle.bold), counterpart),
+              _row(PhosphorIcons.user(PhosphorIconsStyle.regular), counterpart),
             if ((priceCoins ?? 0) > 0)
-              _row(PhosphorIcons.coins(PhosphorIconsStyle.bold),
+              _row(PhosphorIcons.coins(PhosphorIconsStyle.regular),
                   '\$${((priceCoins!) / 100).toStringAsFixed(2)}', money: true),
-            const SizedBox(height: 16),
+            const SizedBox(height: Msg.s4),
             // Phase 7 — join the delivered session (room opens 10 min early;
             // rejoin within the slot always works — same order, new token).
             if (bookingId != null && status == 'confirmed' &&
                 DateTime.now().millisecondsSinceEpoch > startsAt - 10 * 60000 &&
                 DateTime.now().millisecondsSinceEpoch < endsAt + 2 * 60000)
               Padding(
-                padding: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.only(bottom: Msg.s3),
                 child: ZineButton(
                   label: DateTime.now().millisecondsSinceEpoch >= startsAt ? 'Join session' : 'Join (starts soon)',
                   fullWidth: true,
@@ -124,7 +139,7 @@ Future<void> showBookingCard(
                     label: 'New time',
                     variant: ZineButtonVariant.ghost,
                     fontSize: 16,
-                    icon: PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold),
+                    icon: PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.regular),
                     trailingIcon: false,
                     onPressed: () async {
                       Navigator.pop(sheetCtx);
@@ -133,32 +148,33 @@ Future<void> showBookingCard(
                     },
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: Msg.s3),
                 Expanded(
                   child: ZineButton(
                     label: 'Cancel',
                     variant: ZineButtonVariant.coral,
                     fontSize: 16,
-                    icon: PhosphorIcons.xCircle(PhosphorIconsStyle.bold),
+                    icon: PhosphorIcons.xCircle(PhosphorIconsStyle.regular),
                     trailingIcon: false,
                     onPressed: () async {
                       final sure = await showDialog<bool>(
                         context: sheetCtx,
                         builder: (d) => AlertDialog(
-                          backgroundColor: Zine.card,
+                          backgroundColor: AD.card,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(Zine.r),
-                            side: const BorderSide(color: Zine.ink, width: Zine.bw),
+                            borderRadius: Msg.brLg,
+                            side: const BorderSide(color: AD.borderControl, width: 1),
                           ),
-                          title: Text('Cancel this booking?', style: ZineText.cardTitle()),
+                          title: Text('Cancel this booking?', style: _cardTitle),
                           content: Text(
                             'Refund follows the rules: ≥24h before — 100%; later — 50%. Creators always refund 100%.',
-                            style: ZineText.sub(size: 14),
+                            style: ADText.preview().copyWith(fontSize: 14, height: 1.42),
                           ),
                           actions: [
                             TextButton(
                               onPressed: () => Navigator.pop(d, false),
-                              child: Text('Keep it', style: ZineText.link()),
+                              child: Text('Keep it',
+                                  style: ADText.rowName(c: Msg.accent).copyWith(fontSize: 13)),
                             ),
                             ZineButton(
                               label: 'Cancel booking',
@@ -190,15 +206,15 @@ Future<void> showBookingCard(
 }
 
 Widget _row(IconData icon, String text, {bool money = false}) => Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
+      padding: const EdgeInsets.symmetric(vertical: Msg.s1),
       child: Row(children: [
-        PhosphorIcon(icon, size: 18, color: Zine.inkSoft),
-        const SizedBox(width: 10),
+        PhosphorIcon(icon, size: 18, color: AD.textSecondary),
+        const SizedBox(width: Msg.s3),
         Expanded(
           child: Text(text,
               style: money
-                  ? ZineText.value(size: 15, color: Zine.mintInk, weight: FontWeight.w900)
-                  : ZineText.value(size: 14.5, weight: FontWeight.w700)),
+                  ? ADText.rowName(c: AD.online).copyWith(fontSize: 15, fontWeight: FontWeight.w700)
+                  : ADText.rowName().copyWith(fontSize: 15)),
         ),
       ]),
     );
@@ -236,16 +252,16 @@ class _PendingProposalBannerState extends State<_PendingProposalBanner> {
     final p = _pending!;
     final ns = (p['new_start'] as num).toInt();
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: Msg.s3),
       child: ZineCard(
-        radius: Zine.rSm,
-        padding: const EdgeInsets.all(14),
+        radius: Msg.rLg,
+        padding: const EdgeInsets.all(Msg.s4),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           const ZineSticker('New time proposed', kind: ZineStickerKind.hint),
-          const SizedBox(height: 8),
+          const SizedBox(height: Msg.s2),
           Text('${fmtDate(ns)} ${fmtTimeBoth(ns)}',
-              style: ZineText.value(size: 14.5, weight: FontWeight.w800)),
-          const SizedBox(height: 12),
+              style: ADText.rowName().copyWith(fontSize: 15)),
+          const SizedBox(height: Msg.s3),
           Row(children: [
             Expanded(
               child: ZineButton(
@@ -255,7 +271,7 @@ class _PendingProposalBannerState extends State<_PendingProposalBanner> {
                 onPressed: () => _respond(true),
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: Msg.s3),
             Expanded(
               child: ZineButton(
                 label: 'Decline',
@@ -275,7 +291,7 @@ class _PendingProposalBannerState extends State<_PendingProposalBanner> {
     if (!mounted) return;
     setState(() => _pending = null);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(r['ok'] == true ? (accept ? 'Rescheduled ✅' : 'Declined — original time stands') : 'Failed: ${r['error'] ?? r['conflictWith'] ?? 'unknown'}'),
+      content: Text(r['ok'] == true ? (accept ? 'Rescheduled' : 'Declined — original time stands') : 'Failed: ${r['error'] ?? r['conflictWith'] ?? 'unknown'}'),
     ));
     widget.onChanged?.call();
   }
@@ -296,10 +312,10 @@ Future<void> showReschedulePicker(BuildContext context, {required String booking
   await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: Zine.paper,
+    backgroundColor: AD.overlaySheet,
     shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      side: BorderSide(color: Zine.ink, width: Zine.bw),
+      borderRadius: Msg.brSheetTop,
+      side: BorderSide(color: AD.borderHairline, width: 1),
     ),
     builder: (sheetCtx) => _SlotPickerSheet(bookingId: bookingId, dateStr: dateStr, amCreator: amCreator),
   );
@@ -341,27 +357,28 @@ class _SlotPickerSheetState extends State<_SlotPickerSheet> {
   Widget build(BuildContext context) {
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.all(22),
+        padding: const EdgeInsets.all(Msg.s5),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Pick a new time', style: ZineText.cardTitle()),
-          const SizedBox(height: 4),
-          Text(widget.dateStr, style: ZineText.kicker()),
-          const SizedBox(height: 14),
+          Text('Pick a new time', style: _cardTitle),
+          const SizedBox(height: Msg.s1),
+          Text(widget.dateStr, style: ADText.sectionLabel()),
+          const SizedBox(height: Msg.s4),
           if (_error != null) ZineErrorMsg('Could not load slots: $_error'),
           if (_slots == null && _error == null)
-            const Center(child: Padding(padding: EdgeInsets.all(24),
-                child: CircularProgressIndicator(color: Zine.blueInk))),
+            const Center(child: Padding(padding: EdgeInsets.all(Msg.s5),
+                child: CircularProgressIndicator(color: Msg.accent))),
           if (_slots != null && _slots!.isEmpty)
             Padding(
-              padding: const EdgeInsets.all(8),
-              child: Text('The creator has no offered hours on this day.', style: ZineText.sub(size: 14)),
+              padding: const EdgeInsets.all(Msg.s2),
+              child: Text('The creator has no offered hours on this day.',
+                  style: ADText.preview().copyWith(fontSize: 14, height: 1.42)),
             ),
           if (_slots != null && _slots!.isNotEmpty)
             ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 380),
               child: SingleChildScrollView(
                 child: Wrap(
-                  spacing: 9, runSpacing: 9,
+                  spacing: Msg.s2, runSpacing: Msg.s2,
                   children: _slots!.map((s) {
                     final ok = s['available'] == true;
                     final start = (s['start'] as num).toInt();
@@ -377,20 +394,24 @@ class _SlotPickerSheetState extends State<_SlotPickerSheet> {
                       child: ok
                           ? ZinePressable(
                               onTap: () => _propose(start, end),
-                              radius: BorderRadius.circular(100),
-                              boxShadow: Zine.shadowXs,
-                              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
-                              child: Text(fmtRange(start, end), style: ZineText.tag(size: 12)),
+                              // A time slot IS a chip, so a pill is right here.
+                              radius: Msg.brPill,
+                              boxShadow: Msg.none,
+                              padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
+                              child: Text(fmtRange(start, end),
+                                  style: ADText.tabLabel().copyWith(fontSize: 12)),
                             )
-                          // Occupied: ghost pill — muted border, paper fill, no shadow.
+                          // Occupied: ghost pill — dimmer than the card surface,
+                          // hairline border, muted ink. Never hidden.
                           : Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+                              padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
                               decoration: BoxDecoration(
-                                color: Zine.paper2,
-                                borderRadius: BorderRadius.circular(100),
-                                border: Border.all(color: Zine.inkMute, width: 2),
+                                color: AD.headerFooter,
+                                borderRadius: Msg.brPill,
+                                border: Border.all(color: AD.borderHairline, width: 1),
                               ),
-                              child: Text(fmtRange(start, end), style: ZineText.tag(size: 12, color: Zine.inkMute)),
+                              child: Text(fmtRange(start, end),
+                                  style: ADText.tabLabel(c: AD.textTertiary).copyWith(fontSize: 12)),
                             ),
                     );
                   }).toList(),

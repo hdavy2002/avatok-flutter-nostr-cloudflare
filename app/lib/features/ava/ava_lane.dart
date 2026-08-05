@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// AvaLaneBubble (Ava Copilot Phase A — plan §5 D3 / §6).
 ///
@@ -53,14 +54,14 @@ class AvaLaneBubble extends StatelessWidget {
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
+        margin: const EdgeInsets.only(bottom: Msg.s2),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         constraints: BoxConstraints(
             maxWidth: MediaQuery.of(context).size.width * 0.78),
         decoration: BoxDecoration(
           color: fill,
-          border: Border.all(color: Zine.ink, width: 2),
-          boxShadow: Zine.shadowXs,
+          border: Border.all(color: AD.borderControl, width: 1),
+          boxShadow: Msg.none,
           borderRadius: const BorderRadius.only(
             topLeft: Radius.circular(16),
             topRight: Radius.circular(16),
@@ -72,23 +73,29 @@ class AvaLaneBubble extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Author row: "Ava ✨" + (guardian shield) + info affordance.
+            // Author row: "Ava" + sparkle + (guardian shield) + info affordance.
             Padding(
               padding: const EdgeInsets.only(bottom: 3),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Text('Ava ✨', style: ZineText.tag(size: 10, color: edge)),
+                Text('Ava',
+                    style: ADText.tabLabel(c: edge).copyWith(fontSize: 11)),
+                const SizedBox(width: Msg.s1),
+                PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
+                    size: 11, color: edge),
                 if (_isGuardian) ...[
-                  const SizedBox(width: 5),
+                  const SizedBox(width: Msg.s1),
                   PhosphorIcon(PhosphorIcons.warning(PhosphorIconsStyle.fill),
                       size: 12, color: safety),
                   const SizedBox(width: 3),
-                  Text('SAFETY', style: ZineText.tag(size: 9, color: safety)),
+                  Text('Safety',
+                      style: ADText.tabLabel(c: safety).copyWith(fontSize: 11)),
                 ],
                 const SizedBox(width: 6),
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: () => showAvaLaneInfo(context),
-                  child: PhosphorIcon(PhosphorIcons.info(PhosphorIconsStyle.bold),
+                  child: PhosphorIcon(
+                      PhosphorIcons.info(PhosphorIconsStyle.regular),
                       size: 13, color: edge),
                 ),
               ]),
@@ -99,20 +106,26 @@ class AvaLaneBubble extends StatelessWidget {
                 margin: const EdgeInsets.only(bottom: 6),
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: safety.withOpacity(0.10),
-                  borderRadius: BorderRadius.circular(8),
+                  color: safety.withValues(alpha: 0.10),
+                  borderRadius: Msg.brSm,
                   border: Border.all(color: safety, width: 1.2),
                 ),
                 child: Text(
                   _guardianLabel(),
-                  style: ZineText.tag(size: 9.5, color: safety),
+                  // Dark ink: this strip sits on the PALE orchid bubble, not on
+                  // the near-black page.
+                  style: ADText.statCaption(c: safety),
                 ),
               ),
-            Text(text, style: ZineText.value(size: 15, color: Zine.ink)),
+            // [UI-ZINE-DARK-1] `Zine.ink` here was dark text on the PALE orchid
+            // bubble fill — mapping it to AD.textPrimary (white) would have made
+            // the message body invisible. AD.bubbleInInk is the ink the dark
+            // system already uses for its pale lilac incoming bubble.
+            Text(text, style: ADText.bubbleBody(c: AD.bubbleInInk)),
             if (time.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 3),
-                child: Text(time, style: ZineText.sub(size: 10.5, color: edge)),
+                child: Text(time, style: ADText.bubbleMeta(c: edge)),
               ),
           ],
         ),
@@ -122,9 +135,7 @@ class AvaLaneBubble extends StatelessWidget {
 
   String _guardianLabel() {
     final cat = (guardian?['category'] ?? '').toString().trim();
-    return cat.isEmpty
-        ? 'HEADS-UP FROM AVA'
-        : 'HEADS-UP FROM AVA · ${cat.toUpperCase()}';
+    return cat.isEmpty ? 'Heads-up from Ava' : 'Heads-up from Ava · $cat';
   }
 }
 
@@ -133,12 +144,11 @@ class AvaLaneBubble extends StatelessWidget {
 void showAvaLaneInfo(BuildContext context) {
   showModalBottomSheet<void>(
     context: context,
-    backgroundColor: Zine.paper,
-    shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+    backgroundColor: AD.overlaySheet,
+    shape: const RoundedRectangleBorder(borderRadius: Msg.brSheetTop),
     builder: (ctx) => SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, Msg.s5),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Container(
@@ -146,24 +156,29 @@ void showAvaLaneInfo(BuildContext context) {
               decoration: BoxDecoration(
                 color: AvaLaneBubble.fill,
                 shape: BoxShape.circle,
-                border: Border.all(color: Zine.ink, width: 2),
+                border: Border.all(color: AD.borderControl, width: 1),
               ),
               child: PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
                   size: 18, color: AvaLaneBubble.accent),
             ),
-            const SizedBox(width: 12),
-            Text('Ava ✨', style: ZineText.cardTitle(size: 18)),
+            const SizedBox(width: Msg.s3),
+            Text('Ava', style: ADText.threadName().copyWith(fontSize: 18)),
+            const SizedBox(width: Msg.s1),
+            PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
+                size: 15, color: AvaLaneBubble.accent),
           ]),
-          const SizedBox(height: 14),
+          const SizedBox(height: Msg.s4),
+          // Sheet copy sits on AD.overlaySheet (near-black) — white ink here,
+          // unlike the bubble body above which sits on the pale orchid fill.
           Text(
             "I'm Ava, your AI assistant. Only you can see this conversation.",
-            style: ZineText.value(size: 15, color: Zine.ink),
+            style: ADText.bubbleBody(c: AD.textPrimary),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: Msg.s2),
           Text(
             'Ava replies here in your private lane — they are never sent to the '
             'other person in this chat.',
-            style: ZineText.sub(size: 13, color: Zine.inkMute),
+            style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13),
           ),
         ]),
       ),

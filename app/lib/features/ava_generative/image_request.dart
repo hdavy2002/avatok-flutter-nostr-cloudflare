@@ -19,9 +19,16 @@ library;
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'image_tool.dart';
+
+/// Ava's badge accent. [UI-ZINE-DARK-1] Replaces the pale `Zine.lilac`, which
+/// was a near-WHITE poster fill and read as a bright blob on the near-black
+/// sheet. The dark system's lilac family `solid` is dark enough that
+/// `ZineIconBadge` resolves its glyph to white. Not `const` — it's a lookup.
+final Color _avaAccent = AD.familyByName('lilac').solid;
 
 class ImageRequestSheet extends StatefulWidget {
   /// Client-local conversation key ('1:<peerUid>' | 'g:<gid>') the image lands in.
@@ -48,10 +55,9 @@ class ImageRequestSheet extends StatefulWidget {
   }) {
     return showModalBottomSheet<void>(
       context: context,
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.overlaySheet,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      shape: const RoundedRectangleBorder(borderRadius: Msg.brSheetTop),
       builder: (_) => Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
         child: ImageRequestSheet(
@@ -122,20 +128,24 @@ class _ImageRequestSheetState extends State<ImageRequestSheet> {
             Row(children: [
               ZineIconBadge(
                   icon: PhosphorIcons.magicWand(PhosphorIconsStyle.fill),
-                  color: Zine.lilac,
+                  color: _avaAccent,
                   size: 38),
-              const SizedBox(width: 12),
-              Expanded(child: Text(title, style: ZineText.cardTitle(size: 18))),
+              const SizedBox(width: Msg.s3),
+              Expanded(
+                  child: Text(title,
+                      style: ADText.threadName().copyWith(fontSize: 18))),
             ]),
-            const SizedBox(height: 6),
+            const SizedBox(height: Msg.s1),
             if (widget.chatLabel != null)
-              Text('Posts into ${widget.chatLabel}', style: ZineText.sub(size: 12.5)),
-            const SizedBox(height: 14),
+              Text('Posts into ${widget.chatLabel}',
+                  style: ADText.preview(c: AD.textSecondary)
+                      .copyWith(fontSize: 12)),
+            const SizedBox(height: Msg.s4),
             Container(
               decoration: BoxDecoration(
-                color: Zine.card,
-                borderRadius: BorderRadius.circular(16),
-                border: Zine.border,
+                color: AD.card,
+                borderRadius: Msg.brLg,
+                border: Border.all(color: AD.borderControl, width: 1),
               ),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
               child: TextField(
@@ -145,22 +155,25 @@ class _ImageRequestSheetState extends State<ImageRequestSheet> {
                 maxLines: 5,
                 maxLength: 2000,
                 textInputAction: TextInputAction.newline,
-                style: ZineText.input(size: 15),
+                cursorColor: Msg.accent,
+                style: ADText.bubbleBody(c: AD.textPrimary)
+                    .copyWith(letterSpacing: -0.18),
                 decoration: InputDecoration(
                   border: InputBorder.none,
                   counterText: '',
                   hintText: _isEdit
                       ? 'e.g. make it blue, add a sunset…'
                       : 'e.g. a minimalist logo for a coffee brand…',
-                  hintStyle: ZineText.sub(size: 14.5),
+                  hintStyle: ADText.bubbleBody(c: AD.textFaint),
                 ),
               ),
             ),
             if (_error != null) ...[
-              const SizedBox(height: 10),
-              Text(_error!, style: ZineText.sub(size: 13, color: Zine.coral)),
+              const SizedBox(height: Msg.s3),
+              Text(_error!,
+                  style: ADText.preview(c: Msg.error).copyWith(fontSize: 13)),
             ],
-            const SizedBox(height: 16),
+            const SizedBox(height: Msg.s4),
             // Gating is server-side (subscription allowance). Just kick off the
             // request; the worker allows it (within the daily grant) or returns an
             // upgrade message we surface via [_error].
@@ -176,12 +189,12 @@ class _ImageRequestSheetState extends State<ImageRequestSheet> {
               trailingIcon: false,
               onPressed: _sending ? null : _kickoff,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: Msg.s2),
             Text(
               'Your plan includes a set number of AI images per day (Free: 3). '
               'When you run out, Ava will let you know. The image arrives in the '
               'chat when it is ready — you can keep chatting.',
-              style: ZineText.sub(size: 12),
+              style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12),
             ),
           ],
         ),

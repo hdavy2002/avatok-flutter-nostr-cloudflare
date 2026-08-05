@@ -12,11 +12,21 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/analytics.dart';
 import '../../../core/remote_config.dart';
-import '../../../core/ui/zine.dart';
+import '../../../core/ui/avatok_dark.dart';
+import '../../../core/ui/messenger_theme.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../../../core/wallet_entitlement.dart';
 import '../../subscribe/subscribe_screen.dart';
 import 'voice_call_screen.dart';
+
+// [UI-ZINE-DARK-1] Dial-orb gradient stops. FILL/INK PAIR: the orb used to be
+// the PALE `Zine.mint` → `Zine.blue` poster gradient carrying a near-BLACK
+// `Zine.ink` glyph. On the near-black page those pale stops read as a lamp, and
+// mapping the ink to white would have erased the glyph. Both sides moved: the
+// dark system's saturated family `solid` variants + a white glyph. Not `const`
+// — `familyByName` is a lookup, so the gradient/shadow lose their `const` too.
+final Color _orbFrom = AD.familyByName('mint').solid;
+final Color _orbTo = AD.familyByName('sky').solid;
 
 class AiVoiceAgentScreen extends StatefulWidget {
   const AiVoiceAgentScreen({super.key});
@@ -78,7 +88,7 @@ class _AiVoiceAgentScreenState extends State<AiVoiceAgentScreen> {
     final walletUnverified = _walletState == WalletEntitlementState.unavailable;
     final locked = unavailable || _walletState == WalletEntitlementState.free;
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       appBar: ZineAppBar(title: 'AvaBrain Voice', markWord: 'Voice', tag: 'AI'),
       body: ZinePaper(
         child: SafeArea(
@@ -97,23 +107,29 @@ class _AiVoiceAgentScreenState extends State<AiVoiceAgentScreen> {
                   width: 200, height: 200,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    gradient: const RadialGradient(colors: [Zine.mint, Zine.blue]),
-                    border: Border.all(color: Zine.ink, width: Zine.bwLg),
-                    boxShadow: const [
-                      BoxShadow(color: Zine.mint, blurRadius: 40, spreadRadius: 6),
-                      BoxShadow(color: Zine.ink, offset: Offset(6, 7)),
+                    gradient: RadialGradient(colors: [_orbFrom, _orbTo]),
+                    border: Border.all(color: AD.borderHairline, width: 1),
+                    boxShadow: [
+                      // The orb glow is the affordance here (this IS the dial
+                      // target), not a decorative halo behind a control. The
+                      // hard offset ink shadow under it was paper idiom — gone.
+                      BoxShadow(color: _orbFrom, blurRadius: 40, spreadRadius: 6),
                     ],
                   ),
-                  child: Icon(locked ? Icons.lock_rounded : Icons.phone_in_talk_rounded,
-                      size: 76, color: Zine.ink),
+                  child: PhosphorIcon(
+                      locked
+                          ? PhosphorIcons.lock(PhosphorIconsStyle.fill)
+                          : PhosphorIcons.phoneCall(PhosphorIconsStyle.fill),
+                      size: 76, color: Colors.white),
                 ),
               ),
             ),
-            const SizedBox(height: 28),
-            Text('Talk to AvaBrain', style: ZineText.value(size: 20)),
-            const SizedBox(height: 8),
+            const SizedBox(height: Msg.s5),
+            Text('Talk to AvaBrain',
+                style: ADText.threadName().copyWith(fontSize: 20)),
+            const SizedBox(height: Msg.s2),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 36),
+              padding: const EdgeInsets.symmetric(horizontal: Msg.s6),
               child: Text(
                 unavailable
                     ? 'Voice calling with Ava is currently unavailable. Please check '
@@ -129,12 +145,12 @@ class _AiVoiceAgentScreenState extends State<AiVoiceAgentScreen> {
                                 : 'Tap to call AvaBrain and have a hands-free conversation. It knows your '
                                     'name and answers in real time.',
                 textAlign: TextAlign.center,
-                style: ZineText.sub(size: 13.5),
+                style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14),
               ),
             ),
             const Spacer(),
             Padding(
-              padding: const EdgeInsets.only(bottom: 30),
+              padding: const EdgeInsets.only(bottom: Msg.s6),
               child: unavailable
                   ? ZineButton(
                       label: 'Unavailable',

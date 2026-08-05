@@ -10,7 +10,8 @@ import '../../core/api_backoff.dart';
 import '../../core/ava_log.dart';
 import '../../core/composer_ai.dart';
 import '../../core/config.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// AvaDocActions (Ava Copilot Phase A — plan §7; migrated to durable jobs by
 /// [AVA-DOC-ARTIFACT-1], Specs/ROOT-CAUSE-REPORT-RECURRING-ISSUES-2026-07-25.md
@@ -60,10 +61,21 @@ class AvaDocActions {
     }
     Widget item(IconData icon, String label, Future<void> Function() run) => ListTile(
           contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-          leading: Icon(icon, color: Zine.ink),
-          title: Text('$label ✨', style: ZineText.value(size: 15, color: Zine.ink)),
-          subtitle: Text('only you will see this',
-              style: ZineText.sub(size: 12, color: Zine.inkMute)),
+          leading: Icon(icon, color: AD.textPrimary),
+          // The trailing "✨" was emoji in user-facing copy — now a Phosphor
+          // sparkle beside the label.
+          title: Row(mainAxisSize: MainAxisSize.min, children: [
+            Flexible(
+              child: Text(label,
+                  overflow: TextOverflow.ellipsis,
+                  style: ADText.rowName(c: AD.textPrimary)),
+            ),
+            const SizedBox(width: Msg.s1),
+            PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
+                size: 13, color: Msg.accent),
+          ]),
+          subtitle: Text('Only you will see this',
+              style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12)),
           onTap: () {
             Navigator.pop(sheetContext);
             // ignore: unawaited_futures
@@ -71,9 +83,9 @@ class AvaDocActions {
           },
         );
     return <Widget>[
-      item(PhosphorIcons.sparkle(PhosphorIconsStyle.bold), 'Summarize',
+      item(PhosphorIcons.sparkle(PhosphorIconsStyle.regular), 'Summarize',
           () => summarize(threadContext, conv: conv, mediaRef: mediaRef, name: name, onOutcome: onOutcome)),
-      item(PhosphorIcons.translate(PhosphorIconsStyle.bold), 'Translate',
+      item(PhosphorIcons.translate(PhosphorIconsStyle.regular), 'Translate',
           () => translate(threadContext, conv: conv, mediaRef: mediaRef, name: name, onOutcome: onOutcome)),
     ];
   }
@@ -185,18 +197,18 @@ class AvaDocActions {
   static Future<ComposerLang?> _pickLanguage(BuildContext context) {
     return showModalBottomSheet<ComposerLang>(
       context: context,
-      backgroundColor: Zine.paper,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      backgroundColor: AD.overlaySheet,
+      shape: const RoundedRectangleBorder(borderRadius: Msg.brSheetTop),
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+            padding: const EdgeInsets.fromLTRB(20, Msg.s4, 20, Msg.s2),
             child: Row(children: [
-              PhosphorIcon(PhosphorIcons.translate(PhosphorIconsStyle.bold),
-                  size: 20, color: Zine.ink),
+              PhosphorIcon(PhosphorIcons.translate(PhosphorIconsStyle.regular),
+                  size: 20, color: AD.textPrimary),
               const SizedBox(width: 10),
-              Text('Translate into…', style: ZineText.cardTitle(size: 18)),
+              Text('Translate into…',
+                  style: ADText.threadName().copyWith(fontSize: 18)),
             ]),
           ),
           Flexible(
@@ -205,7 +217,9 @@ class AvaDocActions {
               children: [
                 for (final l in ComposerAi.languages)
                   ListTile(
-                    title: Text(l.label, style: ZineText.value(size: 16)),
+                    title: Text(l.label,
+                        style: ADText.rowName(c: AD.textPrimary)
+                            .copyWith(fontSize: 16)),
                     onTap: () => Navigator.pop(ctx, l),
                   ),
               ],
@@ -221,10 +235,10 @@ class AvaDocActions {
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: Zine.paper,
-        title: Text(title, style: ZineText.cardTitle(size: 17)),
+        backgroundColor: AD.popover,
+        title: Text(title, style: ADText.threadName().copyWith(fontSize: 17)),
         content: SingleChildScrollView(
-          child: Text(text, style: ZineText.value(size: 14.5, color: Zine.ink)),
+          child: Text(text, style: ADText.bubbleBody(c: AD.textPrimary)),
         ),
         actions: [
           TextButton(

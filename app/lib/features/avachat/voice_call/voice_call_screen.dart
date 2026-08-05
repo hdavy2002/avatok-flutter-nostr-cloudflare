@@ -16,7 +16,8 @@ import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/analytics.dart';
-import '../../../core/ui/zine.dart';
+import '../../../core/ui/avatok_dark.dart';
+import '../../../core/ui/messenger_theme.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../../wallet/wallet_screen.dart';
 import 'live_voice_controller.dart';
@@ -202,11 +203,19 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
     if (mounted) Navigator.of(context).pop();
   }
 
+  /// Orb fill per call state.
+  ///
+  /// [UI-ZINE-DARK-1] FILL/INK PAIR: these were the PALE poster colours
+  /// (`Zine.mint`/`lilac`/`coral`/`blue`) carrying a near-BLACK `Zine.ink`
+  /// glyph. Mapping the ink to `AD.textPrimary` (white) on those pale fills
+  /// would have made the glyph vanish. Both sides moved together: the fills are
+  /// now the dark system's SATURATED family `solid` variants and the glyph is
+  /// white — every pair clears the 3:1 graphical-object bar.
   Color _orbColor(CallState s) => switch (s) {
-        CallState.speaking => Zine.mint,
-        CallState.thinking => Zine.lilac,
-        CallState.error => Zine.coral,
-        _ => Zine.blue,
+        CallState.speaking => AD.familyByName('mint').solid,
+        CallState.thinking => AD.familyByName('lilac').solid,
+        CallState.error => AD.destructiveBg,
+        _ => AD.familyByName('sky').solid,
       };
 
   @override
@@ -219,7 +228,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
         _minimize();
       },
       child: Scaffold(
-        backgroundColor: Zine.paper,
+        backgroundColor: AD.bg,
         body: ZinePaper(
           child: SafeArea(
             child: Stack(children: [
@@ -227,17 +236,17 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
                 _topBar(),
                 const Spacer(),
                 _orb(),
-                const SizedBox(height: 28),
+                const SizedBox(height: Msg.s5),
                 _statusLine(),
-                const SizedBox(height: 18),
+                const SizedBox(height: Msg.s4),
                 _captions(),
                 const Spacer(),
                 Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                   _routeButton(),
-                  const SizedBox(width: 16),
+                  const SizedBox(width: Msg.s4),
                   _endButton(),
                 ]),
-                const SizedBox(height: 28),
+                const SizedBox(height: Msg.s5),
               ]),
               if (_needContinue) _continueOverlay(),
             ]),
@@ -250,32 +259,33 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
   // After 5 minutes the call pauses (no billing) and asks to keep going.
   Widget _continueOverlay() => Positioned.fill(
         child: Container(
-          color: Zine.ink.withValues(alpha: 0.45),
+          color: AD.scrim,
           alignment: Alignment.center,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 28),
+            padding: const EdgeInsets.symmetric(horizontal: Msg.s5),
             child: ZineCard(
-              radius: Zine.rSm,
               padding: const EdgeInsets.all(20),
-              boxShadow: Zine.shadowSm,
+              boxShadow: Msg.lift,
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 PhosphorIcon(PhosphorIcons.pauseCircle(PhosphorIconsStyle.fill),
-                    size: 40, color: Zine.lilac),
-                const SizedBox(height: 12),
-                Text('Still there?', style: ZineText.value(size: 18)),
-                const SizedBox(height: 6),
+                    size: 40, color: Msg.accent),
+                const SizedBox(height: Msg.s3),
+                Text('Still there?',
+                    style: ADText.threadName().copyWith(fontSize: 18)),
+                const SizedBox(height: Msg.s1),
                 Text(
                   "You've been talking with Ava for 5 minutes. Keep going?",
                   textAlign: TextAlign.center,
-                  style: ZineText.sub(size: 13),
+                  style: ADText.preview(c: AD.textSecondary)
+                      .copyWith(fontSize: 13),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: Msg.s2),
                 Text(
                   'Ending in ${_autoEnd}s…',
                   textAlign: TextAlign.center,
-                  style: ZineText.kicker(size: 11, color: Zine.coral),
+                  style: ADText.sectionLabel(c: Msg.error),
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: Msg.s4),
                 Row(children: [
                   Expanded(
                     child: ZineButton(
@@ -285,7 +295,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
                       onPressed: _end,
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: Msg.s3),
                   Expanded(
                     child: ZineButton(
                       label: 'Continue',
@@ -301,18 +311,19 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
       );
 
   Widget _topBar() => Padding(
-        padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
+        padding: const EdgeInsets.fromLTRB(18, Msg.s3, 18, 0),
         child: Row(children: [
+          // Forced `color:`/`boxShadow:` DROPPED — ZinePressable is already
+          // re-skinned dark and defaults to AD.card with no shadow.
           ZinePressable(
             onTap: _minimize,
-            color: Zine.card,
-            radius: BorderRadius.circular(100),
-            boxShadow: Zine.shadowSm,
+            radius: Msg.brPill, // a round icon button is genuinely round
             padding: const EdgeInsets.all(10),
-            child: PhosphorIcon(PhosphorIcons.caretDown(PhosphorIconsStyle.bold),
-                size: 18, color: Zine.ink),
+            child: PhosphorIcon(
+                PhosphorIcons.caretDown(PhosphorIconsStyle.regular),
+                size: 18, color: AD.textPrimary),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: Msg.s3),
           ZineMarkTitle(
             pre: 'Talking to ',
             mark: 'Ava',
@@ -323,19 +334,23 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
           const Spacer(),
           if (_started)
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: Msg.s3, vertical: Msg.s1),
               decoration: BoxDecoration(
-                color: Zine.card,
-                borderRadius: BorderRadius.circular(100),
-                border: Zine.border,
+                color: AD.card,
+                // A status pill IS one of the shapes Msg.rPill is reserved for.
+                borderRadius: Msg.brPill,
+                border: Border.all(color: AD.borderControl, width: 1),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                PhosphorIcon(PhosphorIcons.timer(PhosphorIconsStyle.bold),
-                    size: 14, color: _remaining <= 30 ? Zine.coral : Zine.inkSoft),
-                const SizedBox(width: 6),
+                PhosphorIcon(PhosphorIcons.timer(PhosphorIconsStyle.regular),
+                    size: 14,
+                    color: _remaining <= 30 ? Msg.error : AD.textSecondary),
+                const SizedBox(width: Msg.s1),
                 Text(_fmt(_remaining),
-                    style: ZineText.value(size: 13,
-                        color: _remaining <= 30 ? Zine.coral : Zine.ink)),
+                    style: ADText.rowName(
+                            c: _remaining <= 30 ? Msg.error : AD.textPrimary)
+                        .copyWith(fontSize: 13)),
               ]),
             ),
         ]),
@@ -366,22 +381,26 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
                         gradient: RadialGradient(
                           colors: [color, color.withValues(alpha: 0.6)],
                         ),
-                        border: Border.all(color: Zine.ink, width: Zine.bwLg),
+                        border: Border.all(color: AD.borderHairline, width: 1),
                         boxShadow: [
+                          // The orb's glow is kept on purpose: it IS the
+                          // affordance (it tells you Ava is speaking), not a
+                          // decorative halo behind a control. The hard offset
+                          // ink shadow that sat under it was pure paper idiom
+                          // and is gone.
                           BoxShadow(
                             color: color.withValues(alpha: glow),
                             blurRadius: 44, spreadRadius: 8,
                           ),
-                          const BoxShadow(color: Zine.ink, offset: Offset(6, 7)),
                         ],
                       ),
-                      child: Icon(
+                      child: PhosphorIcon(
                         st == CallState.speaking
-                            ? Icons.graphic_eq_rounded
+                            ? PhosphorIcons.waveform(PhosphorIconsStyle.fill)
                             : st == CallState.thinking
-                                ? Icons.more_horiz_rounded
-                                : Icons.mic_rounded,
-                        size: 64, color: Zine.ink,
+                                ? PhosphorIcons.dotsThree(PhosphorIconsStyle.fill)
+                                : PhosphorIcons.microphone(PhosphorIconsStyle.fill),
+                        size: 64, color: Colors.white,
                       ),
                     ),
                   ),
@@ -398,23 +417,24 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
         valueListenable: _call.status,
         builder: (context, s, _) => Text(
           s.isEmpty ? 'Listening…' : s,
-          style: ZineText.value(size: 16),
+          style: ADText.rowName().copyWith(fontSize: 16),
           textAlign: TextAlign.center,
         ),
       );
 
   Widget _captions() => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 26),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s5),
         child: Column(children: [
           ValueListenableBuilder<String>(
             valueListenable: _call.userCaption,
             builder: (context, t, _) => t.isEmpty
                 ? const SizedBox.shrink()
                 : Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.only(bottom: Msg.s3),
                     child: Text('“$t”',
                         textAlign: TextAlign.center,
-                        style: ZineText.sub(size: 13.5)),
+                        style: ADText.preview(c: AD.textSecondary)
+                            .copyWith(fontSize: 14)),
                   ),
           ),
           ValueListenableBuilder<String>(
@@ -423,23 +443,26 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
                 ? const SizedBox.shrink()
                 : Text(t,
                     textAlign: TextAlign.center,
-                    style: ZineText.value(size: 15)),
+                    style: ADText.rowName()),
           ),
         ]),
       );
 
   Widget _endButton() => ZinePressable(
         onTap: _end,
-        color: Zine.coral,
-        radius: BorderRadius.circular(100),
-        boxShadow: Zine.shadowSm,
-        padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 16),
+        color: AD.destructiveBg,
+        borderColor: AD.destructiveBg,
+        // A labelled button is NOT one of the shapes Msg.rPill is reserved for.
+        radius: Msg.brLg,
+        padding: const EdgeInsets.symmetric(
+            horizontal: Msg.s5, vertical: Msg.s4),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           PhosphorIcon(PhosphorIcons.phoneX(PhosphorIconsStyle.fill),
               color: Colors.white, size: 22),
-          const SizedBox(width: 10),
+          const SizedBox(width: Msg.s3),
           Text('End call',
-              style: ZineText.button(size: 16, color: Colors.white)),
+              style: ADText.rowName(c: Colors.white)
+                  .copyWith(fontSize: 16, height: 1.0)),
         ]),
       );
 
@@ -450,13 +473,17 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
         valueListenable: _call.speakerOn,
         builder: (context, on, _) => ZinePressable(
           onTap: () => _call.setSpeaker(!on),
-          color: on ? Zine.blue : Zine.card,
-          radius: BorderRadius.circular(100),
-          boxShadow: Zine.shadowSm,
-          padding: const EdgeInsets.all(16),
-          child: Icon(
-            on ? Icons.volume_up_rounded : Icons.phone_in_talk_rounded,
-            color: on ? Colors.white : Zine.ink, size: 24,
+          // Active = the single accent + white glyph, the same active-control
+          // pairing ZineChip/AdChip use everywhere else.
+          color: on ? Msg.accent : AD.card,
+          borderColor: on ? Msg.accent : AD.borderControl,
+          radius: Msg.brPill, // a round icon button is genuinely round
+          padding: const EdgeInsets.all(Msg.s4),
+          child: PhosphorIcon(
+            on
+                ? PhosphorIcons.speakerHigh(PhosphorIconsStyle.fill)
+                : PhosphorIcons.phoneCall(PhosphorIconsStyle.fill),
+            color: on ? Colors.white : AD.textPrimary, size: 24,
           ),
         ),
       );

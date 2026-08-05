@@ -11,7 +11,8 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/session_api.dart';
-import '../../core/theme.dart';
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../avalive/live_viewer_screen.dart';
 import 'consult_room_screen.dart';
@@ -123,54 +124,60 @@ class _PrejoinScreenState extends State<PrejoinScreen> {
     final startsAt = (_join?['starts_at'] as num?)?.toInt();
     final startsIn = startsAt != null ? startsAt - now : null;
     final verdict = _probe?.verdict;
-    final vColor = switch (verdict) { 'green' => Zine.mint, 'yellow' => Zine.lime, 'red' => Zine.coral, _ => Zine.paper2 };
+    final vColor = switch (verdict) {
+      'green' => AD.online,
+      'yellow' => AD.outgoingCall,
+      'red' => AD.destructiveBg,
+      _ => AD.card,
+    };
 
     return Scaffold(
       appBar: ZineAppBar(title: widget.title, showBack: Navigator.of(context).canPop()),
       body: ZinePaper(
         child: Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(Msg.s5),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            // cam preview — ink-bordered tile (video content stays).
+            // cam preview — hairline-bordered tile (video content stays).
             Expanded(
               child: Container(
                 clipBehavior: Clip.antiAlias,
                 decoration: BoxDecoration(
-                  color: _stream != null ? Colors.black : Zine.paper2,
-                  borderRadius: BorderRadius.circular(Zine.r),
-                  border: Zine.border,
-                  boxShadow: Zine.shadowSm,
+                  color: _stream != null ? Colors.black : AD.card,
+                  borderRadius: Msg.brLg,
+                  border: Border.all(color: AD.borderControl, width: 1),
+                  boxShadow: Msg.none,
                 ),
                 child: _stream != null
                     ? RTCVideoView(_renderer, mirror: true, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover)
-                    : Center(child: PhosphorIcon(PhosphorIcons.videoCameraSlash(PhosphorIconsStyle.bold), color: Zine.inkMute, size: 48)),
+                    : Center(child: PhosphorIcon(PhosphorIcons.videoCameraSlash(PhosphorIconsStyle.regular), color: AD.textTertiary, size: 48)),
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: Msg.s4),
             // mic level
             Row(children: [
-              PhosphorIcon(PhosphorIcons.microphone(PhosphorIconsStyle.bold), size: 20, color: Zine.ink),
-              const SizedBox(width: 10),
+              PhosphorIcon(PhosphorIcons.microphone(PhosphorIconsStyle.regular), size: 20, color: Msg.icon),
+              const SizedBox(width: Msg.s3),
               Expanded(
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(100),
+                  // A level meter track is a genuine pill.
+                  borderRadius: Msg.brPill,
                   child: LinearProgressIndicator(value: _stream != null ? .25 + _micLevel * .6 : 0, minHeight: 9,
-                      backgroundColor: Zine.paper2, color: Zine.blueInk),
+                      backgroundColor: AD.card, color: AD.primaryBadge),
                 ),
               ),
             ]),
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s4),
             // network verdict
             ZineCard(
-              radius: Zine.rSm,
-              boxShadow: Zine.shadowXs,
-              padding: const EdgeInsets.all(12),
+              radius: Msg.rLg,
+              boxShadow: Msg.none,
+              padding: const EdgeInsets.all(Msg.s3),
               child: Row(children: [
                 _probing
                     ? const SizedBox(width: 34, height: 34, child: Center(child: SizedBox(width: 18, height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2.4, color: Zine.blueInk))))
-                    : ZineIconBadge(icon: PhosphorIcons.wifiHigh(PhosphorIconsStyle.bold), color: vColor, size: 34),
-                const SizedBox(width: 11),
+                        child: CircularProgressIndicator(strokeWidth: 2.4, color: AD.primaryBadge))))
+                    : ZineIconBadge(icon: PhosphorIcons.wifiHigh(PhosphorIconsStyle.regular), color: vColor, size: 34),
+                const SizedBox(width: Msg.s3),
                 Expanded(
                   child: Text(
                     _probing
@@ -178,19 +185,20 @@ class _PrejoinScreenState extends State<PrejoinScreen> {
                         : _probe == null
                             ? 'Could not check the connection — joining may still work.'
                             : '${_probe!.tip}  (${_probe!.rttMs} ms · ${_probe!.kbps} kbps)',
-                    style: ZineText.sub(size: 13),
+                    style: ADText.preview().copyWith(fontSize: 13, height: 1.42),
                   ),
                 ),
               ]),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: Msg.s4),
             if (_error != null)
-              Padding(padding: const EdgeInsets.only(bottom: 12), child: ZineErrorMsg(_error!)),
+              Padding(padding: const EdgeInsets.only(bottom: Msg.s3), child: ZineErrorMsg(_error!)),
             if (_opensAt != null)
               Padding(
-                padding: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.only(bottom: Msg.s3),
                 child: Text('The room opens ${fmtIn(_opensAt! - now)} before the start.',
-                    textAlign: TextAlign.center, style: ZineText.sub(size: 13, color: Zine.inkMute)),
+                    textAlign: TextAlign.center,
+                    style: ADText.preview(c: AD.textTertiary).copyWith(fontSize: 13, height: 1.42)),
               ),
             ZineButton(
               fullWidth: true,

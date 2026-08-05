@@ -8,19 +8,29 @@
 // pop-ups (no Tokens to start / Tokens utilized mid-call) both offer an
 // in-call wallet top-up so translation can continue.
 //
-// Zine: AI = lilac. The pill is an ink-bordered card pill (lilac when active);
-// the billing notice is a mono sticker; sheets/dialogs live on paper.
+// [UI-ZINE-DARK-1] Dark v2. AI still reads as lilac, but it is now the dark
+// system's SATURATED lilac carrying WHITE ink — the old pale `Zine.lilac` chip
+// with near-black `Zine.ink` on it would have inverted into black-on-black.
+// Sheets/dialogs sit on `AD.overlaySheet` / `AD.popover`.
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/money_api.dart';
 import '../../core/remote_config.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'translation_api.dart';
 import 'translation_engine.dart';
 import 'translation_langs.dart';
+
+/// AI accent for this surface — the dark system's saturated lilac. Not `const`
+/// (`familyByName` is a lookup), so it can't sit in a `const` constructor.
+final Color _aiAccent = AD.familyByName('lilac').solid;
+
+/// Money/top-up accent (the coins badge).
+final Color _coinAccent = AD.familyByName('mint').solid;
 
 class TranslateOverlay extends StatefulWidget {
   final String context;          // consult | live | conference
@@ -111,19 +121,26 @@ class _TranslateOverlayState extends State<TranslateOverlay> {
     await showDialog<void>(
       context: context,
       builder: (dCtx) => AlertDialog(
-        backgroundColor: Zine.paper,
+        backgroundColor: AD.popover,
         shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(Zine.r),
-            side: const BorderSide(color: Zine.ink, width: Zine.bw)),
+            borderRadius: Msg.brLg,
+            side: const BorderSide(color: AD.borderControl, width: 1)),
         title: Row(children: [
-          ZineIconBadge(icon: PhosphorIcons.coins(PhosphorIconsStyle.bold), color: Zine.mint),
-          const SizedBox(width: 10),
-          Expanded(child: Text('Tokens needed', style: ZineText.cardTitle(size: 17))),
+          ZineIconBadge(
+              icon: PhosphorIcons.coins(PhosphorIconsStyle.fill),
+              color: _coinAccent),
+          const SizedBox(width: Msg.s3),
+          Expanded(
+              child: Text('Tokens needed',
+                  style: ADText.threadName().copyWith(fontSize: 17))),
         ]),
-        content: Text(message, style: ZineText.sub(size: 14.5)),
+        content: Text(message,
+            style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dCtx),
-              child: Text('NOT NOW', style: ZineText.tag(size: 12, color: Zine.inkSoft))),
+              child: Text('Not now',
+                  style: ADText.tabLabel(c: AD.textSecondary)
+                      .copyWith(fontSize: 13))),
           ZineButton(
             label: 'Top up wallet',
             fontSize: 16,
@@ -150,22 +167,24 @@ class _TranslateOverlayState extends State<TranslateOverlay> {
     int? cents = await showModalBottomSheet<int>(
       context: context, backgroundColor: Colors.transparent,
       builder: (sCtx) => Container(
-        decoration: BoxDecoration(
-          color: Zine.paper,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(Zine.r)),
-          border: const Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
+        decoration: const BoxDecoration(
+          color: AD.overlaySheet,
+          borderRadius: Msg.brSheetTop,
+          border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
         ),
-        padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + MediaQuery.of(sCtx).viewPadding.bottom),
+        padding: EdgeInsets.fromLTRB(20, Msg.s4, 20, 20 + MediaQuery.of(sCtx).viewPadding.bottom),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('Top up Tokens', style: ZineText.cardTitle()),
-          const SizedBox(height: 6),
-          const ZineSticker('\$3 PER HOUR · 5 TOKENS / MIN', kind: ZineStickerKind.hint),
-          const SizedBox(height: 14),
-          Wrap(spacing: 10, runSpacing: 10, children: [
+          Text('Top up Tokens',
+              style: ADText.threadName().copyWith(fontSize: 19)),
+          const SizedBox(height: Msg.s1),
+          const ZineSticker('\$3 per hour · 5 tokens / min',
+              kind: ZineStickerKind.hint),
+          const SizedBox(height: Msg.s4),
+          Wrap(spacing: Msg.s3, runSpacing: Msg.s3, children: [
             for (final usd in const [3, 5, 10, 20])
               ZineSticker(
                 '\$$usd',
-                kind: ZineStickerKind.ok, // lime = pay action on a paper sheet
+                kind: ZineStickerKind.ok, // the pay action
                 onTap: () => Navigator.pop(sCtx, usd * 100),
               ),
           ]),
@@ -185,16 +204,19 @@ class _TranslateOverlayState extends State<TranslateOverlay> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (dCtx) => AlertDialog(
-        backgroundColor: Zine.paper,
+        backgroundColor: AD.popover,
         shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(Zine.r),
-            side: const BorderSide(color: Zine.ink, width: Zine.bw)),
-        title: Text('Finish the top-up', style: ZineText.cardTitle(size: 17)),
+            borderRadius: Msg.brLg,
+            side: const BorderSide(color: AD.borderControl, width: 1)),
+        title: Text('Finish the top-up',
+            style: ADText.threadName().copyWith(fontSize: 17)),
         content: Text('Complete the payment in your browser, then come back and tap Done.',
-            style: ZineText.sub(size: 14.5)),
+            style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dCtx, false),
-              child: Text('CANCEL', style: ZineText.tag(size: 12, color: Zine.inkSoft))),
+              child: Text('Cancel',
+                  style: ADText.tabLabel(c: AD.textSecondary)
+                      .copyWith(fontSize: 13))),
           ZineButton(label: 'Done', fontSize: 16, onPressed: () => Navigator.pop(dCtx, true)),
         ],
       ),
@@ -215,47 +237,62 @@ class _TranslateOverlayState extends State<TranslateOverlay> {
     final lang = _engine.targetLang.value;
 
     final content = Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.end, children: [
-          // The "Translate" pill — ink-bordered card pill, lilac when active (AI).
+          // The "Translate" toggle chip — card surface, saturated lilac when
+          // active (AI). A toggle chip IS one of the shapes Msg.rPill covers.
+          //
+          // [UI-ZINE-DARK-1] INVERTED USE CAUGHT: both fills were LIGHT
+          // (`Zine.lilac` / `Zine.card`) and the glyph + label were near-BLACK
+          // `Zine.ink`. Straight token-swapping the ink to white would have put
+          // white on a near-white chip. Both fills went dark, and the ink went
+          // white — which clears 4.5:1 against AD.card AND against the lilac
+          // solid, so one ink colour serves both states.
           GestureDetector(
             onTap: _busy ? null : (active ? _stop : _openMenu),
             onLongPress: active ? _openMenu : null,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
               decoration: BoxDecoration(
-                color: active ? Zine.lilac : Zine.card,
-                borderRadius: BorderRadius.circular(100),
-                border: Border.all(color: Zine.ink, width: Zine.bw),
-                boxShadow: Zine.shadowXs,
+                color: active ? _aiAccent : AD.card,
+                borderRadius: Msg.brPill,
+                border: Border.all(
+                    color: active ? _aiAccent : AD.borderControl, width: 1),
+                // Floats over live video — Msg.lift is the one permitted shadow.
+                boxShadow: Msg.lift,
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 _busy || s == TranslationState.connecting
                     ? const SizedBox(width: 16, height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Zine.ink))
-                    : PhosphorIcon(PhosphorIcons.translate(PhosphorIconsStyle.bold), color: Zine.ink, size: 17),
-                const SizedBox(width: 6),
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: AD.textPrimary))
+                    : PhosphorIcon(
+                        PhosphorIcons.translate(PhosphorIconsStyle.regular),
+                        color: AD.textPrimary, size: 17),
+                const SizedBox(width: Msg.s1),
                 Text(
                   active ? '${translationLangLabel(lang ?? '')} · tap to stop' : 'Translate',
-                  style: ZineText.value(size: 13, color: Zine.ink, weight: FontWeight.w700),
+                  style: ADText.rowName(c: AD.textPrimary).copyWith(fontSize: 13),
                 ),
               ]),
             ),
           ),
           if (active)
             Padding(
-              padding: const EdgeInsets.only(top: 6),
+              padding: const EdgeInsets.only(top: Msg.s1),
               child: ValueListenableBuilder<int>(
                 valueListenable: _engine.billedMinutes,
                 builder: (_, min, __) => Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: Msg.s3, vertical: Msg.s1),
                   decoration: BoxDecoration(
-                    color: Zine.card,
-                    borderRadius: BorderRadius.circular(100),
-                    border: Border.all(color: Zine.ink, width: 2),
-                    boxShadow: Zine.shadowXs,
+                    color: AD.card,
+                    // A status badge IS one of the Msg.rPill shapes.
+                    borderRadius: Msg.brPill,
+                    border: Border.all(color: AD.borderControl, width: 1),
+                    boxShadow: Msg.lift,
                   ),
                   child: Text(
-                    '$min MIN · ${TranslationApi.quoteCoins(min)} TOKENS (\$3/H)',
-                    style: ZineText.tag(size: 10.5, color: Zine.inkSoft),
+                    '$min min · ${TranslationApi.quoteCoins(min)} tokens (\$3/h)',
+                    style: ADText.statCaption(c: AD.textSecondary),
                   ),
                 ),
               ),
@@ -289,44 +326,60 @@ class _LanguageSheetState extends State<_LanguageSheet> {
     return Container(
       height: MediaQuery.of(context).size.height * 0.65,
       decoration: const BoxDecoration(
-        color: Zine.paper,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(Zine.r)),
-        border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
+        color: AD.overlaySheet,
+        borderRadius: Msg.brSheetTop,
+        border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
       ),
-      padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+      padding: const EdgeInsets.fromLTRB(20, Msg.s4, 20, 0),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Center(child: Container(width: 36, height: 4, margin: const EdgeInsets.only(bottom: 12),
-            decoration: BoxDecoration(color: Zine.inkMute, borderRadius: BorderRadius.circular(2)))),
+        // The sheet drag handle is genuinely a pill.
+        Center(
+            child: Container(
+                width: 36, height: 4,
+                margin: const EdgeInsets.only(bottom: Msg.s3),
+                decoration: BoxDecoration(
+                    color: AD.textTertiary, borderRadius: Msg.brPill))),
         Row(children: [
-          ZineIconBadge(icon: PhosphorIcons.translate(PhosphorIconsStyle.bold), color: Zine.lilac),
-          const SizedBox(width: 10),
-          Expanded(child: Text('Select language', style: ZineText.cardTitle())),
+          ZineIconBadge(
+              icon: PhosphorIcons.translate(PhosphorIconsStyle.fill),
+              color: _aiAccent),
+          const SizedBox(width: Msg.s3),
+          Expanded(
+              child: Text('Select language',
+                  style: ADText.threadName().copyWith(fontSize: 19))),
         ]),
-        const SizedBox(height: 6),
+        const SizedBox(height: Msg.s1),
         Text('Incoming voice translated live · \$3 per hour in Tokens',
-            style: ZineText.sub(size: 13)),
-        const SizedBox(height: 10),
+            style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13)),
+        const SizedBox(height: Msg.s3),
         ZineField(
           controller: _search,
           hint: 'Search 70+ languages',
-          leadIcon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
+          leadIcon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.regular),
           onChanged: (v) => setState(() => _q = v.trim().toLowerCase()),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: Msg.s1),
         Expanded(
           child: ListView.builder(
             itemCount: list.length,
             itemBuilder: (_, i) {
               final l = list[i];
               final sel = l.code == widget.current;
+              // Selected row = raised surface + an accent check, the messenger
+              // idiom. It used to be a PALE lilac tile with near-black ink —
+              // keeping that fill on a dark sheet would have needed a second
+              // ink colour for one row. Weight (600 vs 400) carries the state.
               return ListTile(
                 dense: true,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Zine.rSm)),
-                tileColor: sel ? Zine.lilac : null,
+                shape: RoundedRectangleBorder(borderRadius: Msg.brMd),
+                tileColor: sel ? AD.cardHover : null,
                 title: Text(l.label,
-                    style: ZineText.value(size: 14.5, weight: sel ? FontWeight.w800 : FontWeight.w600)),
+                    style: sel
+                        ? ADText.rowName(c: AD.textPrimary)
+                        : ADText.bubbleBody(c: AD.textPrimary)),
                 trailing: sel
-                    ? PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold), color: Zine.ink, size: 18)
+                    ? PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.regular),
+                        color: Msg.accent, size: 18)
                     : null,
                 onTap: () => Navigator.pop(context, l.code),
               );

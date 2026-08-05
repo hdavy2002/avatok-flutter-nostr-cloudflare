@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/account_restore.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 
 /// Shown ONLY when the server couldn't be reached while checking the signed-in
@@ -32,37 +33,40 @@ class RestoreScreen extends StatelessWidget {
       body: ZinePaper(
         child: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+            padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s3, Msg.s5, Msg.s5),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-                Text('RECONNECTING', style: ZineText.kicker()),
+                Text('Reconnecting', style: ADText.sectionLabel()),
               ]),
               Expanded(
                 child: SingleChildScrollView(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                    const SizedBox(height: 30),
+                    const SizedBox(height: Msg.s6),
                     Center(
                       child: ZineCrest(
                         child: PhosphorIcon(
-                            PhosphorIcons.wifiSlash(PhosphorIconsStyle.bold),
-                            size: 46, color: Zine.ink),
+                            PhosphorIcons.wifiSlash(PhosphorIconsStyle.regular),
+                            // The crest disc is a saturated teal fill, so the
+                            // glyph on it is white — NOT a dark ink.
+                            size: 46, color: Colors.white),
                       ),
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: Msg.s4),
                     Text(
                       name.isNotEmpty ? 'One moment,\n$name' : 'Can’t reach\nAvaTOK',
-                      style: ZineText.hero(size: 34),
+                      style: ADText.appTitle().copyWith(
+                          fontSize: 34, height: 1.08, letterSpacing: -0.02 * 34),
                       textAlign: TextAlign.center,
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: Msg.s4),
                     Center(
                       child: ZineSticker(
                         'connection hiccup',
                         kind: ZineStickerKind.no,
-                        icon: PhosphorIcons.plugs(PhosphorIconsStyle.bold),
+                        icon: PhosphorIcons.plugs(PhosphorIconsStyle.regular),
                       ),
                     ),
-                    const SizedBox(height: 18),
+                    const SizedBox(height: Msg.s4),
                     Center(
                       child: ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 300),
@@ -71,12 +75,12 @@ class RestoreScreen extends StatelessWidget {
                           'connection and try again — everything on your account '
                           'comes back automatically once we’re connected. '
                           'We won’t set you up as a new user.',
-                          style: ZineText.sub(),
+                          style: ADText.preview().copyWith(fontSize: 15, height: 1.42),
                           textAlign: TextAlign.center,
                         ),
                       ),
                     ),
-                    const SizedBox(height: 22),
+                    const SizedBox(height: Msg.s5),
                   ]),
                 ),
               ),
@@ -87,16 +91,16 @@ class RestoreScreen extends StatelessWidget {
                 fontSize: 21,
                 onPressed: onRetry,
               ),
-              const SizedBox(height: 18),
-              Center(child: ZineLink('sign out', underline: Zine.coral, fontSize: 14, onTap: onSignOut)),
-              const SizedBox(height: 16),
+              const SizedBox(height: Msg.s4),
+              Center(child: ZineLink('sign out', underline: AD.danger, fontSize: 14, onTap: onSignOut)),
+              const SizedBox(height: Msg.s4),
               Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                 PhosphorIcon(PhosphorIcons.lockKey(PhosphorIconsStyle.fill),
-                    size: 14, color: Zine.blueInk),
-                const SizedBox(width: 8),
+                    size: 14, color: AD.iconNeutral),
+                const SizedBox(width: Msg.s2),
                 Flexible(
                   child: Text('your account is safe — nothing is lost',
-                      style: ZineText.kicker(), textAlign: TextAlign.center),
+                      style: ADText.sectionLabel(), textAlign: TextAlign.center),
                 ),
               ]),
             ]),

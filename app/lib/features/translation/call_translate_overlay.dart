@@ -14,6 +14,7 @@ import '../../core/ui/avatok_dark.dart';
 // no longer imported — this widget now renders entirely in the dark `AD` tokens
 // the rest of the call screen uses. `zine_widgets.dart` stays for
 // `ZinePressable`, which is the shared press primitive, not a palette.
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'call_translation_controller.dart';
 import 'call_translation_audio_bridge.dart';
@@ -472,8 +473,10 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
           onTap: preparing ? null : (active ? controller.stop : _pick),
           color: active ? AD.primaryBadge : AD.card,
           pressedColor: AD.primaryBadge,
-          radius: BorderRadius.circular(100),
-          boxShadow: const [],
+          // A round icon button is genuinely round. Same 56px circle as `_btn`
+          // in call_screen.dart — Msg.brPill is identical geometry, just named.
+          radius: Msg.brPill,
+          boxShadow: Msg.none,
           borderWidth: 1,
           borderColor: active ? AD.primaryBadge : AD.borderControl,
           child: SizedBox(
@@ -519,7 +522,8 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
             padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
             decoration: BoxDecoration(
               color: AD.card,
-              borderRadius: BorderRadius.circular(100),
+              // A chip IS one of the shapes Msg.rPill is reserved for.
+              borderRadius: Msg.brPill,
               border: Border.all(color: AD.borderControl, width: 1),
             ),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -653,11 +657,15 @@ class _CallTranslationLanguagePickerState extends State<_CallTranslationLanguage
                 isDense: true,
                 filled: true,
                 fillColor: AD.card,
-                prefixIcon: Icon(Icons.search, size: 20, color: AD.textSecondary),
+                prefixIcon: PhosphorIcon(
+                    PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.regular),
+                    size: 20, color: AD.textSecondary),
                 suffixIcon: _query.isEmpty
                     ? null
                     : IconButton(
-                        icon: Icon(Icons.close, size: 18, color: AD.textSecondary),
+                        icon: PhosphorIcon(
+                            PhosphorIcons.x(PhosphorIconsStyle.regular),
+                            size: 18, color: AD.textSecondary),
                         onPressed: () {
                           _search.clear();
                           setState(() => _query = '');
@@ -703,7 +711,9 @@ class _CallTranslationLanguagePickerState extends State<_CallTranslationLanguage
                         style: ADText.preview(),
                       ),
                       trailing: isCurrent
-                          ? Icon(Icons.check, size: 20, color: AD.primaryBadge)
+                          ? PhosphorIcon(
+                              PhosphorIcons.check(PhosphorIconsStyle.regular),
+                              size: 20, color: AD.primaryBadge)
                           : null,
                       onTap: () => Navigator.pop(context, item.code),
                     );

@@ -6,7 +6,8 @@ import '../../core/analytics.dart';
 import '../../core/subscribe_api.dart';
 import '../../core/team_api.dart';
 import '../../core/voice/google_voice.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../subscribe/subscribe_screen.dart';
 import 'team_inbox.dart';
@@ -73,53 +74,60 @@ class _TeamHomeScreenState extends State<TeamHomeScreen> {
     return showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: Zine.paper2,
+        backgroundColor: AD.popover,
         shape: RoundedRectangleBorder(
-            side: const BorderSide(color: Zine.ink, width: Zine.bw),
-            borderRadius: BorderRadius.circular(Zine.rSm)),
-        title: Text(title, style: ZineText.cardTitle(size: 17)),
+            side: const BorderSide(color: AD.borderControl, width: 1),
+            borderRadius: Msg.brLg),
+        title: Text(title, style: ADText.threadName().copyWith(fontSize: 17)),
         content: ZineField(controller: c, hint: hint, autofocus: true, textCapitalization: TextCapitalization.words),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: ZineText.value(color: Zine.inkSoft))),
-          TextButton(onPressed: () => Navigator.pop(ctx, c.text), child: Text('Save', style: ZineText.value(color: Zine.blueInk))),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: ADText.threadName(c: AD.textSecondary))),
+          TextButton(onPressed: () => Navigator.pop(ctx, c.text), child: Text('Save', style: ADText.threadName(c: Msg.accent))),
         ],
       ),
     );
   }
 
   void _toast(String m) => ScaffoldMessenger.of(context)
-      .showSnackBar(SnackBar(content: Text(m), backgroundColor: Zine.ink));
+      .showSnackBar(SnackBar(
+        content: Text(m, style: ADText.preview(c: AD.textPrimary)),
+        backgroundColor: AD.card,
+      ));
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       appBar: ZineAppBar(
-        title: 'Team', markWord: 'Team', tag: 'AI RECEPTIONIST',
+        title: 'Team', markWord: 'Team', tag: 'AI receptionist',
         actions: [
           if (_team != null)
             ZineBackButton(
-              icon: PhosphorIcons.trayArrowDown(PhosphorIconsStyle.bold),
+              icon: PhosphorIcons.trayArrowDown(PhosphorIconsStyle.regular),
               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TeamInboxScreen())),
             ),
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: Zine.ink))
+          ? const Center(child: CircularProgressIndicator(color: AD.primaryBadge))
           : _team == null
               ? _empty()
-              : RefreshIndicator(onRefresh: _load, color: Zine.ink, child: _dashboard()),
+              : RefreshIndicator(
+                  onRefresh: _load,
+                  color: AD.primaryBadge,
+                  backgroundColor: AD.card,
+                  child: _dashboard()),
     );
   }
 
   Widget _empty() => Center(
         child: Padding(
-          padding: const EdgeInsets.all(28),
+          padding: const EdgeInsets.all(Msg.s5),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             ZineEmptyState(
-                icon: PhosphorIcons.usersThree(PhosphorIconsStyle.bold),
+                icon: PhosphorIcons.usersThree(PhosphorIconsStyle.regular),
                 text: 'Create a team to set up an AI receptionist that greets callers and routes them to your staff.'),
-            const SizedBox(height: 20),
+            const SizedBox(height: Msg.s5),
             ZineButton(
                 label: 'Create team', icon: PhosphorIcons.plus(PhosphorIconsStyle.bold),
                 variant: ZineButtonVariant.blue, onPressed: _createTeam),
@@ -131,26 +139,26 @@ class _TeamHomeScreenState extends State<TeamHomeScreen> {
     final t = _team!;
     final isOwner = _role == 'owner';
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
+      padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s6),
       children: [
         // Team identity card
         ZineCard(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              ZineIconBadge(icon: PhosphorIcons.buildings(PhosphorIconsStyle.bold), color: Zine.blue),
-              const SizedBox(width: 12),
-              Expanded(child: Text(t.name, style: ZineText.cardTitle(size: 19))),
+              ZineIconBadge(icon: PhosphorIcons.buildings(PhosphorIconsStyle.regular), color: AD.newGroup),
+              const SizedBox(width: Msg.s3),
+              Expanded(child: Text(t.name, style: ADText.threadName().copyWith(fontSize: 19))),
               if (isOwner)
-                ZineBackButton(icon: PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold), onTap: _editTeam),
+                ZineBackButton(icon: PhosphorIcons.pencilSimple(PhosphorIconsStyle.regular), onTap: _editTeam),
             ]),
-            const SizedBox(height: 12),
-            _kv(PhosphorIcons.phone(PhosphorIconsStyle.bold), 'Team number', t.teamNumber == null || t.teamNumber!.isEmpty ? 'Not set — tap edit' : '+${t.teamNumber}'),
-            const SizedBox(height: 6),
-            _kv(PhosphorIcons.chatCircleText(PhosphorIconsStyle.bold), 'Greeting', t.greetingText.isEmpty ? "You've reached ${t.name}" : t.greetingText),
+            const SizedBox(height: Msg.s3),
+            _kv(PhosphorIcons.phone(PhosphorIconsStyle.regular), 'Team number', t.teamNumber == null || t.teamNumber!.isEmpty ? 'Not set — tap edit' : '+${t.teamNumber}'),
+            const SizedBox(height: Msg.s2),
+            _kv(PhosphorIcons.chatCircleText(PhosphorIconsStyle.regular), 'Greeting', t.greetingText.isEmpty ? "You've reached ${t.name}" : t.greetingText),
             if (t.teamNumber != null && t.teamNumber!.isNotEmpty) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: Msg.s3),
               ZineButton(
-                label: 'Preview caller menu', icon: PhosphorIcons.playCircle(PhosphorIconsStyle.bold),
+                label: 'Preview caller menu', icon: PhosphorIcons.playCircle(PhosphorIconsStyle.regular),
                 variant: ZineButtonVariant.ghost, fullWidth: true, fontSize: 14,
                 onPressed: () => Navigator.push(context, MaterialPageRoute(
                     builder: (_) => TeamIvrScreen(teamNumber: t.teamNumber!, preview: true))),
@@ -158,31 +166,31 @@ class _TeamHomeScreenState extends State<TeamHomeScreen> {
             ],
           ]),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s4),
         // Monthly pools
         ZineCard(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('THIS MONTH', style: ZineText.kicker()),
-            const SizedBox(height: 12),
-            _pool('Calls', 'Unlimited', 1, Zine.mint, unlimited: true),
-            const SizedBox(height: 12),
-            _pool('Receptionist minutes', '${t.receptMin.used} / ${t.receptMin.quota}', t.receptMin.fraction, Zine.blue),
-            const SizedBox(height: 12),
-            _pool('AI messages', '${t.aiMsg.used} / ${t.aiMsg.quota}', t.aiMsg.fraction, Zine.lilac),
+            Text('This month', style: ADText.sectionLabel()),
+            const SizedBox(height: Msg.s3),
+            _pool('Calls', 'Unlimited', 1, AD.online, unlimited: true),
+            const SizedBox(height: Msg.s3),
+            _pool('Receptionist minutes', '${t.receptMin.used} / ${t.receptMin.quota}', t.receptMin.fraction, AD.newGroup),
+            const SizedBox(height: Msg.s3),
+            _pool('AI messages', '${t.aiMsg.used} / ${t.aiMsg.quota}', t.aiMsg.fraction, AD.tabCalls),
           ]),
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: Msg.s4),
         // Staff / menu
         Row(children: [
-          Text('MENU · ${t.members.length}/${t.seatLimit}', style: ZineText.kicker()),
+          Text('Menu · ${t.members.length}/${t.seatLimit}', style: ADText.sectionLabel()),
           const Spacer(),
           if (isOwner) _addStaffAction(),
         ]),
-        const SizedBox(height: 10),
+        const SizedBox(height: Msg.s3),
         if (t.members.isEmpty)
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 24),
-            child: ZineEmptyState(icon: PhosphorIcons.listNumbers(PhosphorIconsStyle.bold), text: 'Add staff to build your "press 1, press 2" menu.'),
+            padding: const EdgeInsets.symmetric(vertical: Msg.s5),
+            child: ZineEmptyState(icon: PhosphorIcons.listNumbers(PhosphorIconsStyle.regular), text: 'Add staff to build your "press 1, press 2" menu.'),
           )
         else
           ...t.members.map((m) => _memberTile(m, isOwner)),
@@ -191,12 +199,12 @@ class _TeamHomeScreenState extends State<TeamHomeScreen> {
   }
 
   Widget _kv(IconData icon, String k, String v) => Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        PhosphorIcon(icon, size: 16, color: Zine.inkSoft),
-        const SizedBox(width: 8),
+        PhosphorIcon(icon, size: 16, color: AD.textSecondary),
+        const SizedBox(width: Msg.s2),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(k.toUpperCase(), style: ZineText.tag(size: 9.5, color: Zine.inkMute)),
-            Text(v, style: ZineText.value(size: 14)),
+            Text(k, style: ADText.statCaption()),
+            Text(v, style: ADText.preview(c: AD.textPrimary)),
           ]),
         ),
       ]);
@@ -204,16 +212,19 @@ class _TeamHomeScreenState extends State<TeamHomeScreen> {
   Widget _pool(String label, String value, double frac, Color color, {bool unlimited = false}) =>
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Expanded(child: Text(label, style: ZineText.value(size: 13.5))),
-          Text(value, style: ZineText.tag(size: 12, color: Zine.inkSoft)),
+          Expanded(child: Text(label, style: ADText.rowName().copyWith(fontSize: 14))),
+          Text(value, style: ADText.timestamp(c: AD.textSecondary)),
         ]),
-        const SizedBox(height: 6),
+        const SizedBox(height: Msg.s2),
         ClipRRect(
-          borderRadius: BorderRadius.circular(100),
+          // A progress track is a genuine pill.
+          borderRadius: Msg.brPill,
           child: LinearProgressIndicator(
             value: unlimited ? 1 : frac,
             minHeight: 8,
-            backgroundColor: Zine.card,
+            // Track sits ON AD.card, so it has to be a step darker than the card
+            // itself or the bar reads as a floating sliver with no groove.
+            backgroundColor: AD.borderHairline,
             valueColor: AlwaysStoppedAnimation(color),
           ),
         ),
@@ -221,31 +232,32 @@ class _TeamHomeScreenState extends State<TeamHomeScreen> {
 
   Widget _memberTile(TeamMember m, bool isOwner) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: Msg.s3),
       child: ZinePressable(
         onTap: isOwner ? () => _editMember(m) : null,
-        radius: BorderRadius.circular(Zine.rSm),
-        boxShadow: Zine.shadowXs,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        radius: Msg.brMd,
+        boxShadow: Msg.none,
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
         child: Row(children: [
-          // slot digit
+          // Slot digit. Accent sits on the ring + numeral, not as a fill — white
+          // on AD.primaryBadge measures ~2.6:1, which is unreadable at 16px.
           Container(
             width: 34, height: 34,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: Zine.lime, shape: BoxShape.circle,
-              border: Border.all(color: Zine.ink, width: Zine.bw),
+              color: AD.bg, shape: BoxShape.circle,
+              border: Border.all(color: AD.primaryBadge, width: 1),
             ),
-            child: Text('${m.slot}', style: ZineText.cardTitle(size: 16)),
+            child: Text('${m.slot}', style: ADText.threadName(c: AD.primaryBadge)),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: Msg.s3),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(m.roleLabel, style: ZineText.cardTitle(size: 15)),
+              Text(m.roleLabel, style: ADText.rowName()),
               const SizedBox(height: 1),
               Text('${m.displayName} · +${m.memberNumber}',
                   maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: ZineText.tag(size: 11, color: Zine.inkSoft)),
+                  style: ADText.statCaption(c: AD.textSecondary)),
             ]),
           ),
           _statusPill(m.inviteStatus),
@@ -254,19 +266,25 @@ class _TeamHomeScreenState extends State<TeamHomeScreen> {
     );
   }
 
+  // Status is carried by the LABEL colour on a neutral card fill. The light
+  // system paired a pale mint fill with dark mint ink; the dark counterpart of
+  // that fill (AD.online) under white text is ~2.9:1, so the colour moved to
+  // the text instead.
   Widget _statusPill(String status) {
-    final (Color bg, Color fg, String text) = switch (status) {
-      'active' => (Zine.mint, Zine.mintInk, 'PRO'),
-      'pending' => (Zine.card, Zine.inkSoft, 'PENDING'),
-      _ => (Zine.card, Zine.inkMute, '—'),
+    final (Color fg, String text) = switch (status) {
+      'active' => (AD.online, 'Pro'),
+      'pending' => (AD.textSecondary, 'Pending'),
+      _ => (AD.textTertiary, '—'),
     };
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: Msg.s1),
       decoration: BoxDecoration(
-        color: bg, borderRadius: BorderRadius.circular(100),
-        border: Border.all(color: Zine.ink, width: 1.6),
+        color: AD.card,
+        // A status tag is one of the shapes a pill is reserved for.
+        borderRadius: Msg.brPill,
+        border: Border.all(color: AD.borderControl, width: 1),
       ),
-      child: Text(text, style: ZineText.tag(size: 10, color: fg)),
+      child: Text(text, style: ADText.statCaption(c: fg)),
     );
   }
 
@@ -288,9 +306,9 @@ class _TeamHomeScreenState extends State<TeamHomeScreen> {
       return GestureDetector(
         onTap: _addMember,
         child: Row(children: [
-          PhosphorIcon(PhosphorIcons.plusCircle(PhosphorIconsStyle.fill), size: 20, color: Zine.blueInk),
-          const SizedBox(width: 4),
-          Text('Add staff', style: ZineText.value(size: 13.5, color: Zine.blueInk)),
+          PhosphorIcon(PhosphorIcons.plusCircle(PhosphorIconsStyle.fill), size: 20, color: Msg.accent),
+          const SizedBox(width: Msg.s1),
+          Text('Add staff', style: ADText.rowName(c: Msg.accent).copyWith(fontSize: 14)),
         ]),
       );
     }
@@ -301,9 +319,9 @@ class _TeamHomeScreenState extends State<TeamHomeScreen> {
         _showTeamPlanSheet();
       },
       child: Row(children: [
-        PhosphorIcon(PhosphorIcons.lockSimple(PhosphorIconsStyle.bold), size: 18, color: Zine.inkMute),
-        const SizedBox(width: 4),
-        Text('Add staff', style: ZineText.value(size: 13.5, color: Zine.inkMute)),
+        PhosphorIcon(PhosphorIcons.lockSimple(PhosphorIconsStyle.regular), size: 18, color: AD.textTertiary),
+        const SizedBox(width: Msg.s1),
+        Text('Add staff', style: ADText.rowName(c: AD.textTertiary).copyWith(fontSize: 14)),
       ]),
     );
   }
@@ -322,27 +340,27 @@ class _TeamHomeScreenState extends State<TeamHomeScreen> {
             'Your team’s AI receptionist greets every caller and routes them to the '
             'right person — “press 1 for Sales, press 2 for Support”. Adding staff '
             'builds that menu.',
-            style: ZineText.sub(size: 13.5),
+            style: ADText.preview(),
           ),
-          const SizedBox(height: 14),
-          _benefit(PhosphorIcons.usersThree(PhosphorIconsStyle.bold),
+          const SizedBox(height: Msg.s4),
+          _benefit(PhosphorIcons.usersThree(PhosphorIconsStyle.regular),
               'Unlimited staff seats', 'Add your whole team to the call menu — each with their own AvaTOK number, voice and greeting.'),
-          _benefit(PhosphorIcons.phoneCall(PhosphorIconsStyle.bold),
+          _benefit(PhosphorIcons.phoneCall(PhosphorIconsStyle.regular),
               'One business number', 'Callers reach a single team line; Ava answers 24/7 and warm-transfers to whoever is free.'),
-          _benefit(PhosphorIcons.voicemail(PhosphorIconsStyle.bold),
+          _benefit(PhosphorIcons.voicemail(PhosphorIconsStyle.regular),
               'Never miss a call', 'When staff don’t pick up, Ava takes a message and drops it in your team inbox.'),
-          _benefit(PhosphorIcons.chartLineUp(PhosphorIconsStyle.bold),
+          _benefit(PhosphorIcons.chartLineUp(PhosphorIconsStyle.regular),
               'Higher monthly pools', 'Generous receptionist-minute and AI-message allowances, billed to one team wallet.'),
-          const SizedBox(height: 18),
+          const SizedBox(height: Msg.s4),
           ZineButton(
             label: 'See Team plans', fullWidth: true, variant: ZineButtonVariant.blue,
             icon: PhosphorIcons.crown(PhosphorIconsStyle.bold), trailingIcon: false,
             onPressed: () => Navigator.pop(context, true),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: Msg.s2),
           Center(child: TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text('Maybe later', style: ZineText.link(size: 14, color: Zine.inkSoft)))),
+            child: Text('Maybe later', style: ADText.rowName(c: AD.textSecondary).copyWith(fontSize: 14)))),
         ],
       ),
     );
@@ -354,14 +372,14 @@ class _TeamHomeScreenState extends State<TeamHomeScreen> {
   }
 
   Widget _benefit(IconData icon, String title, String body) => Padding(
-        padding: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.only(bottom: Msg.s3),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          ZineIconBadge(icon: icon, color: Zine.lime, size: 32),
-          const SizedBox(width: 12),
+          ZineIconBadge(icon: icon, color: AD.newGroup, size: 32),
+          const SizedBox(width: Msg.s3),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: ZineText.cardTitle(size: 14.5)),
+            Text(title, style: ADText.rowName()),
             const SizedBox(height: 1),
-            Text(body, style: ZineText.sub(size: 12.5)),
+            Text(body, style: ADText.preview().copyWith(fontSize: 13)),
           ])),
         ]),
       );
@@ -411,11 +429,11 @@ class _EditTeamSheetState extends State<_EditTeamSheet> {
       title: 'Edit team',
       children: [
         ZineField(controller: _name, label: 'Team name', textCapitalization: TextCapitalization.words),
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s4),
         ZineField(controller: _greeting, label: 'Greeting', hint: "You've reached Hilton", maxLines: 2, maxLength: 200, textCapitalization: TextCapitalization.sentences),
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s4),
         ZineField(controller: _number, label: 'Team AvaTOK number', leadText: '+', keyboardType: TextInputType.phone, inputFormatters: [FilteringTextInputFormatter.digitsOnly]),
-        const SizedBox(height: 18),
+        const SizedBox(height: Msg.s4),
         ZineButton(
           label: 'Save', fullWidth: true, loading: _saving, variant: ZineButtonVariant.blue,
           onPressed: _saving ? null : () async {
@@ -501,24 +519,24 @@ class _AddMemberSheetState extends State<AddMemberSheet> {
       title: _editing ? 'Edit staff' : 'Add staff',
       children: [
         ZineField(controller: _name, label: 'Staff name', hint: 'e.g. Julie', textCapitalization: TextCapitalization.words),
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s4),
         ZineField(controller: _role, label: 'Role / department', hint: 'e.g. Housekeeping', textCapitalization: TextCapitalization.words),
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s4),
         ZineField(
           controller: _number, label: 'Their AvaTOK number', leadText: '+',
           enabled: !_editing, // number is the identity key; not editable after add
           keyboardType: TextInputType.phone,
           inputFormatters: [FilteringTextInputFormatter.digitsOnly],
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s4),
         ZineDropdown<String>(label: 'Ava voice', value: _voice, items: _voiceItems, onChanged: (v) => setState(() => _voice = v ?? _voice)),
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s4),
         ZineField(controller: _greeting, label: 'Greeting (optional)', hint: "Hi, you've reached Housekeeping", maxLines: 2, maxLength: 200, textCapitalization: TextCapitalization.sentences),
-        if (_error != null) ...[const SizedBox(height: 12), ZineErrorMsg(_error!)],
-        const SizedBox(height: 18),
+        if (_error != null) ...[const SizedBox(height: Msg.s3), ZineErrorMsg(_error!)],
+        const SizedBox(height: Msg.s4),
         ZineButton(label: _editing ? 'Save' : 'Add to menu', fullWidth: true, loading: _saving, variant: ZineButtonVariant.blue, onPressed: _saving ? null : _save),
         if (_editing) ...[
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s3),
           ZineButton(label: 'Remove from team', fullWidth: true, variant: ZineButtonVariant.coral, onPressed: _saving ? null : () async {
             final ok = await TeamApi.removeMember(widget.existing!.id);
             if (mounted && ok) Navigator.pop(context, true);
@@ -540,17 +558,18 @@ class _SheetShell extends StatelessWidget {
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Container(
         decoration: const BoxDecoration(
-          color: Zine.paper2,
-          border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+          color: AD.overlaySheet,
+          border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
+          borderRadius: Msg.brSheetTop,
         ),
-        padding: const EdgeInsets.fromLTRB(18, 14, 18, 22),
+        padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s5),
         child: SingleChildScrollView(
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Center(child: Container(width: 42, height: 5, decoration: BoxDecoration(color: Zine.inkMute, borderRadius: BorderRadius.circular(100)))),
-            const SizedBox(height: 14),
-            Text(title, style: ZineText.cardTitle(size: 19)),
-            const SizedBox(height: 16),
+            // The sheet drag handle is one of the shapes a pill is reserved for.
+            Center(child: Container(width: 42, height: 5, decoration: BoxDecoration(color: AD.borderControl, borderRadius: Msg.brPill))),
+            const SizedBox(height: Msg.s4),
+            Text(title, style: ADText.threadName().copyWith(fontSize: 19)),
+            const SizedBox(height: Msg.s4),
             ...children,
           ]),
         ),

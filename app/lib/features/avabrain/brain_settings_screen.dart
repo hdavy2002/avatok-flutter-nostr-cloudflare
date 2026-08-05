@@ -7,8 +7,15 @@ import '../../core/analytics.dart';
 import '../../core/brain_api.dart';
 import '../../core/brain_consent.dart';
 import '../../core/brain_recall.dart';
-import '../../core/theme.dart';
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
+
+/// Paragraph copy on this screen. `ADText.preview` is the right weight/colour but
+/// sits at height 1.2; these are multi-line explanations, so the 1.42 line height
+/// the old `ZineText.sub` used is kept to avoid re-flowing every card.
+TextStyle _body(double size, [Color c = AD.textSecondary]) =>
+    ADText.preview(c: c).copyWith(fontSize: size, height: 1.42);
 
 /// AvaBrain control room (One-Brain B0) — the master switch + per-domain
 /// guardrail toggles the server ingestion pipeline obeys. The toggle list is
@@ -106,18 +113,19 @@ class _BrainSettingsScreenState extends State<BrainSettingsScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: Zine.card,
-        title: Text('Delete my AvaBrain data?', style: ZineText.cardTitle()),
+        backgroundColor: AD.popover,
+        title: Text('Delete my AvaBrain data?',
+            style: ADText.threadName().copyWith(fontSize: 19)),
         content: Text(
             'This wipes everything AvaBrain has remembered about you — search vectors, voice-note transcripts and the knowledge graph. Your actual messages and files are NOT touched. This cannot be undone.',
-            style: ZineText.sub(size: 14)),
+            style: _body(14)),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: Text('Keep it', style: ZineText.tag(size: 13, color: Zine.inkSoft))),
+              child: Text('Keep it', style: ADText.rowName(c: AD.textSecondary).copyWith(fontSize: 13))),
           TextButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: Text('Delete', style: ZineText.tag(size: 13, color: Zine.coral))),
+              child: Text('Delete', style: ADText.rowName(c: AD.danger).copyWith(fontSize: 13))),
         ],
       ),
     );
@@ -214,41 +222,43 @@ class _BrainSettingsScreenState extends State<BrainSettingsScreen> {
       appBar: ZineAppBar(
         title: 'AvaBrain',
         markWord: 'Brain',
-        tag: 'WHAT YOUR AGENT MAY REMEMBER',
+        tag: 'What your agent may remember',
         showBack: Navigator.of(context).canPop(),
       ),
       body: ZinePaper(
-        child: ListView(padding: const EdgeInsets.fromLTRB(16, 16, 16, 28), children: [
-          // Intro — AI surface, lilac accent.
+        child: ListView(padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s6), children: [
+          // Intro. FILL/INK COLLAPSE FIXED: this used to be a pale lilac card with
+          // near-black ink and a white icon badge. Mapping the fill straight to a
+          // dark lilac would have left a saturated surface carrying a full
+          // paragraph. The card is neutral now and the AI accent lives on the
+          // brain glyph, which is what the colour was signalling anyway.
           ZineCard(
-            color: Zine.lilac,
-            padding: const EdgeInsets.all(14),
-            boxShadow: Zine.shadowSm,
+            padding: const EdgeInsets.all(Msg.s4),
             child: Row(children: [
-              ZineIconBadge(icon: PhosphorIcons.brain(PhosphorIconsStyle.fill), color: Zine.card),
-              const SizedBox(width: 12),
+              ZineIconBadge(icon: PhosphorIcons.brain(PhosphorIconsStyle.fill), color: AD.tabCalls),
+              const SizedBox(width: Msg.s3),
               Expanded(
                 child: Text(
                   'AvaBrain powers AvaChat. It only ever reads YOUR content, and you control exactly what it may remember.',
-                  style: ZineText.sub(size: 13, color: Zine.ink),
+                  style: _body(13, AD.textPrimary),
                 ),
               ),
             ]),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: Msg.s5),
           _section('Sources'),
           _sourcesCard(masterOn),
           Padding(
-            padding: const EdgeInsets.only(top: 10, left: 4, right: 4),
+            padding: const EdgeInsets.only(top: Msg.s3, left: Msg.s1, right: Msg.s1),
             child: Text(
                 'Private and end-to-end-encrypted content is only ever read on your device — '
                 'AvaBrain never sees your message keys or plaintext on our servers.',
-                style: ZineText.sub(size: 11.5, color: Zine.inkMute)),
+                style: _body(12, AD.textTertiary)),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: Msg.s5),
           _section('Privacy'),
           _privacyCard(),
-          const SizedBox(height: 24),
+          const SizedBox(height: Msg.s5),
           _section('Danger zone'),
           _dangerCard(),
         ]),
@@ -258,17 +268,17 @@ class _BrainSettingsScreenState extends State<BrainSettingsScreen> {
 
   Widget _sourcesCard(bool masterOn) {
     return ZineCard(
-      radius: Zine.rSm,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-      boxShadow: Zine.shadowXs,
+      radius: Msg.rLg,
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s2),
+      boxShadow: Msg.none,
       child: _loading
           ? const Padding(
-              padding: EdgeInsets.symmetric(vertical: 22),
+              padding: EdgeInsets.symmetric(vertical: Msg.s5),
               child: Center(
                   child: SizedBox(
                       width: 22,
                       height: 22,
-                      child: CircularProgressIndicator(strokeWidth: 2.4, color: Zine.lilac))),
+                      child: CircularProgressIndicator(strokeWidth: 2.4, color: AD.primaryBadge))),
             )
           : Column(children: [
               // Master switch — always shown.
@@ -301,24 +311,23 @@ class _BrainSettingsScreenState extends State<BrainSettingsScreen> {
   Widget _privacyCard() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       ZineCard(
-        radius: Zine.rSm,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-        boxShadow: Zine.shadowXs,
+        radius: Msg.rLg,
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s2),
+        boxShadow: Msg.none,
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 9),
+          padding: const EdgeInsets.symmetric(vertical: Msg.s2),
           child: Row(children: [
             Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Local-only answers',
-                  style: ZineText.value(size: 14.5, weight: FontWeight.w800)),
+              Text('Local-only answers', style: ADText.rowName()),
               const SizedBox(height: 2),
               Text(
                   'When on, Ava never sends excerpts of on-device content (your '
                   'messages, notes and files) to the cloud to answer. Local search '
                   'still works; some answers may need cloud reasoning it can’t use.',
-                  style: ZineText.sub(size: 12)),
+                  style: _body(12)),
             ])),
-            const SizedBox(width: 10),
+            const SizedBox(width: Msg.s3),
             ZineToggle(value: _localOnly, onChanged: _setLocalOnly),
           ]),
         ),
@@ -328,16 +337,17 @@ class _BrainSettingsScreenState extends State<BrainSettingsScreen> {
 
   Widget _row(String key, String title, String sub, {required bool value, bool master = false}) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 9),
+      padding: const EdgeInsets.symmetric(vertical: Msg.s2),
       child: Row(children: [
         Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(title,
-              style: ZineText.value(size: 14.5, weight: master ? FontWeight.w900 : FontWeight.w800)),
+              style: ADText.rowName()
+                  .copyWith(fontWeight: master ? FontWeight.w700 : FontWeight.w600)),
           const SizedBox(height: 2),
-          Text(sub, style: ZineText.sub(size: 12)),
+          Text(sub, style: _body(12)),
         ])),
-        const SizedBox(width: 10),
+        const SizedBox(width: Msg.s3),
         ZineToggle(value: value, onChanged: (v) => _set(key, v)),
       ]),
     );
@@ -351,19 +361,19 @@ class _BrainSettingsScreenState extends State<BrainSettingsScreen> {
   // not a row that looks identical to "remember my contacts".
   Widget _sensitiveRow(BrainToggle t, {required bool value}) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 9),
+      padding: const EdgeInsets.symmetric(vertical: Msg.s2),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         ZineIconBadge(
-            icon: PhosphorIcons.warningCircle(PhosphorIconsStyle.fill), color: Zine.coral, size: 30),
-        const SizedBox(width: 10),
+            icon: PhosphorIcons.warningCircle(PhosphorIconsStyle.fill), color: AD.destructiveBg, size: 30),
+        const SizedBox(width: Msg.s3),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(t.label, style: ZineText.value(size: 14.5, weight: FontWeight.w800)),
+            Text(t.label, style: ADText.rowName()),
             const SizedBox(height: 2),
-            Text(t.description, style: ZineText.sub(size: 12)),
+            Text(t.description, style: _body(12)),
           ]),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: Msg.s3),
         ZineToggle(value: value, onChanged: (v) => _set(t.consentKey, v)),
       ]),
     );
@@ -375,21 +385,21 @@ class _BrainSettingsScreenState extends State<BrainSettingsScreen> {
   Widget _disclosureRow(BrainDomain d) {
     final label = d.label.isEmpty ? 'Safety records' : d.label;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 9),
+      padding: const EdgeInsets.symmetric(vertical: Msg.s2),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         ZineIconBadge(
-            icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill), color: Zine.lilac, size: 30),
-        const SizedBox(width: 10),
+            icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill), color: AD.tabCalls, size: 30),
+        const SizedBox(width: Msg.s3),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(label, style: ZineText.value(size: 14.5, weight: FontWeight.w800)),
+            Text(label, style: ADText.rowName()),
             const SizedBox(height: 2),
             GestureDetector(
               onTap: () => _showDisclosure(d),
               behavior: HitTestBehavior.opaque,
-              child: Text.rich(TextSpan(style: ZineText.sub(size: 12), children: [
+              child: Text.rich(TextSpan(style: _body(12), children: [
                 const TextSpan(text: 'Kept for platform safety; not deletable. '),
-                TextSpan(text: 'Learn more', style: ZineText.sub(size: 12, color: Zine.lilac)),
+                TextSpan(text: 'Learn more', style: _body(12, Msg.accent)),
               ])),
             ),
           ]),
@@ -407,8 +417,8 @@ class _BrainSettingsScreenState extends State<BrainSettingsScreen> {
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: Zine.card,
-        title: Text(label, style: ZineText.cardTitle()),
+        backgroundColor: AD.popover,
+        title: Text(label, style: ADText.threadName().copyWith(fontSize: 19)),
         content: Text(
             'To keep everyone safe, Ava keeps a minimal record of safety events — for '
             'example when a message is flagged or someone is blocked for unsafe behaviour. '
@@ -416,11 +426,11 @@ class _BrainSettingsScreenState extends State<BrainSettingsScreen> {
             'as something you switch on or off, so there is no toggle. They are not removed '
             'when you delete your other AvaBrain data, and they never include the content '
             'of your messages.',
-            style: ZineText.sub(size: 14)),
+            style: _body(14)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: Text('Got it', style: ZineText.tag(size: 13, color: Zine.inkSoft)),
+            child: Text('Got it', style: ADText.rowName(c: AD.textSecondary).copyWith(fontSize: 13)),
           ),
         ],
       ),
@@ -431,9 +441,9 @@ class _BrainSettingsScreenState extends State<BrainSettingsScreen> {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       ZinePressable(
         onTap: _deleting ? null : _deleteAll,
-        radius: BorderRadius.circular(Zine.rSm),
-        boxShadow: Zine.shadowXs,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        radius: Msg.brMd,
+        boxShadow: Msg.none,
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
         child: Row(children: [
           _deleting
               ? const SizedBox(
@@ -443,35 +453,35 @@ class _BrainSettingsScreenState extends State<BrainSettingsScreen> {
                       child: SizedBox(
                           width: 20,
                           height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2.4, color: Zine.coral))))
+                          child: CircularProgressIndicator(strokeWidth: 2.4, color: AD.danger))))
               : ZineIconBadge(
-                  icon: PhosphorIcons.trash(PhosphorIconsStyle.bold), color: Zine.coral, size: 34),
-          const SizedBox(width: 12),
+                  icon: PhosphorIcons.trash(PhosphorIconsStyle.bold), color: AD.destructiveBg, size: 34),
+          const SizedBox(width: Msg.s3),
           Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Delete my AvaBrain data', style: ZineText.value(size: 15, color: Zine.coral)),
+            Text('Delete my AvaBrain data', style: ADText.rowName(c: AD.danger)),
             const SizedBox(height: 2),
             Text('Wipes vectors, transcripts and the knowledge graph — not your real files',
-                style: ZineText.sub(size: 12)),
+                style: _body(12)),
           ])),
         ]),
       ),
       if (_deleteMessage != null)
         Padding(
-          padding: const EdgeInsets.only(top: 10, left: 4, right: 4),
-          child: Text(_deleteMessage!, style: ZineText.sub(size: 12, color: Zine.inkSoft)),
+          padding: const EdgeInsets.only(top: Msg.s3, left: Msg.s1, right: Msg.s1),
+          child: Text(_deleteMessage!, style: _body(12)),
         )
       else if (_deletedAt != null)
         Padding(
-          padding: const EdgeInsets.only(top: 10, left: 4, right: 4),
+          padding: const EdgeInsets.only(top: Msg.s3, left: Msg.s1, right: Msg.s1),
           child: Text('Your data was deleted on ${_fmtDate(_deletedAt!)}',
-              style: ZineText.sub(size: 12, color: Zine.inkSoft)),
+              style: _body(12)),
         ),
     ]);
   }
 
   Widget _section(String t) => Padding(
-        padding: const EdgeInsets.only(bottom: 10, left: 4),
-        child: Text(t.toUpperCase(), style: ZineText.kicker()),
+        padding: const EdgeInsets.only(bottom: Msg.s3, left: Msg.s1),
+        child: Text(t, style: ADText.sectionLabel()),
       );
 }

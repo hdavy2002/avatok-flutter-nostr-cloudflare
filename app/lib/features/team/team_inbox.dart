@@ -7,7 +7,8 @@ import '../../core/api_auth.dart';
 import '../../core/calls/call_room_id.dart'; // [CALL-ROOM-ID-1]
 import '../../core/config.dart';
 import '../../core/team_api.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../avatok/call_screen.dart';
 
@@ -92,25 +93,30 @@ class _TeamInboxScreenState extends State<TeamInboxScreen> {
   }
 
   void _toast(String s) => ScaffoldMessenger.of(context)
-      .showSnackBar(SnackBar(content: Text(s), backgroundColor: Zine.ink));
+      .showSnackBar(SnackBar(
+        content: Text(s, style: ADText.preview(c: AD.textPrimary)),
+        backgroundColor: AD.card,
+      ));
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Zine.paper,
-      appBar: const ZineAppBar(title: 'Messages', markWord: 'Messages', tag: 'TEAM VOICEMAIL'),
+      backgroundColor: AD.bg,
+      appBar: const ZineAppBar(title: 'Messages', markWord: 'Messages', tag: 'Team voicemail'),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: Zine.ink))
+          ? const Center(child: CircularProgressIndicator(color: AD.primaryBadge))
           : _messages.isEmpty
               ? Center(
                   child: Padding(
-                  padding: const EdgeInsets.all(28),
-                  child: ZineEmptyState(icon: PhosphorIcons.voicemail(PhosphorIconsStyle.bold), text: 'No messages yet. When a staffer misses a call, Ava takes a message and it appears here.'),
+                  padding: const EdgeInsets.all(Msg.s5),
+                  child: ZineEmptyState(icon: PhosphorIcons.voicemail(PhosphorIconsStyle.regular), text: 'No messages yet. When a staffer misses a call, Ava takes a message and it appears here.'),
                 ))
               : RefreshIndicator(
-                  onRefresh: _load, color: Zine.ink,
+                  onRefresh: _load,
+                  color: AD.primaryBadge,
+                  backgroundColor: AD.card,
                   child: ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
+                    padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s6),
                     itemCount: _messages.length,
                     itemBuilder: (_, i) => _card(_messages[i]),
                   ),
@@ -123,24 +129,24 @@ class _TeamInboxScreenState extends State<TeamInboxScreen> {
     final from = m.callerPhone == null ? '' : ' · +${m.callerPhone}';
     final playing = _playingId == m.id;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: Msg.s3),
       child: ZineCard(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            ZineIconBadge(icon: PhosphorIcons.phoneIncoming(PhosphorIconsStyle.bold), color: m.urgency == 'high' ? Zine.coral : Zine.blue),
-            const SizedBox(width: 12),
+            ZineIconBadge(icon: PhosphorIcons.phoneIncoming(PhosphorIconsStyle.regular), color: m.urgency == 'high' ? AD.destructiveBg : AD.newGroup),
+            const SizedBox(width: Msg.s3),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('$who${m.slot != null ? '  ·  #${m.slot}' : ''}', style: ZineText.cardTitle(size: 15.5)),
-                Text('Called$from · ${_ago(m.createdAt)}', maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.tag(size: 11, color: Zine.inkSoft)),
+                Text('$who${m.slot != null ? '  ·  #${m.slot}' : ''}', style: ADText.rowName()),
+                Text('Called$from · ${_ago(m.createdAt)}', maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.sectionLabel(c: AD.textSecondary)),
               ]),
             ),
           ]),
           if (m.message != null && m.message!.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Text('“${m.message}”', style: ZineText.value(size: 14, weight: FontWeight.w500)),
+            const SizedBox(height: Msg.s3),
+            Text('“${m.message}”', style: ADText.preview(c: AD.textPrimary).copyWith(fontWeight: FontWeight.w500)),
           ],
-          const SizedBox(height: 14),
+          const SizedBox(height: Msg.s4),
           Row(children: [
             Expanded(
               child: ZineButton(
@@ -148,11 +154,11 @@ class _TeamInboxScreenState extends State<TeamInboxScreen> {
                 fontSize: 14, variant: ZineButtonVariant.lime, onPressed: () => _callBack(m),
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: Msg.s3),
             Expanded(
               child: ZineButton(
                 label: playing ? 'Stop' : 'Play',
-                icon: playing ? PhosphorIcons.stop(PhosphorIconsStyle.bold) : PhosphorIcons.play(PhosphorIconsStyle.bold),
+                icon: playing ? PhosphorIcons.stop(PhosphorIconsStyle.regular) : PhosphorIcons.play(PhosphorIconsStyle.regular),
                 trailingIcon: false, fontSize: 14,
                 variant: ZineButtonVariant.blue, onPressed: () => _play(m),
               ),

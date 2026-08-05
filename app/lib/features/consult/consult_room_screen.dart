@@ -10,8 +10,9 @@
 // 12:43 left of 20:00 wait" — feeds refund rule R2), extend-session offer
 // (calendar-checked), mark-complete on leave. Post-session: rate → review.
 //
-// Zine: video is content; waiting room = full paper screen; chrome = ink-alpha
-// bands, mono timer sticker, bordered circle controls (hang up = coral).
+// Chrome: video is content; the waiting room is a full AD page; the bands over
+// video are scrim, the timer is a pill sticker, and the controls are bordered
+// circles (hang up = destructive red).
 import 'dart:async';
 import 'dart:convert';
 
@@ -25,7 +26,8 @@ import '../../core/config.dart';
 import '../../core/analytics.dart';
 import '../../core/listings_api.dart';
 import '../../core/session_api.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../avatok/chat_thread.dart';
 import '../avatok/data.dart';
@@ -111,7 +113,15 @@ class _ConsultRoomScreenState extends State<ConsultRoomScreen> {
     final remaining = _endsAt - now;
     if (!_warned5 && remaining <= 5 * 60_000 && remaining > 0) {
       _warned5 = true;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('⏰ 5 minutes remaining')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Row(mainAxisSize: MainAxisSize.min, children: [
+          PhosphorIcon(PhosphorIcons.timer(PhosphorIconsStyle.regular),
+              size: 16, color: AD.textPrimary),
+          const SizedBox(width: Msg.s2),
+          Text('5 minutes remaining', style: ADText.preview(c: AD.textPrimary)),
+        ]),
+        backgroundColor: AD.card,
+      ));
     }
     if (remaining <= -2 * 60_000 && !_ended) _leave(auto: true); // grace 2 min
     setState(() {});
@@ -315,7 +325,15 @@ class _ConsultRoomScreenState extends State<ConsultRoomScreen> {
     try {
       final r = await SessionApi.consultExtend(widget.bookingId);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Extended by 15 minutes ✅')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Row(mainAxisSize: MainAxisSize.min, children: [
+          PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
+              size: 16, color: AD.online),
+          const SizedBox(width: Msg.s2),
+          Text('Extended by 15 minutes', style: ADText.preview(c: AD.textPrimary)),
+        ]),
+        backgroundColor: AD.card,
+      ));
       widget.join['ends_at'] = r['ends_at'];
       _warned5 = false;
     } on SessionApiError catch (e) {
@@ -350,27 +368,27 @@ class _ConsultRoomScreenState extends State<ConsultRoomScreen> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Zine.paper,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Zine.r))),
+      backgroundColor: AD.overlaySheet,
+      shape: const RoundedRectangleBorder(borderRadius: Msg.brSheetTop),
       builder: (sheetCtx) => Padding(
-        padding: EdgeInsets.fromLTRB(24, 16, 24, MediaQuery.of(sheetCtx).viewInsets.bottom + 24),
+        padding: EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, MediaQuery.of(sheetCtx).viewInsets.bottom + Msg.s5),
         child: StatefulBuilder(builder: (_, setSheet) {
           return Column(mainAxisSize: MainAxisSize.min, children: [
-            Text('Rate this session', style: ZineText.cardTitle()),
-            const SizedBox(height: 12),
+            Text('Rate this session', style: ADText.threadName().copyWith(fontSize: 19)),
+            const SizedBox(height: Msg.s3),
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [
               for (var i = 1; i <= 5; i++)
                 IconButton(
                   icon: PhosphorIcon(
                       i <= rating
                           ? PhosphorIcons.star(PhosphorIconsStyle.fill)
-                          : PhosphorIcons.star(PhosphorIconsStyle.bold),
-                      color: Zine.coral, size: 32),
+                          : PhosphorIcons.star(PhosphorIconsStyle.regular),
+                      color: i <= rating ? AD.primaryBadge : AD.textTertiary, size: 32),
                   onPressed: () => setSheet(() => rating = i),
                 ),
             ]),
             ZineField(controller: body, hint: 'Anything to add? (optional)'),
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s4),
             ZineButton(
               label: 'Done',
               fullWidth: true,
@@ -405,34 +423,37 @@ class _ConsultRoomScreenState extends State<ConsultRoomScreen> {
     final remaining = (_endsAt - now).clamp(0, 1 << 62);
     final waitLeft = (_startsAt + _kWaitWindowMs - now).clamp(0, _kWaitWindowMs);
     final ready = _peers.values.where((p) => p.ready).toList();
-    final inkScrim = Zine.ink.withValues(alpha: 0.55);
+    // INVERTED USE: `Zine.ink` was the SURFACE here (a near-black page and a
+    // translucent band over video), not text — so it maps to AD.bg / AD.scrim,
+    // NOT to AD.textPrimary.
+    final scrim = AD.bg.withValues(alpha: 0.55);
 
     return Scaffold(
-      backgroundColor: Zine.ink,
+      backgroundColor: AD.bg,
       body: Stack(fit: StackFit.expand, children: [
         // remote grid (1 = full bleed; 2-8 grid)
         if (ready.isEmpty)
-          // waiting / connecting — full zine paper state
+          // waiting / connecting — full page state
           ZinePaper(
             child: Center(
               child: Padding(
-                padding: const EdgeInsets.all(24),
+                padding: const EdgeInsets.all(Msg.s5),
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  const CircularProgressIndicator(color: Zine.blueInk),
-                  const SizedBox(height: 18),
+                  const CircularProgressIndicator(color: AD.primaryBadge),
+                  const SizedBox(height: Msg.s4),
                   Text(
                     _waitingRoom
                         ? (_hostRole
                             ? 'Waiting for ${widget.join['peer_name'] ?? 'the buyer'}… ${fmtMmSs(waitLeft)} left of ${fmtMmSs(_kWaitWindowMs)} wait'
                             : 'Waiting for the host to join…')
                         : 'Connecting…',
-                    style: ZineText.sub(), textAlign: TextAlign.center,
+                    style: ADText.preview().copyWith(height: 1.42), textAlign: TextAlign.center,
                   ),
                   if (_hostRole && _waitingRoom)
                     Padding(
-                      padding: const EdgeInsets.only(top: 10),
-                      child: Text('NO-SHOW RULE PAYS YOUR WAIT AUTOMATICALLY',
-                          style: ZineText.kicker(size: 10), textAlign: TextAlign.center),
+                      padding: const EdgeInsets.only(top: Msg.s3),
+                      child: Text('The no-show rule pays your wait automatically',
+                          style: ADText.sectionLabel(), textAlign: TextAlign.center),
                     ),
                 ]),
               ),
@@ -449,51 +470,52 @@ class _ConsultRoomScreenState extends State<ConsultRoomScreen> {
                   margin: const EdgeInsets.all(2),
                   clipBehavior: Clip.antiAlias,
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: Zine.ink, width: 2),
+                    borderRadius: Msg.brMd,
+                    border: Border.all(color: AD.borderControl, width: 1),
                   ),
                   child: RTCVideoView(p.renderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
                 ),
             ],
           ),
-        // local preview — ink-bordered tile
+        // local preview — hairline-bordered floating tile
         Positioned(
-          right: 16, top: 90, width: 100, height: 150,
+          right: Msg.s4, top: 90, width: 100, height: 150,
           child: Container(
             clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Zine.ink, width: 2),
-              boxShadow: Zine.shadowXs,
+              borderRadius: Msg.brMd,
+              border: Border.all(color: AD.borderControl, width: 1),
+              boxShadow: Msg.lift,
             ),
             child: RTCVideoView(_localRenderer, mirror: true, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
           ),
         ),
-        // top bar: title + countdown — flat ink-alpha band, mono timer sticker
+        // top bar: title + countdown — flat scrim band, timer sticker
         Positioned(
           left: 0, right: 0, top: 0,
           child: Container(
-            color: inkScrim,
+            color: scrim,
             child: SafeArea(
               bottom: false,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s2),
                 child: Row(children: [
                   Expanded(child: Text(_title, maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: ZineText.value(size: 15, color: Colors.white))),
+                      style: ADText.rowName(c: Colors.white))),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s1),
                     decoration: BoxDecoration(
-                      color: remaining < 5 * 60_000 ? Zine.coral : inkScrim,
-                      borderRadius: BorderRadius.circular(100),
+                      color: remaining < 5 * 60_000 ? AD.destructiveBg : scrim,
+                      // A status sticker IS one of the shapes a pill is for.
+                      borderRadius: Msg.brPill,
                       border: remaining < 5 * 60_000
-                          ? Border.all(color: Zine.ink, width: 2)
+                          ? Border.all(color: AD.destructiveBg, width: 1)
                           : null,
                     ),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      PhosphorIcon(PhosphorIcons.timer(PhosphorIconsStyle.bold), color: Colors.white, size: 13),
-                      const SizedBox(width: 4),
-                      Text(fmtMmSs(remaining), style: ZineText.tag(size: 12, color: Colors.white)),
+                      PhosphorIcon(PhosphorIcons.timer(PhosphorIconsStyle.regular), color: Colors.white, size: 13),
+                      const SizedBox(width: Msg.s1),
+                      Text(fmtMmSs(remaining), style: ADText.timestamp(c: Colors.white)),
                     ]),
                   ),
                 ]),
@@ -504,9 +526,9 @@ class _ConsultRoomScreenState extends State<ConsultRoomScreen> {
         // Live voice translation — transparent "Translate" menu (both sides;
         // the listener pays: $3/h in Tokens, never shared with the creator).
         TranslateOverlay(context: 'consult', refId: widget.bookingId),
-        // bottom controls — bordered circle buttons (hang up = coral)
+        // bottom controls — bordered circle buttons (hang up = destructive red)
         Positioned(
-          left: 0, right: 0, bottom: 16,
+          left: 0, right: 0, bottom: Msg.s4,
           child: SafeArea(
             top: false,
             child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
@@ -524,16 +546,16 @@ class _ConsultRoomScreenState extends State<ConsultRoomScreen> {
                   tooltip: 'Send file (opens your AvaTok thread)'),
               if (_hostRole)
                 _ctl(PhosphorIcons.plusCircle(PhosphorIconsStyle.bold), _extend, tooltip: 'Extend +15 min'),
-              // hang up — coral circle
+              // hang up — destructive circle
               GestureDetector(
                 onTap: () => _leave(),
                 child: Container(
                   width: 56, height: 56,
                   decoration: BoxDecoration(
-                    color: Zine.coral,
+                    color: AD.destructiveBg,
                     shape: BoxShape.circle,
-                    border: Border.all(color: Zine.ink, width: Zine.bw),
-                    boxShadow: Zine.shadowSm,
+                    border: Border.all(color: AD.destructiveBg, width: 1),
+                    boxShadow: Msg.lift,
                   ),
                   child: PhosphorIcon(PhosphorIcons.phoneX(PhosphorIconsStyle.fill), color: Colors.white, size: 24),
                 ),
@@ -545,19 +567,22 @@ class _ConsultRoomScreenState extends State<ConsultRoomScreen> {
     );
   }
 
-  /// Bordered circle control — card fill; coral when the toggle is off (danger).
+  /// Bordered circle control — card fill; destructive red when the toggle is off.
   Widget _ctl(IconData ic, VoidCallback onTap, {String? tooltip, bool off = false}) {
     final core = GestureDetector(
       onTap: onTap,
       child: Container(
         width: 46, height: 46,
         decoration: BoxDecoration(
-          color: off ? Zine.coral : Zine.card,
+          color: off ? AD.destructiveBg : AD.card,
           shape: BoxShape.circle,
-          border: Border.all(color: Zine.ink, width: Zine.bw),
-          boxShadow: Zine.shadowXs,
+          border: Border.all(color: off ? AD.destructiveBg : AD.borderControl, width: 1),
+          boxShadow: Msg.lift,
         ),
-        child: Icon(ic, color: off ? Colors.white : Zine.ink, size: 21),
+        // Ink flips with the fill: white on the red "off" state, primary text on
+        // the neutral card. Mapping both to a single token would have hidden the
+        // glyph on one of the two.
+        child: Icon(ic, color: off ? Colors.white : AD.textPrimary, size: 21),
       ),
     );
     if (tooltip == null) return core;

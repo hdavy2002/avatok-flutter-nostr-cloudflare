@@ -2,12 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/community_store.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
 import '../../sync/group_api.dart';
 import '../avatok/contacts.dart';
 import 'community_detail_screen.dart';
+
+/// Dialog / card title — the dark-system stand-in for the old
+/// `ZineText.cardTitle(size: 21)`.
+TextStyle get _dialogTitle =>
+    ADText.threadName().copyWith(fontSize: 21, height: 1.1, letterSpacing: -0.2);
 
 /// Communities tab — list of communities you belong to + create new ones.
 /// A community is a hub of channels (each channel is a real AvaTok group).
@@ -56,12 +62,14 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: Zine.card,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Zine.r), side: const BorderSide(color: Zine.ink, width: Zine.bw)),
-        title: Text('New community', style: ZineText.cardTitle(size: 21)),
+        backgroundColor: AD.card,
+        shape: RoundedRectangleBorder(
+            borderRadius: Msg.brLg,
+            side: const BorderSide(color: AD.borderControl, width: 1)),
+        title: Text('New community', style: _dialogTitle),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           ZineField(controller: nameCtrl, autofocus: true, hint: 'Community name'),
-          const SizedBox(height: 12),
+          const SizedBox(height: Msg.s3),
           ZineField(controller: aboutCtrl, hint: 'What is it about? (optional)'),
         ]),
         actions: [
@@ -108,9 +116,11 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
     final code = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: Zine.card,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Zine.r), side: const BorderSide(color: Zine.ink, width: Zine.bw)),
-        title: Text('Join a community', style: ZineText.cardTitle(size: 21)),
+        backgroundColor: AD.card,
+        shape: RoundedRectangleBorder(
+            borderRadius: Msg.brLg,
+            side: const BorderSide(color: AD.borderControl, width: 1)),
+        title: Text('Join a community', style: _dialogTitle),
         content: ZineField(controller: ctrl, autofocus: true, hint: 'Community code'),
         actions: [
           ZineButton(label: 'Cancel', variant: ZineButtonVariant.ghost, fontSize: 15, onPressed: () => Navigator.pop(ctx)),
@@ -137,7 +147,7 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       appBar: ZineAppBar(
         title: 'Communities',
         markWord: 'Communities',
@@ -145,7 +155,7 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
         showBack: Navigator.of(context).canPop(),
         actions: [
           ZineBackButton(
-            icon: PhosphorIcons.signIn(PhosphorIconsStyle.bold),
+            icon: PhosphorIcons.signIn(PhosphorIconsStyle.regular),
             onTap: _joinByCode,
           ),
         ],
@@ -158,39 +168,45 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
         onPressed: _createCommunity,
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: Zine.blueInk))
+          ? const Center(child: CircularProgressIndicator(color: Msg.accent))
           : _communities.isEmpty
               ? _empty()
               : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 110),
+                  padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, 110),
                   itemCount: _communities.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
+                  separatorBuilder: (_, __) => const SizedBox(height: Msg.s3),
                   itemBuilder: (_, i) {
                     final c = _communities[i];
                     return ZineCard(
-                      radius: Zine.rSm,
-                      padding: const EdgeInsets.all(13),
+                      radius: Msg.rLg,
+                      padding: const EdgeInsets.all(Msg.s3),
                       onTap: () => _openDetail(c),
                       child: Row(children: [
                         ZineIconBadge(
-                          icon: PhosphorIcons.usersThree(PhosphorIconsStyle.bold),
-                          color: Zine.accents[i % Zine.accents.length],
+                          icon: PhosphorIcons.usersThree(PhosphorIconsStyle.regular),
+                          // Deterministic avatar-family accent — replaces the old
+                          // pale poster rotation, which vanished on a dark card.
+                          // Keyed on the community id, not the list index, so a
+                          // community keeps its colour when the list reorders.
+                          color: AD.family(c.id).solid,
                           size: 48,
                         ),
-                        const SizedBox(width: 13),
+                        const SizedBox(width: Msg.s3),
                         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
                           Text(c.name, maxLines: 1, overflow: TextOverflow.ellipsis,
-                              style: ZineText.cardTitle(size: 17)),
-                          const SizedBox(height: 3),
+                              style: ADText.rowName().copyWith(fontSize: 17)),
+                          const SizedBox(height: Msg.rowTextGap),
                           Text(c.about.isNotEmpty ? c.about : 'A place for your people',
                               maxLines: 1, overflow: TextOverflow.ellipsis,
-                              style: ZineText.sub(size: 13)),
+                              style: ADText.preview().copyWith(fontSize: 13)),
                         ])),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: Msg.s3),
                         Column(crossAxisAlignment: CrossAxisAlignment.end, mainAxisSize: MainAxisSize.min, children: [
-                          Text('${c.members.length} MEMBERS', style: ZineText.tag(size: 9.5, color: Zine.inkSoft)),
-                          const SizedBox(height: 3),
-                          Text('${c.groups.length} CHANNELS', style: ZineText.tag(size: 9.5, color: Zine.inkMute)),
+                          Text('${c.members.length} members',
+                              style: ADText.statCaption(c: AD.textSecondary)),
+                          const SizedBox(height: Msg.rowTextGap),
+                          Text('${c.groups.length} channels',
+                              style: ADText.statCaption()),
                         ]),
                       ]),
                     );
@@ -201,13 +217,13 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
 
   Widget _empty() => Center(
         child: Padding(
-          padding: const EdgeInsets.all(32),
+          padding: const EdgeInsets.all(Msg.s6),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             ZineEmptyState(
-              icon: PhosphorIcons.usersThree(PhosphorIconsStyle.bold),
+              icon: PhosphorIcons.usersThree(PhosphorIconsStyle.regular),
               text: 'No communities yet — communities keep related groups together, like a school, a team, or a neighbourhood.',
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: Msg.s5),
             ZineButton(
               label: 'Start a community',
               variant: ZineButtonVariant.blue,

@@ -4,7 +4,8 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/api_auth.dart';
 import '../../core/team_api.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../avatok/call_screen.dart';
 
@@ -96,7 +97,9 @@ class _TeamIvrScreenState extends State<TeamIvrScreen> {
       return;
     }
     if (widget.preview) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Would transfer to $name'), backgroundColor: Zine.ink));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Would transfer to $name', style: ADText.preview(c: AD.textPrimary)),
+          backgroundColor: AD.card));
       setState(() { _routing = false; _status = '${_menu?['team_name'] ?? 'Team'} — listen and choose'; });
       return;
     }
@@ -117,42 +120,42 @@ class _TeamIvrScreenState extends State<TeamIvrScreen> {
   Widget build(BuildContext context) {
     final entries = ((_menu?['entries'] ?? []) as List).cast<Map<String, dynamic>>();
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       appBar: ZineAppBar(
         title: widget.preview ? 'Menu preview' : 'Auto-attendant',
         markWord: widget.preview ? 'preview' : 'attendant',
         tag: widget.teamNumber.isEmpty ? '' : '+${widget.teamNumber}'),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: Zine.ink))
+          ? const Center(child: CircularProgressIndicator(color: AD.primaryBadge))
           : _menu == null
-              ? Center(child: Padding(padding: const EdgeInsets.all(28), child: ZineEmptyState(icon: PhosphorIcons.phoneX(PhosphorIconsStyle.bold), text: 'This number is not a team auto-attendant.')))
+              ? Center(child: Padding(padding: const EdgeInsets.all(Msg.s5), child: ZineEmptyState(icon: PhosphorIcons.phoneX(PhosphorIconsStyle.regular), text: 'This number is not a team auto-attendant.')))
               : SafeArea(
                   child: Column(children: [
                     // Speaking indicator + status
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(18, 14, 18, 6),
+                      padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s2),
                       child: Row(children: [
                         ZineIconBadge(
-                            icon: _speaking ? PhosphorIcons.speakerHigh(PhosphorIconsStyle.fill) : PhosphorIcons.buildings(PhosphorIconsStyle.bold),
-                            color: _speaking ? Zine.mint : Zine.lilac),
-                        const SizedBox(width: 12),
-                        Expanded(child: Text(_status, style: ZineText.cardTitle(size: 16))),
+                            icon: _speaking ? PhosphorIcons.speakerHigh(PhosphorIconsStyle.fill) : PhosphorIcons.buildings(PhosphorIconsStyle.regular),
+                            color: _speaking ? AD.online : AD.tabCalls),
+                        const SizedBox(width: Msg.s3),
+                        Expanded(child: Text(_status, style: ADText.threadName())),
                       ]),
                     ),
                     // Menu legend (what each digit does)
                     Expanded(
                       child: ListView(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                        padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s2, Msg.s4, Msg.s2),
                         children: [
                           for (final e in entries)
                             Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
+                              padding: const EdgeInsets.only(bottom: Msg.s2),
                               child: Row(children: [
                                 _digitChip((e['slot'] as num?)?.toInt() ?? 0),
-                                const SizedBox(width: 12),
-                                Expanded(child: Text((e['role_label'] ?? '').toString(), style: ZineText.value(size: 15))),
+                                const SizedBox(width: Msg.s3),
+                                Expanded(child: Text((e['role_label'] ?? '').toString(), style: ADText.rowName())),
                                 if (e['available'] != true)
-                                  Text('voicemail', style: ZineText.tag(size: 10.5, color: Zine.inkMute)),
+                                  Text('Voicemail', style: ADText.statCaption()),
                               ]),
                             ),
                         ],
@@ -160,31 +163,43 @@ class _TeamIvrScreenState extends State<TeamIvrScreen> {
                     ),
                     // Dialpad — punch the menu number
                     _dialpad(),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: Msg.s3),
                   ]),
                 ),
     );
   }
 
+  // Accent lives on the ring + digit, not as a saturated fill: white-on-orange
+  // at this size measured ~2.6:1, so the fill stays AD.card.
   Widget _digitChip(int n) => Container(
         width: 30, height: 30, alignment: Alignment.center,
-        decoration: BoxDecoration(color: Zine.lime, shape: BoxShape.circle, border: Border.all(color: Zine.ink, width: 2)),
-        child: Text('$n', style: ZineText.cardTitle(size: 14)),
+        decoration: BoxDecoration(
+          color: AD.card,
+          shape: BoxShape.circle,
+          border: Border.all(color: AD.primaryBadge, width: 1),
+        ),
+        child: Text('$n', style: ADText.rowName(c: AD.primaryBadge).copyWith(fontSize: 14)),
       );
 
   Widget _dialpad() {
     Widget key(int n) => Padding(
-          padding: const EdgeInsets.all(7),
+          padding: const EdgeInsets.all(Msg.s2),
           child: GestureDetector(
             onTap: _routing ? null : () => _press(n), // pressable during the greeting (dial-ahead)
             child: Container(
               width: 68, height: 68, alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: _routing ? Zine.card : Zine.paper2, shape: BoxShape.circle,
-                border: Border.all(color: Zine.ink, width: Zine.bw),
-                boxShadow: _routing ? const [] : Zine.shadowXs,
+                // Idle keys sit a step ABOVE the card surface so the pad reads as
+                // pressable; routing (disabled) drops back to the flat card.
+                // Mapping the disabled state to AD.bg would have made the key
+                // vanish into the page.
+                color: _routing ? AD.card : AD.cardHover, shape: BoxShape.circle,
+                border: Border.all(color: AD.borderControl, width: 1),
+                boxShadow: Msg.none,
               ),
-              child: Text('$n', style: ZineText.cardTitle(size: 26, color: _routing ? Zine.inkMute : Zine.ink)),
+              child: Text('$n',
+                  style: ADText.appTitle(c: _routing ? AD.textTertiary : AD.textPrimary)
+                      .copyWith(fontSize: 26)),
             ),
           ),
         );

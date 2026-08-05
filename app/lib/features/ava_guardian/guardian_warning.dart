@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 
 /// The private GUARDIAN WARNING UI affordance (Phase 8 — Safety).
@@ -85,10 +86,17 @@ class GuardianWarningInfo {
         GuardianCategory.unknown => PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill),
       };
 
-  /// High-severity (or grooming) warnings use the alert/coral accent; lower ones
-  /// use the calmer lilac so we don't over-alarm on a spam hint.
-  Color get accent =>
-      (severity >= 3 || category == GuardianCategory.grooming) ? Zine.coral : Zine.lilac;
+  /// High-severity (or grooming) warnings use the alert red; lower ones use the
+  /// single brand accent so we don't over-alarm on a spam hint.
+  ///
+  /// [UI-ZINE-DARK-1] Was `Zine.coral` / `Zine.lilac`. The pale lilac was a
+  /// near-WHITE poster fill that also served as the card's TEXT colour — on the
+  /// near-black card that pairing was unreadable either way round. The dark
+  /// system spends colour on exactly two things here: `Msg.error` (red) and
+  /// `Msg.accent`, both of which clear 4.5:1 on `AD.card`.
+  Color get accent => (severity >= 3 || category == GuardianCategory.grooming)
+      ? Msg.error
+      : Msg.accent;
 }
 
 /// A compact, prominent warning CARD. Drop it just above/below the private bubble
@@ -117,28 +125,35 @@ class GuardianWarningCard extends StatelessWidget {
       onTap: () => GuardianWarningSheet.show(context,
           info: info, onBlock: onBlock, onReport: onReport, onDismiss: onDismiss),
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 6),
-        padding: const EdgeInsets.all(12),
+        margin: const EdgeInsets.symmetric(vertical: Msg.s1),
+        padding: const EdgeInsets.all(Msg.s3),
         decoration: BoxDecoration(
-          color: Zine.paper,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: accent, width: 2),
-          boxShadow: Zine.shadowXs,
+          color: AD.card,
+          borderRadius: Msg.brMd,
+          border: Border.all(color: accent, width: 1),
+          boxShadow: Msg.none,
         ),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           ZineIconBadge(icon: info.icon, color: accent, size: 34),
-          const SizedBox(width: 10),
+          const SizedBox(width: Msg.s3),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
-                Flexible(child: Text(info.title, style: ZineText.value(size: 13.5))),
-                const SizedBox(width: 6),
+                Flexible(
+                    child: Text(info.title,
+                        style: ADText.rowName().copyWith(fontSize: 14))),
+                const SizedBox(width: Msg.s1),
                 _privateTag(),
               ]),
               const SizedBox(height: 3),
-              Text(info.text, maxLines: 3, overflow: TextOverflow.ellipsis, style: ZineText.sub(size: 12)),
-              const SizedBox(height: 4),
-              Text('Tap for safety options', style: ZineText.tag(size: 10.5, color: accent)),
+              Text(info.text,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: ADText.preview(c: AD.textSecondary)
+                      .copyWith(fontSize: 12)),
+              const SizedBox(height: Msg.s1),
+              Text('Tap for safety options',
+                  style: ADText.tabLabel(c: accent).copyWith(fontSize: 11)),
             ]),
           ),
         ]),
@@ -146,13 +161,22 @@ class GuardianWarningCard extends StatelessWidget {
     );
   }
 
+  // A tag IS one of the shapes Msg.rPill is reserved for.
+  //
+  // [UI-ZINE-DARK-1] FILL/INK COLLAPSE CAUGHT: this pill was a translucent pale
+  // lilac carrying `Zine.ink` (near-BLACK) text. Mapping the ink straight to
+  // AD.textPrimary would have put white on a near-white wash; mapping the fill
+  // alone would have left black text on a near-black card. Both sides moved:
+  // neutral raised surface + secondary ink.
   static Widget _privateTag() => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s1, vertical: 2),
         decoration: BoxDecoration(
-          color: Zine.lilac.withValues(alpha: 0.18),
-          borderRadius: BorderRadius.circular(100),
+          color: AD.cardHover,
+          borderRadius: Msg.brPill,
+          border: Border.all(color: AD.borderHairline, width: 1),
         ),
-        child: Text('ONLY YOU', style: ZineText.tag(size: 8.5, color: Zine.ink)),
+        child: Text('Only you',
+            style: ADText.statCaption(c: AD.textSecondary).copyWith(fontSize: 10)),
       );
 }
 
@@ -182,10 +206,9 @@ class GuardianWarningSheet extends StatelessWidget {
   }) {
     return showModalBottomSheet<void>(
       context: context,
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.overlaySheet,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      shape: const RoundedRectangleBorder(borderRadius: Msg.brSheetTop),
       builder: (_) => GuardianWarningSheet(
           info: info, onBlock: onBlock, onReport: onReport, onDismiss: onDismiss),
     );
@@ -200,28 +223,33 @@ class GuardianWarningSheet extends StatelessWidget {
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             ZineIconBadge(icon: info.icon, color: accent, size: 40),
-            const SizedBox(width: 12),
+            const SizedBox(width: Msg.s3),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(info.title, style: ZineText.cardTitle(size: 18)),
-                Text('From Ava — only you can see this', style: ZineText.sub(size: 11.5)),
+                Text(info.title,
+                    style: ADText.threadName().copyWith(fontSize: 18)),
+                Text('From Ava — only you can see this',
+                    style: ADText.preview(c: AD.textSecondary)
+                        .copyWith(fontSize: 12)),
               ]),
             ),
           ]),
-          const SizedBox(height: 14),
+          const SizedBox(height: Msg.s4),
           Container(
-            padding: const EdgeInsets.all(13),
+            padding: const EdgeInsets.all(Msg.s3),
             decoration: BoxDecoration(
-              color: Zine.paper2,
-              borderRadius: BorderRadius.circular(12),
-              border: Zine.border,
+              color: AD.card,
+              borderRadius: Msg.brMd,
+              border: Border.all(color: AD.borderHairline, width: 1),
             ),
-            child: Text(info.text, style: ZineText.sub(size: 13.5)),
+            child: Text(info.text,
+                style: ADText.bubbleBody(c: AD.textPrimary)
+                    .copyWith(fontSize: 14)),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: Msg.s4),
           if (onBlock != null)
             Padding(
-              padding: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.only(bottom: Msg.s2),
               child: ZineButton(
                 label: 'Block this person',
                 variant: ZineButtonVariant.coral,
@@ -236,7 +264,7 @@ class GuardianWarningSheet extends StatelessWidget {
             ),
           if (onReport != null)
             Padding(
-              padding: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.only(bottom: Msg.s2),
               child: ZineButton(
                 label: 'Report to AvaTOK',
                 variant: ZineButtonVariant.blue,
@@ -254,7 +282,9 @@ class GuardianWarningSheet extends StatelessWidget {
               Navigator.pop(context);
               onDismiss?.call();
             },
-            child: Text('Dismiss', style: ZineText.link(size: 14, color: Zine.inkSoft)),
+            child: Text('Dismiss',
+                style: ADText.rowName(c: AD.textSecondary)
+                    .copyWith(fontSize: 14)),
           ),
         ]),
       ),

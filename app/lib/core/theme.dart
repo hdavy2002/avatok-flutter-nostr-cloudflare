@@ -1,101 +1,62 @@
 import 'package:flutter/material.dart';
 
-import 'ui/avatok_dark.dart' show AD;
-import 'ui/zine.dart';
+import 'ui/avatok_dark.dart';
+import 'ui/messenger_theme.dart';
 
-// [UI-ZINE-SPLIT-1 2026-08-05] ⚠️ THIS RE-EXPORT IS A DELETION BLOCKER.
+// [UI-ZINE-KILL-1 2026-08-05] The light design system is GONE.
 //
-// It used to be a blanket `export 'ui/zine.dart';`, which silently put the
-// whole LIGHT palette in scope for anything that imported theme.dart — so a
-// screen could keep using `Zine.paper` forever without ever importing the light
-// design system. It is now narrowed to the two symbols that are genuinely still
-// needed, so nothing NEW can pick up the light tokens by accident.
+// This file used to `import 'ui/zine.dart'` and re-export `Zine` + `ZineText`,
+// which silently put the whole LIGHT palette in scope for anything that
+// imported theme.dart — a screen could keep using `Zine.paper` forever without
+// ever importing the light system. That re-export was the single thing keeping
+// `core/ui/zine.dart` alive; every one of its ~1,600 call sites has now been
+// migrated to AD / ADText / Msg, so both the import and the export are gone and
+// the file has been deleted. `AvaColors` went with it (nothing referenced it).
 //
-// It cannot be removed outright yet. These EIGHT files use `Zine.*` / `ZineText.*`
-// and have NO direct `import 'core/ui/zine.dart'` — they resolve those names
-// purely through this line, so deleting it breaks the build:
+// `ZineWidthClass` / `ZineBreakpoints` were NOT part of the palette — they are
+// pure layout utilities and now live in `core/ui/breakpoints.dart`.
 //
-//   features/avabrain/agent_inbox_screen.dart
-//   features/avabrain/brain_settings_screen.dart
-//   features/avavoice/booking_sheet.dart
-//   features/avavoice/studio/agent_dashboard.dart
-//   features/avavoice/studio/my_agents_screen.dart
-//   features/avavoice/studio/voice_picker.dart
-//   features/avavoice/widgets.dart
-//   features/consult/prejoin_screen.dart
-//
-// To finish the job: migrate those eight to AD/ADText/Msg (or, as a stopgap,
-// give each one its own `import '../../core/ui/zine.dart';`), THEN delete this
-// line. `ZineWidthClass` / `ZineBreakpoints` are deliberately NOT here — they
-// moved to `core/ui/breakpoints.dart` and are imported directly.
-export 'ui/zine.dart' show Zine, ZineText;
-
-/// Legacy color names, re-pointed at the AvaTOK design-system (zine) palette so
-/// every screen that still references AvaColors gets the new look. New code
-/// should use [AD] / [ADText] from core/ui/avatok_dark.dart directly.
-class AvaColors {
-  /// Brand accent (was bright teal) → deep teal-blue accent ink.
-  static const brand = Zine.blueInk;
-  static const brand50 = Zine.blue;
-  static const ink = Zine.ink;
-  static const sub = Zine.inkSoft;
-  /// Hairlines/dividers — ink at 25%.
-  static const line = Color(0x40231B14);
-  static const soft = Zine.paper2;
-  static const bg = Zine.paper;
-  static const danger = Zine.coral;
-  static const success = Zine.mintInk;
-  static const coral = Zine.coral;
-
-  /// Welcome backdrop — flat deep teal (the single permitted dark surface,
-  /// §7.16). Kept as a "gradient" type for API compatibility, but both stops
-  /// are identical: NO real gradients in the system.
-  static const welcomeGradient = LinearGradient(
-    begin: Alignment.topCenter,
-    end: Alignment.bottomCenter,
-    colors: [Color(0xFF062D2A), Color(0xFF062D2A)],
-  );
-
-  /// CREATOR DROP banner — flat coral (white text is allowed on coral).
-  static const dropGradient = LinearGradient(
-    begin: Alignment.centerLeft,
-    end: Alignment.centerRight,
-    colors: [Zine.coral, Zine.coral],
-  );
-
-  /// Avatar/thumbnail fills — flat poster accents (each "gradient" is a single
-  /// flat color; avatars are bordered circles with flat fills, §6).
-  static const thumbGradients = <LinearGradient>[
-    LinearGradient(colors: [Zine.blue, Zine.blue]),
-    LinearGradient(colors: [Zine.lilac, Zine.lilac]),
-    LinearGradient(colors: [Zine.mint, Zine.mint]),
-    LinearGradient(colors: [Zine.lime, Zine.lime]),
-    LinearGradient(colors: [Zine.coral, Zine.coral]),
-  ];
-}
+// ⚠️ DO NOT RE-ADD a light palette here. The app renders dark on every surface
+// regardless of the OS light/dark setting; a "light" fallback in the global
+// ThemeData is what produced the cream flashes this theme now fixes.
 
 class AvaTheme {
+  /// The app's ONLY theme. Still named `light` because `MaterialApp(theme:)`
+  /// takes the light slot and ~every reference in the app says `AvaTheme.light`
+  /// — renaming it buys nothing and touches every call site. The VALUES are
+  /// dark; that is what matters.
+  ///
+  /// [UI-ZINE-KILL-1] Before this, `scaffoldBackgroundColor` was `Zine.paper`
+  /// (#F9F7ED cream) and the whole Material widget set — AppBar, buttons,
+  /// chips, switches, snackbars, dividers, card — was themed light while every
+  /// actual screen painted itself `AD.bg` near-black. Any Scaffold that forgot
+  /// an explicit `backgroundColor`, and every un-themed Material widget, came
+  /// out light-on-dark. That mismatch was the root of the cream flash on
+  /// startup and of the stray pale chrome scattered through the app.
   static ThemeData get light {
     final base = ThemeData(
       useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: Zine.blueInk,
-        primary: Zine.blueInk,
-        secondary: Zine.lime,
-        error: Zine.coral,
-        surface: Zine.card,
+      brightness: Brightness.dark,
+      colorScheme: const ColorScheme.dark(
+        primary: AD.primaryBadge,
+        onPrimary: AD.textOnInput,
+        secondary: AD.newGroup,
+        onSecondary: AD.textPrimary,
+        error: AD.danger,
+        onError: AD.textPrimary,
+        surface: AD.card,
+        onSurface: AD.textPrimary,
       ),
-      scaffoldBackgroundColor: Zine.paper,
-      fontFamily: ZineText.body,
+      scaffoldBackgroundColor: AD.bg,
+      canvasColor: AD.bg,
+      fontFamily: ADText.family,
       // [AVA-FLASH-1] 2026-07-17 — the "bright light then the page appears"
       // flash on every push/pop. Material 3 on Android uses
       // ZoomPageTransitionsBuilder, which paints the route's snapshot over a
-      // solid fill that defaults to colorScheme.surface — here Zine.card
-      // (0xFFFEFDFA, near-white). Every screen paints itself dark (AD.bg), so
-      // for the length of the transition the user got a white strobe. Pinning
-      // the transition fill to the real page background kills it. Do NOT drop
-      // this back to the default; the app's ThemeData is nominally "light"
-      // while the UI is dark, so the default will always be wrong here.
+      // solid fill defaulting to colorScheme.surface — which used to be a
+      // near-white. Pinning the transition fill to the real page background
+      // kills it. Now that the scheme itself is dark this is belt and braces,
+      // but keep it explicit: it documents the intent.
       pageTransitionsTheme: const PageTransitionsTheme(builders: {
         TargetPlatform.android: ZoomPageTransitionsBuilder(backgroundColor: AD.bg),
         TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
@@ -103,71 +64,77 @@ class AvaTheme {
       }),
     );
 
-    // Nunito for display/titles, Nunito (>=600) for body — bundled fonts.
-    final textTheme = base.textTheme.apply(
-      fontFamily: ZineText.body,
-      bodyColor: Zine.ink,
-      displayColor: Zine.ink,
-    ).copyWith(
-      displayLarge: ZineText.hero(size: 38),
-      displayMedium: ZineText.hero(size: 34),
-      headlineMedium: ZineText.hero(size: 28),
-      headlineSmall: ZineText.appbar(),
-      titleLarge: ZineText.cardTitle(size: 21),
-      titleMedium: ZineText.value(size: 16),
-      bodyLarge: ZineText.sub(size: 16, color: Zine.ink),
-      bodyMedium: ZineText.sub(size: 14.5, color: Zine.ink),
-      labelLarge: ZineText.button(size: 17),
-      labelSmall: ZineText.kicker(),
-    );
+    final textTheme = base.textTheme
+        .apply(
+          fontFamily: ADText.family,
+          bodyColor: AD.textPrimary,
+          displayColor: AD.textPrimary,
+        )
+        .copyWith(
+          displayLarge: ADText.appTitle().copyWith(fontSize: 34),
+          displayMedium: ADText.appTitle().copyWith(fontSize: 28),
+          headlineMedium: ADText.appTitle().copyWith(fontSize: 22),
+          headlineSmall: ADText.appTitle(),
+          titleLarge: ADText.threadName().copyWith(fontSize: 18),
+          titleMedium: ADText.rowName(),
+          bodyLarge: ADText.bubbleBody().copyWith(fontSize: 16),
+          bodyMedium: ADText.bubbleBody(),
+          labelLarge: ADText.rowName().copyWith(fontSize: 15),
+          labelSmall: ADText.sectionLabel(),
+        );
 
     return base.copyWith(
       textTheme: textTheme,
       appBarTheme: AppBarTheme(
-        backgroundColor: Zine.paper2,
-        foregroundColor: Zine.ink,
+        backgroundColor: AD.bg,
+        foregroundColor: AD.textPrimary,
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: false,
-        titleTextStyle: ZineText.appbar(),
-        shape: const Border(bottom: BorderSide(color: Zine.ink, width: Zine.bw)),
+        titleTextStyle: ADText.appTitle(),
+        shape: const Border(
+            bottom: BorderSide(color: AD.borderHairline, width: 1)),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: Zine.lime,
-          foregroundColor: Zine.ink,
-          disabledBackgroundColor: Zine.paper2,
-          disabledForegroundColor: Zine.inkMute,
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 15),
-          shape: const StadiumBorder(side: BorderSide(color: Zine.ink, width: Zine.bw)),
-          textStyle: ZineText.button(size: 17),
+          backgroundColor: AD.primaryBadge,
+          // Dark ink on the accent, not white: white on #E8833A is ~2.5:1.
+          foregroundColor: AD.textOnInput,
+          disabledBackgroundColor: AD.cardHover,
+          disabledForegroundColor: AD.textTertiary,
+          padding: const EdgeInsets.symmetric(
+              horizontal: Msg.s5, vertical: Msg.s3 + 2),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(Msg.rMd)),
+          textStyle: ADText.rowName().copyWith(fontSize: 15),
           elevation: 0,
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: Zine.ink,
-          side: const BorderSide(color: Zine.ink, width: Zine.bw),
-          shape: const StadiumBorder(),
-          textStyle: ZineText.button(size: 15),
+          foregroundColor: AD.textPrimary,
+          side: const BorderSide(color: AD.borderControl, width: 1),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(Msg.rMd)),
+          textStyle: ADText.rowName().copyWith(fontSize: 15),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: Zine.blueInk,
-          textStyle: ZineText.link(size: 13.5),
+          foregroundColor: AD.primaryBadge,
+          textStyle: ADText.preview().copyWith(color: AD.primaryBadge),
         ),
       ),
-      // NO default box. The zine design wraps every input in its own bordered
-      // container (ZineTextField, the chat composer, search bars), so a themed
+      // NO default box. The design wraps every input in its own bordered
+      // container (AdField, the chat composer, search bars), so a themed
       // filled+outlined box here drew a SECOND bar inside that container (the
-      // "double bar" bug). Keep the theme borderless/unfilled; containers supply
-      // the visual. (2026-06-18)
+      // "double bar" bug). Keep the theme borderless/unfilled; containers
+      // supply the visual. (2026-06-18)
       inputDecorationTheme: InputDecorationTheme(
         filled: false,
         isDense: true,
-        hintStyle: ZineText.input(size: 16).copyWith(color: Zine.placeholder, fontWeight: FontWeight.w600),
-        labelStyle: ZineText.kicker(size: 12),
+        hintStyle: ADText.bubbleBody(c: AD.textTertiary).copyWith(fontSize: 16),
+        labelStyle: ADText.sectionLabel(),
         border: InputBorder.none,
         enabledBorder: InputBorder.none,
         focusedBorder: InputBorder.none,
@@ -176,48 +143,82 @@ class AvaTheme {
         focusedErrorBorder: InputBorder.none,
       ),
       cardTheme: CardThemeData(
-        color: Zine.card,
+        color: AD.card,
         elevation: 0,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(Zine.r),
-          side: const BorderSide(color: Zine.ink, width: Zine.bw),
+          borderRadius: BorderRadius.circular(Msg.rLg),
+          side: const BorderSide(color: AD.borderHairline, width: 1),
         ),
       ),
-      dividerTheme: const DividerThemeData(color: AvaColors.line, thickness: 1.5),
+      dividerTheme:
+          const DividerThemeData(color: AD.borderHairline, thickness: 1),
       chipTheme: base.chipTheme.copyWith(
-        backgroundColor: Zine.card,
-        selectedColor: Zine.lime,
-        labelStyle: ZineText.tag(size: 12.5),
-        side: const BorderSide(color: Zine.ink, width: 2),
+        backgroundColor: AD.card,
+        selectedColor: AD.primaryBadge,
+        labelStyle: ADText.statCaption(c: AD.textSecondary),
+        side: const BorderSide(color: AD.borderControl, width: 1),
         shape: const StadiumBorder(),
       ),
       switchTheme: SwitchThemeData(
-        thumbColor: WidgetStateProperty.resolveWith(
-            (s) => s.contains(WidgetState.selected) ? Zine.ink : Zine.card),
-        trackColor: WidgetStateProperty.resolveWith(
-            (s) => s.contains(WidgetState.selected) ? Zine.lime : Zine.paper2),
-        trackOutlineColor: const WidgetStatePropertyAll(Zine.ink),
-        trackOutlineWidth: const WidgetStatePropertyAll(2),
+        thumbColor: WidgetStateProperty.resolveWith((s) =>
+            s.contains(WidgetState.selected) ? AD.textOnInput : AD.textTertiary),
+        trackColor: WidgetStateProperty.resolveWith((s) =>
+            s.contains(WidgetState.selected) ? AD.primaryBadge : AD.cardHover),
+        trackOutlineColor:
+            const WidgetStatePropertyAll(AD.borderControl),
+        trackOutlineWidth: const WidgetStatePropertyAll(1),
       ),
       snackBarTheme: SnackBarThemeData(
-        backgroundColor: Zine.ink,
-        contentTextStyle: ZineText.value(size: 14, color: Zine.paper),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        // The snackbar sits ON the dark page, so it must be LIGHTER than the
+        // canvas to read as a surface — the old theme used near-black ink,
+        // which is now the page itself.
+        backgroundColor: AD.cardHover,
+        contentTextStyle: ADText.bubbleBody(),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(Msg.rMd)),
         behavior: SnackBarBehavior.floating,
         // App-wide dismiss affordance. Snackbars carrying a SnackBarAction
         // (e.g. the "Can't reach the network — Retry" banner) otherwise give
         // the user no way to get rid of them; swipe-to-dismiss alone is not
-        // discoverable. showCloseIcon renders the X for every snackbar that
-        // does not override it locally.
+        // discoverable.
         showCloseIcon: true,
-        closeIconColor: Zine.paper,
+        closeIconColor: AD.textSecondary,
       ),
-      progressIndicatorTheme: const ProgressIndicatorThemeData(color: Zine.blueInk),
+      progressIndicatorTheme:
+          const ProgressIndicatorThemeData(color: AD.primaryBadge),
+      bottomSheetTheme: const BottomSheetThemeData(
+        backgroundColor: AD.overlaySheet,
+        surfaceTintColor: Colors.transparent,
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: AD.card,
+        surfaceTintColor: Colors.transparent,
+        titleTextStyle: ADText.threadName(),
+        contentTextStyle: ADText.bubbleBody(c: AD.textSecondary),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(Msg.rLg)),
+      ),
+      popupMenuTheme: PopupMenuThemeData(
+        color: AD.card,
+        surfaceTintColor: Colors.transparent,
+        textStyle: ADText.bubbleBody(),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(Msg.rMd)),
+      ),
+      listTileTheme: const ListTileThemeData(
+        textColor: AD.textPrimary,
+        iconColor: AD.iconNeutral,
+      ),
+      iconTheme: const IconThemeData(color: AD.iconNeutral),
     );
   }
 
-  /// Brand wordmark — Nunito 700 (the only display font in the system).
-  static TextStyle wordmark(double size, {Color color = Zine.ink}) => TextStyle(
-      fontFamily: ZineText.display, fontWeight: FontWeight.w700,
-      fontSize: size, letterSpacing: -0.02 * size, color: color);
+  /// Brand wordmark — Nunito 700 (the only display weight in the system).
+  static TextStyle wordmark(double size, {Color color = AD.textPrimary}) =>
+      TextStyle(
+          fontFamily: ADText.family,
+          fontWeight: FontWeight.w700,
+          fontSize: size,
+          letterSpacing: -0.02 * size,
+          color: color);
 }

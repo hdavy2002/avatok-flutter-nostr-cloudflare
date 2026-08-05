@@ -8,8 +8,17 @@ import '../../core/api_auth.dart';
 import '../../core/config.dart';
 import '../../core/disk_cache.dart';
 import '../../core/remote_config.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
+
+/// Ava's badge accent on this surface.
+///
+/// [UI-ZINE-DARK-1] Replaces the pale `Zine.lilac` — a near-WHITE poster fill
+/// that read as a bright blob on the near-black sheet. The dark system's lilac
+/// family `solid` is dark enough that `ZineIconBadge` resolves its glyph to
+/// white. Not `const` — `familyByName` is a lookup.
+final Color _avaAccent = AD.familyByName('lilac').solid;
 
 /// Per-chat Ava GUARDIAN controls (Phase 8 — Safety) + warning-display prefs.
 ///
@@ -51,10 +60,9 @@ class GuardianSettingsSheet extends StatefulWidget {
   static Future<void> show(BuildContext context, {required String conv, String? chatLabel, String? peerUid}) {
     return showModalBottomSheet<void>(
       context: context,
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.overlaySheet,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      shape: const RoundedRectangleBorder(borderRadius: Msg.brSheetTop),
       builder: (_) => GuardianSettingsSheet(conv: conv, chatLabel: chatLabel, peerUid: peerUid),
     );
   }
@@ -117,20 +125,25 @@ class _GuardianSettingsSheetState extends State<GuardianSettingsSheet> {
         padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            ZineIconBadge(icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill), color: Zine.lilac, size: 38),
-            const SizedBox(width: 12),
+            ZineIconBadge(
+                icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill),
+                color: _avaAccent, size: 38),
+            const SizedBox(width: Msg.s3),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Ava guardian', style: ZineText.cardTitle(size: 18)),
+                Text('Ava guardian',
+                    style: ADText.threadName().copyWith(fontSize: 18)),
                 if (widget.chatLabel != null && widget.chatLabel!.isNotEmpty)
-                  Text(widget.chatLabel!, style: ZineText.sub(size: 12)),
+                  Text(widget.chatLabel!,
+                      style: ADText.preview(c: AD.textSecondary)
+                          .copyWith(fontSize: 12)),
               ]),
             ),
           ]),
-          const SizedBox(height: 16),
+          const SizedBox(height: Msg.s4),
           if (_loading)
             const Padding(
-              padding: EdgeInsets.symmetric(vertical: 28),
+              padding: EdgeInsets.symmetric(vertical: Msg.s6),
               child: Center(child: CircularProgressIndicator(strokeWidth: 2.4)),
             )
           else ...[
@@ -143,22 +156,24 @@ class _GuardianSettingsSheetState extends State<GuardianSettingsSheet> {
               value: _prefs.secureChat,
               onChanged: _setSecure,
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s4),
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(Msg.s3),
               decoration: BoxDecoration(
-                color: Zine.paper2,
-                borderRadius: BorderRadius.circular(12),
-                border: Zine.border,
+                color: AD.card,
+                borderRadius: Msg.brMd,
+                border: Border.all(color: AD.borderHairline, width: 1),
               ),
               child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                PhosphorIcon(PhosphorIcons.lockKey(PhosphorIconsStyle.bold), size: 16, color: Zine.inkSoft),
-                const SizedBox(width: 8),
+                PhosphorIcon(PhosphorIcons.lockKey(PhosphorIconsStyle.regular),
+                    size: 16, color: AD.textSecondary),
+                const SizedBox(width: Msg.s2),
                 Expanded(
                   child: Text(
                     'Guardian warnings are private — only you ever see them, never the '
                     'other person. Ava never reads end-to-end / on-device-only content.',
-                    style: ZineText.sub(size: 11.5),
+                    style: ADText.preview(c: AD.textSecondary)
+                        .copyWith(fontSize: 12),
                   ),
                 ),
               ]),
@@ -166,29 +181,31 @@ class _GuardianSettingsSheetState extends State<GuardianSettingsSheet> {
             // U1-lite: MANUAL "Require verification" for 1:1 chats (dark behind
             // guardianGateEnabled). Asks the peer to complete a live face check.
             if (_showRequireVerify) ...[
-              const SizedBox(height: 14),
+              const SizedBox(height: Msg.s4),
               ZineCard(
-                radius: Zine.rSm,
-                padding: const EdgeInsets.all(14),
-                boxShadow: Zine.shadowXs,
+                padding: const EdgeInsets.all(Msg.s4),
                 child: Row(children: [
+                  // Was `Zine.blue` (pale aqua). AD.newGroup is the same token
+                  // ZineButtonVariant.blue resolves to, so the badge and the
+                  // "Ask" button below it now read as one control.
                   ZineIconBadge(
                       icon: PhosphorIcons.userFocus(PhosphorIconsStyle.fill),
-                      color: Zine.blue, size: 34),
-                  const SizedBox(width: 12),
+                      color: AD.newGroup, size: 34),
+                  const SizedBox(width: Msg.s3),
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('Require verification', style: ZineText.value(size: 14.5)),
+                      Text('Require verification', style: ADText.rowName()),
                       const SizedBox(height: 2),
                       Text(
                         _verifyRequested
                             ? 'Verification requested — Ava asked them to prove a live human face.'
                             : "Ask this person to prove they're a real, live human with a quick face check.",
-                        style: ZineText.sub(size: 12),
+                        style: ADText.preview(c: AD.textSecondary)
+                            .copyWith(fontSize: 12),
                       ),
                     ]),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: Msg.s3),
                   if (_verifyBusy)
                     const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.2))
                   else
@@ -201,10 +218,10 @@ class _GuardianSettingsSheetState extends State<GuardianSettingsSheet> {
               ),
             ],
             if (!GuardianPrefsClient.I.serverLive) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: Msg.s2),
               Text(
                 'Saved on this device. Syncs to your account when the connection is back.',
-                style: ZineText.sub(size: 10.5, color: Zine.inkSoft),
+                style: ADText.statCaption(c: AD.textTertiary),
               ),
             ],
           ],
@@ -232,20 +249,20 @@ class _ToggleRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ZineCard(
-      radius: Zine.rSm,
-      padding: const EdgeInsets.all(14),
-      boxShadow: Zine.shadowXs,
+      padding: const EdgeInsets.all(Msg.s4),
       child: Row(children: [
-        ZineIconBadge(icon: icon, color: Zine.lilac, size: 34),
-        const SizedBox(width: 12),
+        ZineIconBadge(icon: icon, color: _avaAccent, size: 34),
+        const SizedBox(width: Msg.s3),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: ZineText.value(size: 14.5)),
+            Text(title, style: ADText.rowName()),
             const SizedBox(height: 2),
-            Text(subtitle, style: ZineText.sub(size: 12)),
+            Text(subtitle,
+                style: ADText.preview(c: AD.textSecondary)
+                    .copyWith(fontSize: 12)),
           ]),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: Msg.s3),
         ZineToggle(value: value, onChanged: onChanged),
       ]),
     );

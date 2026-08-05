@@ -4,13 +4,19 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/avatar.dart';
 import '../../core/community_store.dart';
 import '../../core/group_store.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
 import '../../sync/group_api.dart';
 import '../avatok/chat_thread.dart';
 import '../avatok/contacts.dart';
 import '../avatok/data.dart';
+
+/// Dialog / card title — the dark-system stand-in for the old
+/// `ZineText.cardTitle(...)`.
+TextStyle _cardTitle(double size) =>
+    ADText.threadName().copyWith(fontSize: size, height: 1.1, letterSpacing: -0.2);
 
 /// A single community: its channels (each a real AvaTok group), members,
 /// and management (add channel / add members / share code / leave).
@@ -52,9 +58,11 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
     final name = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: Zine.card,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Zine.r), side: const BorderSide(color: Zine.ink, width: Zine.bw)),
-        title: Text('New channel', style: ZineText.cardTitle(size: 21)),
+        backgroundColor: AD.card,
+        shape: RoundedRectangleBorder(
+            borderRadius: Msg.brLg,
+            side: const BorderSide(color: AD.borderControl, width: 1)),
+        title: Text('New channel', style: _cardTitle(21)),
         content: ZineField(controller: ctrl, autofocus: true, hint: 'Channel name (e.g. General)'),
         actions: [
           ZineButton(label: 'Cancel', variant: ZineButtonVariant.ghost, fontSize: 15, onPressed: () => Navigator.pop(ctx)),
@@ -85,10 +93,10 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
     final picked = await showModalBottomSheet<Set<String>>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Zine.card,
+      backgroundColor: AD.overlaySheet,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-        side: BorderSide(color: Zine.ink, width: Zine.bw),
+        borderRadius: Msg.brSheetTop,
+        side: BorderSide(color: AD.borderHairline, width: 1),
       ),
       builder: (ctx) => _MemberPicker(contacts: widget.contacts, already: _c.members.toSet()),
     );
@@ -116,20 +124,25 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
 
   void _shareCode() {
     showDialog(context: context, builder: (ctx) => AlertDialog(
-      backgroundColor: Zine.card,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Zine.r), side: const BorderSide(color: Zine.ink, width: Zine.bw)),
-      title: Text('Community code', style: ZineText.cardTitle(size: 21)),
+      backgroundColor: AD.card,
+      shape: RoundedRectangleBorder(
+          borderRadius: Msg.brLg,
+          side: const BorderSide(color: AD.borderControl, width: 1)),
+      title: Text('Community code', style: _cardTitle(21)),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text('Share this code so others can join:', style: ZineText.sub(size: 14)),
-        const SizedBox(height: 12),
+        Text('Share this code so others can join:',
+            style: ADText.preview().copyWith(fontSize: 14, height: 1.42)),
+        const SizedBox(height: Msg.s3),
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
           decoration: BoxDecoration(
-            color: Zine.paper2,
-            borderRadius: BorderRadius.circular(Zine.rSm),
-            border: Zine.border,
+            // A slot INSIDE a card, so it sits a step darker than the card.
+            color: AD.headerFooter,
+            borderRadius: Msg.brMd,
+            border: Border.all(color: AD.borderControl, width: 1),
           ),
-          child: SelectableText(_c.id, style: ZineText.tag(size: 13)),
+          child: SelectableText(_c.id,
+              style: ADText.tabLabel().copyWith(fontSize: 13, letterSpacing: 0.5)),
         ),
       ]),
       actions: [
@@ -155,16 +168,16 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       appBar: ZineAppBar(
         title: _c.name,
         tag: '${_c.members.length} members · ${_c.groups.length} channels',
         actions: [
           PopupMenuButton<String>(
-            color: Zine.card,
+            color: AD.menu,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(Zine.rSm),
-              side: const BorderSide(color: Zine.ink, width: 2),
+              borderRadius: Msg.brMd,
+              side: const BorderSide(color: AD.borderControl, width: 1),
             ),
             onSelected: (v) {
               if (v == 'code') _shareCode();
@@ -172,20 +185,22 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
               if (v == 'leave') _leave();
             },
             itemBuilder: (_) => [
-              PopupMenuItem(value: 'members', child: Text('Add members', style: ZineText.value(size: 14))),
-              PopupMenuItem(value: 'code', child: Text('Share code', style: ZineText.value(size: 14))),
-              PopupMenuItem(value: 'leave', child: Text('Leave community', style: ZineText.value(size: 14, color: Zine.coral))),
+              PopupMenuItem(value: 'members', child: Text('Add members', style: ADText.rowName().copyWith(fontSize: 14))),
+              PopupMenuItem(value: 'code', child: Text('Share code', style: ADText.rowName().copyWith(fontSize: 14))),
+              PopupMenuItem(value: 'leave', child: Text('Leave community', style: ADText.rowName(c: AD.danger).copyWith(fontSize: 14))),
             ],
             child: Container(
               width: 42, height: 42,
-              decoration: BoxDecoration(
-                color: Zine.card,
+              decoration: const BoxDecoration(
+                color: AD.card,
                 shape: BoxShape.circle,
-                border: Zine.border,
-                boxShadow: Zine.shadowXs,
+                border: Border.fromBorderSide(
+                    BorderSide(color: AD.borderControl, width: 1)),
+                boxShadow: Msg.none,
               ),
               child: Center(
-                child: PhosphorIcon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold), size: 20, color: Zine.ink),
+                child: PhosphorIcon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.regular),
+                    size: 20, color: AD.textPrimary),
               ),
             ),
           ),
@@ -193,79 +208,93 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
       ),
       floatingActionButton: ZinePressable(
         onTap: _addChannel,
-        color: Zine.lime,
-        radius: BorderRadius.circular(100),
+        // Accent fill carries a WHITE glyph — the old dark ink on lime would
+        // have been invisible here.
+        color: Msg.accent,
+        radius: Msg.brPill,
         child: SizedBox(
           width: 56, height: 56,
           child: Center(
-            child: PhosphorIcon(PhosphorIcons.plus(PhosphorIconsStyle.bold), size: 24, color: Zine.ink),
+            child: PhosphorIcon(PhosphorIcons.plus(PhosphorIconsStyle.bold), size: 24, color: Colors.white),
           ),
         ),
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 96),
+        padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, 96),
         children: [
-          // Community header card — zine band: blue fill, ink border, hard shadow.
+          // Community header card. The old version was a pale-BLUE band with
+          // dark ink on it and a near-WHITE icon badge inside. Inverting that
+          // literally would have put white paragraph text on a bright pastel,
+          // so the card is a normal dark surface and the colour moved onto the
+          // badge, which is the only thing that needs to carry it.
           ZineCard(
-            color: Zine.blue,
             child: Row(children: [
-              ZineIconBadge(icon: PhosphorIcons.usersThree(PhosphorIconsStyle.bold), color: Zine.card, size: 52),
-              const SizedBox(width: 14),
+              ZineIconBadge(
+                  icon: PhosphorIcons.usersThree(PhosphorIconsStyle.regular),
+                  color: AD.family(_c.id).solid,
+                  size: 52),
+              const SizedBox(width: Msg.s4),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                Text(_c.name, style: ZineText.cardTitle(size: 20)),
-                const SizedBox(height: 4),
+                Text(_c.name, style: _cardTitle(20)),
+                const SizedBox(height: Msg.s1),
                 Text(_c.about.isNotEmpty ? _c.about : '${_c.members.length} members',
-                    style: ZineText.sub(size: 13.5, color: Zine.ink)),
+                    style: ADText.preview().copyWith(fontSize: 14)),
               ])),
             ]),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: Msg.s4),
           Padding(
-            padding: const EdgeInsets.only(left: 4, bottom: 9),
-            child: Text('CHANNELS', style: ZineText.kicker()),
+            padding: const EdgeInsets.only(left: Msg.s1, bottom: Msg.s2),
+            child: Text('Channels', style: ADText.sectionLabel()),
           ),
           for (var i = 0; i < _channels.length; i++) ...[
             ZineCard(
-              radius: Zine.rSm,
-              padding: const EdgeInsets.all(12),
-              boxShadow: Zine.shadowXs,
+              radius: Msg.rLg,
+              padding: const EdgeInsets.all(Msg.s3),
+              boxShadow: Msg.none,
               onTap: () => _openChannel(_channels[i]),
               child: Row(children: [
                 ZineIconBadge(
-                  icon: PhosphorIcons.hash(PhosphorIconsStyle.bold),
-                  color: Zine.accents[i % Zine.accents.length],
+                  icon: PhosphorIcons.hash(PhosphorIconsStyle.regular),
+                  // Deterministic per channel, so a channel keeps its colour.
+                  color: AD.family(_channels[i].id).solid,
                   size: 40,
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: Msg.s3),
                 Expanded(child: Text(
                     _channels[i].name.contains(' · ') ? _channels[i].name.split(' · ').last : _channels[i].name,
                     maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: ZineText.cardTitle(size: 16))),
-                const SizedBox(width: 8),
-                Text('${_channels[i].members.length} MEMBERS', style: ZineText.tag(size: 9.5, color: Zine.inkSoft)),
+                    style: _cardTitle(16))),
+                const SizedBox(width: Msg.s2),
+                Text('${_channels[i].members.length} members',
+                    style: ADText.statCaption(c: AD.textSecondary)),
               ]),
             ),
-            const SizedBox(height: 11),
+            const SizedBox(height: Msg.s3),
           ],
           if (_channels.isEmpty)
             Padding(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(Msg.s5),
               child: Center(child: ZineEmptyState(
-                icon: PhosphorIcons.hash(PhosphorIconsStyle.bold),
+                icon: PhosphorIcons.hash(PhosphorIconsStyle.regular),
                 text: 'No channels yet — tap + to start one.',
               )),
             ),
-          const SizedBox(height: 8),
+          const SizedBox(height: Msg.s2),
           ZineCard(
-            radius: Zine.rSm,
-            padding: const EdgeInsets.all(12),
-            boxShadow: Zine.shadowXs,
+            radius: Msg.rLg,
+            padding: const EdgeInsets.all(Msg.s3),
+            boxShadow: Msg.none,
             onTap: _addMembers,
             child: Row(children: [
-              ZineIconBadge(icon: PhosphorIcons.userPlus(PhosphorIconsStyle.bold), color: Zine.mint, size: 40),
-              const SizedBox(width: 12),
-              Expanded(child: Text('Add members', style: ZineText.cardTitle(size: 16))),
-              PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: Zine.inkSoft),
+              ZineIconBadge(
+                  icon: PhosphorIcons.userPlus(PhosphorIconsStyle.regular),
+                  color: AD.newGroup,
+                  size: 40),
+              const SizedBox(width: Msg.s3),
+              Expanded(child: Text('Add members', style: _cardTitle(16))),
+              PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.regular),
+                  size: 16, color: AD.textSecondary),
             ]),
           ),
         ],
@@ -291,9 +320,9 @@ class _MemberPickerState extends State<_MemberPicker> {
     return SafeArea(
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(Msg.s4),
           child: Row(children: [
-            Text('Add members', style: ZineText.cardTitle(size: 19)),
+            Text('Add members', style: _cardTitle(19)),
             const Spacer(),
             ZineButton(
               label: 'Add (${_picked.length})',
@@ -304,8 +333,9 @@ class _MemberPickerState extends State<_MemberPicker> {
         ),
         if (selectable.isEmpty)
           Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text('No more contacts to add', style: ZineText.sub(size: 14)),
+            padding: const EdgeInsets.all(Msg.s5),
+            child: Text('No more contacts to add',
+                style: ADText.preview().copyWith(fontSize: 14, height: 1.42)),
           ),
         Flexible(
           child: ListView.builder(
@@ -317,21 +347,27 @@ class _MemberPickerState extends State<_MemberPicker> {
               return ListTile(
                 onTap: () => setState(() => on ? _picked.remove(c.uid) : _picked.add(c.uid)),
                 leading: Container(
-                  decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Zine.ink, width: 2)),
+                  decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AD.borderControl, width: 1)),
                   child: Avatar(seed: c.seed, name: c.name, size: 42),
                 ),
-                title: Text(c.name, style: ZineText.value(size: 15)),
-                subtitle: c.subtitle.isNotEmpty ? Text(c.subtitle, style: ZineText.sub(size: 12.5)) : null,
+                title: Text(c.name, style: ADText.rowName()),
+                subtitle: c.subtitle.isNotEmpty
+                    ? Text(c.subtitle, style: ADText.preview().copyWith(fontSize: 13))
+                    : null,
                 trailing: Container(
                   width: 26, height: 26,
                   decoration: BoxDecoration(
-                    color: on ? Zine.lime : Zine.card,
+                    color: on ? Msg.accent : AD.card,
                     shape: BoxShape.circle,
-                    border: Border.all(color: Zine.ink, width: 2),
-                    boxShadow: on ? Zine.shadowXs : null,
+                    border: Border.all(
+                        color: on ? Msg.accent : AD.borderControl, width: 1),
                   ),
                   child: on
-                      ? Center(child: PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold), size: 14, color: Zine.ink))
+                      // White check on the accent fill — a dark ink here would
+                      // sit at ~2.5:1 on orange.
+                      ? Center(child: PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold), size: 14, color: Colors.white))
                       : null,
                 ),
               );

@@ -8,8 +8,19 @@ import '../../core/api_auth.dart';
 import '../../core/config.dart';
 import '../../core/disk_cache.dart';
 import '../../core/paid_feature.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
+
+/// Ava's badge accent on this surface.
+///
+/// [UI-ZINE-DARK-1] Replaces the legacy pale `Zine.lilac`. That colour was a
+/// near-WHITE poster fill; on the near-black sheet it read as a bright blob, and
+/// `ZineIconBadge` would have put dark ink on it. The dark system already ships
+/// a lilac family — its saturated `solid` variant is dark enough that the badge
+/// glyph resolves to white, which is the contrast pair the badge expects.
+/// Lazily-initialised (not `const`) because `familyByName` is a lookup.
+final Color _avaAccent = AD.familyByName('lilac').solid;
 
 /// Per-chat Ava DELEGATE controls (Phase 7 — Delegate: Monitor + Auto-reply +
 /// Push). Two opt-in toggles a user sets FOR ONE CONVERSATION:
@@ -41,10 +52,9 @@ class DelegateSettingsSheet extends StatefulWidget {
   static Future<void> show(BuildContext context, {required String conv, String? chatLabel}) {
     return showModalBottomSheet<void>(
       context: context,
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.overlaySheet,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      shape: const RoundedRectangleBorder(borderRadius: Msg.brSheetTop),
       builder: (_) => DelegateSettingsSheet(conv: conv, chatLabel: chatLabel),
     );
   }
@@ -89,20 +99,25 @@ class _DelegateSettingsSheetState extends State<DelegateSettingsSheet> {
         padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            ZineIconBadge(icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill), color: Zine.lilac, size: 38),
-            const SizedBox(width: 12),
+            ZineIconBadge(
+                icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
+                color: _avaAccent, size: 38),
+            const SizedBox(width: Msg.s3),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Ava delegate', style: ZineText.cardTitle(size: 18)),
+                Text('Ava delegate',
+                    style: ADText.threadName().copyWith(fontSize: 18)),
                 if (widget.chatLabel != null && widget.chatLabel!.isNotEmpty)
-                  Text(widget.chatLabel!, style: ZineText.sub(size: 12)),
+                  Text(widget.chatLabel!,
+                      style: ADText.preview(c: AD.textSecondary)
+                          .copyWith(fontSize: 12)),
               ]),
             ),
           ]),
-          const SizedBox(height: 16),
+          const SizedBox(height: Msg.s4),
           if (_loading)
             const Padding(
-              padding: EdgeInsets.symmetric(vertical: 28),
+              padding: EdgeInsets.symmetric(vertical: Msg.s6),
               child: Center(child: CircularProgressIndicator(strokeWidth: 2.4)),
             )
           else ...[
@@ -115,38 +130,40 @@ class _DelegateSettingsSheetState extends State<DelegateSettingsSheet> {
               value: _prefs.alertMentions,
               onChanged: _setAlert,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: Msg.s3),
             // PREMIUM — monitor & reply on my behalf. Enable is gated; disable free.
             _MonitorRow(
               value: _prefs.monitor,
               onEnable: () => _setMonitor(true),
               onDisable: () => _setMonitor(false),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s4),
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(Msg.s3),
               decoration: BoxDecoration(
-                color: Zine.paper2,
-                borderRadius: BorderRadius.circular(12),
-                border: Zine.border,
+                color: AD.card,
+                borderRadius: Msg.brMd,
+                border: Border.all(color: AD.borderHairline, width: 1),
               ),
               child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                PhosphorIcon(PhosphorIcons.info(PhosphorIconsStyle.bold), size: 16, color: Zine.inkSoft),
-                const SizedBox(width: 8),
+                PhosphorIcon(PhosphorIcons.info(PhosphorIconsStyle.regular),
+                    size: 16, color: AD.textSecondary),
+                const SizedBox(width: Msg.s2),
                 Expanded(
                   child: Text(
                     'When Ava replies for you she always says so — "Ava — for <you>" — '
                     'and only while you’re offline. She never pretends to be you.',
-                    style: ZineText.sub(size: 11.5),
+                    style: ADText.preview(c: AD.textSecondary)
+                        .copyWith(fontSize: 12),
                   ),
                 ),
               ]),
             ),
             if (!DelegatePrefsClient.I.serverLive) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: Msg.s2),
               Text(
                 'Saved on this device. Syncs to your account when delegate sync goes live.',
-                style: ZineText.sub(size: 10.5, color: Zine.inkSoft),
+                style: ADText.statCaption(c: AD.textTertiary),
               ),
             ],
           ],
@@ -174,20 +191,20 @@ class _ToggleRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ZineCard(
-      radius: Zine.rSm,
-      padding: const EdgeInsets.all(14),
-      boxShadow: Zine.shadowXs,
+      padding: const EdgeInsets.all(Msg.s4),
       child: Row(children: [
-        ZineIconBadge(icon: icon, color: Zine.lilac, size: 34),
-        const SizedBox(width: 12),
+        ZineIconBadge(icon: icon, color: _avaAccent, size: 34),
+        const SizedBox(width: Msg.s3),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: ZineText.value(size: 14.5)),
+            Text(title, style: ADText.rowName()),
             const SizedBox(height: 2),
-            Text(subtitle, style: ZineText.sub(size: 12)),
+            Text(subtitle,
+                style: ADText.preview(c: AD.textSecondary)
+                    .copyWith(fontSize: 12)),
           ]),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: Msg.s3),
         ZineToggle(value: value, onChanged: onChanged),
       ]),
     );
@@ -206,17 +223,19 @@ class _MonitorRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ZineCard(
-      radius: Zine.rSm,
-      padding: const EdgeInsets.all(14),
-      boxShadow: Zine.shadowXs,
+      padding: const EdgeInsets.all(Msg.s4),
       child: Row(children: [
-        ZineIconBadge(icon: PhosphorIcons.userFocus(PhosphorIconsStyle.fill), color: Zine.lilac, size: 34),
-        const SizedBox(width: 12),
+        ZineIconBadge(
+            icon: PhosphorIcons.userFocus(PhosphorIconsStyle.fill),
+            color: _avaAccent, size: 34),
+        const SizedBox(width: Msg.s3),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              Flexible(child: Text('Monitor & reply on my behalf', style: ZineText.value(size: 14.5))),
-              const SizedBox(width: 8),
+              Flexible(
+                  child: Text('Monitor & reply on my behalf',
+                      style: ADText.rowName())),
+              const SizedBox(width: Msg.s2),
               const PaidBadge(),
             ]),
             const SizedBox(height: 2),
@@ -226,11 +245,11 @@ class _MonitorRow extends StatelessWidget {
                       'holding reply so the group isn’t left waiting.'
                   : 'Premium. Let Ava cover @mentions of you here while you’re away '
                       '(always disclosed, never impersonation).',
-              style: ZineText.sub(size: 12),
+              style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12),
             ),
           ]),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: Msg.s3),
         if (value)
           ZineToggle(value: true, onChanged: (_) => onDisable())
         else

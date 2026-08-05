@@ -8,7 +8,6 @@ import '../../core/ava_ai_client.dart';
 import '../../core/brain_consent.dart';
 import '../../core/db.dart';
 import '../../core/ui/avatok_dark.dart';
-import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../avachat/discuss_seed.dart';
 import '../avachat/thread_context.dart';

@@ -24,7 +24,6 @@ import '../../core/ava_prompt_budget.dart';
 import '../../core/ava_quality.dart';
 import '../../core/library_api.dart';
 import '../../core/ui/avatok_dark.dart';
-import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ava_ondevice_stt.dart';
 import '../settings/sections/voice_section.dart';

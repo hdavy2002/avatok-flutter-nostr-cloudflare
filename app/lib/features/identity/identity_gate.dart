@@ -5,7 +5,8 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/analytics.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'identity_api.dart';
 
@@ -102,67 +103,71 @@ class _GateSheetState extends State<_GateSheet> {
 
   @override
   Widget build(BuildContext context) {
-    // Paper sheet with a thick ink top border (§7.3 adapted to a sheet).
+    // Dark bottom-sheet surface with a hairline top border.
     return Container(
       decoration: const BoxDecoration(
-        color: Zine.paper,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(Zine.r)),
-        border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
+        color: AD.overlaySheet,
+        borderRadius: Msg.brSheetTop,
+        border: Border(top: Msg.hairline),
       ),
-      padding: EdgeInsets.fromLTRB(24, 16, 24, 24 + MediaQuery.of(context).viewPadding.bottom),
+      padding: EdgeInsets.fromLTRB(
+          Msg.s5, Msg.s4, Msg.s5, Msg.s5 + MediaQuery.of(context).viewPadding.bottom),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Center(
             child: Container(
-              width: 38, height: 5, margin: const EdgeInsets.only(bottom: 18),
-              decoration: BoxDecoration(color: Zine.inkMute, borderRadius: BorderRadius.circular(3)),
+              width: 38, height: 5, margin: const EdgeInsets.only(bottom: Msg.s4),
+              // The sheet grabber IS one of the shapes a pill is reserved for.
+              decoration: BoxDecoration(color: AD.borderControl, borderRadius: Msg.brPill),
             ),
           ),
           Center(
             child: ZineIconBadge(
-              icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold),
-              color: Zine.lilac,
+              icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.regular),
               size: 56,
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: Msg.s4),
           Text('Verify your identity',
-              textAlign: TextAlign.center, style: ZineText.hero(size: 27)),
-          const SizedBox(height: 10),
+              textAlign: TextAlign.center,
+              style: ADText.appTitle().copyWith(
+                  fontSize: 27, height: 1.08, letterSpacing: -0.02 * 27)),
+          const SizedBox(height: Msg.s3),
           Text(
             'We need to verify your identity before you can ${widget.reason}. '
             'You\'ll photograph a government ID and take a quick selfie — it '
             'usually takes under two minutes.',
             textAlign: TextAlign.center,
-            style: ZineText.sub(size: 14),
+            style: ADText.preview().copyWith(fontSize: 14, height: 1.42),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: Msg.s2),
           Text(
             'Your documents are processed securely by Stripe Identity. AvaTOK '
             'never stores your ID images.',
             textAlign: TextAlign.center,
-            style: ZineText.sub(size: 12, color: Zine.inkMute),
+            style: ADText.preview(c: AD.textTertiary).copyWith(fontSize: 12, height: 1.42),
           ),
           if (widget.status?.failureReason != null) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: Msg.s3),
             Center(
               child: ZineSticker('last try: ${widget.status!.failureReason}',
                   kind: ZineStickerKind.no,
-                  icon: PhosphorIcons.warning(PhosphorIconsStyle.bold)),
+                  icon: PhosphorIcons.warning(PhosphorIconsStyle.regular)),
             ),
           ],
           if (_error != null) ZineErrorMsg(_error!),
-          const SizedBox(height: 20),
+          const SizedBox(height: Msg.s5),
           if (_polling) ...[
-            const Center(child: CircularProgressIndicator(color: Zine.blueInk)),
-            const SizedBox(height: 12),
+            const Center(child: CircularProgressIndicator(color: Msg.accent)),
+            const SizedBox(height: Msg.s3),
             Text('Waiting for verification to finish…',
-                textAlign: TextAlign.center, style: ZineText.sub(size: 13)),
-            const SizedBox(height: 12),
+                textAlign: TextAlign.center,
+                style: ADText.preview().copyWith(fontSize: 13, height: 1.42)),
+            const SizedBox(height: Msg.s3),
             Center(
-              child: ZineLink('I\'LL FINISH LATER',
+              child: ZineLink('I’ll finish later',
                   onTap: () => Navigator.of(context).pop(false)),
             ),
           ] else ...[
@@ -173,7 +178,7 @@ class _GateSheetState extends State<_GateSheet> {
               loading: _busy,
               onPressed: _busy ? null : _start,
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s3),
             ZineButton(
               label: 'Not now',
               variant: ZineButtonVariant.ghost,

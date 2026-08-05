@@ -8,7 +8,8 @@ import '../../core/account_storage.dart';
 import '../../core/avatar.dart';
 import '../../core/listings_api.dart';
 import '../../core/notifications_api.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/verse_api.dart';
 import '../../identity/identity.dart';
@@ -158,10 +159,18 @@ class _InboxScreenState extends State<InboxScreen> {
     ('system', 'System'),
   ];
 
-  // Accent rotation per source (§6) — flat zine fills only.
-  static const _sourceAccent = <String, Color>{
-    'event': Zine.lime, 'channel': Zine.lilac, 'consult': Zine.blue,
-    'dm': Zine.mint, 'system': Zine.coral,
+  // Accent per source. Each entry is a dark-mode avatar FAMILY, not a single
+  // colour, because the source tag needs a fill AND a legible ink: the old code
+  // painted dark `Zine.ink` text on a pale poster fill, which on the dark
+  // surface would have been white-ish text on a bright pastel. `chipBg` is the
+  // dark fill, `chipInk` the light ink that goes on it, `solid` the saturated
+  // variant for the filled icon badge (which takes white).
+  static final _sourceFamily = <String, AvatarFamily>{
+    'event': AD.familyByName('mint'),
+    'channel': AD.familyByName('lilac'),
+    'consult': AD.familyByName('sky'),
+    'dm': AD.familyByName('aqua'),
+    'system': AD.familyByName('terra'),
   };
   static const _sourceLabel = <String, String>{
     'event': 'Event', 'channel': 'Channel', 'consult': 'Consult', 'dm': 'DM', 'system': 'System',
@@ -171,14 +180,14 @@ class _InboxScreenState extends State<InboxScreen> {
   Widget build(BuildContext context) {
     final shown = _filter == 'all' ? _rows : _rows.where((r) => r.source == _filter).toList();
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       appBar: ZineAppBar(
         title: 'AvaInbox',
         markWord: 'Inbox',
         tag: 'every message · one list',
         actions: [
           ZineBackButton(
-            icon: PhosphorIcons.robot(PhosphorIconsStyle.bold),
+            icon: PhosphorIcons.robot(PhosphorIconsStyle.regular),
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AgentInboxScreen())),
           ),
         ],
@@ -186,10 +195,10 @@ class _InboxScreenState extends State<InboxScreen> {
       body: Column(children: [
         SizedBox(
           height: 56,
-          child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9), children: [
+          child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s2), children: [
             for (final c in _chipDefs)
               Padding(
-                padding: const EdgeInsets.only(right: 9),
+                padding: const EdgeInsets.only(right: Msg.s2),
                 child: ZineChip(
                   label: c.$2,
                   active: _filter == c.$1,
@@ -200,22 +209,23 @@ class _InboxScreenState extends State<InboxScreen> {
         ),
         Expanded(
           child: _loading
-              ? const Center(child: CircularProgressIndicator(color: Zine.blueInk))
+              ? const Center(child: CircularProgressIndicator(color: Msg.accent))
               : RefreshIndicator(
                   onRefresh: _load,
-                  color: Zine.blueInk,
+                  color: Msg.accent,
+                  backgroundColor: AD.card,
                   child: shown.isEmpty
                       ? ListView(physics: const AlwaysScrollableScrollPhysics(), children: [
                           const SizedBox(height: 120),
                           Center(child: ZineEmptyState(
-                              icon: PhosphorIcons.tray(PhosphorIconsStyle.bold),
+                              icon: PhosphorIcons.tray(PhosphorIconsStyle.regular),
                               text: 'All caught up')),
                         ])
                       : ListView.separated(
                           physics: const AlwaysScrollableScrollPhysics(),
-                          padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
+                          padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s1, Msg.s4, Msg.s5),
                           itemCount: shown.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 11),
+                          separatorBuilder: (_, __) => const SizedBox(height: Msg.s3),
                           itemBuilder: (_, i) => _tile(shown[i]),
                         ),
                 ),
@@ -225,55 +235,61 @@ class _InboxScreenState extends State<InboxScreen> {
   }
 
   Widget _tile(_Row r) {
-    final accent = _sourceAccent[r.source] ?? Zine.blue;
+    final fam = _sourceFamily[r.source] ?? AD.familyByName('sky');
     return ZinePressable(
       onTap: () => _open(r),
-      radius: BorderRadius.circular(Zine.rSm),
-      boxShadow: Zine.shadowXs,
-      padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
+      radius: Msg.brLg,
+      boxShadow: Msg.none,
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
       child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
         if (r.conv != null)
           Container(
-            decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Zine.ink, width: 2)),
+            decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: AD.borderControl, width: 1)),
             child: Avatar(seed: r.conv!.id, name: r.title, size: 42, avatarUrl: r.conv!.avatarUrl),
           )
         else
           ZineIconBadge(
-            icon: r.notice != null ? _noticeIcon(r.notice!.type) : PhosphorIcons.bell(PhosphorIconsStyle.bold),
-            color: accent,
+            icon: r.notice != null ? _noticeIcon(r.notice!.type) : PhosphorIcons.bell(PhosphorIconsStyle.regular),
+            color: fam.solid,
             size: 42,
           ),
-        const SizedBox(width: 12),
+        const SizedBox(width: Msg.s3),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
             Row(children: [
               Expanded(child: Text(r.title, maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: ZineText.value(size: 14.5, weight: r.unread ? FontWeight.w900 : FontWeight.w800))),
-              const SizedBox(width: 8),
-              Text(_when(r.ts).toUpperCase(), style: ZineText.tag(size: 10, color: Zine.inkMute)),
+                  style: ADText.rowName().copyWith(
+                      fontSize: 15,
+                      fontWeight: r.unread ? FontWeight.w700 : FontWeight.w600))),
+              const SizedBox(width: Msg.s2),
+              Text(_when(r.ts), style: ADText.timestamp()),
             ]),
-            const SizedBox(height: 4),
+            const SizedBox(height: Msg.s1),
             Row(children: [
               Container(
-                margin: const EdgeInsets.only(right: 7),
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1.5),
+                margin: const EdgeInsets.only(right: Msg.s2),
+                padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: 2),
                 decoration: BoxDecoration(
-                  color: accent,
-                  borderRadius: BorderRadius.circular(100),
-                  border: Border.all(color: Zine.ink, width: 2),
+                  // Dark chip fill + its matching light ink — the pair is
+                  // designed together, so the label can never collapse into
+                  // the fill the way ink-on-poster-colour did.
+                  color: fam.chipBg,
+                  borderRadius: Msg.brPill,
+                  border: Border.all(color: AD.borderHairline, width: 1),
                 ),
-                child: Text((_sourceLabel[r.source] ?? r.source).toUpperCase(),
-                    style: ZineText.tag(size: 9, color: accent == Zine.coral ? Colors.white : Zine.ink)),
+                child: Text(_sourceLabel[r.source] ?? r.source,
+                    style: ADText.statCaption(c: fam.chipInk).copyWith(fontSize: 10)),
               ),
               Expanded(child: Text(r.snippet, maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: ZineText.sub(size: 12.5))),
+                  style: ADText.preview().copyWith(fontSize: 13))),
               if (r.unread)
                 Container(
-                  margin: const EdgeInsets.only(left: 7),
-                  width: 11, height: 11,
-                  decoration: BoxDecoration(
-                    color: Zine.lime, shape: BoxShape.circle,
-                    border: Border.all(color: Zine.ink, width: 2),
+                  margin: const EdgeInsets.only(left: Msg.s2),
+                  width: 10, height: 10,
+                  decoration: const BoxDecoration(
+                    color: Msg.accent, shape: BoxShape.circle,
                   ),
                 ),
             ]),
@@ -284,11 +300,11 @@ class _InboxScreenState extends State<InboxScreen> {
   }
 
   IconData _noticeIcon(String type) => switch (type) {
-        'wallet' || 'payment' => PhosphorIcons.wallet(PhosphorIconsStyle.bold),
-        'moderation' => PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold),
-        'social' => PhosphorIcons.heart(PhosphorIconsStyle.bold),
-        'brain' => PhosphorIcons.brain(PhosphorIconsStyle.bold),
-        _ => PhosphorIcons.bell(PhosphorIconsStyle.bold),
+        'wallet' || 'payment' => PhosphorIcons.wallet(PhosphorIconsStyle.regular),
+        'moderation' => PhosphorIcons.shieldCheck(PhosphorIconsStyle.regular),
+        'social' => PhosphorIcons.heart(PhosphorIconsStyle.regular),
+        'brain' => PhosphorIcons.brain(PhosphorIconsStyle.regular),
+        _ => PhosphorIcons.bell(PhosphorIconsStyle.regular),
       };
 
   String _when(int ts) {
