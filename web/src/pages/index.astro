@@ -12,7 +12,25 @@
 export const prerender = true;
 
 import landingRaw from '../landing/avatok-landing.html?raw';
+import SiteFooter from '../components/SiteFooter.astro';
+
 const landingHtml = landingRaw.replace(/^﻿?\s*<!doctype html>/i, '');
+
+// The landing ships as one opaque document, so the shared footer cannot simply
+// be appended — that would land it after </html>. The document carries a
+// <!--SITE_FOOTER--> marker where its old hand-rolled 4-link footer used to be;
+// we split there and render the real <SiteFooter /> inside <body>, so the home
+// page carries the same ~19 policy links as every other page.
+const FOOTER_MARK = '<!--SITE_FOOTER-->';
+const [landingHead, landingTail = ''] = landingHtml.split(FOOTER_MARK);
+if (landingTail === '') {
+  throw new Error(
+    'index.astro: <!--SITE_FOOTER--> marker missing from src/landing/avatok-landing.html — ' +
+    'the home page would silently ship with no footer.',
+  );
+}
 ---
 
-<Fragment set:html={landingHtml} />
+<Fragment set:html={landingHead} />
+<SiteFooter />
+<Fragment set:html={landingTail} />
