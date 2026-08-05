@@ -51,6 +51,32 @@ export interface PlatformConfig {
   // handler is unrouted). Liveness only, no phone anywhere; the flag gated nothing reachable.
   // Live voice translation (Gemini 3.5 Live Translate, $3/h in Tokens).
   translationEnabled: boolean;       // master switch for /api/translate/*
+  /**
+   * [CALL-SFU-1] OWNER DECISION 2026-08-06 — 1:1 calls move off raw P2P onto the
+   * Cloudflare Realtime SFU, the same product group conferences already use.
+   *
+   * WHY, in one line: with P2P a network change breaks BOTH ends at once and two
+   * phones behind two NATs must re-find each other over a signalling path that may
+   * itself be broken; with an SFU only the moving phone's leg breaks and it
+   * reconnects to a fixed, publicly-routable address. Every mechanism that failed
+   * 12/12 times on 2026-08-05 (offerer election, glare, attemptId matching, both
+   * peers independently proving health) exists ONLY because there are two phones
+   * to coordinate. The SFU deletes the category instead of fixing it.
+   *
+   * Ships FALSE. P2P stays in the build as a silent fallback, so flipping this off
+   * returns every user to today's behaviour without a build.
+   */
+  callSfuV1: boolean;
+  /**
+   * [CALL-SFU-1] Restrict the SFU path to audio, pushing video back onto P2P.
+   *
+   * Ships FALSE — the owner chose a full migration on 2026-08-06, audio AND video.
+   * It exists purely as the bandwidth escape hatch: video is ~18x the bytes of
+   * audio, so the 1,000 GB Cloudflare free tier covers roughly 1,100 video
+   * call-hours/month vs ~20,000 audio hours. If the bill ever surprises us, flip
+   * this true from KV and video is back on P2P in a minute.
+   */
+  callSfuAudioOnly: boolean;
   /** 1:1 P2P call translation. Independent gate: remains dark by default. */
   callTranslationEnabled: boolean;
   /**
@@ -910,6 +936,11 @@ const DEFAULTS: PlatformConfig = {
   // [M-D1 2026-07-17 / M-D11 2026-07-18] simOnlyPhoneEnabled removed from DEFAULTS —
   // phone OTP is gone app-wide; the flag gated an unrouted, 410'd endpoint.
   translationEnabled: false,       // FREE LAUNCH: Gemini-Live cost — hidden
+  // [CALL-SFU-1] Dark until CI + a two-device staging test that includes a
+  // WiFi->mobile switch mid-call. P2P remains in the build as the fallback, so
+  // flipping this back to false is a full, instant rollback with no rebuild.
+  callSfuV1: false,
+  callSfuAudioOnly: false,         // [CALL-SFU-1] owner 2026-08-06: video on the SFU too
   callTranslationEnabled: false,   // [CALL-TRANSLATE-1] dark until CI + two-device verification
   // [CALL-TRANSLATE-FREE-1] ON per owner 2026-08-05, reversing the 2026-08-04
   // paid-only ruling: testers hold only welcome/daily grants, so paid-only made

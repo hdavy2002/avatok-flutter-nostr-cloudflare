@@ -117,6 +117,7 @@ import { featureCostsRoute } from "./feature_pricing";
 import { googleAuth } from "./routes/google_auth";
 import { conferenceStart, conferenceJoin, conferenceStatus, conferenceEnd, conferenceBeat } from "./routes/conference";
 import { groupCallJoin, groupCallRejoin, groupCallPublish, groupCallPull, groupCallRenegotiate, groupCallClose, groupCallStatus } from "./routes/groupcall";
+import { callSfuJoin, callSfuPublish, callSfuPeer, callSfuPull, callSfuRenegotiate, callSfuClose } from "./routes/call_sfu";
 import { conferenceRoomRoute } from "./routes/conference_room";
 import { translateStart, translateBeat, translateStop, translateToken, translateQuote } from "./routes/translate";
 import { callTranslationStart, callTranslationActivate, callTranslationRenew, callTranslationStop, callTranslationToken, callTranslationLanguage } from "./routes/call_translation";
@@ -446,6 +447,22 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (gc[2] === "renegotiate" && req.method === "PUT") return await groupCallRenegotiate(req, env, groupId);
       if (gc[2] === "close" && req.method === "POST") return await groupCallClose(req, env, groupId);
       if (gc[2] === "status" && req.method === "GET") return await groupCallStatus(req, env, groupId);
+    }
+
+    // [CALL-SFU-1 2026-08-06] 1:1 calls on the Cloudflare Realtime SFU. Keyed by
+    // the SAME room id the P2P signalling uses, so `CallRoom` — which already owns
+    // ringing, the 2-peer cap and the participant identities — is the authority for
+    // both transports. There is deliberately no `ws` verb here: 1:1 signalling
+    // stays on the existing CallRoom socket, only the MEDIA path is new.
+    const cs = p.match(/^\/api\/callsfu\/([A-Za-z0-9_:.-]{1,64})\/(join|publish|peer|pull|renegotiate|close)$/);
+    if (cs) {
+      const room = cs[1];
+      if (cs[2] === "join" && req.method === "POST") return await callSfuJoin(req, env, room);
+      if (cs[2] === "publish" && req.method === "POST") return await callSfuPublish(req, env, room);
+      if (cs[2] === "peer" && req.method === "GET") return await callSfuPeer(req, env, room);
+      if (cs[2] === "pull" && req.method === "POST") return await callSfuPull(req, env, room);
+      if (cs[2] === "renegotiate" && req.method === "PUT") return await callSfuRenegotiate(req, env, room);
+      if (cs[2] === "close" && req.method === "POST") return await callSfuClose(req, env, room);
     }
 
     // Cloudflare-native messaging — live socket → caller's InboxDO (Nostr deprecated).

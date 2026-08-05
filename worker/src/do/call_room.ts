@@ -80,6 +80,25 @@ interface AwayPeer {
 
 // Legacy persisted shape only. New state cannot be armed; old state is read so
 // its escrow can be refunded safely during the free-policy transition.
+/**
+ * [CALL-SFU-1 2026-08-06] One participant's Cloudflare Realtime publication.
+ *
+ * This is the pairing the SFU transport needs and P2P never did: to hear the other
+ * person you must pull their named track from their Cloudflare session, so you need
+ * to know both. Held per-uid in this DO because it is already the authority on who
+ * the two participants of a 1:1 call are.
+ *
+ * `audio_track` / `video_track` are null until that kind is published — a video
+ * upgrade mid-call is a second publish, not a new seat.
+ */
+interface SfuSeat {
+  uid: string;
+  session_id: string;
+  audio_track: string | null;
+  video_track: string | null;
+  updated_at: number;
+}
+
 interface BillingState {
   call_id: string;
   trace_id: string;
@@ -147,6 +166,12 @@ export class CallRoom {
   // bye/hangup/decline over the socket. Exposed via GET /state so the callee's
   // accept path (client [AVACALL-CANCEL-1]) and the push consumer's ring fan-out
   // can both refuse to ring / connect a call whose caller is already gone.
+  /**
+   * [CALL-SFU-1] Cloudflare Realtime session + track names per participant uid.
+   * `undefined` = not loaded yet (same convention as the fields around it); `{}` =
+   * loaded and empty. Two entries maximum, mirroring the 2-peer cap.
+   */
+  private sfuSeats: Record<string, SfuSeat> | undefined;
   private terminalStatus: string | null | undefined; // undefined = not loaded yet
   private terminalAt: number | null | undefined;
   /** [CALL-REDUCER-1 2026-08-01] Monotonic transition counter stamped on every
@@ -308,6 +333,18 @@ export class CallRoom {
 
   /** CALL-KV-STATE-1: hydrate answered/ended state from DO storage on first use
    *  after a restart so GET /state is correct even if the instance was evicted. */
+  /**
+   * [CALL-SFU-1] Lazy, cached read of the seat registry. Deliberately NOT folded
+   * into `loadCallState()`: every ring, accept and status probe calls that, and
+   * none of them need the seats. Only the three /sfu-* endpoints do.
+   */
+  private async loadSfuSeats(): Promise<Record<string, SfuSeat>> {
+    if (this.sfuSeats === undefined) {
+      this.sfuSeats = (await this.state.storage.get<Record<string, SfuSeat>>("sfuSeats")) ?? {};
+    }
+    return this.sfuSeats;
+  }
+
   private async loadCallState(): Promise<void> {
     if (this.answeredAt !== undefined) return;
     this.answeredAt = (await this.state.storage.get<number>("answeredAt")) ?? null;
@@ -1456,6 +1493,91 @@ export class CallRoom {
           return Response.json({ ok: false, error: "participants_unavailable" }, { status: 503 });
         }
         return Response.json({ ok: true, callerUid: s.caller_uid, calleeUid: s.callee_uid });
+      }
+      /**
+       * [CALL-SFU-1 2026-08-06] SFU seat registry for 1:1 calls.
+       *
+       * When 1:1 media moves onto the Cloudflare Realtime SFU, each phone holds a
+       * Cloudflare session id and publishes named tracks. To PULL the other side,
+       * a phone needs the peer's session id and track names — and something has to
+       * hold that pairing.
+       *
+       * This DO is the obvious place and deliberately the ONLY place: it already
+       * knows exactly who the two participants are (`caller_uid` / `callee_uid`),
+       * it already enforces the 2-peer cap, and it is strongly consistent. The
+       * group path solved the same problem with a roster inside GroupCallRoom
+       * (`/authority/session_check`, `/authority/pull`); doing that here would mean
+       * a second DO per 1:1 call and a second source of truth for "who is on this
+       * call". Two seats keyed by uid is the whole feature.
+       *
+       * NOT an authority check. Membership is already proven upstream by
+       * `requireUser` + the caller/callee pair on the session; this only answers
+       * "what is my peer publishing". A uid that is not one of the two seats is
+       * refused rather than silently registered — otherwise a third party could
+       * park a session id here and be pulled by a legitimate peer.
+       */
+      if (req.method === "POST" && stateUrl.pathname.endsWith("/sfu-seat")) {
+        let body: Record<string, unknown> = {};
+        try { body = (await req.json()) as Record<string, unknown>; } catch { /* empty */ }
+        const callId = typeof body.callId === "string" ? body.callId : "";
+        const uid = typeof body.uid === "string" ? body.uid : "";
+        const sessionId = typeof body.sessionId === "string" ? body.sessionId : "";
+        if (!uid || !sessionId) return Response.json({ ok: false, error: "uid_and_session_required" }, { status: 400 });
+        const s = await this.loadSession(callId);
+        // Seat identity, same rule the WebSocket path enforces. An unknown uid is
+        // not a participant of this call and must never become pullable.
+        if (uid !== s.caller_uid && uid !== s.callee_uid) {
+          return Response.json({ ok: false, error: "not_a_participant" }, { status: 403 });
+        }
+        const seat: SfuSeat = {
+          uid,
+          session_id: sessionId,
+          // Track names are client-chosen and echoed back verbatim to the peer, so
+          // they are bounded here rather than trusted. 128 matches the group path's
+          // MAX_TRACK_NAME_LEN so both transports agree on the ceiling.
+          audio_track: typeof body.audioTrack === "string" ? body.audioTrack.slice(0, 128) : null,
+          video_track: typeof body.videoTrack === "string" ? body.videoTrack.slice(0, 128) : null,
+          updated_at: Date.now(),
+        };
+        this.sfuSeats = { ...(await this.loadSfuSeats()), [uid]: seat };
+        try { await this.state.storage.put("sfuSeats", this.sfuSeats); } catch { /* best-effort */ }
+        return Response.json({ ok: true, seat });
+      }
+      /**
+       * [CALL-SFU-1] The other seat, for pulling. Returns `ok:true, seat:null` when
+       * the peer has not published yet — a NORMAL race on every call, since both
+       * phones create their session concurrently. The client polls/retries on null;
+       * a 404 here would be indistinguishable from a real failure and would push
+       * callers into a needless fallback to P2P.
+       */
+      if (req.method === "GET" && stateUrl.pathname.endsWith("/sfu-peer")) {
+        const callId = stateUrl.searchParams.get("callId") ?? "";
+        const uid = stateUrl.searchParams.get("uid") ?? "";
+        if (!uid) return Response.json({ ok: false, error: "uid_required" }, { status: 400 });
+        const s = await this.loadSession(callId);
+        if (uid !== s.caller_uid && uid !== s.callee_uid) {
+          return Response.json({ ok: false, error: "not_a_participant" }, { status: 403 });
+        }
+        const seats = await this.loadSfuSeats();
+        const peerUid = uid === s.caller_uid ? s.callee_uid : s.caller_uid;
+        const seat = peerUid ? (seats[peerUid] ?? null) : null;
+        return Response.json({ ok: true, seat, peer_uid: peerUid ?? null });
+      }
+      /**
+       * [CALL-SFU-1] Drop a seat. Called on hangup and, importantly, before a
+       * reconnect that mints a NEW Cloudflare session: a stale seat would have the
+       * peer pulling a dead session id and hearing silence with no error.
+       */
+      if (req.method === "POST" && stateUrl.pathname.endsWith("/sfu-seat-clear")) {
+        let body: Record<string, unknown> = {};
+        try { body = (await req.json()) as Record<string, unknown>; } catch { /* empty */ }
+        const uid = typeof body.uid === "string" ? body.uid : "";
+        if (!uid) return Response.json({ ok: false, error: "uid_required" }, { status: 400 });
+        const seats = { ...(await this.loadSfuSeats()) };
+        delete seats[uid];
+        this.sfuSeats = seats;
+        try { await this.state.storage.put("sfuSeats", seats); } catch { /* best-effort */ }
+        return Response.json({ ok: true });
       }
       // [CALL-FSM-1] Read the authoritative aggregate (late-joining client,
       // reconnect reconciliation, support debugging).
